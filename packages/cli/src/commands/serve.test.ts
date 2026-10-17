@@ -5,6 +5,7 @@ import type { DevProcesses } from '../dev.ts';
 import type { RouteTypes } from '../route-types.ts';
 import { ServeCommand } from './serve.ts';
 
+const migrations = vi.hoisted(() => ({ close: vi.fn(), watch: vi.fn() }));
 const server = vi.hoisted(() => ({ close: vi.fn(async () => {}), lastError: { close: vi.fn(), idle: vi.fn() }, startLastError: vi.fn(), startServer: vi.fn() }));
 
 vi.mock('@marmeon/server', () => ({
@@ -19,6 +20,7 @@ vi.mock('@marmeon/server/internal', () => ({
   startLastError: server.startLastError,
 }));
 vi.mock('./route-types.ts', () => ({ writeRouteTypes: async () => true, RouteTypesCommand: class {} }));
+vi.mock('../migration-watch.ts', () => ({ watchMigrations: migrations.watch }));
 vi.mock('../unlisted.ts', () => ({ warnUnlisted: () => 0 }));
 
 afterEach(() => {
@@ -31,6 +33,7 @@ async function serve(nodeEnv: string) {
   vi.stubEnv('NODE_ENV', nodeEnv);
   server.startServer.mockImplementation(async () => ({ close: server.close }));
   server.startLastError.mockImplementation(async () => server.lastError);
+  migrations.watch.mockImplementation(async () => ({ close: migrations.close }));
   const app = { container: { has: () => false }, modules: [] } as unknown as Application;
   const logger = { info: () => {} } as unknown as Logger;
   const devProcesses = { all: () => [] } as unknown as DevProcesses;
@@ -54,5 +57,18 @@ describe('marmeon serve and the last-error file', () => {
     await serve('production');
     expect(server.startServer).toHaveBeenCalledTimes(1);
     expect(server.startLastError).not.toHaveBeenCalled();
+  });
+});
+
+describe('marmeon serve and the migration watcher', () => {
+  it('watches the migrations where the development server runs, and stops with the server', async () => {
+    await serve('development');
+    expect(migrations.watch).toHaveBeenCalledTimes(1);
+    expect(migrations.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not watch them for a production server', async () => {
+    await serve('production');
+    expect(migrations.watch).not.toHaveBeenCalled();
   });
 });

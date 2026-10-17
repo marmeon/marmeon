@@ -338,6 +338,19 @@ describe.each(drivers)('the database against the migrations after each one, on %
     expect((await migrator(connections, auth, accounts, bad).status()).every((file) => file.batch !== undefined)).toBe(true);
     await sql`select kept from scratch`.execute(migratorConnection(connections));
   });
+
+  it('hands the connections back after a rollback or reset that fails: the next query checks the database like a fresh process', async () => {
+    const bad: ModuleDefinition = { name: 'bad', migrations: fixtures('bad-down') };
+    for (const undo of ['rollback', 'reset'] as const) {
+      const run = migrator(connections, auth, accounts, bad);
+      await run.migrate();
+      await expect(run[undo]()).rejects.toThrow(/\[marmeon:D3\]/);
+      // The rollback had handed over the schema without the table it was undoing; the database still has it.
+      expect(connections.metadata().ready).toBe(false);
+      await connections.get<any>().selectFrom('users').select('id').execute();
+      expect(connections.metadata().ready).toBe(true);
+    }
+  });
 });
 
 describe.each(drivers)('an order of the run that the names do not give, on %s', (driver) => {

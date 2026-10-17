@@ -191,7 +191,7 @@ export class Migrator {
   }
 
   /**
-   * A run that fails leaves the database at the last migration that committed, which this process's connections were handed. They are
+   * A run (migrate, rollback or reset) that fails leaves the database at the last migration that committed, which this process's connections were handed. They are
    * handed back: the next query checks the state like a process that starts (pending, newer …), instead of trusting a run that did not finish.
    */
   async #withdrawnOnFailure<R>(work: () => Promise<R>): Promise<R> {
@@ -283,13 +283,13 @@ export class Migrator {
       const rows = (await this.#ran()).toReversed();
       const last = rows[0]?.batch;
       const targets = options.steps ? rows.slice(0, options.steps) : rows.filter((row) => row.batch === last);
-      return this.#down(targets, onRun);
+      return this.#withdrawnOnFailure(() => this.#down(targets, onRun));
     });
   }
 
   /** Rolls back every migration. */
   async reset(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
-    return this.locked(async () => this.#down((await this.#ran()).toReversed(), onRun));
+    return this.locked(async () => this.#withdrawnOnFailure(async () => this.#down((await this.#ran()).toReversed(), onRun)));
   }
 
   /** Drops every table (not only the migrated ones) and migrates from scratch. */

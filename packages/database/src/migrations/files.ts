@@ -15,22 +15,27 @@ export interface MigrationFile {
   readonly path: string;
 }
 
+/** The migrations directory of every module that has one, as a path. */
+export function migrationDirectories(app: Pick<Application, 'root' | 'modules'>): { module: string; directory: string }[] {
+  return app.modules.flatMap((module) =>
+    module.migrations ? [{ module: module.name, directory: module.migrations instanceof URL ? fileURLToPath(module.migrations) : resolve(app.root, module.migrations) }] : [],
+  );
+}
+
 /** Every migration file of every module of the app, in the order they run. */
 export function migrationFiles(app: Pick<Application, 'root' | 'modules'>): MigrationFile[] {
   const files: MigrationFile[] = [];
-  for (const module of app.modules) {
-    if (!module.migrations) continue;
-    const directory = module.migrations instanceof URL ? fileURLToPath(module.migrations) : resolve(app.root, module.migrations);
-    if (!existsSync(directory)) throw new Error(withCode('D14', `The migrations directory of module "${module.name}" does not exist: ${directory}`));
+  for (const { module, directory } of migrationDirectories(app)) {
+    if (!existsSync(directory)) throw new Error(withCode('D14', `The migrations directory of module "${module}" does not exist: ${directory}`));
     for (const entry of readdirSync(directory)) {
       if (entry.endsWith('.d.ts') || /\.test\./.test(entry)) continue;
       if (!FILE.test(entry)) {
         if (/\.(ts|js|mts|mjs)$/.test(entry)) {
-          throw new Error(withCode('D14', `Migration file name "${entry}" (module "${module.name}") must look like 2026_10_01_120000_create_users_table.ts.`));
+          throw new Error(withCode('D14', `Migration file name "${entry}" (module "${module}") must look like 2026_10_01_120000_create_users_table.ts.`));
         }
         continue;
       }
-      files.push({ name: basename(entry, extname(entry)), module: module.name, path: join(directory, entry) });
+      files.push({ name: basename(entry, extname(entry)), module, path: join(directory, entry) });
     }
   }
   files.sort((a, b) => byCodePoint(a.name, b.name));
