@@ -118,7 +118,7 @@ describe('the memory backend and marmeon start --workers', () => {
     expect(run('worker')).toEqual({
       code: 70,
       output:
-        'failed: LIVE_DRIVER=memory cannot serve marmeon start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @marmeon/redis), or start one process without --workers.',
+        'failed: [marmeon:H7] LIVE_DRIVER=memory cannot serve marmeon start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @marmeon/redis), or start one process without --workers.',
     });
   }, 30_000);
 

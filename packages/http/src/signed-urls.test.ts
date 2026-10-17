@@ -22,6 +22,10 @@ const KEY = generateKey();
 afterEach(() => vi.useRealTimers());
 
 describe('UrlSigner', () => {
+  it('begins the message for a route name that is not defined with H4', () => {
+    expect(() => signer(KEY).temporarySignedRoute('nope', {}, 60)).toThrow('[marmeon:H4] Route [nope] is not defined.');
+  });
+
   it('signs path and query; extra parameters go into the query; absolute with a base', () => {
     const url = signer(KEY).signedRoute('verify', { id: 7, hash: 'abc', ref: 'mail' });
     expect(url).toMatch(/^\/email\/verify\/7\/abc\?ref=mail&signature=[0-9a-f]{64}$/);

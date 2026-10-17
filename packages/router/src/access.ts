@@ -1,3 +1,4 @@
+import { withCode } from '@marmeon/core/internal';
 import { fileURLToPath } from 'node:url';
 import { sep } from 'node:path';
 import { isControllerClass } from './router.ts';
@@ -128,7 +129,7 @@ export function formatAccessProblems(problems: readonly AccessProblem[], { path 
     );
   }
   parts.push('See docs/authorization.md#every-route-decides.');
-  return parts.join('\n');
+  return withCode('H3', parts.join('\n'));
 }
 
 /** Whether a binding looks its record up within a parent — a non-empty name, the same test `bind()` and the router apply. */

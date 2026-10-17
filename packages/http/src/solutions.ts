@@ -1,17 +1,29 @@
 import { defineSolutions } from '@marmeon/core';
-import { Router } from '@marmeon/router';
+import { RouteAccessError, Router } from '@marmeon/router';
 
-const UNDEFINED_ROUTE = /^Route \[([^\]]+)\] is not defined\.$/;
+const UNDEFINED_ROUTE = /^\[marmeon:H4\] Route \[([^\]]+)\] is not defined\.$/;
 const MISSING_PAGE = /^\[marmeon:R2\] Page \[([^\]]+)\] not found/;
 
 /**
- * Solutions for HTTP errors: a route name that is not defined ("did you mean" from the app's routes) and a page whose
+ * Solutions for HTTP errors: routes that do not say who may call them (H3), a route name that is not defined ("did you mean" from the app's routes) and a page whose
  * view is missing (R2). Text only — the error page shows them in development.
  */
 export const httpSolutions = defineSolutions([
   {
+    for: RouteAccessError,
+    code: 'H3',
+    solve: () => ({
+      title: 'Say who may call each route',
+      text:
+        'Every route needs a decision: Route.authorize(can(Policy, \'ability\', \'param\')) for a policy, Route.authorize((ctx) => …) for a check of your own, ' +
+        'or Route.authorize(everyone) when anyone its middleware lets through may call it. The error lists each route and where it was registered.',
+      command: 'marmeon route:list',
+      docs: 'docs/authorization.md#every-route-decides',
+    }),
+  },
+  {
     for: Error,
-    when: (e) => UNDEFINED_ROUTE.test(e.message),
+    code: 'H4',
     solve: (e, { app }) => {
       const name = UNDEFINED_ROUTE.exec(e.message)![1]!;
       const names = app?.container.has(Router) ? app.container.make(Router).routes.flatMap((route) => route.routeName ?? []) : [];
@@ -29,7 +41,7 @@ export const httpSolutions = defineSolutions([
   },
   {
     for: Error,
-    when: (e) => MISSING_PAGE.test(e.message),
+    code: 'R2',
     solve: (e) => {
       const name = MISSING_PAGE.exec(e.message)![1]!;
       const [module, ...rest] = name.split('/');

@@ -64,7 +64,8 @@ export function toSearchParams(...queries: Query[]): URLSearchParams {
  */
 export function urlFor(routes: RouteLookup, name: string, params: Readonly<Record<string, Param | undefined>> = {}, query: Query = {}): string {
   const route = routes.findByName(name);
-  if (!route) throw new Error(`Route [${name}] is not defined.`);
+  // The code is written out: this file loads in the browser and imports nothing.
+  if (!route) throw new Error(`[marmeon:H4] Route [${name}] is not defined.`);
   const { path, rest } = fillPath(name, route.path, params);
   const search = toSearchParams(rest, query).toString();
   return search ? `${path}?${search}` : path;

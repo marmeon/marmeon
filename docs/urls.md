@@ -40,7 +40,7 @@ Everything is checked against `bootstrap/routes.ts`, which `marmeon route:types`
 suggestion, a required parameter cannot be left out, and the query of a route with a query schema is typed by its fields:
 `page: 2`, not `'2'`. The [routing](routing.md#typed-route-names) page explains the file.
 
-The checks also hold at run time, for a name the compiler did not see. An unknown name throws `Route [notes.shwo] is not defined.`,
+The checks also hold at run time, for a name the compiler did not see. An unknown name throws `[marmeon:H4] Route [notes.shwo] is not defined.`,
 and a missing parameter throws `Missing required parameter [note] for route [notes.show].`
 
 ### Absolute URLs

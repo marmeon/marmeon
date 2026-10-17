@@ -4,6 +4,7 @@ import type { Server } from 'node:http';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { withCode } from '@marmeon/core/internal';
 import type { SsrRender } from '@marmeon/http';
 import type { ResolvedConfig, ViteDevServer } from 'vite';
 import { withDevBody } from './dev-document.ts';
@@ -29,7 +30,7 @@ export async function importVite(root: string): Promise<typeof import('vite')> {
   // Only the app's node_modules chain counts, as for an ESM import: `require.resolve` would also search
   // NODE_PATH, which pnpm's bin shims point at the store's hoisted packages — finding a Vite the app lacks.
   if (!hasPackage(root, 'vite')) {
-    throw new ViteSetupError(`Vite is not installed in this app. \`marmeon dev\` and \`marmeon build\` need it: ${INSTALL}`);
+    throw new ViteSetupError(withCode('H5', `Vite is not installed in this app. \`marmeon dev\` and \`marmeon build\` need it: ${INSTALL}`));
   }
   const path = createRequire(join(root, 'package.json')).resolve('vite');
   return (await import(pathToFileURL(path).href)) as typeof import('vite');
@@ -50,7 +51,7 @@ export function explainConfigError(error: unknown): unknown {
   const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
   const missing = typeof message === 'string' ? /Cannot find (?:package|module) '(@marmeon\/vite)[^']*'/.exec(message) : null;
   if (code === 'ERR_MODULE_NOT_FOUND' && missing) {
-    return new ViteSetupError(`vite.config.ts imports ${missing[1]}, which is not installed in this app: ${INSTALL}`);
+    return new ViteSetupError(withCode('H5', `vite.config.ts imports ${missing[1]}, which is not installed in this app: ${INSTALL}`));
   }
   return error;
 }
@@ -61,11 +62,14 @@ export function marmeonEntries(config: Pick<ResolvedConfig, 'plugins'>): Marmeon
   const api = plugin?.api as MarmeonPluginApi | undefined;
   if (!api?.entries) {
     throw new ViteSetupError(
-      [
-        'vite.config.ts does not use the marmeon() plugin, which tells the server where the app\'s entries are:',
-        "  import { marmeon } from '@marmeon/vite';",
-        '  export default defineConfig({ plugins: [marmeon(), react()] });',
-      ].join('\n'),
+      withCode(
+        'H5',
+        [
+          'vite.config.ts does not use the marmeon() plugin, which tells the server where the app\'s entries are:',
+          "  import { marmeon } from '@marmeon/vite';",
+          '  export default defineConfig({ plugins: [marmeon(), react()] });',
+        ].join('\n'),
+      ),
     );
   }
   return api.entries;

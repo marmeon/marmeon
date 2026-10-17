@@ -1,5 +1,6 @@
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { Clock } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { fillPath, HttpError, Router, toSearchParams, type CheckRouteName, type HttpContext, type Next, type Param, type ParamsOf, type RouteNameInput } from '@marmeon/router';
 
@@ -114,7 +115,7 @@ export class UrlSigner {
 
   #route(name: string, params: Readonly<Record<string, Param>>): { path: string; query: URLSearchParams } {
     const route = this.#router.findByName(name);
-    if (!route) throw new Error(`Route [${name}] is not defined.`);
+    if (!route) throw new Error(withCode('H4', `Route [${name}] is not defined.`));
     for (const key of ['signature', 'expires']) if (key in params) throw new Error(`"${key}" is reserved in signed URLs.`);
     // The same code path as `Router.url()`: path parameters into the path, the rest into the query.
     const { path, rest } = fillPath(name, route.path, params);

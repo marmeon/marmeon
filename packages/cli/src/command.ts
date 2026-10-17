@@ -1,5 +1,6 @@
 import { parseArgs, type ParseArgsOptionsConfig } from 'node:util';
 import type { Container } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 import type { Output } from './output.ts';
 
 export interface CommandInput {
@@ -68,14 +69,17 @@ export class CommandRegistry {
   add(commands: readonly CommandClass[], source = 'a package'): this {
     for (const command of commands) {
       if (RESERVED.has(command.command)) {
-        throw new CommandSetupError(`"${command.command}" is marmeon's own command — ${command.name} (${source}) cannot use it. Rename it.`);
+        throw new CommandSetupError(withCode('K8', `"${command.command}" is marmeon's own command — ${command.name} (${source}) cannot use it. Rename it.`));
       }
       const taken = this.#commands.get(command.command);
       if (!taken) {
         this.#commands.set(command.command, { command, source });
       } else if (taken.command !== command) {
         throw new CommandSetupError(
-          `Two commands are named "${command.command}": ${taken.command.name} (${taken.source}) and ${command.name} (${source}). Rename one — its static command is how marmeon finds it.`,
+          withCode(
+            'K8',
+            `Two commands are named "${command.command}": ${taken.command.name} (${taken.source}) and ${command.name} (${source}). Rename one — its static command is how marmeon finds it.`,
+          ),
         );
       }
     }

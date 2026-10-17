@@ -344,7 +344,13 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | K5 | `core` | The injection transform cannot derive a list from a constructor, or cannot embed it into compiled output. [Constructor injection](container.md#constructor-injection) |
 | K6 | `core` | The configuration or `NODE_ENV` is invalid, so the app cannot start. [When a value is wrong](configuration.md#when-a-value-is-wrong) |
 | K7 | `core` | Discovery of a package's providers or injections failed. [Discovery](modules.md#discovery) |
+| K8 | `cli` | A command name is taken twice, or is one marmeon answers itself (`list`, `help`). [Writing commands](console.md#writing-commands) |
 | H1 | `server` | A request of the page protocol named another version, or none, and was answered with `409` before any route ran. [A tab of another protocol version](navigation.md#a-tab-of-another-protocol-version) |
+| H3 | `router` | Routes that do not say who may call them, so the app cannot start. [Every route decides](authorization.md#every-route-decides) |
+| H4 | `router`, `http` | A route name that no route has, in `route()`, `redirect().route()` or a signed URL. [URLs for named routes](urls.md#urls-for-named-routes) |
+| H5 | `server` | Vite, `@marmeon/vite` or the `marmeon()` plugin is missing, so `marmeon dev` and `marmeon build` cannot start. [When the plugin is missing](vite.md#when-the-plugin-is-missing) |
+| H6 | `http` | A write in a read-only request, such as an island: thrown in development and tests, dropped in production. [How islands load](deferred-props.md#how-islands-load) |
+| H7 | `live` | Live updates are not set up: `LIVE_DRIVER=redis` without `@marmeon/redis`, or the memory driver under `--workers`. [More than one process](realtime.md#more-than-one-process) |
 
 ## Errors in the browser
 

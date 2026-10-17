@@ -1,6 +1,6 @@
 import cluster from 'node:cluster';
 import { Application, Logger, Redactor, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
-import { CLUSTER_WORKER } from '@marmeon/core/internal';
+import { CLUSTER_WORKER, withCode } from '@marmeon/core/internal';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { CONNECTION_HEADER, defineRoutes, LIVE_PATH, LiveAudience, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
 import { FRAMEWORK_ROUTES, IncomingRequest } from '@marmeon/http/internal';
@@ -93,7 +93,7 @@ export class LiveServiceProvider implements ServiceProvider {
       const config = c.make(LiveConfig);
       if (config.driver === 'memory') return new MemoryLiveBackend();
       const redis = this.#redis;
-      if (!redis) throw new LiveSetupError('LIVE_DRIVER=redis needs @marmeon/redis (pnpm add @marmeon/redis; marmeon discover).');
+      if (!redis) throw new LiveSetupError(withCode('H7', 'LIVE_DRIVER=redis needs @marmeon/redis (pnpm add @marmeon/redis; marmeon discover).'));
       return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.redisConnection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
     });
     container.singleton(LiveHub, (c) => {
@@ -120,13 +120,16 @@ export class LiveServiceProvider implements ServiceProvider {
     // missing without a sound. The start fails instead.
     if (config.driver === 'memory' && process.env[CLUSTER_WORKER] === '1' && cluster.isWorker) {
       throw new LiveSetupError(
-        'LIVE_DRIVER=memory cannot serve marmeon start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @marmeon/redis), or start one process without --workers.',
+        withCode(
+          'H7',
+          'LIVE_DRIVER=memory cannot serve marmeon start --workers: memory pub/sub never reaches the other workers — use LIVE_DRIVER=redis (with @marmeon/redis), or start one process without --workers.',
+        ),
       );
     }
     if (config.driver === 'redis') {
       this.#redis = await importOptional(() => import('@marmeon/redis'), '@marmeon/redis');
       if (!this.#redis || !container.has(this.#redis.RedisConnections)) {
-        throw new LiveSetupError('LIVE_DRIVER=redis needs @marmeon/redis and its provider (pnpm add @marmeon/redis; marmeon discover).');
+        throw new LiveSetupError(withCode('H7', 'LIVE_DRIVER=redis needs @marmeon/redis and its provider (pnpm add @marmeon/redis; marmeon discover).'));
       }
       // An unknown connection name fails the start, with the known ones — and so does a client that cannot load (a broken
       // install), as for the cache, the sessions and the queue: not the first hint.
