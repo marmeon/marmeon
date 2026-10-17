@@ -7,6 +7,7 @@ import { Connections } from '../connections.ts';
 import { byCodePoint, type SchemaMarker } from '../introspection.ts';
 import { MARKERS_TABLE, SECRETS_TABLE } from '../metadata.ts';
 import { Schema, type SchemaRecorder } from '../schema/schema.ts';
+import { LOCK_TABLE, MigrationLock, type HeldLock, type LockOptions } from './lock.ts';
 import type { Migration } from './migration.ts';
 
 /** `2026_10_01_120000_create_users_table.ts` — the timestamp orders migrations across all modules. */
@@ -33,7 +34,7 @@ export interface MigrationRun {
 /** Internal bookkeeping tables — not part of the app's generated `Tables`. */
 export const MIGRATIONS_TABLE = 'migrations';
 export const OWNERS_TABLE = 'table_owners';
-export { MARKERS_TABLE, SECRETS_TABLE };
+export { LOCK_TABLE, MARKERS_TABLE, SECRETS_TABLE };
 
 interface Bookkeeping {
   migrations: { id: Generated<number>; name: string; module: string; batch: number };
@@ -59,6 +60,9 @@ export class Migrator {
   readonly #connections: Connections;
   /** Every migration on `default`, whatever it names (the scratch database of `db:types`). */
   #oneConnection = false;
+  /** The lock while a command holds it: the methods below join it instead of waiting for themselves. */
+  #held: HeldLock | undefined;
+  #lockOptions: Pick<LockOptions, 'waitSeconds' | 'onTakeover' | 'now' | 'owner'> = {};
 
   constructor(app: Application, connections: Connections) {
     this.#app = app;
@@ -69,6 +73,43 @@ export class Migrator {
   onOneConnection(): this {
     this.#oneConnection = true;
     return this;
+  }
+
+  /**
+   * @internal — how long the migrating methods wait for another migration to end (`waitSeconds`, default 60),, and what is said
+   * when a dead process's lock is taken over (`onTakeover`).
+   */
+  lockWith(options: Pick<LockOptions, 'waitSeconds' | 'onTakeover' | 'now' | 'owner'>): this {
+    this.#lockOptions = options;
+    return this;
+  }
+
+  /**
+   * @internal — runs `callback` while holding the migration lock of the default connection, so no other migrator runs at the same
+   * time. The migrating methods take it themselves; the commands hold it across several (`migrate:fresh`: drop, then migrate). A
+   * call inside `callback` joins the lock held.
+   */
+  async locked<R>(callback: () => Promise<R>): Promise<R> {
+    if (this.#held) return callback();
+    const options = this.#connections.options();
+    const lock = await MigrationLock.acquire(this.#db(), {
+      ...this.#lockOptions,
+      driver: options.driver,
+      ...(options.driver === 'pgsql' ? { url: options.url } : {}),
+    });
+    this.#held = lock;
+    let result: R;
+    try {
+      result = await callback();
+    } catch (error) {
+      this.#held = undefined;
+      // The callback's error is the one to see, not a failure to let go after it.
+      await lock.release().catch(() => {});
+      throw error;
+    }
+    this.#held = undefined;
+    await lock.release();
+    return result;
   }
 
   /** Every migration file of every module, in the order they run. */
@@ -105,6 +146,10 @@ export class Migrator {
 
   /** Runs every pending migration, in one new batch. */
   async migrate(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
+    return this.locked(() => this.#migrate(onRun));
+  }
+
+  async #migrate(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
     await this.#prepare();
     const db = this.#db();
     const ran = new Set((await this.#ran()).map((row) => row.name));
@@ -114,6 +159,7 @@ export class Migrator {
     const batch = (await this.#lastBatch()) + 1;
     const runs: MigrationRun[] = [];
     for (const file of pending) {
+      await this.#held?.heartbeat();
       const migration = await load(file);
       const connection = this.#connectionOf(migration, file);
       const started = performance.now();
@@ -121,6 +167,7 @@ export class Migrator {
       if (connection === 'default') {
         await db.transaction().execute(async (trx) => {
           await migration.up(this.#schema(trx, file.module, connection));
+          await this.#held?.heartbeat(trx);
           await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
         });
       } else {
@@ -131,11 +178,16 @@ export class Migrator {
           .transaction()
           .execute(async (trx) => {
             await migration.up(this.#schema(trx, file.module, connection));
+            await this.#held?.heartbeat(); // before the commit: a lock lost meanwhile rolls the migration back
           });
-        await db.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
+        await db.transaction().execute(async (trx) => {
+          await this.#held?.heartbeat(trx);
+          await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
+        });
       }
       const run = { name: file.name, module: file.module, ms: performance.now() - started };
       runs.push(run);
+      await this.#held?.heartbeat();
       onRun?.(run);
     }
     return runs;
@@ -143,23 +195,29 @@ export class Migrator {
 
   /** Rolls back the last batch — or the last `steps` migrations. */
   async rollback(options: { steps?: number } = {}, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
-    await this.#prepare();
-    const rows = (await this.#ran()).toReversed();
-    const last = rows[0]?.batch;
-    const targets = options.steps ? rows.slice(0, options.steps) : rows.filter((row) => row.batch === last);
-    return this.#down(targets, onRun);
+    return this.locked(async () => {
+      await this.#prepare();
+      const rows = (await this.#ran()).toReversed();
+      const last = rows[0]?.batch;
+      const targets = options.steps ? rows.slice(0, options.steps) : rows.filter((row) => row.batch === last);
+      return this.#down(targets, onRun);
+    });
   }
 
   /** Rolls back every migration. */
   async reset(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
-    await this.#prepare();
-    return this.#down((await this.#ran()).toReversed(), onRun);
+    return this.locked(async () => {
+      await this.#prepare();
+      return this.#down((await this.#ran()).toReversed(), onRun);
+    });
   }
 
   /** Drops every table (not only the migrated ones) and migrates from scratch. */
   async fresh(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
-    await this.dropAllTables();
-    return this.migrate(onRun);
+    return this.locked(async () => {
+      await this.dropAllTables();
+      return this.migrate(onRun);
+    });
   }
 
   /**
@@ -167,9 +225,11 @@ export class Migrator {
    * runs on (its tables would be in the way of the fresh run). Returns the connections.
    */
   async dropAllTables(): Promise<string[]> {
-    const connections = await this.connections();
-    for (const connection of connections) await new Schema(this.#db(connection), this.#driver(connection)).dropAllTables();
-    return connections;
+    return this.locked(async () => {
+      const connections = await this.connections();
+      for (const connection of connections) await new Schema(this.#db(connection), this.#driver(connection)).dropAllTables();
+      return connections;
+    });
   }
 
   /** `default`, and every other connection a migration runs on. */
@@ -212,6 +272,7 @@ export class Migrator {
     const db = this.#db();
     const runs: MigrationRun[] = [];
     for (const row of rows) {
+      await this.#held?.heartbeat();
       const file = files.get(row.name);
       if (!file) throw new Error(`Cannot roll back "${row.name}" (module "${row.module}"): its file is gone.`);
       const migration = await load(file);
@@ -221,6 +282,7 @@ export class Migrator {
       if (connection === 'default') {
         await db.transaction().execute(async (trx) => {
           await migration.down!(this.#schema(trx, file.module, connection));
+          await this.#held?.heartbeat(trx);
           await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
         });
       } else {
@@ -229,11 +291,16 @@ export class Migrator {
           .transaction()
           .execute(async (trx) => {
             await migration.down!(this.#schema(trx, file.module, connection));
+            await this.#held?.heartbeat();
           });
-        await db.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
+        await db.transaction().execute(async (trx) => {
+          await this.#held?.heartbeat(trx);
+          await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
+        });
       }
       const run = { name: row.name, module: row.module, ms: performance.now() - started };
       runs.push(run);
+      await this.#held?.heartbeat();
       onRun?.(run);
     }
     return runs;

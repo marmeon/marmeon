@@ -5,6 +5,7 @@ import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { Connections, Migrator } from './index.ts';
+import { LOCK_TABLE } from './migrations/lock.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
@@ -22,7 +23,8 @@ describe.each(drivers)('migrations on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   const db = () => connections.get<any>();
-  const tables = async () => (await db().introspection.getTables()).map((t) => t.name).sort();
+  // SQLite keeps its lock in a table of its own; Postgres holds it on a connection.
+  const tables = async () => (await db().introspection.getTables()).map((t) => t.name).filter((name) => name !== LOCK_TABLE).sort();
 
   beforeAll(async () => ({ connections, close } = await freshConnections(driver)));
   afterAll(() => close());
@@ -145,7 +147,7 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
   /** The app: its modules, and a container that tells the migration its connection — like `c.make(CacheConfig).connection`. */
   const on = (...modules: ModuleDefinition[]) =>
     new Migrator({ modules, root: '/', container: { make: () => 'system' } } as unknown as Application, connections);
-  const tablesOf = async (name: string) => (await connections.get<any>(name).introspection.getTables()).map((t) => t.name).sort();
+  const tablesOf = async (name: string) => (await connections.get<any>(name).introspection.getTables()).map((t) => t.name).filter((table) => table !== LOCK_TABLE).sort();
 
   beforeAll(async () => {
     const [app, other] = [await freshDatabase(driver), await freshDatabase(driver)];
@@ -209,7 +211,7 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
     try {
       const migrator = new Migrator({ modules: [auth, system], root: '/' } as unknown as Application, scratch).onOneConnection();
       await migrator.migrate();
-      expect((await scratch.get<any>().introspection.getTables()).map((t) => t.name).sort()).toEqual([
+      expect((await scratch.get<any>().introspection.getTables()).map((t) => t.name).filter((name) => name !== LOCK_TABLE).sort()).toEqual([
         'audit',
         'counters',
         'migrations',

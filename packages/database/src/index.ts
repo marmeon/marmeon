@@ -45,6 +45,8 @@ export { defineMigration } from './migrations/migration.ts';
 export { TypeGenerator } from './types-gen/generator.ts';
 export type { Rendered } from './types-gen/render.ts';
 export type { Migration } from './migrations/migration.ts';
+export { MigrationLockLostError, MigrationLockTimeoutError } from './migrations/lock.ts';
+export type { LockHolder } from './migrations/lock.ts';
 export { Migrator } from './migrations/migrator.ts';
 export { secret } from './secrets.ts';
 export type { Secret, SecretReference } from './secrets.ts';

@@ -277,6 +277,12 @@ export interface LinkWriter<K> {
     detach(): Promise<number>;
     detach(ids: K | readonly K[]): Promise<number>;
 }
+// LockHolder
+export interface LockHolder {
+    readonly owner: string;
+    readonly since: Date | undefined;
+    readonly staleAt?: Date | undefined;
+}
 // MadeAttributes
 export type MadeAttributes<Row, O> = {
     [K in keyof Row]: K extends keyof O ? Exclude<O[K], undefined> | (undefined extends O[K] ? Attribute<Row[K]> : never) : Attribute<Row[K]>;
@@ -305,6 +311,9 @@ export declare class MigrateCommand {
         readonly force: {
             readonly type: 'boolean';
         };
+        readonly wait: {
+            readonly type: 'string';
+        };
         readonly 'no-types': {
             readonly type: 'boolean';
         };
@@ -321,6 +330,9 @@ export declare class MigrateFreshCommand {
     static options: {
         readonly force: {
             readonly type: 'boolean';
+        };
+        readonly wait: {
+            readonly type: 'string';
         };
         readonly 'no-types': {
             readonly type: 'boolean';
@@ -342,6 +354,9 @@ export declare class MigrateResetCommand {
         readonly force: {
             readonly type: 'boolean';
         };
+        readonly wait: {
+            readonly type: 'string';
+        };
     };
     constructor(migrator: Migrator);
     handle(input: CommandInput): Promise<number>;
@@ -355,6 +370,9 @@ export declare class MigrateRollbackCommand {
     static options: {
         readonly force: {
             readonly type: 'boolean';
+        };
+        readonly wait: {
+            readonly type: 'string';
         };
         readonly step: {
             readonly type: 'string';
@@ -382,6 +400,15 @@ export interface MigrationFile {
     readonly name: string;
     readonly module: string;
     readonly path: string;
+}
+// MigrationLockLostError
+export declare class MigrationLockLostError extends Error {
+    constructor(reason: string);
+}
+// MigrationLockTimeoutError
+export declare class MigrationLockTimeoutError extends Error {
+    readonly holder: LockHolder;
+    constructor(holder: LockHolder);
 }
 // MigrationRun
 export interface MigrationRun {
@@ -1002,21 +1029,25 @@ marmeon db:types [--check]
 marmeon make:upgrade-migrations [--check]
 --check (boolean)
 // migrate
-marmeon migrate [--force] [--no-types]
+marmeon migrate [--force] [--wait=<seconds>] [--no-types]
 --force (boolean)
 --no-types (boolean)
+--wait (string)
 // migrate:fresh
-marmeon migrate:fresh [--seed] [--force] [--no-types]
+marmeon migrate:fresh [--seed] [--force] [--wait=<seconds>] [--no-types]
 --force (boolean)
 --no-types (boolean)
 --seed (boolean)
+--wait (string)
 // migrate:reset
-marmeon migrate:reset [--force]
+marmeon migrate:reset [--force] [--wait=<seconds>]
 --force (boolean)
+--wait (string)
 // migrate:rollback
-marmeon migrate:rollback [--step=<n>] [--force]
+marmeon migrate:rollback [--step=<n>] [--force] [--wait=<seconds>]
 --force (boolean)
 --step (string)
+--wait (string)
 // migrate:status
 marmeon migrate:status
 ```
