@@ -14,7 +14,6 @@ export { progressBar } from './progress.ts';
 export { accepted } from './confirm.ts';
 export { isDevelopment } from './document.ts';
 export { resolveRoute } from './routes.ts';
-export { pageQuery } from './query.ts';
 export { isSensitiveRememberField, NEVER_REMEMBERED_FIELD, SENSITIVE_REMEMBER_FIELD } from './remember.ts';
 export type { Confirm, ConfirmAnswer, ConfirmOptions, ConfirmRequest } from './confirm.ts';
 export type { ProgressIndicator, ProgressOptions, ProgressSource } from './progress.ts';

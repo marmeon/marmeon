@@ -175,7 +175,7 @@ as long as the page is, so it is safe in a dependency list.
 | `url` | The page's path and query. |
 | `route` | The name of the route that answered. Absent for an error page. |
 | `locale` | The page's language, one of the app's supported locales. |
-| `query` | The page's parsed query. Absent for a route without a query schema. |
+| `query` | The page's parsed query. Absent for a route without a query schema; defaults are left out, `useQueryState()` has them filled in. |
 | `flash` | The flash messages the page delivered. See [flash messages](#flash-messages). |
 
 Nothing else is there. What the client needs to keep the page current, such as the build version or the props still to load,

@@ -215,7 +215,7 @@ export const RouterContext = createContext<RouterValue | null>(null);
 
 export function useRouterContext(): RouterValue {
   const value = useContext(RouterContext);
-  if (!value) throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? '[marmeon:R9] Marmeon hooks must be used inside <MarmeonApp>.' : '[marmeon:R9]');
+  if (!value) throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? '[marmeon:R9] Marmeon hooks must be used inside the app createMarmeonApp() renders.' : '[marmeon:R9]');
   return value;
 }
 

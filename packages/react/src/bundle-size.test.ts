@@ -387,7 +387,7 @@ describe('a production bundle says codes, not explanations', () => {
     'the browser has no route manifest',
     'is not defined in the browser',
     'has an invalid layout',
-    'must be used inside <MarmeonApp>',
+    'must be used inside the app createMarmeonApp() renders',
     'needs the app\'s messages',
     'Hydration mismatch',
     'has no heading (h1–h3)',

@@ -104,11 +104,11 @@ export interface CreateMarmeonAppOptions {
     routes?: RouteManifest;
     layout?: DefaultLayout;
     messages?: MessageLoader;
-    progress?: MarmeonAppProps['progress'];
+    progress?: ProgressIndicator;
     layer?: LayerFrame;
     confirm?: ConfirmComponent;
     tabSync?: false;
-    viewTransition?: MarmeonAppProps['viewTransition'];
+    viewTransition?: ViewTransitionOption | 'react' | undefined;
     onRecoverableError?: (error: unknown, info: ErrorInfo) => void;
 }
 // DefaultLayout
@@ -329,26 +329,6 @@ export interface LiveValidationSetting<F> {
     fields?: readonly (PasswordNeverLive | (keyof {
         [K in keyof F & string as Lowercase<K> extends `${string}password${string}` ? never : K]: true;
     } & string))[];
-}
-// MarmeonApp
-export declare function MarmeonApp({ initialPage, initialComponent, resolve, title, routes, layout, progress, headCollector, messages, initialCatalog, ssr, layer: frame, confirm: Confirm, features, viewTransition, }: MarmeonAppProps): import("react").JSX.Element;
-// MarmeonAppProps
-export interface MarmeonAppProps {
-    initialPage: PageObject;
-    initialComponent: PageComponent;
-    resolve: ResolvePage;
-    title?: TitleTemplate;
-    routes?: RouteManifest;
-    layout?: DefaultLayout;
-    progress?: ProgressIndicator;
-    headCollector?: HeadCollector;
-    messages?: MessageLoader;
-    initialCatalog?: Catalog;
-    ssr?: SsrResolvers;
-    layer?: LayerFrame;
-    confirm?: ConfirmComponent;
-    features?: readonly Feature[] | undefined;
-    viewTransition?: ViewTransitionOption | 'react' | undefined;
 }
 // NewVersion
 export interface NewVersion {
@@ -617,15 +597,6 @@ type DataOption<N extends string> = [ActionBodyOf<N>] extends [never] ? {
 type Field<F> = keyof F & string;
 // FormFields
 type FormFields<T> = [FormOf<T>] extends [never] ? T : FormOf<T>;
-// HeadCollector
-export interface HeadCollector {
-    readonly entries: {
-        title: string | undefined;
-        tags: ReactElement[];
-    }[];
-    sealed: boolean;
-    onLate?: (title: string | undefined) => void;
-}
 // HrefLinkProps
 type HrefLinkProps = (LinkOptions & PartialReloadOptions & PrefetchProps & CurrentProps & AnchorAttributes & {
     href: string;
@@ -764,11 +735,6 @@ type SensitiveFormField<F> = keyof {
 } & string;
 // SensitiveKey
 type SensitiveKey<K extends string> = IsPassword<K> extends true ? RememberKey<K> : K;
-// SsrResolvers
-export interface SsrResolvers {
-    island(url: string): Promise<RegionResult>;
-    deferred(group: string): Promise<DeferredResult | null>;
-}
 // SubmitArgs
 type SubmitArgs<N extends string, RequiresParams extends boolean> = {} extends ActionSubmitOptions<N, RequiresParams> ? [options?: ActionSubmitOptions<N, RequiresParams>] : [options: ActionSubmitOptions<N, RequiresParams>];
 // ViewAction
