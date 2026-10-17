@@ -1,3 +1,5 @@
+import { withCode } from '@marmeon/core/internal';
+
 /** A write a read-only request tried — thrown in development and tests, so the mistake shows where it is made. */
 export class ReadOnlyViolation extends Error {
   override name = 'ReadOnlyViolation';
@@ -47,7 +49,7 @@ export class ReadOnly {
     const options = this.#options;
     if (!options) return true;
     const message = `${what} in ${options.reason}: ${options.rule ?? ISLAND_RULE}`;
-    if (options.strict) throw new ReadOnlyViolation(message);
+    if (options.strict) throw new ReadOnlyViolation(withCode('H6', message));
     options.report(`${message} (dropped)`);
     return false;
   }

@@ -27,6 +27,6 @@ describe('fillPath / urlFor', () => {
   it('builds URLs through any lookup — the router or the browser manifest', () => {
     expect(urlFor(lookup, 'teams.show', { team: 'core' }, { q: 'x' })).toBe('/teams/core?q=x');
     expect(urlFor(lookup, 'home')).toBe('/');
-    expect(() => urlFor(lookup, 'nope')).toThrow('Route [nope] is not defined.');
+    expect(() => urlFor(lookup, 'nope')).toThrow('[marmeon:H4] Route [nope] is not defined.');
   });
 });

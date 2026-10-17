@@ -10,6 +10,13 @@ function named(name: string, label: string): CommandClass {
 }
 
 describe('CommandRegistry.add', () => {
+  it('begins the messages of its two refusals with K8', () => {
+    const Seed = named('db:seed', 'seed');
+    const Other = named('db:seed', 'other');
+    expect(() => new CommandRegistry().add([Seed]).add([Other])).toThrow(/^\[marmeon:K8\] Two commands are named/);
+    expect(() => new CommandRegistry().add([named('list', 'x')])).toThrow(/^\[marmeon:K8\] "list" is marmeon's own command/);
+  });
+
   it('keeps one entry when the same class is added twice', () => {
     const Seed = named('db:seed', 'seed');
     const registry = new CommandRegistry().add([Seed], '@marmeon/database').add([Seed], 'module app');

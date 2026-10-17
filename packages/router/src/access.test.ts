@@ -484,6 +484,13 @@ describe('Router.accessProblems()', () => {
     expect(text).toContain('{ public: true }');
     expect(text).toContain('docs/authorization.md#every-route-decides');
   });
+
+  it('begins with the code H3', () => {
+    const router = load((Route) => {
+      Route.get('/notes', NoteController);
+    });
+    expect(formatAccessProblems(router.accessProblems())).toMatch(/^\[marmeon:H3\] 1 route does not say who may call it:/);
+  });
 });
 
 // --- Type guarantees (never called) -----------------------------------------------------------
