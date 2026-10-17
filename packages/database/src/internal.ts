@@ -5,3 +5,4 @@
 export { DatabaseConfig } from './config.ts';
 export { publishMigration } from './commands/publish-migration.ts';
 export { isSecretSelection } from './secret-guard.ts';
+export { SchemaRequirements } from './upgrades.ts';

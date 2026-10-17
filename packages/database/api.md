@@ -147,7 +147,6 @@ export declare class DatabaseConnectionError extends Error {
 export declare class DatabaseHealthCheck implements HealthCheck {
     #private;
     static check: string;
-    constructor(connections: Connections);
     handle(): Promise<string>;
 }
 // DatabaseServiceProvider
@@ -157,7 +156,7 @@ export declare class DatabaseServiceProvider implements ServiceProvider {
     }>[];
     static solutions: readonly import("@marmeon/core").SolutionDefinition<any>[];
     static health: (typeof DatabaseHealthCheck)[];
-    static commands: (typeof DbShowCommand | typeof DbSeedCommand | typeof DbTypesCommand | typeof MigrateCommand | typeof MigrateRollbackCommand | typeof MigrateResetCommand | typeof MigrateFreshCommand | typeof MigrateStatusCommand)[];
+    static commands: (typeof MakeUpgradeMigrationsCommand | typeof DbShowCommand | typeof DbSeedCommand | typeof DbTypesCommand | typeof MigrateCommand | typeof MigrateRollbackCommand | typeof MigrateResetCommand | typeof MigrateFreshCommand | typeof MigrateStatusCommand)[];
     register(container: Container): void;
     boot(app: Application): void;
     shutdown(app: Application): Promise<void>;
@@ -282,6 +281,20 @@ export interface LinkWriter<K> {
 export type MadeAttributes<Row, O> = {
     [K in keyof Row]: K extends keyof O ? Exclude<O[K], undefined> | (undefined extends O[K] ? Attribute<Row[K]> : never) : Attribute<Row[K]>;
 };
+// MakeUpgradeMigrationsCommand
+export declare class MakeUpgradeMigrationsCommand {
+    #private;
+    static command: string;
+    static description: string;
+    static usage: string;
+    static options: {
+        readonly check: {
+            readonly type: 'boolean';
+        };
+    };
+    constructor(app: Application);
+    handle(input: CommandInput): number;
+}
 // MigrateCommand
 export declare class MigrateCommand {
     #private;
@@ -379,6 +392,14 @@ export interface MigrationRun {
 // MigrationStatus
 export interface MigrationStatus extends MigrationFile {
     readonly batch: number | undefined;
+}
+// MigrationUpgrade
+export interface MigrationUpgrade {
+    readonly set: string;
+    readonly revision: number;
+    readonly name: string;
+    readonly createdBy: readonly string[];
+    readonly contents: string;
 }
 // Migrator
 export declare class Migrator {
@@ -571,7 +592,9 @@ export declare class Schema {
     alter(table: string, build: (table: Blueprint) => void): Promise<void>;
     drop(table: string): Promise<void>;
     dropIfExists(table: string): Promise<void>;
-    rename(from: string, to: string): Promise<void>;
+    rename(from: string, to: string, options?: {
+        readonly indexes?: boolean;
+    }): Promise<void>;
     hasTable(table: string): Promise<boolean>;
     hasColumn(table: string, column: string): Promise<boolean>;
     dropAllTables(): Promise<void>;
@@ -626,6 +649,13 @@ export declare class Seeding {
 export type SelectQuery<DB, TB extends keyof DB, O> = SelectQueryBuilder<DB, TB, O>;
 // TableOwners
 export interface TableOwners {
+}
+// TableRequirement
+export interface TableRequirement {
+    readonly connection: string;
+    readonly table: string;
+    readonly columns: readonly string[];
+    readonly set: string;
 }
 // Tables
 export interface Tables {
@@ -883,6 +913,10 @@ interface ModuleDefinition {
 interface ModuleDefinition {
     readonly exposes?: readonly string[];
 }
+// @marmeon/core.ServiceProviderClass
+interface ServiceProviderClass {
+    readonly migrationUpgrades?: readonly MigrationUpgrade[];
+}
 // kysely.SelectQueryBuilder
 interface SelectQueryBuilder<DB, TB extends keyof DB, O> {
     with<N extends {
@@ -963,6 +997,9 @@ marmeon db:show [--database=<connection>]
 --database (string)
 // db:types
 marmeon db:types [--check]
+--check (boolean)
+// make:upgrade-migrations
+marmeon make:upgrade-migrations [--check]
 --check (boolean)
 // migrate
 marmeon migrate [--force] [--no-types]

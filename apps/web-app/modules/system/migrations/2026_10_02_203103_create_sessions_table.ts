@@ -1,3 +1,4 @@
+// @marmeon-stub session 1
 import { defineMigration } from '@marmeon/database';
 import { sessionTableConnection } from '@marmeon/session';
 

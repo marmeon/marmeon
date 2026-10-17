@@ -118,9 +118,51 @@ export class Schema {
     await this.#owners?.dropped(table);
   }
 
-  async rename(from: string, to: string): Promise<void> {
+  /**
+   * Renames a table. Its indexes and constraints keep their names, which begin with the old one (`notes_user_id_index`), unless
+   * `indexes` is set: then those that begin with `<from>_` are renamed to begin with `<to>_` — so the table ends up as one
+   * created under the new name (and, on Postgres, its identity sequences too). Opt-in: the default must not change what a
+   * migration written earlier does.
+   */
+  async rename(from: string, to: string, options: { readonly indexes?: boolean } = {}): Promise<void> {
     await this.db.schema.alterTable(from).renameTo(to).execute();
+    if (options.indexes) await (this.driver === 'pgsql' ? this.#renameNamesPgsql(from, to) : this.#renameIndexesSqlite(from, to));
     await this.#owners?.renamed(from, to);
+  }
+
+  async #renameNamesPgsql(from: string, to: string): Promise<void> {
+    const prefix = `${from}_`;
+    const renamed = (name: string) => `${to}_${name.slice(prefix.length)}`;
+    const table = sql`t.relname = ${to} and t.relnamespace = (select oid from pg_namespace where nspname = current_schema())`;
+    // Every name is read before the first is changed: `to` may itself begin with `<from>_`, and a name already renamed must not be taken for an old one.
+    const names = async (query: ReturnType<typeof sql<{ name: string }>>) => (await query.execute(this.db)).rows.map((row) => row.name).filter((name) => name.startsWith(prefix));
+    const constraints = await names(sql<{ name: string }>`select c.conname as name from pg_constraint c join pg_class t on t.oid = c.conrelid where ${table}`);
+    const indexes = await names(sql<{ name: string }>`select i.relname as name from pg_index x join pg_class t on t.oid = x.indrelid join pg_class i on i.oid = x.indexrelid where ${table}`);
+    const sequences = await names(sql<{ name: string }>`
+      select s.relname as name from pg_class s
+      join pg_depend d on d.objid = s.oid and d.classid = 'pg_class'::regclass and d.refclassid = 'pg_class'::regclass and d.deptype in ('a', 'i')
+      join pg_class t on t.oid = d.refobjid
+      where s.relkind = 'S' and ${table}`);
+    for (const name of constraints) await sql`alter table ${sql.table(to)} rename constraint ${sql.id(name)} to ${sql.id(renamed(name))}`.execute(this.db);
+    // Renaming a constraint renamed the index behind it (the primary key, a unique constraint) too.
+    for (const name of indexes) {
+      if (!constraints.includes(name)) await sql`alter index ${sql.id(name)} rename to ${sql.id(renamed(name))}`.execute(this.db);
+    }
+    for (const name of sequences) await sql`alter sequence ${sql.id(name)} rename to ${sql.id(renamed(name))}`.execute(this.db);
+  }
+
+  /** SQLite renames no index: it drops each and creates it again under the new name, from the statement it was created with. */
+  async #renameIndexesSqlite(from: string, to: string): Promise<void> {
+    const prefix = `${from}_`;
+    // Indexes behind a primary key or a column's `unique` have no statement (`sql is null`) and no name to choose.
+    const indexes = await sql<{ name: string; sql: string }>`select name, sql from sqlite_master where type = 'index' and tbl_name = ${to} and sql is not null`.execute(this.db);
+    for (const { name, sql: statement } of indexes.rows) {
+      if (!name.startsWith(prefix)) continue;
+      const created = statement.replace(/^(\s*create\s+(?:unique\s+)?index\s+(?:if\s+not\s+exists\s+)?)(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|(\S+))/i, (_, head: string) => `${head}"${to}_${name.slice(prefix.length)}"`);
+      if (created === statement) throw new Error(`Cannot rename the index "${name}": its statement is not a plain "create index" (${statement}).`);
+      await sql`drop index ${sql.id(name)}`.execute(this.db);
+      await sql.raw(created).execute(this.db);
+    }
   }
 
   async hasTable(table: string): Promise<boolean> {

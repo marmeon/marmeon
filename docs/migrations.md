@@ -538,3 +538,39 @@ The queue's migration creates `failed_jobs` next to `jobs`. With `QUEUE_FAILED_C
 with a message instead of creating the table where nothing looks. Split it then: the written migration keeps `jobs` with
 `connection: '<the jobs' connection>'` in place of `queueTablesConnection`, and a migration of its own creates `failed_jobs` with
 the other `connection`, as in [migrations on another connection](#migrations-on-another-connection).
+
+### Upgrading the framework's tables
+
+The migrations of the framework's tables are yours, so an update of the framework cannot change them. When a release changes
+a table (a new column, a new name), its package brings a migration for the change and `make:upgrade-migrations` writes it
+into your app:
+
+```sh
+pnpm marmeon make:upgrade-migrations
+pnpm marmeon migrate
+```
+
+Each migration a `make:*-table` command wrote has a first line like `// @marmeon-stub queue 1`: the set of tables and the
+revision it brings them to. The command reads that line from the migration that created the tables (a file without it is
+revision 1), and writes every later revision that is not in your app yet, into the module of that migration, in the order of
+the revisions. It does not touch the database, and it writes nothing for tables your app does not use. Run it again after
+every update; `--check` writes nothing and exits with 1 when a migration is missing, for CI.
+
+The command stops with exit code 1, and writes nothing, when your app is ahead of the installed packages (a revision they do
+not know), when a first line names another set, or when a later revision is in your app and an earlier one is not: restore
+the missing one by hand, in front of it.
+
+A migration it wrote is yours like the first one. Keep the first line: without it, the command takes a changed file for
+revision 1.
+
+An updated database ends up the same as a new one: the same tables, columns, and names of indexes and constraints.
+`/up/ready` is red while a table of a driver you use lacks a column the code needs, and says which table and which command to run.
+
+A migration that renames a table keeps the names of its indexes and constraints in step with it by passing `indexes`:
+
+```ts
+await schema.rename('jobs', 'marmeon_jobs', { indexes: true });
+```
+
+Every index and constraint whose name begins with `jobs_` is renamed to begin with `marmeon_jobs_`, and on Postgres the
+sequences of its identity columns too. Without the option, `rename` changes the table's name only.

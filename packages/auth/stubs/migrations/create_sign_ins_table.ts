@@ -1,3 +1,4 @@
+// @marmeon-stub sign-ins 1
 import { defineMigration } from '@marmeon/database';
 
 // The table of the sign-ins list (written by `marmeon make:sign-ins-table`): a row per sign-in of a browser, and the authority

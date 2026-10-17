@@ -15,11 +15,12 @@ export const SYSTEM_MODULE = 'system';
  * created (with its `migrations` directory) and registered in `bootstrap/app.ts` when it does not exist yet.
  *
  * Refuses when any module already has a migration with the same name (`*_create_cache_table.ts`): one table, one migration.
+ * `module` takes the place of `--module` (an existing module, as it is named on disk); `at` is the timestamp of the file name.
  * Returns the exit code.
  */
-export function publishMigration(input: CommandInput, migration: { name: string; contents: string; table: string }): number {
-  const module = typeof input.options.module === 'string' ? input.options.module : SYSTEM_MODULE;
-  if (!KEBAB.test(module)) {
+export function publishMigration(input: CommandInput, migration: { name: string; contents: string; table: string; module?: string; at?: Date }): number {
+  const module = migration.module ?? (typeof input.options.module === 'string' ? input.options.module : SYSTEM_MODULE);
+  if (migration.module === undefined && !KEBAB.test(module)) {
     input.output.error('Pass the module as a kebab-case name: --module=<name> (default: system).');
     return 1;
   }
@@ -50,7 +51,7 @@ export function publishMigration(input: CommandInput, migration: { name: string;
     }
   }
 
-  const file = join(directory, 'migrations', `${timestamp(new Date())}_${migration.name}.ts`);
+  const file = join(directory, 'migrations', `${timestamp(migration.at ?? new Date())}_${migration.name}.ts`);
   mkdirSync(join(directory, 'migrations'), { recursive: true });
   writeFileSync(file, migration.contents);
   input.output.success(`Created ${relative(input.root, file)}`);
@@ -70,12 +71,14 @@ export function publishMigration(input: CommandInput, migration: { name: string;
   return 0;
 }
 
-function findMigration(modules: string, name: string): string | undefined {
+/** The path of the migration named `name` (without timestamp) in any module under `modules`. */
+export function findMigration(modules: string, name: string): string | undefined {
   if (!existsSync(modules)) return undefined;
   for (const module of readdirSync(modules)) {
     const directory = join(modules, module, 'migrations');
     if (!existsSync(directory)) continue;
-    const file = readdirSync(directory).find((candidate) => candidate.endsWith(`_${name}.ts`));
+    const pattern = new RegExp(`^\\d{4}_\\d{2}_\\d{2}_\\d{6}_${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.ts$`);
+    const file = readdirSync(directory).find((candidate) => pattern.test(candidate));
     if (file) return join(directory, file);
   }
   return undefined;
