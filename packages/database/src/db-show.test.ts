@@ -3,7 +3,7 @@ import { createApplication, env } from '@marmeon/core';
 import { Output } from 'marmeon';
 import { CompiledQuery, Kysely, PostgresAdapter, PostgresQueryCompiler, sql, type DatabaseIntrospector, type Driver, type QueryResult, type TableMetadata } from 'kysely';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { registerInspection } from './books.ts';
+import { registerInspection } from './migrator-connection.ts';
 import { DbShowCommand } from './commands/db-show.ts';
 import { Connections, DatabaseServiceProvider, defineConnection } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';

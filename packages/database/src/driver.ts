@@ -105,8 +105,8 @@ export class MarmeonDriver implements Driver {
   }
 
   /**
-   * @internal — for the migrator's bookkeeping: a connection of its own, handed out without loading the schema metadata, so the
-   * migrator can reach a database whose bookkeeping this release refuses to read (the one thing it is there to repair). Never
+   * @internal — for the migrator and `db:show`: a connection of its own, handed out without loading the schema metadata, so they can
+   * reach a database whose migrations this release refuses to answer queries for (`migrate` is what ends the refusal). Never
    * the ambient transaction's.
    */
   acquireUnchecked(options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {
@@ -381,7 +381,7 @@ export class MarmeonDriver implements Driver {
 }
 
 /**
- * @internal — the driver of the connection the migrator keeps its bookkeeping with: the same connections and transactions as
+ * @internal — the driver of the connection the migrator and `db:show` work with: the same connections and transactions as
  * the app's, except that it does not load the schema metadata when it hands one out (see {@link MarmeonDriver.acquireUnchecked}).
  */
 export class UncheckedDriver implements Driver {

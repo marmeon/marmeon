@@ -103,7 +103,7 @@ The promise of a version covers the public API. These are part of it:
 - The documents `--json` prints, by their `format`.
 - The table schemas of the migrations the framework ships, the stubs and the `make:*` tables.
 - The protocol between client and server: headers and the page object.
-- Stored and wire formats: queue payloads, sessions, encrypted values, tokens, cookies, the bookkeeping and the generated files, as
+- Stored and wire formats: queue payloads, sessions, encrypted values, tokens, cookies, the record of migrations and the generated files, as
   [listed below](#stored-and-wire-formats).
 - Translation keys, `@marmeon/react/styles.css` (its classes and custom properties) and the names of diagnostics channels and the
   shape of their messages.
@@ -127,7 +127,7 @@ mark never changes. A reader knows a set of versions, today one per format, and 
   all the same: a worker lets a record it cannot read fail after six hours, which takes it out of the queue, and a sign-in or sign-out
   on an older node ends the newer session of that request.
 - **Older than it supports, or without a mark:** it never interprets the data. What a migration can carry over, `marmeon migrate` carries
-  over (the bookkeeping tables, the framework's tables). Everything else counts as missing: a session starts anew, a cookie is not
+  over (the framework's tables). Everything else counts as missing: a session starts anew, a cookie is not
   read, a job fails with its reason and stays readable in the failed jobs.
 
 A reader never guesses and never falls back to a default.
@@ -140,7 +140,7 @@ A reader never guesses and never falls back to a default.
 | [Queued listener](events.md#queued-listeners) | the listener's `static listener` name, within its event | put back like an unknown job | failed like any record without a version |
 | [Session](session.md#what-a-session-stores) | `_v` in the payload | the request is a guest's; the stored session stays as it is | dropped, a new session starts |
 | [Session and remember-me cookies](session.md#the-__host--prefix) | the name, with `__Host-` when cookies are `Secure` | n/a | a cookie under another name is never read |
-| [Migrator bookkeeping](migrations.md#how-the-migrator-keeps-track) | the row in `marmeon_versions`, and the columns of `marmeon_migrations` | `migrate` refuses; with other columns in `marmeon_migrations`, every query on the connection fails and `/up/ready` is red | taken over by `marmeon migrate`; until then every query fails |
+| [Record of migrations](migrations.md#how-the-migrator-keeps-track) | the columns of `migrations` (and of `migration_lock`) | `migrate` refuses; every query on the connection fails and `/up/ready` is red | read as they are: 0.3 wrote the same columns |
 | [The framework's tables](migrations.md#upgrading-the-frameworks-tables) | `// @marmeon-stub <set> <revision>` in the app's migration | `make:upgrade-migrations` stops and writes nothing | written by `make:upgrade-migrations` |
 | [Encrypted values](encryption.md#what-the-key-protects) | a version byte, and a context per use (`cookie:<name>`, `session:<key>`, `queue:v1:<job>`) | `DecryptError` | `DecryptError` |
 | [API tokens](api-tokens.md#the-token-format) | the prefix, and a hash under its own domain | not a token: 401, like an unknown one | no longer valid: 401, like an unknown one |
@@ -162,7 +162,7 @@ Some formats have no version of their own and are kept stable another way:
   does so with the same care as a renamed column.
 
 Fixtures sit under `__fixtures__/formats/`, one per version: the page and region object, the job record, the Redis member, queued
-listeners, mails and notifications, the session payload, the bookkeeping, API tokens and the `--json` documents. A test reads each
+listeners, mails and notifications, the session payload, the record of migrations, API tokens and the `--json` documents. A test reads each
 directory with the current code. A pull request that changes or deletes a fixture is a `breaking` one. [Changing a stored or wire format](../CONTRIBUTING.md#changing-a-stored-or-wire-format)
 says how a format moves on.
 

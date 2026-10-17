@@ -11,7 +11,7 @@ import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOpt
 import './chain.ts';
 import { MarmeonDriver, DatabaseConnectionError, multipleConnections, UncheckedDriver, withMarmeonDriver } from './driver.ts';
 import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure.ts';
-import { onlyBookkeeping, registerBookkeeping, registerInspection } from './books.ts';
+import { onlyMigratorTables, registerInspection, registerMigrator } from './migrator-connection.ts';
 import { SchemaMetadata, type SchemaSource } from './metadata.ts';
 import { MigrationStateError } from './migration-state.ts';
 import { migrationFiles } from './migrations/files.ts';
@@ -252,9 +252,9 @@ export class Connections {
       // In this order: placeholders resolved, then the relations' JSON built and the query checked for secret columns.
       const plugins = [resolver, relations];
       const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });
-      // The migrator's own way to the same connections (see books.ts): it must reach a database whose bookkeeping `db` refuses, and one
-      // that lacks migrations. Their driver reports the queries itself: Kysely instances patching one shared connection would log each
-      // query twice.
+      // The migrator's own way to the same connections (see migrator-connection.ts): it must reach a database `db` refuses (migrations pending,
+      // a record of migrations of a newer Marmeon, tables and no record), and `db:show` looks at one. Their driver reports the queries itself:
+      // Kysely instances patching one shared connection would log each query twice.
       const unchecked = (plugins: KyselyPlugin[]) =>
         new Kysely<any>({
           dialect: {
@@ -266,7 +266,7 @@ export class Connections {
           },
           plugins,
         });
-      registerBookkeeping(this, name, unchecked([onlyBookkeeping()]));
+      registerMigrator(this, name, unchecked([onlyMigratorTables()]));
       registerInspection(this, name, unchecked([]));
       instance = { db, driver, metadata, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
       this.#instances.set(name, instance);

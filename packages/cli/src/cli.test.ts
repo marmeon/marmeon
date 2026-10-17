@@ -131,7 +131,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(migrate.stdout).not.toContain('database.d.ts');
   });
 
-  it('prints migrate:status as one JSON document, and nothing on stdout when the bookkeeping is of a newer version', () => {
+  it('prints migrate:status as one JSON document, and nothing on stdout when the record of migrations is of a newer form', () => {
     const database = join(tempDir('marmeon-migrate-status-'), 'database.sqlite');
     const env = { DB_DATABASE: database };
     const pending = marmeon(webApp, ['migrate:status', '--json'], env);
@@ -147,7 +147,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(after.migrations.every((m) => m.batch === 1 && m.status === 'ran')).toBe(true);
 
     const connection = new DatabaseSync(database);
-    connection.exec("update marmeon_versions set version = 99 where name = 'bookkeeping'");
+    connection.exec('alter table migrations add column checksum varchar(64)');
     connection.close();
     const newer = marmeon(webApp, ['migrate:status', '--json'], env);
     expect(newer.code).toBe(1);

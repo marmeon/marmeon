@@ -87,7 +87,7 @@ describe('the secret columns a table is required to have', () => {
     expect((await messageOf(app)).report.ok).toBe(true);
   });
 
-  it('are not asked of a connection that is not managed: it has no bookkeeping', async () => {
+  it('are not asked of a connection that is not managed: its migrations are not Marmeon\'s', async () => {
     const file = join(root, 'foreign.sqlite');
     await using app = await boot([defineConnection('foreign', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file, managed: false }) })]);
     await sql`create table keys_foreign (id integer primary key, token varchar(64))`.execute(app.container.make(Connections).get('foreign'));

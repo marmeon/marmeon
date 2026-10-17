@@ -1,14 +1,13 @@
 import { defineSolutions } from '@marmeon/core';
 import { DatabaseConnectionError } from './driver.ts';
-import { BookkeepingVersionError } from './bookkeeping.ts';
 import { missingTable } from './errors.ts';
 import { MigrationStateError } from './migration-state.ts';
 import { MigrationLockTimeoutError } from './migrations/lock.ts';
 import { Migrator } from './migrations/migrator.ts';
 
 /**
- * Solutions for database errors: a missing table — with the migrations that have not run yet (`migrate:status`) — and bookkeeping
- * the connection cannot read.
+ * Solutions for database errors: a missing table — with the migrations that have not run yet (`migrate:status`) — and migrations
+ * that are not what the code expects.
  * Text only: the error page shows the command, it never runs it.
  */
 export const databaseSolutions = defineSolutions([
@@ -121,46 +120,14 @@ export const databaseSolutions = defineSolutions([
     for: MigrationStateError,
     code: 'D1',
     solve: (e) => ({
-      title: e.reason === 'newer' ? 'Update Marmeon' : 'Migrate the database, or tell Marmeon another tool manages it',
+      title: e.reason === 'newer' ? 'Update Marmeon' : e.reason === 'unmanaged' ? 'Remove managed: false' : 'Migrate the database, or tell Marmeon another tool manages it',
       text:
         e.reason === 'newer'
           ? 'The record of migrations has columns this release does not read: a newer Marmeon migrated this database. Update @marmeon/* to the release that migrated it. Every query on the connection is refused until then.'
-          : 'The database has tables and no record of migrations, so Marmeon cannot tell which ran. If Marmeon migrates this database, run the command; if another tool manages it, set `managed: false` on the connection (DB_MANAGED=false).',
-      ...(e.reason === 'newer' ? {} : { command: 'marmeon migrate' }),
-      docs: 'docs/migrations.md#how-the-migrator-keeps-track',
-    }),
-  },
-  {
-    for: BookkeepingVersionError,
-    code: 'D1',
-    solve: () => ({
-      title: 'Update Marmeon, restore the bookkeeping, or adopt the database',
-      text:
-        'The bookkeeping of the migrator is of a version this release does not read (a newer Marmeon migrated this database), or a table of it is missing or changed. ' +
-        'Every query on the connection is refused until it can be read. Update @marmeon/* to the release that migrated the database, or restore the tables from a backup. ' +
-        'A database with tables and no bookkeeping that is your own: run "marmeon migrate --adopt-existing" once, which takes the tables over unmarked. Only a database that another tool manages is set to managed: false.',
-      docs: 'docs/migrations.md#how-the-migrator-keeps-track',
-    }),
-  },
-  {
-    for: BookkeepingVersionError,
-    code: 'D2',
-    solve: () => ({
-      title: 'Move the bookkeeping to the marmeon_ tables',
-      text: 'This database still has the bookkeeping of an earlier release. Stop every process of that release, then run the command: it moves the tables and leaves a placeholder under each old name.',
-      command: 'marmeon migrate',
-      docs: 'docs/migrations.md#how-the-migrator-keeps-track',
-    }),
-  },
-  {
-    for: BookkeepingVersionError,
-    code: 'D3',
-    solve: () => ({
-      title: 'Rename your table',
-      text:
-        'A table of your app has the name of one of the migrator tables (migrations, table_owners, secret_columns or schema_markers), which the framework reserves. ' +
-        'Rename it in the database and in the code that uses it, then run the command.',
-      command: 'marmeon migrate',
+          : e.reason === 'unmanaged'
+            ? 'The connection is set to `managed: false`, but the database has the record of migrations Marmeon writes, so Marmeon migrates it. Remove the option (DB_MANAGED=false): with it no secret column and no soft delete would be known.'
+            : 'The database has tables and no record of migrations, so Marmeon cannot tell which ran. If Marmeon migrates this database, run the command; if another tool manages it, set `managed: false` on the connection (DB_MANAGED=false). A database with marmeon_ tables was migrated by a build that was never released: start it over with "marmeon migrate:fresh".',
+      ...(e.reason === 'unmigrated' ? { command: e.message.includes('marmeon_migrations') ? 'marmeon migrate:fresh' : 'marmeon migrate' } : {}),
       docs: 'docs/migrations.md#how-the-migrator-keeps-track',
     }),
   },
