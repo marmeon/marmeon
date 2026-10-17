@@ -1059,6 +1059,8 @@ export declare function parseAccessToken(plainText: string, prefix: string): {
 } | undefined;
 // password
 export declare function password({ min, messages }?: PasswordRuleOptions): Rule<string, string>;
+// rememberCookieName
+export declare function rememberCookieName(config: Pick<AuthConfig, 'rememberCookie'>, session: Pick<SessionConfig, 'secure'>): string;
 // takePasswordCheck
 export declare function takePasswordCheck(limiter: RateLimiter, scope: PasswordCheckScope, userId: number | string): Promise<PasswordThrottled | undefined>;
 // tokenCan
@@ -1300,7 +1302,7 @@ export interface PasskeyTable {
 // Passkeys
 export declare class Passkeys implements SecondFactorPasskeys {
     #private;
-    constructor(auth: Auth, session: Session, store: PasskeyStore, twoFactorStore: TwoFactorStore, state: TwoFactorState, config: PasskeyConfig, authConfig: AuthConfig, connections: Connections, remember: RememberTokenStore, limiter: RateLimiter, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, clock: Clock, logger: Logger);
+    constructor(auth: Auth, session: Session, store: PasskeyStore, twoFactorStore: TwoFactorStore, state: TwoFactorState, config: PasskeyConfig, authConfig: AuthConfig, connections: Connections, remember: RememberTokenStore, limiter: RateLimiter, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, clock: Clock, logger: Logger, sessionConfig: SessionConfig);
     registrationOptions(): Promise<PublicKeyCredentialCreationOptionsJSON>;
     register(response: RegistrationResponseJSON, name: string, password?: string): Promise<Result<{
         recoveryCodes: readonly string[] | null;
@@ -1955,6 +1957,13 @@ export interface SoftRegistration {
 export declare function authenticatedSession(container: Container, user: AuthUser): Promise<Record<string, unknown>>;
 // authenticatedToken
 export declare function authenticatedToken(container: Container, user: AuthUser, abilities?: readonly string[]): Promise<string>;
+// cookieNames
+export declare function cookieNames(app: {
+    container: Container;
+}): {
+    session: string;
+    remember: string;
+};
 // softAuthenticator
 export declare function softAuthenticator(config: SoftAuthenticatorConfig): {
     readonly credentialIds: string[];
@@ -2051,7 +2060,7 @@ export interface TotpSetup {
 // TwoFactor
 export declare class TwoFactor {
     #private;
-    constructor(auth: Auth, session: Session, state: TwoFactorState, store: TwoFactorStore, encrypter: Encrypter, limiter: RateLimiter, remember: RememberTokenStore, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, config: AuthConfig, clock: Clock, logger: Logger, passkeys: SecondFactorPasskeys, connections: Connections);
+    constructor(auth: Auth, session: Session, state: TwoFactorState, store: TwoFactorStore, encrypter: Encrypter, limiter: RateLimiter, remember: RememberTokenStore, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, config: AuthConfig, clock: Clock, logger: Logger, passkeys: SecondFactorPasskeys, connections: Connections, sessionConfig: SessionConfig);
     challenge(input: SecondFactorInput): Promise<Result<AuthUser, ChallengeError>>;
     stepUp(input: SecondFactorInput): Promise<Result<void, ChallengeError>>;
     status(): Promise<{
@@ -2488,7 +2497,7 @@ declare const passwordHash: unique symbol;
 // AUTH_PRIVATE_REGISTRATION
 `AUTH_PRIVATE_REGISTRATION` = `"true"`
 // AUTH_REMEMBER_COOKIE
-`AUTH_REMEMBER_COOKIE` = `"remember_web"`
+`AUTH_REMEMBER_COOKIE` = `"marmeon_remember"`
 // AUTH_REMEMBER_DAYS
 `AUTH_REMEMBER_DAYS` = `30`
 // AUTH_RESET_EXPIRE

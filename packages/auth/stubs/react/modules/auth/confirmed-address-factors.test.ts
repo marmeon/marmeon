@@ -1,4 +1,4 @@
-import { softAuthenticator, twoFactorCode } from '@marmeon/auth/testing';
+import { softAuthenticator, twoFactorCode, cookieNames } from '@marmeon/auth/testing';
 import { Connections } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -13,9 +13,9 @@ import type { User } from './users.ts';
 // address (open registration) cannot attach a way in of their own, and a reset by the owner removes whatever such an account holds anyway.
 
 let app: TestApp;
+let SESSION: string;
 afterEach(() => app.close());
 
-const SESSION = 'marmeon_session';
 const credentialsOf = (user: User) => ({ form: { email: user.email, password: 'password' } });
 const device = () => softAuthenticator({ origin: 'http://localhost', rpId: 'localhost' });
 const FACTOR_TABLES = ['passkeys', 'two_factor_authentications', 'two_factor_recovery_codes', 'personal_access_tokens'] as const;
@@ -23,6 +23,7 @@ const FACTOR_TABLES = ['passkeys', 'two_factor_authentications', 'two_factor_rec
 describe('an unconfirmed address with AUTH_PRIVATE_REGISTRATION=false', { timeout: 30_000 }, () => {
   beforeEach(async () => {
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+    ({ session: SESSION } = cookieNames(app));
   }, 30_000);
 
   it('refuses an authenticator and a passkey before the address is confirmed, and stores nothing', async () => {
@@ -54,6 +55,7 @@ describe('an unconfirmed address with AUTH_PRIVATE_REGISTRATION=false', { timeou
 describe('the reset of an account whose address was never confirmed', { timeout: 30_000 }, () => {
   beforeEach(async () => {
     app = await createTestApp(application, { database: 'refresh' });
+    ({ session: SESSION } = cookieNames(app));
   }, 30_000);
 
   /** The account gets a passkey, an authenticator, recovery codes and an API token — as the squatter could before the address had to be confirmed. */

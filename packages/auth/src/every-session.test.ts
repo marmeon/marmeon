@@ -255,7 +255,7 @@ async function boot(driver: Driver, users: UserProvider, options: { signIns?: ne
 }
 
 const rememberWho = async (browser: Awaited<ReturnType<typeof boot>>['browser'], cookie: string) =>
-  (await (await browser(new Map([['remember_web', cookie]])).send('/who')).json()) as { id: number | null };
+  (await (await browser(new Map([['marmeon_remember', cookie]])).send('/who')).json()) as { id: number | null };
 
 describe.each(drivers)('AccountSessions.endEveryone() with SESSION_DRIVER=$name', (driver) => {
   it('ends every session of every account, a waiting second-factor step and every remember-me cookie; a new sign-in works', async () => {
@@ -269,7 +269,7 @@ describe.each(drivers)('AccountSessions.endEveryone() with SESSION_DRIVER=$name'
     await b1.send('/as/2', { method: 'POST' });
     await b2.send('/as/2', { method: 'POST' });
     expect(await (await waiting.send('/as/3', { method: 'POST' })).json()).toEqual({ result: 'two-factor-required' });
-    const cookies = [a, b1, b2].map((b) => b.jar.get('remember_web')!);
+    const cookies = [a, b1, b2].map((b) => b.jar.get('marmeon_remember')!);
     expect(cookies.every(Boolean)).toBe(true);
     for (const b of [a, b1, b2]) expect((await b.send('/me')).status, 'before').toBe(200);
     expect(await (await waiting.send('/waiting')).json(), 'before').toEqual({ state: 'waiting' });
@@ -349,7 +349,7 @@ describe('AccountSessions.endEveryone()', () => {
     const { browser, accounts, count } = await boot(memory, new KeylessUsers());
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
-    const cookie = laptop.jar.get('remember_web')!;
+    const cookie = laptop.jar.get('marmeon_remember')!;
     await expect(accounts.endEveryone()).rejects.toThrow(/updateEverySessionKey\(key\).*session_key/s);
     expect(await count(REMEMBER_TABLE), 'the tokens stay').toBe(1);
     expect((await laptop.send('/me')).status, 'the session stays').toBe(200);
@@ -513,13 +513,13 @@ describe('AccountSessions.endEveryone()', () => {
     const { browser, accounts } = await boot(memory, users);
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
-    const cookie = laptop.jar.get('remember_web')!;
+    const cookie = laptop.jar.get('marmeon_remember')!;
     // The sign-in has read the account (the old key) when another request ends everything.
     users.after = () => accounts.endEveryone();
-    const reopened = browser(new Map([['remember_web', cookie]]));
+    const reopened = browser(new Map([['marmeon_remember', cookie]]));
     expect(await (await reopened.send('/who')).json()).toEqual({ id: null });
     expect((await reopened.send('/me')).status).toBe(401);
-    expect(reopened.jar.has('remember_web')).toBe(false);
+    expect(reopened.jar.has('marmeon_remember')).toBe(false);
   });
 });
 

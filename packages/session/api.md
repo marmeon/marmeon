@@ -193,6 +193,8 @@ export declare class VerifyCsrfToken {
     constructor(session: Session, protection: CsrfProtection, config: CsrfConfig, sessionConfig: SessionConfig);
     handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
+// sessionCookieName
+export declare function sessionCookieName(config: Pick<SessionConfig, 'cookie' | 'secure'>): string;
 // sessionKey
 export declare function sessionKey(id: string): string;
 // sessionTableConnection

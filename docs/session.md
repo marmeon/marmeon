@@ -102,7 +102,7 @@ token it hands out must still be valid when it comes back.
 | `SESSION_DRIVER` | `file` | Where sessions live: `file`, `database`, `redis` or `memory`. |
 | `SESSION_CONNECTION` | `default` | The database or Redis connection of the `database` and `redis` drivers. |
 | `SESSION_LIFETIME` | `120` | Minutes without a request until the session expires on the server. The cookie itself has no expiry. |
-| `SESSION_COOKIE` | `marmeon_session` | The name of the session cookie. |
+| `SESSION_COOKIE` | `marmeon_session` | The name of the session cookie. Over HTTPS the browser sees it with the [`__Host-` prefix](#the-__host--prefix). |
 | `SESSION_FILES` | `storage/framework/sessions` | Where the `file` driver keeps sessions, relative to the app. |
 | `SESSION_SECURE_COOKIE` | follows `APP_URL` | `true` or `false` decides `Secure` yourself. Unset, every cookie gets it when `APP_URL` starts with `https://`. |
 | `SESSION_SAME_SITE` | `lax` | The `SameSite` attribute of the session cookie: `lax`, `strict` or `none`. |
@@ -119,6 +119,24 @@ The session cookie itself is encrypted like every cookie of the `web` group, `Ht
 the `SameSite` of `SESSION_SAME_SITE`. It has no `Max-Age` or `Expires`: the browser drops it when it closes (see
 [expiry](#expiry-and-clean-up)). `SameSite=None` requires `Secure`: with `SESSION_SAME_SITE=none` and cookies without
 `Secure`, every response that sets the session cookie throws.
+
+### The `__Host-` prefix
+
+When cookies are `Secure`, the session cookie is called `__Host-marmeon_session` (`SESSION_COOKIE` with the prefix). A browser accepts
+a `__Host-` cookie only if it is `Secure`, has `Path=/` and no `Domain` attribute, so a page on a neighbouring subdomain cannot set
+a session cookie for the whole domain and plant its own session on a visitor. The framework sets the cookie that way and refuses to
+set any `__Host-` name without `Secure`, with a `Domain` or with another path. Over plain HTTP, in development, the cookie goes by
+its bare name: a browser would refuse the prefix there.
+
+Only the name `sessionCookieName(config)` returns is ever read. When cookies are `Secure`, a cookie under the bare name is ignored, even
+if the prefixed one is missing. `SESSION_COOKIE` itself must not start with `__Host-` or `__Secure-`: the app does not start. Tests that set the cookie by hand name it
+through `sessionCookieName()` as well:
+
+```ts
+import { SessionConfig, sessionCookieName } from '@marmeon/session';
+
+const name = sessionCookieName(app.container.make(SessionConfig));
+```
 
 Outside development and tests, an app whose cookies go without `Secure` says so once at start-up:
 

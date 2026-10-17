@@ -6,7 +6,7 @@ import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
 import { ANNOUNCE_ENDED, AccountSessions, notABoolean, rotateSessionKey } from './account-sessions.ts';
 import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
-import { AuthConfig } from './config.ts';
+import { AuthConfig, rememberCookieName } from './config.ts';
 import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, RememberTokenReused, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
@@ -172,6 +172,7 @@ export class Auth {
   readonly #remember: RememberTokenStore;
   readonly #config: AuthConfig;
   readonly #sessionConfig: SessionConfig;
+  readonly #rememberCookie: string;
   readonly #logger: Logger;
   readonly #history: ClientHistory;
   readonly #request: RequestInfo;
@@ -215,6 +216,7 @@ export class Auth {
     this.#remember = remember;
     this.#config = config;
     this.#sessionConfig = sessionConfig;
+    this.#rememberCookie = rememberCookieName(config, sessionConfig);
     this.#logger = logger;
     this.#history = history;
     this.#request = request;
@@ -363,7 +365,7 @@ export class Auth {
       this.#user = Promise.resolve(undefined);
       this.#verified = undefined;
       // A token that could not be removed must not sign this browser in again: its cookie goes and so does its row (which ends the token).
-      if (this.#cookies.get(this.#config.rememberCookie) !== undefined) this.#cookies.delete(this.#config.rememberCookie);
+      if (this.#cookies.get(this.#rememberCookie) !== undefined) this.#cookies.delete(this.#rememberCookie);
       await this.#endSignIn(signIn);
     }
     if (user) await this.#events.dispatch(new Logout(user));
@@ -485,7 +487,7 @@ export class Auth {
     const verified = this.#requireVerified();
     const hash = await this.#hasher.make(password);
     const revoked = await this.#newPassword.store(this.#users, this.#remember, idOf(user), hash, 'change');
-    this.#cookies.delete(this.#config.rememberCookie);
+    this.#cookies.delete(this.#rememberCookie);
     this.#anchor({ ...verified, passwordHash: hash });
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
     await this.#endOtherSignIns(idOf(user), true); // after the hash: the hash is what ends the other sessions, the rows only leave the list
@@ -521,7 +523,7 @@ export class Auth {
     const hash = await this.#hasher.make(password);
     // Tokens before the hash (as `NewPassword` and `AccountSessions` do): a remember-me sign-in that is running must not read the new
     // hash and still find its token.
-    await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#config.rememberCookie));
+    await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#rememberCookie));
     // Over the hash this request verified; an account without one has nothing to compare, so nothing is written.
     if (verified.passwordHash === null) return false;
     // `false`: the password changed meanwhile. The hash is not written; that change has ended every sign-in, this one from its next request.
@@ -544,7 +546,7 @@ export class Auth {
     const user = await this.#requireUser('updateSessionKey');
     const verified = this.#requireVerified();
     // Tokens before the key, for the same reason as at `AccountSessions.end()`; this device's token stays.
-    await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#config.rememberCookie));
+    await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#rememberCookie));
     const rotated = await rotateSessionKey(this.#users, idOf(user), verified.sessionKey ?? null, 'auth.updateSessionKey()');
     if (rotated.kind === 'conflict') {
       // The key is not the one this request checked: this session is over, and so is this device's token.
@@ -667,7 +669,7 @@ export class Auth {
       this.#user = Promise.resolve(undefined);
       this.#verified = undefined;
       // A token that could not be removed must not sign this browser in again: its cookie goes and so does its row (which ends the token).
-      if (this.#cookies.get(this.#config.rememberCookie) !== undefined) this.#cookies.delete(this.#config.rememberCookie);
+      if (this.#cookies.get(this.#rememberCookie) !== undefined) this.#cookies.delete(this.#rememberCookie);
       await this.#endSignIn(signIn);
     }
   }
@@ -684,13 +686,13 @@ export class Auth {
    * (a copy): the theft path runs as at `consume()`, no token is kept and this device is signed out. `false` then.
    */
   async #rebindOwnToken(): Promise<boolean> {
-    const cookie = this.#cookies.get(this.#config.rememberCookie);
+    const cookie = this.#cookies.get(this.#rememberCookie);
     if (cookie === undefined || this.#remember.rebind === undefined) return true;
     const verified = this.#requireVerified();
     const result = await this.#remember.rebind(idOf(verified.user), cookie, sessionFingerprint(verified));
     if (result.ok) return true;
     if (result.error.kind === 'invalid') {
-      this.#cookies.delete(this.#config.rememberCookie); // no row to keep: the cookie is of no use
+      this.#cookies.delete(this.#rememberCookie); // no row to keep: the cookie is of no use
       return true;
     }
     this.#logger.warn('A rotated remember-me token was presented again while signing out other devices: all remember-me tokens and sessions of the user are being ended', {
@@ -698,7 +700,7 @@ export class Auth {
       ip: this.#request.ip,
       userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT),
     });
-    this.#cookies.delete(this.#config.rememberCookie);
+    this.#cookies.delete(this.#rememberCookie);
     await this.#endSessionsOfThief(result.error.userId, { ip: this.#request.ip, userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT) });
     await this.#end();
     return false;
@@ -760,7 +762,7 @@ export class Auth {
       }
       // Taken back first, synchronously, then the token is forgotten: whatever fails later, nobody stays signed in.
       await this.#hold(credentials, after, options, via); // also ends the row the sign-in just made
-      this.#cookies.delete(this.#config.rememberCookie);
+      this.#cookies.delete(this.#rememberCookie);
       if (signedIn.token !== undefined) await this.#remember.forget(signedIn.token);
       return after;
     } catch (error) {
@@ -768,7 +770,7 @@ export class Auth {
       this.#session.forget(AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil, AUTH_SESSION_KEYS.signIn, AUTH_SESSION_KEYS.throttleKey, AUTH_SESSION_KEYS.typedPassword);
       this.#user = Promise.resolve(undefined);
       this.#verified = undefined;
-      this.#cookies.delete(this.#config.rememberCookie);
+      this.#cookies.delete(this.#rememberCookie);
       if (signedIn.signIn !== undefined) await this.#signIns.end(idOf(credentials.user), signedIn.signIn).catch(() => undefined);
       // A token that cannot be removed now is refused later by its date, once the factor is committed (`enabledSince`).
       if (signedIn.token !== undefined) await this.#remember.forget(signedIn.token).catch(() => undefined);
@@ -793,7 +795,7 @@ export class Auth {
     let expiresAt: Date | undefined;
     // One token per device, and a guest carrying the cookie of another sign-in must not end up with two live rows.
     if (!viaRemember) {
-      const old = this.#cookies.get(this.#config.rememberCookie);
+      const old = this.#cookies.get(this.#rememberCookie);
       await this.#forgetDevice();
       // The row of the dropped token is a ghost otherwise: listed as kept signed in by a cookie that no longer works. Scoped to this
       // user: the row of another user's token (a shared browser) stays listed until its remember time ends or its owner ends it.
@@ -992,19 +994,19 @@ export class Auth {
   }
 
   async #fromRememberCookie(): Promise<AuthUser | undefined> {
-    const cookie = this.#cookies.get(this.#config.rememberCookie);
+    const cookie = this.#cookies.get(this.#rememberCookie);
     // A read-only request (an island) cannot sign in: consuming the token rotates it, and the new one would never
     // reach the browser (the next request would present the old one — "stolen"). The page's request signs in.
     if (!cookie || this.#session.readOnly) return undefined;
     // Remember-me is off: no cookie signs in, and its token goes (a lower `AUTH_REMEMBER_DAYS` ends what a higher one issued).
     if (!this.#config.remember) {
       await this.#remember.forget(cookie);
-      this.#cookies.delete(this.#config.rememberCookie);
+      this.#cookies.delete(this.#rememberCookie);
       return undefined;
     }
     const result = await this.#remember.consume(cookie);
     if (!result.ok) {
-      this.#cookies.delete(this.#config.rememberCookie);
+      this.#cookies.delete(this.#rememberCookie);
       if (result.error.kind === 'stolen') {
         this.#logger.warn('A rotated remember-me token was used again: all remember-me tokens and sessions of the user are being ended', {
           user: result.error.userId,
@@ -1020,7 +1022,7 @@ export class Auth {
     if (!found) {
       await this.#remember.forget(device.cookie ?? cookie);
       await this.#endRememberedRow(device.userId, device.cookie ?? cookie);
-      this.#cookies.delete(this.#config.rememberCookie);
+      this.#cookies.delete(this.#rememberCookie);
       return undefined;
     }
     // Invariant: a token signs in only the account state it was issued under (the fingerprint sessions are bound to as well). A token
@@ -1029,7 +1031,7 @@ export class Auth {
     if (device.fingerprint == null || !equal(device.fingerprint, sessionFingerprint(found))) {
       await this.#remember.forget(device.cookie ?? cookie);
       await this.#endRememberedRow(device.userId, device.cookie ?? cookie);
-      this.#cookies.delete(this.#config.rememberCookie);
+      this.#cookies.delete(this.#rememberCookie);
       return undefined;
     }
     // Refused: a token made before the account's second factor existed (it proved none; a sign-in racing the activation can make one),
@@ -1043,13 +1045,13 @@ export class Auth {
     if (refused) {
       await this.#remember.forget(device.cookie ?? cookie);
       await this.#endRememberedRow(device.userId, device.cookie ?? cookie);
-      this.#cookies.delete(this.#config.rememberCookie);
+      this.#cookies.delete(this.#rememberCookie);
       return undefined;
     }
     // A token that `AccountSessions.end()` deleted meanwhile is gone here (the fingerprint above covers the key it replaced).
     if (!(await this.#remember.exists(device.cookie ?? cookie))) {
       await this.#endRememberedRow(device.userId, device.cookie ?? cookie);
-      this.#cookies.delete(this.#config.rememberCookie);
+      this.#cookies.delete(this.#rememberCookie);
       return undefined;
     }
     const until = Math.min(device.expiresAt.getTime(), cap);
@@ -1059,7 +1061,7 @@ export class Auth {
       resumed = await this.#signIns.resume(device.userId, selectorOf(device.cookie ?? cookie), new Date(until));
       if (resumed === undefined) {
         await this.#remember.forget(device.cookie ?? cookie);
-        this.#cookies.delete(this.#config.rememberCookie);
+        this.#cookies.delete(this.#rememberCookie);
         return undefined;
       }
     }
@@ -1089,16 +1091,16 @@ export class Auth {
   }
 
   async #forgetDevice(): Promise<void> {
-    const cookie = this.#cookies.get(this.#config.rememberCookie);
+    const cookie = this.#cookies.get(this.#rememberCookie);
     if (cookie) await this.#remember.forget(cookie);
-    if (cookie !== undefined) this.#cookies.delete(this.#config.rememberCookie);
+    if (cookie !== undefined) this.#cookies.delete(this.#rememberCookie);
   }
 
   #setCookie(value: string, expiresAt: Date): void {
     const { secure, sameSite } = this.#sessionConfig;
     const left = Math.floor((expiresAt.getTime() - this.#clock.now()) / 1000);
     const maxAge = Number.isFinite(left) ? Math.max(0, left) : 0;
-    this.#cookies.set(this.#config.rememberCookie, value, { httpOnly: true, secure, sameSite, maxAge });
+    this.#cookies.set(this.#rememberCookie, value, { httpOnly: true, secure, sameSite, maxAge });
   }
 
   #now(): number {

@@ -97,6 +97,7 @@ as the app stores its own: under the hash of its id, and encrypted when the app 
 a response started, such as a real sign-in, send its cookie back:
 
 ```ts title="modules/notes/sign-in.test.ts"
+import { SessionConfig, sessionCookieName } from '@marmeon/session';
 import { createTestApp } from '@marmeon/testing';
 import { it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -109,7 +110,8 @@ it('signs in with the password and keeps the session', async () => {
     .post('/login', { form: { email: ada.email, password: 'password' } })
     .assertRedirect('/dashboard')
     .assertAuthenticated(ada);
-  const browser = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+  const session = sessionCookieName(app.container.make(SessionConfig)); // `__Host-…` when APP_URL is https
+  const browser = app.withCookie(session, login.cookie(session)!);
   await browser.get('/dashboard').assertOk();
   await browser.post('/logout').assertRedirect('/login').assertGuest();
 });

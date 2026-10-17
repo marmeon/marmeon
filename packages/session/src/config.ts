@@ -18,7 +18,7 @@ export const SessionConfig = defineConfig('session', {
     SESSION_CONNECTION: env.string().default('default'),
     /** Minutes of inactivity until the session expires. */
     SESSION_LIFETIME: env.integer().min(1).default(120),
-    SESSION_COOKIE: env.string().regex(/^[\w-]+$/).default('marmeon_session'),
+    SESSION_COOKIE: env.string().regex(/^(?!__(host|secure)-)[\w-]+$/i, 'Expected letters, digits, _ and -, without a __Host- or __Secure- prefix: the framework adds __Host- itself').default('marmeon_session'),
     /** Where the `file` driver keeps sessions, relative to the app root. */
     SESSION_FILES: env.string().default('storage/framework/sessions'),
     /**
@@ -59,6 +59,14 @@ export const SessionConfig = defineConfig('session', {
   }),
 });
 export type SessionConfig = ConfigOf<typeof SessionConfig>;
+
+/**
+ * The name the session cookie goes by: `SESSION_COOKIE`, with the `__Host-` prefix when cookies are `Secure`. Over plain HTTP
+ * (development) there is no prefix — a browser would refuse it. Only this name is ever read; see `docs/session.md#the-__host--prefix`.
+ */
+export function sessionCookieName(config: Pick<SessionConfig, 'cookie' | 'secure'>): string {
+  return config.secure ? `__Host-${config.cookie}` : config.cookie;
+}
 
 /** `2/100` → 0.02. */
 function chance(lottery: string): number {

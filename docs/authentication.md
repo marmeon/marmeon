@@ -338,7 +338,7 @@ and without a second factor of its own, so it counts as the lowest assurance lev
 
 `attempt(email, password, { remember: true })` keeps the user signed in on this device after the session has expired. It is the way
 to stay signed in after a browser restart: the session cookie ends when the browser closes. The browser
-gets a cookie, `remember_web`, that is encrypted, `HttpOnly`, and `Secure` and `SameSite` like the session cookie. It is valid for
+gets a cookie, `marmeon_remember`, that is encrypted, `HttpOnly`, and `Secure` and `SameSite` like the session cookie. When cookies are `Secure` both cookies carry the `__Host-` prefix, which makes a browser refuse them unless they are `Secure`, have `Path=/` and no `Domain`. `rememberCookieName(authConfig, sessionConfig)` returns the name; only that name is read, never the bare one beside it. It is valid for
 `AUTH_REMEMBER_DAYS` days from the sign-in (30 at most) and using it never extends it.
 
 `AUTH_REMEMBER_DAYS=0` turns remember me off: `remember: true` still signs in, without a token or cookie, and the starter kit
@@ -947,10 +947,11 @@ made before has no row, and a cookie without a row never signs in: those devices
 
 `actingAs()` writes the session again with every request, so it cannot stand for a browser that stays signed in. A test signs in
 twice with the real form and sends each session cookie back, ends one row through the `SignInStore`, and checks that browser's next
-request:
+request. `cookieNames(app)` returns `{ session, remember }`, the names of the two cookies, with the `__Host-` prefix when the app's cookies are `Secure`:
 
 ```ts title="modules/auth/sign-ins.test.ts"
 import { SignInStore } from '@marmeon/auth';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp } from '@marmeon/testing';
 import { expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -959,9 +960,10 @@ import { UserFactory } from '#modules/auth';
 it('signs the other browser out', async () => {
   const app = await createTestApp(application, { database: 'refresh' });
   const ada = await app.factory(UserFactory).create();
+  const { session } = cookieNames(app); // `__Host-…` when APP_URL is https
   const signIn = async () => {
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } });
-    return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+    return app.withCookie(session, login.cookie(session)!);
   };
   const laptop = await signIn();
   const phone = await signIn();
@@ -1047,7 +1049,7 @@ listeners.
 | --- | --- | --- |
 | `AUTH_SESSION_MAX_HOURS` | `24` | The longest a sign-in lasts in hours, however active: 1 to 720. A valid remember-me cookie signs in again. See [how long a sign-in lasts](#how-long-a-sign-in-lasts). |
 | `AUTH_REMEMBER_DAYS` | `30` | Days the remember-me cookie keeps a user signed in, from the sign-in: 0 to 30. `0` turns remember me off: no cookie signs in. |
-| `AUTH_REMEMBER_COOKIE` | `remember_web` | The name of the remember-me cookie: letters, digits, `_` and `-`. |
+| `AUTH_REMEMBER_COOKIE` | `marmeon_remember` | The name of the remember-me cookie: letters, digits, `_` and `-`. Over HTTPS it gets the `__Host-` prefix. |
 | `AUTH_PASSWORD_TIMEOUT` | `900` | Seconds a typed password or a proven passkey counts for `confirmedPassword()`. |
 | `AUTH_RESET_EXPIRE` | `60` | Minutes a password reset link works. See [password reset](passwords.md#configuration). |
 | `AUTH_RESET_THROTTLE` | `60` | Seconds before another reset link goes to the same address. |

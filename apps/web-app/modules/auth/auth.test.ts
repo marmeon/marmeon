@@ -6,6 +6,7 @@ import { Database, secret } from '@marmeon/database';
 import { Mailer, type Mailable, type MailMessage } from '@marmeon/mail';
 import { MailFake } from '@marmeon/mail/testing';
 import { createHttpKernel } from '@marmeon/server';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { UserFactory } from './factories/UserFactory.ts';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -49,8 +50,11 @@ const fixtures = defineModule({
 });
 
 let app: TestApp;
+let SESSION: string;
+let REMEMBER: string;
 beforeEach(async () => {
   app = await createTestApp({ ...application, modules: [...application.modules!, fixtures] }, { database: 'refresh' });
+  ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
 });
 
 describe('auth module', () => {
@@ -60,7 +64,7 @@ describe('auth module', () => {
     const grace = await app.factory(UserFactory).create({ name: 'Grace Hopper' });
     const planted = await app.get('/login'); // a session id handed out before login …
     const response = await app
-      .withCookie('marmeon_session', planted.cookie('marmeon_session')!)
+      .withCookie(SESSION, planted.cookie(SESSION)!)
       .post('/login', credentials(grace))
       .assertStatus(303)
       .assertRedirect('/users/me')
@@ -68,9 +72,9 @@ describe('auth module', () => {
       .assertAuthenticated(grace);
 
     // … does not survive it: the planted cookie is a guest's, the new one is signed in.
-    expect(response.cookie('marmeon_session')).not.toBe(planted.cookie('marmeon_session'));
-    await app.withCookie('marmeon_session', planted.cookie('marmeon_session')!).get('/users/me').assertRedirect('/login');
-    await app.withCookie('marmeon_session', response.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${grace.public_id}`);
+    expect(response.cookie(SESSION)).not.toBe(planted.cookie(SESSION));
+    await app.withCookie(SESSION, planted.cookie(SESSION)!).get('/users/me').assertRedirect('/login');
+    await app.withCookie(SESSION, response.cookie(SESSION)!).get('/users/me').assertRedirect(`/users/${grace.public_id}`);
   });
 
   it('normalizes the e-mail in the request — never the password', async () => {
@@ -108,7 +112,7 @@ describe('auth module', () => {
       .assertSessionHas('_old_input', { email: 'nobody@example.com' });
     expect(JSON.stringify(response.session())).not.toContain('hunter2');
     await app
-      .withCookie('marmeon_session', response.cookie('marmeon_session')!)
+      .withCookie(SESSION, response.cookie(SESSION)!)
       .navigating()
       .get('/login')
       .assertPage<ShowLoginController>('auth/Login', { old: { email: 'nobody@example.com' }, errors: { email: ['These credentials do not match our records.'] } });
@@ -119,7 +123,7 @@ describe('auth module', () => {
     // The redirect delivers no message: it waits in the new session for the page that is shown.
     const response = await app.actingAs(ada).post('/logout').assertRedirect('/login').assertGuest().assertNoFlash();
     await app
-      .withCookie('marmeon_session', response.cookie('marmeon_session')!)
+      .withCookie(SESSION, response.cookie(SESSION)!)
       .navigating()
       .get('/login')
       .assertPage<ShowLoginController>('auth/Login', { auth: { user: null } })
@@ -134,7 +138,7 @@ describe('auth module', () => {
 
     const away = await app.get(`/users/${ada.public_id}/edit`, { headers: { accept: 'text/html' } }).assertRedirect('/login');
     await app
-      .withCookie('marmeon_session', away.cookie('marmeon_session')!)
+      .withCookie(SESSION, away.cookie(SESSION)!)
       .post('/login', credentials(ada))
       .assertRedirect(`/users/${ada.public_id}/edit`);
   });
@@ -142,7 +146,7 @@ describe('auth module', () => {
   it('a password changed elsewhere ends the other sessions', async () => {
     const ada = await app.factory(UserFactory).create();
     const signedIn = await app.post('/login', credentials(ada)).assertAuthenticated(ada);
-    const laptop = app.withCookie('marmeon_session', signedIn.cookie('marmeon_session')!).expectingJson();
+    const laptop = app.withCookie(SESSION, signedIn.cookie(SESSION)!).expectingJson();
     await laptop.get('/users/me').assertRedirect(`/users/${ada.public_id}`);
     await app.make(UserRepository).updatePasswordHash(ada.id, await app.make(Hasher).make('changed on the phone'));
     await laptop.get('/users/me').assertUnauthorized();
@@ -172,7 +176,7 @@ describe('auth module', () => {
     // The app's own page: in.
     const response = await protectedApp.post('/login', { ...credentials(ada), headers: { 'sec-fetch-site': 'same-origin' } }).assertRedirect('/users/me').assertAuthenticated(ada);
     // Signed in: the session has a token (the XSRF-TOKEN cookie, its pages); without the browser's word, only it works.
-    const signedIn = protectedApp.withCookie('marmeon_session', response.cookie('marmeon_session')!);
+    const signedIn = protectedApp.withCookie(SESSION, response.cookie(SESSION)!);
     await signedIn.post('/logout').assertStatus(419);
     await signedIn.post('/logout', { form: { _token: decodeURIComponent(response.cookie('XSRF-TOKEN')!) } }).assertRedirect('/login').assertGuest();
   });
@@ -244,20 +248,21 @@ describe('auth module', () => {
       database: 'refresh',
       override: (c) => c.instance(TwoFactorState, { removeAll: async () => {}, factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined }),
     });
+    ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     withFactor = ada.id;
     for (let attempt = 1; attempt <= 4; attempt++) await app.post('/login', credentials(ada, 'wrong')).assertInvalid<LoginController>({ email: 'These credentials do not match our records.' });
     const held = await app.post('/login', credentials(ada)).assertRedirect('/two-factor-challenge').assertGuest();
     // The waiting sign-in is a guest for the pages too: the shared props, and a route behind authenticate().
-    const session = held.cookie('marmeon_session')!;
-    await app.withCookie('marmeon_session', session).navigating().get('/login').assertPage<ShowLoginController>('auth/Login', { auth: { user: null } });
-    await app.withCookie('marmeon_session', session).get('/users/me').assertRedirect('/login');
+    const session = held.cookie(SESSION)!;
+    await app.withCookie(SESSION, session).navigating().get('/login').assertPage<ShowLoginController>('auth/Login', { auth: { user: null } });
+    await app.withCookie(SESSION, session).get('/users/me').assertRedirect('/login');
     // The budget was cleared (as after a sign-in): five wrong guesses more are answered as failures, none as throttled.
     for (let attempt = 1; attempt <= 5; attempt++) await app.post('/login', credentials(ada, 'wrong')).assertInvalid<LoginController>({ email: 'These credentials do not match our records.' });
   });
 
   it('ignores forged session cookies', async () => {
-    await app.withUnencryptedCookie('marmeon_session', 'x'.repeat(40)).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withUnencryptedCookie(SESSION, 'x'.repeat(40)).expectingJson().get('/users/me').assertUnauthorized();
   });
 
   it('injects the validated app config (from .env.test under Vitest)', async () => {
@@ -335,7 +340,7 @@ describe('registration', () => {
   it('opens the app only for a confirmed address: signed in, a new account reaches the notice, the link and sign-out — nothing else', async () => {
     await register({ email: 'grace@example.com' }).assertRedirect('/register/sent');
     const login = await app.post('/login', { form: { email: 'grace@example.com', password: 'correct horse' } }).assertRedirect('/users/me');
-    const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+    const session = app.withCookie(SESSION, login.cookie(SESSION)!);
     for (const path of ['/users/me', '/people', '/dashboard', '/notifications', '/settings/security', '/settings/tokens']) await session.get(path).assertRedirect('/email/verify');
     await session.expectingJson().get('/people').assertForbidden();
     await session.navigating().get('/email/verify').assertPage('auth/VerifyEmail');
@@ -351,13 +356,14 @@ describe('registration', () => {
     beforeEach(async () => {
       await app.close();
       app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+      ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     });
 
     it('signs a new account in at once and mails the verification link — no "check your inbox" page', async () => {
       const response = await register({ email: 'grace@example.com' }).assertRedirect('/users/me');
       const grace = await app.make(UserRepository).findByEmail('grace@example.com');
       // Signed in, unconfirmed: the security settings stay open (a typo in the address can be fixed) — the profile pages ask for a confirmed address.
-      const session = app.withCookie('marmeon_session', response.cookie('marmeon_session')!);
+      const session = app.withCookie(SESSION, response.cookie(SESSION)!);
       expect((await session.get('/settings/security', { headers: { accept: 'text/html' } })).headers.get('location')).not.toBe('/email/verify');
       await session.get('/users/me').assertRedirect('/email/verify');
       expect(grace).toMatchObject({ email_verified_at: null });
@@ -408,19 +414,19 @@ describe('remember me', () => {
   it('signs in by the cookie after the session is gone, and rotates it', async () => {
     const ada = await app.factory(UserFactory).create();
     const login = await rememberLogin(ada).assertAuthenticated(ada);
-    const cookie = login.cookie('remember_web')!;
+    const cookie = login.cookie(REMEMBER)!;
     expect(cookie).toMatch(/^[\w-]{22}\.[\w-]{43}$/);
     await app.assertDatabaseCount('remember_tokens', 1);
 
-    const later = await app.withCookie('remember_web', cookie).get('/users/me').assertRedirect(`/users/${ada.public_id}`).assertAuthenticated(ada);
-    expect(later.cookie('remember_web')).not.toBe(cookie);
-    expect(later.cookie('remember_web')!.split('.')[0]).toBe(cookie.split('.')[0]);
+    const later = await app.withCookie(REMEMBER, cookie).get('/users/me').assertRedirect(`/users/${ada.public_id}`).assertAuthenticated(ada);
+    expect(later.cookie(REMEMBER)).not.toBe(cookie);
+    expect(later.cookie(REMEMBER)!.split('.')[0]).toBe(cookie.split('.')[0]);
   });
 
   it('does nothing without the checkbox', async () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', credentialsOf(ada));
-    expect(login.cookie('remember_web')).toBeUndefined();
+    expect(login.cookie(REMEMBER)).toBeUndefined();
     await app.assertDatabaseCount('remember_tokens', 0);
   });
 
@@ -432,26 +438,27 @@ describe('remember me', () => {
     beforeEach(async () => {
       await app.close();
       app = await createTestApp(application, { database: 'refresh', env: { AUTH_REMEMBER_DAYS: '0' } });
+      ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     });
 
     it('hides the checkbox, and a form that sends it anyway gets no cookie and no token', async () => {
       await app.navigating().get('/login').assertPage<ShowLoginController>('auth/Login', { remember: false });
       const ada = await app.factory(UserFactory).create();
       const login = await rememberLogin(ada).assertAuthenticated(ada);
-      expect(login.cookie('remember_web')).toBeUndefined();
+      expect(login.cookie(REMEMBER)).toBeUndefined();
       await app.assertDatabaseCount('remember_tokens', 0);
     });
   });
 
   it('a copied cookie used by someone else first ends every remember-me sign-in of the user', async () => {
     const ada = await app.factory(UserFactory).create();
-    const copied = (await rememberLogin(ada)).cookie('remember_web')!;
-    const otherDevice = (await rememberLogin(ada)).cookie('remember_web')!;
-    await app.withCookie('remember_web', copied).get('/users/me').assertAuthenticated(ada); // the thief, first
+    const copied = (await rememberLogin(ada)).cookie(REMEMBER)!;
+    const otherDevice = (await rememberLogin(ada)).cookie(REMEMBER)!;
+    await app.withCookie(REMEMBER, copied).get('/users/me').assertAuthenticated(ada); // the thief, first
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
     try {
-      await app.withCookie('remember_web', copied).expectingJson().get('/users/me').assertUnauthorized(); // the owner, later
-      await app.withCookie('remember_web', otherDevice).expectingJson().get('/users/me').assertUnauthorized();
+      await app.withCookie(REMEMBER, copied).expectingJson().get('/users/me').assertUnauthorized(); // the owner, later
+      await app.withCookie(REMEMBER, otherDevice).expectingJson().get('/users/me').assertUnauthorized();
     } finally {
       vi.useRealTimers();
     }
@@ -462,9 +469,9 @@ describe('remember me', () => {
     const ada = await app.factory(UserFactory).create();
     const laptop = await rememberLogin(ada);
     const phone = await rememberLogin(ada);
-    await app.withCookie('marmeon_session', laptop.cookie('marmeon_session')!).withCookie('remember_web', laptop.cookie('remember_web')!).post('/logout').assertGuest();
+    await app.withCookie(SESSION, laptop.cookie(SESSION)!).withCookie(REMEMBER, laptop.cookie(REMEMBER)!).post('/logout').assertGuest();
     await app.assertDatabaseCount('remember_tokens', 1);
-    await app.withCookie('remember_web', phone.cookie('remember_web')!).get('/users/me').assertAuthenticated(ada);
+    await app.withCookie(REMEMBER, phone.cookie(REMEMBER)!).get('/users/me').assertAuthenticated(ada);
   });
 });
 
@@ -472,25 +479,25 @@ describe('security settings', () => {
   it('asks for the password first ("sudo mode") and comes back to the page', async () => {
     const ada = await app.factory(UserFactory).create();
     const away = await app.actingAs(ada).get('/settings/security', { headers: { accept: 'text/html' } }).assertRedirect('/confirm-password');
-    const session = app.withCookie('marmeon_session', away.cookie('marmeon_session')!);
+    const session = app.withCookie(SESSION, away.cookie(SESSION)!);
     const wrong = await session.post('/confirm-password', { form: { password: 'wrong' }, headers: { referer: 'http://localhost/confirm-password' } });
     wrong.assertInvalid<ConfirmPasswordController>({ password: 'The password is incorrect.' });
-    const right = await app.withCookie('marmeon_session', wrong.cookie('marmeon_session')!).post('/confirm-password', { form: { password: 'password' } });
+    const right = await app.withCookie(SESSION, wrong.cookie(SESSION)!).post('/confirm-password', { form: { password: 'password' } });
     right.assertRedirect('/settings/security');
-    await app.withCookie('marmeon_session', right.cookie('marmeon_session')!).navigating().get('/settings/security').assertPage('auth/Security', { viaRemember: false });
+    await app.withCookie(SESSION, right.cookie(SESSION)!).navigating().get('/settings/security').assertPage('auth/Security', { viaRemember: false });
   });
 
   it('a fresh sign-in counts as confirmation', async () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', credentialsOf(ada));
-    await app.withCookie('marmeon_session', login.cookie('marmeon_session')!).navigating().get('/settings/security').assertOk();
+    await app.withCookie(SESSION, login.cookie(SESSION)!).navigating().get('/settings/security').assertOk();
   });
 
   it('a new password signs out the other sessions and every remember-me device — the old password is dead', async () => {
     const ada = await app.factory(UserFactory).create();
     const phone = await app.post('/login', { form: { ...credentialsOf(ada).form, remember: 'on' } });
     const laptop = await app.post('/login', credentialsOf(ada));
-    const here = app.withCookie('marmeon_session', laptop.cookie('marmeon_session')!);
+    const here = app.withCookie(SESSION, laptop.cookie(SESSION)!);
 
     await here.put('/settings/password', { form: { current_password: 'wrong', password: 'a new password', password_confirmation: 'a new password' } }).assertInvalid<UpdatePasswordController>({
       current_password: 'The password is incorrect.',
@@ -498,9 +505,9 @@ describe('security settings', () => {
     const changed = await here.put('/settings/password', { form: { current_password: 'password', password: 'a new password', password_confirmation: 'a new password' } });
     changed.assertRedirect().assertFlashed('toast', { message: 'Password changed. You were signed out everywhere else.' }).assertAuthenticated(ada);
 
-    await app.withCookie('marmeon_session', phone.cookie('marmeon_session')!).expectingJson().get('/users/me').assertUnauthorized();
-    await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/users/me').assertUnauthorized();
-    await app.withCookie('marmeon_session', changed.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${ada.public_id}`);
+    await app.withCookie(SESSION, phone.cookie(SESSION)!).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie(REMEMBER, phone.cookie(REMEMBER)!).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie(SESSION, changed.cookie(SESSION)!).get('/users/me').assertRedirect(`/users/${ada.public_id}`);
     await app.post('/login', credentialsOf(ada)).assertGuest();
     await app.post('/login', { form: { email: ada.email, password: 'a new password' } }).assertAuthenticated(ada);
   });
@@ -508,7 +515,7 @@ describe('security settings', () => {
   it('two password changes of one session at once run one after the other (block()): the second finds the password changed', async () => {
     const ada = await app.factory(UserFactory).create();
     const laptop = await app.post('/login', credentialsOf(ada));
-    const here = app.withCookie('marmeon_session', laptop.cookie('marmeon_session')!).expectingJson();
+    const here = app.withCookie(SESSION, laptop.cookie(SESSION)!).expectingJson();
     const change = (password: string) => here.put('/settings/password', { form: { current_password: 'password', password, password_confirmation: password } });
     const responses = await Promise.all([change('the first new one'), change('the second new one')]);
     // Without the lock both would check the old password and both would write — the session then keeps whichever fingerprint saved
@@ -523,17 +530,17 @@ describe('security settings', () => {
     const ada = await app.factory(UserFactory).create();
     const phone = await app.post('/login', { form: { ...credentialsOf(ada).form, remember: 'on' } });
     const laptop = await app.post('/login', credentialsOf(ada));
-    const done = await app.withCookie('marmeon_session', laptop.cookie('marmeon_session')!).post('/settings/devices/logout', { form: { password: 'password' } });
+    const done = await app.withCookie(SESSION, laptop.cookie(SESSION)!).post('/settings/devices/logout', { form: { password: 'password' } });
     done.assertFlashed('toast', { message: 'Signed out on all other devices.' });
-    await app.withCookie('marmeon_session', done.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${ada.public_id}`);
-    await app.withCookie('marmeon_session', phone.cookie('marmeon_session')!).expectingJson().get('/users/me').assertUnauthorized();
-    await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie(SESSION, done.cookie(SESSION)!).get('/users/me').assertRedirect(`/users/${ada.public_id}`);
+    await app.withCookie(SESSION, phone.cookie(SESSION)!).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie(REMEMBER, phone.cookie(REMEMBER)!).expectingJson().get('/users/me').assertUnauthorized();
   });
 
   it('also stops a slow guesser: twenty checks an hour, though the minute is cleared by a right password', async () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', credentialsOf(ada));
-    const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+    const session = app.withCookie(SESSION, login.cookie(SESSION)!);
     // Four wrong and one right, four times: the right one clears the minute each time, the hour counts all twenty.
     for (let round = 0; round < 4; round++) {
       for (let attempt = 0; attempt < 4; attempt++) await session.post('/confirm-password', { form: { password: 'wrong' } });
@@ -545,7 +552,7 @@ describe('security settings', () => {
   it('throttles password checks of a signed-in user — a stolen session is no guessing oracle', async () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', credentialsOf(ada));
-    const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+    const session = app.withCookie(SESSION, login.cookie(SESSION)!);
     for (let attempt = 1; attempt <= 5; attempt++) await session.post('/confirm-password', { form: { password: `guess ${attempt}` } });
     await session.post('/confirm-password', { form: { password: 'password' } }).assertInvalid<ConfirmPasswordController>({ password: /^Too many attempts/ });
   });
@@ -599,6 +606,7 @@ describe('password reset', () => {
       database: 'refresh',
       override: (c) => c.instance(TwoFactorState, { removeAll: async () => {}, factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined }),
     });
+    ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     withFactor = ada.id;
     await ask('ada@example.com').assertRedirect('/forgot-password');
@@ -628,6 +636,7 @@ describe('password reset', () => {
       }
     }
     app = await createTestApp(application, { database: 'refresh', mail: 'real', override: (c) => c.instance(Mailer, new SlowMailer()) });
+    ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const kernel = createHttpKernel(app.application); // its own kernel: TestApp waits for deferred work, a browser does not
     const time = async (email: string) => {
@@ -677,6 +686,7 @@ describe('password reset', () => {
       }
     }
     app = await createTestApp(application, { database: 'refresh', override: (c) => c.instance(Logger, new Capture()) });
+    ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     await ask('ada@example.com');
     await app.queue.work();
@@ -694,8 +704,8 @@ describe('password reset', () => {
     const phone = await app.post('/login', { form: { ...credentialsOf(ada).form, remember: 'on' } });
     await ask('ada@example.com');
     await resetWith(await open()).assertRedirect('/login');
-    await app.withCookie('marmeon_session', phone.cookie('marmeon_session')!).expectingJson().get('/users/me').assertUnauthorized();
-    await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie(SESSION, phone.cookie(SESSION)!).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie(REMEMBER, phone.cookie(REMEMBER)!).expectingJson().get('/users/me').assertUnauthorized();
   });
 
   it('throttles: one link per address a minute, five requests a minute per IP', async () => {
@@ -731,15 +741,15 @@ describe('e-mail verification', () => {
     expect(kj.email_verified_at).toBeNull();
     // Private registration signs nobody in: the new account signs in like any other.
     const login = await app.post('/login', { form: { email: 'kj@example.com', password: 'orbital mechanics' } }).assertRedirect('/users/me');
-    const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+    const session = app.withCookie(SESSION, login.cookie(SESSION)!);
 
     await session.post(`/users/${kj.public_id}/links`, { form: { label: 'Blog', url: 'https://kj.example' } }).assertRedirect('/email/verify');
     await session.expectingJson().post(`/users/${kj.public_id}/links`, { json: { label: 'Blog', url: 'https://kj.example' } }).assertForbidden();
     const verifiedResponse = await session.get(verificationLink()).assertRedirect('/users/me').assertFlashed('toast', { message: 'Your e-mail address is verified.' });
     // The message waits through the hop via /users/me (a redirect takes none) and shows on the profile.
-    const hop = await app.withCookie('marmeon_session', verifiedResponse.cookie('marmeon_session')!).get('/users/me').assertRedirect(`/users/${kj.public_id}`).assertNoFlash();
+    const hop = await app.withCookie(SESSION, verifiedResponse.cookie(SESSION)!).get('/users/me').assertRedirect(`/users/${kj.public_id}`).assertNoFlash();
     await app
-      .withCookie('marmeon_session', hop.cookie('marmeon_session')!)
+      .withCookie(SESSION, hop.cookie(SESSION)!)
       .navigating()
       .get(`/users/${kj.public_id}`)
       .assertPage('user-profile/Show')
@@ -776,10 +786,10 @@ describe('e-mail verification', () => {
     await register();
     const kj = await userBy('kj@example.com');
     const away = await app.get(verificationLink(), { headers: { accept: 'text/html' } }).assertRedirect('/login');
-    const login = await app.withCookie('marmeon_session', away.cookie('marmeon_session')!).post('/login', { form: { email: kj.email, password: 'orbital mechanics' } });
+    const login = await app.withCookie(SESSION, away.cookie(SESSION)!).post('/login', { form: { email: kj.email, password: 'orbital mechanics' } });
     const back = new URL(login.headers.get('location')!, 'http://localhost');
     expect(back.pathname).toBe(new URL(verificationLink(), 'http://localhost').pathname);
-    await app.withCookie('marmeon_session', login.cookie('marmeon_session')!).get(back.pathname + back.search).assertRedirect('/users/me');
+    await app.withCookie(SESSION, login.cookie(SESSION)!).get(back.pathname + back.search).assertRedirect('/users/me');
     expect((await userBy('kj@example.com')).email_verified_at).not.toBeNull();
   });
 
@@ -797,7 +807,7 @@ describe('e-mail verification', () => {
     await app.actingAs(kj).get(verificationLink('kj@example.com')).assertRedirect('/users/me'); // confirmed: the app opens
     await app.actingAs(kj).expectingJson().put('/settings/email', { json: { current_password: 'password', email: 'katherine@nasa.example' } }).assertStatus(423); // no recent confirmation
     const login = await app.post('/login', { form: { email: kj.email, password: 'orbital mechanics' } });
-    const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+    const session = app.withCookie(SESSION, login.cookie(SESSION)!);
     await session.put('/settings/email', { form: { current_password: 'orbital mechanics', email: ' Katherine@NASA.example ' } }).assertFlashed('toast', { message: 'We sent a link to the new address. Your address changes once you click it there — within 60 minutes, signed in.' });
     expect(await userBy('kj@example.com')).toMatchObject({ id: kj.id, pending_email: 'katherine@nasa.example' });
   });
@@ -806,7 +816,7 @@ describe('e-mail verification', () => {
 describe('API tokens', () => {
   const sudo = async (user: User) => {
     const login = await app.post('/login', credentialsOf(user));
-    return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+    return app.withCookie(SESSION, login.cookie(SESSION)!);
   };
   const createToken = async (user: User, abilities: string[] = ['users:read']) => {
     const page = await (await sudo(user)).navigating().post('/settings/tokens', { json: { current_password: 'password', name: 'CLI', abilities } }).assertOk();
@@ -851,7 +861,7 @@ describe('API tokens', () => {
     await app.actingAs(ada, { guard: 'api', abilities: ['something:else'] }).expectingJson().get('/api/users').assertForbidden().assertExactJson({ message: 'This token may not: users:read.' });
     // A signed-in browser is no API client: the api group has no session.
     const login = await app.post('/login', credentialsOf(ada));
-    await app.withCookie('marmeon_session', login.cookie('marmeon_session')!).expectingJson().get('/api/users').assertUnauthorized();
+    await app.withCookie(SESSION, login.cookie(SESSION)!).expectingJson().get('/api/users').assertUnauthorized();
     // Revoked: dead at once.
     const id = Number(/^marmeon_(\d+)\|/.exec(plainText)![1]);
     // An action: JSON back, never cached.
@@ -902,24 +912,24 @@ describe('the session key', () => {
     const grace = await app.factory(UserFactory).create();
     const phone = await app.post('/login', credentialsOf(ada));
     const other = await app.post('/login', credentialsOf(grace));
-    await app.withCookie('marmeon_session', phone.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertOk();
+    await app.withCookie(SESSION, phone.cookie(SESSION)!).expectingJson().get('/dashboard').assertOk();
     await app.make(UserRepository).updateSessionKey(ada.id, 'a-new-key-of-at-least-32-characters', null);
-    await app.withCookie('marmeon_session', phone.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertUnauthorized();
-    await app.withCookie('marmeon_session', other.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertOk();
+    await app.withCookie(SESSION, phone.cookie(SESSION)!).expectingJson().get('/dashboard').assertUnauthorized();
+    await app.withCookie(SESSION, other.cookie(SESSION)!).expectingJson().get('/dashboard').assertOk();
     // The account signs in again: its fingerprint carries the new key.
     const again = await app.post('/login', credentialsOf(ada));
-    await app.withCookie('marmeon_session', again.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertOk();
+    await app.withCookie(SESSION, again.cookie(SESSION)!).expectingJson().get('/dashboard').assertOk();
   });
 
   it('auth.updateSessionKey() in a signed-in request signs out the account\'s other sessions and remember-me devices', async () => {
     const ada = await app.factory(UserFactory).create();
     const phone = await app.post('/login', { form: { ...credentialsOf(ada).form, remember: 'on' } });
-    expect(phone.cookie('remember_web')).toBeDefined();
+    expect(phone.cookie(REMEMBER)).toBeDefined();
     const laptop = await app.post('/login', credentialsOf(ada));
-    await app.withCookie('marmeon_session', laptop.cookie('marmeon_session')!).post('/fixtures/end-other-sessions').assertOk();
-    await app.withCookie('marmeon_session', laptop.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertOk();
-    await app.withCookie('marmeon_session', phone.cookie('marmeon_session')!).expectingJson().get('/dashboard').assertUnauthorized();
-    await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/dashboard').assertUnauthorized();
+    await app.withCookie(SESSION, laptop.cookie(SESSION)!).post('/fixtures/end-other-sessions').assertOk();
+    await app.withCookie(SESSION, laptop.cookie(SESSION)!).expectingJson().get('/dashboard').assertOk();
+    await app.withCookie(SESSION, phone.cookie(SESSION)!).expectingJson().get('/dashboard').assertUnauthorized();
+    await app.withCookie(REMEMBER, phone.cookie(REMEMBER)!).expectingJson().get('/dashboard').assertUnauthorized();
   });
 
   it('compares and sets: a key replaces only the one that was read, and says whether it did', async () => {
@@ -978,6 +988,7 @@ describe('passwords', () => {
   it('seeds the demo people with `password`, hashed by the configured Hasher', async () => {
     await app.close(); // one database app per test
     app = await createTestApp(application, { database: 'refresh', seed: true });
+    ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     const ada = await app.make(Database).selectFrom('users').select('id').where('email', '=', 'ada@example.com').executeTakeFirstOrThrow();
     const hash = await storedHash(ada.id);
     expect(hash).toMatch(/^\$argon2id\$v=19\$m=1024,t=1,p=1\$/); // .env.test

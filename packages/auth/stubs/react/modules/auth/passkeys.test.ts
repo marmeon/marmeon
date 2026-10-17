@@ -1,4 +1,4 @@
-import { softAuthenticator, twoFactorCode } from '@marmeon/auth/testing';
+import { softAuthenticator, twoFactorCode, cookieNames } from '@marmeon/auth/testing';
 import { RateLimiter } from '@marmeon/cache';
 import { Connections } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';
@@ -18,12 +18,13 @@ import type { User } from './users.ts';
 // mails about them. A software authenticator stands in for the browser. Runs on SQLite and Postgres.
 
 let app: TestApp;
+let SESSION: string;
 // Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION } = cookieNames(app));
 }, 30_000);
 
-const SESSION = 'marmeon_session';
 // The tests' APP_URL is http://localhost: that is the relying party.
 const device = () => softAuthenticator({ origin: 'http://localhost', rpId: 'localhost' });
 const credentialsOf = (user: User) => ({ form: { email: user.email, password: 'password' } });
@@ -263,6 +264,7 @@ describe('passkeys', { timeout: 30_000 }, () => {
   it('answers a passkey confirmation from another site with 403, and one without the browser\'s word or a token with 419', async () => {
     await app.close(); // one database app per test
     app = await createTestApp(application, { csrf: true, database: 'refresh' });
+    ({ session: SESSION } = cookieNames(app));
     const ada = await app.factory(UserFactory).create();
     const body = { json: { response: {} } };
     await app.actingAs(ada).post('/confirm-password/passkey', { ...body, headers: { 'sec-fetch-site': 'cross-site' } }).assertStatus(403);

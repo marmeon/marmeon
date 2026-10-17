@@ -1,5 +1,5 @@
 import { TwoFactorStore } from '@marmeon/auth';
-import { twoFactorCode } from '@marmeon/auth/testing';
+import { twoFactorCode, cookieNames } from '@marmeon/auth/testing';
 import { Encrypter } from '@marmeon/encryption';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,11 +12,13 @@ import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 let app: TestApp;
+let SESSION: string;
+let REMEMBER: string;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
 });
 
-const SESSION = 'marmeon_session';
 const credentialsOf = (user: User, extra: Record<string, string> = {}) => ({ form: { email: user.email, password: 'password', ...extra } });
 const inSeconds = (seconds: number) => new Date(Date.now() + seconds * 1000);
 
@@ -120,10 +122,10 @@ describe('two-factor authentication', () => {
     const ada = await app.factory(UserFactory).create();
     const { secret } = await enable(ada);
     const login = await app.post('/login', credentialsOf(ada, { remember: 'on' })).assertRedirect('/two-factor-challenge');
-    expect(login.cookie('remember_web')).toBeUndefined();
+    expect(login.cookie(REMEMBER)).toBeUndefined();
     await app.assertDatabaseCount('remember_tokens', 0);
     const done = await app.withCookie(SESSION, login.cookie(SESSION)!).post('/two-factor-challenge', { form: { code: twoFactorCode(secret, inSeconds(30)) } }).assertAuthenticated(ada);
-    expect(done.cookie('remember_web')).toMatch(/^[\w-]{22}\.[\w-]{43}$/);
+    expect(done.cookie(REMEMBER)).toMatch(/^[\w-]{22}\.[\w-]{43}$/);
     await app.assertDatabaseCount('remember_tokens', 1);
   });
 

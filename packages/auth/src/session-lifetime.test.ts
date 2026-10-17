@@ -136,7 +136,7 @@ describe('the absolute lifetime of a sign-in', () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
     const b = browser();
     await signIn(b);
-    const before = b.jar.get('remember_web');
+    const before = b.jar.get('marmeon_remember');
     const start = Date.now();
     for (let hour = 1; hour <= 23; hour++) {
       vi.setSystemTime(start + hour * HOUR);
@@ -144,7 +144,7 @@ describe('the absolute lifetime of a sign-in', () => {
     }
     vi.setSystemTime(start + 24 * HOUR + 60_000);
     expect(await b.who()).toEqual({ id: 1, viaRemember: true });
-    expect(b.jar.get('remember_web')).not.toBe(before);
+    expect(b.jar.get('marmeon_remember')).not.toBe(before);
     expect((await b.stored())[AUTH_SESSION_KEYS.signedInAt]).toBe(Math.floor(Date.now() / 1000));
   });
 
@@ -154,7 +154,7 @@ describe('the absolute lifetime of a sign-in', () => {
     const laptop = browser();
     await signIn(laptop);
     await setTokenEnd(2 * HOUR);
-    const reopened = browser(new Map([['remember_web', laptop.jar.get('remember_web')!]]));
+    const reopened = browser(new Map([['marmeon_remember', laptop.jar.get('marmeon_remember')!]]));
     expect(await reopened.who()).toEqual({ id: 1, viaRemember: true });
     vi.setSystemTime(Date.now() + HOUR);
     expect(await reopened.who()).toMatchObject({ id: 1 });
@@ -230,14 +230,14 @@ describe('the absolute lifetime of a sign-in', () => {
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
     const b = browser();
     await signIn(b);
-    const cookie = b.jar.get('remember_web');
+    const cookie = b.jar.get('marmeon_remember');
     // An island's request: read-only, it sees the session as the page left it.
     const island = { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' };
     expect(await b.who(island)).toEqual({ id: 1, viaRemember: false });
     await b.edit((data) => (data[AUTH_SESSION_KEYS.signedInAt] = Math.floor(Date.now() / 1000) - 25 * 3600));
     const stored = await b.stored();
     expect(await b.who(island)).toEqual({ id: null, viaRemember: false });
-    expect(b.jar.get('remember_web')).toBe(cookie);
+    expect(b.jar.get('marmeon_remember')).toBe(cookie);
     expect(await b.stored()).toEqual(stored);
     expect(await b.who()).toEqual({ id: 1, viaRemember: true }); // the page's request signs in, with the token still unused
   });

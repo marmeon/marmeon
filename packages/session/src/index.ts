@@ -1,5 +1,5 @@
 export { SessionCodec } from './codec.ts';
-export { SessionConfig } from './config.ts';
+export { SessionConfig, sessionCookieName } from './config.ts';
 export { CsrfConfig, CsrfProtection, VerifyCsrfToken } from './csrf.ts';
 export { MakeSessionTableCommand } from './commands/make-session-table.ts';
 export { PruneSessionsCommand } from './commands/prune-sessions.ts';

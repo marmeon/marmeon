@@ -4,6 +4,7 @@ import type { ActionOptions, OptimisticUpdate, Reloading } from '@marmeon/http/c
 import { actions, layers, optimistic } from '@marmeon/http/client/adapter';
 import { loadHistoryFallback, Navigator, prefetchWith, type NavigatorWindow, type PropsPatch, type ReloadSpec } from '@marmeon/http/client/adapter';
 import { createHttpKernel } from '@marmeon/server';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -344,9 +345,11 @@ function pageFromHtml(html: string): PageObject {
 }
 
 let app: TestApp;
+let REMEMBER: string;
 let tab: FakeTab;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ remember: REMEMBER } = cookieNames(app));
   tab = new FakeTab(createHttpKernel(app.application), { bfcache: true });
 });
 
@@ -516,7 +519,7 @@ describe('Cache headers', () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', { form: { email: ada.email, password: 'password', remember: 'on' } });
     // A new browser session (no session cookie), the remember-me cookie signs in during an ordinary visit.
-    await app.withCookie('remember_web', login.cookie('remember_web')!).navigating().get(`/users/${ada.public_id}`).assertOk().assertAuthenticated(ada);
+    await app.withCookie(REMEMBER, login.cookie(REMEMBER)!).navigating().get(`/users/${ada.public_id}`).assertOk().assertAuthenticated(ada);
   });
 });
 

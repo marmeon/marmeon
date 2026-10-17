@@ -4,10 +4,10 @@ import { Connections } from '@marmeon/database';
 import { DecryptError, Encrypter } from '@marmeon/encryption';
 import { RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
-import { Session } from '@marmeon/session';
+import { Session, SessionConfig } from '@marmeon/session';
 import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, COMPLETE_PENDING, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
 import { claimRefused } from '../account-sessions.ts';
-import { AuthConfig } from '../config.ts';
+import { AuthConfig, rememberCookieName } from '../config.ts';
 import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, TwoFactorEnabled, TwoFactorDisabled } from '../events.ts';
 import { RememberTokenStore } from '../remember.ts';
 import { idOf, UserProvider, type AuthUser } from '../user.ts';
@@ -80,6 +80,7 @@ export class TwoFactor {
   readonly #users: UserProvider;
   readonly #cookies: CookieJar;
   readonly #config: AuthConfig;
+  readonly #rememberCookie: string;
   readonly #clock: Clock;
   readonly #logger: Logger;
   readonly #connections: Connections;
@@ -101,6 +102,7 @@ export class TwoFactor {
     logger: Logger,
     passkeys: SecondFactorPasskeys,
     connections: Connections,
+    sessionConfig: SessionConfig,
   ) {
     this.#auth = auth;
     this.#session = session;
@@ -118,6 +120,7 @@ export class TwoFactor {
     this.#logger = logger;
     this.#passkeys = passkeys;
     this.#connections = connections;
+    this.#rememberCookie = rememberCookieName(config, sessionConfig);
   }
 
   /**
@@ -289,7 +292,7 @@ export class TwoFactor {
       this.#logger.error('Two-factor authentication was turned on, but signing out the other devices a second time failed: sessions made while it was turned on may be open', { user: id, error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
-    this.#cookies.delete(this.#config.rememberCookie);
+    this.#cookies.delete(this.#rememberCookie);
     // The state must see the factor, else sign-in would never ask for it: a state bound to something else than the store fails closed here.
     if (!(await this.#state.factors(id)).includes('totp')) {
       await this.#store.removeTotp(id, { lastFactor: (await this.#state.factors(id)).every((factor) => factor === 'totp') });

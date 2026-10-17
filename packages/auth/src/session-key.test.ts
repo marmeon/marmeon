@@ -296,7 +296,7 @@ describe.each(drivers)('auth.updateSessionKey() with SESSION_DRIVER=$name', (dri
     await laptop.send('/as/2', { method: 'POST' });
     await phone.send('/as/2', { method: 'POST', headers: { 'x-remember': 'yes' } });
     await other.send('/as/3', { method: 'POST' });
-    const phoneRemember = phone.jar.get('remember_web');
+    const phoneRemember = phone.jar.get('marmeon_remember');
     expect(phoneRemember, 'the phone has a remember-me cookie').toBeDefined();
     expect((await phone.send('/me')).status).toBe(200);
 
@@ -304,7 +304,7 @@ describe.each(drivers)('auth.updateSessionKey() with SESSION_DRIVER=$name', (dri
     expect(users.rows.get(2)!.key, 'a new key is stored').toMatch(/^[\w-]{43}$/);
     expect((await laptop.send('/me')).status, 'this session').toBe(200);
     expect((await phone.send('/me')).status, 'the other session').toBe(401);
-    expect(await (await browser(new Map([['remember_web', phoneRemember!]])).send('/who')).json(), "the other device's remember-me token").toEqual({ id: null });
+    expect(await (await browser(new Map([['marmeon_remember', phoneRemember!]])).send('/who')).json(), "the other device's remember-me token").toEqual({ id: null });
     expect((await other.send('/me')).status, "another account's session").toBe(200);
 
     // Again: the key changes every time.
@@ -463,12 +463,12 @@ describe('a remember-me sign-in that is running while the account changes', () =
     await laptop.send('/login', { method: 'POST', json: { email: ada.email, password: 'secret' } });
     const phone = browser();
     await phone.send('/as/4', { method: 'POST', headers: { 'x-remember': 'yes' } });
-    const cookie = phone.jar.get('remember_web')!;
+    const cookie = phone.jar.get('marmeon_remember')!;
     expect(cookie).toBeDefined();
     let who: unknown;
     // The phone's sign-in lands right after the new hash or key was written: it reads the new state.
     users.afterWrite = async () => {
-      who = await (await browser(new Map([['remember_web', cookie]])).send('/who')).json();
+      who = await (await browser(new Map([['marmeon_remember', cookie]])).send('/who')).json();
     };
     await laptop.send(`/race/${action}`, { method: 'POST', json: {} });
     expect(who).toEqual({ id: null });

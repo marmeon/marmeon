@@ -4,6 +4,7 @@ import { Limit, RateLimiter } from '@marmeon/cache';
 import { Connections } from '@marmeon/database';
 import { UrlSigner } from '@marmeon/http';
 import type { Mailable } from '@marmeon/mail';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -23,16 +24,18 @@ import { UserRepository } from './UserRepository.ts';
 // gets a note instead. With AUTH_PRIVATE_REGISTRATION=false it changes at once and says "taken". Runs on SQLite and Postgres.
 
 let app: TestApp;
+let SESSION: string;
 // Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION } = cookieNames(app));
 }, 30_000);
 
 type Session = ReturnType<TestApp['withCookie']>;
 /** Signed in with the password — which also confirms it: the security settings' sudo mode. */
 const signIn = async (user: User): Promise<Session> => {
   const login = await app.post('/login', { form: { email: user.email, password: 'password' } }).assertRedirect('/dashboard');
-  return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+  return app.withCookie(SESSION, login.cookie(SESSION)!);
 };
 const change = (session: Session, email: string) => session.put('/settings/email', { form: { current_password: 'password', email }, headers: { referer: 'http://localhost/settings/security' } });
 const reload = (user: User) => app.make(UserRepository).find(user.id) as Promise<User>;
@@ -190,6 +193,7 @@ describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', { timeout:
   beforeEach(async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+    ({ session: SESSION } = cookieNames(app));
   }, 30_000);
 
   it('changes it at once, unconfirmed: a link to the new address, a note to the old one — and the settings stay open to fix a typo', async () => {

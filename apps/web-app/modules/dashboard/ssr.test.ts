@@ -69,11 +69,11 @@ describe('the dashboard, rendered on the server with its islands', () => {
   it('sees whoever the page signed in — a remember-me sign-in of the page request itself (the cookie does not know it yet)', async () => {
     const login = await app.post('/login', { form: { email: ada.email, password: 'password', remember: 'on' } }).assertRedirect();
     // A new browser session: only the remember-me cookie. The page signs Ada in; its islands see her — and rotate nothing.
-    const browser = app.withCookie('remember_web', login.cookie('remember_web')!);
+    const browser = app.withCookie('marmeon_remember', login.cookie('marmeon_remember')!);
     const response = await browser.get('/dashboard', document).assertOk().assertServerRendered();
     expect(response.body).toMatch(/data-island="dashboard\.members" data-status="ready"/);
     // The page's own rotated token is still good: the islands did not use (and so "steal") the old one.
-    const next = app.withCookie('remember_web', response.cookie('remember_web')!);
+    const next = app.withCookie('marmeon_remember', response.cookie('marmeon_remember')!);
     await next.get('/dashboard', document).assertOk().assertAuthenticated(ada);
   });
 });

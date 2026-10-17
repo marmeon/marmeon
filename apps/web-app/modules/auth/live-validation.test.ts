@@ -1,5 +1,6 @@
 import { RateLimiter } from '@marmeon/cache';
 import { ACTION_REDIRECT_HEADER, VALIDATED_HEADER } from '@marmeon/http/protocol';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -12,8 +13,10 @@ import { UserFactory } from './factories/UserFactory.ts';
  */
 
 let app: TestApp;
+let SESSION: string;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION } = cookieNames(app));
 });
 afterEach(async () => {
   await app.close();
@@ -72,7 +75,7 @@ describe('live validation changes nothing (read-only)', () => {
   it('never writes the session nor sets a cookie — a waiting flash message stays for the page', async () => {
     const ada = await app.factory(UserFactory).create();
     const saved = await app.actingAs(ada).put(`/users/${ada.public_id}`, { json: { name: 'Ada King', bio: '' } }).assertRedirect(`/users/${ada.public_id}`);
-    const browser = app.withCookie('marmeon_session', saved.cookie('marmeon_session')!);
+    const browser = app.withCookie(SESSION, saved.cookie(SESSION)!);
     const live = await browser.validating('name').put(`/users/${ada.public_id}`, { json: { name: 'Ada Byron', bio: '' } }).assertLiveValid('name').assertNoFlash();
     expect(live.headers.get('set-cookie')).toBeNull();
     expect(live.headers.get('cache-control')).toBe('no-store');
@@ -119,6 +122,7 @@ describe('live validation is held to the route’s rules', () => {
   it('is held to CSRF like the submit: the browser\'s word or the token — a guest from elsewhere gets 403', async () => {
     await app.close();
     app = await createTestApp(application, { csrf: true, database: 'refresh' });
+    ({ session: SESSION } = cookieNames(app));
     const page = await app.navigating().get('/register');
     expect(page.page()!.csrf).toBeUndefined(); // a guest: no session, no token
     await app.validating('name').post('/register', { json: { name: 'Ada' } }).assertStatus(419);

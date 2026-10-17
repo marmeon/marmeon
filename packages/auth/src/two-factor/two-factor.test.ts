@@ -392,7 +392,7 @@ describe('TwoFactor: setting up', () => {
     await thisDevice.login(ada.email, 'secret', true);
     const setup = await thisDevice.tf('begin');
     await thisDevice.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' });
-    const cookie = (b: Browser) => new Map([['remember_web', b.jar.get('remember_web')!]]);
+    const cookie = (b: Browser) => new Map([['marmeon_remember', b.jar.get('marmeon_remember')!]]);
     // The other device comes back with only its remember-me cookie: it signs nobody in.
     expect(await booted.browser(cookie(otherDevice)).tf('who')).toEqual({ id: null });
     // A token made before the factor proved none, this device's own included: signing in again with the code makes a new one.
@@ -405,7 +405,7 @@ describe('TwoFactor: setting up', () => {
     await b.login(ada.email, 'secret', true);
     const setup = await b.tf('begin');
     // Somebody else rotated the cookie, and the owner's validator is past the grace window.
-    await booted.browser(new Map([['remember_web', b.jar.get('remember_web')!]])).tf('who');
+    await booted.browser(new Map([['marmeon_remember', b.jar.get('marmeon_remember')!]])).tf('who');
     await booted.connections.get<any>().updateTable('remember_tokens').set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
     expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ ok: false, kind: 'signed-out' });
     expect(await b.tf('who')).toEqual({ id: null });
@@ -428,7 +428,7 @@ describe('TwoFactor: setting up', () => {
       });
       expect((await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);
       expect(raced).toBeDefined();
-      expect(await booted.browser(new Map([['remember_web', raced!]])).tf('who')).toEqual({ id: null });
+      expect(await booted.browser(new Map([['marmeon_remember', raced!]])).tf('who')).toEqual({ id: null });
       return setup;
     })();
     expect(key).toBeDefined();
@@ -449,7 +449,7 @@ describe('TwoFactor: setting up', () => {
     expect((await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);
     const since = await booted.store.enabledSince(1);
     expect(since!.getTime()).toBe(Date.now());
-    expect(await booted.browser(new Map([['remember_web', raced!]])).tf('who')).toEqual({ id: null });
+    expect(await booted.browser(new Map([['marmeon_remember', raced!]])).tf('who')).toEqual({ id: null });
   });
 
   it('turning it on signs out the other sessions of the account and keeps this one', async () => {
@@ -520,7 +520,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     });
     expect((await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);
     expect(await racer.tf('who')).toEqual({ id: null }); // the session
-    expect(await booted.browser(new Map([['remember_web', racer.jar.get('remember_web')!]])).tf('who')).toEqual({ id: null }); // and the token
+    expect(await booted.browser(new Map([['marmeon_remember', racer.jar.get('marmeon_remember')!]])).tf('who')).toEqual({ id: null }); // and the token
   });
 
   it('a sign-in that read "no factor" but finishes after the commit is taken back, token and cookie included', async () => {
@@ -532,7 +532,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     expect(await b.login(ada.email, 'secret', true)).toMatchObject({ signedIn: false, error: { kind: 'two-factor-required', factors: ['totp'] } });
     expect(events.filter((event) => event instanceof Login)).toEqual([]); // no listener sees a sign-in that is taken back
     expect(await b.tf('who')).toEqual({ id: null });
-    expect(b.jar.has('remember_web')).toBe(false);
+    expect(b.jar.has('marmeon_remember')).toBe(false);
     expect(await booted.application.container.make(RememberTokenStore).prune(30)).toBe(0);
     const rows = await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute();
     expect(rows).toEqual([]);
@@ -551,7 +551,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     const booted = await boot({}, { state });
     const b = booted.browser();
     await b.login(ada.email, 'secret', true); // answers 500
-    expect(b.jar.has('remember_web')).toBe(false);
+    expect(b.jar.has('marmeon_remember')).toBe(false);
     expect(await b.tf('who')).toEqual({ id: null });
     expect(await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute()).toEqual([]);
   });
@@ -568,10 +568,10 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     vi.spyOn(tokens, 'forget').mockRejectedValue(new Error('the database went away'));
     const b = booted.browser();
     await b.login(ada.email, 'secret', true); // answers 500
-    expect(b.jar.has('remember_web')).toBe(false);
+    expect(b.jar.has('marmeon_remember')).toBe(false);
     expect(await b.tf('who')).toEqual({ id: null });
     expect(token).toBeDefined();
-    expect(await booted.browser(new Map([['remember_web', token!]])).tf('who')).toEqual({ id: null }); // refused by its date
+    expect(await booted.browser(new Map([['marmeon_remember', token!]])).tf('who')).toEqual({ id: null }); // refused by its date
   });
 
   it('a remember-me token whose time cannot be read is refused, not taken as a proof', async () => {
@@ -580,7 +580,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     const booted = await boot({}, { state });
     const first = booted.browser();
     await first.login(ada.email, 'secret', true);
-    const cookie = first.jar.get('remember_web')!;
+    const cookie = first.jar.get('marmeon_remember')!;
     on = true;
     const tokens = booted.application.container.make(RememberTokenStore);
     const consume = tokens.consume.bind(tokens);
@@ -589,10 +589,10 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
       return result.ok ? { ok: true, value: { ...result.value, createdAt: new Date(Number.NaN) } } : result;
     });
     const forget = vi.spyOn(tokens, 'forget');
-    const b = booted.browser(new Map([['remember_web', cookie]]));
+    const b = booted.browser(new Map([['marmeon_remember', cookie]]));
     expect(await b.tf('who')).toEqual({ id: null });
     expect(forget).toHaveBeenCalled();
-    expect(b.jar.has('remember_web')).toBe(false);
+    expect(b.jar.has('marmeon_remember')).toBe(false);
   });
 
   it('a remember-me token is refused when the factor\'s start time cannot be read', async () => {
@@ -602,9 +602,9 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     const first = booted.browser();
     await first.login(ada.email, 'secret', true);
     on = true;
-    const b = booted.browser(new Map([['remember_web', first.jar.get('remember_web')!]]));
+    const b = booted.browser(new Map([['marmeon_remember', first.jar.get('marmeon_remember')!]]));
     expect(await b.tf('who')).toEqual({ id: null });
-    expect(b.jar.has('remember_web')).toBe(false);
+    expect(b.jar.has('marmeon_remember')).toBe(false);
   });
 
   it('a remember-me token with an unreadable time is refused when the account has a factor but no start time', async () => {
@@ -620,9 +620,9 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
       const result = await consume(value);
       return result.ok ? { ok: true, value: { ...result.value, createdAt: new Date(Number.NaN) } } : result;
     });
-    const b = booted.browser(new Map([['remember_web', first.jar.get('remember_web')!]]));
+    const b = booted.browser(new Map([['marmeon_remember', first.jar.get('marmeon_remember')!]]));
     expect(await b.tf('who')).toEqual({ id: null });
-    expect(b.jar.has('remember_web')).toBe(false);
+    expect(b.jar.has('marmeon_remember')).toBe(false);
   });
 
   it('logs and rethrows when the second sign-out after the commit fails — the factor stays on', async () => {
@@ -661,7 +661,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     const setup = await thisDevice.tf('begin');
     vi.spyOn(booted.store, 'confirm').mockRejectedValue(new Error('the database went away'));
     expect(await thisDevice.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ thrown: 'the database went away' });
-    expect(await booted.browser(new Map([['remember_web', otherDevice.jar.get('remember_web')!]])).tf('who')).toEqual({ id: null });
+    expect(await booted.browser(new Map([['marmeon_remember', otherDevice.jar.get('marmeon_remember')!]])).tf('who')).toEqual({ id: null });
   });
 
   it('checks the app name before storing anything', async () => {
@@ -890,7 +890,7 @@ describe('TwoFactor: signing in', () => {
     await enable(booted);
     const b = booted.browser();
     await b.login(ada.email, 'secret', true);
-    expect(b.jar.has('remember_web')).toBe(false);
+    expect(b.jar.has('marmeon_remember')).toBe(false);
   });
 });
 
@@ -1230,7 +1230,7 @@ describe('twoFactor() middleware', () => {
     expect(await login.visit('/area', { json: true })).toMatchObject({ status: 401 }); // waiting for the factor is no sign-in
     expect(await login.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toMatchObject({ ok: true });
     expect(await login.visit('/area')).toMatchObject({ status: 200 });
-    const returning = booted.browser(new Map([['remember_web', login.jar.get('remember_web')!]]));
+    const returning = booted.browser(new Map([['marmeon_remember', login.jar.get('marmeon_remember')!]]));
     expect(await returning.visit('/area')).toMatchObject({ status: 200 });
   });
 
@@ -1243,11 +1243,11 @@ describe('twoFactor() middleware', () => {
     await login.login(ada.email, 'secret', true);
     await login.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) });
     vi.setSystemTime(inSeconds(61));
-    const stolen = booted.browser(new Map([['remember_web', login.jar.get('remember_web')!]]));
+    const stolen = booted.browser(new Map([['marmeon_remember', login.jar.get('marmeon_remember')!]]));
     expect(await stolen.visit('/area-fresh')).toMatchObject({ status: 302, location: '/account/verify' });
     expect(await stolen.visit('/area')).toMatchObject({ status: 200 }); // a token under 24 hours old goes through without maxAge
     // Rotation of the cookie keeps the age of the proof.
-    const again = booted.browser(new Map([['remember_web', stolen.jar.get('remember_web') ?? login.jar.get('remember_web')!]]));
+    const again = booted.browser(new Map([['marmeon_remember', stolen.jar.get('marmeon_remember') ?? login.jar.get('marmeon_remember')!]]));
     expect(await again.visit('/area-fresh')).toMatchObject({ status: 302, location: '/account/verify' });
   });
 
@@ -1260,7 +1260,7 @@ describe('twoFactor() middleware', () => {
     await login.login(ada.email, 'secret', true);
     await login.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) });
     vi.setSystemTime(inSeconds(25 * 3600));
-    const old = booted.browser(new Map([['remember_web', login.jar.get('remember_web')!]]));
+    const old = booted.browser(new Map([['marmeon_remember', login.jar.get('marmeon_remember')!]]));
     expect(await old.visit('/area')).toMatchObject({ status: 302, location: '/account/verify' });
   });
 

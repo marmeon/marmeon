@@ -4,6 +4,7 @@ import { Limit, RateLimiter } from '@marmeon/cache';
 import { Connections } from '@marmeon/database';
 import { UrlSigner } from '@marmeon/http';
 import type { Mailable } from '@marmeon/mail';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -23,8 +24,10 @@ import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 let app: TestApp;
+let SESSION: string;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION } = cookieNames(app));
 });
 
 // The change of address with private registration (the default): pending until the link sent to the new address
@@ -35,7 +38,7 @@ type Session = ReturnType<TestApp['withCookie']>;
 /** Signed in with the password — which also confirms it: the security settings' sudo mode. */
 const signIn = async (user: User): Promise<Session> => {
   const login = await app.post('/login', { form: { email: user.email, password: 'password' } }).assertRedirect('/users/me');
-  return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+  return app.withCookie(SESSION, login.cookie(SESSION)!);
 };
 const change = (session: Session, email: string) => session.put('/settings/email', { form: { current_password: 'password', email }, headers: { referer: 'http://localhost/settings/security' } });
 const reload = (user: User) => app.make(UserRepository).find(user.id) as Promise<User>;
@@ -290,6 +293,7 @@ describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', () => {
   beforeEach(async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+    ({ session: SESSION } = cookieNames(app));
   });
 
   it('changes it at once, unconfirmed — a link to the new address, a note to the old one; the settings stay open to fix a typo', async () => {

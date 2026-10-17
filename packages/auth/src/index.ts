@@ -1,12 +1,12 @@
-import { Clock, defineConfig, env, EventDispatcher, Logger, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { Clock, defineConfig, env, EventDispatcher, Logger, Redactor, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { LiveAudience } from '@marmeon/http';
-import { Session, SessionEndings, UserSessions } from '@marmeon/session';
+import { Session, SessionConfig, SessionEndings, UserSessions } from '@marmeon/session';
 import { MiddlewarePriority, Router } from '@marmeon/router';
 import { AccountSessions } from './account-sessions.ts';
 import { Auth } from './auth.ts';
 import { NoStoreWhenSignedIn } from './caching.ts';
-import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
+import { AuthConfig, PRIVATE_REGISTRATION_OFF_WARNING, rememberCookieName } from './config.ts';
 import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './hashing.ts';
 import { Gate } from './gate.ts';
 import { SignInAudience } from './live-audience.ts';
@@ -28,7 +28,7 @@ export type { EveryoneEnded } from './account-sessions.ts';
 export type { EndedSessions } from './account-sessions.ts';
 export { Auth } from './auth.ts';
 export type { AttemptError, LoginOptions } from './auth.ts';
-export { AuthConfig } from './config.ts';
+export { AuthConfig, rememberCookieName } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
 export { EverySessionEnded, Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenReused, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from './events.ts';
 export type { LoginVia, EverySessionEndedInput, EverySessionEndedPayload, LoginInput, LoginPayload, PasskeyCloneSuspectedPayload, PasskeyRegisteredPayload, PasskeyRemovedInput, PasskeyRemovedPayload, PasskeySignInFailedInput, PasskeySignInFailedPayload, RecoveryCodeUsedPayload, RecoveryCodesGeneratedPayload, RegisteredPayload, RememberTokenReusedInput, RememberTokenReusedPayload, TwoFactorChallengeFailedInput, TwoFactorChallengeFailedPayload, TwoFactorDisabledPayload, TwoFactorEnabledPayload } from './events.ts';
@@ -132,6 +132,10 @@ export class AuthServiceProvider implements ServiceProvider {
     app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
     // Private registration turned off where it counts: said once, at boot — like the log mailer.
     const config = app.container.make(AuthConfig);
+    // The remember-me cookie's value signs in: never shown or recorded, whatever its name.
+    if (app.container.has(Redactor) && app.container.has(SessionConfig)) {
+      app.container.make(Redactor).addKeys(rememberCookieName(config, app.container.make(SessionConfig)));
+    }
     if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
   }
 }

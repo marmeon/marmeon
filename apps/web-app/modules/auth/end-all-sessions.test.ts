@@ -1,4 +1,5 @@
 import { AccountSessions } from '@marmeon/auth';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -9,8 +10,11 @@ import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 let app: TestApp;
+let SESSION: string;
+let REMEMBER: string;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
 });
 
 describe('UserRepository.updateEverySessionKey()', () => {
@@ -47,17 +51,17 @@ describe('AccountSessions.endEveryone() with the app\'s repository', () => {
     const ada = await app.factory(UserFactory).create();
     const bob = await app.factory(UserFactory).create();
     const laptop = await signIn(ada.email, { remember: 'on' });
-    const session = laptop.cookie('marmeon_session')!;
-    const remember = laptop.cookie('remember_web')!;
-    const bobs = [(await signIn(bob.email)).cookie('marmeon_session')!, (await signIn(bob.email)).cookie('marmeon_session')!];
-    await app.withCookie('marmeon_session', session).get('/users/me').assertAuthenticated(ada);
-    for (const cookie of bobs) await app.withCookie('marmeon_session', cookie).get('/users/me').assertAuthenticated(bob);
+    const session = laptop.cookie(SESSION)!;
+    const remember = laptop.cookie(REMEMBER)!;
+    const bobs = [(await signIn(bob.email)).cookie(SESSION)!, (await signIn(bob.email)).cookie(SESSION)!];
+    await app.withCookie(SESSION, session).get('/users/me').assertAuthenticated(ada);
+    for (const cookie of bobs) await app.withCookie(SESSION, cookie).get('/users/me').assertAuthenticated(bob);
 
     expect(await app.make(AccountSessions).endEveryone()).toMatchObject({ accounts: 2, rememberTokens: 1, signIns: 3 });
 
-    await app.withCookie('marmeon_session', session).expectingJson().get('/users/me').assertUnauthorized();
-    await app.withCookie('remember_web', remember).expectingJson().get('/users/me').assertUnauthorized();
-    for (const cookie of bobs) await app.withCookie('marmeon_session', cookie).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie(SESSION, session).expectingJson().get('/users/me').assertUnauthorized();
+    await app.withCookie(REMEMBER, remember).expectingJson().get('/users/me').assertUnauthorized();
+    for (const cookie of bobs) await app.withCookie(SESSION, cookie).expectingJson().get('/users/me').assertUnauthorized();
     await signIn(ada.email).assertRedirect('/users/me');
   });
 });

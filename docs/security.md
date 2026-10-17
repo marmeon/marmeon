@@ -81,6 +81,8 @@ The [CSRF protection](csrf.md) page explains every stage.
 - **Every cookie is `Secure` when `APP_URL` starts with `https://`:** the session cookie, `XSRF-TOKEN`, the remember-me cookie and
   your own. `SESSION_SECURE_COOKIE` overrides it either way. A protected app whose cookies go without `Secure` warns at start-up.
   The [session](session.md#secure-cookies) page has the details.
+- **The session and remember-me cookies carry the `__Host-` prefix when they are `Secure`:** a neighbouring subdomain cannot set them
+  for your domain. Only the prefixed names are read. The [session](session.md#the-__host--prefix) page has the details.
 - **Cookies are encrypted** with `APP_KEY` in the `web` group, all but `XSRF-TOKEN`, which the browser's JavaScript reads. The
   session cookie is also `HttpOnly`.
 - **The store never sees a session id.** A session is kept under the SHA-256 hash of its id, so a leaked file, row or Redis key is
