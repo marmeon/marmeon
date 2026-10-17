@@ -179,10 +179,13 @@ export class Application {
 /** Set by the primary of `marmeon start --workers=N` for its workers: the boot's warnings were said once, by the primary. */
 export const CLUSTER_WORKER = 'MARMEON_CLUSTER_WORKER';
 
-/** The statics a package's provider lists drivers in — each service package adds its own through declaration merging. */
-const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers', 'diskDrivers', 'cacheDrivers'] as const;
+/**
+ * The statics a package's provider lists drivers in — each service package adds its own through declaration merging — and
+ * `migrationUpgrades`, the revisions of its tables.
+ */
+const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers', 'diskDrivers', 'cacheDrivers', 'migrationUpgrades'] as const;
 
-/** Whether `Provider` brings drivers of any service: a non-empty record in one of the {@link DRIVER_STATICS}. */
+/** Whether `Provider` brings drivers of any service or revisions of its tables: a non-empty record or list in one of the {@link DRIVER_STATICS}. */
 function declaredDrivers(Provider: ServiceProviderClass): boolean {
   return DRIVER_STATICS.some((key) => {
     const record = (Provider as unknown as Record<string, unknown>)[key];

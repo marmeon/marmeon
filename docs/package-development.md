@@ -190,6 +190,17 @@ lists a file's imports for a generator that follows one.
 
 The reasons name the file by its path. Pass an app-relative name as the third argument, `editDefinitionFile(file, edit, 'bootstrap/app.ts')`, so that a message does not show an absolute path.
 
+## Tables
+
+A package that keeps tables in the app's database ships the migration as a stub that a `make:*-table` command copies, and starts
+it with the line `// @marmeon-stub <set> 1` — `<set>` names the tables (`audit`), the number is the revision of the stub. When a
+release changes the tables, the package lists the change as `static migrationUpgrades` on its provider: each entry has the `set`,
+the `revision` it brings the tables to (2 or more), the `name` of the file without timestamp, `createdBy` (the names of the stubs
+that created the set, which tell the command where the app keeps it) and the `contents`, which start with
+`// @marmeon-stub <set> <revision>`. `marmeon make:upgrade-migrations` writes the missing ones into the app. An entry with a path
+in a name, or a revision listed twice for a set, stops the start. See
+[upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables).
+
 ## Middleware
 
 `router.middleware.append(group, Middleware, priority)` adds a middleware to the global stack, `GLOBAL`, or to a group such as

@@ -1,3 +1,4 @@
+// @marmeon-stub sign-ins 1
 import { defineMigration } from '@marmeon/database';
 
 // The sign-ins list: a row per sign-in of a browser, and the authority over it — the session carries only the row's random id, and a
