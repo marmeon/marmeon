@@ -234,9 +234,9 @@ export class StorageServiceProvider implements ServiceProvider {
         keys: [key.key, ...key.previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:upload-token', 32))),
         receiveUrl: (id, expiresIn) => signer.signedPath(`${UPLOADS_PREFIX}/${id}`, { expiresIn }),
       };
-      // /up/ready is red until the table has the new name and every column the service writes.
+      // /up/ready is red when the table has the old name or lacks a column the service writes; an app that made no table has no uploads to keep.
       const { SchemaRequirements } = await import('@marmeon/database/internal');
-      container.make(SchemaRequirements).require({ connection: uploads.connection, table: UPLOADS_TABLE, columns: UPLOADS_COLUMNS, set: 'storage' });
+      container.make(SchemaRequirements).require({ connection: uploads.connection, table: UPLOADS_TABLE, columns: UPLOADS_COLUMNS, set: 'storage', unlessAbsent: ['temporary_uploads'] });
       registerUploads(http, page.UPLOAD_HEADER, container, () => container.make(TemporaryUploads));
     }
   }

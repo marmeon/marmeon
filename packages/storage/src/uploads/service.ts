@@ -288,7 +288,14 @@ export class TemporaryUploads {
       where (select count(*) from ${sql.table(UPLOADS_TABLE)} where session = ${row.session} and ${open}) < ${maxOpen}
         and (select coalesce(sum(${CHARGE}), 0) from ${sql.table(UPLOADS_TABLE)} where session = ${row.session} and ${open}) + ${row.charge} <= ${maxOpenBytes}
         and ${total}
-    `.execute(db);
+    `.execute(db).catch((error: unknown) => {
+      // The table is the app's to make: say which command makes it, not the driver's "no such table".
+      const message = String((error as Error)?.message);
+      if (message.includes(UPLOADS_TABLE) && /no such table|does not exist/i.test(message)) {
+        throw new StorageSetupError(`The table ${UPLOADS_TABLE} is missing — run marmeon make:uploads-table, then marmeon migrate (an app that has temporary_uploads: marmeon make:upgrade-migrations).`, { cause: error });
+      }
+      throw error;
+    });
     return { numAffectedRows: BigInt(result.numAffectedRows ?? 0) };
   }
 

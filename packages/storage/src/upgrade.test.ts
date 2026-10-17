@@ -7,7 +7,7 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
-import { StorageServiceProvider } from './index.ts';
+import { StorageServiceProvider, TemporaryUploads } from './index.ts';
 import { RENAME_MIGRATION, UPLOADS_MIGRATION } from './uploads/commands.ts';
 
 /** The migration the first stub wrote, as apps have it. */
@@ -130,6 +130,32 @@ describe('a database that still has temporary_uploads', () => {
     expect(report.ok).toBe(false);
     const messages = report.checks.flatMap((check) => (check.error instanceof Error ? [check.error.message] : []));
     expect(messages).toContainEqual(expect.stringMatching(/marmeon_temporary_uploads is missing — run marmeon make:upgrade-migrations, then marmeon migrate$/));
+  });
+
+  const problems = async (prepare: (schema: Schema) => Promise<void>) => {
+    await using application = await createApplication({ root: tempDir('marmeon-uploads-ready-'), discover: false, providers }, { env, override: (container) => container.instance(Logger, silent) });
+    await application.container.make(Migrator).migrate();
+    const connections = application.container.make(Connections);
+    await prepare(new Schema(connections.get(), connections.options().driver));
+    const report = await application.container.make(HealthChecks).run(application.container);
+    return report.checks.flatMap((check) => (check.error instanceof Error ? [check.error.message] : []));
+  };
+
+  it('stays ready when neither table exists: the app has no uploads, and an upload says which command makes the table', async () => {
+    expect(await problems(async () => {})).toEqual([]);
+    await using application = await createApplication({ root: tempDir('marmeon-uploads-ready-'), discover: false, providers }, { env, override: (container) => container.instance(Logger, silent) });
+    await application.container.make(Migrator).migrate();
+    const uploads = application.container.make(TemporaryUploads);
+    await expect(uploads.target({ route: 'avatar.update', field: 'avatar', rule: { maxBytes: 100, mime: undefined }, session: 's', name: 'a.png', size: 10 })).rejects.toThrow(/marmeon_temporary_uploads is missing — run marmeon make:uploads-table, then marmeon migrate/);
+  });
+
+  it('is red when the new table lacks a column', async () => {
+    const messages = await problems(async (schema) => {
+      await schema.create('marmeon_temporary_uploads', (table) => {
+        table.string('id', 36).primary();
+      });
+    });
+    expect(messages).toContainEqual(expect.stringMatching(/marmeon_temporary_uploads lacks session, .*consumed_at — run marmeon make:upgrade-migrations/));
   });
 
   it('is a table readiness waits for once uploads are set up', async () => {
