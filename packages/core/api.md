@@ -394,6 +394,7 @@ export interface QueueableEvent {
 // QueuedListenerClass
 export type QueuedListenerClass<P = any> = {
     readonly queue: QueuedListenerOptions;
+    readonly listener: string;
 } & (new (...args: any[]) => {
     readonly handle: (payload: P) => void | Promise<void>;
 });
@@ -723,6 +724,7 @@ type QueuedListenerFor<E extends EventClass, L> = L extends {
     readonly 'The static schema of a queued event describes JSON (strings, numbers, booleans, null, arrays, plain objects) — queue IDs, not records, Dates or Maps': EventPayload<E>;
 } : InstanceType<E> extends SchemaInput<E['schema']> ? EventPayload<E> extends HandleParameter<L> ? {
     readonly queue: QueuedListenerOptions;
+    readonly listener: string;
 } : {
     readonly 'handle() of a queued listener gets the event payload (its static schema), not the event: type it as EventPayload<typeof YourEvent>': EventPayload<E>;
 } : {
@@ -1136,6 +1138,7 @@ export interface ModuleDefinition {
 // QueuedListenerClass
 export type QueuedListenerClass<P = any> = {
     readonly queue: QueuedListenerOptions;
+    readonly listener: string;
 } & (new (...args: any[]) => {
     readonly handle: (payload: P) => void | Promise<void>;
 });
@@ -1390,6 +1393,7 @@ export interface QueueableEvent {
 // QueuedListenerClass
 export type QueuedListenerClass<P = any> = {
     readonly queue: QueuedListenerOptions;
+    readonly listener: string;
 } & (new (...args: any[]) => {
     readonly handle: (payload: P) => void | Promise<void>;
 });
@@ -1406,6 +1410,7 @@ type QueuedListenerFor<E extends EventClass, L> = L extends {
     readonly 'The static schema of a queued event describes JSON (strings, numbers, booleans, null, arrays, plain objects) — queue IDs, not records, Dates or Maps': EventPayload<E>;
 } : InstanceType<E> extends SchemaInput<E['schema']> ? EventPayload<E> extends HandleParameter<L> ? {
     readonly queue: QueuedListenerOptions;
+    readonly listener: string;
 } : {
     readonly 'handle() of a queued listener gets the event payload (its static schema), not the event: type it as EventPayload<typeof YourEvent>': EventPayload<E>;
 } : {

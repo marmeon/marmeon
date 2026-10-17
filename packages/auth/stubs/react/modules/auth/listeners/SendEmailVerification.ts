@@ -9,6 +9,8 @@ import { VerificationMailer } from '../verification.ts';
  * never fails the registration: the mail retries in the queue.
  */
 export class SendEmailVerification {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = 'auth.send-email-verification';
   static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
 
   readonly #users: UserRepository;

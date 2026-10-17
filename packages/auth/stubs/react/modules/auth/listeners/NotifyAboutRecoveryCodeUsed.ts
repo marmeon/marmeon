@@ -4,6 +4,8 @@ import { TwoFactorNotices } from '../two-factor-notices.ts';
 
 /** A recovery code that signed in (or stepped up) tells the owner how many are left. A queued listener. */
 export class NotifyAboutRecoveryCodeUsed {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = 'auth.notify-about-recovery-code-used';
   static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
 
   readonly #notices: TwoFactorNotices;

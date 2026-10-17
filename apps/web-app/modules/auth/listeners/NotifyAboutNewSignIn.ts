@@ -10,6 +10,8 @@ import { NewSignInNotification } from '../notifications/NewSignInNotification.ts
  * typed, the notice is the owner's only hint that somebody got in.
  */
 export class NotifyAboutNewSignIn {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = 'auth.notify-about-new-sign-in';
   static readonly queue = {};
 
   readonly #notifications: Notifications;

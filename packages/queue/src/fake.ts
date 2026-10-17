@@ -8,7 +8,7 @@ import { QueueConnections } from './connections.ts';
 import type { FailedJob, JobRecord, UniqueRecord } from './driver.ts';
 import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
 import type { BatchOptions, CheckJob, DispatchOptions, DispatchResult, JobClass, JobInput, PendingJob, UniqueDispatchOptions } from './job.ts';
-import { CallQueuedListener } from './listeners.ts';
+import { CallQueuedListener, QueuedListeners } from './listeners.ts';
 import { uniqueLock, uniqueRecord } from './locks.ts';
 import { prepareChain, prepareRecord, recordOptionsOf, type PendingJobs, type Queue } from './queue.ts';
 import { QueueError, JobRegistry } from './registry.ts';
@@ -177,7 +177,11 @@ export class QueueFake implements Queue {
    */
   listenerQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): { readonly payload: P; readonly dispatched: DispatchedJob }[] {
     return this.dispatched(CallQueuedListener as unknown as JobClass)
-      .filter((entry) => (entry.payload as { listener: string }).listener === listener.name)
+      // The class itself, not just its name: the name is unique only within an event, and a subclass inherits it.
+      .filter((entry) => {
+        const { event, listener: name } = entry.payload as { event: string; listener: string };
+        return this.#owner.#container.make(QueuedListeners).find(event, name)?.listener === listener;
+      })
       .map((entry) => ({ payload: (entry.payload as { payload: P }).payload, dispatched: entry }))
       .filter(({ payload }) => matches({ payload } as DispatchedJob, match as never));
   }
@@ -187,7 +191,7 @@ export class QueueFake implements Queue {
     if (this.listenerQueued(listener, match).length === 0) {
       const queued = this.dispatched(CallQueuedListener as unknown as JobClass).map((entry) => (entry.payload as { listener: string }).listener);
       throw new AssertionError({
-        message: `Expected the queued listener ${listener.name} to be queued${match ? ' with a matching payload' : ''}. Queued listeners: ${queued.join(', ') || 'none'}.`,
+        message: `Expected the queued listener ${listener.listener} to be queued${match ? ' with a matching payload' : ''}. Queued listeners: ${queued.join(', ') || 'none'}.`,
       });
     }
     return this;
@@ -195,7 +199,7 @@ export class QueueFake implements Queue {
 
   assertListenerNotQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): this {
     const found = this.listenerQueued(listener, match).length;
-    if (found > 0) throw new AssertionError({ message: `Expected the queued listener ${listener.name} not to be queued${match ? ' with a matching payload' : ''}, found ${found}.` });
+    if (found > 0) throw new AssertionError({ message: `Expected the queued listener ${listener.listener} not to be queued${match ? ' with a matching payload' : ''}, found ${found}.` });
     return this;
   }
 

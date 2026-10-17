@@ -149,6 +149,8 @@ import { UserRepository } from '../UserRepository.ts';
 import { VerificationMailer } from '../verification.ts';
 
 export class SendEmailVerification {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = 'auth.send-email-verification';
   static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
 
   readonly #users: UserRepository;

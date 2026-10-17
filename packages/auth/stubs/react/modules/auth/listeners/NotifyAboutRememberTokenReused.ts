@@ -8,6 +8,8 @@ import { SignInNotices } from '../sign-in-notices.ts';
  * listener.
  */
 export class NotifyAboutRememberTokenReused {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = 'auth.notify-about-remember-token-reused';
   static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
 
   readonly #notices: SignInNotices;

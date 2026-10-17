@@ -139,11 +139,12 @@ marmeon make:lint-config [--boundaries] [--force]
 --boundaries (boolean)
 --force (boolean)
 // make:listener
-marmeon make:listener <Name> --event=<Event> --module=<module> [--no-register]
+marmeon make:listener <Name> --event=<Event> --module=<module> [--queued] [--no-register]
 --event (string, short e)
 --force (boolean)
 --module (string, short m)
 --no-register (boolean)
+--queued (boolean)
 // make:middleware
 marmeon make:middleware <Name> --module=<module>
 --force (boolean)

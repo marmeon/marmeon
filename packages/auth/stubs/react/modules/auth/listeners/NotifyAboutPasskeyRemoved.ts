@@ -4,6 +4,8 @@ import { PasskeyNotices } from '../passkey-notices.ts';
 
 /** Removing a passkey tells the owner. A queued listener. */
 export class NotifyAboutPasskeyRemoved {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = 'auth.notify-about-passkey-removed';
   static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
 
   readonly #notices: PasskeyNotices;

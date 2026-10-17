@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "uuid": "d0000000-0000-4000-8000-000000000001",
+  "job": "marmeon.listener",
+  "data": "ASNQs8kQ4cffcmjTET_vd_Yo75QXo_0NLq_mobMzee3HMRpER9DZiqFPbBDsty__-aXpr1GVmaie9Vp_jHFvxt_6juyq393thyHWXM3zhuxlxuq-_0O4eTVpcpTm1ASNjPAiJd3Ioc9QpGSwJulFDQeM_SWLw8pGeCnUEGIUKMdi",
+  "encrypted": true,
+  "tries": 3,
+  "backoff": [
+    10,
+    60
+  ],
+  "dispatchedAt": 1790000000000,
+  "availableAt": 1790000000000
+}

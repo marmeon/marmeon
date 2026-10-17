@@ -5,6 +5,8 @@ import { TwoFactorNotices } from '../two-factor-notices.ts';
 
 /** Turning the second factor off — by the user or by an operator's reset — tells the owner; with passkeys left, that only the authenticator app went. A queued listener. */
 export class NotifyAboutTwoFactorDisabled {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = 'auth.notify-about-two-factor-disabled';
   static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
 
   readonly #notices: TwoFactorNotices;
