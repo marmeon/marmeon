@@ -57,7 +57,7 @@ export default defineModule({
 });
 ```
 
-Migrations run in the order of their file names across all modules, so the timestamp decides. The starter kit's migrations start
+Migrations run in the order of their file names across all modules, character by character, so the timestamp decides. The starter kit's migrations start
 with `0001_01_01_` and come before any you write. A `.ts` or `.js` file in the folder whose name does not fit the pattern stops
 every migration command with the name it expects, and so do two migrations with the same name and a module whose `migrations`
 folder does not exist.
