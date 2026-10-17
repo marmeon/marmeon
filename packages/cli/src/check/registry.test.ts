@@ -28,7 +28,7 @@ describe('CheckRegistry', () => {
   it('refuses a name taken by another class, naming both with their sources', () => {
     const registry = new CheckRegistry().add([check('dup', 'build', 'First')], 'AProvider');
     expect(() => registry.add([check('dup', 'run', 'Second')], 'module blog')).toThrow(
-      new CheckSetupError('Two checks are named "dup": First (AProvider) and Second (module blog). Rename one — its static check is how marmeon finds it.'),
+      new CheckSetupError('[marmeon:K11] Two checks are named "dup": First (AProvider) and Second (module blog). Rename one — its static check is how marmeon finds it.'),
     );
   });
 

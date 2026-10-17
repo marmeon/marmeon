@@ -1,5 +1,5 @@
 import type { HealthCheck } from '@marmeon/core';
-import { withoutCode } from '@marmeon/core/internal';
+import { withCode, withoutCode } from '@marmeon/core/internal';
 import { sql } from 'kysely';
 import { Connections } from './connections.ts';
 import { SchemaRequirements, type TableRequirement } from './upgrades.ts';
@@ -51,7 +51,10 @@ export class DatabaseHealthCheck implements HealthCheck {
       ...(lacking.length > 0 ? [`${lacking.join('; ')} — run marmeon make:upgrade-migrations, then marmeon migrate`] : []),
       ...(unmarked.length > 0 ? [`${unmarked.join('; ')} — a migration marks the column with .secret() (schema.alter), see docs/migrations.md#how-the-migrator-keeps-track`] : []),
     ];
-    if (problems.length > 0) throw new Error(problems.join('. '));
+    if (problems.length > 0) {
+      const message = problems.join('. ');
+      throw new Error(lacking.length > 0 ? withCode('D6', message) : message);
+    }
     return names.length === 1 ? names[0]! : names.join(', ');
   }
 

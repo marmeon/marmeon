@@ -1,5 +1,5 @@
 import { Application, durationToMilliseconds, outsideTransaction, type Container, type Duration, type StandardIssue } from '@marmeon/core';
-import { messageBase, runWithJob, trace } from '@marmeon/core/internal';
+import { messageBase, runWithJob, trace, withCode, withoutCode } from '@marmeon/core/internal';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import type { JobRecord, UniqueRecord } from './driver.ts';
 import type { JobClass, JobContext, JobMiddleware } from './job.ts';
@@ -317,7 +317,7 @@ export const RECORD_READERS: Record<number, (value: Record<string, unknown>, dep
 };
 
 const NOT_A_RECORD = 'The payload is not a job record (expected JSON with "job" and "data").';
-const NO_VERSION = 'The record was queued by a release before job records carried a version — it cannot run; see docs/queues.md#deploying-while-jobs-wait.';
+const NO_VERSION = withCode('Q1', 'The record was queued by a release before job records carried a version — it cannot run; see docs/queues.md#deploying-while-jobs-wait.');
 
 function supportedVersions(): string {
   return Object.keys(RECORD_READERS).join(', ');
@@ -406,7 +406,7 @@ function readV1(record: Record<string, unknown>, depth = 0): ReadResult {
       const read = readRecord(link, depth + 1);
       if (read.kind !== 'record') {
         // A chain that silently lost a link would run the rest without it.
-        return { kind: 'invalid', reason: `Link ${index + 1} of the record's chain cannot be read — ${read.kind === 'invalid' ? read.reason : `it is version ${read.envelope.v}`}` };
+        return { kind: 'invalid', reason: `Link ${index + 1} of the record's chain cannot be read — ${read.kind === 'invalid' ? withoutCode(read.reason) : `it is version ${read.envelope.v}`}` };
       }
       chain.push(read.record);
     }

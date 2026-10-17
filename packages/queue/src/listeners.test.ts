@@ -268,21 +268,21 @@ describe('queued listeners', () => {
     }
     const fails = (listeners: ModuleDefinition['listeners']) => app({ listeners });
     await expect(fails([listen(JobQueued, Listens as never)])).rejects.toThrow(
-      /Listens is a queued listener \(static queue\) of JobQueued, which cannot be queued: give JobQueued static event = 'module.what-happened'.*Job events \(JobQueued …\) never can/,
+      /\[marmeon:Q4\] Listens is a queued listener \(static queue\) of JobQueued, which cannot be queued: give JobQueued static event = 'module.what-happened'.*Job events \(JobQueued …\) never can/,
     );
-    await expect(fails([listen(NoSchema, Listens as never)])).rejects.toThrow('NoSchema (shop.no-schema) has a queued listener (Listens) and needs static schema');
-    await expect(fails([listen(OrderShipped, Listens as never), listen(Twin, Listens as never)])).rejects.toThrow('Two events are named "shop.order-shipped": OrderShipped and Twin.');
+    await expect(fails([listen(NoSchema, Listens as never)])).rejects.toThrow('[marmeon:Q4] NoSchema (shop.no-schema) has a queued listener (Listens) and needs static schema');
+    await expect(fails([listen(OrderShipped, Listens as never), listen(Twin, Listens as never)])).rejects.toThrow('[marmeon:Q4] Two events are named "shop.order-shipped": OrderShipped and Twin.');
     await expect(fails([listen(OrderShipped, Unnamed as never)])).rejects.toThrow(
-      "Unnamed (static queue) needs static listener — the stable name its queued jobs carry, never the class name (a rename or a minifier changes that): static listener = '<module>.unnamed'.",
+      "[marmeon:Q3] Unnamed (static queue) needs static listener — the stable name its queued jobs carry, never the class name (a rename or a minifier changes that): static listener = '<module>.unnamed'.",
     );
-    await expect(fails([listen(OrderShipped, Shouting as never)])).rejects.toThrow('Shouting (static queue): "Shop.Shouting" is not a name like');
+    await expect(fails([listen(OrderShipped, Shouting as never)])).rejects.toThrow('[marmeon:Q4] Shouting (static queue): "Shop.Shouting" is not a name like');
     await expect(fails([listen(OrderShipped, Listens as never), listen(OrderShipped, Twin2 as never)])).rejects.toThrow(
-      'Listens and Twin2, both queued listeners of OrderShipped, have the same static listener "shop.listens".',
+      '[marmeon:Q4] Listens and Twin2, both queued listeners of OrderShipped, have the same static listener "shop.listens".',
     );
     await expect(fails([listen(OrderShipped, BadTries as never)])).rejects.toThrow(QueueSetupError);
-    await expect(fails([listen(OrderShipped, Typo as never)])).rejects.toThrow('Typo (static queue): unknown setting "aftercommit"');
+    await expect(fails([listen(OrderShipped, Typo as never)])).rejects.toThrow('[marmeon:Q4] Typo (static queue): unknown setting "aftercommit"');
     await expect(fails([listen(OrderShipped, StillAfterCommit as never)])).rejects.toThrow(
-      'StillAfterCommit (static queue): afterCommit is always on: queued listeners join the transaction — remove it.',
+      '[marmeon:Q4] StillAfterCommit (static queue): afterCommit is always on: queued listeners join the transaction — remove it.',
     );
   });
 });

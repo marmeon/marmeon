@@ -67,7 +67,7 @@ describe('marmeon check (the app)', { timeout: 120_000 }, () => {
   it('runs the checks of a provider and of a module, in the order build, run, readiness', () => {
     const { code, stdout } = check(migrated({ probe: PROBE }), ['--skip=types,lint,internal-imports', '--json']);
     expect(code).toBe(0);
-    expect(names(stdout)).toEqual(['boot', 'route-types', 'modules', 'bar', 'db-types', 'foo', 'readiness']);
+    expect(names(stdout)).toEqual(['boot', 'route-types', 'modules', 'upgrade-migrations', 'bar', 'db-types', 'foo', 'readiness']);
     expect(reportOf(stdout, 'foo')).toMatchObject({
       status: 'warning',
       problems: [{ severity: 'warning', message: 'foo found something', file: 'src/foo.ts', line: 3, column: null, code: null, fix: 'do-the-thing' }],
@@ -204,6 +204,16 @@ export default defineModule({ name: 'open', routes: defineRoutes((Route) => { Ro
     expect(JSON.parse(stale.stdout)).toMatchObject(JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-check/v1-app.json', import.meta.url), 'utf8')));
     expect(reportOf(stale.stdout, 'route-types').problems[0]).toMatchObject({ message: 'bootstrap/routes.ts is out of date', file: 'bootstrap/routes.ts', fix: 'marmeon route:types' });
     expect(reportOf(stale.stdout, 'db-types').problems[0]).toMatchObject({ message: 'bootstrap/database.d.ts is out of date', file: 'bootstrap/database.d.ts', fix: 'marmeon db:types' });
+  });
+
+  it('names a generated file of another Marmeon version with its code, and the command that writes it again', () => {
+    const root = migrated({});
+    for (const file of ['bootstrap/routes.ts', 'bootstrap/database.d.ts']) {
+      writeFileSync(join(root, file), readFileSync(join(root, file), 'utf8').replace(/^\/\/ @marmeon-format \d+\n/m, ''));
+    }
+    const { code, stdout } = check(root, ['--only=route-types,db-types', '--json']);
+    expect(code).toBe(1);
+    expect(JSON.parse(stdout)).toMatchObject(JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-check/v1-app-other-version.json', import.meta.url), 'utf8')));
   });
 
   it('warns about a job class no module lists, and exits 0', () => {

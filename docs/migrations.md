@@ -137,7 +137,7 @@ keeps the server connection. A server setting `idle_in_transaction_session_timeo
 transaction: the lock is lost, and the run stops before the next migration. Raise it for the role that migrates.
 
 A command that cannot take the lock within `--wait` seconds (`--wait=0`: tries once) stops with exit code 1 and says who holds it:
-`Another migration has run since 2026-10-01T12:00:00.000Z (web-1:4242)`, the holder being `hostname:pid`. That wait is the lock's,
+`[marmeon:D8] Another migration has run since 2026-10-01T12:00:00.000Z (web-1:4242)`, the holder being `hostname:pid`. That wait is the lock's,
 not a migration's: raise `--wait` when one of yours takes longer than a minute. `MigrationLockTimeoutError` and
 `MigrationLockLostError` are what the commands report.
 

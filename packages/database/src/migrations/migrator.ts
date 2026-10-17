@@ -133,12 +133,12 @@ export class Migrator {
     for (const module of this.#app.modules) {
       if (!module.migrations) continue;
       const directory = module.migrations instanceof URL ? fileURLToPath(module.migrations) : resolve(this.#app.root, module.migrations);
-      if (!existsSync(directory)) throw new Error(`The migrations directory of module "${module.name}" does not exist: ${directory}`);
+      if (!existsSync(directory)) throw new Error(withCode('D14', `The migrations directory of module "${module.name}" does not exist: ${directory}`));
       for (const entry of readdirSync(directory)) {
         if (entry.endsWith('.d.ts') || /\.test\./.test(entry)) continue;
         if (!FILE.test(entry)) {
           if (/\.(ts|js|mts|mjs)$/.test(entry)) {
-            throw new Error(`Migration file name "${entry}" (module "${module.name}") must look like 2026_10_01_120000_create_users_table.ts.`);
+            throw new Error(withCode('D14', `Migration file name "${entry}" (module "${module.name}") must look like 2026_10_01_120000_create_users_table.ts.`));
           }
           continue;
         }
@@ -148,7 +148,7 @@ export class Migrator {
     files.sort((a, b) => byCodePoint(a.name, b.name));
     for (let i = 1; i < files.length; i++) {
       if (files[i]!.name === files[i - 1]!.name) {
-        throw new Error(`Two migrations are named "${files[i]!.name}" (modules "${files[i - 1]!.module}" and "${files[i]!.module}").`);
+        throw new Error(withCode('D15', `Two migrations are named "${files[i]!.name}" (modules "${files[i - 1]!.module}" and "${files[i]!.module}").`));
       }
     }
     return files;
@@ -300,9 +300,9 @@ export class Migrator {
     for (const row of rows) {
       await this.#held?.heartbeat();
       const file = files.get(row.name);
-      if (!file) throw new Error(`Cannot roll back "${row.name}" (module "${row.module}"): its file is gone.`);
+      if (!file) throw new Error(withCode('D16', `Cannot roll back "${row.name}" (module "${row.module}"): its file is gone.`));
       const migration = await load(file);
-      if (!migration.down) throw new Error(`Cannot roll back "${row.name}" (module "${row.module}"): it has no down().`);
+      if (!migration.down) throw new Error(withCode('D16', `Cannot roll back "${row.name}" (module "${row.module}"): it has no down().`));
       const connection = this.#connectionOf(migration, file);
       const started = performance.now();
       if (connection === 'default') {
@@ -340,8 +340,8 @@ export class Migrator {
     const name = typeof migration.connection === 'function' ? migration.connection(this.#app.container) : migration.connection;
     if (typeof name !== 'string' || !this.#connections.names().includes(name)) {
       throw new Error(
-        `Migration ${file.name} (module "${file.module}") runs on the database connection ${JSON.stringify(name)}, which is not configured. ` +
-          `Known: ${this.#connections.names().join(', ')}. Add it with defineConnection(…) in the app's config.`,
+        withCode('D14', `Migration ${file.name} (module "${file.module}") runs on the database connection ${JSON.stringify(name)}, which is not configured. ` +
+          `Known: ${this.#connections.names().join(', ')}. Add it with defineConnection(…) in the app's config.`),
       );
     }
     return name;
@@ -455,7 +455,7 @@ export class Migrator {
 async function load(file: MigrationFile): Promise<Migration> {
   const module = (await import(pathToFileURL(file.path).href)) as { default?: Partial<Migration> };
   if (typeof module.default?.up !== 'function') {
-    throw new Error(`Migration ${file.name} (module "${file.module}") must \`export default defineMigration({ up, down })\`.`);
+    throw new Error(withCode('D14', `Migration ${file.name} (module "${file.module}") must \`export default defineMigration({ up, down })\`.`));
   }
   return module.default as Migration;
 }

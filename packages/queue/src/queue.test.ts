@@ -419,7 +419,7 @@ describe('the worker', () => {
     expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1, failed: 0 });
     application.clock.travel({ seconds: 301 });
     expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, failed: 1 });
-    expect(await failed.all()).toMatchObject([{ uuid: id, job: 'test.from-the-next-release', exception: expect.stringMatching(/^Error: No job named "test\.from-the-next-release" is registered in this app.*No worker could run it within 6 hours/s) }]);
+    expect(await failed.all()).toMatchObject([{ uuid: id, job: 'test.from-the-next-release', exception: expect.stringMatching(/^Error: \[marmeon:Q2\] No job named "test\.from-the-next-release" is registered in this app.*No worker could run it within 6 hours/s) }]);
   });
 
   it('traces an attempt that cannot run on queue.job — a job held for a worker that knows it, a poisoned payload — ending with its error, its log in the job\'s context', async () => {
@@ -743,6 +743,13 @@ describe('the version of the job record', () => {
     expect([record.v, record.chain[0].v]).toEqual([1, 1]);
   });
 
+  it('names a chain link without a version without a second code in the middle of the message', () => {
+    const link = { uuid: 'l', job: 'test.welcome', data: {}, dispatchedAt: 5 };
+    const parsed = parseRecord(JSON.stringify({ uuid: 'u', job: 'test.welcome', data: {}, dispatchedAt: 5, v: 1, chain: [link] }));
+    expect(parsed).toMatchObject({ kind: 'invalid', reason: expect.stringMatching(/^Link 1 of the record's chain cannot be read — The record was queued by a release before/) });
+    expect((parsed as { reason: string }).reason).not.toContain('[marmeon:');
+  });
+
   it('keeps one reader per version: a registered version 2 is read next to 1, a version 3 is foreign', async () => {
     const text = (value: unknown) => JSON.stringify({ uuid: 'u', job: 'test.welcome', data: {}, dispatchedAt: 5, v: value });
     expect(parseRecord(text(2)).kind).toBe('foreign');
@@ -774,7 +781,7 @@ describe('the version of the job record', () => {
     application.clock.travel({ hours: 4 });
     expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ failed: 1 });
     const [entry] = await failed.all();
-    expect(entry).toMatchObject({ uuid: id, job: 'test.welcome', exception: expect.stringMatching(/version 2.*No worker could run it within 6 hours/s) });
+    expect(entry).toMatchObject({ uuid: id, job: 'test.welcome', exception: expect.stringMatching(/^Error: \[marmeon:Q2\] .*version 2.*No worker could run it within 6 hours/s) });
     expect(JSON.parse(entry!.payload)).toMatchObject({ v: 2, restriction: 'only-for-admins' });
     expect(application.seen.entries).toEqual([]);
   });
@@ -850,7 +857,7 @@ describe('the version of the job record', () => {
     await raw(driver, record);
     expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, failed: 1, released: 0 });
     const [entry] = await failed.all();
-    expect(entry!.exception).toMatch(/before job records carried a version.*docs\/queues\.md#deploying-while-jobs-wait/s);
+    expect(entry!.exception).toMatch(/^Error: \[marmeon:Q1\] .*before job records carried a version.*docs\/queues\.md#deploying-while-jobs-wait/s);
     expect(JSON.parse(entry!.payload)).toEqual(record);
     expect(entry).toMatchObject({ uuid: record.uuid, job: 'test.welcome' });
     expect(application.seen.entries).toEqual([]);

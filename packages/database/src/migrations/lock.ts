@@ -1,5 +1,6 @@
 import { readlinkSync } from 'node:fs';
 import { hostname } from 'node:os';
+import { withCode } from '@marmeon/core/internal';
 import type { Kysely } from 'kysely';
 import { isUniqueViolation } from '../errors.ts';
 import { importPg } from '../postgres.ts';
@@ -55,11 +56,11 @@ export class MigrationLockTimeoutError extends Error {
 
   constructor(holder: LockHolder) {
     super(
-      `Another migration has run since ${holder.since?.toISOString() ?? 'an unknown time'} (${holder.owner}). ` +
+      withCode('D8', `Another migration has run since ${holder.since?.toISOString() ?? 'an unknown time'} (${holder.owner}). ` +
         (holder.staleAt
           ? `If its process is gone, the lock counts as abandoned from ${holder.staleAt.toISOString()} (ten minutes after its last sign of life; at once when it ran on this host). `
           : 'If its process is gone, the lock is free as soon as the database notices. ') +
-        'Otherwise wait for it, or raise --wait=<seconds>.',
+        'Otherwise wait for it, or raise --wait=<seconds>.'),
     );
     this.name = 'MigrationLockTimeoutError';
     this.holder = holder;

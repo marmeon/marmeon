@@ -32,11 +32,11 @@ describe('DbTypesCheck', { timeout: 30_000 }, () => {
       expect(await check.handle()).toEqual([{ severity: 'error', message: 'bootstrap/database.d.ts is out of date', file: 'bootstrap/database.d.ts', fix: 'marmeon db:types' }]);
 
       writeFileSync(file, source.replace('@marmeon-format 1', '@marmeon-format 9'));
-      expect(await check.handle()).toMatchObject([{ severity: 'error', message: expect.stringContaining('newer version of Marmeon') }]);
+      expect(await check.handle()).toMatchObject([{ severity: 'error', message: expect.stringContaining('newer version of Marmeon'), code: 'D7' }]);
 
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, source.replace('// @marmeon-format 1\n', ''));
-      expect(await check.handle()).toMatchObject([{ severity: 'error', message: expect.stringContaining('another version of Marmeon'), fix: 'marmeon db:types' }]);
+      expect(await check.handle()).toMatchObject([{ severity: 'error', message: expect.stringContaining('another version of Marmeon'), code: 'D7', fix: 'marmeon db:types' }]);
     } finally {
       await close();
     }

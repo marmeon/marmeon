@@ -1,4 +1,5 @@
 import type { ServiceProviderClass } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 
 /**
  * A migration that brings a set of framework tables — `queue`, `cache`, … — to a newer revision. A package lists them as
@@ -56,20 +57,20 @@ export function collectUpgrades(providers: readonly ServiceProviderClass[]): Map
     const provider = Provider.name || 'a provider';
     for (const upgrade of Provider.migrationUpgrades ?? []) {
       const label = `${provider} lists the migration upgrade "${upgrade.name}" (${upgrade.set}, revision ${upgrade.revision})`;
-      if (!SET.test(upgrade.set)) throw new TypeError(`${label}: the set must be a lowercase name like "queue".`);
-      if (!NAME.test(upgrade.name)) throw new TypeError(`${label}: the name must be a file name without timestamp or path, like "rename_queue_tables" — got "${upgrade.name}".`);
+      if (!SET.test(upgrade.set)) throw new TypeError(withCode('D17', `${label}: the set must be a lowercase name like "queue".`));
+      if (!NAME.test(upgrade.name)) throw new TypeError(withCode('D17', `${label}: the name must be a file name without timestamp or path, like "rename_queue_tables" — got "${upgrade.name}".`));
       for (const created of upgrade.createdBy) {
-        if (!NAME.test(created)) throw new TypeError(`${label}: createdBy must list file names without timestamp or path — got "${created}".`);
+        if (!NAME.test(created)) throw new TypeError(withCode('D17', `${label}: createdBy must list file names without timestamp or path — got "${created}".`));
       }
-      if (!Number.isInteger(upgrade.revision) || upgrade.revision < 2) throw new TypeError(`${label}: the revision must be an integer from 2 — the first stub is revision 1.`);
+      if (!Number.isInteger(upgrade.revision) || upgrade.revision < 2) throw new TypeError(withCode('D17', `${label}: the revision must be an integer from 2 — the first stub is revision 1.`));
       const mark = stubMark(upgrade.contents);
       if (mark?.set !== upgrade.set || mark.revision !== upgrade.revision) {
-        throw new TypeError(`${label}: its contents must start with the line "// @marmeon-stub ${upgrade.set} ${upgrade.revision}".`);
+        throw new TypeError(withCode('D17', `${label}: its contents must start with the line "// @marmeon-stub ${upgrade.set} ${upgrade.revision}".`));
       }
       let revisions = bySet.get(upgrade.set);
       if (!revisions) bySet.set(upgrade.set, (revisions = new Map()));
       const taken = revisions.get(upgrade.revision);
-      if (taken) throw new TypeError(`${taken.provider} and ${provider} both list revision ${upgrade.revision} of the "${upgrade.set}" tables ("${taken.upgrade.name}" and "${upgrade.name}").`);
+      if (taken) throw new TypeError(withCode('D17', `${taken.provider} and ${provider} both list revision ${upgrade.revision} of the "${upgrade.set}" tables ("${taken.upgrade.name}" and "${upgrade.name}").`));
       revisions.set(upgrade.revision, { upgrade, provider });
     }
   }

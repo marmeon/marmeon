@@ -63,7 +63,7 @@ describe.each(drivers)('the migration lock on %s', (driver) => {
       const { printed, input: command } = input({ wait: '0', force: true });
       const exit = await new MigrateCommand(migrator(connections), {} as TypeGenerator).handle(command);
       expect(exit).toBe(1);
-      expect(printed.find((line) => line.startsWith('error:'))).toMatch(/^error: Another migration has run since \d{4}-\d\d-\d\dT.+ \(build-7:4242\)\./);
+      expect(printed.find((line) => line.startsWith('error:'))).toMatch(/^error: \[marmeon:D8\] Another migration has run since \d{4}-\d\d-\d\dT.+ \(build-7:4242\)\./);
       await expect(migrator(connections).lockWith({ waitSeconds: 0 }).migrate()).rejects.toBeInstanceOf(MigrationLockTimeoutError);
     } finally {
       await held.release();

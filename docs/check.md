@@ -47,9 +47,10 @@ After the tools come the checks that need the app, in this order: `boot`, the ch
 | Name | What it does | Phase |
 | --- | --- | --- |
 | `boot` | Starts the app. When it cannot start, the finding holds the message, its [error code](errors.md#server-error-codes) and the fix the solutions of the core and of the packages know (`APP_KEY` missing: `marmeon key:generate`). | |
-| `route-types` | `bootstrap/routes.ts` matches the routes and views, and every route [says who may call it](authorization.md#every-route-decides) (`H3`). A missing file is an error: commit it. | build |
+| `route-types` | `bootstrap/routes.ts` matches the routes and views (a file of another Marmeon version is `H2`), and every route [says who may call it](authorization.md#every-route-decides) (`H3`). A missing file is an error: commit it. | build |
 | `modules` | Job and notification classes under `modules/` that no module lists, as warnings. | build |
-| `db-types` | `bootstrap/database.d.ts` matches the migrations, checked on a scratch database; a missing file is an error. Needs the database server on Postgres, see [below](#the-database-types-on-postgres). | run |
+| `upgrade-migrations` | The app has every migration that brings the framework's tables to the revision of the installed packages, the same answer as `marmeon make:upgrade-migrations --check`. A missing one is an error (`D6`) with the fix `marmeon make:upgrade-migrations`. Reads the migration files only. | build |
+| `db-types` | `bootstrap/database.d.ts` matches the migrations (a file of another Marmeon version is `D7`), checked on a scratch database; a missing file is an error. Needs the database server on Postgres, see [below](#the-database-types-on-postgres). | run |
 | `readiness` | Runs the [readiness checks](health.md#liveness-and-readiness) of the packages, the modules and the app, the same as `/up/ready`: a failing one is an error named after it, one that takes longer than its time limit says so. | |
 
 The `build` phase registers the app and boots nothing: it reads no secret and connects to nothing. The `run` phase boots it. If the

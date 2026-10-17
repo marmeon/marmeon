@@ -70,7 +70,7 @@ describe('Application.shutdown', () => {
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlySolutions] }, { env: {} })).resolves.toBeDefined();
     const Empty = class Empty {};
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [Empty] }, { env: {} })).rejects.toThrow(
-      'Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static migrationUpgrades or static checks.',
+      '[marmeon:K9] Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static migrationUpgrades or static checks.',
     );
     const OnlyCommands = class OnlyCommands {
       static commands = [class {}];
@@ -245,7 +245,7 @@ describe('createApplication(definition, options)', () => {
     const smuggled = { [key]: undefined };
     const refused = createApplication({ root: import.meta.dirname, discover: false, ...smuggled });
     await expect(refused).rejects.toBeInstanceOf(TypeError);
-    await expect(refused).rejects.toThrow(`\`${key}\` is a boot option: pass it as createApplication(definition, { ${key} })`);
+    await expect(refused).rejects.toThrow(`[marmeon:K10] \`${key}\` is a boot option: pass it as createApplication(definition, { ${key} })`);
   });
 
   it('refuses an inherited boot option too', async () => {
