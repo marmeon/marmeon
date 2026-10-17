@@ -17,7 +17,7 @@ beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 // The web app's prune of accounts whose address was never confirmed (the same command as make:auth's): the row and what the
 // other modules keep for it (AccountDeleted) — its avatar file, its data export, its notifications, its profile links and
-// sign-in activity (cascade) — and its rows in the sessions table. Nightly at 03:20 Berlin time (schedule.test.ts) — this app
+// sign-in activity (cascade) — and its rows in the marmeon_sessions table. Nightly at 03:20 Berlin time (schedule.test.ts) — this app
 // turns it on (the module make:auth writes has the line commented out).
 
 const DAY = 86_400_000;
@@ -31,7 +31,7 @@ describe('pruning accounts whose address was never confirmed', () => {
     return app.factory(UserFactory).create({ email, avatar_path: avatar, created_at: at, updated_at: at, email_verified_at: confirmedAt, first_verified_at: confirmedAt }) as Promise<User>;
   };
   const sessions = async () =>
-    (await sql<{ user_id: string | null }>`select user_id from sessions order by user_id`.execute(app.make(Connections).get())).rows.map((row) => row.user_id);
+    (await sql<{ user_id: string | null }>`select user_id from marmeon_sessions order by user_id`.execute(app.make(Connections).get())).rows.map((row) => row.user_id);
   const count = async (table: string, user: User) =>
     Number((await sql<{ n: number | string }>`select count(*) as n from ${sql.table(table)} where user_id = ${user.id}`.execute(app.make(Connections).get())).rows[0]!.n);
   const notifications = async (user: User) =>

@@ -149,7 +149,7 @@ Cookies are sent without Secure: APP_URL is not https:// — the session cookie 
 | Driver | Where the data lives | Use it for |
 | --- | --- | --- |
 | `file` | One file per session, in `SESSION_FILES`. | Apps with sign-in on one server. |
-| `database` | A row of the `sessions` table. | Apps with sign-in, several processes or servers. |
+| `database` | A row of the `marmeon_sessions` table. | Apps with sign-in, several processes or servers. |
 | `redis` | A key in Redis, which expires by itself. | Apps with sign-in that run Redis anyway. |
 | `memory` | The process. Gone when it stops. | Tests. |
 
@@ -167,6 +167,14 @@ pnpm marmeon migrate
 
 The migration goes into the `system` module, or the module that `--module=<name>` names. It creates the table on the connection
 `SESSION_CONNECTION` names.
+
+An app made with an earlier release has the table under its old name, `sessions`. In development, run
+`marmeon make:upgrade-migrations`, commit what it writes, and regenerate `bootstrap/database.d.ts` with `marmeon db:types`. To
+deploy, stop every process of the old release (web, workers, scheduler, cron jobs), deploy, run `marmeon migrate`, then start the
+new release. A process of the old release that keeps running fails on the renamed table. The rows stay, but a session of the old
+release has no format mark and is not read: its owner signs in again, and `marmeon session:prune` removes the rows once they expire. The payload
+column stays secret after the rename. Until the migration has run, `/up/ready` is red and says what to run. See
+[upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables).
 
 The store writes through a connection of its own, never inside your app's transactions, so a session written while a transaction
 is open survives its rollback. On Postgres it opens a small pool of its own. On SQLite, give the sessions a file of their own: the

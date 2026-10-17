@@ -619,8 +619,8 @@ pnpm marmeon migrate
 
 | Command | Tables |
 | --- | --- |
-| `make:cache-table` | `cache`, `cache_locks`, on the cache's connection |
-| `make:session-table` | `sessions`, on the sessions' connection |
+| `make:cache-table` | `marmeon_cache`, `marmeon_cache_locks`, on the cache's connection |
+| `make:session-table` | `marmeon_sessions`, on the sessions' connection |
 | `make:queue-table` | `marmeon_jobs`, `marmeon_failed_jobs`, on the queue's connection |
 | `make:notifications-table` | `notifications`, on the notifications' connection |
 | `make:uploads-table` | `temporary_uploads`, on the uploads' connection |
@@ -659,8 +659,9 @@ not know), when a first line names another set, or when a later revision is in y
 the missing one by hand, in front of it.
 
 A migration that renames a table is a change for a stopped app: let the queue run empty, stop every process of the old release (web,
-workers, scheduler, cron jobs, CI jobs that run `marmeon`), run `marmeon migrate`, then start the new release. The queue's tables
-(`jobs`, `failed_jobs`) are renamed that way, to `marmeon_jobs` and `marmeon_failed_jobs`.
+workers, scheduler, cron jobs, CI jobs that run `marmeon`), run `marmeon migrate`, then start the new release. The tables of the
+queue (`jobs`, `failed_jobs`), the cache (`cache`, `cache_locks`) and the sessions (`sessions`) are renamed that way, to
+`marmeon_jobs`, `marmeon_failed_jobs`, `marmeon_cache`, `marmeon_cache_locks` and `marmeon_sessions`.
 
 A migration it wrote is yours like the first one. Keep the first line: without it, the command takes a changed file for
 revision 1.

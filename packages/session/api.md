@@ -137,6 +137,13 @@ export declare class SessionServiceProvider implements ServiceProvider {
         trustedOrigins: string[];
         appOrigin: string | undefined;
     }>)[];
+    static migrationUpgrades: {
+        set: string;
+        revision: number;
+        name: string;
+        createdBy: string[];
+        contents: string;
+    }[];
     static commands: (typeof MakeSessionTableCommand | typeof PruneSessionsCommand)[];
     register(container: Container): void;
     boot(app: Application): Promise<void>;

@@ -45,11 +45,11 @@ describe('the system connection', () => {
 
   it('migrates the cache and session tables into the system file — the rest, the jobs included, into the app’s', async () => {
     const app = await open();
-    expect(await tables(app, 'system')).toEqual(['cache', 'cache_locks', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions', 'sessions']);
+    expect(await tables(app, 'system')).toEqual(['marmeon_cache', 'marmeon_cache_locks', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_sessions', 'marmeon_table_owners', 'marmeon_versions']);
     const own = await tables(app, 'default');
     expect(own).toEqual(expect.arrayContaining(['users', 'marmeon_jobs', 'marmeon_failed_jobs', 'marmeon_migrations']));
-    expect(own).not.toEqual(expect.arrayContaining(['cache']));
-    expect(own).not.toEqual(expect.arrayContaining(['sessions']));
+    expect(own).not.toEqual(expect.arrayContaining(['marmeon_cache']));
+    expect(own).not.toEqual(expect.arrayContaining(['marmeon_sessions']));
   });
 
   it('keeps a rate-limit hit and a lock taken inside a transaction that rolls back — but not the job it dispatched', async () => {
@@ -72,7 +72,7 @@ describe('the system connection', () => {
     const app = await open();
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const rows = async () =>
-      (await sql<{ user_id: string | null }>`select user_id from sessions`.execute(app.make(Connections).get('system'))).rows.map((row) => row.user_id);
+      (await sql<{ user_id: string | null }>`select user_id from marmeon_sessions`.execute(app.make(Connections).get('system'))).rows.map((row) => row.user_id);
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/users/me').assertAuthenticated(ada);
     expect(await rows()).toEqual([String(ada.id)]);
     await app.withCookie('marmeon_session', login.cookie('marmeon_session')!).post('/logout').assertRedirect('/login').assertGuest();
