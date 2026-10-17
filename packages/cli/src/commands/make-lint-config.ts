@@ -17,7 +17,7 @@ const CLIENT_MESSAGE =
 const BOUNDARY_MESSAGE =
   "Modules import other modules only through their entry — import { … } from '#modules/<name>' — never a file inside them (marmeon make:lint-config --boundaries).";
 
-const INTERNAL_MESSAGE =
+export const INTERNAL_MESSAGE =
   "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue.";
 
 type Pattern = { group?: string[]; regex?: string; allowTypeImports?: boolean; message: string };

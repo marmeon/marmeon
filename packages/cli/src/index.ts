@@ -5,3 +5,4 @@ export type { DevProcess } from './dev.ts';
 export { Output } from './output.ts';
 export type { JsonDocument } from './output.ts';
 export { CliServiceProvider } from './provider.ts';
+export type { CheckProblem, CheckReport, CheckStatus } from './check/report.ts';

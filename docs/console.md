@@ -56,6 +56,8 @@ before it runs. The [configuration](configuration.md#where-node_env-comes-from) 
 | `1` | The command ran and failed: the app could not start, or the command reported an error or threw. |
 | `2` | `marmeon` was called wrongly: an unknown command, an unknown option, an option without its value, or a value an option does not take. |
 
+[`marmeon check`](check.md#exit-codes) adds a `3` for a check that could not run.
+
 A script can tell a typo from a failure this way. A built-in's options are checked before the app boots; an app's own command is looked
 up once the app has booted, so a failed boot (1) comes first. A few commands have codes of their own: [`tinker`](#running-code-from-a-script) ends with
 130 on a signal, and [`queue:work`](queues.md#timeouts-and-retryafter) with 70 when a job does not stop in time. A command that checks its own arguments, such as `schedule:test` without a name, still exits with 1.
@@ -79,6 +81,7 @@ pnpm marmeon route:list --json
 | Command | Document |
 | --- | --- |
 | `route:list --json` | [Listing routes](routing.md#listing-routes) |
+| `check --json` | [Checking an app](check.md#json-output) |
 | `list --json` | The commands `marmeon list` shows. `complete` is `false` when the app did not load and only the built-in commands are known. Each command has `name`, `description`, `usage`, `options` (`name`, `type`, `short`, `multiple`, `default`), `experimental` and `launcher` (`dev` and `start`, which the launcher runs). |
 
 A command of your own, or of a package, prints its document with `output.json({ format: 1, … })` and declares
@@ -116,6 +119,7 @@ start`, and `marmeon dev` refuses it.
 | --- | --- |
 | `dev` | The development server, with a worker and the scheduler next to it. |
 | `build [--no-typecheck]` | Builds the app for production. See [deployment](deployment.md#building-and-starting). |
+| `check [--only=<names>] [--skip=<names>] [--json]` | Runs the type check, the lint and the scan for imports of framework internals, and exits with a code a script can read. See [checking an app](check.md). |
 | `start [--workers=N]` | Starts the production server on the build. It refuses to run when `NODE_ENV=development` or `test` comes from `.env` alone: use `marmeon dev`, set `NODE_ENV=production` to try the build, or set `NODE_ENV=development` in the shell to start the development stack on purpose. |
 | `route:list [--json]` | Every route with its method, path, name, group, middleware, who may call it (`ACCESS`) and action. See [listing routes](routing.md#listing-routes). |
 | `route:types [--check]` | Writes `bootstrap/routes.ts`. `--check` fails when it is out of date, for CI. It also exits with 1 and lists every route that does not say who may call it, so `marmeon build` stops on one. See [typed route names](routing.md#typed-route-names) and [every route decides](authorization.md#every-route-decides). |

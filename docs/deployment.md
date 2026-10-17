@@ -60,6 +60,8 @@ prints a fresh key for `APP_KEY`. The files are yours from now on, and `make:doc
 5. writes a `.br` and a `.gz` copy next to every script, stylesheet and other text asset that gets smaller by it,
 6. writes the list of installed packages, `.marmeon/manifest.json`.
 
+`marmeon build` also warns about every import of a framework internal (`@marmeon/*/internal`) in your code, and builds anyway; [`marmeon check`](check.md#imports-of-framework-internals) fails on them.
+
 Only `dist/client/assets/` is public. `dist/client/.vite/manifest.json` lists the source path of every page: the server reads it
 at start and never serves it, and a CDN in front of the assets gets the `assets/` directory, not `.vite/`.
 

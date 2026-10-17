@@ -15,7 +15,8 @@
     "start": "marmeon start",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "check": "marmeon check"
   },
   "dependencies": {
     "@marmeon/auth": "workspace:*",

@@ -6,7 +6,7 @@ import * as testing from './testing.ts';
 
 describe('the entry points of the core', () => {
   it('keeps the framework plumbing out of the main entry and in ./internal', () => {
-    for (const name of ['embedPackageInjections', 'withFileGuard', 'openTransactionOf', 'writeManifest', 'runWithRequest', 'staticNames']) {
+    for (const name of ['embedPackageInjections', 'withFileGuard', 'openTransactionOf', 'writeManifest', 'runWithRequest', 'staticNames', 'stringLiterals']) {
       expect(core, name).not.toHaveProperty(name);
       expect(internal, name).toHaveProperty(name);
     }

@@ -9,6 +9,28 @@ Types from other packages: none
 ### Stable
 
 ```ts
+// CheckProblem
+export interface CheckProblem {
+    readonly severity: 'error' | 'warning';
+    readonly message: string;
+    readonly file?: string;
+    readonly line?: number;
+    readonly column?: number;
+    readonly code?: ErrorCode;
+    readonly rule?: string;
+    readonly fix?: string;
+    readonly docs?: string;
+}
+// CheckReport
+export interface CheckReport {
+    readonly name: string;
+    readonly status: CheckStatus;
+    readonly ms: number;
+    readonly reason?: string;
+    readonly problems: readonly CheckProblem[];
+}
+// CheckStatus
+export type CheckStatus = 'passed' | 'warning' | 'failed' | 'skipped' | 'error';
 // CliServiceProvider
 export declare class CliServiceProvider implements ServiceProvider {
     register(container: Container): void;
@@ -102,6 +124,11 @@ export declare function run(argv: readonly string[], root?: string): Promise<num
 // build
 marmeon build [--no-typecheck]
 --no-typecheck (boolean)
+// check
+marmeon check [--only=<names>] [--skip=<names>] [--json]
+--json (boolean)
+--only (string)
+--skip (string)
 // discover
 marmeon discover
 // key:generate

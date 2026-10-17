@@ -11,7 +11,8 @@
     "build": "marmeon build",
     "start": "marmeon start",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "check": "marmeon check"
   },
   "dependencies": {
     "@marmeon/auth": "workspace:*",

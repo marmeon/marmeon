@@ -1,5 +1,6 @@
 import type { CommandClass } from './command.ts';
 import { BuildCommand } from './commands/build.ts';
+import { CheckCommand } from './commands/check.ts';
 import { DiscoverCommand } from './commands/discover.ts';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
 import { MakeDockerCommand } from './commands/make-docker.ts';
@@ -31,6 +32,7 @@ export const BUILT_IN: readonly CommandClass[] = [
   ModulesCheckCommand,
   DiscoverCommand,
   BuildCommand,
+  CheckCommand,
   PackageBuildCommand,
   KeyGenerateCommand,
   TinkerCommand,
