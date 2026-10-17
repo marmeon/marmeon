@@ -21,7 +21,7 @@ const FORMATS = new Set(['number', 'date', 'time']);
 export function parseMessage(message: string): readonly Part[] {
   let at = 0;
   const fail = (what: string): never => {
-    throw new MessageSyntaxError(`${what} at position ${at} of "${message}"`);
+    throw new MessageSyntaxError(`[marmeon:S5] ${what} at position ${at} of "${message}"`);
   };
   const spaces = () => {
     while (at < message.length && /\s/.test(message[at]!)) at++;

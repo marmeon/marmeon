@@ -9,6 +9,7 @@ import { secondsOf, toBytes } from '../contents.ts';
 import { FileNotFoundError, StorageError, StorageSetupError } from '../errors.ts';
 import { basename, encodeKey, normalizeDirectory, normalizeKey } from '../keys.ts';
 import { contentDisposition, isInlineType, mimeTypeOf } from '../mime.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /**
  * What the CLI or a disk prints when the SDK is missing — optional peers (S3 is one of several drivers, the local one needs
@@ -41,7 +42,7 @@ export function loadPresignedPost(): typeof PresignedPost {
   } catch (error) {
     const { code } = (error ?? {}) as { code?: unknown };
     if (code === 'MODULE_NOT_FOUND' || code === 'ERR_MODULE_NOT_FOUND') {
-      throw new StorageSetupError(`Uploads to an S3 disk need @aws-sdk/s3-presigned-post, which is not installed in this app: ${S3_UPLOADS_INSTALL}`);
+      throw new StorageSetupError(withCode('S2', `Uploads to an S3 disk need @aws-sdk/s3-presigned-post, which is not installed in this app: ${S3_UPLOADS_INSTALL}`));
     }
     throw error;
   }
@@ -54,7 +55,7 @@ export async function loadS3(load: ImportS3 = importModules): Promise<S3Modules>
   } catch (error) {
     const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
     if ((code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') && typeof message === 'string' && message.includes('@aws-sdk/')) {
-      throw new StorageSetupError(`S3 disks need the AWS SDK, which is not installed in this app: ${S3_INSTALL}`);
+      throw new StorageSetupError(withCode('S2', `S3 disks need the AWS SDK, which is not installed in this app: ${S3_INSTALL}`));
     }
     throw error;
   }
@@ -124,7 +125,7 @@ export class S3Disk implements Disk {
   constructor(config: S3DiskConfig) {
     const { options } = config;
     if (!options.bucket) {
-      throw new StorageSetupError(`The S3 disk "${config.name}" has no bucket — set the variable its configuration reads (e.g. S3_BUCKET, see .env.example).`);
+      throw new StorageSetupError(withCode('S2', `The S3 disk "${config.name}" has no bucket — set the variable its configuration reads (e.g. S3_BUCKET, see .env.example).`));
     }
     this.name = config.name;
     this.visibility = config.visibility;

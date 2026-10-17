@@ -23,7 +23,7 @@ LIVE_DRIVER=redis
 A Redis driver without the package stops the app at the start and names the command:
 
 ```text
-CACHE_DRIVER=redis needs @marmeon/redis, which is not installed in this app: pnpm add @marmeon/redis
+[marmeon:S1] CACHE_DRIVER=redis needs @marmeon/redis, which is not installed in this app: pnpm add @marmeon/redis
 ```
 
 The [cache](cache.md#drivers), [session](session.md#drivers), [queues](queues.md#drivers) and

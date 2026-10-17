@@ -9,6 +9,7 @@ import { MemoryDisk } from './drivers/memory.ts';
 import { S3Disk, s3BaseUrl } from './drivers/s3.ts';
 import { didYouMean, StorageError, StorageSetupError } from './errors.ts';
 import type { TemporaryUrls } from './temporary.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /**
  * The app's disks, injected as `Storage`: `storage.disk('public')` (typed by the app's `StorageTypes`, so a wrong name is a
@@ -62,13 +63,13 @@ class GuardedDisk implements Disk {
     const disk = made as Partial<Disk> | null | undefined;
     const missing = DISK_MEMBERS.filter((member) => typeof disk?.[member] !== 'function');
     if (typeof disk !== 'object' || disk === null || missing.length > 0) {
-      throw new StorageSetupError(`The driver of the disk "${name}" must return a Disk with ${DISK_MEMBERS.join(', ')}, name and visibility${missing.length > 0 ? ` — missing: ${missing.join(', ')}` : ''}.`);
+      throw new StorageSetupError(withCode('S2', `The driver of the disk "${name}" must return a Disk with ${DISK_MEMBERS.join(', ')}, name and visibility${missing.length > 0 ? ` — missing: ${missing.join(', ')}` : ''}.`));
     }
     if (disk.name !== name) {
-      throw new StorageSetupError(`The driver of the disk "${name}" returned a disk named "${String(disk.name)}" — name must be the disk's name from the configuration.`);
+      throw new StorageSetupError(withCode('S2', `The driver of the disk "${name}" returned a disk named "${String(disk.name)}" — name must be the disk's name from the configuration.`));
     }
     if (disk.visibility !== visibility) {
-      throw new StorageSetupError(`The disk "${name}" is ${visibility} in the configuration, but its driver returned a ${String(disk.visibility)} disk — it must keep the configured visibility.`);
+      throw new StorageSetupError(withCode('S2', `The disk "${name}" is ${visibility} in the configuration, but its driver returned a ${String(disk.visibility)} disk — it must keep the configured visibility.`));
     }
     this.#name = name;
     this.#visibility = visibility;
@@ -163,26 +164,29 @@ function nests(a: string, b: string): boolean {
 export function checkStorage(options: StorageOptions, appRoot: string, drivers: Iterable<string> = []): void {
   const known = [...BUILT_IN_DISK_DRIVERS, ...drivers];
   const names = Object.keys(options.disks);
-  if (names.length === 0) throw new StorageSetupError('The storage configuration has no disks.');
+  if (names.length === 0) throw new StorageSetupError(withCode('S2', 'The storage configuration has no disks.'));
   if (!Object.hasOwn(options.disks, options.default)) {
-    throw new StorageSetupError(`The default disk "${options.default}" is not configured — the disks: ${names.join(', ')}.${didYouMean(options.default, names)}`);
+    throw new StorageSetupError(withCode('S2', `The default disk "${options.default}" is not configured — the disks: ${names.join(', ')}.${didYouMean(options.default, names)}`));
   }
   for (const [name, disk] of Object.entries(options.disks)) {
     if (!known.includes(disk.driver)) {
-      throw new StorageSetupError(`The disk "${name}" has an unknown driver "${String(disk.driver)}" — the drivers: ${known.join(', ')}.${didYouMean(String(disk.driver), known)}`);
+      throw new StorageSetupError(withCode('S2', `The disk "${name}" has an unknown driver "${String(disk.driver)}" — the drivers: ${known.join(', ')}.${didYouMean(String(disk.driver), known)}`));
     }
     if (disk.visibility !== undefined && disk.visibility !== 'public' && disk.visibility !== 'private') {
-      throw new StorageSetupError(`The disk "${name}" has an unknown visibility "${String(disk.visibility)}" — public or private.`);
+      throw new StorageSetupError(withCode('S2', `The disk "${name}" has an unknown visibility "${String(disk.visibility)}" — public or private.`));
     }
     if (visibilityOf(disk) === 'private' && disk.url !== undefined) {
       throw new StorageSetupError(
-        `The disk "${name}" is private but has a url — private files are never public: remove url (and use temporaryUrl()), or make the disk public.`,
+        withCode(
+          'S2',
+          `The disk "${name}" is private but has a url — private files are never public: remove url (and use temporaryUrl()), or make the disk public.`,
+        ),
       );
     }
     if (disk.url !== undefined && (disk.driver === 'local' || disk.driver === 'memory') && !disk.url.startsWith('/') && !/^https?:\/\//.test(disk.url)) {
-      throw new StorageSetupError(`The url of the disk "${name}" must be a path ("/storage") or an absolute URL, not "${disk.url}".`);
+      throw new StorageSetupError(withCode('S2', `The url of the disk "${name}" must be a path ("/storage") or an absolute URL, not "${disk.url}".`));
     }
-    if (disk.driver === 'local' && (typeof disk.root !== 'string' || disk.root === '')) throw new StorageSetupError(`The local disk "${name}" needs a root directory.`);
+    if (disk.driver === 'local' && (typeof disk.root !== 'string' || disk.root === '')) throw new StorageSetupError(withCode('S2', `The local disk "${name}" needs a root directory.`));
   }
   const local = Object.entries(options.disks).flatMap(([name, disk]) =>
     disk.driver === 'local' ? [{ name, visibility: visibilityOf(disk), root: realOrSelf(localRoot(appRoot, disk.root)) }] : [],
@@ -191,7 +195,10 @@ export function checkStorage(options: StorageOptions, appRoot: string, drivers: 
     for (const closed of local.filter((disk) => disk.visibility === 'private')) {
       if (nests(open.root, closed.root)) {
         throw new StorageSetupError(
-          `The private disk "${closed.name}" and the public disk "${open.name}" share a directory (${closed.root} / ${open.root}) — private files would be served as public. Give them separate directories.`,
+          withCode(
+            'S2',
+            `The private disk "${closed.name}" and the public disk "${open.name}" share a directory (${closed.root} / ${open.root}) — private files would be served as public. Give them separate directories.`,
+          ),
         );
       }
     }
@@ -205,7 +212,10 @@ export function checkStorage(options: StorageOptions, appRoot: string, drivers: 
     for (const closed of buckets.filter((disk) => disk.visibility === 'private' && disk.at === open.at)) {
       if (open.root === '' || closed.root === '' || nests(`${open.root}/`, `${closed.root}/`)) {
         throw new StorageSetupError(
-          `The private disk "${closed.name}" and the public disk "${open.name}" share a prefix of one bucket ("${closed.root}" / "${open.root}") — private files would be served as public. Give them separate prefixes (root) or buckets.`,
+          withCode(
+            'S2',
+            `The private disk "${closed.name}" and the public disk "${open.name}" share a prefix of one bucket ("${closed.root}" / "${open.root}") — private files would be served as public. Give them separate prefixes (root) or buckets.`,
+          ),
         );
       }
     }
@@ -285,7 +295,7 @@ export class StorageManager implements Storage {
     const driver = String(options.driver);
     const factory = drivers?.get(driver);
     if (!factory || !container) {
-      throw new StorageSetupError(`The disk "${name}" has an unknown driver "${driver}" — the drivers: ${[...BUILT_IN_DISK_DRIVERS, ...(drivers?.keys() ?? [])].join(', ')}.`);
+      throw new StorageSetupError(withCode('S2', `The disk "${name}" has an unknown driver "${driver}" — the drivers: ${[...BUILT_IN_DISK_DRIVERS, ...(drivers?.keys() ?? [])].join(', ')}.`));
     }
     return new GuardedDisk(name, visibilityOf(options), factory(options, { name, root, container }));
   }

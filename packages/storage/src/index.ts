@@ -16,6 +16,7 @@ import { TemporaryUploads } from './uploads/service.ts';
 import { TEMPORARY_PREFIX, NO_TEMPORARY_URLS, type TemporaryUrls } from './temporary.ts';
 import { encodeKey } from './keys.ts';
 import { secondsOf } from './contents.ts';
+import { withCode } from '@marmeon/core/internal';
 
 // Storage: disks — local (with a root jail), S3 (an optional peer) and memory (the fake) — behind one contract;
 // public disks served with safe headers, private ones only through signed, expiring URLs.
@@ -107,10 +108,10 @@ export function checkS3Sdk(options: StorageOptions, uploadsDisk: string, missing
   if (used.length === 0) return;
   if (missing(['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner']).length > 0) {
     const what = used.map((name) => `"${name}"${name === options.default ? ' (the default disk)' : ' (UPLOADS_DISK)'}`).join(' and ');
-    throw new StorageSetupError(`The disk ${what} is on S3, which needs the AWS SDK — not installed in this app: ${S3_INSTALL}`);
+    throw new StorageSetupError(withCode('S2', `The disk ${what} is on S3, which needs the AWS SDK — not installed in this app: ${S3_INSTALL}`));
   }
   if (used.includes(uploadsDisk) && missing(['@aws-sdk/s3-presigned-post']).length > 0) {
-    throw new StorageSetupError(`The disk "${uploadsDisk}" (UPLOADS_DISK) is on S3: uploads go straight to it and need @aws-sdk/s3-presigned-post — not installed in this app: ${S3_UPLOADS_INSTALL}`);
+    throw new StorageSetupError(withCode('S2', `The disk "${uploadsDisk}" (UPLOADS_DISK) is on S3: uploads go straight to it and need @aws-sdk/s3-presigned-post — not installed in this app: ${S3_UPLOADS_INSTALL}`));
   }
 }
 
@@ -150,7 +151,7 @@ export class StorageServiceProvider implements ServiceProvider {
     // Temporary uploads: built on first use — the disk looked up per use (the test fake replaces `Storage`).
     container.singleton(TemporaryUploads, (c) => {
       if (!this.#uploads) {
-        throw new StorageSetupError('Uploads need @marmeon/http, @marmeon/database and @marmeon/encryption in the app (and their providers: marmeon discover).');
+        throw new StorageSetupError(withCode('S2', 'Uploads need @marmeon/http, @marmeon/database and @marmeon/encryption in the app (and their providers: marmeon discover).'));
       }
       const config = c.make(UploadsConfig);
       return new TemporaryUploads({
@@ -159,7 +160,10 @@ export class StorageServiceProvider implements ServiceProvider {
           const storage = c.make(Storage) as unknown as StorageManager;
           if (!storage.names.includes(config.disk)) {
             throw new StorageSetupError(
-              `Uploads wait on the private disk "${config.disk}" (UPLOADS_DISK), which is not configured — add it to defineStorage(…): ${config.disk}: { driver: 'local', root: 'storage/app/uploads' }.`,
+              withCode(
+                'S2',
+                `Uploads wait on the private disk "${config.disk}" (UPLOADS_DISK), which is not configured — add it to defineStorage(…): ${config.disk}: { driver: 'local', root: 'storage/app/uploads' }.`,
+              ),
             );
           }
           return storage.named(config.disk);
@@ -185,7 +189,7 @@ export class StorageServiceProvider implements ServiceProvider {
     const uploads = container.make(UploadsConfig);
     const uploadDisk = options.disks[uploads.disk];
     if (uploadDisk && visibilityOf(uploadDisk) === 'public') {
-      throw new StorageSetupError(`The disk "${uploads.disk}" holds temporary uploads (UPLOADS_DISK) but is public — files nobody checked yet would be served. Make it private.`);
+      throw new StorageSetupError(withCode('S2', `The disk "${uploads.disk}" holds temporary uploads (UPLOADS_DISK) but is public — files nobody checked yet would be served. Make it private.`));
     }
     checkS3Sdk(options, uploads.disk);
 

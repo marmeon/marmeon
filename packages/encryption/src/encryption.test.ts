@@ -1,5 +1,5 @@
 import * as nodeCrypto from 'node:crypto';
-import { createApplication } from '@marmeon/core';
+import { createApplication, ErrorSolutions } from '@marmeon/core';
 import { describe, expect, it, vi } from 'vitest';
 import { AesGcmEncrypter, DecryptError, Encrypter, EncryptionConfig, EncryptionServiceProvider, generateKey } from './index.ts';
 
@@ -24,6 +24,13 @@ describe('AesGcmEncrypter', () => {
     expect(first).not.toBe(second);
     expect(first).toMatch(/^[A-Za-z0-9_-]+$/); // cookie- and URL-safe
     expect(await encrypter.decrypt(first)).toBe('Grüße 👋');
+  });
+
+  it('a payload that does not decrypt says so with its code, and the solution carries it', async () => {
+    const error = await new AesGcmEncrypter(raw()).decrypt('garbage').catch((failure: unknown) => failure);
+    expect((error as Error).message).toBe('[marmeon:A4] The payload is invalid.');
+    const [solution] = await new ErrorSolutions(EncryptionServiceProvider.solutions).find(error as Error);
+    expect(solution).toMatchObject({ title: 'Find out why a payload does not decrypt', code: 'A4' });
   });
 
   it('rejects tampered payloads, foreign keys and garbage', async () => {

@@ -45,7 +45,7 @@ A file default-exports strings, nested in objects as deep as you like. A key may
 app starts, and a message that is malformed fails the start with its key and file:
 
 ```text
-Message notes.saved in /srv/app/modules/notes/lang/en.ts is malformed: Unclosed placeholder {title at position 12 of "Saved {title"
+[marmeon:S5] Message notes.saved in /srv/app/modules/notes/lang/en.ts is malformed: Unclosed placeholder {title at position 12 of "Saved {title"
 ```
 
 The English file is the source of the types. Declare it in `Translations` and keep `as const`: the texts as types are what

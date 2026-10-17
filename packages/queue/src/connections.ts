@@ -11,6 +11,7 @@ import type { QueueConnectionOptions } from './queue.ts';
 import { JobRegistry, QueueSetupError, timeoutOf } from './registry.ts';
 import { JobRunner, type PayloadCipher } from './runner.ts';
 import { Worker } from './worker.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /** A queue driver's package is missing — what to install, said at startup (the CLI prints it without a stack trace). */
 async function importOptional<T>(load: () => Promise<T>, name: string, what: string, install: string): Promise<T> {
@@ -19,7 +20,7 @@ async function importOptional<T>(load: () => Promise<T>, name: string, what: str
   } catch (error) {
     const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
     if (code === 'ERR_MODULE_NOT_FOUND' && typeof message === 'string' && message.includes(name)) {
-      throw new QueueSetupError(`${what} needs ${name}, which is not installed in this app: ${install}`);
+      throw new QueueSetupError(withCode('Q4', `${what} needs ${name}, which is not installed in this app: ${install}`));
     }
     throw error;
   }
@@ -69,7 +70,7 @@ export class QueueConnections {
     this.options(this.default);
     const failed = this.#config.failed.driver;
     if (!(BUILT_IN_FAILED_DRIVERS as readonly string[]).includes(failed) && !this.#failedFactories.has(failed)) {
-      throw new QueueSetupError(`QUEUE_FAILED_DRIVER=${failed} is not a failed-job store. Known: ${[...BUILT_IN_FAILED_DRIVERS, ...this.#failedFactories.keys()].join(', ')}.`);
+      throw new QueueSetupError(withCode('Q4', `QUEUE_FAILED_DRIVER=${failed} is not a failed-job store. Known: ${[...BUILT_IN_FAILED_DRIVERS, ...this.#failedFactories.keys()].join(', ')}.`));
     }
     this.failed();
   }
@@ -84,7 +85,7 @@ export class QueueConnections {
 
   options(name: string): QueueConnectionOptions {
     const options = this.find(name);
-    if (!options) throw new QueueSetupError(`The queue connection "${name}" is not configured. Known: ${this.names().join(', ')}.`);
+    if (!options) throw new QueueSetupError(withCode('Q4', `The queue connection "${name}" is not configured. Known: ${this.names().join(', ')}.`));
     return options;
   }
 
@@ -122,7 +123,7 @@ export class QueueConnections {
     let driver = this.#drivers.get(name);
     if (!driver) {
       const options = this.options(name);
-      if (options.driver === 'sync') throw new QueueSetupError(`The sync queue connection runs each job when it is dispatched — it keeps no jobs to work on.`);
+      if (options.driver === 'sync') throw new QueueSetupError(withCode('Q4', `The sync queue connection runs each job when it is dispatched — it keeps no jobs to work on.`));
       const clock = this.#container.make(Clock);
       driver =
         options.driver === 'custom'
@@ -146,14 +147,14 @@ export class QueueConnections {
     if (name === 'null') return new NullFailedJobStore();
     if (name === 'database') return new DatabaseFailedJobStore(async () => this.#database(this.#config.failed.connection, 'QUEUE_FAILED_DRIVER=database'));
     const factory = this.#failedFactories.get(name);
-    if (!factory) throw new QueueSetupError(`QUEUE_FAILED_DRIVER=${name} is not a failed-job store. Known: ${[...BUILT_IN_FAILED_DRIVERS, ...this.#failedFactories.keys()].join(', ')}.`);
+    if (!factory) throw new QueueSetupError(withCode('Q4', `QUEUE_FAILED_DRIVER=${name} is not a failed-job store. Known: ${[...BUILT_IN_FAILED_DRIVERS, ...this.#failedFactories.keys()].join(', ')}.`));
     const key = `failed:${name}`;
     if (this.#failures.has(key)) throw this.#failures.get(key);
     try {
       const store = factory({ container: this.#container });
       const members = ['record', 'all', 'find', 'forget', 'flush', 'prune'] as const;
       if (members.some((member) => typeof (store as Partial<FailedJobStore> | undefined)?.[member] !== 'function')) {
-        throw new QueueSetupError(`The failed-job store "${name}" must return a FailedJobStore (${members.join(', ')}).`);
+        throw new QueueSetupError(withCode('Q4', `The failed-job store "${name}" must return a FailedJobStore (${members.join(', ')}).`));
       }
       return store;
     } catch (error) {
@@ -171,7 +172,7 @@ export class QueueConnections {
   async cache(): Promise<Cache> {
     const { Cache } = await importCache();
     if (!this.#container.has(Cache)) {
-      throw new QueueSetupError('Unique jobs, withoutOverlapping and job.once keep their locks in the app\'s cache — register the CacheServiceProvider of @marmeon/cache (installed packages register it: marmeon discover).');
+      throw new QueueSetupError(withCode('Q4', 'Unique jobs, withoutOverlapping and job.once keep their locks in the app\'s cache — register the CacheServiceProvider of @marmeon/cache (installed packages register it: marmeon discover).'));
     }
     return this.#container.make(Cache);
   }
@@ -182,7 +183,7 @@ export class QueueConnections {
   /** The app's `Encrypter`, for `static encrypted` jobs. */
   async cipher(): Promise<PayloadCipher> {
     const { Encrypter } = await importEncryption();
-    if (!this.#container.has(Encrypter)) throw new QueueSetupError('An encrypted job (static encrypted) needs the EncryptionServiceProvider of @marmeon/encryption and an APP_KEY.');
+    if (!this.#container.has(Encrypter)) throw new QueueSetupError(withCode('Q4', 'An encrypted job (static encrypted) needs the EncryptionServiceProvider of @marmeon/encryption and an APP_KEY.'));
     return this.#container.make(Encrypter);
   }
 
@@ -193,7 +194,7 @@ export class QueueConnections {
    */
   worker(connection: string, stopTimeout: number): Worker {
     const options = this.options(connection);
-    if (options.driver === 'sync') throw new QueueSetupError('The sync queue connection runs each job when it is dispatched — there is nothing for a worker to do. Use --connection=database (or redis).');
+    if (options.driver === 'sync') throw new QueueSetupError(withCode('Q4', 'The sync queue connection runs each job when it is dispatched — there is nothing for a worker to do. Use --connection=database (or redis).'));
     checkTimeouts(this.#container.make(JobRegistry), connection, options.retryAfter, stopTimeout);
     return new Worker({
       driver: this.driver(connection),
@@ -227,15 +228,15 @@ const DRIVER_MEMBERS = ['push', 'reserve', 'ack', 'release', 'fail', 'size', 'qu
 function checkConnection(name: string, connection: unknown): QueueConnection {
   const { driver, queue, retryAfter } = (connection ?? {}) as Partial<QueueConnection>;
   if (DRIVER_MEMBERS.some((member) => typeof driver?.[member] !== 'function')) {
-    throw new QueueSetupError(`The queue driver "${name}" must return { driver, queue, retryAfter } with a QueueDriver (${DRIVER_MEMBERS.join(', ')}).`);
+    throw new QueueSetupError(withCode('Q4', `The queue driver "${name}" must return { driver, queue, retryAfter } with a QueueDriver (${DRIVER_MEMBERS.join(', ')}).`));
   }
-  if (typeof queue !== 'string' || queue === '') throw new QueueSetupError(`The queue driver "${name}" returned no default queue name.`);
+  if (typeof queue !== 'string' || queue === '') throw new QueueSetupError(withCode('Q4', `The queue driver "${name}" returned no default queue name.`));
   if (typeof retryAfter !== 'number' || !Number.isFinite(retryAfter) || retryAfter <= 0) {
-    throw new QueueSetupError(`The queue driver "${name}" returned retryAfter ${String(retryAfter)} — it must be a positive number of seconds, or a claim could be taken again at once and run twice.`);
+    throw new QueueSetupError(withCode('Q4', `The queue driver "${name}" returned retryAfter ${String(retryAfter)} — it must be a positive number of seconds, or a claim could be taken again at once and run twice.`));
   }
   // A driver that joins the app's transaction writes through it: without `using` a push could land outside and survive a rollback.
   if (typeof driver!.joinsTransaction === 'function' && typeof driver!.using !== 'function') {
-    throw new QueueSetupError(`The queue driver "${name}" has joinsTransaction() but no using(transaction): a job it pushes inside a transaction could outlive a rollback. Give it both, or neither.`);
+    throw new QueueSetupError(withCode('Q4', `The queue driver "${name}" has joinsTransaction() but no using(transaction): a job it pushes inside a transaction could outlive a rollback. Give it both, or neither.`));
   }
   return { driver: driver!, queue, retryAfter };
 }
@@ -246,8 +247,11 @@ export function checkTimeouts(registry: JobRegistry, connection: string, retryAf
   if (offenders.length === 0) return;
   const list = offenders.map((job) => `${job.job} (timeout ${timeoutOf(job)}s)`).join(', ');
   throw new QueueSetupError(
-    `The queue connection "${connection}" gives a claimed job ${retryAfter}s (retryAfter) before another worker may take it, but ${list} may hold it ` +
-      `for its timeout plus the worker's --stop-timeout of ${stopTimeout}s — a second worker would run it while the first still does. ` +
-      `Raise retryAfter (e.g. DB_QUEUE_RETRY_AFTER) above timeout + stop timeout, or lower the job's static timeout.`,
+    withCode(
+      'Q4',
+      `The queue connection "${connection}" gives a claimed job ${retryAfter}s (retryAfter) before another worker may take it, but ${list} may hold it ` +
+        `for its timeout plus the worker's --stop-timeout of ${stopTimeout}s — a second worker would run it while the first still does. ` +
+        `Raise retryAfter (e.g. DB_QUEUE_RETRY_AFTER) above timeout + stop timeout, or lower the job's static timeout.`,
+    ),
   );
 }

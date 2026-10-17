@@ -11,6 +11,7 @@ import { ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, Sched
 import { collectTasks, type ScheduleDefinition } from './schedule.ts';
 import type { InvokableClass, TaskDefinition } from './task.ts';
 import { checkTimeZone, isDue, lastDue, MINUTE, minuteOf, nextDue } from './time.ts';
+import { withCode, withoutCode } from '@marmeon/core/internal';
 
 /** How far back a scheduler that was down looks for missed runs (`catchUp('once')`). */
 export const CATCH_UP_DAYS = 7;
@@ -68,7 +69,7 @@ async function importQueue() {
   try {
     return await import('@marmeon/queue');
   } catch {
-    throw new ScheduleError('s.job() queues jobs — it needs @marmeon/queue in the app: pnpm add @marmeon/queue');
+    throw new ScheduleError(withCode('Q5', 's.job() queues jobs — it needs @marmeon/queue in the app: pnpm add @marmeon/queue'));
   }
 }
 
@@ -76,7 +77,7 @@ async function importCli() {
   try {
     return { ...(await import('marmeon')), ...(await import('marmeon/internal')) };
   } catch {
-    throw new ScheduleError('s.command() runs console commands — it needs marmeon in the app: pnpm add -D marmeon');
+    throw new ScheduleError(withCode('Q5', 's.command() runs console commands — it needs marmeon in the app: pnpm add -D marmeon'));
   }
 }
 
@@ -171,7 +172,10 @@ export class Scheduler {
     if (task) return task;
     const names = this.tasks.map((candidate) => candidate.name);
     throw new ScheduleError(
-      names.length === 0 ? `There is no scheduled task "${name}" — the app's modules schedule none.` : `There is no scheduled task "${name}".${didYouMean(name, names)} Tasks: ${names.join(', ')}.`,
+      withCode(
+        'Q5',
+        names.length === 0 ? `There is no scheduled task "${name}" — the app's modules schedule none.` : `There is no scheduled task "${name}".${didYouMean(name, names)} Tasks: ${names.join(', ')}.`,
+      ),
     );
   }
 
@@ -242,7 +246,7 @@ export class Scheduler {
   async checkProcess(): Promise<void> {
     const tasks = this.tasks;
     if (!this.#container.has(Cache)) {
-      throw new ScheduleError('The scheduler keeps its locks and its last tick in the app\'s cache — register the CacheServiceProvider of @marmeon/cache (installed packages register it: marmeon discover).');
+      throw new ScheduleError(withCode('Q5', 'The scheduler keeps its locks and its last tick in the app\'s cache — register the CacheServiceProvider of @marmeon/cache (installed packages register it: marmeon discover).'));
     }
     // A command limited to other environments is never run here — and may not exist here (`devtools:prune` locally:
     // its package is a dev dependency, absent in a production install).
@@ -253,18 +257,18 @@ export class Scheduler {
       const known = registry.all().map((command) => command.command);
       for (const task of commands) {
         const name = (task.definition.target as string).trim();
-        if (!registry.get(name)) throw new ScheduleError(`The schedule of module ${task.definition.module} runs the command "${name}", which the app does not have.${didYouMean(name, known)}`);
+        if (!registry.get(name)) throw new ScheduleError(withCode('Q5', `The schedule of module ${task.definition.module} runs the command "${name}", which the app does not have.${didYouMean(name, known)}`));
       }
     }
     const jobs = tasks.filter((task) => task.definition.kind === 'job');
     if (jobs.length > 0) {
       const queue = await importQueue();
-      if (!this.#container.has(queue.Queue)) throw new ScheduleError('s.job() queues jobs — register the QueueServiceProvider of @marmeon/queue (installed packages register it: marmeon discover).');
+      if (!this.#container.has(queue.Queue)) throw new ScheduleError(withCode('Q5', 's.job() queues jobs — register the QueueServiceProvider of @marmeon/queue (installed packages register it: marmeon discover).'));
       if (this.#container.has(queue.JobRegistry)) {
         const registry = this.#container.make(queue.JobRegistry);
         for (const task of jobs) {
           const job = task.definition.target as JobClass;
-          if (!registry.get(job.job)) throw new ScheduleError(`The schedule of module ${task.definition.module} queues ${job.name} ("${job.job}"), which is no module's job — add it to jobs: [...] of its module, or no worker can run it.`);
+          if (!registry.get(job.job)) throw new ScheduleError(withCode('Q5', `The schedule of module ${task.definition.module} queues ${job.name} ("${job.job}"), which is no module's job — add it to jobs: [...] of its module, or no worker can run it.`));
         }
       }
     }
@@ -308,18 +312,21 @@ export class Scheduler {
         const name = nameOf(definition);
         const where = `The task "${name}" (schedule of module ${module.name})`;
         const source = definition.expression ?? definition.fields?.join(' ');
-        if (source === undefined) throw new ScheduleError(`${where} has no frequency — add one: .daily(), .everyFifteenMinutes(), .cron('…').`);
+        if (source === undefined) throw new ScheduleError(withCode('Q5', `${where} has no frequency — add one: .daily(), .everyFifteenMinutes(), .cron('…').`));
         let expression: CronExpression;
         try {
           expression = new CronExpression(source);
         } catch (error) {
-          throw new ScheduleError(`${where}: ${(error as Error).message}`);
+          throw new ScheduleError(withCode('Q5', `${where}: ${withoutCode((error as Error).message)}`));
         }
         const timeZone = checkTimeZone(definition.timezone ?? this.#config.timezone, where);
         const existing = tasks.find((task) => task.name === name);
         if (existing) {
           throw new ScheduleError(
-            `Two scheduled tasks are named "${name}" (modules ${existing.definition.module} and ${module.name}) — the name keys their locks: give one a name of its own with .name('…').`,
+            withCode(
+              'Q5',
+              `Two scheduled tasks are named "${name}" (modules ${existing.definition.module} and ${module.name}) — the name keys their locks: give one a name of its own with .name('…').`,
+            ),
           );
         }
         tasks.push({ name, definition, expression, timeZone, summary: summaryOf(definition) });
@@ -333,7 +340,7 @@ export class Scheduler {
   }
 
   #cache(): Cache {
-    if (!this.#container.has(Cache)) throw new ScheduleError('The scheduler keeps its locks and its last tick in the app\'s cache — register the CacheServiceProvider of @marmeon/cache.');
+    if (!this.#container.has(Cache)) throw new ScheduleError(withCode('Q5', 'The scheduler keeps its locks and its last tick in the app\'s cache — register the CacheServiceProvider of @marmeon/cache.'));
     return this.#container.make(Cache);
   }
 

@@ -8,6 +8,7 @@ import { S3Disk } from '../drivers/s3.ts';
 import { formatBytes, type UploadRule } from './rule.ts';
 import { SNIFF_BYTES, sniff } from './sniff.ts';
 import { RejectedUpload, TemporaryUpload } from './temporary-upload.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /** The table `marmeon make:uploads-table` creates (the app owns the migration; this package types it itself). */
 export const UPLOADS_TABLE = 'temporary_uploads';
@@ -316,7 +317,7 @@ export class TemporaryUploads {
 
   #named(name: string): Disk {
     const disk = this.disk;
-    if (disk.name !== name) throw new StorageSetupError(`An upload is on the disk "${name}", but uploads use "${disk.name}" now (UPLOADS_DISK).`);
+    if (disk.name !== name) throw new StorageSetupError(withCode('S2', `An upload is on the disk "${name}", but uploads use "${disk.name}" now (UPLOADS_DISK).`));
     return disk;
   }
 

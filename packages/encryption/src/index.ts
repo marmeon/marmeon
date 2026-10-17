@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createSecretKey, randomBytes, type KeyObject } from 'node:crypto';
 import { defineConfig, defineSolutions, env, environment, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 
 /**
  * Symmetric, authenticated encryption with the application key. Payloads cannot be read or changed without the key.
@@ -17,7 +18,7 @@ export const Encrypter = token<Encrypter>('Encrypter');
 export class DecryptError extends Error {
   override name = 'DecryptError';
   constructor() {
-    super('The payload is invalid.');
+    super(withCode('A4', 'The payload is invalid.'));
   }
 }
 
@@ -125,7 +126,7 @@ export function generateKey(): string {
 
 /**
  * A missing or broken `APP_KEY` — at the start (the configuration) or in a package that needs it: the command that
- * writes one. Text only.
+ * writes one — and a payload that does not decrypt. Text only.
  */
 const encryptionSolutions = defineSolutions([
   {
@@ -139,6 +140,17 @@ const encryptionSolutions = defineSolutions([
         '"marmeon key:generate" writes a new one into .env. To replace the key of a running app use "marmeon key:generate --force": ' +
         'it moves the old key to APP_PREVIOUS_KEYS, so sessions, encrypted cookies and signed links stay valid.',
       command: 'marmeon key:generate',
+    }),
+  },
+  {
+    for: DecryptError,
+    code: 'A4',
+    solve: () => ({
+      title: 'Find out why a payload does not decrypt',
+      text:
+        'A payload does not decrypt when it was changed, when it was encrypted with another APP_KEY, or for another context ' +
+        '(a session cookie does not decrypt as a remember cookie). After a key change, the old key belongs in APP_PREVIOUS_KEYS ' +
+        '("marmeon key:generate --force" moves it there); without it, every cookie, session and signed value made with the old key is refused.',
     }),
   },
 ]);

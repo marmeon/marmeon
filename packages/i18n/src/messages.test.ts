@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { formatMessage, parseMessage } from './format.ts';
 import { langFileOf } from './loader.ts';
@@ -43,6 +45,7 @@ describe('formatMessage (ICU subset)', () => {
   it('rejects malformed messages with the position', () => {
     expect(() => parseMessage('{count, plural, one {#}}')).toThrow(/needs an "other" branch/);
     expect(() => parseMessage('Hello {name')).toThrow(/Unclosed placeholder \{name/);
+    expect(() => parseMessage('Hello {name')).toThrow('[marmeon:S5] Unclosed placeholder');
     expect(() => parseMessage('{n, money}')).toThrow(/Unknown placeholder type "money"/);
     expect(() => parseMessage('a } b')).toThrow(/Unexpected "}" at position 2/);
     expect(() => parseMessage('{n, plural, offset:1 other {#}}')).toThrow(/offset/);
@@ -87,7 +90,7 @@ describe('Catalog', () => {
 
   it('fails when a file is malformed — with the key and the file', () => {
     expect(() => new Catalog({ fallback: 'en' }).add('de', 'shop', { a: { b: 'Hallo {name' } }, 'modules/shop/lang/de.ts')).toThrow(
-      'Message shop.a.b in modules/shop/lang/de.ts is malformed: Unclosed placeholder {name at position 11 of "Hallo {name"',
+      '[marmeon:S5] Message shop.a.b in modules/shop/lang/de.ts is malformed: Unclosed placeholder {name at position 11 of "Hallo {name"',
     );
     expect(() => new Catalog({ fallback: 'en' }).add('de', 'shop', ['x'])).toThrow(/must export an object of messages/);
     expect(() => new Catalog({ fallback: 'en' }).add('de', 'shop', { 'a.b': 'x' })).toThrow(/may not contain dots/);
@@ -165,5 +168,24 @@ describe('createMessageLoader (virtual:marmeon/lang)', () => {
     // Another fallback is another set of messages; a fallback that is no language tag is never used.
     expect((await loader.load('fr', { fallback: 'en' })).text('fr', 'lab.title')).toBe('Lab');
     expect((await loader.load('fr', { fallback: '../../x' })).text('fr', 'lab.title')).toBe('Lab');
+  });
+});
+
+describe('the browser entry', () => {
+  it('reaches no server code: no node: import and no @marmeon/core/internal', () => {
+    const seen = new Set<string>();
+    const offenders: string[] = [];
+    const walk = (file: string): void => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      const text = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      for (const [, specifier] of text.matchAll(/(?:\bfrom\s+|\bimport\s*\(\s*|^import\s+)['"]([^'"]+)['"]/gm)) {
+        if (specifier!.startsWith('node:') || specifier!.includes('@marmeon/core/internal')) offenders.push(`${file}: ${specifier}`);
+        else if (specifier!.startsWith('.')) walk(fileURLToPath(new URL(specifier!, `file://${file}`)));
+      }
+    };
+    walk(fileURLToPath(new URL('./messages.ts', import.meta.url)));
+    expect(seen.size).toBeGreaterThan(2);
+    expect(offenders).toEqual([]);
   });
 });

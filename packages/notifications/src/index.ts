@@ -10,6 +10,7 @@ import type { NotificationClass, RecipientResolvers } from './notification.ts';
 import { NotificationDeliverer, Notifications, NotificationSender, type QueueNotification } from './notifications.ts';
 import { NotificationRegistry, NotificationSetupError, RecipientRegistry } from './registry.ts';
 import { NotificationStore } from './store.ts';
+import { withCode } from '@marmeon/core/internal';
 
 export type {
   AnyRecipient,
@@ -125,7 +126,7 @@ export class NotificationServiceProvider implements ServiceProvider {
     const queue: QueueNotification = async (pending, options) => {
       const module = this.#queue;
       if (!module || !container.has(module.Queue)) {
-        throw new NotificationSetupError('notifications.send() queues the delivery and needs @marmeon/queue (pnpm add @marmeon/queue; marmeon discover) — or deliver now: notifications.sendNow().');
+        throw new NotificationSetupError(withCode('Q6', 'notifications.send() queues the delivery and needs @marmeon/queue (pnpm add @marmeon/queue; marmeon discover) — or deliver now: notifications.sendNow().'));
       }
       const { queue: name, connection, delay, tries, backoff } = pending.notification.queue ?? {};
       const when = options.delay ?? delay;
@@ -154,7 +155,7 @@ export class NotificationServiceProvider implements ServiceProvider {
     const registry = container.make(NotificationRegistry);
     container.make(RecipientRegistry);
     if (!container.has(Connections)) {
-      throw new NotificationSetupError('Notifications keep their rows in the database — register the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).');
+      throw new NotificationSetupError(withCode('Q6', 'Notifications keep their rows in the database — register the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).'));
     }
     // An unknown connection name fails here, with the known ones.
     container.make(Connections).options(container.make(NotificationConfig).connection);

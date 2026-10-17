@@ -3,6 +3,7 @@ import type { AnyRecipient, NotificationClass, NotificationInstance, Notificatio
 import { NotificationError, NotificationSetupError } from './registry.ts';
 import type { NotificationStore } from './store.ts';
 import { describeIssues } from './validate.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /**
  * One notification on its way to one recipient — what a channel gets. Built where the notification is delivered (a
@@ -48,7 +49,7 @@ export class NotificationChannels {
   readonly #factories = new Map<string, ChannelFactory>();
 
   add(name: string, factory: ChannelFactory): this {
-    if (this.#factories.has(name)) throw new NotificationSetupError(`Two notification channels are named "${name}" — a channel's name is what via() returns.`);
+    if (this.#factories.has(name)) throw new NotificationSetupError(withCode('Q6', `Two notification channels are named "${name}" — a channel's name is what via() returns.`));
     this.#factories.set(name, factory);
     return this;
   }

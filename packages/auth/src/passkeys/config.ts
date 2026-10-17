@@ -1,6 +1,7 @@
 import { isIP } from 'node:net';
 import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 import type { RelyingParty } from './webauthn.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /** Thrown the first time the relying party is needed, when `APP_URL` or the passkey variables cannot name one safely. */
 export class PasskeyConfigError extends Error {
@@ -10,7 +11,7 @@ export class PasskeyConfigError extends Error {
 const LOOPBACK = new Set(['127.0.0.1', '[::1]']);
 
 function problem(message: string): never {
-  throw new PasskeyConfigError(`Passkeys cannot be used: ${message}`);
+  throw new PasskeyConfigError(withCode('A1', `Passkeys cannot be used: ${message}`));
 }
 
 /** `http://localhost[:port]`, or `https:` — nothing else is a secure context a browser runs WebAuthn in. */

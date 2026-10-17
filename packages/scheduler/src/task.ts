@@ -2,6 +2,7 @@ import type { CommandClass } from 'marmeon';
 import type { Container } from '@marmeon/core';
 import type { JobClass } from '@marmeon/queue';
 import { ScheduleError } from './cron.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /** What a task does: queue a job (`s.job`), run a console command (`s.command`), or call an invokable class (`s.call`). */
 export type TaskKind = 'job' | 'command' | 'call';
@@ -145,13 +146,13 @@ const TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
 function parseTime(time: unknown, where: string): [minute: string, hour: string] {
   const match = typeof time === 'string' ? TIME.exec(time) : null;
-  if (!match) throw new ScheduleError(`${where}: ${JSON.stringify(time)} is not a time of day — use HH:MM, like '03:10' (hours 0–23, minutes 00–59).`);
+  if (!match) throw new ScheduleError(withCode('Q5', `${where}: ${JSON.stringify(time)} is not a time of day — use HH:MM, like '03:10' (hours 0–23, minutes 00–59).`));
   return [String(Number(match[2])), String(Number(match[1]))];
 }
 
 function weekday(day: unknown, where: string): number {
   const index = typeof day === 'string' ? WEEKDAYS.indexOf(day.toLowerCase() as never) : typeof day === 'number' && Number.isInteger(day) && day >= 0 && day <= 6 ? day : -1;
-  if (index < 0) throw new ScheduleError(`${where}: ${JSON.stringify(day)} is not a day of the week — 0 (Sunday) to 6, or a name like 'monday'.`);
+  if (index < 0) throw new ScheduleError(withCode('Q5', `${where}: ${JSON.stringify(day)} is not a day of the week — 0 (Sunday) to 6, or a name like 'monday'.`));
   return index;
 }
 
@@ -211,7 +212,7 @@ export class PendingTask {
     return this.#set('0');
   }
   hourlyAt(minute: number) {
-    if (!Number.isInteger(minute) || minute < 0 || minute > 59) throw new ScheduleError(`hourlyAt(${String(minute)}): the minute is 0–59.`);
+    if (!Number.isInteger(minute) || minute < 0 || minute > 59) throw new ScheduleError(withCode('Q5', `hourlyAt(${String(minute)}): the minute is 0–59.`));
     return this.#set(String(minute));
   }
   everyTwoHours() {
@@ -240,7 +241,7 @@ export class PendingTask {
     return this.#set('0', '0', '1');
   }
   monthlyOn(day: number, time = '0:00') {
-    if (!Number.isInteger(day) || day < 1 || day > 31) throw new ScheduleError(`monthlyOn(${String(day)}): the day of the month is 1–31.`);
+    if (!Number.isInteger(day) || day < 1 || day > 31) throw new ScheduleError(withCode('Q5', `monthlyOn(${String(day)}): the day of the month is 1–31.`));
     const [minute, hour] = parseTime(time, 'monthlyOn()');
     return this.#set(minute, hour, String(day));
   }
@@ -248,7 +249,7 @@ export class PendingTask {
     return this.#set('0', '0', '1', '1');
   }
   cron(expression: string) {
-    if (typeof expression !== 'string') throw new ScheduleError(`cron() takes an expression like '*/5 * * * *', not ${JSON.stringify(expression)}.`);
+    if (typeof expression !== 'string') throw new ScheduleError(withCode('Q5', `cron() takes an expression like '*/5 * * * *', not ${JSON.stringify(expression)}.`));
     this.definition.fields = undefined;
     this.definition.expression = expression;
     return this;
@@ -268,7 +269,7 @@ export class PendingTask {
     return this;
   }
   days(...days: Weekday[]) {
-    if (days.length === 0) throw new ScheduleError('days() needs at least one day of the week.');
+    if (days.length === 0) throw new ScheduleError(withCode('Q5', 'days() needs at least one day of the week.'));
     this.#fields('days()')[4] = days.map((day) => weekday(day, 'days()')).join(',');
     return this;
   }
@@ -293,18 +294,18 @@ export class PendingTask {
     return this;
   }
   withoutOverlapping(expiresAfterMinutes = 1440) {
-    if (this.definition.kind === 'job') throw new ScheduleError('s.job() only queues the job — that never overlaps. Overlapping runs of the job itself: withoutOverlapping() middleware on the job class.');
-    if (!(expiresAfterMinutes > 0)) throw new ScheduleError(`withoutOverlapping(${String(expiresAfterMinutes)}): the lock needs minutes > 0 after which it expires.`);
+    if (this.definition.kind === 'job') throw new ScheduleError(withCode('Q5', 's.job() only queues the job — that never overlaps. Overlapping runs of the job itself: withoutOverlapping() middleware on the job class.'));
+    if (!(expiresAfterMinutes > 0)) throw new ScheduleError(withCode('Q5', `withoutOverlapping(${String(expiresAfterMinutes)}): the lock needs minutes > 0 after which it expires.`));
     this.definition.overlapMinutes = expiresAfterMinutes;
     return this;
   }
   catchUp(mode: CatchUp) {
-    if (mode !== 'once' && mode !== 'skip') throw new ScheduleError(`catchUp() is 'once' or 'skip', not ${JSON.stringify(mode)}.`);
+    if (mode !== 'once' && mode !== 'skip') throw new ScheduleError(withCode('Q5', `catchUp() is 'once' or 'skip', not ${JSON.stringify(mode)}.`));
     this.definition.catchUp = mode;
     return this;
   }
   name(name: string) {
-    if (typeof name !== 'string' || name.trim() === '') throw new ScheduleError('name() needs a name.');
+    if (typeof name !== 'string' || name.trim() === '') throw new ScheduleError(withCode('Q5', 'name() needs a name.'));
     this.definition.name = name.trim();
     return this;
   }
@@ -317,9 +318,12 @@ export class PendingTask {
   #fields(option: string): [string, string, string, string, string] {
     if (this.definition.fields) return this.definition.fields;
     throw new ScheduleError(
-      this.definition.expression === undefined
-        ? `${option} needs a frequency first — .daily().at('03:10').`
-        : `${option} cannot change a cron('${this.definition.expression}') expression — write it into the expression.`,
+      withCode(
+        'Q5',
+        this.definition.expression === undefined
+          ? `${option} needs a frequency first — .daily().at('03:10').`
+          : `${option} cannot change a cron('${this.definition.expression}') expression — write it into the expression.`,
+      ),
     );
   }
 }

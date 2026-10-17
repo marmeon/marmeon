@@ -242,6 +242,7 @@ describe('a cache driver of a provider', () => {
         /CACHE_DRIVER=dyct is not a cache driver\. Known: file, memory, database, redis, dict\./,
       );
       await expect(boot([], { CACHE_DRIVER: 'nope' })).rejects.toThrow(CacheSetupError);
+      await expect(boot([], { CACHE_DRIVER: 'nope' })).rejects.toThrow('[marmeon:S1] CACHE_DRIVER=nope is not a cache driver.');
     });
 
     it('for a built-in name, a malformed name, a name twice and a record that is no object — also when unused', async () => {

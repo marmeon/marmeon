@@ -18,6 +18,7 @@ import { DatabaseSessionStore } from './stores/database.ts';
 import { FileSessionStore } from './stores/file.ts';
 import { MemorySessionStore } from './stores/memory.ts';
 import { RedisSessionStore } from './stores/redis.ts';
+import { withCode } from '@marmeon/core/internal';
 
 declare module '@marmeon/core' {
   interface ModuleDefinition {
@@ -72,7 +73,7 @@ export class SessionServiceProvider implements ServiceProvider {
     if (driver === 'redis') {
       const redis = await importRedis();
       if (!app.container.has(redis.RedisConnections)) {
-        throw new SessionSetupError('SESSION_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).');
+        throw new SessionSetupError(withCode('A3', 'SESSION_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).'));
       }
       const connections = app.container.make(redis.RedisConnections);
       connections.options(connection);
@@ -80,7 +81,7 @@ export class SessionServiceProvider implements ServiceProvider {
     } else if (driver === 'database') {
       const database = await importDatabase();
       if (!app.container.has(database.Connections)) {
-        throw new SessionSetupError('SESSION_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).');
+        throw new SessionSetupError(withCode('A3', 'SESSION_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).'));
       }
       app.container.make(database.Connections).options(connection);
     }
@@ -104,7 +105,7 @@ async function importOptional<T>(load: () => Promise<T>, name: string, driver: s
   } catch (error) {
     const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
     if (code === 'ERR_MODULE_NOT_FOUND' && typeof message === 'string' && message.includes(name)) {
-      throw new SessionSetupError(`SESSION_DRIVER=${driver} needs ${name}, which is not installed in this app: ${install}`);
+      throw new SessionSetupError(withCode('A3', `SESSION_DRIVER=${driver} needs ${name}, which is not installed in this app: ${install}`));
     }
     throw error;
   }

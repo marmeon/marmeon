@@ -605,6 +605,7 @@ describe('the worker', () => {
   it('refuses to start when retryAfter does not cover a job timeout plus the stop timeout', () => {
     const registry = new JobRegistry().add([WelcomeJob, PoliteSlowJob], 'module test');
     expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow(QueueSetupError);
+    expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow('[marmeon:Q4] The queue connection "database"');
     expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow(
       'The queue connection "database" gives a claimed job 70s (retryAfter) before another worker may take it, but test.welcome (timeout 60s) may hold it for its timeout plus the worker\'s --stop-timeout of 10s — a second worker would run it while the first still does. Raise retryAfter (e.g. DB_QUEUE_RETRY_AFTER) above timeout + stop timeout, or lower the job\'s static timeout.',
     );

@@ -1,6 +1,7 @@
 import type { Clock } from '@marmeon/core';
 import type { CacheDriver, CacheStore, Entry, LockStore } from './cache.ts';
 import { CacheSetupError } from './errors.ts';
+import { withCode } from '@marmeon/core/internal';
 
 const STORE_MEMBERS = ['read', 'write', 'add', 'increment', 'delete', 'clear'] as const;
 const LOCK_MEMBERS = ['lock', 'unlock', 'forceUnlock', 'lockOwner'] as const;
@@ -32,7 +33,7 @@ export class GuardedStore implements CacheStore {
   constructor(driver: string, made: unknown, clock: Clock) {
     const missing = missingMembers(made, STORE_MEMBERS);
     if (typeof made !== 'object' || made === null || missing.length > 0) {
-      throw new CacheSetupError(`The cache driver "${driver}" must return a store with ${STORE_MEMBERS.join(', ')}${missing.length > 0 ? ` — missing: ${missing.join(', ')}` : ''}.`);
+      throw new CacheSetupError(withCode('S1', `The cache driver "${driver}" must return a store with ${STORE_MEMBERS.join(', ')}${missing.length > 0 ? ` — missing: ${missing.join(', ')}` : ''}.`));
     }
     const store = made as CacheStore;
     this.#store = store;
@@ -85,7 +86,7 @@ export class GuardedLocks implements LockStore {
   constructor(driver: string, made: unknown, pruned: boolean) {
     const missing = missingMembers(made, LOCK_MEMBERS);
     if (typeof made !== 'object' || made === null || missing.length > 0) {
-      throw new CacheSetupError(`The cache driver "${driver}" must return locks with ${LOCK_MEMBERS.join(', ')}${missing.length > 0 ? ` — missing: ${missing.join(', ')}` : ''}.`);
+      throw new CacheSetupError(withCode('S1', `The cache driver "${driver}" must return locks with ${LOCK_MEMBERS.join(', ')}${missing.length > 0 ? ` — missing: ${missing.join(', ')}` : ''}.`));
     }
     const locks = made as LockStore;
     this.#locks = locks;
@@ -119,7 +120,7 @@ export class GuardedLocks implements LockStore {
 export function guardDriver(driver: string, made: unknown, clock: Clock): CacheDriver {
   const pair = made as Partial<Record<'store' | 'locks', unknown>> | null | undefined;
   if (typeof pair !== 'object' || pair === null || typeof pair.store !== 'object' || pair.store === null || typeof pair.locks !== 'object' || pair.locks === null) {
-    throw new CacheSetupError(`The cache driver "${driver}" must return { store, locks }: the entries and the atomic locks. One object may be both.`);
+    throw new CacheSetupError(withCode('S1', `The cache driver "${driver}" must return { store, locks }: the entries and the atomic locks. One object may be both.`));
   }
   return { store: new GuardedStore(driver, pair.store, clock), locks: new GuardedLocks(driver, pair.locks, pair.locks !== pair.store) };
 }
@@ -131,7 +132,7 @@ export function guardDriver(driver: string, made: unknown, clock: Clock): CacheD
  */
 export async function verifyDriver(driver: string, { store, locks }: CacheDriver, clock: Clock, prefix: string): Promise<void> {
   const fail = (what: string): never => {
-    throw new CacheSetupError(`The cache driver "${driver}" breaks its contract: ${what}. See docs/drivers.md#cache-drivers.`);
+    throw new CacheSetupError(withCode('S1', `The cache driver "${driver}" breaks its contract: ${what}. See docs/drivers.md#cache-drivers.`));
   };
   const probe = `${prefix}marmeon-probe:${crypto.randomUUID()}`;
   const [first, second] = [crypto.randomUUID(), crypto.randomUUID()];
