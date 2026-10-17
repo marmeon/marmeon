@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from 'node:fs';
 import { Clock, createApplication, EventDispatcher, inTransaction, listen, Logger, type Application, type EventPayload, type ModuleDefinition } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
@@ -15,6 +16,7 @@ import { QueueSetupError } from './registry.ts';
 // Queued listeners: `static queue` on a listener class — the dispatcher queues a `marmeon.listener` job with the
 // event's payload (its `static schema`), a worker runs the listener with it.
 
+const FORMATS = new URL('./__fixtures__/formats/', import.meta.url);
 const KEY = 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=';
 
 class Seen {
@@ -38,6 +40,7 @@ class OrderShipped {
 }
 
 export class SendShippingMail {
+  static readonly listener = 'shop.send-shipping-mail';
   static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
   readonly #seen: Seen;
   readonly #unit: UnitOfWork;
@@ -52,6 +55,7 @@ export class SendShippingMail {
 
 /** On the default queue. */
 export class UpdateWarehouse {
+  static readonly listener = 'shop.update-warehouse';
   static readonly queue = {};
   readonly #seen: Seen;
   constructor(seen: Seen) {
@@ -136,7 +140,7 @@ describe('queued listeners', () => {
     queue.assertListenerQueued(SendShippingMail, { orderId: 'order-5' }).assertListenerQueued(UpdateWarehouse).assertListenerNotQueued(SendShippingMail, { orderId: 'other' });
     expect(queue.listenerQueued(SendShippingMail).map((entry) => entry.dispatched.queue)).toEqual(['mail']);
     expect(() => queue.assertListenerQueued(SendShippingMail, { orderId: 'other' })).toThrow(
-      'Expected the queued listener SendShippingMail to be queued with a matching payload. Queued listeners: SendShippingMail, UpdateWarehouse.',
+      'Expected the queued listener shop.send-shipping-mail to be queued with a matching payload. Queued listeners: shop.send-shipping-mail, shop.update-warehouse.',
     );
     expect(queue.pending().map((entry) => entry.payload).join()).not.toContain('order-5'); // encrypted in the fake's queue too
 
@@ -145,18 +149,68 @@ describe('queued listeners', () => {
     expect(application.seen.entries.find((entry) => entry.listener === 'SendShippingMail')!.unit).toMatch(/^[0-9a-f-]{36}$/); // built in the job's scope
   });
 
-  it('fail a queued run at once when the payload no longer matches the event schema (a deploy changed it), and retry an unknown listener by its tries', async () => {
+  it('match a queued listener in the QueueFake by the class, not by its name: a subclass inheriting the name is another listener', async () => {
+    class Sub extends SendShippingMail {}
+    await using application = await app({ fake: true });
+    await application.container.createScope().make(EventDispatcher).dispatch(new OrderShipped('order-6'));
+    const queue = application.container.make(Queue) as QueueFake;
+    queue.assertListenerQueued(SendShippingMail);
+    expect(queue.listenerQueued(Sub as never)).toEqual([]);
+    queue.assertListenerNotQueued(Sub as never);
+  });
+
+  it('fail a queued run at once when the payload no longer matches the event schema (a deploy changed it)', async () => {
     await using application = await app({ fake: true });
     const queue = application.container.make(Queue) as QueueFake;
     const { CallQueuedListener } = await import('./listeners.ts');
     // Three tries: a mismatch must not use them up — it never will match.
-    await queue.dispatch(CallQueuedListener as never, { event: 'shop.order-shipped', listener: 'SendShippingMail', payload: { orderId: 7 } } as never, { [RECORD_OPTIONS]: { tries: 3 } } as never);
-    await queue.dispatch(CallQueuedListener as never, { event: 'shop.order-shipped', listener: 'RenamedListener', payload: { orderId: 'x' } } as never);
-    expect(await queue.work()).toMatchObject({ failed: 2, released: 0 });
+    await queue.dispatch(CallQueuedListener as never, { event: 'shop.order-shipped', listener: 'shop.send-shipping-mail', payload: { orderId: 7 } } as never, { [RECORD_OPTIONS]: { tries: 3 } } as never);
+    expect(await queue.work()).toMatchObject({ failed: 1, released: 0 });
     const failed = await queue.failed();
-    expect(failed.map((entry) => entry.exception).join('\n')).toContain('The payload no longer matches the schema of the event shop.order-shipped (SendShippingMail): orderId:');
-    expect(failed.map((entry) => entry.exception).join('\n')).toContain('No queued listener RenamedListener of the event shop.order-shipped in this app — was it renamed or removed?');
+    expect(failed.map((entry) => entry.exception).join('\n')).toContain('The payload no longer matches the schema of the event shop.order-shipped (shop.send-shipping-mail): orderId:');
     expect(application.seen.entries).toEqual([]);
+  });
+
+  it('hold a job naming a listener this app does not have — the class name, as the former release wrote it, included — and run no other listener', async () => {
+    await using application = await app({ fake: true });
+    const queue = application.container.make(Queue) as QueueFake;
+    const { CallQueuedListener } = await import('./listeners.ts');
+    for (const listener of ['SendShippingMail', 'shop.renamed-listener']) {
+      await queue.dispatch(CallQueuedListener as never, { event: 'shop.order-shipped', listener, payload: { orderId: 'x' } } as never);
+    }
+    expect(await queue.work()).toMatchObject({ failed: 0, released: 2 });
+    expect(application.seen.entries).toEqual([]);
+  });
+
+  it('are found by their static listener: renaming the class changes nothing', async () => {
+    class Renamed {
+      static readonly listener = 'shop.send-shipping-mail';
+      static readonly queue = {};
+      readonly #seen: Seen;
+      constructor(seen: Seen) {
+        this.#seen = seen;
+      }
+      handle(payload: EventPayload<typeof OrderShipped>): void {
+        this.#seen.entries.push({ listener: 'Renamed', payload, inTransaction: false, unit: '' });
+      }
+    }
+    await using application = await app({ listeners: [listen(OrderShipped, Renamed)] });
+    await application.container.createScope().make(EventDispatcher).dispatch(new OrderShipped('order-9'));
+    expect(JSON.parse((await jobRows(application))[0]!.payload)).toMatchObject({ job: 'marmeon.listener', encrypted: true });
+    expect(await application.container.make(QueueConnections).worker('database', 10).run({ stopWhenEmpty: true })).toMatchObject({ processed: 1, failed: 0 });
+    expect(application.seen.entries.map((entry) => entry.listener)).toEqual(['Renamed']);
+  });
+
+  it('read every fixture of the stored job a queued listener leaves', async () => {
+    const files = readdirSync(new URL('queued-listener/', FORMATS));
+    expect(files).toContain('v1.json');
+    for (const name of files) {
+      await using application = await app();
+      const text = readFileSync(new URL(`queued-listener/${name}`, FORMATS), 'utf8');
+      await sql`insert into jobs (queue, payload, attempts, available_at, created_at) values ('default', ${text}, 0, 0, 0)`.execute(application.container.make(Connections).get());
+      expect(await application.container.make(QueueConnections).worker('database', 10).run({ stopWhenEmpty: true }), name).toMatchObject({ processed: 1, failed: 0 });
+      expect(application.seen.entries.map((entry) => entry.payload), name).toEqual([{ orderId: 'order-77' }]);
+    }
   });
 
   it('refuse an event their schema rejects — at the dispatch, in the dispatching code', async () => {
@@ -179,19 +233,37 @@ describe('queued listeners', () => {
       readonly #event = true;
     }
     class Listens {
+      static readonly listener = 'shop.listens';
       static readonly queue = { queue: 'mail' };
       handle(): void {}
     }
     class BadTries {
+      static readonly listener = 'shop.badtries';
       static readonly queue = { tries: 0 };
       handle(): void {}
     }
     class Typo {
+      static readonly listener = 'shop.typo';
       static readonly queue = { aftercommit: false };
       handle(): void {}
     }
     class StillAfterCommit {
+      static readonly listener = 'shop.stillaftercommit';
       static readonly queue = { afterCommit: true };
+      handle(): void {}
+    }
+    class Unnamed {
+      static readonly queue = {};
+      handle(): void {}
+    }
+    class Shouting {
+      static readonly listener = 'Shop.Shouting';
+      static readonly queue = {};
+      handle(): void {}
+    }
+    class Twin2 {
+      static readonly listener = 'shop.listens';
+      static readonly queue = {};
       handle(): void {}
     }
     const fails = (listeners: ModuleDefinition['listeners']) => app({ listeners });
@@ -200,6 +272,13 @@ describe('queued listeners', () => {
     );
     await expect(fails([listen(NoSchema, Listens as never)])).rejects.toThrow('NoSchema (shop.no-schema) has a queued listener (Listens) and needs static schema');
     await expect(fails([listen(OrderShipped, Listens as never), listen(Twin, Listens as never)])).rejects.toThrow('Two events are named "shop.order-shipped": OrderShipped and Twin.');
+    await expect(fails([listen(OrderShipped, Unnamed as never)])).rejects.toThrow(
+      "Unnamed (static queue) needs static listener — the stable name its queued jobs carry, never the class name (a rename or a minifier changes that): static listener = '<module>.unnamed'.",
+    );
+    await expect(fails([listen(OrderShipped, Shouting as never)])).rejects.toThrow('Shouting (static queue): "Shop.Shouting" is not a name like');
+    await expect(fails([listen(OrderShipped, Listens as never), listen(OrderShipped, Twin2 as never)])).rejects.toThrow(
+      'Listens and Twin2, both queued listeners of OrderShipped, have the same static listener "shop.listens".',
+    );
     await expect(fails([listen(OrderShipped, BadTries as never)])).rejects.toThrow(QueueSetupError);
     await expect(fails([listen(OrderShipped, Typo as never)])).rejects.toThrow('Typo (static queue): unknown setting "aftercommit"');
     await expect(fails([listen(OrderShipped, StillAfterCommit as never)])).rejects.toThrow(
@@ -212,12 +291,14 @@ describe('queued listeners', () => {
 export function typeLevelTests(): void {
   listen(OrderShipped, SendShippingMail);
   class OnJobQueued {
+    static readonly listener = 'shop.on-job-queued';
     static readonly queue = {};
     handle(_event: JobQueued): void {}
   }
   // @ts-expect-error — job events cannot be queued (no static event/schema): a queued listener of one would loop.
   listen(JobQueued, OnJobQueued);
   class WithAfterCommit {
+    static readonly listener = 'shop.with-after-commit';
     static readonly queue = { queue: 'mail', afterCommit: false };
     handle(_payload: EventPayload<typeof OrderShipped>): void {}
   }

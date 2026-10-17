@@ -18,6 +18,12 @@ export interface PayloadCipher {
  */
 export const cipherContext = (name: string, version: number = RECORD_VERSION) => `queue:v${version}:${name}`;
 
+/**
+ * @internal A static method a framework job can have: `(container, payload)` → why this app cannot run the payload's target
+ * (a queued listener it has no name for), or `undefined`. The record is then foreign, not failed.
+ */
+export const TARGET_UNKNOWN: unique symbol = Symbol('marmeon.queue.targetUnknown');
+
 /** The payload does not match the job's schema — at dispatch (a bug) or before it runs (a deploy changed the schema). */
 export class JobPayloadError extends QueueError {
   override name = 'JobPayloadError';
@@ -159,7 +165,10 @@ export class JobRunner {
       }
     }
     try {
-      return { kind: 'ready', record, job, payload: await validatePayload(job, data, 'run') };
+      const payload = await validatePayload(job, data, 'run');
+      const unknown = (job as { [TARGET_UNKNOWN]?: (container: Container, payload: unknown) => string | undefined })[TARGET_UNKNOWN]?.(this.#container, payload);
+      if (unknown) return { kind: 'foreign', reason: unknown, envelope: envelopeOf(record), record };
+      return { kind: 'ready', record, job, payload };
     } catch (error) {
       // A newer release may have widened the schema (a new enum member): another worker may accept what this one rejects.
       return { kind: 'foreign', reason: (error as Error).message, envelope: envelopeOf(record), record };

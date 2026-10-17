@@ -9,6 +9,8 @@ import { TwoFactorNotices } from '../two-factor-notices.ts';
  * signed in (`during: 'step-up'`) sends nothing. A queued listener.
  */
 export class NotifyAboutFailedTwoFactor {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = 'auth.notify-about-failed-two-factor';
   static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
 
   readonly #notices: TwoFactorNotices;

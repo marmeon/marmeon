@@ -124,6 +124,8 @@ import { UserRepository } from '../UserRepository.ts';
 import { VerificationMailer } from '../verification.ts';
 
 export class SendEmailVerification {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = 'auth.send-email-verification';
   static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
 
   readonly #users: UserRepository;
@@ -170,6 +172,9 @@ export class NotePublished {
 - **`static schema`** reads the event object itself and describes JSON: ids, not records, dates or maps. The payload is checked
   against it when the listener is queued and again before it runs. A record carried in a job would be stale by then. The
   listener reads it again, as it is now. The job that carries the payload is encrypted with `APP_KEY`.
+- **`static listener`** on the listener is its stable name, like `'auth.send-email-verification'` (lowercase words, a `.` after
+  the module). The queued job carries this name and a worker finds the listener by it within the event. Never the class name:
+  renaming the class, or a minifier, must not break the jobs that wait. Two listeners of one event cannot share a name.
 - **`static queue`** takes `queue`, `connection`, `delay`, `tries` and `backoff`. Without `tries` a queued listener runs once.
 
 `listen()` checks all of this when it compiles: an event without `static event` and `static schema`, a schema that is no JSON, a
@@ -180,10 +185,12 @@ A queued listener is queued at its place in the order, like any dispatch of a jo
 transaction commits, and never after a rollback: a registration that rolls back sends no mail. Queued listeners need
 `@marmeon/queue`, which every new app has. An app without it fails at the start and names the package to install.
 
-The start also checks the queued listeners: two events with one name, a listener without `handle()` or an unknown setting in
-`static queue` stop it. A worker finds a queued listener by its class name within its event, so renaming the class while jobs of
-it wait makes them fail. A deploy that changes an event's schema fails the waiting jobs whose payload no longer matches, at once
-and without retries.
+The start also checks the queued listeners: two events with one name, a listener without `static listener` or `handle()`, two
+listeners of an event with one name or an unknown setting in `static queue` stop it. A worker finds a queued listener only by
+its `static listener` within its event. A job that names a listener this app does not have is not run and no other listener
+takes its place: it waits like any job this worker does not know, and lands in the failed jobs after six hours. Renaming the
+string while jobs of it wait leaves them unrun, so keep it. A deploy that changes an event's schema fails the waiting jobs
+whose payload no longer matches, at once and without retries.
 
 ## The framework's events
 

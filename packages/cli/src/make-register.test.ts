@@ -112,6 +112,16 @@ describe('make:listener registers the listener with its event', () => {
     expect(readFileSync(join(root, 'modules', 'billing', 'listeners', 'SendReceipt.ts'), 'utf8')).toContain("import type { InvoicePaid } from '../events/InvoicePaid.ts';");
   });
 
+  it('writes a queued listener with a stable name under --queued', () => {
+    const { root } = app();
+    run(new MakeEventCommand(), root, ['InvoicePaid']);
+    expect(listener(root, 'SendReceiptListener', 'InvoicePaid', { queued: true }).code).toBe(0);
+    const text = readFileSync(join(root, 'modules', 'billing', 'listeners', 'SendReceiptListener.ts'), 'utf8');
+    expect(text).toContain("static readonly listener = 'billing.send-receipt';");
+    expect(text).toContain('static readonly queue = {};');
+    expect(text).toContain('handle(payload: EventPayload<typeof InvoicePaid>): void');
+  });
+
   it('follows an event the module already imports from a package, without a second import', () => {
     const { root, index } = app(`import { Registered } from '@marmeon/auth';\n${MODULE}`);
     listener(root, 'Welcome', 'Registered');

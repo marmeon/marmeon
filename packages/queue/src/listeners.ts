@@ -1,11 +1,11 @@
-import type { EventClass, EventRegistry, ListenerQueue, QueueableEvent, QueuedListenerClass, QueuedListenerOptions, Resolver, StandardSchemaV1 } from '@marmeon/core';
+import type { Container, EventClass, EventRegistry, ListenerQueue, QueueableEvent, QueuedListenerClass, QueuedListenerOptions, Resolver, StandardSchemaV1 } from '@marmeon/core';
 import { isQueuedListener } from '@marmeon/core/internal';
 import * as v from 'valibot';
 import type { JobContext } from './job.ts';
 import { RECORD_OPTIONS, type Queue } from './queue.ts';
 import { JobEvent } from './events.ts';
 import { QueueError, QueueSetupError } from './registry.ts';
-import { describeIssues, JobPayloadError, toJson } from './runner.ts';
+import { describeIssues, JobPayloadError, TARGET_UNKNOWN, toJson } from './runner.ts';
 
 /** `auth.registered` — like a job's name. */
 const NAME = /^[a-z0-9]+(?:[.:_-][a-z0-9]+)*$/;
@@ -20,8 +20,8 @@ interface QueuedTarget {
  * The app's queued listeners, by event name and listener name — checked at startup: every event with a queued
  * listener can be queued (`static event`, `static schema`), names are unique, `static queue` holds sensible settings.
  *
- * A listener is known by its class name within its event: renaming a queued listener's class while jobs of it wait
- * makes them fail ("no queued listener … — renamed or removed?") — like renaming a job's `static job`.
+ * A listener is known by its `static listener` within its event — never by its class name, which a rename or a minifier
+ * changes. Renaming that string while jobs of it wait leaves them unrun, like renaming a job's `static job`.
  */
 export class QueuedListeners {
   readonly #byEvent = new Map<string, { readonly event: EventClass & QueueableEvent; readonly listeners: Map<string, QueuedListenerClass> }>();
@@ -30,6 +30,7 @@ export class QueuedListeners {
     for (const { event, listener } of registry.all()) {
       if (!isQueuedListener(listener)) continue;
       const queueable = checkQueueableEvent(event, listener);
+      checkListenerName(listener);
       checkListenerOptions(listener);
       const entry = this.#byEvent.get(queueable.event) ?? { event: queueable, listeners: new Map<string, QueuedListenerClass>() };
       if (entry.event !== queueable) {
@@ -37,11 +38,13 @@ export class QueuedListeners {
           `Two events are named "${queueable.event}": ${entry.event.name} and ${queueable.name}. An event's name is how a worker finds its class for a queued listener — give each its own static event.`,
         );
       }
-      const known = entry.listeners.get(listener.name);
+      const known = entry.listeners.get(listener.listener);
       if (known && known !== listener) {
-        throw new QueueSetupError(`Two queued listeners of ${queueable.name} are named ${listener.name}. A worker finds a queued listener by its class name within the event — rename one.`);
+        throw new QueueSetupError(
+          `${known.name} and ${listener.name}, both queued listeners of ${queueable.name}, have the same static listener "${listener.listener}". A worker finds a queued listener by that name within the event — give each its own.`,
+        );
       }
-      entry.listeners.set(listener.name, listener);
+      entry.listeners.set(listener.listener, listener);
       this.#byEvent.set(queueable.event, entry);
     }
   }
@@ -75,6 +78,22 @@ export function checkQueueableEvent(event: EventClass, listener: { readonly name
     throw new QueueSetupError(`${label} (${statics.event}) has a queued listener (${listener.name}) and needs static schema — a Standard Schema of what is queued of it, e.g. v.object({ userId: v.number() }).`);
   }
   return event as EventClass & QueueableEvent;
+}
+
+/** `SendWelcomeMail` → `send-welcome-mail`, for the suggestion in a message. */
+function kebab(name: string): string {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/[^A-Za-z0-9]+/g, '-').toLowerCase().replace(/^-|-$/g, '') || 'name';
+}
+
+function checkListenerName(listener: QueuedListenerClass): void {
+  const name = (listener as { listener?: unknown }).listener;
+  if (typeof name === 'string' && NAME.test(name)) return;
+  const label = `${listener.name || 'A queued listener'} (static queue)`;
+  throw new QueueSetupError(
+    typeof name === 'string'
+      ? `${label}: "${name}" is not a name like 'module.send-welcome-mail' — lowercase words joined by . : _ or -.`
+      : `${label} needs static listener — the stable name its queued jobs carry, never the class name (a rename or a minifier changes that): static listener = '<module>.${kebab(listener.name)}'.`,
+  );
 }
 
 function checkListenerOptions(listener: QueuedListenerClass): void {
@@ -125,10 +144,18 @@ export class CallQueuedListener {
     this.#listeners = listeners;
   }
 
+  /**
+   * @internal Asked before the job runs: why this app has no listener for the job, if so. Such a job is foreign to this
+   * worker — a newer one may know it — and never runs another listener.
+   */
+  static [TARGET_UNKNOWN](container: Container, data: QueuedListenerPayload): string | undefined {
+    if (container.make(QueuedListeners).find(data.event, data.listener)) return undefined;
+    return `No queued listener "${data.listener}" of the event "${data.event}" is registered in this app (a deploy in progress, or the listener's static listener was changed or removed).`;
+  }
+
   async handle(data: QueuedListenerPayload, job: JobContext): Promise<void> {
     const target = this.#listeners.find(data.event, data.listener);
-    // A deploy renamed or removed it — or this worker runs an older version (a rolling deploy): retried by its tries.
-    if (!target) throw new QueueError(`No queued listener ${data.listener} of the event ${data.event} in this app — was it renamed or removed?`);
+    if (!target) throw new QueueError(`No queued listener "${data.listener}" of the event "${data.event}" in this app.`);
     const result = await target.event.schema['~standard'].validate(data.payload);
     // A deploy changed the event's schema: it never will match — failed at once, like a job's payload.
     if (result.issues) return job.fail(new JobPayloadError(`The payload no longer matches the schema of the event ${data.event} (${data.listener}): ${describeIssues(result.issues)}`, result.issues));
@@ -153,7 +180,7 @@ export class QueueListenerDispatcher implements ListenerQueue {
 
   async queue(event: object, registeredFor: EventClass, listener: QueuedListenerClass): Promise<void> {
     const queueable = checkQueueableEvent(registeredFor, listener);
-    if (this.#listeners.find(queueable.event, listener.name)?.listener !== listener) {
+    if (this.#listeners.find(queueable.event, listener.listener)?.listener !== listener) {
       throw new QueueError(`${listener.name} is not a registered queued listener of ${queueable.name} — list it in a module: listen(${queueable.name}, ${listener.name}).`);
     }
     const result = await queueable.schema['~standard'].validate(event);
@@ -169,6 +196,6 @@ export class QueueListenerDispatcher implements ListenerQueue {
       [RECORD_OPTIONS]: { ...(tries === undefined ? {} : { tries }), ...(backoff === undefined ? {} : { backoff: typeof backoff === 'number' ? [backoff] : backoff }) },
     };
     // The normal dispatch path: in a transaction, part of it — atomic with a database queue.
-    await this.#queue().dispatch(CallQueuedListener as never, { event: queueable.event, listener: listener.name, payload } as never, options);
+    await this.#queue().dispatch(CallQueuedListener as never, { event: queueable.event, listener: listener.listener, payload } as never, options);
   }
 }

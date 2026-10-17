@@ -58,8 +58,12 @@ export interface QueueableEvent {
 /** What a queued listener's `handle()` gets: the output of the event's `static schema` — `handle(payload: EventPayload<typeof Registered>)`. */
 export type EventPayload<E extends QueueableEvent> = InferOutput<E['schema']>;
 
-/** A queued listener class: `static queue`, and `handle(payload)` — built through the container where it runs (a worker). */
-export type QueuedListenerClass<P = any> = { readonly queue: QueuedListenerOptions } & (new (...args: any[]) => { readonly handle: (payload: P) => void | Promise<void> });
+/**
+ * A queued listener class: `static queue`, `static listener` — its stable name, like `'user.send-welcome-mail'`, the one a
+ * queued job carries (never the class name, which a rename or a minifier changes) — and `handle(payload)`, built through the
+ * container where it runs (a worker).
+ */
+export type QueuedListenerClass<P = any> = { readonly queue: QueuedListenerOptions; readonly listener: string } & (new (...args: any[]) => { readonly handle: (payload: P) => void | Promise<void> });
 
 /** The input type of a Standard Schema. */
 type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['input'] : never;
@@ -91,7 +95,7 @@ type QueuedListenerFor<E extends EventClass, L> = L extends { readonly queue: { 
     ? { readonly 'The static schema of a queued event describes JSON (strings, numbers, booleans, null, arrays, plain objects) — queue IDs, not records, Dates or Maps': EventPayload<E> }
     : InstanceType<E> extends SchemaInput<E['schema']>
       ? EventPayload<E> extends HandleParameter<L>
-        ? { readonly queue: QueuedListenerOptions }
+        ? { readonly queue: QueuedListenerOptions; readonly listener: string }
         : { readonly 'handle() of a queued listener gets the event payload (its static schema), not the event: type it as EventPayload<typeof YourEvent>': EventPayload<E> }
       : { readonly 'The static schema of a queued event reads the event object itself — the event class lacks a field the schema wants': SchemaInput<E['schema']> }
   : { readonly queue: 'A queued listener (static queue) needs an event that can be queued — give the event class static event = "module.what-happened" and static schema. Job events (JobQueued …) never can: listen to them without static queue.' };

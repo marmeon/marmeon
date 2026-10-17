@@ -68,6 +68,7 @@ export class NotifyWarehouse {
 }
 
 export class SendShippingMail {
+  static readonly listener = 'shop.send-shipping-mail';
   static readonly queue = { queue: 'mail' };
   readonly #journal: Journal;
   constructor(journal: Journal) {
@@ -206,6 +207,7 @@ export function typeLevelTests(): void {
   // Queued listeners get the event's payload — its static schema — not the event:
   listen(OrderShipped, SendShippingMail);
   class TakesTheEvent {
+    static readonly listener = 'shop.takes-the-event';
     static readonly queue = {};
     handle(event: OrderShipped) {
       void event.shippedAt;
@@ -213,9 +215,18 @@ export function typeLevelTests(): void {
   }
   // @ts-expect-error — handle() of a queued listener gets the payload: EventPayload<typeof OrderShipped>.
   listen(OrderShipped, TakesTheEvent);
+  class Unnamed {
+    static readonly queue = {};
+    handle(payload: EventPayload<typeof OrderShipped>) {
+      void payload;
+    }
+  }
+  // @ts-expect-error — a queued listener needs static listener, its stable name.
+  listen(OrderShipped, Unnamed);
   // @ts-expect-error — OrderPlaced has no static event/schema: it cannot be queued.
   listen(OrderPlaced, SendShippingMail);
   class QueuedDate {
+    static readonly listener = 'shop.queued-date';
     static readonly queue = {};
     handle(payload: EventPayload<typeof WithDate>) {
       void payload.at;

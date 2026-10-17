@@ -8,6 +8,8 @@ import { PasskeyNotices } from '../passkey-notices.ts';
  * (counted atomically), so nobody can fill an inbox by sending wrong answers. A queued listener.
  */
 export class NotifyAboutFailedPasskeySignIn {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = 'auth.notify-about-failed-passkey-sign-in';
   static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
 
   readonly #notices: PasskeyNotices;

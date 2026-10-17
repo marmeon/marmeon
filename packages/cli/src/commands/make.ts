@@ -208,9 +208,9 @@ export class MakeEventCommand {
 
 export class MakeListenerCommand {
   static command = 'make:listener';
-  static description = 'Create an event listener';
-  static usage = '<Name> --event=<Event> --module=<module> [--no-register]';
-  static options = { ...registeringOption, event: { type: 'string', short: 'e' } } as const;
+  static description = 'Create an event listener (--queued: run by a worker, with a stable name)';
+  static usage = '<Name> --event=<Event> --module=<module> [--queued] [--no-register]';
+  static options = { ...registeringOption, event: { type: 'string', short: 'e' }, queued: { type: 'boolean' } } as const;
   static boots = false;
 
   handle(input: CommandInput): number {
@@ -224,7 +224,8 @@ export class MakeListenerCommand {
     }
     const module = input.options.module as string;
     const source = eventSource(dir, module, event);
-    if (!write(input, join(dir, 'listeners', `${name}.ts`), LISTENER(name, event, source.listenerFrom, source.listenerImport))) return 1;
+    const listener = input.options.queued ? QUEUED_LISTENER(name, event, source.listenerFrom, source.listenerImport, `${module}.${stableName(name, 'Listener') || 'listener'}`) : LISTENER(name, event, source.listenerFrom, source.listenerImport);
+    if (!write(input, join(dir, 'listeners', `${name}.ts`), listener)) return 1;
 
     registerInModule(
       input,
@@ -631,6 +632,24 @@ const LISTENER = (name: string, event: string, from: string, imported = event) =
 export class ${name} {
   handle(event: ${event}): void {
     void event;
+  }
+}
+`;
+
+const QUEUED_LISTENER = (name: string, event: string, from: string, imported: string, listener: string) => `import type { EventPayload } from '@marmeon/core';
+import type { ${imported} } from '${from}';
+
+/**
+ * Queued: a worker runs it with the event's payload (its \`static schema\` — the event needs \`static event\` and
+ * \`static schema\`). Dependencies go into the constructor — they are injected automatically.
+ */
+export class ${name} {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = '${listener}';
+  static readonly queue = {}; // { queue: 'mail', tries: 3, backoff: [10, 60] }
+
+  handle(payload: EventPayload<typeof ${event}>): void {
+    void payload;
   }
 }
 `;

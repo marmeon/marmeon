@@ -8,6 +8,8 @@ import { PasskeyNotices } from '../passkey-notices.ts';
  * release it. A queued listener.
  */
 export class NotifyAboutPasskeyCloneSuspected {
+  /** Stable — queued jobs carry this name, never the class name. */
+  static readonly listener = 'auth.notify-about-passkey-clone-suspected';
   static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
 
   readonly #notices: PasskeyNotices;
