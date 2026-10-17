@@ -21,6 +21,7 @@ import { ModulesCheckCommand } from './commands/modules-check.ts';
 import { PackageBuildCommand } from './commands/package-build.ts';
 import { RouteListCommand } from './commands/route-list.ts';
 import { RouteTypesCommand } from './commands/route-types.ts';
+import { SchemaProjectCommand } from './commands/schema-project.ts';
 import { ServeCommand } from './commands/serve.ts';
 import { TinkerCommand } from './commands/tinker.ts';
 
@@ -30,6 +31,7 @@ export const BUILT_IN: readonly CommandClass[] = [
   RouteListCommand,
   RouteTypesCommand,
   ModulesCheckCommand,
+  SchemaProjectCommand,
   DiscoverCommand,
   BuildCommand,
   CheckCommand,

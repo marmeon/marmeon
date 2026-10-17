@@ -164,6 +164,13 @@ no migration created with the blueprint (`alter`, `rename`, `renameColumn()`, `n
 Tables that nothing in the migrations creates, such as a table another tool made in the same database or one that raw SQL made, are not
 in it, and neither are their columns. Create a table with `schema.create()` when Marmeon is to know it.
 
+The projection is kept in `.marmeon/schema.json` (not committed, like the other files in `.marmeon/`), so a process does not import every
+migration to learn it. `marmeon build` always computes it from the migrations and writes it over the file. Anything else that asks the
+migrator for it reads the file only while it fits: it records the SHA-256 of every migration file and the version of `@marmeon/database`,
+and is used only when all of them are the ones now present; otherwise the projection is computed again and written back where the
+directory allows. The hash covers the migration file itself, not what it imports: a migration is self-contained and its plan the same on
+every run (no time, no environment), so the file is all that can change it. [Deploying](deployment.md#building-and-starting) has the details.
+
 ## Running migrations
 
 | Command | What it does |

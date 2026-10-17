@@ -141,7 +141,7 @@ Three folders appear once you run the app or build it. Git ignores them:
 | Folder | Written by | What it holds |
 | --- | --- | --- |
 | `node_modules/` | the package manager | The dependencies. |
-| `.marmeon/` | `marmeon` itself | The list of installed packages and their providers, the routes the browser may learn, and after a build the precomputed injection lists. |
+| `.marmeon/` | `marmeon` itself | The list of installed packages and their providers, the routes the browser may learn, the schema the migrations describe, and after a build the precomputed injection lists. |
 | `dist/` | `marmeon build` | The browser's files in `dist/client/` and the server rendering in `dist/server/`. |
 
 ## Inside a module

@@ -232,6 +232,8 @@ marmeon route:list
 // route:types
 marmeon route:types [--check]
 --check (boolean)
+// schema:project
+marmeon schema:project
 // serve
 marmeon serve [--workers=N]
 --workers (string)
