@@ -350,14 +350,14 @@ export interface TableTestApp {
 
 /** A fresh database per app: SQLite in memory, or a new Postgres database (dropped by `close()`). */
 async function freshDatabase(driver: TestDriver): Promise<{ env: Record<string, string>; drop: () => Promise<void> }> {
-  if (driver === 'sqlite') return { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:' }, drop: async () => {} };
+  if (driver === 'sqlite') return { env: { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:' }, drop: async () => {} };
   const name = `marmeon_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
   await sql`create database ${sql.id(name)}`.execute(admin.get());
   const url = new URL(PGSQL_URL!);
   url.pathname = `/${name}`;
   return {
-    env: { DB_CONNECTION: 'pgsql', DB_URL: url.href, DB_POOL_MAX: '3' },
+    env: { DB_MANAGED: 'false', DB_CONNECTION: 'pgsql', DB_URL: url.href, DB_POOL_MAX: '3' },
     drop: async () => {
       await sql`drop database ${sql.id(name)} with (force)`.execute(admin.get());
       await admin.destroy();

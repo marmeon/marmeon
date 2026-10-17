@@ -69,7 +69,7 @@ const failedX: FailedJobStoreFactory = () => failedStore;
 function boot(providers: ServiceProviderClass[], env: Record<string, string> = {}, modules: ModuleDefinition[] = [{ name: 'test', jobs: [NoteJob, SecretJob] }]): Promise<Application> {
   return createApplication(
     { root: '/tmp', discover: false, providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider, ...providers], modules },
-    { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', ...env }, override: (container) => container.instance(Logger, silent) },
+    { env: { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', ...env }, override: (container) => container.instance(Logger, silent) },
   );
 }
 

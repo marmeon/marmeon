@@ -104,6 +104,15 @@ export class MarmeonDriver implements Driver {
     return this.#acquire(options);
   }
 
+  /**
+   * @internal — for the migrator's bookkeeping: a connection of its own, handed out without loading the schema metadata, so the
+   * migrator can reach a database whose bookkeeping this release refuses to read (the one thing it is there to repair). Never
+   * the ambient transaction's.
+   */
+  acquireUnchecked(options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {
+    return this.#acquire(options, false);
+  }
+
   init(options?: Parameters<Driver['init']>[0]): Promise<void> {
     // Once: Kysely inits lazily on the first query, `isolate()` may need it earlier.
     this.#init ??= this.#connecting(() => this.#driver.init(options)).catch((error: unknown) => {
@@ -161,7 +170,7 @@ export class MarmeonDriver implements Driver {
   }
 
   /** A connection of its own (locked on SQLite; the pinned one while isolated), with fresh schema metadata. */
-  async #acquire(options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {
+  async #acquire(options?: Parameters<Driver['acquireConnection']>[0], checked = true): Promise<DatabaseConnection> {
     if (this.#single) await this.#lock.obtain();
     let connection: DatabaseConnection;
     try {
@@ -170,6 +179,7 @@ export class MarmeonDriver implements Driver {
       if (this.#single) this.#lock.release();
       throw error;
     }
+    if (!checked) return connection;
     try {
       await this.#context.metadata?.refresh(unlogged(connection), connection);
     } catch (error) {
@@ -364,6 +374,78 @@ export class MarmeonDriver implements Driver {
         { cause: error },
       );
     }
+  }
+}
+
+/**
+ * @internal — the driver of the connection the migrator keeps its bookkeeping with: the same connections and transactions as
+ * the app's, except that it does not load the schema metadata when it hands one out (see {@link MarmeonDriver.acquireUnchecked}).
+ */
+export class UncheckedDriver implements Driver {
+  readonly #main: MarmeonDriver;
+  readonly #report: ((event: { query: CompiledQuery; durationMs: number; error?: unknown }) => void) | undefined;
+  /** The connection as handed to Kysely → the connection of the driver beneath. */
+  readonly #real = new WeakMap<DatabaseConnection, DatabaseConnection>();
+
+  constructor(main: MarmeonDriver, report?: (event: { query: CompiledQuery; durationMs: number; error?: unknown }) => void) {
+    this.#main = main;
+    this.#report = report;
+  }
+
+  init(): Promise<void> {
+    return this.#main.init();
+  }
+
+  async acquireConnection(): Promise<DatabaseConnection> {
+    const real = await this.#main.acquireUnchecked();
+    const plain = unlogged(real);
+    const report = this.#report;
+    // A view whose executeQuery reports what it ran: the shared connection itself may carry the app's Kysely log already.
+    const view = new Proxy(real, {
+      get(target, property) {
+        if (property === 'executeQuery') {
+          return async (query: CompiledQuery, ...rest: unknown[]) => {
+            const started = performance.now();
+            try {
+              const result = await (plain.executeQuery as (...args: unknown[]) => Promise<QueryResult<unknown>>).call(plain, query, ...rest);
+              report?.({ query, durationMs: performance.now() - started });
+              return result;
+            } catch (error) {
+              report?.({ query, durationMs: performance.now() - started, error });
+              throw error;
+            }
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    this.#real.set(view, real);
+    return view;
+  }
+
+  beginTransaction(connection: DatabaseConnection, settings: TransactionSettings): Promise<void> {
+    return this.#main.beginTransaction(this.#of(connection), settings);
+  }
+
+  commitTransaction(connection: DatabaseConnection): Promise<void> {
+    return this.#main.commitTransaction(this.#of(connection));
+  }
+
+  rollbackTransaction(connection: DatabaseConnection): Promise<void> {
+    return this.#main.rollbackTransaction(this.#of(connection));
+  }
+
+  releaseConnection(connection: DatabaseConnection): Promise<void> {
+    return this.#main.releaseConnection(this.#of(connection));
+  }
+
+  #of(connection: DatabaseConnection): DatabaseConnection {
+    return this.#real.get(connection) ?? connection;
+  }
+
+  async destroy(): Promise<void> {
+    // The app's connection owns the pool and closes it.
   }
 }
 

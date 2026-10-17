@@ -60,8 +60,8 @@ function blockedByNewerTypes(generator: TypeGenerator, { options, output, root }
 export class MigrateCommand {
   static command = 'migrate';
   static description = 'Run the pending migrations';
-  static usage = '[--force] [--wait=<seconds>] [--no-types]';
-  static options = { ...wait, 'no-types': { type: 'boolean' } } as const;
+  static usage = '[--force] [--wait=<seconds>] [--no-types] [--adopt-existing]';
+  static options = { ...wait, 'no-types': { type: 'boolean' }, 'adopt-existing': { type: 'boolean' } } as const;
 
   readonly #migrator: Migrator;
   readonly #types: TypeGenerator;
@@ -74,7 +74,12 @@ export class MigrateCommand {
   async handle(input: CommandInput): Promise<number> {
     if (!confirmed(input, 'migrate') || blockedByNewerTypes(this.#types, input)) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.migrate(report(input.output, 'Migrated'));
+      const adopt = (connection: string, tables: readonly string[]) =>
+        input.output.warn(
+          `--adopt-existing: the database connection "${connection}" already had tables and no bookkeeping. Marmeon wrote an empty one. These tables are taken over WITHOUT any secret column, soft delete or timestamp mark, ` +
+            `so every column of them is read as an ordinary one until a migration declares otherwise: ${tables.join(', ')}.`,
+        );
+      const runs = await this.#migrator.migrate(report(input.output, 'Migrated'), input.options['adopt-existing'] === true ? { adoptExisting: adopt } : {});
       if (runs.length === 0) input.output.info('Nothing to migrate.');
       await afterMigrating(this.#types, input, runs.length > 0 && input.options['no-types'] !== true);
       return 0;
@@ -152,7 +157,12 @@ export class MigrateFreshCommand {
     const migrated = await underLock(this.#migrator, input, async () => {
       const connections = await this.#migrator.dropAllTables();
       input.output.info(connections.length === 1 ? 'Dropped all tables.' : `Dropped all tables of the connections ${connections.join(', ')}.`);
-      const runs = await this.#migrator.migrate(report(input.output, 'Migrated'));
+      const adopt = (connection: string, tables: readonly string[]) =>
+        input.output.warn(
+          `--adopt-existing: the database connection "${connection}" already had tables and no bookkeeping. Marmeon wrote an empty one. These tables are taken over WITHOUT any secret column, soft delete or timestamp mark, ` +
+            `so every column of them is read as an ordinary one until a migration declares otherwise: ${tables.join(', ')}.`,
+        );
+      const runs = await this.#migrator.migrate(report(input.output, 'Migrated'), input.options['adopt-existing'] === true ? { adoptExisting: adopt } : {});
       await afterMigrating(this.#types, input, runs.length > 0 && input.options['no-types'] !== true);
       return 0;
     });

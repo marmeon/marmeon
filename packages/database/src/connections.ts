@@ -9,8 +9,9 @@ import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from
 import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOptions } from './config.ts';
 // Puts the relation methods on Kysely's select builder when it loads — every connection made here offers them.
 import './chain.ts';
-import { MarmeonDriver, DatabaseConnectionError, multipleConnections, withMarmeonDriver } from './driver.ts';
+import { MarmeonDriver, DatabaseConnectionError, multipleConnections, UncheckedDriver, withMarmeonDriver } from './driver.ts';
 import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure.ts';
+import { onlyBookkeeping, registerBookkeeping } from './books.ts';
 import { SchemaMetadata } from './metadata.ts';
 import { createPostgresDialect } from './postgres.ts';
 import { RelationsPlugin } from './relations.ts';
@@ -222,7 +223,7 @@ export class Connections {
     let instance: Instance | undefined = this.#instances.get(name);
     if (!instance) {
       const options = this.options(name);
-      const metadata = new SchemaMetadata(options.driver);
+      const metadata = new SchemaMetadata(options.driver, name, options.managed !== false);
       const base = this.#dialect(options, name);
       const relations = new RelationsPlugin(options.driver, metadata);
       const resolver = new SchemaResolver(metadata, base.createQueryCompiler(), relations);
@@ -230,6 +231,19 @@ export class Connections {
       // In this order: placeholders resolved, then the relations' JSON built and the query checked for secret columns.
       const plugins = [resolver, relations];
       const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });
+      // The migrator's own way to the same connections (see books.ts): it must reach a database whose bookkeeping `db` refuses. Its
+      // driver reports the queries itself: both Kysely instances patching one shared connection would log each query twice.
+      const books = new Kysely<any>({
+        dialect: {
+          ...dialect,
+          createDriver: () =>
+            new UncheckedDriver(driver, ({ query, durationMs, error }) =>
+              this.#log(name, { query, queryDurationMillis: durationMs, ...(error === undefined ? { level: 'query' as const } : { level: 'error' as const, error }) } as LogEvent),
+            ),
+        },
+        plugins: [onlyBookkeeping()],
+      });
+      registerBookkeeping(this, name, books);
       instance = { db, driver, metadata, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
       this.#instances.set(name, instance);
     }

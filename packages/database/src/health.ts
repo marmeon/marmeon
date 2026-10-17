@@ -1,4 +1,5 @@
 import type { HealthCheck } from '@marmeon/core';
+import { withoutCode } from '@marmeon/core/internal';
 import { sql } from 'kysely';
 import { Connections } from './connections.ts';
 import { SchemaRequirements, type TableRequirement } from './upgrades.ts';
@@ -34,7 +35,7 @@ export class DatabaseHealthCheck implements HealthCheck {
         }
       }),
     );
-    if (failed.length > 0) throw new AggregateError(errors, `The database connection${failed.length > 1 ? 's' : ''} ${failed.map((name) => `"${name}"`).join(', ')} failed: ${errors.map((error) => (error instanceof Error ? error.message : String(error))).join('; ')}`);
+    if (failed.length > 0) throw new AggregateError(errors, `The database connection${failed.length > 1 ? 's' : ''} ${failed.map((name) => `"${name}"`).join(', ')} failed: ${errors.map((error) => withoutCode(error instanceof Error ? error.message : String(error))).join('; ')}`);
     let lacking = this.#unmet(required);
     if (lacking.length > 0) {
       // The metadata is what this process loaded: a `migrate` elsewhere (which the message asks for) may have changed the tables since. Load again, once.

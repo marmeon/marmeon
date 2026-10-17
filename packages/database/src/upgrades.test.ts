@@ -248,7 +248,7 @@ describe.each(drivers)('the readiness check of the framework tables on %s', (dri
 
   it('turns green when another process has migrated since', async () => {
     const root = tempDir('marmeon-upgrades-');
-    const fresh = driver === 'sqlite' ? { options: { driver: 'sqlite', database: join(root, 'app.sqlite') } as const, drop: async () => {} } : await freshDatabase('pgsql');
+    const fresh = driver === 'sqlite' ? { options: { driver: 'sqlite', database: join(root, 'app.sqlite'), managed: false } as const, drop: async () => {} } : await freshDatabase('pgsql', { managed: false });
     const here = new Connections({ connections: { default: fresh.options }, root, logger: silent });
     const there = new Connections({ connections: { default: fresh.options }, root, logger: silent });
     try {

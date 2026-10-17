@@ -1,4 +1,4 @@
-import { MARKERS_TABLE } from './metadata.ts';
+import { assertNotMigrated, readBookkeeping } from './bookkeeping.ts';
 import type { Driver } from './schema/blueprint.ts';
 
 // What the schema says about relations — read from the database's catalog and the migrator's markers, and turned into
@@ -68,6 +68,8 @@ export type CatalogQuery = <R>(sql: string) => Promise<R[]>;
 /** Facts plus every column's declared (SQLite) or reported (Postgres) type. */
 export interface Introspected extends SchemaFacts {
   readonly types: ReadonlyMap<string, ReadonlyMap<string, string>>;
+  /** The columns the migrations marked `.secret()`, from the migrator's bookkeeping. */
+  readonly secretColumns: readonly { readonly table: string; readonly column: string }[];
 }
 
 /** By code point — the same order on every machine (`localeCompare` follows the locale). */
@@ -79,26 +81,13 @@ export const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b
  * reverse order and keeps an INTEGER PRIMARY KEY in `pragma_table_info` only; Postgres keeps the blueprint's unique indexes
  * in `pg_index` only (not in `pg_constraint`) — so both are read where they are, and everything is sorted.
  */
-export async function introspect(run: CatalogQuery, driver: Driver): Promise<Introspected> {
-  const columnRows =
-    driver === 'sqlite'
-      ? await run<ColumnRow>(`select m.name as table_name, p.name as column_name, lower(p.type) as type, (p."notnull" = 0 and p.pk = 0) as nullable
-          from sqlite_master m join pragma_table_info(m.name) p where m.type = 'table' order by m.name, p.cid`)
-      : await run<ColumnRow>(`select table_name, column_name,
-          case when data_type = 'numeric' then 'numeric(' || coalesce(numeric_precision, 0) || ', ' || coalesce(numeric_scale, 0) || ')' else udt_name end as type,
-          is_nullable = 'YES' as nullable
-          from information_schema.columns c where table_schema = current_schema()
-            and exists (select 1 from information_schema.tables t where t.table_schema = c.table_schema and t.table_name = c.table_name and t.table_type = 'BASE TABLE')
-          order by table_name, ordinal_position`);
-  const types = new Map<string, Map<string, string>>();
-  const nullable = new Set<string>();
-  for (const row of columnRows) {
-    let table = types.get(row.table_name);
-    if (!table) types.set(row.table_name, (table = new Map()));
-    table.set(row.column_name, row.type);
-    if (row.nullable === true || row.nullable === 1) nullable.add(`${row.table_name}\0${row.column_name}`);
-  }
+export async function introspect(run: CatalogQuery, driver: Driver, connection = 'default', managed = true): Promise<Introspected> {
+  const { types, nullable, extension } = await tableColumns(run, driver);
   const columns = new Map([...types].map(([table, map]) => [table, [...map.keys()]]));
+  // The bookkeeping first: when it cannot be read, nothing else of the schema is of use.
+  // A connection another tool manages (`managed: false`) has no bookkeeping: no secret columns, no markers.
+  if (!managed) assertNotMigrated(columns, connection);
+  const books = managed ? await readBookkeeping(run, columns, connection, extension) : { secrets: [], markers: [] };
   const uniques = await uniqueSets(run, driver);
   const foreignKeys = (await foreignKeyRows(run, driver))
     .map(({ table, column, references, referenced }) => ({
@@ -109,14 +98,43 @@ export async function introspect(run: CatalogQuery, driver: Driver): Promise<Int
       nullable: nullable.has(`${table}\0${column}`),
     }))
     .sort((a, b) => byCodePoint(a.table, b.table) || byCodePoint(a.column, b.column));
-  // The bookkeeping table exists once a migration ran. Checked first: on Postgres a failing query would abort the
-  // transaction it runs in.
-  const markers = types.has(MARKERS_TABLE)
-    ? (await run<{ table_name: string; column_name: string; marker: SchemaMarker['marker']; value: string | null }>(`select table_name, column_name, marker, value from ${MARKERS_TABLE}`))
-        .map((row) => ({ table: row.table_name, column: row.column_name, marker: row.marker, value: row.value }))
-        .sort((a, b) => byCodePoint(a.table, b.table) || byCodePoint(a.column, b.column) || byCodePoint(a.marker, b.marker))
-    : [];
-  return { foreignKeys, uniques, columns, markers, types };
+  const markers = books.markers.toSorted((a, b) => byCodePoint(a.table, b.table) || byCodePoint(a.column, b.column) || byCodePoint(a.marker, b.marker));
+  return { foreignKeys, uniques, columns, markers, types, secretColumns: books.secrets };
+}
+
+/** Every table's columns with their types, in order, and the nullable ones (`table\0column`). Views are left out on both drivers. */
+export async function tableColumns(run: CatalogQuery, driver: Driver): Promise<{ types: Map<string, Map<string, string>>; nullable: Set<string>; extension: Set<string> }> {
+  const columnRows =
+    driver === 'sqlite'
+      ? await run<ColumnRow>(`select m.name as table_name, p.name as column_name, lower(p.type) as type, (p."notnull" = 0 and p.pk = 0) as nullable
+          from sqlite_master m join pragma_table_info(m.name) p where m.type = 'table' order by m.name, p.cid`)
+      : // Every schema of the search path, not only the first that exists: with `"$user", public` and an empty schema named like the role,
+        // `current_schema()` is that empty one while `public.users` is what an unqualified name finds. `to_regclass` picks the relation an unqualified name finds, so a table in an earlier schema hides the same name in a later one — also for an extension's.
+        // pg_catalog, not information_schema: that shows a role only the tables it has privileges on, and a table it cannot see is a table
+        // the bookkeeping check would take for missing. Here a table without privileges is seen, and the query on it is refused.
+        await run<ColumnRow>(`select c.relname::text as table_name, a.attname::text as column_name,
+          case when t.typname = 'numeric' then 'numeric(' || (case when a.atttypmod = -1 then 0 else ((a.atttypmod - 4) >> 16) & 65535 end) || ', ' || (case when a.atttypmod = -1 then 0 else (a.atttypmod - 4) & 65535 end) || ')' else t.typname::text end as type,
+          not a.attnotnull as nullable,
+          exists (select 1 from pg_catalog.pg_depend d where d.classid = 'pg_catalog.pg_class'::regclass and d.objid = c.oid and d.deptype = 'e') as extension
+          from pg_catalog.pg_class c
+            join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+            join pg_catalog.pg_attribute a on a.attrelid = c.oid
+            join pg_catalog.pg_type t on t.oid = a.atttypid
+          where n.nspname = any(current_schemas(false)) and c.oid = pg_catalog.to_regclass(quote_ident(c.relname))
+            and c.relkind in ('r', 'p') and a.attnum > 0 and not a.attisdropped
+          order by c.relname, a.attnum`);
+  const types = new Map<string, Map<string, string>>();
+  const nullable = new Set<string>();
+  const extension = new Set<string>();
+  for (const row of columnRows) {
+    if (row.extension === true) extension.add(row.table_name);
+    let table = types.get(row.table_name);
+    if (!table) types.set(row.table_name, (table = new Map()));
+    table.set(row.column_name, row.type);
+    if (row.nullable === true || row.nullable === 1) nullable.add(`${row.table_name}\0${row.column_name}`);
+  }
+  // `extension`: tables an extension created (PostGIS's `spatial_ref_sys`) belong to no app — not what a bookkeeping is missing for.
+  return { types, nullable, extension };
 }
 
 interface ColumnRow {
@@ -124,6 +142,8 @@ interface ColumnRow {
   column_name: string;
   type: string;
   nullable: boolean | number;
+  /** Postgres: the relation belongs to an extension. */
+  extension?: boolean;
 }
 
 async function foreignKeyRows(run: CatalogQuery, driver: Driver): Promise<{ table: string; column: string; references: string; referenced: string }[]> {
@@ -143,7 +163,8 @@ async function foreignKeyRows(run: CatalogQuery, driver: Driver): Promise<{ tabl
     select c.conrelid::regclass::text as table_name, c.confrelid::regclass::text as foreign_table,
       array(select a.attname::text from unnest(c.conkey) with ordinality k(n, i) join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.n order by k.i) as columns,
       array(select a.attname::text from unnest(c.confkey) with ordinality k(n, i) join pg_attribute a on a.attrelid = c.confrelid and a.attnum = k.n order by k.i) as foreign_columns
-    from pg_constraint c join pg_namespace n on n.oid = c.connamespace where n.nspname = current_schema() and c.contype = 'f'`);
+    from pg_constraint c join pg_namespace n on n.oid = c.connamespace join pg_class t on t.oid = c.conrelid
+    where n.nspname = any(current_schemas(false)) and t.oid = to_regclass(quote_ident(t.relname)) and c.contype = 'f'`);
   return rows
     .filter((row) => row.columns.length === 1)
     .map((row) => ({ table: unquote(row.table_name), column: row.columns[0]!, references: unquote(row.foreign_table), referenced: row.foreign_columns[0]! }));
@@ -182,7 +203,7 @@ async function uniqueSets(run: CatalogQuery, driver: Driver): Promise<Map<string
       select i.indrelid::regclass::text as table_name,
         array(select a.attname::text from unnest(i.indkey) with ordinality k(n, o) join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.n order by k.o) as columns
       from pg_index i join pg_class t on t.oid = i.indrelid join pg_namespace n on n.oid = t.relnamespace
-      where n.nspname = current_schema() and (i.indisunique or i.indisprimary) and i.indpred is null and i.indexprs is null`);
+      where n.nspname = any(current_schemas(false)) and t.oid = to_regclass(quote_ident(t.relname)) and (i.indisunique or i.indisprimary) and i.indpred is null and i.indexprs is null`);
     for (const row of rows) add(unquote(row.table_name), row.columns);
   }
   for (const list of sets.values()) list.sort((a, b) => byCodePoint(a.join('\0'), b.join('\0')));

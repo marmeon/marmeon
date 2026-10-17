@@ -10,7 +10,7 @@ describe('the queue health check', () => {
       root: '/tmp',
       discover: false,
       providers: [DatabaseServiceProvider, QueueServiceProvider],
-    }, { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', QUEUE_CONNECTION: 'database' }, override: (container) => container.instance(Logger, silent) });
+    }, { env: { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', QUEUE_CONNECTION: 'database' }, override: (container) => container.instance(Logger, silent) });
     const checks = app.container.make(HealthChecks);
     // Without its table the driver cannot answer.
     const missing = await checks.run(app.container);

@@ -44,7 +44,7 @@ describe.each(drivers)('a %s connection', (driver) => {
   const jsonArrayFrom = driver === 'sqlite' ? sqliteJsonArrayFrom : pgJsonArrayFrom;
 
   beforeAll(async () => {
-    const fresh = await freshDatabase(driver);
+    const fresh = await freshDatabase(driver, { managed: false });
     drop = fresh.drop;
     connections = new Connections({ connections: { default: fresh.options }, root: '/', logger: silent });
     connections.onQuery((query) => queries.push(query));
@@ -137,7 +137,7 @@ describe.each(drivers)('a %s connection', (driver) => {
 });
 
 describe('the SQLite adapter', () => {
-  const connections = new Connections({ connections: { default: { driver: 'sqlite', database: ':memory:' } }, root: '/', logger: silent });
+  const connections = new Connections({ connections: { default: { driver: 'sqlite', database: ':memory:', managed: false } }, root: '/', logger: silent });
   const db = connections.get<Record<string, never>>();
   afterAll(() => connections.destroy());
 

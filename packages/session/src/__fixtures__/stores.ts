@@ -53,7 +53,7 @@ export async function migrate(connections: Connections, name = 'default'): Promi
 }
 
 export function databaseConnections(options: ConnectionOptions): Connections {
-  return new Connections({ connections: { default: options }, root: '/', logger: silent });
+  return new Connections({ connections: { default: { ...options, managed: false } }, root: '/', logger: silent });
 }
 
 export function redisConnections(url: string, prefix: string): RedisConnections {

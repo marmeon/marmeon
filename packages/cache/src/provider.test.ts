@@ -40,7 +40,7 @@ async function statuses(app: Awaited<ReturnType<typeof boot>>, count: number): P
 
 describe('CACHE_DRIVER', () => {
   it('database: the cache and the throttle run on the app database', async () => {
-    const app = await boot({ CACHE_DRIVER: 'database', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+    const app = await boot({ CACHE_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
     await migrate(app.container.make(Connections));
     const cache = app.container.make(Cache);
     expect(cache).toBeInstanceOf(StoreCache);
@@ -54,7 +54,7 @@ describe('CACHE_DRIVER', () => {
     await expect(boot({ CACHE_DRIVER: 'database' }, [])).rejects.toThrow(
       'CACHE_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).',
     );
-    await expect(boot({ CACHE_DRIVER: 'database', CACHE_CONNECTION: 'reporting', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider])).rejects.toThrow(
+    await expect(boot({ CACHE_DRIVER: 'database', CACHE_CONNECTION: 'reporting', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider])).rejects.toThrow(
       /Database connection "reporting" is not configured/,
     );
   });
@@ -91,12 +91,12 @@ describe('CACHE_DRIVER', () => {
 describe('CACHE_DRIVER=database never joins the app’s transactions', () => {
   class Rollback extends Error {}
   /** A connection with a SQLite file of its own for the cache (as the web app's `system`). */
-  const System = (file: string) => defineConnection('system', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file }) });
+  const System = (file: string) => defineConnection('system', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file, managed: false }) });
   const counted = async (connections: Connections, name = 'default') =>
     (await sql<{ value: string }>`select value from cache where key = 'limiter:login'`.execute(connections.get(name))).rows.map((row) => row.value);
 
   it('SQLite without a file of its own: rate limits and locks refuse loudly inside a transaction — never a silent join', async () => {
-    const app = await boot({ CACHE_DRIVER: 'database', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+    const app = await boot({ CACHE_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
     const connections = app.container.make(Connections);
     await migrate(connections);
     const limiter = app.container.make(RateLimiter);
@@ -122,7 +122,7 @@ describe('CACHE_DRIVER=database never joins the app’s transactions', () => {
   it('SQLite with a file of its own (CACHE_CONNECTION): works inside a transaction, and a hit survives its rollback', async () => {
     const directory = tempDir('marmeon-cache-system-');
     const app = await boot(
-      { CACHE_DRIVER: 'database', CACHE_CONNECTION: 'system', DB_DATABASE: join(directory, 'app.sqlite') },
+      { CACHE_DRIVER: 'database', CACHE_CONNECTION: 'system', DB_MANAGED: 'false', DB_DATABASE: join(directory, 'app.sqlite') },
       [DatabaseServiceProvider],
       [System(join(directory, 'system.sqlite'))],
     );
@@ -142,7 +142,7 @@ describe('CACHE_DRIVER=database never joins the app’s transactions', () => {
 
   it('puts the cache tables where the cache looks: CACHE_CONNECTION with the database driver, else default', async () => {
     const tablesOn = async (env: Record<string, string>) => {
-      const app = await boot({ DB_DATABASE: ':memory:', ...env }, [DatabaseServiceProvider], [System(':memory:')]);
+      const app = await boot({ DB_MANAGED: 'false', DB_DATABASE: ':memory:', ...env }, [DatabaseServiceProvider], [System(':memory:')]);
       const name = cacheTablesConnection(app.container);
       expect(app.container.make(CacheConfig).driver).toBe(env.CACHE_DRIVER ?? 'file');
       await app.shutdown();
@@ -162,7 +162,7 @@ describe('CACHE_DRIVER=database never joins the app’s transactions', () => {
       drop = fresh.drop;
     });
     afterAll(() => drop());
-    const pgsql = () => boot({ CACHE_DRIVER: 'database', DB_CONNECTION: 'pgsql', DB_URL: url }, [DatabaseServiceProvider]);
+    const pgsql = () => boot({ CACHE_DRIVER: 'database', DB_MANAGED: 'false', DB_CONNECTION: 'pgsql', DB_URL: url }, [DatabaseServiceProvider]);
 
     it('a rate-limit hit inside a transaction that rolls back is kept', async () => {
       const app = await pgsql();

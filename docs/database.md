@@ -52,6 +52,7 @@ The default connection reads these variables, checked when the app starts like a
 | `DB_URL` | none | Postgres: the whole address instead, `postgres://user:secret@host:5432/app`. |
 | `DB_POOL_MAX` | `10` | Postgres: the most connections the app's pool opens. |
 | `DB_INFRA_POOL_MAX` | `4` | Postgres: the most connections of the small pool the cache, the sessions and uploads use. See [infrastructure connections](#infrastructure-connections). |
+| `DB_MANAGED` | `true` | `false` when another tool manages the database's tables. See [a database another tool manages](#a-database-another-tool-manages). |
 
 A Postgres server is either the five variables `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`, or its
 whole address in `DB_URL`. When `DB_URL` is set, it wins: the five are not read. `DB_URL` must start with `postgres://` or
@@ -246,10 +247,43 @@ A query on a table that does not exist yet fails like any error. In development,
 that have not run yet, and the command that runs them, `marmeon migrate`. When every migration has run, it suggests a migration
 that creates the table. The [migrations](migrations.md) page explains both commands.
 
+## Where the secret columns and soft deletes come from
+
+A connection learns which columns are secret and which tables have soft deletes from the migrator's bookkeeping in the database
+(`marmeon_secret_columns` and `marmeon_schema_markers`), not from your code. The [migrations](migrations.md#how-the-migrator-keeps-track)
+page lists the tables. When a connection cannot read them, because the database was not migrated by this release or by a newer one, the
+connection refuses every query with a `BookkeepingVersionError` instead of reading without the list: a password hash or a deleted
+row is never shown because a table was missing.
+
+## A database another tool manages
+
+Marmeon refuses to guess. A connection that has tables but none of the migrator's bookkeeping, which Marmeon's own `migrate` writes, is
+refused with error D1: without the bookkeeping the app cannot tell which columns are secret or which rows are soft-deleted, and it never
+reads that as "none". That includes a database whose tables are made by another tool, a restore
+that lost the bookkeeping tables, and a Postgres role without privileges on them.
+
+For your own database that Marmeon is to migrate from now on, do not use `managed: false`: run `marmeon migrate --adopt-existing` once
+([adopting an existing database](migrations.md#adopting-an-existing-database)). For a database that another tool owns, say so on the
+connection:
+
+```ts title="bootstrap/app.ts"
+defineConnection('legacy', {
+  env: env({ LEGACY_URL: env.url() }),
+  resolve: (e) => ({ driver: 'pgsql', url: e.LEGACY_URL, managed: false }),
+});
+```
+
+The default connection takes `DB_MANAGED=false` instead. With `managed: false` the connection reads no bookkeeping: no secret
+columns, no soft deletes, no timestamps, and the query builder treats every column as an ordinary one. `marmeon migrate`,
+`migrate:fresh` and the other migration commands refuse to touch it, and a migration cannot run on it. A connection that Marmeon
+migrates and reads through a role with privileges on the bookkeeping tables stays the default. A connection that has the migrator's tables
+(`marmeon_…`, the lock, a placeholder) is refused with `managed: false` as well (D1): Marmeon migrates it, so the option would hide its
+secret columns.
+
 ## Readiness
 
 The app's readiness check, `/up/ready`, sends `select 1` to every configured connection. One that does not answer makes the
-instance "not ready" and is named in the answer. The [health checks](health.md#liveness-and-readiness) page explains readiness.
+instance "not ready" and is named in the answer, also when its bookkeeping cannot be read. The [health checks](health.md#liveness-and-readiness) page explains readiness.
 
 ## Testing
 

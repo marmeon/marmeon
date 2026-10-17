@@ -39,7 +39,7 @@ export const databaseKinds: readonly Exclude<QueueKind, 'memory' | 'redis'>[] = 
 export const processKinds: readonly SharedTarget['kind'][] = [...databaseKinds, ...(REDIS_URL ? (['redis'] as const) : [])];
 
 export function databaseConnections(options: ConnectionOptions): Connections {
-  return new Connections({ connections: { default: options }, root: '/', logger: silent });
+  return new Connections({ connections: { default: { ...options, managed: false } }, root: '/', logger: silent });
 }
 
 /** The database of a target — for a Redis queue, the SQLite file beside it. */
@@ -163,11 +163,11 @@ export function targetEnv(target: SharedTarget, retryAfter?: number): Record<str
   const retry = retryAfter === undefined ? {} : { [target.kind === 'redis' ? 'REDIS_QUEUE_RETRY_AFTER' : 'DB_QUEUE_RETRY_AFTER']: String(retryAfter) };
   switch (target.kind) {
     case 'sqlite':
-      return { DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database', ...retry };
+      return { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database', ...retry };
     case 'pgsql':
-      return { DB_CONNECTION: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '3', QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database', ...retry };
+      return { DB_MANAGED: 'false', DB_CONNECTION: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '3', QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database', ...retry };
     case 'redis':
-      return { DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, QUEUE_CONNECTION: 'redis', CACHE_DRIVER: 'redis', REDIS_URL: target.url, REDIS_PREFIX: target.prefix, ...retry };
+      return { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, QUEUE_CONNECTION: 'redis', CACHE_DRIVER: 'redis', REDIS_URL: target.url, REDIS_PREFIX: target.prefix, ...retry };
   }
 }
 

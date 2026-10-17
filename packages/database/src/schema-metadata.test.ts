@@ -274,7 +274,7 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     const db = fresh.get<any>();
     await sql`create table raw_secret_probe (id integer, hidden varchar(20))`.execute(db);
     try {
-      await db.insertInto('secret_columns').values({ table_name: 'raw_secret_probe', column_name: 'hidden' }).execute();
+      await db.insertInto('marmeon_secret_columns').values({ table_name: 'raw_secret_probe', column_name: 'hidden' }).execute();
       await db.insertInto('raw_secret_probe').values({ id: 1, hidden: 'x' }).execute();
       expect(Object.keys(await db.selectFrom('raw_secret_probe').selectAll().executeTakeFirstOrThrow())).toEqual(['id']);
       await sql`alter table raw_secret_probe add column pinned integer`.execute(db);
@@ -282,8 +282,8 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
       expect(Object.keys(row).sort()).toEqual(['id', 'pinned']);
       expect(row).not.toHaveProperty('hidden');
     } finally {
+      await db.deleteFrom('marmeon_secret_columns').where('table_name', '=', 'raw_secret_probe').execute();
       await sql`drop table raw_secret_probe`.execute(db);
-      await db.deleteFrom('secret_columns').where('table_name', '=', 'raw_secret_probe').execute();
     }
   });
 
@@ -329,7 +329,7 @@ select 1`,
       await posts.get<any>().selectFrom('users').select('id').execute();
       started();
       await finished;
-      await trx.insertInto('schema_markers').values({ table_name: 'posts', column_name: '', marker: 'soft_deletes', value: null }).execute();
+      await trx.insertInto('marmeon_schema_markers').values({ table_name: 'posts', column_name: '', marker: 'soft_deletes', value: null }).execute();
     });
     await inside;
     class Posts extends Repository<'posts', FixtureTables> {
@@ -340,7 +340,7 @@ select 1`,
     await migration;
     expect(await titles).toEqual([]);
     await posts.get<any>().schema.alterTable('posts').dropColumn('deleted_at').execute();
-    await posts.get<any>().deleteFrom('schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
+    await posts.get<any>().deleteFrom('marmeon_schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
   });
 
   it.runIf(driver === 'sqlite')('a relation built while a migration adds a secret column waits for it — and never loads the column', async () => {
@@ -361,7 +361,7 @@ select 1`,
         await app.get<any>().selectFrom('users').select('id').execute();
         started();
         await finished;
-        await trx.insertInto('secret_columns').values({ table_name: 'comments', column_name: 'secret_note' }).execute();
+        await trx.insertInto('marmeon_secret_columns').values({ table_name: 'comments', column_name: 'secret_note' }).execute();
       });
       await inside;
       const posts = app.get<FixtureTables>().selectFrom('posts').select('title').with('comments').execute(); // built now
@@ -371,8 +371,8 @@ select 1`,
       expect(post!.comments).toEqual([expect.objectContaining({ body: 'kept' })]);
       expect(post!.comments[0]).not.toHaveProperty('secret_note');
     } finally {
+      await db.deleteFrom('marmeon_secret_columns' as never).where('table_name' as never, '=', 'comments' as never).execute();
       await sql`alter table comments drop column secret_note`.execute(db).catch(() => {});
-      await db.deleteFrom('secret_columns' as never).where('table_name' as never, '=', 'comments' as never).execute();
     }
   });
 
@@ -390,7 +390,7 @@ select 1`,
     const titles = async (db: Kysely<any>) => (await db.selectFrom('posts').select('title').orderBy('title').execute()).map((row) => row.title);
     const dropSoftDeletes = async (db: Kysely<any>) => {
       await sql`alter table posts drop column if exists deleted_at`.execute(db);
-      await db.deleteFrom('schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
+      await db.deleteFrom('marmeon_schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
     };
 
     it('waits for its commit — the rows it soft-deleted stay hidden, and a delete stays soft', async () => {
@@ -407,7 +407,7 @@ select 1`,
           const trx = transaction as unknown as Kysely<any>;
           await trx.schema.alterTable('posts').addColumn('deleted_at', 'timestamptz').execute();
           await trx.updateTable('posts').set({ deleted_at: new Date() }).where('title', '=', 'old').execute();
-          await trx.insertInto('schema_markers').values({ table_name: 'posts', column_name: '', marker: 'soft_deletes', value: null }).execute();
+          await trx.insertInto('marmeon_schema_markers').values({ table_name: 'posts', column_name: '', marker: 'soft_deletes', value: null }).execute();
           inside.resolve();
           await finish.done;
         });
@@ -439,7 +439,7 @@ select 1`,
           const trx = transaction as unknown as Kysely<any>;
           await trx.schema.alterTable('posts').addColumn('secret_note', 'varchar(255)').execute();
           await trx.insertInto('posts').values({ author_id: ada.id, title: 'during', secret_note: 'hidden' }).execute();
-          await trx.insertInto('secret_columns').values({ table_name: 'posts', column_name: 'secret_note' }).execute();
+          await trx.insertInto('marmeon_secret_columns').values({ table_name: 'posts', column_name: 'secret_note' }).execute();
           inside.resolve();
           await finish.done;
         });
@@ -457,8 +457,8 @@ select 1`,
         expect(user!.authored_posts.map((post: any) => post.title)).toEqual(['before', 'during']);
         expect(JSON.stringify(user)).not.toContain('hidden');
       } finally {
+        await db.deleteFrom('marmeon_secret_columns').where('table_name', '=', 'posts').execute();
         await sql`alter table posts drop column if exists secret_note`.execute(db);
-        await db.deleteFrom('secret_columns').where('table_name', '=', 'posts').execute();
       }
     });
 
@@ -467,7 +467,7 @@ select 1`,
       const db = app.get<any>();
       const ada = await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).returning('id').executeTakeFirstOrThrow();
       await db.schema.alterTable('posts').addColumn('deleted_at', 'timestamptz').execute();
-      await db.insertInto('schema_markers').values({ table_name: 'posts', column_name: '', marker: 'soft_deletes', value: null }).execute();
+      await db.insertInto('marmeon_schema_markers').values({ table_name: 'posts', column_name: '', marker: 'soft_deletes', value: null }).execute();
       await db.insertInto('posts').values([{ author_id: ada.id, title: 'kept' }, { author_id: ada.id, title: 'deleted', deleted_at: new Date() }]).execute();
       const inside = pause();
       const finish = pause();
@@ -475,7 +475,7 @@ select 1`,
         const migration = app.transaction(async (transaction) => {
           const trx = transaction as unknown as Kysely<any>;
           await trx.schema.alterTable('posts').dropColumn('deleted_at').execute();
-          await trx.deleteFrom('schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
+          await trx.deleteFrom('marmeon_schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
           await app.get<any>().selectFrom('users').select('id').execute(); // loads the migration's own view: no soft deletes
           inside.resolve();
           await finish.done;
@@ -612,11 +612,11 @@ describe('schema metadata, unit', () => {
     await driver.releaseConnection(acquired);
   });
 
-  it('takes a write to the books in any case for a schema change — SQLite reads SECRET_COLUMNS as secret_columns', () => {
+  it('takes a write to the books in any case for a schema change — SQLite reads MARMEON_SECRET_COLUMNS as marmeon_secret_columns', () => {
     const books = new Kysely<any>({ dialect: new SqliteDialect({ database: async () => ({}) as never }) });
-    expect(changesSchema(books.insertInto('secret_columns').values({ table_name: 'a', column_name: 'b' }).toOperationNode())).toBe(true);
-    expect(changesSchema(books.insertInto('SECRET_COLUMNS').values({ table_name: 'a', column_name: 'b' }).toOperationNode())).toBe(true);
-    expect(changesSchema(books.deleteFrom('Schema_Markers').toOperationNode())).toBe(true);
+    expect(changesSchema(books.insertInto('marmeon_secret_columns').values({ table_name: 'a', column_name: 'b' }).toOperationNode())).toBe(true);
+    expect(changesSchema(books.insertInto('MARMEON_SECRET_COLUMNS').values({ table_name: 'a', column_name: 'b' }).toOperationNode())).toBe(true);
+    expect(changesSchema(books.deleteFrom('Marmeon_Schema_Markers').toOperationNode())).toBe(true);
     expect(changesSchema(books.insertInto('users').values({ name: 'a' }).toOperationNode())).toBe(false);
   });
 

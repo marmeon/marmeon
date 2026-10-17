@@ -105,7 +105,7 @@ function boot(env: Record<string, string> = {}, providers: ServiceProviderClass[
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, DatabaseServiceProvider, QueueServiceProvider, ...providers],
     modules: [defineModule({ name: 'people', routes, jobs: [ReportJob, RefusedJob] })],
-  }, { env: { APP_KEY: generateKey(), DB_CONNECTION: 'sqlite', DB_DATABASE: join(root, `${crypto.randomUUID()}.sqlite`), QUEUE_CONNECTION: 'database', ...env }, override: (container) => container.instance(Logger, createPinoLogger({ level: 'info', format: 'json' }, stream, container.make(Application))) }).then(async (application) => {
+  }, { env: { APP_KEY: generateKey(), DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: join(root, `${crypto.randomUUID()}.sqlite`), QUEUE_CONNECTION: 'database', ...env }, override: (container) => container.instance(Logger, createPinoLogger({ level: 'info', format: 'json' }, stream, container.make(Application))) }).then(async (application) => {
     const connections = application.container.make(Connections);
     const schema = new Schema(connections.get(), 'sqlite');
     const migration = ((await import(QUEUE_MIGRATION.href)) as { default: { up(schema: Schema): Promise<void> } }).default;

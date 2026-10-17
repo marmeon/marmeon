@@ -1,15 +1,8 @@
 import { CompiledQuery, TableNode, type DatabaseConnection, type RootOperationNode } from 'kysely';
+import { MARKERS_TABLE, SECRETS_TABLE, VERSIONS_TABLE } from './bookkeeping.ts';
 import { deriveRelations, introspect, type Relation } from './introspection.ts';
 import { fold } from './secret-guard.ts';
 import type { Driver } from './schema/blueprint.ts';
-
-/** Internal bookkeeping: the columns migrations marked `.secret()` (written by the migrator). */
-export const SECRETS_TABLE = 'secret_columns';
-/**
- * Internal bookkeeping: what migrations declared beyond the columns (written by the migrator) — `timestamps()` and
- * `softDeletes()` per table, `.inverse()` per foreign key. See `docs/migrations.md#timestamps-and-soft-deletes`.
- */
-export const MARKERS_TABLE = 'schema_markers';
 
 /** How a column's values must be converted when they arrive inside nested JSON (relations). */
 export type ColumnKind = 'boolean' | 'json' | 'timestamp' | 'uuid' | { decimal: number } | 'other';
@@ -25,6 +18,8 @@ export type ColumnKind = 'boolean' | 'json' | 'timestamp' | 'uuid' | { decimal: 
  */
 export class SchemaMetadata {
   readonly #driver: Driver;
+  readonly #name: string;
+  readonly #managed: boolean;
   #kinds = new Map<string, Map<string, ColumnKind>>();
   #secrets = new Map<string, ReadonlySet<string>>();
   #columns = new Map<string, readonly string[]>();
@@ -42,8 +37,11 @@ export class SchemaMetadata {
   /** Resolved once no connection holds a schema change. */
   #idle: { promise: Promise<void>; resolve: () => void } | undefined;
 
-  constructor(driver: Driver) {
+  /** `name` is the connection's, for the error of bookkeeping that cannot be read; `managed: false` reads no bookkeeping at all. */
+  constructor(driver: Driver, name = 'default', managed = true) {
     this.#driver = driver;
+    this.#name = name;
+    this.#managed = managed;
   }
 
   /** The database it describes: `sqlite` or `pgsql`. */
@@ -180,19 +178,16 @@ export class SchemaMetadata {
     this.#stale = false;
     try {
       const run = async <R>(sql: string) => (await connection.executeQuery<R>(CompiledQuery.raw(sql))).rows;
-      const facts = await introspect(run, this.#driver);
+      // Throws when the bookkeeping cannot be read: nothing is loaded then, and every query of the connection fails (stale stays set).
+      const facts = await introspect(run, this.#driver, this.#name, this.#managed);
       const kinds = new Map<string, Map<string, ColumnKind>>();
       for (const [table, types] of facts.types) kinds.set(table, new Map([...types].map(([column, type]) => [column, kindOf(type)])));
 
-      // The bookkeeping table exists once a migration ran. Checked first: on Postgres a failing query would abort the
-      // transaction it runs in (tests run inside one).
       const secrets = new Map<string, Set<string>>();
-      if (kinds.has(SECRETS_TABLE)) {
-        for (const { table_name, column_name } of await run<{ table_name: string; column_name: string }>(`select table_name, column_name from ${SECRETS_TABLE}`)) {
-          let table = secrets.get(table_name);
-          if (!table) secrets.set(table_name, (table = new Set()));
-          table.add(column_name);
-        }
+      for (const { table, column } of facts.secretColumns) {
+        let columns = secrets.get(table);
+        if (!columns) secrets.set(table, (columns = new Set()));
+        columns.add(column);
       }
       const derived = deriveRelations(facts);
       this.#kinds = kinds;
@@ -222,14 +217,14 @@ function kindOf(type: string): ColumnKind {
 }
 
 const DDL = new Set(['CreateTableNode', 'AlterTableNode', 'DropTableNode', 'CreateIndexNode', 'DropIndexNode']);
-const BOOKKEEPING = new Set([SECRETS_TABLE, MARKERS_TABLE]);
+const BOOKKEEPING = new Set([SECRETS_TABLE, MARKERS_TABLE, VERSIONS_TABLE]);
 
 /** Whether a statement changes what the metadata holds: DDL (indexes too: a unique one makes a hasOne), or the migrator's books. */
 export function changesSchema(node: RootOperationNode): boolean {
   if (DDL.has(node.kind)) return true;
   if (node.kind !== 'InsertQueryNode' && node.kind !== 'UpdateQueryNode' && node.kind !== 'DeleteQueryNode') return false;
   const target = node.kind === 'InsertQueryNode' ? node.into : node.kind === 'UpdateQueryNode' ? node.table : node.from.froms[0];
-  // In any case: SQLite writes to `SECRET_COLUMNS` as to `secret_columns`.
+  // In any case: SQLite writes to `MARMEON_SECRET_COLUMNS` as to `marmeon_secret_columns`.
   return target !== undefined && TableNode.is(target) && BOOKKEEPING.has(fold(target.table.identifier.name));
 }
 

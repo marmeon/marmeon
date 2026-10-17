@@ -2,12 +2,15 @@ import { readdirSync, existsSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Application } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
+import { assertManaged, isReadable, loadColumns, prepareBookkeeping } from '../bookkeeping-setup.ts';
+import { bookkeepingAccess, bookkeepingConnection, noBookkeepingWrites } from '../books.ts';
 import { Connections } from '../connections.ts';
+import { danglingEntries, LOCK_TABLE, MARKERS_TABLE, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE, VERSIONS_TABLE } from '../bookkeeping.ts';
 import { byCodePoint, type SchemaMarker } from '../introspection.ts';
-import { MARKERS_TABLE, SECRETS_TABLE } from '../metadata.ts';
-import { Schema, type SchemaRecorder } from '../schema/schema.ts';
-import { LOCK_TABLE, MigrationLock, type HeldLock, type LockOptions } from './lock.ts';
+import { Schema, SchemaError, type SchemaRecorder } from '../schema/schema.ts';
+import { MigrationLock, type HeldLock, type LockOptions } from './lock.ts';
 import type { Migration } from './migration.ts';
 
 /** `2026_10_01_120000_create_users_table.ts` — the timestamp orders migrations across all modules. */
@@ -25,6 +28,14 @@ export interface MigrationStatus extends MigrationFile {
   readonly batch: number | undefined;
 }
 
+export interface MigrateOptions {
+  /**
+   * `migrate --adopt-existing`: a connection with tables of the app and no bookkeeping gets an empty, versioned one instead of being
+   * refused. Called with the connection and the tables taken over unmarked.
+   */
+  readonly adoptExisting?: (connection: string, tables: readonly string[]) => void;
+}
+
 export interface MigrationRun {
   readonly name: string;
   readonly module: string;
@@ -32,15 +43,13 @@ export interface MigrationRun {
 }
 
 /** Internal bookkeeping tables — not part of the app's generated `Tables`. */
-export const MIGRATIONS_TABLE = 'migrations';
-export const OWNERS_TABLE = 'table_owners';
-export { LOCK_TABLE, MARKERS_TABLE, SECRETS_TABLE };
+export { LOCK_TABLE, MARKERS_TABLE, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE, VERSIONS_TABLE };
 
 interface Bookkeeping {
-  migrations: { id: Generated<number>; name: string; module: string; batch: number };
-  table_owners: { table_name: string; module: string };
-  secret_columns: { table_name: string; column_name: string };
-  schema_markers: { table_name: string; column_name: string; marker: string; value: string | null };
+  marmeon_migrations: { id: Generated<number>; name: string; module: string; batch: number };
+  marmeon_table_owners: { table_name: string; module: string };
+  marmeon_secret_columns: { table_name: string; column_name: string };
+  marmeon_schema_markers: { table_name: string; column_name: string; marker: string; value: string | null };
 }
 
 /** The columns a table-level marker stands for: dropping or renaming one of them takes the marker with it. */
@@ -54,6 +63,10 @@ const MARKER_COLUMNS: Readonly<Record<string, SchemaMarker['marker']>> = { delet
  * A migration may run on another connection (`connection` in `defineMigration`, e.g. the cache's own SQLite
  * file): its record stays on `default` (one order, one batch number for all), the table's owner, secret columns and marks
  * go to the bookkeeping of the connection the table is on.
+ *
+ * The bookkeeping is version 1 of the `marmeon_` tables. A database that still has the tables of the release before it is moved
+ * over by the first command that migrates; a database with a version this release does not read is left alone, and every query
+ * on it fails ({@link BookkeepingVersionError}). See `docs/migrations.md#how-the-migrator-keeps-track`.
  */
 export class Migrator {
   readonly #app: Application;
@@ -90,9 +103,11 @@ export class Migrator {
    * call inside `callback` joins the lock held.
    */
   async locked<R>(callback: () => Promise<R>): Promise<R> {
+    assertManaged(this.#connections, 'default');
     if (this.#held) return callback();
     const options = this.#connections.options();
-    const lock = await MigrationLock.acquire(this.#db(), {
+    // Not through `#db()`: a database whose bookkeeping is not yet readable is the one this lock is taken to repair.
+    const lock = await MigrationLock.acquire(this.#books(), {
       ...this.#lockOptions,
       driver: options.driver,
       ...(options.driver === 'pgsql' ? { url: options.url } : {}),
@@ -145,12 +160,14 @@ export class Migrator {
   }
 
   /** Runs every pending migration, in one new batch. */
-  async migrate(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
-    return this.locked(() => this.#migrate(onRun));
+  async migrate(onRun?: (run: MigrationRun) => void, options: MigrateOptions = {}): Promise<MigrationRun[]> {
+    return this.locked(() => this.#migrate(onRun, options));
   }
 
-  async #migrate(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
-    await this.#prepare();
+  async #migrate(onRun: ((run: MigrationRun) => void) | undefined, options: MigrateOptions): Promise<MigrationRun[]> {
+    await this.#prepare('default', true, options.adoptExisting);
+    // Every connection a migration runs on, not only those with a migration pending: its bookkeeping is moved now, or its queries stay refused.
+    for (const connection of await this.connections()) if (connection !== 'default') await this.#prepare(connection, true, options.adoptExisting);
     const db = this.#db();
     const ran = new Set((await this.#ran()).map((row) => row.name));
     const pending = this.files().filter((file) => !ran.has(file.name));
@@ -167,17 +184,19 @@ export class Migrator {
       if (connection === 'default') {
         await db.transaction().execute(async (trx) => {
           await migration.up(this.#schema(trx, file.module, connection));
+          await this.#verifyBooks(trx, connection, file);
           await this.#held?.heartbeat(trx);
           await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
         });
       } else {
         // On its own connection, then recorded on default — two databases, so two transactions (the record comes last:
         // a migration that failed is not recorded).
-        await this.#prepare(connection);
+        await this.#prepare(connection, true);
         await this.#db(connection)
           .transaction()
           .execute(async (trx) => {
             await migration.up(this.#schema(trx, file.module, connection));
+            await this.#verifyBooks(trx, connection, file);
             await this.#held?.heartbeat(); // before the commit: a lock lost meanwhile rolls the migration back
           });
         await db.transaction().execute(async (trx) => {
@@ -227,7 +246,14 @@ export class Migrator {
   async dropAllTables(): Promise<string[]> {
     return this.locked(async () => {
       const connections = await this.connections();
-      for (const connection of connections) await new Schema(this.#db(connection), this.#driver(connection)).dropAllTables();
+      for (const connection of connections) {
+        assertManaged(this.#connections, connection);
+        await this.#refuseNewer(connection);
+        // Through the bookkeeping connection: dropping everything is the way out of bookkeeping the app's connection refuses (an earlier release's).
+        const schema = new Schema(this.#books(connection), this.#driver(connection));
+        bookkeepingAccess.add(schema);
+        await schema.dropAllTables();
+      }
       return connections;
     });
   }
@@ -282,6 +308,7 @@ export class Migrator {
       if (connection === 'default') {
         await db.transaction().execute(async (trx) => {
           await migration.down!(this.#schema(trx, file.module, connection));
+          await this.#verifyBooks(trx, connection, file);
           await this.#held?.heartbeat(trx);
           await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
         });
@@ -291,6 +318,7 @@ export class Migrator {
           .transaction()
           .execute(async (trx) => {
             await migration.down!(this.#schema(trx, file.module, connection));
+            await this.#verifyBooks(trx, connection, file);
             await this.#held?.heartbeat();
           });
         await db.transaction().execute(async (trx) => {
@@ -355,7 +383,8 @@ export class Migrator {
         if (MARKER_COLUMNS[from]) await trx.deleteFrom(MARKERS_TABLE).where('table_name', '=', table).where('column_name', '=', '').where('marker', '=', MARKER_COLUMNS[from]).execute();
       },
     };
-    return new Schema(trx, this.#driver(connection), owners);
+    // The recorder writes the books with `trx` itself; what a migration holds as `schema.db` cannot.
+    return new Schema(trx.withPlugin(noBookkeepingWrites()), this.#driver(connection), owners);
   }
 
   /** The markers of a dropped column: its own (an inverse name), and the table's marker it stood for. */
@@ -365,43 +394,34 @@ export class Migrator {
     if (marker) await trx.deleteFrom(MARKERS_TABLE).where('table_name', '=', table).where('column_name', '=', '').where('marker', '=', marker).execute();
   }
 
-  /** The bookkeeping tables: the record of migrations on `default`; table owners, secret columns and markers on every connection with tables. */
-  async #prepare(connection = 'default'): Promise<void> {
-    const db = this.#db(connection);
-    if (connection === 'default') {
-      await db.schema
-        .createTable(MIGRATIONS_TABLE)
-        .ifNotExists()
-        .addColumn('id', this.#driver() === 'sqlite' ? 'integer' : 'bigint', (c) =>
-          this.#driver() === 'sqlite' ? c.primaryKey().autoIncrement() : c.primaryKey().generatedByDefaultAsIdentity(),
-        )
-        .addColumn('name', 'varchar(255)', (c) => c.notNull().unique())
-        .addColumn('module', 'varchar(255)', (c) => c.notNull())
-        .addColumn('batch', 'integer', (c) => c.notNull())
-        .execute();
-    }
-    await db.schema
-      .createTable(OWNERS_TABLE)
-      .ifNotExists()
-      .addColumn('table_name', 'varchar(255)', (c) => c.primaryKey())
-      .addColumn('module', 'varchar(255)', (c) => c.notNull())
-      .execute();
-    await db.schema
-      .createTable(SECRETS_TABLE)
-      .ifNotExists()
-      .addColumn('table_name', 'varchar(255)', (c) => c.notNull())
-      .addColumn('column_name', 'varchar(255)', (c) => c.notNull())
-      .addPrimaryKeyConstraint(`${SECRETS_TABLE}_pkey`, ['table_name', 'column_name'])
-      .execute();
-    await db.schema
-      .createTable(MARKERS_TABLE)
-      .ifNotExists()
-      .addColumn('table_name', 'varchar(255)', (c) => c.notNull())
-      .addColumn('column_name', 'varchar(255)', (c) => c.notNull().defaultTo(''))
-      .addColumn('marker', 'varchar(32)', (c) => c.notNull())
-      .addColumn('value', 'varchar(255)')
-      .addPrimaryKeyConstraint(`${MARKERS_TABLE}_pkey`, ['table_name', 'column_name', 'marker'])
-      .execute();
+  /** See {@link prepareBookkeeping}. */
+  async #prepare(connection = 'default', adopt = false, adoptExisting?: MigrateOptions['adoptExisting']): Promise<void> {
+    await prepareBookkeeping(this.#connections, connection, { adopt, ...(adoptExisting ? { adoptExisting } : {}) });
+  }
+
+  /** Refuses to go on over bookkeeping of a newer version (`migrate:fresh` would drop what a newer Marmeon wrote). */
+  async #refuseNewer(connection: string): Promise<void> {
+    await isReadable(this.#books(connection), this.#driver(connection), connection);
+  }
+
+  /**
+   * After a migration, in its transaction: every secret column and marker still points at a table and column that exist. A rename or
+   * drop in raw SQL leaves the mark behind and the column unprotected — so the migration is rolled back instead.
+   */
+  async #verifyBooks(trx: Kysely<any>, connection: string, file: MigrationFile): Promise<void> {
+    const { columns } = await loadColumns(trx, this.#driver(connection));
+    if (!columns.has(VERSIONS_TABLE)) return;
+    const secrets = (await sql<{ table_name: string; column_name: string }>`select table_name, column_name from ${sql.table(SECRETS_TABLE)}`.execute(trx)).rows.map((row) => ({ table: row.table_name, column: row.column_name }));
+    const markers = (await sql<{ table_name: string; column_name: string; marker: SchemaMarker['marker'] }>`select table_name, column_name, marker from ${sql.table(MARKERS_TABLE)}`.execute(trx)).rows.map((row) => ({ table: row.table_name, column: row.column_name, marker: row.marker, value: null }));
+    const dangling = danglingEntries(columns, { secrets, markers });
+    if (dangling.length === 0) return;
+    throw new SchemaError(
+      withCode(
+        'D4',
+        `Migration ${file.name} (module "${file.module}") left ${dangling.slice(0, 5).join(', ')}${dangling.length > 5 ? ', …' : ''} pointing at nothing: a table or column was renamed or dropped with raw SQL, and its secret or marker entry did not follow. ` +
+          'It was rolled back. Use schema.alter() and schema.rename() (renameColumn, dropColumn), which keep the entries in step. See docs/migrations.md#how-the-migrator-keeps-track.',
+      ),
+    );
   }
 
   async #ran(): Promise<{ id: number; name: string; module: string; batch: number }[]> {
@@ -420,6 +440,11 @@ export class Migrator {
 
   #db(connection = 'default'): Kysely<Bookkeeping> {
     return this.#connections.get<Bookkeeping>(connection);
+  }
+
+  /** The connection that reaches a database whose bookkeeping `#db()` refuses: for the lock, `#prepare` and dropping everything. */
+  #books(connection = 'default'): Kysely<any> {
+    return bookkeepingConnection(this.#connections, connection);
   }
 
   #driver(connection = 'default') {

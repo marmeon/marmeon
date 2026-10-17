@@ -169,7 +169,7 @@ The installed packages add their commands when the app boots:
 
 | Package | Commands |
 | --- | --- |
-| `@marmeon/database` | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh`, `migrate:status`, `make:upgrade-migrations`, `db:seed`, `db:show`, `db:types`. The four that change the schema take `--wait=<seconds>` (default 60) for another migration to end, see [one migration at a time](migrations.md#one-migration-at-a-time). See [migrations](migrations.md#running-migrations), [upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables) and [seeding](seeding.md#running-seeders). |
+| `@marmeon/database` | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh`, `migrate:status`, `make:upgrade-migrations`, `db:seed`, `db:show`, `db:types`. The four that change the schema take `--wait=<seconds>` (default 60) for another migration to end, see [one migration at a time](migrations.md#one-migration-at-a-time). `migrate --adopt-existing` takes over a database that has tables and no bookkeeping, see [adopting an existing database](migrations.md#adopting-an-existing-database). See [migrations](migrations.md#running-migrations), [upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables) and [seeding](seeding.md#running-seeders). |
 | `@marmeon/queue` | `queue:work`, `queue:size`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:flush`, `queue:prune-failed`, `make:queue-table`. See [queues](queues.md). |
 | `@marmeon/scheduler` | `schedule:work`, `schedule:run`, `schedule:list`, `schedule:test`. See [task scheduling](scheduling.md#running-the-scheduler). |
 | `@marmeon/cache` | `cache:prune`, `cache:clear`, `make:cache-table`. See [cache](cache.md#expired-entries-and-clearing). |
