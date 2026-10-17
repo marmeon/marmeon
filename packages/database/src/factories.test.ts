@@ -116,7 +116,7 @@ describe.each(drivers)('factories and seeders on %s', (driver) => {
     expect((await db().selectFrom('users').select('name').orderBy('id').execute()).map((u) => u.name)).toEqual(['Ada Lovelace', 'User 1', 'User 2', 'User 3']);
     expect(seeding.seeders({ module: 'blog' }).map((s) => s.seeder.name)).toEqual(['ArticlesSeeder']);
     expect(seeding.seeders({ seeder: 'DemoUsersSeeder' }).map((s) => s.module)).toEqual(['auth']);
-    expect(() => seeding.seeders({ module: 'shop' })).toThrow('There is no module "shop".');
-    expect(() => seeding.seeders({ seeder: 'Nope' })).toThrow('There is no seeder "Nope".');
+    expect(() => seeding.seeders({ module: 'shop' })).toThrow('[marmeon:D13] There is no module "shop".');
+    expect(() => seeding.seeders({ seeder: 'Nope' })).toThrow('[marmeon:D13] There is no seeder "Nope".');
   });
 });

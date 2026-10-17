@@ -104,7 +104,7 @@ describe('a statement kind the secret guard does not know', () => {
   });
 
   it('is refused when it is named like something every object has', () => {
-    for (const kind of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) expect(() => rootKind({ kind })).toThrow('does not know the statement');
+    for (const kind of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) { expect(() => rootKind({ kind })).toThrow('does not know the statement'); expect(() => rootKind({ kind })).toThrow(/^\[marmeon:D10\] /); }
   });
 
   it('is no reason to refuse the kinds it does know', () => {

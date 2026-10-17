@@ -160,6 +160,7 @@ describe.each(drivers)('secret columns on %s', (driver) => {
 
     it('are read like a selection: a secret column is not copied into a readable one', async () => {
       await insertAda();
+      await expect(db.updateTable('accounts').set((eb) => ({ email: eb.ref('password') })).execute()).rejects.toThrow(/^\[marmeon:D9\] /);
       await expect(db.updateTable('accounts').set((eb) => ({ email: eb.ref('password') })).execute()).rejects.toThrow(refusal);
       await expect(db.updateTable('accounts').set((eb) => ({ email: eb.ref('PASSWORD' as never) })).execute()).rejects.toThrow(refusal);
       await expect(db.updateTable('accounts').set({ email: sql.ref('password') } as never).execute()).rejects.toThrow(refusal);

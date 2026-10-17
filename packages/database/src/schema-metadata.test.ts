@@ -113,7 +113,7 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
 
   it('refuses a soft delete with parts an update by the WHERE would lose', async () => {
     await expect(connections.get<FixtureTables>().deleteFrom('comments').where(softDelete('comments')).orderBy('id').execute()).rejects.toThrow(
-      'A soft delete of "comments" runs as an update of the table by its WHERE; it cannot keep orderBy.',
+      '[marmeon:D12] A soft delete of "comments" runs as an update of the table by its WHERE; it cannot keep orderBy.',
     );
   });
 

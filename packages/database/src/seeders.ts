@@ -1,4 +1,5 @@
 import { Application, Container } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 import type { Connection } from './builder.ts';
 import { Connections } from './connections.ts';
 import { Factories, type FactoryDefinition, type PendingFactory } from './factories.ts';
@@ -43,12 +44,12 @@ export class Seeding {
 
   /** Every seeder, in module order — optionally only one module's, or one class by name. */
   seeders(filter: { module?: string; seeder?: string } = {}): { module: string; seeder: SeederClass }[] {
-    if (filter.module && !this.#app.modules.some((m) => m.name === filter.module)) throw new Error(`There is no module "${filter.module}".`);
+    if (filter.module && !this.#app.modules.some((m) => m.name === filter.module)) throw new Error(withCode('D13', `There is no module "${filter.module}".`));
     const all = this.#app.modules
       .filter((module) => !filter.module || module.name === filter.module)
       .flatMap((module) => (module.seeders ?? []).map((seeder) => ({ module: module.name, seeder })));
     const selected = filter.seeder ? all.filter(({ seeder }) => seeder.name === filter.seeder) : all;
-    if (filter.seeder && selected.length === 0) throw new Error(`There is no seeder "${filter.seeder}"${filter.module ? ` in module "${filter.module}"` : ''}.`);
+    if (filter.seeder && selected.length === 0) throw new Error(withCode('D13', `There is no seeder "${filter.seeder}"${filter.module ? ` in module "${filter.module}"` : ''}.`));
     return selected;
   }
 

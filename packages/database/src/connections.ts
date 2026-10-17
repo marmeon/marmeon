@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { Redactor, rollBackOnErr, runTransaction, TransactionError, token, type Application, type Logger } from '@marmeon/core';
-import { messageBase, publishEnded, transactionOf } from '@marmeon/core/internal';
+import { messageBase, publishEnded, transactionOf, withCode } from '@marmeon/core/internal';
 import { channels, type DbQueryMessage } from '@marmeon/core/diagnostics';
 import { Kysely, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type LogEvent, type OperationNode } from 'kysely';
 import type { Connection, Transaction } from './builder.ts';
@@ -165,7 +165,7 @@ export class Connections {
     const options = this.#options.get(name);
     if (!options) {
       throw new DatabaseConnectionError(
-        `Database connection "${name}" is not configured. Known: ${this.names().join(', ')}. Add one with defineConnection('${name}', …) in the app's config.`,
+        withCode('D11', `Database connection "${name}" is not configured. Known: ${this.names().join(', ')}. Add one with defineConnection('${name}', …) in the app's config.`),
       );
     }
     this.#used.add(name);
@@ -200,7 +200,7 @@ export class Connections {
       const directory = dirname(this.#sqlitePath(options.database));
       if (!existsSync(directory)) {
         throw new DatabaseConnectionError(
-          `The directory of the SQLite database for connection "${name}" does not exist: ${directory} (${describeConnection(options)}).`,
+          withCode('D11', `The directory of the SQLite database for connection "${name}" does not exist: ${directory} (${describeConnection(options)}).`),
         );
       }
     }

@@ -181,7 +181,7 @@ describe('connection errors', () => {
     });
     const error = await sql`select 1`.execute(connections.get()).then(() => undefined, (e: unknown) => e);
     expect(error).toBeInstanceOf(DatabaseConnectionError);
-    expect((error as Error).message).toMatch(/^Could not connect to the database connection "default" \(pgsql postgres:\/\/app:\*\*\*@127\.0\.0\.1:1\/app\): .*ECONNREFUSED/);
+    expect((error as Error).message).toMatch(/^\[marmeon:D11\] Could not connect to the database connection "default" \(pgsql postgres:\/\/app:\*\*\*@127\.0\.0\.1:1\/app\): .*ECONNREFUSED/);
     expect((error as Error).message).not.toContain('hunter2');
     await connections.destroy();
   });
@@ -190,6 +190,7 @@ describe('connection errors', () => {
     const connections = new Connections({ connections: { default: { driver: 'sqlite', database: 'nope/db.sqlite' } }, root: tmpdir(), logger: silent });
     expect(() => connections.verify()).toThrow(/directory of the SQLite database for connection "default" does not exist: .*nope/);
     expect(() => connections.get('reporting')).toThrow('Database connection "reporting" is not configured. Known: default.');
+    expect(() => connections.get('reporting')).toThrow(/^\[marmeon:D11\] /);
   });
 });
 

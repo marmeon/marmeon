@@ -72,7 +72,7 @@ SQLite runs on `node:sqlite`, which is part of Node: no native addon, nothing to
 Its directory must exist, so the app checks it when it starts and stops with the path when it is missing:
 
 ```text
-The directory of the SQLite database for connection "default" does not exist: /srv/app/storage (sqlite storage/database.sqlite).
+[marmeon:D11] The directory of the SQLite database for connection "default" does not exist: /srv/app/storage (sqlite storage/database.sqlite).
 ```
 
 A file database runs in WAL mode, so the development server and a command such as `migrate` can work at the same time. A
@@ -94,7 +94,7 @@ Install it as a dependency, not a dev dependency. Without it, the first query fa
 `DB_URL=postgres://app:secret@db:5432/app`, the message reads:
 
 ```text
-Could not connect to the database connection "default" (pgsql postgres://app:***@db:5432/app): DB_CONNECTION=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@^8
+[marmeon:D11] Could not connect to the database connection "default" (pgsql postgres://app:***@db:5432/app): DB_CONNECTION=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@^8
 ```
 
 A connection of your own names itself instead: `The Postgres connection "reporting" needs the "pg" package, …`.
@@ -186,7 +186,7 @@ Without a type argument, `get()` types the connection with your app's tables. A 
 the names it knows:
 
 ```text
-Database connection "reporting" is not configured. Known: default, system. Add one with defineConnection('reporting', …) in the app's config.
+[marmeon:D11] Database connection "reporting" is not configured. Known: default, system. Add one with defineConnection('reporting', …) in the app's config.
 ```
 
 Connections open on their first query and close when the app shuts down.

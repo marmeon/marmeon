@@ -139,7 +139,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(fresh.stdout).toMatch(/✓ Seeded DemoUsersSeeder \(auth\) [\d.]+ ms\n✓ Seeded DemoLinksSeeder \(user-profile\) [\d.]+ ms\n$/);
     const unknown = marmeon(webApp, ['db:seed', '--class=Nope'], { DB_DATABASE: ':memory:' });
     expect(unknown.code).toBe(1);
-    expect(unknown.stderr).toBe('✗ There is no seeder "Nope".\n');
+    expect(unknown.stderr).toBe('✗ [marmeon:D13] There is no seeder "Nope".\n');
   }, 30_000);
 
   it('checks that the committed table types match the migrations (db:types --check, as in CI)', () => {
@@ -170,7 +170,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
   it('prints a failing command’s error without Node’s dump and exits with 1', () => {
     const { code, stdout, stderr } = marmeon(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: 'postgres://app:hunter2@127.0.0.1:1/app' });
     expect(code).toBe(1);
-    expect(stderr).toMatch(/^✗ DatabaseConnectionError: Could not connect to the database connection "default" \(pgsql postgres:\/\/app:\*\*\*@127\.0\.0\.1:1\/app\): .*ECONNREFUSED.*\n {2}at /);
+    expect(stderr).toMatch(/^✗ DatabaseConnectionError: \[marmeon:D11\] Could not connect to the database connection "default" \(pgsql postgres:\/\/app:\*\*\*@127\.0\.0\.1:1\/app\): .*ECONNREFUSED.*\n {2}at /);
     expect(stderr).not.toMatch(/\[cause\]|hunter2|Node\.js v/);
     expect(stdout).toBe('');
   });

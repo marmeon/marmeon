@@ -351,6 +351,11 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | H5 | `server` | Vite, `@marmeon/vite` or the `marmeon()` plugin is missing, so `marmeon dev` and `marmeon build` cannot start. [When the plugin is missing](vite.md#when-the-plugin-is-missing) |
 | H6 | `http` | A write in a read-only request, such as an island: thrown in development and tests, dropped in production. [How islands load](deferred-props.md#how-islands-load) |
 | H7 | `live` | Live updates are not set up: `LIVE_DRIVER=redis` without `@marmeon/redis`, or the memory driver under `--workers`. [More than one process](realtime.md#more-than-one-process) |
+| D9 | `database` | A secret column would leave the database: a query selects it without `secret()`, reads a whole row of its table, a finder compares it, or a relation would load it. [Secret columns](migrations.md#secret-columns) |
+| D10 | `database` | The secret guard cannot check a construct (an unknown statement, a function name that is no identifier, raw SQL in `FROM`, names that differ only in case) and refuses it. [Secret columns](migrations.md#secret-columns) |
+| D11 | `database` | There is no connection to the database: it is not configured, its SQLite directory is missing, or it could not be opened. [Configuration](database.md#configuration) |
+| D12 | `database` | A query that the schema resolver cannot rewrite: a soft delete with parts an update cannot keep (`orderBy`, `limit`, a join, an alias, a second table), a relation or count name the query selects already, or a plugin that changed the tables a statement writes. [Module boundaries](queries.md#module-boundaries) |
+| D13 | `database` | A seeder or a module that is not there. [Running seeders](seeding.md#running-seeders) |
 
 ## Errors in the browser
 

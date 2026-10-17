@@ -1,5 +1,5 @@
 import { TransactionError, type TransactionFrame } from '@marmeon/core';
-import { leftTransactionOf, transactionOf } from '@marmeon/core/internal';
+import { leftTransactionOf, transactionOf, withCode } from '@marmeon/core/internal';
 import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import { changesSchema, isRawSchemaChange, type SchemaMetadata } from './metadata.ts';
 import { PREFIX, SECRET } from './placeholders.ts';
@@ -354,7 +354,7 @@ export class MarmeonDriver implements Driver {
       if (error instanceof DatabaseConnectionError) throw error;
       const reason = error instanceof Error ? error.message || (error as { code?: string }).code || error.name : String(error);
       throw new DatabaseConnectionError(
-        `Could not connect to the database connection "${this.#context.name}" (${this.#context.target}): ${reason}`,
+        withCode('D11', `Could not connect to the database connection "${this.#context.name}" (${this.#context.target}): ${reason}`),
         { cause: error },
       );
     }
