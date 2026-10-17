@@ -279,16 +279,16 @@ describe.each(databaseKinds)('the database queue driver on %s, in a transaction'
       const db = connections!.get();
       // The next job cannot be inserted — a failure between the acknowledgement and the hand-off.
       if (kind === 'sqlite') {
-        await sql`create trigger refuse before insert on marmeon_jobs when new.payload = 'explode' begin select raise(abort, 'refused'); end`.execute(db);
+        await sql`create trigger refuse before insert on jobs when new.payload = 'explode' begin select raise(abort, 'refused'); end`.execute(db);
       } else {
         await sql.raw(`create function refuse() returns trigger language plpgsql as $$ begin if new.payload = 'explode' then raise exception 'refused'; end if; return new; end $$`).execute(db);
-        await sql`create trigger refuse before insert on marmeon_jobs for each row execute function refuse()`.execute(db);
+        await sql`create trigger refuse before insert on jobs for each row execute function refuse()`.execute(db);
       }
       await driver.push('default', 'first', 0);
       const job = (await driver.reserve(['default']))!;
       await expect(driver.ack(job, [{ queue: 'default', payload: 'explode', delay: 0 }])).rejects.toThrow(/refused/);
       // Not acknowledged: still there, still claimed — after retryAfter it runs again and hands on then.
-      const { rows } = await sql<{ payload: string; reserved_at: unknown }>`select payload, reserved_at from marmeon_jobs`.execute(db);
+      const { rows } = await sql<{ payload: string; reserved_at: unknown }>`select payload, reserved_at from jobs`.execute(db);
       expect(rows).toHaveLength(1);
       expect(rows[0]!.payload).toBe('first');
       expect(rows[0]!.reserved_at).not.toBeNull();
@@ -340,7 +340,7 @@ describe.each(databaseKinds)('the database queue driver on %s, in a transaction'
       await driver.push('default', 'a', 1.5);
       const job = (await driver.reserve(['default'])) as ReservedJob | undefined;
       expect(job).toBeUndefined();
-      const { rows } = await sql<{ available_at: unknown; typeof?: string }>`select available_at from marmeon_jobs`.execute(connections!.get());
+      const { rows } = await sql<{ available_at: unknown; typeof?: string }>`select available_at from jobs`.execute(connections!.get());
       expect(String(rows[0]!.available_at)).toBe('1790000001623');
     });
   });

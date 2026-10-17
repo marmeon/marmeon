@@ -717,7 +717,7 @@ export interface TableRequirement {
     readonly columns: readonly string[];
     readonly secrets?: readonly string[];
     readonly set: string;
-    readonly unlessAbsent?: readonly string[];
+    readonly whenPresent?: true;
 }
 // Tables
 export interface Tables {

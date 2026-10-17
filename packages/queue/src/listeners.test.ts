@@ -88,7 +88,7 @@ async function app(options: { listeners?: ModuleDefinition['listeners']; fake?: 
 }
 
 const jobRows = async (application: Application) =>
-  (await sql<{ queue: string; payload: string }>`select queue, payload from marmeon_jobs order by id`.execute(application.container.make(Connections).get())).rows;
+  (await sql<{ queue: string; payload: string }>`select queue, payload from jobs order by id`.execute(application.container.make(Connections).get())).rows;
 
 describe('queued listeners', () => {
   it('are queued as an encrypted marmeon.listener job with the event payload — and a worker runs them in a scope of their own', async () => {
@@ -123,7 +123,7 @@ describe('queued listeners', () => {
     expect(inside.map((queues) => [...queues].sort())).toEqual([['default', 'mail']]);
     expect((await jobRows(application)).map((row) => row.queue).sort()).toEqual(['default', 'mail']);
 
-    await sql`delete from marmeon_jobs`.execute(connections.get());
+    await sql`delete from jobs`.execute(connections.get());
     await expect(
       connections.transaction(async () => {
         await application.container.createScope().make(EventDispatcher).dispatch(new OrderShipped('order-2'));
@@ -207,7 +207,7 @@ describe('queued listeners', () => {
     for (const name of files) {
       await using application = await app();
       const text = readFileSync(new URL(`queued-listener/${name}`, FORMATS), 'utf8');
-      await sql`insert into marmeon_jobs (queue, payload, attempts, available_at, created_at) values ('default', ${text}, 0, 0, 0)`.execute(application.container.make(Connections).get());
+      await sql`insert into jobs (queue, payload, attempts, available_at, created_at) values ('default', ${text}, 0, 0, 0)`.execute(application.container.make(Connections).get());
       expect(await application.container.make(QueueConnections).worker('database', 10).run({ stopWhenEmpty: true }), name).toMatchObject({ processed: 1, failed: 0 });
       expect(application.seen.entries.map((entry) => entry.payload), name).toEqual([{ orderId: 'order-77' }]);
     }

@@ -61,11 +61,11 @@ export class DatabaseHealthCheck implements HealthCheck {
   /** What the loaded metadata of the connections lacks of the required tables. */
   #unmet(required: readonly TableRequirement[]): string[] {
     const lacking: string[] = [];
-    for (const { connection, table, columns, unlessAbsent } of required) {
+    for (const { connection, table, columns, whenPresent } of required) {
       const { kinds } = this.#connections.metadata(connection);
       const present = kinds.get(table);
       if (present === undefined) {
-        if (unlessAbsent && !unlessAbsent.some((old) => kinds.has(old))) continue;
+        if (whenPresent) continue;
         lacking.push(`${table} is missing`);
         continue;
       }

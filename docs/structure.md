@@ -105,7 +105,7 @@ The features of the app. Each module is a folder with an `index.ts` that exports
 | --- | --- |
 | `auth/` | Sign-in, registration, password reset, the e-mail check, the security page and API tokens. Written by `marmeon make:auth`, and yours to change. The [starter kit](starter-kit.md) page describes it. |
 | `home/` | The home page at `/`. Starter kit only. |
-| `system/` | The migrations of the tables the framework's drivers need, such as the queue's `marmeon_jobs` table. |
+| `system/` | The migrations of the tables the framework's drivers need, such as the queue's `jobs` table. |
 
 ### `storage/`
 

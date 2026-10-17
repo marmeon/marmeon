@@ -45,7 +45,7 @@ describe('CACHE_DRIVER', () => {
     const cache = app.container.make(Cache);
     expect(cache).toBeInstanceOf(StoreCache);
     expect((await statuses(app, 10)).sort()).toEqual([200, 200, 200, 429, 429, 429, 429, 429, 429, 429]);
-    const { rows } = await import('@marmeon/database').then(({ sql }) => sql<{ key: string; value: string }>`select key, value from marmeon_cache`.execute(app.container.make(Connections).get()));
+    const { rows } = await import('@marmeon/database').then(({ sql }) => sql<{ key: string; value: string }>`select key, value from cache`.execute(app.container.make(Connections).get()));
     expect(rows).toEqual([{ key: 'limiter:login:60:everyone', value: '10' }]);
     await app.shutdown();
   });
@@ -93,7 +93,7 @@ describe('CACHE_DRIVER=database never joins the app’s transactions', () => {
   /** A connection with a SQLite file of its own for the cache (as the web app's `system`). */
   const System = (file: string) => defineConnection('system', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file, managed: false }) });
   const counted = async (connections: Connections, name = 'default') =>
-    (await sql<{ value: string }>`select value from marmeon_cache where key = 'limiter:login'`.execute(connections.get(name))).rows.map((row) => row.value);
+    (await sql<{ value: string }>`select value from cache where key = 'limiter:login'`.execute(connections.get(name))).rows.map((row) => row.value);
 
   it('SQLite without a file of its own: rate limits and locks refuse loudly inside a transaction — never a silent join', async () => {
     const app = await boot({ CACHE_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
@@ -167,7 +167,7 @@ describe('CACHE_DRIVER=database never joins the app’s transactions', () => {
     it('a rate-limit hit inside a transaction that rolls back is kept', async () => {
       const app = await pgsql();
       const connections = app.container.make(Connections);
-      await sql`delete from marmeon_cache`.execute(connections.get());
+      await sql`delete from cache`.execute(connections.get());
       const limiter = app.container.make(RateLimiter);
       await expect(
         connections.transaction(async () => {
@@ -217,7 +217,7 @@ describe('make:cache-table', () => {
     expect(await new MakeCacheTableCommand().handle(first)).toBe(0);
     const [migration] = readdirSync(join(root, 'modules/system/migrations'));
     expect(migration).toMatch(/^\d{4}_\d{2}_\d{2}_\d{6}_create_cache_table\.ts$/);
-    expect(readFileSync(join(root, 'modules/system/migrations', migration!), 'utf8')).toContain("schema.create('marmeon_cache_locks'");
+    expect(readFileSync(join(root, 'modules/system/migrations', migration!), 'utf8')).toContain("schema.create('cache_locks'");
     expect(readFileSync(join(root, 'modules/system/index.ts'), 'utf8')).toContain("migrations: new URL('./migrations/', import.meta.url)");
     const bootstrap = readFileSync(join(root, 'bootstrap/app.ts'), 'utf8');
     expect(bootstrap).toContain("import system from '#modules/system';");
@@ -231,7 +231,7 @@ describe('make:cache-table', () => {
 
     const { input: again, lines: refused } = input(root, { module: 'billing' });
     expect(await new MakeCacheTableCommand().handle(again)).toBe(1);
-    expect(refused).toEqual([`✗ modules/system/migrations/${migration} already exists — the marmeon_cache table has its migration.`]);
+    expect(refused).toEqual([`✗ modules/system/migrations/${migration} already exists — the cache table has its migration.`]);
   });
 
   it('writes into another existing module with --module', async () => {

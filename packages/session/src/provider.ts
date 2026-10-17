@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { Application, Clock, Logger, Redactor, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { Encrypter } from '@marmeon/encryption';
@@ -11,7 +10,7 @@ import { Session } from './session.ts';
 import { sessionScope, SessionEndings } from './ended.ts';
 import { ShareErrorsFromSession } from './share-errors.ts';
 import { SessionLottery, StartSession } from './start-session.ts';
-import { MakeSessionTableCommand, RENAME_MIGRATION } from './commands/make-session-table.ts';
+import { MakeSessionTableCommand } from './commands/make-session-table.ts';
 import { PruneSessionsCommand } from './commands/prune-sessions.ts';
 import { SESSION_USER_KEY, SessionStore } from './store.ts';
 import { UserSessions } from './user-sessions.ts';
@@ -34,16 +33,6 @@ declare module '@marmeon/core' {
  */
 export class SessionServiceProvider implements ServiceProvider {
   static config = [SessionConfig, CsrfConfig];
-  /** `marmeon make:upgrade-migrations` writes the rename of `sessions` to `marmeon_sessions`. */
-  static migrationUpgrades = [
-    {
-      set: 'session',
-      revision: 2,
-      name: 'rename_sessions_table_to_marmeon',
-      createdBy: ['create_sessions_table'],
-      contents: readFileSync(RENAME_MIGRATION, 'utf8'),
-    },
-  ];
   static commands = [MakeSessionTableCommand, PruneSessionsCommand];
 
   register(container: Container): void {
@@ -134,7 +123,7 @@ const SESSION_INFRASTRUCTURE = {
 };
 
 /**
- * The connection the `marmeon_sessions` table belongs on — for the migration `marmeon make:session-table` writes (`connection` in
+ * The connection the `sessions` table belongs on — for the migration `marmeon make:session-table` writes (`connection` in
  * `defineMigration`): `SESSION_CONNECTION` with the database driver, else `default`.
  */
 export function sessionTableConnection(container: Resolver): string {

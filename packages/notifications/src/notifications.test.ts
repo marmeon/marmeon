@@ -28,9 +28,9 @@ async function app(...args: Parameters<typeof notificationApp>): Promise<TestApp
   return open;
 }
 
-/** The rows of `marmeon_notifications`, oldest first. */
+/** The rows of `notifications`, oldest first. */
 async function rows(application: TestApp) {
-  const result = await sql<{ id: string; recipient_type: string; recipient_id: string; type: string; data: unknown; read_at: string | null }>`select * from marmeon_notifications order by created_at, id`.execute(
+  const result = await sql<{ id: string; recipient_type: string; recipient_id: string; type: string; data: unknown; read_at: string | null }>`select * from notifications order by created_at, id`.execute(
     application.connections.get(),
   );
   return result.rows;
@@ -148,14 +148,14 @@ describe.each(drivers)('notifications on %s', (driver) => {
           throw new Error('rollback');
         }),
       ).rejects.toThrow('rollback');
-      const { rows: jobs } = await sql<{ id: number }>`select id from marmeon_jobs`.execute(connections.get());
+      const { rows: jobs } = await sql<{ id: number }>`select id from jobs`.execute(connections.get());
       expect(jobs).toEqual([]);
     });
 
     it('keeps the data out of the jobs table in plain text (encrypted)', async () => {
       const application = await app(driver, { queue: 'database' });
       await application.container.make(Notifications).send(ada, OrderShipped, { orderId: 'o-plain-text-7', carrier: 'secret-carrier' });
-      const { rows: jobs } = await sql<{ payload: string }>`select payload from marmeon_jobs`.execute(application.connections.get());
+      const { rows: jobs } = await sql<{ payload: string }>`select payload from jobs`.execute(application.connections.get());
       expect(jobs).toHaveLength(1);
       expect(jobs[0]!.payload).not.toContain('o-plain-text-7');
       expect(jobs[0]!.payload).not.toContain('secret-carrier');
@@ -302,7 +302,7 @@ describe.each(drivers)('notifications on %s', (driver) => {
       const [newest] = await inbox.latest(ada);
       expect(notificationData(newest!, Welcome)).toMatchObject({ code: expect.stringMatching(/^a[12]$/) });
       expect(notificationData(newest!, OrderShipped)).toBeUndefined();
-      await sql`update marmeon_notifications set data = ${JSON.stringify({ other: 1 })} where id = ${adas[0]!}`.execute(application.connections.get());
+      await sql`update notifications set data = ${JSON.stringify({ other: 1 })} where id = ${adas[0]!}`.execute(application.connections.get());
       const changed = (await inbox.latest(ada)).find((row) => row.id === adas[0])!;
       expect(notificationData(changed, Welcome)).toBeUndefined();
     });

@@ -21,7 +21,7 @@ const me = (user: User) => ({ type: 'user', id: user.id }) as const;
 
 /** The notifications rows of a user. */
 async function rows(app: TestApp, user: User) {
-  const { rows } = await sql<{ id: string; type: string; data: unknown; read_at: string | null }>`select id, type, data, read_at from marmeon_notifications where recipient_type = 'user' and recipient_id = ${String(user.id)} order by created_at`.execute(
+  const { rows } = await sql<{ id: string; type: string; data: unknown; read_at: string | null }>`select id, type, data, read_at from notifications where recipient_type = 'user' and recipient_id = ${String(user.id)} order by created_at`.execute(
     app.make(Connections).get(),
   );
   return rows;

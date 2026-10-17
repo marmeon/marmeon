@@ -435,13 +435,6 @@ export declare class QueueServiceProvider implements ServiceProvider {
         };
     }>[];
     static health: (typeof QueueHealthCheck)[];
-    static migrationUpgrades: {
-        set: string;
-        revision: number;
-        name: string;
-        createdBy: string[];
-        contents: string;
-    }[];
     static commands: (typeof MakeQueueTableCommand | typeof QueueFailedCommand | typeof QueueRetryCommand | typeof QueueForgetCommand | typeof QueueFlushCommand | typeof QueuePruneFailedCommand | typeof QueueSizeCommand | typeof QueueWorkCommand)[];
     register(container: Container): void;
     boot(app: Application): Promise<void>;

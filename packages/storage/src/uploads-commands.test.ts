@@ -11,7 +11,7 @@ function run(root: string, options: Record<string, string> = {}) {
 }
 
 describe('make:uploads-table', () => {
-  it('writes the migration of marmeon_temporary_uploads into the system module, next to the cache and session tables', async () => {
+  it('writes the migration of temporary_uploads into the system module, next to the cache and session tables', async () => {
     const root = tempDir('marmeon-uploads-table-');
     mkdirSync(join(root, 'modules/system/migrations'), { recursive: true });
     writeFileSync(join(root, 'modules/system/index.ts'), "import { defineModule } from '@marmeon/core';\n\nexport default defineModule({ name: 'system', migrations: new URL('./migrations/', import.meta.url) });\n");
@@ -29,6 +29,6 @@ describe('make:uploads-table', () => {
 
     const again = run(root);
     expect(await new MakeUploadsTableCommand().handle(again.input)).toBe(1);
-    expect(again.lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the marmeon_temporary_uploads table has its migration.`]);
+    expect(again.lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the temporary_uploads table has its migration.`]);
   });
 });

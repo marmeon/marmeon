@@ -9,7 +9,7 @@ import { UserFactory } from './factories/UserFactory.ts';
 /** Redis runs when `MARMEON_TEST_REDIS_URL` is set (`pnpm test:redis`). */
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 
-// This app keeps its sessions in its database (SESSION_DRIVER=database, .env.example; the `marmeon_sessions` table of
+// This app keeps its sessions in its database (SESSION_DRIVER=database, .env.example; the `sessions` table of
 // modules/system); the other tests use `memory` (.env.test). Here: the real stores.
 describe('sessions in the database (SESSION_DRIVER=database)', () => {
   let app: TestApp;
@@ -20,7 +20,7 @@ describe('sessions in the database (SESSION_DRIVER=database)', () => {
     return app;
   };
   const rows = async () =>
-    (await sql<{ user_id: string | null }>`select user_id from marmeon_sessions order by last_activity`.execute(app.make(Connections).get())).rows.map((row) => row.user_id);
+    (await sql<{ user_id: string | null }>`select user_id from sessions order by last_activity`.execute(app.make(Connections).get())).rows.map((row) => row.user_id);
 
   it('100 requests of bots without a cookie leave no session behind — a page does', async () => {
     await open();
@@ -70,8 +70,8 @@ describe('sessions in the database (SESSION_DRIVER=database)', () => {
   });
 });
 
-// What the marmeon_sessions table holds signs nobody in — keys are the ids' hashes, payloads encrypted (this app: SESSION_ENCRYPT).
-describe('a leaked marmeon_sessions table', () => {
+// What the sessions table holds signs nobody in — keys are the ids' hashes, payloads encrypted (this app: SESSION_ENCRYPT).
+describe('a leaked sessions table', () => {
   let app: TestApp;
   let SESSION: string;
   const open = async () => {
@@ -79,7 +79,7 @@ describe('a leaked marmeon_sessions table', () => {
     SESSION = cookieNames(app).session;
     return app;
   };
-  const table = async () => (await sql<{ id: string; payload: string }>`select id, payload from marmeon_sessions`.execute(app.make(Connections).get())).rows;
+  const table = async () => (await sql<{ id: string; payload: string }>`select id, payload from sessions`.execute(app.make(Connections).get())).rows;
 
   it('holds no session cookie: its keys, sent as the cookie, are guests', async () => {
     await open();

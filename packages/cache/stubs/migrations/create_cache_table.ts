@@ -1,4 +1,4 @@
-// @marmeon-stub cache 2
+// @marmeon-stub cache 1
 import { cacheTablesConnection } from '@marmeon/cache';
 import { defineMigration } from '@marmeon/database';
 
@@ -8,20 +8,20 @@ import { defineMigration } from '@marmeon/database';
 export default defineMigration({
   connection: cacheTablesConnection,
   up: async (schema) => {
-    await schema.create('marmeon_cache', (table) => {
+    await schema.create('cache', (table) => {
       table.text('key').primary();
       table.text('value');
       table.bigInteger('expiration').nullable();
       table.index('expiration');
     });
-    await schema.create('marmeon_cache_locks', (table) => {
+    await schema.create('cache_locks', (table) => {
       table.text('key').primary();
       table.string('owner');
       table.bigInteger('expiration');
     });
   },
   down: async (schema) => {
-    await schema.drop('marmeon_cache_locks');
-    await schema.drop('marmeon_cache');
+    await schema.drop('cache_locks');
+    await schema.drop('cache');
   },
 });

@@ -60,7 +60,7 @@ describe('job metadata', () => {
     const queue = application.container.make(Queue);
     await runWithRequest({ requestId: 'req-5' }, () => queue.dispatch(StatsJob, { userId: 5 }));
     await queue.dispatch(StatsJob, { userId: 6 });
-    const rows = await application.container.make(Connections).get().selectFrom('marmeon_jobs' as never).select('payload' as never).orderBy('id' as never).execute();
+    const rows = await application.container.make(Connections).get().selectFrom('jobs' as never).select('payload' as never).orderBy('id' as never).execute();
     const records = (rows as { payload: string }[]).map((row) => (parseRecord(row.payload) as { record: JobRecord }).record);
     expect(records.map((record) => record.requestId)).toEqual(['req-5', undefined]);
     expect(records.every((record) => record.traceparent === undefined)).toBe(true);

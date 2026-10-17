@@ -232,26 +232,18 @@ pnpm marmeon make:uploads-table
 pnpm marmeon migrate
 ```
 
-`/up/ready` requires the table as soon as the uploads are set up, which is when storage, http, database and encryption are all
-loaded: only then are the upload routes registered and the table read.
+`/up/ready` checks the table's columns once the uploads are set up, which is when storage, http, database and encryption are all
+loaded. An app that never made the table, because it uses storage for its disks alone, stays ready; an upload then says which
+command makes the table.
 
 `make:uploads-table` writes the migration into the `system` module, or the module `--module` names. Like the cache, the table is
 written on a connection of its own and never inside the app's transactions: a rollback after `store()` must not make a used token
-usable again. The table is `marmeon_temporary_uploads`. On SQLite give it the cache's own file with `UPLOADS_CONNECTION`, as the
+usable again. On SQLite give it the cache's own file with `UPLOADS_CONNECTION`, as the
 [cache](cache.md#the-database-driver-and-transactions) page explains. Postgres needs nothing.
 
-An app made with an earlier release has the table under its old name, `temporary_uploads`. In development, run
-`marmeon make:upgrade-migrations`, commit what it writes, and regenerate `bootstrap/database.d.ts` with `marmeon db:types`. To
-deploy, stop every process of the old release (web, workers, scheduler, cron jobs), deploy, run `marmeon migrate`, then start the
-new release. A process of the old release that keeps running fails on the renamed table. The rows stay, and an upload that was
-used stays used. Until the migration has run, `/up/ready` is red and says what to run. See
-[upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables).
-
-The table has two indexes for the counts of open uploads. A table made by `make:uploads-table` of this release has them already
-and needs no further migration, and the one below does not apply to it: it names `temporary_uploads` and fails on
-`marmeon_temporary_uploads`. Only a table made before the limits on open uploads lacks the indexes, and only while it still has
-the old name: add this migration, with a timestamp after the create migration, before you run `make:upgrade-migrations`, whose
-rename takes the current time. It does nothing for a table that has the indexes:
+The table has two indexes for the counts of open uploads. A table created before the limits lacks them, and one more migration
+adds them. Name its file with the current timestamp, so it runs after the create migration. A table made by the current
+`make:uploads-table` has the indexes already, and the migration then changes nothing:
 
 ```ts title="modules/system/migrations/2026_10_16_090000_index_temporary_uploads_table.ts"
 import { defineMigration, sql } from '@marmeon/database';

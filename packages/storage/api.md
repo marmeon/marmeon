@@ -205,13 +205,6 @@ export declare class StorageServiceProvider implements ServiceProvider {
         maxOpenBytes: number;
         maxOpenTotalBytes: number;
     }>[];
-    static migrationUpgrades: {
-        set: string;
-        revision: number;
-        name: string;
-        createdBy: string[];
-        contents: string;
-    }[];
     static commands: (typeof MakeUploadsTableCommand | typeof PruneUploadsCommand)[];
     register(container: Container): void;
     boot(app: Application): Promise<void>;
@@ -279,7 +272,7 @@ export interface TemporaryUrls {
     sign(disk: string, key: string, options: TemporaryUrlOptions): string;
 }
 // UPLOADS_TABLE
-export declare const UPLOADS_TABLE = "marmeon_temporary_uploads";
+export declare const UPLOADS_TABLE = "temporary_uploads";
 // UPLOAD_TYPES
 export declare const UPLOAD_TYPES: {
     readonly 'image/png': 'png';

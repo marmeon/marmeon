@@ -48,7 +48,7 @@ A new app's `.env.test` sets `CACHE_DRIVER=memory`.
 | Driver | Where the data lives | Use it for |
 | --- | --- | --- |
 | `file` | A file per key, in `CACHE_PATH`. | One server. |
-| `database` | Rows of the `marmeon_cache` and `marmeon_cache_locks` tables. | Several processes or servers. |
+| `database` | Rows of the `cache` and `cache_locks` tables. | Several processes or servers. |
 | `redis` | Keys `<REDIS_PREFIX>cache:<key>` and `<REDIS_PREFIX>lock:<name>`. | Several servers that run Redis anyway. |
 | `memory` | The process. Gone when it stops. | Tests. |
 
@@ -65,13 +65,6 @@ pnpm marmeon migrate
 
 `make:cache-table` writes the migration into the `system` module, or the module that `--module` names. The migration creates the
 tables on the cache's connection, `CACHE_CONNECTION`.
-
-An app made with an earlier release has the tables under their old names, `cache` and `cache_locks`. In development, run
-`marmeon make:upgrade-migrations`, commit what it writes, and regenerate `bootstrap/database.d.ts` with `marmeon db:types`. To
-deploy, stop every process of the old release (web, workers, scheduler, cron jobs), deploy, run `marmeon migrate`, then start the
-new release. A process of the old release that keeps running fails on the renamed tables. The entries and the locks stay valid.
-Until the migration has run, `/up/ready` is red and says what to run. See
-[upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables).
 
 ### Cache drivers
 

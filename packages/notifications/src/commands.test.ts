@@ -55,6 +55,6 @@ describe('make:notifications-table', () => {
 
     const again = run(root, { module: 'inbox' });
     expect(await new MakeNotificationsTableCommand().handle(again.input)).toBe(1);
-    expect(again.lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the marmeon_notifications table has its migration.`]);
+    expect(again.lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the notifications table has its migration.`]);
   });
 });

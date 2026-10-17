@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { migrate, silent } from '../__fixtures__/targets.ts';
 import { QueueConnections } from '../connections.ts';
 import { Queue, QueueConfig, QueueServiceProvider } from '../index.ts';
-import { MakeQueueTableCommand, QUEUE_MIGRATION, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand, RENAME_MIGRATION } from './failed.ts';
+import { MakeQueueTableCommand, QUEUE_MIGRATION, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './failed.ts';
 import { QueueWorkCommand } from './work.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 
@@ -222,27 +222,23 @@ describe('the queue commands', () => {
     expect(JSON.parse(job!.payload)).toEqual({ ...JSON.parse(payload), availableAt: application.clock.now() });
   });
 
-  it("the web app's queue tables come from the first stub and the rename, the blank app's and the starter's from the current stub — all made with the fair claim's index", () => {
+  it("the queue tables of the web app, the blank app and the starter come from the stub — made with the fair claim's index", () => {
     const stub = readFileSync(QUEUE_MIGRATION, 'utf8');
     const index = "      // A worker without --queue claims the oldest due job of every queue in one statement — this index serves it.\n      table.index(['reserved_at', 'available_at', 'id']);\n";
     expect(stub, 'make:queue-table writes a new table with the index').toContain(index);
-    const first = readFileSync(new URL('../__fixtures__/legacy/create_jobs_table_rev1.ts', import.meta.url), 'utf8');
     const repo = new URL('../../../../', import.meta.url);
-    const filesOf = (dir: string) => readdirSync(new URL(dir, repo)).filter((file) => /jobs_table|queue_tables/.test(file));
-    // The web app keeps the migration it made the tables with and the one `make:upgrade-migrations` wrote after it.
-    const web = 'apps/web-app/modules/system/migrations/';
-    const files = filesOf(web);
-    expect(files).toEqual(['2026_10_02_211222_create_jobs_table.ts', expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_rename_queue_tables_to_marmeon\.ts$/)]);
-    expect(readFileSync(new URL(web + files[0], repo), 'utf8')).toBe(first);
-    expect(readFileSync(new URL(web + files[1], repo), 'utf8')).toBe(readFileSync(RENAME_MIGRATION, 'utf8'));
-    // A new app starts with the current revision.
-    for (const dir of ['apps/blank-app/modules/system/migrations/', 'packages/create-marmeon/template/base/modules/system/migrations/']) {
-      expect(filesOf(dir), dir).toEqual(['2026_10_03_002234_create_jobs_table.ts']);
-      expect(readFileSync(new URL(`${dir}2026_10_03_002234_create_jobs_table.ts`, repo), 'utf8'), dir).toBe(stub);
+    const filesOf = (dir: string) => readdirSync(new URL(dir, repo)).filter((file) => /jobs_table/.test(file));
+    for (const [dir, file] of [
+      ['apps/web-app/modules/system/migrations/', '2026_10_02_211222_create_jobs_table.ts'],
+      ['apps/blank-app/modules/system/migrations/', '2026_10_03_002234_create_jobs_table.ts'],
+      ['packages/create-marmeon/template/base/modules/system/migrations/', '2026_10_03_002234_create_jobs_table.ts'],
+    ] as const) {
+      expect(filesOf(dir), dir).toEqual([file]);
+      expect(readFileSync(new URL(`${dir}${file}`, repo), 'utf8'), dir).toBe(stub);
     }
   });
 
-  it("make:queue-table's migration runs on DB_QUEUE_CONNECTION — a marmeon_failed_jobs connection of its own stops it with what to do", async () => {
+  it("make:queue-table's migration runs on DB_QUEUE_CONNECTION — a failed_jobs connection of its own stops it with what to do", async () => {
     const { default: migration } = (await import(QUEUE_MIGRATION.href)) as { default: Migration };
     const on = async (env: Record<string, string>) => {
       const config = (await resolveConfig([QueueConfig], env)).get(QueueConfig);
@@ -255,11 +251,11 @@ describe('the queue commands', () => {
     // Failed jobs only logged: their table is never used, wherever QUEUE_FAILED_CONNECTION points.
     expect(await on({ DB_QUEUE_CONNECTION: 'queue', QUEUE_FAILED_DRIVER: 'null', QUEUE_FAILED_CONNECTION: 'archive' })).toBe('queue');
     await expect(on({ QUEUE_FAILED_CONNECTION: 'archive' })).rejects.toThrow(
-      'The migration of make:queue-table creates marmeon_jobs and marmeon_failed_jobs on one connection, DB_QUEUE_CONNECTION (default) — but QUEUE_FAILED_CONNECTION is archive. Split it: this migration keeps marmeon_jobs with connection: \'default\', a migration of its own creates marmeon_failed_jobs with connection: \'archive\' — or let both use one connection.',
+      'The migration of make:queue-table creates jobs and failed_jobs on one connection, DB_QUEUE_CONNECTION (default) — but QUEUE_FAILED_CONNECTION is archive. Split it: this migration keeps jobs with connection: \'default\', a migration of its own creates failed_jobs with connection: \'archive\' — or let both use one connection.',
     );
   });
 
-  it('make:queue-table writes the migration of marmeon_jobs and marmeon_failed_jobs into the system module', async () => {
+  it('make:queue-table writes the migration of jobs and failed_jobs into the system module', async () => {
     const root = tempDir('marmeon-queue-table-');
     mkdirSync(join(root, 'bootstrap'));
     writeFileSync(join(root, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\n\nexport default defineApplication({ root: '', modules: [] });\n");
@@ -268,8 +264,8 @@ describe('the queue commands', () => {
     const [migration] = readdirSync(join(root, 'modules/system/migrations'));
     expect(migration).toMatch(/^\d{4}_\d{2}_\d{2}_\d{6}_create_jobs_table\.ts$/);
     const contents = readFileSync(join(root, 'modules/system/migrations', migration!), 'utf8');
-    expect(contents).toContain("schema.create('marmeon_jobs'");
-    expect(contents).toContain("schema.create('marmeon_failed_jobs'");
+    expect(contents).toContain("schema.create('jobs'");
+    expect(contents).toContain("schema.create('failed_jobs'");
     // The index of the fair claim: a worker without --queue takes the oldest due job of every queue through it.
     expect(contents).toContain("table.index(['reserved_at', 'available_at', 'id']);");
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8')).toContain('modules: [system]');

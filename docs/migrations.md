@@ -643,11 +643,11 @@ pnpm marmeon migrate
 
 | Command | Tables |
 | --- | --- |
-| `make:cache-table` | `marmeon_cache`, `marmeon_cache_locks`, on the cache's connection |
-| `make:session-table` | `marmeon_sessions`, on the sessions' connection |
-| `make:queue-table` | `marmeon_jobs`, `marmeon_failed_jobs`, on the queue's connection |
-| `make:notifications-table` | `marmeon_notifications`, on the notifications' connection |
-| `make:uploads-table` | `marmeon_temporary_uploads`, on the uploads' connection |
+| `make:cache-table` | `cache`, `cache_locks`, on the cache's connection |
+| `make:session-table` | `sessions`, on the sessions' connection |
+| `make:queue-table` | `jobs`, `failed_jobs`, on the queue's connection |
+| `make:notifications-table` | `notifications`, on the notifications' connection |
+| `make:uploads-table` | `temporary_uploads`, on the uploads' connection |
 
 Each writes into the `system` module, or the module that `--module` names. The command creates the `system` module and adds it
 to `bootstrap/app.ts` when it does not exist yet; it adds `migrations` to an existing module that lacks it. When `bootstrap/app.ts`
@@ -656,9 +656,9 @@ reads its connection from the configuration when it runs: `CACHE_CONNECTION`, `S
 `NOTIFICATIONS_CONNECTION` and `UPLOADS_CONNECTION`. So its tables land on the
 [connection](database.md#infrastructure-connections) the driver reads and writes.
 
-The queue's migration creates `marmeon_failed_jobs` next to `marmeon_jobs`. With `QUEUE_FAILED_CONNECTION` set to another connection, it stops
-with a message instead of creating the table where nothing looks. Split it then: the written migration keeps `marmeon_jobs` with
-`connection: '<the jobs' connection>'` in place of `queueTablesConnection`, and a migration of its own creates `marmeon_failed_jobs` with
+The queue's migration creates `failed_jobs` next to `jobs`. With `QUEUE_FAILED_CONNECTION` set to another connection, it stops
+with a message instead of creating the table where nothing looks. Split it then: the written migration keeps `jobs` with
+`connection: '<the jobs' connection>'` in place of `queueTablesConnection`, and a migration of its own creates `failed_jobs` with
 the other `connection`, as in [migrations on another connection](#migrations-on-another-connection).
 
 ### Upgrading the framework's tables
@@ -682,12 +682,6 @@ The command stops with exit code 1, and writes nothing, when your app is ahead o
 not know), when a first line names another set, or when a later revision is in your app and an earlier one is not: restore
 the missing one by hand, in front of it.
 
-A migration that renames a table is a change for a stopped app ([the order, and what it costs](deployment.md#the-upgrade-that-stops-every-process)): let the queue run empty, stop every process of the old release (web,
-workers, scheduler, cron jobs, CI jobs that run `marmeon`), run `marmeon migrate`, then start the new release. The tables of the
-queue (`jobs`, `failed_jobs`), the cache (`cache`, `cache_locks`), the sessions (`sessions`), the temporary uploads
-(`temporary_uploads`) and the notifications (`notifications`) are renamed that way. The rows stay, and so do the columns
-marked `secret()`: the migration renames the table through the schema builder, which moves the marks with it.
-
 The tables of the starter kit's auth module (`remember_tokens`, `password_reset_tokens`, `personal_access_tokens`,
 `two_factor_authentications`, `two_factor_recovery_codes`, `passkeys` and `sign_ins`) keep their names. The `auth` set has one
 later revision: `reissue_personal_access_tokens` deletes every row of `personal_access_tokens` and adds a unique index on
@@ -704,9 +698,9 @@ An updated database ends up the same as a new one: the same tables, columns, and
 A migration that renames a table keeps the names of its indexes and constraints in step with it by passing `indexes`:
 
 ```ts
-await schema.rename('jobs', 'marmeon_jobs', { indexes: true });
+await schema.rename('invoices', 'bills', { indexes: true });
 ```
 
-Every index and constraint whose name begins with `jobs_` is renamed to begin with `marmeon_jobs_`, and on Postgres the
+Every index and constraint whose name begins with `invoices_` is renamed to begin with `bills_`, and on Postgres the
 sequences of its identity columns too. A new name over 63 bytes is refused on Postgres, which would cut it: rename that index
 yourself first, to a name of your choice. Without the option, `rename` changes the table's name only.

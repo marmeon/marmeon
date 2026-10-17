@@ -8,7 +8,7 @@ export const UploadsConfig = defineConfig('uploads', {
     /** The private disk the files wait on until a form stores them (default `uploads`; never a public disk — a startup error). */
     UPLOADS_DISK: env.string().default('uploads'),
     /**
-     * The database connection of `marmeon_temporary_uploads` (`marmeon make:uploads-table`). Infrastructure like the cache and sessions:
+     * The database connection of `temporary_uploads` (`marmeon make:uploads-table`). Infrastructure like the cache and sessions:
      * it never joins the app's transactions — on Postgres a small pool of its own; on SQLite name a connection with a
      * file of its own here (`system`), or a token cannot be used inside a transaction.
      */

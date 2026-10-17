@@ -11,7 +11,7 @@ import { RejectedUpload, TemporaryUpload } from './temporary-upload.ts';
 import { withCode } from '@marmeon/core/internal';
 
 /** The table `marmeon make:uploads-table` creates (the app owns the migration; this package types it itself). */
-export const UPLOADS_TABLE = 'marmeon_temporary_uploads';
+export const UPLOADS_TABLE = 'temporary_uploads';
 /** The columns the service reads and writes; readiness is red while the table lacks one. */
 export const UPLOADS_COLUMNS = ['id', 'session', 'route', 'field', 'disk', 'key', 'name', 'max_bytes', 'size', 'created_at', 'expires_at', 'started_at', 'uploaded_at', 'consumed_at'];
 
@@ -57,7 +57,7 @@ export interface TargetRequest {
 }
 
 export interface UploadsOptions {
-  /** The infrastructure connection of `marmeon_temporary_uploads` — resolved on first use. */
+  /** The infrastructure connection of `temporary_uploads` — resolved on first use. */
   readonly db: () => Connection<Tables>;
   /** The private disk of temporary uploads. */
   readonly disk: () => Disk;
@@ -292,7 +292,7 @@ export class TemporaryUploads {
       // The table is the app's to make: say which command makes it, not the driver's "no such table".
       const message = String((error as Error)?.message);
       if (message.includes(UPLOADS_TABLE) && /no such table|does not exist/i.test(message)) {
-        throw new StorageSetupError(`The table ${UPLOADS_TABLE} is missing — run marmeon make:uploads-table, then marmeon migrate (an app that has temporary_uploads: marmeon make:upgrade-migrations).`, { cause: error });
+        throw new StorageSetupError(`The table ${UPLOADS_TABLE} is missing — run marmeon make:uploads-table, then marmeon migrate.`, { cause: error });
       }
       throw error;
     });

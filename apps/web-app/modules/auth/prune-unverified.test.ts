@@ -17,7 +17,7 @@ beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 // The web app's prune of accounts whose address was never confirmed (the same command as make:auth's): the row and what the
 // other modules keep for it (AccountDeleted) — its avatar file, its data export, its notifications, its profile links and
-// sign-in activity (cascade) — and its rows in the marmeon_sessions table. Nightly at 03:20 Berlin time (schedule.test.ts) — this app
+// sign-in activity (cascade) — and its rows in the sessions table. Nightly at 03:20 Berlin time (schedule.test.ts) — this app
 // turns it on (the module make:auth writes has the line commented out).
 
 const DAY = 86_400_000;
@@ -31,12 +31,12 @@ describe('pruning accounts whose address was never confirmed', () => {
     return app.factory(UserFactory).create({ email, avatar_path: avatar, created_at: at, updated_at: at, email_verified_at: confirmedAt, first_verified_at: confirmedAt }) as Promise<User>;
   };
   const sessions = async () =>
-    (await sql<{ user_id: string | null }>`select user_id from marmeon_sessions order by user_id`.execute(app.make(Connections).get())).rows.map((row) => row.user_id);
+    (await sql<{ user_id: string | null }>`select user_id from sessions order by user_id`.execute(app.make(Connections).get())).rows.map((row) => row.user_id);
   const count = async (table: string, user: User) =>
     Number((await sql<{ n: number | string }>`select count(*) as n from ${sql.table(table)} where user_id = ${user.id}`.execute(app.make(Connections).get())).rows[0]!.n);
   const notifications = async (user: User) =>
     Number(
-      (await sql<{ n: number | string }>`select count(*) as n from marmeon_notifications where recipient_type = 'user' and recipient_id = ${String(user.id)}`.execute(app.make(Connections).get()))
+      (await sql<{ n: number | string }>`select count(*) as n from notifications where recipient_type = 'user' and recipient_id = ${String(user.id)}`.execute(app.make(Connections).get()))
         .rows[0]!.n,
     );
 
@@ -158,8 +158,8 @@ describe('pruning accounts whose address was never confirmed', () => {
     const old = await made(8, false, 'old@example.com', 'avatars/old.png');
     const disk = app.storage.disk('public');
     await disk.put('avatars/old.png', new Uint8Array([1]));
-    // A module's listener that fails (here: the marmeon_notifications table is gone) rolls the whole deletion back.
-    await sql`drop table marmeon_notifications`.execute(app.make(Connections).get());
+    // A module's listener that fails (here: the notifications table is gone) rolls the whole deletion back.
+    await sql`drop table notifications`.execute(app.make(Connections).get());
     await expect(app.make(PruneUnverifiedCommand).handle({ options: {}, args: [], output: { success: () => {}, error: () => {} } } as never)).rejects.toThrow();
     expect(await app.make(UserRepository).find(old.id)).toBeDefined();
     disk.assertExists('avatars/old.png');
