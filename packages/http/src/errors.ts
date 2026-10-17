@@ -1,7 +1,8 @@
 import { Logger, Redactor, token, type Translator } from '@marmeon/core';
 import { addVary, expectsJson, EXPECTS_JSON_VARY, HttpError, statusText, ValidationError } from '@marmeon/router';
 import { ERROR_PAGE, type ErrorPageProps } from './page-support.ts';
-import { PAGE_HEADER, speaksProtocol } from './protocol.ts';
+import { PAGE_HEADER } from './protocol.ts';
+import { isVisit } from './protocol-request.ts';
 import { RedirectResult } from './redirect.ts';
 import { view } from './view.ts';
 
@@ -89,7 +90,7 @@ function renderInvalid(error: ValidationError, request: Request): unknown {
 
 /** Page loads and client-side navigations get an error page; everything else JSON. */
 function wantsPage(request: Request): boolean {
-  return speaksProtocol(request.headers) || (request.headers.get('accept') ?? '').includes('text/html');
+  return isVisit(request.headers) || (request.headers.get('accept') ?? '').includes('text/html');
 }
 
 function asError(error: unknown): { name: string; message: string; stack: string } {

@@ -9,7 +9,7 @@
  * emptied — every request aborted, every preview revoked, every token gone; an `Upload` still on screen then sends `''`.
  */
 import type { Upload } from '../../page.ts';
-import { LOCATION_HEADER } from '../../protocol.ts';
+import { LOCATION_HEADER, protocolHeaders } from '../../protocol.ts';
 import { UPLOAD_HEADER } from '../../upload-header.ts';
 import { defineFeature, slot } from '../feature.ts';
 import { atOrigin, xsrfToken } from '../request.ts';
@@ -133,14 +133,21 @@ export const uploads = /* @__PURE__ */ defineFeature('uploads', (host): UploadsF
       running.pending = undefined;
       changed();
     };
-    // A 409 (signed out, a new build): the document goes — and with it this upload (the slot is emptied).
-    const away = (response: Response) => (response.status === 409 && response.headers.has(LOCATION_HEADER) ? host.documentChange.change(response, 'assign').then(() => true) : false);
+    // A 409 (signed out, a new build): the document goes — and with it this upload (the slot is emptied). A new build the user
+    // postponed does not take it back: the upload fails instead of hanging, for good.
+    const away = (response: Response) =>
+      response.status === 409 && response.headers.has(LOCATION_HEADER)
+        ? host.documentChange.change(response, 'assign').then((left) => {
+            if (!left) fail('The app has a new version. Load it to upload.');
+            return true;
+          })
+        : false;
 
     void (async () => {
       const href = host.window.location.href;
       const ownHeaders = (): Record<string, string> => {
         const token = xsrfToken();
-        return token ? { 'x-xsrf-token': token } : {};
+        return token ? { ...protocolHeaders(), 'x-xsrf-token': token } : protocolHeaders();
       };
       try {
         // 1. The target, from the form's own route (its middleware and authorize decide).

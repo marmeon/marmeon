@@ -198,13 +198,14 @@ export interface LayerClose {
 export const PAGE_HEADER = 'x-marmeon';
 
 /**
- * The version of the page protocol a client and server speak — the value of `x-marmeon`.
- * @internal
+ * The version of the page protocol a client and server speak — the value of `x-marmeon`. A server answers a request that
+ * names any other version (or none) with `409` and the address to load fully, before any route, middleware or controller
+ * runs. See docs/navigation.md#a-tab-of-another-protocol-version.
  */
-export const PROTOCOL_VERSION = 'true';
+export const PROTOCOL_VERSION = '1';
 
 /**
- * Whether `headers` carry this protocol's version — a request's or a response's. Any other value, a merged `true, true` too, is not.
+ * Whether `headers` carry this protocol's version — a request's or a response's. Any other value, a merged `1, 1` too, is not.
  * @internal
  */
 export function speaksProtocol(headers: Headers): boolean {
@@ -229,9 +230,9 @@ export const ACTION_HEADER = 'x-marmeon-action';
 /** With an action's `204`: where its controller redirected to — the client says so (`{ kind: 'redirect' }`), it does not go there. */
 export const ACTION_REDIRECT_HEADER = 'x-marmeon-redirect';
 
-/** Whether `request` is an action's (`x-marmeon-action`). */
+/** Whether `request` is an action's (`x-marmeon-action`) — by the header being there, as for a validation and an upload. */
 export function isActionRequest(request: Request): boolean {
-  return request.headers.get(ACTION_HEADER) === 'true';
+  return request.headers.has(ACTION_HEADER);
 }
 
 /**

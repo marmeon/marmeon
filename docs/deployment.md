@@ -396,6 +396,27 @@ store:
 On one machine, the Compose file shares one `storage` volume between web, worker and scheduler, so SQLite and the `file` drivers
 work there. Limits on live streams count per process: with four servers, a session may hold its limit of streams in each.
 
+## A mixed fleet during a deploy
+
+While a rolling deploy replaces the instances, a tab can reach an instance of another build than the one that served its page.
+Two checks answer such a request with `409` and the URL to load, and the tab then loads that URL as a whole document from whichever
+instance the proxy picks:
+
+- **The protocol version.** Every request of the client carries `x-marmeon: 1`. An instance that does not speak that version
+  refuses the request before any middleware or controller runs, whatever the method, a form post and an action included. This
+  matters only while the version differs between the builds, which it does when a release changes the page protocol.
+- **The asset version.** A visit (a `GET`) of a tab that runs other JavaScript than the instance serves gets the same answer, since
+  the old chunks may be gone. A form post is never refused for this alone, so a user does not lose a form because of a new build.
+
+The `409` is `no-store` and varies on `x-marmeon`, so a cache in front of the app keeps neither. A tab with unsaved changes asks
+before it loads; one that sent a form, an action or a live validation loses what it typed and had not sent. A client that is not
+the app's own and sends `x-marmeon` headers by hand has to send the version too. See
+[a tab of another protocol version](navigation.md#a-tab-of-another-protocol-version).
+
+Nothing in the proxy needs to change: no sticky sessions, no routing by version. The framework sets no `Cache-Control` on a
+document, so the browser asks again. A page the app caches publicly (`max-age`) can still be served from the browser's cache
+after the reload, with the old build's script names; keep such caches short, or send `no-cache` on documents.
+
 ## Without Docker: systemd
 
 `pnpm marmeon make:docker --systemd` writes `deploy/systemd/web.service`, `worker.service` and `scheduler.service`. They expect

@@ -260,7 +260,7 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
         if (page.headers.get('content-security-policy') !== DEPLOYED_POLICY) problems.push(`${path}: Content-Security-Policy "${page.headers.get('content-security-policy')}"`);
       }
       // An old client's visit: the docs build the reload URL from what Caddy forwarded — trusted, it is Caddy's https address.
-      const stale = curl(`${base}/docs/deployment`, { 'x-marmeon': 'true', 'x-marmeon-version': 'stale', accept: 'text/html, application/json' });
+      const stale = curl(`${base}/docs/deployment`, { 'x-marmeon': '1', 'x-marmeon-version': 'stale', accept: 'text/html, application/json' });
       if (stale.status !== 409 || stale.headers.get('x-marmeon-location') !== `${base}/docs/deployment`) {
         problems.push(`an old client's visit: ${stale.status}, x-marmeon-location "${stale.headers.get('x-marmeon-location')}" — expected 409 and ${base}/docs/deployment (TRUSTED_PROXIES)`);
       }

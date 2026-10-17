@@ -157,6 +157,7 @@ export function requestBadges(content: RequestContent): Html {
   if (headers['x-marmeon-validate']) badges.push(badge('live validation', '', 'Checks fields, changes nothing'));
   else if (headers['x-marmeon-action']) badges.push(badge('action'));
   else if (headers['x-marmeon-partial-data'] || headers['x-marmeon-partial-except']) badges.push(badge('partial'));
+  else if (headers['x-marmeon-upload']) badges.push(badge('upload'));
   else if (headers['x-marmeon'] && !content.region) badges.push(badge('visit'));
   if (headers.purpose === 'prefetch' || headers['sec-purpose']?.includes('prefetch')) badges.push(badge('prefetch'));
   if (headers.accept?.includes('text/event-stream')) badges.push(badge('stream'));

@@ -121,7 +121,7 @@ A search engine or a link preview gets the whole page at once, without streaming
 ### Every visit after it
 
 A click on a `<Link>` or a form sent with `<Form>` does not load a new document. The browser asks for the same URL with the
-header `x-marmeon: true`, and the server answers with the page as JSON: the component's name, its props and the URL. The browser
+header `x-marmeon: 1`, and the server answers with the page as JSON: the component's name, its props and the URL. The browser
 loads the component when it does not have it yet, swaps the page and writes the history entry. The history entry holds the URL
 and the scroll position, never the page's data: Back and Forward take the page from memory or ask the server again.
 

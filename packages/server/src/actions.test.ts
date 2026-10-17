@@ -11,14 +11,14 @@ import {
   type ContextOf,
   type HttpContext,
 } from '@marmeon/http';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER } from '@marmeon/http/internal';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, protocolHeaders } from '@marmeon/http/internal';
 import type { Next } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
-const ACTION = { [ACTION_HEADER]: 'true', accept: 'application/json', 'content-type': 'application/json' };
+const ACTION = { ...protocolHeaders(), [ACTION_HEADER]: 'true', accept: 'application/json', 'content-type': 'application/json' };
 
 describe('createHttpKernel — actions', async () => {
   const StoreRequest = defineRequest({ schema: v.object({ label: v.pipe(v.string(), v.minLength(1, 'The label is required.')) }) });
@@ -91,14 +91,14 @@ describe('ClearClientHistory and actions', () => {
     const history = new ClientHistory();
     history.clear();
     const middleware = new ClearClientHistory(history);
-    const request = new Request('https://app.test/logout', { method: 'POST', headers: { [ACTION_HEADER]: 'true', referer: 'https://app.test/settings/tokens' } });
+    const request = new Request('https://app.test/logout', { method: 'POST', headers: { ...protocolHeaders(), [ACTION_HEADER]: 'true', referer: 'https://app.test/settings/tokens' } });
     const response = await middleware.handle({ request } as HttpContext, async () => Response.json({ ok: true }));
     expect(response.status).toBe(409);
     expect(response.headers.get(LOCATION_HEADER)).toBe('/settings/tokens');
     const redirected = await middleware.handle({ request } as HttpContext, async () => new Response(null, { status: 303, headers: { location: '/login' } }));
     expect(redirected.headers.get(LOCATION_HEADER)).toBe('/login');
     // Another site's Referer is not followed.
-    const foreign = new Request('https://app.test/logout', { method: 'POST', headers: { [ACTION_HEADER]: 'true', referer: 'https://evil.test/' } });
+    const foreign = new Request('https://app.test/logout', { method: 'POST', headers: { ...protocolHeaders(), [ACTION_HEADER]: 'true', referer: 'https://evil.test/' } });
     expect((await middleware.handle({ request: foreign } as HttpContext, async () => Response.json({}))).headers.get(LOCATION_HEADER)).toBe('/');
   });
 });

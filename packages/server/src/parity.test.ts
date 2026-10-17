@@ -98,7 +98,7 @@ describe('once props on the server', async () => {
     reset();
     const page = await visit('/a', { 'x-marmeon-once': 'pages/A:rates', 'x-marmeon-once-scope': 'ada-session', 'x-marmeon-partial-component': 'pages/A', 'x-marmeon-partial-data': 'rates' });
     expect(page.props).toEqual({ rates: [1.1, 1.2] });
-    const html = await (await app.request('/a', { headers: { 'x-marmeon-once': 'countries', 'x-marmeon-once-scope': 'ada-session' } })).text();
+    const html = await (await app.request('/a')).text();
     expect(html).toContain('"countries":["DE","GB"]');
   });
 

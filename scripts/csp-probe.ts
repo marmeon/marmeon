@@ -235,7 +235,7 @@ class Tab {
       responseCode: 500,
       responseHeaders: [
         { name: 'content-type', value: 'application/json' },
-        { name: 'x-marmeon', value: 'true' },
+        { name: 'x-marmeon', value: '1' },
       ],
       body: Buffer.from(JSON.stringify(page)).toString('base64'),
     });

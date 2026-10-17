@@ -1,0 +1,18 @@
+{
+  "component": "dashboard/SignIns",
+  "props": { "signIns": [{ "id": 1, "at": "2026-01-01T00:00:00.000Z" }] },
+  "url": "/islands/sign-ins?limit=10",
+  "version": "build-1",
+  "deferredProps": { "default": ["details"] },
+  "mergeProps": ["signIns"],
+  "deepMergeProps": [],
+  "matchPropsOn": ["signIns.id"],
+  "query": { "limit": 10 },
+  "queryDefaults": { "limit": 5 },
+  "route": "dashboard.sign-ins",
+  "onceProps": { "plans": { "key": "plans" } },
+  "onceScope": "scope-1",
+  "csrf": "csrf-token",
+  "epoch": "epoch-1",
+  "live": [{ "channel": "dashboard.sign-ins", "token": "token.dashboard" }]
+}

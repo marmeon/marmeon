@@ -196,6 +196,15 @@ describe('Region — islands in the client core', () => {
     expect([...keptRegions(navigator, owner()).values()]).toEqual([{ status: 'unauthorized' }]);
   });
 
+  it('a region status it does not know is an exception — nothing more than an error is shown', async () => {
+    const win = new FakeWindow(`${ORIGIN}/dashboard`);
+    win.handler = () => Response.json({ message: 'Later' }, { status: 500, headers: { [REGION_STATUS_HEADER]: 'a-status-of-a-later-release' } });
+    const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
+    const region = navigator.use(islands).region('/islands/one');
+    await region.load();
+    expect(region.snapshot.status).toBe('exception');
+  });
+
   it('a 409 (a new build) loads the whole page again — and drops every island kept in memory', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     let deployed = false;

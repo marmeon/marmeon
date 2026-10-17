@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Connections, InfrastructureTransactionError, Migrator } from '@marmeon/database';
-import { UPLOAD_HEADER } from '@marmeon/http/protocol';
+import { PAGE_HEADER, PROTOCOL_VERSION, UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { PruneUploadsCommand, TemporaryUploads, UPLOADS_TABLE } from '@marmeon/storage';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -109,7 +109,7 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
 
   it('a lying Content-Length: the stream is cut off after maxBytes (413) — nothing stays on the uploads disk', async () => {
     const { ada, as } = await setUp();
-    const target = (await as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'big.png', size: 1000 } }).assertOk()).json() as { upload: { url: string } };
+    const target = (await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'big.png', size: 1000 } }).assertOk()).json() as { upload: { url: string } };
     let pulled = 0;
     const fifty = 50 * 1024 * 1024;
     const body = new ReadableStream<Uint8Array>({
@@ -121,18 +121,18 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
         controller.enqueue(chunk);
       },
     });
-    await as.withHeaders({ [UPLOAD_HEADER]: 'bytes', 'content-type': 'application/octet-stream', 'content-length': '1000' }).put(target.upload.url, { body }).assertStatus(413);
+    await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'bytes', 'content-type': 'application/octet-stream', 'content-length': '1000' }).put(target.upload.url, { body }).assertStatus(413);
     expect(pulled).toBeLessThan(3 * 1024 * 1024); // cut off after 2 MB — not 50 MB read
     app.storage.disk('uploads').assertCount(0);
     // A Content-Length over the limit is refused before a byte is read.
-    const second = (await as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'big.png', size: 10 } }).assertOk()).json() as { upload: { url: string } };
-    await as.withHeaders({ [UPLOAD_HEADER]: 'bytes', 'content-length': '3000000' }).put(second.upload.url, { body: new Uint8Array(10) }).assertStatus(413);
+    const second = (await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'big.png', size: 10 } }).assertOk()).json() as { upload: { url: string } };
+    await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'bytes', 'content-length': '3000000' }).put(second.upload.url, { body: new Uint8Array(10) }).assertStatus(413);
   });
 
   it('the bytes of a target are sent once: a second PUT (another file) is refused (409) — the first file stays', async () => {
     const { ada, as } = await setUp();
-    const target = (await as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: 20 } }).assertOk()).json() as { token: string; upload: { url: string } };
-    const bytes = as.withHeaders({ [UPLOAD_HEADER]: 'bytes', 'content-type': 'application/octet-stream' });
+    const target = (await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: 20 } }).assertOk()).json() as { token: string; upload: { url: string } };
+    const bytes = as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'bytes', 'content-type': 'application/octet-stream' });
     await bytes.put(target.upload.url, { body: PNG }).assertOk();
     await bytes.put(target.upload.url, { body: new TextEncoder().encode(HTML) }).assertStatus(409);
     await send(as, ada, target.token).assertRedirect();
@@ -141,7 +141,7 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
 
   it('a file the browser says is too large is refused at the target (422) — no row, no target', async () => {
     const { ada, as } = await setUp();
-    (await as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'huge.png', size: 2_000_001 } }).assertStatus(422)).assertInvalid({
+    (await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'huge.png', size: 2_000_001 } }).assertStatus(422)).assertInvalid({
       avatar: 'The file may be at most 2 MB.',
     });
     expect(await uploadRows()).toEqual([]);
@@ -150,7 +150,7 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
   it('a session with 20 open uploads gets a 429 with the message and Retry-After for the 21st — a sent form frees a place', async () => {
     const { ada, as } = await setUp();
     app.freeze();
-    const target = () => as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: 20 } });
+    const target = () => as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: 20 } });
     const tokens: string[] = [];
     for (let index = 0; index < 20; index++) {
       tokens.push(((await target().assertOk()).json() as { token: string }).token);
@@ -172,7 +172,7 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
   it('an upload target only for a route field with an upload() rule (404), for whoever may send the form (403/401)', async () => {
     const { ada, as } = await setUp();
     const bob = await app.factory(UserFactory).create();
-    const target = (who: TestApp, path: string, field: string) => who.withHeaders({ [UPLOAD_HEADER]: field, accept: 'application/json' }).put(path, { json: { name: 'a.png', size: 10 } });
+    const target = (who: TestApp, path: string, field: string) => who.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: field, accept: 'application/json' }).put(path, { json: { name: 'a.png', size: 10 } });
     await target(as, `/users/${ada.public_id}`, 'avatar').assertNotFound(); // the profile's route: no upload() field
     await target(as, `/users/${ada.public_id}`, 'bio').assertNotFound();
     await target(as, `/users/${ada.public_id}/avatar`, 'bio').assertNotFound(); // the avatar route, but no such field
@@ -189,7 +189,7 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
     (await send(as, ada, made).assertStatus(422)).assertInvalid({ avatar: 'The file did not arrive — choose it again.' });
     (await send(as, ada, null).assertStatus(422)).assertInvalid({ avatar: 'Choose a file.' });
 
-    const target = (await as.withHeaders({ [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: 20 } }).assertOk()).json() as { token: string };
+    const target = (await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'a.png', size: 20 } }).assertOk()).json() as { token: string };
     (await send(as, ada, target.token).assertStatus(422)).assertInvalid({ avatar: 'The file did not arrive — choose it again.' }); // no bytes sent
 
     // A real upload's id with a signature of one's own: the HMAC refuses it before anything else is looked at.

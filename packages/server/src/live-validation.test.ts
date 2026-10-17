@@ -8,7 +8,7 @@ import {
   type ContextOf,
   type HttpContext,
 } from '@marmeon/http';
-import { ACTION_REDIRECT_HEADER, VALIDATE_HEADER, VALIDATED_HEADER } from '@marmeon/http/internal';
+import { ACTION_REDIRECT_HEADER, protocolHeaders, VALIDATE_HEADER, VALIDATED_HEADER } from '@marmeon/http/internal';
 import type { Next } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import * as v from 'valibot';
@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
 const JSON_HEADERS = { accept: 'application/json', 'content-type': 'application/json' };
-const live = (...fields: string[]) => ({ ...JSON_HEADERS, [VALIDATE_HEADER]: fields.join(',') });
+const live = (...fields: string[]) => ({ ...JSON_HEADERS, ...protocolHeaders(), [VALIDATE_HEADER]: fields.join(',') });
 
 describe('createHttpKernel — live validation', async () => {
   const handled: string[] = [];

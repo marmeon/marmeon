@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, VALIDATE_HEADER, VALIDATED_HEADER } from '../protocol.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PROTOCOL_VERSION, RELOAD_HEADER, VALIDATE_HEADER, VALIDATED_HEADER } from '../protocol.ts';
 import { liveValidation } from './features/live-validation.ts';
 import { liveValidationOnFirstUse, loadLiveValidation } from './lazy.ts';
 import { isSensitiveField, liveValidationData, type LiveValidationOutcome } from './live-validation.ts';
@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe('live validation in the core', () => {
-  it('sends the form’s own request naming the fields — never cached, never followed, no page or action header', async () => {
+  it('sends the form’s own request naming the fields — never cached, never followed, the protocol version, no action header', async () => {
     const { win, live, record } = setup();
     let init: RequestInit | undefined;
     win.handler = (_url, request) => {
@@ -42,7 +42,7 @@ describe('live validation in the core', () => {
     const outcome = await live.validate('/register', { method: 'post', data: { name: 'Ada', email: 'ada@example.com' }, fields: ['name', 'email'] });
     expect(outcome).toEqual({ kind: 'valid', fields: ['name', 'email'] });
     expect(win.requests[0]).toMatchObject({ url: `${ORIGIN}/register`, method: 'POST', headers: expect.objectContaining({ [VALIDATE_HEADER]: 'name,email', accept: 'application/json' }) });
-    expect(win.requests[0]!.headers[PAGE_HEADER]).toBeUndefined();
+    expect(win.requests[0]!.headers[PAGE_HEADER]).toBe(PROTOCOL_VERSION);
     expect(win.requests[0]!.headers[ACTION_HEADER]).toBeUndefined();
     expect(init).toMatchObject({ redirect: 'manual', cache: 'no-store', credentials: 'same-origin' });
   });
@@ -91,6 +91,15 @@ describe('live validation in the core', () => {
     win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login' } });
     expect(await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'cancelled' });
     expect(win.loads).toEqual(['assign https://app.test/login']);
+  });
+
+  it('a 409 for another version of the protocol loads fully once — the next validation sends nothing', async () => {
+    const { win, live } = setup();
+    win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: `${ORIGIN}/register`, [RELOAD_HEADER]: 'version' } });
+    expect(await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'cancelled' });
+    expect(await live.validate('/register', { method: 'post', data: {}, fields: ['email'] })).toEqual({ kind: 'cancelled' });
+    expect(win.loads).toEqual(['assign https://app.test/register']);
+    expect(win.requests).toHaveLength(1);
   });
 
   it('refuses another site (the XSRF token and the data stay here)', async () => {

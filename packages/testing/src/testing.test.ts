@@ -2,6 +2,7 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { Clock, defineModule, type ApplicationDefinition } from '@marmeon/core';
 import { Controller, HttpServiceProvider } from '@marmeon/http';
+import { PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { DevtoolsServiceProvider } from '@marmeon/devtools';
 import { ServerServiceProvider } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
@@ -36,6 +37,7 @@ const definition: ApplicationDefinition = {
       name: 'greetings',
       routes: openRoutes((Route) => {
         Route.get('/greeting', ShowGreetingController);
+        Route.post('/version', (ctx) => Response.json({ version: ctx.request.headers.get('x-marmeon') }));
         Route.post('/echo', async (ctx) => Response.json(await ctx.request.json(), { status: 201 }));
         Route.post('/upload', async (ctx) => {
           const { avatar, tags } = await ctx.input();
@@ -80,9 +82,20 @@ describe('@marmeon/testing', () => {
   it('chains assertions on the pending request (page loads and navigations)', async () => {
     const app = await createTestApp(definition, { env });
     await app.get('/greeting').assertOk().assertSee('Hello Ada').assertPage('greetings/Show', { meta: { lang: 'en' } });
-    await app.navigating().get('/greeting').assertHeader('x-marmeon', 'true').assertPage<ShowGreetingController>('greetings/Show', {
+    await app.navigating().get('/greeting').assertHeader('x-marmeon', PROTOCOL_VERSION).assertPage<ShowGreetingController>('greetings/Show', {
       message: 'Hello Ada',
     });
+  });
+
+  it('sends the protocol version with every request of a client helper, and the server refuses any other', async () => {
+    const app = await createTestApp(definition, { env });
+    for (const helper of [app.navigating(), app.acting(), app.prefetching()]) {
+      await helper.post('/version').assertOk().assertExactJson({ version: PROTOCOL_VERSION });
+    }
+    for (const stale of ['true', '2', '']) {
+      await app.withHeaders({ 'x-marmeon': stale }).post('/version').assertStatus(409).assertHeader('x-marmeon-reload', 'version');
+    }
+    await app.withHeaders({ 'x-marmeon-action': 'true' }).post('/version').assertStatus(409);
   });
 
   it('sends JSON and returns the awaited response', async () => {

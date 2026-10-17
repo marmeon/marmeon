@@ -309,6 +309,16 @@ describe('the asset-version reload — cancelable; signing in or out is not', ()
     expect(win.loads).toEqual(['assign https://app.test/login']);
   });
 
+  it('an unknown reload value is a full load nothing can postpone — the `version` listener is not asked', async () => {
+    const { win, navigator } = tab(page('/users/1'));
+    const asked: string[] = [];
+    navigator.on('version', (event) => (asked.push(event.location), event.preventDefault()));
+    win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login', [RELOAD_HEADER]: 'a-reason-of-a-later-release' } });
+    await navigator.visit('/people');
+    expect(asked).toEqual([]);
+    expect(win.loads).toEqual(['assign https://app.test/login']);
+  });
+
   it('a 409 without a reason (an older server, a proxy) or with any other value is a document change too', async () => {
     for (const reason of [undefined, 'Version', 'version, history', 'history']) {
       const { win, navigator } = tab(page('/users/1'));

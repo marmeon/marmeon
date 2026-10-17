@@ -1,7 +1,7 @@
 import { createApplication, defineModule, type Application } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, defineRequest, HttpServiceProvider, type ContextOf } from '@marmeon/http';
-import { VALIDATE_HEADER } from '@marmeon/http/internal';
+import { protocolHeaders, VALIDATE_HEADER } from '@marmeon/http/internal';
 import { createHttpKernel } from '@marmeon/server';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
@@ -44,7 +44,7 @@ async function boot(liveLimit?: LimiterCallback) {
 const request = (email: string, live = true) => ({
   method: 'POST',
   body: JSON.stringify({ email }),
-  headers: { 'content-type': 'application/json', accept: 'application/json', ...(live ? { [VALIDATE_HEADER]: 'email' } : {}) },
+  headers: { 'content-type': 'application/json', accept: 'application/json', ...(live ? { ...protocolHeaders(), [VALIDATE_HEADER]: 'email' } : {}) },
 });
 
 async function statuses(app: Awaited<ReturnType<typeof boot>>, path: string, count: number, live = true): Promise<number[]> {

@@ -3588,6 +3588,8 @@ export declare const PARTIAL_COMPONENT_HEADER = "x-marmeon-partial-component";
 export declare const PARTIAL_DATA_HEADER = "x-marmeon-partial-data";
 // PARTIAL_EXCEPT_HEADER
 export declare const PARTIAL_EXCEPT_HEADER = "x-marmeon-partial-except";
+// PROTOCOL_VERSION
+export declare const PROTOCOL_VERSION = "1";
 // PURPOSE_HEADER
 export declare const PURPOSE_HEADER = "purpose";
 // PageObject

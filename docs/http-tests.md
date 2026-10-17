@@ -142,6 +142,15 @@ live validation, each marked by its own headers. A view sends a request the way 
 | `acting()` | An action, as `useAction()` sends it. |
 | `validating(...fields)` | A live validation of those fields. The controller never runs. |
 
+Every one of these sends `x-marmeon: 1`, the version of the page protocol (`PROTOCOL_VERSION` in `@marmeon/http/protocol`). A
+request of the client that names another version, or none, gets `409` before any middleware or controller runs, so a test that sets
+`x-marmeon: 'true'` or only `x-marmeon-action` by hand gets that answer: use the helpers, or send `PROTOCOL_VERSION`. The
+refusal itself is tested the other way round:
+
+```ts
+await app.withHeaders({ 'x-marmeon': '0' }).post('/notes', { json: { title: 'Hi' } }).assertStatus(409).assertHeader('x-marmeon-reload', 'version');
+```
+
 A client-side visit across the sign-in boundary gets the protocol's full reload, a `409` with the target in
 `x-marmeon-location`:
 

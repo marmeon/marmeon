@@ -1,5 +1,6 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
 import { Connections } from '@marmeon/database';
+import { PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { useForm } from '@marmeon/react';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
@@ -69,7 +70,7 @@ describe('user-profile module', () => {
     await as(ada)
       .get(profile(ada))
       .assertOk()
-      .assertHeader('x-marmeon', 'true')
+      .assertHeader('x-marmeon', PROTOCOL_VERSION)
       .assertPage<ShowUserProfileController>('user-profile/Show', {
         profile: { name: 'Ada Lovelace' },
         email: 'ada@example.com',

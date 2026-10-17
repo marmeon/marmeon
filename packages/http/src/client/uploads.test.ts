@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import type { Upload } from '../page.ts';
-import { LOCATION_HEADER, RELOAD_HEADER, UPLOAD_HEADER } from '../protocol.ts';
+import { LOCATION_HEADER, PAGE_HEADER, PROTOCOL_VERSION, RELOAD_HEADER, UPLOAD_HEADER } from '../protocol.ts';
 import { uploads } from './features/uploads.ts';
 import { dirtyPaths } from './forms.ts';
 import { loadSensitiveFields, rememberable } from './remember.ts';
@@ -54,7 +54,7 @@ function fakeXhr(sent: Sent[], answer: { status: number; body: string } | 'never
 const TOKEN = 'tu_00000000-0000-4000-8000-000000000000.' + 'a'.repeat(43);
 const file = (name = 'me.png', type = 'image/png') => new File(['png!'], name, { type });
 
-async function start(options: { target?: (init: RequestInit) => Response | Promise<Response>; answer?: { status: number; body: string } | 'never'; s3?: boolean } = {}) {
+async function start(options: { target?: (init: RequestInit) => Response | Promise<Response>; answer?: { status: number; body: string } | 'never'; s3?: boolean; postpone?: boolean } = {}) {
   const win = new FakeWindow(`${ORIGIN}/users/1/edit`);
   const sent: Sent[] = [];
   win.XMLHttpRequest = fakeXhr(sent, options.answer);
@@ -69,6 +69,7 @@ async function start(options: { target?: (init: RequestInit) => Response | Promi
   };
   document.cookie = 'XSRF-TOKEN=xsrf-of-the-session';
   const { navigator } = boot(win, page('/users/1/edit'));
+  if (options.postpone) navigator.on('version', (event) => event.preventDefault());
   const feature = navigator.use(uploads);
   const states: (Upload | null)[] = [];
   const first = feature.start({ method: 'put', url: '/users/1/avatar', field: 'avatar', file: file(), onChange: (upload) => states.push(upload) });
@@ -84,9 +85,9 @@ describe('uploads: a target from the form’s route, the bytes with progress, th
     expect(first.preview).toMatch(/^blob:/);
     // 1. The target: the route's own request, the field in a header, the file described as JSON — with the session's XSRF token.
     expect(targets[0]).toMatchObject({ method: 'PUT', body: JSON.stringify({ name: 'me.png', size: 4, type: 'image/png' }) });
-    expect(targets[0]!.headers).toMatchObject({ [UPLOAD_HEADER]: 'avatar', accept: 'application/json', 'x-xsrf-token': 'xsrf-of-the-session' });
+    expect(targets[0]!.headers).toMatchObject({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar', accept: 'application/json', 'x-xsrf-token': 'xsrf-of-the-session' });
     // 2. The bytes: the file itself, to the signed URL, with progress.
-    expect(sent[0]).toMatchObject({ method: 'PUT', url: '/_marmeon/uploads/1?expires=1&signature=x', headers: { 'content-type': 'application/octet-stream', [UPLOAD_HEADER]: 'bytes' } });
+    expect(sent[0]).toMatchObject({ method: 'PUT', url: '/_marmeon/uploads/1?expires=1&signature=x', headers: { 'content-type': 'application/octet-stream', [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'bytes' } });
     expect(sent[0]!.body).toBeInstanceOf(File);
     expect(states.map((state) => state && [state.status, state.progress])).toEqual([
       ['uploading', 0.25],
@@ -134,6 +135,13 @@ describe('uploads: a target from the form’s route, the bytes with progress, th
     expect(win.loads).toEqual(['assign https://app.test/login']);
     expect(sent).toEqual([]);
     expect(feature.size).toBe(0);
+  });
+
+  it('a new build the user postponed fails the upload — it never hangs on "uploading"', async () => {
+    const { win, last, sent } = await start({ postpone: true, target: () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/users/1/edit', [RELOAD_HEADER]: 'version' } }) });
+    expect(win.loads).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(last()!.status).toBe('failed');
   });
 
   it('a form’s remembered input never keeps an upload — and the field counts as changed while one is there', async () => {

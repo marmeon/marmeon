@@ -8,7 +8,7 @@
  * when it redirects. An action after signing out (401, 419) ends as an `exception`: shown, never retried by itself.
  */
 import type { FlashMessage, ValidationErrors } from '../page.ts';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER } from '../protocol.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, protocolHeaders } from '../protocol.ts';
 import type { Confirm } from './confirm.ts';
 import { flashOfResponse } from './flash.ts';
 import { notify } from './notify.ts';
@@ -222,7 +222,7 @@ export class Actions {
     try {
       response = await this.#host.fetch(request.url, {
         method: method.toUpperCase(),
-        headers: { accept: 'application/json', [ACTION_HEADER]: 'true', ...request.headers, ...headers },
+        headers: { accept: 'application/json', [ACTION_HEADER]: 'true', ...request.headers, ...headers, ...protocolHeaders() },
         body: request.body,
         signal,
         // Never followed: the server reports where a redirect points (204 + x-marmeon-redirect).

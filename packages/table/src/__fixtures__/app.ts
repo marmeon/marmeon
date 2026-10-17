@@ -3,7 +3,7 @@ import { createApplication, defineModule, Logger, type Application } from '@marm
 import { Connections, DatabaseServiceProvider, Schema, sql, type QueryEvent } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import { Controller, defineRequest, HttpServiceProvider, type ContextOf } from '@marmeon/http';
-import { IncomingRequest } from '@marmeon/http/internal';
+import { IncomingRequest, PROTOCOL_VERSION } from '@marmeon/http/internal';
 import { defineMiddleware, type HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { action, bulk, column, defineTable, exportCsv, filter, Tables, tableRoutes, TableServiceProvider, type TableContext } from '../index.ts';
@@ -434,7 +434,7 @@ export async function tableApp(driver: TestDriver): Promise<TableTestApp> {
         headers: {
           accept: 'application/json',
           ...(init.user === undefined ? {} : { 'x-test-user': String(init.user) }),
-          ...(init.action ? { 'x-marmeon-action': 'true' } : {}),
+          ...(init.action ? { 'x-marmeon': PROTOCOL_VERSION, 'x-marmeon-action': 'true' } : {}),
           ...(init.json === undefined ? {} : { 'content-type': 'application/json' }),
           ...(init.form === undefined ? {} : { 'content-type': 'application/x-www-form-urlencoded' }),
           ...init.headers,

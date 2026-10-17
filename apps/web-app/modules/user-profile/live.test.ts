@@ -1,4 +1,5 @@
 import { UserFactory, UserRepository, type User } from '#modules/auth';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { notificationsChannel } from '@marmeon/live';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -16,7 +17,7 @@ beforeEach(async () => {
 
 const profile = (user: User) => `/users/${user.public_id}`;
 /** A tab of `user` — its requests name its document (x-marmeon-connection), as the client core's do. */
-const tab = (user: User, connection: string) => app.actingAs(user).withHeaders({ 'x-marmeon-connection': connection });
+const tab = (user: User, connection: string) => app.actingAs(user).withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-connection': connection });
 
 describe('live props in the web app', () => {
   it('the profile follows users.<id> (profile, activity) and the bell its notifications — signed for the session', async () => {
@@ -115,7 +116,7 @@ describe('live props in the web app', () => {
     const ada$ = app.actingAs(ada); // both tabs in one browser — one session
     const tabB = await ada$.live(profile(ada), { connection: 'tab-b-ada-0001' });
     await tabB.hello();
-    await ada$.withHeaders({ 'x-marmeon-connection': 'tab-a-ada-0001' }).post('/logout').assertRedirect('/login');
+    await ada$.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-connection': 'tab-a-ada-0001' }).post('/logout').assertStatus(409); // a visit that signs out: the tab loads the page fully
     await tabB.closed;
     expect(tabB.events.map((each) => each.event)).toEqual(['hello', 'end']);
     await app.actingAs(ada).post(`${profile(ada)}/links`, { json: { label: 'After', url: 'https://after.example' } });

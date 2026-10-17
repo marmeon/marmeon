@@ -618,7 +618,7 @@ export class TestApp {
     const channels = new Map((subscriptions as readonly LiveSubscription[]).map((subscription) => [subscription.channel, subscription.token]));
     for (const [channel, token] of channels) query.append('c', `${token}.${channel}`);
     const response = await this.stream(`${LIVE_PATH}?${query}`, {
-      headers: { accept: 'text/event-stream', [CONNECTION_HEADER]: connection, ...(lastEventId === undefined ? {} : { 'last-event-id': lastEventId }) },
+      headers: { accept: 'text/event-stream', ...protocolHeaders(), [CONNECTION_HEADER]: connection, ...(lastEventId === undefined ? {} : { 'last-event-id': lastEventId }) },
     });
     const reader = new module.LiveStreamReader(response);
     this.#shared.cleanups.push(() => reader.close());
@@ -857,7 +857,7 @@ export class TestApp {
    * `x-marmeon-redirect` (`assertActionRedirect`). Never cached (`no-store`).
    */
   acting(): TestApp {
-    return this.withHeaders({ [ACTION_HEADER]: 'true', accept: 'application/json' });
+    return this.withHeaders({ ...protocolHeaders(), [ACTION_HEADER]: 'true', accept: 'application/json' });
   }
 
   /**
@@ -866,7 +866,7 @@ export class TestApp {
    * failure (403, 419, 429). The controller never runs. `app.validating('name', 'email').post('/register', { json })`.
    */
   validating(...fields: string[]): TestApp {
-    return this.withHeaders({ [VALIDATE_HEADER]: fields.join(','), accept: 'application/json' });
+    return this.withHeaders({ ...protocolHeaders(), [VALIDATE_HEADER]: fields.join(','), accept: 'application/json' });
   }
 
   /** Requests as an API client. */
@@ -935,7 +935,7 @@ export class TestApp {
     const blob = file instanceof Blob ? file : new Blob([typeof file.contents === 'string' ? file.contents : new Uint8Array(file.contents)], { type: file.type ?? '' });
     const fileName = file instanceof File ? file.name : file instanceof Blob ? 'upload' : file.name;
     const url = urlFor(router, name as string, params as Readonly<Record<string, Param>> | undefined);
-    const target = await this.withHeaders({ [UPLOAD_HEADER]: field as string, accept: 'application/json' })
+    const target = await this.withHeaders({ ...protocolHeaders(), [UPLOAD_HEADER]: field as string, accept: 'application/json' })
       .request(route.methods[0]!, url, { json: { name: fileName, size: blob.size, type: blob.type } });
     if (target.status !== 200) throw new AssertionError({ message: `The upload target of ${String(name)} (${String(field)}) answered ${target.status}: ${target.body.slice(0, 300)}` });
     const { token, upload } = target.json() as { token: UploadToken; upload: { method: 'PUT' | 'POST'; url: string; fields?: Record<string, string> } };
@@ -948,7 +948,7 @@ export class TestApp {
       if (!sent.ok) throw new AssertionError({ message: `The upload to S3 failed: ${sent.status} ${(await sent.text()).slice(0, 300)}` });
       return token;
     }
-    const received = await this.withHeaders({ [UPLOAD_HEADER]: 'bytes', 'content-type': 'application/octet-stream' })
+    const received = await this.withHeaders({ ...protocolHeaders(), [UPLOAD_HEADER]: 'bytes', 'content-type': 'application/octet-stream' })
       .request(upload.method, upload.url, { body: new Uint8Array(await blob.arrayBuffer()) });
     if (received.status !== 200) throw new AssertionError({ message: `Sending the upload answered ${received.status}: ${received.body.slice(0, 300)}` });
     return token;
