@@ -166,6 +166,7 @@ export declare class DatabaseServiceProvider implements ServiceProvider {
     }>[];
     static solutions: readonly import("@marmeon/core").SolutionDefinition<any>[];
     static health: (typeof DatabaseHealthCheck)[];
+    static checks: readonly AppCheckClass[];
     static commands: (typeof MakeUpgradeMigrationsCommand | typeof DbShowCommand | typeof DbSeedCommand | typeof DbTypesCommand | typeof MigrateCommand | typeof MigrateRollbackCommand | typeof MigrateResetCommand | typeof MigrateFreshCommand | typeof MigrateStatusCommand)[];
     register(container: Container): void;
     boot(app: Application): void;
@@ -730,12 +731,12 @@ export declare class TypeGenerator {
     #private;
     constructor(app: Application, connections: Connections, logger: Logger);
     get path(): string;
-    render(): Promise<Rendered>;
+    render(signal?: AbortSignal): Promise<Rendered>;
     write(): Promise<{
         changed: boolean;
         warnings: string[];
     }>;
-    isCurrent(): Promise<boolean>;
+    isCurrent(signal?: AbortSignal): Promise<boolean>;
 }
 // UuidColumn
 export declare class UuidColumn<T> extends Column<T> {

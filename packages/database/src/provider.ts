@@ -1,5 +1,7 @@
 import { Application, Logger, type Container, type ServiceProvider } from '@marmeon/core';
+import type { AppCheckClass } from 'marmeon';
 import { MakeUpgradeMigrationsCommand } from './commands/make-upgrade-migrations.ts';
+import { DbTypesCheck } from './checks.ts';
 import { DbShowCommand } from './commands/db-show.ts';
 import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
 import { DbSeedCommand } from './commands/db-seed.ts';
@@ -43,6 +45,8 @@ export class DatabaseServiceProvider implements ServiceProvider {
   static solutions = databaseSolutions;
   /** Every connection answers `select 1`, for `/up/ready`. */
   static health = [DatabaseHealthCheck];
+  /** `bootstrap/database.d.ts` matches the migrations, for `marmeon check`. */
+  static checks: readonly AppCheckClass[] = [DbTypesCheck];
   static commands = [DbShowCommand, DbTypesCommand, DbSeedCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand, MakeUpgradeMigrationsCommand];
 
   register(container: Container): void {

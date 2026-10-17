@@ -47,6 +47,8 @@ The two endpoints answer different questions on purpose:
 - **`/up/ready` checks what the instance depends on.** When it fails, the instance stays up and gets no traffic until it passes
   again. Point the load balancer's health check and the readiness probe here.
 
+`marmeon check` runs the same readiness checks as its `readiness` check; in CI without the services, pass `--skip=readiness` (on Postgres `--skip=readiness,db-types`, which also needs the server) and give it the app's `.env`. See [checking an app](check.md#the-app-checks).
+
 ```yaml
 # Kubernetes
 livenessProbe: { httpGet: { path: /up, port: 3000 } }

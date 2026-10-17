@@ -74,7 +74,7 @@ pnpm marmeon route:list --json
   own, so `route:list` format 1 and another command's format 1 are different formats.
 - A new field is no new version. Removing or renaming a field, or changing its type or meaning, is a new `format` and a breaking
   change. `--json` always prints the newest format.
-- stdout holds the document and nothing else; warnings are in its `warnings` list. With `--json` the app's logger (`@marmeon/log` and the console logger) writes every line, whatever its level, to stderr. A missing value is `null`, never left out.
+- stdout holds the document and nothing else; warnings are in its `warnings` list. With `--json` the app's logger (`@marmeon/log` and the console logger) writes every line, whatever its level, to stderr, and so does whatever `console.log` or `process.stdout.write` writes meanwhile. Writes straight to the file descriptor (`fs.writeSync(1, …)`, a logger with `destination(1)`) still reach stdout. A missing value is `null`, never left out.
 - When the command fails (exit code other than 0), stdout stays empty and the message is on stderr, as without `--json`. Parse
   stdout only after exit code 0.
 
@@ -121,7 +121,7 @@ start`, and `marmeon dev` refuses it.
 | --- | --- |
 | `dev` | The development server, with a worker and the scheduler next to it. |
 | `build [--no-typecheck]` | Builds the app for production. See [deployment](deployment.md#building-and-starting). |
-| `check [--only=<names>] [--skip=<names>] [--json]` | Runs the type check, the lint and the scan for imports of framework internals, and exits with a code a script can read. See [checking an app](check.md). |
+| `check [--only=<names>] [--skip=<names>] [--json]` | Runs the type check, the lint, the scan for imports of framework internals and the checks of the app (route and database types, boot, readiness), and exits with a code a script can read. See [checking an app](check.md). |
 | `start [--workers=N]` | Starts the production server on the build. It refuses to run when `NODE_ENV=development` or `test` comes from `.env` alone: use `marmeon dev`, set `NODE_ENV=production` to try the build, or set `NODE_ENV=development` in the shell to start the development stack on purpose. |
 | `route:list [--json]` | Every route with its method, path, name, group, middleware, who may call it (`ACCESS`) and action. See [listing routes](routing.md#listing-routes). |
 | `route:types [--check]` | Writes `bootstrap/routes.ts`. `--check` fails when it is out of date, for CI. It also exits with 1 and lists every route that does not say who may call it, so `marmeon build` stops on one. See [typed route names](routing.md#typed-route-names) and [every route decides](authorization.md#every-route-decides). |

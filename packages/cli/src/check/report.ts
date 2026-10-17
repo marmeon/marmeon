@@ -49,13 +49,13 @@ export function exitCodeOf(reports: readonly CheckReport[]): 0 | 1 | 3 {
   return reports.some((report) => report.status === 'error') ? 3 : 0;
 }
 
-/** `text` with control characters (a file name can hold them, and a terminal obeys them) written as `\xNN`; line breaks and tabs stay when `keepWhitespace`. */
+/** `text` with control characters (a file name can hold them, and a terminal obeys them) written as `\xNN`; line feeds and tabs stay when `keepWhitespace` (a carriage return can overwrite the line before it, so it never does). */
 export function escapeControl(text: string, keepWhitespace = false): string {
   let escaped = '';
   for (const character of text) {
     const code = character.codePointAt(0)!;
     const control = code <= 0x1f || (code >= 0x7f && code <= 0x9f);
-    escaped += control && !(keepWhitespace && (code === 9 || code === 10 || code === 13)) ? `\\x${code.toString(16).padStart(2, '0')}` : character;
+    escaped += control && !(keepWhitespace && (code === 9 || code === 10)) ? `\\x${code.toString(16).padStart(2, '0')}` : character;
   }
   return escaped;
 }

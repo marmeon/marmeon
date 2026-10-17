@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "ok": false,
+  "exitCode": 1,
+  "checks": [
+    {
+      "name": "boot",
+      "status": "failed",
+      "reason": null,
+      "problems": [
+        {
+          "severity": "error",
+          "code": "K6",
+          "fix": "marmeon key:generate",
+          "file": null,
+          "line": null,
+          "column": null,
+          "rule": null,
+          "docs": null
+        }
+      ]
+    },
+    {
+      "name": "route-types",
+      "status": "passed",
+      "reason": null,
+      "problems": []
+    },
+    {
+      "name": "modules",
+      "status": "passed",
+      "reason": null,
+      "problems": []
+    },
+    {
+      "name": "readiness",
+      "status": "skipped",
+      "reason": "the app did not load",
+      "problems": []
+    }
+  ],
+  "warnings": []
+}

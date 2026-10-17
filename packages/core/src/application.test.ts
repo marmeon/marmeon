@@ -70,7 +70,7 @@ describe('Application.shutdown', () => {
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlySolutions] }, { env: {} })).resolves.toBeDefined();
     const Empty = class Empty {};
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [Empty] }, { env: {} })).rejects.toThrow(
-      'Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers or static migrationUpgrades.',
+      'Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static migrationUpgrades or static checks.',
     );
     const OnlyCommands = class OnlyCommands {
       static commands = [class {}];

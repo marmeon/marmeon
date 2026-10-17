@@ -9,6 +9,24 @@ Types from other packages: none
 ### Stable
 
 ```ts
+// AppCheck
+export interface AppCheck {
+    handle(context?: AppCheckContext): AppCheckResult | Promise<AppCheckResult>;
+}
+// AppCheckClass
+export type AppCheckClass = (new (...args: any[]) => AppCheck) & {
+    readonly check: string;
+    readonly phase: 'build' | 'run';
+    readonly timeout?: number;
+};
+// AppCheckContext
+export interface AppCheckContext {
+    readonly signal: AbortSignal;
+}
+// AppCheckResult
+export type AppCheckResult = readonly CheckProblem[] | {
+    readonly skipped: string;
+};
 // CheckProblem
 export interface CheckProblem {
     readonly severity: 'error' | 'warning';
@@ -29,10 +47,15 @@ export interface CheckReport {
     readonly reason?: string;
     readonly problems: readonly CheckProblem[];
 }
+// CheckSetupError
+export declare class CheckSetupError extends CommandSetupError {
+    name: string;
+}
 // CheckStatus
 export type CheckStatus = 'passed' | 'warning' | 'failed' | 'skipped' | 'error';
 // CliServiceProvider
 export declare class CliServiceProvider implements ServiceProvider {
+    static checks: readonly AppCheckClass[];
     register(container: Container): void;
 }
 // Command
@@ -84,6 +107,7 @@ export interface JsonDocument {
 }
 // Output
 export declare class Output {
+    constructor(write?: (text: string) => void);
     line(text?: string): void;
     info(text: string): void;
     success(text: string): void;
@@ -100,10 +124,12 @@ export declare class Output {
 // @marmeon/core.ModuleDefinition
 interface ModuleDefinition {
     readonly commands?: readonly CommandClass[];
+    readonly checks?: readonly AppCheckClass[];
 }
 // @marmeon/core.ServiceProviderClass
 interface ServiceProviderClass {
     readonly commands?: readonly CommandClass[];
+    readonly checks?: readonly AppCheckClass[];
 }
 ```
 

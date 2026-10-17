@@ -1,13 +1,11 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { Application, ConfigError, Container, createApplication, ErrorSolutions, type ApplicationDefinition, type ApplicationPhase, type ServiceProviderClass } from '@marmeon/core';
+import { Application, ConfigError, Container, ErrorSolutions, type ServiceProviderClass } from '@marmeon/core';
 import { coreSolutions, loadDiscoveredPackages, messageBase, sendConsoleLogsToStderr, trace } from '@marmeon/core/internal';
 import { channels, type CommandRunMessage } from '@marmeon/core/diagnostics';
 import { CommandArgumentsError, CommandRegistry, CommandSetupError, parseCommandArgs, runCommand, wantsHelp } from './command.ts';
 import { BUILT_IN } from './built-in.ts';
 import { printCommandHelp, printCommandList, printCommandListJson } from './commands/list.ts';
-import { Output, style } from './output.ts';
+import { loadApplication } from './load.ts';
+import { Output, stdoutToStderr, style } from './output.ts';
 import { spawnMarmeon } from './spawn.ts';
 
 /** Exit code of a call that is wrong (unknown command, unknown option, missing option value), apart from a command that ran and failed (1). */
@@ -26,9 +24,21 @@ export function checkArgs(command: string, argv: readonly string[], name = comma
   if (builtIn && !wantsHelp(argv, builtIn)) parseCommandArgs(builtIn, argv, name);
 }
 
-/** Runs one `marmeon` invocation in the app root (`cwd`) and returns the exit code. */
+/**
+ * Runs one `marmeon` invocation in the app root (`cwd`) and returns the exit code. With `--json`, stdout holds the document only:
+ * whatever app code writes to stdout meanwhile goes to stderr.
+ */
 export async function run(argv: readonly string[], root = process.cwd()): Promise<number> {
-  const output = new Output();
+  const rest = argv.slice(1);
+  const redirect = (rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest).includes('--json') ? stdoutToStderr() : undefined;
+  try {
+    return await runCommandLine(argv, root, new Output(redirect?.write));
+  } finally {
+    redirect?.restore();
+  }
+}
+
+async function runCommandLine(argv: readonly string[], root: string, output: Output): Promise<number> {
   const [name = 'list', ...rest] = argv;
   const builtIn = BUILT_IN.find((command) => command.command === name);
   const listing = name === 'list' || name === 'help' || name === '--help' || name === '-h';
@@ -188,20 +198,5 @@ async function printSolutions(output: Output, error: Error, root: string, stream
     }
   } catch {
     // The error itself was printed — that is what counts.
-  }
-}
-
-/** Imports `bootstrap/app.ts` — whose default export describes the app — and boots it (in the build phase: registers it). */
-async function loadApplication(root: string, phase: ApplicationPhase): Promise<Application | Error> {
-  const entry = join(root, 'bootstrap', 'app.ts');
-  if (!existsSync(entry)) return new Error(`No Marmeon app in ${root} (bootstrap/app.ts not found)`);
-  try {
-    const module = (await import(pathToFileURL(entry).href)) as { default?: ApplicationDefinition };
-    if (!module.default || typeof module.default.root !== 'string') {
-      return new Error('bootstrap/app.ts must `export default defineApplication({ … })`.');
-    }
-    return await createApplication(module.default, phase === 'build' ? { phase } : {});
-  } catch (error) {
-    return error instanceof Error ? error : new Error(String(error));
   }
 }

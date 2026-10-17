@@ -190,6 +190,41 @@ lists a file's imports for a generator that follows one.
 
 The reasons name the file by its path. Pass an app-relative name as the third argument, `editDefinitionFile(file, edit, 'bootstrap/app.ts')`, so that a message does not show an absolute path.
 
+## Checks
+
+A package adds checks to [`marmeon check`](check.md) as `static checks` on its provider, a module as `checks` in its definition.
+A check is a class with `static check` (its name, in kebab-case) and `static phase`, and a `handle()` that returns what it found:
+
+```ts title="src/AuditTableCheck.ts"
+import type { AppCheck, CheckProblem } from 'marmeon';
+import { AuditLog } from './AuditLog.ts';
+
+export class AuditTableCheck implements AppCheck {
+  static check = 'audit-table';
+  static phase = 'run' as const;
+
+  readonly #log: AuditLog;
+
+  constructor(log: AuditLog) {
+    this.#log = log;
+  }
+
+  async handle(): Promise<readonly CheckProblem[]> {
+    if (await this.#log.hasTable()) return [];
+    return [{ severity: 'error', message: 'The audit table is missing', fix: 'marmeon migrate', docs: 'docs/audit.md#installation' }];
+  }
+}
+```
+
+`static phase = 'build'` is for a check that reads only what registering the app builds, with no secret and no connection; `'run'`
+is for anything that reads configuration or opens a connection, and gets the booted app. The check is built through the container in
+a scope of its own. `handle()` is given `{ signal }`, aborted when the time is up: release what you opened. Return `{ skipped: 'why' }` instead of findings when the check should not run here. A finding is a [`CheckProblem`](check.md#json-output); its message is masked by the app's redactor, but name no secret in it.
+A check that throws, or takes longer than a minute (`static timeout` sets it), ends as `error`, never as another check's result.
+
+A bad or duplicate check name stops every command, not only `marmeon check`, as a command name used twice does. The name must be unique, in kebab-case, and none of `types`, `lint`, `internal-imports`, `boot` or `readiness`; the app does
+not start otherwise, and the message names both checks. A check that asks whether the package's service is reachable is not a
+check but a [health check](health.md#writing-a-health-check): `marmeon check` runs those as `readiness`.
+
 ## Tables
 
 A package that keeps tables in the app's database ships the migration as a stub that a `make:*-table` command copies, and starts

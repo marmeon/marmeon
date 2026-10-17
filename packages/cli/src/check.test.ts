@@ -25,7 +25,12 @@ function app(files: Record<string, string>, tools: ('typescript' | 'oxlint')[] =
   return root;
 }
 
-const check = (root: string, args: string[] = []) => marmeon(root, ['check', ...args], {}, 60_000);
+/** The tools only: these apps have no `bootstrap/app.ts`, so `boot` and `readiness` are left out (check-app.test.ts runs those). */
+function check(root: string, args: string[] = []) {
+  const skipped = args.some((arg) => arg.startsWith('--skip='));
+  const given = args.map((arg) => (arg.startsWith('--skip=') ? `${arg},boot,readiness` : arg));
+  return marmeon(root, ['check', ...given, ...(skipped ? [] : ['--skip=boot,readiness'])], {}, 60_000);
+}
 
 describe('marmeon check', { timeout: 90_000 }, () => {
   it('passes a clean app: every check passed, exit 0', () => {
@@ -145,12 +150,16 @@ describe('marmeon check', { timeout: 90_000 }, () => {
     expect(JSON.parse(check(root, ['--skip=types,lint', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['internal-imports']);
   });
 
-  it('exits 2 for a name no check has, listing the valid ones, with nothing on stdout', () => {
-    for (const args of [['--skip=bogus'], ['--only=types,bogus'], ['--only='], ['--only']]) {
-      const { code, stdout, stderr } = check(app({}, []), [...args, '--json']);
+  it('exits 2 for empty name lists, and fails on the boot, with a warning, for a name nobody knows when the app did not load', () => {
+    for (const args of [['--only='], ['--only']]) {
+      const { code, stdout } = check(app({}, []), [...args, '--json']);
       expect(code, args.join(' ')).toBe(2);
       expect(stdout).toBe('');
-      if (args[0] !== '--only') expect(stderr).toContain('The checks are: types, lint, internal-imports.');
+    }
+    for (const args of [['--skip=bogus'], ['--only=types,bogus']]) {
+      const { code, stdout } = marmeon(app({}, []), ['check', ...args, '--json'], {}, 60_000);
+      expect(code, args.join(' ')).toBe(1);
+      expect(JSON.parse(stdout).warnings).toContain('No check is known by the name bogus: they may be checks the app adds itself.');
     }
   });
 
