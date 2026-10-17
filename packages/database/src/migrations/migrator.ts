@@ -159,6 +159,12 @@ export class Migrator {
     return this.files().map((file) => ({ ...file, batch: ran.get(file.name) }));
   }
 
+  /** The migrations the bookkeeping says ran and no module has a file for any more. Reads only. */
+  async missing(): Promise<{ name: string; module: string; batch: number }[]> {
+    const names = new Set(this.files().map((file) => file.name));
+    return (await this.#ran()).filter((row) => !names.has(row.name)).map(({ name, module, batch }) => ({ name, module, batch }));
+  }
+
   /** Runs every pending migration, in one new batch. */
   async migrate(onRun?: (run: MigrationRun) => void, options: MigrateOptions = {}): Promise<MigrationRun[]> {
     return this.locked(() => this.#migrate(onRun, options));
