@@ -180,6 +180,17 @@ a process hands its own to that process's connections. [How the migrator keeps t
 the app checks against the database. A table the projection does not know, such as one raw SQL or another tool made, passes through
 the query builder as it is: no secret column, soft delete or timestamp mark applies to it.
 
+## How the app knows its schema
+
+The migrations are the one source, and the database holds none of what they say. The app computes a
+[projection](#what-the-migrations-describe) from the migration files and keeps it in `.marmeon/schema.json`, a cache that `marmeon build`
+writes fresh. [Table types](queries.md#table-types) shows the same schema as the committed `bootstrap/database.d.ts`, the one place that
+lists the current definition of every table. The database holds only `migrations` and, on SQLite, `migration_lock`; the framework's
+own tables (`jobs`, `sessions`, …) are ordinary tables that your migrations create. [How the migrator keeps track](#how-the-migrator-keeps-track)
+has the states the app can find the database in, [what `migrate` checks](#what-migrate-checks-after-each-migration) the checks around
+each migration, and [deploying new migrations](#deploying-new-migrations) what a release with new migrations does to a running app.
+A table the projection does not know passes through the query builder unguarded, see [what the migrations describe](#what-the-migrations-describe).
+
 ## Running migrations
 
 | Command | What it does |
@@ -258,7 +269,7 @@ What the app does with the answer, per connection (`default` decides; the other 
 | ahead | The database also has migrations the code does not know: a process of an older release during a deploy. | Queries run, with the schema the code knows: its secret columns, soft deletes and relations. Logged once. See [migrating a running app](#migrating-a-running-app). |
 | pending | The database lacks a migration the code has: the app started before `migrate`, or after a rollback. | **Every** query fails with a `MigrationStateError` (D2) that names the missing migrations, `/up/ready` is red. The database is asked again at most once a second, so the app answers a second after `marmeon migrate` ran, with no restart. A process that was ready before a rollback keeps its schema until it restarts. |
 | newer | `migrations` has other columns than this release reads: a newer Marmeon migrated the database. | Every query fails (D1); `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:status` and `migrate:fresh` refuse as well and change nothing. Update `@marmeon/*`. |
-| unmigrated | The database has tables and no `migrations`: a database that lost it, a database an earlier build of Marmeon migrated under other names (`marmeon_migrations`, with a placeholder `migrations` of one column where it took over a 0.3 database), or another tool's. | Every query fails (D1). For your own database, run `marmeon migrate`: it writes `migrations` and runs every migration, and tables it did not make stay as they are, unknown (see below). For a build that used `marmeon_` tables there is no way on: `marmeon migrate` refuses, and `marmeon migrate:fresh` starts the development database over. For a database another tool manages, set [`managed: false`](database.md#a-database-another-tool-manages). |
+| unmigrated | The database has tables and no `migrations`: a database that lost it, or another tool's. | Every query fails (D1). For your own database, run `marmeon migrate`: it writes `migrations` and runs every migration, and tables it did not make stay as they are, unknown (see below). For a database another tool manages, set [`managed: false`](database.md#a-database-another-tool-manages). |
 
 It never works as if no column were secret and no row deleted: a code with migrations the database lacks is refused rather than
 trusted to have columns that are not there. A connection set to `managed: false` is the exception: it reads the catalog and knows no
@@ -332,9 +343,9 @@ database. A running app and a migration meet in three places:
   continues with the schema of the migrations that remain); one started afterwards with the newer code is pending until the next `migrate`.
 
 A query of an old process that names a column a migration dropped fails at the database, as it would anywhere. So does every
-`selectAll()`, `returningAll()` and relation of that table, since they name the columns the old code knows: the old process fails
-rather than answering with a different set of columns. Drop or rename a column in a later release than the one that stops using it
-(add the new column first, move the code over, remove the old column afterwards), so that no old process is still running.
+`selectAll()`, `returningAll()`, relation and finder of that table, since they name the columns the old code knows, even when that code
+no longer uses the column itself: the old process fails rather than answering with a different set of columns. See
+[deploying new migrations](#deploying-new-migrations) for what to do.
 
 Reading the whole row of a table as one value (`to_jsonb(users)`, `eb.table('users')` in a function) is refused for the same reason:
 the row may hold a column this release does not know. Name the columns.
@@ -342,6 +353,32 @@ the row may hold a column this release does not know. Name the columns.
 > [!WARNING]
 > `migrate:fresh` drops **every** table of the database, also tables that no migration created, and every table of the other
 > connections that migrations run on. Use it on a development database only.
+
+### Deploying new migrations
+
+A release with new migrations goes out in this order:
+
+1. **Run `marmeon migrate --force` once**, in a one-off container or a release job, with the new release's code. Two that run at once
+   are safe ([one migration at a time](#one-migration-at-a-time)).
+2. **Then roll the processes.** An instance of the new release that starts before step 1 has finished is pending: it refuses every
+   query and `/up/ready` is red until `migrate` has finished, and it answers within a second of it.
+
+While the rollout runs, instances of the old release are *ahead*: the database has migrations their code does not know. They keep
+their schema, select the columns they know and hide the secret ones they know, and a column or table the new migrations add is
+invisible to them. That makes a migration safe for them when it only adds:
+
+- **A new table or index, and a new column that is nullable or has a default, is safe** at any moment.
+- **Dropping or renaming a column breaks the queries of the previous release.** Their `selectAll()`, `returningAll()`, relations and
+  finders on that table name every column the previous release knows, so they fail for as long as the rollout lasts, even when that
+  release no longer uses the column. Stop the previous release's processes before `migrate`, or have it name its columns on that
+  table and use no finder, repository write or relation on it. Dropping or renaming a whole table breaks it the same way. Do not drop or rename in the release that stops using the
+  column: the one before it is still running.
+- **A new `NOT NULL` column** breaks the inserts of an old instance. Add it with a default, or nullable and make it `NOT NULL` with
+  `notNull()` only in the release after (Postgres only; SQLite refuses `notNull()` with D18, so use the default there).
+- **A new secret column** is hidden from old instances, since they select only the columns they know. A query of theirs that names the
+  column, or raw SQL, still reads it.
+
+For an app that ran on Marmeon 0.3, see [how the migrator keeps track](#how-the-migrator-keeps-track).
 
 ### While you develop
 
