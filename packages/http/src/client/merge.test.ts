@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PAGE_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type LiveSubscription, type PageObject } from '../protocol.ts';
+import { PAGE_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type LiveSubscription, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
 import { islands } from './features/islands.ts';
 import { LIVE_QUIET } from './features/live.ts';
 import { mergePage } from './merge.ts';
@@ -143,7 +143,7 @@ describe('an island’s revalidation', () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     const island = (ids: number[], next: string | null) =>
       new Response(JSON.stringify({ component: 'dashboard/Inbox', props: { inbox: { data: rows(...ids), meta: { nextCursor: next } } }, url: '/islands/inbox', version: null, mergeProps: ['inbox'], matchPropsOn: ['inbox.data.id'] }), {
-        headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', 'content-type': 'application/json' },
+        headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [REGION_HEADER]: 'island', 'content-type': 'application/json' },
       });
     win.handler = (url) => (new URL(url).searchParams.get('cursor') === 'c3' ? island([4, 5], null) : island([1, 2, 3], 'c3'));
     const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));

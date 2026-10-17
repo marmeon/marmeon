@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FlashMessage } from '../page.ts';
 import { LAYER_BACKDROP } from '../page-support.ts';
-import { LOCATION_HEADER, ONCE_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject, type RegionObject } from '../protocol.ts';
+import { LOCATION_HEADER, ONCE_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject, type RegionObject, PROTOCOL_VERSION } from '../protocol.ts';
 import type { FeatureHost } from './core.ts';
 import { defineFeature, slot, type Feature, type FeatureHook, type PendingVisit, type Slot } from './feature.ts';
 import { actions, type ActionsFeature } from './features/actions.ts';
@@ -54,7 +54,7 @@ await loadSensitiveFields();
 const CANARY = 'CANARY-signed-in';
 const secretPage = (url: string, component = 'pages/Show', extra: Partial<PageObject> = {}): PageObject => ({ ...page(url, { secret: `${CANARY} ${url}` }, component), ...extra });
 const conflict = (reason: 'history' | 'version', location = '/login') => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: location, [RELOAD_HEADER]: reason } });
-const islandResponse = (body: RegionObject) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', 'content-type': 'application/json' } });
+const islandResponse = (body: RegionObject) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [REGION_HEADER]: 'island', 'content-type': 'application/json' } });
 
 /** An XHR that sends nothing back — until it is aborted (an upload under way): what it was sent, and whether it was aborted. */
 class PendingXhr extends EventTarget {

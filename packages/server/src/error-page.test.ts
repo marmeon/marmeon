@@ -13,6 +13,7 @@ import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { createHttpKernel } from './kernel.ts';
 import { ServerConfig, ServerServiceProvider } from './provider.ts';
 import type { PageRenderer } from './render.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 interface Mailer {
   send(): void;
@@ -97,7 +98,7 @@ async function boot({ env = { NODE_ENV: 'development' } as Record<string, string
 }
 
 const page = { headers: { accept: 'text/html' } };
-const visit = { headers: { 'x-marmeon': 'true', accept: 'text/html, application/json' } };
+const visit = { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, accept: 'text/html, application/json' } };
 
 /** One `<section id>` of the page. */
 function sectionOf(html: string, id: string): string {
@@ -279,7 +280,7 @@ describe('the development error page — only in development', () => {
       try {
         expect(application.container.make(ServerConfig).debug).toBe(false);
         expect(application.container.has(DevRequestRecorder)).toBe(false);
-        const response = await kernel.request('/explode/7', { headers: { 'x-marmeon': 'true', accept: 'text/html', authorization: 'Bearer s3cr3t-b34r3r' } });
+        const response = await kernel.request('/explode/7', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, accept: 'text/html', authorization: 'Bearer s3cr3t-b34r3r' } });
         expect(response.status).toBe(500);
         const body = await response.text();
         const page = JSON.parse(body) as PageObject;

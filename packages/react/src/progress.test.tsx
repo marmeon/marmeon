@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
-import { PAGE_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -33,7 +33,7 @@ beforeEach(() => {
   document.body.replaceChildren(container);
   // A slow server: the visit is under way until the test answers it.
   vi.spyOn(window, 'fetch').mockImplementation(
-    () => new Promise((resolved) => (answer = () => resolved(new Response(JSON.stringify(page('B', '/b')), { headers: { [PAGE_HEADER]: 'true' } })))),
+    () => new Promise((resolved) => (answer = () => resolved(new Response(JSON.stringify(page('B', '/b')), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })))),
   );
 });
 

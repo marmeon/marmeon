@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LAYER_BACKDROP } from '../page-support.ts';
-import { LAYER_CLOSE_HEADER, LOCATION_HEADER, MAX_LAYER_DEPTH, PAGE_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type PageObject } from '../protocol.ts';
+import { LAYER_CLOSE_HEADER, LOCATION_HEADER, MAX_LAYER_DEPTH, PAGE_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
 import { isHistoryState } from './navigation.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse, PATHS, settle } from './test-window.ts';
 import type { Feature } from './feature.ts';
@@ -40,7 +40,7 @@ describe.each(PATHS)('layers on the %s path', (path) => {
       const opened = await app.navigator.visit('/users/1/edit', { layer: true });
 
       expect(opened?.layer).toMatchObject({ key: 'users/Edit', base: '/users/1' });
-      expect(win.requests).toEqual([expect.objectContaining({ url: `${ORIGIN}/users/1/edit`, headers: expect.objectContaining({ [REGION_HEADER]: 'layer', [PAGE_HEADER]: 'true' }) })]);
+      expect(win.requests).toEqual([expect.objectContaining({ url: `${ORIGIN}/users/1/edit`, headers: expect.objectContaining({ [REGION_HEADER]: 'layer', [PAGE_HEADER]: PROTOCOL_VERSION }) })]);
       expect(win.entries.map((entry) => entry.url)).toEqual([`${ORIGIN}/users/1`, `${ORIGIN}/users/1/edit`]);
       // The page under it is the same object: not fetched, not rendered anew.
       expect(app.navigator.page).toBe(base);

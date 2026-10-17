@@ -1,4 +1,4 @@
-import { LOCATION_HEADER, PAGE_HEADER, type PageObject } from '../protocol.ts';
+import { LOCATION_HEADER, PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isHistoryState, mergePage, Navigator, type VisitException } from './navigation.ts';
 import type { PatchTarget } from './optimistic.ts';
@@ -72,7 +72,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       win.back();
       await settle();
 
-      expect(win.requests.slice(requests)).toEqual([expect.objectContaining({ url: `${ORIGIN}/users/1`, method: 'GET', headers: expect.objectContaining({ [PAGE_HEADER]: 'true' }) })]);
+      expect(win.requests.slice(requests)).toEqual([expect.objectContaining({ url: `${ORIGIN}/users/1`, method: 'GET', headers: expect.objectContaining({ [PAGE_HEADER]: PROTOCOL_VERSION }) })]);
       expect(restored.visible()).toMatchObject({ component: 'auth/Login', url: '/login' });
       expect(win.current.url).toBe(`${ORIGIN}/login`); // the entry is the login page now
       expect(JSON.parse(win.current.state).key).toBe(JSON.parse(win.entries[0]!.state).key);
@@ -226,7 +226,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
     it('reports a 5xx with the server’s error page — the page on screen stays, no history entry', async () => {
       const win = new FakeWindow(`${ORIGIN}/a`);
       const errorPage = page('/b', { status: 500, title: 'Server Error', message: 'boom', exception: { name: 'Error', message: 'boom', stack: '…' } }, 'errors/Error');
-      win.handler = () => new Response(JSON.stringify(errorPage), { status: 500, headers: { [PAGE_HEADER]: 'true' } });
+      win.handler = () => new Response(JSON.stringify(errorPage), { status: 500, headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       const { navigator, shown } = boot(win, page('/a'));
       const { events, errors } = record(navigator);
 
@@ -276,7 +276,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
 
     it('shows 4xx pages as pages (404, 403) — they are answers, not failures', async () => {
       const win = new FakeWindow(`${ORIGIN}/a`);
-      win.handler = () => new Response(JSON.stringify(page('/missing', { status: 404 }, 'errors/Error')), { status: 404, headers: { [PAGE_HEADER]: 'true' } });
+      win.handler = () => new Response(JSON.stringify(page('/missing', { status: 404 }, 'errors/Error')), { status: 404, headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       const { navigator, visible } = boot(win, page('/a'));
       const { errors } = record(navigator);
       await navigator.visit('/missing');
@@ -337,7 +337,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       await navigator.visit('/a', { method: 'post', data, onProgress: (progress) => void own.push(progress.percentage!) });
       expect(events).toEqual(['start post /a', 'progress 25', 'progress 100', 'success /a', 'finish /a']);
       expect(own).toEqual([25, 100]);
-      expect(sent[0]).toMatchObject({ method: 'POST', url: `${ORIGIN}/a`, headers: { [PAGE_HEADER]: 'true' }, body: data });
+      expect(sent[0]).toMatchObject({ method: 'POST', url: `${ORIGIN}/a`, headers: { [PAGE_HEADER]: PROTOCOL_VERSION }, body: data });
       expect(visible().props).toEqual({ uploaded: true });
     });
 
@@ -539,7 +539,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       await navigator.reload({ only: ['stats'] });
 
       expect(win.requests.at(-1)!.headers).toMatchObject({
-        'x-marmeon': 'true',
+        [PAGE_HEADER]: PROTOCOL_VERSION,
         'x-marmeon-partial-component': 'pages/Show',
         'x-marmeon-partial-data': 'stats',
       });
@@ -749,7 +749,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       win.handler = (url) => pageResponse(page(new URL(url).pathname, { name: 'Grace' }));
       const { navigator, visible } = boot(win, page('/users/1', { name: 'Ada' }));
       await navigator.use(prefetch).prefetch('/users/2');
-      expect(win.requests).toEqual([{ url: `${ORIGIN}/users/2`, method: 'GET', headers: expect.objectContaining({ [PAGE_HEADER]: 'true', purpose: 'prefetch' }) }]);
+      expect(win.requests).toEqual([{ url: `${ORIGIN}/users/2`, method: 'GET', headers: expect.objectContaining({ [PAGE_HEADER]: PROTOCOL_VERSION, purpose: 'prefetch' }) }]);
       expect(visible().props).toEqual({ name: 'Ada' }); // fetched, not shown
 
       const events: string[] = [];
@@ -915,7 +915,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
         stop();
       }
       // A 5xx error page with the page header is not kept either.
-      win.handler = () => new Response(JSON.stringify(page('/b', {}, 'errors/Error')), { status: 500, headers: { [PAGE_HEADER]: 'true' } });
+      win.handler = () => new Response(JSON.stringify(page('/b', {}, 'errors/Error')), { status: 500, headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       const { navigator } = boot(win, page('/a'));
       await navigator.use(prefetch).prefetch('/b');
       expect(navigator.use(prefetch).size).toBe(0);

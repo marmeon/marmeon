@@ -1,11 +1,11 @@
 import type { HttpContext } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { cacheControl, ClearClientHistory, ClientHistory } from './client-history.ts';
-import { LOCATION_HEADER, PAGE_HEADER } from './protocol.ts';
+import { LOCATION_HEADER, PAGE_HEADER, PROTOCOL_VERSION } from './protocol.ts';
 
 const ctx = (method: string, path: string, headers: Record<string, string> = {}) =>
   ({ request: new Request(`http://app.test${path}`, { method, headers }) }) as unknown as HttpContext;
-const visit = { [PAGE_HEADER]: 'true' };
+const visit = { [PAGE_HEADER]: PROTOCOL_VERSION };
 const run = (history: ClientHistory, context: HttpContext, response: Response) => new ClearClientHistory(history).handle(context, async () => response);
 
 describe('ClientHistory / ClearClientHistory', () => {
@@ -28,7 +28,7 @@ describe('ClientHistory / ClearClientHistory', () => {
   it('reloads the requested page when the visit was answered with a page, not a redirect', async () => {
     const history = new ClientHistory();
     history.clear();
-    const page = Response.json({ component: 'x', props: {}, url: '/a' }, { headers: { [PAGE_HEADER]: 'true' } });
+    const page = Response.json({ component: 'x', props: {}, url: '/a' }, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     const response = await run(history, ctx('GET', '/a?tab=1', visit), page);
     expect([response.status, response.headers.get(LOCATION_HEADER), response.headers.get(PAGE_HEADER)]).toEqual([409, '/a?tab=1', null]);
   });
@@ -36,7 +36,7 @@ describe('ClientHistory / ClearClientHistory', () => {
   it('never reloads to another host: the requested path and the referring page lose their leading slashes', async () => {
     const history = new ClientHistory();
     history.clear();
-    const page = Response.json({ component: 'x', props: {}, url: '/a' }, { headers: { [PAGE_HEADER]: 'true' } });
+    const page = Response.json({ component: 'x', props: {}, url: '/a' }, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     const reloaded = await run(history, ctx('GET', '//evil.example/x?bad=1', visit), page);
     expect(reloaded.headers.get(LOCATION_HEADER)).toBe('/evil.example/x?bad=1');
 
@@ -82,7 +82,7 @@ describe('ClientHistory / ClearClientHistory', () => {
     const redirect = () => new Response(null, { status: 303, headers: { location: '/login' } });
     const plain = await run(history, ctx('POST', '/logout'), redirect());
     expect([plain.status, plain.headers.get('clear-site-data')]).toEqual([303, '"storage"']);
-    const visit = await run(history, ctx('POST', '/logout', { [PAGE_HEADER]: 'true' }), redirect());
+    const visit = await run(history, ctx('POST', '/logout', { [PAGE_HEADER]: PROTOCOL_VERSION }), redirect());
     expect([visit.status, visit.headers.get('clear-site-data')]).toEqual([409, '"storage"']);
   });
 

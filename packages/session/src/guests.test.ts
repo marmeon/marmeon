@@ -8,6 +8,7 @@ import { SessionServiceProvider } from './provider.ts';
 import { SessionStore } from './store.ts';
 import { redisConnections, storeKinds, storeUnderTest, type StoreUnderTest } from './__fixtures__/stores.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 const routes = openRoutes((Route) => {
   Route.get('/login', () => view('auth/Login', {}));
@@ -64,7 +65,7 @@ describe.each(storeKinds)('guests and the %s session store', (kind) => {
     }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent' }, override: (container) => void container.instance(SessionStore, counting) });
     const kernel = createHttpKernel(application);
 
-    const pages = await Promise.all(Array.from({ length: 100 }, (_, i) => kernel.request('/login', { headers: i % 2 ? { 'x-marmeon': 'true' } : { accept: 'application/json', 'x-marmeon': 'true' } })));
+    const pages = await Promise.all(Array.from({ length: 100 }, (_, i) => kernel.request('/login', { headers: i % 2 ? { [PAGE_HEADER]: PROTOCOL_VERSION } : { accept: 'application/json', [PAGE_HEADER]: PROTOCOL_VERSION } })));
     for (const page of pages) {
       expect(page.status).toBe(200);
       expect(page.headers.getSetCookie()).toEqual([]);

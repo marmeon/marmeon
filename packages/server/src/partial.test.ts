@@ -4,6 +4,7 @@ import { defer, HttpServiceProvider, optional, view, type PageObject } from '@ma
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 /** How long the deferred prop takes — the first response must not wait for it. */
 const SLOW = 400;
@@ -38,7 +39,7 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
   }, { env: { APP_KEY: generateKey() } });
   const app = createHttpKernel(application);
 
-  const visit = (headers: Record<string, string> = {}) => app.request('/users/1', { headers: { 'x-marmeon': 'true', ...headers } });
+  const visit = (headers: Record<string, string> = {}) => app.request('/users/1', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, ...headers } });
   const json = async (response: Response) => (await response.json()) as PageObject;
 
   it('does not compute a prop the partial reload does not ask for', async () => {

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
 import { loadHistoryFallback, loadPageMessages } from '@marmeon/http/client/adapter';
-import { PAGE_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { createMessageLoader } from '@marmeon/i18n/messages';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -47,7 +47,7 @@ beforeEach(() => {
   document.documentElement.lang = 'en';
   container = document.createElement('div');
   document.body.replaceChildren(container);
-  vi.spyOn(window, 'fetch').mockImplementation(async () => new Response(JSON.stringify(page('/b', 'de')), { headers: { [PAGE_HEADER]: 'true' } }));
+  vi.spyOn(window, 'fetch').mockImplementation(async () => new Response(JSON.stringify(page('/b', 'de')), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } }));
 });
 afterEach(async () => {
   await act(async () => root?.unmount());

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1/edit" }
 import type { RouteManifest } from '@marmeon/http/page';
-import { PAGE_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import type { VisitException } from '@marmeon/http/client';
 import { loadHistoryFallback } from '@marmeon/http/client/adapter';
 import { act, type CSSProperties } from 'react';
@@ -61,7 +61,7 @@ beforeEach(() => {
   history.replaceState(null, '', '/users/1/edit');
   container = document.createElement('div');
   document.body.replaceChildren(container);
-  vi.spyOn(window, 'fetch').mockImplementation(async () => new Response(JSON.stringify(page('Profile', '/users/1')), { headers: { [PAGE_HEADER]: 'true' } }));
+  vi.spyOn(window, 'fetch').mockImplementation(async () => new Response(JSON.stringify(page('Profile', '/users/1')), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } }));
 });
 
 afterEach(async () => {

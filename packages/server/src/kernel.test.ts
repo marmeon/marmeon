@@ -1,7 +1,7 @@
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ConsoleLogger, createApplication, currentRequest, defineModule, Logger, Redactor, type Container, type LogContext } from '@marmeon/core';
 import { abort, AfterResponse, Controller, HttpServiceProvider, SharedData, view, type HttpContext, type Next } from '@marmeon/http';
-import { LOCATION_HEADER, PAGE_HEADER } from '@marmeon/http/internal';
+import { LOCATION_HEADER, PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
@@ -160,7 +160,7 @@ describe('createHttpKernel — errors & logging', async () => {
   const app = createHttpKernel(application);
   const debugApp = createHttpKernel(application, { debug: true });
   const json = { headers: { accept: 'application/json' } };
-  const page = { headers: { 'x-marmeon': 'true' } };
+  const page = { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } };
 
   it('hides unexpected errors from clients, but reports them with the request id', async () => {
     entries.length = 0;
@@ -214,7 +214,7 @@ describe('createHttpKernel — errors & logging', async () => {
   it('renders the error page for page requests and navigations', async () => {
     const response = await app.request('/forbidden', page);
     expect(response.status).toBe(403);
-    expect(response.headers.get('x-marmeon')).toBe('true');
+    expect(response.headers.get(PAGE_HEADER)).toBe(PROTOCOL_VERSION);
     expect(await response.json()).toMatchObject({
       component: 'errors/Error',
       props: { status: 403, title: 'Forbidden', message: 'Only admins.', exception: null },
@@ -359,7 +359,7 @@ describe('createHttpKernel — requests & responses', async () => {
     })();
     const post = async (to: string, headers: Record<string, string> = {}, extra = '') =>
       (await leavingKernel).request(`/leave?to=${encodeURIComponent(to)}${extra}`, { method: 'POST', body: new URLSearchParams({ a: '1' }), headers });
-    const visit = { [PAGE_HEADER]: 'true' };
+    const visit = { [PAGE_HEADER]: PROTOCOL_VERSION };
 
     it.each(['https://other.example/x', '//other.example/x', 'http://localhost.evil.example/'])('%s: a page request gets 409 and x-marmeon-location, no Location', async (to) => {
       const response = await post(to, visit);
@@ -565,7 +565,7 @@ describe('createHttpKernel — shared props', async () => {
   const app = createHttpKernel(application, { debug: true });
 
   it('merges shared props into every page — a prop of the controller wins', async () => {
-    const page = (await (await app.request('/page', { headers: { 'x-marmeon': 'true' } })).json()) as { props: unknown };
+    const page = (await (await app.request('/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })).json()) as { props: unknown };
     expect(page.props).toEqual({ theme: 'dark', title: 'own' });
   });
 });
@@ -586,7 +586,7 @@ describe('createHttpKernel — asset versioning', async () => {
     ],
   }, { env: { APP_KEY: generateKey() } });
   const visit = (app: ReturnType<typeof createHttpKernel>, version?: string, method = 'GET', path = '/page') =>
-    app.request(path, { method, headers: { 'x-marmeon': 'true', ...(version ? { 'x-marmeon-version': version } : {}) } });
+    app.request(path, { method, headers: { [PAGE_HEADER]: PROTOCOL_VERSION, ...(version ? { 'x-marmeon-version': version } : {}) } });
 
   it('answers a client-side visit from an older build with 409 and the URL to load fully', async () => {
     const app = createHttpKernel(application, { version: 'v2' });
@@ -654,7 +654,7 @@ describe('createHttpKernel — response copies', async () => {
 
   it('sets the headers of a response it made for the request in place — no copy, also with cookies and the request id', async () => {
     let response: Response | undefined;
-    expect(await copies(async () => (response = await app.request('/page', { headers: { 'x-marmeon': 'true' } })))).toBe(0);
+    expect(await copies(async () => (response = await app.request('/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })))).toBe(0);
     expect(response!.headers.get('x-request-id')).toBeTruthy();
     expect(response!.headers.getSetCookie().some((cookie) => cookie.startsWith('visit='))).toBe(true);
   });

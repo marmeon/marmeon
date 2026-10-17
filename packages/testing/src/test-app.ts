@@ -3,7 +3,7 @@ import { loadEnv } from '@marmeon/core/internal';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { Encrypter } from '@marmeon/encryption';
 import { CONNECTION_HEADER, CookieEncryption, LIVE_PATH, Router } from '@marmeon/http';
-import { writeAppBrowserRoutes } from '@marmeon/http/internal';
+import { protocolHeaders, writeAppBrowserRoutes } from '@marmeon/http/internal';
 import {
   urlFor,
   type CheckIslandRouteName,
@@ -21,7 +21,6 @@ import {
 } from '@marmeon/http/page';
 import {
   ACTION_HEADER,
-  PAGE_HEADER,
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
   PARTIAL_EXCEPT_HEADER,
@@ -795,12 +794,12 @@ export class TestApp {
 
   /** Requests as a client-side navigation: answered with the page object as JSON. */
   navigating(): TestApp {
-    return this.withHeaders({ [PAGE_HEADER]: 'true' });
+    return this.withHeaders(protocolHeaders());
   }
 
   /** Requests as a prefetch (`<Link prefetch>`): a client-side navigation with `Purpose: prefetch` — see `isPrefetch`. */
   prefetching(): TestApp {
-    return this.withHeaders({ [PAGE_HEADER]: 'true', [PURPOSE_HEADER]: 'prefetch' });
+    return this.withHeaders({ ...protocolHeaders(), [PURPOSE_HEADER]: 'prefetch' });
   }
 
   /**
@@ -812,7 +811,7 @@ export class TestApp {
     { only, except = [] }: { only?: readonly (keyof PropsOf<TSource> & string)[]; except?: readonly (keyof PropsOf<TSource> & string)[] },
   ): TestApp {
     return this.withHeaders({
-      [PAGE_HEADER]: 'true',
+      ...protocolHeaders(),
       [PARTIAL_COMPONENT_HEADER]: component,
       ...(only ? { [PARTIAL_DATA_HEADER]: only.join(',') } : {}),
       ...(except.length > 0 ? { [PARTIAL_EXCEPT_HEADER]: except.join(',') } : {}),
@@ -825,7 +824,7 @@ export class TestApp {
    * `reloading(component, { only })`.
    */
   islanding(): TestApp {
-    return this.withHeaders({ [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island' });
+    return this.withHeaders({ ...protocolHeaders(), [REGION_HEADER]: 'island' });
   }
 
   /**
@@ -843,7 +842,7 @@ export class TestApp {
    * (`assertLayerClosed`), a page route with its page.
    */
   layering(): TestApp {
-    return this.withHeaders({ [PAGE_HEADER]: 'true', [REGION_HEADER]: 'layer' });
+    return this.withHeaders({ ...protocolHeaders(), [REGION_HEADER]: 'layer' });
   }
 
   /** Opens a layer by route name — what `<Link route params layer>` sends: `app.layer('user-profile.edit', { user: ada.id })`. */

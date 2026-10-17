@@ -16,6 +16,7 @@ import { Broadcaster, LiveBackend, LiveServiceProvider } from './index.ts';
 import { LiveStreamReader } from './test-stream.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 const root = tempDir('marmeon-live-');
 writeFileSync(join(root, 'index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
@@ -39,7 +40,7 @@ describe('a live stream and the server', () => {
     }, { env: { APP_KEY: generateKey(), PORT: '1', SESSION_DRIVER: 'memory' } });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
-    const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { 'x-marmeon': 'true' } });
+    const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     const page = (await answer.json()) as PageObject;
     const cookie = answer.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
     const { channel, token } = page.live![0]!;
@@ -84,7 +85,7 @@ describe('a live stream and the server', () => {
     }, { env: { APP_KEY: generateKey(), PORT: '1', SESSION_DRIVER: 'memory' }, override: (container: Container) => container.instance(LiveBackend, slow) });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
-    const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { 'x-marmeon': 'true' } });
+    const answer = await fetch(`http://127.0.0.1:${port}/board`, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     const page = (await answer.json()) as PageObject;
     const cookie = answer.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
     const { channel, token } = page.live![0]!;

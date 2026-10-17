@@ -4,6 +4,7 @@ import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 /**
  * Signing out while another request of the same browser is still running — the normal case: every
@@ -61,11 +62,11 @@ describe.each(drivers)('signing out while a deferred prop is still loading (%s s
     const browser = new Browser(createHttpKernel(app.application));
     const form = { 'content-type': 'application/x-www-form-urlencoded' };
     expect((await browser.request('/login', { method: 'POST', headers: form, body: 'email=ada%40example.com&password=password' })).status).toBe(303);
-    expect((await browser.request(`/users/${ada.public_id}`, { headers: { 'x-marmeon': 'true' } })).status).toBe(200);
+    expect((await browser.request(`/users/${ada.public_id}`, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })).status).toBe(200);
 
     // The page asks for its deferred activity — and before the answer is there, the user signs out.
     const deferred = browser.request(`/users/${ada.public_id}`, {
-      headers: { 'x-marmeon': 'true', 'x-marmeon-partial-component': 'user-profile/Show', 'x-marmeon-partial-data': 'activity' },
+      headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-partial-component': 'user-profile/Show', 'x-marmeon-partial-data': 'activity' },
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect((await browser.request('/logout', { method: 'POST' })).status).toBe(303);

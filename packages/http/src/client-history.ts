@@ -1,6 +1,6 @@
 import { localLocation } from '@marmeon/router/internal';
 import { editableResponse, ownResponse, type HttpContext, type MiddlewareClass, type Next } from '@marmeon/router';
-import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER } from './protocol.ts';
+import { isActionRequest, LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER, speaksProtocol } from './protocol.ts';
 
 /**
  * Ends the browser's page session of this app with the current response — what signing in and out need (`Auth` calls it).
@@ -60,7 +60,7 @@ export class ClearClientHistory {
     if (siteData.length > 0) headers.set('clear-site-data', siteData.map((type) => `"${type}"`).join(', '));
     // An action too: signing out through one must not leave the pages in memory either.
     const action = isActionRequest(ctx.request);
-    if (ctx.request.headers.get(PAGE_HEADER) !== 'true' && !action) {
+    if (!speaksProtocol(ctx.request.headers) && !action) {
       return ownResponse(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
     }
 

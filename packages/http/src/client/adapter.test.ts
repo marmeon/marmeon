@@ -27,6 +27,7 @@ import {
   VALIDATE_HEADER,
   VALIDATED_HEADER,
   type PageObject,
+  PROTOCOL_VERSION,
 } from '../protocol.ts';
 import {
   actions,
@@ -87,7 +88,7 @@ let slow: Promise<void> | undefined;
 const page = (component: string, url: string, props: Record<string, unknown>, extra: Partial<PageObject> = {}): PageObject => ({ component, url, props, version: 'v1', ...extra });
 
 function respond(body: PageObject, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { [PAGE_HEADER]: 'true', 'content-type': 'application/json' } });
+  return new Response(JSON.stringify(body), { status, headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'content-type': 'application/json' } });
 }
 
 /** `/users/:id` with a deferred `activity` and an optional `stats` (only by name, in a partial reload); `POST /logout` → 409. */
@@ -133,7 +134,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
 
     // A visit: the next page as JSON, rendered by the adapter; the history entry holds no props.
     await navigator.visit('/users/2');
-    expect(requests.at(-1)).toMatchObject({ method: 'GET', url: '/users/2', headers: { [PAGE_HEADER]: 'true', 'x-marmeon-version': 'v1' } });
+    expect(requests.at(-1)).toMatchObject({ method: 'GET', url: '/users/2', headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-version': 'v1' } });
     expect(window.location.pathname).toBe('/users/2');
     expect(text()).toContain('"user":"Grace"');
     expect(isHistoryState(window.history.state)).toBe(true);
@@ -182,7 +183,7 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
       // The server's side (packages/server): the island's region object — or, for the admins' island, its outcome.
       if (url.pathname === '/islands/admins') return new Response(null, { status: 204, headers: { [REGION_STATUS_HEADER]: 'forbidden' } });
       const body = { component: 'dashboard/SignIns', props: { who: ['Ada'] }, url: url.pathname + url.search, version: 'v1' };
-      return new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', 'content-type': 'application/json' } });
+      return new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [REGION_HEADER]: 'island', 'content-type': 'application/json' } });
     }) as typeof fetch;
     serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
     // The adapter: a page renders its islands into elements of their own, from the regions of its entry (`owner`).

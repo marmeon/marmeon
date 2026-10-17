@@ -8,7 +8,7 @@
  * No UI framework in here — an adapter (`<MarmeonApp>` of @marmeon/react) renders what the navigator hands it.
  */
 import type { DeferredResult, FlashKey, FlashMessage, ValidationErrors } from '../page.ts';
-import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, VERSION_HEADER, type PageObject } from '../protocol.ts';
+import { LOCATION_HEADER, protocolHeaders, REGION_HEADER, speaksProtocol, VERSION_HEADER, type PageObject } from '../protocol.ts';
 import { pageInfo } from '../page-support.ts';
 import { DEFAULT_PAGE_CACHE_SIZE, LruMap, type CachedEntry } from './cache.ts';
 import { accepted, confirmRequest, DEFAULT_LEAVE_MESSAGE, nativeConfirm, type Confirm, type ConfirmHandler, type NativeDialogs } from './confirm.ts';
@@ -1090,7 +1090,7 @@ export class Navigator {
       await this.#core.documentChange.change(response, replace ? 'replace' : 'assign', consented);
       return undefined;
     }
-    const isPage = response.headers.get(PAGE_HEADER) === 'true';
+    const isPage = speaksProtocol(response.headers);
     if (failed && response.status >= 500) {
       // The page stays (and whatever was typed into it); the app shows the server's error as a fallback.
       const page = isPage ? this.#collect((await response.json()) as PageObject) : undefined;
@@ -1114,7 +1114,7 @@ export class Navigator {
     const init = {
       method: method.toUpperCase(),
       // The once props held: the server does not compute them again.
-      headers: { [PAGE_HEADER]: 'true', ...(this.#core.version ? { [VERSION_HEADER]: this.#core.version } : {}), ...this.#core.once.headers(), ...headers },
+      headers: { ...protocolHeaders(), ...(this.#core.version ? { [VERSION_HEADER]: this.#core.version } : {}), ...this.#core.once.headers(), ...headers },
       body,
       signal,
     };
@@ -1146,7 +1146,7 @@ export class Navigator {
         await this.#core.documentChange.change(response, 'assign');
         return undefined;
       }
-      if (!response.ok || response.headers.get(PAGE_HEADER) !== 'true') {
+      if (!response.ok || !speaksProtocol(response.headers)) {
         await response.body?.cancel();
         return undefined;
       }

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
 import type { RouteManifest } from '@marmeon/http/page';
-import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { act } from 'react';
 import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -76,7 +76,7 @@ beforeEach(() => {
   document.head.innerHTML = '';
   document.body.innerHTML = '<div id="app"></div>';
   info = vi.spyOn(console, 'info').mockImplementation(() => {});
-  vi.spyOn(window, 'fetch').mockImplementation(async () => new Response(JSON.stringify(layer('Edit', '/users/1/edit', { name: 'Ada' })), { headers: { [PAGE_HEADER]: 'true' } }));
+  vi.spyOn(window, 'fetch').mockImplementation(async () => new Response(JSON.stringify(layer('Edit', '/users/1/edit', { name: 'Ada' })), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } }));
 });
 
 afterEach(async () => {

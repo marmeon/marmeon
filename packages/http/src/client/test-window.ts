@@ -1,5 +1,5 @@
 /** The browser of the client core's tests: one tab's history, location, fetch and events — in memory. */
-import { PAGE_HEADER, type PageObject } from '../protocol.ts';
+import { protocolHeaders, type PageObject } from '../protocol.ts';
 import type { ActionOptions } from './action.ts';
 import { actions } from './features/actions.ts';
 import { optimistic } from './features/optimistic.ts';
@@ -18,7 +18,7 @@ export const ORIGIN = 'https://app.test';
 
 export const page = (url: string, props: Record<string, unknown> = {}, component = 'pages/Show'): PageObject => ({ component, props, url, version: null });
 
-export const pageResponse = (body: PageObject) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true', 'content-type': 'application/json' } });
+export const pageResponse = (body: PageObject) => new Response(JSON.stringify(body), { headers: { ...protocolHeaders(), 'content-type': 'application/json' } });
 
 type Handler = (url: string, init: RequestInit) => Response | Promise<Response>;
 

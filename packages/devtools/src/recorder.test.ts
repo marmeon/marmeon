@@ -22,6 +22,7 @@ import type { DevtoolsTester } from './tester.ts';
 import { DevtoolsServiceProvider } from './provider.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaA';
 const API_TOKEN = `marmeon_7|${randomBytes(30).toString('hex').slice(0, 40)}`;
@@ -273,7 +274,7 @@ describe('what the recorder keeps', () => {
   it('a request with its queries, jobs, log entries and events — one batch, tied by the request id', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
-      const response = await kernel.request('/people/7?page=2&token=query-token', { headers: { 'x-marmeon': 'true', cookie: 'marmeon_session=s3ss10n', authorization: `Bearer ${API_TOKEN}` } });
+      const response = await kernel.request('/people/7?page=2&token=query-token', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, cookie: 'marmeon_session=s3ss10n', authorization: `Bearer ${API_TOKEN}` } });
       const requestId = response.headers.get('x-request-id')!;
       const request = tester!.assertRecorded('request', (content) => content.route === 'people.show');
       expect(request.requestId).toBe(requestId);
@@ -287,7 +288,7 @@ describe('what the recorder keeps', () => {
       expect(request.content.page).toMatchObject({ kind: 'page', component: 'people/Show', props: { person: JSON.stringify({ id: 7, name: 'Ada' }).length, list: JSON.stringify(Array.from({ length: 50 }, (_, i) => i)).length } });
       expect(JSON.stringify(request.content.page)).not.toContain('Ada');
       // Where the props came from: shared and left-out optional props, by name.
-      await kernel.request('/origins', { headers: { 'x-marmeon': 'true' } });
+      await kernel.request('/origins', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       expect(tester!.assertRecorded('request', (content) => content.route === 'origins').content.page).toMatchObject({ component: 'people/Origins', shared: ['auth'], optional: ['stats'] });
 
       const batch = tester!.batch(request.batch);

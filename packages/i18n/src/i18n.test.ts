@@ -3,7 +3,7 @@ import { ConfigError, createApplication, defineModule, type Container } from '@m
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import type { StandardOptions } from '@marmeon/router';
 import { abort, Controller, defineRequest, HttpServiceProvider, view, type ContextOf, type HttpContext } from '@marmeon/http';
-import { PAGE_HEADER } from '@marmeon/http/internal';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { createHttpKernel } from '@marmeon/server';
 import { password } from '@marmeon/auth';
 import { Session, SessionServiceProvider } from '@marmeon/session';
@@ -124,21 +124,21 @@ const page = async (response: Response) => (await response.json()) as { componen
 describe('the request locale (SetLocale)', () => {
   it("speaks the browser's language — the page carries only the locale, the props are translated on the server", async () => {
     const { send } = await boot();
-    const response = await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'de-AT,de;q=0.9,en;q=0.5' } });
+    const response = await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'de-AT,de;q=0.9,en;q=0.5' } });
     expect(await page(response)).toMatchObject({ locale: 'de', props: { greeting: 'Hallo Ada', cart: '2 Artikel im Warenkorb' } });
     expect(response.headers.get('content-language')).toBe('de');
     expect(response.headers.get('vary')).toMatch(/accept-language/);
 
-    const english = await page(await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'fr, en;q=0.4' } }));
+    const english = await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'fr, en;q=0.4' } }));
     expect(english).toMatchObject({ locale: 'en', props: { greeting: 'Hello Ada', cart: '2 items in your cart' } });
     // Nobody named one we have: APP_LOCALE.
-    expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'fr' } }))).locale).toBe('en');
+    expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'fr' } }))).locale).toBe('en');
   });
 
   it('the session wins over the user, the user over the browser', async () => {
     let preferred: string | undefined = 'de';
     const { send } = await boot({ override: (c) => c.scoped(LocalePreference, () => ({ preferredLocale: async () => preferred })) });
-    const locale = async () => (await page(await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'en' } }))).locale;
+    const locale = async () => (await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'en' } }))).locale;
     expect(await locale()).toBe('de'); // the user's
     preferred = 'xx';
     expect(await locale()).toBe('en'); // not supported → the browser's
@@ -148,20 +148,20 @@ describe('the request locale (SetLocale)', () => {
 
   it('sends the fallback locale with the page — the browser falls back like the server (APP_FALLBACK_LOCALE, once)', async () => {
     const { send } = await boot({ env: { APP_FALLBACK_LOCALE: 'de' } });
-    const response = await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'en' } });
+    const response = await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'en' } });
     expect(await page(response)).toMatchObject({ locale: 'en', fallbackLocale: 'de' });
   });
 
   it('with one supported locale there is nothing to negotiate — and no Vary: accept-language for caches', async () => {
     const { send } = await boot({ env: { APP_LOCALES: 'en' } });
     await send('/choose/de'); // a session value of a locale the app does not have
-    const response = await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'de' } });
+    const response = await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'de' } });
     expect(await page(response)).toMatchObject({ locale: 'en', props: { greeting: 'Hello Ada' } });
     expect(response.headers.get('content-language')).toBe('en');
     expect(response.headers.get('vary') ?? '').not.toMatch(/accept-language/);
     // Several: the answer depends on the browser's languages, and says so.
     const { send: several } = await boot();
-    expect((await several('/hello', { headers: { [PAGE_HEADER]: 'true' } })).headers.get('vary')).toMatch(/accept-language/);
+    expect((await several('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })).headers.get('vary')).toMatch(/accept-language/);
   });
 
   it("builds the request's translator only for a request that asks for one — one per request, whoever asks", async () => {
@@ -172,11 +172,11 @@ describe('the request locale (SetLocale)', () => {
     expect(await (await send('/form', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin' } })).json()).toEqual({ ok: true });
     expect(built).not.toHaveBeenCalled();
     // A page: the controller, the page's locale and the session's epoch ask — one translator.
-    expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: 'true' } }))).props.greeting).toBe('Hallo Ada');
+    expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } }))).props.greeting).toBe('Hallo Ada');
     expect(built).toHaveBeenCalledTimes(1);
     // An error page speaks the request's language: it asks too.
     built.mockClear();
-    expect((await send('/gone', { headers: { [PAGE_HEADER]: 'true' } })).status).toBe(404);
+    expect((await send('/gone', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })).status).toBe(404);
     expect(built).toHaveBeenCalledTimes(1);
   });
 
@@ -274,23 +274,23 @@ describe('framework texts and validation in the request language', () => {
       body: new URLSearchParams({ name: 'Al', email: 'a@b.de', password: 'long enough' }),
     });
     expect(response.status).toBe(303);
-    const back = await page(await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'de' } }));
+    const back = await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'de' } }));
     expect(back.props.errors).toEqual({ name: ['Der Name braucht mindestens 3 Zeichen.'] });
   });
 
   it('the error page and its title: 404, 419 (CSRF), translated by key', async () => {
     const { send } = await boot();
-    const notFound = await page(await send('/gone', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'de' } }));
+    const notFound = await page(await send('/gone', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'de' } }));
     expect(notFound.props).toMatchObject({ status: 404, title: 'Nicht gefunden', message: 'Nicht gefunden' });
-    const expired = await page(await send('/form', { method: 'POST', headers: { [PAGE_HEADER]: 'true', 'accept-language': 'de' } }));
+    const expired = await page(await send('/form', { method: 'POST', headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'de' } }));
     expect(expired.props).toMatchObject({ status: 419, title: 'Seite abgelaufen', message: 'Die Seite ist abgelaufen. Bitte neu laden und noch einmal versuchen.' });
-    const english = await page(await send('/form', { method: 'POST', headers: { [PAGE_HEADER]: 'true', 'accept-language': 'en' } }));
+    const english = await page(await send('/form', { method: 'POST', headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'en' } }));
     expect(english.props).toMatchObject({ title: 'Page Expired', message: 'CSRF token mismatch.' });
   });
 
   it('a translated text is text: markup in a message or a value stays as written — the document escapes it', async () => {
     const { send } = await boot();
-    const json = await page(await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'de' } }));
+    const json = await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'de' } }));
     expect(json.props.html).toBe('Nutze <b>fett</b> & <img src=x onerror=alert(1)>');
     const html = await (await send('/hello', { headers: { accept: 'text/html', 'accept-language': 'de' } })).text();
     expect(html).not.toContain('<img src=x');
@@ -302,8 +302,8 @@ describe('I18nConfig', () => {
   it('without APP_LOCALES, the supported locales are those the app has language files for — the default first', async () => {
     const { application, send } = await boot({ env: { APP_LOCALES: '', APP_LOCALE: 'de' } });
     expect(application.container.make(Locales).supported).toEqual(['de', 'en', 'fr']);
-    expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'fr' } }))).props.greeting).toBe('Bonjour Ada');
-    expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: 'true', 'accept-language': 'it' } }))).locale).toBe('de');
+    expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'fr' } }))).props.greeting).toBe('Bonjour Ada');
+    expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'it' } }))).locale).toBe('de');
   });
 
   it('APP_LOCALE must be a supported locale', async () => {

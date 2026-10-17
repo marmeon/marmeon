@@ -5,7 +5,7 @@
  * through sorting, filtering and paging (query-state visits with the props' aliases and keys), selecting (the entry's slot), row and
  * bulk actions (the actions feature, then the table's prop reloaded — replacing what the page had) and an export URL. No UI framework.
  */
-import { ACTION_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { ACTION_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { selection } from '@marmeon/http/client/adapter';
 import { loadHistoryFallback, Navigator } from '@marmeon/http/client/adapter';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -89,7 +89,7 @@ async function server(input: string, init: RequestInit = {}): Promise<Response> 
   const page = pageOf(url);
   const only = headers[PARTIAL_DATA_HEADER]?.split(',');
   if (only) page.props = Object.fromEntries(only.map((name) => [name, page.props[name]]));
-  return new Response(JSON.stringify(page), { headers: { [PAGE_HEADER]: 'true', 'content-type': 'application/json' } });
+  return new Response(JSON.stringify(page), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'content-type': 'application/json' } });
 }
 
 /** The adapter: the page as text — the table's names in order. */

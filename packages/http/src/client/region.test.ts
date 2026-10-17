@@ -1,4 +1,4 @@
-import { LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, REGION_STATUS_HEADER, VERSION_HEADER, type RegionObject } from '../protocol.ts';
+import { LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, REGION_STATUS_HEADER, VERSION_HEADER, type RegionObject, PROTOCOL_VERSION } from '../protocol.ts';
 import { describe, expect, it } from 'vitest';
 import { regionId, regionInitial } from './region.ts';
 import { boot, FakeWindow, keptRegions, ORIGIN, page, pageResponse, settle } from './test-window.ts';
@@ -14,7 +14,7 @@ const island = (url: string, props: Record<string, unknown> = {}, extra: Partial
 });
 
 const islandResponse = (body: RegionObject) =>
-  new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', 'content-type': 'application/json' } });
+  new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [REGION_HEADER]: 'island', 'content-type': 'application/json' } });
 
 const outcome = (status: 'unauthorized' | 'forbidden') => new Response(null, { status: 204, headers: { [REGION_STATUS_HEADER]: status } });
 
@@ -42,7 +42,7 @@ describe('Region — islands in the client core', () => {
 
     expect(region.snapshot).toMatchObject({ status: 'ready', pending: false, region: { component: 'dashboard/RecentSignIns', props: { entries: ['ada'] } } });
     expect(islandRequests(win)).toEqual([
-      { url: `${ORIGIN}/dashboard/islands/sign-ins?limit=5`, method: 'GET', headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', [VERSION_HEADER]: 'v1' } },
+      { url: `${ORIGIN}/dashboard/islands/sign-ins?limit=5`, method: 'GET', headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [REGION_HEADER]: 'island', [VERSION_HEADER]: 'v1' } },
     ]);
     expect(init?.redirect).toBe('manual');
   });
