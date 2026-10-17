@@ -2,7 +2,7 @@ import type { CommandInput } from 'marmeon';
 import { Clock, environment, Logger, Redactor } from '@marmeon/core';
 import { ScheduleError } from '../cron.ts';
 import { Scheduler, type TaskResult } from '../scheduler.ts';
-import { formatMinute } from '../time.ts';
+import { formatMinute, isoMinute } from '../time.ts';
 import { ScheduleWorker } from '../worker.ts';
 
 function describe(result: TaskResult): string {
@@ -124,43 +124,78 @@ export class ScheduleRunCommand {
   }
 }
 
-/** `marmeon schedule:list`: every task, when it runs (in its time zone), when next, and its options. */
+/** `marmeon schedule:list`: every task, when it runs (in its time zone), when next, and its options. `--json` prints them as a document. */
 export class ScheduleListCommand {
   static command = 'schedule:list';
   static description = 'List the scheduled tasks';
+  static usage = '[--json]';
+  static options = { json: { type: 'boolean' } } as const;
 
   readonly #scheduler: Scheduler;
   readonly #clock: Clock;
+  readonly #redactor: Redactor;
 
-  constructor(scheduler: Scheduler, clock: Clock) {
+  constructor(scheduler: Scheduler, clock: Clock, redactor: Redactor) {
     this.#scheduler = scheduler;
     this.#clock = clock;
+    this.#redactor = redactor;
   }
 
-  handle({ output }: CommandInput): number {
+  handle({ options, output }: CommandInput): number {
     const tasks = this.#scheduler.tasks;
-    if (tasks.length === 0) {
+    const json = options.json === true;
+    // The same warning schedule:work and schedule:run start with.
+    const warning = this.#scheduler.lockWarning();
+    if (tasks.length === 0 && !json) {
       output.line('No scheduled tasks. Add a schedule to a module: defineModule({ schedule: defineSchedule((s) => { … }) }).');
       return 0;
     }
     const now = this.#clock.now();
+    const listed = tasks.map((task) => {
+      const { definition } = task;
+      return {
+        task,
+        // A job's payload and a command's arguments are part of both: masked like a log line.
+        name: this.#redactor.text(task.name),
+        does: this.#redactor.text(task.summary),
+        next: this.#scheduler.next(task, now),
+        options: {
+          oneServer: definition.onOneServer,
+          overlapMinutes: definition.overlapMinutes ?? null,
+          catchUp: definition.catchUp,
+          environments: definition.environments ? [...definition.environments] : null,
+          filtered: definition.when.length + definition.skip.length > 0,
+        },
+      };
+    });
+    if (json) {
+      output.json({
+        format: 1,
+        tasks: listed.map(({ task, name, does, next, options: taskOptions }) => ({
+          name,
+          expression: task.expression.source,
+          timeZone: task.timeZone,
+          next: next === undefined ? null : isoMinute(next, task.timeZone),
+          does,
+          options: taskOptions,
+        })),
+        warnings: warning ? [warning] : [],
+      });
+      return 0;
+    }
     output.table(
       ['Task', 'Schedule', 'Next run', 'Does', 'Options'],
-      tasks.map((task) => {
-        const { definition } = task;
-        const next = this.#scheduler.next(task, now);
-        const options = [
-          definition.onOneServer ? 'one server' : '',
-          definition.overlapMinutes !== undefined ? 'no overlap' : '',
-          definition.catchUp === 'skip' ? 'no catch-up' : '',
-          definition.environments ? `only ${definition.environments.join('/')}` : '',
-          definition.when.length + definition.skip.length > 0 ? 'filtered' : '',
+      listed.map(({ task, name, does, next, options: o }) => {
+        const labels = [
+          o.oneServer ? 'one server' : '',
+          o.overlapMinutes !== null ? 'no overlap' : '',
+          o.catchUp === 'skip' ? 'no catch-up' : '',
+          o.environments ? `only ${o.environments.join('/')}` : '',
+          o.filtered ? 'filtered' : '',
         ].filter(Boolean);
-        return [task.name, `${task.expression.source} (${task.timeZone})`, next === undefined ? '—' : formatMinute(next, task.timeZone), task.summary, options.join(', ')];
+        return [name, `${task.expression.source} (${task.timeZone})`, next === undefined ? '—' : formatMinute(next, task.timeZone), does, labels.join(', ')];
       }),
     );
-    // The same warning schedule:work and schedule:run start with.
-    const warning = this.#scheduler.lockWarning();
     if (warning) output.warn(warning);
     return 0;
   }

@@ -16,6 +16,10 @@ describe('describeConnection', () => {
     expect(text).not.toMatch(/p4ss|zz|options/);
   });
 
+  it('compares the parameter names exactly, like pg does: Host is no host', () => {
+    expect(describeConnection({ driver: 'pgsql', url: 'postgres://app@db/shop?Host=x&SSLMODE=require&sslmode=require' })).toBe('pgsql postgres://app@db/shop?sslmode=require');
+  });
+
   it('describes a URL without a password and a SQLite file as they are', () => {
     expect(describeConnection({ driver: 'pgsql', url: 'postgres://app@db/shop' })).toBe('pgsql postgres://app@db/shop');
     expect(describeConnection({ driver: 'sqlite', database: 'storage/app.db' })).toBe('sqlite storage/app.db');

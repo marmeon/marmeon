@@ -191,6 +191,9 @@ export declare class DbShowCommand {
         readonly database: {
             readonly type: 'string';
         };
+        readonly json: {
+            readonly type: 'boolean';
+        };
     };
     constructor(connections: Connections);
     handle({ options, output }: CommandInput): Promise<number>;
@@ -1020,8 +1023,9 @@ marmeon db:seed [--module=<module>] [--class=<Seeder>] [--force]
 --force (boolean)
 --module (string)
 // db:show
-marmeon db:show [--database=<connection>]
+marmeon db:show [--database=<connection>] [--json]
 --database (string)
+--json (boolean)
 // db:types
 marmeon db:types [--check]
 --check (boolean)

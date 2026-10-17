@@ -81,8 +81,14 @@ export declare class ScheduleListCommand {
     #private;
     static command: string;
     static description: string;
-    constructor(scheduler: Scheduler, clock: Clock);
-    handle({ output }: CommandInput): number;
+    static usage: string;
+    static options: {
+        readonly json: {
+            readonly type: 'boolean';
+        };
+    };
+    constructor(scheduler: Scheduler, clock: Clock, redactor: Redactor);
+    handle({ options, output }: CommandInput): number;
 }
 // ScheduleRunCommand
 export declare class ScheduleRunCommand {
@@ -439,7 +445,8 @@ export interface WallTime {
 
 ```ts
 // schedule:list
-marmeon schedule:list
+marmeon schedule:list [--json]
+--json (boolean)
 // schedule:run
 marmeon schedule:run
 // schedule:test

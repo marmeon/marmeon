@@ -120,7 +120,7 @@ export function describeConnection(options: ConnectionOptions): string {
   if (url.password) url.password = '***';
   // The query string may carry the password again (`?password=…`) or a key path: only the parameters that say where the
   // server is stay (a socket connection is `?host=/var/run/postgresql`).
-  for (const name of [...url.searchParams.keys()]) if (!SHOWN_PARAMETERS.has(name.toLowerCase())) url.searchParams.delete(name);
+  for (const name of [...url.searchParams.keys()]) if (!SHOWN_PARAMETERS.has(name)) url.searchParams.delete(name);
   url.hash = '';
   return `pgsql ${url.href}`;
 }

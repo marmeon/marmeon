@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "connection": "default",
+  "driver": "sqlite",
+  "target": ":memory:",
+  "server": "SQLite 3.50.0",
+  "tables": [{ "name": "notes", "schema": null, "columns": 2, "rows": 2 }],
+  "warnings": []
+}

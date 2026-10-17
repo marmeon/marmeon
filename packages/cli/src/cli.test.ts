@@ -62,6 +62,32 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(stderr).toContain('Invalid configuration');
   });
 
+  it('prints schedule:list and db:show as one JSON document each, and nothing on stdout when they fail', () => {
+    const schedule = marmeon(webApp, ['schedule:list', '--json']);
+    expect(schedule.code).toBe(0);
+    const tasks = JSON.parse(schedule.stdout) as { format: number; tasks: { name: string; next: string | null; options: object }[]; warnings: string[] };
+    expect(Object.keys(tasks)).toEqual(['format', 'tasks', 'warnings']);
+    expect(tasks.tasks.find((task) => task.name === 'session:prune')).toMatchObject({ expression: '*/15 * * * *', options: { oneServer: true, catchUp: 'once', environments: null, filtered: false } });
+    expect(tasks.tasks.every((task) => task.next === null || /^\d{4}-\d\d-\d\dT\d\d:\d\d[+-]\d\d:\d\d$/.test(task.next))).toBe(true);
+    const database = marmeon(webApp, ['db:show', '--json']);
+    expect(database.code).toBe(0);
+    expect(Object.keys(JSON.parse(database.stdout))).toEqual(['format', 'connection', 'driver', 'target', 'server', 'tables', 'warnings']);
+    expect(JSON.parse(database.stdout)).toMatchObject({ format: 1, connection: 'default', driver: 'sqlite', warnings: [] });
+    for (const command of ['schedule:list', 'db:show']) {
+      const failed = marmeon(webApp, [command, '--json'], { APP_NAME: '', APP_URL: 'localhost' });
+      expect(failed.code, command).toBe(1);
+      expect(failed.stdout, command).toBe('');
+      expect(failed.stderr, command).toContain('Invalid configuration');
+    }
+  });
+
+  it('does not print the password of DB_URL when db:show is called with a Postgres address that cannot be reached', () => {
+    const { stdout, stderr } = marmeon(webApp, ['db:show', '--json'], { DB_CONNECTION: 'pgsql', DB_URL: 'postgres://u:geheim@127.0.0.1:1/db?sslkey=/marmeon-secret-key.pem&password=geheim2' }, 20_000);
+    expect(stdout).toBe('');
+    expect(stdout + stderr).not.toMatch(/geheim|marmeon-secret-key/);
+    expect(stderr).toContain('a certificate or key file named in the URL');
+  });
+
   it('prints configuration errors without Node internals and exits with 1', () => {
     const { code, stderr } = marmeon(webApp, ['route:list'], { APP_NAME: '', APP_URL: 'localhost' });
     expect(code).toBe(1);

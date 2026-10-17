@@ -94,3 +94,8 @@ export function formatMinute(minute: number, timeZone: string): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${time.year}-${pad(time.month)}-${pad(time.day)} ${pad(time.hour)}:${pad(time.minute)}`;
 }
+
+/** `2026-03-29T03:00+02:00` — a minute with its offset, for `schedule:list --json`. */
+export function isoMinute(minute: number, timeZone: string): string {
+  return zoned(minute, timeZone).toString({ smallestUnit: 'minute', timeZoneName: 'never' });
+}

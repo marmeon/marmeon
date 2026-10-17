@@ -232,6 +232,14 @@ pnpm marmeon db:show --database=system
 
 The password in the address is masked. `--database` names a connection, `default` without it.
 
+The target shows the host, port and database, the user name, and of the query string only `host`, `port`, `sslmode` and
+`application_name`. The password, every other parameter (a key path, an `options` string) and the fragment never reach the output,
+whether the address came from `DB_URL`, from `DB_PASSWORD` or from a connection's `password` option.
+
+`--json` prints a [machine-readable document](console.md#machine-readable-output): `format`, `connection`, `driver` (`sqlite` or
+`pgsql`), `target` (as in the text, without the driver in front), `server`, `tables` (each with `name`, `schema` — `null` for
+SQLite — `columns` and `rows`) and `warnings`.
+
 ## When a table is missing
 
 A query on a table that does not exist yet fails like any error. In development, the error page names the cause: the migrations
