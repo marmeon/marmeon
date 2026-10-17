@@ -1,10 +1,11 @@
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { CamelCasePlugin, ColumnNode, RawNode, ColumnUpdateNode, CommonTableExpressionNameNode, CommonTableExpressionNode, WithNode, type UpdateQueryNode, ExplainNode, OperationNodeTransformer, TableNode, type InsertQueryNode, type Kysely, type KyselyPlugin, type SelectQueryNode } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { drivers, freshConnections, unfresh } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Migrator, Repository, secret, sql, type Connections, type Generated, type Secret, type RowOf, type Timestamp } from './index.ts';
 import { renderTypes } from './types-gen/render.ts';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 /** What `db:types` generates for the accounts fixture (checked below), next to the other fixture tables. */
 interface AccountTables extends FixtureTables {
@@ -68,7 +69,7 @@ describe.each(drivers)('secret columns on %s', (driver) => {
   it('generates Secret<…> for them — the type above is what db:types writes', async () => {
     const { source } = renderTypes({
       driver,
-      projection: await new Migrator({ modules: [modules[1]!], root: '/' } as unknown as Application, connections).projection(),
+      projection: await new Migrator({ modules: [modules[1]!], root: tempDir('marmeon-secrets-') } as unknown as Application, connections).projection(),
       modules: ['accounts'],
       exposes: new Map(),
     });
@@ -232,8 +233,8 @@ describe.each(drivers)('statements the guard reads through on %s', (driver) => {
       const db = connections.get<AccountTables>();
       await new AccountRepository(connections).insert({ email: 'ada@example.com', password: HASH, totp_secret: 'JBSWY3DP' });
       const read = () => sql<Record<string, unknown>>`select * from ${db.selectFrom('accounts').selectAll().as('a')}`.execute(db);
-      // A schema change leaves the metadata stale: the next query is compiled before the schema is known again.
-      await sql`alter table accounts add column note text`.execute(db);
+      // The metadata is not fresh: the query is compiled before the schema is known again, as the first query of a process is.
+      unfresh(connections);
       for (const attempt of [read, read]) {
         const [row] = (await attempt()).rows;
         expect(row).toMatchObject({ email: 'ada@example.com' });
@@ -305,7 +306,7 @@ describe.each(drivers)('a plugin added to a single query on %s', (driver) => {
       await migrator(connections).migrate();
       const db = connections.get<AccountTables>();
       await new AccountRepository(connections).insert({ email: 'ada@example.com', password: HASH });
-      if (temperature === 'cold') await sql`alter table accounts add column note text`.execute(db);
+      if (temperature === 'cold') unfresh(connections);
       await expect(db.selectFrom('accounts').select('email').withPlugin(rename('email', 'password')).execute()).rejects.toThrow('password');
       await expect(db.selectFrom('accounts').select('email').withPlugin(rename('email', 'password')).execute()).rejects.toThrow('password');
       await expect(db.withPlugin(rename('email', 'password')).selectFrom('accounts').select('email').execute()).rejects.toThrow('password');
@@ -321,7 +322,7 @@ describe.each(drivers)('a plugin added to a single query on %s', (driver) => {
     try {
       await migrator(connections).migrate();
       const db = connections.get<AccountTables>();
-      if (temperature === 'cold') await sql`alter table accounts add column note text`.execute(db);
+      if (temperature === 'cold') unfresh(connections);
       for (let attempt = 0; attempt < 2; attempt++) {
         await expect(
           db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).withPlugin(retarget('accounts')).execute(),
@@ -342,7 +343,7 @@ describe.each(drivers)('a plugin added to a single query on %s', (driver) => {
       await migrator(connections).migrate();
       const db = connections.get<AccountTables>();
       await new AccountRepository(connections).insert({ email: 'ada@example.com', password: HASH });
-      if (temperature === 'cold') await sql`alter table accounts add column note text`.execute(db);
+      if (temperature === 'cold') unfresh(connections);
       const camel = new CamelCasePlugin();
       await expect(db.selectFrom('accounts').selectAll().withPlugin(camel).execute()).resolves.toMatchObject([{ email: 'ada@example.com' }]);
       await expect(db.selectFrom('accounts').select('email').withPlugin(camel).execute()).resolves.toEqual([{ email: 'ada@example.com' }]);
@@ -359,11 +360,12 @@ describe.each(drivers)('a plugin added to a single query on %s', (driver) => {
       await migrator(connections).migrate();
       const db = connections.get<AccountTables>();
       await new AccountRepository(connections).insert({ email: 'ada@example.com', password: HASH });
-      await sql`alter table accounts add column note text`.execute(db);
-      // Compiled on stale metadata: nothing checked it.
+      const fresh = unfresh(connections);
+      // Compiled while the metadata is not fresh: nothing checked it.
       const leak = db.selectFrom('accounts').select('password' as never).compile().query;
       const write = db.insertInto('accounts').values({ email: 'x@example.com', password: 'x' }).compile().query;
-      await db.selectFrom('users').select('id').execute(); // warm again
+      fresh();
+      await db.selectFrom('users').select('id').execute(); // fresh again
       const replay = (node: unknown): KyselyPlugin => ({ transformQuery: () => node as never, transformResult: async ({ result }) => result });
       await expect(db.selectFrom('accounts').select('email').withPlugin(replay(leak)).execute()).rejects.toThrow('password');
       await expect(db.insertInto('users').values({ name: 'Ada', email: 'a@example.com' }).withPlugin(replay(write)).execute()).rejects.toThrow('changed the tables it writes');

@@ -249,18 +249,20 @@ that creates the table. The [migrations](migrations.md) page explains both comma
 
 ## Where the secret columns and soft deletes come from
 
-A connection learns which columns are secret and which tables have soft deletes from the migrator's bookkeeping in the database
-(`marmeon_secret_columns` and `marmeon_schema_markers`), not from your code. The [migrations](migrations.md#how-the-migrator-keeps-track)
-page lists the tables. When a connection cannot read them, because the database was not migrated by this release or by a newer one, the
-connection refuses every query with a `BookkeepingVersionError` instead of reading without the list: a password hash or a deleted
-row is never shown because a table was missing.
+A connection learns which columns are secret and which tables have soft deletes and timestamps from your migrations: the schema they
+describe is computed from the migration files ([what the migrations describe](migrations.md#what-the-migrations-describe)), not
+read from tables of the database. The database is asked which migrations ran, and only that. When it lacks one the code has, because the
+app started before `marmeon migrate` or after a rollback, the connection refuses every query with a `MigrationStateError` (D2) that
+names the missing migrations, and it answers again within a second of `marmeon migrate`. When the record of migrations is of a newer
+release, or there is none next to tables, it refuses with D1. [How the migrator keeps track](migrations.md#how-the-migrator-keeps-track)
+lists the states: a password hash or a deleted row is never shown because a migration was missing.
 
 ## A database another tool manages
 
-Marmeon refuses to guess. A connection that has tables but none of the migrator's bookkeeping, which Marmeon's own `migrate` writes, is
-refused with error D1: without the bookkeeping the app cannot tell which columns are secret or which rows are soft-deleted, and it never
+Marmeon refuses to guess. A connection that has tables but no record of migrations, which Marmeon's own `migrate` writes, is
+refused with error D1: without the migrations the app cannot tell which columns are secret or which rows are soft-deleted, and it never
 reads that as "none". That includes a database whose tables are made by another tool, a restore
-that lost the bookkeeping tables, and a Postgres role without privileges on them.
+that lost the record, and a Postgres role without privileges on it.
 
 For your own database that Marmeon is to migrate from now on, do not use `managed: false`: run `marmeon migrate --adopt-existing` once
 ([adopting an existing database](migrations.md#adopting-an-existing-database)). For a database that another tool owns, say so on the
@@ -273,17 +275,20 @@ defineConnection('legacy', {
 });
 ```
 
-The default connection takes `DB_MANAGED=false` instead. With `managed: false` the connection reads no bookkeeping: no secret
-columns, no soft deletes, no timestamps, and the query builder treats every column as an ordinary one. `marmeon migrate`,
+The default connection takes `DB_MANAGED=false` instead. With `managed: false` the connection reads no migrations, but the database's
+catalog, as it always did: it knows every table and column that exists, their foreign keys and unique indexes, and no secret
+columns, no soft deletes, no timestamps; the query builder treats every column as an ordinary one. A change another tool makes to the
+tables is known to the connection after the schema change it made itself, or after a restart. `marmeon migrate`,
 `migrate:fresh` and the other migration commands refuse to touch it, and a migration cannot run on it. A connection that Marmeon
-migrates and reads through a role with privileges on the bookkeeping tables stays the default. A connection that has the migrator's tables
+migrates and reads through a role with privileges on the record of migrations stays the default. A connection that has the migrator's tables
 (`marmeon_…`, the lock, a placeholder) is refused with `managed: false` as well (D1): Marmeon migrates it, so the option would hide its
 secret columns.
 
 ## Readiness
 
 The app's readiness check, `/up/ready`, sends `select 1` to every configured connection. One that does not answer makes the
-instance "not ready" and is named in the answer, also when its bookkeeping cannot be read. The [health checks](health.md#liveness-and-readiness) page explains readiness.
+instance "not ready" and is named in the answer, also when the database lacks migrations the code has (D2) or its record of migrations cannot be
+read (D1). The [health checks](health.md#liveness-and-readiness) page explains readiness.
 
 ## Testing
 

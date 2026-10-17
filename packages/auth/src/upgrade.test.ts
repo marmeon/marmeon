@@ -328,13 +328,30 @@ describe('a database that lacks the auth tables', () => {
     expect(await required(application)).toEqual(['password_reset_tokens', 'remember_tokens']);
   });
 
-  it('makes /up/ready red while a column that holds a secret lacks its mark, as in a table made by hand', async () => {
+  it('makes /up/ready red while a column that holds a secret lacks its mark, as in a table made by an older migration', async () => {
     await using application = await open({ AUTH_REMEMBER_DAYS: '0' }, signedIn);
     await application.container.make(Migrator).migrate();
     const connections = application.container.make(Connections);
-    await sql`create table password_reset_tokens (email varchar(255) primary key, token_hash varchar(64) not null, created_at timestamp not null)`.execute(connections.get());
-    await sql`create table personal_access_tokens (id integer primary key, user_id integer, name varchar(255), token_hash varchar(64), abilities text, last_used_at timestamp, expires_at timestamp, created_at timestamp, updated_at timestamp)`.execute(connections.get());
-    connections.metadata().invalidate();
+    await runMigration(connections, {
+      up: (schema) => {
+        schema.create('password_reset_tokens', (table) => {
+          table.string('email').primary();
+          table.string('token_hash', 64);
+          table.timestamp('created_at');
+        });
+        schema.create('personal_access_tokens', (table) => {
+          table.id();
+          table.integer('user_id').nullable();
+          table.string('name').nullable();
+          table.string('token_hash', 64).nullable();
+          table.text('abilities').nullable();
+          table.timestamp('last_used_at').nullable();
+          table.timestamp('expires_at').nullable();
+          table.timestamp('created_at').nullable();
+          table.timestamp('updated_at').nullable();
+        });
+      },
+    });
     const report = await application.container.make(HealthChecks).run(application.container);
     expect(report.ok).toBe(false);
     const messages = report.checks.flatMap((check) => (check.error instanceof Error ? [check.error.message] : [])).join('\n');

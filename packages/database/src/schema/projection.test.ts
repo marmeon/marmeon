@@ -258,6 +258,8 @@ const GROUPS: Record<string, string[]> = {
   ddl: ['ddl/columns', 'ddl/indexes', 'ddl/alter', 'ddl/rename', 'ddl/drop'],
   nullability: ['nullability'],
   'renamed-key': ['renamed-key'],
+  'state-data': ['state-data'],
+  'state-pause': ['state-pause'],
 };
 /** Directories loaded on Postgres only, next to their group (SQLite cannot do what they do). */
 const PGSQL_ONLY: Record<string, string[]> = { markers: ['markers-pgsql'], nullability: ['nullability-pgsql'], ddl: ['ddl/alter-pgsql'] };

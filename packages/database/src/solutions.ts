@@ -2,6 +2,7 @@ import { defineSolutions } from '@marmeon/core';
 import { DatabaseConnectionError } from './driver.ts';
 import { BookkeepingVersionError } from './bookkeeping.ts';
 import { missingTable } from './errors.ts';
+import { MigrationStateError } from './migration-state.ts';
 import { MigrationLockTimeoutError } from './migrations/lock.ts';
 import { Migrator } from './migrations/migrator.ts';
 
@@ -103,6 +104,31 @@ export const databaseSolutions = defineSolutions([
         docs: 'docs/migrations.md#running-migrations',
       };
     },
+  },
+  {
+    for: MigrationStateError,
+    code: 'D2',
+    solve: (e) => ({
+      title: `Run the ${e.missing.length} pending migration${e.missing.length === 1 ? '' : 's'}`,
+      text:
+        `The database lacks ${e.missing.slice(0, 5).join(', ')}${e.missing.length > 5 ? `, and ${e.missing.length - 5} more` : ''}, which the code has, so every query on the connection "${e.connection}" is refused. ` +
+        'Run the command; the app answers again within a second, without a restart. After a rollback, the same: migrate again, or deploy the code that matches the database.',
+      command: 'marmeon migrate',
+      docs: 'docs/migrations.md#migrating-a-running-app',
+    }),
+  },
+  {
+    for: MigrationStateError,
+    code: 'D1',
+    solve: (e) => ({
+      title: e.reason === 'newer' ? 'Update Marmeon' : 'Migrate the database, or tell Marmeon another tool manages it',
+      text:
+        e.reason === 'newer'
+          ? 'The record of migrations has columns this release does not read: a newer Marmeon migrated this database. Update @marmeon/* to the release that migrated it. Every query on the connection is refused until then.'
+          : 'The database has tables and no record of migrations, so Marmeon cannot tell which ran. If Marmeon migrates this database, run the command; if another tool manages it, set `managed: false` on the connection (DB_MANAGED=false).',
+      ...(e.reason === 'newer' ? {} : { command: 'marmeon migrate' }),
+      docs: 'docs/migrations.md#how-the-migrator-keeps-track',
+    }),
   },
   {
     for: BookkeepingVersionError,

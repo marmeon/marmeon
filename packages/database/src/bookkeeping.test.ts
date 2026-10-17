@@ -1,20 +1,18 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { ErrorSolutions, type Application, type ModuleDefinition } from '@marmeon/core';
 import { AlterTableBuilder, sql, type Kysely } from 'kysely';
-import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
-import { BOOKKEEPING_READERS, isBookkeepingName, LEGACY, MARKER_KINDS, VERSIONS_TABLE } from './bookkeeping.ts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BOOKKEEPING_READERS, isBookkeepingName, LEGACY, VERSIONS_TABLE } from './bookkeeping.ts';
 import { bookkeepingConnection } from './books.ts';
 import { drivers, freshConnections, freshDatabase, silent, type TestDriver } from './__fixtures__/databases.ts';
 import { MigrateCommand } from './commands/migrate.ts';
 import type { TypeGenerator } from './types-gen/generator.ts';
 import type { CommandInput } from 'marmeon';
-import { BookkeepingVersionError, Connections, DatabaseHealthCheck, Migrator, Repository, Schema, SchemaError, type Migration } from './index.ts';
+import { BookkeepingVersionError, Connections, MigrationStateError, Migrator, Repository, Schema, SchemaError, type Migration } from './index.ts';
 import { tableColumns } from './introspection.ts';
 import { dropAllTables } from './migrations/drop-all.ts';
 import { runMigration } from './migrations/run.ts';
-import type { TableMarker } from './schema/blueprint.ts';
 import { databaseSolutions } from './solutions.ts';
-import { SchemaRequirements } from './upgrades.ts';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const formats = new URL('./__fixtures__/formats/bookkeeping/', import.meta.url);
@@ -128,13 +126,15 @@ describe.each(drivers)('the migrator keeps its bookkeeping in marmeon_ tables on
       const books = migrator(connections);
       before = { owners: [...(await books.owners())], secrets: [...(await books.secrets())].map(([table, columns]) => [table, [...columns]]), markers: await books.markers() };
       await becomeLegacy(connections, driver);
+      // A process that starts on this database now.
+      connections.metadata().reload();
     });
 
     it('refuses every query until `migrate` moved the bookkeeping — nothing a secret column or a soft delete hides is shown', async () => {
       const db = connections.get<any>();
-      await expect(db.selectFrom('accounts').selectAll().execute()).rejects.toThrow(BookkeepingVersionError);
-      await expect(db.selectFrom('users').selectAll().execute()).rejects.toThrow(/\[marmeon:D2\].*"default".*marmeon migrate/s);
-      await expect(sql`select 1`.execute(db)).rejects.toThrow(BookkeepingVersionError);
+      await expect(db.selectFrom('accounts').selectAll().execute()).rejects.toThrow(MigrationStateError);
+      await expect(db.selectFrom('users').selectAll().execute()).rejects.toThrow(/\[marmeon:D1\].*"default".*marmeon migrate/s);
+      await expect(sql`select 1`.execute(db)).rejects.toThrow(MigrationStateError);
       await expect(migrator(connections).status()).rejects.toThrow(BookkeepingVersionError);
       await expect(migrator(connections).rollback()).rejects.toThrow(/\[marmeon:D2\]/);
       await expect(migrator(connections).owners()).rejects.toThrow(BookkeepingVersionError);
@@ -207,7 +207,7 @@ describe.each(drivers)('the migrator keeps its bookkeeping in marmeon_ tables on
       const tables = await allTables(bookkeepingConnection(connections));
       expect(tables).toEqual(expect.arrayContaining(OLD));
       expect(tables.filter((table) => NEW.includes(table))).toEqual([]);
-      await expect(connections.get<any>().selectFrom('users').selectAll().execute()).rejects.toThrow(/\[marmeon:D2\]/);
+      await expect(connections.get<any>().selectFrom('users').selectAll().execute()).rejects.toThrow(/\[marmeon:D1\]/);
       expect(await migrator(connections).migrate()).toEqual([]); // and the next run moves them
       await expectHidden();
     });
@@ -225,97 +225,53 @@ describe.each(drivers)('the migrator keeps its bookkeeping in marmeon_ tables on
     beforeEach(async () => {
       await migrator(connections).migrate();
       await seed();
-      await connections.get<any>().selectFrom('accounts').selectAll().execute();
     });
 
     const setVersion = async (version: number | string) => {
       await sql`update marmeon_versions set version = ${version} where name = 'bookkeeping'`.execute(bookkeepingConnection(connections));
-      connections.metadata().invalidate();
     };
 
     it('reads a version it has a reader for, and only those — a synthetic version 2 shows the mechanism', async () => {
       BOOKKEEPING_READERS.set(2, BOOKKEEPING_READERS.get(1)!);
       try {
         await setVersion(2);
-        await expectHidden();
+        expect(await migrator(connections).migrate()).toEqual([]);
         await setVersion(3);
-        await expect(connections.get<any>().selectFrom('users').selectAll().execute()).rejects.toThrow(/\[marmeon:D1\].*version 3.*reads 1, 2/s);
+        await expect(migrator(connections).migrate()).rejects.toThrow(/\[marmeon:D1\].*version 3.*reads 1, 2/s);
       } finally {
         BOOKKEEPING_READERS.delete(2);
       }
       await setVersion(2);
-      await expect(connections.get<any>().selectFrom('users').selectAll().execute()).rejects.toThrow(/version 2.*reads 1:/s);
+      await expect(migrator(connections).migrate()).rejects.toThrow(/version 2.*reads 1:/s);
     });
 
-    it('refuses every query, `migrate`, `rollback`, `status` and `migrate:fresh`, and leaves the database as it is — for a newer version', async () => {
+    it('refuses `migrate`, `rollback`, `status` and `migrate:fresh`, and leaves the database as it is — for a newer version', async () => {
       await setVersion(3);
-      const db = connections.get<any>();
-      await expect(db.selectFrom('accounts').selectAll().execute()).rejects.toThrow(BookkeepingVersionError);
-      await expect(sql`select 1`.execute(db)).rejects.toThrow(/newer Marmeon/);
-      await expect(connections.transaction(async (trx) => (trx as any).selectFrom('users').selectAll().execute())).rejects.toThrow(BookkeepingVersionError);
       await expect(migrator(connections).migrate()).rejects.toThrow(/\[marmeon:D1\]/);
       await expect(migrator(connections).rollback()).rejects.toThrow(BookkeepingVersionError);
       await expect(migrator(connections).status()).rejects.toThrow(BookkeepingVersionError);
       await expect(migrator(connections).fresh()).rejects.toThrow(BookkeepingVersionError);
       expect((await sql<{ version: number }>`select version from marmeon_versions`.execute(bookkeepingConnection(connections))).rows).toEqual([{ version: 3 }]);
       expect((await sql<{ n: number }>`select count(*) as n from accounts`.execute(bookkeepingConnection(connections))).rows[0]!.n).toBe(1);
+      // The running app does not read the version: what it hides, the migrations it has say.
+      await expectHidden();
     });
 
     it('refuses a version that is no whole number', async () => {
       for (const odd of [0, -1]) {
         await setVersion(odd);
-        await expect(connections.get<any>().selectFrom('users').selectAll().execute()).rejects.toThrow(BookkeepingVersionError);
+        await expect(migrator(connections).migrate()).rejects.toThrow(BookkeepingVersionError);
       }
       await sql`delete from marmeon_versions`.execute(bookkeepingConnection(connections));
-      connections.metadata().invalidate();
-      await expect(connections.get<any>().selectFrom('users').selectAll().execute()).rejects.toThrow(BookkeepingVersionError);
+      await expect(migrator(connections).migrate()).rejects.toThrow(BookkeepingVersionError);
     });
 
-    it('reports it on readiness, per connection', async () => {
-      await setVersion(3);
-      const check = new DatabaseHealthCheck(connections, new SchemaRequirements());
-      await expect(check.handle()).rejects.toThrow(/The database connection "default" failed: (?!\[marmeon).*version 3/s);
-    });
-
-    it('does not read a missing table as "no secret columns"', async () => {
-      await sql`drop table marmeon_secret_columns`.execute(bookkeepingConnection(connections));
-      await expect(connections.get<any>().selectFrom('accounts').selectAll().execute()).rejects.toThrow(/marmeon_secret_columns is missing/);
-      await expect(migrator(connections).migrate()).rejects.toThrow(/marmeon_secret_columns is missing/); // nothing is made up for the table that is gone
-    });
-
-    it('does not read a table with other columns, nor tables without a versions table', async () => {
-      await sql`alter table marmeon_secret_columns add column extra varchar(10)`.execute(bookkeepingConnection(connections));
-      await expect(connections.get<any>().selectFrom('accounts').selectAll().execute()).rejects.toThrow(/does not have the columns/);
-      await sql`alter table marmeon_secret_columns drop column extra`.execute(bookkeepingConnection(connections));
-      await sql`drop table marmeon_versions`.execute(bookkeepingConnection(connections));
-      await expect(connections.get<any>().selectFrom('accounts').selectAll().execute()).rejects.toThrow(/incomplete/);
-      await expect(migrator(connections).migrate()).rejects.toThrow(/incomplete/);
-    });
-
-    it('knows every marker that the migrator writes', async () => {
-      const written = (await sql<{ marker: string }>`select distinct marker from marmeon_schema_markers`.execute(connections.get())).rows.map((row) => row.marker);
-      expect(written.length).toBeGreaterThan(0);
-      for (const marker of written) expect(Object.keys(MARKER_KINDS)).toContain(marker);
-      // Every marker the schema builder can write is one the reader knows.
-      expectTypeOf<TableMarker | 'inverse'>().toEqualTypeOf<keyof typeof MARKER_KINDS>();
-    });
-
-    it('refuses a marker it does not know — a newer Marmeon wrote it — instead of leaving it out', async () => {
-      await sql`insert into marmeon_schema_markers (table_name, column_name, marker, value) values ('accounts', '', 'future', null)`.execute(bookkeepingConnection(connections));
-      connections.metadata().invalidate();
-      await expect(connections.get<any>().selectFrom('users').selectAll().execute()).rejects.toThrow(/\[marmeon:D1\].*marker "future"/s);
-      await sql`delete from marmeon_schema_markers where marker = 'future'`.execute(bookkeepingConnection(connections));
-      connections.metadata().invalidate();
+    it('is not what hides a secret column: with its rows gone, a process that starts afterwards hides the column all the same', async () => {
+      await sql`delete from marmeon_secret_columns`.execute(bookkeepingConnection(connections));
+      await sql`delete from marmeon_schema_markers`.execute(bookkeepingConnection(connections));
+      connections.metadata().reload();
+      await migrator(connections, modules).migrate();
       await expectHidden();
-    });
-
-    it('reloads the metadata when the books are written through the builder', async () => {
-      const db = connections.get<any>();
-      await db.insertInto('marmeon_secret_columns').values({ table_name: 'users', column_name: 'email' }).execute();
-      const [user] = await db.selectFrom('users').selectAll().execute();
-      expect(Object.keys(user!)).not.toContain('email');
-      await db.deleteFrom('marmeon_secret_columns').where('table_name', '=', 'users').execute();
-      expect(Object.keys((await db.selectFrom('users').selectAll().execute())[0]!)).toContain('email');
     });
   });
 
@@ -324,7 +280,7 @@ describe.each(drivers)('the migrator keeps its bookkeeping in marmeon_ tables on
       const books = bookkeepingConnection(connections);
       await books.schema.createTable('migrations').addColumn('id', 'integer').addColumn('title', 'varchar(20)').execute();
       await expect(migrator(connections).migrate()).rejects.toThrow(/\[marmeon:D1\].*managed: false/s);
-      await expect(connections.get<any>().selectFrom('migrations').selectAll().execute()).rejects.toThrow(BookkeepingVersionError);
+      await expect(connections.get<any>().selectFrom('migrations').selectAll().execute()).rejects.toThrow(MigrationStateError);
       expect((await allTables(books)).filter((table) => table !== 'marmeon_migration_lock')).toEqual(['migrations']);
     });
 
@@ -418,7 +374,6 @@ describe.each(drivers)('the bookkeeping on a connection of its own, on %s', (dri
     try {
       await on().migrate();
       await becomeLegacy(connections, driver, 'system');
-      await expect(connections.get<any>('system').selectFrom('audit').selectAll().execute()).rejects.toThrow(/\[marmeon:D2\].*"system"/s);
       expect(await on().migrate()).toEqual([]);
       expect(await connections.get<any>('system').selectFrom('audit').selectAll().execute()).toEqual([]);
       const tables = await allTables(bookkeepingConnection(connections, 'system'));
@@ -446,16 +401,8 @@ describe.each(drivers)('a dump of version 1 of the bookkeeping on %s', (driver) 
     try {
       const books = bookkeepingConnection(dump.connections);
       for (const statement of readFileSync(new URL(file, formats), 'utf8').split(/;\n/).map((text) => text.trim()).filter(Boolean)) await sql.raw(statement).execute(books);
-      class Accounts extends Repository<'accounts', any> {
-        static table = 'accounts' as const;
-      }
-      const rows = await new Accounts(dump.connections).query().selectAll().execute();
-      expect(rows.map((row: any) => row.email as string)).toEqual(['ada@example.com']);
-      expect(Object.keys(rows[0]!)).not.toContain('password');
-      expect([...dump.connections.metadata().secrets]).toEqual([['accounts', new Set(['password'])]]);
-      expect(dump.connections.metadata().softDeletes).toEqual(new Set(['accounts']));
-      expect(dump.connections.metadata().relations.get('accounts')?.has('written_notes')).toBe(true);
       expect(await migrator(dump.connections, []).migrate()).toEqual([]); // the version is read: nothing to move
+      expect((await migrator(dump.connections, []).owners()).size).toBeGreaterThan(0);
       await migrator(fresh.connections, []).migrate();
       expect(await shape(dump.connections, driver)).toEqual(await shape(fresh.connections, driver));
     } finally {
@@ -563,8 +510,8 @@ describe.each(drivers)('a database with tables and no bookkeeping, on %s', (driv
   afterEach(() => close());
 
   it('is adopted with `--adopt-existing`: an empty, versioned bookkeeping, and the tables named as taken over unmarked', async () => {
-    await expect(connections.get<any>().selectFrom('stranger').selectAll().execute()).rejects.toThrow(/--adopt-existing/);
-    await expect(migrator(connections).migrate()).rejects.toThrow(/\[marmeon:D1\]/);
+    await expect(connections.get<any>().selectFrom('stranger').selectAll().execute()).rejects.toThrow(MigrationStateError);
+    await expect(migrator(connections).migrate()).rejects.toThrow(/\[marmeon:D1\].*--adopt-existing/s);
     const adopted: [string, readonly string[]][] = [];
     const ran = await migrator(connections).migrate(undefined, { adoptExisting: (connection, tables) => adopted.push([connection, tables]) });
     expect(ran.length).toBeGreaterThan(0);
@@ -610,7 +557,9 @@ describe.each(drivers)('a database with tables and no bookkeeping, on %s', (driv
   });
 
   it('names `--adopt-existing` for the own database, and `managed: false` only for a database another tool manages', async () => {
-    await expect(connections.get<any>().selectFrom('stranger').selectAll().execute()).rejects.toThrow(/your own database.*--adopt-existing.*Only for a database that another tool manages.*managed: false/s);
+    await expect(migrator(connections).migrate()).rejects.toThrow(/your own database.*--adopt-existing.*Only for a database that another tool manages.*managed: false/s);
+    // The running app does not suggest adopting: it says what is wrong with the database.
+    await expect(connections.get<any>().selectFrom('stranger').selectAll().execute()).rejects.toThrow(/stranger.*no record of migrations.*managed: false/s);
   });
 });
 
@@ -690,11 +639,6 @@ describe.each(drivers)('entries of the bookkeeping that come loose, on %s', (dri
     await sql`select id, password from accounts`.execute(bookkeepingConnection(connections)); // still as it was
   });
 
-  it('refuses every query when an entry already points at nothing', async () => {
-    await sql`insert into marmeon_secret_columns (table_name, column_name) values ('accounts', 'gone')`.execute(bookkeepingConnection(connections));
-    connections.metadata().invalidate();
-    await expect(connections.get<any>().selectFrom('accounts').selectAll().execute()).rejects.toThrow(/\[marmeon:D1\].*points at nothing: secret column accounts\.gone/s);
-  });
 });
 
 describe.runIf(drivers.includes('pgsql' as never))('the search path, on Postgres', () => {
@@ -742,9 +686,6 @@ describe.runIf(drivers.includes('pgsql' as never))('tables an extension owns, on
       expect(await connections.get<any>().selectFrom('spatial_ref_sys').selectAll().execute()).toEqual([]);
       await migrator(connections, []).migrate();
       expect(await allTables(connections.get<any>())).toEqual(expect.arrayContaining(NEW));
-      await books.schema.createTable('people').addColumn('id', 'integer').execute();
-      await sql`drop table marmeon_versions`.execute(books);
-      await expect(connections.get<any>().selectFrom('people').selectAll().execute()).rejects.toThrow(/incomplete/);
     } finally {
       await close();
     }

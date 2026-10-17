@@ -1,4 +1,4 @@
-import { ConsoleLogger, type Application, type Logger } from '@marmeon/core';
+import { ConsoleLogger, type Application, type Logger, type ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
 import { prepareBookkeeping } from '../bookkeeping-setup.ts';
 import { Connections } from '../connections.ts';
@@ -48,6 +48,25 @@ export async function freshConnections(
       await fresh.drop();
     },
   };
+}
+
+/**
+ * An app that is only its modules and its root: where a process of it finds the migrations its connections take their schema from.
+ * `root` is where the projection is cached (`.marmeon/schema.json`) — a temporary directory, never `/`.
+ */
+export function appOf(modules: ModuleDefinition[], root: string): Application {
+  return { modules, root, container: { has: () => false } } as unknown as Application;
+}
+
+/**
+ * Leaves the schema metadata of `connections` not fresh, as it is for the first query of a process: queries are not compiled with it
+ * but resolved on the connection that runs them. The function it returns makes it fresh again.
+ */
+export function unfresh(connections: Connections): () => void {
+  const owner = {};
+  const metadata = connections.metadata();
+  metadata.during(owner, connections.projection());
+  return () => metadata.after(owner);
 }
 
 /** A `TypeGenerator` for the modules of `app`: it reads migration files and the driver, so no database is opened. */

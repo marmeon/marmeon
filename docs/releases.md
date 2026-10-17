@@ -140,7 +140,7 @@ A reader never guesses and never falls back to a default.
 | [Queued listener](events.md#queued-listeners) | the listener's `static listener` name, within its event | put back like an unknown job | failed like any record without a version |
 | [Session](session.md#what-a-session-stores) | `_v` in the payload | the request is a guest's; the stored session stays as it is | dropped, a new session starts |
 | [Session and remember-me cookies](session.md#the-__host--prefix) | the name, with `__Host-` when cookies are `Secure` | n/a | a cookie under another name is never read |
-| [Migrator bookkeeping](migrations.md#how-the-migrator-keeps-track) | the row in `marmeon_versions` | every query on the connection fails, `migrate` refuses, `/up/ready` is red | taken over by `marmeon migrate`; until then every query fails |
+| [Migrator bookkeeping](migrations.md#how-the-migrator-keeps-track) | the row in `marmeon_versions`, and the columns of `marmeon_migrations` | `migrate` refuses; with other columns in `marmeon_migrations`, every query on the connection fails and `/up/ready` is red | taken over by `marmeon migrate`; until then every query fails |
 | [The framework's tables](migrations.md#upgrading-the-frameworks-tables) | `// @marmeon-stub <set> <revision>` in the app's migration | `make:upgrade-migrations` stops and writes nothing | written by `make:upgrade-migrations` |
 | [Encrypted values](encryption.md#what-the-key-protects) | a version byte, and a context per use (`cookie:<name>`, `session:<key>`, `queue:v1:<job>`) | `DecryptError` | `DecryptError` |
 | [API tokens](api-tokens.md#the-token-format) | the prefix, and a hash under its own domain | not a token: 401, like an unknown one | no longer valid: 401, like an unknown one |

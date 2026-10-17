@@ -100,7 +100,7 @@ every instance takes every instance out of the load balancer at once, which turn
 
 | Check | Package | What it does | Its note |
 | --- | --- | --- | --- |
-| `database` | `@marmeon/database` | `select 1` on every connection the app uses, through the pools requests use: `default`, the ones the cache, the sessions, the queue and notifications keep their tables on, and any other a query used. A connection nothing uses is never opened. | The connections' names. |
+| `database` | `@marmeon/database` | `select 1` on every connection the app uses, through the pools requests use: `default`, the ones the cache, the sessions, the queue and notifications keep their tables on, and any other a query used. A connection nothing uses is never opened. It is red as well while the database lacks migrations the code has (error D2, the message names them and `marmeon migrate` is the fix), and when its record of migrations cannot be read (D1). | The connections' names. |
 | `redis` | `@marmeon/redis` | `PING` on every Redis connection a driver uses. A configured connection nothing uses is not checked. | The connections, or `no connection in use`. |
 | `cache` | `@marmeon/cache` | Adds a key and removes it again, through the configured store. | The driver. |
 | `queue` | `@marmeon/queue` | Reads the size of the default connection's default queue. | The connection and how many jobs wait. |

@@ -446,8 +446,11 @@ With old and new nodes side by side, from the release that marks them on:
   running until the queue has drained ([deploying while jobs wait](queues.md#deploying-while-jobs-wait)). A queued listener is found
   by its `static listener` name, so renaming its class changes nothing for jobs that wait.
 - **The database** is shared, and a release that changes a table changes it for every node. A migration that renames or drops
-  something an older node uses waits for the release after it. Update a node whose bookkeeping is newer than it reads: it fails every
-  query and fails readiness ([how the migrator keeps track](migrations.md#how-the-migrator-keeps-track)). Two nodes that run
+  something an older node uses waits for the release after it. A node whose code has migrations the database lacks (it started before
+  `marmeon migrate` finished) fails every query and fails readiness until they ran, within a second of it; a node that finds more
+  migrations in the database than its code has keeps running with the schema it knows
+  ([how the migrator keeps track](migrations.md#how-the-migrator-keeps-track)). Update a node whose record of migrations is newer than it
+  reads: it fails every query and fails readiness. Two nodes that run
   `marmeon migrate` at once are safe: one waits for the other ([one migration at a time](migrations.md#one-migration-at-a-time)).
 
 A release that changes a format after 1.0 writes the new version only once the readers of the release before read it

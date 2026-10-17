@@ -56,6 +56,7 @@ export type { ProjectedColumn, ProjectedForeignKey, ProjectedIndex, ProjectedTab
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn, UuidColumn } from './schema/blueprint.ts';
 export { Schema, SchemaError } from './schema/schema.ts';
 export { BookkeepingVersionError } from './bookkeeping.ts';
+export { MigrationStateError } from './migration-state.ts';
 // Puts `with()`, `withCount()`, `whereHas()`, `withRelation()` and `withTrashed()` on Kysely's select builder — at runtime (this import) and in the types.
 import './chain.ts';
 export type { RelationDefinition, RelationName, WithRelations } from './chain.ts';

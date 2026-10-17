@@ -3,6 +3,7 @@ import { createApplication, env } from '@marmeon/core';
 import { Output } from 'marmeon';
 import { CompiledQuery, Kysely, PostgresAdapter, PostgresQueryCompiler, sql, type DatabaseIntrospector, type Driver, type QueryResult, type TableMetadata } from 'kysely';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { registerInspection } from './books.ts';
 import { DbShowCommand } from './commands/db-show.ts';
 import { Connections, DatabaseServiceProvider, defineConnection } from './index.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -50,7 +51,9 @@ async function show(vars: Record<string, string>, options: Record<string, string
   const stderr: string[] = [];
   vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
   vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
-  const command = new DbShowCommand({ options: (name?: string) => connections.options(name), get: () => db } as unknown as Connections);
+  const fake = { options: (name?: string) => connections.options(name), get: () => db } as unknown as Connections;
+  for (const name of ['default', 'reporting']) registerInspection(fake, name, db);
+  const command = new DbShowCommand(fake);
   const code = await command.handle({ args: [], options, output: new Output(), root: '/' } as never);
   vi.restoreAllMocks();
   await app.shutdown();
