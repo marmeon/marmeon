@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { token } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 
 declare const passwordHash: unique symbol;
 
@@ -150,11 +151,14 @@ export class PasswordHasher implements Hasher {
     const isArgon2Available = internals.isArgon2Available ?? argon2Available();
     if (options.driver === 'argon2id' && !isArgon2Available) {
       throw new HashError(
-        `Password hashing with argon2id needs crypto.argon2 (Node ≥ 24.7 built with OpenSSL ≥ 3.2); this Node ${process.version} with OpenSSL ${process.versions.openssl} does not have it. ` +
-          'Use an official Node build, or set HASH_DRIVER=scrypt.',
+        withCode(
+          'A2',
+          `Password hashing with argon2id needs crypto.argon2 (Node ≥ 24.7 built with OpenSSL ≥ 3.2); this Node ${process.version} with OpenSSL ${process.versions.openssl} does not have it. ` +
+            'Use an official Node build, or set HASH_DRIVER=scrypt.',
+        ),
       );
     }
-    for (const problem of problems(options)) throw new HashError(`Invalid hashing configuration: ${problem}.`);
+    for (const problem of problems(options)) throw new HashError(withCode('A2', `Invalid hashing configuration: ${problem}.`));
     this.#options = options;
     this.#isArgon2Available = isArgon2Available;
     this.#now = internals.now ?? (() => performance.now());
@@ -164,8 +168,8 @@ export class PasswordHasher implements Hasher {
 
   async make(password: string): Promise<PasswordHash> {
     const bytes = encode(password);
-    if (!bytes) throw new HashError('A password must be a well-formed string (no lone surrogates).');
-    if (bytes.byteLength > MAX_PASSWORD_BYTES) throw new HashError(`Passwords are limited to ${MAX_PASSWORD_BYTES} bytes.`);
+    if (!bytes) throw new HashError(withCode('A2', 'A password must be a well-formed string (no lone surrogates).'));
+    if (bytes.byteLength > MAX_PASSWORD_BYTES) throw new HashError(withCode('A2', `Passwords are limited to ${MAX_PASSWORD_BYTES} bytes.`));
     const salt = crypto.randomBytes(SALT_BYTES);
     const parsed: Parsed =
       this.#options.driver === 'argon2id'

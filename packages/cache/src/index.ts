@@ -14,6 +14,7 @@ import { DatabaseStore } from './stores/database.ts';
 import { FileStore } from './stores/file.ts';
 import { MemoryStore } from './stores/memory.ts';
 import { RedisStore } from './stores/redis.ts';
+import { withCode } from '@marmeon/core/internal';
 
 export { Cache, Lock, LockTimeoutError } from './cache.ts';
 export type { CacheDriver, CacheDriverContext, CacheDriverFactory, CacheStore, Entry, LockStore } from './cache.ts';
@@ -46,7 +47,7 @@ async function importOptional<T>(load: () => Promise<T>, name: string, driver: s
   } catch (error) {
     const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
     if (code === 'ERR_MODULE_NOT_FOUND' && typeof message === 'string' && message.includes(name)) {
-      throw new CacheSetupError(`CACHE_DRIVER=${driver} needs ${name}, which is not installed in this app: ${install}`);
+      throw new CacheSetupError(withCode('S1', `CACHE_DRIVER=${driver} needs ${name}, which is not installed in this app: ${install}`));
     }
     throw error;
   }
@@ -119,7 +120,7 @@ export class CacheServiceProvider implements ServiceProvider {
     // A built-in name, a name twice or a malformed one stops the start here; so does a CACHE_DRIVER nobody brought.
     const custom = this.#factories(app.container);
     if (!(BUILT_IN_CACHE_DRIVERS as readonly string[]).includes(driver) && !custom.has(driver)) {
-      throw new CacheSetupError(`CACHE_DRIVER=${driver} is not a cache driver. Known: ${[...BUILT_IN_CACHE_DRIVERS, ...custom.keys()].join(', ')}.`);
+      throw new CacheSetupError(withCode('S1', `CACHE_DRIVER=${driver} is not a cache driver. Known: ${[...BUILT_IN_CACHE_DRIVERS, ...custom.keys()].join(', ')}.`));
     }
     if (custom.has(driver)) {
       // Built and tried now: a factory's error, or a lock store that does not exclude, stops the start — not the first job.
@@ -127,7 +128,7 @@ export class CacheServiceProvider implements ServiceProvider {
     } else if (driver === 'redis') {
       const redis = await importRedis();
       if (!app.container.has(redis.RedisConnections)) {
-        throw new CacheSetupError('CACHE_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).');
+        throw new CacheSetupError(withCode('S1', 'CACHE_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).'));
       }
       const connections = app.container.make(redis.RedisConnections);
       connections.options(connection);
@@ -135,7 +136,7 @@ export class CacheServiceProvider implements ServiceProvider {
     } else if (driver === 'database') {
       const database = await importDatabase();
       if (!app.container.has(database.Connections)) {
-        throw new CacheSetupError('CACHE_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).');
+        throw new CacheSetupError(withCode('S1', 'CACHE_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).'));
       }
       app.container.make(database.Connections).options(connection);
     }
@@ -165,6 +166,6 @@ function builtIn(config: CacheConfig, container: Resolver): CacheDriver {
       return both(new FileStore(isAbsolute(config.path) ? config.path : join(root, config.path), clock));
     }
     default:
-      throw new CacheSetupError(`CACHE_DRIVER=${config.driver} is not a cache driver. Known: ${BUILT_IN_CACHE_DRIVERS.join(', ')}.`);
+      throw new CacheSetupError(withCode('S1', `CACHE_DRIVER=${config.driver} is not a cache driver. Known: ${BUILT_IN_CACHE_DRIVERS.join(', ')}.`));
   }
 }

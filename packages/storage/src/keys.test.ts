@@ -27,6 +27,7 @@ describe('normalizeKey', () => {
     ['', 'non-empty'],
   ])('refuses %j (%s)', (key, reason) => {
     expect(() => normalizeKey(key)).toThrow(InvalidKeyError);
+    expect(() => normalizeKey(key)).toThrow('[marmeon:S3] Invalid storage key');
     expect(() => normalizeKey(key)).toThrow(reason);
   });
 

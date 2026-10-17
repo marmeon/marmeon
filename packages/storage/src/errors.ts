@@ -1,3 +1,5 @@
+import { withCode } from '@marmeon/core/internal';
+
 /** A mistake in the storage configuration — at startup, or when a disk is first used. */
 export class StorageSetupError extends Error {
   override name = 'StorageSetupError';
@@ -9,7 +11,7 @@ export class InvalidKeyError extends Error {
   readonly key: string;
 
   constructor(key: string, reason: string) {
-    super(`Invalid storage key ${JSON.stringify(key.length > 200 ? `${key.slice(0, 200)}…` : key)}: ${reason}.`);
+    super(withCode('S3', `Invalid storage key ${JSON.stringify(key.length > 200 ? `${key.slice(0, 200)}…` : key)}: ${reason}.`));
     this.key = key;
   }
 }

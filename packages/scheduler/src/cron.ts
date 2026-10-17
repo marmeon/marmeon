@@ -1,3 +1,5 @@
+import { withCode } from '@marmeon/core/internal';
+
 /** A schedule is set up wrongly — an invalid cron expression, a task without a frequency, two tasks with one name … — said at startup. */
 export class ScheduleError extends Error {
   override name = 'ScheduleError';
@@ -57,7 +59,7 @@ export class CronExpression {
     const expanded = MACROS[source.toLowerCase()] ?? source;
     const parts = expanded.split(' ');
     if (parts.length !== 5) {
-      throw new ScheduleError(`"${expression}" is not a cron expression: it needs five fields (minute hour day-of-month month day-of-week), like "*/5 * * * *".`);
+      throw new ScheduleError(withCode('Q5', `"${expression}" is not a cron expression: it needs five fields (minute hour day-of-month month day-of-week), like "*/5 * * * *".`));
     }
     this.source = source;
     this.#sets = parts.map((part, index) => parseField(part, FIELDS[index]!, expression));
@@ -96,7 +98,7 @@ export class CronExpression {
 function parseField(part: string, field: Field, expression: string): ReadonlySet<number> {
   const values = new Set<number>();
   const fail = (why: string): never => {
-    throw new ScheduleError(`Invalid cron expression "${expression}": the ${field.name} field "${part}" ${why}.`);
+    throw new ScheduleError(withCode('Q5', `Invalid cron expression "${expression}": the ${field.name} field "${part}" ${why}.`));
   };
   for (const item of part.split(',')) {
     const [range = '', stepText, ...rest] = item.split('/');

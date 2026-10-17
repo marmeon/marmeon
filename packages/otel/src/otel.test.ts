@@ -332,6 +332,7 @@ describe('@marmeon/otel', () => {
     // The range of the peer dependency, as package.json names it — not a looser one the package was never tested with.
     const peer = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { peerDependencies: Record<string, string> }).peerDependencies['@opentelemetry/api'];
     expect(peer).toBe('^1.9.0');
+    expect((error as Error).message).toContain('[marmeon:S4] @marmeon/otel needs');
     expect((error as Error).message).toContain(`@marmeon/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry/api@${peer} `);
     // `marmeon` prints the way out when the app cannot start.
     const [solution] = await new ErrorSolutions(OtelServiceProvider.solutions).find(error);

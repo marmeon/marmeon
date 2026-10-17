@@ -336,7 +336,7 @@ describe('configuration', () => {
       }
     })();
     // The message as the assertion's text: the whole command shows when it differs (Vitest shortens long strings).
-    expect(message, message).toBe('The disk "files" (the default disk) is on S3, which needs the AWS SDK — not installed in this app: pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3');
+    expect(message, message).toBe('[marmeon:S2] The disk "files" (the default disk) is on S3, which needs the AWS SDK — not installed in this app: pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3');
     expect(() => checkS3Sdk({ default: 'local', disks: { local, uploads: s3 } }, 'uploads', gone)).toThrow('The disk "uploads" (UPLOADS_DISK) is on S3, which needs the AWS SDK');
     // The SDK without the presigned POST: uploads on S3 need it, an S3 default disk does not.
     const noPost = (names: readonly string[]) => names.filter((name) => name === '@aws-sdk/s3-presigned-post');

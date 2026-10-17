@@ -10,6 +10,7 @@ import type { JobClass } from './job.ts';
 import { CallQueuedListener, QueuedListeners, QueueListenerDispatcher } from './listeners.ts';
 import { Queue, QueueManager } from './queue.ts';
 import { FRAMEWORK_PREFIX, JobRegistry, QueueSetupError } from './registry.ts';
+import { withCode } from '@marmeon/core/internal';
 
 export { QueueConfig, queueTablesConnection } from './config.ts';
 export { QueueHealthCheck } from './health.ts';
@@ -137,7 +138,7 @@ export class QueueServiceProvider implements ServiceProvider {
     if (databases.length > 0) {
       const database = await importDatabase(used.driver === 'database' ? 'QUEUE_CONNECTION=database' : 'QUEUE_FAILED_DRIVER=database (set it to null without a database)');
       if (!app.container.has(database.Connections)) {
-        throw new QueueSetupError('The database queue needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).');
+        throw new QueueSetupError(withCode('Q4', 'The database queue needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).'));
       }
       // An unknown database connection name fails here, with the known ones.
       for (const connection of databases) app.container.make(database.Connections).options(connection);
@@ -145,7 +146,7 @@ export class QueueServiceProvider implements ServiceProvider {
     if (used.driver === 'redis') {
       const redis = await importRedis();
       if (!app.container.has(redis.RedisConnections)) {
-        throw new QueueSetupError('QUEUE_CONNECTION=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).');
+        throw new QueueSetupError(withCode('Q4', 'QUEUE_CONNECTION=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).'));
       }
       // An unknown Redis connection name fails here, with the known ones; a missing client with what to install.
       const redisConnections = app.container.make(redis.RedisConnections);
@@ -158,7 +159,7 @@ export class QueueServiceProvider implements ServiceProvider {
     if (registry.all().some((job) => job.encrypted && !job.job.startsWith(FRAMEWORK_PREFIX)) || queuedListeners.any) {
       const { Encrypter } = await importEncryption();
       if (!app.container.has(Encrypter)) {
-        throw new QueueSetupError('An encrypted job (static encrypted) needs the EncryptionServiceProvider of @marmeon/encryption and an APP_KEY — every queued listener (static queue) is one.');
+        throw new QueueSetupError(withCode('Q4', 'An encrypted job (static encrypted) needs the EncryptionServiceProvider of @marmeon/encryption and an APP_KEY — every queued listener (static queue) is one.'));
       }
     }
 

@@ -204,6 +204,7 @@ describe.each(drivers)('notifications on %s', (driver) => {
       }
       class Twin extends Welcome {}
       await expect(start([{ name: 'a', notifications: [Nameless as never] }])).rejects.toThrow(NotificationSetupError);
+      await expect(start([{ name: 'a', notifications: [Nameless as never] }])).rejects.toThrow('[marmeon:Q6] ');
       await expect(start([{ name: 'a', notifications: [Nameless as never] }])).rejects.toThrow(/Nameless \(module a\) needs a stable name: static notification = 'module.what-happened'/);
       await expect(start([{ name: 'a', notifications: [Welcome, Twin] }])).rejects.toThrow(/Two notifications are named "shop.welcome": Welcome \(module a\) and Twin \(module a\)/);
       class OtherMembers extends Members {}

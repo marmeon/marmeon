@@ -1,4 +1,5 @@
 import { CronExpression, ScheduleError, type WallTime } from './cron.ts';
+import { withCode } from '@marmeon/core/internal';
 
 export const MINUTE = 60_000;
 
@@ -12,7 +13,7 @@ export function checkTimeZone(timeZone: string, where: string): string {
   try {
     return Temporal.Now.zonedDateTimeISO(timeZone).timeZoneId;
   } catch {
-    throw new ScheduleError(`${where}: "${timeZone}" is not a time zone — use an IANA name like Europe/Berlin or UTC.`);
+    throw new ScheduleError(withCode('Q5', `${where}: "${timeZone}" is not a time zone — use an IANA name like Europe/Berlin or UTC.`));
   }
 }
 

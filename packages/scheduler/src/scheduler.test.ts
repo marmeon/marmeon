@@ -609,7 +609,7 @@ describe('the provider', () => {
 
 describe('a schedule set up wrongly', () => {
   it('fails the start: no frequency, two tasks with one name, an invalid expression or time zone', async () => {
-    await expect(boot(defineSchedule((s) => void s.call(CountRun)))).rejects.toThrow('The task "CountRun" (schedule of module fixture) has no frequency — add one: .daily(), .everyFifteenMinutes(), .cron(\'…\').');
+    await expect(boot(defineSchedule((s) => void s.call(CountRun)))).rejects.toThrow('[marmeon:Q5] The task "CountRun" (schedule of module fixture) has no frequency — add one: .daily(), .everyFifteenMinutes(), .cron(\'…\').');
     await expect(boot(defineSchedule((s) => (s.call(CountRun).daily(), void s.call(CountRun).hourly())))).rejects.toThrow(
       'Two scheduled tasks are named "CountRun" (modules fixture and fixture) — the name keys their locks: give one a name of its own with .name(\'…\').',
     );

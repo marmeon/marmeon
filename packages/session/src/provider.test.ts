@@ -179,7 +179,7 @@ describe('SESSION_DRIVER', () => {
 
   it('redis: names what is missing at startup', async () => {
     await expect(boot({ SESSION_DRIVER: 'redis' }, [])).rejects.toThrow(
-      'SESSION_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).',
+      '[marmeon:A3] SESSION_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).',
     );
   });
 

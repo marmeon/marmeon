@@ -86,7 +86,7 @@ Inject `Encrypter`. It is one object for the whole app.
   payload holds a version byte, the IV, the ciphertext and a 16-byte authentication tag, in base64url without padding. It fits
   into a cookie or a URL as it is.
 - **One error for everything.** A changed byte, another key, another context, garbage or an empty string all end in the same
-  `DecryptError`, "The payload is invalid.". It never says which.
+  `DecryptError`, "[marmeon:A4] The payload is invalid.". It never says which.
 - **A context binds a payload to its use.** The second argument is authenticated with the payload, `''` by default. A payload
   encrypted for `exports:download` does not decrypt for another context. Give each use of your own a context of its own, so a
   value from one place cannot be replayed in another.

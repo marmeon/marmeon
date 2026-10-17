@@ -1,4 +1,5 @@
 import type { AnyRecipientResolverClass, NotificationClass } from './notification.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /** Notifications are set up wrongly — a class without a name, a name used twice, two resolvers for one kind … — said at startup. */
 export class NotificationSetupError extends Error {
@@ -26,7 +27,10 @@ export class NotificationRegistry {
       const existing = this.#classes.get(name);
       if (existing && existing.notification !== notification) {
         throw new NotificationSetupError(
-          `Two notifications are named "${name}": ${existing.notification.name} (${existing.source}) and ${notification.name} (${source}). A notification's name is how a worker and the inbox find its class — give each its own static notification.`,
+          withCode(
+            'Q6',
+            `Two notifications are named "${name}": ${existing.notification.name} (${existing.source}) and ${notification.name} (${source}). A notification's name is how a worker and the inbox find its class — give each its own static notification.`,
+          ),
         );
       }
       this.#classes.set(name, { notification, source });
@@ -51,37 +55,43 @@ export class NotificationRegistry {
 /** The notification's name, after checking the class has what a notification needs. */
 export function checkNotificationClass(notification: NotificationClass, source: string): string {
   const label = typeof notification === 'function' && notification.name ? notification.name : String(notification);
-  if (typeof notification !== 'function') throw new NotificationSetupError(`${source} lists ${label} as a notification, but it is not a class.`);
+  if (typeof notification !== 'function') throw new NotificationSetupError(withCode('Q6', `${source} lists ${label} as a notification, but it is not a class.`));
   if (typeof notification.notification !== 'string' || !NAME.test(notification.notification)) {
     throw new NotificationSetupError(
-      `${label} (${source}) needs a stable name: static notification = 'module.what-happened' (lower case; letters, digits and . - _ : between parts) — never the class name, which changes with refactoring.` +
-        (typeof notification.notification === 'string' ? ` "${notification.notification}" is not one.` : ''),
+      withCode(
+        'Q6',
+        `${label} (${source}) needs a stable name: static notification = 'module.what-happened' (lower case; letters, digits and . - _ : between parts) — never the class name, which changes with refactoring.` +
+          (typeof notification.notification === 'string' ? ` "${notification.notification}" is not one.` : ''),
+      ),
     );
   }
   for (const key of ['schema', 'database'] as const) {
     const schema = notification[key];
     if ((key === 'schema' || schema !== undefined) && typeof schema?.['~standard']?.validate !== 'function') {
       throw new NotificationSetupError(
-        key === 'schema'
-          ? `${label} (${notification.notification}, ${source}) needs static schema — a Standard Schema of its data, e.g. v.object({ orderId: v.string() }).`
-          : `${label} (${notification.notification}, ${source}): static database must be a Standard Schema of what toDatabase() returns.`,
+        withCode(
+          'Q6',
+          key === 'schema'
+            ? `${label} (${notification.notification}, ${source}) needs static schema — a Standard Schema of its data, e.g. v.object({ orderId: v.string() }).`
+            : `${label} (${notification.notification}, ${source}): static database must be a Standard Schema of what toDatabase() returns.`,
+        ),
       );
     }
   }
-  if (typeof notification.prototype?.via !== 'function') throw new NotificationSetupError(`${label} (${notification.notification}, ${source}) needs a via(recipient, data) method that returns its channels.`);
+  if (typeof notification.prototype?.via !== 'function') throw new NotificationSetupError(withCode('Q6', `${label} (${notification.notification}, ${source}) needs a via(recipient, data) method that returns its channels.`));
   const options = notification.queue as Record<string, unknown> | undefined;
   if (options !== undefined) {
-    if (typeof options !== 'object' || options === null) throw new NotificationSetupError(`${label}: static queue must be an object — { queue, connection, delay, tries, backoff }.`);
+    if (typeof options !== 'object' || options === null) throw new NotificationSetupError(withCode('Q6', `${label}: static queue must be an object — { queue, connection, delay, tries, backoff }.`));
     for (const key of Object.keys(options)) {
       if (!['queue', 'connection', 'delay', 'tries', 'backoff'].includes(key)) {
-        throw new NotificationSetupError(`${label} (static queue): unknown setting "${key}" — it takes queue, connection, delay, tries and backoff.`);
+        throw new NotificationSetupError(withCode('Q6', `${label} (static queue): unknown setting "${key}" — it takes queue, connection, delay, tries and backoff.`));
       }
     }
     const { tries, backoff } = options;
-    if (tries !== undefined && (!Number.isInteger(tries) || (tries as number) < 1)) throw new NotificationSetupError(`${label} (static queue): tries must be a whole number ≥ 1, not ${String(tries)}.`);
+    if (tries !== undefined && (!Number.isInteger(tries) || (tries as number) < 1)) throw new NotificationSetupError(withCode('Q6', `${label} (static queue): tries must be a whole number ≥ 1, not ${String(tries)}.`));
     const delays = backoff === undefined ? [] : typeof backoff === 'number' ? [backoff] : backoff;
     if (!Array.isArray(delays) || delays.some((delay) => !(typeof delay === 'number' && delay >= 0))) {
-      throw new NotificationSetupError(`${label} (static queue): backoff must be seconds ≥ 0 — a number or a list like [10, 60, 300].`);
+      throw new NotificationSetupError(withCode('Q6', `${label} (static queue): backoff must be seconds ≥ 0 — a number or a list like [10, 60, 300].`));
     }
   }
   return notification.notification;
@@ -97,13 +107,13 @@ export class RecipientRegistry {
   add(resolvers: Readonly<Record<string, AnyRecipientResolverClass | undefined>>, source: string): this {
     for (const [type, resolver] of Object.entries(resolvers)) {
       if (resolver === undefined) continue;
-      if (!NAME.test(type)) throw new NotificationSetupError(`${source} names a kind of recipient "${type}" — use a name like user or team (lower case).`);
+      if (!NAME.test(type)) throw new NotificationSetupError(withCode('Q6', `${source} names a kind of recipient "${type}" — use a name like user or team (lower case).`));
       if (typeof resolver !== 'function' || typeof resolver.prototype?.find !== 'function') {
-        throw new NotificationSetupError(`${source}: the resolver of "${type}" recipients must be a class with find(id) — the recipient's record, or undefined when it is gone.`);
+        throw new NotificationSetupError(withCode('Q6', `${source}: the resolver of "${type}" recipients must be a class with find(id) — the recipient's record, or undefined when it is gone.`));
       }
       const existing = this.#resolvers.get(type);
       if (existing && existing.resolver !== resolver) {
-        throw new NotificationSetupError(`Two resolvers find "${type}" recipients: ${existing.resolver.name} (${existing.source}) and ${resolver.name} (${source}) — one kind, one resolver.`);
+        throw new NotificationSetupError(withCode('Q6', `Two resolvers find "${type}" recipients: ${existing.resolver.name} (${existing.source}) and ${resolver.name} (${source}) — one kind, one resolver.`));
       }
       this.#resolvers.set(type, { resolver, source });
     }

@@ -107,6 +107,7 @@ describe('PasswordHasher', () => {
     expect(await argon2.verify(longest, hash)).toBe(true);
     await expect(argon2.make(`${longest}x`)).rejects.toThrow(HashError);
     await expect(argon2.make('ä'.repeat(MAX_PASSWORD_BYTES / 2 + 1))).rejects.toThrow(`limited to ${MAX_PASSWORD_BYTES} bytes`);
+    await expect(argon2.make('ä'.repeat(MAX_PASSWORD_BYTES / 2 + 1))).rejects.toThrow(`[marmeon:A2] Passwords are limited to ${MAX_PASSWORD_BYTES} bytes.`);
     expect(await argon2.verify(`${longest}x`, hash)).toBe(false);
   });
 

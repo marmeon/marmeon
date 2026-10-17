@@ -18,6 +18,7 @@ describe('the relying party from APP_URL', () => {
   it('refuses an RP ID that is not a parent domain on a label boundary', () => {
     expect(() => from('https://app.example.com', { rpId: 'ample.com' })).toThrow(/not the host of https:\/\/app\.example\.com or a parent domain/);
     expect(() => from('https://app.example.com', { rpId: 'other.com' })).toThrow(PasskeyConfigError);
+    expect(() => from('https://app.example.com', { rpId: 'other.com' })).toThrow('[marmeon:A1] Passkeys cannot be used: ');
   });
 
   it('refuses plain http, except on localhost', () => {

@@ -1,5 +1,6 @@
 import type { TemporaryUrlOptions } from './disk.ts';
 import { StorageSetupError } from './errors.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /** Where the app serves files of local and memory disks behind a signed, expiring URL. */
 export const TEMPORARY_PREFIX = '/_marmeon/storage';
@@ -17,7 +18,10 @@ export interface TemporaryUrls {
 export const NO_TEMPORARY_URLS: TemporaryUrls = {
   sign(disk) {
     throw new StorageSetupError(
-      `temporaryUrl() on the disk "${disk}" needs @marmeon/http — its UrlSigner signs the URL and its router serves it (pnpm add @marmeon/http; marmeon discover).`,
+      withCode(
+        'S2',
+        `temporaryUrl() on the disk "${disk}" needs @marmeon/http — its UrlSigner signs the URL and its router serves it (pnpm add @marmeon/http; marmeon discover).`,
+      ),
     );
   },
 };

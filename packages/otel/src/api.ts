@@ -1,4 +1,5 @@
 import type * as Api from '@opentelemetry/api';
+import { withCode } from '@marmeon/core/internal';
 
 /** The OpenTelemetry API module (`@opentelemetry/api`) — the one OpenTelemetry package this one talks to. */
 export type OtelApi = typeof Api;
@@ -28,14 +29,14 @@ export async function loadOtelApi(load: ImportOtelApi = importApi): Promise<Otel
     const module = (await load()) as Partial<OtelApi> & { default?: Partial<OtelApi> };
     const api = (typeof module.trace === 'object' ? module : module.default) as OtelApi | undefined;
     if (!api || typeof api.trace?.getTracer !== 'function' || typeof api.context?.with !== 'function') {
-      throw new OtelSetupError(`The installed "@opentelemetry/api" is not the OpenTelemetry API 1.x: ${OTEL_INSTALL}`);
+      throw new OtelSetupError(withCode('S4', `The installed "@opentelemetry/api" is not the OpenTelemetry API 1.x: ${OTEL_INSTALL}`));
     }
     return api;
   } catch (error) {
     if (error instanceof OtelSetupError) throw error;
     const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
     if ((code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') && typeof message === 'string' && message.includes('@opentelemetry/api')) {
-      throw new OtelSetupError(`@marmeon/otel needs the OpenTelemetry API, which is not installed in this app: ${OTEL_INSTALL} (the SDK and an exporter are the app's, see docs/observability.md#installation).`);
+      throw new OtelSetupError(withCode('S4', `@marmeon/otel needs the OpenTelemetry API, which is not installed in this app: ${OTEL_INSTALL} (the SDK and an exporter are the app's, see docs/observability.md#installation).`));
     }
     throw error;
   }

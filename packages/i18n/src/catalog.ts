@@ -86,7 +86,7 @@ export class Catalog {
           try {
             entries.set(at, { message: value, parts: parseMessage(value), locale });
           } catch (error) {
-            if (error instanceof MessageSyntaxError) throw new MessageError(`Message ${namespace}.${at} in ${source} is malformed: ${error.message}`);
+            if (error instanceof MessageSyntaxError) throw new MessageError(`[marmeon:S5] Message ${namespace}.${at} in ${source} is malformed: ${error.message.replace(/^\[marmeon:S5\] /, '')}`);
             throw error;
           }
         } else {

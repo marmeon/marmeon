@@ -7,7 +7,7 @@ export { CLUSTER_WORKER } from './application.ts';
 export { messageBase, publishEnded, trace } from './channels.ts';
 export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
 export { coreSolutions } from './core-solutions.ts';
-export { withCode } from './error-codes.ts';
+export { withCode, withoutCode } from './error-codes.ts';
 export { describeError } from './redact.ts';
 export { collectDrivers } from './drivers.ts';
 export { bindingNameOf } from './definition-edit.ts';

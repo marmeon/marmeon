@@ -1,5 +1,6 @@
 import { Html, interpolate, textFromHtml } from './html.ts';
 import type { MailContent } from './message.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /** MJML markup — what the `mjml` template returns; it compiles to the table layouts and Outlook conditionals mail clients need. */
 export class Mjml extends Html {}
@@ -29,7 +30,7 @@ export async function fromMjml(source: Mjml, options: { text?: string } = {}): P
   try {
     result = await compile(source.toString(), { validationLevel: 'strict', keepComments: false });
   } catch (error) {
-    throw new MjmlError(`The MJML template is invalid: ${error instanceof Error ? error.message.trim() : String(error)}`, { cause: error });
+    throw new MjmlError(withCode('Q7', `The MJML template is invalid: ${error instanceof Error ? error.message.trim() : String(error)}`), { cause: error });
   }
   return { html: result.html, text: options.text ?? textFromHtml(result.html) };
 }
@@ -46,7 +47,7 @@ export async function loadMjml(load: () => Promise<unknown> = () => import('mjml
     compiler = undefined;
     const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
     if ((code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') && typeof message === 'string' && /['"]mjml['"]/.test(message)) {
-      throw new MjmlError(`mjml\`\` needs the mjml package, which is not installed in this app: ${MJML_INSTALL}`, { cause: error });
+      throw new MjmlError(withCode('Q7', `mjml\`\` needs the mjml package, which is not installed in this app: ${MJML_INSTALL}`), { cause: error });
     }
     throw error;
   }

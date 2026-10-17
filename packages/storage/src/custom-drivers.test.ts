@@ -157,6 +157,7 @@ describe('disk drivers of providers', () => {
     await disk.put('a.txt', 'x');
     disk.assertExists('a.txt');
     await expect(boot(disks(), [], { fake: true })).rejects.toThrow(StorageSetupError);
+    await expect(boot(disks(), [], { fake: true })).rejects.toThrow('[marmeon:S2] ');
   });
 
   it('negative: a key the framework refuses never reaches the driver — for every member, both keys of move/copy, and list()', async () => {

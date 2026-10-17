@@ -356,6 +356,19 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | D11 | `database` | There is no connection to the database: it is not configured, its SQLite directory is missing, or it could not be opened. [Configuration](database.md#configuration) |
 | D12 | `database` | A query that the schema resolver cannot rewrite: a soft delete with parts an update cannot keep (`orderBy`, `limit`, a join, an alias, a second table), a relation or count name the query selects already, or a plugin that changed the tables a statement writes. [Module boundaries](queries.md#module-boundaries) |
 | D13 | `database` | A seeder or a module that is not there. [Running seeders](seeding.md#running-seeders) |
+| A1 | `auth` | Passkeys cannot be used: `APP_URL` or the passkey variables name no safe relying party. [Requirements](passkeys.md#requirements) |
+| A2 | `auth` | The hasher is set up with values it refuses, is given a password it will not hash (malformed, over the length limit), or asks for argon2id on a Node without `crypto.argon2`. [Limits](hashing.md#limits) |
+| A3 | `session` | Sessions are not set up: a driver whose package or provider is missing. [Drivers](session.md#drivers) |
+| A4 | `encryption` | A payload did not decrypt: changed, from another key or for another context. [Encrypting and decrypting](encryption.md#encrypting-and-decrypting) |
+| Q4 | `queue` | Queues are not set up: a job class without what it needs, a connection or driver that is missing or breaks its contract, or a retry window a job outgrows. [Connections and drivers](queues.md#connections-and-drivers) |
+| Q5 | `scheduler` | A schedule cannot start: a cron expression, time, time zone or task name that is invalid, a task without a frequency, or a package or provider the scheduler needs missing. [Frequencies](scheduling.md#frequencies) |
+| Q6 | `notifications` | Notifications are not set up: a class without a name, schema or `via()`, a name or channel taken twice, or a package or provider missing. [Defining notifications](notifications.md#defining-notifications) |
+| Q7 | `mail` | An MJML template is invalid, or the `mjml` package is not installed. [Writing mails](mail.md#writing-mails) |
+| S1 | `cache` | The cache is not set up: a driver's package or provider is missing, the driver is unknown, or a custom driver breaks its contract. [Drivers](cache.md#drivers) |
+| S2 | `storage` | Storage is not set up: a disk, its driver, its visibility or its URL is configured wrongly, or the AWS SDK or another package is missing. [Configuration](storage.md#configuration) |
+| S3 | `storage` | A storage key a disk refuses: `..`, an absolute path, a backslash, a control character or a symlink out of the disk's root. [Keys](storage.md#keys) |
+| S4 | `otel` | The OpenTelemetry API is not installed, or is not version 1. [Installation](observability.md#installation) |
+| S5 | `i18n` | A message with a syntax error, such as an unclosed placeholder. [Messages](localization.md#messages) |
 
 ## Errors in the browser
 

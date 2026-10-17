@@ -99,7 +99,7 @@ describe('the queue commands', () => {
     await using application = await app({ env: { DB_QUEUE_RETRY_AFTER: '30' } });
     const { input: run, lines } = input('/tmp');
     expect(await application.container.make(QueueWorkCommand).handle(run)).toBe(1);
-    expect(lines).toEqual([expect.stringMatching(/^✗ The queue connection "database" gives a claimed job 30s \(retryAfter\).*test\.ping \(timeout 60s\)/)]);
+    expect(lines).toEqual([expect.stringMatching(/^✗ \[marmeon:Q4\] The queue connection "database" gives a claimed job 30s \(retryAfter\).*test\.ping \(timeout 60s\)/)]);
   });
 
   it('queue:work without --queue (or with --queue=*) takes every queue, oldest first; --queue only narrows it down', async () => {

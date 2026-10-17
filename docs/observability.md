@@ -152,7 +152,7 @@ framework must read that same copy. Install the SDK as dependencies, not dev dep
 install leaves dev dependencies out. Without the API the start fails, and its message starts with what to install:
 
 ```text
-@marmeon/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry/api@^1.9.0
+[marmeon:S4] @marmeon/otel needs the OpenTelemetry API, which is not installed in this app: pnpm add @opentelemetry/api@^1.9.0
 ```
 
 ### Starting the SDK
