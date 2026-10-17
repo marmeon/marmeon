@@ -111,7 +111,7 @@ const { DatabaseSync } = require('node:sqlite');
 const db = new DatabaseSync('storage/database.sqlite');
 const now = Date.now();
 const payload = JSON.stringify({ v: 1, uuid: crypto.randomUUID(), job: 'smoke.stuck', data: {}, tries: 1, backoff: [], dispatchedAt: now, availableAt: now });
-db.prepare('insert into jobs (queue, payload, attempts, reserved_at, available_at, created_at) values (?, ?, 0, null, ?, ?)').run('default', payload, now, now);
+db.prepare('insert into marmeon_jobs (queue, payload, attempts, reserved_at, available_at, created_at) values (?, ?, 0, null, ?, ?)').run('default', payload, now, now);
 `;
 
 async function main(): Promise<number> {

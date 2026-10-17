@@ -621,7 +621,7 @@ pnpm marmeon migrate
 | --- | --- |
 | `make:cache-table` | `cache`, `cache_locks`, on the cache's connection |
 | `make:session-table` | `sessions`, on the sessions' connection |
-| `make:queue-table` | `jobs`, `failed_jobs`, on the queue's connection |
+| `make:queue-table` | `marmeon_jobs`, `marmeon_failed_jobs`, on the queue's connection |
 | `make:notifications-table` | `notifications`, on the notifications' connection |
 | `make:uploads-table` | `temporary_uploads`, on the uploads' connection |
 
@@ -632,9 +632,9 @@ reads its connection from the configuration when it runs: `CACHE_CONNECTION`, `S
 `NOTIFICATIONS_CONNECTION` and `UPLOADS_CONNECTION`. So its tables land on the
 [connection](database.md#infrastructure-connections) the driver reads and writes.
 
-The queue's migration creates `failed_jobs` next to `jobs`. With `QUEUE_FAILED_CONNECTION` set to another connection, it stops
-with a message instead of creating the table where nothing looks. Split it then: the written migration keeps `jobs` with
-`connection: '<the jobs' connection>'` in place of `queueTablesConnection`, and a migration of its own creates `failed_jobs` with
+The queue's migration creates `marmeon_failed_jobs` next to `marmeon_jobs`. With `QUEUE_FAILED_CONNECTION` set to another connection, it stops
+with a message instead of creating the table where nothing looks. Split it then: the written migration keeps `marmeon_jobs` with
+`connection: '<the jobs' connection>'` in place of `queueTablesConnection`, and a migration of its own creates `marmeon_failed_jobs` with
 the other `connection`, as in [migrations on another connection](#migrations-on-another-connection).
 
 ### Upgrading the framework's tables
@@ -657,6 +657,10 @@ every update; `--check` writes nothing and exits with 1 when a migration is miss
 The command stops with exit code 1, and writes nothing, when your app is ahead of the installed packages (a revision they do
 not know), when a first line names another set, or when a later revision is in your app and an earlier one is not: restore
 the missing one by hand, in front of it.
+
+A migration that renames a table is a change for a stopped app: let the queue run empty, stop every process of the old release (web,
+workers, scheduler, cron jobs, CI jobs that run `marmeon`), run `marmeon migrate`, then start the new release. The queue's tables
+(`jobs`, `failed_jobs`) are renamed that way, to `marmeon_jobs` and `marmeon_failed_jobs`.
 
 A migration it wrote is yours like the first one. Keep the first line: without it, the command takes a changed file for
 revision 1.

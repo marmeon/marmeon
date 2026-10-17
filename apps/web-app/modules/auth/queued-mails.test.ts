@@ -47,16 +47,16 @@ async function realApp(transport: TestTransport): Promise<TestApp> {
 
 const work = (app: TestApp) => app.make(QueueConnections).worker('database', 10).run({ queues: ['*'], stopWhenEmpty: true });
 
-/** Every payload the queue keeps, in `jobs` and `failed_jobs`. */
+/** Every payload the queue keeps, in `marmeon_jobs` and `marmeon_failed_jobs`. */
 async function queuePayloads(app: TestApp): Promise<string> {
   const db = app.make(Connections).get();
-  const jobs = await sql<{ payload: string }>`select payload from jobs`.execute(db);
-  const failed = await sql<{ payload: string; exception: string }>`select payload, exception from failed_jobs`.execute(db);
+  const jobs = await sql<{ payload: string }>`select payload from marmeon_jobs`.execute(db);
+  const failed = await sql<{ payload: string; exception: string }>`select payload, exception from marmeon_failed_jobs`.execute(db);
   return [...jobs.rows.map((row) => row.payload), ...failed.rows.flatMap((row) => [row.payload, row.exception])].join('\n');
 }
 
 describe('the verification mail through the queue', () => {
-  it('a mail server that is down never fails the registration: 303 and the account exists, the mail retries, waits in failed_jobs after its tries, and queue:retry sends it', async () => {
+  it('a mail server that is down never fails the registration: 303 and the account exists, the mail retries, waits in marmeon_failed_jobs after its tries, and queue:retry sends it', async () => {
     const transport = new TestTransport();
     transport.down = true;
     const app = await realApp(transport);
@@ -71,19 +71,19 @@ describe('the verification mail through the queue', () => {
     }
     expect(transport.sent).toEqual([]);
     // The verification mail — and the welcome mail (a job that sends itself) — wait in the failed jobs.
-    const failed = await sql<{ job: string; queue: string }>`select job, queue from failed_jobs order by job`.execute(app.make(Connections).get());
+    const failed = await sql<{ job: string; queue: string }>`select job, queue from marmeon_failed_jobs order by job`.execute(app.make(Connections).get());
     expect(failed.rows.map((row) => [row.job, row.queue])).toEqual([
       ['auth.send-welcome-mail', 'default'],
       ['marmeon.mail', 'mail'],
     ]);
-    expect(await queuePayloads(app)).not.toContain('/email/verify/'); // the signed link: encrypted, also in failed_jobs
+    expect(await queuePayloads(app)).not.toContain('/email/verify/'); // the signed link: encrypted, also in marmeon_failed_jobs
 
     transport.down = false;
     const output = { success: () => {}, error: () => {}, line: () => {}, info: () => {}, warn: () => {}, table: () => {} };
     expect(await app.make(QueueRetryCommand).handle({ args: ['all'], options: {}, output, root: '', spawn: async () => 0 } as never)).toBe(0);
     await work(app);
     expect(transport.sent.map((message) => message.subject).sort()).toEqual(['Confirm your e-mail address', 'Welcome to Marmeon']);
-    await app.assertDatabaseCount('failed_jobs', 0);
+    await app.assertDatabaseCount('marmeon_failed_jobs', 0);
   }, heavyTimeout);
 
   // No clock — a time bound fails on a loaded machine: the mail server never answers — a request that waited for it
@@ -107,9 +107,9 @@ describe('the verification mail through the queue', () => {
         throw new Error('rolled back');
       }),
     ).rejects.toThrow('rolled back');
-    await app.assertDatabaseCount('jobs', 0);
+    await app.assertDatabaseCount('marmeon_jobs', 0);
     await app.make(EventDispatcher).dispatch(new Registered(kj));
-    await app.assertDatabaseHas('jobs', { queue: 'mail' });
+    await app.assertDatabaseHas('marmeon_jobs', { queue: 'mail' });
   });
 
   it('is in the recipient’s language, not the request’s: a German account, an English request', async () => {
@@ -145,7 +145,7 @@ describe('the verification mail through the queue', () => {
 });
 
 describe('the reset link through the queue', () => {
-  it('keeps the plaintext token out of jobs and failed_jobs — it is only in the mail', async () => {
+  it('keeps the plaintext token out of marmeon_jobs and marmeon_failed_jobs — it is only in the mail', async () => {
     const transport = new TestTransport();
     transport.down = true;
     const app = await realApp(transport);
@@ -159,7 +159,7 @@ describe('the reset link through the queue', () => {
       await work(app);
       seen.push(await queuePayloads(app));
     }
-    await app.assertDatabaseCount('failed_jobs', 1);
+    await app.assertDatabaseCount('marmeon_failed_jobs', 1);
     expect(seen.join('\n')).not.toContain('ada@example.com'); // the address: encrypted too
 
     transport.down = false;

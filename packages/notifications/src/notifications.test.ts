@@ -148,14 +148,14 @@ describe.each(drivers)('notifications on %s', (driver) => {
           throw new Error('rollback');
         }),
       ).rejects.toThrow('rollback');
-      const { rows: jobs } = await sql<{ id: number }>`select id from jobs`.execute(connections.get());
+      const { rows: jobs } = await sql<{ id: number }>`select id from marmeon_jobs`.execute(connections.get());
       expect(jobs).toEqual([]);
     });
 
     it('keeps the data out of the jobs table in plain text (encrypted)', async () => {
       const application = await app(driver, { queue: 'database' });
       await application.container.make(Notifications).send(ada, OrderShipped, { orderId: 'o-plain-text-7', carrier: 'secret-carrier' });
-      const { rows: jobs } = await sql<{ payload: string }>`select payload from jobs`.execute(application.connections.get());
+      const { rows: jobs } = await sql<{ payload: string }>`select payload from marmeon_jobs`.execute(application.connections.get());
       expect(jobs).toHaveLength(1);
       expect(jobs[0]!.payload).not.toContain('o-plain-text-7');
       expect(jobs[0]!.payload).not.toContain('secret-carrier');

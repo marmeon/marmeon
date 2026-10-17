@@ -52,7 +52,7 @@ describe('marmeon tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
       `await repos.users.insert({ name: 'Tinker', email: 'tinker@example.com', password: 'x', locale: 'en' }); 'inserted'`,
       // The second input sees the first one's row: the same transaction.
       "`users:${await repos.users.count()}`",
-      'await jobs.dispatch(SendWelcomeMailJob, { userId: 1 }); `jobs:${(await db.selectFrom("jobs").selectAll().execute()).length}`',
+      'await jobs.dispatch(SendWelcomeMailJob, { userId: 1 }); `jobs:${(await db.selectFrom("marmeon_jobs").selectAll().execute()).length}`',
       '.exit',
       '',
     ].join('\n'));
@@ -62,7 +62,7 @@ describe('marmeon tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
     expect(stdout).toContain("'jobs:1'");
     expect(stdout).toContain('ℹ Sandbox: rolled back.');
     expect(count()).toBe(before);
-    expect(marmeon(['tinker', '-e', '(await db.selectFrom("jobs").selectAll().execute()).length'], env).stdout).toBe('0\n');
+    expect(marmeon(['tinker', '-e', '(await db.selectFrom("marmeon_jobs").selectAll().execute()).length'], env).stdout).toBe('0\n');
   });
 
   it('rolls the sandbox back on SIGINT', async () => {

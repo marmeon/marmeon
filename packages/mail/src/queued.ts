@@ -51,8 +51,8 @@ export const queuedMailSchema = v.object({ mailable: v.string(), message });
 
 /**
  * The framework job behind `mailer.queue(mail)`: hands the message composed where it was queued to the transport.
- * **Encrypted** (APP_KEY): a queued mail carries what only its recipient may see, such as a reset link, so `jobs` and
- * `failed_jobs` keep only ciphertext. Delivery is at-least-once. See `docs/mail.md#sending-mails`.
+ * **Encrypted** (APP_KEY): a queued mail carries what only its recipient may see, such as a reset link, so `marmeon_jobs` and
+ * `marmeon_failed_jobs` keep only ciphertext. Delivery is at-least-once. See `docs/mail.md#sending-mails`.
  */
 export class SendQueuedMail {
   static readonly job = 'marmeon.mail';

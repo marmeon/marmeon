@@ -18,8 +18,13 @@ declare module '@marmeon/database' {
       owner: string;
       expiration: number;
     };
+    /** Owned by `user-profile`. */
+    login_activity: {
+      user_id: number;
+      last_login_at: Timestamp;
+    };
     /** Owned by `system`. */
-    failed_jobs: {
+    marmeon_failed_jobs: {
       uuid: string;
       connection: string;
       queue: string;
@@ -29,7 +34,7 @@ declare module '@marmeon/database' {
       failed_at: number;
     };
     /** Owned by `system`. */
-    jobs: {
+    marmeon_jobs: {
       id: Generated<number>;
       queue: string;
       payload: string;
@@ -37,11 +42,6 @@ declare module '@marmeon/database' {
       reserved_at: number | null;
       available_at: number;
       created_at: number;
-    };
-    /** Owned by `user-profile`. */
-    login_activity: {
-      user_id: number;
-      last_login_at: Timestamp;
     };
     /** Owned by `system`. */
     notifications: {
@@ -228,9 +228,9 @@ declare module '@marmeon/database' {
   interface TableOwners {
     cache: 'system';
     cache_locks: 'system';
-    failed_jobs: 'system';
-    jobs: 'system';
     login_activity: 'user-profile';
+    marmeon_failed_jobs: 'system';
+    marmeon_jobs: 'system';
     notifications: 'system';
     passkeys: 'auth';
     password_reset_tokens: 'auth';

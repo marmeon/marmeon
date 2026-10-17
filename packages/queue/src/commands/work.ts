@@ -54,6 +54,11 @@ export class QueueWorkCommand {
       return 1;
     }
     const { connection, stopTimeout, queues, worker, sleep, maxJobs, maxTime } = setup;
+    const unmigrated = await this.#connections.unmigratedTables(connection);
+    if (unmigrated) {
+      output.error(unmigrated);
+      return 1;
+    }
 
     const stop = new AbortController();
     const onSignal = (signal: NodeJS.Signals) => {

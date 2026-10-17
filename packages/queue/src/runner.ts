@@ -206,7 +206,7 @@ export class JobRunner {
   /**
    * An attempt that cannot run — no class for its name (`unknown`), a payload that is not its job's (`poison`): `then` (the
    * worker's release or failure, with its log line) runs in the job's log context and, while something listens, as an attempt
-   * on the `queue.job` channel that ends with `error` — so the devtools show it like any failed attempt, not only `failed_jobs`.
+   * on the `queue.job` channel that ends with `error` — so the devtools show it like any failed attempt, not only `marmeon_failed_jobs`.
    */
   async unrunnable<T>(record: JobRecord, attempt: { readonly attempt: number; readonly queue: string; readonly connection: string }, error: Error, then: () => Promise<T>): Promise<T> {
     const info = { job: record.job, jobId: record.uuid, attempt: attempt.attempt, ...(record.requestId === undefined ? {} : { requestId: record.requestId }) };

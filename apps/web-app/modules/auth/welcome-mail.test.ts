@@ -52,15 +52,15 @@ describe('the welcome mail', () => {
   it('goes through the jobs table with the real database queue, and a worker sends it', async () => {
     const app = await createTestApp(application, { database: 'refresh', queue: 'real' });
     await register(app).assertRedirect('/register/sent');
-    await app.assertDatabaseHas('jobs', { queue: 'default', attempts: 0 });
+    await app.assertDatabaseHas('marmeon_jobs', { queue: 'default', attempts: 0 });
     const db = app.make(Connections).get();
-    const { rows } = await sql<{ payload: string }>`select payload from jobs where queue = 'default' order by id`.execute(db);
+    const { rows } = await sql<{ payload: string }>`select payload from marmeon_jobs where queue = 'default' order by id`.execute(db);
     expect(JSON.parse(rows[0]!.payload)).toMatchObject({ job: 'auth.send-welcome-mail', data: { userId: expect.any(Number) }, tries: 5, backoff: [10, 60, 300] });
 
     const result = await app.make(QueueConnections).worker('database', 10).run({ queues: ['*'], stopWhenEmpty: true });
     expect(result).toMatchObject({ processed: 3, failed: 0 }); // + the member numbers, the verification listener on the `mail` queue
     app.mail.assertSent(WelcomeMail, (_mail, message) => message.subject === 'Welcome to Marmeon');
-    await app.assertDatabaseCount('jobs', 0);
+    await app.assertDatabaseCount('marmeon_jobs', 0);
   });
 
   it('is part of the registration transaction: a failing listener leaves no account, no job, no mail', async () => {
@@ -71,7 +71,7 @@ describe('the welcome mail', () => {
     });
     await register(app).assertStatus(500);
     await app.assertDatabaseMissing('users', { email: 'kj@example.com' });
-    await app.assertDatabaseCount('jobs', 0);
+    await app.assertDatabaseCount('marmeon_jobs', 0);
     app.mail.assertNotSent(VerifyEmailMail);
 
     // Without the failing listener: the account, its welcome job and — after the commit — the verification mail.
@@ -80,8 +80,8 @@ describe('the welcome mail', () => {
     await register(ok).assertRedirect('/register/sent');
     await ok.assertDatabaseHas('users', { email: 'kj@example.com' });
     // The welcome and member-stats jobs and the verification listener — all three in the transaction.
-    await ok.assertDatabaseCount('jobs', 3);
-    await ok.assertDatabaseHas('jobs', { queue: 'mail' });
+    await ok.assertDatabaseCount('marmeon_jobs', 3);
+    await ok.assertDatabaseHas('marmeon_jobs', { queue: 'mail' });
     ok.mail.assertNotQueued(VerifyEmailMail); // composed by the worker
     await ok.make(QueueConnections).worker('database', 10).run({ queues: ['mail'], stopWhenEmpty: true });
     ok.mail.assertQueued(VerifyEmailMail);

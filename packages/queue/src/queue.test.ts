@@ -293,12 +293,12 @@ describe('dispatching', () => {
     expect(await queue.size()).toBe(0);
   });
 
-  it('encrypts the payload of a static encrypted job — no plaintext in jobs or failed_jobs', async () => {
+  it('encrypts the payload of a static encrypted job — no plaintext in marmeon_jobs or marmeon_failed_jobs', async () => {
     await using application = await app();
     const queue = application.container.make(Queue);
     await queue.dispatch(ResetLinkJob, { email: 'ada@example.com', token: 'plain-secret-token' });
     const db = application.container.make(Connections).get();
-    const { rows } = await sql<{ payload: string }>`select payload from jobs`.execute(db);
+    const { rows } = await sql<{ payload: string }>`select payload from marmeon_jobs`.execute(db);
     expect(rows[0]!.payload).not.toContain('plain-secret-token');
     expect(rows[0]!.payload).not.toContain('ada@example.com');
     expect(JSON.parse(rows[0]!.payload)).toMatchObject({ job: 'test.reset-link', encrypted: true });
@@ -738,7 +738,7 @@ describe('the version of the job record', () => {
     await using application = await app();
     const queue = application.container.make(Queue);
     await queue.chain([[WelcomeJob, { userId: 1 }], [WelcomeJob, { userId: 2 }]]);
-    const rows = (await sql<{ payload: string }>`select payload from jobs`.execute(application.container.make(Connections).get())).rows;
+    const rows = (await sql<{ payload: string }>`select payload from marmeon_jobs`.execute(application.container.make(Connections).get())).rows;
     const record = JSON.parse(rows[0]!.payload);
     expect([record.v, record.chain[0].v]).toEqual([1, 1]);
   });
@@ -930,7 +930,7 @@ describe('the version of the job record', () => {
     const now = application.clock.now();
     await queue.dispatch(WelcomeJob, { userId: 1 }, { delay: 7200 });
     await queue.chain([[WelcomeJob, { userId: 2 }], [WelcomeJob, { userId: 3 }]]);
-    const { rows } = await sql<{ payload: string }>`select payload from jobs order by id`.execute(application.container.make(Connections).get());
+    const { rows } = await sql<{ payload: string }>`select payload from marmeon_jobs order by id`.execute(application.container.make(Connections).get());
     expect(rows.map((row) => JSON.parse(row.payload).availableAt)).toEqual([now + 7_200_000, now]);
     const head = parseRecord(rows[1]!.payload) as { record: JobRecord };
     expect(JSON.parse(nextInChain(head.record, now + 5)!)).toMatchObject({ job: 'test.welcome', data: { userId: 3 }, availableAt: now + 5 });

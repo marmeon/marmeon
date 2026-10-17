@@ -8,16 +8,19 @@ import { parseRecord } from '../runner.ts';
 /** The migration `make:queue-table` copies — a real file, so the driver tests run exactly what apps get. */
 export const QUEUE_MIGRATION = new URL('../../stubs/migrations/create_jobs_table.ts', import.meta.url);
 
-/** `marmeon make:queue-table [--module=system]`: the migration of `jobs` and `failed_jobs` into an app module. */
+/** The migration `make:upgrade-migrations` writes for apps whose tables still have the old names. */
+export const RENAME_MIGRATION = new URL('../../stubs/migrations/rename_queue_tables_to_marmeon.ts', import.meta.url);
+
+/** `marmeon make:queue-table [--module=system]`: the migration of `marmeon_jobs` and `marmeon_failed_jobs` into an app module. */
 export class MakeQueueTableCommand {
   static command = 'make:queue-table';
-  static description = 'Create the migration for the database queue (jobs, failed_jobs)';
+  static description = 'Create the migration for the database queue (marmeon_jobs, marmeon_failed_jobs)';
   static usage = '[--module=system]';
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
     const { publishMigration } = await import('@marmeon/database/internal');
-    return publishMigration(input, { name: 'create_jobs_table', table: 'jobs', contents: readFileSync(QUEUE_MIGRATION, 'utf8') });
+    return publishMigration(input, { name: 'create_jobs_table', table: 'marmeon_jobs', contents: readFileSync(QUEUE_MIGRATION, 'utf8') });
   }
 }
 
