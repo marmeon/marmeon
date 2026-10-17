@@ -145,9 +145,24 @@ schema.raw({ sqlite: sql`…`, pgsql: sql`…` }); // one statement per driver; 
 ```
 
 A statement that names one of the migrator's tables stops with error D4 when the plan is built; that is a check of its words, not a
-parse. Otherwise Marmeon does not look into the statement. A table or column it creates is not entered in the migrator's [books](#how-the-migrator-keeps-track),
-so it has no owner, no secret mark and no timestamp or soft-delete marker. Use `schema.alter()` and `schema.rename()` for
-everything they can do.
+parse. Otherwise Marmeon does not look into the statement. A table, view, column or index it creates has no owner, no secret mark
+and no timestamp or soft-delete marker, and Marmeon's picture of the schema (below) does not contain it. Use the blueprint, with
+`schema.create()`, `schema.alter()` and `schema.rename()`, for everything it can do: only what it describes is known. Changing a table or
+column that raw SQL made with `schema.alter()` or `schema.rename()` stops with error D19, because Marmeon would not know the change.
+
+### What the migrations describe
+
+`Migrator.projection()` computes the schema the migrations describe from their plans alone, without a database and without running
+anything: every table with its columns in order, their types, nullability, defaults and secret marks, its unique column sets, indexes
+and foreign keys (with `onDelete` and `inverse`), its `timestamps()` and `softDeletes()` marks and the module that created it. It
+replays the migrations in the order of their names, and applies the steps of each as `migrate` runs them: in an `alter`, dropped indexes first, then renamed columns, new columns, `notNull()`
+and `nullable()` changes (by the column's name after the renames), new indexes and last the dropped columns. `schema.raw()` and
+`schema.data()` steps change nothing in it. `migrate` computes it before it runs the first pending migration, so a plan it cannot hold stops the run
+at once. Error D19 stops a table name that two migrations create without a `drop` between them, a column added twice, and a change of a table or column
+no migration created with the blueprint (`alter`, `rename`, `renameColumn()`, `notNull()`, `nullable()`, or an index on it); dropping such a table is allowed.
+
+Tables that nothing in the migrations creates, such as a table another tool made in the same database or one that raw SQL made, are not
+in it, and neither are their columns. Create a table with `schema.create()` when Marmeon is to know it.
 
 ## Running migrations
 

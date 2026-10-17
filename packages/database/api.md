@@ -479,6 +479,7 @@ export declare class Migrator {
     fresh(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
     dropAllTables(): Promise<string[]>;
     connections(): Promise<string[]>;
+    projection(): Promise<SchemaProjection>;
     owners(): Promise<Map<string, string>>;
     secrets(): Promise<Map<string, Set<string>>>;
     markers(): Promise<SchemaMarker[]>;
@@ -543,6 +544,40 @@ export interface PostgresConnection {
     readonly poolMax?: number | undefined;
     readonly infrastructurePoolMax?: number | undefined;
     readonly managed?: boolean | undefined;
+}
+// ProjectedColumn
+export interface ProjectedColumn {
+    readonly name: string;
+    readonly type: Readonly<Record<Driver, string>>;
+    readonly nullable: boolean;
+    readonly primary: boolean;
+    readonly identity: boolean;
+    readonly default: 'value' | 'now' | 'uuidv7' | null;
+    readonly secret: boolean;
+}
+// ProjectedForeignKey
+export interface ProjectedForeignKey {
+    readonly column: string;
+    readonly references: string;
+    readonly referenced: string;
+    readonly onDelete?: 'cascade' | 'set null' | 'restrict' | 'no action';
+    readonly inverse?: string;
+}
+// ProjectedIndex
+export interface ProjectedIndex {
+    readonly name: string;
+    readonly columns: readonly string[];
+    readonly unique: boolean;
+}
+// ProjectedTable
+export interface ProjectedTable {
+    readonly name: string;
+    readonly module: string;
+    readonly columns: readonly ProjectedColumn[];
+    readonly uniques: readonly (readonly string[])[];
+    readonly indexes: readonly ProjectedIndex[];
+    readonly foreignKeys: readonly ProjectedForeignKey[];
+    readonly markers: readonly TableMarker[];
 }
 // QueryEvent
 export interface QueryEvent {
@@ -669,6 +704,14 @@ export interface SchemaMarker {
     readonly column: string;
     readonly marker: 'inverse' | 'soft_deletes' | 'timestamps';
     readonly value: string | null;
+}
+// SchemaProjection
+export interface SchemaProjection {
+    readonly migrations: readonly {
+        readonly name: string;
+        readonly module: string;
+    }[];
+    readonly tables: ReadonlyMap<string, ProjectedTable>;
 }
 // Secret
 export type Secret<T> = ColumnType<never, T, T>;

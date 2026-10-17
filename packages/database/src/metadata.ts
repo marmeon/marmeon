@@ -206,7 +206,7 @@ export class SchemaMetadata {
   }
 }
 
-function kindOf(type: string): ColumnKind {
+export function kindOf(type: string): ColumnKind {
   const decimal = /^(?:numeric|decimal)\(\s*\d+\s*,\s*(\d+)\s*\)$/.exec(type);
   if (decimal) return { decimal: Number(decimal[1]) };
   if (type === 'boolean' || type === 'bool') return 'boolean';

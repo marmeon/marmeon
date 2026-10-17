@@ -1,6 +1,6 @@
 import { readdirSync, existsSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { Application } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
@@ -10,8 +10,10 @@ import { Connections } from '../connections.ts';
 import { danglingEntries, LOCK_TABLE, MARKERS_TABLE, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE, VERSIONS_TABLE } from '../bookkeeping.ts';
 import { byCodePoint, type SchemaMarker } from '../introspection.ts';
 import { executePlan, planOf, type PlanStep, type SchemaRecorder } from '../schema/plan.ts';
+import { MARKER_COLUMNS, projectMigrations, type SchemaProjection } from '../schema/projection.ts';
 import { SchemaError } from '../schema/schema.ts';
 import { dropAllTables } from './drop-all.ts';
+import { loadMigration } from './load.ts';
 import { MigrationLock, type HeldLock, type LockOptions } from './lock.ts';
 import type { Migration } from './migration.ts';
 
@@ -53,9 +55,6 @@ interface Bookkeeping {
   marmeon_secret_columns: { table_name: string; column_name: string };
   marmeon_schema_markers: { table_name: string; column_name: string; marker: string; value: string | null };
 }
-
-/** The columns a table-level marker stands for: dropping or renaming one of them takes the marker with it. */
-const MARKER_COLUMNS: Readonly<Record<string, SchemaMarker['marker']>> = { deleted_at: 'soft_deletes', created_at: 'timestamps', updated_at: 'timestamps' };
 
 /**
  * Runs the migrations of every module in batches, ordered by their timestamp, and records which module's
@@ -180,13 +179,15 @@ export class Migrator {
     const ran = new Set((await this.#ran()).map((row) => row.name));
     const pending = this.files().filter((file) => !ran.has(file.name));
     if (pending.length === 0) return [];
+    // A plan the projection cannot hold (a change of a table raw SQL made) stops the run before the first migration.
+    await this.projection();
 
     const batch = (await this.#lastBatch()) + 1;
     const runs: MigrationRun[] = [];
     // Every plan is made before the first migration runs: one that cannot build its plan leaves the whole run undone.
     const plans = [];
     for (const file of pending) {
-      const migration = await load(file);
+      const migration = await loadMigration(file);
       plans.push({ file, connection: this.#connectionOf(migration, file), plan: planOf(migration, 'up', `Migration ${file.name} (module "${file.module}")`) });
     }
     for (const { file, connection, plan } of plans) {
@@ -269,8 +270,16 @@ export class Migrator {
   /** `default`, and every other connection a migration runs on. */
   async connections(): Promise<string[]> {
     const names = new Set(['default']);
-    for (const file of this.files()) names.add(this.#connectionOf(await load(file), file));
+    for (const file of this.files()) names.add(this.#connectionOf(await loadMigration(file), file));
     return [...names];
+  }
+
+  /**
+   * The schema the migrations describe, computed from their plans without a database: every table with its columns, keys and marks, as
+   * the migrations of all modules leave it. Raw SQL is not looked into: what it makes is unknown. See `docs/migrations.md#what-the-migrations-describe`.
+   */
+  async projection(): Promise<SchemaProjection> {
+    return projectMigrations(this.files());
   }
 
   /** Table name → owning module, from the migrations that created them. */
@@ -309,7 +318,7 @@ export class Migrator {
       await this.#held?.heartbeat();
       const file = files.get(row.name);
       if (!file) throw new Error(withCode('D16', `Cannot roll back "${row.name}" (module "${row.module}"): its file is gone.`));
-      const migration = await load(file);
+      const migration = await loadMigration(file);
       if (!migration.down) throw new Error(withCode('D16', `Cannot roll back "${row.name}" (module "${row.module}"): it has no down().`));
       const connection = this.#connectionOf(migration, file);
       const plan = planOf(migration, 'down', `Migration ${row.name} (module "${row.module}")`);
@@ -462,12 +471,4 @@ export class Migrator {
   #driver(connection = 'default') {
     return this.#connections.options(connection).driver;
   }
-}
-
-async function load(file: MigrationFile): Promise<Migration> {
-  const module = (await import(pathToFileURL(file.path).href)) as { default?: Partial<Migration> };
-  if (typeof module.default?.up !== 'function') {
-    throw new Error(withCode('D14', `Migration ${file.name} (module "${file.module}") must \`export default defineMigration({ up, down })\`.`));
-  }
-  return module.default as Migration;
 }
