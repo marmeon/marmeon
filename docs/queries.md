@@ -36,7 +36,7 @@ lines.
 
 Only what the blueprint made is in the file. A table or column that raw SQL (`schema.raw()`) makes is not: Marmeon does not read SQL,
 so it has no type, no secret column and no marks. Create it with `schema.create()`, or type it in your code with Kysely's
-`withTables<…>()` on the app's `Database`. A migration that changes such a table with the blueprint (`schema.alter()` on a table `schema.raw()` made) stops
+`withTables<…>()` on the app's `Database` or, read-only, on a module's (see [Module boundaries](#module-boundaries)). A migration that changes such a table with the blueprint (`schema.alter()` on a table `schema.raw()` made) stops
 `db:types` with an error naming the migration.
 
 `marmeon migrate` and `migrate:fresh` write the file for you when migrations ran, in development only. In production, staging and
@@ -506,6 +506,20 @@ expression), schema included. A query without such a plugin pays a lookup; one w
 `schema`, `introspection` or `with()`, and no `sql` template executed against it (``sql`…`.execute(db)``) — use `Database` where a
 module needs those. A method the query builder gains later is not offered to modules until the framework has classified it. A module that exposes a table another
 module's migration created, or that no migration created, stops `db:types` with an error that says so.
+
+A module can type a table Marmeon does not know — made with `schema.raw()` or by another tool — with `withTables<…>()`. The table is
+readable and joinable with the module's own and exposed tables, and never writable: `insertInto`, `updateTable` and `deleteFrom` on it are compile errors.
+
+```ts
+const orders = this.db.withTables<{ legacy_orders: { id: number; user_id: number; total: string } }>();
+const rows = await orders.selectFrom('legacy_orders').innerJoin('users', 'users.id', 'legacy_orders.user_id').select(['users.name', 'legacy_orders.total']).execute();
+```
+
+A name the schema knows cannot be declared this way, neither another module's table that is not exposed nor your own: that would reach
+past the boundary, and `withTables<{ audit_log: … }>()` is a compile error. Like the rest of the boundary it is a type only; at runtime `withTables` returns the
+same connection. Names with a schema (`reporting.orders`) or an alias cannot be declared this way either.
+Marmeon knows no secret column of these tables, so their columns pass the guard unchecked; they have no soft deletes or
+timestamps, and `selectAll()` stays `*`.
 
 A repository sees every table: `Repository<'profile_links'>` is typed with all of `Tables`. To give it the module's view, pass
 `ModuleTables` as its second type argument. Its queries then see only the module's own tables and the exposed ones, `with()`

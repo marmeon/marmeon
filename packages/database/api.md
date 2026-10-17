@@ -485,16 +485,19 @@ export declare class Migrator {
     markers(): Promise<SchemaMarker[]>;
 }
 // ModuleDatabase
-export type ModuleDatabase<All, Owners, Exposed, M extends string> = Pick<Kysely<ModuleTables<All, Owners, Exposed, M>>, ReadMethods> & {
-    insertInto<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): InsertQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, InsertResult>;
-    updateTable<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): UpdateQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, T, UpdateResult>;
-    deleteFrom<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): DeleteQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, DeleteResult>;
+export type ModuleDatabase<All, Owners, Exposed, M extends string, Foreign = {}> = Pick<Kysely<ModuleTables<All, Owners, Exposed, M, Foreign>>, ReadMethods> & {
+    insertInto<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): InsertQueryBuilder<ModuleTables<All, Owners, Exposed, M, Foreign>, T, InsertResult>;
+    updateTable<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): UpdateQueryBuilder<ModuleTables<All, Owners, Exposed, M, Foreign>, T, T, UpdateResult>;
+    deleteFrom<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): DeleteQueryBuilder<ModuleTables<All, Owners, Exposed, M, Foreign>, T, DeleteResult>;
     transaction(): {
-        execute<R>(callback: (trx: ModuleDatabase<All, Owners, Exposed, M>) => Promise<R>): Promise<R>;
+        execute<R>(callback: (trx: ModuleDatabase<All, Owners, Exposed, M, Foreign>) => Promise<R>): Promise<R>;
     };
+    withTables<T extends Record<string, Record<string, unknown>> & {
+        [K in keyof T]: UnknownName<All, K>;
+    }>(...unnamed: DeclaredTables<T>): ModuleDatabase<All, Owners, Exposed, M, Foreign & T>;
 };
 // ModuleTables
-export type ModuleTables<All, Owners, Exposed, M extends string> = OwnedTables<All, Owners, M> & ExposedToOthers<All, Owners, Exposed, M>;
+export type ModuleTables<All, Owners, Exposed, M extends string, Foreign = {}> = OwnedTables<All, Owners, M> & ExposedToOthers<All, Owners, Exposed, M> & ForeignTables<Foreign>;
 // Modules
 export interface Modules {
 }
@@ -898,11 +901,17 @@ export interface DataContext {
 }
 // DataTypeExpression
 type DataTypeExpression = Parameters<CreateTableBuilder<string, never>['addColumn']>[1];
+// DeclaredTables
+type DeclaredTables<T> = 0 extends 1 & T ? [never] : [T] extends [never] ? [never] : [];
 // Driver
 export type Driver = 'sqlite' | 'pgsql';
 // ExposedToOthers
 export type ExposedToOthers<All, Owners, Exposed, M extends string> = {
     [T in keyof All as T extends keyof Exposed ? (T extends keyof Owners ? (Owners[T] extends M ? never : T) : never) : never]: ReadOnlyTable<All[T]>;
+};
+// ForeignTables
+export type ForeignTables<Foreign> = 0 extends 1 & Foreign ? {} : [Foreign] extends [never] ? {} : {
+    [T in keyof Foreign]: ReadOnlyTable<Foreign[T]>;
 };
 // IndexSpec
 type IndexSpec = {
@@ -1003,6 +1012,8 @@ type TargetKey<DB, R> = R extends {
 type TargetOf<DB, TB, N> = RelationOf<TB, N> extends {
     readonly table: infer R extends keyof DB;
 } ? R : never;
+// UnknownName
+type UnknownName<All, K> = K extends string ? {} extends Record<K, 1> ? never : K extends `${string}.${string}` | `${string} as ${string}` ? never : [Extract<Lowercase<keyof All & string>, Lowercase<K>>] extends [never] ? unknown : never : never;
 // WithResult
 type WithResult<DB, TB extends keyof DB, N, O> = Shaped<RelationOf<TB, N>, Loaded<DB, TargetOf<DB, TB, N>, O>>;
 // Writes

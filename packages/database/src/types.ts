@@ -64,7 +64,25 @@ export type OwnedTables<All, Owners, M extends string> = {
 export type ExposedToOthers<All, Owners, Exposed, M extends string> = {
   [T in keyof All as T extends keyof Exposed ? (T extends keyof Owners ? (Owners[T] extends M ? never : T) : never) : never]: ReadOnlyTable<All[T]>;
 };
-export type ModuleTables<All, Owners, Exposed, M extends string> = OwnedTables<All, Owners, M> & ExposedToOthers<All, Owners, Exposed, M>;
+/**
+ * `unknown` for a table name `withTables` may declare, `never` for one it may not: a name that is not one literal (an index signature,
+ * a template pattern), is qualified (`schema.table`) or aliased (`table as t`) — the query builder would read those as another table —
+ * or equals a known table in any letter case (SQLite matches names without regard to case).
+ */
+type UnknownName<All, K> = K extends string
+  ? {} extends Record<K, 1> ? never
+    : K extends `${string}.${string}` | `${string} as ${string}` ? never
+    : [Extract<Lowercase<keyof All & string>, Lowercase<K>>] extends [never] ? unknown : never
+  : never;
+
+/** The arguments `withTables` takes: none — and, for `never` and `any`, which would name every table, one that cannot be given. */
+type DeclaredTables<T> = 0 extends 1 & T ? [never] : [T] extends [never] ? [never] : [];
+
+/** Tables Marmeon does not know, declared with `withTables<…>()` on a module's database — readable, never writable. */
+export type ForeignTables<Foreign> = 0 extends 1 & Foreign ? {} : [Foreign] extends [never] ? {} : { [T in keyof Foreign]: ReadOnlyTable<Foreign[T]> };
+export type ModuleTables<All, Owners, Exposed, M extends string, Foreign = {}> = OwnedTables<All, Owners, M> &
+  ExposedToOthers<All, Owners, Exposed, M> &
+  ForeignTables<Foreign>;
 
 /**
  * What a module may call on its database besides the writes below: building reads and expressions. Every method of Kysely's
@@ -75,8 +93,8 @@ export const READ_METHODS = ['selectFrom', 'selectNoFrom', 'fn', 'case', 'dynami
 
 /**
  * What a module does not get as Kysely has it: statements that write (given back for own tables only: `insertInto`, `updateTable`,
- * `deleteFrom`, `transaction`), DDL (`schema`), another module's tables by name (`introspection` lists the ones not exposed), raw execution (`executeQuery`, `getExecutor` — `sql\`…\`.execute(db)` would run
- * against any table), anything that changes the connection (`destroy`, plugins, schema, tables), and `$extendTables`,
+ * `deleteFrom`, `transaction`; `withTables` is given back typed for reading only), DDL (`schema`), another module's tables by name (`introspection` lists the ones not exposed), raw execution (`executeQuery`, `getExecutor` — `sql\`…\`.execute(db)` would run
+ * against any table), anything that changes the connection (`destroy`, plugins, schema), and `$extendTables`,
  * `$omitTables`, `$pickTables`, which hand back a plain `Kysely` without the module's own `insertInto`.
  */
 export const WRITE_METHODS = [
@@ -92,9 +110,15 @@ type ReadMethods = (typeof READ_METHODS)[number];
  * for reading and joins. Writes take only an own table as target — insert, update and delete
  * (restricting the columns alone would not stop `insert` or `delete`).
  */
-export type ModuleDatabase<All, Owners, Exposed, M extends string> = Pick<Kysely<ModuleTables<All, Owners, Exposed, M>>, ReadMethods> & {
-  insertInto<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): InsertQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, InsertResult>;
-  updateTable<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): UpdateQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, T, UpdateResult>;
-  deleteFrom<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): DeleteQueryBuilder<ModuleTables<All, Owners, Exposed, M>, T, DeleteResult>;
-  transaction(): { execute<R>(callback: (trx: ModuleDatabase<All, Owners, Exposed, M>) => Promise<R>): Promise<R> };
+export type ModuleDatabase<All, Owners, Exposed, M extends string, Foreign = {}> = Pick<Kysely<ModuleTables<All, Owners, Exposed, M, Foreign>>, ReadMethods> & {
+  insertInto<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): InsertQueryBuilder<ModuleTables<All, Owners, Exposed, M, Foreign>, T, InsertResult>;
+  updateTable<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): UpdateQueryBuilder<ModuleTables<All, Owners, Exposed, M, Foreign>, T, T, UpdateResult>;
+  deleteFrom<T extends keyof OwnedTables<All, Owners, M> & string>(table: T): DeleteQueryBuilder<ModuleTables<All, Owners, Exposed, M, Foreign>, T, DeleteResult>;
+  transaction(): { execute<R>(callback: (trx: ModuleDatabase<All, Owners, Exposed, M, Foreign>) => Promise<R>): Promise<R> };
+  /**
+   * Types tables Marmeon does not know (made with `schema.raw()` or by another tool) for reading and joins: `db.withTables<{ legacy_orders: { id: number } }>()`.
+   * Never for writing, and never under the name of a table the schema knows — that would reach another module's table that is not exposed.
+   * At runtime it returns the same connection. See `docs/queries.md#module-boundaries`.
+   */
+  withTables<T extends Record<string, Record<string, unknown>> & { [K in keyof T]: UnknownName<All, K> }>(...unnamed: DeclaredTables<T>): ModuleDatabase<All, Owners, Exposed, M, Foreign & T>;
 };

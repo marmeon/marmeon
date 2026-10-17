@@ -71,6 +71,8 @@ describe('the builder a module gets', () => {
     void blog.replaceInto('users');
     // @ts-expect-error — not a write the boundaries know
     void blog.mergeInto('users');
+    // @ts-expect-error — an own table cannot be declared again with `withTables`
+    void blog.withTables<{ other: { id: number }; posts: { id: number } }>();
     // @ts-expect-error — `sql\`…\`.execute(db)` must not compile either
     void sql`select 1`.execute(blog);
   }));

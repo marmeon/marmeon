@@ -143,6 +143,56 @@ it('enforces module boundaries', () => void (async () => {
   await auth.selectFrom('login_activity').selectAll().execute();
 }));
 
+it('types tables Marmeon does not know on a module database, for reading only', () => void (async () => {
+  const legacy = profile.withTables<{ legacy_orders: { id: number; user_id: number; total: string } }>();
+  const rows = await legacy
+    .selectFrom('legacy_orders')
+    .innerJoin('login_activity', 'login_activity.user_id', 'legacy_orders.user_id')
+    .select(['legacy_orders.total', 'login_activity.last_login_at'])
+    .execute();
+  expectTypeOf(rows).toEqualTypeOf<{ total: string; last_login_at: string }[]>();
+  await legacy.insertInto('login_activity').values({ user_id: 1, last_login_at: new Date() }).execute();
+  await legacy.withTables<{ other: { id: number }; reports: { id: number } }>().selectFrom('legacy_orders').select('id').execute();
+  await legacy.transaction().execute((trx) => trx.selectFrom('legacy_orders').selectAll().execute());
+
+  // @ts-expect-error — not writable: insert…
+  await legacy.insertInto('legacy_orders').values({ id: 1, user_id: 1, total: '1' }).execute();
+  // @ts-expect-error — …update…
+  await legacy.updateTable('legacy_orders').set({ total: '2' }).execute();
+  // @ts-expect-error — …delete…
+  await legacy.deleteFrom('legacy_orders').execute();
+  // @ts-expect-error — …not inside a transaction either
+  await legacy.transaction().execute((trx) => trx.deleteFrom('legacy_orders').execute());
+  // @ts-expect-error — the table is not there before it is declared
+  await profile.selectFrom('legacy_orders').selectAll().execute();
+  // @ts-expect-error — a table the schema knows cannot be declared again: audit_log is another module's and not exposed
+  profile.withTables<{ audit_log: { id: number; message: string } }>();
+  // @ts-expect-error — nor the exposed one, to write it
+  profile.withTables<{ users: { id: number } }>();
+  // @ts-expect-error — nor an own table, whose columns would be redeclared
+  profile.withTables<{ login_activity: { user_id: number } }>();
+  // @ts-expect-error — declared on top of another declaration, the known names stay closed
+  legacy.withTables<{ audit_log: { id: number } }>();
+  // @ts-expect-error — an index signature is every name, the known ones too
+  profile.withTables<Record<string, { id: number; message: string }>>();
+  // @ts-expect-error — so is a pattern of names
+  profile.withTables<{ [name: `${string}_log`]: { id: number; message: string } }>();
+  // @ts-expect-error — a schema-qualified name is read as the table behind it
+  profile.withTables<{ 'main.audit_log': { id: number; message: string } }>();
+  // @ts-expect-error — so is an aliased one
+  profile.withTables<{ 'audit_log as a': { id: number; message: string } }>();
+  // @ts-expect-error — SQLite matches table names without regard to case
+  profile.withTables<{ AUDIT_LOG: { id: number; message: string } }>();
+  // @ts-expect-error — a pattern of names is not one table
+  profile.withTables<{ [name: `legacy_${string}`]: { id: number } }>();
+  // @ts-expect-error — `never` names no table
+  profile.withTables<never>();
+  // @ts-expect-error — `any` names every table
+  profile.withTables<any>();
+  // @ts-expect-error — a table is an object of columns
+  profile.withTables<{ legacy_orders: number }>();
+}));
+
 class Users extends Repository<'users', FixtureTables> {
   static table = 'users' as const;
 }
