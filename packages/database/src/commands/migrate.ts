@@ -170,9 +170,12 @@ export class MigrateFreshCommand {
   }
 }
 
+/** Lists every migration with its batch or `Pending`; `--json` prints the document described in docs/migrations.md#status. */
 export class MigrateStatusCommand {
   static command = 'migrate:status';
   static description = 'Show which migrations have run';
+  static usage = '[--json]';
+  static options = { json: { type: 'boolean' } } as const;
 
   readonly #migrator: Migrator;
 
@@ -180,15 +183,26 @@ export class MigrateStatusCommand {
     this.#migrator = migrator;
   }
 
-  async handle({ output }: CommandInput): Promise<number> {
-    const status = await this.#migrator.status();
-    if (status.length === 0) {
+  async handle({ options, output }: CommandInput): Promise<number> {
+    const migrations = (await this.#migrator.status()).map((m) => ({
+      name: m.name,
+      module: m.module,
+      batch: m.batch ?? null,
+      status: m.batch === undefined ? ('pending' as const) : ('ran' as const),
+    }));
+    const warnings = (await this.#migrator.missing()).map((m) => `${m.name} ran in batch ${m.batch} but no module has its file`);
+    if (options.json === true) {
+      output.json({ format: 1, migrations, warnings });
+      return 0;
+    }
+    for (const warning of warnings) output.warn(warning);
+    if (migrations.length === 0) {
       output.info('No migrations. Add a directory to a module: defineModule({ migrations: new URL(\'./migrations/\', import.meta.url) }).');
       return 0;
     }
     output.table(
       ['MIGRATION', 'MODULE', 'BATCH / STATUS'],
-      status.map((m) => [m.name, m.module, m.batch === undefined ? 'Pending' : `[${m.batch}] Ran`]),
+      migrations.map((m) => [m.name, m.module, m.batch === null ? 'Pending' : `[${m.batch}] Ran`]),
     );
     return 0;
   }

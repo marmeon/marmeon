@@ -1,7 +1,9 @@
 import { generateKey } from '@marmeon/encryption';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { marmeon, webApp, webAppCopy } from './__fixtures__/cli.js';
 
 // Each test runs the CLI as a child process: slow on a busy CI runner.
@@ -127,6 +129,30 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     // It names the environment it assumed — and a test writes no table types (development only).
     expect(migrate.stdout).toMatch(/^Environment: test \(APP_ENV=testing\)\n/);
     expect(migrate.stdout).not.toContain('database.d.ts');
+  });
+
+  it('prints migrate:status as one JSON document, and nothing on stdout when the bookkeeping is of a newer version', () => {
+    const database = join(tempDir('marmeon-migrate-status-'), 'database.sqlite');
+    const env = { DB_DATABASE: database };
+    const pending = marmeon(webApp, ['migrate:status', '--json'], env);
+    expect(pending.code).toBe(0);
+    const before = JSON.parse(pending.stdout) as { format: number; migrations: { name: string; batch: number | null; status: string }[]; warnings: string[] };
+    expect(Object.keys(before)).toEqual(['format', 'migrations', 'warnings']);
+    expect(before.migrations.length).toBeGreaterThan(2);
+    expect(before.migrations.every((m) => m.batch === null && m.status === 'pending')).toBe(true);
+
+    expect(marmeon(webApp, ['migrate'], env).code).toBe(0);
+    const after = JSON.parse(marmeon(webApp, ['migrate:status', '--json'], env).stdout) as typeof before;
+    expect(after.migrations.map((m) => m.name)).toEqual(before.migrations.map((m) => m.name));
+    expect(after.migrations.every((m) => m.batch === 1 && m.status === 'ran')).toBe(true);
+
+    const connection = new DatabaseSync(database);
+    connection.exec("update marmeon_versions set version = 99 where name = 'bookkeeping'");
+    connection.close();
+    const newer = marmeon(webApp, ['migrate:status', '--json'], env);
+    expect(newer.code).toBe(1);
+    expect(newer.stdout).toBe('');
+    expect(newer.stderr).toContain('[marmeon:D1]');
   });
 
   it('asks for --force wherever the app is protected — APP_ENV=local on production too — and writes table types in development only', () => {

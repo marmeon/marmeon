@@ -84,6 +84,7 @@ pnpm marmeon route:list --json
 | `check --json` | [Checking an app](check.md#json-output) |
 | `schedule:list --json` | [Running the scheduler](scheduling.md#running-the-scheduler) |
 | `db:show --json` | [Inspecting a connection](database.md#inspecting-a-connection) |
+| `migrate:status --json` | [Status](migrations.md#status) |
 | `list --json` | The commands `marmeon list` shows. `complete` is `false` when the app did not load and only the built-in commands are known. Each command has `name`, `description`, `usage`, `options` (`name`, `type`, `short`, `multiple`, `default`), `experimental` and `launcher` (`dev` and `start`, which the launcher runs). |
 
 A command of your own, or of a package, prints its document with `output.json({ format: 1, … })` and declares

@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "migrations": [{ "name": "2026_01_01_000000_create_users_table", "module": "auth", "batch": 1, "status": "ran" }],
+  "warnings": ["2025_12_31_000000_create_gone_table ran in batch 1 but no module has its file"]
+}

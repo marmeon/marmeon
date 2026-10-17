@@ -98,7 +98,7 @@ A migration without `down` cannot be rolled back. A rollback that reaches it sto
 | Command | What it does |
 | --- | --- |
 | `marmeon migrate` | Runs every pending migration, in one new batch. |
-| `marmeon migrate:status` | Lists every migration, with its batch or `Pending`. |
+| `marmeon migrate:status [--json]` | Lists every migration, with its batch or `Pending`. See [status](#status). |
 | `marmeon migrate:rollback` | Undoes the last batch. `--step=3` undoes the last three migrations instead, whatever their batch. |
 | `marmeon migrate:reset` | Undoes every migration. |
 | `marmeon migrate:fresh` | Drops every table and runs every migration again. `--seed` runs the [seeders](seeding.md) afterwards. |
@@ -244,6 +244,26 @@ A deployment runs `marmeon migrate --force` once, before the new version takes r
 [deployment](deployment.md#the-short-version) page shows it in a one-off container. On your machine, `NODE_ENV=development` in
 `.env` needs no `--force`, and the line reads `Environment: development (APP_ENV=local, NODE_ENV from .env)`. The
 [configuration](configuration.md#where-node_env-comes-from) page explains where `NODE_ENV` comes from.
+
+
+### Status
+
+`migrate:status --json` prints a [machine-readable document](console.md#machine-readable-output) with the migrations ordered by name, as the text table lists them:
+
+```json
+{
+  "format": 1,
+  "migrations": [
+    { "name": "2026_01_01_000000_create_users_table", "module": "auth", "batch": 1, "status": "ran" },
+    { "name": "2026_01_05_000000_create_accounts_table", "module": "accounts", "batch": null, "status": "pending" }
+  ],
+  "warnings": []
+}
+```
+
+`module` is the name of the module the migration belongs to. `status` is `"ran"` or `"pending"`; `batch` is a number for a migration that ran and `null` for a pending one; `migrations` is `[]` when no module has any. `warnings` is always there: it names each migration the bookkeeping says ran but no module has a file for (`<name> ran in batch <n> but no module has its file`), which the text output prints as a warning too. Bookkeeping this
+release cannot read (a newer version, see [how the migrator keeps track](#how-the-migrator-keeps-track)) fails the command: stdout stays empty, the
+message with its code is on stderr, the exit code is 1.
 
 ## Columns
 

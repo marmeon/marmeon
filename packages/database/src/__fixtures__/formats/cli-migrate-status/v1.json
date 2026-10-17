@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "migrations": [
+    { "name": "2026_01_01_000000_create_users_table", "module": "auth", "batch": 1, "status": "ran" },
+    { "name": "2026_01_05_000000_create_accounts_table", "module": "accounts", "batch": null, "status": "pending" },
+    { "name": "2026_01_06_000000_add_recovery_code_to_accounts_table", "module": "accounts", "batch": null, "status": "pending" }
+  ],
+  "warnings": []
+}

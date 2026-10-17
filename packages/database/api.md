@@ -403,8 +403,14 @@ export declare class MigrateStatusCommand {
     #private;
     static command: string;
     static description: string;
+    static usage: string;
+    static options: {
+        readonly json: {
+            readonly type: 'boolean';
+        };
+    };
     constructor(migrator: Migrator);
-    handle({ output }: CommandInput): Promise<number>;
+    handle({ options, output }: CommandInput): Promise<number>;
 }
 // Migration
 export interface Migration {
@@ -452,6 +458,11 @@ export declare class Migrator {
     onOneConnection(): this;
     files(): MigrationFile[];
     status(): Promise<MigrationStatus[]>;
+    missing(): Promise<{
+        name: string;
+        module: string;
+        batch: number;
+    }[]>;
     migrate(onRun?: (run: MigrationRun) => void, options?: MigrateOptions): Promise<MigrationRun[]>;
     rollback(options?: {
         steps?: number;
@@ -1081,5 +1092,6 @@ marmeon migrate:rollback [--step=<n>] [--force] [--wait=<seconds>]
 --step (string)
 --wait (string)
 // migrate:status
-marmeon migrate:status
+marmeon migrate:status [--json]
+--json (boolean)
 ```
