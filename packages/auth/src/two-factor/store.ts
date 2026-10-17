@@ -3,10 +3,10 @@ import { Connections, secret, sql, type Generated, type Secret } from '@marmeon/
 import type { SecondFactor, TwoFactorState } from './state.ts';
 
 /** The tables the app's migration creates (`make:auth` writes them) — see {@link TwoFactorTable} and {@link RecoveryCodeTable}. */
-export const TWO_FACTOR_TABLE = 'marmeon_two_factor_authentications';
-export const RECOVERY_CODES_TABLE = 'marmeon_two_factor_recovery_codes';
+export const TWO_FACTOR_TABLE = 'two_factor_authentications';
+export const RECOVERY_CODES_TABLE = 'two_factor_recovery_codes';
 
-/** The columns {@link TwoFactorStore} needs on `marmeon_two_factor_authentications`: the secret is encrypted, `confirmed_at` is `null` while setup is unfinished. */
+/** The columns {@link TwoFactorStore} needs on `two_factor_authentications`: the secret is encrypted, `confirmed_at` is `null` while setup is unfinished. */
 export interface TwoFactorTable {
   id: Generated<number>;
   user_id: number | string;
@@ -17,10 +17,10 @@ export interface TwoFactorTable {
   updated_at: Generated<string | Date>;
 }
 
-/** The columns readiness waits for on `marmeon_two_factor_authentications`. */
+/** The columns readiness waits for on `two_factor_authentications`. */
 export const TWO_FACTOR_COLUMNS = ['id', 'user_id', 'secret', 'confirmed_at', 'last_used_step', 'created_at', 'updated_at'] as const satisfies readonly (keyof TwoFactorTable)[];
 
-/** The columns it needs on `marmeon_two_factor_recovery_codes`: only the hash of a code is stored. */
+/** The columns it needs on `two_factor_recovery_codes`: only the hash of a code is stored. */
 export interface RecoveryCodeTable {
   id: Generated<number>;
   user_id: number | string;
@@ -30,7 +30,7 @@ export interface RecoveryCodeTable {
   updated_at: Generated<string | Date>;
 }
 
-/** The columns readiness waits for on `marmeon_two_factor_recovery_codes`. */
+/** The columns readiness waits for on `two_factor_recovery_codes`. */
 export const RECOVERY_CODE_COLUMNS = ['id', 'user_id', 'code_hash', 'used_at', 'created_at', 'updated_at'] as const satisfies readonly (keyof RecoveryCodeTable)[];
 
 /** What the store keeps for an account's authenticator: the secret still encrypted (the service decrypts it). */
@@ -43,8 +43,8 @@ export interface TotpRecord {
 type Tables = { [TWO_FACTOR_TABLE]: TwoFactorTable; [RECOVERY_CODES_TABLE]: RecoveryCodeTable };
 
 /**
- * The TOTP factor and the recovery codes of an account, on the app's `marmeon_two_factor_authentications` and
- * `marmeon_two_factor_recovery_codes` tables. Binding it as the {@link TwoFactorState} lets accounts set a factor up.
+ * The TOTP factor and the recovery codes of an account, on the app's `two_factor_authentications` and
+ * `two_factor_recovery_codes` tables. Binding it as the {@link TwoFactorState} lets accounts set a factor up.
  *
  * Replay protection lives here, in single conditional `UPDATE`s: a TOTP step and a recovery code each count at most once,
  * however many requests race for them.

@@ -317,12 +317,12 @@ describe('TwoFactor: setting up', () => {
   it('asks for the password again to make new recovery codes: a wrong or empty one changes nothing, and tries are counted', async () => {
     const booted = await boot();
     const { b } = await enable(booted);
-    const before = await booted.connections.get<any>().selectFrom('marmeon_two_factor_recovery_codes').selectAll().execute();
+    const before = await booted.connections.get<any>().selectFrom('two_factor_recovery_codes').selectAll().execute();
     expect(await b.tf('regenerate', { password: '' })).toMatchObject({ codes: null, kind: 'invalid-password' });
     for (let attempt = 0; attempt < 5; attempt++) expect(await b.tf('regenerate', { password: 'wrong' })).toMatchObject({ codes: null, kind: 'invalid-password' });
-    expect(await booted.connections.get<any>().selectFrom('marmeon_two_factor_recovery_codes').selectAll().execute()).toEqual(before);
+    expect(await booted.connections.get<any>().selectFrom('two_factor_recovery_codes').selectAll().execute()).toEqual(before);
     expect(await b.tf('regenerate', { password: 'secret' })).toMatchObject({ codes: null, kind: 'throttled', retryAfter: expect.any(Number) });
-    expect(await booted.connections.get<any>().selectFrom('marmeon_two_factor_recovery_codes').selectAll().execute()).toEqual(before);
+    expect(await booted.connections.get<any>().selectFrom('two_factor_recovery_codes').selectAll().execute()).toEqual(before);
   });
 
   it('needs a recently typed password to begin, to show the key again and to make new recovery codes', async () => {
@@ -406,10 +406,10 @@ describe('TwoFactor: setting up', () => {
     const setup = await b.tf('begin');
     // Somebody else rotated the cookie, and the owner's validator is past the grace window.
     await booted.browser(new Map([['marmeon_remember', b.jar.get('marmeon_remember')!]])).tf('who');
-    await booted.connections.get<any>().updateTable('marmeon_remember_tokens').set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
+    await booted.connections.get<any>().updateTable('remember_tokens').set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
     expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ ok: false, kind: 'signed-out' });
     expect(await b.tf('who')).toEqual({ id: null });
-    expect(await booted.connections.get<any>().selectFrom('marmeon_remember_tokens').select('id').execute()).toEqual([]);
+    expect(await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute()).toEqual([]);
   });
 
   it('a remember-me token made between signing out the other devices and switching the factor on is refused by its date', async () => {
@@ -534,7 +534,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     expect(await b.tf('who')).toEqual({ id: null });
     expect(b.jar.has('marmeon_remember')).toBe(false);
     expect(await booted.application.container.make(RememberTokenStore).prune(30)).toBe(0);
-    const rows = await booted.connections.get<any>().selectFrom('marmeon_remember_tokens').select('id').execute();
+    const rows = await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute();
     expect(rows).toEqual([]);
   });
 
@@ -553,7 +553,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     await b.login(ada.email, 'secret', true); // answers 500
     expect(b.jar.has('marmeon_remember')).toBe(false);
     expect(await b.tf('who')).toEqual({ id: null });
-    expect(await booted.connections.get<any>().selectFrom('marmeon_remember_tokens').select('id').execute()).toEqual([]);
+    expect(await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute()).toEqual([]);
   });
 
   it('fails closed when forgetting the token throws: nobody stays signed in, and the token signs nobody in', async () => {

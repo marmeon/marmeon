@@ -631,7 +631,7 @@ describe('Passkeys: signing in without a password', () => {
     }
     expect(await b.pk('who')).toEqual({ id: null });
     expect(b.jar.has('marmeon_remember')).toBe(false);
-    expect(await rows(booted, 'marmeon_remember_tokens')).toHaveLength(0);
+    expect(await rows(booted, 'remember_tokens')).toHaveLength(0);
   });
 
   it('registering the first passkey answers signed-out when this device\'s remember-me cookie turns out to be a copy', async () => {
@@ -639,7 +639,7 @@ describe('Passkeys: signing in without a password', () => {
     const b = booted.browser();
     await b.login(ada.email, 'secret', true);
     await booted.browser(new Map([['marmeon_remember', b.jar.get('marmeon_remember')!]])).pk('who'); // somebody else rotates the cookie
-    await booted.connections.get<any>().updateTable('marmeon_remember_tokens').set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
+    await booted.connections.get<any>().updateTable('remember_tokens').set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
     expect(await addPasskey(b, device())).toEqual({ ok: false, kind: 'signed-out' });
     expect(await b.pk('who')).toEqual({ id: null });
     expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(0);
@@ -1050,7 +1050,7 @@ describe('Passkeys: confirming sudo mode', () => {
     const authenticator = device();
     const b = await unconfirmed(booted, authenticator);
     const options = (await b.pk('confirm-options')).value;
-    await booted.connections.get<any>().updateTable('marmeon_passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 1).execute();
+    await booted.connections.get<any>().updateTable('passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 1).execute();
     expect(await b.pk('confirm', { response: authenticator.authenticate(options) })).toMatchObject({ ok: false, kind: 'invalid' });
     expect(await b.pk('confirmed')).toMatchObject({ confirmed: false });
     expect(await b.pk('confirm-options')).toEqual({ ok: false, kind: 'no-challenge' });
@@ -1243,7 +1243,7 @@ describe('Passkeys: confirming sudo mode', () => {
     expect(await addPasskey(b, device('ES256'), 'Tablet', null)).toEqual({ ok: false, kind: 'invalid-password' });
     // Removing one that is not the last factor, the last factor, and a suspended one.
     expect(await b.pk('remove', { id: 2 })).toEqual({ ok: false, kind: 'invalid-password' });
-    await booted.connections.get<any>().updateTable('marmeon_passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 2).execute();
+    await booted.connections.get<any>().updateTable('passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 2).execute();
     expect(await b.pk('remove', { id: 2 })).toEqual({ ok: false, kind: 'invalid-password' });
     expect(await b.pk('remove', { id: 1 })).toEqual({ ok: false, kind: 'invalid-password' });
     expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(2);
@@ -1540,7 +1540,7 @@ describe('Passkeys: as a step-up', () => {
     await addPasskey(b, device('EdDSA'), 'Phone');
     await b.pk('forget-proof');
     const options = (await b.pk('step-up-options')).value;
-    await booted.connections.get<any>().updateTable('marmeon_passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 1).execute();
+    await booted.connections.get<any>().updateTable('passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 1).execute();
     expect((await b.pk('step-up-options')).value.allowCredentials).toHaveLength(1);
     expect(await b.pk('step-up', { passkey: authenticator.authenticate(options) })).toMatchObject({ ok: false, kind: 'invalid-code' });
   });
@@ -1602,7 +1602,7 @@ describe('Passkeys: changing the factors of an account that has one', () => {
     const booted = await boot();
     const { b } = await enrolled(booted);
     await addPasskey(b, device('EdDSA'), 'Phone');
-    await booted.connections.get<any>().updateTable('marmeon_passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 2).execute();
+    await booted.connections.get<any>().updateTable('passkeys').set({ suspended_at: new Date().toISOString() }).where('id', '=', 2).execute();
     await b.pk('forget-proof');
     expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject(needsProof);
     expect(await b.pk('release', { id: 2, password: 'secret' })).toMatchObject(needsProof);
@@ -1637,9 +1637,9 @@ describe('Passkeys: changing the factors of an account that has one', () => {
     const b = booted.browser();
     await b.login();
     await booted.application.container.make(TwoFactorStore).startSetup(1, 'enc');
-    expect(await rows(booted, 'marmeon_two_factor_authentications')).toHaveLength(1);
+    expect(await rows(booted, 'two_factor_authentications')).toHaveLength(1);
     expect(await addPasskey(b, device())).toMatchObject({ ok: true });
-    expect(await rows(booted, 'marmeon_two_factor_authentications')).toHaveLength(0);
+    expect(await rows(booted, 'two_factor_authentications')).toHaveLength(0);
   });
 
   it('keeps renaming free: it changes no factor', async () => {

@@ -93,7 +93,7 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
  */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
-  /** `marmeon make:upgrade-migrations` writes the renames of the starter kit's auth tables and of `sign_ins` to their `marmeon_` names. */
+  /** `marmeon make:upgrade-migrations` writes the reissue of the API tokens into an app whose token table has the first release's form. */
   static migrationUpgrades = authMigrationUpgrades();
   static commands = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand, EndAllSessionsCommand];
 
@@ -105,7 +105,7 @@ export class AuthServiceProvider implements ServiceProvider {
     container.scoped(LiveAudience, (c) => new SignInAudience(() => c.make(Auth), c.make(Session)));
     // Policies are built in the request's scope: they may depend on anything a controller can.
     container.scoped(Gate, (scope) => new Gate(scope.make(Auth), (Class) => scope.make(Class)));
-    // On the app's `marmeon_remember_tokens` table (its migration comes with make:auth); bind your own store to replace it.
+    // On the app's `remember_tokens` table (its migration comes with make:auth); bind your own store to replace it.
     container.singleton(RememberTokenStore, DatabaseRememberTokens);
     // Nobody has a second factor until the app binds a source: container.bind(TwoFactorState, TwoFactorStore). Removing that binding turns two-factor off for every account.
     container.singleton(TwoFactorState, NoTwoFactorState);
@@ -140,7 +140,7 @@ export class AuthServiceProvider implements ServiceProvider {
       app.container.make(Redactor).addKeys(rememberCookieName(config, app.container.make(SessionConfig)));
     }
     if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
-    // /up/ready is red until the tables of the stores in use have their new names and every column the stores need.
+    // /up/ready is red until the tables of the stores in use have every column the stores need.
     await requireAuthTables(app.container);
   }
 }

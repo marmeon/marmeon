@@ -21,8 +21,8 @@ What it adds to a sign-in:
 
 ## Setting up
 
-The package keeps the state in two tables, which your app owns: `marmeon_two_factor_authentications` (one row per user: the encrypted
-secret, when it was confirmed, the last accepted step) and `marmeon_two_factor_recovery_codes` (a hash and a `used_at` per code). The
+The package keeps the state in two tables, which your app owns: `two_factor_authentications` (one row per user: the encrypted
+secret, when it was confirmed, the last accepted step) and `two_factor_recovery_codes` (a hash and a `used_at` per code). The
 `user_id` references your users table. Add both, and tell the framework where to look for factors, in a provider of your auth
 module:
 
@@ -31,7 +31,7 @@ import { defineMigration } from '@marmeon/database';
 
 export default defineMigration({
   up: (schema) =>
-    schema.create('marmeon_two_factor_authentications', (table) => {
+    schema.create('two_factor_authentications', (table) => {
       table.id();
       table.foreignId('user_id').constrained().cascadeOnDelete().unique();
       table.text('secret').secret(); // encrypted
@@ -39,7 +39,7 @@ export default defineMigration({
       table.bigInteger('last_used_step').nullable();
       table.timestamps();
     }),
-  down: (schema) => schema.drop('marmeon_two_factor_authentications'),
+  down: (schema) => schema.drop('two_factor_authentications'),
 });
 ```
 
@@ -48,7 +48,7 @@ import { defineMigration } from '@marmeon/database';
 
 export default defineMigration({
   up: (schema) =>
-    schema.create('marmeon_two_factor_recovery_codes', (table) => {
+    schema.create('two_factor_recovery_codes', (table) => {
       table.id();
       table.foreignId('user_id').constrained().cascadeOnDelete();
       table.string('code_hash', 64).secret(); // only the hash of a code
@@ -56,7 +56,7 @@ export default defineMigration({
       table.timestamps();
       table.unique(['user_id', 'code_hash']);
     }),
-  down: (schema) => schema.drop('marmeon_two_factor_recovery_codes'),
+  down: (schema) => schema.drop('two_factor_recovery_codes'),
 });
 ```
 

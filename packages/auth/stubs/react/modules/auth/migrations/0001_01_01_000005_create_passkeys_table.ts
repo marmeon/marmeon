@@ -5,7 +5,7 @@ import { defineMigration } from '@marmeon/database';
 // rows and never its id or address; `sign_count` only moves forward (a conditional UPDATE decides).
 export default defineMigration({
   up: (schema) =>
-    schema.create('marmeon_passkeys', (table) => {
+    schema.create('passkeys', (table) => {
       table.id();
       table.foreignId('user_id').constrained().cascadeOnDelete();
       table.string('user_handle', 64);
@@ -22,5 +22,5 @@ export default defineMigration({
       table.timestamp('suspended_at').nullable(); // a sign count went backwards: no sign-in until the owner releases it
       table.timestamps();
     }),
-  down: (schema) => schema.drop('marmeon_passkeys'),
+  down: (schema) => schema.drop('passkeys'),
 });

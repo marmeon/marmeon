@@ -661,12 +661,12 @@ describe('remember me', () => {
 
   describe('how long it lasts', () => {
     const tokenCount = async (application: Awaited<ReturnType<typeof boot>>['application']) =>
-      (await application.container.make(Connections).get<any>().selectFrom('marmeon_remember_tokens').select('id').execute()).length;
+      (await application.container.make(Connections).get<any>().selectFrom('remember_tokens').select('id').execute()).length;
     const age = (application: Awaited<ReturnType<typeof boot>>['application'], madeDaysAgo: number, expiresInDays: number) =>
       application.container
         .make(Connections)
         .get<any>()
-        .updateTable('marmeon_remember_tokens')
+        .updateTable('remember_tokens')
         .set({ created_at: new Date(Date.now() - madeDaysAgo * 86_400_000), expires_at: new Date(Date.now() + expiresInDays * 86_400_000) })
         .execute();
 

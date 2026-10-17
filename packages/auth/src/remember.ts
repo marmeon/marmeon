@@ -3,10 +3,10 @@ import { Clock, commitAnyway, err, ok, token, type Result } from '@marmeon/core'
 import { Connections, secret, sql, type Generated, type Secret } from '@marmeon/database';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link RememberTokenTable}. */
-export const REMEMBER_TABLE = 'marmeon_remember_tokens';
+export const REMEMBER_TABLE = 'remember_tokens';
 
 /**
- * The columns {@link DatabaseRememberTokens} needs — the `marmeon_remember_tokens` migration `make:auth` writes into
+ * The columns {@link DatabaseRememberTokens} needs — the `remember_tokens` migration `make:auth` writes into
  * `modules/auth/migrations/` creates them (the validators only as SHA-256, `secret()` columns).
  */
 export interface RememberTokenTable {
@@ -24,7 +24,7 @@ export interface RememberTokenTable {
   updated_at: Generated<string | Date>;
 }
 
-/** The columns readiness waits for on `marmeon_remember_tokens`. */
+/** The columns readiness waits for on `remember_tokens`. */
 export const REMEMBER_COLUMNS = ['id', 'user_id', 'selector', 'validator_hash', 'previous_validator_hash', 'rotated_at', 'last_used_at', 'expires_at', 'account_fingerprint', 'created_at', 'updated_at'] as const satisfies readonly (keyof RememberTokenTable)[];
 
 /** What a valid remember-me cookie proved: the user, and the rotated cookie value — `undefined` when a concurrent request already rotated it. */
@@ -107,7 +107,7 @@ const VALIDATOR = /^[A-Za-z0-9_-]{43}$/;
  */
 const GRACE_MS = 10_000;
 
-/** The default {@link RememberTokenStore}, on the app's `marmeon_remember_tokens` table. */
+/** The default {@link RememberTokenStore}, on the app's `remember_tokens` table. */
 export class DatabaseRememberTokens implements RememberTokenStore {
   readonly #connections: Connections;
   readonly #clock: Clock;

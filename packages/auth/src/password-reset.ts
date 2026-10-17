@@ -9,10 +9,10 @@ import { RememberTokenStore } from './remember.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link PasswordResetTokenTable}. */
-export const PASSWORD_RESET_TABLE = 'marmeon_password_reset_tokens';
+export const PASSWORD_RESET_TABLE = 'password_reset_tokens';
 
 /**
- * The columns {@link DatabasePasswordResetTokens} needs — the `marmeon_password_reset_tokens` migration `make:auth` writes into
+ * The columns {@link DatabasePasswordResetTokens} needs — the `password_reset_tokens` migration `make:auth` writes into
  * `modules/auth/migrations/` creates them (the token only as its SHA-256, a `secret()` column).
  */
 export interface PasswordResetTokenTable {
@@ -21,7 +21,7 @@ export interface PasswordResetTokenTable {
   created_at: string | Date;
 }
 
-/** The columns readiness waits for on `marmeon_password_reset_tokens`. */
+/** The columns readiness waits for on `password_reset_tokens`. */
 export const PASSWORD_RESET_COLUMNS = ['email', 'token_hash', 'created_at'] as const satisfies readonly (keyof PasswordResetTokenTable)[];
 
 /**
@@ -47,7 +47,7 @@ export const PasswordResetTokenStore = token<PasswordResetTokenStore>('PasswordR
 
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
-/** The default {@link PasswordResetTokenStore}, on the app's `marmeon_password_reset_tokens` table. */
+/** The default {@link PasswordResetTokenStore}, on the app's `password_reset_tokens` table. */
 export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
   readonly #connections: Connections;
   readonly #clock: Clock;

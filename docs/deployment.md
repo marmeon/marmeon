@@ -460,7 +460,7 @@ The steps below are the order; the [upgrade guide](../UPGRADING.md) names the ve
    - Tell your users that they sign in again, and pick a quiet hour.
 2. **In development.** Run `marmeon make:upgrade-migrations`, `marmeon db:types` and `marmeon route:types`, and commit what they
    write. [`make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables) renames the tables of the queue, cache, sessions,
-   uploads, notifications and the starter kit's auth module to `marmeon_…`, and clears the API tokens. A database with tables of its
+   uploads and notifications to `marmeon_…`, and clears the API tokens. A database with tables of its
    own that never ran `marmeon migrate` is taken over once with
    [`migrate --adopt-existing`](migrations.md#adopting-an-existing-database).
 3. **Stop every process of the old release**, on every machine: web, workers, the scheduler, cron jobs, and every CI or release job

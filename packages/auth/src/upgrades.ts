@@ -10,49 +10,18 @@ import { factorSources, TwoFactorState } from './two-factor/state.ts';
 import { RECOVERY_CODE_COLUMNS, RECOVERY_CODES_TABLE, TWO_FACTOR_COLUMNS, TWO_FACTOR_TABLE, TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
 
-/** The migration `make:upgrade-migrations` writes for apps whose auth tables still have the old names. */
-export const AUTH_RENAME_MIGRATION = new URL('../stubs/migrations/rename_auth_tables_to_marmeon.ts', import.meta.url);
-
 /** The migration `make:upgrade-migrations` writes for apps whose API tokens still have the first release's form. */
 export const TOKENS_REISSUE_MIGRATION = new URL('../stubs/migrations/reissue_personal_access_tokens.ts', import.meta.url);
 
-/** The migration `make:upgrade-migrations` writes for apps whose sign-ins table still has the old name. */
-export const SIGN_INS_RENAME_MIGRATION = new URL('../stubs/migrations/rename_sign_ins_table_to_marmeon.ts', import.meta.url);
-
-/**
- * The upgrades of the auth tables: the renames of the starter kit's tables as one set and the reissue of the API tokens on top of
- * it, and the sign-ins list, which `make:sign-ins-table` writes on its own.
- */
+/** The upgrade of the auth tables: the reissue of the API tokens, the one change of the starter kit's tables since its first release. */
 export function authMigrationUpgrades() {
   return [
     {
       set: 'auth',
       revision: 2,
-      name: 'rename_auth_tables_to_marmeon',
-      createdBy: [
-        'create_remember_tokens_table',
-        'create_password_reset_tokens_table',
-        'create_personal_access_tokens_table',
-        'create_two_factor_tables',
-        'create_two_factor_authentications_table',
-        'create_two_factor_recovery_codes_table',
-        'create_passkeys_table',
-      ],
-      contents: readFileSync(AUTH_RENAME_MIGRATION, 'utf8'),
-    },
-    {
-      set: 'auth',
-      revision: 3,
       name: 'reissue_personal_access_tokens',
       createdBy: ['create_personal_access_tokens_table'],
       contents: readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'),
-    },
-    {
-      set: 'sign-ins',
-      revision: 2,
-      name: 'rename_sign_ins_table_to_marmeon',
-      createdBy: ['create_sign_ins_table'],
-      contents: readFileSync(SIGN_INS_RENAME_MIGRATION, 'utf8'),
     },
   ];
 }
@@ -73,7 +42,7 @@ function authenticationIsSetUp(container: Container): boolean {
 }
 
 /**
- * Makes `/up/ready` red until the tables of the stores the app uses have their new names and every column the stores read and write.
+ * Makes `/up/ready` red until the tables of the stores the app uses have every column the stores read and write.
  * A table is waited for only where its store is the database one: a store of the app's own keeps its own table, and an app that
  * has set up no authentication (no `UserProvider`) uses none of them.
  */

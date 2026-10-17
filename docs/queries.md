@@ -433,10 +433,10 @@ callback joins, from the outer query or a subquery or common table expression of
 that holds one, such as `eb.table('users')` in a function.
 
 That goes for a subquery in a relation's `where()` too, as in any query, although its value stays in the database. Filter on a key
-instead: `where('user_id', 'in', (eb) => eb.selectFrom('marmeon_personal_access_tokens').select('user_id').where(…))`, or with a join.
+instead: `where('user_id', 'in', (eb) => eb.selectFrom('personal_access_tokens').select('user_id').where(…))`, or with a join.
 
 ```text
-[marmeon:D9] with('marmeon_personal_access_tokens') selects marmeon_personal_access_tokens.token_hash, a secret column — a relation never loads one. Read it where it is needed, in a query of its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.
+[marmeon:D9] with('personal_access_tokens') selects personal_access_tokens.token_hash, a secret column — a relation never loads one. Read it where it is needed, in a query of its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.
 ```
 
 A condition may compare a secret column, in the callback of `with()`, `withCount()` or `whereHas()` as in any `where()`: its

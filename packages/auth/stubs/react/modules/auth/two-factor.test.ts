@@ -57,7 +57,7 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
     const page = await app.withCookie(SESSION, cookie).navigating().get('/settings/two-factor').assertPage('auth/TwoFactor', { enabled: true, recoveryCodesLeft: 10, setup: null });
     expect(JSON.stringify(page.page()!.props)).not.toContain(secret);
     expect(JSON.stringify(page.page()!.props)).not.toContain(recoveryCodes[0]!);
-    await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 10);
+    await app.assertDatabaseCount('two_factor_recovery_codes', 10);
     // Forward asks the layer's URL with a GET: the answer is the settings page, never the codes.
     await app.withCookie(SESSION, cookie).get('/settings/two-factor/confirm').assertRedirect('/settings/two-factor');
   });
@@ -78,7 +78,7 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
     expect(done.page()!.props.tokens).toEqual([expect.objectContaining({ name: 'CI' })]);
     await app.withCookie(SESSION, other).get('/dashboard').assertRedirect('/login'); // the other device is signed out
     await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).get('/dashboard').assertOk(); // this one is not
-    await app.assertDatabaseCount('marmeon_personal_access_tokens', 1);
+    await app.assertDatabaseCount('personal_access_tokens', 1);
   });
 
   it('a wrong password with the right code turns nothing on', async () => {
@@ -90,7 +90,7 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
       .withCookie(SESSION, cookie)
       .post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'wrong' }, headers: { referer: 'http://localhost/settings/two-factor' } })
       .assertInvalid({ password: 'The password is incorrect.' });
-    await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 0);
+    await app.assertDatabaseCount('two_factor_recovery_codes', 0);
     await app.post('/login', credentialsOf(ada)).assertRedirect('/dashboard'); // still no second factor
   });
 
@@ -143,10 +143,10 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
     const { secret } = await enable(ada);
     const login = await app.post('/login', credentialsOf(ada, { remember: 'on' })).assertRedirect('/two-factor-challenge');
     expect(login.cookie(REMEMBER)).toBeUndefined();
-    await app.assertDatabaseCount('marmeon_remember_tokens', 0);
+    await app.assertDatabaseCount('remember_tokens', 0);
     const done = await app.withCookie(SESSION, login.cookie(SESSION)!).post('/two-factor-challenge', { form: { code: twoFactorCode(secret, inSeconds(30)) } }).assertAuthenticated(ada);
     expect(done.cookie(REMEMBER)).toMatch(/^[\w-]{22}\.[\w-]{43}$/);
-    await app.assertDatabaseCount('marmeon_remember_tokens', 1);
+    await app.assertDatabaseCount('remember_tokens', 1);
   });
 
   it('turns it off with the password: a wrong one changes nothing, the right one ends the factor and the codes', async () => {
@@ -154,10 +154,10 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
     const { cookie } = await enable(ada);
     const as = () => app.withCookie(SESSION, cookie);
     await as().post('/settings/two-factor/disable', { form: { password: 'wrong' }, headers: { referer: 'http://localhost/settings/two-factor' } }).assertInvalid({ password: 'The password is incorrect.' });
-    await app.assertDatabaseCount('marmeon_two_factor_authentications', 1);
+    await app.assertDatabaseCount('two_factor_authentications', 1);
     await as().post('/settings/two-factor/disable', { form: { password: 'password' } }).assertRedirect('/settings/two-factor');
-    await app.assertDatabaseCount('marmeon_two_factor_authentications', 0);
-    await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 0);
+    await app.assertDatabaseCount('two_factor_authentications', 0);
+    await app.assertDatabaseCount('two_factor_recovery_codes', 0);
     await app.post('/login', credentialsOf(ada)).assertRedirect('/dashboard').assertAuthenticated(ada);
   });
 
@@ -178,7 +178,7 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
     const ada = await app.factory(UserFactory).create();
     const cookie = (await app.post('/login', credentialsOf(ada))).cookie(SESSION)!;
     await app.withCookie(SESSION, cookie).post('/settings/two-factor/recovery-codes', { form: { password: 'password' } }).assertRedirect('/settings/two-factor');
-    await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 0);
+    await app.assertDatabaseCount('two_factor_recovery_codes', 0);
   });
 
   it('confirms after sudo mode ran out: the code of a slow scan is not lost', async () => {
@@ -193,7 +193,7 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
     } finally {
       vi.useRealTimers();
     }
-    await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 10);
+    await app.assertDatabaseCount('two_factor_recovery_codes', 10);
   });
 
   it('five wrong codes end the wait: back to the login with a hint, the tries left said when they run low', async () => {
@@ -331,8 +331,8 @@ describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
     const info = vi.spyOn(app.make(Logger), 'info');
     expect(await reset([ada.email.toUpperCase()])).toEqual({ code: 0, lines: [`Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}, and ended its sessions.`] });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('second factor'), { userId: ada.id });
-    await app.assertDatabaseCount('marmeon_two_factor_authentications', 0);
-    await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 0);
+    await app.assertDatabaseCount('two_factor_authentications', 0);
+    await app.assertDatabaseCount('two_factor_recovery_codes', 0);
     await app.post('/login', credentialsOf(ada)).assertRedirect('/dashboard').assertAuthenticated(ada);
     await app.queue.work();
     expect(app.mail.queued(TwoFactorMail).map((mail) => mail.message.subject)).toContain('Two-factor authentication was reset');
@@ -377,7 +377,7 @@ describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
     expect(refused.code).toBe(1);
     expect(refused.lines[0]).toContain('pass --force');
     await app.withCookie(SESSION, cookie).expectingJson().get('/dashboard').assertOk();
-    await app.assertDatabaseCount('marmeon_two_factor_authentications', 1);
+    await app.assertDatabaseCount('two_factor_authentications', 1);
     expect(await reset(['nobody@example.com'])).toEqual({ code: 1, lines: ['No account has the address nobody@example.com.'] });
     expect((await reset([])).code).toBe(1);
     const grace = await app.factory(UserFactory).create();
@@ -407,8 +407,8 @@ describe('changing the factors of an account that has one', { timeout: 30_000 },
       await as().post('/settings/two-factor/recovery-codes').assertRedirect('/settings/two-factor/verify');
       await as().post('/settings/two-factor/disable', { form: { password: 'password' } }).assertRedirect('/settings/two-factor/verify');
       await as().withHeaders({ accept: 'application/json' }).post('/settings/two-factor/disable', { form: { password: 'password' } }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
-      await app.assertDatabaseCount('marmeon_two_factor_authentications', 1);
-      await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 10);
+      await app.assertDatabaseCount('two_factor_authentications', 1);
+      await app.assertDatabaseCount('two_factor_recovery_codes', 10);
     });
   });
 
@@ -416,7 +416,7 @@ describe('changing the factors of an account that has one', { timeout: 30_000 },
     await later(async (as) => {
       await as().put('/settings/email', { form: { current_password: 'password', email: 'thief@example.com' } }).assertRedirect('/settings/two-factor/verify');
       await as().withHeaders({ accept: 'application/json' }).post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
-      await app.assertDatabaseCount('marmeon_personal_access_tokens', 0);
+      await app.assertDatabaseCount('personal_access_tokens', 0);
     });
   });
 
@@ -458,7 +458,7 @@ describe('a session that ends while the authenticator is set up', () => {
     } finally {
       spy.mockRestore();
     }
-    await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 0);
+    await app.assertDatabaseCount('two_factor_recovery_codes', 0);
     expect(await app.make(TwoFactorStore).factors(ada.id)).toEqual([]);
   });
 

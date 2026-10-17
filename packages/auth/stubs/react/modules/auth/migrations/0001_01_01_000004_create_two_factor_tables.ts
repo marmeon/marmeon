@@ -5,7 +5,7 @@ import { defineMigration } from '@marmeon/database';
 // recovery codes (the account's, not one factor's: only their hashes are stored, and each works once).
 export default defineMigration({
   up: async (schema) => {
-    await schema.create('marmeon_two_factor_authentications', (table) => {
+    await schema.create('two_factor_authentications', (table) => {
       table.id();
       table.foreignId('user_id').constrained().cascadeOnDelete().unique();
       table.text('secret').secret();
@@ -13,7 +13,7 @@ export default defineMigration({
       table.bigInteger('last_used_step').nullable();
       table.timestamps();
     });
-    await schema.create('marmeon_two_factor_recovery_codes', (table) => {
+    await schema.create('two_factor_recovery_codes', (table) => {
       table.id();
       table.foreignId('user_id').constrained().cascadeOnDelete();
       table.string('code_hash', 64).secret();
@@ -23,7 +23,7 @@ export default defineMigration({
     });
   },
   down: async (schema) => {
-    await schema.drop('marmeon_two_factor_recovery_codes');
-    await schema.drop('marmeon_two_factor_authentications');
+    await schema.drop('two_factor_recovery_codes');
+    await schema.drop('two_factor_authentications');
   },
 });

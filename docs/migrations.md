@@ -685,18 +685,15 @@ the missing one by hand, in front of it.
 A migration that renames a table is a change for a stopped app ([the order, and what it costs](deployment.md#the-upgrade-that-stops-every-process)): let the queue run empty, stop every process of the old release (web,
 workers, scheduler, cron jobs, CI jobs that run `marmeon`), run `marmeon migrate`, then start the new release. The tables of the
 queue (`jobs`, `failed_jobs`), the cache (`cache`, `cache_locks`), the sessions (`sessions`), the temporary uploads
-(`temporary_uploads`), the notifications (`notifications`) and those of the starter kit's auth module (`remember_tokens`,
-`password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications`, `two_factor_recovery_codes`, `passkeys` and `sign_ins`)
-are renamed that way, to `marmeon_jobs`, `marmeon_failed_jobs`, `marmeon_cache`, `marmeon_cache_locks`, `marmeon_sessions`,
-`marmeon_temporary_uploads`, `marmeon_notifications`, `marmeon_remember_tokens`, `marmeon_password_reset_tokens`,
-`marmeon_personal_access_tokens`, `marmeon_two_factor_authentications`, `marmeon_two_factor_recovery_codes`, `marmeon_passkeys` and
-`marmeon_sign_ins`. The rows stay, and so do the columns marked `secret()`: the migration renames the table through the schema builder,
-which moves the marks with it. `users` is your table and keeps its name. The auth tables come in two sets, `auth` and `sign-ins`
-(`marmeon make:sign-ins-table` writes the second on its own).
+(`temporary_uploads`) and the notifications (`notifications`) are renamed that way. The rows stay, and so do the columns
+marked `secret()`: the migration renames the table through the schema builder, which moves the marks with it.
 
-The `auth` set has a second revision of another kind: `reissue_personal_access_tokens` deletes every row of `marmeon_personal_access_tokens`
-and adds a unique index on `token_hash`, because API tokens with a `|`, the form issued before, are no longer valid. See
-[API tokens](api-tokens.md#a-store-of-your-own). It touches no other table, and an app without that table skips it.
+The tables of the starter kit's auth module (`remember_tokens`, `password_reset_tokens`, `personal_access_tokens`,
+`two_factor_authentications`, `two_factor_recovery_codes`, `passkeys` and `sign_ins`) keep their names. The `auth` set has one
+later revision: `reissue_personal_access_tokens` deletes every row of `personal_access_tokens` and adds a unique index on
+`token_hash`, because API tokens with a `|`, the form issued before, are no longer valid. See
+[API tokens](api-tokens.md#a-store-of-your-own). It touches no other table. The `sign_ins` table has no later revision;
+`marmeon make:sign-ins-table` writes it on its own.
 
 A migration it wrote is yours like the first one. Keep the first line: without it, the command takes a changed file for
 revision 1.

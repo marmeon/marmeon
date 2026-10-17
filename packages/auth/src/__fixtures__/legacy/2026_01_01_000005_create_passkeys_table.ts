@@ -1,4 +1,3 @@
-// @marmeon-stub auth 1
 import { defineMigration } from '@marmeon/database';
 
 // The passkeys of an account. The public key is public (not secret); `user_handle` is the account's random handle, the same in each of its

@@ -20,7 +20,7 @@ describe('make:sign-ins-table', () => {
 
     lines.length = 0;
     expect(await new MakeSignInsTableCommand().handle(run)).toBe(1);
-    expect(lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the marmeon_sign_ins table has its migration.`]);
+    expect(lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the sign_ins table has its migration.`]);
     expect(readdirSync(join(root, 'modules/system/migrations'))).toEqual([migration]);
   });
 

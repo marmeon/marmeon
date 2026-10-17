@@ -653,7 +653,7 @@ export class Auth {
   #requireSignInStore(method: string): void {
     if (!this.#signIns.enabled) {
       throw new Error(
-        `auth.${method}() needs a SignInStore: container.singleton(SignInStore, DatabaseSignIns) and the marmeon_sign_ins table (marmeon make:sign-ins-table). See docs/authentication.md#sign-ins.`,
+        `auth.${method}() needs a SignInStore: container.singleton(SignInStore, DatabaseSignIns) and the sign_ins table (marmeon make:sign-ins-table). See docs/authentication.md#sign-ins.`,
       );
     }
   }
