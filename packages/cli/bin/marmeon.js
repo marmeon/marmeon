@@ -40,6 +40,8 @@ if (process.env.MARMEON_CHILD === '1') {
     // `marmeon dev`: checked here too (on a copy — the child resolves for itself), or `node --watch` would wait for changes after
     // the child's start error.
     if (watch && !(await environmentKnown({ ...process.env }))) process.exit(1);
+    // A wrong call ends here, too: the child would exit 2 and `node --watch` wait for changes.
+    if (watch && !(await argumentsKnown(rest))) process.exit(2);
     const flags = [...(source ? [`--conditions=${SOURCE_CONDITION}`] : []), ...(watch ? ['--watch'] : [])];
     const child = spawn(process.execPath, [...flags, fileURLToPath(import.meta.url), ...args], {
       stdio: 'inherit',
@@ -133,6 +135,20 @@ async function environmentKnown(env) {
     return true;
   } catch (error) {
     if (error?.name !== 'ConfigError') throw error;
+    process.stderr.write(`✗ ${error.message}\n`);
+    return false;
+  }
+}
+
+/** Whether `rest` fits the options of `marmeon dev` — else the error is written. Not checked when the CLI cannot be loaded (the child does). */
+async function argumentsKnown(args) {
+  const loaded = await import('marmeon/main').catch(() => undefined);
+  if (!loaded) return true;
+  try {
+    loaded.checkArgs('serve', args, 'dev');
+    return true;
+  } catch (error) {
+    if (error?.name !== 'CommandArgumentsError') throw error;
     process.stderr.write(`✗ ${error.message}\n`);
     return false;
   }

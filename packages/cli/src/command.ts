@@ -114,12 +114,15 @@ export function wantsHelp(argv: readonly string[], Command?: CommandClass): bool
 }
 
 /** Splits `argv` into positionals and the options `Command` declares (unknown options are an error). */
-export function parseCommandArgs(Command: CommandClass, argv: readonly string[]): Pick<CommandInput, 'args' | 'options'> {
+export function parseCommandArgs(Command: CommandClass, argv: readonly string[], name = Command.command): Pick<CommandInput, 'args' | 'options'> {
   try {
     const parsed = parseArgs({ args: [...argv], options: Command.options ?? {}, allowPositionals: true, strict: true });
     return { args: parsed.positionals, options: parsed.values };
   } catch (error) {
-    throw new CommandArgumentsError(`${(error as Error).message}\nUsage: marmeon ${Command.command} ${Command.usage ?? ''}`.trimEnd());
+    // Only the caller's mistakes: a broken option definition is the command's own bug and stays what it is.
+    const code = (error as { code?: unknown }).code;
+    if (typeof code !== 'string' || !code.startsWith('ERR_PARSE_ARGS_')) throw error;
+    throw new CommandArgumentsError(`${(error as Error).message}\nUsage: marmeon ${name} ${Command.usage ?? ''}`.trimEnd());
   }
 }
 
