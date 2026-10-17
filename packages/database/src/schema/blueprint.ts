@@ -177,6 +177,8 @@ export class Blueprint {
   readonly drops: string[] = [];
   readonly dropIndexes: string[] = [];
   readonly renames: { from: string; to: string }[] = [];
+  /** Existing columns that become NOT NULL (`nullable: false`) or nullable (`nullable: true`). */
+  readonly nullability: { column: string; nullable: boolean }[] = [];
   /** `timestamps()` and `softDeletes()` were called. */
   readonly markers = new Set<TableMarker>();
 
@@ -314,6 +316,19 @@ export class Blueprint {
   }
 
   /**
+   * Changing a table only: makes an existing column NOT NULL — after a `schema.data()` step has filled it. A NULL left in it stops the
+   * migration, which is rolled back. Postgres only: `migrate` refuses the plan on SQLite. See `docs/migrations.md#changing-the-data`.
+   */
+  notNull(column: string): void {
+    this.#nullability(column, false);
+  }
+
+  /** Changing a table only: lets an existing column hold NULL. Postgres only, like `notNull()`. */
+  nullable(column: string): void {
+    this.#nullability(column, true);
+  }
+
+  /**
    * Closes the description once the callback that built it has returned: a column modifier or a new column after that (from an
    * `async` callback, or a later step) throws instead of changing a table the plan already holds.
    */
@@ -325,7 +340,7 @@ export class Blueprint {
       if (spec.default) Object.freeze(spec.default);
       Object.freeze(spec);
     }
-    for (const list of [this.columns, this.indexes, this.drops, this.dropIndexes, this.renames]) Object.freeze(list);
+    for (const list of [this.columns, this.indexes, this.drops, this.dropIndexes, this.renames, this.nullability]) Object.freeze(list);
   }
 
   /** Every index to create: table-level ones and `.unique()` on columns — all named, so all droppable. */
@@ -336,6 +351,12 @@ export class Blueprint {
 
   #open(): void {
     if (this.#sealed) throw closedPlan();
+  }
+
+  #nullability(column: string, nullable: boolean): void {
+    this.#open();
+    if (this.nullability.some((change) => change.column === column)) throw new Error(`Column "${column}" of table "${this.table}" is made NOT NULL or nullable twice.`);
+    this.nullability.push({ column, nullable });
   }
 
   #index(columns: string | readonly string[], unique: boolean, name?: string): void {

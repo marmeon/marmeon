@@ -98,8 +98,8 @@ export class Schema {
     this.#allowed(table, 'create the table');
     const blueprint = Schema.#describe(table, build);
     if (blueprint.columns.length === 0) throw new Error(`Table "${table}" needs at least one column.`);
-    if (blueprint.drops.length || blueprint.renames.length || blueprint.dropIndexes.length) {
-      throw new Error('dropColumn(), renameColumn() and dropIndex() only work when changing a table (schema.alter).');
+    if (blueprint.drops.length || blueprint.renames.length || blueprint.dropIndexes.length || blueprint.nullability.length) {
+      throw new Error('dropColumn(), renameColumn(), dropIndex(), notNull() and nullable() only work when changing a table (schema.alter).');
     }
     this.#add({ kind: 'create', table, blueprint });
   }
@@ -107,7 +107,7 @@ export class Schema {
   /**
    * Adds a change of a table. Every change runs as its own statement, because
    * SQLite's ALTER TABLE takes one change at a time. On SQLite a new NOT NULL column needs a default and cannot get a generated UUID
-   * (`useUuidv7()`): `migrate` refuses such a plan before running any of its steps. See `docs/migrations.md#uuid-keys`.
+   * (`useUuidv7()`), and no column becomes NOT NULL or nullable (`notNull()`, `nullable()`): `migrate` refuses such a plan before running any of its steps (error D18). See `docs/migrations.md#uuid-keys` and `docs/migrations.md#changing-the-data`.
    */
   alter(table: string, build: (table: Blueprint) => void): void {
     this.#allowed(table, 'alter the table');

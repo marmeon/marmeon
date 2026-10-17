@@ -92,12 +92,26 @@ function check(driver: Driver, steps: readonly PlanStep[]): void {
   for (const step of steps) {
     if (step.kind !== 'create' && step.kind !== 'alter') continue;
     for (const index of step.blueprint.allIndexes()) fits(driver, index.name, 'index name');
+    if (step.kind === 'alter' && driver === 'sqlite' && step.blueprint.nullability.length) {
+      const { column, nullable } = step.blueprint.nullability[0]!;
+      throw new SchemaError(
+        withCode(
+          'D18',
+          `schema.alter('${step.table}') cannot make the column "${column}" ${nullable ? 'nullable' : 'NOT NULL'} on SQLite: SQLite cannot change a column in place. ` +
+            'Add the column NOT NULL with a default and fill it in a schema.data() step; rebuilding a table that other tables reference would hit their rows (foreign_keys is on). ' +
+            'See docs/migrations.md#changing-the-data.',
+        ),
+      );
+    }
     if (step.kind === 'alter' && driver === 'sqlite') {
       const generated = step.blueprint.columns.find((spec) => spec.default && 'uuidv7' in spec.default);
       if (generated) {
-        throw new Error(
+        throw new SchemaError(
+          withCode(
+            'D18',
           `schema.alter('${step.table}') cannot add the UUIDv7 column "${generated.name}" on SQLite: SQLite adds no column whose default is computed. ` +
             'Create the table with the column instead (on Postgres, alter works). See docs/migrations.md#uuid-keys.',
+          ),
         );
       }
     }
@@ -150,6 +164,9 @@ async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint, reco
     await recorder?.columnRenamed(table, from, to);
   }
   for (const spec of blueprint.columns) await db.schema.alterTable(table).addColumn(spec.name, ...compileColumn(spec, driver)).execute();
+  for (const { column, nullable } of blueprint.nullability) {
+    await db.schema.alterTable(table).alterColumn(column, (change) => (nullable ? change.dropNotNull() : change.setNotNull())).execute();
+  }
   await createIndexes(db, blueprint);
   await recordSecrets(blueprint, recorder);
   await recordMarkers(blueprint, recorder);

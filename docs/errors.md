@@ -381,6 +381,7 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | D15 | `database` | Two migrations have the same name. [Migration structure](migrations.md#migration-structure) |
 | D16 | `database` | A migration cannot be rolled back: its file is gone, or it has no `down()`. [Running migrations](migrations.md#running-migrations) |
 | D17 | `database` | A package lists an invalid `static migrationUpgrades` entry: a name that is a path, a revision below 2, a mark that disagrees, or the same revision twice. [Upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables) |
+| D18 | `database` | A `schema.alter()` that SQLite cannot do in place: making a column NOT NULL or nullable (`table.notNull()`, `table.nullable()`), or adding a column with a generated UUIDv7 default. [Changing the data](migrations.md#changing-the-data), [UUID keys](migrations.md#uuid-keys) |
 | A1 | `auth` | Passkeys cannot be used: `APP_URL` or the passkey variables name no safe relying party. [Requirements](passkeys.md#requirements) |
 | A2 | `auth` | The hasher is set up with values it refuses, is given a password it will not hash (malformed, over the length limit), or asks for argon2id on a Node without `crypto.argon2`. [Limits](hashing.md#limits) |
 | A3 | `session` | Sessions are not set up: a driver whose package or provider is missing. [Drivers](session.md#drivers) |
