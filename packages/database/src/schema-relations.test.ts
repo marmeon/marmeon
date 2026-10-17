@@ -142,7 +142,7 @@ describe.each(drivers)('introspecting foreign keys and unique indexes on %s', (d
       { table: 'posts', column: 'author_id', references: 'users', referenced: 'id', nullable: false },
       { table: 'posts', column: 'editor_id', references: 'users', referenced: 'id', nullable: true },
     ]);
-    const uniques = Object.fromEntries([...found.uniques].filter(([table]) => !['migrations', 'schema_markers', 'secret_columns', 'table_owners'].includes(table)));
+    const uniques = Object.fromEntries([...found.uniques].filter(([table]) => !['migrations', 'marmeon_migration_lock', 'schema_markers', 'secret_columns', 'table_owners'].includes(table)));
     expect(uniques).toEqual({
       categories: [['id']],
       comments: [['id']],

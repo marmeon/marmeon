@@ -1,5 +1,6 @@
 import { sql } from 'kysely';
 import type { Connection } from '../builder.ts';
+import { LOCK_TABLE } from '../migrations/lock.ts';
 import { Blueprint, compileColumn, type Driver, type TableMarker } from './blueprint.ts';
 
 /**
@@ -175,7 +176,8 @@ export class Schema {
 
   /** Drops every table of the connection — `migrate:fresh`. Foreign keys are no obstacle. */
   async dropAllTables(): Promise<void> {
-    const tables = await this.db.introspection.getTables();
+    // The migration lock of SQLite is a row in a table: the run that drops everything holds it.
+    const tables = (await this.db.introspection.getTables()).filter((t) => t.name !== LOCK_TABLE);
     if (this.driver === 'pgsql') {
       for (const t of tables) await sql`drop table if exists ${sql.table(t.schema ? `${t.schema}.${t.name}` : t.name)} cascade`.execute(this.db);
       return;

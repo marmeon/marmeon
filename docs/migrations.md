@@ -110,7 +110,36 @@ leaves no half-changed table behind, and it is not recorded. The migrations befo
 skips that. `migrate:rollback` and `migrate:reset` do not write them: after a rollback, run `marmeon db:types` to bring the file
 back in line. With `NODE_ENV=development`, `migrate` and `migrate:fresh` stop before any step (before `migrate:fresh` drops a table) when `bootstrap/database.d.ts` comes from a newer Marmeon, because they would have to write over it; `--no-types` skips this check. The [repositories and queries](queries.md#table-types) page explains the file.
 
+`migrate`, `migrate:rollback`, `migrate:reset` and `migrate:fresh` take `--wait=<seconds>` (default 60): how long to wait for another migration to end, see [one migration at a time](#one-migration-at-a-time).
+
 A rollback needs the file of every migration it undoes. One whose file is gone stops it with an error that names the migration.
+
+### One migration at a time
+
+Two containers that start together and both run `marmeon migrate` do not run into each other: the second waits until the first has
+finished, finds nothing left to do and exits. `migrate`, `migrate:rollback`, `migrate:reset` and `migrate:fresh` all take the
+lock (`migrate:fresh` before it drops anything), `migrate:status` does not.
+
+- **Postgres** holds an advisory lock in a transaction that stays open for the whole run, on a connection of its own, opened from
+  the connection's URL and not taken from the app's pool (so `DB_POOL_MAX=1` works). The lock ends with the connection, so a
+  process that crashed lets go of it by itself. If that connection ends while a migration runs, the run stops before the next
+  migration with exit code 1. A migration checks the lock inside its own transaction, just before it writes its record; between
+  that check and the commit a few milliseconds remain in which a lost lock goes unnoticed, and a waiting migration could read
+  the list of migrations before the record is committed.
+- **SQLite** keeps one row in the table `marmeon_migration_lock`, with the time of the last sign of life, which every migration
+  renews. A row whose process ran on the same host and is gone (a `Ctrl+C`) is taken over at once; any other row nobody has renewed
+  for ten minutes belongs to a process that died, and is taken over too, with a warning. A migration that finds its row taken over
+  stops before the next one. The table stays after a run, and `migrate:fresh` leaves it alone. Keep it out of your own table lists
+  and dumps, like the `migrations` table.
+
+A connection pooler in transaction mode (pgbouncer, the pooled URLs of Supabase or Neon) works too, because the open transaction
+keeps the server connection. A server setting `idle_in_transaction_session_timeout` shorter than your longest migration ends that
+transaction: the lock is lost, and the run stops before the next migration. Raise it for the role that migrates.
+
+A command that cannot take the lock within `--wait` seconds (`--wait=0`: tries once) stops with exit code 1 and says who holds it:
+`Another migration has run since 2026-10-01T12:00:00.000Z (web-1:4242)`, the holder being `hostname:pid`. That wait is the lock's,
+not a migration's: raise `--wait` when one of yours takes longer than a minute. `MigrationLockTimeoutError` and
+`MigrationLockLostError` are what the commands report.
 
 ### Migrating a running app
 
@@ -501,7 +530,8 @@ export default defineMigration({
 
 - **One order.** The record of every migration stays on `default`, with one batch number for all of them.
 - **Two transactions.** The migration runs in a transaction of its own connection and is recorded afterwards. A migration that
-  fails is not recorded.
+  fails is not recorded. The lock is checked before the first transaction commits, but not atomically with it: if the lock is
+  lost right after that, the migration is applied on its connection and not recorded on `default`, and the next run starts it again.
 - **Its table's books stay with the table.** Which module owns it, which columns are secret and its marks are kept on the
   connection the table is on, so a `selectAll()` there leaves the secret columns out too.
 - `migrate:fresh` drops the tables of every connection a migration runs on.
