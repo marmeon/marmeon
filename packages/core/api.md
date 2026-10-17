@@ -806,15 +806,175 @@ Types from other packages: none
 ```ts
 // Around
 export type Around<M> = (message: M, run: () => unknown) => void;
+// ChannelHandlers
+export type ChannelHandlers<N extends ChannelName> = N extends TracingName ? TracingHandlers<TracingMessages[N]> : (message: ChannelMessage<N>) => void;
+// ChannelMessage
+export type ChannelMessage<N extends ChannelName> = N extends TracingName ? TracingMessages[N] : N extends EventName ? EventMessages[N] : never;
 // ChannelName
 export type ChannelName = TracingName | EventName;
+// CommandRunMessage
+export interface CommandRunMessage extends MessageBase, Ended {
+    readonly command: string;
+    readonly args: readonly string[];
+    exitCode?: number;
+}
+// DbQueryMessage
+export interface DbQueryMessage extends MessageBase, Ended {
+    readonly connection: string;
+    readonly driver: string;
+    readonly sql: string;
+    readonly parameters: readonly unknown[];
+    readonly secret: boolean;
+    durationMs: number;
+}
+// Ended
+export interface Ended {
+    durationMs?: number;
+    error?: unknown;
+}
 // EventChannel
 export interface EventChannel<M> {
     readonly hasSubscribers: boolean;
     publish(message: M): void;
 }
+// EventDispatchMessage
+export interface EventDispatchMessage extends MessageBase {
+    readonly event: object;
+    readonly name: string;
+    readonly listeners: readonly string[];
+}
+// EventMessages
+export interface EventMessages {
+    log: LogMessage;
+    exception: ExceptionMessage;
+    event: EventDispatchMessage;
+}
 // EventName
 export type EventName = keyof EventMessages & string;
+// ExceptionMessage
+export interface ExceptionMessage extends MessageBase {
+    readonly error: unknown;
+    readonly status: number;
+    readonly method: string;
+    readonly path: string;
+}
+// HttpRequestMessage
+export interface HttpRequestMessage extends MessageBase, Ended {
+    readonly requestId: string;
+    readonly method: string;
+    readonly path: string;
+    readonly url: string;
+    readonly headers: Headers;
+    readonly region?: string;
+    readonly inProcess: boolean;
+    route?: string;
+    routePath?: string;
+    controller?: string;
+    status?: number;
+    location?: string;
+    reload?: string;
+    page?: PageSummary;
+    input?: Readonly<Record<string, unknown>>;
+}
+// LiveRefreshMessage
+export interface LiveRefreshMessage extends MessageBase, Ended {
+    readonly channel: string;
+    readonly only: readonly string[] | null;
+}
+// LogMessage
+export interface LogMessage extends MessageBase {
+    readonly level: 'debug' | 'info' | 'warn' | 'error';
+    readonly message: string;
+    readonly context: Readonly<Record<string, unknown>>;
+}
+// MailSendMessage
+export interface MailSendMessage extends MessageBase, Ended {
+    readonly mailable: string;
+    readonly mode: 'send' | 'queue' | 'worker';
+    to?: string[];
+    subject?: string;
+    from?: string;
+    cc?: string[];
+    bcc?: string[];
+    html?: string;
+    text?: string;
+    attachments?: {
+        readonly filename: string;
+        readonly bytes: number;
+        readonly contentType?: string;
+    }[];
+}
+// MessageBase
+export interface MessageBase {
+    readonly app: Application;
+    readonly startedAt: number;
+    readonly requestId?: string;
+    readonly jobId?: string;
+    readonly task?: string;
+}
+// NotificationSendMessage
+export interface NotificationSendMessage extends MessageBase, Ended {
+    readonly notification: string;
+    readonly id: string;
+    readonly recipient: {
+        readonly type: string;
+        readonly id: string | number;
+    };
+    readonly queued: boolean;
+    channels?: string[];
+    outcome?: 'delivered' | 'gone' | 'delivered-before';
+}
+// PageSummary
+export interface PageSummary {
+    readonly component: string;
+    readonly props: Readonly<Record<string, number>>;
+    readonly only?: readonly string[];
+    readonly except?: readonly string[];
+    readonly deferred?: Readonly<Record<string, readonly string[]>>;
+    readonly shared?: readonly string[];
+    readonly optional?: readonly string[];
+    readonly kind: 'page' | 'layer' | 'island';
+}
+// QueueDispatchMessage
+export interface QueueDispatchMessage extends MessageBase, Ended {
+    readonly kind: 'dispatch' | 'bulk' | 'chain';
+    readonly jobs: readonly string[];
+    readonly connection: string;
+    readonly queue: string;
+    readonly delay: number;
+    readonly unique?: string;
+    jobIds: string[];
+    readonly payloads?: readonly unknown[];
+    readonly encrypted?: readonly boolean[];
+    traceparent?: string;
+}
+// QueueJobMessage
+export interface QueueJobMessage extends MessageBase, Ended {
+    readonly job: string;
+    readonly jobId: string;
+    readonly queue: string;
+    readonly connection: string;
+    readonly attempt: number;
+    readonly originRequestId?: string;
+    readonly traceparent?: string;
+    readonly payload?: unknown;
+    readonly encrypted?: boolean;
+    outcome?: 'done' | 'discarded' | 'released' | 'failed';
+}
+// ScheduleTaskMessage
+export interface ScheduleTaskMessage extends MessageBase, Ended {
+    readonly task: string;
+    readonly minute: number;
+    readonly reason: 'due' | 'catch-up' | 'test';
+    outcome?: 'ran' | 'skipped' | 'failed';
+    skipped?: string;
+}
+// SsrRenderMessage
+export interface SsrRenderMessage extends MessageBase, Ended {
+    readonly component: string;
+    readonly complete: boolean;
+    streamed?: boolean;
+}
 // TracingHandlers
 export interface TracingHandlers<M> {
     start?(message: M): void;
@@ -822,6 +982,19 @@ export interface TracingHandlers<M> {
     error?(message: M & {
         error: unknown;
     }): void;
+}
+// TracingMessages
+export interface TracingMessages {
+    'http.request': HttpRequestMessage;
+    'db.query': DbQueryMessage;
+    'queue.dispatch': QueueDispatchMessage;
+    'queue.job': QueueJobMessage;
+    'schedule.task': ScheduleTaskMessage;
+    'mail.send': MailSendMessage;
+    'notification.send': NotificationSendMessage;
+    'live.refresh': LiveRefreshMessage;
+    'render.ssr': SsrRenderMessage;
+    'command.run': CommandRunMessage;
 }
 // TracingName
 export type TracingName = keyof TracingMessages & string;
@@ -1040,184 +1213,6 @@ export interface Token<T> {
 }
 // subscribe
 declare function subscribe<N extends ChannelName>(app: Application, name: N, handlers: ChannelHandlers<N>): () => void;
-```
-
-### Experimental
-
-```ts
-// ChannelHandlers
-export type ChannelHandlers<N extends ChannelName> = N extends TracingName ? TracingHandlers<TracingMessages[N]> : (message: ChannelMessage<N>) => void;
-// ChannelMessage
-export type ChannelMessage<N extends ChannelName> = N extends TracingName ? TracingMessages[N] : N extends EventName ? EventMessages[N] : never;
-// CommandRunMessage
-export interface CommandRunMessage extends MessageBase, Ended {
-    readonly command: string;
-    readonly args: readonly string[];
-    exitCode?: number;
-}
-// DbQueryMessage
-export interface DbQueryMessage extends MessageBase, Ended {
-    readonly connection: string;
-    readonly driver: string;
-    readonly sql: string;
-    readonly parameters: readonly unknown[];
-    readonly secret: boolean;
-    durationMs: number;
-}
-// Ended
-export interface Ended {
-    durationMs?: number;
-    error?: unknown;
-}
-// EventDispatchMessage
-export interface EventDispatchMessage extends MessageBase {
-    readonly event: object;
-    readonly name: string;
-    readonly listeners: readonly string[];
-}
-// EventMessages
-export interface EventMessages {
-    log: LogMessage;
-    exception: ExceptionMessage;
-    event: EventDispatchMessage;
-}
-// ExceptionMessage
-export interface ExceptionMessage extends MessageBase {
-    readonly error: unknown;
-    readonly status: number;
-    readonly method: string;
-    readonly path: string;
-}
-// HttpRequestMessage
-export interface HttpRequestMessage extends MessageBase, Ended {
-    readonly requestId: string;
-    readonly method: string;
-    readonly path: string;
-    readonly url: string;
-    readonly headers: Headers;
-    readonly region?: string;
-    readonly inProcess: boolean;
-    route?: string;
-    routePath?: string;
-    controller?: string;
-    status?: number;
-    location?: string;
-    reload?: string;
-    page?: PageSummary;
-    input?: Readonly<Record<string, unknown>>;
-}
-// LiveRefreshMessage
-export interface LiveRefreshMessage extends MessageBase, Ended {
-    readonly channel: string;
-    readonly only: readonly string[] | null;
-}
-// LogMessage
-export interface LogMessage extends MessageBase {
-    readonly level: 'debug' | 'info' | 'warn' | 'error';
-    readonly message: string;
-    readonly context: Readonly<Record<string, unknown>>;
-}
-// MailSendMessage
-export interface MailSendMessage extends MessageBase, Ended {
-    readonly mailable: string;
-    readonly mode: 'send' | 'queue' | 'worker';
-    to?: string[];
-    subject?: string;
-    from?: string;
-    cc?: string[];
-    bcc?: string[];
-    html?: string;
-    text?: string;
-    attachments?: {
-        readonly filename: string;
-        readonly bytes: number;
-        readonly contentType?: string;
-    }[];
-}
-// MessageBase
-export interface MessageBase {
-    readonly app: Application;
-    readonly startedAt: number;
-    readonly requestId?: string;
-    readonly jobId?: string;
-    readonly task?: string;
-}
-// NotificationSendMessage
-export interface NotificationSendMessage extends MessageBase, Ended {
-    readonly notification: string;
-    readonly id: string;
-    readonly recipient: {
-        readonly type: string;
-        readonly id: string | number;
-    };
-    readonly queued: boolean;
-    channels?: string[];
-    outcome?: 'delivered' | 'gone' | 'delivered-before';
-}
-// PageSummary
-export interface PageSummary {
-    readonly component: string;
-    readonly props: Readonly<Record<string, number>>;
-    readonly only?: readonly string[];
-    readonly except?: readonly string[];
-    readonly deferred?: Readonly<Record<string, readonly string[]>>;
-    readonly shared?: readonly string[];
-    readonly optional?: readonly string[];
-    readonly kind: 'page' | 'layer' | 'island';
-}
-// QueueDispatchMessage
-export interface QueueDispatchMessage extends MessageBase, Ended {
-    readonly kind: 'dispatch' | 'bulk' | 'chain';
-    readonly jobs: readonly string[];
-    readonly connection: string;
-    readonly queue: string;
-    readonly delay: number;
-    readonly unique?: string;
-    jobIds: string[];
-    readonly payloads?: readonly unknown[];
-    readonly encrypted?: readonly boolean[];
-    traceparent?: string;
-}
-// QueueJobMessage
-export interface QueueJobMessage extends MessageBase, Ended {
-    readonly job: string;
-    readonly jobId: string;
-    readonly queue: string;
-    readonly connection: string;
-    readonly attempt: number;
-    readonly originRequestId?: string;
-    readonly traceparent?: string;
-    readonly payload?: unknown;
-    readonly encrypted?: boolean;
-    outcome?: 'done' | 'discarded' | 'released' | 'failed';
-}
-// ScheduleTaskMessage
-export interface ScheduleTaskMessage extends MessageBase, Ended {
-    readonly task: string;
-    readonly minute: number;
-    readonly reason: 'due' | 'catch-up' | 'test';
-    outcome?: 'ran' | 'skipped' | 'failed';
-    skipped?: string;
-}
-// SsrRenderMessage
-export interface SsrRenderMessage extends MessageBase, Ended {
-    readonly component: string;
-    readonly complete: boolean;
-    streamed?: boolean;
-}
-// TracingMessages
-export interface TracingMessages {
-    'http.request': HttpRequestMessage;
-    'db.query': DbQueryMessage;
-    'queue.dispatch': QueueDispatchMessage;
-    'queue.job': QueueJobMessage;
-    'schedule.task': ScheduleTaskMessage;
-    'mail.send': MailSendMessage;
-    'notification.send': NotificationSendMessage;
-    'live.refresh': LiveRefreshMessage;
-    'render.ssr': SsrRenderMessage;
-    'command.run': CommandRunMessage;
-}
 ```
 
 ## `@marmeon/core/environment`
