@@ -63,7 +63,7 @@ const POSTGRES = { DB_CONNECTION: 'pgsql' };
 
 describe('db:show --json', () => {
   it('prints one document for a SQLite database, matching the stored format', async () => {
-    const app = await createApplication({ root: tempDir('marmeon-db-show-'), discover: false, providers: [DatabaseServiceProvider] }, { env: { DB_DATABASE: ':memory:' } });
+    const app = await createApplication({ root: tempDir('marmeon-db-show-'), discover: false, providers: [DatabaseServiceProvider] }, { env: { DB_DATABASE: ':memory:', DB_MANAGED: 'false' } });
     const connections = app.container.make(Connections);
     await sql`create table notes (id integer primary key, body text)`.execute(connections.get());
     await sql`insert into notes (body) values ('a'), ('b')`.execute(connections.get());
