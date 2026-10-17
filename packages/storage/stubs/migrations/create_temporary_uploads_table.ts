@@ -1,4 +1,4 @@
-// @marmeon-stub storage 1
+// @marmeon-stub storage 2
 import { defineMigration } from '@marmeon/database';
 import { uploadsTableConnection } from '@marmeon/storage';
 
@@ -12,7 +12,7 @@ import { uploadsTableConnection } from '@marmeon/storage';
 export default defineMigration({
   connection: uploadsTableConnection,
   up: async (schema) => {
-    await schema.create('temporary_uploads', (table) => {
+    await schema.create('marmeon_temporary_uploads', (table) => {
       table.string('id', 36).primary();
       table.string('session', 64);
       table.string('route', 200);
@@ -33,6 +33,6 @@ export default defineMigration({
     });
   },
   down: async (schema) => {
-    await schema.drop('temporary_uploads');
+    await schema.drop('marmeon_temporary_uploads');
   },
 });

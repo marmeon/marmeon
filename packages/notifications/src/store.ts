@@ -3,7 +3,9 @@ import { cursorPaginate, sql, type Connections, type CursorEncrypter, type Curso
 import type { AnyRecipient } from './notification.ts';
 
 /** The table `marmeon make:notifications-table` creates (the app owns the migration; this package types it itself). */
-export const NOTIFICATIONS_TABLE = 'notifications';
+export const NOTIFICATIONS_TABLE = 'marmeon_notifications';
+/** The columns the store reads and writes; readiness is red while the table lacks one. */
+export const NOTIFICATIONS_COLUMNS = ['id', 'recipient_type', 'recipient_id', 'type', 'data', 'read_at', 'created_at'];
 
 interface NotificationTable {
   id: string;
@@ -33,7 +35,7 @@ export function isNotificationId(id: unknown): id is string {
 }
 
 /**
- * The `notifications` table. Every read and every change of a recipient's notifications is bound to that recipient —
+ * The `marmeon_notifications` table. Every read and every change of a recipient's notifications is bound to that recipient —
  * `where recipient_type = ? and recipient_id = ?` in the same statement: an id of someone else's notification
  * finds nothing. The app's code uses the `Inbox`, which only offers that.
  *

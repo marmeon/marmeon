@@ -223,6 +223,37 @@ describe.each(drivers)('schema.rename with indexes on %s', (driver) => {
     expect(indexes.some((name) => name.startsWith('plain_new_'))).toBe(false);
     expect(constraints.some((name) => name.startsWith('plain_new_'))).toBe(false);
   });
+
+  // Postgres cuts a name at 63 bytes without a word; a name that long is refused there (SQLite keeps any length).
+  const long = 'a_table_with_a_long_name_to_come';
+  const columns = (table: { string(name: string): void; index(columns: string[]): void }) => {
+    table.string('first_long_column_name');
+    table.string('second_long_column_name');
+    table.index(['first_long_column_name', 'second_long_column_name']);
+  };
+
+  it('refuses to rename an index to a name Postgres would cut, and changes nothing', async () => {
+    const schema = new Schema(connections.get(), driver);
+    await schema.create('short', columns);
+    const renamed = schema.rename('short', long, { indexes: true });
+    if (driver === 'sqlite') return void (await expect(renamed).resolves.toBeUndefined());
+    await expect(renamed).rejects.toThrow(/\[marmeon:D5\].*a_table_with_a_long_name_to_come_/);
+    // The table is renamed (that is one statement), but no index got a cut name.
+    expect((await describeTable(long)).indexes).toEqual(['short_first_long_column_name_second_long_column_name_index']);
+  });
+
+  it('refuses to create an index whose default name Postgres would cut, and accepts one given a name', async () => {
+    const schema = new Schema(connections.get(), driver);
+    const create = schema.create('another_long_table_name_here', columns);
+    if (driver === 'sqlite') return void (await expect(create).resolves.toBeUndefined());
+    await expect(create).rejects.toThrow(/\[marmeon:D5\]/);
+    await schema.create('named_long', (table) => {
+      table.string('first_long_column_name');
+      table.string('second_long_column_name');
+      table.index(['first_long_column_name', 'second_long_column_name'], 'named_long_columns_index');
+    });
+    expect((await describeTable('named_long')).indexes).toEqual(['named_long_columns_index']);
+  });
 });
 
 describe.each(drivers)('the readiness check of the framework tables on %s', (driver) => {

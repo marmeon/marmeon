@@ -11,7 +11,9 @@ import { RejectedUpload, TemporaryUpload } from './temporary-upload.ts';
 import { withCode } from '@marmeon/core/internal';
 
 /** The table `marmeon make:uploads-table` creates (the app owns the migration; this package types it itself). */
-export const UPLOADS_TABLE = 'temporary_uploads';
+export const UPLOADS_TABLE = 'marmeon_temporary_uploads';
+/** The columns the service reads and writes; readiness is red while the table lacks one. */
+export const UPLOADS_COLUMNS = ['id', 'session', 'route', 'field', 'disk', 'key', 'name', 'max_bytes', 'size', 'created_at', 'expires_at', 'started_at', 'uploaded_at', 'consumed_at'];
 
 interface UploadRow {
   id: string;
@@ -55,7 +57,7 @@ export interface TargetRequest {
 }
 
 export interface UploadsOptions {
-  /** The infrastructure connection of `temporary_uploads` — resolved on first use. */
+  /** The infrastructure connection of `marmeon_temporary_uploads` — resolved on first use. */
   readonly db: () => Connection<Tables>;
   /** The private disk of temporary uploads. */
   readonly disk: () => Disk;

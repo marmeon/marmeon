@@ -36,7 +36,7 @@ describe('pruning accounts whose address was never confirmed', () => {
     Number((await sql<{ n: number | string }>`select count(*) as n from ${sql.table(table)} where user_id = ${user.id}`.execute(app.make(Connections).get())).rows[0]!.n);
   const notifications = async (user: User) =>
     Number(
-      (await sql<{ n: number | string }>`select count(*) as n from notifications where recipient_type = 'user' and recipient_id = ${String(user.id)}`.execute(app.make(Connections).get()))
+      (await sql<{ n: number | string }>`select count(*) as n from marmeon_notifications where recipient_type = 'user' and recipient_id = ${String(user.id)}`.execute(app.make(Connections).get()))
         .rows[0]!.n,
     );
 
@@ -158,8 +158,8 @@ describe('pruning accounts whose address was never confirmed', () => {
     const old = await made(8, false, 'old@example.com', 'avatars/old.png');
     const disk = app.storage.disk('public');
     await disk.put('avatars/old.png', new Uint8Array([1]));
-    // A module's listener that fails (here: the notifications table is gone) rolls the whole deletion back.
-    await sql`drop table notifications`.execute(app.make(Connections).get());
+    // A module's listener that fails (here: the marmeon_notifications table is gone) rolls the whole deletion back.
+    await sql`drop table marmeon_notifications`.execute(app.make(Connections).get());
     await expect(app.make(PruneUnverifiedCommand).handle({ options: {}, args: [], output: { success: () => {}, error: () => {} } } as never)).rejects.toThrow();
     expect(await app.make(UserRepository).find(old.id)).toBeDefined();
     disk.assertExists('avatars/old.png');

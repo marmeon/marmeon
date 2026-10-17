@@ -45,7 +45,7 @@ export interface Notifications {
   ): Promise<SendResult<R>>;
   /**
    * Delivers now, in this process — no notification job (e.g. in a job or a queued listener that runs in a worker
-   * already). The `notifications` row is written before it resolves; a mail is composed now and queued like every mail
+   * already). The `marmeon_notifications` row is written before it resolves; a mail is composed now and queued like every mail
    * (`mailer.queue`). Inside `connections.transaction()` the delivery is part of it.
    */
   sendNow<const R extends Recipients, N extends abstract new (...args: any[]) => object>(
@@ -61,7 +61,7 @@ export class NotificationChannelError extends NotificationError {
   override name = 'NotificationChannelError';
 }
 
-/** What happened to a delivery: done, the recipient is gone, or it was done before (the `notifications` row exists). */
+/** What happened to a delivery: done, the recipient is gone, or it was done before (the `marmeon_notifications` row exists). */
 export type DeliveryOutcome = 'delivered' | 'gone' | 'delivered-before';
 
 /** One notification for one recipient, ready to deliver. */
