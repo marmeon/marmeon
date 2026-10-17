@@ -30,7 +30,7 @@ const kinds = ['sqlite', 'file', ...(PGSQL_URL ? (['pgsql'] as const) : []), ...
 
 function connections(target: Target): Connections {
   const options: ConnectionOptions = target.kind === 'pgsql' ? { driver: 'pgsql', url: target.url, poolMax: 2 } : { driver: 'sqlite', database: target.file };
-  return new Connections({ connections: { default: options }, root: '/', logger: silent });
+  return new Connections({ connections: { default: { ...options, managed: false } }, root: '/', logger: silent });
 }
 
 async function freshTarget(kind: Target['kind']): Promise<{ target: Target; drop: () => Promise<void> }> {
@@ -84,13 +84,13 @@ async function freshTarget(kind: Target['kind']): Promise<{ target: Target; drop
 function env(target: Target): Record<string, string> {
   switch (target.kind) {
     case 'sqlite':
-      return { DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'database' };
+      return { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'database' };
     case 'file':
-      return { DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'file', CACHE_PATH: target.cache };
+      return { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'file', CACHE_PATH: target.cache };
     case 'pgsql':
-      return { DB_CONNECTION: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '2', CACHE_DRIVER: 'database' };
+      return { DB_MANAGED: 'false', DB_CONNECTION: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '2', CACHE_DRIVER: 'database' };
     case 'redis':
-      return { DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'redis', REDIS_URL: target.url, REDIS_PREFIX: target.prefix };
+      return { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'redis', REDIS_URL: target.url, REDIS_PREFIX: target.prefix };
   }
 }
 
@@ -295,7 +295,7 @@ describe.concurrent('the scheduler processes (sqlite)', () => {
     const started: SchedulerProcess[] = [];
     try {
       // Production without a .env: everything it needs is given here.
-      const work = start(started, 'schedule:work', { NODE_ENV: 'production', DB_DATABASE: ':memory:', CACHE_DRIVER: driver, CACHE_PATH: directory, FIXTURE_ONE_SERVER: '1' });
+      const work = start(started, 'schedule:work', { NODE_ENV: 'production', DB_MANAGED: 'false', DB_DATABASE: ':memory:', CACHE_DRIVER: driver, CACHE_PATH: directory, FIXTURE_ONE_SERVER: '1' });
       await work.waitFor(/Running the schedule every minute/);
       expect(work.lines.join('\n')).toContain(warning);
       await stop(work);

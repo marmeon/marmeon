@@ -1,11 +1,17 @@
+import { withCode } from '@marmeon/core/internal';
 import { sql } from 'kysely';
+import { isBookkeepingName } from '../bookkeeping.ts';
+import { bookkeepingAccess, lastSegment } from '../books.ts';
 import type { Connection } from '../builder.ts';
 import { LOCK_TABLE } from '../migrations/lock.ts';
 import { Blueprint, compileColumn, type Driver, type TableMarker } from './blueprint.ts';
+import { SchemaError } from './schema-error.ts';
+
+export { SchemaError };
 
 /**
- * Keeps the migrator's books: which module owns which table (`table_owners`), which columns are secret
- * (`secret_columns`), and the markers of tables and foreign keys (`schema_markers`).
+ * Keeps the migrator's books: which module owns which table (`marmeon_table_owners`), which columns are secret
+ * (`marmeon_secret_columns`), and the markers of tables and foreign keys (`marmeon_schema_markers`).
  */
 export interface SchemaRecorder {
   created(table: string): Promise<void>;
@@ -40,8 +46,22 @@ export class Schema {
     this.#owners = owners;
   }
 
+  /** Refuses a name the migrator keeps its books under (`marmeon_migrations`, …, and the old `migrations`, `secret_columns`, … that stay taken until 1.0). */
+  #allowed(table: string, action: string): void {
+    // The last segment: `public.marmeon_secret_columns` and `main.marmeon_secret_columns` are the same table.
+    if (bookkeepingAccess.has(this) || !isBookkeepingName(lastSegment(table))) return;
+    throw new SchemaError(
+      withCode(
+        'D4',
+        `Cannot ${action} "${table}": the name belongs to the migrator's bookkeeping, and changing it would make the secret columns or the soft deletes unreadable. ` +
+          'Choose another name. See docs/migrations.md#how-the-migrator-keeps-track.',
+      ),
+    );
+  }
+
   /** Creates a table. */
   async create(table: string, build: (table: Blueprint) => void): Promise<void> {
+    this.#allowed(table, 'create the table');
     const blueprint = new Blueprint(table);
     build(blueprint);
     if (blueprint.columns.length === 0) throw new Error(`Table "${table}" needs at least one column.`);
@@ -64,6 +84,7 @@ export class Schema {
    * (`useUuidv7()`): `alter` refuses it before changing anything. See `docs/migrations.md#uuid-keys`.
    */
   async alter(table: string, build: (table: Blueprint) => void): Promise<void> {
+    this.#allowed(table, 'alter the table');
     const blueprint = new Blueprint(table);
     build(blueprint);
     if (this.driver === 'sqlite') {
@@ -110,11 +131,13 @@ export class Schema {
   }
 
   async drop(table: string): Promise<void> {
+    this.#allowed(table, 'drop the table');
     await this.db.schema.dropTable(table).execute();
     await this.#owners?.dropped(table);
   }
 
   async dropIfExists(table: string): Promise<void> {
+    this.#allowed(table, 'drop the table');
     await this.db.schema.dropTable(table).ifExists().execute();
     await this.#owners?.dropped(table);
   }
@@ -126,6 +149,8 @@ export class Schema {
    * migration written earlier does.
    */
   async rename(from: string, to: string, options: { readonly indexes?: boolean } = {}): Promise<void> {
+    this.#allowed(from, 'rename the table');
+    this.#allowed(to, 'rename a table to');
     await this.db.schema.alterTable(from).renameTo(to).execute();
     if (options.indexes) await (this.driver === 'pgsql' ? this.#renameNamesPgsql(from, to) : this.#renameIndexesSqlite(from, to));
     await this.#owners?.renamed(from, to);
@@ -134,7 +159,7 @@ export class Schema {
   async #renameNamesPgsql(from: string, to: string): Promise<void> {
     const prefix = `${from}_`;
     const renamed = (name: string) => `${to}_${name.slice(prefix.length)}`;
-    const table = sql`t.relname = ${to} and t.relnamespace = (select oid from pg_namespace where nspname = current_schema())`;
+    const table = sql`t.oid = to_regclass(quote_ident(${to}::text))`;
     // Every name is read before the first is changed: `to` may itself begin with `<from>_`, and a name already renamed must not be taken for an old one.
     const names = async (query: ReturnType<typeof sql<{ name: string }>>) => (await query.execute(this.db)).rows.map((row) => row.name).filter((name) => name.startsWith(prefix));
     const constraints = await names(sql<{ name: string }>`select c.conname as name from pg_constraint c join pg_class t on t.oid = c.conrelid where ${table}`);
@@ -177,7 +202,9 @@ export class Schema {
   /** Drops every table of the connection — `migrate:fresh`. Foreign keys are no obstacle. */
   async dropAllTables(): Promise<void> {
     // The migration lock of SQLite is a row in a table: the run that drops everything holds it.
-    const tables = (await this.db.introspection.getTables()).filter((t) => t.name !== LOCK_TABLE);
+    // The migrator's own tables stay, unless the migrator itself drops everything (`migrate:fresh`).
+    await this.#forgetMigrated();
+    const tables = (await this.db.introspection.getTables()).filter((t) => t.name !== LOCK_TABLE && (bookkeepingAccess.has(this) || !isBookkeepingName(t.name)));
     if (this.driver === 'pgsql') {
       for (const t of tables) await sql`drop table if exists ${sql.table(t.schema ? `${t.schema}.${t.name}` : t.name)} cascade`.execute(this.db);
       return;
@@ -187,6 +214,15 @@ export class Schema {
       for (const t of tables) await this.db.schema.dropTable(t.name).ifExists().execute();
     } finally {
       await sql`pragma foreign_keys = on`.execute(this.db);
+    }
+  }
+
+  /** Before the tables go, the migrator's entries about them go (its own tables stay): left behind, they would point at nothing. */
+  async #forgetMigrated(): Promise<void> {
+    if (bookkeepingAccess.has(this)) return;
+    const present = new Set((await this.db.introspection.getTables()).map((t) => t.name));
+    for (const table of ['marmeon_migrations', 'marmeon_table_owners', 'marmeon_secret_columns', 'marmeon_schema_markers']) {
+      if (present.has(table)) await sql`delete from ${sql.table(table)}`.execute(this.db);
     }
   }
 }

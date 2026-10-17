@@ -202,7 +202,7 @@ describe('the schedule', () => {
   it('runs each task in a scope of its own, outside the transaction of whoever ticks', async () => {
     const { scheduler, runs, app, clock } = await boot(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count')), {
       providers: [DatabaseServiceProvider],
-      env: { DB_DATABASE: ':memory:' },
+      env: { DB_MANAGED: 'false', DB_DATABASE: ':memory:' },
     });
     const connections = app.container.make(Connections);
     await connections.transaction(async () => {
@@ -389,7 +389,7 @@ describe('onOneServer', () => {
     await plain.app.shutdown();
     const shared = await boot(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count').onOneServer()), {
       providers: [DatabaseServiceProvider],
-      env: { CACHE_DRIVER: 'database', DB_DATABASE: ':memory:' },
+      env: { CACHE_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:' },
     });
     expect(shared.scheduler.lockWarning()).toBeUndefined();
     await shared.app.shutdown();
@@ -553,7 +553,7 @@ describe('s.job()', () => {
     const dir = tempDir('marmeon-schedule-queue-');
     const booted = await boot(schedule, {
       providers: [EncryptionServiceProvider, DatabaseServiceProvider, QueueServiceProvider],
-      env: { APP_KEY: generateKey(), DB_DATABASE: join(dir, 'app.sqlite'), QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database' },
+      env: { APP_KEY: generateKey(), DB_MANAGED: 'false', DB_DATABASE: join(dir, 'app.sqlite'), QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database' },
       modules: [defineModule({ name: 'jobs', jobs: [StatsJob] })],
     });
     const schema = new Schema(booted.app.container.make(Connections).get(), 'sqlite');
@@ -581,7 +581,7 @@ describe('s.job()', () => {
   it('names a job no module registers when the scheduler starts', async () => {
     const { scheduler, app } = await boot(defineSchedule((s) => void s.job(StatsJob, { scope: 'x' }).hourly()), {
       providers: [EncryptionServiceProvider, DatabaseServiceProvider, QueueServiceProvider],
-      env: { APP_KEY: generateKey(), DB_DATABASE: ':memory:' },
+      env: { APP_KEY: generateKey(), DB_MANAGED: 'false', DB_DATABASE: ':memory:' },
     });
     await expect(scheduler.checkProcess()).rejects.toThrow('The schedule of module fixture queues StatsJob ("fixture.stats"), which is no module\'s job — add it to jobs: [...] of its module, or no worker can run it.');
     await app.shutdown();

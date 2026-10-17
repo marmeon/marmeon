@@ -72,7 +72,7 @@ const cookieValue = (app: Awaited<ReturnType<typeof boot>>, header: string) =>
 
 describe('SESSION_DRIVER', () => {
   it('database: sessions live in the app database — and bots leave no rows behind', async () => {
-    const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+    const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
     await migrate(app.container.make(Connections));
     expect(app.container.make(SessionStore)).toBeInstanceOf(DatabaseSessionStore);
     const db = app.container.make(Connections).get();
@@ -112,7 +112,7 @@ describe('SESSION_DRIVER', () => {
   });
 
   it('SESSION_ENCRYPT=true: the payload column holds ciphertext bound to the session — the app reads it as before', async () => {
-    const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:', SESSION_ENCRYPT: 'true' }, [DatabaseServiceProvider]);
+    const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:', SESSION_ENCRYPT: 'true' }, [DatabaseServiceProvider]);
     await migrate(app.container.make(Connections));
     expect(app.container.make(SessionCodec)).toBeInstanceOf(EncryptedSessionCodec);
     const kernel = createHttpKernel(app);
@@ -158,7 +158,7 @@ describe('SESSION_DRIVER', () => {
   });
 
   it('database: an error of the sessions table goes out as the driver wrote it — the store adds no advice of its own', async () => {
-    const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+    const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
     const db = app.container.make(Connections).get();
     await sql`create table sessions (id varchar(64) primary key, user_id varchar(255), payload text, last_activity bigint)`.execute(db);
     const error = await app.container.make(SessionStore).read('a'.repeat(64)).catch((failure: unknown) => failure);
@@ -172,7 +172,7 @@ describe('SESSION_DRIVER', () => {
     await expect(boot({ SESSION_DRIVER: 'database' }, [])).rejects.toThrow(
       'SESSION_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).',
     );
-    await expect(boot({ SESSION_DRIVER: 'database', SESSION_CONNECTION: 'reporting', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider])).rejects.toThrow(
+    await expect(boot({ SESSION_DRIVER: 'database', SESSION_CONNECTION: 'reporting', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider])).rejects.toThrow(
       /Database connection "reporting" is not configured/,
     );
   });
@@ -204,14 +204,14 @@ describe('SESSION_DRIVER', () => {
 
 describe('SESSION_DRIVER=database never joins the app’s transactions', () => {
   class Rollback extends Error {}
-  const System = (file: string) => defineConnection('system', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file }) });
+  const System = (file: string) => defineConnection('system', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file, managed: false }) });
   const DATA = JSON.stringify({ _token: 'x'.repeat(40), visits: 1 });
   const NEW = { expectedVersion: undefined, lifetimeSeconds: 60 };
   const ids = async (connections: Connections, name = 'default') =>
     (await sql<{ id: string }>`select id from sessions`.execute(connections.get(name))).rows.map((row) => row.id);
 
   it('SQLite without a file of its own: a session write inside a transaction refuses loudly', async () => {
-    const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+    const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
     const connections = app.container.make(Connections);
     await migrate(connections);
     const store = app.container.make(SessionStore);
@@ -229,7 +229,7 @@ describe('SESSION_DRIVER=database never joins the app’s transactions', () => {
   it('SQLite with a file of its own (SESSION_CONNECTION): a session written inside a transaction survives its rollback', async () => {
     const directory = tempDir('marmeon-session-system-');
     const app = await boot(
-      { SESSION_DRIVER: 'database', SESSION_CONNECTION: 'system', DB_DATABASE: join(directory, 'app.sqlite') },
+      { SESSION_DRIVER: 'database', SESSION_CONNECTION: 'system', DB_MANAGED: 'false', DB_DATABASE: join(directory, 'app.sqlite') },
       [DatabaseServiceProvider],
       [System(join(directory, 'system.sqlite'))],
     );
@@ -250,7 +250,7 @@ describe('SESSION_DRIVER=database never joins the app’s transactions', () => {
   it.runIf(PGSQL_URL)('Postgres: a session written inside a transaction survives its rollback — a pool of its own', async () => {
     const fresh = await freshTarget('pgsql');
     try {
-      const app = await boot({ SESSION_DRIVER: 'database', DB_CONNECTION: 'pgsql', DB_URL: (fresh.target as { url: string }).url }, [DatabaseServiceProvider]);
+      const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_CONNECTION: 'pgsql', DB_URL: (fresh.target as { url: string }).url }, [DatabaseServiceProvider]);
       const connections = app.container.make(Connections);
       const store = app.container.make(SessionStore);
       await expect(
@@ -277,7 +277,7 @@ describe('session:prune', () => {
   }
 
   it('removes expired sessions of the database driver — what the lottery does now and then', async () => {
-    const app = await boot({ SESSION_DRIVER: 'database', DB_DATABASE: ':memory:', SESSION_LIFETIME: '1' }, [DatabaseServiceProvider]);
+    const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:', SESSION_LIFETIME: '1' }, [DatabaseServiceProvider]);
     await migrate(app.container.make(Connections));
     const store = app.container.make(SessionStore);
     await store.write('a'.repeat(64), '{"x":1}', { expectedVersion: undefined, lifetimeSeconds: 60 });

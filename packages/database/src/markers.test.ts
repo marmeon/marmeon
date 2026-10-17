@@ -26,8 +26,8 @@ describe.each(drivers)('schema markers on %s', (driver) => {
 
   it('records soft deletes, timestamps and inverse names in a bookkeeping table of their own', async () => {
     await migrator().migrate();
-    expect(MARKERS_TABLE).toBe('schema_markers');
-    expect((await connections.get<any>().introspection.getTables()).map((t) => t.name)).toContain('schema_markers');
+    expect(MARKERS_TABLE).toBe('marmeon_schema_markers');
+    expect((await connections.get<any>().introspection.getTables()).map((t) => t.name)).toContain('marmeon_schema_markers');
     // After the last migration: `drafts` renamed to `notes`, `writer_id` to `author_id`, `deleted_at` dropped, `updated_at` and a
     // new `deleted_at` renamed — and on Postgres `author_id` dropped.
     expect(await markers()).toEqual([...(driver === 'pgsql' ? [] : [inverse]), ...users]);

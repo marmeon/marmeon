@@ -47,7 +47,7 @@ async function boot(): Promise<Application> {
     discover: false,
     providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider],
     modules: [{ name: 'test', jobs: [StatsJob, BrokenJob, FanOutJob] }],
-  }, { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test' }, override: (container) => container.instance(Logger, silent) });
+  }, { env: { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test' }, override: (container) => container.instance(Logger, silent) });
   await migrate(application.container.make(Connections));
   return application;
 }

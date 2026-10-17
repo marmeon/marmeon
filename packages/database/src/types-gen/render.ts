@@ -7,9 +7,9 @@ export interface SchemaSnapshot {
   readonly tables: readonly TableMetadata[];
   /** SQLite only: the real primary key and AUTOINCREMENT column per table (Kysely's introspection guesses). */
   readonly sqliteKeys?: ReadonlyMap<string, { primary: readonly string[]; autoIncrement: string | undefined }>;
-  /** Table → owning module (from `table_owners`). */
+  /** Table → owning module (from `marmeon_table_owners`). */
   readonly owners: ReadonlyMap<string, string>;
-  /** Table → its `.secret()` columns (from `secret_columns`); missing means none. */
+  /** Table → its `.secret()` columns (from `marmeon_secret_columns`); missing means none. */
   readonly secrets?: ReadonlyMap<string, ReadonlySet<string>>;
   /** Table → its relations, derived from the foreign keys; missing means none. */
   readonly relations?: ReadonlyMap<string, ReadonlyMap<string, Relation>>;

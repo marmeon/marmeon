@@ -37,7 +37,7 @@ describe('temporary uploads: what may wait unsent', () => {
     clock = new TestClock();
     clock.freeze();
     disk = new MemoryDisk({ name: 'uploads', visibility: 'private', url: undefined, temporaryUrls: NO_TEMPORARY_URLS, clock });
-    connections = new Connections({ connections: { default: { driver: 'sqlite', database: join(directory, 'uploads.sqlite') } }, root: directory, logger: silent });
+    connections = new Connections({ connections: { default: { driver: 'sqlite', database: join(directory, 'uploads.sqlite'), managed: false } }, root: directory, logger: silent });
     await sql`
       create table ${sql.table(UPLOADS_TABLE)} (
         id varchar(36) primary key, session varchar(64) not null, route varchar(200) not null, field varchar(200) not null,

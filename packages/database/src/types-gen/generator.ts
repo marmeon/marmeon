@@ -4,7 +4,8 @@ import { Application, Logger } from '@marmeon/core';
 import { sql } from 'kysely';
 import { Connections } from '../connections.ts';
 import { deriveRelations, introspect } from '../introspection.ts';
-import { LOCK_TABLE, MARKERS_TABLE, Migrator, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE } from '../migrations/migrator.ts';
+import { isBookkeepingName } from '../bookkeeping.ts';
+import { Migrator } from '../migrations/migrator.ts';
 import { renderTypes, TYPES_FORMAT_MARK, type Rendered, type SchemaSnapshot } from './render.ts';
 
 declare module '@marmeon/core' {
@@ -85,8 +86,7 @@ export class TypeGenerator {
     await migrator.migrate();
     const db = scratch.get<any>();
     const driver = scratch.options().driver;
-    const bookkeeping = new Set([MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE, MARKERS_TABLE, LOCK_TABLE]);
-    const tables = (await db.introspection.getTables()).filter((t) => !bookkeeping.has(t.name));
+    const tables = (await db.introspection.getTables()).filter((t) => !isBookkeepingName(t.name));
     const sqliteKeys = driver === 'sqlite' ? await sqliteKeysOf(scratch, tables.map((t) => t.name)) : undefined;
     // The same derivation the connection uses at runtime, so the generated names are the names that work.
     const derived = deriveRelations(await introspect(async (query) => (await sql.raw<any>(query).execute(db)).rows, driver));

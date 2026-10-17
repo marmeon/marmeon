@@ -130,7 +130,7 @@ lock (`migrate:fresh` before it drops anything), `migrate:status` does not.
   renews. A row whose process ran on the same host and is gone (a `Ctrl+C`) is taken over at once; any other row nobody has renewed
   for ten minutes belongs to a process that died, and is taken over too, with a warning. A migration that finds its row taken over
   stops before the next one. The table stays after a run, and `migrate:fresh` leaves it alone. Keep it out of your own table lists
-  and dumps, like the `migrations` table.
+  and dumps, like the `marmeon_migrations` table.
 
 A connection pooler in transaction mode (pgbouncer, the pooled URLs of Supabase or Neon) works too, because the open transaction
 keeps the server connection. A server setting `idle_in_transaction_session_timeout` shorter than your longest migration ends that
@@ -140,6 +140,74 @@ A command that cannot take the lock within `--wait` seconds (`--wait=0`: tries o
 `Another migration has run since 2026-10-01T12:00:00.000Z (web-1:4242)`, the holder being `hostname:pid`. That wait is the lock's,
 not a migration's: raise `--wait` when one of yours takes longer than a minute. `MigrationLockTimeoutError` and
 `MigrationLockLostError` are what the commands report.
+
+### How the migrator keeps track
+
+The migrator keeps its books in tables of the database, five of them, all named `marmeon_…`:
+
+| Table | Holds |
+| --- | --- |
+| `marmeon_migrations` | The migrations that ran, with their batch. On the `default` connection only. |
+| `marmeon_table_owners` | Which module's migration created each table. |
+| `marmeon_secret_columns` | The columns marked [`.secret()`](#secret-columns). |
+| `marmeon_schema_markers` | What migrations marked beyond the columns: [`timestamps()`, `softDeletes()` and inverse names](#timestamps-and-soft-deletes). |
+| `marmeon_versions` | The version of these tables, in one row: `bookkeeping`, `1`. |
+
+Every connection a migration runs on has the last four. A connection with `managed: false` has none, and the migration commands
+leave it alone. Do not write to them; a migration that creates, alters, drops or renames
+one stops with a `SchemaError`, as it does for `marmeon_migration_lock`, and so does `schema.db` writing to them. `schema.dropAllTables()`
+leaves them in place. The names `migrations`, `table_owners`, `secret_columns`
+and `schema_markers` are taken as well, until 1.0.
+
+The secret columns and the soft deletes depend on these tables, so the app never guesses when it cannot read them. A connection
+whose bookkeeping this release cannot read fails **every** query with a `BookkeepingVersionError`, and `/up/ready` is red. It
+never works as if no column were secret and no row deleted. That happens when
+
+- the database still has the tables of the release before (`migrations`, `table_owners`, `secret_columns`, `schema_markers`) and
+  `marmeon migrate` has not run: run it;
+- the version in `marmeon_versions` is one this release does not read, because a newer Marmeon migrated the database: update
+  `@marmeon/*`. `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:status` and `migrate:fresh` refuse as well, and change nothing;
+- a table is missing or has other columns, `marmeon_versions` is gone while the others are not, or the bookkeeping holds a marker this
+  release does not know: restore the tables from a backup, or update `@marmeon/*`;
+- the connection has tables and no bookkeeping at all: for your own database that Marmeon is to migrate from now on, run
+  [`marmeon migrate --adopt-existing`](#adopting-an-existing-database) once; after a restore that lost the bookkeeping, restore it. Only
+  for a database that another tool manages, set [`managed: false`](database.md#a-database-another-tool-manages);
+- the old bookkeeping tables are there and a table of your own is called `migrations`, `table_owners`, `secret_columns` or
+  `schema_markers` too: rename your table with SQL (`alter table migrations rename to …`) and in the code that uses it.
+
+A table that an extension owns (PostGIS's `spatial_ref_sys`) is no table of the app. A migration that renames or drops a table or column
+with raw SQL (`` sql`alter table users rename column password_hash to pw` ``) would leave the secret or marker entry behind with a name
+that is gone: the migrator checks after every migration, in its transaction, that each entry still points at a table and column, and
+rolls the migration back with error D4 when not. Use `schema.alter()` and `schema.rename()`, which keep the entries in step. An entry that
+points at nothing when the metadata loads refuses the connection (D1).
+The check cannot see a rename in raw SQL that is followed by a new column of the old name (`rename column password_hash to pw`, then `add column password_hash`): rename secret and soft-delete columns only with `schema.alter()` and `schema.rename()`. Raw SQL bypasses the protection.
+
+A Postgres role is checked like any other: the tables are listed from the catalog whatever the role may do with them, so a role
+without privileges on the bookkeeping gets "permission denied" on its queries instead of an app that thinks nothing is secret.
+
+`marmeon migrate` moves the tables of the release before to their `marmeon_` names, in one transaction per connection, with their
+indexes, constraints and rows, and writes the version. It does so also when no migration is pending, on every connection a
+migration runs on. The database ends up the same as a new one. Under each old name it leaves a **placeholder**, a table with a
+single column `moved_to` and one row. A process of the release before that was left running finds it where it expects its
+bookkeeping, and every query it makes fails, where it would otherwise carry on without its list of secret columns. An old
+`marmeon migrate` stops at the placeholder instead of running every migration again. Stop every process of the old release before
+you migrate anyway; the placeholders are the net under that rule. They are dropped by `migrate:fresh`, and the four old names stay
+taken until 1.0.
+
+[Error codes D1 to D4](errors.md#server-error-codes) name these cases.
+
+### Adopting an existing database
+
+A database with tables and no bookkeeping is refused. For your own database, which Marmeon is to migrate from now on, run once:
+
+```sh
+pnpm marmeon migrate --adopt-existing
+```
+
+It writes an empty, versioned bookkeeping on every connection that migrations run on, then runs the pending
+migrations as usual. It warns loudly and names the tables it takes over **without** any secret column, soft delete or timestamp mark: all
+their columns are ordinary ones to Marmeon until you declare otherwise. Without the option, nothing is written. It acts once: the next run
+finds a bookkeeping. It does not help with a bookkeeping that is only partly there (restore it) or with a newer one.
 
 ### Migrating a running app
 

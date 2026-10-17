@@ -49,6 +49,13 @@ export declare class Blueprint {
     renameColumn(from: string, to: string): void;
     allIndexes(): IndexSpec[];
 }
+// BookkeepingVersionError
+export declare class BookkeepingVersionError extends Error {
+    name: string;
+    readonly connection: string;
+    readonly reason: 'legacy' | 'newer' | 'foreign' | 'incomplete';
+    constructor(reason: BookkeepingVersionError['reason'], connection: string, message: string);
+}
 // CheckPageRequest
 export type CheckPageRequest<Q> = [keyof Q & keyof PageRequest] extends [never] ? 'this query has no page — spread pageQuery() into the route\'s query schema: r.query({ ...pageQuery({ perPage: [25, 50] }), … }), or pass { page, perPage }' : Q extends PageRequest ? Q : PageRequest;
 // Column
@@ -71,16 +78,19 @@ export interface ConnectionDefinition extends ConfigDefinition<ConnectionOptions
 export type ConnectionDefinitionOptions = {
     readonly driver: 'sqlite';
     readonly database: string;
+    readonly managed?: boolean | undefined;
 } | PostgresConnection;
 // ConnectionOptions
 export type ConnectionOptions = {
     readonly driver: 'sqlite';
     readonly database: string;
+    readonly managed?: boolean;
 } | {
     readonly driver: 'pgsql';
     readonly url: string;
     readonly poolMax?: number;
     readonly infrastructurePoolMax?: number;
+    readonly managed?: boolean;
 };
 // Connections
 export declare class Connections {
@@ -320,6 +330,9 @@ export declare class MigrateCommand {
         readonly 'no-types': {
             readonly type: 'boolean';
         };
+        readonly 'adopt-existing': {
+            readonly type: 'boolean';
+        };
     };
     constructor(migrator: Migrator, types: TypeGenerator);
     handle(input: CommandInput): Promise<number>;
@@ -438,7 +451,7 @@ export declare class Migrator {
     onOneConnection(): this;
     files(): MigrationFile[];
     status(): Promise<MigrationStatus[]>;
-    migrate(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
+    migrate(onRun?: (run: MigrationRun) => void, options?: MigrateOptions): Promise<MigrationRun[]>;
     rollback(options?: {
         steps?: number;
     }, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
@@ -509,6 +522,7 @@ export interface PostgresConnection {
     readonly password?: string | undefined;
     readonly poolMax?: number | undefined;
     readonly infrastructurePoolMax?: number | undefined;
+    readonly managed?: boolean | undefined;
 }
 // QueryEvent
 export interface QueryEvent {
@@ -628,6 +642,10 @@ export declare class Schema {
     hasTable(table: string): Promise<boolean>;
     hasColumn(table: string, column: string): Promise<boolean>;
     dropAllTables(): Promise<void>;
+}
+// SchemaError
+export declare class SchemaError extends Error {
+    name: string;
 }
 // SchemaMarker
 export interface SchemaMarker {
@@ -837,6 +855,10 @@ type ListNamesOf<DB, T> = T extends keyof Relations ? {
 }[keyof Relations[T]] & string : never;
 // Loaded
 type Loaded<DB, T extends keyof DB, O> = Simplify<[Extract<keyof O, keyof RowOf<DB[T]>>] extends [never] ? RowOf<DB[T]> & O : O>;
+// MigrateOptions
+export interface MigrateOptions {
+    readonly adoptExisting?: (connection: string, tables: readonly string[]) => void;
+}
 // MigrationConnection
 export type MigrationConnection = string | ((container: Resolver) => string);
 // NamesOf
@@ -1002,6 +1024,8 @@ interface SelectQueryBuilder<DB, TB extends keyof DB, O> {
 `DB_HOST` = `"127.0.0.1"`
 // DB_INFRA_POOL_MAX
 `DB_INFRA_POOL_MAX` = `4`
+// DB_MANAGED
+`DB_MANAGED` = `true`
 // DB_PASSWORD
 `DB_PASSWORD` = `""`
 // DB_POOL_MAX
@@ -1033,7 +1057,8 @@ marmeon db:types [--check]
 marmeon make:upgrade-migrations [--check]
 --check (boolean)
 // migrate
-marmeon migrate [--force] [--wait=<seconds>] [--no-types]
+marmeon migrate [--force] [--wait=<seconds>] [--no-types] [--adopt-existing]
+--adopt-existing (boolean)
 --force (boolean)
 --no-types (boolean)
 --wait (string)

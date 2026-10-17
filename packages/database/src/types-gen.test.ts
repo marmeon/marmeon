@@ -74,7 +74,7 @@ describe.each(drivers)('TypeGenerator on %s', { timeout: 30_000 }, (driver) => {
   const root = tempDir('marmeon-types-');
 
   it('generates the same file from the migrations on every driver — without touching the app database', async () => {
-    const { connections, close } = await freshConnections(driver);
+    const { connections, close } = await freshConnections(driver, { bookkeeping: false });
     try {
       const generator = new TypeGenerator({ root, modules } as unknown as Application, connections, silent);
       const { source, warnings } = await generator.render();

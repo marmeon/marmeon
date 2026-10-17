@@ -38,7 +38,7 @@ describe.each(drivers)('connections.infrastructure() on %s — outside of transa
   let drop: () => Promise<void>;
 
   beforeAll(async () => {
-    const fresh = await freshDatabase(driver);
+    const fresh = await freshDatabase(driver, { managed: false });
     drop = fresh.drop;
     connections = new Connections({ connections: { default: fresh.options }, root: '/', logger: silent });
     await createHits(connections.get());
@@ -71,7 +71,7 @@ describe('connections.infrastructure() on SQLite', () => {
   let directory: string;
   let open: Connections | undefined;
   const connect = (named: Record<string, ConnectionOptions>) =>
-    (open = new Connections({ connections: { default: { driver: 'sqlite', database: join(directory, 'app.sqlite') }, ...named }, root: directory, logger: silent }));
+    (open = new Connections({ connections: { default: { driver: 'sqlite', database: join(directory, 'app.sqlite'), managed: false }, ...Object.fromEntries(Object.entries(named).map(([key, options]) => [key, { ...options, managed: false }])) }, root: directory, logger: silent }));
 
   beforeAll(() => {
     directory = tempDir('marmeon-infrastructure-');
@@ -185,7 +185,7 @@ describe.runIf(PGSQL_URL)('connections.infrastructure() on Postgres', () => {
   };
 
   beforeAll(async () => {
-    const fresh = await freshDatabase('pgsql');
+    const fresh = await freshDatabase('pgsql', { managed: false });
     drop = fresh.drop;
     options = fresh.options as typeof options;
     const setup = connect();

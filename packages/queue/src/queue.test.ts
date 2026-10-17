@@ -143,7 +143,7 @@ async function app(options: { env?: Record<string, string>; modules?: ModuleDefi
     providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider],
     modules: options.modules ?? [{ name: 'test', jobs: allJobs }],
   }, {
-    env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', ...options.env },
+    env: { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', ...options.env },
     override: (container) => {
       container.instance(Clock, clock);
       container.instance(Seen, seen);

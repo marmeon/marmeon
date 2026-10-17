@@ -42,8 +42,8 @@ describe('the lab’s errors on the development error page', () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh', debug: true });
     // The migrations table forgets the last one: as if it had not run.
     const db = app.container.make((await import('@marmeon/database')).Database);
-    const last = await db.selectFrom('migrations' as never).select('name' as never).orderBy('id' as never, 'desc').executeTakeFirstOrThrow();
-    await db.deleteFrom('migrations' as never).where('name' as never, '=', (last as { name: string }).name as never).execute();
+    const last = await db.selectFrom('marmeon_migrations' as never).select('name' as never).orderBy('id' as never, 'desc').executeTakeFirstOrThrow();
+    await db.deleteFrom('marmeon_migrations' as never).where('name' as never, '=', (last as { name: string }).name as never).execute();
     const response = await app.get('/lab/errors/table', page).assertStatus(500);
     expect(response.body).toContain('Run the 1 pending migration</h2>');
     expect(response.body).toContain((last as { name: string }).name);

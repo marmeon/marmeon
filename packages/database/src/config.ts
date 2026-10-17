@@ -6,8 +6,8 @@ import { defineConfig, env, type ConfigDefinition, type ConfigOf, type StandardS
  * opens on first use.
  */
 export type ConnectionOptions =
-  | { readonly driver: 'sqlite'; readonly database: string }
-  | { readonly driver: 'pgsql'; readonly url: string; readonly poolMax?: number; readonly infrastructurePoolMax?: number };
+  | { readonly driver: 'sqlite'; readonly database: string; readonly managed?: boolean }
+  | { readonly driver: 'pgsql'; readonly url: string; readonly poolMax?: number; readonly infrastructurePoolMax?: number; readonly managed?: boolean };
 
 /**
  * A Postgres connection as a definition's `resolve` returns it: the server and the account in parts, or the whole address in
@@ -27,15 +27,24 @@ export interface PostgresConnection {
   readonly poolMax?: number | undefined;
   /** The most connections of its infrastructure's own pool (default 4). */
   readonly infrastructurePoolMax?: number | undefined;
+  /** `false`: another tool manages this database, not Marmeon's migrations (default `true`). See {@link ConnectionDefinitionOptions}. */
+  readonly managed?: boolean | undefined;
 }
 
-/** What a connection's `resolve` returns: a SQLite file, or a Postgres server in parts or as a URL ({@link PostgresConnection}). */
-export type ConnectionDefinitionOptions = { readonly driver: 'sqlite'; readonly database: string } | PostgresConnection;
+/**
+ * What a connection's `resolve` returns: a SQLite file, or a Postgres server in parts or as a URL ({@link PostgresConnection}).
+ * `managed: false` says that another tool owns the database's tables: Marmeon reads no bookkeeping from it (no secret columns, no
+ * soft deletes, no timestamps), `marmeon migrate` does not touch it, and its queries are not refused for lacking one. The default is
+ * `true`. See `docs/database.md#a-database-another-tool-manages`.
+ */
+export type ConnectionDefinitionOptions = { readonly driver: 'sqlite'; readonly database: string; readonly managed?: boolean | undefined } | PostgresConnection;
 
 /** `options` as the connections use them: a Postgres server's parts made into its URL, unless the URL is given. */
 function connectionOptions(name: string, options: ConnectionDefinitionOptions): ConnectionOptions {
-  if (options.driver === 'sqlite') return options;
+  const managed = options.managed === false ? { managed: false } : {};
+  if (options.driver === 'sqlite') return { driver: 'sqlite', database: options.database, ...managed };
   const pools = {
+    ...managed,
     ...(options.poolMax === undefined ? {} : { poolMax: options.poolMax }),
     ...(options.infrastructurePoolMax === undefined ? {} : { infrastructurePoolMax: options.infrastructurePoolMax }),
   };
@@ -69,9 +78,11 @@ export const DatabaseConfig = defineConfig('database', {
     DB_POOL_MAX: env.integer().min(1).default(10),
     /** Postgres: largest number of connections of the infrastructure's own pool (cache, rate limits, locks, sessions). */
     DB_INFRA_POOL_MAX: env.integer().min(1).default(DEFAULT_INFRASTRUCTURE_POOL_MAX),
+    /** `false`: another tool manages the database, so Marmeon neither migrates it nor reads its bookkeeping. */
+    DB_MANAGED: env.boolean().default(true),
   }),
   resolve: (e): { default: ConnectionOptions } => {
-    if (e.DB_CONNECTION === 'sqlite') return { default: { driver: 'sqlite', database: e.DB_DATABASE ?? 'storage/database.sqlite' } };
+    if (e.DB_CONNECTION === 'sqlite') return { default: connectionOptions('default', { driver: 'sqlite', database: e.DB_DATABASE ?? 'storage/database.sqlite', managed: e.DB_MANAGED }) };
     return {
       default: connectionOptions('default', {
         driver: 'pgsql',
@@ -83,6 +94,7 @@ export const DatabaseConfig = defineConfig('database', {
         password: e.DB_PASSWORD,
         poolMax: e.DB_POOL_MAX,
         infrastructurePoolMax: e.DB_INFRA_POOL_MAX,
+        managed: e.DB_MANAGED,
       }),
     };
   },
