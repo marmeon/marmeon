@@ -82,6 +82,22 @@ export function escapeControls(line: string): string {
   );
 }
 
+let everythingToStderr = false;
+
+/**
+ * Makes every {@link ConsoleLogger} line go to stderr, whatever its level: the CLI does it for a command that prints JSON,
+ * whose stdout holds the document and nothing else.
+ * @internal Only for the CLI; not part of the public API.
+ */
+export function sendConsoleLogsToStderr(enabled = true): void {
+  everythingToStderr = enabled;
+}
+
+/** Whether {@link sendConsoleLogsToStderr} is on: a logging package writes to stderr (fd 2) instead of stdout then. @internal */
+export function consoleLogsGoToStderr(): boolean {
+  return everythingToStderr;
+}
+
 /**
  * Minimal fallback: one line per entry on stderr/stdout, the request's id or the job's name, id and attempt included.
  * With an `app`, entries also go to the `log` channel while something listens, and are redacted by the app's
@@ -118,6 +134,6 @@ export class ConsoleLogger implements Logger {
     if (this.#app && entries.hasSubscribers) entries.publish({ ...messageBase(this.#app), level, message, context: { ...this.#bindings, ...context } });
     const data = this.#redactor.log({ ...this.#bindings, ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...context });
     const line = escapeControls(`[${level}] ${message}${Object.keys(data).length ? ` ${JSON.stringify(data)}` : ''}`);
-    (level === 'error' || level === 'warn' ? console.error : console.log)(line);
+    (everythingToStderr || level === 'error' || level === 'warn' ? console.error : console.log)(line);
   }
 }

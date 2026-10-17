@@ -23,7 +23,7 @@ export type { EmbedPackageOptions } from './injection/embed.ts';
 export { writeInjectionArtifacts } from './injection/artifacts.ts';
 export { interpolateHtml } from './html.ts';
 export { loadEnv } from './config/config.ts';
-export { logContextSourcesOf } from './logger.ts';
+export { consoleLogsGoToStderr, logContextSourcesOf, sendConsoleLogsToStderr } from './logger.ts';
 export { runWithJob, runWithRequest, runWithTask } from './request-context.ts';
 export { staticNames } from './static-names.ts';
 export type { StaticName } from './static-names.ts';

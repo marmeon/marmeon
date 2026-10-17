@@ -1,8 +1,8 @@
 import { Application, currentLogContext, defineConfig, env, environment, escapeControls, Logger, Redactor, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
-import { logContextSourcesOf, messageBase } from '@marmeon/core/internal';
+import { consoleLogsGoToStderr, logContextSourcesOf, messageBase } from '@marmeon/core/internal';
 import { channels } from '@marmeon/core/diagnostics';
 import { createRequire } from 'node:module';
-import { pino, type Logger as Pino } from 'pino';
+import { destination as pinoDestination, pino, type Logger as Pino } from 'pino';
 import type pinoPretty from 'pino-pretty';
 
 export const LogConfig = defineConfig('log', {
@@ -129,8 +129,11 @@ function terminalSafe(value: unknown, key?: string): unknown {
 
 /** `app`: its entries also go to the `log` channel while something listens. */
 export function createPinoLogger(config: LogOptions, destination?: NodeJS.WritableStream, app?: Application): Logger {
+  // A command that prints JSON keeps stdout for its document: its log lines go to stderr (fd 2).
+  const fd = consoleLogsGoToStderr() ? 2 : 1;
   const stream =
-    destination ?? (config.format === 'pretty' ? pretty()({ colorize: true, sync: true, ignore: 'pid,hostname,appEnv' }) : undefined);
+    destination ??
+    (config.format === 'pretty' ? pretty()({ colorize: true, sync: true, ignore: 'pid,hostname,appEnv', destination: fd }) : fd === 2 ? pinoDestination({ fd, sync: true }) : undefined);
   // What the app's packages add to every entry (@marmeon/otel: `trace_id`, `span_id`) — nothing to merge without a source.
   const sources = logContextSourcesOf(app);
   const redactor = redactorOf(app);

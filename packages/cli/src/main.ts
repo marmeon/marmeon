@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, ConfigError, Container, createApplication, ErrorSolutions, type ApplicationDefinition, type ApplicationPhase, type ServiceProviderClass } from '@marmeon/core';
-import { coreSolutions, loadDiscoveredPackages, messageBase, trace } from '@marmeon/core/internal';
+import { coreSolutions, loadDiscoveredPackages, messageBase, sendConsoleLogsToStderr, trace } from '@marmeon/core/internal';
 import { channels, type CommandRunMessage } from '@marmeon/core/diagnostics';
 import { CommandArgumentsError, CommandRegistry, CommandSetupError, parseCommandArgs, runCommand, wantsHelp } from './command.ts';
 import { BUILT_IN } from './built-in.ts';
@@ -32,9 +32,13 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   const [name = 'list', ...rest] = argv;
   const builtIn = BUILT_IN.find((command) => command.command === name);
   const listing = name === 'list' || name === 'help' || name === '--help' || name === '-h';
-  const json = listing && rest.includes('--json');
+  // `--json` after `--` is a positional.
+  const wantsJson = (rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest).includes('--json');
+  const json = listing && wantsJson;
   // With --json stdout holds the document or nothing: what a failed command says goes to stderr.
-  const failing = rest.includes('--json') ? 'stderr' : 'stdout';
+  const failing = wantsJson ? 'stderr' : 'stdout';
+  // Log lines too, before the app boots: a provider may log while it registers.
+  sendConsoleLogsToStderr(wantsJson);
   let warning: string | undefined;
   // A built-in's help needs no app; an app's command is known once the app booted.
   if (builtIn && wantsHelp(rest, builtIn)) {

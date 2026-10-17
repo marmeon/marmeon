@@ -72,7 +72,7 @@ pnpm marmeon route:list --json
   own, so `route:list` format 1 and another command's format 1 are different formats.
 - A new field is no new version. Removing or renaming a field, or changing its type or meaning, is a new `format` and a breaking
   change. `--json` always prints the newest format.
-- stdout holds the document and nothing else; warnings are in its `warnings` list. A missing value is `null`, never left out.
+- stdout holds the document and nothing else; warnings are in its `warnings` list. With `--json` the app's logger (`@marmeon/log` and the console logger) writes every line, whatever its level, to stderr. A missing value is `null`, never left out.
 - When the command fails (exit code other than 0), stdout stays empty and the message is on stderr, as without `--json`. Parse
   stdout only after exit code 0.
 

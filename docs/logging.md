@@ -43,6 +43,8 @@ compute. It is optional on the contract: a logger without it counts as enabled.
 Your code depends on the `Logger` token, never on a logging library. `@marmeon/log`, which every new app has, binds it to a logger
 built on pino. Without the package, a minimal console logger writes one line per entry with the same context.
 
+Run with `--json`, a `marmeon` command sends every line of `@marmeon/log` and of the console logger to stderr, so stdout holds the document only. A logger of your own decides where it writes.
+
 ## Configuration
 
 | Variable | Default | Effect |
@@ -194,6 +196,6 @@ it('logs one line per request', async () => {
 });
 ```
 
-A stream of your own always gets JSON, whatever `format` says. Without the `Application`, the entries carry no fields of the app's
+A stream of your own always gets JSON, whatever `format` says. A logger with its own `destination` keeps writing to it, also under `--json`. Without the `Application`, the entries carry no fields of the app's
 log context sources. To assert on entries without parsing lines, listen on the `log` channel instead, which the
 [observability](observability.md#the-log-channel) page explains.
