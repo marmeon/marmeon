@@ -246,4 +246,50 @@ describe('StartSession', () => {
     expect(cookies.some((header) => header.startsWith('marmeon_session='))).toBe(true);
     expect(cookies.some((header) => header.startsWith('__Host-'))).toBe(false);
   });
+
+  describe('a stored session of another format', () => {
+    const NEW = { expectedVersion: undefined, lifetimeSeconds: 600 };
+    /** A browser with a session, and the store key it is kept under (the last key a write used). */
+    async function withSession() {
+      const app = await boot();
+      const store = app.application.container.make(SessionStore);
+      const keys: string[] = [];
+      const write = store.write.bind(store);
+      store.write = (key, data, options) => (keys.push(key), write(key, data, options));
+      await app.send('/count');
+      const key = keys.at(-1)!;
+      const replace = async (data: object) => {
+        await store.destroy(key);
+        await store.write(key, JSON.stringify(data), NEW);
+        return (await store.read(key))!;
+      };
+      return { ...app, store, key, replace };
+    }
+
+    it("of a newer format is a guest's request: the entry is not written, destroyed or replaced, and no cookie is sent", async () => {
+      const { send, store, key, replace } = await withSession();
+      const before = await replace({ visits: 40, status: 'kept', _v: 3 });
+      const read = await send('/count');
+      expect(await read.json()).toEqual({ visits: 1, status: null });
+      expect(sessionCookie(read)).toBeUndefined();
+      const flashed = await send('/save', { method: 'POST' });
+      expect(flashed.status).toBe(303);
+      expect(sessionCookie(flashed)).toBeUndefined();
+      const failed = await send('/fail', { method: 'POST' });
+      expect(failed.status).toBe(422);
+      expect(sessionCookie(failed)).toBeUndefined();
+      expect(await store.read(key)).toEqual(before); // byte-equal, same version
+    });
+
+    it('without a mark is dropped: a new session starts under a new cookie — the old entry is only left to expire', async () => {
+      const { send, store, key, replace, cookieHeader } = await withSession();
+      const before = await replace({ visits: 40, _auth_id: 1, _auth_password: 'x' });
+      const oldCookie = cookieHeader();
+      const response = await send('/count');
+      expect(await response.json()).toEqual({ visits: 1, status: null });
+      expect(sessionCookie(response)).toBeDefined();
+      expect(cookieHeader()).not.toBe(oldCookie);
+      expect(await store.read(key)).toEqual(before);
+    });
+  });
 });

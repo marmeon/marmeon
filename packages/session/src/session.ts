@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { flashableInput, OLD_INPUT_KEY, type FlashEntry, type ValidationErrors } from '@marmeon/http';
 import { SessionCodec } from './codec.ts';
 import { SessionConfig } from './config.ts';
+import { EMPTY_PAYLOAD, openPayload, sealPayload } from './format.ts';
 import { createSessionId, SESSION_ID, SESSION_USER_KEY, sessionKey, SessionStore, type SessionPayload, type SessionWriteResult } from './store.ts';
 
 /**
@@ -58,7 +59,15 @@ export class Session {
   /** The version the store had when the session was loaded — what a write back compares. */
   #version: number | undefined;
   /** The session's JSON as loaded: what this request changed is measured against it when a write back meets a conflict. */
-  #base = '{}';
+  #base = EMPTY_PAYLOAD;
+  /**
+   * The stored session of this request's cookie is in a newer format: this request is a guest's and never touches that entry —
+   * not written, and not destroyed unless this request signs in or out (`regenerate()`), which ends it for good: a copy of its
+   * cookie must not outlive a sign-in or a sign-out.
+   */
+  #foreign = false;
+  /** The id of that newer session, until `regenerate()` hands it to `save()` to destroy. */
+  #foreignId: string | undefined;
   /** The last `save()` met concurrent writes on every attempt and gave up. */
   #abandoned = false;
   readonly #obsolete: string[] = [];
@@ -115,7 +124,10 @@ export class Session {
     // The plain codec answers at once: awaited only when it is a promise (the encrypted codec) — a microtask less per request.
     const opened = stored ? this.#codec.open(stored.data, key!) : undefined;
     const json = opened instanceof Promise ? await opened : opened;
-    const data = json === undefined ? undefined : parsePayload(json);
+    const payload = json === undefined ? undefined : openPayload(json);
+    const data = payload?.kind === 'ok' ? payload.data : undefined;
+    this.#foreign = payload?.kind === 'foreign';
+    this.#foreignId = this.#foreign ? id : undefined;
     if (data) {
       this.#id = id!;
       this.#key = key;
@@ -125,7 +137,7 @@ export class Session {
       this.#id = createSessionId();
       this.#key = undefined;
       this.#version = undefined;
-      this.#base = '{}';
+      this.#base = EMPTY_PAYLOAD;
     }
     this.#data = data ?? {};
     this.#loaded = data !== undefined;
@@ -323,7 +335,7 @@ export class Session {
    */
   get persists(): boolean {
     const data = this.#ensureStarted();
-    if (this.#permit) return false;
+    if (this.#permit || this.#foreign) return false;
     return this.#loaded || this.#issued || Object.keys(data).some((key) => key !== TOKEN && key !== FLASH);
   }
 
@@ -359,6 +371,9 @@ export class Session {
     this.#ensureStarted();
     if (!this.#may('session.regenerate()')) return;
     this.#obsolete.push(this.#id);
+    if (this.#foreignId) this.#obsolete.push(this.#foreignId);
+    this.#foreign = false;
+    this.#foreignId = undefined;
     this.#id = createSessionId();
     this.#key = undefined;
     this.regenerateToken();
@@ -383,7 +398,8 @@ export class Session {
     this.#ensureStarted();
     this.#abandoned = false;
     // A read-only request never writes the session back: its flash data stays for the page it was meant for.
-    if (this.#permit) return false;
+    // A newer format's session: left exactly as it is — nothing of this request is kept under it, and no cookie follows.
+    if (this.#permit || this.#foreign) return false;
     const flash = this.#flash();
     for (const key of flash.old) delete this.#data[key];
     flash.old = flash.new;
@@ -425,9 +441,11 @@ export class Session {
       await sleep(Math.random() * Math.min(2 ** attempt, 64));
       const stored = await this.#store.read(this.#key!);
       const json = stored ? await this.#codec.open(stored.data, this.#key!) : undefined;
-      const theirs = json === undefined ? undefined : parsePayload(json);
-      if (!theirs) return false; // gone meanwhile
-      const base = parsePayload(this.#base) ?? {};
+      const payload = json === undefined ? undefined : openPayload(json);
+      // Gone meanwhile — or rewritten in a format this release does not read (a newer process): not merged into, not overwritten.
+      if (payload?.kind !== 'ok') return false;
+      const theirs = payload.data;
+      const base = this.#baseData();
       // Nothing changed here: the newer session already is what this request would write.
       if (isDeepStrictEqual(base, this.#data)) return true;
       this.#data = mergeSession(base, this.#data, theirs);
@@ -438,7 +456,7 @@ export class Session {
 
   async #write(expectedVersion: number | undefined, lifetimeSeconds: number): Promise<SessionWriteResult> {
     const key = (this.#key ??= sessionKey(this.#id));
-    const sealed = this.#codec.seal(JSON.stringify(this.#data), key);
+    const sealed = this.#codec.seal(sealPayload(this.#data), key);
     const data = sealed instanceof Promise ? await sealed : sealed;
     return this.#store.write(key, data, { expectedVersion, lifetimeSeconds, userId: userIdOf(this.#data) });
   }
@@ -446,6 +464,12 @@ export class Session {
   /** The ids the last `save()` destroyed: the session was regenerated (signed in) or invalidated (signed out). */
   get ended(): readonly string[] {
     return this.#ended;
+  }
+
+  /** The payload this request loaded, without its mark. */
+  #baseData(): SessionPayload {
+    const opened = openPayload(this.#base);
+    return opened.kind === 'ok' ? opened.data : {};
   }
 
   #flash(): FlashState {
@@ -465,16 +489,6 @@ export class Session {
 /** A CSRF token: 30 random bytes, base64url. */
 function newToken(): string {
   return crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
-}
-
-/** The payload of a session's JSON — undefined when it is not an object (a broken record starts a new session). */
-function parsePayload(json: string): SessionPayload | undefined {
-  try {
-    const data: unknown = JSON.parse(json);
-    return data !== null && typeof data === 'object' && !Array.isArray(data) ? (data as SessionPayload) : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /** Whether a request naming `document` takes `message`: one bound to no document, or to this one — or no document named. */

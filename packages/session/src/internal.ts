@@ -6,3 +6,4 @@ export { plainSessionCodec } from './codec.ts';
 export { accountScope } from './ended.ts';
 export { createSessionId, SESSION_ID } from './store.ts';
 export { MemorySessionStore } from './stores/memory.ts';
+export { openPayload, sealPayload, SESSION_READERS } from './format.ts';

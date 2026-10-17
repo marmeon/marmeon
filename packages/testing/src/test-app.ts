@@ -472,7 +472,7 @@ async function sessionAccess(container: Container): Promise<SessionAccess | unde
       const id = given ?? session.createSessionId();
       const key = session.sessionKey(id);
       const token = crypto.getRandomValues(new Uint8Array(30)).toBase64({ alphabet: 'base64url' });
-      const json = JSON.stringify({ _token: token, ...data });
+      const json = session.sealPayload({ _token: token, ...data });
       const user = data[session.SESSION_USER_KEY];
       const userId = typeof user === 'string' || typeof user === 'number' ? String(user) : null;
       const sealed = await codec().seal(json, key);
@@ -491,7 +491,9 @@ async function sessionAccess(container: Container): Promise<SessionAccess | unde
       const key = session.sessionKey(id);
       const stored = await store().read(key);
       const json = stored ? await codec().open(stored.data, key) : undefined;
-      return json === undefined ? undefined : (JSON.parse(json) as Record<string, unknown>);
+      if (json === undefined) return undefined;
+      const opened = session.openPayload(json);
+      return opened.kind === 'ok' ? opened.data : undefined;
     },
   };
 }

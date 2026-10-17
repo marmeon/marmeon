@@ -235,7 +235,7 @@ describe('Session', () => {
     expect(guest.currentToken()).toBeUndefined();
     // Data without a token (a failed form's errors): stored without one — the next request that needs it makes it, once.
     const kept = await request(store, undefined, (session) => session.put('visits', 1));
-    expect(await stored(store, kept.id)).toEqual({ visits: 1 });
+    expect(await stored(store, kept.id)).toEqual({ visits: 1, _v: 1 });
     const handed = await request(store, kept.id, (session) => {
       expect(session.currentToken()).toBeUndefined();
       expect(session.token()).toMatch(/^[A-Za-z0-9_-]{40}$/);
