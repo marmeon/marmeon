@@ -1,3 +1,4 @@
+import { withCode } from './error-codes.ts';
 import { describeKey, type Concrete, type Constructor, type InjectCheck, type Key, type Resolve } from './token.ts';
 
 /** The read side of the container, handed to factories. */
@@ -187,7 +188,7 @@ export class Container implements Resolver {
     if (binding?.lifetime === 'singleton' && binding.owner.#instances.has(id)) return binding.owner.#instances.get(id);
     if (binding?.lifetime === 'scoped' && this.#instances.has(id)) return this.#instances.get(id);
     if (path.some((seen) => idOf(seen) === id)) {
-      throw new ContainerError(`Circular dependency: ${[...path, key].map(describeKey).join(' → ')}.`, {
+      throw new ContainerError(withCode('K4', `Circular dependency: ${[...path, key].map(describeKey).join(' → ')}.`), {
         reason: 'circular',
         key: describeKey(key),
         path: path.map(describeKey),
@@ -197,7 +198,7 @@ export class Container implements Resolver {
 
     if (!binding) {
       if (typeof key === 'function') return this.#build(key as Concrete, chain);
-      throw new ContainerError(`No binding for [${describeKey(key)}]${neededBy(path)}. Bind it in a service provider.`, {
+      throw new ContainerError(withCode('K1', `No binding for [${describeKey(key)}]${neededBy(path)}. Bind it in a service provider.`), {
         reason: 'unbound',
         key: describeKey(key),
         path: path.map(describeKey),
@@ -218,8 +219,11 @@ export class Container implements Resolver {
       case 'scoped': {
         if (!this.isScope) {
           throw new ContainerError(
-            `[${describeKey(key)}] is scoped and can only be resolved inside a scope (e.g. a request)${neededBy(path)}.` +
-              (path.length ? ' A singleton must not depend on a scoped service.' : ''),
+            withCode(
+              'K2',
+              `[${describeKey(key)}] is scoped and can only be resolved inside a scope (e.g. a request)${neededBy(path)}.` +
+                (path.length ? ' A singleton must not depend on a scoped service.' : ''),
+            ),
             { reason: 'scoped', key: describeKey(key), path: path.map(describeKey) },
           );
         }
@@ -235,11 +239,14 @@ export class Container implements Resolver {
       // The injection transform attaches the reason when it could not derive a list.
       const reason = (concrete as unknown as Record<symbol, string | undefined>)[UNRESOLVABLE];
       throw new ContainerError(
-        `[${describeKey(concrete)}] needs ${concrete.length} constructor argument(s) but has no injection list` +
-          `${neededBy(chain.slice(0, -1))}. ` +
-          (reason ??
-            'Lists are generated from the constructor types by the Marmeon loader (app code), ' +
-              '"marmeon package:build" or "marmeon discover" (packages).'),
+        withCode(
+          'K3',
+          `[${describeKey(concrete)}] needs ${concrete.length} constructor argument(s) but has no injection list` +
+            `${neededBy(chain.slice(0, -1))}. ` +
+            (reason ??
+              'Lists are generated from the constructor types by the Marmeon loader (app code), ' +
+                '"marmeon package:build" or "marmeon discover" (packages).'),
+        ),
         { reason: 'no-injection-list', key: describeKey(concrete), path: chain.slice(0, -1).map(describeKey), ...(reason ? { injection: reason } : {}) },
       );
     }

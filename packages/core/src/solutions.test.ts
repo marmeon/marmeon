@@ -153,3 +153,32 @@ describe('ErrorSolutions', () => {
     ]);
   });
 });
+
+describe('solutions tied to an error code', () => {
+  class SetupError extends Error {}
+
+  it('matches only an error with exactly that code, and the solution carries it', async () => {
+    const registry = new ErrorSolutions(
+      defineSolutions([{ for: SetupError, code: 'K6', solve: () => ({ title: 'Fix K6', text: 'Do it.' }) }]),
+    );
+    expect(await registry.find(new SetupError('[marmeon:K6] broken'))).toEqual([{ title: 'Fix K6', text: 'Do it.', code: 'K6' }]);
+    expect(await registry.find(new SetupError('[marmeon:K7] broken'))).toEqual([]);
+    expect(await registry.find(new SetupError('broken'))).toEqual([]);
+    expect(await registry.find(new Error('wrapper', { cause: new SetupError('[marmeon:K6] broken') }))).toHaveLength(1);
+    // The code must sit on the same level as the class: a wrapper with the code does not make its cause match.
+    expect(await registry.find(new Error('[marmeon:K6] wrapper', { cause: new SetupError('broken') }))).toEqual([]);
+  });
+
+  it('a definition without a code matches as before, and the solution takes the error\'s code', async () => {
+    const registry = new ErrorSolutions(defineSolutions([{ for: SetupError, solve: () => ({ title: 'Fix it', text: 'Do it.' }) }]));
+    expect(await registry.find(new SetupError('broken'))).toEqual([{ title: 'Fix it', text: 'Do it.' }]);
+    expect(await registry.find(new SetupError('[marmeon:D3] broken'))).toEqual([{ title: 'Fix it', text: 'Do it.', code: 'D3' }]);
+  });
+
+  it('the core solutions carry the codes of the errors they solve', async () => {
+    const [unbound] = await solutions.find(thrown(() => new Container().make(WelcomeService)));
+    expect(unbound?.code).toBe('K1');
+    const [numbers] = await solutions.find(thrown(() => new Container().make(Money)));
+    expect(numbers?.code).toBe('K3');
+  });
+});

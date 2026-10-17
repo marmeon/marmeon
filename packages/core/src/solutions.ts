@@ -1,10 +1,13 @@
 import type { Application } from './application.ts';
+import { codeOfMessage, type ErrorCode } from './error-codes.ts';
 
 /**
  * A way out of an error, as the development error page shows it: what to do, why, the command to copy and where the
  * docs are. **Text only** — no endpoint ever runs a solution (Ignition's runnable solutions were CVE-2021-3129).
  */
 export interface Solution {
+  /** The code of the error it solves (`K6`), when it has one — see docs/errors.md#server-error-codes. */
+  readonly code?: ErrorCode;
   /** What to do, short: `Run the pending migrations`. */
   readonly title: string;
   /** Why, and what else to know — plain text. */
@@ -25,6 +28,8 @@ type ErrorClass<E> = abstract new (...args: any[]) => E;
 /** One entry of {@link defineSolutions}: for errors of a class (and its subclasses), when `when` says so. */
 export interface SolutionDefinition<E = Error> {
   readonly for: ErrorClass<E>;
+  /** Only errors with this code match (the code on the same level of the cause chain); the solution carries it. */
+  readonly code?: ErrorCode;
   /** Narrows it further — `(e) => e.reason === 'unbound'`. Default: every error of the class. */
   readonly when?: (error: E) => boolean;
   /** The solution — or none after all (a database solution that finds no pending migration). May look things up. */
@@ -68,9 +73,13 @@ export class ErrorSolutions {
     for (let depth = 0; current instanceof Error && depth < 5; depth++) {
       for (const definition of this.#definitions) {
         if (!(current instanceof definition.for)) continue;
+        const code = codeOfMessage(current.message);
+        if (definition.code !== undefined && code !== definition.code) continue;
         try {
           if (definition.when && !definition.when(current)) continue;
-          const solution = await definition.solve(current, context);
+          const solved = await definition.solve(current, context);
+          const solutionCode = definition.code ?? code;
+          const solution = solved && solutionCode !== undefined && solved.code === undefined ? { ...solved, code: solutionCode } : solved;
           if (solution && !found.some((other) => other.title === solution.title)) found.push(solution);
         } catch {
           // A hint that cannot be worked out is left out.

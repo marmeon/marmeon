@@ -6,7 +6,8 @@ import { ConfigError, defineConfig } from './config/config.ts';
 import { env } from './config/env.ts';
 import { EnvironmentConfig } from './config/environment-config.ts';
 import { Logger } from './logger.ts';
-import { defineSolutions } from './solutions.ts';
+import { coreSolutions } from './core-solutions.ts';
+import { defineSolutions, ErrorSolutions } from './solutions.ts';
 import { defineModule } from './module.ts';
 import type { ServiceProvider } from './provider.ts';
 
@@ -151,6 +152,14 @@ describe('createApplication({ phase: "build" })', () => {
     expect(app.container.make(Plain)).toEqual({ port: '8080' });
     expect(() => app.container.make(Secret)).toThrow(/^The configuration "secret" is not available while building — the build boots the app without runtime secrets:\n {2}• secret: APP_KEY — .+\nRead it when the app runs/);
     expect(() => app.container.make(Secret)).toThrow(ConfigError);
+    // It is no start error (no K6): the solution "Set X in .env" does not apply to it.
+    let thrown: unknown;
+    try {
+      app.container.make(Secret);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(await new ErrorSolutions(coreSolutions).find(thrown)).toEqual([]);
   });
 
   it('a run fails as before: every problem at once, nothing registered', async () => {
@@ -162,7 +171,7 @@ describe('createApplication({ phase: "build" })', () => {
     }
     const error = await createApplication({ root: import.meta.dirname, discover: false, config: [Secret, Plain], providers: [Registers] }, { env: { NODE_ENV: 'production' } }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConfigError);
-    expect((error as Error).message).toMatch(/^Invalid configuration — the application cannot start:\n {2}• secret: APP_KEY — .+\nSet these variables in the environment or in \.env \(see \.env\.example\)\.$/);
+    expect((error as Error).message).toMatch(/^\[marmeon:K6\] Invalid configuration — the application cannot start:\n {2}• secret: APP_KEY — .+\nSet these variables in the environment or in \.env \(see \.env\.example\)\.$/);
     expect(registered).toEqual([]);
   });
 });

@@ -1,6 +1,7 @@
 import { ConfigError } from './config/config.ts';
 import { ContainerError } from './container.ts';
 import { InjectionError } from './injection/analyze.ts';
+import { withoutCode } from './error-codes.ts';
 import { defineSolutions, type Solution } from './solutions.ts';
 
 const CONTAINER_DOCS = 'docs/container.md#the-containers-errors';
@@ -9,6 +10,7 @@ const CONTAINER_DOCS = 'docs/container.md#the-containers-errors';
 export const coreSolutions = defineSolutions([
   {
     for: ContainerError,
+    code: 'K1',
     when: (e) => e.reason === 'unbound',
     solve: (e) => ({
       title: `Bind ${e.key} in a service provider`,
@@ -22,6 +24,7 @@ export const coreSolutions = defineSolutions([
   },
   {
     for: ContainerError,
+    code: 'K2',
     when: (e) => e.reason === 'scoped',
     solve: (e) => ({
       title: e.neededBy ? `Do not resolve the scoped ${e.key} from a singleton` : `Resolve ${e.key} inside a scope`,
@@ -35,11 +38,13 @@ export const coreSolutions = defineSolutions([
   },
   {
     for: ContainerError,
+    code: 'K3',
     when: (e) => e.reason === 'no-injection-list',
     solve: (e) => injectionSolution(e.key ?? 'The class', e.injection),
   },
   {
     for: ContainerError,
+    code: 'K4',
     when: (e) => e.reason === 'circular',
     solve: (e) => ({
       title: 'Break the circular dependency',
@@ -51,7 +56,8 @@ export const coreSolutions = defineSolutions([
   },
   {
     for: InjectionError,
-    solve: (e) => injectionSolution('The class', e.message),
+    code: 'K5',
+    solve: (e) => injectionSolution('The class', withoutCode(e.message)),
   },
   {
     // Node refuses TypeScript under node_modules: a package that reaches Node with its sources instead of its dist/.
@@ -69,6 +75,7 @@ export const coreSolutions = defineSolutions([
   },
   {
     for: ConfigError,
+    code: 'K6',
     // The variables the start found missing or invalid (listed with •) — not a ConfigError that says something else.
     when: (e) => /•\s/.test(e.message),
     solve: (e) => configSolution(e.message),

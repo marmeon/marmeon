@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Application, ErrorSolutions, Redactor, Solution } from '@marmeon/core';
+import { errorCodeOf, type Application, type ErrorCode, type ErrorSolutions, type Redactor, type Solution } from '@marmeon/core';
 import type { RequestRecording } from './recorder-token.ts';
 
 /** Lines of code shown above and below the line of a frame. */
@@ -93,6 +93,8 @@ export function editorLink(frame: Pick<StackFrame, 'file' | 'line' | 'column'>):
 export interface ErrorReport {
   readonly status: number;
   readonly requestId: string | undefined;
+  /** The error's code (`K6`), or that of the first cause with one; see docs/errors.md#server-error-codes. */
+  readonly code: ErrorCode | undefined;
   readonly error: { readonly name: string; readonly message: string };
   /** `cause` after `cause`. */
   readonly causes: readonly { readonly name: string; readonly message: string }[];
@@ -184,10 +186,12 @@ export async function buildReport({ error, status, request, requestId, app, reda
   return {
     status,
     requestId,
+    code: errorCodeOf(failure),
     error: { name: failure.name, message: redactor.text(failure.message) },
     causes,
     frames: withSnippets(parseStack(failure.stack ?? '', root)).map((frame) => ({ ...frame, ...(frame.fn ? { fn: redactor.text(frame.fn) } : {}) })),
     solutions: found.map((solution) => ({
+      ...(solution.code ? { code: solution.code } : {}),
       title: redactor.text(solution.title),
       text: redactor.text(solution.text),
       ...(solution.command ? { command: redactor.text(solution.command) } : {}),

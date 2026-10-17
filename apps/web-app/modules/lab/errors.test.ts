@@ -33,7 +33,8 @@ describe('the lab’s errors on the development error page', () => {
       const response = await app.get(`/lab/errors/${kind}`, page).assertStatus(500);
       expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
       expect(response.body).toContain('<article class="solution">');
-      expect(response.body).toContain(`<h2>${title}</h2>`);
+      // A solution of a coded error opens its heading with the code's badge.
+      expect(response.body).toContain(`${title}</h2>`);
     });
   }
 
@@ -44,7 +45,7 @@ describe('the lab’s errors on the development error page', () => {
     const last = await db.selectFrom('migrations' as never).select('name' as never).orderBy('id' as never, 'desc').executeTakeFirstOrThrow();
     await db.deleteFrom('migrations' as never).where('name' as never, '=', (last as { name: string }).name as never).execute();
     const response = await app.get('/lab/errors/table', page).assertStatus(500);
-    expect(response.body).toContain('<h2>Run the 1 pending migration</h2>');
+    expect(response.body).toContain('Run the 1 pending migration</h2>');
     expect(response.body).toContain((last as { name: string }).name);
     expect(response.body).toContain('marmeon migrate');
   });

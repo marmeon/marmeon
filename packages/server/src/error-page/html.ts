@@ -37,7 +37,7 @@ export function renderErrorPage(report: ErrorReport): string {
 <body>
 <main>
 <header class="head">
-  <p class="eyebrow"><span class="status">${status}</span> <span class="class">${escape(error.name)}</span> <span class="dev">development only</span></p>
+  <p class="eyebrow"><span class="status">${status}</span> ${report.code ? `<span class="code" title="${CODES_DOCS}">${escape(report.code)}</span> ` : ''}<span class="class">${escape(error.name)}</span> <span class="dev">development only</span></p>
   <h1>${escape(error.message)}</h1>
   ${report.causes.map((cause) => `<p class="cause">Caused by <b>${escape(cause.name)}</b>: ${escape(cause.message)}</p>`).join('')}
   <p class="where"><code>${escape(request.method)} ${escape(request.url)}</code>${route?.name ? ` · <code>${escape(route.name)}</code>` : ''}${route?.controller ? ` · <code>${escape(route.controller)}</code>` : ''}${report.requestId ? ` · request <code>${escape(report.requestId)}</code>` : ''}</p>
@@ -141,12 +141,15 @@ ${
 </html>`;
 }
 
+/** Where the codes are explained — shown as text for a solution without its own docs. */
+const CODES_DOCS = 'docs/errors.md#server-error-codes';
+
 function solutionHtml(solution: ErrorReport['solutions'][number]): string {
   return `<article class="solution">
-  <h2>${escape(solution.title)}</h2>
+  <h2>${solution.code ? `<span class="code">${escape(solution.code)}</span> ` : ''}${escape(solution.title)}</h2>
   <p>${escape(solution.text)}</p>
   ${solution.command ? `<pre class="command"><code>${escape(solution.command)}</code></pre>` : ''}
-  ${solution.docs ? `<p class="docs">Docs: <code>${escape(solution.docs)}</code></p>` : ''}
+  ${solution.docs || solution.code ? `<p class="docs">Docs: <code>${escape(solution.docs ?? CODES_DOCS)}</code></p>` : ''}
 </article>`;
 }
 
@@ -249,6 +252,8 @@ h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute
 .where{margin:8px 0 0;color:var(--muted);overflow-wrap:anywhere}
 .solutions{display:grid;gap:12px;margin:20px 0}
 .solution{background:var(--solution-soft);border:1px solid color-mix(in srgb,var(--solution) 35%,transparent);border-radius:8px;padding:14px 16px}
+.code{font-family:var(--mono);font-size:.85em;font-weight:600;color:var(--accent);text-decoration:none}
+.solution h2 .code{color:inherit;opacity:.8}
 .solution h2{color:var(--solution);margin:0 0 6px}
 .solution p{margin:0 0 8px}
 .command{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin:8px 0 0;user-select:all}

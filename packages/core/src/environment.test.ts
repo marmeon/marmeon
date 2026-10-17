@@ -45,7 +45,7 @@ describe('environment', () => {
     );
     expect(() => environment.check({ NODE_ENV: 'staging' })).toThrow(ConfigError);
     expect(() => environment.check({ NODE_ENV: 'staging' })).toThrow(
-      /^Invalid environment — the application cannot start:\n {2}• NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging\./,
+      /^\[marmeon:K6\] Invalid environment — the application cannot start:\n {2}• NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging\./,
     );
     expect(environment.problem({ NODE_ENV: 'Production' })).toBe('NODE_ENV=Production is not an environment Node knows — it is case-sensitive: set NODE_ENV=production.');
     expect(environment.problem({ NODE_ENV: 'qa-2' })).toMatch(/^NODE_ENV=qa-2 is not an environment Node knows — set NODE_ENV=production and APP_ENV=qa-2\./);

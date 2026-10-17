@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { analyzeInjections, injectConstructorDependencies } from './analyze.ts';
+import { analyzeInjections, injectConstructorDependencies, InjectionError } from './analyze.ts';
 import { browserSources, isBrowserSource } from './browser.ts';
 import { marmeonInjection } from '../vite.ts';
 import { embedInjections, embedPackageInjections, removeEmbeddedInjections } from './embed.ts';
@@ -112,6 +112,17 @@ describe('injectConstructorDependencies', () => {
     expect(output).toContain(
       'export class Money { static [Symbol.for("marmeon.injection.unresolvable")] = "Cannot inject app/Example.ts:1 — Money',
     );
+  });
+
+  it('an InjectionError carries its code', () => {
+    let thrown: unknown;
+    try {
+      embedInjections('export class Money { constructor(a: Foo) {} }', 'src/a.ts', 'export class Other {}', 'dist/a.js');
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(InjectionError);
+    expect((thrown as Error).message).toMatch(/^\[marmeon:K5\] /);
   });
 
   it('leaves classes alone that need nothing or declare their own list', () => {

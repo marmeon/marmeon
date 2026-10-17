@@ -114,9 +114,10 @@ async function printSolutions(output: Output, error: Error, root: string): Promi
     const solutions = await new ErrorSolutions([...providers.flatMap((Provider) => Provider.solutions ?? []), ...coreSolutions]).find(error);
     for (const solution of solutions) {
       output.line();
-      output.info(`How to fix it: ${solution.title}`);
+      output.info(`How to fix it${solution.code ? ` (${solution.code})` : ''}: ${solution.title}`);
       output.line(`  ${solution.text}`);
       if (solution.command) output.line(`  $ ${solution.command}`);
+      if (solution.docs) output.line(`  docs: ${solution.docs}`);
     }
   } catch {
     // The error itself was printed — that is what counts.

@@ -1,3 +1,4 @@
+import { withCode } from '../error-codes.ts';
 import { join } from 'node:path';
 import { ConfigError, readEnvFile } from '../environment.ts';
 import type { Token } from '../token.ts';
@@ -91,8 +92,11 @@ export async function validateConfig(
 /** The error a start fails with: every problem of every definition at once. */
 export function invalidConfiguration(problems: ReadonlyMap<ConfigDefinition<unknown>, readonly string[]>): ConfigError {
   const error = new ConfigError(
-    `Invalid configuration — the application cannot start:\n${[...problems.values()].flat().join('\n')}\n` +
-      'Set these variables in the environment or in .env (see .env.example).',
+    withCode(
+      'K6',
+      `Invalid configuration — the application cannot start:\n${[...problems.values()].flat().join('\n')}\n` +
+        'Set these variables in the environment or in .env (see .env.example).',
+    ),
   );
   error.stack = `${error.name}: ${error.message}`; // the location of the throw is noise here
   return error;

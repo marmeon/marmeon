@@ -1,3 +1,4 @@
+import { withCode, withoutCode } from '../error-codes.ts';
 import { parseSync } from '../oxc.ts';
 
 type Node = { type: string; start: number; end: number; [key: string]: any };
@@ -39,6 +40,10 @@ export const WARNINGS = 'marmeon.injection.warnings';
 
 export class InjectionError extends Error {
   override name = 'InjectionError';
+
+  constructor(message: string) {
+    super(withCode('K5', message));
+  }
 }
 
 interface ModuleBindings {
@@ -86,7 +91,7 @@ export function analyzeInjections(source: string, filename: string): InjectionSi
       sites.push({ className: name, classIndex: index, bodyStart: node.body.start, dependencies, ...(warnings.length > 0 ? { warnings } : {}) });
     } catch (error) {
       if (!(error instanceof InjectionError)) throw error;
-      sites.push({ className: name, classIndex: index, bodyStart: node.body.start, unresolvable: error.message });
+      sites.push({ className: name, classIndex: index, bodyStart: node.body.start, unresolvable: withoutCode(error.message) });
     }
   }
 
