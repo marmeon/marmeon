@@ -33,8 +33,12 @@ const BEARER = /\b(Bearer|Basic)\s+(?!\[redacted\])[\w.~+/=-]+/g;
 const URL_PASSWORD = /(?<![\w+.-])([a-z][\w+.-]*:\/\/[^:\s/@]*:)[^@\s/]+@/gi;
 // A password hash as a PHC string — `$argon2id$v=19$m=…$salt$hash`, `$scrypt$…`: never shown, wherever it appears.
 const PHC_HASH = /\$(?:argon2(?:id|i|d)|scrypt|pbkdf2(?:-sha\d+)?|bcrypt|2[abxy])\$[\w+/=,.$-]*[\w+/=$-]/g;
-// An API token (`marmeon_12|<secret>`) under any prefix: its id stays, the secret goes.
-const API_TOKEN = /\b([a-z0-9_]{0,16}?\d+)\|[A-Za-z0-9]{32,}/g;
+// The form with a `|` (`marmeon_12|<secret>`): kept for one release so tokens of the old form do not show in clear while apps roll
+// over; it goes with the next release.
+const API_TOKEN_WITH_BAR = /\b([a-z0-9_]{0,16}?\d+)\|[A-Za-z0-9]{32,}/g;
+// An API token (`marmeon_<40 letters and digits><8 hex>`) under any prefix that ends in `_`: the prefix stays, the rest goes. A
+// prefix without `_` is not told from a long word; `Bearer …` and the keys above still catch those in their usual places.
+const API_TOKEN = /(?<![A-Za-z0-9_])((?:[a-z0-9_]{0,15}_)?)[A-Za-z0-9]{40}[0-9a-f]{8}(?![A-Za-z0-9])/g;
 // A path segment of 32 or more URL-safe characters (`/reset-password/<token>`, a signed link's hash) — kept unless it reads
 // like a word or an id (see `looksLikeToken`). Matches start right after a `/` only (no quadratic scan of long words).
 const PATH_SEGMENT = /(?<=\/)[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
@@ -84,7 +88,8 @@ export function redactText(text: string): string {
     .replace(CODE_JSON, '$1"[redacted]"')
     .replace(URL_PASSWORD, '$1***@')
     .replace(PHC_HASH, '[redacted]')
-    .replace(API_TOKEN, '$1|[redacted]')
+    .replace(API_TOKEN_WITH_BAR, '$1|[redacted]')
+    .replace(API_TOKEN, '$1[redacted]')
     .replace(PATH_SEGMENT, (segment) => (looksLikeToken(segment) ? '[redacted]' : segment))
     .replace(KEY_VALUE, (_, key: string, separator: string, scheme: string | undefined) => `${key}${separator}${scheme ?? ''}[redacted]`)
     .replace(BEARER, '$1 [redacted]');

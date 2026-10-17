@@ -25,7 +25,7 @@ import { openRoutes } from './test-helpers/open-routes.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaA';
-const API_TOKEN = `marmeon_7|${randomBytes(30).toString('hex').slice(0, 40)}`;
+const API_TOKEN = `marmeon_${randomBytes(30).toString('hex').slice(0, 48)}`;
 
 class ReportJob {
   static readonly job = 'test.report';
@@ -310,7 +310,7 @@ describe('what the recorder keeps', () => {
       expect(tester!.assertRecorded('log', (log) => log.message === 'Looked at a person').content.context).toMatchObject({ person: 7, api_key: '[redacted]' });
       expect(tester!.assertRecorded('event', (event) => event.name === 'people.viewed').content).toMatchObject({ class: 'PersonViewed', payload: { person: 7, token: '[redacted]' } });
       expect(JSON.stringify(tester!.entries())).not.toMatch(/s3ss10n|query-token|event-token-value|key-123/);
-      expect(JSON.stringify(tester!.entries())).not.toContain(API_TOKEN.split('|')[1]);
+      expect(JSON.stringify(tester!.entries())).not.toContain(API_TOKEN.slice('marmeon_'.length, -8));
     } finally {
       await app.shutdown();
     }
@@ -358,7 +358,7 @@ describe('what the recorder keeps', () => {
       await tester!.settled();
       const exception = tester!.assertRecorded('exception');
       expect(exception.content).toMatchObject({ class: 'Error', in: 'request', status: 500, method: 'GET', path: '/fail' });
-      expect(exception.content.message).toBe(`The report failed, password=[redacted] with marmeon_7|[redacted]`);
+      expect(exception.content.message).toBe(`The report failed, password=[redacted] with marmeon_[redacted]`);
       expect(Array.isArray(exception.content.solutions)).toBe(true);
       expect(tester!.assertRecorded('request', (request) => request.path === '/fail').batch).toBe(exception.batch);
     } finally {
@@ -451,8 +451,8 @@ describe('what the recorder keeps', () => {
         return 0;
       });
       await tester!.settled();
-      expect(tester!.assertRecorded('query', (query) => query.sql.startsWith('select ? as h')).content).toMatchObject({ sensitive: false, parameters: ['[redacted]', 'token marmeon_7|[redacted]'] });
-      expect(tester!.assertRecorded('log', (log) => log.message.startsWith('Checked')).content.message).toBe('Checked marmeon_7|[redacted] against [redacted]');
+      expect(tester!.assertRecorded('query', (query) => query.sql.startsWith('select ? as h')).content).toMatchObject({ sensitive: false, parameters: ['[redacted]', 'token marmeon_[redacted]'] });
+      expect(tester!.assertRecorded('log', (log) => log.message.startsWith('Checked')).content.message).toBe('Checked marmeon_[redacted] against [redacted]');
     } finally {
       await app.shutdown();
     }

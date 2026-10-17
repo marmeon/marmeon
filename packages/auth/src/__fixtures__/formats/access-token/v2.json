@@ -1,0 +1,18 @@
+{
+  "format": "access-token",
+  "version": 2,
+  "prefix": "marmeon_",
+  "plainText": "marmeon_q8Fz0kZb3T5wYvLp9nR2xCj7mHs4dGa1eKoU6iQt556c5c86",
+  "row": {
+    "user_id": 1,
+    "name": "Fixture",
+    "token_hash": "GmUJnIWkMpbBbHi0Ai6FgLT8ENpckjdRUNKd7kuK8Dg",
+    "abilities": [
+      "users:read"
+    ],
+    "last_used_at": null,
+    "expires_at": null,
+    "created_at": "2026-01-01T00:00:00.000Z",
+    "updated_at": "2026-01-01T00:00:00.000Z"
+  }
+}

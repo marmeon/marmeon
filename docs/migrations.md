@@ -674,6 +674,10 @@ are renamed that way, to `marmeon_jobs`, `marmeon_failed_jobs`, `marmeon_cache`,
 which moves the marks with it. `users` is your table and keeps its name. The auth tables come in two sets, `auth` and `sign-ins`
 (`marmeon make:sign-ins-table` writes the second on its own).
 
+The `auth` set has a second revision of another kind: `reissue_personal_access_tokens` deletes every row of `marmeon_personal_access_tokens`
+and adds a unique index on `token_hash`, because API tokens with a `|`, the form issued before, are no longer valid. See
+[API tokens](api-tokens.md#a-store-of-your-own). It touches no other table, and an app without that table skips it.
+
 A migration it wrote is yours like the first one. Keep the first line: without it, the command takes a changed file for
 revision 1.
 

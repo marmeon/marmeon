@@ -13,9 +13,11 @@ export class RevokeAccessTokenController extends Controller {
   }
 
   async handle(ctx: HttpContext<Authenticated, { token: string }>) {
-    // Only the user's own: someone else's token id is a 404, like one that does not exist.
-    const id = /^\d{1,15}$/.test(ctx.params.token) ? Number(ctx.params.token) : 0;
-    if (!(await this.#tokens.revoke(ctx.user.id, id))) abort(404);
+    // Only the user's own: someone else's token id is a 404, like one that does not exist. The kit's keys are numbers; anything that
+    // is not one is no id of ours and costs no query (Postgres would refuse a UUID for a number key with a 500). An app with
+    // UUID keys matches its own pattern here and passes the string on: `revoke` takes both.
+    const id = /^\d{1,15}$/.test(ctx.params.token) ? Number(ctx.params.token) : undefined;
+    if (id === undefined || !(await this.#tokens.revoke(ctx.user.id, id))) abort(404);
     return this.redirect().route('auth.tokens').flash('toast', { kind: 'success', message: this.#translator.get('auth.tokens.revoked') });
   }
 }

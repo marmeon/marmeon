@@ -365,7 +365,7 @@ async function createTokenThenSignOut() {
   await tab.layerVisit('/settings/tokens', { method: 'post', data: { current_password: 'password', name: 'Backup script', abilities: ['users:read'] } });
   expect(tab.layers.map((layer) => layer.component)).toEqual(['auth/NewAccessToken']);
   const plainText = tab.layers[0]!.props.plainText as string;
-  expect(plainText).toMatch(/^marmeon_\d+\|/);
+  expect(plainText).toMatch(/^marmeon_[A-Za-z0-9]{48}$/);
   await tab.visit('/logout', { method: 'post' });
   expect(tab.visible.component).toBe('auth/Login');
   return { ada, plainText };
