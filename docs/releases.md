@@ -103,7 +103,8 @@ The promise of a version covers the public API. These are part of it:
 - The table schemas of the migrations the framework ships, the stubs and the `make:*` tables.
 - The protocol between client and server: headers and the page object.
 - Stored formats: queue payloads, encrypted values, tokens and cookies.
-- Translation keys, `@marmeon/react/styles.css` (its classes and custom properties) and the names of diagnostics channels.
+- Translation keys, `@marmeon/react/styles.css` (its classes and custom properties) and the names of diagnostics channels and the
+  shape of their messages.
 
 Not part of it are `./internal` subpaths, anything marked `@internal` or [experimental](#experimental), and the wording of messages and logs.
 
@@ -130,9 +131,8 @@ is still listed in the package's `api.md`, under **Experimental**, so a change s
 - `@marmeon/react/table-tanstack`
 - `marmeon tinker`
 
-The message types of the diagnostics channels in `@marmeon/core` (the channel names stay stable), the options `pages` and
-`lang` of the Vite plugin, and the members of `@marmeon/testing` that follow an experimental package (`devtools`,
-`broadcast`, `live` of the test app) are experimental too, one by one; their declarations say so.
+The options `pages` and `lang` of the Vite plugin and the members of `@marmeon/testing` that follow an experimental
+package (`devtools`, `broadcast`, `live` of the test app) are experimental too, one by one; their declarations say so.
 
 ### When a union grows
 
