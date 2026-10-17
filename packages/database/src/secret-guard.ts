@@ -28,6 +28,9 @@ import { MANY, ONE, SECRET } from './placeholders.ts';
 // A secret column leaves the database only where a query asks for it with `secret()`. Every source of a query — a table, a common
 // table expression, a subquery — carries the secret columns it outputs; any reference to one of them, or to a whole row of a source
 // that carries one, is refused unless its selection is `secret()`, at every level that passes it on, and never in a relation.
+// A `selectAll()` of a table the migrations know is spelled out as the columns they know, without the secret ones — also where the table
+// has none: a column that a newer migration added (and may have marked secret) is not one this process has heard of. A table no migration
+// created stays `*`: there is nothing to enforce on it.
 // Names are compared without ASCII case, as SQLite does (`TOKEN` is `token` there); names in scope that differ only in case are
 // refused, since Postgres tells them apart.
 
@@ -54,7 +57,12 @@ interface Source {
   readonly secret: ReadonlySet<string>;
   /** Raw SQL or a function in FROM: its columns cannot be checked. */
   readonly untyped?: boolean;
+  /** A `selectAll()` of it is spelled out as `names`: a table of the migrations the guard can name the columns of. */
+  readonly spelled?: boolean;
 }
+
+/** The schemas of the database's own catalog: no table of the migrations is in one, whatever its name. */
+const CATALOG_SCHEMAS: ReadonlySet<string> = new Set(['pg_catalog', 'information_schema']);
 
 const FUNCTION_NAME = /^[A-Za-z_][A-Za-z0-9_.]*$/;
 
@@ -364,7 +372,10 @@ class Guard {
       const cte = this.#cte(name);
       if (cte) return { ref, ...(cte.known ? { names: cte.names } : {}), secret: cte.secret, ...(cte.untyped ? { untyped: true } : {}) };
       const known = this.#table(name);
-      return { ref, table: name, ...(known?.names ? { names: known.names } : {}), secret: known?.secret ?? new Set() };
+      // The catalogs hold no data of the app, and a name they share with a table of the migrations is not that table. Another schema
+      // of the app is the app's: the migrations know its tables by name only.
+      const plain = node.table.schema === undefined || !CATALOG_SCHEMAS.has(fold(node.table.schema.name));
+      return { ref, table: name, ...(known?.names ? { names: known.names } : {}), ...(known?.names && plain && this.#metadata.managed ? { spelled: true } : {}), secret: known?.secret ?? new Set() };
     }
     if (SelectQueryNode.is(node)) {
       const output = this.#select(node);
@@ -387,7 +398,7 @@ class Guard {
     const table = this.#tables.get(fold(name));
     if (!table) return undefined;
     const exact = this.#metadata.kinds.get(name);
-    return { ...(exact ? { names: [...exact.keys()] } : table.names ? { names: table.names } : {}), secret: table.secret };
+    return { ...(exact ? { names: namesOf(exact) } : table.names ? { names: table.names } : {}), secret: table.secret };
   }
 
   /**
@@ -420,7 +431,7 @@ class Guard {
       const all = selection.kind === 'SelectAllNode' ? sources : ReferenceNode.is(selection) && selection.column.kind === 'SelectAllNode' ? [this.#own(selection.table!.table.identifier.name, sources)] : undefined;
       if (all) {
         for (const source of all) if (source.untyped) this.#untyped(source);
-        if (all.every((source) => source.secret.size === 0)) {
+        if (all.every((source) => source.secret.size === 0 && !source.spelled)) {
           kept.push(node);
           for (const source of all) {
             if (source.names) output.names.push(...source.names);
@@ -431,7 +442,7 @@ class Guard {
         changed = true;
         let columns = 0;
         for (const source of all) {
-          if (source.secret.size === 0) {
+          if (source.secret.size === 0 && !source.spelled) {
             kept.push(SelectionNode.createSelectAllFromTable(TableNode.create(source.ref)));
             if (source.names) output.names.push(...source.names);
             else output.known = false;
@@ -440,13 +451,10 @@ class Guard {
           }
           // Of unknown width (a select that asked for a secret next to a view's selectAll()): nothing to spell out, so its row is refused.
           if (!source.names) this.#wholeRow(source);
-          for (const column of source.names) {
-            if (column === undefined) this.#refuse(`a column of ${source.ref} without a name, next to a secret one`);
-            if (source.secret.has(fold(column))) continue;
-            kept.push(SelectionNode.create(ReferenceNode.create(ColumnNode.create(column), TableNode.create(source.ref))));
-            output.names.push(column);
-            columns++;
-          }
+          const spelled = this.#columnsOf(source);
+          kept.push(...spelled.selections);
+          output.names.push(...spelled.names);
+          columns += spelled.names.length;
         }
         if (columns === 0) {
           throw new Error(
@@ -472,6 +480,31 @@ class Guard {
     if (changed) this.spelled.set(owner, kept);
     else this.spelled.delete(owner);
     return output;
+  }
+
+  /** The selections that spell out a source without its secret columns — the same nodes for a table every time (a query is hot). */
+  #columnsOf(source: Source): { readonly names: readonly string[]; readonly selections: readonly SelectionNode[] } {
+    const names = source.names!;
+    // Not by an alias: a query that builds its aliases would grow the cache without end.
+    const cacheable = source.table !== undefined && source.ref === source.table;
+    const cached = cacheable ? spelledBy.get(names)?.get(source.ref) : undefined;
+    if (cached?.secret === source.secret) return cached;
+    const kept: string[] = [];
+    for (const column of names) {
+      if (column === undefined) this.#refuse(`a column of ${source.ref} without a name, next to a secret one`);
+      if (!source.secret.has(fold(column))) kept.push(column);
+    }
+    const spelled = {
+      secret: source.secret,
+      names: kept,
+      selections: kept.map((column) => SelectionNode.create(ReferenceNode.create(ColumnNode.create(column), TableNode.create(source.ref)))),
+    };
+    if (cacheable) {
+      let byRef = spelledBy.get(names);
+      if (!byRef) spelledBy.set(names, (byRef = new Map()));
+      byRef.set(source.ref, spelled);
+    }
+    return spelled;
   }
 
   /**
@@ -508,6 +541,13 @@ class Guard {
     }
     if (kind === 'FunctionNode' || kind === 'AggregateFunctionNode') this.#named(node as FunctionNode);
     if (kind === 'FunctionNode' && ((node as FunctionNode).func === MANY || (node as FunctionNode).func === ONE)) return this.#relationOf(node as FunctionNode);
+    if (kind === 'AggregateFunctionNode' && (node as AggregateFunctionNode).func === 'count') {
+      // A count holds no value of what it counts (`count("items".*)` is no read of the row); its filter and window are read.
+      const { aggregated, ...rest } = node as AggregateFunctionNode;
+      this.#scan(aggregated);
+      for (const value of Object.values(rest)) if (value !== null && typeof value === 'object') this.#read(value);
+      return;
+    }
     if (kind === 'ReferenceNode') return this.#reference(node as ReferenceNode);
     if (kind === 'ColumnNode') return this.#name((node as ColumnNode).column.name);
     // A table as a value is its whole row (`eb.table('users')`, `sql.table()`); `sql.id()` is a name, a column's or a source's.
@@ -574,7 +614,8 @@ class Guard {
       for (const source of sources) {
         if (source.untyped) this.#untyped(source);
         if (source.secret.has(fold(name))) this.#refuse(`${source.table ?? source.ref}.${name}`);
-        if (fold(source.ref) === fold(name)) this.#row(name);
+        // A column of that name is a column, not the row (a table `status` with a column `status`).
+        if (fold(source.ref) === fold(name) && !source.names?.some((column) => column !== undefined && fold(column) === fold(name))) this.#row(name);
       }
     }
   }
@@ -582,10 +623,16 @@ class Guard {
   #row(name: string): void {
     const source = this.#resolve(name);
     if (source.untyped) this.#untyped(source);
-    if (source.secret.size) this.#wholeRow(source);
+    if (source.secret.size || source.spelled) this.#wholeRow(source);
   }
 
   #wholeRow(source: Source): never {
+    if (source.secret.size === 0) {
+      throw new Error(
+        withCode('D9', `${this.#relation ?? 'This query'} reads the whole row of ${source.table ?? source.ref}, which may hold columns this release does not know (a ` +
+          'newer migration may have added a secret one) — name the columns it needs. See docs/migrations.md#secret-columns.'),
+      );
+    }
     throw new Error(
       withCode('D9', `${this.#relation ?? 'This query'} reads the whole row of ${source.table ?? source.ref}, secret columns included — name the columns it ` +
         'needs, and read a secret one with secret(eb, …) in a query of its own. See docs/queries.md#relations-and-secret-columns.'),
@@ -600,7 +647,8 @@ class Guard {
     }
     const cte = this.#cte(name);
     if (cte) return { ref: name, names: cte.names, secret: cte.secret, ...(cte.untyped ? { untyped: true } : {}) };
-    return { ref: name, table: name, secret: this.#table(name)?.secret ?? new Set() };
+    const known = this.#table(name);
+    return { ref: name, table: name, ...(known?.names && this.#metadata.managed ? { spelled: true } : {}), secret: known?.secret ?? new Set() };
   }
 
   #refuse(what: string): never {
@@ -636,6 +684,17 @@ export function fold(name: string): string {
   return /[A-Z]/.test(name) ? name.replace(/[A-Z]/g, (letter) => letter.toLowerCase()) : name;
 }
 
+/** The spelled-out selections of a table's columns by the name it is referred to by — as long as its column list lives (once per load). */
+const spelledBy = new WeakMap<readonly (string | undefined)[], Map<string, { secret: ReadonlySet<string>; names: readonly string[]; selections: readonly SelectionNode[] }>>();
+
+/** The column names of a table's kinds, one array per load: callers key caches by it. */
+const listed = new WeakMap<object, readonly string[]>();
+function namesOf(kinds: ReadonlyMap<string, unknown>): readonly string[] {
+  let names = listed.get(kinds);
+  if (!names) listed.set(kinds, (names = [...kinds.keys()]));
+  return names;
+}
+
 /** The tables of the metadata by folded name — once per load (the metadata replaces its maps when it loads). */
 const folded = new WeakMap<object, { readonly kinds: object; readonly tables: ReadonlyMap<string, Table> }>();
 function tablesOf(metadata: SchemaMetadata): ReadonlyMap<string, Table> {
@@ -646,7 +705,7 @@ function tablesOf(metadata: SchemaMetadata): ReadonlyMap<string, Table> {
     let table = tables.get(fold(name));
     if (!table) {
       const kinds = metadata.kinds.get(name);
-      tables.set(fold(name), (table = { ...(kinds ? { names: [...kinds.keys()] } : {}), secret: new Set() }));
+      tables.set(fold(name), (table = { ...(kinds ? { names: namesOf(kinds) } : {}), secret: new Set() }));
     }
     return table;
   };

@@ -116,7 +116,8 @@ on this page.
 
 > [!WARNING]
 > Secret columns, such as the password hash, are left out of every `selectAll()` and `returningAll()` of the query builder, and
-> a query reads one only with `secret()`. Raw SQL is not checked: `` sql`select * from users` `` returns the hash. The
+> a query reads one only with `secret()`. For a table the migrations created, those two name the columns the migrations know, so a
+> column that raw SQL or a newer migration added is not in the result until the query names it. Raw SQL is not checked: `` sql`select * from users` `` returns the hash. The
 > [migrations](migrations.md#secret-columns) page explains secret columns.
 
 ## Repositories

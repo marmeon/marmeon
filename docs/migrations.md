@@ -146,7 +146,8 @@ schema.raw({ sqlite: sql`…`, pgsql: sql`…` }); // one statement per driver; 
 
 A statement that names one of the migrator's tables stops with error D4 when the plan is built; that is a check of its words, not a
 parse. Otherwise Marmeon does not look into the statement. A table, view, column or index it creates has no owner, no secret mark
-and no timestamp or soft-delete marker, and Marmeon's picture of the schema (below) does not contain it. Use the blueprint, with
+and no timestamp or soft-delete marker, and Marmeon's picture of the schema (below) does not contain it: `selectAll()` of a table it
+adds a column to leaves that column out (name it in the query), and `selectAll()` of a table it creates stays `select *`. Use the blueprint, with
 `schema.create()`, `schema.alter()` and `schema.rename()`, for everything it can do: only what it describes is known. Changing a table or
 column that raw SQL made with `schema.alter()` or `schema.rename()` stops with error D19, because Marmeon would not know the change.
 
@@ -312,17 +313,23 @@ database. A running app and a migration meet in three places:
   created, with its soft-delete mark, is known to the step that fills it, and to nobody else yet.
 - **In another process** that started before `marmeon migrate` ran, nothing changes while it runs: the process keeps the schema of its
   code, and a column the new migrations add is not in it (the state `ahead` in
-  [how the migrator keeps track](#how-the-migrator-keeps-track)). A relation, and the `selectAll()` of a table that has secret
-  columns, name the columns the code knows. A plain `selectAll()` of another table reads every column the database has, new ones
-  included. That holds for a process started after the new migrations ran as well: a column a newer migration marks `.secret()` is
-  not hidden from code that does not know the migration, so roll a release out whole, old processes replaced soon.
+  [how the migrator keeps track](#how-the-migrator-keeps-track)). A relation, and every `selectAll()` and `returningAll()` of a table
+  the migrations created, name the columns the code knows (see [secret columns](#secret-columns)): a column a newer migration adds,
+  secret or not, is not in the result of an old process, and a column that migration marks `.secret()` never leaves the database
+  through one. A query that names the column itself, or raw SQL, still reads it.
 - **In a process whose code is newer than the database**, such as an app that starts before `migrate --force` has finished, or after a
   rollback, every query is refused with a `MigrationStateError` (D2) that names the missing migrations, and `/up/ready` is red, so a load
   balancer sends no request there. The process looks at the database again at most once a second and answers as soon as the migrations
   have run. A process that was ready when a rollback ran keeps the schema it had until it restarts (the process that rolled back
   continues with the schema of the migrations that remain); one started afterwards with the newer code is pending until the next `migrate`.
 
-A query of an old process that names a column a migration dropped fails at the database, as it would anywhere.
+A query of an old process that names a column a migration dropped fails at the database, as it would anywhere. So does every
+`selectAll()`, `returningAll()` and relation of that table, since they name the columns the old code knows: the old process fails
+rather than answering with a different set of columns. Drop or rename a column in a later release than the one that stops using it
+(add the new column first, move the code over, remove the old column afterwards), so that no old process is still running.
+
+Reading the whole row of a table as one value (`to_jsonb(users)`, `eb.table('users')` in a function) is refused for the same reason:
+the row may hold a column this release does not know. Name the columns.
 
 > [!WARNING]
 > `migrate:fresh` drops **every** table of the database, also tables that no migration created, and every table of the other
@@ -587,6 +594,12 @@ A secret column is written like any other, but:
 
 - `Row<'users'>` leaves it out, so it cannot reach a page's props by accident;
 - the connection leaves it out of every `selectAll()` and `returningAll()`, also inside a subquery or a common table expression;
+- those two name the columns the migrations know, for every table they created, not only for tables with a secret column: the
+  connection sends `select "users"."id", "users"."name", … from "users"` instead of `select *`. A column the database has and the
+  migrations do not describe, such as one a migration of a newer release added while an older process still runs, or one raw SQL or
+  another tool added, is not selected, so it can never be a secret column that went unnoticed. Name it in the query to read it. A
+  table no migration created (one raw SQL or another tool made) keeps `select *`, and so does every table of a connection with
+  `managed: false`;
 - a query reads it only with `secret(eb, 'password')`, in the one place that needs it. A query that names it otherwise, or reads the
   table's whole row as one value (`eb.table('users')` in a function), is refused before it is sent;
 - a subquery or a common table expression that reads it with `secret()` passes it on as a secret column: the query around it asks
