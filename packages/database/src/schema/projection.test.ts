@@ -256,6 +256,8 @@ const GROUPS: Record<string, string[]> = {
   'ddl-columns': ['ddl/columns'],
   'ddl-indexes': ['ddl/columns', 'ddl/indexes'],
   ddl: ['ddl/columns', 'ddl/indexes', 'ddl/alter', 'ddl/rename', 'ddl/drop'],
+  'known-columns': ['known-columns'],
+  'known-columns-old': ['known-columns-old'],
   nullability: ['nullability'],
   'renamed-key': ['renamed-key'],
   'state-data': ['state-data'],
