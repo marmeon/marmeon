@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "connection": "default",
+  "driver": "pgsql",
+  "target": "postgres://app:***@db.internal:5433/shop?sslmode=require",
+  "server": "PostgreSQL 16.2",
+  "tables": [
+    { "name": "users", "schema": "public", "columns": 3, "rows": 7 },
+    { "name": "posts", "schema": "public", "columns": 2, "rows": 7 }
+  ],
+  "warnings": []
+}

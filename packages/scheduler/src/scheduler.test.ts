@@ -11,7 +11,9 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Queue, QueueConnections, QueueServiceProvider, type JobPayload } from '@marmeon/queue';
 import { QUEUE_MIGRATION } from '@marmeon/queue/internal';
 import * as v from 'valibot';
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { Output } from 'marmeon';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineSchedule, ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, Scheduler, SchedulerServiceProvider, type TaskResult } from './index.ts';
 import { ScheduleTester } from './testing.ts';
 import { MINUTE } from './time.ts';
@@ -661,5 +663,82 @@ describe('a schedule set up wrongly', () => {
     const development = await boot(schedule, { env: { NODE_ENV: 'development' } });
     expect(development.schedule.due(at), 'NODE_ENV=development (APP_ENV local by default)').toEqual(['local-only']);
     await development.app.shutdown();
+  });
+});
+
+
+describe('schedule:list --json', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  async function list(schedule: ModuleDefinition['schedule'], options: Record<string, boolean>, shared = false) {
+    const { app } = await boot(schedule, shared ? { providers: [DatabaseServiceProvider], env: { CACHE_DRIVER: 'database', DB_DATABASE: ':memory:' } } : {});
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
+    vi.spyOn(process.stderr, 'write').mockImplementation((text) => (stderr.push(String(text)), true));
+    const List = app.container.make(CommandRegistry).get('schedule:list')!;
+    const code = (app.container.make(List) as { handle(input: unknown): number }).handle({ args: [], options, output: new Output(), root: app.root });
+    vi.restoreAllMocks();
+    await app.shutdown();
+    return { code, stdout: stdout.join(''), stderr: stderr.join('') };
+  }
+
+  const tasks = defineSchedule((s) => {
+    s.call(CountRun).everyMinute().name('plain');
+    s.call(CountRun).daily().at('03:10').timezone('Europe/Berlin').name('berlin').onOneServer().withoutOverlapping(30).catchUp('skip').environments('production', 'local').when(() => true);
+    s.call(CountRun).cron('0 0 30 2 *').name('never');
+    s.job(StatsJob, { scope: 'all' }).hourly().name('stats');
+    s.command('fixture:prune', ['--days=30']).daily().name('prune');
+  });
+
+  it('prints one document that pins every field of every variant, in the stored format', async () => {
+    const { code, stdout, stderr } = await list(tasks, { json: true }, true);
+    expect(code).toBe(0);
+    expect(stderr).toBe('');
+    expect(stdout.endsWith('\n')).toBe(true);
+    const document = JSON.parse(stdout) as Record<string, unknown>;
+    expect(Object.keys(document)[0]).toBe('format');
+    const fixture = JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-schedule-list/v1.json', import.meta.url), 'utf8'));
+    expect(document).toMatchObject(fixture);
+    // toMatchObject ignores extra keys: the lists and the options of each task are exactly these.
+    expect((document.tasks as Record<string, unknown>[]).map((task) => Object.keys(task))).toEqual(Array(5).fill(['name', 'expression', 'timeZone', 'next', 'does', 'options']));
+    expect((document.tasks as { options: object }[]).map((task) => Object.keys(task.options))).toEqual(Array(5).fill(['oneServer', 'overlapMinutes', 'catchUp', 'environments', 'filtered']));
+  });
+
+  it('puts the lock warning in warnings, and keeps it off stdout apart from that', async () => {
+    const { stdout, stderr } = await list(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count').withoutOverlapping()), { json: true });
+    expect(JSON.parse(stdout).warnings).toEqual([expect.stringContaining('withoutOverlapping() locks in CACHE_DRIVER=memory')]);
+    expect(stderr).toBe('');
+  });
+
+  it('prints an empty list as a document, and the table without --json', async () => {
+    const empty = await list(defineSchedule(() => {}), { json: true });
+    expect(JSON.parse(empty.stdout)).toEqual({ format: 1, tasks: [], warnings: [] });
+    const table = await list(tasks, {}, true);
+    expect(table.stdout).toMatch(/^Task\s+Schedule\s+Next run/);
+    expect(table.stdout).toContain('one server, no overlap, no catch-up, only production/local, filtered');
+  });
+});
+
+describe('schedule:list masks secrets', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('shows no job payload value or command argument the redactor knows, in the table or the document', async () => {
+    const { app } = await boot(
+      defineSchedule((s) => {
+        s.job(StatsJob, { scope: 'all', apiKey: 'geheim' } as never).hourly();
+        s.command('fixture:prune', ['--password=geheim']).daily();
+      }),
+    );
+    const List = app.container.make(CommandRegistry).get('schedule:list')!;
+    for (const options of [{ json: true }, {}]) {
+      const stdout: string[] = [];
+      vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
+      (app.container.make(List) as { handle(input: unknown): number }).handle({ args: [], options, output: new Output(), root: app.root });
+      vi.restoreAllMocks();
+      expect(stdout.join(''), JSON.stringify(options)).not.toContain('geheim');
+      expect(stdout.join('')).toContain('fixture.stats');
+    }
+    await app.shutdown();
   });
 });

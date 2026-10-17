@@ -186,6 +186,20 @@ describe('connection errors', () => {
     await connections.destroy();
   });
 
+  it('name no path of a certificate or key file that cannot be read', async () => {
+    const connections = new Connections({
+      connections: { default: { driver: 'pgsql', url: 'postgres://app@127.0.0.1:1/app?sslmode=require&sslkey=/marmeon-secret-key.pem&sslcert=/marmeon-secret-cert.pem' } },
+      root: '/',
+      logger: silent,
+    });
+    const error = await sql`select 1`.execute(connections.get()).then(() => undefined, (e: unknown) => e);
+    expect(error).toBeInstanceOf(DatabaseConnectionError);
+    expect((error as Error).message).toMatch(/: ENOENT: a certificate or key file named in the URL \(sslcert, sslkey, sslrootcert\) could not be read$/);
+    expect((error as Error).message).not.toContain('marmeon-secret');
+    expect((error as Error).cause).toBeInstanceOf(Error);
+    await connections.destroy();
+  });
+
   it('report a missing SQLite directory at boot, and unknown connections by name', () => {
     const connections = new Connections({ connections: { default: { driver: 'sqlite', database: 'nope/db.sqlite' } }, root: tmpdir(), logger: silent });
     expect(() => connections.verify()).toThrow(/directory of the SQLite database for connection "default" does not exist: .*nope/);

@@ -227,8 +227,16 @@ the runs still going `--stop-timeout` seconds, 30 by default, then ends and free
 | --- | --- |
 | `schedule:work [--stop-timeout=30]` | Runs the schedule every minute, until stopped. |
 | `schedule:run` | Runs what is due now, waits for the runs and ends: with exit code 1 when a run failed. |
-| `schedule:list` | Lists the tasks, their schedule in their time zone, the next run and their options. |
+| `schedule:list [--json]` | Lists the tasks, their schedule in their time zone, the next run and their options. |
 | `schedule:test <name>` | Runs one task now, whatever its frequency, filters and environments say. Its overlap lock still counts. |
+
+`schedule:list --json` prints the same as a [machine-readable document](console.md#machine-readable-output): `format`, `tasks` and
+`warnings`. Each task has `name`, `expression`, `timeZone`, `next` (the next run as a time with its offset, `2026-10-06T03:10+02:00`,
+or `null` when none comes within 400 days), `does` (what the task runs, as in the table's Does column: `call Class`, `job name {payload}` or `command name args`, with secrets masked) and `options`: `oneServer` (a boolean), `overlapMinutes` (a number, or `null`
+without `withoutOverlapping()`), `catchUp` (`once` or `skip`), `environments` (a list, or `null` for every environment) and
+`filtered` (a boolean: the task has `when()` or `skip()`). The lock warning that the text prints is in `warnings`.
+
+A job's payload and a command's arguments are shown as passed, apart from what the redactor masks (`--password=…`, `"apiKey"`); it does not mask a value that follows its flag after a space, like `--token abc`.
 
 In production, run **one** `schedule:work` per server under a supervisor, next to the web processes and the workers. A task with
 `onOneServer()` then runs once across them. `marmeon make:docker` writes the role as a `scheduler` container and as a systemd unit;
