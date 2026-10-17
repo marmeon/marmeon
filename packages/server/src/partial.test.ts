@@ -57,11 +57,12 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
     expect(computed).toEqual({ expensive: 1 });
   });
 
-  it('ignores partial headers on a full page load (the document needs every prop)', async () => {
-    const response = await app.request('/users/1', { headers: { 'x-marmeon-partial-component': 'users/Show', 'x-marmeon-partial-data': 'stats' } });
-    const html = await response.text();
+  it('computes every prop for a document, and refuses partial headers without the protocol version (409)', async () => {
+    const html = await (await app.request('/users/1')).text();
     expect(html).toContain('"expensive":42');
     expect(html).not.toContain('"stats"');
+    const refused = await app.request('/users/1', { headers: { 'x-marmeon-partial-component': 'users/Show', 'x-marmeon-partial-data': 'stats' } });
+    expect(refused.status).toBe(409);
   });
 
   it('sends the page without a deferred prop at once — loading it is a partial reload of its own', async () => {

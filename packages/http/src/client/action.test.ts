@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
 import { Navigator } from './navigation.ts';
 import type { RegionOwner } from './owner.ts';
 import { boot, FakeWindow, keptRegions, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
@@ -40,7 +40,8 @@ describe('withActions(navigator).action — requests that do not navigate', () =
 
     expect(outcome).toEqual({ ok: true, kind: 'data', status: 200, data: { deleted: 2 }, flash: [] });
     expect(win.requests).toEqual([expect.objectContaining({ url: `${ORIGIN}/users/1/links/2`, method: 'DELETE', headers: expect.objectContaining({ [ACTION_HEADER]: 'true', accept: 'application/json', 'content-type': 'application/json' }) })]);
-    expect(win.requests[0]!.headers[PAGE_HEADER]).toBeUndefined();
+    // The version goes with it, so the server can refuse an action of another build before any controller runs.
+    expect(win.requests[0]!.headers[PAGE_HEADER]).toBe(PROTOCOL_VERSION);
     expect(init).toMatchObject({ redirect: 'manual', cache: 'no-store', credentials: 'same-origin' });
     // An action never pushes (or replaces) a history entry, and renders nothing by itself.
     expect(JSON.stringify(win.entries)).toBe(entries);
@@ -57,7 +58,8 @@ describe('withActions(navigator).action — requests that do not navigate', () =
     expect(win.requests).toHaveLength(1);
 
     await withActions(navigator).action('/users/1/links', { data: {}, onRedirect: 'visit' });
-    expect(win.requests.map((request) => request.headers[PAGE_HEADER])).toEqual([undefined, undefined, 'true']);
+    expect(win.requests.map((request) => request.headers[ACTION_HEADER])).toEqual(['true', 'true', undefined]);
+    expect(win.requests.map((request) => request.headers[PAGE_HEADER])).toEqual([PROTOCOL_VERSION, PROTOCOL_VERSION, PROTOCOL_VERSION]);
   });
 
   it('ends failures as outcomes, never as rejections: 422 → invalid, 401/419/5xx → exception, offline → network', async () => {
@@ -237,6 +239,17 @@ describe('optimistic patches', () => {
     expect(await withActions(navigator).action('/logout')).toEqual({ ok: false, kind: 'cancelled' });
     expect(win.loads).toEqual(['assign https://app.test/login']);
     expect(navigator.cachedPages).toBe(0);
+  });
+
+  it('a 409 for another version of the protocol loads fully exactly once — whatever the page still sends afterwards (no reload loop)', async () => {
+    const win = new FakeWindow(`${ORIGIN}/users/1`);
+    win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: `${ORIGIN}/users/1`, [RELOAD_HEADER]: 'version' } });
+    const { navigator } = boot(win, profile('/users/1', 1));
+    const actions = withActions(navigator);
+    expect(await actions.action('/users/1/links', { data: { label: 'x' } })).toEqual({ ok: false, kind: 'cancelled' });
+    expect(await actions.action('/users/1/links', { data: { label: 'y' } })).toEqual({ ok: false, kind: 'cancelled' });
+    await expect(navigator.visit('/people')).resolves.toBeUndefined();
+    expect(win.loads).toEqual(['assign https://app.test/users/1']);
   });
 
   it('a newer action with the same key cancels the older — its patch with it', async () => {

@@ -1,5 +1,5 @@
 import { DOCUMENT_HEADER, SESSION_PATH } from '@marmeon/http';
-import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, PAGE_SCRIPT_ID, PROTOCOL_VERSION, type PageObject } from '@marmeon/http/protocol';
 import { tabSync } from '@marmeon/http/client';
 import { loadHistoryFallback, Navigator, type NavigatorWindow } from '@marmeon/http/client/adapter';
 import { createHttpKernel } from '@marmeon/server';
@@ -111,7 +111,7 @@ describe('flash messages stay with the document that flashed them', () => {
   it('another tab’s poll does not take a message this tab’s save flashed — this tab’s next answer does', async () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const browser = await signIn();
-    await browser.put(`/users/${ada.public_id}`, { json: { name: 'Ada King', bio: '' }, headers: { [DOCUMENT_HEADER]: 'tab-a' } }).assertRedirect();
+    await browser.put(`/users/${ada.public_id}`, { json: { name: 'Ada King', bio: '' }, headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [DOCUMENT_HEADER]: 'tab-a' } }).assertRedirect();
     // Tab B polls the people list (a partial reload, its own document).
     await browser.navigating().get('/people', { headers: { [DOCUMENT_HEADER]: 'tab-b' } }).assertOk().assertNoFlash();
     // Tab A follows its redirect.
@@ -121,7 +121,7 @@ describe('flash messages stay with the document that flashed them', () => {
   it('a full page load (no document named — the one after a 409) takes it', async () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const browser = await signIn();
-    await browser.put(`/users/${ada.public_id}`, { json: { name: 'Ada King', bio: '' }, headers: { [DOCUMENT_HEADER]: 'tab-a' } }).assertRedirect();
+    await browser.put(`/users/${ada.public_id}`, { json: { name: 'Ada King', bio: '' }, headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [DOCUMENT_HEADER]: 'tab-a' } }).assertRedirect();
     await browser.get(`/users/${ada.public_id}`, { headers: { accept: 'text/html' } }).assertOk().assertFlash('toast');
   });
 });

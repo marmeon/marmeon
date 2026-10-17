@@ -2,6 +2,7 @@ import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { defineModule, type ApplicationDefinition } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, LIVE_PATH, ServerClosing, SharedData, type HttpContext, type Next } from '@marmeon/http';
+import { PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { Broadcaster, LiveServiceProvider } from '@marmeon/live';
 import { Session, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
@@ -114,7 +115,7 @@ describe('live props through the app — the page declares, the stream hints', (
     const tabB = await ada.live('/boards/7', { connection: 'tab-b-0001' });
     expect(await tabB.hello()).toEqual({ seq: { 'counters.everyone': 0, 'board.7': 0 } });
     await tabA.hello();
-    await ada.withHeaders({ 'x-marmeon-connection': 'tab-a-0001' }).post('/boards/7/cards').assertRedirect('/boards/7');
+    await ada.withHeaders({ 'x-marmeon': PROTOCOL_VERSION, 'x-marmeon-connection': 'tab-a-0001' }).post('/boards/7/cards').assertRedirect('/boards/7');
     await Promise.all([tabA.waitFor(1), tabB.waitFor(1)]);
     expect(tabB.hints).toEqual([{ channel: 'board.7', only: ['cards'], seq: 1 }]);
     expect(tabA.hints).toEqual([{ channel: 'board.7', only: [], seq: 1 }]);

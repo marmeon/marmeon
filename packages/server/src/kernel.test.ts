@@ -369,7 +369,7 @@ describe('createHttpKernel — requests & responses', async () => {
     });
 
     it('also converts the redirect of an upload target request, and of a GET visit, 307 and 308, another port or scheme', async () => {
-      const upload = await post('https://other.example/x', { [UPLOAD_HEADER]: 'avatar' });
+      const upload = await post('https://other.example/x', { ...visit, [UPLOAD_HEADER]: 'avatar' });
       expect([upload.status, upload.headers.get(LOCATION_HEADER), upload.headers.get('location')]).toEqual([409, 'https://other.example/x', null]);
       for (const status of ['307', '308']) expect((await post('https://other.example/', visit, `&status=${status}`)).status).toBe(409);
       for (const to of ['http://localhost:8080/', 'https://localhost/']) expect((await post(to, visit)).headers.get(LOCATION_HEADER)).toBe(to);

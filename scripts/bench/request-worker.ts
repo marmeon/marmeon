@@ -64,7 +64,7 @@ async function run(repo: string): Promise<void> {
     // The server's work only: a kernel of the booted app, the request as a browser sends it (its cookies as the server set them),
     // the body read, the terminate hooks awaited — none of the test helpers' cookie decryption and session reading per response.
     const kernel = createHttpKernel(app.application);
-    const page = { 'x-marmeon': 'true', accept: 'text/html, application/xhtml+xml', ...browser };
+    const page = { 'x-marmeon': '1', accept: 'text/html, application/xhtml+xml', ...browser };
     const guestInit = { headers: { ...page, cookie: cookiesOf(failed.headers) } };
     const userInit = { headers: { ...page, cookie: cookiesOf(signedIn.headers) } };
     const documentInit = { headers: { accept: 'text/html', 'sec-fetch-site': 'none', 'sec-fetch-mode': 'navigate', cookie: cookiesOf(failed.headers) } };

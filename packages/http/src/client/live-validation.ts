@@ -9,7 +9,7 @@
  * Files neither (they go with the submit).
  */
 import type { ValidationErrors } from '../page.ts';
-import { ACTION_REDIRECT_HEADER, LOCATION_HEADER, VALIDATE_HEADER, VALIDATED_HEADER } from '../protocol.ts';
+import { ACTION_REDIRECT_HEADER, LOCATION_HEADER, protocolHeaders, VALIDATE_HEADER, VALIDATED_HEADER } from '../protocol.ts';
 import type { ActionException, ActionHost, ActionMethod } from './action.ts';
 import { notify } from './notify.ts';
 
@@ -75,7 +75,7 @@ export async function sendLiveValidation(host: ActionHost, url: string, { method
   try {
     response = await host.fetch(request.url, {
       method: method.toUpperCase(),
-      headers: { accept: 'application/json', ...request.headers, [VALIDATE_HEADER]: named.join(',') },
+      headers: { accept: 'application/json', ...request.headers, [VALIDATE_HEADER]: named.join(','), ...protocolHeaders() },
       body: request.body,
       ...(signal ? { signal } : {}),
       redirect: 'manual',

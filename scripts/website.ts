@@ -152,7 +152,7 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   const search = async (q: string, page: string) => {
     const response = await publicPage(`/docs/search?q=${encodeURIComponent(q)}`, `href="${page}`);
     // The same URL as a visit: the page object (JSON), not the document — Vary keeps them apart in a cache.
-    const visit = await get(`/docs/search?q=${encodeURIComponent(q)}`, { 'x-marmeon': 'true', accept: 'text/html, application/json' });
+    const visit = await get(`/docs/search?q=${encodeURIComponent(q)}`, { 'x-marmeon': '1', accept: 'text/html, application/json' });
     expect(visit.response.headers.get('content-type')?.startsWith('application/json') === true, `/docs/search as a visit: ${visit.response.headers.get('content-type')}`);
     expect(visit.body.includes(`"href":"${page}`), `/docs/search?q=${q} as a visit: no result on ${page}`);
     return response;

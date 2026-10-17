@@ -59,7 +59,7 @@ import {
   ResponseLifecycle,
   serializedFlash,
   signedLive,
-  speaksProtocol,
+  isVisit,
 } from '@marmeon/http/internal';
 import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { ownResponse, RequestNonce, urlFor, type ResponseContext, type ResponseFactory, type RouteLookup } from '@marmeon/router';
@@ -522,7 +522,7 @@ export function createResponseFactory(
     // Serialized once: what the browser gets is also what the server renders from — a Date is a string on both
     // sides (`Serialize<T>`), so the markup hydrates.
     const json = JSON.stringify(page);
-    if (speaksProtocol(ctx.request.headers)) {
+    if (isVisit(ctx.request.headers)) {
       // A layer's page object, also to a plain visit: the client opens it over what is on screen.
       return ownResponse(new Response(json, {
         status: result.status,

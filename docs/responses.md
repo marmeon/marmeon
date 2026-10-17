@@ -334,7 +334,7 @@ Since that answer stays in the browser's cache, the app signs out with `history.
 
 A page and its JSON are the same URL: the client sends request headers that change the answer, so a shared cache in front of the
 app must keep one copy per combination. `@marmeon/http/protocol` exports their names: `PAGE_HEADER` (`x-marmeon`, the client wants
-the page object as JSON), `REGION_HEADER` (an island or a layer), `PARTIAL_COMPONENT_HEADER`, `PARTIAL_DATA_HEADER` and
+the page object as JSON; its value is `PROTOCOL_VERSION`), `REGION_HEADER` (an island or a layer), `PARTIAL_COMPONENT_HEADER`, `PARTIAL_DATA_HEADER` and
 `PARTIAL_EXCEPT_HEADER` (a partial reload), `PURPOSE_HEADER` (a prefetch, with the browser's own `sec-purpose`), `ONCE_HEADER` and
 `ONCE_SCOPE_HEADER` (the once props the tab holds) and `VERSION_HEADER` (the build the client runs). A middleware that caches
 publicly names all of them in `Vary`; leaving one out lets the cache serve an island, a partial reload or a page without its once

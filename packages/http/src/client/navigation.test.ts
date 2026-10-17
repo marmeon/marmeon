@@ -1,4 +1,4 @@
-import { LOCATION_HEADER, PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
+import { LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isHistoryState, mergePage, Navigator, type VisitException } from './navigation.ts';
 import type { PatchTarget } from './optimistic.ts';
@@ -123,6 +123,16 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       // The browser brings this document back from the back/forward cache: it reloads instead of showing it.
       win.dispatch('pageshow', { persisted: true });
       expect(win.loads).toEqual(['assign https://app.test/login', 'reload']);
+    });
+
+    it('a 409 for another version of the protocol loads fully exactly once — whatever the page still sends afterwards (no reload loop)', async () => {
+      const win = new FakeWindow(`${ORIGIN}/a`);
+      const { navigator } = boot(win, page('/a'));
+      win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: `${ORIGIN}/b`, [RELOAD_HEADER]: 'version' } });
+      expect(await navigator.visit('/b')).toBeUndefined();
+      expect(await navigator.visit('/c')).toBeUndefined();
+      await navigator.reload();
+      expect(win.loads).toEqual(['assign https://app.test/b']);
     });
 
     it('does not reload a document restored from the back/forward cache that was not left for a full load', () => {
@@ -318,7 +328,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
           this.#request.headers[name] = value;
         }
         getAllResponseHeaders() {
-          return `content-type: application/json\r\n${PAGE_HEADER}: true\r\n`;
+          return `content-type: application/json\r\n${PAGE_HEADER}: ${PROTOCOL_VERSION}\r\n`;
         }
         abort() {}
         send(body: unknown) {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PAGE_HEADER } from '../protocol.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '../protocol.ts';
 import { boot, FakeWindow, ORIGIN, page, pageResponse } from './test-window.ts';
 
 /** An XHR that records what it sent and answers with a page. */
@@ -16,7 +16,7 @@ function fakeXhr(sent: string[]) {
     }
     setRequestHeader() {}
     getAllResponseHeaders() {
-      return `content-type: application/json\r\n${PAGE_HEADER}: true\r\n`;
+      return `content-type: application/json\r\n${PAGE_HEADER}: ${PROTOCOL_VERSION}\r\n`;
     }
     abort() {}
     send() {

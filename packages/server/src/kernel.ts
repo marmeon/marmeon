@@ -5,7 +5,7 @@ import { heldOnLoopback, shadowedLocalhost } from './loopback.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
 import { currentRequest, environment, EnvironmentConfig, ErrorSolutions, Logger, outsideTransaction, Redactor, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
-import { messageBase, runWithRequest, trace } from '@marmeon/core/internal';
+import { messageBase, runWithRequest, trace, withCode } from '@marmeon/core/internal';
 import { channels, type HttpRequestMessage, type PageSummary } from '@marmeon/core/diagnostics';
 import {
   AfterResponse,
@@ -34,9 +34,12 @@ import {
   LOCATION_HEADER,
   protocolHeaders,
   REGION_HEADER,
+  PAGE_HEADER,
   REGION_STATUS_HEADER,
+  SUPPORTED_PROTOCOLS,
   RELOAD_HEADER,
   ResponseLifecycle,
+  isVisit,
   speaksProtocol,
   VERSION_HEADER,
   partialReloadOf,
@@ -66,6 +69,7 @@ import {
 } from '@marmeon/router/internal';
 import { Hono } from 'hono';
 import { overrideMethod } from './method-override.ts';
+import { protocolGate } from './protocol-gate.ts';
 import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, leaveForeignRedirect, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
 import { DevDocument } from './dev-document.ts';
@@ -633,7 +637,7 @@ export function createHttpKernel(
     // An action's redirect is reported, not followed — and its answer is never cached.
     else if (isActionRequest(request)) response = await toActionResponse(response);
     // A page visit's and an upload target's `fetch` follow redirects and would carry its CSRF header to another origin: that one becomes a full load.
-    else if (speaksProtocol(request.headers) || upload) response = await leaveForeignRedirect(response, request);
+    else if (isVisit(request.headers) || upload) response = await leaveForeignRedirect(response, request);
     // Cookies queued during the request reach the client whatever the outcome.
     const final = await withQueuedCookies(response, state.cookies);
 
@@ -720,7 +724,19 @@ export function createHttpKernel(
   // Behind a trusted proxy, the URL the client asked for (`X-Forwarded-Proto`/`-Host`). A plain HTML form's PUT, PATCH or
   // DELETE (`_method` in its POST body) is routed as that method.
   const dispatch = app.fetch;
-  app.fetch = async (request, env, executionContext) => dispatch(await overrideMethod(forwardedRequest(request, remoteAddress(env), trusts)), env, executionContext);
+  // The protocol's version is checked first of all — before the body is read for `_method`, before the router: a request of another
+  // version reaches no middleware and no controller.
+  app.fetch = async (request, env, executionContext) => {
+    const forwarded = forwardedRequest(request, remoteAddress(env), trusts);
+    const refused = protocolGate(forwarded);
+    if (refused) {
+      // The header is the client's: its text is cut and quoted, never trusted.
+      const named = JSON.stringify((forwarded.headers.get(PAGE_HEADER) ?? '').slice(0, 32));
+      logger.info(withCode('H1', `${forwarded.method} request of the page protocol names version ${named}, this server speaks ${[...SUPPORTED_PROTOCOLS].join(', ')} — answered 409 before any route ran`));
+      return refused;
+    }
+    return dispatch(await overrideMethod(forwarded), env, executionContext);
+  };
 
   const kernel: HttpKernel = {
     fetch: async (request, connection) => app.fetch(request, bindingsOf(connection)),

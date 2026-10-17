@@ -35,6 +35,7 @@ export {
   VALIDATED_HEADER,
   VERSION_HEADER,
 } from './protocol.ts';
+export { answersWithData, isProtocolRequest, isVisit, PROTOCOL_REQUEST_HEADERS, SUPPORTED_PROTOCOLS } from './protocol-request.ts';
 export { heldOnceProps, partialReloadOf, propOrigins, resolvePageProps } from './page-props.ts';
 export { flashOf, serializedFlash } from './flash.ts';
 export { BROWSER_ROUTES_FILE, matchesRoutePatterns, writeAppBrowserRoutes, writeBrowserRoutes } from './browser-routes.ts';
