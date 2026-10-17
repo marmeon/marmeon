@@ -3,7 +3,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { Redactor, rollBackOnErr, runTransaction, TransactionError, token, type Application, type Logger } from '@marmeon/core';
 import { messageBase, publishEnded, transactionOf, withCode } from '@marmeon/core/internal';
 import { channels, type DbQueryMessage } from '@marmeon/core/diagnostics';
-import { Kysely, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type LogEvent, type OperationNode } from 'kysely';
+import { Kysely, sql, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type KyselyPlugin, type LogEvent, type OperationNode } from 'kysely';
 import type { Connection, Transaction } from './builder.ts';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
 import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOptions } from './config.ts';
@@ -11,12 +11,16 @@ import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOpt
 import './chain.ts';
 import { MarmeonDriver, DatabaseConnectionError, multipleConnections, UncheckedDriver, withMarmeonDriver } from './driver.ts';
 import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure.ts';
-import { onlyBookkeeping, registerBookkeeping } from './books.ts';
-import { SchemaMetadata } from './metadata.ts';
+import { onlyBookkeeping, registerBookkeeping, registerInspection } from './books.ts';
+import { SchemaMetadata, type SchemaSource } from './metadata.ts';
+import { MigrationStateError } from './migration-state.ts';
+import { migrationFiles } from './migrations/files.ts';
 import { createPostgresDialect } from './postgres.ts';
 import { RelationsPlugin } from './relations.ts';
 import { fold } from './secret-guard.ts';
 import { SchemaResolver } from './schema-resolver.ts';
+import { loadProjection } from './schema/projection-file.ts';
+import { emptyProjection, type SchemaProjection } from './schema/projection.ts';
 import { createSqliteDialect } from './sqlite.ts';
 
 /**
@@ -64,6 +68,8 @@ export class Connections {
   /** Postgres: the infrastructure's own pool, per connection. */
   readonly #pools = new Map<string, MarmeonDriver>();
   readonly #listeners = new Set<(query: QueryEvent) => void>();
+  /** The schema a migrator of this process handed over: every connection, opened now or later, has it as its schema. */
+  #published: SchemaProjection | undefined;
   #destroyed = false;
 
   constructor(options: { connections: Readonly<Record<string, ConnectionOptions>>; root: string; logger: Logger; app?: Application }) {
@@ -141,6 +147,20 @@ export class Connections {
   /** @internal — what a connection knows about its schema (relations, markers, secret columns), as far as it is loaded. */
   metadata(name = 'default'): SchemaMetadata {
     return this.#instance(name).metadata;
+  }
+
+  /**
+   * @internal — the schema the migrations leave, as the migrator of this process has just made the database: every managed connection
+   * uses it from now on instead of reading the migration files and comparing them with the database.
+   */
+  publish(projection: SchemaProjection): void {
+    this.#published = projection;
+    for (const { metadata } of this.#instances.values()) metadata.publish(projection);
+  }
+
+  /** @internal — the schema the managed connections work with now: the one last {@link publish}ed, else the one loaded from the migration files; empty before. */
+  projection(): SchemaProjection {
+    return this.#published ?? this.#instances.get('default')?.metadata.projection ?? emptyProjection;
   }
 
   /** Whether the current call chain runs inside a `transaction()` of this connection. */
@@ -223,7 +243,8 @@ export class Connections {
     let instance: Instance | undefined = this.#instances.get(name);
     if (!instance) {
       const options = this.options(name);
-      const metadata = new SchemaMetadata(options.driver, name, options.managed !== false);
+      const metadata = new SchemaMetadata(options.driver, name, options.managed !== false, this.#schemaSource(name));
+      if (this.#published) metadata.publish(this.#published);
       const base = this.#dialect(options, name);
       const relations = new RelationsPlugin(options.driver, metadata);
       const resolver = new SchemaResolver(metadata, base.createQueryCompiler(), relations);
@@ -231,23 +252,64 @@ export class Connections {
       // In this order: placeholders resolved, then the relations' JSON built and the query checked for secret columns.
       const plugins = [resolver, relations];
       const db = new Kysely<any>({ dialect, plugins, log: (event) => this.#log(name, event) });
-      // The migrator's own way to the same connections (see books.ts): it must reach a database whose bookkeeping `db` refuses. Its
-      // driver reports the queries itself: both Kysely instances patching one shared connection would log each query twice.
-      const books = new Kysely<any>({
-        dialect: {
-          ...dialect,
-          createDriver: () =>
-            new UncheckedDriver(driver, ({ query, durationMs, error }) =>
-              this.#log(name, { query, queryDurationMillis: durationMs, ...(error === undefined ? { level: 'query' as const } : { level: 'error' as const, error }) } as LogEvent),
-            ),
-        },
-        plugins: [onlyBookkeeping()],
-      });
-      registerBookkeeping(this, name, books);
+      // The migrator's own way to the same connections (see books.ts): it must reach a database whose bookkeeping `db` refuses, and one
+      // that lacks migrations. Their driver reports the queries itself: Kysely instances patching one shared connection would log each
+      // query twice.
+      const unchecked = (plugins: KyselyPlugin[]) =>
+        new Kysely<any>({
+          dialect: {
+            ...dialect,
+            createDriver: () =>
+              new UncheckedDriver(driver, ({ query, durationMs, error }) =>
+                this.#log(name, { query, queryDurationMillis: durationMs, ...(error === undefined ? { level: 'query' as const } : { level: 'error' as const, error }) } as LogEvent),
+              ),
+          },
+          plugins,
+        });
+      registerBookkeeping(this, name, unchecked([onlyBookkeeping()]));
+      registerInspection(this, name, unchecked([]));
       instance = { db, driver, metadata, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
       this.#instances.set(name, instance);
     }
     return instance;
+  }
+
+  /**
+   * Where a managed connection gets its schema when no migrator handed it over: the projection of the app's migration files (cached in
+   * `.marmeon/schema.json`; without an app: empty), and — for a connection other than `default`, whose database holds no record of
+   * migrations — the state of `default`.
+   */
+  #schemaSource(name: string): SchemaSource {
+    const app = this.#app;
+    return {
+      projection: async () => (app ? loadProjection(app.root, migrationFiles(app)) : emptyProjection),
+      ...(name === 'default'
+        ? {}
+        : {
+            follow: async () => {
+              if (this.options('default').managed === false) {
+                throw new MigrationStateError(
+                  'unmigrated',
+                  name,
+                  withCode(
+                    'D1',
+                    `The database connection "${name}" is migrated by Marmeon, but "default" is set to \`managed: false\`, and the record of migrations is kept on "default": nothing tells which migrations ran. ` +
+                      'Remove `managed: false` from "default", or set it on this connection too. Every query on this connection is refused until that is so. See docs/migrations.md#how-the-migrator-keeps-track.',
+                  ),
+                );
+              }
+              // No query once `default` has been checked: it may be the connection a transaction of this very call chain holds (SQLite has one
+              // physical connection per file), and a query on it would wait for that transaction while this connection's lock is held.
+              if (this.metadata('default').ready) return;
+              await sql`select 1`.execute(this.get('default'));
+            },
+          }),
+      ahead: (migrations) =>
+        this.#logger.info('The database has migrations this version of the code does not know (a deploy in progress, or a newer release elsewhere); it keeps running with the schema it knows', {
+          connection: name,
+          migrations: migrations.join(', '),
+        }),
+    };
   }
 
   /** Postgres: the infrastructure's own pool of a connection, created on first use (it connects on its first query). */

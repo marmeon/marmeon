@@ -1,9 +1,9 @@
 import { join } from 'node:path';
-import type { Application, ModuleDefinition } from '@marmeon/core';
+import type { ModuleDefinition } from '@marmeon/core';
 import { DummyDriver, expressionBuilder, Kysely, SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler, type KyselyPlugin, type SelectQueryBuilder } from 'kysely';
 import { jsonArrayFrom as pgArrayFrom } from 'kysely/helpers/postgres';
 import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest';
-import { drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
+import { appOf, drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { testEncrypter } from './__fixtures__/encrypter.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
@@ -18,6 +18,9 @@ const modules: ModuleDefinition[] = [
   { name: 'keys', migrations: fixtures('relations-secrets') },
   { name: 'readers', migrations: fixtures('relations-readers') },
 ];
+// The app a process of the tests is: a cold `Connections` takes its schema from these modules' migrations, cached under `root`.
+const root = tempDir('marmeon-chain-app-');
+const app = appOf(modules, root);
 const ISO_UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
 
 class PostRepository extends Repository<'posts', FixtureTables> {
@@ -41,8 +44,8 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       driver === 'sqlite'
         ? { options: { driver: 'sqlite', database: join(tempDir('marmeon-chain-'), 'app.sqlite') }, drop: async () => {} }
         : await freshDatabase(driver));
-    connections = new Connections({ connections: { default: options }, root: '/', logger: silent });
-    await new Migrator({ modules, root: '/' } as unknown as Application, connections).migrate();
+    connections = new Connections({ connections: { default: options }, root, logger: silent, app });
+    await new Migrator(app, connections).migrate();
     db = connections.get<FixtureTables>();
     const user = (values: { name: string; email: string; is_admin?: boolean; settings?: string; balance?: string; deleted_at?: Date }) =>
       db.insertInto('users').values(values).returning('id').executeTakeFirstOrThrow().then((row) => row.id);
@@ -328,7 +331,7 @@ describe.each(drivers)('loading relations on %s', (driver) => {
   });
 
   it('resolves on the first query of a process — one query in the log, the SQL that ran', async () => {
-    const cold = new Connections({ connections: { default: options }, root: '/', logger: silent });
+    const cold = new Connections({ connections: { default: options }, root, logger: silent, app });
     const log: string[] = [];
     cold.onQuery((query) => log.push(query.sql));
     try {
@@ -338,7 +341,7 @@ describe.each(drivers)('loading relations on %s', (driver) => {
       expect(log).toHaveLength(1);
       expect(log[0]).not.toContain('__marmeon');
       // Two queries of one builder at once, both left for the connection: each is resolved.
-      const again = new Connections({ connections: { default: options }, root: '/', logger: silent });
+      const again = new Connections({ connections: { default: options }, root, logger: silent, app });
       try {
         const twice = again.get<FixtureTables>().selectFrom('users').select('name').with('api_keys', (q) => q.select('name')).orderBy('id');
         const [all, ada] = await Promise.all([twice.execute(), twice.where('id', '=', ids.ada).execute()]);
@@ -524,7 +527,7 @@ describe.each(drivers)('loading relations on %s', (driver) => {
     });
 
     it('are refused in a whole row on the first query of a process — before anything was loaded', async () => {
-      const cold = new Connections({ connections: { default: options }, root: '/', logger: silent });
+      const cold = new Connections({ connections: { default: options }, root, logger: silent, app });
       try {
         await expect(cold.get<FixtureTables>().selectFrom('api_keys').select((eb) => eb.fn('to_jsonb', [eb.table('api_keys')]).as('row')).execute()).rejects.toThrow(row('This query'));
       } finally {
@@ -614,7 +617,7 @@ describe.each(drivers)('loading relations on %s', (driver) => {
     it('are refused when an insert copies one — also on the first query of a process', async () => {
       const copy = (target: Kysely<FixtureTables>) => target.insertInto('tags').columns(['slug']).expression((eb) => eb.selectFrom('api_keys').select('token' as never));
       await expect(copy(db).execute()).rejects.toThrow(unasked('api_keys.token'));
-      const cold = new Connections({ connections: { default: options }, root: '/', logger: silent });
+      const cold = new Connections({ connections: { default: options }, root, logger: silent, app });
       try {
         await expect(copy(cold.get<FixtureTables>()).execute()).rejects.toThrow(unasked('api_keys.token'));
       } finally {
@@ -722,7 +725,7 @@ describe.each(drivers)('loading relations on %s', (driver) => {
     });
 
     it('get the same verdict on the first query of a process and later — secret() in a builder of the connection used as a subquery', async () => {
-      const fresh = new Connections({ connections: { default: options }, root: '/', logger: silent });
+      const fresh = new Connections({ connections: { default: options }, root, logger: silent, app });
       try {
         const own = fresh.get<FixtureTables>();
         const inner = () => own.selectFrom('api_keys').select((e) => ['user_id', secret(e, 'token')]);
@@ -986,7 +989,7 @@ describe.each(drivers)('loading relations on %s', (driver) => {
         { name: 'child', children: 1 },
         { name: 'grandchild', children: 0 },
       ]);
-      const cold = new Connections({ connections: { default: options }, root: '/', logger: silent });
+      const cold = new Connections({ connections: { default: options }, root, logger: silent, app });
       try {
         const counted = await cold.get<FixtureTables>().selectFrom('posts').select('id').withCount('comments').whereHas('tags').orderBy('id').execute();
         expect(counted).toEqual([

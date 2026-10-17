@@ -17,6 +17,24 @@ export function registerBookkeeping(connections: object, name: string, db: Kysel
   byName.set(name, db);
 }
 
+const AS_IS = new WeakMap<object, Map<string, Kysely<any>>>();
+
+/** Called by {@link Connections} for each connection it opens, with a Kysely that asks nothing of the migrations: no plugins, no schema metadata. */
+export function registerInspection(connections: object, name: string, db: Kysely<any>): void {
+  let byName = AS_IS.get(connections);
+  if (!byName) AS_IS.set(connections, (byName = new Map()));
+  byName.set(name, db);
+}
+
+/**
+ * The connection for looking at a database as it is, whether or not its migrations ran (`db:show`). It resolves nothing, checks no
+ * secret column and refuses nothing: never for a query of the app, and for commands that read no row's content.
+ */
+export function inspectionConnection(connections: Connections, name = 'default'): Kysely<any> {
+  connections.get(name); // opens the connection's entry
+  return AS_IS.get(connections)!.get(name)!;
+}
+
 /**
  * The connection the migrator keeps its bookkeeping with. Unlike `connections.get()` it works on a database whose bookkeeping the
  * app's connection refuses to read (that refusal is what it is there to repair), and it refuses every table that is not the

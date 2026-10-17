@@ -1,5 +1,6 @@
 import type { CommandInput } from 'marmeon';
 import { sql } from 'kysely';
+import { inspectionConnection } from '../books.ts';
 import { describeConnection } from '../config.ts';
 import { Connections } from '../connections.ts';
 
@@ -23,7 +24,8 @@ export class DbShowCommand {
   async handle({ options, output }: CommandInput): Promise<number> {
     const name = typeof options.database === 'string' ? options.database : 'default';
     const settings = this.#connections.options(name);
-    const db = this.#connections.get<Record<string, Record<string, unknown>>>(name);
+    // The database as it is, also while migrations are pending: that is when one wants to look. It counts rows and reads none.
+    const db = inspectionConnection(this.#connections, name);
 
     const version =
       settings.driver === 'sqlite'

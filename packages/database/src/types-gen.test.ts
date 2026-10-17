@@ -203,7 +203,7 @@ describe.each(drivers)('Relations from db:types on %s', (driver) => {
 
 describe.each(drivers)('UUIDv7 columns in db:types on %s', (driver) => {
   it('are Generated<string>: a row is inserted without them', async () => {
-    const { source } = await typeGenerator({ root: '/', modules: [{ name: 'uuids', migrations: fixtures('uuids') }] } as unknown as Application, driver).render();
+    const { source } = await typeGenerator({ root: tempDir('marmeon-types-'), modules: [{ name: 'uuids', migrations: fixtures('uuids') }] } as unknown as Application, driver).render();
     expect(source).toContain(`    members: {
       id: Generated<string>;
       team_id: string;

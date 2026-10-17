@@ -1,14 +1,15 @@
 import { Application } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
-import { assertManaged, isReadable, loadColumns, prepareBookkeeping } from '../bookkeeping-setup.ts';
+import { assertManaged, isReadable, loadColumns, prepareBookkeeping, runner } from '../bookkeeping-setup.ts';
 import { bookkeepingConnection } from '../books.ts';
 import { Connections } from '../connections.ts';
-import { danglingEntries, LOCK_TABLE, MARKERS_TABLE, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE, VERSIONS_TABLE } from '../bookkeeping.ts';
+import { bookkeepingVersion, classify, danglingEntries, LOCK_TABLE, MARKERS_TABLE, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE, unreadable, VERSIONS_TABLE } from '../bookkeeping.ts';
 import { byCodePoint, type SchemaMarker } from '../introspection.ts';
+import { assertRecordReadable } from '../migration-state.ts';
 import { executePlan, planOf, type PlanStep, type SchemaRecorder } from '../schema/plan.ts';
 import { loadProjection } from '../schema/projection-file.ts';
-import { MARKER_COLUMNS, projectMigrations, type SchemaProjection } from '../schema/projection.ts';
+import { applyPlan, emptyProjection, MARKER_COLUMNS, projectMigrations, type SchemaProjection } from '../schema/projection.ts';
 import { SchemaError } from '../schema/schema.ts';
 import { dropAllTables } from './drop-all.ts';
 import { migrationFiles, type MigrationFile } from './files.ts';
@@ -57,8 +58,10 @@ interface Bookkeeping {
  * go to the bookkeeping of the connection the table is on.
  *
  * The bookkeeping is version 1 of the `marmeon_` tables. A database that still has the tables of the release before it is moved
- * over by the first command that migrates; a database with a version this release does not read is left alone, and every query
- * on it fails ({@link BookkeepingVersionError}). See `docs/migrations.md#how-the-migrator-keeps-track`.
+ * over by the first command that migrates; a database with a version this release does not read is left alone, and the migration
+ * commands refuse it ({@link BookkeepingVersionError}). It reads the record of migrations on a connection of its own, so it works
+ * on a database whose migrations are not all there, which the app's connections refuse ({@link MigrationStateError}); in a process
+ * that migrates it hands the schema it leaves to that process's connections. See `docs/migrations.md#how-the-migrator-keeps-track`.
  */
 export class Migrator {
   readonly #app: Application;
@@ -146,11 +149,16 @@ export class Migrator {
     for (const connection of await this.connections()) if (connection !== 'default') await this.#prepare(connection, true, options.adoptExisting);
     const db = this.#db();
     const ran = new Set((await this.#ran()).map((row) => row.name));
-    const pending = this.files().filter((file) => !ran.has(file.name));
+    const files = this.files();
+    const pending = files.filter((file) => !ran.has(file.name));
+    // The schema of the database as it is, handed to this process's connections before anything is asked of them: they would otherwise
+    // compare the migration files with a database this run is about to bring up to date, and refuse every query meanwhile.
+    let projection = await projectMigrations(files, { only: ran });
+    this.#connections.publish(projection);
     if (pending.length === 0) return [];
     // A plan the projection cannot hold (a change of a table raw SQL made) stops the run before the first migration. Computed, not read
     // from `.marmeon/schema.json`: the run decides what the database becomes, and the file is only a copy of that computation.
-    await projectMigrations(this.files());
+    await projectMigrations(files);
 
     const batch = (await this.#lastBatch()) + 1;
     const runs: MigrationRun[] = [];
@@ -166,7 +174,7 @@ export class Migrator {
       // One transaction per migration: a failing one leaves no half-changed schema (SQLite and Postgres both roll back DDL).
       if (connection === 'default') {
         await db.transaction().execute(async (trx) => {
-          await this.#execute(trx, file, connection, plan);
+          await this.#execute(trx, file, connection, plan, projection);
           await this.#held?.heartbeat(trx);
           await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
         });
@@ -177,7 +185,7 @@ export class Migrator {
         await this.#db(connection)
           .transaction()
           .execute(async (trx) => {
-            await this.#execute(trx, file, connection, plan);
+            await this.#execute(trx, file, connection, plan, projection);
             await this.#held?.heartbeat(); // before the commit: a lock lost meanwhile rolls the migration back
           });
         await db.transaction().execute(async (trx) => {
@@ -185,6 +193,9 @@ export class Migrator {
           await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
         });
       }
+      // Committed: from here on the other connections of this process see what the migration made.
+      projection = applyPlan(projection, plan, file);
+      this.#connections.publish(projection);
       const run = { name: file.name, module: file.module, ms: performance.now() - started };
       runs.push(run);
       await this.#held?.heartbeat();
@@ -233,6 +244,8 @@ export class Migrator {
         // Through the bookkeeping connection: dropping everything is the way out of bookkeeping the app's connection refuses (an earlier release's).
         await dropAllTables(this.#books(connection), this.#driver(connection), true);
       }
+      // Nothing is left of the schema, whatever this process's connections knew.
+      this.#connections.publish(emptyProjection);
       return connections;
     });
   }
@@ -256,7 +269,7 @@ export class Migrator {
   /** Table name → owning module, from the migrations that created them. */
   async owners(): Promise<Map<string, string>> {
     await this.#prepare();
-    const rows = await this.#db().selectFrom(OWNERS_TABLE).select(['table_name', 'module']).execute();
+    const rows = await this.#books().selectFrom(OWNERS_TABLE).select(['table_name', 'module']).execute();
     return new Map(rows.map((row) => [row.table_name, row.module]));
   }
 
@@ -264,7 +277,7 @@ export class Migrator {
   async secrets(): Promise<Map<string, Set<string>>> {
     await this.#prepare();
     const secrets = new Map<string, Set<string>>();
-    for (const row of await this.#db().selectFrom(SECRETS_TABLE).select(['table_name', 'column_name']).execute()) {
+    for (const row of await this.#books().selectFrom(SECRETS_TABLE).select(['table_name', 'column_name']).execute()) {
       let columns = secrets.get(row.table_name);
       if (!columns) secrets.set(row.table_name, (columns = new Set()));
       columns.add(row.column_name);
@@ -275,14 +288,18 @@ export class Migrator {
   /** Every marker the migrations recorded (`timestamps()`, `softDeletes()`, `.inverse()`), ordered by table and column. */
   async markers(): Promise<SchemaMarker[]> {
     await this.#prepare();
-    const rows = await this.#db().selectFrom(MARKERS_TABLE).select(['table_name', 'column_name', 'marker', 'value']).execute();
+    const rows = await this.#books().selectFrom(MARKERS_TABLE).select(['table_name', 'column_name', 'marker', 'value']).execute();
     return rows
       .map((row) => ({ table: row.table_name, column: row.column_name, marker: row.marker as SchemaMarker['marker'], value: row.value }))
       .sort((a, b) => byCodePoint(a.table, b.table) || byCodePoint(a.column, b.column) || byCodePoint(a.marker, b.marker));
   }
 
   async #down(rows: readonly { name: string; module: string }[], onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
-    const files = new Map(this.files().map((file) => [file.name, file]));
+    const known = this.files();
+    const files = new Map(known.map((file) => [file.name, file]));
+    // What the database has before the first rollback, and after each: this process's connections must not refuse queries meanwhile.
+    const remaining = new Set((await this.#ran()).map((row) => row.name));
+    this.#connections.publish(await projectMigrations(known, { only: remaining }));
     const db = this.#db();
     const runs: MigrationRun[] = [];
     for (const row of rows) {
@@ -313,6 +330,9 @@ export class Migrator {
           await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
         });
       }
+      // What the migrations that remain leave: their plans again, as `down()` is not looked into.
+      remaining.delete(row.name);
+      this.#connections.publish(await projectMigrations(known, { only: remaining }));
       const run = { name: row.name, module: row.module, ms: performance.now() - started };
       runs.push(run);
       await this.#held?.heartbeat();
@@ -334,9 +354,25 @@ export class Migrator {
     return name;
   }
 
-  /** Runs a migration's plan in its transaction, and checks the books against what it left. */
-  async #execute(trx: Kysely<Bookkeeping>, file: MigrationFile, connection: string, plan: readonly PlanStep[]): Promise<void> {
-    await executePlan(trx, this.#driver(connection), plan, this.#recorder(trx, file.module));
+  /**
+   * Runs a migration's plan in its transaction, and checks the books against what it left. `before` is the schema the migrations
+   * before it left: the `data` steps of the plan see it with what the plan has changed up to them — and no other connection does.
+   */
+  async #execute(trx: Kysely<Bookkeeping>, file: MigrationFile, connection: string, plan: readonly PlanStep[], before?: SchemaProjection): Promise<void> {
+    const metadata = this.#connections.metadata(connection);
+    const aroundData = before
+      ? async (index: number, run: () => Promise<void>) => {
+          // The connection the transaction runs on: what the driver knows it by.
+          const owner = await trx.getExecutor().provideConnection(async (held) => held);
+          metadata.during(owner, applyPlan(before, plan.slice(0, index), file));
+          try {
+            await run();
+          } finally {
+            metadata.after(owner);
+          }
+        }
+      : undefined;
+    await executePlan(trx, this.#driver(connection), plan, this.#recorder(trx, file.module), aroundData);
     await this.#verifyBooks(trx, connection, file);
   }
 
@@ -394,6 +430,7 @@ export class Migrator {
   /** Refuses to go on over bookkeeping of a newer version (`migrate:fresh` would drop what a newer Marmeon wrote). */
   async #refuseNewer(connection: string): Promise<void> {
     await isReadable(this.#books(connection), this.#driver(connection), connection);
+    assertRecordReadable((await loadColumns(this.#books(connection), this.#driver(connection))).columns, connection);
   }
 
   /**
@@ -416,18 +453,26 @@ export class Migrator {
     );
   }
 
+  /**
+   * The migrations that ran, in the order they ran. Read on the bookkeeping connection: this is how a database that lacks migrations
+   * is found out, so the app's connection, which refuses every query then, cannot be the one to ask. A bookkeeping this release
+   * cannot read is refused here as it is everywhere else.
+   */
   async #ran(): Promise<{ id: number; name: string; module: string; batch: number }[]> {
-    if (!(await this.#hasTable(MIGRATIONS_TABLE))) return [];
-    return this.#db().selectFrom(MIGRATIONS_TABLE).selectAll().orderBy('batch').orderBy('id').execute();
+    const books = this.#books();
+    const { columns, extension } = await loadColumns(books, this.#driver());
+    const state = classify(columns, 'default', extension);
+    const refused = unreadable(state, 'default');
+    if (refused) throw refused;
+    if (state.state === 'none') return [];
+    await bookkeepingVersion(runner(books), columns, 'default');
+    assertRecordReadable(columns, 'default');
+    return (await books.selectFrom(MIGRATIONS_TABLE).selectAll().orderBy('batch').orderBy('id').execute()) as { id: number; name: string; module: string; batch: number }[];
   }
 
   async #lastBatch(): Promise<number> {
-    const row = await this.#db().selectFrom(MIGRATIONS_TABLE).select(sql<number | null>`max(batch)`.as('batch')).executeTakeFirst();
+    const row = await this.#books().selectFrom(MIGRATIONS_TABLE).select(sql<number | null>`max(batch)`.as('batch')).executeTakeFirst();
     return row?.batch ?? 0;
-  }
-
-  async #hasTable(table: string): Promise<boolean> {
-    return (await this.#db().introspection.getTables()).some((t) => t.name === table);
   }
 
   #db(connection = 'default'): Kysely<Bookkeeping> {

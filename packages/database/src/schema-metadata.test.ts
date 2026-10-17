@@ -1,10 +1,9 @@
 import { mkdtempSync } from 'node:fs';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { join } from 'node:path';
-import type { Application, ModuleDefinition } from '@marmeon/core';
+import type { ModuleDefinition } from '@marmeon/core';
 import { CompiledQuery, Kysely, sql, SqliteDialect, type DatabaseConnection, type QueryResult } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
+import { appOf, drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { testEncrypter } from './__fixtures__/encrypter.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
@@ -20,15 +19,19 @@ const modules: ModuleDefinition[] = [
   { name: 'auth', migrations: fixtures('auth') },
   { name: 'blog', migrations: fixtures('relations') },
 ];
+// A cold `Connections` is a process that starts: it learns the schema from these modules' migrations, cached under `root`.
+const root = tempDir('marmeon-metadata-app-');
+const app = appOf(modules, root);
 
 class CommentRepository extends Repository<'comments', FixtureTables> {
   static table = 'comments' as const;
 }
 
 /** Two `Connections` on one database — the second one a process that has not loaded anything yet. */
-async function sharedDatabase(driver: 'sqlite' | 'pgsql') {
+async function sharedDatabase(driver: 'sqlite' | 'pgsql', { managed = true }: { managed?: boolean } = {}) {
   const fresh = driver === 'sqlite' ? { options: { driver: 'sqlite' as const, database: join(mkdtempSync(join(tempDir('marmeon-metadata-'), 'db-')), 'app.sqlite') }, drop: async () => {} } : await freshDatabase(driver);
-  const open = () => new Connections({ connections: { default: fresh.options }, root: '/', logger: silent });
+  const options = managed ? fresh.options : { ...fresh.options, managed: false };
+  const open = () => new Connections({ connections: { default: options }, root, logger: silent, ...(managed ? { app } : {}) });
   const first = open();
   return { first, open, drop: fresh.drop };
 }
@@ -46,7 +49,7 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
 
   beforeAll(async () => {
     ({ first: connections, open, drop } = await sharedDatabase(driver));
-    await new Migrator({ modules, root: '/' } as unknown as Application, connections).migrate();
+    await new Migrator(app, connections).migrate();
   });
   afterAll(async () => {
     for (const other of others) await other.destroy();
@@ -138,6 +141,39 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     await expect(infrastructure.selectFrom('comments').select('body').where(softDeleteFilter('comments')).execute()).rejects.toThrow(
       `only the app's connection resolves — it was not sent: it runs on the database connection "default" without Marmeon's plugins`,
     );
+  });
+});
+
+// A database another tool manages (`managed: false`): the schema is read from the catalog, and a change to it makes what was loaded stale.
+describe.each(drivers)('schema metadata of a connection another tool manages, on %s', (driver) => {
+  let connections: Connections;
+  let open: () => Connections;
+  let drop: () => Promise<void>;
+  const others: Connections[] = [];
+  const cold = () => {
+    const connections = open();
+    others.push(connections);
+    return connections;
+  };
+
+  beforeAll(async () => {
+    ({ first: connections, open, drop } = await sharedDatabase(driver, { managed: false }));
+    await sql`create table users (id integer primary key, name varchar(255))`.execute(connections.get());
+  });
+  afterAll(async () => {
+    for (const other of others) await other.destroy();
+    await connections.destroy();
+    await drop();
+  });
+
+  it('reads the columns and keys from the catalog, and knows no secret column, no soft delete, no timestamps', async () => {
+    const fresh = cold();
+    await fresh.get<any>().selectFrom('users').select('id').execute();
+    const metadata = fresh.metadata();
+    expect([...(metadata.kinds.get('users')?.keys() ?? [])]).toEqual(['id', 'name']);
+    expect(metadata.secrets.size).toBe(0);
+    expect(metadata.softDeletes.size).toBe(0);
+    expect(metadata.timestamps.size).toBe(0);
   });
 
   it('is not fresh while it loads, and never while a transaction that changed the schema is open', async () => {
@@ -269,29 +305,6 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     expect(metadata.kinds.has('raw_probe')).toBe(false);
   });
 
-  it('spells select-all out from the metadata after raw DDL — the new column is read, the secret one is not', async () => {
-    const fresh = cold();
-    const db = fresh.get<any>();
-    await sql`create table raw_secret_probe (id integer, hidden varchar(20))`.execute(db);
-    try {
-      await db.insertInto('marmeon_secret_columns').values({ table_name: 'raw_secret_probe', column_name: 'hidden' }).execute();
-      await db.insertInto('raw_secret_probe').values({ id: 1, hidden: 'x' }).execute();
-      expect(Object.keys(await db.selectFrom('raw_secret_probe').selectAll().executeTakeFirstOrThrow())).toEqual(['id']);
-      await sql`alter table raw_secret_probe add column pinned integer`.execute(db);
-      const row = await db.selectFrom('raw_secret_probe').selectAll().executeTakeFirstOrThrow();
-      expect(Object.keys(row).sort()).toEqual(['id', 'pinned']);
-      expect(row).not.toHaveProperty('hidden');
-    } finally {
-      await db.deleteFrom('marmeon_secret_columns').where('table_name', '=', 'raw_secret_probe').execute();
-      await sql`drop table raw_secret_probe`.execute(db);
-    }
-  });
-
-  it('classifies a literal of ten megabytes without overflowing the regex stack', () => {
-    expect(isRawSchemaChange(`select '${'a'.repeat(10_000_000)}'`)).toBe(false);
-    expect(isRawSchemaChange(`select '${"b''".repeat(5_000_000)}'; drop table x`)).toBe(true);
-  });
-
   it('does not reload for raw SQL that only mentions DDL — a reload would be measurably slower', async () => {
     const fresh = cold();
     const metadata = fresh.metadata();
@@ -311,192 +324,10 @@ select 1`,
     }
   });
 
-  it.runIf(driver === 'sqlite')('a query built while a migration adds soft deletes waits for it — and filters what it soft-deleted', async () => {
-    const db = connections.get<FixtureTables>();
-    await seed(db);
-    await db.updateTable('comments').set({ deleted_at: null }).execute();
-    const posts = cold();
-    let started!: () => void;
-    const inside = new Promise<void>((resolve) => (started = resolve));
-    let finish!: () => void;
-    const finished = new Promise<void>((resolve) => (finish = resolve));
-    // The migration's steps by hand: the column, then the rows it soft-deletes, a query on its own connection (which
-    // loads the metadata again, without the marker), and the marker last.
-    const migration = posts.transaction(async (transaction) => {
-      const trx = transaction as unknown as Kysely<any>;
-      await trx.schema.alterTable('posts').addColumn('deleted_at', 'datetime').execute();
-      await trx.updateTable('posts').set({ deleted_at: new Date().toISOString() }).execute();
-      await posts.get<any>().selectFrom('users').select('id').execute();
-      started();
-      await finished;
-      await trx.insertInto('marmeon_schema_markers').values({ table_name: 'posts', column_name: '', marker: 'soft_deletes', value: null }).execute();
-    });
-    await inside;
-    class Posts extends Repository<'posts', FixtureTables> {
-      static table = 'posts' as const;
-    }
-    const titles = new Posts(posts).query().select('title').execute(); // built now, runs once the migration let go of the file
-    finish();
-    await migration;
-    expect(await titles).toEqual([]);
-    await posts.get<any>().schema.alterTable('posts').dropColumn('deleted_at').execute();
-    await posts.get<any>().deleteFrom('marmeon_schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
-  });
-
-  it.runIf(driver === 'sqlite')('a relation built while a migration adds a secret column waits for it — and never loads the column', async () => {
-    const db = connections.get<FixtureTables>();
-    await seed(db);
-    const app = cold();
-    let started!: () => void;
-    const inside = new Promise<void>((resolve) => (started = resolve));
-    let finish!: () => void;
-    const finished = new Promise<void>((resolve) => (finish = resolve));
-    try {
-      // The column, its values, a query that loads the metadata again on the migration's connection (the column, not its mark),
-      // and the mark last.
-      const migration = app.transaction(async (transaction) => {
-        const trx = transaction as unknown as Kysely<any>;
-        await trx.schema.alterTable('comments').addColumn('secret_note', 'varchar(255)').execute();
-        await trx.updateTable('comments').set({ secret_note: 'hidden' }).execute();
-        await app.get<any>().selectFrom('users').select('id').execute();
-        started();
-        await finished;
-        await trx.insertInto('marmeon_secret_columns').values({ table_name: 'comments', column_name: 'secret_note' }).execute();
-      });
-      await inside;
-      const posts = app.get<FixtureTables>().selectFrom('posts').select('title').with('comments').execute(); // built now
-      finish();
-      await migration;
-      const [post] = await posts;
-      expect(post!.comments).toEqual([expect.objectContaining({ body: 'kept' })]);
-      expect(post!.comments[0]).not.toHaveProperty('secret_note');
-    } finally {
-      await db.deleteFrom('marmeon_secret_columns' as never).where('table_name' as never, '=', 'comments' as never).execute();
-      await sql`alter table comments drop column secret_note`.execute(db).catch(() => {});
-    }
-  });
-
-  // Postgres: the migration holds one connection of the pool, a request uses another. The request's query depends on the marks the
-  // migration is changing: it must not be resolved with what was loaded meanwhile — neither the committed view from before the
-  // commit, nor the migration's own view of a transaction that then rolls back.
-  describe.runIf(driver === 'pgsql')('while a migration on another connection of the pool is open', () => {
-    class Posts extends Repository<'posts', FixtureTables> {
-      static table = 'posts' as const;
-    }
-    const pause = () => {
-      let resolve!: () => void;
-      return { done: new Promise<void>((r) => (resolve = r)), resolve: () => resolve() };
-    };
-    const titles = async (db: Kysely<any>) => (await db.selectFrom('posts').select('title').orderBy('title').execute()).map((row) => row.title);
-    const dropSoftDeletes = async (db: Kysely<any>) => {
-      await sql`alter table posts drop column if exists deleted_at`.execute(db);
-      await db.deleteFrom('marmeon_schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
-    };
-
-    it('waits for its commit — the rows it soft-deleted stay hidden, and a delete stays soft', async () => {
-      const app = cold();
-      const db = app.get<any>();
-      const ada = await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).returning('id').executeTakeFirstOrThrow();
-      await db.insertInto('posts').values([{ author_id: ada.id, title: 'old' }, { author_id: ada.id, title: 'new' }]).execute();
-      const newest = await db.selectFrom('posts').select('id').where('title', '=', 'new').executeTakeFirstOrThrow();
-      await db.selectFrom('users').select('id').execute(); // loaded: the request below starts warm
-      const inside = pause();
-      const finish = pause();
-      try {
-        const migration = app.transaction(async (transaction) => {
-          const trx = transaction as unknown as Kysely<any>;
-          await trx.schema.alterTable('posts').addColumn('deleted_at', 'timestamptz').execute();
-          await trx.updateTable('posts').set({ deleted_at: new Date() }).where('title', '=', 'old').execute();
-          await trx.insertInto('marmeon_schema_markers').values({ table_name: 'posts', column_name: '', marker: 'soft_deletes', value: null }).execute();
-          inside.resolve();
-          await finish.done;
-        });
-        await inside.done;
-        // Outside the migration's call chain: another connection of the pool, which can load the committed view right now.
-        const read = new Posts(app).query().select('title').execute();
-        const deleted = new Posts(app).delete(newest.id);
-        await sleep(100);
-        finish.resolve();
-        await migration;
-        expect((await read).map((row) => row.title)).not.toContain('old'); // 'new' too, if the delete ran first
-        expect(await deleted).toBe(true);
-        expect(await titles(db)).toEqual(['new', 'old']); // both rows are still there: the delete was soft
-      } finally {
-        await dropSoftDeletes(db);
-      }
-    });
-
-    it('waits for its commit before a selectAll() or a relation reads a secret column it adds — and leaves the column out', async () => {
-      const app = cold();
-      const db = app.get<any>();
-      const ada = await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).returning('id').executeTakeFirstOrThrow();
-      await db.insertInto('posts').values({ author_id: ada.id, title: 'before' }).execute();
-      await db.selectFrom('users').select('id').execute(); // loaded: the request below starts warm
-      const inside = pause();
-      const finish = pause();
-      try {
-        const migration = app.transaction(async (transaction) => {
-          const trx = transaction as unknown as Kysely<any>;
-          await trx.schema.alterTable('posts').addColumn('secret_note', 'varchar(255)').execute();
-          await trx.insertInto('posts').values({ author_id: ada.id, title: 'during', secret_note: 'hidden' }).execute();
-          await trx.insertInto('marmeon_secret_columns').values({ table_name: 'posts', column_name: 'secret_note' }).execute();
-          inside.resolve();
-          await finish.done;
-        });
-        await inside.done;
-        // Another connection of the pool: without waiting, it would read before the commit — and strip with what it loaded then.
-        const all = db.selectFrom('posts').selectAll().orderBy('id').execute();
-        const related = db.selectFrom('users').select('name').with('authored_posts', (q: any) => q.orderBy('id')).execute();
-        await sleep(100);
-        finish.resolve();
-        await migration;
-        const rows = await all;
-        expect(rows.map((row: any) => row.title)).toEqual(['before', 'during']); // it waited for the commit
-        expect(JSON.stringify(rows)).not.toContain('hidden');
-        const [user] = await related;
-        expect(user!.authored_posts.map((post: any) => post.title)).toEqual(['before', 'during']);
-        expect(JSON.stringify(user)).not.toContain('hidden');
-      } finally {
-        await db.deleteFrom('marmeon_secret_columns').where('table_name', '=', 'posts').execute();
-        await sql`alter table posts drop column if exists secret_note`.execute(db);
-      }
-    });
-
-    it('waits for its rollback — a mark it dropped and then rolled back still filters', async () => {
-      const app = cold();
-      const db = app.get<any>();
-      const ada = await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).returning('id').executeTakeFirstOrThrow();
-      await db.schema.alterTable('posts').addColumn('deleted_at', 'timestamptz').execute();
-      await db.insertInto('marmeon_schema_markers').values({ table_name: 'posts', column_name: '', marker: 'soft_deletes', value: null }).execute();
-      await db.insertInto('posts').values([{ author_id: ada.id, title: 'kept' }, { author_id: ada.id, title: 'deleted', deleted_at: new Date() }]).execute();
-      const inside = pause();
-      const finish = pause();
-      try {
-        const migration = app.transaction(async (transaction) => {
-          const trx = transaction as unknown as Kysely<any>;
-          await trx.schema.alterTable('posts').dropColumn('deleted_at').execute();
-          await trx.deleteFrom('marmeon_schema_markers').where('table_name', '=', 'posts').where('marker', '=', 'soft_deletes').execute();
-          await app.get<any>().selectFrom('users').select('id').execute(); // loads the migration's own view: no soft deletes
-          inside.resolve();
-          await finish.done;
-          throw new Error('the migration failed');
-        });
-        await inside.done;
-        const read = new Posts(app).query().select('title').execute();
-        await sleep(100);
-        finish.resolve();
-        await expect(migration).rejects.toThrow('the migration failed');
-        expect(await read).toEqual([{ title: 'kept' }]);
-      } finally {
-        await dropSoftDeletes(db);
-      }
-    });
-  });
-
   it('gives up waiting for another connection’s schema change after the limit — with an error, never a guess', async () => {
-    const app = cold();
-    await app.get<any>().selectFrom('users').select('id').execute();
-    const metadata = app.metadata();
+    const fresh = cold();
+    await fresh.get<any>().selectFrom('users').select('id').execute();
+    const metadata = fresh.metadata();
     const migration = {};
     metadata.hold(migration);
     try {
@@ -524,7 +355,7 @@ describe('schema metadata, unit', () => {
   };
 
   it('is not fresh while it loads again — what it had is being replaced', async () => {
-    const metadata = new SchemaMetadata('sqlite');
+    const metadata = new SchemaMetadata('sqlite', 'default', false);
     await metadata.refresh(fake());
     expect(metadata.fresh).toBe(true);
     metadata.invalidate();
@@ -537,7 +368,7 @@ describe('schema metadata, unit', () => {
   });
 
   it('sends no catalog query after a savepoint rolled back without a schema change — and loads again after one with it', async () => {
-    const metadata = new SchemaMetadata('sqlite');
+    const metadata = new SchemaMetadata('sqlite', 'default', false);
     const sent: string[] = [];
     const connection: DatabaseConnection = {
       async executeQuery<R>(query: CompiledQuery): Promise<QueryResult<R>> {
@@ -587,7 +418,7 @@ describe('schema metadata, unit', () => {
     ['release savepoint sp', false],
     ['select 1', false],
   ])('loads again after a hand-written %j while the transaction changed the schema: %s', async (statement, undone) => {
-    const metadata = new SchemaMetadata('sqlite');
+    const metadata = new SchemaMetadata('sqlite', 'default', false);
     const sent: string[] = [];
     const connection: DatabaseConnection = {
       async executeQuery<R>(query: CompiledQuery): Promise<QueryResult<R>> {
@@ -621,7 +452,7 @@ describe('schema metadata, unit', () => {
   });
 
   it('is stale after a schema change has run — also when it was loaded again while the change was under way', async () => {
-    const metadata = new SchemaMetadata('sqlite');
+    const metadata = new SchemaMetadata('sqlite', 'default', false);
     const { gate: slow, open } = gate();
     const ddl = new Kysely<any>({ dialect: new SqliteDialect({ database: async () => ({}) as never }) }).schema.createTable('x').addColumn('id', 'integer').compile();
     const connection = fake({ sql: ddl.sql, gate: slow });
@@ -643,7 +474,7 @@ describe('schema metadata, unit', () => {
 /** The first statement a load sends (to hold it there). */
 async function firstCatalogQuery(): Promise<string> {
   const sent: string[] = [];
-  await new SchemaMetadata('sqlite').refresh({
+  await new SchemaMetadata('sqlite', 'default', false).refresh({
     async executeQuery<R>(query: CompiledQuery): Promise<QueryResult<R>> {
       sent.push(query.sql);
       return { rows: [] };
@@ -655,7 +486,7 @@ async function firstCatalogQuery(): Promise<string> {
 
 describe('SQLite connections', () => {
   it('enforce foreign keys', async () => {
-    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: ':memory:' } }, root: '/', logger: silent });
+    const connections = new Connections({ connections: { default: { driver: 'sqlite', database: ':memory:' } }, root, logger: silent });
     try {
       const row = await sql<{ foreign_keys: number }>`pragma foreign_keys`.execute(connections.get());
       expect(row.rows).toEqual([{ foreign_keys: 1 }]);
@@ -666,6 +497,11 @@ describe('SQLite connections', () => {
 });
 
 describe('isRawSchemaChange', () => {
+  it('classifies a literal of ten megabytes without overflowing the regex stack', () => {
+    expect(isRawSchemaChange(`select '${'a'.repeat(10_000_000)}'`)).toBe(false);
+    expect(isRawSchemaChange(`select '${"b''".repeat(5_000_000)}'; drop table x`)).toBe(true);
+  });
+
   it('recognizes a statement that starts with create, alter or drop', () => {
     expect(isRawSchemaChange('ALTER TABLE users ADD COLUMN x integer')).toBe(true);
     expect(isRawSchemaChange('  \n create index i on users (name)')).toBe(true);

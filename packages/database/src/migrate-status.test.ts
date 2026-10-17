@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bookkeepingConnection } from './books.ts';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import { MigrateStatusCommand } from './commands/migrate.ts';
-import { BookkeepingVersionError, Migrator, type Connections } from './index.ts';
+import { BookkeepingVersionError, MigrationStateError, Migrator, type Connections } from './index.ts';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const fixture = JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-migrate-status/v1.json', import.meta.url), 'utf8')) as Record<string, unknown>;
@@ -102,6 +102,33 @@ describe.each(drivers)('migrate:status --json (%s)', (driver) => {
       vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
       await expect(command.handle({ args: [], options: { json: true }, output: new Output(), root: '/' } as unknown as CommandInput)).rejects.toThrow(BookkeepingVersionError);
       expect(stdout).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
+  it('throws for a record of migrations with other columns, so that the CLI prints nothing on stdout', async () => {
+    const { connections, close, command } = await setup([auth, accounts]);
+    try {
+      await migrator(connections, [auth]).migrate();
+      await sql`alter table marmeon_migrations add column checksum varchar(64)`.execute(bookkeepingConnection(connections));
+      const stdout: string[] = [];
+      vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
+      await expect(command.handle({ args: [], options: { json: true }, output: new Output(), root: '/' } as unknown as CommandInput)).rejects.toThrow(MigrationStateError);
+      await expect(command.handle({ args: [], options: {}, output: new Output(), root: '/' } as unknown as CommandInput)).rejects.toThrow(/\[marmeon:D1\].*checksum/s);
+      expect(stdout).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
+  it('lists the migrations that did not run, on the database an app of this code would refuse', async () => {
+    const { connections, close, command } = await setup([auth, accounts]);
+    try {
+      await migrator(connections, [auth]).migrate();
+      const { code, stdout } = await run(command, { json: true });
+      expect(code).toBe(0);
+      expect(JSON.parse(stdout).migrations.map((m: { status: string }) => m.status)).toEqual(['ran', 'pending', 'pending']);
     } finally {
       await close();
     }

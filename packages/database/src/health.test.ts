@@ -3,10 +3,11 @@ import { join } from 'node:path';
 import { createApplication, env, HealthChecks, Logger } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { defineConnection } from './config.ts';
-import { bookkeepingConnection } from './books.ts';
 import { Connections } from './connections.ts';
 import { DatabaseHealthCheck } from './health.ts';
+import { defineMigration } from './migrations/migration.ts';
 import { Migrator } from './migrations/migrator.ts';
+import { runMigration } from './migrations/run.ts';
 import { DatabaseServiceProvider } from './provider.ts';
 import { sql } from 'kysely';
 import { SchemaRequirements } from './upgrades.ts';
@@ -56,24 +57,32 @@ describe('the secret columns a table is required to have', () => {
     return { report, message: report.checks[0]!.error instanceof Error ? report.checks[0]!.error.message : '' };
   };
 
-  it('are red while the bookkeeping does not mark one, with the way to mark it', async () => {
+  const keys = (table: string, mark: boolean) =>
+    defineMigration({
+      up: (schema) =>
+        schema.create(table, (t) => {
+          t.id();
+          const token = t.string('token', 64).nullable();
+          if (mark) token.secret();
+        }),
+    });
+
+  it('are red while the migrations do not mark one, with the way to mark it', async () => {
     await using app = await boot();
     await app.container.make(Migrator).migrate();
     const connections = app.container.make(Connections);
-    await sql`create table keys_unmarked (id integer primary key, token varchar(64))`.execute(connections.get());
+    await runMigration(connections, keys('keys_unmarked', false));
     app.container.make(SchemaRequirements).require(requirement('default', 'keys_unmarked'));
     const { report, message } = await messageOf(app);
     expect(report.ok).toBe(false);
     expect(message).toBe('keys_unmarked has token without the secret() mark — a migration marks the column with .secret() (schema.alter), see docs/migrations.md#how-the-migrator-keeps-track');
   });
 
-  it('are green once the bookkeeping marks them', async () => {
+  it('are green once the migrations mark them', async () => {
     await using app = await boot();
     await app.container.make(Migrator).migrate();
     const connections = app.container.make(Connections);
-    await sql`create table keys_marked (id integer primary key, token varchar(64))`.execute(connections.get());
-    await sql`insert into marmeon_secret_columns (table_name, column_name) values ('keys_marked', 'token')`.execute(bookkeepingConnection(connections));
-    connections.metadata().invalidate();
+    await runMigration(connections, keys('keys_marked', true));
     app.container.make(SchemaRequirements).require(requirement('default', 'keys_marked'));
     expect((await messageOf(app)).report.ok).toBe(true);
   });

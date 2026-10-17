@@ -75,9 +75,19 @@ export function planOf(migration: Planned, direction: 'up' | 'down', name = 'A m
  * Runs a plan on `db`, which is the migration's transaction. What depends on the driver is checked for the whole plan first, so a
  * migration that cannot run on it changes nothing.
  */
-export async function executePlan(db: Kysely<any>, driver: Driver, steps: readonly PlanStep[], recorder?: SchemaRecorder): Promise<void> {
+export async function executePlan(
+  db: Kysely<any>,
+  driver: Driver,
+  steps: readonly PlanStep[],
+  recorder?: SchemaRecorder,
+  /** Wraps each `data` step, given its position in the plan: the migrator tells the connection what the plan has changed up to there. */
+  aroundData?: (index: number, run: () => Promise<void>) => Promise<void>,
+): Promise<void> {
   check(driver, steps);
-  for (const step of steps) await run(db, driver, step, recorder);
+  for (const [index, step] of steps.entries()) {
+    if (step.kind === 'data' && aroundData) await aroundData(index, () => run(db, driver, step, recorder));
+    else await run(db, driver, step, recorder);
+  }
 }
 
 /** Postgres cuts an identifier at 63 bytes without a word. */

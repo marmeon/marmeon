@@ -171,6 +171,13 @@ and is used only when all of them are the ones now present; otherwise the projec
 directory allows. The hash covers the migration file itself, not what it imports: a migration is self-contained and its plan the same on
 every run (no time, no environment), so the file is all that can change it. [Deploying](deployment.md#building-and-starting) has the details.
 
+The app's connections use the projection as their schema: its secret columns, soft deletes, timestamps and relations are the ones
+the query builder works with, and it needs no query on the database for them. A process that serves requests loads it the same way
+(the file while it fits, otherwise computed, kept in memory when the directory cannot be written), and the migrator that runs in
+a process hands its own to that process's connections. [How the migrator keeps track](#how-the-migrator-keeps-track) says what
+the app checks against the database. A table the projection does not know, such as one raw SQL or another tool made, passes through
+the query builder as it is: no secret column, soft delete or timestamp mark applies to it.
+
 ## Running migrations
 
 | Command | What it does |
@@ -237,31 +244,37 @@ one stops with a `SchemaError`, as it does for `marmeon_migration_lock`, and so 
 The names `migrations`, `table_owners`, `secret_columns`
 and `schema_markers` are taken as well, until 1.0.
 
-The secret columns and the soft deletes depend on these tables, so the app never guesses when it cannot read them. A connection
-whose bookkeeping this release cannot read fails **every** query with a `BookkeepingVersionError`, and `/up/ready` is red. It
-never works as if no column were secret and no row deleted. That happens when
+**The running app reads none of them but `marmeon_migrations`.** Which columns are secret, which tables have soft deletes and
+timestamps, and the relations come from the [projection of the migrations](#what-the-migrations-describe): a process that serves
+requests computes it from the migration files (or reads `.marmeon/schema.json`), and the migrator that runs in a process hands its
+projection to that process's connections directly. The database is asked one thing, once, when the first query of a process
+needs the schema: which migrations ran. The other tables are written by `migrate` and read by `marmeon migrate:status` and the
+migrator's checks, no more. A secret column therefore stays hidden even if the rows of `marmeon_secret_columns` are gone.
 
-- the database still has the tables of the release before (`migrations`, `table_owners`, `secret_columns`, `schema_markers`) and
-  `marmeon migrate` has not run: run it;
-- the version in `marmeon_versions` is one this release does not read, because a newer Marmeon migrated the database: update
-  `@marmeon/*`. `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:status` and `migrate:fresh` refuse as well, and change nothing;
-- a table is missing or has other columns, `marmeon_versions` is gone while the others are not, or the bookkeeping holds a marker this
-  release does not know: restore the tables from a backup, or update `@marmeon/*`;
-- the connection has tables and no bookkeeping at all: for your own database that Marmeon is to migrate from now on, run
-  [`marmeon migrate --adopt-existing`](#adopting-an-existing-database) once; after a restore that lost the bookkeeping, restore it. Only
-  for a database that another tool manages, set [`managed: false`](database.md#a-database-another-tool-manages);
-- the old bookkeeping tables are there and a table of your own is called `migrations`, `table_owners`, `secret_columns` or
-  `schema_markers` too: rename your table with SQL (`alter table migrations rename to …`) and in the code that uses it.
+What the app does with the answer, per connection (`default` decides; the other connections take its state):
+
+| State | When | What happens |
+| --- | --- | --- |
+| ready | The database has every migration the code has. | Queries run. |
+| ahead | The database also has migrations the code does not know: a process of an older release during a deploy. | Queries run, with the schema the code knows: its secret columns, soft deletes and relations. Logged once. See [migrating a running app](#migrating-a-running-app). |
+| pending | The database lacks a migration the code has: the app started before `migrate`, or after a rollback. | **Every** query fails with a `MigrationStateError` (D2) that names the missing migrations, `/up/ready` is red. The database is asked again at most once a second, so the app answers a second after `marmeon migrate` ran, with no restart. A process that was ready before a rollback keeps its schema until it restarts. |
+| newer | `marmeon_migrations` has other columns than this release reads: a newer Marmeon migrated the database. | Every query fails (D1); `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:status` and `migrate:fresh` refuse as well and change nothing. Update `@marmeon/*`. |
+| unmigrated | The database has tables and no `marmeon_migrations`: the tables of the release before, a database that lost its bookkeeping, or another tool's. | Every query fails (D1). For the release before, run `marmeon migrate`, which moves its tables. For your own database that Marmeon is to migrate from now on, [adopt it](#adopting-an-existing-database). For a database another tool manages, set [`managed: false`](database.md#a-database-another-tool-manages). |
+
+It never works as if no column were secret and no row deleted: a code with migrations the database lacks is refused rather than
+trusted to have columns that are not there. A connection set to `managed: false` is the exception: it reads the catalog, as before, and
+knows no secret column, no soft delete and no timestamp.
+
+`marmeon db:show` looks at the database as it is, whatever its state. The migrator reads `marmeon_migrations` with a connection
+of its own, so `migrate`, `migrate:status` and `migrate:rollback` work on a database the app refuses. A Postgres role is checked like
+any other: the tables are listed from the catalog whatever the role may do with them, so a role without privileges on
+`marmeon_migrations` gets "permission denied" on its queries instead of an app that believes no migration is missing.
 
 A table that an extension owns (PostGIS's `spatial_ref_sys`) is no table of the app. A migration that renames or drops a table or column
 with raw SQL (`` sql`alter table users rename column password_hash to pw` ``) would leave the secret or marker entry behind with a name
 that is gone: the migrator checks after every migration, in its transaction, that each entry still points at a table and column, and
-rolls the migration back with error D4 when not. Use `schema.alter()` and `schema.rename()`, which keep the entries in step. An entry that
-points at nothing when the metadata loads refuses the connection (D1).
+rolls the migration back with error D4 when not. Use `schema.alter()` and `schema.rename()`, which keep the entries in step.
 The check cannot see a rename in raw SQL that is followed by a new column of the old name (`rename column password_hash to pw`, then `add column password_hash`): rename secret and soft-delete columns only with `schema.alter()` and `schema.rename()`. Raw SQL bypasses the protection.
-
-A Postgres role is checked like any other: the tables are listed from the catalog whatever the role may do with them, so a role
-without privileges on the bookkeeping gets "permission denied" on its queries instead of an app that thinks nothing is secret.
 
 `marmeon migrate` moves the tables of the release before to their `marmeon_` names, in one transaction per connection, with their
 indexes, constraints and rows, and writes the version. It does so also when no migration is pending, on every connection a
@@ -289,19 +302,27 @@ finds a bookkeeping. It does not help with a bookkeeping that is only partly the
 
 ### Migrating a running app
 
-The app reads what the migrations marked, such as [soft deletes](#timestamps-and-soft-deletes) and
-[secret columns](#secret-columns), from the database, and loads it again after each schema change it makes itself with the schema
-methods. While a migration's transaction is open in the app's own process, every query on another connection that reads rows or
-depends on those marks waits for the migration to end, for at most 10 seconds, and then fails with an error instead of guessing.
-Three cases remain:
+The app knows what the migrations marked, such as [soft deletes](#timestamps-and-soft-deletes) and
+[secret columns](#secret-columns), from the [projection of the migration files](#what-the-migrations-describe), not from the
+database. A running app and a migration meet in three places:
 
-- A query built before the migration's first schema change and sent after it uses the schema it was built with.
-- A schema change written as raw SQL is recognized when a statement begins with `create`, `alter` or `drop`, such as
-  `` sql`alter table …` ``. A word inside a literal or a comment does not count. A schema change that begins otherwise, such
-  as a `pragma` or Postgres's `select … into new_table`, is not recognized: the process keeps what it loaded until the next
-  recognized change, or a restart.
-- A process that did not run the migration does not see it. Restart the app's processes after `marmeon migrate` ran from another
-  one, as a deployment does when it runs `migrate --force` before the new version takes requests.
+- **In the process that migrates** (`marmeon migrate`, a test), the migrator hands the schema it leaves to that process's connections as
+  each migration commits. While a migration's transaction is open, the other connections keep the schema from before it and do not
+  wait for it. The `schema.data()` steps of the migration see the schema as the plan has changed it up to them: a table the plan
+  created, with its soft-delete mark, is known to the step that fills it, and to nobody else yet.
+- **In another process** that started before `marmeon migrate` ran, nothing changes while it runs: the process keeps the schema of its
+  code, and a column the new migrations add is not in it (the state `ahead` in
+  [how the migrator keeps track](#how-the-migrator-keeps-track)). A relation, and the `selectAll()` of a table that has secret
+  columns, name the columns the code knows. A plain `selectAll()` of another table reads every column the database has, new ones
+  included. That holds for a process started after the new migrations ran as well: a column a newer migration marks `.secret()` is
+  not hidden from code that does not know the migration, so roll a release out whole, old processes replaced soon.
+- **In a process whose code is newer than the database**, such as an app that starts before `migrate --force` has finished, or after a
+  rollback, every query is refused with a `MigrationStateError` (D2) that names the missing migrations, and `/up/ready` is red, so a load
+  balancer sends no request there. The process looks at the database again at most once a second and answers as soon as the migrations
+  have run. A process that was ready when a rollback ran keeps the schema it had until it restarts (the process that rolled back
+  continues with the schema of the migrations that remain); one started afterwards with the newer code is pending until the next `migrate`.
+
+A query of an old process that names a column a migration dropped fails at the database, as it would anywhere.
 
 > [!WARNING]
 > `migrate:fresh` drops **every** table of the database, also tables that no migration created, and every table of the other

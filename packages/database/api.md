@@ -447,6 +447,14 @@ export interface MigrationRun {
     readonly module: string;
     readonly ms: number;
 }
+// MigrationStateError
+export declare class MigrationStateError extends Error {
+    name: string;
+    readonly connection: string;
+    readonly reason: 'pending' | 'newer' | 'unmigrated';
+    readonly missing: readonly string[];
+    constructor(reason: MigrationStateError['reason'], connection: string, message: string, missing?: readonly string[]);
+}
 // MigrationStatus
 export interface MigrationStatus extends MigrationFile {
     readonly batch: number | undefined;

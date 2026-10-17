@@ -2,6 +2,7 @@ import type { HealthCheck } from '@marmeon/core';
 import { withCode, withoutCode } from '@marmeon/core/internal';
 import { sql } from 'kysely';
 import { Connections } from './connections.ts';
+import { MigrationStateError } from './migration-state.ts';
 import { SchemaRequirements, type TableRequirement } from './upgrades.ts';
 
 /**
@@ -35,12 +36,19 @@ export class DatabaseHealthCheck implements HealthCheck {
         }
       }),
     );
-    if (failed.length > 0) throw new AggregateError(errors, `The database connection${failed.length > 1 ? 's' : ''} ${failed.map((name) => `"${name}"`).join(', ')} failed: ${errors.map((error) => withoutCode(error instanceof Error ? error.message : String(error))).join('; ')}`);
+    if (failed.length > 0) {
+      const message = `The database connection${failed.length > 1 ? 's' : ''} ${failed.map((name) => `"${name}"`).join(', ')} failed: ${errors.map((error) => withoutCode(error instanceof Error ? error.message : String(error))).join('; ')}`;
+      // A database that lacks migrations keeps its code: what to do about it is in the message.
+      const state = errors.find((error): error is MigrationStateError => error instanceof MigrationStateError);
+      throw new AggregateError(errors, state === undefined ? message : state.reason === 'pending' ? withCode('D2', message) : withCode('D1', message));
+    }
     let lacking = this.#unmet(required);
     let unmarked = this.#unmarked(required);
     if (lacking.length > 0 || unmarked.length > 0) {
-      // The metadata is what this process loaded: a `migrate` elsewhere (which the message asks for) may have changed the tables since. Load again, once.
+      // On a database another tool manages, the metadata is what this process loaded: a change elsewhere may have changed the tables since. Load again, once.
+      // (What the migrations describe cannot have changed in a running process.)
       for (const connection of new Set(required.map((requirement) => requirement.connection))) {
+        if (this.#connections.options(connection).managed !== false) continue;
         this.#connections.metadata(connection).invalidate();
         await sql`select 1`.execute(this.#connections.get(connection));
       }

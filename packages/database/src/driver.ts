@@ -319,15 +319,18 @@ export class MarmeonDriver implements Driver {
     if (!serial) {
       const { metadata, deferred, results } = this.#context;
       const hooks: SerialHooks = { name: this.#context.name };
-      if (results) hooks.result = (query, result) => results.convert(query, result);
+      // A migration's transaction sees the schema as its plan has changed it so far (`SchemaMetadata.during`); everyone else the published one.
+      const seen = <T>(work: () => T): T => (metadata ? metadata.as(serial!, work) : work());
+      if (results) hooks.result = (query, result) => seen(() => results.convert(query, result));
       if (deferred) {
         hooks.deferred = (query) => deferred.deferred(query);
         hooks.resolve = async (query, own) => {
           await metadata?.settle(own, serial!, { limit: SCHEMA_CHANGE_WAIT_MS, name: this.#context.name });
-          return deferred.resolve(query);
+          return seen(() => deferred.resolve(query));
         };
       }
-      if (metadata) hooks.ran = (query) => this.#ran(serial!, query, metadata);
+      // The schema of a managed connection is the migrations', not the catalog's: a statement that changes the catalog changes nothing there.
+      if (metadata && !metadata.managed) hooks.ran = (query) => this.#ran(serial!, query, metadata);
       this.#serial.set(connection, (serial = serialQueries(connection, hooks)));
     }
     return serial;
@@ -453,7 +456,7 @@ const savepoint = (depth: number) => `marmeon_savepoint_${depth}`;
 /** A statement that may roll a savepoint back — a false alarm (the word in a string) costs one load, and only after a schema change. */
 const ROLLBACK = /rollback/i;
 
-/** How long a query that needs the schema metadata waits for another connection's open schema change (a migration) to end. */
+/** How long a query that needs the schema metadata waits for another connection's open schema change to end, on a connection another tool manages (`managed: false`); managed connections do not wait. */
 const SCHEMA_CHANGE_WAIT_MS = 10_000;
 
 /** The adapter as it is, but claiming several connections — so Kysely leaves the locking to {@link MarmeonDriver}. */
