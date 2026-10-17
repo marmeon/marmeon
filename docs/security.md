@@ -190,6 +190,18 @@ go, and its sessions end. With open registration, such an account was signed in 
 the line, these accounts stay: decide it for your app. The [email verification](verification.md#unconfirmed-accounts) page
 explains the rules.
 
+## Secret columns and raw SQL
+
+Which columns are secret comes from the migrations ([how the app knows its schema](migrations.md#how-the-app-knows-its-schema)), so the
+guard covers what the blueprint made and nothing else:
+
+- A table that raw SQL, a view or another tool made has no secret columns, soft deletes or timestamps, and `selectAll()` on it is
+  `select *`. Create what holds secrets with `schema.create()` and mark the column `.secret()`.
+- Raw SQL, in a query or in a migration, is not checked: `` sql`select * from users` `` returns the hash.
+- A connection with `managed: false` knows no secret column at all.
+- A process that runs older code against a newer database selects only the columns it knows, so a column a newer migration marks
+  secret is not in its `selectAll()` ([migrating a running app](migrations.md#migrating-a-running-app)).
+
 ## Tables and exports
 
 A table of `@marmeon/table` is one definition the server enforces on every request. These are the attacks of hand-written tables,
