@@ -144,17 +144,7 @@ export interface TableActionResult<D = unknown> {
   readonly data?: D;
 }
 
-/** `name` or `-name` → the column and the direction. */
-export function parseSort<C extends string>(value: string): { column: C; direction: SortDirection } {
-  return value.startsWith('-') ? { column: value.slice(1) as C, direction: 'desc' } : { column: value as C, direction: 'asc' };
-}
-
-/** The sort value of a column: `name` ascending, `-name` descending. */
-export function sortValue(column: string, direction: SortDirection): string {
-  return direction === 'desc' ? `-${column}` : column;
-}
-
-export { exportUrl, keyOf, propOf, sortUrl, TableController, tableStatus } from './table.ts';
+export { exportUrl, keyOf, sortUrl, TableController, tableStatus } from './table.ts';
 export type {
   ActionOf,
   AnyTableData,

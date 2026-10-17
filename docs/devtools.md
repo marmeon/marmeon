@@ -226,7 +226,7 @@ the schedule, a batch and the location of a controller's source.
 
 ## Testing
 
-A test records with `devtools: true`, into memory, and `app.devtools` reads the entries:
+A test records with `devtools: true`, into memory, and `app.devtools` reads the entries (type a variable with `DevtoolsTester` from `@marmeon/devtools/testing`):
 
 ```ts title="modules/notes/devtools.test.ts"
 import { createTestApp } from '@marmeon/testing';

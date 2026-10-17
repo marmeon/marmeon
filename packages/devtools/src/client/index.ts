@@ -4,16 +4,11 @@
  * (`DevDocument`, bound with `NODE_ENV=development` only); nothing else imports it, so no build ever contains it.
  *
  * Loaded before the app's entry, it sets the dev hook (`__MARMEON_DEVTOOLS_HOOK__`): when the app makes its navigator, the bar
- * attaches its data feature to it and shows itself — plain DOM in a shadow root, bottom right (`Alt+Shift+D`).
+ * attaches its data feature to it and shows itself — plain DOM in a shadow root, bottom right (`Alt+Shift+D`). It exports nothing.
  */
 import type { DevtoolsGlobal } from '@marmeon/http/client/adapter';
 import { DevtoolsBar } from './bar.ts';
 import { installDevtoolsHook } from './hook.ts';
-
-export { DevtoolsBar, SHORTCUT, STATE_KEY, TABS } from './bar.ts';
-export type { BarOptions, BarTab } from './bar.ts';
-export { installDevtoolsHook } from './hook.ts';
-export type { Attached } from './hook.ts';
 
 if (typeof document !== 'undefined') {
   let bar: DevtoolsBar | undefined;

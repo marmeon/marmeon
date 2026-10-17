@@ -5,7 +5,7 @@ import { DevtoolsConfig, DevtoolsConfigError, loadDevtoolsOptions, resolveOption
 import { FileStore } from './file-store.ts';
 import { Recorder } from './recorder.ts';
 import { DevtoolsStore, MemoryStore } from './store.ts';
-import { DevtoolsTestOptIn } from './testing.ts';
+import { DevtoolsTestOptIn } from './test-opt-in.ts';
 
 /** Where the Vite dev server serves the in-page bar's client — never part of a build. */
 export const BAR_SCRIPT = '/@id/@marmeon/devtools/client';

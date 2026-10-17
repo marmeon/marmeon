@@ -284,7 +284,7 @@ Real-time updates are the hints on this page. These are not part of the framewor
 ## Testing
 
 In a test, hints go out as in production, and `app.broadcast` records them. `app.live(path)` opens the stream of a page, signed for
-the test's session:
+the test's session (`BroadcastRecorder` and `LiveStreamReader`, to type a variable, come from `@marmeon/live/testing`):
 
 ```ts title="modules/user-profile/live.test.ts"
 import { UserRepository, type User } from '#modules/auth';

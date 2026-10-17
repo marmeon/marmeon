@@ -13,9 +13,10 @@ import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { DevDocument } from '@marmeon/server/internal';
 import * as v from 'valibot';
 import { afterAll, describe, expect, it } from 'vitest';
-import { DevtoolsServiceProvider, DevtoolsStore, type AnyEntry, type DevtoolsTester } from './index.ts';
+import { DevtoolsServiceProvider, DevtoolsStore, type AnyEntry } from './index.ts';
 import { BASE, MAIL_CSP } from './pages/index.ts';
-import { enableDevtoolsForTests } from './testing.ts';
+import { enableDevtoolsForTests } from './test-opt-in.ts';
+import type { DevtoolsTester } from './tester.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
