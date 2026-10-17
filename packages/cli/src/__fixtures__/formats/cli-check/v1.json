@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "ok": false,
+  "exitCode": 1,
+  "checks": [
+    {
+      "name": "types",
+      "status": "failed",
+      "problems": [
+        {
+          "severity": "error",
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "src/a.ts",
+          "line": 1,
+          "column": 7,
+          "rule": "TS2322",
+          "code": null,
+          "fix": null,
+          "docs": null
+        }
+      ],
+      "reason": null
+    },
+    {
+      "name": "lint",
+      "status": "skipped",
+      "reason": "oxlint is not installed — pnpm add -D oxlint",
+      "problems": []
+    },
+    {
+      "name": "internal-imports",
+      "status": "failed",
+      "problems": [
+        {
+          "severity": "error",
+          "message": "`@marmeon/*/internal` is the framework's own code, not API — it can change in any release. Use the package's entry; if you need something only an internal subpath has, open an issue.",
+          "file": "src/b.ts",
+          "line": 2,
+          "column": 19,
+          "rule": "marmeon(no-internal-imports)",
+          "docs": "docs/check.md#imports-of-framework-internals",
+          "code": null,
+          "fix": null
+        }
+      ],
+      "reason": null
+    }
+  ],
+  "warnings": []
+}

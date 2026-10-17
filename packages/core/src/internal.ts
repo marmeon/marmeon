@@ -26,6 +26,8 @@ export { loadEnv } from './config/config.ts';
 export { consoleLogsGoToStderr, logContextSourcesOf, sendConsoleLogsToStderr } from './logger.ts';
 export { runWithJob, runWithRequest, runWithTask } from './request-context.ts';
 export { staticNames } from './static-names.ts';
+export { stringLiterals } from './string-literals.ts';
+export type { StringLiteral } from './string-literals.ts';
 export type { StaticName } from './static-names.ts';
 export { errOfRollback, leftTransactionOf, openTransactionOf, transactionOf } from './transaction-context.ts';
 export { fillPlaceholders } from './translator.ts';

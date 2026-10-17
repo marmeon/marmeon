@@ -152,6 +152,7 @@ export default defineDocs({
         { slug: 'fakes', label: 'Fakes' },
         { slug: 'time', label: 'Time' },
         { slug: 'testing-pages', label: 'Testing Pages' },
+        { slug: 'check', label: 'Checking an App' },
       ],
     },
     {

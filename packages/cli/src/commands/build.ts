@@ -5,6 +5,8 @@ import { ViteSetupError } from '@marmeon/server';
 import { marmeonEntries, explainConfigError, importVite } from '@marmeon/server/internal';
 import type { CommandInput } from '../command.ts';
 import { precompressAssets } from '../precompress.ts';
+import { internalImports } from '../check/internal-imports.ts';
+import { escapeControl } from '../check/report.ts';
 import { typecheckApp } from '../typecheck.ts';
 
 /**
@@ -32,6 +34,14 @@ export class BuildCommand {
     // Only a warning: classes no module lists. A process of its own, like route:types, so the app is not booted here.
     if (existsSync(join(root, 'bootstrap', 'app.ts')) && (await spawn('modules:check')) !== 0) {
       output.warn('marmeon modules:check failed — the build goes on without the check for unlisted jobs and notifications.');
+    }
+    // Only a warning here: `marmeon check` is what fails on them.
+    try {
+      const internals = internalImports(root);
+      for (const problem of internals) output.warn(`${escapeControl(problem.file ?? '')}:${problem.line}:${problem.column} ${problem.message}`);
+      if (internals.length > 0) output.warn('marmeon check fails on these imports.');
+    } catch (error) {
+      output.warn(`the scan for framework internals could not run: ${error instanceof Error ? error.message : String(error)}`);
     }
     if (options['no-typecheck'] !== true) {
       const checked = await typecheckApp(root);
