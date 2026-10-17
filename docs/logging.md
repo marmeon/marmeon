@@ -138,7 +138,7 @@ PEM form is removed whole. `redactText()` of `@marmeon/core` does the same with 
 Every error entry of the framework passes the app's `Redactor` as text: the exception handler's report, server rendering,
 islands, work after the response, scheduled tasks, live updates, session clean-up, the listeners of job events, failed jobs, and lost
 database and Redis connections.
-A failed job's text in `failed_jobs` is cut at 64 KB.
+A failed job's text in `marmeon_failed_jobs` is cut at 64 KB.
 
 ### What the framework shows elsewhere
 

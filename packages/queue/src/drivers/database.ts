@@ -4,8 +4,11 @@ import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, R
 import { withAvailableAt } from '../driver.ts';
 
 /** The tables `marmeon make:queue-table` creates (the app owns the migration; the queue types them itself). */
-export const JOBS_TABLE = 'jobs';
-export const FAILED_JOBS_TABLE = 'failed_jobs';
+export const JOBS_TABLE = 'marmeon_jobs';
+export const FAILED_JOBS_TABLE = 'marmeon_failed_jobs';
+/** The columns the drivers read and write; readiness is red while a table lacks one. */
+export const JOBS_COLUMNS = ['id', 'queue', 'payload', 'attempts', 'reserved_at', 'available_at', 'created_at'];
+export const FAILED_JOBS_COLUMNS = ['uuid', 'connection', 'queue', 'job', 'payload', 'exception', 'failed_at'];
 
 /** A connection of @marmeon/database — or a transaction of one (`queue.using(trx)`). */
 export interface DatabaseQueueConnection {
@@ -31,7 +34,7 @@ async function use(connection: () => Promise<DatabaseQueueConnection>, cache: { 
 }
 
 /** The index the fair claim needs (`make:queue-table`'s migration creates it). */
-export const FAIR_CLAIM_INDEX = 'jobs_reserved_at_available_at_id_index';
+export const FAIR_CLAIM_INDEX = 'marmeon_jobs_reserved_at_available_at_id_index';
 
 /**
  * The claim of `reserveAny`: one `UPDATE` whose row is the first of two subqueries — an expired claim (a worker died), else the
@@ -44,21 +47,21 @@ export const FAIR_CLAIM_INDEX = 'jobs_reserved_at_available_at_id_index';
 export function claimAnyStatement(sql: Sql, driver: DatabaseQueueConnection['driver'], { now, expired, except }: { now: number; expired: number; except: readonly string[] }) {
   const lock = driver === 'pgsql' ? sql`for update skip locked` : sql``;
   const others = except.length === 0 ? sql`` : sql`and queue not in (${sql.join(except)})`;
-  return sql<{ id: number | string; queue: string; payload: string; attempts: number | string }>`update jobs
+  return sql<{ id: number | string; queue: string; payload: string; attempts: number | string }>`update marmeon_jobs
       set reserved_at = cast(${now} as bigint), attempts = attempts + 1
       where id = coalesce(
-        (select id from jobs where reserved_at <= cast(${expired} as bigint) ${others}
+        (select id from marmeon_jobs where reserved_at <= cast(${expired} as bigint) ${others}
           order by reserved_at, available_at, id limit 1 ${lock}),
-        (select id from jobs where reserved_at is null and available_at <= cast(${now} as bigint) ${others}
+        (select id from marmeon_jobs where reserved_at is null and available_at <= cast(${now} as bigint) ${others}
           order by reserved_at, available_at, id limit 1 ${lock})
       )
       returning id, queue, payload, attempts`;
 }
 
 /**
- * Jobs in the app's database (`QUEUE_CONNECTION=database`) — the table `jobs`.
+ * Jobs in the app's database (`QUEUE_CONNECTION=database`) — the table `marmeon_jobs`.
  *
- * **The claim is one atomic statement across any number of workers:** `UPDATE jobs … WHERE id = (SELECT id … LIMIT 1)` —
+ * **The claim is one atomic statement across any number of workers:** `UPDATE marmeon_jobs … WHERE id = (SELECT id … LIMIT 1)` —
  * on Postgres with `FOR UPDATE SKIP LOCKED` (a row another worker claims is skipped, never taken twice); on SQLite the write
  * statement takes the single write lock before it reads (a `BEGIN` + `SELECT` + `UPDATE` would read before the lock). A
  * claim counts the attempt; `ack` and `release` act only while the claim is still this worker's (`attempts` unchanged), so
@@ -99,7 +102,7 @@ export class DatabaseQueueDriver implements QueueDriver {
 
   async #insert(db: Connection<any>, sql: Sql, { queue, payload, delay }: QueuedPush): Promise<string> {
     const now = this.#clock.now();
-    const { rows } = await sql<{ id: number | string }>`insert into jobs (queue, payload, attempts, reserved_at, available_at, created_at)
+    const { rows } = await sql<{ id: number | string }>`insert into marmeon_jobs (queue, payload, attempts, reserved_at, available_at, created_at)
       values (${queue}, ${payload}, 0, null, cast(${now + Math.round(delay * 1000)} as bigint), cast(${now} as bigint)) returning id`.execute(db);
     return String(rows[0]!.id);
   }
@@ -109,10 +112,10 @@ export class DatabaseQueueDriver implements QueueDriver {
     for (const queue of queues) {
       const now = this.#clock.now();
       const expired = now - this.#retryAfter * 1000;
-      const { rows } = await sql<{ id: number | string; queue: string; payload: string; attempts: number | string }>`update jobs
+      const { rows } = await sql<{ id: number | string; queue: string; payload: string; attempts: number | string }>`update marmeon_jobs
           set reserved_at = cast(${now} as bigint), attempts = attempts + 1
           where id = (
-            select id from jobs
+            select id from marmeon_jobs
             where queue = ${queue} and ((reserved_at is null and available_at <= cast(${now} as bigint)) or reserved_at <= cast(${expired} as bigint))
             order by id
             limit 1 ${driver === 'pgsql' ? sql`for update skip locked` : sql``}
@@ -155,7 +158,7 @@ export class DatabaseQueueDriver implements QueueDriver {
   async release(job: ReservedJob, delay: number, options: ReleaseOptions = {}): Promise<boolean> {
     const { db, sql } = await use(this.#connection, this.#cache);
     const attempts = options.refund ? job.attempts - 1 : job.attempts;
-    const result = await sql`update jobs set reserved_at = null, available_at = cast(${this.#clock.now() + Math.round(delay * 1000)} as bigint),
+    const result = await sql`update marmeon_jobs set reserved_at = null, available_at = cast(${this.#clock.now() + Math.round(delay * 1000)} as bigint),
       attempts = cast(${attempts} as integer), payload = ${options.availableAt === undefined ? job.payload : withAvailableAt(job.payload, options.availableAt)}
       where id = cast(${Number(job.id)} as bigint) and attempts = cast(${job.attempts} as integer) and reserved_at is not null`.execute(db);
     return result.numAffectedRows === 1n;
@@ -167,7 +170,7 @@ export class DatabaseQueueDriver implements QueueDriver {
 
   async size(queue: string): Promise<number> {
     const { db, sql } = await use(this.#connection, this.#cache);
-    const { rows } = await sql<{ count: number | string }>`select count(*) as count from jobs where queue = ${queue}`.execute(db);
+    const { rows } = await sql<{ count: number | string }>`select count(*) as count from marmeon_jobs where queue = ${queue}`.execute(db);
     return Number(rows[0]?.count ?? 0);
   }
 
@@ -178,14 +181,14 @@ export class DatabaseQueueDriver implements QueueDriver {
         sum(case when reserved_at is null and available_at <= cast(${now} as bigint) then 1 else 0 end) as ready,
         sum(case when reserved_at is null and available_at > cast(${now} as bigint) then 1 else 0 end) as delayed,
         sum(case when reserved_at is not null then 1 else 0 end) as reserved
-      from jobs where queue = ${queue}`.execute(db);
+      from marmeon_jobs where queue = ${queue}`.execute(db);
     const row = rows[0];
     return { ready: Number(row?.ready ?? 0), delayed: Number(row?.delayed ?? 0), reserved: Number(row?.reserved ?? 0) };
   }
 
   async queues(): Promise<string[]> {
     const { db, sql } = await use(this.#connection, this.#cache);
-    const { rows } = await sql<{ queue: string }>`select distinct queue from jobs order by queue`.execute(db);
+    const { rows } = await sql<{ queue: string }>`select distinct queue from marmeon_jobs order by queue`.execute(db);
     return rows.map((row) => row.queue);
   }
 
@@ -193,12 +196,12 @@ export class DatabaseQueueDriver implements QueueDriver {
     const connection = await use(this.#connection, this.#cache);
     const { sql } = connection;
     const db = through ?? connection.db;
-    const result = await sql`delete from jobs where id = cast(${Number(job.id)} as bigint) and attempts = cast(${job.attempts} as integer) and reserved_at is not null`.execute(db);
+    const result = await sql`delete from marmeon_jobs where id = cast(${Number(job.id)} as bigint) and attempts = cast(${job.attempts} as integer) and reserved_at is not null`.execute(db);
     return result.numAffectedRows === 1n;
   }
 }
 
-/** Failed jobs in `failed_jobs` (from `marmeon make:queue-table`). */
+/** Failed jobs in `marmeon_failed_jobs` (from `marmeon make:queue-table`). */
 export class DatabaseFailedJobStore implements FailedJobStore {
   readonly #connection: () => Promise<DatabaseQueueConnection>;
   readonly #cache: { sql?: Promise<Sql> } = {};
@@ -209,7 +212,7 @@ export class DatabaseFailedJobStore implements FailedJobStore {
 
   async record(job: FailedJob): Promise<void> {
     const { db, sql } = await use(this.#connection, this.#cache);
-    await sql`insert into failed_jobs (uuid, connection, queue, job, payload, exception, failed_at)
+    await sql`insert into marmeon_failed_jobs (uuid, connection, queue, job, payload, exception, failed_at)
       values (${job.uuid}, ${job.connection}, ${job.queue}, ${job.job}, ${job.payload}, ${job.exception}, cast(${job.failedAt} as bigint))
       on conflict (uuid) do update set connection = excluded.connection, queue = excluded.queue, job = excluded.job,
         payload = excluded.payload, exception = excluded.exception, failed_at = excluded.failed_at`.execute(db);
@@ -217,31 +220,31 @@ export class DatabaseFailedJobStore implements FailedJobStore {
 
   async all(): Promise<FailedJob[]> {
     const { db, sql } = await use(this.#connection, this.#cache);
-    const { rows } = await sql<Row>`select * from failed_jobs order by failed_at desc, uuid`.execute(db);
+    const { rows } = await sql<Row>`select * from marmeon_failed_jobs order by failed_at desc, uuid`.execute(db);
     return rows.map(fromRow);
   }
 
   async find(uuid: string): Promise<FailedJob | undefined> {
     const { db, sql } = await use(this.#connection, this.#cache);
-    const { rows } = await sql<Row>`select * from failed_jobs where uuid = ${uuid}`.execute(db);
+    const { rows } = await sql<Row>`select * from marmeon_failed_jobs where uuid = ${uuid}`.execute(db);
     return rows[0] ? fromRow(rows[0]) : undefined;
   }
 
   async forget(uuid: string): Promise<boolean> {
     const { db, sql } = await use(this.#connection, this.#cache);
-    const result = await sql`delete from failed_jobs where uuid = ${uuid}`.execute(db);
+    const result = await sql`delete from marmeon_failed_jobs where uuid = ${uuid}`.execute(db);
     return result.numAffectedRows === 1n;
   }
 
   async flush(): Promise<number> {
     const { db, sql } = await use(this.#connection, this.#cache);
-    const result = await sql`delete from failed_jobs`.execute(db);
+    const result = await sql`delete from marmeon_failed_jobs`.execute(db);
     return Number(result.numAffectedRows ?? 0n);
   }
 
   async prune(before: number): Promise<number> {
     const { db, sql } = await use(this.#connection, this.#cache);
-    const result = await sql`delete from failed_jobs where failed_at < cast(${before} as bigint)`.execute(db);
+    const result = await sql`delete from marmeon_failed_jobs where failed_at < cast(${before} as bigint)`.execute(db);
     return Number(result.numAffectedRows ?? 0n);
   }
 }

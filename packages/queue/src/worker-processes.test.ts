@@ -63,7 +63,7 @@ async function withFixture(kind: SharedTarget['kind'], test: (fixture: Fixture) 
       })),
     jobs: async () => {
       if (target.kind !== 'redis') {
-        const { rows } = await sql<any>`select attempts, reserved_at from jobs order by id`.execute(db);
+        const { rows } = await sql<any>`select attempts, reserved_at from marmeon_jobs order by id`.execute(db);
         return rows.map((row) => ({ attempts: Number(row.attempts), reserved: row.reserved_at !== null }));
       }
       const redis = redisConnections(target.url, target.prefix);
@@ -78,7 +78,7 @@ async function withFixture(kind: SharedTarget['kind'], test: (fixture: Fixture) 
         await redis.close();
       }
     },
-    failed: async () => (await sql<any>`select uuid, job, exception from failed_jobs`.execute(db)).rows,
+    failed: async () => (await sql<any>`select uuid, job, exception from marmeon_failed_jobs`.execute(db)).rows,
     until: async (check, ms = 20_000) => {
       const deadline = Date.now() + ms;
       for (;;) {

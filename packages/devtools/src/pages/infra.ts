@@ -11,7 +11,7 @@ export interface QueueView {
   readonly connection: string;
   readonly driver: string;
   readonly queues: readonly { readonly name: string; readonly size: number; readonly ready?: number; readonly delayed?: number; readonly reserved?: number }[];
-  /** Reading this connection failed (Redis down, the `jobs` table missing). */
+  /** Reading this connection failed (Redis down, the `marmeon_jobs` table missing). */
   readonly error?: string;
 }
 

@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs';
 import { Application, Clock, EventRegistry, ListenerQueue, Logger, Redactor, type Container, type ServiceProvider } from '@marmeon/core';
 import { isQueuedListener } from '@marmeon/core/internal';
-import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
+import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand, RENAME_MIGRATION } from './commands/failed.ts';
 import { QueueWorkCommand } from './commands/work.ts';
 import { QueueConfig } from './config.ts';
+import { FAILED_JOBS_COLUMNS, FAILED_JOBS_TABLE, JOBS_COLUMNS, JOBS_TABLE } from './drivers/database.ts';
 import { QueueHealthCheck } from './health.ts';
 import { importDatabase, importEncryption, importRedis, QueueConnections } from './connections.ts';
 import type { FailedJobStoreFactory, QueueDriverFactory } from './driver.ts';
@@ -86,6 +88,16 @@ export class QueueServiceProvider implements ServiceProvider {
   static config = [QueueConfig];
   /** The default connection's driver answers, for `/up/ready`. */
   static health = [QueueHealthCheck];
+  /** `marmeon make:upgrade-migrations` writes the rename of `jobs` and `failed_jobs` to `marmeon_jobs` and `marmeon_failed_jobs`. */
+  static migrationUpgrades = [
+    {
+      set: 'queue',
+      revision: 2,
+      name: 'rename_queue_tables_to_marmeon',
+      createdBy: ['create_jobs_table'],
+      contents: readFileSync(RENAME_MIGRATION, 'utf8'),
+    },
+  ];
   static commands = [QueueWorkCommand, QueueFailedCommand, QueueRetryCommand, QueueForgetCommand, QueueFlushCommand, QueuePruneFailedCommand, QueueSizeCommand, MakeQueueTableCommand];
 
   register(container: Container): void {
@@ -142,6 +154,14 @@ export class QueueServiceProvider implements ServiceProvider {
       }
       // An unknown database connection name fails here, with the known ones.
       for (const connection of databases) app.container.make(database.Connections).options(connection);
+      // /up/ready is red until the tables have the new names and every column the drivers write.
+      const { SchemaRequirements } = await import('@marmeon/database/internal');
+      const requirements = app.container.make(SchemaRequirements);
+      if (used.driver === 'database') requirements.require({ connection: used.connection, table: JOBS_TABLE, columns: JOBS_COLUMNS, set: 'queue' });
+      // `sync` runs a job where it is dispatched: no worker, no failed-job table to wait for.
+      if (config.failed.driver === 'database' && used.driver !== 'sync') {
+        requirements.require({ connection: config.failed.connection, table: FAILED_JOBS_TABLE, columns: FAILED_JOBS_COLUMNS, set: 'queue' });
+      }
     }
     if (used.driver === 'redis') {
       const redis = await importRedis();

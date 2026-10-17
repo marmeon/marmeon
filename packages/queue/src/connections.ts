@@ -3,7 +3,7 @@ import { Application, Clock, EventDispatcher, Logger, Redactor, type Container }
 import { collectDrivers } from '@marmeon/core/internal';
 import { QueueConfig } from './config.ts';
 import type { FailedJobStore, FailedJobStoreFactory, QueueConnection, QueueDriver, QueueDriverFactory } from './driver.ts';
-import { DatabaseFailedJobStore, DatabaseQueueDriver, type DatabaseQueueConnection } from './drivers/database.ts';
+import { DatabaseFailedJobStore, DatabaseQueueDriver, FAILED_JOBS_TABLE, JOBS_TABLE, type DatabaseQueueConnection } from './drivers/database.ts';
 import { NullFailedJobStore } from './drivers/memory.ts';
 import { RedisQueueDriver } from './drivers/redis.ts';
 import type { JobEvent } from './events.ts';
@@ -208,6 +208,27 @@ export class QueueConnections {
       // The app's: the names its packages add (the session's cookie) are masked in failed jobs and their log lines too.
       ...(this.#container.has(Redactor) ? { redactor: this.#container.make(Redactor) } : {}),
     });
+  }
+
+  /**
+   * Why a worker of a database connection cannot start: the tables still have their old names, `jobs` and `failed_jobs`
+   * (the upgrade migration has not run). `undefined` for any other connection, and when `marmeon_jobs` is there.
+   * @internal
+   */
+  async unmigratedTables(name: string): Promise<string | undefined> {
+    const options = this.options(name);
+    if (options.driver !== 'database') return undefined;
+    const { db, sql } = await this.#tables(options.connection);
+    // Metadata loads with the first query of the connection.
+    await sql`select 1`.execute(db);
+    const tables = this.#container.make((await importDatabase()).Connections).metadata(options.connection).kinds;
+    if (tables.has(JOBS_TABLE) || !tables.has('jobs')) return undefined;
+    return `The queue tables of the connection "${options.connection}" are still named jobs and failed_jobs, not ${JOBS_TABLE} and ${FAILED_JOBS_TABLE} — run marmeon make:upgrade-migrations, then marmeon migrate.`;
+  }
+
+  async #tables(connection: string) {
+    const [{ db }, { sql }] = await Promise.all([this.#database(connection), importDatabase()]);
+    return { db, sql };
   }
 
   async #database(connection: string, what?: string): Promise<DatabaseQueueConnection> {
