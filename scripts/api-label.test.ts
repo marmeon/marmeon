@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { labelProblems } from './api-label.ts';
+import { formatProblems, labelProblems } from './api-label.ts';
 import { compareSnapshots, renderSnapshot, type ApiItem, type ApiSection } from './api-snapshot.ts';
 import { tempDir } from './test/temp-dir.js';
 
@@ -91,6 +91,31 @@ describe('labelProblems', () => {
 
   it('asks nothing of a pull request that changes no entry', () => {
     for (const label of ['internal', 'docs', 'fix', 'feature', 'breaking']) expect(problems([a, b], [a, b], label)).toEqual([]);
+  });
+});
+
+describe('formatProblems', () => {
+  const path = 'packages/queue/src/__fixtures__/formats/job/v1.json';
+  const change = (status: string, file = path) => [{ status, path: file }];
+
+  it('lets a new fixture through and refuses a changed, deleted or renamed one', () => {
+    expect(formatProblems(change('A'), ['fix'])).toEqual([]);
+    for (const status of ['M', 'D', 'R100', 'R087', 'T', 'X']) {
+      const [message, ...rest] = formatProblems(change(status), ['fix']);
+      expect(rest, status).toEqual([]);
+      expect(message, status).toContain(`changes the fixture ${path} of a stored or wire format`);
+    }
+  });
+
+  it('is satisfied by "breaking", and "api-compatible" never lifts it', () => {
+    expect(formatProblems(change('M'), ['breaking'])).toEqual([]);
+    expect(formatProblems(change('D'), ['breaking', 'api-compatible'])).toEqual([]);
+    expect(formatProblems(change('M'), ['fix', 'api-compatible'])).toHaveLength(1);
+    expect(formatProblems(change('R100'), [])).toHaveLength(1);
+  });
+
+  it('names every fixture it refuses', () => {
+    expect(formatProblems([...change('M'), ...change('D', 'packages/http/src/__fixtures__/formats/page/v1.json'), ...change('A', 'x')], ['feature'])).toHaveLength(2);
   });
 });
 
@@ -214,6 +239,57 @@ describe('the script', () => {
     const { run } = repository({ demo: [a, b] }, { demo: [a] }, { other: [a] });
     expect(run(['fix']).status).toBe(1);
     expect(run(['breaking']).status).toBe(0);
+  });
+
+  describe('fixtures of formats', () => {
+    const fixture = 'packages/queue/src/__fixtures__/formats/job/v1.json';
+    const other = 'packages/queue/src/__fixtures__/job.json';
+
+    /** A merge commit whose base holds the two files above and whose pull request applies `change`. */
+    function withFixtures(change: (directory: string, git: (...args: string[]) => string) => void) {
+      const directory = tempDir('marmeon-api-label-');
+      const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: directory, encoding: 'utf8' }).trim();
+      git('init', '-q', '-b', 'main');
+      for (const file of [fixture, other]) {
+        mkdirSync(dirname(join(directory, file)), { recursive: true });
+        writeFileSync(join(directory, file), '{"v":1,"padding":"a record long enough for git to see a rename"}\n');
+      }
+      git('add', '-A');
+      git('commit', '-q', '-m', 'base');
+      git('checkout', '-q', '-b', 'pr');
+      change(directory, git);
+      git('add', '-A');
+      git('commit', '-q', '--allow-empty', '-m', 'change');
+      git('checkout', '-q', 'main');
+      writeFileSync(join(directory, 'README.md'), 'x');
+      git('add', '-A');
+      git('commit', '-q', '-m', 'merged meanwhile');
+      git('merge', '-q', '--no-ff', '-m', 'merge', 'pr');
+      return (labels: string[]) => {
+        const result = spawnSync('node', [script], { cwd: directory, env: { PATH: process.env.PATH, LABELS: JSON.stringify(labels) }, encoding: 'utf8' });
+        return { status: result.status, out: result.stdout + result.stderr };
+      };
+    }
+
+    it('lets a new fixture and a change outside formats/ through', () => {
+      const run = withFixtures((directory) => {
+        writeFileSync(join(directory, fixture.replace('v1', 'v2')), '{"v":2}\n');
+        writeFileSync(join(directory, other), '{"v":9}\n');
+      });
+      expect(run(['internal']).status).toBe(0);
+    });
+
+    it('fails a changed, deleted or renamed fixture without "breaking", and "api-compatible" does not help', () => {
+      const changed = withFixtures((directory) => writeFileSync(join(directory, fixture), '{"v":1,"padding":"changed"}\n'));
+      const deleted = withFixtures((_directory, git) => git('rm', '-q', fixture));
+      const renamed = withFixtures((_directory, git) => git('mv', fixture, fixture.replace('v1', 'v1-old')));
+      for (const run of [changed, deleted, renamed]) {
+        const result = run(['fix', 'api-compatible']);
+        expect(result.status).toBe(1);
+        expect(result.out).toContain(`::error title=API label::changes the fixture ${fixture} of a stored or wire format`);
+        expect(run(['breaking']).status).toBe(0);
+      }
+    });
   });
 
   it('fails clearly when HEAD is not a merge commit', () => {

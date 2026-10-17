@@ -5,6 +5,9 @@
  * than `docs` and `internal`. `Experimental` items are not compared. A removal is never compatible, whatever the label says —
  * but a removed `Referenced, not exported` item counts as a change: an app cannot import it by name.
  *
+ * The same check holds the fixtures of stored and wire formats (the `formats` directories under a package's `src/__fixtures__`): a pull request that
+ * changes, renames or deletes one needs `breaking` — `api-compatible` does not lift it; a new fixture is free.
+ *
  * The check reminds, it does not protect: a pull request runs its own copy of this file, the review is the protection. It
  * therefore loads only `node:*` and `./api-snapshot.ts`, and the workflow installs nothing.
  *
@@ -46,6 +49,20 @@ export function labelProblems(changes: ApiChanges, labels: readonly string[], wh
   return problems;
 }
 
+/** The pathspec of the fixtures of stored and wire formats. */
+const FORMAT_FIXTURES = 'packages/*/src/__fixtures__/formats/**';
+
+/**
+ * The labels a pull request owes for the fixtures of formats it touched: `changes` lists them as `git diff --name-status` does
+ * (a rename carries its old path). Only an added fixture is free — an old node or old data still reads the others.
+ */
+export function formatProblems(changes: readonly { status: string; path: string }[], labels: readonly string[]): string[] {
+  if (labels.includes('breaking')) return [];
+  return changes
+    .filter((change) => !change.status.startsWith('A'))
+    .map((change) => `changes the fixture ${change.path} of a stored or wire format — this needs the label "breaking" (add a fixture for the new version instead, and keep the old one)`);
+}
+
 const stable = (items: readonly ApiItem[]) => items.filter((item) => item.section !== 'experimental' && item.section !== 'experimentalReferenced');
 
 function git(...args: string[]): string {
@@ -75,6 +92,14 @@ export function apiLabelProblems(labels: readonly string[]): { files: number; pr
     const where = /^# (.+)$/m.exec(after)?.[1] ?? /^# (.+)$/m.exec(before)?.[1] ?? file;
     problems.push(...labelProblems(compareSnapshots(stable(parseSnapshot(before)), stable(parseSnapshot(after))), labels, where));
   }
+  const fixtures = git('diff', '--name-status', '-M', base, 'HEAD', '--', FORMAT_FIXTURES)
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => {
+      const [status = '', path = ''] = line.split('\t');
+      return { status, path };
+    });
+  problems.push(...formatProblems(fixtures, labels));
   return { files: files.length, problems };
 }
 
