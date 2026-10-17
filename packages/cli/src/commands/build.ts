@@ -10,7 +10,7 @@ import { escapeControl } from '../check/report.ts';
 import { typecheckApp } from '../typecheck.ts';
 
 /**
- * `marmeon build`: the app's injection lists, the route types and a warning for job and notification classes no module lists (each in a process of its own, with the app in its build phase — no
+ * `marmeon build`: the app's injection lists, the route types, the schema projection of the migrations (`.marmeon/schema.json`) and a warning for job and notification classes no module lists (each in a process of its own, with the app in its build phase — no
  * `.env`, no key, so no secret can end up in `dist/`; the build stops when the app cannot be registered, e.g. a command name used twice or a broken module), the type check (`--no-typecheck` skips it), the client and SSR bundles
  * with the app's own Vite, the precompressed assets and the production discovery manifest. See
  * docs/deployment.md#building-and-starting.
@@ -29,6 +29,12 @@ export class BuildCommand {
     }
     if (existsSync(join(root, 'bootstrap', 'app.ts')) && (await spawn('route:types')) !== 0) {
       output.error('Not built: marmeon route:types failed — see its error above (it registers the app without booting it, so a broken module or a command name used twice stops it too).');
+      return 1;
+    }
+    // The schema the migrations describe: a migration that cannot be projected (a table created twice, a change of a table raw SQL made)
+    // stops the build here, not the deploy. A process of its own, like route:types.
+    if (existsSync(join(root, 'bootstrap', 'app.ts')) && (await spawn('schema:project')) !== 0) {
+      output.error('Not built: marmeon schema:project failed — see its error above (the migrations describe a schema that cannot be computed).');
       return 1;
     }
     // Only a warning: classes no module lists. A process of its own, like route:types, so the app is not booted here.

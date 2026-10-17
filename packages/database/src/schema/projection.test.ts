@@ -1,13 +1,16 @@
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
+import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { drivers, freshConnections, type TestDriver } from '../__fixtures__/databases.ts';
 import { isBookkeepingName } from '../bookkeeping.ts';
 import { introspect, tableColumns, type CatalogQuery } from '../introspection.ts';
 import { Migrator, type Connections } from '../index.ts';
 import { kindOf } from '../metadata.ts';
 import { columnType } from '../types-gen/render.ts';
+import { PROJECTION_FILE, forgetProjections } from './projection-file.ts';
 import { applyPlan, emptyProjection, factsOf, projectMigrations, type ProjectedTable, type SchemaProjection } from './projection.ts';
 import { planOf } from './plan.ts';
 import type { Schema } from './schema.ts';
@@ -296,7 +299,7 @@ async function generatedColumns(run: CatalogQuery, driver: TestDriver): Promise<
 async function expectParity(driver: TestDriver, modules: ModuleDefinition[]): Promise<void> {
   const { connections, close } = await freshConnections(driver);
   try {
-    const migrator = new Migrator({ modules, root: '/' } as unknown as Application, connections).onOneConnection();
+    const migrator = new Migrator({ modules, root: tempDir('marmeon-projection-') } as unknown as Application, connections).onOneConnection();
     await migrator.migrate();
     const projection = await migrator.projection();
     const run = catalog(connections);
@@ -377,7 +380,7 @@ describe.each(drivers)('the projection against the catalog on %s', (driver) => {
   it('does not know a column that raw SQL added', async () => {
     const { connections, close } = await freshConnections(driver);
     try {
-      const migrator = new Migrator({ modules: [fixtures('accounts')], root: '/' } as unknown as Application, connections);
+      const migrator = new Migrator({ modules: [fixtures('accounts')], root: tempDir('marmeon-projection-') } as unknown as Application, connections);
       await migrator.migrate();
       await sql`alter table accounts add column by_hand text`.execute(connections.get());
       const projection = await migrator.projection();
@@ -402,5 +405,16 @@ describe('the fixtures', () => {
     const files = new Migrator({ modules: [fixtures('auth'), fixtures('blog')], root: '/' } as unknown as Application, undefined as never).files();
     expect([...(await projectMigrations(files)).tables.keys()]).toEqual(['users', 'articles']);
     expect([...(await projectMigrations(files, { only: new Set([files[0]!.name]) })).tables.keys()]).toEqual(['users']);
+  });
+
+  it('are kept in .marmeon/schema.json of the app by the migrator, and read from it while the files fit', async () => {
+    const root = tempDir('marmeon-projection-');
+    const migrator = new Migrator({ modules: [fixtures('auth'), fixtures('blog')], root } as unknown as Application, undefined as never);
+    const first = await migrator.projection();
+    const written = readFileSync(join(root, PROJECTION_FILE), 'utf8');
+    forgetProjections();
+
+    expect(await migrator.projection()).toEqual(first);
+    expect(readFileSync(join(root, PROJECTION_FILE), 'utf8')).toBe(written);
   });
 });

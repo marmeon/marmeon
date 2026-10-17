@@ -55,12 +55,18 @@ prints a fresh key for `APP_KEY`. The files are yours from now on, and `make:doc
 
 1. precomputes the injection lists of the app's classes,
 2. writes the route types, `bootstrap/routes.ts` (and stops if the app cannot be registered, e.g. two commands with one name),
-3. type-checks the app against them, so a renamed route or a missing view fails the build,
-4. builds the browser's files into `dist/client/` and the server rendering into `dist/server/`,
-5. writes a `.br` and a `.gz` copy next to every script, stylesheet and other text asset that gets smaller by it,
-6. writes the list of installed packages, `.marmeon/manifest.json`.
+3. writes the schema the migrations describe, `.marmeon/schema.json` (and stops if a migration's plan cannot be projected, e.g. two migrations creating one table),
+4. type-checks the app against them, so a renamed route or a missing view fails the build,
+5. builds the browser's files into `dist/client/` and the server rendering into `dist/server/`,
+6. writes a `.br` and a `.gz` copy next to every script, stylesheet and other text asset that gets smaller by it,
+7. writes the list of installed packages, `.marmeon/manifest.json`.
 
 `marmeon build` also warns about every import of a framework internal (`@marmeon/*/internal`) in your code, and builds anyway; [`marmeon check`](check.md#imports-of-framework-internals) fails on them.
+
+`.marmeon/schema.json` holds the projection of all migration files with the SHA-256 of each and the version of `@marmeon/database`. The build
+always computes it from the migrations, whatever file is there, and writes it over; a directory that cannot be written is no failure. Code that
+asks the migrator for the projection uses the file only if every migration file is the one it was computed from, and otherwise computes it
+itself. See [What the migrations describe](migrations.md#what-the-migrations-describe).
 
 Only `dist/client/assets/` is public. `dist/client/.vite/manifest.json` lists the source path of every page: the server reads it
 at start and never serves it, and a CDN in front of the assets gets the `assets/` directory, not `.vite/`.
