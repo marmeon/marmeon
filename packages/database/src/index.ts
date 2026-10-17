@@ -52,6 +52,7 @@ export { secret } from './secrets.ts';
 export type { Secret, SecretReference } from './secrets.ts';
 export type { MigrationFile, MigrationRun, MigrationStatus } from './migrations/migrator.ts';
 export type { SchemaMarker } from './introspection.ts';
+export type { ProjectedColumn, ProjectedForeignKey, ProjectedIndex, ProjectedTable, SchemaProjection } from './schema/projection.ts';
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn, UuidColumn } from './schema/blueprint.ts';
 export { Schema, SchemaError } from './schema/schema.ts';
 export { BookkeepingVersionError } from './bookkeeping.ts';

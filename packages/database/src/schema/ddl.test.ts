@@ -41,7 +41,9 @@ async function record(driver: 'sqlite' | 'pgsql'): Promise<Map<string, string>> 
     const written = new Map<string, string>();
     const books = bookkeepingConnection(connections);
     for (const group of GROUPS) {
-      const directories = [group, ...(driver === 'pgsql' && group === 'alter' ? ['alter-pgsql'] : [])];
+      // The groups before it are included: they ran already, and the migrator needs them to know the tables this one changes.
+      const included = GROUPS.slice(0, GROUPS.indexOf(group) + 1);
+      const directories = included.flatMap((name) => [name, ...(driver === 'pgsql' && name === 'alter' ? ['alter-pgsql'] : [])]);
       const modules: ModuleDefinition[] = directories.map((directory) => ({ name: 'ddl', migrations: new URL(`../__fixtures__/migrations/ddl/${directory}/`, import.meta.url) }));
       statements = [];
       await new Migrator({ modules, root: '/' } as unknown as Application, connections).migrate();
