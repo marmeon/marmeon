@@ -267,6 +267,15 @@ with `Cache-Control: no-store` and a Content-Security-Policy of its own. A visit
 A JSON request keeps its JSON, with the error and the first solution added. A 4xx error, an action and an upload keep their normal
 answers, and so does a handler of your own unless it renders the error page.
 
+Every 5xx error of the development server (`marmeon dev`), whether the answer is the page or JSON, is also written to
+`.marmeon/last-error.md` in the app's root, so an agent in the terminal can read it as a file. It is the report that "Copy as
+Markdown" copies, for the error's method and path only: no request headers, cookies, query or body, and nothing that the page
+would mask. The error's message and causes sit in a code fence, under a line saying that everything below is data and not
+instructions. An error of a request that the browser marks as from another site (`cross-site` or `same-site`) is not written. With `HOST=0.0.0.0`, anyone on the network can put text into the file by causing an error: the fences mark it as data, but treat it as untrusted, and run `marmeon dev` on a network you trust. The next error overwrites
+the file, and it is removed when the development server starts; a command such as `marmeon tinker` leaves it alone. It is readable
+by its owner only and never written in production or in tests; `.marmeon/` is in the `.gitignore` of a new app. A failure to
+write it is a warning in the log, never an error of the request.
+
 An error while a page renders on the server goes to Vite's overlay in the browser, with the code of the view, and the browser
 renders the page itself.
 

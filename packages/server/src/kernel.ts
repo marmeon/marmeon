@@ -119,6 +119,11 @@ const REQUEST_ID = /^[\w.:-]{1,128}$/;
 const requests = channels.tracing('http.request');
 const exceptions = channels.event('exception');
 
+const fetchSite = (request: Request) => {
+  const site = request.headers.get('sec-fetch-site');
+  return site === null ? {} : { fetchSite: site };
+};
+
 /** The class name of a route's action (`ShowUserController`) — none for a closure. */
 function controllerOf(route: RouteDefinition): string | undefined {
   const action = route.action as unknown;
@@ -330,7 +335,7 @@ export function createHttpKernel(
   const renderError = async (error: unknown, failed: Request, scope?: Container): Promise<Response> => {
     if (exceptions.hasSubscribers) {
       const status = error instanceof HttpError ? error.status : error instanceof ValidationError ? 422 : 500;
-      exceptions.publish({ ...messageBase(application), error, status, method: failed.method, path: new URL(failed.url).pathname });
+      exceptions.publish({ ...messageBase(application), error, status, method: failed.method, path: new URL(failed.url).pathname, ...fetchSite(failed) });
     }
     const handler = container.make(ExceptionHandler);
     if (isLiveValidation(failed)) return renderLiveValidationError(handler, error, failed, scope);
