@@ -6,7 +6,7 @@ import { idOf } from './user.ts';
 
 /**
  * The sign-in behind a live stream. The stream request is read-only: `Auth.user()` checks the fingerprint, the lifetime and the
- * `marmeon_sign_ins` row without writing anything. A session that names an account nobody is signed in as any more is over. `Auth` is
+ * `sign_ins` row without writing anything. A session that names an account nobody is signed in as any more is over. `Auth` is
  * resolved only for a session that names an account: a guest's stream never needs a `UserProvider`.
  */
 export class SignInAudience implements LiveAudience {

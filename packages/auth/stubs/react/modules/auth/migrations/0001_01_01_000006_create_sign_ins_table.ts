@@ -1,4 +1,4 @@
-// @marmeon-stub sign-ins 2
+// @marmeon-stub sign-ins 1
 import { defineMigration } from '@marmeon/database';
 
 // The sign-ins list: a row per sign-in of a browser, and the authority over it — the session carries only the row's random id, and a
@@ -6,7 +6,7 @@ import { defineMigration } from '@marmeon/database';
 // IP address is stored (the `Login` event carries it, for an audit log). `last_seen_at` is written at most every five minutes.
 export default defineMigration({
   up: (schema) =>
-    schema.create('marmeon_sign_ins', (table) => {
+    schema.create('sign_ins', (table) => {
       table.string('id', 22).primary();
       table.foreignId('user_id').constrained().cascadeOnDelete();
       table.string('user_agent', 255).nullable();
@@ -17,5 +17,5 @@ export default defineMigration({
       table.timestamps();
       table.index('user_id');
     }),
-  down: (schema) => schema.drop('marmeon_sign_ins'),
+  down: (schema) => schema.drop('sign_ins'),
 });

@@ -416,7 +416,7 @@ describe('remember me', () => {
     const login = await rememberLogin(ada).assertAuthenticated(ada);
     const cookie = login.cookie(REMEMBER)!;
     expect(cookie).toMatch(/^[\w-]{22}\.[\w-]{43}$/);
-    await app.assertDatabaseCount('marmeon_remember_tokens', 1);
+    await app.assertDatabaseCount('remember_tokens', 1);
 
     const later = await app.withCookie(REMEMBER, cookie).get('/users/me').assertRedirect(`/users/${ada.public_id}`).assertAuthenticated(ada);
     expect(later.cookie(REMEMBER)).not.toBe(cookie);
@@ -427,7 +427,7 @@ describe('remember me', () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', credentialsOf(ada));
     expect(login.cookie(REMEMBER)).toBeUndefined();
-    await app.assertDatabaseCount('marmeon_remember_tokens', 0);
+    await app.assertDatabaseCount('remember_tokens', 0);
   });
 
   it('offers the checkbox by default', async () => {
@@ -446,7 +446,7 @@ describe('remember me', () => {
       const ada = await app.factory(UserFactory).create();
       const login = await rememberLogin(ada).assertAuthenticated(ada);
       expect(login.cookie(REMEMBER)).toBeUndefined();
-      await app.assertDatabaseCount('marmeon_remember_tokens', 0);
+      await app.assertDatabaseCount('remember_tokens', 0);
     });
   });
 
@@ -462,7 +462,7 @@ describe('remember me', () => {
     } finally {
       vi.useRealTimers();
     }
-    await app.assertDatabaseCount('marmeon_remember_tokens', 0);
+    await app.assertDatabaseCount('remember_tokens', 0);
   });
 
   it('signing out forgets this device only', async () => {
@@ -470,7 +470,7 @@ describe('remember me', () => {
     const laptop = await rememberLogin(ada);
     const phone = await rememberLogin(ada);
     await app.withCookie(SESSION, laptop.cookie(SESSION)!).withCookie(REMEMBER, laptop.cookie(REMEMBER)!).post('/logout').assertGuest();
-    await app.assertDatabaseCount('marmeon_remember_tokens', 1);
+    await app.assertDatabaseCount('remember_tokens', 1);
     await app.withCookie(REMEMBER, phone.cookie(REMEMBER)!).get('/users/me').assertAuthenticated(ada);
   });
 });
@@ -692,7 +692,7 @@ describe('password reset', () => {
     await app.queue.work();
     const { token } = linkInMail();
     await open();
-    const rows = await app.make(Database).selectFrom('marmeon_password_reset_tokens').select(['email', (eb) => secret(eb, 'token_hash')]).execute();
+    const rows = await app.make(Database).selectFrom('password_reset_tokens').select(['email', (eb) => secret(eb, 'token_hash')]).execute();
     expect(rows).toHaveLength(1);
     expect(JSON.stringify(rows)).not.toContain(token);
     expect(lines.some((line) => line.includes('GET /reset-password'))).toBe(true); // the request was logged …
@@ -918,9 +918,9 @@ describe('API tokens', () => {
     const stop = app.make(Connections).onQuery((query) => queries.push(query.sql));
     await session.delete('/settings/tokens/not-an-id').assertNotFound();
     await session.delete('/settings/tokens/1%20or%201=1').assertNotFound();
-    expect(queries.filter((sql) => /marmeon_personal_access_tokens/.test(sql))).toEqual([]);
+    expect(queries.filter((sql) => /personal_access_tokens/.test(sql))).toEqual([]);
     await session.delete('/settings/tokens/0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2b').assertNotFound();
-    expect(queries.filter((sql) => /marmeon_personal_access_tokens/.test(sql))).toEqual([]);
+    expect(queries.filter((sql) => /personal_access_tokens/.test(sql))).toEqual([]);
     stop();
     expect(await app.make(AccessTokenStore).list(ada.id)).toHaveLength(1);
     await session.delete(`/settings/tokens/${await idOf(ada)}`).assertOk();

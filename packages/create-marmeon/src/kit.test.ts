@@ -90,8 +90,8 @@ it(
     expect(tables).toContain('password: Secret<string>;');
     // The link's token hash is secret — never in `Row<'users'>`.
     expect(tables).toContain('pending_email_token: Secret<string | null>;');
-    // The module's foreign keys relate its tables: `with('marmeon_personal_access_tokens')` on users, `with('user')` on a token.
-    expect(tables).toContain("marmeon_personal_access_tokens: { kind: 'hasMany'; table: 'marmeon_personal_access_tokens'; foreignKey: 'user_id';");
+    // The module's foreign keys relate its tables: `with('personal_access_tokens')` on users, `with('user')` on a token.
+    expect(tables).toContain("personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id';");
     expect(tables).toContain("user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };");
 
     const typecheck = run(join(root, 'node_modules/.bin/tsc'), ['--noEmit', '-p', root]);

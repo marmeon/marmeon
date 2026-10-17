@@ -519,7 +519,7 @@ export declare class NoStoreWhenSignedIn {
     handle(_ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // PASSWORD_RESET_TABLE
-export declare const PASSWORD_RESET_TABLE = "marmeon_password_reset_tokens";
+export declare const PASSWORD_RESET_TABLE = "password_reset_tokens";
 // PasskeyCloneSuspected
 export declare class PasskeyCloneSuspected {
     #private;
@@ -732,7 +732,7 @@ export declare class PruneTokensCommand {
     handle({ options, output }: CommandInput): Promise<number>;
 }
 // REMEMBER_TABLE
-export declare const REMEMBER_TABLE = "marmeon_remember_tokens";
+export declare const REMEMBER_TABLE = "remember_tokens";
 // RecoveryCodeUsed
 export declare class RecoveryCodeUsed {
     #private;
@@ -1205,7 +1205,7 @@ export interface AuthenticationResponseJSON {
     type: PublicKeyCredentialType;
 }
 // PASSKEYS_TABLE
-export declare const PASSKEYS_TABLE = "marmeon_passkeys";
+export declare const PASSKEYS_TABLE = "passkeys";
 // PasskeyConfig
 export declare const PasskeyConfig: import("@marmeon/core").ConfigDefinition<PasskeyConfigValue>;
 export type PasskeyConfig = ConfigOf<typeof PasskeyConfig>;

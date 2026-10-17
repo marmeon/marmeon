@@ -49,14 +49,14 @@ async function signInWith(authenticator: ReturnType<typeof device>, overrides: P
   return { guest, answer: app.withCookie(SESSION, guest).post('/passkeys/sign-in', { json: { response: authenticator.authenticate(options.json() as never, overrides) } }) };
 }
 
-const passkeyIdOf = async () => ((await app.make(Connections).get<any>().selectFrom('marmeon_passkeys').select('id').execute()) as [{ id: number }])[0].id;
+const passkeyIdOf = async () => ((await app.make(Connections).get<any>().selectFrom('passkeys').select('id').execute()) as [{ id: number }])[0].id;
 
 describe('passkeys', { timeout: 30_000 }, () => {
   it('adds a passkey, signs out, and signs in without a password', async () => {
     const ada = await app.factory(UserFactory).create();
     const { authenticator, recoveryCodes } = await enrol(ada);
     expect(recoveryCodes).toHaveLength(10);
-    await app.assertDatabaseCount('marmeon_passkeys', 1);
+    await app.assertDatabaseCount('passkeys', 1);
 
     const { guest, answer } = await signInWith(authenticator);
     const signedIn = await answer.assertRedirect('/dashboard');
@@ -78,13 +78,13 @@ describe('passkeys', { timeout: 30_000 }, () => {
     await as().post('/settings/tokens', { json: token }).assertStatus(422);
     const id = await passkeyIdOf();
     await as().post(`/settings/passkeys/${id}/remove`, { json: {} }).assertStatus(422);
-    await app.assertDatabaseCount('marmeon_passkeys', 1);
-    await app.assertDatabaseCount('marmeon_personal_access_tokens', 0);
+    await app.assertDatabaseCount('passkeys', 1);
+    await app.assertDatabaseCount('personal_access_tokens', 0);
 
     await as().put('/settings/email', { json: { email: 'new@example.com', current_password: 'password' } }).assertStatus(303);
     await as().post('/settings/tokens', { json: { ...token, current_password: 'password' } }).assertOk();
     await as().post(`/settings/passkeys/${id}/remove`, { json: { password: 'password' } }).assertOk();
-    await app.assertDatabaseCount('marmeon_passkeys', 0);
+    await app.assertDatabaseCount('passkeys', 0);
   });
 
   it('a session that got in with a passkey alone types the password to make new recovery codes — the owner\'s codes stay otherwise', async () => {
@@ -94,13 +94,13 @@ describe('passkeys', { timeout: 30_000 }, () => {
     const guest = options.cookie(SESSION)!;
     const signedIn = await app.withCookie(SESSION, guest).post('/passkeys/sign-in', { json: { response: authenticator.authenticate(options.json() as never) } }).assertRedirect();
     const as = () => app.withCookie(SESSION, signedIn.cookie(SESSION) ?? guest);
-    const codes = await app.make(Connections).get<any>().selectFrom('marmeon_two_factor_recovery_codes').select('id').execute();
+    const codes = await app.make(Connections).get<any>().selectFrom('two_factor_recovery_codes').select('id').execute();
 
     await as().expectingJson().post('/settings/two-factor/recovery-codes', { json: {} }).assertStatus(422);
     await as().expectingJson().post('/settings/two-factor/recovery-codes', { json: { password: 'wrong' } }).assertStatus(422);
-    expect(await app.make(Connections).get<any>().selectFrom('marmeon_two_factor_recovery_codes').select('id').execute()).toEqual(codes);
+    expect(await app.make(Connections).get<any>().selectFrom('two_factor_recovery_codes').select('id').execute()).toEqual(codes);
     await as().layering().post('/settings/two-factor/recovery-codes', { form: { password: 'password' } }).assertLayer('auth/RecoveryCodes');
-    expect(await app.make(Connections).get<any>().selectFrom('marmeon_two_factor_recovery_codes').select('id').execute()).not.toEqual(codes);
+    expect(await app.make(Connections).get<any>().selectFrom('two_factor_recovery_codes').select('id').execute()).not.toEqual(codes);
   });
 
   it('removing a passkey signs out the other devices, and an account whose passkey-only count is used up tells to sign in with the password', async () => {
@@ -115,7 +115,7 @@ describe('passkeys', { timeout: 30_000 }, () => {
     // The account's count for sessions that did not begin with the password is used up: that session is told how to go on.
     const limiter = app.make(RateLimiter);
     for (let attempt = 0; attempt < 20; attempt++) await limiter.hit(`password-check-hour:account:${ada.id}`, 3600);
-    const id = (await app.make(Connections).get<any>().selectFrom('marmeon_passkeys').select('id').execute() as [{ id: number }])[0].id;
+    const id = (await app.make(Connections).get<any>().selectFrom('passkeys').select('id').execute() as [{ id: number }])[0].id;
     const held = await app.withCookie(SESSION, otherCookie).expectingJson().post(`/settings/passkeys/${id}/remove`, { json: { password: 'password' } }).assertStatus(429);
     expect(held.json()).toEqual({ field: 'password', error: 'Sign in again with your password to continue.' });
     await app.withCookie(SESSION, otherCookie).get('/dashboard').assertAuthenticated(ada);
@@ -160,7 +160,7 @@ describe('passkeys', { timeout: 30_000 }, () => {
       await as().post('/settings/passkeys', { json: { response: {}, name: 'x', password: 'password' }, headers: json }).assertForbidden();
       await as().post('/settings/passkeys/1/remove', { json: { password: 'password' }, headers: json }).assertForbidden();
       await as().post('/settings/passkeys/1/release', { json: { password: 'password' }, headers: json }).assertForbidden();
-      await app.assertDatabaseCount('marmeon_passkeys', 1);
+      await app.assertDatabaseCount('passkeys', 1);
     } finally {
       vi.useRealTimers();
     }
@@ -173,7 +173,7 @@ describe('passkeys', { timeout: 30_000 }, () => {
     const response = device().register(options.json() as never);
     const refused = await app.withCookie(SESSION, cookie).post('/settings/passkeys', { json: { response, name: 'Phone', password: 'wrong' } }).assertStatus(422);
     expect(refused.json()).toMatchObject({ field: 'password' });
-    await app.assertDatabaseCount('marmeon_passkeys', 1);
+    await app.assertDatabaseCount('passkeys', 1);
   });
 
   it('turning the first one on signs out the other devices', async () => {
@@ -300,13 +300,13 @@ describe('passkeys', { timeout: 30_000 }, () => {
   it('removing the last factor needs the password and takes the recovery codes along', async () => {
     const ada = await app.factory(UserFactory).create();
     const { cookie } = await enrol(ada);
-    await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 10);
+    await app.assertDatabaseCount('two_factor_recovery_codes', 10);
     const id = await passkeyIdOf();
     await app.withCookie(SESSION, cookie).post(`/settings/passkeys/${id}/remove`, { json: {} }).assertStatus(422);
-    await app.assertDatabaseCount('marmeon_passkeys', 1);
+    await app.assertDatabaseCount('passkeys', 1);
     await app.withCookie(SESSION, cookie).post(`/settings/passkeys/${id}/remove`, { json: { password: 'password' } }).assertOk();
-    await app.assertDatabaseCount('marmeon_passkeys', 0);
-    await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 0);
+    await app.assertDatabaseCount('passkeys', 0);
+    await app.assertDatabaseCount('two_factor_recovery_codes', 0);
   });
 
   it('shows the list on the settings page, but only within the password confirmation', async () => {
@@ -321,7 +321,7 @@ describe('passkeys', { timeout: 30_000 }, () => {
     const ada = await app.factory(UserFactory).create();
     await app.actingAs(ada).post('/settings/passkeys/options', { json: {}, headers: json }).assertStatus(423);
     await app.actingAs(ada).post('/settings/passkeys', { json: { response: {}, name: 'x', password: 'password' }, headers: json }).assertStatus(423);
-    await app.assertDatabaseCount('marmeon_passkeys', 0);
+    await app.assertDatabaseCount('passkeys', 0);
   });
 
   it('keeps a signed-in session out of the guest routes', async () => {
@@ -471,8 +471,8 @@ describe('marmeon auth:reset-two-factor and passkeys', { timeout: 30_000 }, () =
     const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
     const code = await app.make(ResetTwoFactorCommand).handle({ args: [ada.email], options: { force: true }, output } as never);
     expect({ code, lines }).toEqual({ code: 0, lines: [`Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}, and ended its sessions.`] });
-    await app.assertDatabaseCount('marmeon_passkeys', 0);
-    await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 0);
+    await app.assertDatabaseCount('passkeys', 0);
+    await app.assertDatabaseCount('two_factor_recovery_codes', 0);
     await app.post('/login', credentialsOf(ada)).assertRedirect('/dashboard').assertAuthenticated(ada);
   });
 
@@ -484,8 +484,8 @@ describe('marmeon auth:reset-two-factor and passkeys', { timeout: 30_000 }, () =
     const code = await app.make(ResetTwoFactorCommand).handle({ args: [ada.email], options: {}, output } as never);
     expect(code).toBe(1);
     expect(lines[0]).toContain('pass --force');
-    await app.assertDatabaseCount('marmeon_passkeys', 1);
-    await app.assertDatabaseCount('marmeon_two_factor_recovery_codes', 10);
+    await app.assertDatabaseCount('passkeys', 1);
+    await app.assertDatabaseCount('two_factor_recovery_codes', 10);
   });
 });
 
@@ -525,7 +525,7 @@ describe('a session that ends while a passkey is added', () => {
     } finally {
       spy.mockRestore();
     }
-    await app.assertDatabaseCount('marmeon_passkeys', 0);
+    await app.assertDatabaseCount('passkeys', 0);
   });
 
   it('adds a passkey on an account with a real session_key and keeps the key', async () => {
@@ -533,7 +533,7 @@ describe('a session that ends while a passkey is added', () => {
     const key = 'k'.repeat(43);
     await app.make(UserRepository).updateSessionKey(ada.id, key, null);
     await enrol(ada);
-    await app.assertDatabaseCount('marmeon_passkeys', 1);
+    await app.assertDatabaseCount('passkeys', 1);
     expect((await app.make(UserRepository).findById(ada.id))?.sessionKey).toBe(key);
   });
 });

@@ -155,7 +155,7 @@ describe('remember me turned off', { timeout: 30_000 }, () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', { form: { ...credentials(ada).form, remember: 'on' } });
     expect(login.cookie(REMEMBER)).toBeUndefined();
-    await app.assertDatabaseCount('marmeon_remember_tokens', 0);
+    await app.assertDatabaseCount('remember_tokens', 0);
   });
 });
 

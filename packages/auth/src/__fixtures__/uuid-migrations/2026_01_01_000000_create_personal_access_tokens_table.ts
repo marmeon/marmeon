@@ -3,7 +3,7 @@ import { defineMigration } from '@marmeon/database';
 // The tokens table of an app whose keys are UUIDs.
 export default defineMigration({
   up: (schema) =>
-    schema.create('marmeon_personal_access_tokens', (table) => {
+    schema.create('personal_access_tokens', (table) => {
       table.uuidId();
       table.string('user_id');
       table.string('name');
@@ -13,5 +13,5 @@ export default defineMigration({
       table.timestamp('expires_at').nullable();
       table.timestamps();
     }),
-  down: (schema) => schema.drop('marmeon_personal_access_tokens'),
+  down: (schema) => schema.drop('personal_access_tokens'),
 });

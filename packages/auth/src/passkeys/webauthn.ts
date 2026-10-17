@@ -72,7 +72,7 @@ function requestOptionsJSON(options: LibraryRequestOptions): PublicKeyCredential
 export const PASSKEY_ALGORITHMS: readonly number[] = [-8, -7, -257];
 /** How long the browser lets the user take for one ceremony, in milliseconds. */
 export const PASSKEY_TIMEOUT = 300_000;
-/** The specification caps credential ids at 1023 bytes; the `marmeon_passkeys` table holds them base64url in 1400 characters. */
+/** The specification caps credential ids at 1023 bytes; the `passkeys` table holds them base64url in 1400 characters. */
 const MAX_CREDENTIAL_ID_BYTES = 1023;
 const TRANSPORTS: readonly string[] = ['ble', 'hybrid', 'internal', 'nfc', 'usb'];
 /** Authenticator data flags: user present, user verified, backup eligible. */
