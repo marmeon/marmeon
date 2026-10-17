@@ -411,6 +411,11 @@ Only a version that was once supported gets a fixture; data without the mark is 
 free), and `api-compatible` does not lift that — an old node or old data would otherwise read something else without
 anyone noticing before a rolling deploy.
 
+The DDL the schema builder writes is held the same way, per dialect, in `packages/database/src/__fixtures__/formats/ddl/{sqlite,pgsql}/`
+(`schema/ddl.test.ts` compares byte for byte; the Postgres files are written against the Postgres major in `compose.yaml`).
+`MARMEON_UPDATE_DDL=1 pnpm test:pgsql packages/database/src/schema/ddl.test.ts` writes them again — for a new group or a new
+file only. A changed v1 file means old migrations build another database, which is `breaking`.
+
 ### The upgrade guide
 
 `UPGRADING.md` has a section `## Upgrading to <version> from <version>` for every breaking release. `pnpm check-release` (a part
