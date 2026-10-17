@@ -400,6 +400,17 @@ reminds and does not protect — a pull request runs its own copy of the workflo
 untrusted code, so it holds no token and installs nothing: `pnpm check-release` keeps that shape, down to the files the script
 may import.
 
+#### Fixtures of stored and wire formats
+
+A format that outlives a process — a stored record, a cookie, a message between two nodes — keeps one fixture per supported
+version in `packages/<name>/src/__fixtures__/formats/<format>/v<N>[-<case>].<ext>`. One test of the package reads every file
+of that directory and checks that the code still reads it, or refuses it once its version is no longer supported, so a
+fixture nobody tests cannot sit there. The directory is append-only: a new version adds a fixture and leaves the old ones.
+Only a version that was once supported gets a fixture; data without the mark is a negative case written inside the test.
+"api label" asks for `breaking` when a pull request changes, renames or deletes a file under `formats/` (a new file is
+free), and `api-compatible` does not lift that — an old node or old data would otherwise read something else without
+anyone noticing before a rolling deploy.
+
 ### The upgrade guide
 
 `UPGRADING.md` has a section `## Upgrading to <version> from <version>` for every breaking release. `pnpm check-release` (a part

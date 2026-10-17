@@ -7,6 +7,9 @@
 # it, so the pull request's code never runs a package script. The labels reach the script through env, never through an
 # expression inside it. The checkout is the merge commit GitHub builds; the script compares it with its first parent.
 #
+# The same script holds the fixtures of stored and wire formats (`packages/*/src/__fixtures__/formats/**`): changing, renaming or
+# deleting one needs `breaking`, and `api-compatible` does not lift that.
+#
 # Mark the check "api label" as required in the ruleset of `main`.
 name: API label
 
