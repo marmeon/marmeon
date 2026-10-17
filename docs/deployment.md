@@ -420,6 +420,14 @@ Nothing in the proxy needs to change: no sticky sessions, no routing by version.
 document, so the browser asks again. A page the app caches publicly (`max-age`) can still be served from the browser's cache
 after the reload, with the old build's script names; keep such caches short, or send `no-cache` on documents.
 
+Sessions are marked with the format they were written in ([What a session stores](session.md#what-a-session-stores)). While two
+versions of your app run side by side, a session written by the newer one is a guest's to the older one, which leaves it as it
+is. After the upgrade from a release that did not mark sessions, every user is signed out once: sessions of the old release carry
+no format and are dropped. Tell your users, or upgrade at a quiet hour.
+
+While traffic moves between old and new nodes during a rollout, every visit on an old node is a remember-me sign-in for a user who
+has the cookie: the token rotates and a `Login` event fires. Users without remember-me are guests there.
+
 ## Without Docker: systemd
 
 `pnpm marmeon make:docker --systemd` writes `deploy/systemd/web.service`, `worker.service` and `scheduler.service`. They expect

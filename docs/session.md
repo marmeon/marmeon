@@ -214,6 +214,29 @@ route.
 What this does not do is add up. Two requests that read a counter and write it back plus one both write the same number. A route
 that reads the session, decides and writes it back needs `block()`.
 
+## What a session stores
+
+A session is one JSON object. Next to your keys it holds the framework's own, whose names start with `_` (`_token`, `_flash`,
+and `_auth_*` for a sign-in), and `_v`: the number of the format the object was written in, currently `1`. It is taken off when
+the session is read, so `session.all()` does not list it. A `put('_v', …)` is replaced by the real mark when the session is written,
+and the next request does not see it.
+
+A session is read by its format, never guessed:
+
+- **A newer format** is a session that a newer version of your app wrote while a rollout is under way. This version cannot know
+  what its keys mean (one may restrict what the session may do), so it treats the request as one without a session cookie: a
+  guest, and its CSRF token counts for nothing: a POST that only the token would let through gets a 419. What this request writes
+  is not kept, so flash messages and form errors after a redirect do not appear, and no session cookie is sent. The newer session
+  stays exactly as it is, until a request on this version signs in or out: that ends it, so a copy of its cookie does not outlive
+  either, and the sign-in starts a new session under a new id.
+- **No `_v`, or one that is not a whole number above zero** is a session of an older release or a broken record. It is dropped like
+  a session that does not decrypt: a new session starts, and the old record expires with its lifetime (`session:prune`).
+
+A restriction that a release adds belongs where the older format checks it as well: in the account's fingerprint or the sign-in
+row, not only in a session key. An older node ignores a key it does not know. If the restriction can only be a session key, the
+release that sets it must also delete the remember-me token of that device; otherwise remember-me signs the user in on an older
+node without the restriction.
+
 ## Requests that must not overlap
 
 `.block()` on a route runs its requests one at a time per session. `StartSession` takes a lock on the session before it reads it

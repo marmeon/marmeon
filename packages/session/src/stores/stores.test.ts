@@ -321,4 +321,28 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     await store.write(sessionKey(mallory.id), stored.data, NEW);
     expect((await request(store, mallory.id, () => {}, codec)).get(SESSION_USER_KEY)).toBeUndefined();
   });
+
+  it('leaves a session of a newer format exactly as it is while requests only read and flash it, and ends it at a sign-out: the stored record is byte-equal, version included', async () => {
+    const { store } = await open();
+    const id = createSessionId();
+    const foreign = JSON.stringify({ [SESSION_USER_KEY]: 7, _auth_password: 'x', restrict: 'reauth-only', _v: 3 });
+    expect(await store.write(sessionKey(id), foreign, NEW)).toBe('written');
+    const before = await store.read(sessionKey(id));
+    const guest = await request(store, id, (session) => {
+      expect(session.exists).toBe(false);
+      expect(session.get(SESSION_USER_KEY)).toBeUndefined();
+      session.put('visits', 1);
+      session.flash('status', 'Saved.');
+    });
+    expect(guest.id).not.toBe(id);
+    expect(await store.read(sessionKey(id))).toEqual(before);
+    // A request that signs in or out ends it: a copy of its cookie does not outlive either.
+    await request(store, id, (session) => session.invalidate());
+    expect(await store.read(sessionKey(id))).toBeUndefined();
+    // A session of the release before carries no mark: it is not read — a new session starts, the old record only expires.
+    const old = createSessionId();
+    await store.write(sessionKey(old), JSON.stringify({ [SESSION_USER_KEY]: 7, _auth_password: 'x' }), NEW);
+    const fresh = await request(store, old, (session) => expect(session.get(SESSION_USER_KEY)).toBeUndefined());
+    expect(fresh.id).not.toBe(old);
+  });
 });

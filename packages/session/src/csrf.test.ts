@@ -5,6 +5,7 @@ import { createHttpKernel } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
 import { SessionServiceProvider } from './provider.ts';
 import { Session } from './session.ts';
+import { SessionStore } from './store.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
@@ -112,7 +113,7 @@ async function boot(env: Record<string, string> = {}) {
     return response;
   };
   const token = () => decodeURIComponent(jar.get('XSRF-TOKEN') ?? '');
-  return { send, token };
+  return { send, token, application };
 }
 
 const form = (fields: Record<string, string>) => ({ method: 'POST', body: new URLSearchParams(fields) });
@@ -142,6 +143,23 @@ describe('VerifyCsrfToken', () => {
     const response = await send('/save', form({}));
     expect(response.status).toBe(419);
     expect(await response.json()).toEqual({ message: 'CSRF token mismatch.' });
+  });
+
+  it('refuses a post with 419 when the session is of a newer format — its token counts for nothing, and nothing is written', async () => {
+    const { send, token, application } = await boot();
+    const store = application.container.make(SessionStore);
+    const keys: string[] = [];
+    const write = store.write.bind(store);
+    store.write = (key, data, options) => (keys.push(key), write(key, data, options));
+    await send('/count');
+    const key = keys.at(-1)!;
+    const handedOut = token();
+    await store.destroy(key);
+    await store.write(key, JSON.stringify({ _token: handedOut, _v: 3 }), { expectedVersion: undefined, lifetimeSeconds: 600 });
+    const before = await store.read(key);
+    const response = await send('/save', { method: 'POST', headers: { 'x-csrf-token': handedOut } });
+    expect(response.status).toBe(419);
+    expect(await store.read(key)).toEqual(before);
   });
 
   it('accepts the token as _token field, X-CSRF-TOKEN or X-XSRF-TOKEN header', async () => {
