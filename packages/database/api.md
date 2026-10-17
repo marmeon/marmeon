@@ -789,7 +789,7 @@ export interface TransactionOptions {
 // TypeGenerator
 export declare class TypeGenerator {
     #private;
-    constructor(app: Application, connections: Connections, logger: Logger);
+    constructor(app: Application, connections: Connections, migrator: Migrator);
     get path(): string;
     render(signal?: AbortSignal): Promise<Rendered>;
     write(): Promise<{

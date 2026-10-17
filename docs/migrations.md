@@ -707,7 +707,7 @@ export default defineMigration({
 - **Its table's books stay with the table.** Which module owns it, which columns are secret and its marks are kept on the
   connection the table is on, so a `selectAll()` there leaves the secret columns out too.
 - `migrate:fresh` drops the tables of every connection a migration runs on.
-- `db:types` runs every migration on one scratch database, so `Tables` knows every table, wherever it lives.
+- `db:types` reads the plan of every migration, so `Tables` knows every table, wherever it lives.
 
 A connection that is not configured stops the migration with the names of the known ones.
 

@@ -151,7 +151,7 @@ async function runCheck(Check: AppCheckClass, app: Application, root: string): P
     const outcome = await Promise.race([work, expired]);
     if (outcome === 'timeout') {
       controller.abort();
-      // The check may release what it opened (a temporary database) before the app shuts down — within bounds.
+      // The check may release what it opened before the app shuts down — within bounds.
       let grace: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([work.catch(() => undefined), new Promise((resolveGrace) => (grace = setTimeout(resolveGrace, ABORT_GRACE)).unref())]);
       clearTimeout(grace);

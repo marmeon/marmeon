@@ -63,7 +63,7 @@ interface Bookkeeping {
 export class Migrator {
   readonly #app: Application;
   readonly #connections: Connections;
-  /** Every migration on `default`, whatever it names (the scratch database of `db:types`). */
+  /** Every migration on `default`, whatever it names (one scratch database of all tables). */
   #oneConnection = false;
   /** The lock while a command holds it: the methods below join it instead of waiting for themselves. */
   #held: HeldLock | undefined;
@@ -74,7 +74,7 @@ export class Migrator {
     this.#connections = connections;
   }
 
-  /** Runs every migration on `default`, whatever connection it names — for one scratch database of all tables (`db:types`). */
+  /** Runs every migration on `default`, whatever connection it names — for one scratch database of all tables. */
   onOneConnection(): this {
     this.#oneConnection = true;
     return this;

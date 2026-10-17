@@ -50,7 +50,7 @@ After the tools come the checks that need the app, in this order: `boot`, the ch
 | `route-types` | `bootstrap/routes.ts` matches the routes and views (a file of another Marmeon version is `H2`), and every route [says who may call it](authorization.md#every-route-decides) (`H3`). A missing file is an error: commit it. | build |
 | `modules` | Job and notification classes under `modules/` that no module lists, as warnings. | build |
 | `upgrade-migrations` | The app has every migration that brings the framework's tables to the revision of the installed packages, the same answer as `marmeon make:upgrade-migrations --check`. A missing one is an error (`D6`) with the fix `marmeon make:upgrade-migrations`. Reads the migration files only. | build |
-| `db-types` | `bootstrap/database.d.ts` matches the migrations (a file of another Marmeon version is `D7`), checked on a scratch database; a missing file is an error. Needs the database server on Postgres, see [below](#the-database-types-on-postgres). | run |
+| `db-types` | `bootstrap/database.d.ts` matches the migrations (a file of another Marmeon version is `D7`); a missing file is an error. Reads the migration files, no database. | run |
 | `readiness` | Runs the [readiness checks](health.md#liveness-and-readiness) of the packages, the modules and the app, the same as `/up/ready`: a failing one is an error named after it, one that takes longer than its time limit says so. | |
 
 The `build` phase registers the app and boots nothing: it reads no secret and connects to nothing. The `run` phase boots it. If the
@@ -58,25 +58,16 @@ app does not load, `boot` fails and the checks that needed it are `skipped` with
 a package adds are known by the installed packages when the app does not load; those the app adds itself are not.
 
 The default run needs the app's `.env` (or the variables in the environment) and, for `readiness`, the services it depends on.
-`readiness` connects to them, such as the database and Redis. In CI without services, leave it out, and on Postgres `db-types` too:
+`readiness` connects to them, such as the database and Redis. In CI without services, leave it out:
 
 ```sh
-pnpm marmeon check --skip=readiness,db-types
+pnpm marmeon check --skip=readiness
 ```
-
-With SQLite, `db-types` needs no server and can stay.
 
 What the app checks print is masked by the app's redactor, which masks what looks like a secret (a password in a connection URL
 becomes `***`). It cannot know every secret: name none in a message. Nothing prints a stack, and the app's own directory is written
 as `.`. While the checks run, a rejection or an exception that nobody handles is recorded the same way on the check that was
 running, instead of ending the process.
-
-### The database types on Postgres
-
-On Postgres, `db-types` runs the migrations on a temporary database `<db>_types_<id>` that it creates on the server of `DB_URL` and
-drops afterwards, so the database user needs `CREATEDB`. It runs in development and test only (`NODE_ENV`); anywhere else it is
-`skipped`, with the reason "it creates a temporary database on the database server". If it takes longer than its time limit, the
-temporary database is dropped all the same. With SQLite the scratch database is in memory.
 
 ## Checks from packages
 
@@ -91,7 +82,7 @@ Each check ends in one status:
 | `passed` | It ran and found nothing. |
 | `warning` | It found problems of the level warning only. |
 | `failed` | It found at least one error. |
-| `skipped` | It was not run, said in `reason`: no `tsconfig.json`, oxlint is not installed (lint is the app's choice), `db-types` outside development and test on a server database, or the app did not load ("the app did not load"). |
+| `skipped` | It was not run, said in `reason`: no `tsconfig.json`, oxlint is not installed (lint is the app's choice), or the app did not load ("the app did not load"). |
 | `error` | It could not run, said in `reason`: TypeScript is not installed, a tool crashed, a check of a package threw or took longer than its time limit (a minute unless the check says `static timeout`), or the app did not load and `boot` was not selected. |
 
 ## Exit codes

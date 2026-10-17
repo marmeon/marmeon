@@ -1,8 +1,10 @@
-import { ConsoleLogger, type Logger } from '@marmeon/core';
+import { ConsoleLogger, type Application, type Logger } from '@marmeon/core';
 import { sql } from 'kysely';
 import { prepareBookkeeping } from '../bookkeeping-setup.ts';
 import { Connections } from '../connections.ts';
 import type { ConnectionOptions } from '../config.ts';
+import { Migrator } from '../migrations/migrator.ts';
+import { TypeGenerator } from '../types-gen/generator.ts';
 
 /** Postgres runs when `MARMEON_TEST_PGSQL_URL` is set (`docker compose up -d`, then `pnpm test:pgsql`). */
 export const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
@@ -46,4 +48,10 @@ export async function freshConnections(
       await fresh.drop();
     },
   };
+}
+
+/** A `TypeGenerator` for the modules of `app`: it reads migration files and the driver, so no database is opened. */
+export function typeGenerator(app: Application, driver: 'sqlite' | 'pgsql' = 'sqlite'): TypeGenerator {
+  const connections = { options: () => ({ driver }) } as unknown as Connections;
+  return new TypeGenerator(app, connections, new Migrator(app, connections));
 }

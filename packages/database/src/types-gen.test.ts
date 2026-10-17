@@ -1,14 +1,15 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
-import type { TableMetadata } from 'kysely';
 import { describe, expect, it } from 'vitest';
-import { drivers, freshConnections, silent } from './__fixtures__/databases.ts';
-import { TypeGenerator, type Connections } from './index.ts';
+import { typeGenerator } from './__fixtures__/databases.ts';
+import { emptyProjection, type ProjectedColumn, type ProjectedTable } from './schema/projection.ts';
 import { columnType, renderTypes } from './types-gen/render.ts';
 
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
+/** The generator reads migration files and the driver of the config, never a database: both drivers always run. */
+const drivers = ['sqlite', 'pgsql'] as const;
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const modules: ModuleDefinition[] = [
   { name: 'auth', migrations: fixtures('auth'), exposes: ['users'] },
@@ -24,7 +25,12 @@ import type { Decimal, Generated, JsonColumn, Timestamp } from '@marmeon/databas
 
 declare module '@marmeon/database' {
   interface Tables {
-    /** Owned by \`blog\`. */
+    /**
+     * Owned by \`blog\`.
+     * Primary key: id.
+     * Unique: slug.
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
     articles: {
       id: Generated<number>;
       user_id: number;
@@ -33,7 +39,12 @@ declare module '@marmeon/database' {
       published_at: Timestamp | null;
       slug: string | null;
     };
-    /** Owned by \`auth\`. */
+    /**
+     * Owned by \`auth\`, exposed to the other modules.
+     * Soft deletes, timestamps.
+     * Primary key: id.
+     * Unique: email.
+     */
     users: {
       id: Generated<number>;
       name: string;
@@ -73,31 +84,36 @@ declare module '@marmeon/database' {
 describe.each(drivers)('TypeGenerator on %s', { timeout: 30_000 }, (driver) => {
   const root = tempDir('marmeon-types-');
 
-  it('generates the same file from the migrations on every driver — without touching the app database', async () => {
-    const { connections, close } = await freshConnections(driver, { bookkeeping: false });
-    try {
-      const generator = new TypeGenerator({ root, modules } as unknown as Application, connections, silent);
-      const { source, warnings } = await generator.render();
-      expect(warnings).toEqual([]);
-      expect(source).toBe(EXPECTED);
-      expect(await connections.get<any>().introspection.getTables()).toEqual([]); // the scratch database did the work
+  it('generates the same file from the migrations on every driver — without a database', async () => {
+    const generator = typeGenerator({ root, modules } as unknown as Application, driver);
+    const { source, warnings } = await generator.render();
+    expect(warnings).toEqual([]);
+    expect(source).toBe(EXPECTED);
 
-      expect(await generator.isCurrent()).toBe(false);
-      expect((await generator.write()).changed).toBe(true);
-      expect(readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8')).toBe(EXPECTED);
-      expect(await generator.isCurrent()).toBe(true);
-      expect((await generator.write()).changed).toBe(false);
-      writeFileSync(join(root, 'bootstrap/database.d.ts'), EXPECTED.replace('slug', 'slogan'));
-      expect(await generator.isCurrent()).toBe(false);
-    } finally {
-      await close();
-    }
+    expect(await generator.isCurrent()).toBe(false);
+    expect((await generator.write()).changed).toBe(true);
+    expect(readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8')).toBe(EXPECTED);
+    expect(await generator.isCurrent()).toBe(true);
+    expect((await generator.write()).changed).toBe(false);
+    writeFileSync(join(root, 'bootstrap/database.d.ts'), EXPECTED.replace('slug', 'slogan'));
+    expect(await generator.isCurrent()).toBe(false);
+  });
+
+  it('leaves out a table raw SQL made — only what the blueprint made is known', async () => {
+    const { source } = await typeGenerator({ root, modules: [{ name: 'misc', migrations: fixtures('raw-table') }] } as unknown as Application, driver).render();
+    expect(source).toContain('    notes: {');
+    expect(source).not.toContain('legacy');
+  });
+
+  it('stops on a change of a table raw SQL made, which the types could not show', async () => {
+    const generator = typeGenerator({ root, modules: [{ name: 'misc', migrations: fixtures('raw-alter') }] } as unknown as Application, driver);
+    await expect(generator.render()).rejects.toThrow('legacy');
   });
 });
 
 describe('the format mark of bootstrap/database.d.ts', () => {
   const root = tempDir('marmeon-types-');
-  const generator = new TypeGenerator({ root, modules } as unknown as Application, undefined as unknown as Connections, silent);
+  const generator = typeGenerator({ root, modules } as unknown as Application);
   const file = join(root, 'bootstrap/database.d.ts');
   const write = (text: string) => {
     mkdirSync(dirname(file), { recursive: true });
@@ -132,15 +148,13 @@ describe('the format mark of bootstrap/database.d.ts', () => {
 
 describe.each(drivers)('Relations from db:types on %s', (driver) => {
   const root = tempDir('marmeon-types-');
-  const generator = (connections: Connections, blog: string) =>
-    new TypeGenerator({ root, modules: [{ name: 'auth', migrations: fixtures('auth') }, { name: 'blog', migrations: fixtures(blog) }] } as unknown as Application, connections, silent);
+  const generator = (blog: string) =>
+    typeGenerator({ root, modules: [{ name: 'auth', migrations: fixtures('auth') }, { name: 'blog', migrations: fixtures(blog) }] } as unknown as Application, driver);
 
   it('derives them from the foreign keys — inverse names, hasOne, belongsToMany, nullable one-relations', async () => {
-    const { connections, close } = await freshConnections(driver);
-    try {
-      const { source } = await generator(connections, 'relations').render();
-      const relations = source.slice(source.indexOf('  interface Relations {'), source.indexOf('  interface TableOwners {'));
-      expect(relations).toBe(`  interface Relations {
+    const { source } = await generator('relations').render();
+    const relations = source.slice(source.indexOf('  interface Relations {'), source.indexOf('  interface TableOwners {'));
+    expect(relations).toBe(`  interface Relations {
     categories: {
       categories: { kind: 'hasMany'; table: 'categories'; foreignKey: 'parent_id'; localKey: 'id'; targetKey: 'parent_id' };
       parent: { kind: 'belongsTo'; table: 'categories'; foreignKey: 'parent_id'; localKey: 'parent_id'; targetKey: 'id'; nullable: true };
@@ -175,75 +189,101 @@ describe.each(drivers)('Relations from db:types on %s', (driver) => {
     };
   }
 `);
-      // Written once, it stays current: the check is stable.
-      expect((await generator(connections, 'relations').write()).changed).toBe(true);
-      expect(await generator(connections, 'relations').isCurrent()).toBe(true);
-    } finally {
-      await close();
-    }
+    // Written once, it stays current: the check is stable.
+    expect((await generator('relations').write()).changed).toBe(true);
+    expect(await generator('relations').isCurrent()).toBe(true);
   });
 
   it('stops on two foreign keys to one table without inverse names — with the message to fix it', async () => {
-    const { connections, close } = await freshConnections(driver);
-    try {
-      await expect(generator(connections, 'relations-ambiguous').render()).rejects.toThrow(
-        "posts has two foreign keys to users (author_id, editor_id) — name the inverse relations: .inverse('…')",
-      );
-    } finally {
-      await close();
-    }
+    await expect(generator('relations-ambiguous').render()).rejects.toThrow(
+      "posts has two foreign keys to users (author_id, editor_id) — name the inverse relations: .inverse('…')",
+    );
   });
 });
 
 describe.each(drivers)('UUIDv7 columns in db:types on %s', (driver) => {
   it('are Generated<string>: a row is inserted without them', async () => {
-    const { connections, close } = await freshConnections(driver);
-    try {
-      const generator = new TypeGenerator({ root: '/', modules: [{ name: 'uuids', migrations: fixtures('uuids') }] } as unknown as Application, connections, silent);
-      const { source } = await generator.render();
-      expect(source).toContain(`    members: {
+    const { source } = await typeGenerator({ root: '/', modules: [{ name: 'uuids', migrations: fixtures('uuids') }] } as unknown as Application, driver).render();
+    expect(source).toContain(`    members: {
       id: Generated<string>;
       team_id: string;
       name: string;
     };`);
-      expect(source).toContain(`    profiles: {
+    expect(source).toContain(`    profiles: {
       id: Generated<number>;
       public_id: Generated<string>;
       name: string;
     };`);
-    } finally {
-      await close();
-    }
   });
 });
 
 describe('renderTypes', () => {
-  const table = (name: string, columns: Partial<TableMetadata['columns'][number]>[]): TableMetadata => ({
+  const column = (name: string, type = 'text', rest: Partial<ProjectedColumn> = {}): ProjectedColumn => ({
     name,
-    isView: false,
-    isForeign: false,
-    columns: columns.map((c) => ({ name: 'x', dataType: 'text', isNullable: false, isAutoIncrementing: false, hasDefaultValue: false, ...c })),
+    type: { sqlite: type, pgsql: type },
+    nullable: false,
+    primary: false,
+    identity: false,
+    default: null,
+    secret: false,
+    ...rest,
+  });
+  const table = (name: string, columns: ProjectedColumn[], rest: Partial<ProjectedTable> = {}): ProjectedTable => ({
+    name,
+    module: 'auth',
+    columns,
+    uniques: [],
+    indexes: [],
+    foreignKeys: [],
+    markers: [],
+    ...rest,
+  });
+  const snapshot = (...tables: ProjectedTable[]) => ({
+    driver: 'pgsql' as const,
+    projection: { ...emptyProjection, tables: new Map(tables.map((t) => [t.name, t])) },
+    modules: ['auth', 'shop'],
+    exposes: new Map<string, string[]>(),
   });
 
-  it('warns about unmapped column types and tables no module owns', () => {
-    const { source, warnings } = renderTypes({
-      driver: 'pgsql',
-      tables: [table('legacy', [{ name: 'area', dataType: 'polygon' }])],
-      owners: new Map(),
-      modules: [],
-      exposes: new Map(),
-    });
+  it('warns about unmapped column types', () => {
+    const { source, warnings } = renderTypes(snapshot(table('legacy', [column('area', 'polygon')])));
     expect(source).toContain('area: unknown;');
-    expect(warnings).toEqual([
-      'Table "legacy" has no owning module (create tables with schema.create() in a module\'s migration).',
-      'Column "legacy.area" has type "polygon", which has no TypeScript mapping yet — typed as unknown.',
-    ]);
+    expect(warnings).toEqual(['Column "legacy.area" has type "polygon", which has no TypeScript mapping yet — typed as unknown.']);
   });
 
   it('refuses to expose a table the module does not own', () => {
-    const snapshot = { driver: 'sqlite' as const, tables: [table('users', [{}])], owners: new Map([['users', 'auth']]), modules: ['auth', 'shop'] };
-    expect(() => renderTypes({ ...snapshot, exposes: new Map([['shop', ['users']]]) })).toThrow('Module "shop" exposes "users", but module "auth" owns it.');
-    expect(() => renderTypes({ ...snapshot, exposes: new Map([['auth', ['orders']]]) })).toThrow('Module "auth" exposes "orders", but no migration created it.');
+    const base = snapshot(table('users', [column('id')]));
+    expect(() => renderTypes({ ...base, exposes: new Map([['shop', ['users']]]) })).toThrow('Module "shop" exposes "users", but module "auth" owns it.');
+    expect(() => renderTypes({ ...base, exposes: new Map([['auth', ['orders']]]) })).toThrow('Module "auth" exposes "orders", but no migration created it.');
+  });
+
+  it('writes what a reader of a query needs on the table: owner, exposure, marks, keys, unique sets, foreign keys', () => {
+    const users = table('users', [column('id', 'bigint', { primary: true, identity: true }), column('email'), column('tenant_id', 'bigint'), column('slug')], {
+      uniques: [['id'], ['email'], ['tenant_id', 'slug']],
+      markers: ['soft_deletes', 'timestamps'],
+      foreignKeys: [{ column: 'tenant_id', references: 'tenants', referenced: 'id', onDelete: 'cascade', inverse: 'members' }],
+    });
+    const { source } = renderTypes({ ...snapshot(users), exposes: new Map([['auth', ['users']]]) });
+    expect(source).toContain(`    /**
+     * Owned by \`auth\`, exposed to the other modules.
+     * Soft deletes, timestamps.
+     * Primary key: id.
+     * Unique: (tenant_id, slug); email.
+     * Foreign key: tenant_id -> tenants.id (on delete cascade, inverse \`members\`).
+     */
+    users: {
+      id: Generated<number>;`);
+  });
+
+  it('writes the tables in the same order whatever order the projection has them in, by code point and not by locale', () => {
+    const a = table('alpha', [column('x')]);
+    const b = table('beta', [column('y')], { module: 'shop' });
+    expect(renderTypes(snapshot(b, a)).source).toBe(renderTypes(snapshot(a, b)).source);
+    // Estonian collation puts z before t, and most locales put apples before Zebra; code points do neither.
+    const names = ['zones', 'tokens', 'apples', 'Zebra'];
+    const source = renderTypes(snapshot(...names.map((name) => table(name, [column('x')])))).source;
+    const order = [...source.matchAll(/^ {4}(\w+): \{$/gm)].map((m) => m[1]);
+    expect(order).toEqual(['Zebra', 'apples', 'tokens', 'zones']);
   });
 
   it('maps both drivers’ type names onto the types that arrive', () => {

@@ -1,12 +1,11 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { Application, Logger } from '@marmeon/core';
+import { Application } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
-import { sql } from 'kysely';
 import { Connections } from '../connections.ts';
-import { deriveRelations, introspect } from '../introspection.ts';
-import { isBookkeepingName } from '../bookkeeping.ts';
+import { deriveRelations } from '../introspection.ts';
 import { Migrator } from '../migrations/migrator.ts';
+import { factsOf } from '../schema/projection.ts';
 import { renderTypes, TYPES_FORMAT_MARK, type Rendered, type SchemaSnapshot } from './render.ts';
 
 declare module '@marmeon/core' {
@@ -23,19 +22,18 @@ declare module '@marmeon/core' {
 export const TYPES_FILE = 'bootstrap/database.d.ts';
 
 /**
- * Generates the table types **from the migrations**: they run on a scratch database of the app's
- * driver (SQLite in memory, or a temporary Postgres database), which is then introspected. The
- * result never depends on the state of the development database.
+ * Generates the table types **from the migrations**: their plans are projected without running anything, so no database is
+ * needed and the result never depends on the state of the development database. Raw SQL is not looked into.
  */
 export class TypeGenerator {
   readonly #app: Application;
   readonly #connections: Connections;
-  readonly #logger: Logger;
+  readonly #migrator: Migrator;
 
-  constructor(app: Application, connections: Connections, logger: Logger) {
+  constructor(app: Application, connections: Connections, migrator: Migrator) {
     this.#app = app;
     this.#connections = connections;
-    this.#logger = logger;
+    this.#migrator = migrator;
   }
 
   get path(): string {
@@ -43,7 +41,7 @@ export class TypeGenerator {
   }
 
   async render(signal?: AbortSignal): Promise<Rendered> {
-    return renderTypes(await this.#withScratch((scratch) => this.#snapshot(scratch), signal));
+    return renderTypes(await this.#snapshot(signal));
   }
 
   /** Writes the file; returns whether it changed. */
@@ -81,91 +79,19 @@ export class TypeGenerator {
     return existsSync(this.path) && readFileSync(this.path, 'utf8') === (await this.render(signal)).source;
   }
 
-  async #snapshot(scratch: Connections): Promise<SchemaSnapshot> {
-    // One scratch database for every table, also those of migrations on another connection: one `Tables`.
-    const migrator = new Migrator(this.#app, scratch).onOneConnection();
-    await migrator.migrate();
-    const db = scratch.get<any>();
-    const driver = scratch.options().driver;
-    const tables = (await db.introspection.getTables()).filter((t) => !isBookkeepingName(t.name));
-    const sqliteKeys = driver === 'sqlite' ? await sqliteKeysOf(scratch, tables.map((t) => t.name)) : undefined;
+  async #snapshot(signal?: AbortSignal): Promise<SchemaSnapshot> {
+    if (signal?.aborted) throw signal.reason;
+    const projection = await this.#migrator.projection();
+    const driver = this.#connections.options().driver;
     // The same derivation the connection uses at runtime, so the generated names are the names that work.
-    const derived = deriveRelations(await introspect(async (query) => (await sql.raw<any>(query).execute(db)).rows, driver));
+    const derived = deriveRelations(factsOf(projection, driver));
     if (derived.problems.length) throw new Error(derived.problems.join('\n'));
     return {
       driver,
-      tables,
-      sqliteKeys,
+      projection,
       relations: derived.relations,
-      owners: await migrator.owners(),
-      secrets: await migrator.secrets(),
       modules: this.#app.modules.map((module) => module.name),
       exposes: new Map(this.#app.modules.filter((m) => m.exposes?.length).map((m) => [m.name, m.exposes!])),
     };
   }
-
-  /** @internal For `marmeon check`: whether generating creates and drops a database on the server (every driver but SQLite). */
-  createsDatabase(): boolean {
-    return this.#connections.options().driver !== 'sqlite';
-  }
-
-  /**
-   * A throwaway database of the app's driver, migrated from scratch. `signal` aborted (a check that took too long): the scratch
-   * connections are closed and the temporary database dropped, without waiting for `use` to end.
-   */
-  async #withScratch<T>(use: (scratch: Connections) => Promise<T>, signal?: AbortSignal): Promise<T> {
-    const options = this.#connections.options();
-    const quiet = this.#logger.child({ scratch: true });
-    if (signal?.aborted) throw signal.reason;
-    if (options.driver === 'sqlite') {
-      const scratch = new Connections({ connections: { default: { driver: 'sqlite', database: ':memory:' } }, root: this.#app.root, logger: quiet });
-      signal?.addEventListener('abort', () => void scratch.destroy().catch(() => undefined), { once: true });
-      try {
-        return await use(scratch);
-      } finally {
-        await scratch.destroy();
-      }
-    }
-    const url = new URL(options.url);
-    const name = `${url.pathname.slice(1) || 'marmeon'}_types_${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`;
-    const admin = this.#connections.get();
-    await sql`create database ${sql.id(name)}`.execute(admin);
-    url.pathname = `/${name}`;
-    const scratch = new Connections({ connections: { default: { driver: 'pgsql', url: url.href, poolMax: 1 } }, root: this.#app.root, logger: quiet });
-    // Normally the pool closes, then the database goes. When the run is aborted a client may be stuck in a query, and closing the
-    // pool waits for it: `drop … with (force)` ends the sessions first.
-    let cleaned: Promise<void> | undefined;
-    const drop = () => sql`drop database ${sql.id(name)} with (force)`.execute(admin);
-    const clean = (aborted = false) =>
-      (cleaned ??= (async () => {
-        if (aborted) {
-          try {
-            await drop();
-          } finally {
-            await scratch.destroy();
-          }
-        } else {
-          await scratch.destroy();
-          await drop();
-        }
-      })());
-    signal?.addEventListener('abort', () => void clean(true).catch(() => undefined), { once: true });
-    try {
-      return await use(scratch);
-    } finally {
-      await clean();
-    }
-  }
-}
-
-async function sqliteKeysOf(connections: Connections, tables: readonly string[]): Promise<SchemaSnapshot['sqliteKeys']> {
-  const db = connections.get<any>();
-  const keys = new Map<string, { primary: string[]; autoIncrement: string | undefined }>();
-  for (const table of tables) {
-    const columns = (await sql<{ name: string; pk: number }>`select name, pk from pragma_table_info(${table})`.execute(db)).rows;
-    const ddl = (await sql<{ sql: string }>`select sql from sqlite_master where type = 'table' and name = ${table}`.execute(db)).rows[0]?.sql ?? '';
-    const autoIncrement = /["`]?(\w+)["`]?\s+integer\s+primary\s+key\s+autoincrement/i.exec(ddl)?.[1];
-    keys.set(table, { primary: columns.filter((c) => c.pk > 0).map((c) => c.name), autoIncrement });
-  }
-  return keys;
 }

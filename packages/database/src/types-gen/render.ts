@@ -1,16 +1,11 @@
-import type { ColumnMetadata, TableMetadata } from 'kysely';
-import type { Relation } from '../introspection.ts';
+import { byCodePoint, type Relation } from '../introspection.ts';
 import type { Driver } from '../schema/blueprint.ts';
+import type { ProjectedColumn, ProjectedTable, SchemaProjection } from '../schema/projection.ts';
 
 export interface SchemaSnapshot {
   readonly driver: Driver;
-  readonly tables: readonly TableMetadata[];
-  /** SQLite only: the real primary key and AUTOINCREMENT column per table (Kysely's introspection guesses). */
-  readonly sqliteKeys?: ReadonlyMap<string, { primary: readonly string[]; autoIncrement: string | undefined }>;
-  /** Table → owning module (from `marmeon_table_owners`). */
-  readonly owners: ReadonlyMap<string, string>;
-  /** Table → its `.secret()` columns (from `marmeon_secret_columns`); missing means none. */
-  readonly secrets?: ReadonlyMap<string, ReadonlySet<string>>;
+  /** What the migrations describe: the tables with their owners, columns, keys and marks. */
+  readonly projection: SchemaProjection;
   /** Table → its relations, derived from the foreign keys; missing means none. */
   readonly relations?: ReadonlyMap<string, ReadonlyMap<string, Relation>>;
   /** Every module of the app, whether it owns tables or not. */
@@ -50,41 +45,44 @@ export function columnType(dataType: string, driver: Driver): string | undefined
 
 export interface Rendered {
   readonly source: string;
-  /** Problems worth telling the developer (unknown column types, tables without an owner). */
+  /** Problems worth telling the developer (unknown column types). */
   readonly warnings: string[];
 }
 
-/** Renders the `declare module '@marmeon/database'` augmentation for a migrated schema. */
+/**
+ * Renders the `declare module '@marmeon/database'` augmentation for the projected schema. Tables and relations are sorted (by code point) and columns keep their order,
+ * so a change of one table is a change of its lines only.
+ */
 export function renderTypes(snapshot: SchemaSnapshot): Rendered {
   const warnings: string[] = [];
-  const tables = [...snapshot.tables].filter((t) => !t.isView).sort((a, b) => a.name.localeCompare(b.name));
+  const tables = [...snapshot.projection.tables.values()].sort((a, b) => byCodePoint(a.name, b.name));
+  const exposedBy = new Map<string, string>();
+  for (const [module, exposed] of snapshot.exposes) for (const table of exposed) exposedBy.set(table, module);
 
   const tableLines: string[] = [];
   for (const table of tables) {
-    const owner = snapshot.owners.get(table.name);
-    if (!owner) warnings.push(`Table "${table.name}" has no owning module (create tables with schema.create() in a module's migration).`);
-    tableLines.push(`    /** Owned by ${owner ? `\`${owner}\`` : 'no module'}. */`, `    ${key(table.name)}: {`);
-    for (const column of table.columns) tableLines.push(`      ${key(column.name)}: ${render(table.name, column, snapshot, warnings)};`);
+    tableLines.push(...describe(table, exposedBy.get(table.name)), `    ${key(table.name)}: {`);
+    for (const column of table.columns) tableLines.push(`      ${key(column.name)}: ${render(table.name, column, snapshot.driver, warnings)};`);
     tableLines.push('    };');
   }
 
   const relationLines: string[] = [];
-  for (const [table, relations] of snapshot.relations ?? []) {
+  for (const [table, relations] of [...(snapshot.relations ?? [])].sort(([a], [b]) => byCodePoint(a, b))) {
     relationLines.push(`    ${key(table)}: {`);
-    for (const [name, relation] of relations) relationLines.push(`      ${key(name)}: ${renderRelation(relation)};`);
+    for (const [name, relation] of [...relations].sort(([a], [b]) => byCodePoint(a, b))) relationLines.push(`      ${key(name)}: ${renderRelation(relation)};`);
     relationLines.push('    };');
   }
 
-  const ownerLines = tables.flatMap((t) => (snapshot.owners.has(t.name) ? [`    ${key(t.name)}: '${snapshot.owners.get(t.name)}';`] : []));
+  const ownerLines = tables.map((t) => `    ${key(t.name)}: '${t.module}';`);
   const exposedLines: string[] = [];
-  for (const [module, exposed] of [...snapshot.exposes].sort(([a], [b]) => a.localeCompare(b))) {
-    for (const table of exposed) {
-      const owner = snapshot.owners.get(table);
+  for (const [module, exposed] of [...snapshot.exposes].sort(([a], [b]) => byCodePoint(a, b))) {
+    for (const table of [...exposed].sort(byCodePoint)) {
+      const owner = snapshot.projection.tables.get(table)?.module;
       if (owner !== module) throw new Error(`Module "${module}" exposes "${table}", but ${owner ? `module "${owner}" owns it` : 'no migration created it'}.`);
       exposedLines.push(`    ${key(table)}: true;`);
     }
   }
-  const moduleLines = [...snapshot.modules].sort().map((module) => `    ${key(module)}: true;`);
+  const moduleLines = [...snapshot.modules].sort(byCodePoint).map((module) => `    ${key(module)}: true;`);
 
   const block = (name: string, lines: readonly string[]) => (lines.length ? [`  interface ${name} {`, ...lines, '  }'] : [`  interface ${name} {}`]);
   const source = [
@@ -104,24 +102,36 @@ export function renderTypes(snapshot: SchemaSnapshot): Rendered {
   return { source: pruneImports(source), warnings };
 }
 
-function render(table: string, column: ColumnMetadata, snapshot: SchemaSnapshot, warnings: string[]): string {
-  let type = columnType(column.dataType, snapshot.driver);
+/**
+ * The comment on a table: what a reader of a query needs to know and a column list does not show — who owns it, what it is exposed
+ * as, its marks, its keys. The generated file is the one current definition of the schema; the migrations are its history.
+ */
+function describe(table: ProjectedTable, exposedBy: string | undefined): string[] {
+  const lines = [`Owned by \`${table.module}\`${exposedBy ? ', exposed to the other modules' : ''}.`];
+  const marks = [...(table.markers.includes('soft_deletes') ? ['soft deletes'] : []), ...(table.markers.includes('timestamps') ? ['timestamps'] : [])].join(', ');
+  if (marks) lines.push(`${marks[0]!.toUpperCase()}${marks.slice(1)}.`);
+  // `uniques` lists the primary key first, when the table has one.
+  const primary = table.columns.filter((c) => c.primary).map((c) => c.name);
+  if (primary.length) lines.push(`Primary key: ${primary.join(', ')}.`);
+  const unique = table.uniques.filter((set) => set.join('\0') !== primary.join('\0')).map((set) => (set.length > 1 ? `(${set.join(', ')})` : set[0]!));
+  if (unique.length) lines.push(`Unique: ${unique.sort(byCodePoint).join('; ')}.`);
+  for (const fk of [...table.foreignKeys].sort((a, b) => byCodePoint(a.column, b.column))) {
+    const rules = [fk.onDelete ? `on delete ${fk.onDelete}` : '', fk.inverse ? `inverse \`${fk.inverse}\`` : ''].filter(Boolean);
+    lines.push(`Foreign key: ${fk.column} -> ${fk.references}.${fk.referenced}${rules.length ? ` (${rules.join(', ')})` : ''}.`);
+  }
+  return ['    /**', ...lines.map((line) => `     * ${line}`), '     */'];
+}
+
+function render(table: string, column: ProjectedColumn, driver: Driver, warnings: string[]): string {
+  const dataType = column.type[driver];
+  let type = columnType(dataType, driver);
   if (!type) {
-    warnings.push(`Column "${table}.${column.name}" has type "${column.dataType}", which has no TypeScript mapping yet — typed as unknown.`);
+    warnings.push(`Column "${table}.${column.name}" has type "${dataType}", which has no TypeScript mapping yet — typed as unknown.`);
     type = 'unknown';
   }
-  let nullable = column.isNullable;
-  let generated = column.hasDefaultValue || column.isAutoIncrementing;
-  const keys = snapshot.sqliteKeys?.get(table);
-  if (keys) {
-    // SQLite reports every INTEGER PRIMARY KEY as nullable and auto-incrementing (rowid alias) —
-    // Postgres does not. Use the real key and the AUTOINCREMENT keyword, so both drivers agree.
-    if (keys.primary.includes(column.name)) nullable = false;
-    generated = column.hasDefaultValue || keys.autoIncrement === column.name;
-  }
-  if (nullable) type = `${type} | null`;
-  if (snapshot.secrets?.get(table)?.has(column.name)) type = `Secret<${type}>`;
-  return generated ? `Generated<${type}>` : type;
+  if (column.nullable) type = `${type} | null`;
+  if (column.secret) type = `Secret<${type}>`;
+  return column.default !== null || column.identity ? `Generated<${type}>` : type;
 }
 
 function renderRelation(relation: Relation): string {
