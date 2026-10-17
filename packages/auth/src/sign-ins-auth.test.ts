@@ -242,7 +242,7 @@ async function boot(options: { signIns?: (new (...args: never[]) => SignInStore)
       await store.write(key, JSON.stringify(data), { expectedVersion: read.version, lifetimeSeconds: 7200 });
     };
     /** A browser that kept only its remember-me cookie: the session is gone. */
-    const reopened = () => browser(new Map([['remember_web', jar.get('remember_web')!]]));
+    const reopened = () => browser(new Map([['marmeon_remember', jar.get('marmeon_remember')!]]));
     return { send, who, act, list, jar, stored, edit, reopened };
   };
   return { application, browser, rows, tokens, db, factors, users };
@@ -341,7 +341,7 @@ describe('sign-ins tracked by Auth', () => {
     expect(await b.who()).toEqual({ id: null, viaRemember: false });
     expect(await rows()).toEqual([]);
     expect(await tokens()).toBe(0);
-    expect(b.jar.has('remember_web')).toBe(false);
+    expect(b.jar.has('marmeon_remember')).toBe(false);
     expect(await b.who()).toMatchObject({ id: null });
   });
 
@@ -423,7 +423,7 @@ describe('sign-ins tracked by Auth', () => {
     expect((await login(b, true)).status).toBe(500);
     expect(await b.who()).toEqual({ id: null, viaRemember: false });
     expect(await tokens()).toBe(0);
-    expect(b.jar.has('remember_web')).toBe(false);
+    expect(b.jar.has('marmeon_remember')).toBe(false);
   });
 
   it('a password sign-in drops the remember-me token a guest carries, so two rows never stay alive', async () => {
@@ -433,7 +433,7 @@ describe('sign-ins tracked by Auth', () => {
     const guest = first.reopened();
     await login(guest, false);
     expect(await tokens()).toBe(0);
-    expect(guest.jar.has('remember_web')).toBe(false);
+    expect(guest.jar.has('marmeon_remember')).toBe(false);
   });
 
   it('logout signs out although the store cannot end the row', async () => {

@@ -1,5 +1,6 @@
 import { Registered } from '@marmeon/auth';
 import { Mailer, type Mailable } from '@marmeon/mail';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -15,9 +16,11 @@ import { VerifyEmailMail } from './mail/VerifyEmailMail.ts';
 // Runs on SQLite and Postgres.
 
 let app: TestApp;
+let SESSION: string;
 // Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION } = cookieNames(app));
 }, 30_000);
 
 const form = (email: string, password = 'orbital mechanics') => ({ form: { name: 'Katherine Johnson', email, password, password_confirmation: password } });
@@ -88,6 +91,7 @@ describe('private registration — the default', { timeout: 30_000 }, () => {
     await app.close();
     // The configured costs (OWASP), not the tests' cheap ones: the hash is what takes the time.
     app = await createTestApp(application, { database: 'refresh', env: { HASH_ARGON_MEMORY: '19456', HASH_ARGON_TIME: '2' } });
+    ({ session: SESSION } = cookieNames(app));
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     // Pairs — a new address and the known one right beside it, the order swapped every pair; twenty-one counted, the first pair
     // warms up. Each known address is compared with the new one beside it and the median of those ratios counts: a busy machine
@@ -118,7 +122,7 @@ describe('private registration — the default', { timeout: 30_000 }, () => {
   it('opens the app only for a confirmed address: signed in, the new account sees the notice until it clicks the link', async () => {
     await register('kj@example.com');
     const login = await app.post('/login', { form: { email: 'kj@example.com', password: 'orbital mechanics' } }).assertRedirect('/dashboard');
-    const signedIn = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+    const signedIn = app.withCookie(SESSION, login.cookie(SESSION)!);
     await signedIn.get('/dashboard').assertRedirect('/email/verify');
     await signedIn.get('/settings/tokens').assertRedirect('/email/verify');
     await app.queue.work();
@@ -136,9 +140,10 @@ describe('registration with AUTH_PRIVATE_REGISTRATION=false', { timeout: 30_000 
   beforeEach(async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+    ({ session: SESSION } = cookieNames(app));
   }, 30_000);
   /** A request that keeps the session of `response`. */
-  const continuing = (response: { cookie(name: string): string | undefined }) => app.withCookie('marmeon_session', response.cookie('marmeon_session')!);
+  const continuing = (response: { cookie(name: string): string | undefined }) => app.withCookie(SESSION, response.cookie(SESSION)!);
 
   it('registers, signs in and mails a signed link that verifies the address', async () => {
     const registered = await register().assertRedirect('/dashboard');

@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { twoFactorCode } from '@marmeon/auth/testing';
+import { cookieNames, twoFactorCode } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -46,7 +46,7 @@ describe('the two-factor settings page, rendered on the server', { timeout: 30_0
   it('posts both forms to their routes without JavaScript', async () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/users/me');
-    const session = app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+    const session = app.withCookie(cookieNames(app).session, login.cookie(cookieNames(app).session)!);
     const html = { headers: { accept: 'text/html' } };
 
     await session.post('/settings/two-factor/setup').assertRedirect('/settings/two-factor');

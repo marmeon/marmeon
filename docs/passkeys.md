@@ -332,7 +332,7 @@ export class MailAboutFailedPasskeySignIn {
 browser would send, with ES256, EdDSA or RS256 keys. Give it your relying party, hand it the options the server returned, and post the result back:
 
 ```ts title="modules/auth/passkeys.test.ts"
-import { softAuthenticator, type SoftOptions } from '@marmeon/auth/testing';
+import { cookieNames, softAuthenticator, type SoftOptions } from '@marmeon/auth/testing';
 import { createTestApp } from '@marmeon/testing';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
@@ -343,9 +343,10 @@ const ada = await app.factory(UserFactory).create();
 const authenticator = softAuthenticator({ origin: 'http://localhost', rpId: 'localhost' });
 
 const login = await app.post('/login', { form: { email: ada.email, password: 'password' } });
-const cookie = login.cookie('marmeon_session')!;
-const options = await app.withCookie('marmeon_session', cookie).post('/settings/passkeys/options', { json: {} });
-await app.withCookie('marmeon_session', cookie).post('/settings/passkeys', {
+const { session } = cookieNames(app);
+const cookie = login.cookie(session)!;
+const options = await app.withCookie(session, cookie).post('/settings/passkeys/options', { json: {} });
+await app.withCookie(session, cookie).post('/settings/passkeys', {
   json: { response: authenticator.register(options.json<SoftOptions>()), name: 'Laptop', password: 'password' },
 });
 ```

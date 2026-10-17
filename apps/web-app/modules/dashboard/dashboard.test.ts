@@ -164,7 +164,7 @@ describe('the dashboard: a page of islands', () => {
     const kj = await app.factory(UserFactory).create();
     const login = await app.post('/login', { form: { email: kj.email, password: 'password', remember: 'on' } });
     // A new browser session: only the remember-me cookie. An island comes first (a poll) — for it, nobody is signed in.
-    const remembered = app.withCookie('remember_web', login.cookie('remember_web')!);
+    const remembered = app.withCookie('marmeon_remember', login.cookie('marmeon_remember')!);
     await remembered.island('dashboard.activity').assertStatus(204).assertIslandStatus('unauthorized');
     // The page then signs in with the same cookie — had the island used (rotated) the token, this one would count as stolen.
     await remembered.navigating().get('/dashboard').assertOk().assertAuthenticated(kj);

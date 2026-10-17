@@ -4,10 +4,10 @@ import { Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/c
 import { Connections } from '@marmeon/database';
 import { RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
-import { Session } from '@marmeon/session';
+import { Session, SessionConfig } from '@marmeon/session';
 import { claimRefused } from '../account-sessions.ts';
 import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, READ_PENDING, SIGN_IN_VERIFIED, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
-import { AuthConfig } from '../config.ts';
+import { AuthConfig, rememberCookieName } from '../config.ts';
 import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
 import { clearPasswordCheck, takePasswordCheck, type PasswordThrottled } from '../password-throttle.ts';
 import { RememberTokenStore } from '../remember.ts';
@@ -104,6 +104,7 @@ export class Passkeys implements SecondFactorPasskeys {
   readonly #state: TwoFactorState;
   readonly #config: PasskeyConfig;
   readonly #authConfig: AuthConfig;
+  readonly #rememberCookie: string;
   readonly #connections: Connections;
   readonly #remember: RememberTokenStore;
   readonly #limiter: RateLimiter;
@@ -131,6 +132,7 @@ export class Passkeys implements SecondFactorPasskeys {
     cookies: CookieJar,
     clock: Clock,
     logger: Logger,
+    sessionConfig: SessionConfig,
   ) {
     this.#auth = auth;
     this.#session = session;
@@ -148,6 +150,7 @@ export class Passkeys implements SecondFactorPasskeys {
     this.#cookies = cookies;
     this.#clock = clock;
     this.#logger = logger;
+    this.#rememberCookie = rememberCookieName(authConfig, sessionConfig);
   }
 
   // -- Registration ----------------------------------------------------------------------------------------------------------
@@ -254,7 +257,7 @@ export class Passkeys implements SecondFactorPasskeys {
         this.#logger.error('A passkey was registered as the first factor, but signing out the other devices a second time failed: sessions made meanwhile may be open', { user: id, error: error instanceof Error ? error.message : String(error) });
         throw error;
       }
-      this.#cookies.delete(this.#authConfig.rememberCookie);
+      this.#cookies.delete(this.#rememberCookie);
     }
     // The state must see the passkey, else sign-in would never ask for it: a state bound to something else fails closed here.
     if (!(await this.#state.factors(id)).includes('passkey')) {

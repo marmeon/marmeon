@@ -36,8 +36,9 @@ export function parseCookies(header: string | null): Map<string, string> {
   for (const part of (header ?? '').split(';')) {
     const index = part.indexOf('=');
     if (index < 1) continue;
-    const name = part.slice(0, index).trim();
-    if (name === '' || cookies.has(name)) continue;
+    // Only SP and HTAB are trimmed: `trim()` also strips U+00A0 and the like, which would turn a tossed `\u00A0__Host-x` into `__Host-x`.
+    const name = part.slice(0, index).replace(/^[ \t]+|[ \t]+$/g, '');
+    if (!COOKIE_NAME.test(name) || cookies.has(name)) continue;
     let value = part.slice(index + 1).trim();
     if (value.startsWith('"') && value.endsWith('"') && value.length > 1) value = value.slice(1, -1);
     cookies.set(name, safeDecode(value));
@@ -60,10 +61,23 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
   return parts.join('; ');
 }
 
+/** The prefix (lower case; compared without regard to case) with which a browser accepts a cookie only if it is `Secure`, has `Path=/` and no `Domain`. */
+const HOST_PREFIX = '__host-';
+
+/** The prefix with which a browser accepts a cookie only if it is `Secure`. Prefixes match without regard to case. */
+const SECURE_PREFIX = '__secure-';
+
 /** Throws for what `serializeCookie` refuses — an invalid name, `SameSite=None` without `secure` — without building the header. */
 function checkCookie(name: string, options: CookieOptions | undefined): void {
   if (!COOKIE_NAME.test(name)) throw new TypeError(`Invalid cookie name "${name}".`);
   if (options?.sameSite === 'none' && !options.secure) throw new TypeError(`Cookie "${name}": SameSite=None requires secure: true.`);
+  // A browser refuses a `__Host-` cookie that is not Secure, has a Domain or a Path other than `/`; refusing it here too
+  // means the prefix is never set on a cookie that does not earn it.
+  const lower = name.toLowerCase();
+  if (lower.startsWith(SECURE_PREFIX) && !options?.secure) throw new TypeError(`Cookie "${name}": the __Secure- prefix requires secure: true.`);
+  if (lower.startsWith(HOST_PREFIX) && (!options?.secure || options.domain || (options.path ?? '/') !== '/')) {
+    throw new TypeError(`Cookie "${name}": the __Host- prefix requires secure: true, path "/" and no domain.`);
+  }
 }
 
 /**

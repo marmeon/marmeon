@@ -1,4 +1,5 @@
 import { defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
+import type { SessionConfig } from '@marmeon/session';
 
 const whole = (fallback: number, min: number) => env.integer().min(min).default(fallback);
 const DAYS = 'a whole number of days (0 keeps unconfirmed accounts)';
@@ -19,8 +20,8 @@ export const AuthConfig = defineConfig('auth', {
      * See `docs/authentication.md#how-long-a-sign-in-lasts`.
      */
     AUTH_SESSION_MAX_HOURS: env.integer(HOURS).min(1, HOURS).max(720, HOURS).default(24),
-    /** The remember-me cookie (encrypted, HttpOnly). */
-    AUTH_REMEMBER_COOKIE: env.string().regex(/^[\w-]+$/).default('remember_web'),
+    /** The remember-me cookie (encrypted, HttpOnly); over HTTPS its name gets the `__Host-` prefix. */
+    AUTH_REMEMBER_COOKIE: env.string().regex(/^(?!__(host|secure)-)[\w-]+$/i, 'Expected letters, digits, _ and -, without a __Host- or __Secure- prefix: the framework adds __Host- itself').default('marmeon_remember'),
     /** How long a password confirmation counts for `confirmedPassword()` routes, in seconds (default 15 minutes). */
     AUTH_PASSWORD_TIMEOUT: whole(900, 1),
     /** How long a password reset link works, in minutes. */
@@ -74,6 +75,14 @@ export const AuthConfig = defineConfig('auth', {
   }),
 });
 export type AuthConfig = ConfigOf<typeof AuthConfig>;
+
+/**
+ * The name the remember-me cookie goes by: `AUTH_REMEMBER_COOKIE`, with the `__Host-` prefix when the session's cookies are
+ * `Secure` (`secure` is theirs). Over plain HTTP (development) there is no prefix. Only this name is ever read.
+ */
+export function rememberCookieName(config: Pick<AuthConfig, 'rememberCookie'>, session: Pick<SessionConfig, 'secure'>): string {
+  return session.secure ? `__Host-${config.rememberCookie}` : config.rememberCookie;
+}
 
 /**
  * What the boot logs, once per process, when a protected environment (production, also without a `NODE_ENV`) runs with

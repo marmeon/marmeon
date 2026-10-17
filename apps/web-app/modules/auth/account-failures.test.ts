@@ -1,5 +1,5 @@
 import { TwoFactorState } from '@marmeon/auth';
-import { softAuthenticator } from '@marmeon/auth/testing';
+import { softAuthenticator, cookieNames } from '@marmeon/auth/testing';
 import { RateLimiter } from '@marmeon/cache';
 import { createHttpKernel } from '@marmeon/server';
 import { createTestApp, type TestApp } from '@marmeon/testing';
@@ -15,12 +15,13 @@ import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 let app: TestApp;
+let SESSION: string;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION } = cookieNames(app));
 }, 30_000);
 
 const LOCKED = 'Too many failed sign-ins for this account. Reset your password or sign in with a passkey.';
-const SESSION = 'marmeon_session';
 
 /** A JSON sign-in as it arrives from `remote` — each /64 is a client of its own, so no per-client limit is in the way. */
 async function signInFrom(remote: string, email: string, password = 'wrong') {
@@ -152,6 +153,7 @@ describe('the failure ceiling of an account', { timeout: 60_000 }, () => {
       database: 'refresh',
       override: (c) => c.instance(TwoFactorState, { factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined, removeAll: async () => {} }),
     });
+    ({ session: SESSION } = cookieNames(app));
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     withFactor = ada.id;
     await fail(ada.email, ACCOUNT_SIGN_INS - 1);

@@ -5,7 +5,9 @@
 import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } from 'node:crypto';
 import { cbor } from './cbor.ts';
 import { Clock, type Container } from '@marmeon/core';
+import { SessionConfig, sessionCookieName } from '@marmeon/session';
 import { AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
+import { AuthConfig, rememberCookieName } from './config.ts';
 import { AccessTokenStore } from './tokens.ts';
 import { TwoFactorState } from './two-factor/state.ts';
 import { hotp, base32Decode, totpStep } from './two-factor/totp.ts';
@@ -24,6 +26,15 @@ export async function authenticatedSession(container: Container, user: AuthUser)
   if (!credentials) throw new Error(`actingAs(): there is no user ${id} — create it first (e.g. with a factory).`);
   const proven = (await scope.make(TwoFactorState).factors(id)).length > 0 ? { [AUTH_SESSION_KEYS.twoFactorAt]: Math.floor(scope.make(Clock).now() / 1000) } : {};
   return { [AUTH_SESSION_KEYS.id]: id, [AUTH_SESSION_KEYS.password]: sessionFingerprint(credentials), ...proven };
+}
+
+/**
+ * The names of the session and remember-me cookies of `app` (a `TestApp`, or any `{ container }`): with the `__Host-` prefix when its
+ * cookies are `Secure`. Tests send and read cookies under these names, never under literals.
+ */
+export function cookieNames(app: { container: Container }): { session: string; remember: string } {
+  const session = app.container.make(SessionConfig);
+  return { session: sessionCookieName(session), remember: rememberCookieName(app.container.make(AuthConfig), session) };
 }
 
 /** A real API token for `user` with `abilities` — what `actingAs(user, { guard: 'api' })` sends as `Authorization: Bearer …`. */

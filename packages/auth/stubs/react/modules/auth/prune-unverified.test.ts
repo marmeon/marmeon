@@ -1,5 +1,6 @@
 import { AccessTokenStore, PASSWORD_RESET_TABLE, PasswordResetTokenStore, REMEMBER_TABLE, RememberTokenStore } from '@marmeon/auth';
 import { Connections } from '@marmeon/database';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -17,9 +18,11 @@ import { UserRepository } from './UserRepository.ts';
 
 const DAY = 86_400_000;
 let app: TestApp;
+let SESSION: string;
 // Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION } = cookieNames(app));
   app.freeze(); // the real time: rows the app writes itself (an update's updated_at) carry it too
 }, 30_000);
 
@@ -37,7 +40,7 @@ const night = (days: number) => {
 const exists = async (user: User) => (await app.make(UserRepository).find(user.id)) !== undefined;
 const signIn = async (user: User) => {
   const login = await app.post('/login', { form: { email: user.email, password: 'password' } }).assertRedirect();
-  return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+  return app.withCookie(SESSION, login.cookie(SESSION)!);
 };
 const prune = async () => {
   const lines: string[] = [];
@@ -120,12 +123,14 @@ describe('pruning accounts whose address was never confirmed — the default', {
   it('AUTH_UNVERIFIED_DAYS sets the days — 0 keeps every account', async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_UNVERIFIED_DAYS: '30' } });
+    ({ session: SESSION } = cookieNames(app));
     app.freeze();
     const month = await made(20, false);
     expect((await prune()).lines).toEqual(['Deleted 0 accounts whose address was not confirmed within 30 days.']);
     expect(await exists(month)).toBe(true);
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_UNVERIFIED_DAYS: '0' } });
+    ({ session: SESSION } = cookieNames(app));
     app.freeze();
     const ancient = await made(400, false);
     expect(await prune()).toEqual({ code: 0, lines: ['AUTH_UNVERIFIED_DAYS=0: accounts without a confirmed address are kept.'] });
@@ -137,6 +142,7 @@ describe('pruning accounts whose address was never confirmed with AUTH_PRIVATE_R
   beforeEach(async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+    ({ session: SESSION } = cookieNames(app));
     app.freeze();
   }, 30_000);
 
@@ -144,7 +150,7 @@ describe('pruning accounts whose address was never confirmed with AUTH_PRIVATE_R
     const register = await app
       .post('/register', { form: { name: 'Ada', email: 'ada@example.com', password: 'correct horse battery', password_confirmation: 'correct horse battery' } })
       .assertRedirect('/dashboard');
-    const session = app.withCookie('marmeon_session', register.cookie('marmeon_session')!);
+    const session = app.withCookie(SESSION, register.cookie(SESSION)!);
     await session.get('/dashboard').assertOk(); // signed in at once, unconfirmed
     const ada = (await app.make(UserRepository).findByEmail('ada@example.com'))!;
     await pruneIn(6);
@@ -158,7 +164,7 @@ describe('pruning accounts whose address was never confirmed with AUTH_PRIVATE_R
     const registered = await app
       .post('/register', { form: { name: 'Katherine', email: 'kj@example.com', password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } })
       .assertRedirect('/dashboard');
-    const session = app.withCookie('marmeon_session', registered.cookie('marmeon_session')!);
+    const session = app.withCookie(SESSION, registered.cookie(SESSION)!);
     await app.queue.work();
     const sent = app.mail.queued(VerifyEmailMail).at(-1)!;
     const link = new URL(/https?:\/\/\S+\/email\/verify\/\S+(?=\))/.exec(sent.message.text)![0]);

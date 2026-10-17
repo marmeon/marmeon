@@ -285,7 +285,7 @@ describe('a password sign-in while the account changes', () => {
     const answer = await during(world, attempt(world, true), reset);
     expect(answer).toMatchObject({ ok: false, kind: 'invalid-credentials' });
     expect((await world.send('/me')).status).toBe(401);
-    expect(world.jar.has('remember_web')).toBe(false);
+    expect(world.jar.has('marmeon_remember')).toBe(false);
     expect(await world.tokenCount()).toBe(0);
     expect(failed).toHaveLength(1);
   });
@@ -293,7 +293,7 @@ describe('a password sign-in while the account changes', () => {
   it('creates no remember-me token then', async () => {
     const world = await boot({ hold: 'verify' });
     await during(world, attempt(world, true), world.end);
-    expect(world.jar.has('remember_web')).toBe(false);
+    expect(world.jar.has('marmeon_remember')).toBe(false);
     expect(await world.tokenCount()).toBe(0);
   });
 
@@ -338,7 +338,7 @@ describe('a rehash only over the hash that was verified', () => {
     expect(await world.hasher.verify('reset', stored), 'the reset hash survived').toBe(true);
     expect(await world.hasher.verify('secret', stored), 'the old password was not written back').toBe(false);
     expect((await world.send('/me')).status).toBe(401);
-    expect(world.jar.has('remember_web')).toBe(false);
+    expect(world.jar.has('marmeon_remember')).toBe(false);
     expect(failed, 'no Failed event: the password was right').toHaveLength(0);
   });
 
@@ -391,10 +391,10 @@ const login = async (send: World['send'], remember = true) => {
 
 /** The remember-me cookie alone must not sign in: the first request stays a guest, and the token is gone afterwards. */
 async function expectRefused(world: World, jar: Map<string, string>, send: World['send']) {
-  expect(jar.has('remember_web'), 'the sign-in handed out a cookie').toBe(true);
+  expect(jar.has('marmeon_remember'), 'the sign-in handed out a cookie').toBe(true);
   expect((await send('/me')).status).toBe(401);
   expect((await send('/me')).status, 'and again').toBe(401);
-  expect(jar.has('remember_web')).toBe(false);
+  expect(jar.has('marmeon_remember')).toBe(false);
   expect(await world.tokenCount()).toBe(0);
 }
 
@@ -461,7 +461,7 @@ describe('a remember-me token is bound to the account state it was issued under'
     const world = await boot({ hold: 'consume' });
     await login(world.send);
     const device = world.browser();
-    device.jar.set('remember_web', world.jar.get('remember_web')!);
+    device.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
     world.arm();
     const status = await during(world, async () => (await device.send('/me')).status, world.end);
     expect(status).toBe(401);
@@ -473,7 +473,7 @@ describe('a remember-me token is bound to the account state it was issued under'
     const world = await boot({ hold: 'create' });
     await login(world.send);
     const device = world.browser();
-    device.jar.set('remember_web', world.jar.get('remember_web')!);
+    device.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
     expect(await world.users.updateSessionKey(1, 'another-key', null)).toBe(true);
     expect(await world.tokenCount()).toBe(1);
     expect((await device.send('/me')).status).toBe(401);
@@ -485,7 +485,7 @@ describe('a remember-me token is bound to the account state it was issued under'
     await login(world.send);
     await world.application.container.make(Connections).get<any>().updateTable(REMEMBER_TABLE).set({ account_fingerprint: null }).execute();
     const device = world.browser();
-    device.jar.set('remember_web', world.jar.get('remember_web')!);
+    device.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
     expect((await device.send('/me')).status).toBe(401);
     expect(await world.tokenCount()).toBe(0);
   });
@@ -494,11 +494,11 @@ describe('a remember-me token is bound to the account state it was issued under'
     const world = await boot({ hold: 'create' });
     await login(world.send);
     const device = world.browser();
-    device.jar.set('remember_web', world.jar.get('remember_web')!);
+    device.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
     expect((await device.send('/me')).status).toBe(200);
     expect(await (await device.send('/end-others', {})).json()).toEqual({ done: true });
     const later = world.browser();
-    later.jar.set('remember_web', device.jar.get('remember_web')!);
+    later.jar.set('marmeon_remember', device.jar.get('marmeon_remember')!);
     expect((await later.send('/me')).status, 'the token this device kept').toBe(200);
   });
 
@@ -506,11 +506,11 @@ describe('a remember-me token is bound to the account state it was issued under'
     const world = await boot({ hold: 'create', noRebind: true });
     await login(world.send);
     const device = world.browser();
-    device.jar.set('remember_web', world.jar.get('remember_web')!);
+    device.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
     expect((await device.send('/me')).status).toBe(200);
     expect(await (await device.send('/end-others', {})).json()).toEqual({ done: true });
     const later = world.browser();
-    later.jar.set('remember_web', device.jar.get('remember_web')!);
+    later.jar.set('marmeon_remember', device.jar.get('marmeon_remember')!);
     expect((await later.send('/me')).status, 'the kept token no longer fits').toBe(401);
     expect(await world.tokenCount()).toBe(0);
   });
@@ -523,7 +523,7 @@ describe('a remember-me token is bound to the account state it was issued under'
     await login(world.send);
     const owner = world.send;
     const thief = world.browser();
-    thief.jar.set('remember_web', world.jar.get('remember_web')!);
+    thief.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
     expect((await thief.send('/me')).status, 'the copy signs in and rotates the cookie').toBe(200);
     // The owner's cookie is the previous validator, and past the grace window.
     await world.application.container.make(Connections).get<any>().updateTable(REMEMBER_TABLE).set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
@@ -531,7 +531,7 @@ describe('a remember-me token is bound to the account state it was issued under'
     expect(await (await owner(route, {})).json()).toEqual({ done: false });
     expect(await world.tokenCount(), 'no token is kept').toBe(0);
     const later = world.browser();
-    later.jar.set('remember_web', thief.jar.get('remember_web')!);
+    later.jar.set('marmeon_remember', thief.jar.get('marmeon_remember')!);
     expect((await later.send('/me')).status, "the thief's cookie").toBe(401);
     expect((await thief.send('/me')).status, "the thief's session").toBe(401);
     expect((await owner('/me')).status, "the owner's session ends too").toBe(401);
@@ -545,7 +545,7 @@ describe('a remember-me token is bound to the account state it was issued under'
     const world = await boot({ hold: 'create' });
     await login(world.send);
     const other = world.browser();
-    other.jar.set('remember_web', world.jar.get('remember_web')!);
+    other.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
     expect((await other.send('/me')).status, 'a second request consumes the cookie and rotates it').toBe(200);
 
     // Inside the grace window: the owner still presents the previous validator.
@@ -559,11 +559,11 @@ describe('a remember-me token is bound to the account state it was issued under'
     const world = await boot({ hold: 'create' });
     await login(world.send);
     const device = world.browser();
-    device.jar.set('remember_web', world.jar.get('remember_web')!);
+    device.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
     expect((await device.send('/me')).status, 'a plain remember-me sign-in').toBe(200);
     expect(await (await device.send('/logout-others', {})).json()).toEqual({ done: true });
     const later = world.browser();
-    later.jar.set('remember_web', device.jar.get('remember_web')!);
+    later.jar.set('marmeon_remember', device.jar.get('marmeon_remember')!);
     expect((await later.send('/me')).status, 'the token this device kept').toBe(200);
   });
 });

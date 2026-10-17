@@ -1,5 +1,6 @@
 import { AccountSessions } from '@marmeon/auth';
 import { SESSION_USER_KEY, SessionCodec, sessionKey, SessionStore } from '@marmeon/session';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -11,8 +12,11 @@ import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 let app: TestApp;
+let SESSION: string;
+let REMEMBER: string;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
 });
 
 const FIREFOX = 'Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0';
@@ -20,14 +24,14 @@ const SAFARI = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.
 
 describe('a live stream and the sign-in behind it', () => {
   const signIn = (email: string, userAgent: string) => app.post('/login', { form: { email, password: 'password' }, headers: { 'user-agent': userAgent } });
-  const browser = (session: string) => app.withCookie('marmeon_session', session);
+  const browser = (session: string) => app.withCookie(SESSION, session);
   /** The channels the signed-in browser's profile page follows, signed for its session. */
   const followed = async (session: string, publicId: string) => (await browser(session).navigating().get(`/users/${publicId}`).assertOk()).page()!.live!;
 
   async function adaInTwoBrowsers() {
     const ada = await app.factory(UserFactory).create();
-    const laptop = (await signIn(ada.email, FIREFOX)).cookie('marmeon_session')!;
-    const phone = (await signIn(ada.email, SAFARI)).cookie('marmeon_session')!;
+    const laptop = (await signIn(ada.email, FIREFOX)).cookie(SESSION)!;
+    const phone = (await signIn(ada.email, SAFARI)).cookie(SESSION)!;
     return { ada, laptop, phone, channels: await followed(phone, ada.public_id) };
   }
 
@@ -79,7 +83,7 @@ describe('a live stream and the sign-in behind it', () => {
     const listed = (await browser(laptop).navigating().get('/settings/security', { headers: { 'user-agent': FIREFOX } })).page()!.props.signIns as readonly { id: string; current: boolean }[];
     const other = listed.find((entry) => !entry.current)!;
     const confirmed = await browser(laptop).post('/confirm-password', { form: { password: 'password' } });
-    await browser(confirmed.cookie('marmeon_session') ?? laptop).post(`/settings/sign-ins/${other.id}/end`).assertRedirect('/settings/security');
+    await browser(confirmed.cookie(SESSION) ?? laptop).post(`/settings/sign-ins/${other.id}/end`).assertRedirect('/settings/security');
 
     const stream = await browser(phone).live(channels);
     await stream.closed;
@@ -95,7 +99,7 @@ describe('a live stream and the sign-in behind it', () => {
     await stream.closed;
     expect(stream.events.map((each) => each.event)).toEqual(['end']);
 
-    const mine = await browser(changed.cookie('marmeon_session')!).live(await followed(changed.cookie('marmeon_session')!, ada.public_id));
+    const mine = await browser(changed.cookie(SESSION)!).live(await followed(changed.cookie(SESSION)!, ada.public_id));
     await mine.hello();
     expect(mine.events.map((each) => each.event)).toEqual(['hello']);
   });
@@ -103,16 +107,16 @@ describe('a live stream and the sign-in behind it', () => {
 
 describe('a live stream that is open when its account\'s sign-ins end', () => {
   const signIn = (email: string, userAgent: string) => app.post('/login', { form: { email, password: 'password' }, headers: { 'user-agent': userAgent } });
-  const browser = (session: string) => app.withCookie('marmeon_session', session);
+  const browser = (session: string) => app.withCookie(SESSION, session);
   const followed = async (session: string, publicId: string) => (await browser(session).navigating().get(`/users/${publicId}`).assertOk()).page()!.live!;
   const eventsOf = (stream: { events: readonly { event: string }[] }) => stream.events.map((each) => each.event);
 
   async function twoAccounts() {
     const ada = await app.factory(UserFactory).create();
     const bob = await app.factory(UserFactory).create();
-    const laptop = (await signIn(ada.email, FIREFOX)).cookie('marmeon_session')!;
-    const phone = (await signIn(ada.email, SAFARI)).cookie('marmeon_session')!;
-    const bobs = (await signIn(bob.email, FIREFOX)).cookie('marmeon_session')!;
+    const laptop = (await signIn(ada.email, FIREFOX)).cookie(SESSION)!;
+    const phone = (await signIn(ada.email, SAFARI)).cookie(SESSION)!;
+    const bobs = (await signIn(bob.email, FIREFOX)).cookie(SESSION)!;
     const open = async (session: string, user: { public_id: string }, connection: string) => {
       const stream = await browser(session).live(await followed(session, user.public_id), { connection });
       await stream.hello();
@@ -143,7 +147,7 @@ describe('a live stream that is open when its account\'s sign-ins end', () => {
     expect(eventsOf(onLaptop)).toEqual(['hello']);
     expect(eventsOf(onPhone)).toEqual(['hello']);
 
-    const mine = await browser(changed.cookie('marmeon_session')!).live(await followed(changed.cookie('marmeon_session')!, ada.public_id), { connection: 'tab-l-0002' });
+    const mine = await browser(changed.cookie(SESSION)!).live(await followed(changed.cookie(SESSION)!, ada.public_id), { connection: 'tab-l-0002' });
     await mine.hello();
     const theirs = await browser(phone).live(channels, { connection: 'tab-p-0002' });
     await theirs.closed;
@@ -156,7 +160,7 @@ describe('a live stream that is open when its account\'s sign-ins end', () => {
     const onPhone = await open(phone, ada, 'tab-p-0001');
     const listed = (await browser(laptop).navigating().get('/settings/security', { headers: { 'user-agent': FIREFOX } })).page()!.props.signIns as readonly { id: string; current: boolean }[];
     const confirmed = await browser(laptop).post('/confirm-password', { form: { password: 'password' } });
-    await browser(confirmed.cookie('marmeon_session') ?? laptop).post(`/settings/sign-ins/${listed.find((entry) => !entry.current)!.id}/end`).assertRedirect('/settings/security');
+    await browser(confirmed.cookie(SESSION) ?? laptop).post(`/settings/sign-ins/${listed.find((entry) => !entry.current)!.id}/end`).assertRedirect('/settings/security');
     await onPhone.closed;
     expect(eventsOf(onPhone)).toEqual(['hello']);
     const again = await browser(phone).live(channels, { connection: 'tab-p-0002' });
@@ -204,15 +208,15 @@ describe('a live stream that is open when its account\'s sign-ins end', () => {
   it('a copied "keep me signed in" cookie that is used closes the account\'s streams; the browser is told `end` when it connects again', async () => {
     const { ada, bob, bobs, open } = await twoAccounts();
     const login = await app.post('/login', { form: { email: ada.email, password: 'password', remember: 'on' }, headers: { 'user-agent': FIREFOX } });
-    const session = login.cookie('marmeon_session')!;
-    const remember = login.cookie('remember_web')!;
+    const session = login.cookie(SESSION)!;
+    const remember = login.cookie(REMEMBER)!;
     const channels = await followed(session, ada.public_id);
     const onSession = await open(session, ada, 'tab-r-0001');
     const onBob = await open(bobs, bob, 'tab-b-0001');
 
-    await app.withCookie('remember_web', remember).get('/dashboard').assertOk(); // the copy is used first and rotates it
+    await app.withCookie(REMEMBER, remember).get('/dashboard').assertOk(); // the copy is used first and rotates it
     app.travel({ seconds: 61 });
-    await app.withCookie('remember_web', remember).get('/dashboard'); // the owner's stale value comes back
+    await app.withCookie(REMEMBER, remember).get('/dashboard'); // the owner's stale value comes back
 
     await onSession.closed;
     expect(eventsOf(onSession)).toEqual(['hello']);

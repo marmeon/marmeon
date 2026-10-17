@@ -1,3 +1,4 @@
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -12,8 +13,10 @@ import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
 let app: TestApp;
+let REMEMBER: string;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ remember: REMEMBER } = cookieNames(app));
 }, 30_000);
 
 const FIREFOX_ON_MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) Gecko/20100101 Firefox/130.0';
@@ -21,13 +24,13 @@ const FIREFOX_ON_MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) Gecko/20100
 /** The cookie of a "keep me signed in" sign-in, used once by the copy (which rotates it), so the original is now stale. */
 async function copiedCookie(user: User) {
   const login = await app.post('/login', { form: { email: user.email, password: 'password', remember: 'on' } });
-  const cookie = login.cookie('remember_web')!;
-  await app.withCookie('remember_web', cookie).get('/dashboard').assertOk();
+  const cookie = login.cookie(REMEMBER)!;
+  await app.withCookie(REMEMBER, cookie).get('/dashboard').assertOk();
   app.travel({ seconds: 61 }); // past the grace a second tab gets
   return cookie;
 }
 
-const replay = (cookie: string) => app.withCookie('remember_web', cookie).withHeaders({ 'user-agent': FIREFOX_ON_MAC }).get('/dashboard');
+const replay = (cookie: string) => app.withCookie(REMEMBER, cookie).withHeaders({ 'user-agent': FIREFOX_ON_MAC }).get('/dashboard');
 
 describe('the mail about a copied "keep me signed in" cookie', { timeout: 30_000 }, () => {
   it('tells the owner once, with the parsed browser and what happened to the sessions, never the raw user agent', async () => {
@@ -57,11 +60,11 @@ describe('the mail about a copied "keep me signed in" cookie', { timeout: 30_000
   it('tells the owner of a copy that comes back after the owner rotated twice', async () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', { form: { email: ada.email, password: 'password', remember: 'on' } });
-    const copy = login.cookie('remember_web')!;
+    const copy = login.cookie(REMEMBER)!;
     // The owner's browser keeps up and rotates twice; the copy comes back after both.
-    const first = (await app.withCookie('remember_web', copy).get('/dashboard')).cookie('remember_web')!;
+    const first = (await app.withCookie(REMEMBER, copy).get('/dashboard')).cookie(REMEMBER)!;
     app.travel({ seconds: 61 });
-    await app.withCookie('remember_web', first).get('/dashboard').assertOk();
+    await app.withCookie(REMEMBER, first).get('/dashboard').assertOk();
     app.travel({ seconds: 61 });
     await replay(copy);
     await app.queue.work();

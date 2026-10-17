@@ -128,7 +128,7 @@ async function boot(users: UserProvider, driver: 'memory' | 'database' = 'memory
 }
 
 const rememberWho = async (browser: Awaited<ReturnType<typeof boot>>['browser'], cookie: string) =>
-  (await (await browser(new Map([['remember_web', cookie]])).send('/who')).json()) as { id: number | null };
+  (await (await browser(new Map([['marmeon_remember', cookie]])).send('/who')).json()) as { id: number | null };
 
 describe('AccountSessions.end()', () => {
   it('ends every session of the account and its remember-me cookies, and spares other accounts', async () => {
@@ -142,8 +142,8 @@ describe('AccountSessions.end()', () => {
     await laptop.send('/as/1', { method: 'POST' });
     await phone.send('/as/1', { method: 'POST' });
     await bob.send('/as/2', { method: 'POST' });
-    const cookie = laptop.jar.get('remember_web')!;
-    const other = phone.jar.get('remember_web')!;
+    const cookie = laptop.jar.get('marmeon_remember')!;
+    const other = phone.jar.get('marmeon_remember')!;
     expect(cookie).toBeDefined();
     expect((await laptop.send('/me')).status, 'before').toBe(200);
 
@@ -170,7 +170,7 @@ describe('AccountSessions.end()', () => {
     const { browser, accounts } = await boot(users);
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
-    const cookie = laptop.jar.get('remember_web')!;
+    const cookie = laptop.jar.get('marmeon_remember')!;
     for (const id of [Number.NaN, '', Number.MAX_SAFE_INTEGER + 2, 1.5, 99]) {
       expect(await accounts.end(id as never), String(id)).toEqual(err({ kind: 'missing' }));
     }
@@ -185,7 +185,7 @@ describe('AccountSessions.end()', () => {
     const { browser, accounts, connections } = await boot(users);
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
-    const cookie = laptop.jar.get('remember_web')!;
+    const cookie = laptop.jar.get('marmeon_remember')!;
     await expect(connections.transaction(() => accounts.end(1))).rejects.toThrow(/outside a database transaction/);
     expect(users.rows.get(1)!.key).toBeNull();
     expect(await rememberWho(browser, cookie), 'the tokens stay').toEqual({ id: 1 });
@@ -203,7 +203,7 @@ describe('AccountSessions.end()', () => {
     };
     expect(await accounts.end(1)).toEqual(ok({ removed: 0 }));
     expect((await attacker.send('/me')).status).toBe(401);
-    expect(await rememberWho(browser, attacker.jar.get('remember_web') ?? 'none')).toEqual({ id: null });
+    expect(await rememberWho(browser, attacker.jar.get('marmeon_remember') ?? 'none')).toEqual({ id: null });
   });
 
   it('throws before it writes anything when the provider cannot store a session key', async () => {
@@ -212,7 +212,7 @@ describe('AccountSessions.end()', () => {
     const { browser, accounts } = await boot(users, 'database');
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
-    const cookie = laptop.jar.get('remember_web')!;
+    const cookie = laptop.jar.get('marmeon_remember')!;
     await expect(accounts.end(1)).rejects.toThrow(/updateSessionKey\(id, key, expected\).*session_key/s);
     expect((await laptop.send('/me')).status, 'the session stays').toBe(200);
     expect(await rememberWho(browser, cookie), 'the tokens stay').toEqual({ id: 1 });
@@ -230,7 +230,7 @@ describe('AccountSessions.end()', () => {
     const { browser, accounts } = await boot(users);
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
-    const cookie = laptop.jar.get('remember_web')!;
+    const cookie = laptop.jar.get('marmeon_remember')!;
     await expect(accounts.end(1)).rejects.toThrow(/does not hand it back as sessionKey/);
     expect(await rememberWho(browser, cookie)).toEqual({ id: null });
   });
@@ -241,12 +241,12 @@ describe('AccountSessions.end()', () => {
     const { browser, accounts } = await boot(users);
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
-    const cookie = laptop.jar.get('remember_web')!;
+    const cookie = laptop.jar.get('marmeon_remember')!;
     // The sign-in has read the account (the old key) when another request ends everything.
     users.after = () => accounts.end(1);
-    const reopened = browser(new Map([['remember_web', cookie]]));
+    const reopened = browser(new Map([['marmeon_remember', cookie]]));
     expect(await (await reopened.send('/who')).json()).toEqual({ id: null });
     expect((await reopened.send('/me')).status).toBe(401);
-    expect(reopened.jar.has('remember_web')).toBe(false);
+    expect(reopened.jar.has('marmeon_remember')).toBe(false);
   });
 });

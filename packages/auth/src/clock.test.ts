@@ -201,7 +201,7 @@ describe('Auth on the app clock', () => {
   it('refuses a remember-me token past AUTH_REMEMBER_DAYS from its creation', async () => {
     const { application, clock, send, jar } = await boot({ AUTH_REMEMBER_DAYS: '5' });
     await send('/login', 'POST');
-    expect(jar.get('remember_web')).toBeDefined();
+    expect(jar.get('marmeon_remember')).toBeDefined();
     // The token itself outlives the cap (as if issued under a longer setting), so only the cap in `Auth` can refuse it.
     await application.container.make(Connections).get<any>().updateTable('remember_tokens').set({ expires_at: new Date(clock.now() + 30 * 86_400_000) }).execute();
     clock.travel({ days: 4 });

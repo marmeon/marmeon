@@ -2,7 +2,7 @@ import { Container, Logger, Redactor } from '@marmeon/core';
 import { ParentRequest, ReadOnly } from '@marmeon/http';
 import { LOCATION_HEADER } from '@marmeon/http/internal';
 import { HttpError, type HttpContext, type Next } from '@marmeon/router';
-import { SessionConfig } from './config.ts';
+import { SessionConfig, sessionCookieName } from './config.ts';
 import { sessionScope, SessionEndings } from './ended.ts';
 import { Session } from './session.ts';
 import { SESSION_ID, sessionKey, SessionStore } from './store.ts';
@@ -58,7 +58,8 @@ export class StartSession {
   }
 
   async handle(ctx: HttpContext, next: Next<{}>) {
-    const { cookie, secure, sameSite } = this.#config;
+    const { secure, sameSite } = this.#config;
+    const cookie = sessionCookieName(this.#config);
     if (this.#readOnly.active) {
       // An island resolved while its page renders reads the page request's session as it is now — whoever the page
       // signed in (a remember-me sign-in included, which the cookie does not know yet) — as a copy.

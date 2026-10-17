@@ -8,6 +8,7 @@ import { createHttpKernel } from '@marmeon/server';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it, vi } from 'vitest';
 import { CsrfProtection } from './csrf.ts';
+import { sessionCookieName } from './config.ts';
 import { SessionServiceProvider } from './provider.ts';
 import { SessionStore } from './store.ts';
 import { Session } from './session.ts';
@@ -223,7 +224,25 @@ describe('StartSession', () => {
 
   it('reads the cookie settings from the config', async () => {
     const { send } = await boot({ SESSION_COOKIE: 'shop_session', SESSION_LIFETIME: '30', SESSION_SECURE_COOKIE: 'true', SESSION_SAME_SITE: 'strict' });
-    const cookie = (await send('/count')).headers.getSetCookie().find((header) => header.startsWith('shop_session='));
-    expect(cookie).toMatch(/^shop_session=[\w-]+; Path=\/; HttpOnly; Secure; SameSite=Strict$/);
+    const cookie = (await send('/count')).headers.getSetCookie().find((header) => header.startsWith('__Host-shop_session='));
+    expect(cookie).toMatch(/^__Host-shop_session=[\w-]+; Path=\/; HttpOnly; Secure; SameSite=Strict$/);
+  });
+
+  it('names the cookie with __Host- when Secure — Path=/, no Domain — and reads that name only', async () => {
+    const { send } = await boot({ SESSION_SECURE_COOKIE: 'true' });
+    const cookies = (await send('/count')).headers.getSetCookie();
+    expect(cookies.find((header) => header.startsWith('marmeon_session='))).toBeUndefined();
+    const cookie = cookies.find((header) => header.startsWith('__Host-marmeon_session='));
+    expect(cookie).toMatch(/^__Host-marmeon_session=[\w-]+; Path=\/; HttpOnly; Secure; SameSite=Lax$/);
+    expect(cookie).not.toMatch(/Domain/i);
+    expect(sessionCookieName({ cookie: 'marmeon_session', secure: true })).toBe('__Host-marmeon_session');
+    expect(sessionCookieName({ cookie: 'marmeon_session', secure: false })).toBe('marmeon_session');
+  });
+
+  it('sets no __Host- name without Secure (plain HTTP)', async () => {
+    const { send } = await boot({ SESSION_SECURE_COOKIE: 'false' });
+    const cookies = (await send('/count')).headers.getSetCookie();
+    expect(cookies.some((header) => header.startsWith('marmeon_session='))).toBe(true);
+    expect(cookies.some((header) => header.startsWith('__Host-'))).toBe(false);
   });
 });

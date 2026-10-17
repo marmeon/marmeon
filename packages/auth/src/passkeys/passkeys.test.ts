@@ -541,7 +541,7 @@ describe('Passkeys: registering', () => {
     const booted = await boot();
     const other = booted.browser();
     await other.login(ada.email, 'secret', true);
-    const remembered = new Map([...other.jar].filter(([name]) => name === 'remember_web'));
+    const remembered = new Map([...other.jar].filter(([name]) => name === 'marmeon_remember'));
     expect(remembered.size).toBe(1);
     const own = booted.browser();
     await own.login();
@@ -630,7 +630,7 @@ describe('Passkeys: signing in without a password', () => {
       spy.mockRestore();
     }
     expect(await b.pk('who')).toEqual({ id: null });
-    expect(b.jar.has('remember_web')).toBe(false);
+    expect(b.jar.has('marmeon_remember')).toBe(false);
     expect(await rows(booted, 'remember_tokens')).toHaveLength(0);
   });
 
@@ -638,7 +638,7 @@ describe('Passkeys: signing in without a password', () => {
     const booted = await boot();
     const b = booted.browser();
     await b.login(ada.email, 'secret', true);
-    await booted.browser(new Map([['remember_web', b.jar.get('remember_web')!]])).pk('who'); // somebody else rotates the cookie
+    await booted.browser(new Map([['marmeon_remember', b.jar.get('marmeon_remember')!]])).pk('who'); // somebody else rotates the cookie
     await booted.connections.get<any>().updateTable('remember_tokens').set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
     expect(await addPasskey(b, device())).toEqual({ ok: false, kind: 'signed-out' });
     expect(await b.pk('who')).toEqual({ id: null });

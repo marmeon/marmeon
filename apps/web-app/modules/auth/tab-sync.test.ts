@@ -3,6 +3,7 @@ import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject } from '@marmeon/http/prot
 import { tabSync } from '@marmeon/http/client';
 import { loadHistoryFallback, Navigator, type NavigatorWindow } from '@marmeon/http/client/adapter';
 import { createHttpKernel } from '@marmeon/server';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -21,8 +22,11 @@ const ORIGIN = 'http://localhost';
 type Kernel = ReturnType<typeof createHttpKernel>;
 
 let app: TestApp;
+let SESSION: string;
+let REMEMBER: string;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
+  ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
 });
 
 const german = { 'accept-language': 'de-DE,de;q=0.9' };
@@ -34,7 +38,7 @@ const epochFor = async (client: TestApp) => ((await client.get(SESSION_PATH).ass
 /** Signs in with the form — a client with the session's cookie. */
 async function signIn(email = 'ada@example.com'): Promise<TestApp> {
   const login = await app.post('/login', { form: { email, password: 'password' }, headers: referer('/login') }).assertRedirect();
-  return app.withCookie('marmeon_session', login.cookie('marmeon_session')!);
+  return app.withCookie(SESSION, login.cookie(SESSION)!);
 }
 
 describe('the session’s epoch', () => {
@@ -57,7 +61,7 @@ describe('the session’s epoch', () => {
     expect((await app.navigating().get('/login').assertOk()).page()!.epoch).toBe(guest);
     // A failed sign-in leaves a guest session behind (its errors): still a guest's epoch — the other tabs need not reload.
     const failed = await app.post('/login', { form: { email: 'ada@example.com', password: 'wrong' }, headers: referer('/login') }).assertRedirect('/login');
-    expect(await epochFor(app.withCookie('marmeon_session', failed.cookie('marmeon_session')!))).toBe(guest);
+    expect(await epochFor(app.withCookie(SESSION, failed.cookie(SESSION)!))).toBe(guest);
 
     const once = await signIn();
     const signedIn = await epochFor(once);
@@ -71,7 +75,7 @@ describe('the session’s epoch', () => {
     expect(await epochFor(twice)).not.toBe(again);
 
     const out = await once.post('/logout', { headers: referer('/dashboard') }).assertRedirect('/login');
-    expect(await epochFor(app.withCookie('marmeon_session', out.cookie('marmeon_session')!))).not.toBe(signedIn);
+    expect(await epochFor(app.withCookie(SESSION, out.cookie(SESSION)!))).not.toBe(signedIn);
 
     // A German guest has another epoch than an English one.
     expect(await epochFor(app.withHeaders(german))).not.toBe(guest);
@@ -95,7 +99,7 @@ describe('/_marmeon/session is read-only', () => {
   it('a remember-me cookie alone signs nobody in there (it would rotate the token and start a session) — the next page does', async () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const login = await app.post('/login', { form: { email: ada.email, password: 'password', remember: 'on' }, headers: referer('/login') }).assertRedirect();
-    const remembered = app.withCookie('remember_web', login.cookie('remember_web')!);
+    const remembered = app.withCookie(REMEMBER, login.cookie(REMEMBER)!);
     const asked = await remembered.get(SESSION_PATH).assertOk();
     expect(asked.headers.getSetCookie()).toEqual([]);
     expect(asked.json()).toEqual({ epoch: await epochFor(app) }); // a guest's, until a page signs in

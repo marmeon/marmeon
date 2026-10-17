@@ -83,6 +83,36 @@ describe('cookies', () => {
     expect(() => new CookieJar(null, { secure: true }).set('x', '1', { sameSite: 'none' })).not.toThrow();
   });
 
+  it('never set a __Host- name without Secure, Path=/ and no Domain — also a deletion, also by the jar\'s default', () => {
+    expect(() => new CookieJar(null).set('__Host-x', '1')).toThrow('__Host- prefix requires');
+    expect(() => new CookieJar(null).set('__Host-x', '1', { secure: false })).toThrow('__Host- prefix requires');
+    expect(() => new CookieJar(null).delete('__Host-x')).toThrow('__Host- prefix requires');
+    expect(() => new CookieJar(null, { secure: true }).set('__Host-x', '1', { domain: 'example.com' })).toThrow('__Host- prefix requires');
+    expect(() => new CookieJar(null, { secure: true }).set('__Host-x', '1', { path: '/app' })).toThrow('__Host- prefix requires');
+    expect(() => serializeCookie('__Host-x', '1')).toThrow('__Host- prefix requires');
+    expect(serializeCookie('__Host-x', '1', { secure: true })).toBe('__Host-x=1; Path=/; HttpOnly; Secure; SameSite=Lax');
+    const jar = new CookieJar(null, { secure: true });
+    jar.delete('__Host-x'); // the jar's default makes the deletion Secure, as the browser demands
+  });
+
+  it('read a cookie name exactly: only SP and HTAB are trimmed, so a tossed \u00A0__Host- name stays what it is, and a non-token name is dropped', () => {
+    const cookies = parseCookies('\u00A0__Host-marmeon_session=evil; \t__Host-ok=1 ; bad name=2; \u2003x=3; y\u00A0=4');
+    expect([...cookies.keys()]).toEqual(['__Host-ok']);
+    expect(cookies.get('__Host-marmeon_session')).toBeUndefined();
+    expect(new CookieJar('\u00A0__Host-marmeon_session=evil').get('__Host-marmeon_session')).toBeUndefined();
+  });
+
+  it('treat the __Host- and __Secure- prefixes without regard to case', () => {
+    for (const name of ['__host-x', '__HOST-x', '__Host-x']) {
+      expect(() => new CookieJar(null).set(name, '1')).toThrow('__Host- prefix requires');
+      expect(() => new CookieJar(null, { secure: true }).set(name, '1', { domain: 'example.com' })).toThrow('__Host- prefix requires');
+    }
+    for (const name of ['__secure-x', '__SECURE-x', '__Secure-x']) {
+      expect(() => new CookieJar(null).set(name, '1')).toThrow('__Secure- prefix requires secure: true');
+      expect(() => new CookieJar(null, { secure: true }).set(name, '1')).not.toThrow();
+    }
+  });
+
   it('are part of every context the router dispatches', async () => {
     const router = new Router().load(
       openRoutes((Route) => {

@@ -637,12 +637,12 @@ describe('remember me', () => {
     await add(ada);
     const laptop = browser();
     await rememberLogin(laptop.send);
-    const first = laptop.jar.get('remember_web');
+    const first = laptop.jar.get('marmeon_remember');
     expect(first).toBeTruthy();
     // The browser closes: the session cookie is gone, the remember cookie stays.
-    const reopened = browser(new Map([['remember_web', first!]]));
+    const reopened = browser(new Map([['marmeon_remember', first!]]));
     expect(await (await reopened.send('/who')).json()).toEqual({ id: 1, viaRemember: true });
-    expect(reopened.jar.get('remember_web')).not.toBe(first); // rotated
+    expect(reopened.jar.get('marmeon_remember')).not.toBe(first); // rotated
     expect(reopened.jar.has('marmeon_session')).toBe(true); // and a session again
     expect(await (await reopened.send('/who')).json()).toEqual({ id: 1, viaRemember: true }); // from the session now
   });
@@ -652,9 +652,9 @@ describe('remember me', () => {
     await add(ada);
     const plain = browser();
     await login(plain.send);
-    expect(plain.jar.has('remember_web')).toBe(false);
+    expect(plain.jar.has('marmeon_remember')).toBe(false);
     const response = await rememberLogin(browser().send);
-    const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith('remember_web='))!;
+    const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith('marmeon_remember='))!;
     expect(header).toMatch(/; Max-Age=60(4799|4800); HttpOnly; SameSite=Lax$/);
   });
 
@@ -683,7 +683,7 @@ describe('remember me', () => {
       const laptop = browser();
       const response = await rememberLogin(laptop.send);
       expect(response.headers.get('location')).toBe('/home'); // signed in all the same
-      expect(laptop.jar.has('remember_web')).toBe(false);
+      expect(laptop.jar.has('marmeon_remember')).toBe(false);
       expect(await tokenCount(application)).toBe(0);
     });
 
@@ -692,11 +692,11 @@ describe('remember me', () => {
       await add(ada);
       // A token a higher value issued: valid by its row, encrypted like the app's own cookie.
       const raw = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 10 * 86_400_000), sessionFingerprint((await users.findById(1))!));
-      const cookie = encodeURIComponent(await application.container.make(Encrypter).encrypt(raw, 'cookie:remember_web'));
+      const cookie = encodeURIComponent(await application.container.make(Encrypter).encrypt(raw, 'cookie:marmeon_remember'));
       expect(await tokenCount(application)).toBe(1);
-      const reopened = browser(new Map([['remember_web', cookie]]));
+      const reopened = browser(new Map([['marmeon_remember', cookie]]));
       expect(await (await reopened.send('/who')).json()).toEqual({ id: null, viaRemember: false });
-      expect(reopened.jar.has('remember_web')).toBe(false);
+      expect(reopened.jar.has('marmeon_remember')).toBe(false);
       expect(await tokenCount(application)).toBe(0);
     });
 
@@ -706,9 +706,9 @@ describe('remember me', () => {
       const laptop = browser();
       await rememberLogin(laptop.send);
       await age(application, 31, 30);
-      const reopened = browser(new Map([['remember_web', laptop.jar.get('remember_web')!]]));
+      const reopened = browser(new Map([['marmeon_remember', laptop.jar.get('marmeon_remember')!]]));
       expect(await (await reopened.send('/who')).json()).toEqual({ id: null, viaRemember: false });
-      expect(reopened.jar.has('remember_web')).toBe(false);
+      expect(reopened.jar.has('marmeon_remember')).toBe(false);
       expect(await tokenCount(application)).toBe(0);
     });
 
@@ -733,9 +733,9 @@ describe('remember me', () => {
         forgetUser: (...args) => real.forgetUser(...args),
         prune: (days) => real.prune(days),
       });
-      const reopened = browser(new Map([['remember_web', laptop.jar.get('remember_web')!]]));
+      const reopened = browser(new Map([['marmeon_remember', laptop.jar.get('marmeon_remember')!]]));
       expect(await (await reopened.send('/who')).json()).toEqual({ id: null, viaRemember: false });
-      expect(reopened.jar.has('remember_web')).toBe(false);
+      expect(reopened.jar.has('marmeon_remember')).toBe(false);
       expect(forgotten).toHaveLength(1);
       expect(await tokenCount(application)).toBe(0);
     });
@@ -746,10 +746,10 @@ describe('remember me', () => {
       const laptop = browser();
       await rememberLogin(laptop.send);
       await age(application, 29, 30);
-      const reopened = browser(new Map([['remember_web', laptop.jar.get('remember_web')!]]));
+      const reopened = browser(new Map([['marmeon_remember', laptop.jar.get('marmeon_remember')!]]));
       const response = await reopened.send('/who');
       expect(await response.json()).toEqual({ id: 1, viaRemember: true });
-      const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith('remember_web='))!;
+      const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith('marmeon_remember='))!;
       const maxAge = Number(/Max-Age=(\d+)/.exec(header)![1]);
       expect(maxAge).toBeLessThanOrEqual(86_400);
       expect(maxAge).toBeGreaterThan(86_400 - 60);
@@ -763,18 +763,18 @@ describe('remember me', () => {
     await rememberLogin(owner.send);
     const otherDevice = browser();
     await rememberLogin(otherDevice.send);
-    const copied = owner.jar.get('remember_web')!;
+    const copied = owner.jar.get('marmeon_remember')!;
 
-    const thief = browser(new Map([['remember_web', copied]]));
+    const thief = browser(new Map([['marmeon_remember', copied]]));
     expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 }); // first use wins, rotates
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
     try {
-      const ownerLater = browser(new Map([['remember_web', copied]])); // the owner's browser, session expired
+      const ownerLater = browser(new Map([['marmeon_remember', copied]])); // the owner's browser, session expired
       expect(await (await ownerLater.send('/who')).json()).toEqual({ id: null, viaRemember: false });
-      expect(ownerLater.jar.has('remember_web')).toBe(false); // the cookie is deleted
-      const thiefLater = browser(new Map([['remember_web', thief.jar.get('remember_web')!]]));
+      expect(ownerLater.jar.has('marmeon_remember')).toBe(false); // the cookie is deleted
+      const thiefLater = browser(new Map([['marmeon_remember', thief.jar.get('marmeon_remember')!]]));
       expect(await (await thiefLater.send('/who')).json()).toMatchObject({ id: null });
-      const otherLater = browser(new Map([['remember_web', otherDevice.jar.get('remember_web')!]]));
+      const otherLater = browser(new Map([['marmeon_remember', otherDevice.jar.get('marmeon_remember')!]]));
       expect(await (await otherLater.send('/who')).json()).toMatchObject({ id: null });
     } finally {
       vi.useRealTimers();
@@ -786,14 +786,14 @@ describe('remember me', () => {
     await add(ada);
     const owner = browser();
     await rememberLogin(owner.send);
-    const copied = owner.jar.get('remember_web')!;
+    const copied = owner.jar.get('marmeon_remember')!;
 
-    const thief = browser(new Map([['remember_web', copied]]));
+    const thief = browser(new Map([['marmeon_remember', copied]]));
     expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 });
     expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 }); // from the session now, no cookie needed
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
     try {
-      expect(await (await browser(new Map([['remember_web', copied]])).send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      expect(await (await browser(new Map([['marmeon_remember', copied]])).send('/who')).json()).toEqual({ id: null, viaRemember: false });
     } finally {
       vi.useRealTimers();
     }
@@ -805,12 +805,12 @@ describe('remember me', () => {
     await add(ada);
     const owner = browser();
     await rememberLogin(owner.send);
-    const copied = owner.jar.get('remember_web')!;
-    const thief = browser(new Map([['remember_web', copied]]));
+    const copied = owner.jar.get('marmeon_remember')!;
+    const thief = browser(new Map([['marmeon_remember', copied]]));
     expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 });
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
     try {
-      const ownerLater = browser(new Map([['remember_web', copied]]));
+      const ownerLater = browser(new Map([['marmeon_remember', copied]]));
       expect(await (await ownerLater.send('/who-in-transaction')).json()).toEqual({ id: null });
     } finally {
       vi.useRealTimers();
@@ -823,18 +823,18 @@ describe('remember me', () => {
     await add(ada);
     const owner = browser();
     await rememberLogin(owner.send);
-    const copied = owner.jar.get('remember_web')!;
-    const thief = browser(new Map([['remember_web', copied]]));
+    const copied = owner.jar.get('marmeon_remember')!;
+    const thief = browser(new Map([['marmeon_remember', copied]]));
     expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 });
-    const rotated = thief.jar.get('remember_web')!;
+    const rotated = thief.jar.get('marmeon_remember')!;
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
     try {
-      expect((await browser(new Map([['remember_web', copied]])).send('/who-in-failing-transaction')).status).toBe(500);
+      expect((await browser(new Map([['marmeon_remember', copied]])).send('/who-in-failing-transaction')).status).toBe(500);
     } finally {
       vi.useRealTimers();
     }
     expect(await (await thief.send('/who')).json()).toEqual({ id: null, viaRemember: false });
-    expect(await (await browser(new Map([['remember_web', rotated]])).send('/who')).json()).toEqual({ id: null, viaRemember: false });
+    expect(await (await browser(new Map([['marmeon_remember', rotated]])).send('/who')).json()).toEqual({ id: null, viaRemember: false });
   });
 
   it('ends nothing when a second tab presents the old validator within the grace period', async () => {
@@ -842,10 +842,10 @@ describe('remember me', () => {
     await add(ada);
     const owner = browser();
     await rememberLogin(owner.send);
-    const old = owner.jar.get('remember_web')!;
-    const tab = browser(new Map([['remember_web', old]]));
+    const old = owner.jar.get('marmeon_remember')!;
+    const tab = browser(new Map([['marmeon_remember', old]]));
     expect(await (await tab.send('/who')).json()).toMatchObject({ id: 1 }); // rotates
-    const secondTab = browser(new Map([['remember_web', old]]));
+    const secondTab = browser(new Map([['marmeon_remember', old]]));
     expect(await (await secondTab.send('/who')).json()).toMatchObject({ id: 1 }); // the old validator still passes
     expect(await (await tab.send('/who')).json()).toMatchObject({ id: 1 });
     expect(await (await secondTab.send('/who')).json()).toMatchObject({ id: 1 });
@@ -858,13 +858,13 @@ describe('remember me', () => {
     await add(ada);
     const owner = browser();
     await rememberLogin(owner.send);
-    const copied = owner.jar.get('remember_web')!;
-    expect(await (await browser(new Map([['remember_web', copied]])).send('/who')).json()).toMatchObject({ id: 1 });
+    const copied = owner.jar.get('marmeon_remember')!;
+    expect(await (await browser(new Map([['marmeon_remember', copied]])).send('/who')).json()).toMatchObject({ id: 1 });
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 11_000 });
     try {
       await kernel.request(
         '/who',
-        { headers: { cookie: `remember_web=${copied}`, accept: 'application/json', 'user-agent': `Firefox/${'x'.repeat(600)}` } },
+        { headers: { cookie: `marmeon_remember=${copied}`, accept: 'application/json', 'user-agent': `Firefox/${'x'.repeat(600)}` } },
         { remoteAddress: '198.51.100.7' },
       );
     } finally {
@@ -883,15 +883,15 @@ describe('remember me', () => {
       await add(ada);
       const owner = browser();
       await rememberLogin(owner.send);
-      const copied = owner.jar.get('remember_web')!;
-      expect(await (await browser(new Map([['remember_web', copied]])).send('/who')).json()).toMatchObject({ id: 1 });
+      const copied = owner.jar.get('marmeon_remember')!;
+      expect(await (await browser(new Map([['marmeon_remember', copied]])).send('/who')).json()).toMatchObject({ id: 1 });
       afterFirstUse?.(users);
       events.length = 0;
       vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
       try {
         await kernel.request(
           path,
-          { headers: { cookie: `remember_web=${copied}`, accept: 'application/json', 'user-agent': `Firefox/${'x'.repeat(600)}` } },
+          { headers: { cookie: `marmeon_remember=${copied}`, accept: 'application/json', 'user-agent': `Firefox/${'x'.repeat(600)}` } },
           { remoteAddress: '198.51.100.7' },
         );
       } finally {
@@ -944,7 +944,7 @@ describe('remember me', () => {
       await rememberLogin(owner.send);
       expect(await (await owner.send('/who')).json()).toMatchObject({ id: 1 });
       events.length = 0;
-      const fresh = browser(new Map([['remember_web', owner.jar.get('remember_web')!]]));
+      const fresh = browser(new Map([['marmeon_remember', owner.jar.get('marmeon_remember')!]]));
       expect(await (await fresh.send('/who')).json()).toEqual({ id: null, viaRemember: false });
       expect(events.filter((event) => event instanceof RememberTokenReused)).toMatchObject([{ userId: 1, sessionsEnded: true }]);
       expect(await (await owner.send('/who')).json()).toEqual({ id: null, viaRemember: false });
@@ -955,12 +955,12 @@ describe('remember me', () => {
       await add(ada);
       const owner = browser();
       await rememberLogin(owner.send);
-      const copied = owner.jar.get('remember_web')!;
-      const request = (cookie: string) => kernel.request('/who', { headers: { cookie: `remember_web=${cookie}`, accept: 'application/json' } });
+      const copied = owner.jar.get('marmeon_remember')!;
+      const request = (cookie: string) => kernel.request('/who', { headers: { cookie: `marmeon_remember=${cookie}`, accept: 'application/json' } });
       const rotate = async (cookie: string) => {
         const response = await request(cookie);
         expect(await response.json()).toMatchObject({ id: 1, viaRemember: true });
-        return /remember_web=([^;]+)/.exec(response.headers.get('set-cookie') ?? '')![1]!;
+        return /marmeon_remember=([^;]+)/.exec(response.headers.get('set-cookie') ?? '')![1]!;
       };
       events.length = 0;
       const second = await rotate(copied);
@@ -980,12 +980,12 @@ describe('remember me', () => {
       await add(ada);
       const owner = browser();
       await rememberLogin(owner.send);
-      const copied = owner.jar.get('remember_web')!;
-      await browser(new Map([['remember_web', copied]])).send('/who');
+      const copied = owner.jar.get('marmeon_remember')!;
+      await browser(new Map([['marmeon_remember', copied]])).send('/who');
       events.length = 0;
       vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
       try {
-        await Promise.all([1, 2, 3, 4].map(() => kernel.request('/who', { headers: { cookie: `remember_web=${copied}`, accept: 'application/json' } })));
+        await Promise.all([1, 2, 3, 4].map(() => kernel.request('/who', { headers: { cookie: `marmeon_remember=${copied}`, accept: 'application/json' } })));
       } finally {
         vi.useRealTimers();
       }
@@ -998,16 +998,16 @@ describe('remember me', () => {
       await add(ada);
       const owner = browser();
       await rememberLogin(owner.send);
-      const copied = owner.jar.get('remember_web')!;
-      await browser(new Map([['remember_web', copied]])).send('/who');
+      const copied = owner.jar.get('marmeon_remember')!;
+      await browser(new Map([['marmeon_remember', copied]])).send('/who');
       events.length = 0;
       vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
       try {
         for (let replay = 0; replay < 2; replay++) {
-          await kernel.request('/who-in-failing-transaction', { headers: { cookie: `remember_web=${copied}`, accept: 'application/json' } });
+          await kernel.request('/who-in-failing-transaction', { headers: { cookie: `marmeon_remember=${copied}`, accept: 'application/json' } });
         }
         expect(events.filter((event) => event instanceof RememberTokenReused)).toHaveLength(1);
-        expect(await (await browser(new Map([['remember_web', copied]])).send('/who')).json()).toEqual({ id: null, viaRemember: false });
+        expect(await (await browser(new Map([['marmeon_remember', copied]])).send('/who')).json()).toEqual({ id: null, viaRemember: false });
       } finally {
         vi.useRealTimers();
       }
@@ -1041,10 +1041,10 @@ describe('remember me', () => {
       await add(ada);
       const owner = browser();
       await rememberLogin(owner.send);
-      const old = owner.jar.get('remember_web')!;
-      await browser(new Map([['remember_web', old]])).send('/who');
+      const old = owner.jar.get('marmeon_remember')!;
+      await browser(new Map([['marmeon_remember', old]])).send('/who');
       events.length = 0;
-      await browser(new Map([['remember_web', old]])).send('/who');
+      await browser(new Map([['marmeon_remember', old]])).send('/who');
       expect(events.some((event) => event instanceof RememberTokenReused)).toBe(false);
     });
   });
@@ -1056,13 +1056,13 @@ describe('remember me', () => {
     await add(ada);
     const owner = browser();
     await rememberLogin(owner.send);
-    const copied = owner.jar.get('remember_web')!;
-    expect(await (await browser(new Map([['remember_web', copied]])).send('/who')).json()).toMatchObject({ id: 1 });
+    const copied = owner.jar.get('marmeon_remember')!;
+    expect(await (await browser(new Map([['marmeon_remember', copied]])).send('/who')).json()).toMatchObject({ id: 1 });
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
     try {
-      const later = browser(new Map([['remember_web', copied]]));
+      const later = browser(new Map([['marmeon_remember', copied]]));
       expect(await (await later.send('/who')).json()).toEqual({ id: null, viaRemember: false });
-      expect(later.jar.has('remember_web')).toBe(false);
+      expect(later.jar.has('marmeon_remember')).toBe(false);
     } finally {
       vi.useRealTimers();
     }
@@ -1078,11 +1078,11 @@ describe('remember me', () => {
     const phone = browser();
     await rememberLogin(laptop.send);
     await rememberLogin(phone.send);
-    const laptopCookie = laptop.jar.get('remember_web')!;
+    const laptopCookie = laptop.jar.get('marmeon_remember')!;
     await laptop.send('/logout', { method: 'POST' });
-    expect(laptop.jar.has('remember_web')).toBe(false);
-    expect(await (await browser(new Map([['remember_web', laptopCookie]])).send('/who')).json()).toMatchObject({ id: null });
-    expect(await (await browser(new Map([['remember_web', phone.jar.get('remember_web')!]])).send('/who')).json()).toMatchObject({ id: 1 });
+    expect(laptop.jar.has('marmeon_remember')).toBe(false);
+    expect(await (await browser(new Map([['marmeon_remember', laptopCookie]])).send('/who')).json()).toMatchObject({ id: null });
+    expect(await (await browser(new Map([['marmeon_remember', phone.jar.get('marmeon_remember')!]])).send('/who')).json()).toMatchObject({ id: 1 });
   });
 
   it('ignores remember cookies of deleted users and forged cookies', async () => {
@@ -1091,10 +1091,10 @@ describe('remember me', () => {
     const laptop = browser();
     await rememberLogin(laptop.send);
     users.rows.delete(1);
-    expect(await (await browser(new Map([['remember_web', laptop.jar.get('remember_web')!]])).send('/who')).json()).toMatchObject({ id: null });
+    expect(await (await browser(new Map([['marmeon_remember', laptop.jar.get('marmeon_remember')!]])).send('/who')).json()).toMatchObject({ id: null });
     // A cookie the app did not encrypt is not even read.
     const plain = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 60_000), 'fingerprint');
-    expect(await (await browser(new Map([['remember_web', plain]])).send('/who')).json()).toMatchObject({ id: null });
+    expect(await (await browser(new Map([['marmeon_remember', plain]])).send('/who')).json()).toMatchObject({ id: null });
   });
 });
 
@@ -1106,12 +1106,12 @@ describe('password changes and confirmation', () => {
     const phone = browser();
     await login(laptop.send);
     await phone.send('/login', { method: 'POST', json: { email: ada.email, password: 'secret', remember: true } });
-    const phoneRemember = phone.jar.get('remember_web')!;
+    const phoneRemember = phone.jar.get('marmeon_remember')!;
     events.length = 0;
     expect(await (await laptop.send('/password', { method: 'POST', json: { password: 'a new secret' } })).json()).toEqual({ changed: true });
     expect((await laptop.send('/me')).status).toBe(200);
     expect((await phone.send('/me')).status).toBe(401);
-    expect(await (await browser(new Map([['remember_web', phoneRemember]])).send('/who')).json()).toMatchObject({ id: null });
+    expect(await (await browser(new Map([['marmeon_remember', phoneRemember]])).send('/who')).json()).toMatchObject({ id: null });
     expect(events).toEqual([expect.any(PasswordChanged)]);
     expect((await login(browser().send, 'a new secret')).status).toBe(303);
   });
@@ -1144,14 +1144,14 @@ describe('password changes and confirmation', () => {
     const phone = browser();
     await laptop.send('/login', { method: 'POST', json: { email: ada.email, password: 'secret', remember: true } });
     await phone.send('/login', { method: 'POST', json: { email: ada.email, password: 'secret', remember: true } });
-    const phoneRemember = phone.jar.get('remember_web')!;
+    const phoneRemember = phone.jar.get('marmeon_remember')!;
     expect(await (await laptop.send('/logout-others', { method: 'POST', json: { password: 'wrong' } })).json()).toEqual({ done: false });
     expect((await phone.send('/me')).status).toBe(200);
     expect(await (await laptop.send('/logout-others', { method: 'POST', json: { password: 'secret' } })).json()).toEqual({ done: true });
     expect((await laptop.send('/me')).status).toBe(200);
     expect((await phone.send('/me')).status).toBe(401);
-    expect(await (await browser(new Map([['remember_web', phoneRemember]])).send('/who')).json()).toMatchObject({ id: null });
-    expect(await (await browser(new Map([['remember_web', laptop.jar.get('remember_web')!]])).send('/who')).json()).toMatchObject({ id: 1 });
+    expect(await (await browser(new Map([['marmeon_remember', phoneRemember]])).send('/who')).json()).toMatchObject({ id: null });
+    expect(await (await browser(new Map([['marmeon_remember', laptop.jar.get('marmeon_remember')!]])).send('/who')).json()).toMatchObject({ id: 1 });
     expect((await login(browser().send)).status).toBe(303); // the password itself is unchanged
   });
 
@@ -1165,7 +1165,7 @@ describe('password changes and confirmation', () => {
 
     const remembered = browser();
     await remembered.send('/login', { method: 'POST', json: { email: ada.email, password: 'secret', remember: true } });
-    const later = browser(new Map([['remember_web', remembered.jar.get('remember_web')!]]));
+    const later = browser(new Map([['marmeon_remember', remembered.jar.get('marmeon_remember')!]]));
     const away = await later.send('/sensitive?tab=keys', { headers: html });
     expect([away.status, away.headers.get('location')]).toEqual([302, '/confirm-password']);
     const json = await later.send('/sensitive');
@@ -1270,7 +1270,7 @@ describe('Auth with a second factor (pending state)', () => {
     const answer = await rememberLogin(send);
     expect(answer.status).toBe(422); // the test controller shows anything but ok as a failed sign-in
     expect(events.filter((event) => event instanceof Login)).toEqual([]);
-    expect(jar.has('remember_web')).toBe(false);
+    expect(jar.has('marmeon_remember')).toBe(false);
     expect(cookie()).not.toBe(planted);
     expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
     expect((await send('/me')).status).toBe(401);
@@ -1306,7 +1306,7 @@ describe('Auth with a second factor (pending state)', () => {
     events.length = 0;
     expect(await (await post(send, '/login-as/1')).json()).toEqual({ result: 'two-factor-required' });
     expect(events.filter((event) => event instanceof Login)).toEqual([]);
-    expect(jar.has('remember_web')).toBe(false);
+    expect(jar.has('marmeon_remember')).toBe(false);
     expect(await (await send('/pending')).json()).toEqual({ pending: { factors: ['totp'] }, user: null });
     expect(await (await post(booted.browser().send, '/login-as/2')).json()).toEqual({ result: 'signed-in' });
   });
@@ -1390,7 +1390,7 @@ describe('Auth with a second factor (pending state)', () => {
     expect(await (await post(send, '/complete-pending')).json()).toEqual({ ok: true, id: 1 });
     expect(cookie()).not.toBe(held);
     expect(events.filter((event) => event instanceof Login)).toEqual([expect.objectContaining({ via: 'attempt', remember: true })]);
-    expect(jar.has('remember_web')).toBe(true);
+    expect(jar.has('marmeon_remember')).toBe(true);
     expect(await (await send('/who')).json()).toEqual({ id: 1, viaRemember: false });
     const stored = await sessionData(booted, cookie());
     expect(stored).toMatchObject({ _auth_id: 1, _auth_two_factor_at: expect.any(Number), _auth_confirmed_at: expect.any(Number) });
@@ -1475,9 +1475,9 @@ describe('Auth with a second factor (pending state)', () => {
     await booted.add(ada);
     const first = booted.browser();
     await rememberLogin(first.send);
-    expect(first.jar.has('remember_web')).toBe(false); // nothing is remembered before the factor
+    expect(first.jar.has('marmeon_remember')).toBe(false); // nothing is remembered before the factor
     await post(first.send, '/complete-pending');
-    const reopened = booted.browser(new Map([['remember_web', first.jar.get('remember_web')!]]));
+    const reopened = booted.browser(new Map([['marmeon_remember', first.jar.get('marmeon_remember')!]]));
     expect(await (await reopened.send('/who')).json()).toEqual({ id: 1, viaRemember: true });
     expect(await sessionData(booted, reopened.cookie())).toMatchObject({ _auth_id: 1, _auth_two_factor_at: expect.any(Number) });
   });

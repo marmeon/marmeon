@@ -468,7 +468,7 @@ async function sessionAccess(container: Container): Promise<SessionAccess | unde
   // Like the session itself: stored under the id's hash, the payload through the app's codec (SESSION_ENCRYPT).
   const codec = () => container.make(session.SessionCodec);
   return {
-    cookie: config.cookie,
+    cookie: session.sessionCookieName(config),
     create: async (data, given) => {
       const id = given ?? session.createSessionId();
       const key = session.sessionKey(id);

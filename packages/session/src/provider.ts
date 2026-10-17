@@ -4,7 +4,7 @@ import { Encrypter } from '@marmeon/encryption';
 import { CookieDefaults, CookieEncryption, Flasher, PageSession } from '@marmeon/http';
 import { MiddlewarePriority, Router } from '@marmeon/router';
 import { EncryptedSessionCodec, plainSessionCodec, SessionCodec } from './codec.ts';
-import { insecureCookieWarning, SessionConfig } from './config.ts';
+import { insecureCookieWarning, SessionConfig, sessionCookieName } from './config.ts';
 import { CsrfConfig, CsrfProtection, VerifyCsrfToken, XSRF_COOKIE } from './csrf.ts';
 import { Session } from './session.ts';
 import { sessionScope, SessionEndings } from './ended.ts';
@@ -62,7 +62,7 @@ export class SessionServiceProvider implements ServiceProvider {
       .append('web', ShareErrorsFromSession, MiddlewarePriority.shareProps);
     app.container.make(CookieEncryption).except(XSRF_COOKIE); // the browser's JavaScript reads it
     // The session cookie's value is the session — never shown or recorded, whatever its name.
-    if (app.container.has(Redactor)) app.container.make(Redactor).addKeys(app.container.make(SessionConfig).cookie);
+    if (app.container.has(Redactor)) app.container.make(Redactor).addKeys(sessionCookieName(app.container.make(SessionConfig)));
     app.container.make(CsrfProtection).except(...app.modules.flatMap((module) => module.csrfExcept ?? []));
 
     // A driver whose package is missing fails the start with what to install — not the first request with a stack trace.

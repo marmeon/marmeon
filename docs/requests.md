@@ -223,16 +223,18 @@ export class UpdateNoteLayoutController extends Controller {
 
 `get(name)`, `has(name)` and `all()` read what the client sent, never what this request queued. `set(name, value, options)` and
 `delete(name, { path, domain })` queue a cookie for whatever response the request ends with: a page, a redirect or an error page.
-Pass `delete` the same `path` and `domain` the cookie was set with.
+Pass `delete` the same `path` and `domain` the cookie was set with. Incoming cookies whose names are not RFC 6265 tokens, such as `a[b]` or `x:y`, are ignored.
 
 | Option | Default |
 | --- | --- |
-| `path` | `/` |
+| `path` | `/`. |
 | `httpOnly` | `true`: scripts cannot read the cookie. |
 | `sameSite` | `lax`. `none` requires `secure`, and throws without it. |
 | `secure` | `true` when `APP_URL` starts with `https://`, or as `SESSION_SECURE_COOKIE` says. `secure: false` turns it off for one cookie. |
 | `maxAge`, `expires` | none: a session cookie, which ends when the browser session does. |
 | `domain` | none: the cookie belongs to the host that set it. |
+
+A name that starts with `__Host-` is only set with `secure`, `path: '/'` and no `domain`, as a browser demands; anything else throws, also for `delete`. A name that starts with `__Secure-` needs `secure`. Both prefixes match in any case. The session and remember-me cookies carry `__Host-` when cookies are `Secure` ([details](session.md#the-__host--prefix)).
 
 In the `web` group, every cookie is encrypted with the app's key on its way out and decrypted on its way in. A cookie that fails to
 decrypt, such as one a page's script wrote, is gone from `ctx.cookies`. The `XSRF-TOKEN` cookie is the one exception, since your

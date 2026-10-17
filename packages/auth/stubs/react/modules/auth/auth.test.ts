@@ -4,6 +4,7 @@ import { Controller, defineRoutes, everyone } from '@marmeon/http';
 import type { SharedProps } from '@marmeon/http/page';
 import type { Mailable } from '@marmeon/mail';
 import { createHttpKernel } from '@marmeon/server';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -37,14 +38,17 @@ const fixtures = defineModule({
 });
 
 let app: TestApp;
+let SESSION: string;
+let REMEMBER: string;
 // Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
 beforeEach(async () => {
   app = await createTestApp({ ...application, modules: [...application.modules!, fixtures] }, { database: 'refresh' });
+  ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
 }, 30_000);
 
 const credentials = (user: User, password = 'password') => ({ form: { email: user.email, password } });
 /** A request that keeps the session of `response`. */
-const continuing = (response: { cookie(name: string): string | undefined }) => app.withCookie('marmeon_session', response.cookie('marmeon_session')!);
+const continuing = (response: { cookie(name: string): string | undefined }) => app.withCookie(SESSION, response.cookie(SESSION)!);
 /** The link in the last queued mail of a class — path and query. Mails are composed now and sent by a worker. */
 const linkIn = <M extends Mailable>(Mail: abstract new (...args: any[]) => M, path: string) => {
   const sent = app.mail.queued(Mail).at(-1)!;
@@ -58,8 +62,8 @@ describe('signing in and out', { timeout: 30_000 }, () => {
     // A guest's login page keeps no session; a failed sign-in does — its errors wait for the page.
     expect((await app.get('/login')).headers.getSetCookie()).toEqual([]);
     const planted = await app.post('/login', credentials(ada, 'wrong'));
-    const login = await app.withCookie('marmeon_session', planted.cookie('marmeon_session')!).post('/login', credentials(ada)).assertRedirect('/dashboard').assertAuthenticated(ada);
-    expect(login.cookie('marmeon_session')).not.toBe(planted.cookie('marmeon_session')); // session fixation
+    const login = await app.withCookie(SESSION, planted.cookie(SESSION)!).post('/login', credentials(ada)).assertRedirect('/dashboard').assertAuthenticated(ada);
+    expect(login.cookie(SESSION)).not.toBe(planted.cookie(SESSION)); // session fixation
     await continuing(login).navigating().get('/dashboard').assertPage('auth/Dashboard', { name: ada.name });
   });
 
@@ -137,7 +141,7 @@ describe('signing in and out', { timeout: 30_000 }, () => {
   it('keeps signing in by the "keep me signed in" cookie', async () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', { form: { ...credentials(ada).form, remember: 'on' } });
-    await app.withCookie('remember_web', login.cookie('remember_web')!).get('/dashboard').assertOk().assertAuthenticated(ada);
+    await app.withCookie(REMEMBER, login.cookie(REMEMBER)!).get('/dashboard').assertOk().assertAuthenticated(ada);
   });
 });
 
@@ -146,10 +150,11 @@ describe('remember me turned off', { timeout: 30_000 }, () => {
     expect((await app.navigating().get('/login')).page()!.props.remember).toBe(true);
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_REMEMBER_DAYS: '0' } });
+    ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     expect((await app.navigating().get('/login')).page()!.props.remember).toBe(false);
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', { form: { ...credentials(ada).form, remember: 'on' } });
-    expect(login.cookie('remember_web')).toBeUndefined();
+    expect(login.cookie(REMEMBER)).toBeUndefined();
     await app.assertDatabaseCount('remember_tokens', 0);
   });
 });
@@ -222,12 +227,12 @@ describe('the session key', { timeout: 30_000 }, () => {
   it('auth.updateSessionKey() in a signed-in request signs out the account\'s other sessions and remember-me devices', async () => {
     const ada = await app.factory(UserFactory).create();
     const phone = await app.post('/login', { form: { ...credentials(ada).form, remember: 'on' } });
-    expect(phone.cookie('remember_web')).toBeDefined();
+    expect(phone.cookie(REMEMBER)).toBeDefined();
     const laptop = await app.post('/login', credentials(ada));
     await continuing(laptop).post('/fixtures/end-other-sessions').assertOk();
     await continuing(laptop).expectingJson().get('/dashboard').assertOk();
     await continuing(phone).expectingJson().get('/dashboard').assertUnauthorized();
-    await app.withCookie('remember_web', phone.cookie('remember_web')!).expectingJson().get('/dashboard').assertUnauthorized();
+    await app.withCookie(REMEMBER, phone.cookie(REMEMBER)!).expectingJson().get('/dashboard').assertUnauthorized();
   });
 
   it('compares and sets: a key replaces only the one that was read, and says whether it did', async () => {
@@ -320,6 +325,7 @@ describe('the pages, rendered on the server', { timeout: 30_000 }, () => {
     // This test's app renders through the app's Vite setup (one open app at a time).
     await app.close();
     app = await createTestApp(application, { database: 'refresh', ssr: true });
+    ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     const ada = await app.factory(UserFactory).create();
     const sudo = continuing(await app.post('/login', credentials(ada)));
     const html = { headers: { accept: 'text/html' } };
@@ -334,6 +340,7 @@ describe('the pages, rendered on the server', { timeout: 30_000 }, () => {
     await app.close();
     // Open registration: an unconfirmed account reaches the dashboard, with its note to confirm the address.
     app = await createTestApp(application, { database: 'refresh', ssr: true, env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+    ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     const grace = await app.factory(UserFactory).state('unverified').create();
     const unverified = continuing(await app.post('/login', credentials(grace)));
     const html = { headers: { accept: 'text/html' } };
