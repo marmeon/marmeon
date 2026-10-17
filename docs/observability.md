@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The channel names are stable. The shape of their messages and `@marmeon/otel` are experimental: they can change in any minor release. See [the release policy](releases.md#experimental).
+The channel names and the shape of their messages are stable. `@marmeon/otel` is experimental: it can change in any minor release. See [the release policy](releases.md#experimental).
 
 The framework reports what it does: every request, query, job, mail, notification, live hint, scheduled run, command, log entry,
 exception and event. It publishes these reports on channels of Node's `node:diagnostics_channel`, and the framework's tools
