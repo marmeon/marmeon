@@ -527,6 +527,12 @@ export class TestApp {
   readonly #crypto: CookieCrypto;
   readonly #session: Promise<SessionAccess | undefined>;
 
+  /**
+   * Use `createTestApp()`. `shared` names experimental types of the devtools and live packages, which a stable
+   * signature must not.
+   *
+   * @internal
+   */
   constructor(application: Application, shared: Shared, defaults: Defaults) {
     this.application = application;
     this.#shared = shared;
