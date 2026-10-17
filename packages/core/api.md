@@ -212,6 +212,10 @@ export interface Err<E> {
     readonly ok: false;
     readonly error: E;
 }
+// ErrorCode
+export type ErrorCode = `${ErrorCodeArea | 'C' | 'R'}${number}`;
+// ErrorCodeArea
+export type ErrorCodeArea = 'K' | 'H' | 'D' | 'A' | 'Q' | 'S';
 // ErrorSolutions
 export declare class ErrorSolutions {
     #private;
@@ -467,6 +471,7 @@ export interface ServiceProviderClass {
 }
 // Solution
 export interface Solution {
+    readonly code?: ErrorCode;
     readonly title: string;
     readonly text: string;
     readonly command?: string;
@@ -479,6 +484,7 @@ export interface SolutionContext {
 // SolutionDefinition
 export interface SolutionDefinition<E = Error> {
     readonly for: ErrorClass<E>;
+    readonly code?: ErrorCode;
     readonly when?: (error: E) => boolean;
     readonly solve: (error: E, context: SolutionContext) => Solution | undefined | Promise<Solution | undefined>;
 }
@@ -625,6 +631,8 @@ export declare const environment: {
 export declare function err<K extends string, E extends {
     readonly kind: K;
 }>(error: E): Err<E>;
+// errorCodeOf
+export declare function errorCodeOf(error: unknown): ErrorCode | undefined;
 // escapeControls
 export declare function escapeControls(line: string): string;
 // escapeHtml
@@ -1073,6 +1081,10 @@ export interface Duration {
 }
 // ErrorClass
 type ErrorClass<E> = abstract new (...args: any[]) => E;
+// ErrorCode
+export type ErrorCode = `${ErrorCodeArea | 'C' | 'R'}${number}`;
+// ErrorCodeArea
+export type ErrorCodeArea = 'K' | 'H' | 'D' | 'A' | 'Q' | 'S';
 // EventClass
 export type EventClass<TEvent extends object = object> = abstract new (...args: any[]) => TEvent;
 // Factory
@@ -1160,6 +1172,7 @@ export interface ServiceProviderClass {
 }
 // Solution
 export interface Solution {
+    readonly code?: ErrorCode;
     readonly title: string;
     readonly text: string;
     readonly command?: string;
@@ -1172,6 +1185,7 @@ export interface SolutionContext {
 // SolutionDefinition
 export interface SolutionDefinition<E = Error> {
     readonly for: ErrorClass<E>;
+    readonly code?: ErrorCode;
     readonly when?: (error: E) => boolean;
     readonly solve: (error: E, context: SolutionContext) => Solution | undefined | Promise<Solution | undefined>;
 }

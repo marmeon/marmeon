@@ -73,7 +73,7 @@ mirror images of each other:
 Any other value stops the start, before anything of the app runs:
 
 ```text
-✗ Invalid environment — the application cannot start:
+✗ [marmeon:K6] Invalid environment — the application cannot start:
   • NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging. NODE_ENV is development, test or production; APP_ENV names the environment (docs/configuration.md#the-environment-node_env).
 ```
 
@@ -351,7 +351,7 @@ The app checks every definition before any provider registers, and collects ever
 everything to fix:
 
 ```text
-Invalid configuration — the application cannot start:
+[marmeon:K6] Invalid configuration — the application cannot start:
   • notes: NOTES_PER_PAGE — NOTES_PER_PAGE must be at most 100.
   • notes: NOTES_EDITORS — NOTES_EDITORS entry 2 must be an e-mail address.
   • encryption: APP_KEY — Missing — run "marmeon key:generate"

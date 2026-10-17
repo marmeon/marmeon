@@ -167,11 +167,28 @@ describe('the development error page', () => {
       expect(html).toContain('<article class="solution">');
       expect(html).toContain('Bind Mailer in a service provider');
       expect(html).toContain('marmeon discover');
+      expect(html).toContain('<span class="code" title="docs/errors.md#server-error-codes">K1</span>');
+      expect(html).not.toContain('href="docs/errors.md');
+      expect(html).toContain('K1');
 
       const json = (await (await kernel.request('/unbound', { headers: { accept: 'application/json' } })).json()) as Record<string, any>;
       expect(json.message).toMatch(/No binding for \[Mailer\]/);
       expect(json.exception.name).toBe('ContainerError');
       expect(json.solution).toMatchObject({ title: 'Bind Mailer in a service provider', command: 'marmeon discover' });
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('shows the code of the error in the Markdown and on its solution — an error without a code shows none', async () => {
+    const { application, kernel } = await boot();
+    try {
+      const coded = await (await kernel.request('/unbound', page)).text();
+      expect(markdownOf(coded)).toContain('- **Code:** K1');
+      expect(markdownOf(coded)).toContain('- **Bind Mailer in a service provider** (K1) — ');
+      const plain = await (await kernel.request('/explode/7', page)).text();
+      expect(markdownOf(plain)).not.toContain('**Code:**');
+      expect(plain).not.toContain('class="code"');
     } finally {
       await application.shutdown();
     }

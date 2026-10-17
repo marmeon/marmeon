@@ -4,6 +4,7 @@
  * of resolution conditions; module paths are relative to the app, so transitive dependencies resolve. The manifest is read, not
  * imported: `node --watch` never sees it, so regenerating it never restarts a dev server.
  */
+import { withCode, withoutCode } from '../error-codes.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
@@ -26,6 +27,10 @@ const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock
 
 export class DiscoveryError extends Error {
   override name = 'DiscoveryError';
+
+  constructor(message: string) {
+    super(withCode('K7', message));
+  }
 }
 
 export interface DiscoverOptions {
@@ -125,7 +130,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
           injections.push({ class: target, inject, package: pkg.name });
         } catch (error) {
           if (!(error instanceof DiscoveryError)) throw error;
-          injections.push({ class: target, unresolvable: error.message, package: pkg.name });
+          injections.push({ class: target, unresolvable: withoutCode(error.message), package: pkg.name });
         }
       }
     }

@@ -36,7 +36,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
   it('prints configuration errors without Node internals and exits with 1', () => {
     const { code, stderr } = marmeon(webApp, ['route:list'], { APP_NAME: '', APP_URL: 'localhost' });
     expect(code).toBe(1);
-    expect(stderr).toMatch(/^✗ Invalid configuration — the application cannot start:\n {2}• app: APP_NAME/);
+    expect(stderr).toMatch(/^✗ \[marmeon:K6\] Invalid configuration — the application cannot start:\n {2}• app: APP_NAME/);
     expect(stderr).not.toMatch(/triggerUncaughtException|node:internal/);
   });
 
@@ -44,9 +44,10 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     const { code, stdout } = marmeon(webApp, ['route:list'], { APP_KEY: '' });
     expect(code).toBe(1);
     // The installed package's solution (encryption) first, then the core's.
-    expect(stdout).toContain('How to fix it: Generate an application key');
+    expect(stdout).toContain('How to fix it (K6): Generate an application key');
     expect(stdout).toContain('  $ marmeon key:generate');
-    expect(stdout).toContain('How to fix it: Set APP_KEY in .env');
+    expect(stdout).toContain('  docs: docs/configuration.md#when-a-value-is-wrong');
+    expect(stdout).toContain('How to fix it (K6): Set APP_KEY in .env');
   });
 
   it('shows the database connection (db:show, added by @marmeon/database)', () => {
@@ -94,7 +95,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(staging.code).toBe(1);
     expect(staging.stdout).toBe('');
     expect(staging.stderr).toBe(
-      '✗ Invalid environment — the application cannot start:\n  • NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging. ' +
+      '✗ [marmeon:K6] Invalid environment — the application cannot start:\n  • NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging. ' +
         'NODE_ENV is development, test or production; APP_ENV names the environment (docs/configuration.md#the-environment-node_env).\n',
     );
     const forced = marmeon(webApp, ['migrate', '--force'], { ...config, NODE_ENV: 'production', APP_ENV: 'staging' });

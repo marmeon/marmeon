@@ -41,7 +41,7 @@ Import such a type as a value. `import type { NoteRepository }` disappears when 
 what to pass. Building the class then fails, and the error says why:
 
 ```text
-[ShowNoteController] needs 2 constructor argument(s) but has no injection list. Cannot inject modules/notes/controllers/ShowNoteController.ts:9 — ShowNoteController, parameter "notes: NoteRepository": "NoteRepository" is imported with "import type", so it does not exist at runtime. Import its token as a value: import { NoteRepository } from '…'.
+[marmeon:K3] [ShowNoteController] needs 2 constructor argument(s) but has no injection list. Cannot inject modules/notes/controllers/ShowNoteController.ts:9 — ShowNoteController, parameter "notes: NoteRepository": "NoteRepository" is imported with "import type", so it does not exist at runtime. Import its token as a value: import { NoteRepository } from '…'.
 ```
 
 A parameter of type `string`, `number` or a union cannot be injected either. Put such values into a [config
@@ -167,7 +167,7 @@ This is why a singleton must not depend on a scoped service. A singleton is buil
 the first request's session, every later request would see it. The container refuses it:
 
 ```text
-[NoteDraft] is scoped and can only be resolved inside a scope (e.g. a request) (needed by NoteSearch). A singleton must not depend on a scoped service.
+[marmeon:K2] [NoteDraft] is scoped and can only be resolved inside a scope (e.g. a request) (needed by NoteSearch). A singleton must not depend on a scoped service.
 ```
 
 A service that needs something of the request becomes scoped too. The rule keeps request data in the request: there is no
@@ -183,6 +183,8 @@ A `ContainerError` names what failed, why, and who asked for it. Its `reason` is
 | `scoped` | A scoped service was resolved outside a scope, or by a singleton. | Inject it into a controller, middleware, listener or job instead. A singleton that needs it becomes scoped. |
 | `no-injection-list` | A class has constructor parameters but no list. The error says what the loader could not inject. | Inject classes and tokens only. Values come from a config definition. |
 | `circular` | `A` needs `B`, and `B` needs `A`. | Move what both need into a third class. |
+
+Each message starts with its [code](errors.md#server-error-codes): `unbound` is K1, `scoped` K2, `no-injection-list` K3 and `circular` K4.
 
 The path in the message shows the chain, outermost first: `(needed by ShowNoteController → NoteSearch)`. On the development
 error page each reason comes with its solution.

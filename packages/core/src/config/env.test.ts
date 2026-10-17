@@ -258,7 +258,7 @@ describe('env through defineConfig — the start error', () => {
     // The whole text as the failure's message: Vitest shortens the two strings it compares.
     expect(error.message, error.message).toBe(
       [
-        'Invalid configuration — the application cannot start:',
+        '[marmeon:K6] Invalid configuration — the application cannot start:',
         '  • app: APP_NAME — APP_NAME is required.',
         '  • app: APP_URL — APP_URL must be a URL starting with http:// or https://.',
         '  • app: PORT — PORT must be a port from 1 to 65535.',

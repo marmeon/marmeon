@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApplication } from '../application.ts';
 import type { Key } from '../token.ts';
-import { generateManifest, loadDiscoveredPackages, manifestPath } from './discover.ts';
+import { DiscoveryError, generateManifest, loadDiscoveredPackages, manifestPath } from './discover.ts';
 import { resolveExports, runtimeConditions, splitSpecifier, type PackageInfo } from './resolve.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -58,6 +58,18 @@ function createFixtureApp(): string {
   writeFileSync(join(app, 'main.ts'), readFileSync(join(fixtures, 'main.ts'), 'utf8').replace("'the-core-internals'", "'@marmeon/core/internal'"));
   return app;
 }
+
+describe('discovery errors', () => {
+  it('a DiscoveryError carries its code', () => {
+    let thrown: unknown;
+    try {
+      throw new DiscoveryError('@acme/mailer lists provider "X" in package.json, but its entry does not export it.');
+    } catch (error) {
+      thrown = error;
+    }
+    expect((thrown as Error).message).toMatch(/^\[marmeon:K7\] @acme\/mailer lists provider/);
+  });
+});
 
 describe('marmeon discover', () => {
   let app: string;

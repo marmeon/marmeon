@@ -6,6 +6,7 @@
  * the environment: it never weakens a protection or enables a tool. See docs/configuration.md#the-environment-node_env.
  * No dependencies besides Node: `marmeon` loads this module before the injection hook.
  */
+import { withCode } from './error-codes.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseEnv } from 'node:util';
@@ -118,7 +119,7 @@ export const environment = {
   check(env: NodeEnvironment = process.env): void {
     const problem = environment.problem(env);
     if (problem === undefined) return;
-    const error = new ConfigError(`Invalid environment — the application cannot start:\n  • ${problem}`);
+    const error = new ConfigError(withCode('K6', `Invalid environment — the application cannot start:\n  • ${problem}`));
     error.stack = `${error.name}: ${error.message}`; // the location of the throw is noise here
     throw error;
   },

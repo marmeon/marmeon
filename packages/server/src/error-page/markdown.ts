@@ -9,6 +9,7 @@ export function reportMarkdown(report: ErrorReport): string {
   for (const cause of report.causes) out.push(`Caused by ${cause.name}: ${oneLine(cause.message)}`, '');
   out.push(
     `- **Status:** ${report.status}`,
+    ...(report.code ? [`- **Code:** ${report.code}`] : []),
     `- **Request:** ${report.request.method} ${report.request.url}${report.requestId ? ` (request id \`${report.requestId}\`)` : ''}`,
   );
   if (report.route) {
@@ -25,7 +26,7 @@ export function reportMarkdown(report: ErrorReport): string {
   if (report.solutions.length > 0) {
     out.push('## Solutions', '');
     for (const solution of report.solutions) {
-      out.push(`- **${solution.title}** — ${solution.text}${solution.command ? ` Command: \`${solution.command}\`` : ''}${solution.docs ? ` (docs: ${solution.docs})` : ''}`);
+      out.push(`- **${solution.title}**${solution.code ? ` (${solution.code})` : ''} — ${solution.text}${solution.command ? ` Command: \`${solution.command}\`` : ''}${solution.docs ? ` (docs: ${solution.docs})` : ''}`);
     }
     out.push('');
   }

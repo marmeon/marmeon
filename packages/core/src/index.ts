@@ -3,6 +3,8 @@
 export { Container, ContainerError } from './container.ts';
 export type { ContainerErrorDetails, ContainerErrorReason, Factory, InjectionWarning, Resolver } from './container.ts';
 export { deprecated } from './deprecation.ts';
+export { errorCodeOf } from './error-codes.ts';
+export type { ErrorCode, ErrorCodeArea } from './error-codes.ts';
 export { defineSolutions, ErrorSolutions } from './solutions.ts';
 export type { Solution, SolutionContext, SolutionDefinition } from './solutions.ts';
 export { token } from './token.ts';

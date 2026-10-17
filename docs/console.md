@@ -24,7 +24,7 @@ Most commands boot the app first: they load `.env`, check the configuration and 
 does. A command that cannot boot the app prints the error and the known solutions, and exits with 1:
 
 ```text
-✗ Invalid configuration — the application cannot start:
+✗ [marmeon:K6] Invalid configuration — the application cannot start:
   • encryption: APP_KEY — Missing — run "marmeon key:generate"
 Set these variables in the environment or in .env (see .env.example).
 

@@ -312,6 +312,39 @@ endpoint, since a page that runs code would be a way into your machine.
 A provider that brings only solutions is fine; one with no method and no static list at all is refused at start-up. The
 [service providers](providers.md#register-and-boot) page explains the rule.
 
+### Server error codes
+
+An error the framework raises at start-up, in the development server or in a command starts its message with a code in square
+brackets, such as `[marmeon:K6] Invalid configuration — the application cannot start`. The code stays in logs, in `cause` chains
+and across processes (a worker, a command), so one search finds the row below. The development error page, its Markdown and the
+`marmeon` command show it next to the solution. It appears only where developers and agents read: never in a response to a
+browser in production.
+
+A solution can be tied to a code with `code` in its definition. It then matches only an error with exactly that code, on the same
+level of the `cause` chain. `errorCodeOf(error)` from `@marmeon/core` returns an error's code, so your own reporter can tag it.
+
+A letter names the area, a number is given once and never reused. A code that is gone stays in the table as retired. The browser's
+codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
+
+| Letter | Area |
+| --- | --- |
+| K | Start-up: application, container, configuration, discovery, commands |
+| H | HTTP: routes, requests, pages, the page protocol, Vite |
+| D | Data: connections, migrations, bookkeeping, guards, generated types |
+| A | Sign-in and sessions |
+| Q | Background work: queues, schedules, mail, notifications |
+| S | Services: cache, storage, redis, translations, logs, telemetry, validation |
+
+| Code | Package | Meaning |
+| --- | --- | --- |
+| K1 | `core` | Nothing is bound for a token or an interface. [The container's errors](container.md#the-containers-errors) |
+| K2 | `core` | A scoped service was resolved outside a scope, or by a singleton. [The container's errors](container.md#the-containers-errors) |
+| K3 | `core` | A class takes constructor arguments but has no injection list. [Constructor injection](container.md#constructor-injection) |
+| K4 | `core` | Classes that need each other to be built. [The container's errors](container.md#the-containers-errors) |
+| K5 | `core` | The injection transform cannot derive a list from a constructor, or cannot embed it into compiled output. [Constructor injection](container.md#constructor-injection) |
+| K6 | `core` | The configuration or `NODE_ENV` is invalid, so the app cannot start. [When a value is wrong](configuration.md#when-a-value-is-wrong) |
+| K7 | `core` | Discovery of a package's providers or injections failed. [Discovery](modules.md#discovery) |
+
 ## Errors in the browser
 
 What the browser does when something fails:
