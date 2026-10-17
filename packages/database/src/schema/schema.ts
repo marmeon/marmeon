@@ -59,6 +59,17 @@ export class Schema {
     );
   }
 
+  /**
+   * Postgres cuts an identifier at 63 bytes without a word, so two names can become one or a name can differ from the one a
+   * migration wrote. A name over that is refused (the name of an index: give it one, `table.index(columns, 'name')`).
+   */
+  #fits(name: string, what: string): void {
+    if (this.driver !== 'pgsql' || Buffer.byteLength(name) <= 63) return;
+    throw new SchemaError(
+      withCode('D5', `The ${what} "${name}" is ${Buffer.byteLength(name)} bytes long; Postgres would cut it at 63 and so change it silently. Give it a name of its own that fits (for an index: table.index(columns, 'name')).`),
+    );
+  }
+
   /** Creates a table. */
   async create(table: string, build: (table: Blueprint) => void): Promise<void> {
     this.#allowed(table, 'create the table');
@@ -124,6 +135,7 @@ export class Schema {
 
   async #createIndexes(blueprint: Blueprint): Promise<void> {
     for (const index of blueprint.allIndexes()) {
+      this.#fits(index.name, 'index name');
       let builder = this.db.schema.createIndex(index.name).on(blueprint.table).columns([...index.columns]);
       if (index.unique) builder = builder.unique();
       await builder.execute();
@@ -169,6 +181,7 @@ export class Schema {
       join pg_depend d on d.objid = s.oid and d.classid = 'pg_class'::regclass and d.refclassid = 'pg_class'::regclass and d.deptype in ('a', 'i')
       join pg_class t on t.oid = d.refobjid
       where s.relkind = 'S' and ${table}`);
+    for (const name of [...constraints, ...indexes, ...sequences]) this.#fits(renamed(name), 'name after the rename');
     for (const name of constraints) await sql`alter table ${sql.table(to)} rename constraint ${sql.id(name)} to ${sql.id(renamed(name))}`.execute(this.db);
     // Renaming a constraint renamed the index behind it (the primary key, a unique constraint) too.
     for (const name of indexes) {

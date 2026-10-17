@@ -6,16 +6,19 @@ import { NotificationStore } from './store.ts';
 /** The migration `make:notifications-table` copies — a real file, so the tests run exactly what apps get. */
 export const NOTIFICATIONS_MIGRATION = new URL('../stubs/migrations/create_notifications_table.ts', import.meta.url);
 
-/** `marmeon make:notifications-table [--module=system]`: the migration of `notifications` into an app module. */
+/** The migration `make:upgrade-migrations` writes for apps whose table still has the old name. */
+export const RENAME_MIGRATION = new URL('../stubs/migrations/rename_notifications_table_to_marmeon.ts', import.meta.url);
+
+/** `marmeon make:notifications-table [--module=system]`: the migration of `marmeon_notifications` into an app module. */
 export class MakeNotificationsTableCommand {
   static command = 'make:notifications-table';
-  static description = 'Create the migration for the database notification channel (notifications)';
+  static description = 'Create the migration for the database notification channel (marmeon_notifications)';
   static usage = '[--module=system]';
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
     const { publishMigration } = await import('@marmeon/database/internal');
-    return publishMigration(input, { name: 'create_notifications_table', table: 'notifications', contents: readFileSync(NOTIFICATIONS_MIGRATION, 'utf8') });
+    return publishMigration(input, { name: 'create_notifications_table', table: 'marmeon_notifications', contents: readFileSync(NOTIFICATIONS_MIGRATION, 'utf8') });
   }
 }
 

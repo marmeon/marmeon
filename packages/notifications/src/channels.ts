@@ -10,7 +10,7 @@ import { withCode } from '@marmeon/core/internal';
  * worker, or the process that called `sendNow`), after the recipient was found again.
  */
 export interface Delivery {
-  /** The notification's id — a UUID, the same over every attempt of its job (the `notifications` row has it). */
+  /** The notification's id — a UUID, the same over every attempt of its job (the `marmeon_notifications` row has it). */
   readonly id: string;
   /** Its name, `static notification`. */
   readonly type: string;
@@ -72,7 +72,7 @@ export class NotificationChannels {
   }
 }
 
-/** The `database` channel: a row in `notifications` — what `toDatabase()` returned, as `static database` describes it. */
+/** The `database` channel: a row in `marmeon_notifications` — what `toDatabase()` returned, as `static database` describes it. */
 export class DatabaseChannel implements NotificationChannel {
   readonly #store: NotificationStore;
 

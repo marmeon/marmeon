@@ -1,15 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { Application, Clock, Translator, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { fillPlaceholders } from '@marmeon/core/internal';
 import { Connections } from '@marmeon/database';
 import { DatabaseChannel, MailChannel, NotificationChannels } from './channels.ts';
-import { MakeNotificationsTableCommand, PruneNotificationsCommand } from './commands.ts';
+import { MakeNotificationsTableCommand, PruneNotificationsCommand, RENAME_MIGRATION } from './commands.ts';
 import { NotificationConfig } from './config.ts';
 import { Inbox } from './inbox.ts';
 import { SendQueuedNotification } from './job.ts';
 import type { NotificationClass, RecipientResolvers } from './notification.ts';
 import { NotificationDeliverer, Notifications, NotificationSender, type QueueNotification } from './notifications.ts';
 import { NotificationRegistry, NotificationSetupError, RecipientRegistry } from './registry.ts';
-import { NotificationStore } from './store.ts';
+import { NOTIFICATIONS_COLUMNS, NOTIFICATIONS_TABLE, NotificationStore } from './store.ts';
 import { withCode } from '@marmeon/core/internal';
 
 export type {
@@ -64,7 +65,7 @@ declare module '@marmeon/core' {
 }
 
 /**
- * The connection the `notifications` table belongs on — for the migration `marmeon make:notifications-table` writes
+ * The connection the `marmeon_notifications` table belongs on — for the migration `marmeon make:notifications-table` writes
  * (`connection` in `defineMigration`): `NOTIFICATIONS_CONNECTION`, where the database channel and the Inbox look.
  */
 export function notificationsTableConnection(container: Resolver): string {
@@ -92,6 +93,16 @@ async function importOptional<T>(load: () => Promise<T>, name: string): Promise<
  */
 export class NotificationServiceProvider implements ServiceProvider {
   static config = [NotificationConfig];
+  /** `marmeon make:upgrade-migrations` writes the rename of `notifications` to `marmeon_notifications`. */
+  static migrationUpgrades = [
+    {
+      set: 'notifications',
+      revision: 2,
+      name: 'rename_notifications_table_to_marmeon',
+      createdBy: ['create_notifications_table'],
+      contents: readFileSync(RENAME_MIGRATION, 'utf8'),
+    },
+  ];
   static commands = [PruneNotificationsCommand, MakeNotificationsTableCommand];
 
   #queue: QueueModule | undefined;
@@ -158,7 +169,14 @@ export class NotificationServiceProvider implements ServiceProvider {
       throw new NotificationSetupError(withCode('Q6', 'Notifications keep their rows in the database — register the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).'));
     }
     // An unknown connection name fails here, with the known ones.
-    container.make(Connections).options(container.make(NotificationConfig).connection);
+    const connection = container.make(NotificationConfig).connection;
+    container.make(Connections).options(connection);
+    // Only a notification with `static database` is delivered to the table (and the Inbox reads only those rows): then /up/ready is red
+    // until the table has the new name and every column the store uses.
+    if (registry.all().some((notification) => notification.database !== undefined)) {
+      const { SchemaRequirements } = await import('@marmeon/database/internal');
+      container.make(SchemaRequirements).require({ connection, table: NOTIFICATIONS_TABLE, columns: NOTIFICATIONS_COLUMNS, set: 'notifications' });
+    }
 
     const mail: MailModule | undefined = await importOptional(() => import('@marmeon/mail'), '@marmeon/mail');
     if (mail && container.has(mail.Mailer)) {

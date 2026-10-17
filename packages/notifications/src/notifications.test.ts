@@ -28,9 +28,9 @@ async function app(...args: Parameters<typeof notificationApp>): Promise<TestApp
   return open;
 }
 
-/** The rows of `notifications`, oldest first. */
+/** The rows of `marmeon_notifications`, oldest first. */
 async function rows(application: TestApp) {
-  const result = await sql<{ id: string; recipient_type: string; recipient_id: string; type: string; data: unknown; read_at: string | null }>`select * from notifications order by created_at, id`.execute(
+  const result = await sql<{ id: string; recipient_type: string; recipient_id: string; type: string; data: unknown; read_at: string | null }>`select * from marmeon_notifications order by created_at, id`.execute(
     application.connections.get(),
   );
   return result.rows;
@@ -302,7 +302,7 @@ describe.each(drivers)('notifications on %s', (driver) => {
       const [newest] = await inbox.latest(ada);
       expect(notificationData(newest!, Welcome)).toMatchObject({ code: expect.stringMatching(/^a[12]$/) });
       expect(notificationData(newest!, OrderShipped)).toBeUndefined();
-      await sql`update notifications set data = ${JSON.stringify({ other: 1 })} where id = ${adas[0]!}`.execute(application.connections.get());
+      await sql`update marmeon_notifications set data = ${JSON.stringify({ other: 1 })} where id = ${adas[0]!}`.execute(application.connections.get());
       const changed = (await inbox.latest(ada)).find((row) => row.id === adas[0])!;
       expect(notificationData(changed, Welcome)).toBeUndefined();
     });

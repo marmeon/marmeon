@@ -1,4 +1,5 @@
 import { hkdfSync } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { collectDrivers } from '@marmeon/core/internal';
 import { DEFAULT_STORAGE, isStorageDefinition, type DiskDriverFactory, type StorageOptions } from './config.ts';
@@ -9,10 +10,10 @@ import { StorageSetup } from './setup.ts';
 import { BUILT_IN_DISK_DRIVERS, checkStorage, Storage, StorageManager, visibilityOf } from './storage.ts';
 import { StorageSetupError } from './errors.ts';
 import { missingPackages, S3_INSTALL, S3_UPLOADS_INSTALL } from './drivers/s3.ts';
-import { MakeUploadsTableCommand, PruneUploadsCommand } from './uploads/commands.ts';
+import { MakeUploadsTableCommand, PruneUploadsCommand, RENAME_MIGRATION } from './uploads/commands.ts';
 import { UploadsConfig } from './uploads/config.ts';
 import { registerUploads, UPLOADS_PREFIX } from './uploads/http.ts';
-import { TemporaryUploads } from './uploads/service.ts';
+import { TemporaryUploads, UPLOADS_COLUMNS, UPLOADS_TABLE } from './uploads/service.ts';
 import { TEMPORARY_PREFIX, NO_TEMPORARY_URLS, type TemporaryUrls } from './temporary.ts';
 import { encodeKey } from './keys.ts';
 import { secondsOf } from './contents.ts';
@@ -84,7 +85,7 @@ export async function diskAttachment(disk: Disk, key: string, options: { filenam
 
 /** For messages of the database: who uses its infrastructure connection, and what to do on a shared SQLite file. */
 const UPLOADS_INFRASTRUCTURE = {
-  system: 'Temporary uploads (temporary_uploads)',
+  system: 'Temporary uploads (marmeon_temporary_uploads)',
   remedy:
     'Give them their own SQLite file — the connection of the cache and sessions (UPLOADS_CONNECTION=system) — and `marmeon migrate` (the migration of ' +
     '`marmeon make:uploads-table` follows UPLOADS_CONNECTION), or store a file outside the transaction.',
@@ -123,6 +124,16 @@ export function checkS3Sdk(options: StorageOptions, uploadsDisk: string, missing
  */
 export class StorageServiceProvider implements ServiceProvider {
   static config = [UploadsConfig];
+  /** `marmeon make:upgrade-migrations` writes the rename of `temporary_uploads` to `marmeon_temporary_uploads`. */
+  static migrationUpgrades = [
+    {
+      set: 'storage',
+      revision: 2,
+      name: 'rename_temporary_uploads_table_to_marmeon',
+      createdBy: ['create_temporary_uploads_table', 'index_temporary_uploads_table'],
+      contents: readFileSync(RENAME_MIGRATION, 'utf8'),
+    },
+  ];
   static commands = [MakeUploadsTableCommand, PruneUploadsCommand];
 
   #temporaryUrls: TemporaryUrls = NO_TEMPORARY_URLS;
@@ -223,6 +234,9 @@ export class StorageServiceProvider implements ServiceProvider {
         keys: [key.key, ...key.previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:upload-token', 32))),
         receiveUrl: (id, expiresIn) => signer.signedPath(`${UPLOADS_PREFIX}/${id}`, { expiresIn }),
       };
+      // /up/ready is red when the table has the old name or lacks a column the service writes; an app that made no table has no uploads to keep.
+      const { SchemaRequirements } = await import('@marmeon/database/internal');
+      container.make(SchemaRequirements).require({ connection: uploads.connection, table: UPLOADS_TABLE, columns: UPLOADS_COLUMNS, set: 'storage', unlessAbsent: ['temporary_uploads'] });
       registerUploads(http, page.UPLOAD_HEADER, container, () => container.make(TemporaryUploads));
     }
   }

@@ -44,6 +44,16 @@ declare module '@marmeon/database' {
       created_at: number;
     };
     /** Owned by `system`. */
+    marmeon_notifications: {
+      id: string;
+      recipient_type: string;
+      recipient_id: string;
+      type: string;
+      data: JsonColumn;
+      read_at: Timestamp | null;
+      created_at: Timestamp;
+    };
+    /** Owned by `system`. */
     marmeon_sessions: {
       id: string;
       user_id: string | null;
@@ -52,14 +62,21 @@ declare module '@marmeon/database' {
       version: Generated<number>;
     };
     /** Owned by `system`. */
-    notifications: {
+    marmeon_temporary_uploads: {
       id: string;
-      recipient_type: string;
-      recipient_id: string;
-      type: string;
-      data: JsonColumn;
-      read_at: Timestamp | null;
-      created_at: Timestamp;
+      session: string;
+      route: string;
+      field: string;
+      disk: string;
+      key: string;
+      name: string;
+      max_bytes: number;
+      size: number | null;
+      created_at: number;
+      expires_at: number;
+      started_at: number | null;
+      uploaded_at: number | null;
+      consumed_at: number | null;
     };
     /** Owned by `auth`. */
     passkeys: {
@@ -132,23 +149,6 @@ declare module '@marmeon/database' {
       last_seen_at: Timestamp;
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
-    };
-    /** Owned by `system`. */
-    temporary_uploads: {
-      id: string;
-      session: string;
-      route: string;
-      field: string;
-      disk: string;
-      key: string;
-      name: string;
-      max_bytes: number;
-      size: number | null;
-      created_at: number;
-      expires_at: number;
-      started_at: number | null;
-      uploaded_at: number | null;
-      consumed_at: number | null;
     };
     /** Owned by `auth`. */
     two_factor_authentications: {
@@ -231,15 +231,15 @@ declare module '@marmeon/database' {
     marmeon_cache_locks: 'system';
     marmeon_failed_jobs: 'system';
     marmeon_jobs: 'system';
+    marmeon_notifications: 'system';
     marmeon_sessions: 'system';
-    notifications: 'system';
+    marmeon_temporary_uploads: 'system';
     passkeys: 'auth';
     password_reset_tokens: 'auth';
     personal_access_tokens: 'auth';
     profile_links: 'user-profile';
     remember_tokens: 'auth';
     sign_ins: 'auth';
-    temporary_uploads: 'system';
     two_factor_authentications: 'auth';
     two_factor_recovery_codes: 'auth';
     users: 'auth';

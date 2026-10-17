@@ -323,6 +323,10 @@ Every foreign key also describes two relations, one for each table. The
 
 `table.index(columns)` adds an index and `table.unique(columns)` a unique index, over one column or a list. Their names are
 `{table}_{columns}_index` and `{table}_{columns}_unique`, joined by underscores, unless you pass a name as the second argument.
+Postgres cuts a name at 63 bytes without a word, so on Postgres a migration that would create an index with a longer default
+name is refused. A table you made earlier may hold the cut name, so pass the name Postgres stored for it (`select indexname from
+pg_indexes where tablename = '…'`) in a migration that exists already, and a name of your own in a new one; a later `dropIndex`
+needs the name the database holds.
 
 The unique index is what keeps a value unique when two requests insert at the same moment. A validation rule only gives the
 friendly message before the insert. The [validation](validation.md#the-unique-index-is-the-truth) page shows both together.
@@ -622,8 +626,8 @@ pnpm marmeon migrate
 | `make:cache-table` | `marmeon_cache`, `marmeon_cache_locks`, on the cache's connection |
 | `make:session-table` | `marmeon_sessions`, on the sessions' connection |
 | `make:queue-table` | `marmeon_jobs`, `marmeon_failed_jobs`, on the queue's connection |
-| `make:notifications-table` | `notifications`, on the notifications' connection |
-| `make:uploads-table` | `temporary_uploads`, on the uploads' connection |
+| `make:notifications-table` | `marmeon_notifications`, on the notifications' connection |
+| `make:uploads-table` | `marmeon_temporary_uploads`, on the uploads' connection |
 
 Each writes into the `system` module, or the module that `--module` names. The command creates the `system` module and adds it
 to `bootstrap/app.ts` when it does not exist yet; it adds `migrations` to an existing module that lacks it. When `bootstrap/app.ts`
@@ -660,8 +664,9 @@ the missing one by hand, in front of it.
 
 A migration that renames a table is a change for a stopped app: let the queue run empty, stop every process of the old release (web,
 workers, scheduler, cron jobs, CI jobs that run `marmeon`), run `marmeon migrate`, then start the new release. The tables of the
-queue (`jobs`, `failed_jobs`), the cache (`cache`, `cache_locks`) and the sessions (`sessions`) are renamed that way, to
-`marmeon_jobs`, `marmeon_failed_jobs`, `marmeon_cache`, `marmeon_cache_locks` and `marmeon_sessions`.
+queue (`jobs`, `failed_jobs`), the cache (`cache`, `cache_locks`), the sessions (`sessions`), the temporary uploads
+(`temporary_uploads`) and the notifications (`notifications`) are renamed that way, to `marmeon_jobs`, `marmeon_failed_jobs`,
+`marmeon_cache`, `marmeon_cache_locks`, `marmeon_sessions`, `marmeon_temporary_uploads` and `marmeon_notifications`.
 
 A migration it wrote is yours like the first one. Keep the first line: without it, the command takes a changed file for
 revision 1.
@@ -676,4 +681,5 @@ await schema.rename('jobs', 'marmeon_jobs', { indexes: true });
 ```
 
 Every index and constraint whose name begins with `jobs_` is renamed to begin with `marmeon_jobs_`, and on Postgres the
-sequences of its identity columns too. Without the option, `rename` changes the table's name only.
+sequences of its identity columns too. A new name over 63 bytes is refused on Postgres, which would cut it: rename that index
+yourself first, to a name of your choice. Without the option, `rename` changes the table's name only.

@@ -304,11 +304,18 @@ cursor, or one of another recipient's list, answers 400.
 ## The notifications table
 
 `make:notifications-table` writes the migration into the `system` module, or the module `--module` names. The migration runs on
-`NOTIFICATIONS_CONNECTION`. The table holds `id`, `recipient_type`, `recipient_id`, `type`, `data`, `read_at` and `created_at`.
+`NOTIFICATIONS_CONNECTION`. The table is `marmeon_notifications` and holds `id`, `recipient_type`, `recipient_id`, `type`, `data`, `read_at` and `created_at`.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `NOTIFICATIONS_CONNECTION` | `default` | The database connection of the `notifications` table. |
+| `NOTIFICATIONS_CONNECTION` | `default` | The database connection of the `marmeon_notifications` table. |
+
+An app made with an earlier release has the table under its old name, `notifications`. In development, run
+`marmeon make:upgrade-migrations`, commit what it writes, and regenerate `bootstrap/database.d.ts` with `marmeon db:types`. To
+deploy, stop every process of the old release (web, workers, scheduler, cron jobs), deploy, run `marmeon migrate`, then start the
+new release. A process of the old release that keeps running fails on the renamed table. The rows stay, read ones as read. Until
+the migration has run, `/up/ready` is red and says what to run. See
+[upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables).
 
 Notifications are the app's own data. Unlike the cache, they join the app's transactions on their connection. A listener of the
 starter kit's `AccountDeleted` event can delete a user's notifications with `deleteAll()` inside the deletion's transaction.

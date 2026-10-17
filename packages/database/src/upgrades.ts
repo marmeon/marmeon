@@ -25,6 +25,11 @@ export interface TableRequirement {
   readonly columns: readonly string[];
   /** The set of tables the requirement belongs to, as in {@link MigrationUpgrade.set}. */
   readonly set: string;
+  /**
+   * Old names of the table. When given, the requirement is only checked once the table or one of these exists: an app that never
+   * made the table (the feature is unused) stays ready, an app that still has the old table does not.
+   */
+  readonly unlessAbsent?: readonly string[];
 }
 
 const MARK = /^\/\/ @marmeon-stub (\S+) (\d+)\r?\n/;
