@@ -23,10 +23,21 @@ is checked against the table's type, and the result is typed by what the query s
 
 ## Table types
 
-The types of your tables come from your **migrations**, never from the state of a database. `marmeon db:types` runs every
-migration on a scratch database of the app's driver, SQLite in memory or a temporary Postgres database, reads the tables back and
-writes `bootstrap/database.d.ts`. The file is committed, so a type check needs no database. On Postgres the command creates and
-drops that temporary database, so its role needs the right to create databases.
+The types of your tables come from your **migrations**, never from the state of a database. `marmeon db:types` reads the plan of
+every migration (what `up()` declared with `schema.create()`, `alter()`, `rename()` and `drop()`) and writes
+`bootstrap/database.d.ts`. It runs nothing and connects to nothing: no database, no permission to create one, the same file on
+SQLite and Postgres. The file is committed, so a type check needs no database either.
+
+The file is also the one place that shows the **current** definition of every table, where the migrations show only the history.
+Each table carries a comment with what a query needs to know: the module that owns it and whether it is exposed to the others, soft
+deletes and timestamps, the primary key, unique column sets, and foreign keys with their `onDelete` and the name of the inverse
+relation. Secret columns are typed `Secret<…>`. Tables and relations are sorted and columns keep the order of the migrations, so a change to one table changes only its
+lines.
+
+Only what the blueprint made is in the file. A table or column that raw SQL (`schema.raw()`) makes is not: Marmeon does not read SQL,
+so it has no type, no secret column and no marks. Create it with `schema.create()`, or type it in your code with Kysely's
+`withTables<…>()` on the app's `Database`. A migration that changes such a table with the blueprint (`schema.alter()` on a table `schema.raw()` made) stops
+`db:types` with an error naming the migration.
 
 `marmeon migrate` and `migrate:fresh` write the file for you when migrations ran, in development only. In production, staging and
 tests the committed file is final, and the app's directory may not even be writable. `--no-types` skips it in development too.

@@ -6,19 +6,28 @@ import type { Generated, JsonColumn, Secret, Timestamp } from '@marmeon/database
 
 declare module '@marmeon/database' {
   interface Tables {
-    /** Owned by `system`. */
+    /**
+     * Owned by `system`.
+     * Primary key: key.
+     */
     cache: {
       key: string;
       value: string;
       expiration: number | null;
     };
-    /** Owned by `system`. */
+    /**
+     * Owned by `system`.
+     * Primary key: key.
+     */
     cache_locks: {
       key: string;
       owner: string;
       expiration: number;
     };
-    /** Owned by `system`. */
+    /**
+     * Owned by `system`.
+     * Primary key: uuid.
+     */
     failed_jobs: {
       uuid: string;
       connection: string;
@@ -28,7 +37,10 @@ declare module '@marmeon/database' {
       exception: string;
       failed_at: number;
     };
-    /** Owned by `system`. */
+    /**
+     * Owned by `system`.
+     * Primary key: id.
+     */
     jobs: {
       id: Generated<number>;
       queue: string;
@@ -38,12 +50,19 @@ declare module '@marmeon/database' {
       available_at: number;
       created_at: number;
     };
-    /** Owned by `user-profile`. */
+    /**
+     * Owned by `user-profile`.
+     * Primary key: user_id.
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
     login_activity: {
       user_id: number;
       last_login_at: Timestamp;
     };
-    /** Owned by `system`. */
+    /**
+     * Owned by `system`.
+     * Primary key: id.
+     */
     notifications: {
       id: string;
       recipient_type: string;
@@ -53,7 +72,13 @@ declare module '@marmeon/database' {
       read_at: Timestamp | null;
       created_at: Timestamp;
     };
-    /** Owned by `auth`. */
+    /**
+     * Owned by `auth`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: credential_id.
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
     passkeys: {
       id: Generated<number>;
       user_id: number;
@@ -72,13 +97,22 @@ declare module '@marmeon/database' {
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
     };
-    /** Owned by `auth`. */
+    /**
+     * Owned by `auth`.
+     * Primary key: email.
+     */
     password_reset_tokens: {
       email: string;
       token_hash: Secret<string>;
       created_at: Timestamp;
     };
-    /** Owned by `auth`. */
+    /**
+     * Owned by `auth`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: token_hash.
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
     personal_access_tokens: {
       id: Generated<number>;
       user_id: number;
@@ -90,7 +124,12 @@ declare module '@marmeon/database' {
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
     };
-    /** Owned by `user-profile`. */
+    /**
+     * Owned by `user-profile`.
+     * Timestamps.
+     * Primary key: id.
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
     profile_links: {
       id: Generated<string>;
       user_id: number;
@@ -99,7 +138,13 @@ declare module '@marmeon/database' {
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
     };
-    /** Owned by `auth`. */
+    /**
+     * Owned by `auth`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: selector.
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
     remember_tokens: {
       id: Generated<number>;
       user_id: number;
@@ -113,7 +158,10 @@ declare module '@marmeon/database' {
       updated_at: Generated<Timestamp>;
       account_fingerprint: string | null;
     };
-    /** Owned by `system`. */
+    /**
+     * Owned by `system`.
+     * Primary key: id.
+     */
     sessions: {
       id: string;
       user_id: string | null;
@@ -121,7 +169,13 @@ declare module '@marmeon/database' {
       last_activity: number;
       version: Generated<number>;
     };
-    /** Owned by `auth`. */
+    /**
+     * Owned by `auth`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: remember_selector.
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
     sign_ins: {
       id: string;
       user_id: number;
@@ -133,7 +187,10 @@ declare module '@marmeon/database' {
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
     };
-    /** Owned by `system`. */
+    /**
+     * Owned by `system`.
+     * Primary key: id.
+     */
     temporary_uploads: {
       id: string;
       session: string;
@@ -150,7 +207,13 @@ declare module '@marmeon/database' {
       uploaded_at: number | null;
       consumed_at: number | null;
     };
-    /** Owned by `auth`. */
+    /**
+     * Owned by `auth`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: user_id.
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
     two_factor_authentications: {
       id: Generated<number>;
       user_id: number;
@@ -160,7 +223,13 @@ declare module '@marmeon/database' {
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
     };
-    /** Owned by `auth`. */
+    /**
+     * Owned by `auth`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: (user_id, code_hash).
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
     two_factor_recovery_codes: {
       id: Generated<number>;
       user_id: number;
@@ -169,7 +238,12 @@ declare module '@marmeon/database' {
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
     };
-    /** Owned by `auth`. */
+    /**
+     * Owned by `auth`, exposed to the other modules.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: email; public_id.
+     */
     users: {
       id: Generated<number>;
       public_id: Generated<string>;

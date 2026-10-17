@@ -66,12 +66,9 @@ describe.each(drivers)('secret columns on %s', (driver) => {
   });
 
   it('generates Secret<…> for them — the type above is what db:types writes', async () => {
-    const tables = await db.introspection.getTables();
     const { source } = renderTypes({
       driver,
-      tables: tables.filter((t) => t.name === 'accounts'),
-      owners: new Map([['accounts', 'accounts']]),
-      secrets: await migrator(connections).secrets(),
+      projection: await new Migrator({ modules: [modules[1]!], root: '/' } as unknown as Application, connections).projection(),
       modules: ['accounts'],
       exposes: new Map(),
     });

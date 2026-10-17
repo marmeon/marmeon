@@ -6,7 +6,10 @@ import type { Generated } from '@marmeon/database';
 
 declare module '@marmeon/database' {
   interface Tables {
-    /** Owned by `system`. */
+    /**
+     * Owned by `system`.
+     * Primary key: uuid.
+     */
     failed_jobs: {
       uuid: string;
       connection: string;
@@ -16,7 +19,10 @@ declare module '@marmeon/database' {
       exception: string;
       failed_at: number;
     };
-    /** Owned by `system`. */
+    /**
+     * Owned by `system`.
+     * Primary key: id.
+     */
     jobs: {
       id: Generated<number>;
       queue: string;

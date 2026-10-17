@@ -262,7 +262,7 @@ const GROUPS: Record<string, string[]> = {
 /** Directories loaded on Postgres only, next to their group (SQLite cannot do what they do). */
 const PGSQL_ONLY: Record<string, string[]> = { markers: ['markers-pgsql'], nullability: ['nullability-pgsql'], ddl: ['ddl/alter-pgsql'] };
 /** Directories no parity is asked of: they fail on purpose, or write what the projection does not know. */
-const EXCLUDED = ['broken', 'raw-alter', 'raw-rename-column', 'raw-rename-table', 'writes-books'];
+const EXCLUDED = ['broken', 'raw-alter', 'raw-rename-column', 'raw-rename-table', 'raw-table', 'writes-books'];
 
 const appMigrations = (app: string): ModuleDefinition[] => {
   const modules = new URL(`../../../../apps/${app}/modules/`, import.meta.url);
