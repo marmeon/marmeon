@@ -102,6 +102,7 @@ its own:
 | `routes` | Its route file, loaded into the `web` group. See [routing](routing.md#route-files). | `@marmeon/http` |
 | `apiRoutes` | Its route file for the `api` group, under `/api`. | `@marmeon/http` |
 | `commands` | Its [console commands](console.md). | `marmeon` |
+| `checks` | Its [checks for `marmeon check`](package-development.md#checks). | `marmeon` |
 | `migrations` | The folder of its [migrations](migrations.md): `new URL('./migrations/', import.meta.url)`. | `@marmeon/database` |
 | `seeders` | Its [seeders](seeding.md). | `@marmeon/database` |
 | `exposes` | The tables other modules may read and join. See [repositories](queries.md#module-boundaries). | `@marmeon/database` |

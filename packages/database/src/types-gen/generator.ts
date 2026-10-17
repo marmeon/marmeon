@@ -40,8 +40,8 @@ export class TypeGenerator {
     return join(this.#app.root, TYPES_FILE);
   }
 
-  async render(): Promise<Rendered> {
-    return renderTypes(await this.#withScratch((scratch) => this.#snapshot(scratch)));
+  async render(signal?: AbortSignal): Promise<Rendered> {
+    return renderTypes(await this.#withScratch((scratch) => this.#snapshot(scratch), signal));
   }
 
   /** Writes the file; returns whether it changed. */
@@ -75,8 +75,8 @@ export class TypeGenerator {
   }
 
   /** Whether the committed file matches the migrations. */
-  async isCurrent(): Promise<boolean> {
-    return existsSync(this.path) && readFileSync(this.path, 'utf8') === (await this.render()).source;
+  async isCurrent(signal?: AbortSignal): Promise<boolean> {
+    return existsSync(this.path) && readFileSync(this.path, 'utf8') === (await this.render(signal)).source;
   }
 
   async #snapshot(scratch: Connections): Promise<SchemaSnapshot> {
@@ -103,12 +103,22 @@ export class TypeGenerator {
     };
   }
 
-  /** A throwaway database of the app's driver, migrated from scratch. */
-  async #withScratch<T>(use: (scratch: Connections) => Promise<T>): Promise<T> {
+  /** @internal For `marmeon check`: whether generating creates and drops a database on the server (every driver but SQLite). */
+  createsDatabase(): boolean {
+    return this.#connections.options().driver !== 'sqlite';
+  }
+
+  /**
+   * A throwaway database of the app's driver, migrated from scratch. `signal` aborted (a check that took too long): the scratch
+   * connections are closed and the temporary database dropped, without waiting for `use` to end.
+   */
+  async #withScratch<T>(use: (scratch: Connections) => Promise<T>, signal?: AbortSignal): Promise<T> {
     const options = this.#connections.options();
     const quiet = this.#logger.child({ scratch: true });
+    if (signal?.aborted) throw signal.reason;
     if (options.driver === 'sqlite') {
       const scratch = new Connections({ connections: { default: { driver: 'sqlite', database: ':memory:' } }, root: this.#app.root, logger: quiet });
+      signal?.addEventListener('abort', () => void scratch.destroy().catch(() => undefined), { once: true });
       try {
         return await use(scratch);
       } finally {
@@ -121,11 +131,28 @@ export class TypeGenerator {
     await sql`create database ${sql.id(name)}`.execute(admin);
     url.pathname = `/${name}`;
     const scratch = new Connections({ connections: { default: { driver: 'pgsql', url: url.href, poolMax: 1 } }, root: this.#app.root, logger: quiet });
+    // Normally the pool closes, then the database goes. When the run is aborted a client may be stuck in a query, and closing the
+    // pool waits for it: `drop … with (force)` ends the sessions first.
+    let cleaned: Promise<void> | undefined;
+    const drop = () => sql`drop database ${sql.id(name)} with (force)`.execute(admin);
+    const clean = (aborted = false) =>
+      (cleaned ??= (async () => {
+        if (aborted) {
+          try {
+            await drop();
+          } finally {
+            await scratch.destroy();
+          }
+        } else {
+          await scratch.destroy();
+          await drop();
+        }
+      })());
+    signal?.addEventListener('abort', () => void clean(true).catch(() => undefined), { once: true });
     try {
       return await use(scratch);
     } finally {
-      await scratch.destroy();
-      await sql`drop database ${sql.id(name)} with (force)`.execute(admin);
+      await clean();
     }
   }
 }

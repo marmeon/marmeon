@@ -1,0 +1,74 @@
+{
+  "format": 1,
+  "ok": false,
+  "exitCode": 1,
+  "checks": [
+    {
+      "name": "boot",
+      "status": "passed",
+      "reason": null,
+      "problems": []
+    },
+    {
+      "name": "route-types",
+      "status": "failed",
+      "reason": null,
+      "problems": [
+        {
+          "severity": "error",
+          "message": "bootstrap/routes.ts is out of date",
+          "file": "bootstrap/routes.ts",
+          "line": null,
+          "column": null,
+          "code": null,
+          "rule": null,
+          "fix": "marmeon route:types",
+          "docs": null
+        }
+      ]
+    },
+    {
+      "name": "modules",
+      "status": "warning",
+      "reason": null,
+      "problems": [
+        {
+          "severity": "warning",
+          "message": "SendJob (static job 'system.send') is in no module's jobs — dispatching it fails. Add it to jobs in its module's index.ts.",
+          "file": "modules/system/jobs/Send.ts",
+          "line": null,
+          "column": null,
+          "code": null,
+          "rule": null,
+          "fix": null,
+          "docs": null
+        }
+      ]
+    },
+    {
+      "name": "db-types",
+      "status": "failed",
+      "reason": null,
+      "problems": [
+        {
+          "severity": "error",
+          "message": "bootstrap/database.d.ts is out of date",
+          "file": "bootstrap/database.d.ts",
+          "line": null,
+          "column": null,
+          "code": null,
+          "rule": null,
+          "fix": "marmeon db:types",
+          "docs": null
+        }
+      ]
+    },
+    {
+      "name": "readiness",
+      "status": "passed",
+      "reason": null,
+      "problems": []
+    }
+  ],
+  "warnings": []
+}
