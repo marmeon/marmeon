@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { Application, createApplication, defineModule, Logger, type ServiceProviderClass } from '@marmeon/core';
 import { channels } from '@marmeon/core/diagnostics';
-import { Connections, Database, DatabaseServiceProvider, Schema, sql } from '@marmeon/database';
+import { Connections, Database, DatabaseServiceProvider, sql, type Migration } from '@marmeon/database';
+import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, HttpServiceProvider } from '@marmeon/http';
 import { createPinoLogger } from '@marmeon/log';
@@ -107,12 +108,13 @@ function boot(env: Record<string, string> = {}, providers: ServiceProviderClass[
     modules: [defineModule({ name: 'people', routes, jobs: [ReportJob, RefusedJob] })],
   }, { env: { APP_KEY: generateKey(), DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: join(root, `${crypto.randomUUID()}.sqlite`), QUEUE_CONNECTION: 'database', ...env }, override: (container) => container.instance(Logger, createPinoLogger({ level: 'info', format: 'json' }, stream, container.make(Application))) }).then(async (application) => {
     const connections = application.container.make(Connections);
-    const schema = new Schema(connections.get(), 'sqlite');
-    const migration = ((await import(QUEUE_MIGRATION.href)) as { default: { up(schema: Schema): Promise<void> } }).default;
-    await migration.up(schema);
-    await schema.create('people', (table) => {
-      table.id();
-      table.string('email');
+    await runMigration(connections, ((await import(QUEUE_MIGRATION.href)) as { default: Migration }).default);
+    await runMigration(connections, {
+      up: (schema) =>
+        schema.create('people', (table) => {
+          table.id();
+          table.string('email');
+        }),
     });
     return application;
   });

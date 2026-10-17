@@ -8,8 +8,8 @@ import { queueTablesConnection } from '@marmeon/queue';
 export default defineMigration({
   // DB_QUEUE_CONNECTION — failed_jobs goes with it (a QUEUE_FAILED_CONNECTION of its own stops the migration and says what to do).
   connection: queueTablesConnection,
-  up: async (schema) => {
-    await schema.create('jobs', (table) => {
+  up: (schema) => {
+    schema.create('jobs', (table) => {
       table.id();
       table.string('queue');
       table.text('payload');
@@ -21,7 +21,7 @@ export default defineMigration({
       // A worker without --queue claims the oldest due job of every queue in one statement — this index serves it.
       table.index(['reserved_at', 'available_at', 'id']);
     });
-    await schema.create('failed_jobs', (table) => {
+    schema.create('failed_jobs', (table) => {
       table.string('uuid', 64).primary();
       table.string('connection');
       table.string('queue');
@@ -32,8 +32,8 @@ export default defineMigration({
       table.index('failed_at');
     });
   },
-  down: async (schema) => {
-    await schema.drop('failed_jobs');
-    await schema.drop('jobs');
+  down: (schema) => {
+    schema.drop('failed_jobs');
+    schema.drop('jobs');
   },
 });

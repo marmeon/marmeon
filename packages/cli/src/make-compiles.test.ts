@@ -137,6 +137,11 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     ]);
     expect(readFileSync(join(app, 'modules/billing/migrations', migrations[0]!), 'utf8')).toContain("schema.create('invoices', (table) => {");
     expect(readFileSync(join(app, 'modules/billing/migrations', migrations[1]!), 'utf8')).toContain("schema.alter('invoices', (table) => {");
+    // A blank migration builds a plan, so it is not async and points at the step for data.
+    const blank = readFileSync(join(app, 'modules/billing/migrations', migrations[2]!), 'utf8');
+    expect(blank).toContain('up: (schema) => {');
+    expect(blank).toContain('schema.data(async (db) => …)');
+    expect(blank).not.toContain('async (schema)');
 
     const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
     expect(typecheck.stdout + typecheck.stderr).toBe('');

@@ -47,6 +47,7 @@ export declare class Blueprint {
     dropIndex(name: string): void;
     dropUnique(name: string): void;
     renameColumn(from: string, to: string): void;
+    seal(): void;
     allIndexes(): IndexSpec[];
 }
 // BookkeepingVersionError
@@ -60,8 +61,9 @@ export declare class BookkeepingVersionError extends Error {
 export type CheckPageRequest<Q> = [keyof Q & keyof PageRequest] extends [never] ? 'this query has no page — spread pageQuery() into the route\'s query schema: r.query({ ...pageQuery({ perPage: [25, 50] }), … }), or pass { page, perPage }' : Q extends PageRequest ? Q : PageRequest;
 // Column
 export declare class Column<T> {
-    protected readonly spec: ColumnSpec;
+    #private;
     constructor(spec: ColumnSpec);
+    protected get spec(): ColumnSpec;
     nullable(): Column<T | null>;
     unique(): this;
     primary(): this;
@@ -415,8 +417,8 @@ export declare class MigrateStatusCommand {
 // Migration
 export interface Migration {
     readonly connection?: MigrationConnection;
-    up(schema: Schema): void | Promise<void>;
-    down?(schema: Schema): void | Promise<void>;
+    up(schema: Schema): void;
+    down?(schema: Schema): void;
 }
 // MigrationFile
 export interface MigrationFile {
@@ -641,19 +643,15 @@ export type RowWith<T extends keyof Tables, N extends RelationName<Tables, T>> =
 // Schema
 export declare class Schema {
     #private;
-    readonly db: Connection<any>;
-    readonly driver: Driver;
-    constructor(db: Connection<any>, driver: Driver, owners?: SchemaRecorder);
-    create(table: string, build: (table: Blueprint) => void): Promise<void>;
-    alter(table: string, build: (table: Blueprint) => void): Promise<void>;
-    drop(table: string): Promise<void>;
-    dropIfExists(table: string): Promise<void>;
+    create(table: string, build: (table: Blueprint) => void): void;
+    alter(table: string, build: (table: Blueprint) => void): void;
+    drop(table: string): void;
+    dropIfExists(table: string): void;
     rename(from: string, to: string, options?: {
         readonly indexes?: boolean;
-    }): Promise<void>;
-    hasTable(table: string): Promise<boolean>;
-    hasColumn(table: string, column: string): Promise<boolean>;
-    dropAllTables(): Promise<void>;
+    }): void;
+    data(run: (db: Connection<any>, context: DataContext) => PromiseLike<unknown>): void;
+    raw(statement: RawBuilder<unknown> | RawStatements): void;
 }
 // SchemaError
 export declare class SchemaError extends Error {
@@ -779,7 +777,11 @@ export declare function defineFactory<T extends keyof DB & string, DB = Tables, 
     states?: Record<S, Partial<NewRowOf<DB[T]>> | ((context: FactoryContext) => Partial<NewRowOf<DB[T]>>)>;
 }): FactoryDefinition<T, DB, S>;
 // defineMigration
-export declare function defineMigration(migration: Migration): Migration;
+export declare function defineMigration<Up extends Migration['up'], Down extends Migration['down']>(migration: {
+    readonly connection?: MigrationConnection;
+    up: Up & Synchronous<Up>;
+    down?: Down & Synchronous<Down>;
+}): Migration;
 // failOnDuplicate
 export declare function failOnDuplicate<T>(fields: string | readonly string[] | Readonly<Record<string, string>>, work: () => Promise<T>, input?: Record<string, unknown>): Promise<T>;
 // inTransaction
@@ -841,6 +843,10 @@ interface ColumnSpec {
         inverse?: string;
     };
 }
+// DataContext
+export interface DataContext {
+    readonly driver: Driver;
+}
 // DataTypeExpression
 type DataTypeExpression = Parameters<CreateTableBuilder<string, never>['addColumn']>[1];
 // Driver
@@ -898,6 +904,11 @@ interface Pending {
 }
 // READ_METHODS
 export declare const READ_METHODS: readonly ['selectFrom', 'selectNoFrom', 'fn', 'case', 'dynamic', 'isTransaction'];
+// RawStatements
+export interface RawStatements {
+    readonly sqlite?: RawBuilder<unknown>;
+    readonly pgsql?: RawBuilder<unknown>;
+}
 // ReadMethods
 type ReadMethods = (typeof READ_METHODS)[number];
 // ReadOnlyTable
@@ -912,16 +923,6 @@ type RelationOf<TB, N> = {
 type RelationOf<T, N> = T extends keyof Relations ? (N extends keyof Relations[T] ? Relations[T][N] : never) : never;
 // RelationQuery
 type RelationQuery<DB, T extends keyof DB> = SelectQuery<DB, T, {}>;
-// SchemaRecorder
-export interface SchemaRecorder {
-    created(table: string): Promise<void>;
-    dropped(table: string): Promise<void>;
-    renamed(from: string, to: string): Promise<void>;
-    secret(table: string, column: string): Promise<void>;
-    marker(table: string, column: string, marker: TableMarker | 'inverse', value: string | null): Promise<void>;
-    columnDropped(table: string, column: string): Promise<void>;
-    columnRenamed(table: string, from: string, to: string): Promise<void>;
-}
 // SecretName
 type SecretName<R extends string> = R extends `${string}.${infer C}` ? C : R;
 // SecretValue
@@ -940,6 +941,8 @@ type Shaped<R, V> = R extends {
 } ? V[] : R extends {
     readonly nullable: false;
 } ? V : V | null;
+// Synchronous
+type Synchronous<F> = F extends (...args: never[]) => infer R ? ([R] extends [never] ? F : [R] extends [PromiseLike<unknown>] ? never : F) : F;
 // TableMarker
 export type TableMarker = 'soft_deletes' | 'timestamps';
 // TargetKey

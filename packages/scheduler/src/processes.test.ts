@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { CACHE_MIGRATION } from '@marmeon/cache/internal';
-import { Connections, Schema, sql, type ConnectionOptions } from '@marmeon/database';
+import { Connections, sql, type ConnectionOptions, type Migration } from '@marmeon/database';
+import { runMigration } from '@marmeon/database/internal';
 import { RedisConnections } from '@marmeon/redis';
 import { describe, expect, it } from 'vitest';
 import { MINUTE } from './time.ts';
@@ -70,12 +71,14 @@ async function freshTarget(kind: Target['kind']): Promise<{ target: Target; drop
     }
   }
   const db = connections(target);
-  const schema = new Schema(db.get(), db.options().driver);
-  await ((await import(CACHE_MIGRATION.href)) as { default: { up(schema: Schema): Promise<void> } }).default.up(schema);
-  await schema.create('ran', (table) => {
-    table.string('task');
-    table.bigInteger('minute');
-    table.integer('pid');
+  await runMigration(db, ((await import(CACHE_MIGRATION.href)) as { default: Migration }).default);
+  await runMigration(db, {
+    up: (schema) =>
+      schema.create('ran', (table) => {
+        table.string('task');
+        table.bigInteger('minute');
+        table.integer('pid');
+      }),
   });
   await db.destroy();
   return { target, drop };

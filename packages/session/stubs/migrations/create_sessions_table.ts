@@ -10,8 +10,8 @@ import { sessionTableConnection } from '@marmeon/session';
 // of its own.
 export default defineMigration({
   connection: sessionTableConnection,
-  up: async (schema) => {
-    await schema.create('sessions', (table) => {
+  up: (schema) => {
+    schema.create('sessions', (table) => {
       table.string('id', 64).primary();
       table.string('user_id').nullable();
       table.text('payload').secret();
@@ -21,7 +21,7 @@ export default defineMigration({
       table.index('last_activity');
     });
   },
-  down: async (schema) => {
-    await schema.drop('sessions');
+  down: (schema) => {
+    schema.drop('sessions');
   },
 });

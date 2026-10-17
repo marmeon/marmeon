@@ -16,7 +16,8 @@ import {
 import { bookkeepingAccess, bookkeepingConnection } from './books.ts';
 import type { Connections } from './connections.ts';
 import { tableColumns, type CatalogQuery } from './introspection.ts';
-import { Schema } from './schema/schema.ts';
+import { executePlan } from './schema/plan.ts';
+import { Schema, schemaSteps } from './schema/schema.ts';
 import type { Driver } from './schema/blueprint.ts';
 
 // Creating and moving the migrator's bookkeeping. The migrator calls it before it migrates; tests call it to give a database an empty,
@@ -86,9 +87,10 @@ export async function prepareBookkeeping(connections: Connections, connection = 
 async function create(trx: Kysely<any>, driver: Driver, connection: string, state: BookkeepingState): Promise<void> {
   const sqlite = driver === 'sqlite';
   const moved = state.state === 'legacy' ? state.tables : [];
-  const schema = new Schema(trx, driver);
+  const schema = new Schema();
   bookkeepingAccess.add(schema);
-  for (const old of moved) await schema.rename(old, LEGACY[old]!.to, { indexes: true });
+  for (const old of moved) schema.rename(old, LEGACY[old]!.to, { indexes: true });
+  await executePlan(trx, driver, schemaSteps(schema));
   const has = (table: string) => moved.some((old) => LEGACY[old]!.to === table);
   if (connection === 'default' && !has(MIGRATIONS_TABLE)) {
     await trx.schema

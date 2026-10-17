@@ -14,6 +14,7 @@ import { Migrator } from '../index.ts';
 // `MARMEON_UPDATE_DDL=1 pnpm test:pgsql packages/database/src/schema/ddl.test.ts` writes the files again. It is for a new group, a new
 // file: a v1 file that changes is a change of what old migrations build, and a release note has to call it breaking.
 
+// A group may have a sibling directory `<group>-pgsql` for what SQLite cannot do, loaded on Postgres only.
 const GROUPS = ['columns', 'indexes', 'alter', 'rename', 'drop'];
 const POSTGRES_MAJOR = 18;
 const BOOKS = ['marmeon_table_owners', 'marmeon_secret_columns', 'marmeon_schema_markers'];
@@ -40,9 +41,10 @@ async function record(driver: 'sqlite' | 'pgsql'): Promise<Map<string, string>> 
     const written = new Map<string, string>();
     const books = bookkeepingConnection(connections);
     for (const group of GROUPS) {
-      const module: ModuleDefinition = { name: 'ddl', migrations: new URL(`../__fixtures__/migrations/ddl/${group}/`, import.meta.url) };
+      const directories = [group, ...(driver === 'pgsql' && group === 'alter' ? ['alter-pgsql'] : [])];
+      const modules: ModuleDefinition[] = directories.map((directory) => ({ name: 'ddl', migrations: new URL(`../__fixtures__/migrations/ddl/${directory}/`, import.meta.url) }));
       statements = [];
-      await new Migrator({ modules: [module], root: '/' } as unknown as Application, connections).migrate();
+      await new Migrator({ modules, root: '/' } as unknown as Application, connections).migrate();
       const content: string[] = [];
       for (const table of BOOKS) {
         const rows = (await sql<Record<string, unknown>>`select * from ${sql.table(table)}`.execute(books)).rows.map((row) => JSON.stringify(Object.fromEntries(Object.entries(row).sort())));

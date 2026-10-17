@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { CACHE_MIGRATION } from '@marmeon/cache/internal';
 import type { Clock, Logger } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
-import { Connections, Schema, sql, type ConnectionOptions } from '@marmeon/database';
+import { Connections, sql, type ConnectionOptions, type Migration } from '@marmeon/database';
+import { runMigration } from '@marmeon/database/internal';
 import { RedisConnections } from '@marmeon/redis';
 import { QUEUE_MIGRATION } from '../commands/failed.ts';
 import type { FailedJobStore, QueueDriver } from '../driver.ts';
@@ -53,18 +54,17 @@ export function redisConnections(url: string, prefix: string): RedisConnections 
 
 /** Runs the queue migration (the file `make:queue-table` copies), the cache's (locks) and the fixture table `handled`. */
 export async function migrate(connections: Connections): Promise<void> {
-  const schema = new Schema(connections.get(), connections.options().driver);
-  for (const file of [QUEUE_MIGRATION, CACHE_MIGRATION]) {
-    const migration = ((await import(file.href)) as { default: { up(schema: Schema): Promise<void> } }).default;
-    await migration.up(schema);
-  }
-  await schema.create('handled', (table) => {
-    table.string('uuid', 64);
-    table.integer('n');
-    table.integer('attempt');
-    table.integer('pid');
-    table.string('event');
-    table.bigInteger('at').nullable();
+  for (const file of [QUEUE_MIGRATION, CACHE_MIGRATION]) await runMigration(connections, ((await import(file.href)) as { default: Migration }).default);
+  await runMigration(connections, {
+    up: (schema) =>
+      schema.create('handled', (table) => {
+        table.string('uuid', 64);
+        table.integer('n');
+        table.integer('attempt');
+        table.integer('pid');
+        table.string('event');
+        table.bigInteger('at').nullable();
+      }),
   });
 }
 

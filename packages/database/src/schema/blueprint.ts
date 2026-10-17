@@ -20,6 +20,17 @@ interface ColumnSpec {
   references?: { table: string; column: string; onDelete?: OnDelete; inverse?: string };
 }
 
+/** The column descriptions of blueprints that are closed. */
+const closedSpecs = new WeakSet<ColumnSpec>();
+
+/** The error of a change to a plan after `up()` or `down()` returned. */
+export function closedPlan(): Error {
+  return new Error(
+    'The plan of this migration is closed: up() and down() build it synchronously, and a call that comes later (from a schema.data() callback, or after an await) would not be part of it. ' +
+      'Add the step in up() itself. See docs/migrations.md#changing-the-data.',
+  );
+}
+
 /** What a migration declares about a table beyond its columns — kept by the migrator, read by the connection. */
 export type TableMarker = 'soft_deletes' | 'timestamps';
 
@@ -29,10 +40,16 @@ export type TableMarker = 'soft_deletes' | 'timestamps';
  * checked against it.
  */
 export class Column<T> {
-  protected readonly spec: ColumnSpec;
+  readonly #spec: ColumnSpec;
 
   constructor(spec: ColumnSpec) {
-    this.spec = spec;
+    this.#spec = spec;
+  }
+
+  /** The column's description, for the modifiers; once the plan is closed it is not to be changed. */
+  protected get spec(): ColumnSpec {
+    if (closedSpecs.has(this.#spec)) throw closedPlan();
+    return this.#spec;
   }
 
   nullable(): Column<T | null> {
@@ -163,6 +180,8 @@ export class Blueprint {
   /** `timestamps()` and `softDeletes()` were called. */
   readonly markers = new Set<TableMarker>();
 
+  #sealed = false;
+
   constructor(table: string) {
     this.table = table;
   }
@@ -272,22 +291,41 @@ export class Blueprint {
 
   /** Changing a table only: drops a column. */
   dropColumn(name: string): void {
+    this.#open();
     this.drops.push(name);
   }
 
   /** Changing a table only: drops an index by name (`{table}_{columns}_index`). */
   dropIndex(name: string): void {
+    this.#open();
     this.dropIndexes.push(name);
   }
 
   /** Changing a table only: drops a unique index by name (`{table}_{columns}_unique`). SQLite drops no indexed column. */
   dropUnique(name: string): void {
+    this.#open();
     this.dropIndexes.push(name);
   }
 
   /** Changing a table only: renames a column. */
   renameColumn(from: string, to: string): void {
+    this.#open();
     this.renames.push({ from, to });
+  }
+
+  /**
+   * Closes the description once the callback that built it has returned: a column modifier or a new column after that (from an
+   * `async` callback, or a later step) throws instead of changing a table the plan already holds.
+   */
+  seal(): void {
+    this.#sealed = true;
+    for (const spec of this.columns) closedSpecs.add(spec);
+    for (const spec of this.columns) {
+      if (spec.references) Object.freeze(spec.references);
+      if (spec.default) Object.freeze(spec.default);
+      Object.freeze(spec);
+    }
+    for (const list of [this.columns, this.indexes, this.drops, this.dropIndexes, this.renames]) Object.freeze(list);
   }
 
   /** Every index to create: table-level ones and `.unique()` on columns — all named, so all droppable. */
@@ -296,7 +334,12 @@ export class Blueprint {
     return [...columnUniques, ...this.indexes];
   }
 
+  #open(): void {
+    if (this.#sealed) throw closedPlan();
+  }
+
   #index(columns: string | readonly string[], unique: boolean, name?: string): void {
+    this.#open();
     const list = typeof columns === 'string' ? [columns] : columns;
     this.indexes.push({ columns: list, unique, name: name ?? `${this.table}_${list.join('_')}_${unique ? 'unique' : 'index'}` });
   }
@@ -306,6 +349,7 @@ export class Blueprint {
   }
 
   #spec(name: string, type: Record<Driver, DataTypeExpression>, extra: Partial<ColumnSpec> = {}): ColumnSpec {
+    this.#open();
     if (this.columns.some((column) => column.name === name)) throw new Error(`Column "${name}" is defined twice on table "${this.table}".`);
     const spec: ColumnSpec = { name, type, nullable: false, primary: false, identity: false, unique: false, secret: false, ...extra };
     this.columns.push(spec);

@@ -5,11 +5,13 @@ import { Application } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { assertManaged, isReadable, loadColumns, prepareBookkeeping } from '../bookkeeping-setup.ts';
-import { bookkeepingAccess, bookkeepingConnection, noBookkeepingWrites } from '../books.ts';
+import { bookkeepingConnection } from '../books.ts';
 import { Connections } from '../connections.ts';
 import { danglingEntries, LOCK_TABLE, MARKERS_TABLE, MIGRATIONS_TABLE, OWNERS_TABLE, SECRETS_TABLE, VERSIONS_TABLE } from '../bookkeeping.ts';
 import { byCodePoint, type SchemaMarker } from '../introspection.ts';
-import { Schema, SchemaError, type SchemaRecorder } from '../schema/schema.ts';
+import { executePlan, planOf, type PlanStep, type SchemaRecorder } from '../schema/plan.ts';
+import { SchemaError } from '../schema/schema.ts';
+import { dropAllTables } from './drop-all.ts';
 import { MigrationLock, type HeldLock, type LockOptions } from './lock.ts';
 import type { Migration } from './migration.ts';
 
@@ -181,16 +183,19 @@ export class Migrator {
 
     const batch = (await this.#lastBatch()) + 1;
     const runs: MigrationRun[] = [];
+    // Every plan is made before the first migration runs: one that cannot build its plan leaves the whole run undone.
+    const plans = [];
     for (const file of pending) {
-      await this.#held?.heartbeat();
       const migration = await load(file);
-      const connection = this.#connectionOf(migration, file);
+      plans.push({ file, connection: this.#connectionOf(migration, file), plan: planOf(migration, 'up', `Migration ${file.name} (module "${file.module}")`) });
+    }
+    for (const { file, connection, plan } of plans) {
+      await this.#held?.heartbeat();
       const started = performance.now();
       // One transaction per migration: a failing one leaves no half-changed schema (SQLite and Postgres both roll back DDL).
       if (connection === 'default') {
         await db.transaction().execute(async (trx) => {
-          await migration.up(this.#schema(trx, file.module, connection));
-          await this.#verifyBooks(trx, connection, file);
+          await this.#execute(trx, file, connection, plan);
           await this.#held?.heartbeat(trx);
           await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
         });
@@ -201,8 +206,7 @@ export class Migrator {
         await this.#db(connection)
           .transaction()
           .execute(async (trx) => {
-            await migration.up(this.#schema(trx, file.module, connection));
-            await this.#verifyBooks(trx, connection, file);
+            await this.#execute(trx, file, connection, plan);
             await this.#held?.heartbeat(); // before the commit: a lock lost meanwhile rolls the migration back
           });
         await db.transaction().execute(async (trx) => {
@@ -256,9 +260,7 @@ export class Migrator {
         assertManaged(this.#connections, connection);
         await this.#refuseNewer(connection);
         // Through the bookkeeping connection: dropping everything is the way out of bookkeeping the app's connection refuses (an earlier release's).
-        const schema = new Schema(this.#books(connection), this.#driver(connection));
-        bookkeepingAccess.add(schema);
-        await schema.dropAllTables();
+        await dropAllTables(this.#books(connection), this.#driver(connection), true);
       }
       return connections;
     });
@@ -310,11 +312,11 @@ export class Migrator {
       const migration = await load(file);
       if (!migration.down) throw new Error(withCode('D16', `Cannot roll back "${row.name}" (module "${row.module}"): it has no down().`));
       const connection = this.#connectionOf(migration, file);
+      const plan = planOf(migration, 'down', `Migration ${row.name} (module "${row.module}")`);
       const started = performance.now();
       if (connection === 'default') {
         await db.transaction().execute(async (trx) => {
-          await migration.down!(this.#schema(trx, file.module, connection));
-          await this.#verifyBooks(trx, connection, file);
+          await this.#execute(trx, file, connection, plan);
           await this.#held?.heartbeat(trx);
           await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
         });
@@ -323,8 +325,7 @@ export class Migrator {
         await this.#db(connection)
           .transaction()
           .execute(async (trx) => {
-            await migration.down!(this.#schema(trx, file.module, connection));
-            await this.#verifyBooks(trx, connection, file);
+            await this.#execute(trx, file, connection, plan);
             await this.#held?.heartbeat();
           });
         await db.transaction().execute(async (trx) => {
@@ -353,7 +354,13 @@ export class Migrator {
     return name;
   }
 
-  #schema(trx: Kysely<Bookkeeping>, module: string, connection: string): Schema {
+  /** Runs a migration's plan in its transaction, and checks the books against what it left. */
+  async #execute(trx: Kysely<Bookkeeping>, file: MigrationFile, connection: string, plan: readonly PlanStep[]): Promise<void> {
+    await executePlan(trx, this.#driver(connection), plan, this.#recorder(trx, file.module));
+    await this.#verifyBooks(trx, connection, file);
+  }
+
+  #recorder(trx: Kysely<Bookkeeping>, module: string): SchemaRecorder {
     const owners: SchemaRecorder = {
       created: async (table) => {
         await trx.deleteFrom(OWNERS_TABLE).where('table_name', '=', table).execute();
@@ -389,8 +396,7 @@ export class Migrator {
         if (MARKER_COLUMNS[from]) await trx.deleteFrom(MARKERS_TABLE).where('table_name', '=', table).where('column_name', '=', '').where('marker', '=', MARKER_COLUMNS[from]).execute();
       },
     };
-    // The recorder writes the books with `trx` itself; what a migration holds as `schema.db` cannot.
-    return new Schema(trx.withPlugin(noBookkeepingWrites()), this.#driver(connection), owners);
+    return owners;
   }
 
   /** The markers of a dropped column: its own (an inverse name), and the table's marker it stood for. */

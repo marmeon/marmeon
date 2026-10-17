@@ -4,14 +4,18 @@ const lose = (db: unknown) => (globalThis as { loseMigrationLock?: (db: unknown)
 
 /** Loses the migration lock while it runs: the test sets `loseMigrationLock`. */
 export default defineMigration({
-  up: async (schema) => {
-    await schema.create('doomed', (table) => {
+  up: (schema) => {
+    schema.create('doomed', (table) => {
       table.id();
     });
-    await lose(schema.db);
+    schema.data(async (db) => {
+      await lose(db);
+    });
   },
-  down: async (schema) => {
-    await lose(schema.db);
-    await schema.drop('doomed');
+  down: (schema) => {
+    schema.data(async (db) => {
+      await lose(db);
+    });
+    schema.drop('doomed');
   },
 });

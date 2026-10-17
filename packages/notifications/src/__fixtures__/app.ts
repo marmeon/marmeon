@@ -1,6 +1,7 @@
 import { Clock, createApplication, Logger, type Application, type ModuleDefinition } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
-import { Connections, DatabaseServiceProvider, Schema, sql } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, sql, type Migration } from '@marmeon/database';
+import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import { Mailer, MailServiceProvider, type Mailable } from '@marmeon/mail';
 import { MailFake } from '@marmeon/mail/testing';
@@ -172,11 +173,7 @@ export async function notificationApp(
     },
   });
   const connections = application.container.make(Connections);
-  const schema = new Schema(connections.get(), connections.options().driver);
-  for (const file of [NOTIFICATIONS_MIGRATION, QUEUE_MIGRATION]) {
-    const migration = ((await import(file.href)) as { default: { up(schema: Schema): Promise<void> } }).default;
-    await migration.up(schema);
-  }
+  for (const file of [NOTIFICATIONS_MIGRATION, QUEUE_MIGRATION]) await runMigration(connections, ((await import(file.href)) as { default: Migration }).default);
   return Object.assign(application, {
     clock,
     mail,

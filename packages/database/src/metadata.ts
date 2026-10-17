@@ -229,6 +229,7 @@ export function changesSchema(node: RootOperationNode): boolean {
 }
 
 const STATEMENT_DDL = /(?:create|alter|drop)\b/iy;
+const STATEMENT_DDL_OR_DO = /(?:create|alter|drop|do)\b/iy;
 const DOLLAR_TAG = /\$(?:[A-Za-z_]\w*)?\$/y;
 
 /**
@@ -237,9 +238,10 @@ const DOLLAR_TAG = /\$(?:[A-Za-z_]\w*)?\$/y;
  * (a literal, a CTE named `created`) must not reload the metadata, because the reload would make it measurably slower than
  * the same query without the word. A missed change leaves the metadata as loaded until the next recognized one; a stray match
  * only reloads. An unterminated literal, quoted identifier, comment or dollar tag runs to the end of the text; nested comments
- * and `E''` escapes are not parsed.
+ * and `E''` escapes are not parsed. With `withDo`, a statement that begins with `do` (a block of Postgres code) counts too.
  */
-export function isRawSchemaChange(sql: string): boolean {
+export function isRawSchemaChange(sql: string, withDo = false): boolean {
+  const statement = withDo ? STATEMENT_DDL_OR_DO : STATEMENT_DDL;
   const end = sql.length;
   let i = 0;
   let atStart = true;
@@ -266,8 +268,8 @@ export function isRawSchemaChange(sql: string): boolean {
       i++;
     } else {
       if (atStart) {
-        STATEMENT_DDL.lastIndex = i;
-        if (STATEMENT_DDL.test(sql)) return true;
+        statement.lastIndex = i;
+        if (statement.test(sql)) return true;
       }
       atStart = false;
       i++;

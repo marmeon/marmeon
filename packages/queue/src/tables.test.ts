@@ -1,6 +1,6 @@
 import { createApplication, HealthChecks, Logger } from '@marmeon/core';
-import { SchemaRequirements } from '@marmeon/database/internal';
-import { DatabaseServiceProvider, Schema, type Migration } from '@marmeon/database';
+import { DatabaseServiceProvider, type Migration } from '@marmeon/database';
+import { runMigration, SchemaRequirements } from '@marmeon/database/internal';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import { RedisServiceProvider } from '@marmeon/redis';
 import { CliServiceProvider } from 'marmeon';
@@ -16,9 +16,8 @@ describe.each(databaseKinds)('the queue migration on %s', (kind) => {
     const { target, drop } = await freshTarget(kind);
     const connections = databaseConnections(connectionOptions(target as SharedTarget));
     try {
-      const schema = new Schema(connections.get(), connections.options().driver);
       // The target was made by the stub; the same migration again is an app migration that creates jobs a second time.
-      await expect((await load(QUEUE_MIGRATION)).up(schema)).rejects.toThrow(/jobs/);
+      await expect(runMigration(connections, await load(QUEUE_MIGRATION))).rejects.toThrow(/jobs/);
     } finally {
       await connections.destroy();
       await drop();

@@ -1,6 +1,7 @@
 import { Gate, type Auth, type Authenticated } from '@marmeon/auth';
 import { createApplication, defineModule, Logger, type Application } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider, Schema, sql, type QueryEvent } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, sql, type QueryEvent } from '@marmeon/database';
+import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import { Controller, defineRequest, HttpServiceProvider, type ContextOf } from '@marmeon/http';
 import { IncomingRequest, PROTOCOL_VERSION } from '@marmeon/http/internal';
@@ -395,22 +396,27 @@ export async function tableApp(driver: TestDriver): Promise<TableTestApp> {
     },
   });
   const connections = application.container.make(Connections);
-  const schema = new Schema(connections.get(), connections.options().driver);
-  await schema.create('teams', (table) => {
-    table.id();
-    table.string('name');
+  await runMigration(connections, {
+    up: (schema) =>
+      schema.create('teams', (table) => {
+        table.id();
+        table.string('name');
+      }),
   });
   await connections.get().insertInto('teams').values([{ id: 1, name: 'Team one' }, { id: 2, name: 'Team two' }]).execute();
-  await schema.create('members', (table) => {
-    table.id();
-    table.foreignId('team_id').constrained();
-    table.string('name');
-    table.string('email');
-    table.string('role');
-    table.string('password').default('secret-hash');
-    table.timestamp('created_at');
-    table.timestamp('last_seen_at').nullable();
-    table.boolean('active').nullable();
+  await runMigration(connections, {
+    up: (schema) =>
+      schema.create('members', (table) => {
+        table.id();
+        table.foreignId('team_id').constrained();
+        table.string('name');
+        table.string('email');
+        table.string('role');
+        table.string('password').default('secret-hash');
+        table.timestamp('created_at');
+        table.timestamp('last_seen_at').nullable();
+        table.boolean('active').nullable();
+      }),
   });
   const queries: QueryEvent[] = [];
   connections.onQuery((query) => void queries.push(query));
