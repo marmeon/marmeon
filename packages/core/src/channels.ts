@@ -270,6 +270,8 @@ export interface ExceptionMessage extends MessageBase {
   readonly status: number;
   readonly method: string;
   readonly path: string;
+  /** The request's `Sec-Fetch-Site` (`same-origin`, `cross-site`, …), when the browser sent it. */
+  readonly fetchSite?: string;
 }
 
 /**

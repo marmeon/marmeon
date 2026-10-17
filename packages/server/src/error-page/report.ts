@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { errorCodeOf, type Application, type ErrorCode, type ErrorSolutions, type Redactor, type Solution } from '@marmeon/core';
@@ -32,10 +32,14 @@ export interface StackFrame {
   readonly snippet?: readonly SnippetLine[];
 }
 
+/** Frames a report keeps: a stack deeper than this is cut off. */
+const MAX_FRAMES = 50;
+
 /** A stack's frames — Node's `at fn (file:line:column)` lines; `file://` URLs become paths. */
 export function parseStack(stack: string, root: string): StackFrame[] {
   const frames: StackFrame[] = [];
   for (const line of stack.split('\n')) {
+    if (frames.length >= MAX_FRAMES) break;
     const match = /^\s*at (?:(.+?) \((.+?):(\d+):(\d+)\)|(.+?):(\d+):(\d+))$/.exec(line);
     if (!match) continue;
     const fn = match[1]?.replace(/^async /, '');
@@ -57,11 +61,13 @@ export function parseStack(stack: string, root: string): StackFrame[] {
 }
 
 /** `file` with code snippets for the frames that matter: the app's first ones, or the very first frame. */
-export function withSnippets(frames: readonly StackFrame[], context = SNIPPET_CONTEXT): StackFrame[] {
+export function withSnippets(frames: readonly StackFrame[], context = SNIPPET_CONTEXT, root?: string): StackFrame[] {
   const sources = new Map<string, string[] | undefined>();
   const lines = (file: string) => {
     if (!sources.has(file)) {
       try {
+        // Only a regular file inside the app: a frame's path is text, and a FIFO or `/dev/stdin` would hang the read.
+        if (root !== undefined && !(file.startsWith(root.endsWith(sep) ? root : root + sep) && lstatSync(file).isFile())) throw new Error('not a file of the app');
         sources.set(file, readFileSync(file, 'utf8').split(/\r?\n/));
       } catch {
         sources.set(file, undefined);
@@ -151,10 +157,12 @@ export interface ReportInput {
   /** The request's parsed body (the router's `input()`), if it can still be had. */
   readonly body?: () => Promise<unknown>;
   readonly recording?: RequestRecording | undefined;
+  /** Whether frames get the code around their line (default true). The Markdown does not print it. */
+  readonly snippets?: boolean;
 }
 
 /** Builds the report of an error — every value that leaves the server passes the app's {@link Redactor}. */
-export async function buildReport({ error, status, request, requestId, app, redactor, solutions, route, body, recording }: ReportInput): Promise<ErrorReport> {
+export async function buildReport({ error, status, request, requestId, app, redactor, solutions, route, body, recording, snippets = true }: ReportInput): Promise<ErrorReport> {
   const { root } = app;
   const failure = error instanceof Error ? error : new Error(String(error));
   const causes: { name: string; message: string }[] = [];
@@ -189,7 +197,7 @@ export async function buildReport({ error, status, request, requestId, app, reda
     code: errorCodeOf(failure),
     error: { name: failure.name, message: redactor.text(failure.message) },
     causes,
-    frames: withSnippets(parseStack(failure.stack ?? '', root)).map((frame) => ({ ...frame, ...(frame.fn ? { fn: redactor.text(frame.fn) } : {}) })),
+    frames: framesOf(failure, root, snippets).map((frame) => ({ ...frame, ...(frame.fn ? { fn: redactor.text(frame.fn) } : {}) })),
     solutions: found.map((solution) => ({
       ...(solution.code ? { code: solution.code } : {}),
       title: redactor.text(solution.title),
@@ -218,6 +226,20 @@ export async function buildReport({ error, status, request, requestId, app, reda
       packages: app.packages.map((name) => ({ name, version: packageVersion(join(root, 'node_modules', name))?.version })),
     },
   };
+}
+
+/**
+ * The frames of the error's stack, read after its `name: message` header: a message is text an attacker may influence, and a line
+ * in it that looks like `at fn (/dev/stdin:1:1)` is no frame.
+ */
+function framesOf(failure: Error, root: string, snippets: boolean): StackFrame[] {
+  const stack = failure.stack ?? '';
+  // The stack was captured with the message as it was then; the end of that text, found by the message, is where the frames begin.
+  const at = failure.message === '' ? -1 : stack.indexOf(failure.message);
+  const header = failure.message === '' ? failure.name : undefined;
+  const body = at !== -1 ? stack.slice(at + failure.message.length) : header !== undefined && stack.startsWith(header) ? stack.slice(header.length) : stack;
+  const frames = parseStack(body, root);
+  return snippets ? withSnippets(frames, SNIPPET_CONTEXT, root) : frames;
 }
 
 function packageVersion(dir: string): { name?: string; version?: string } | undefined {

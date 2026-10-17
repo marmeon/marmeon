@@ -49,7 +49,7 @@ channel, the framework builds no report for it at all, so the channels cost noth
 | `render.ssr` | Each server rendering of a document. | Component, and whether it rendered completely or streamed. |
 | `command.run` | Each `marmeon` command in a process of its own. | Command, arguments, exit code. |
 | `log` | Every log entry, at any level. | Level, message, context. |
-| `exception` | The error a request ends in. | The error, status, method and path. |
+| `exception` | The error a request ends in. | The error, status, method, path and the request's `Sec-Fetch-Site`, if it sent one. |
 | `event` | Every event dispatched. | The event, its name, its listeners. |
 
 Every report names its app and carries the time it started and where it happened: the `requestId`, the `jobId` or the scheduled

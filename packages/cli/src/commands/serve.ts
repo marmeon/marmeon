@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { Application, environment, Logger } from '@marmeon/core';
 import { CLUSTER_WORKER } from '@marmeon/core/internal';
 import { ServerConfig, startServer, ViteSetupError } from '@marmeon/server';
-import { refuseUndecidedRoutes, heldOnLoopback, shadowedLocalhost } from '@marmeon/server/internal';
+import { refuseUndecidedRoutes, heldOnLoopback, shadowedLocalhost, startLastError } from '@marmeon/server/internal';
 import { RouteAccessError } from '@marmeon/router';
 import type { CommandInput } from '../command.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
@@ -91,6 +91,8 @@ export class ServeCommand {
       output.error(error.message);
       return 1;
     }
+    // The report of the last 5xx for agents (docs/errors.md#the-development-error-page): only where the development server runs, not in `tinker` or `db:migrate`.
+    const lastError = development ? await startLastError(this.#app) : undefined;
     const companions = development ? this.#devProcesses.all().map((definition) => this.#companion(definition, root)) : [];
     // Everything the server needs is loaded now: write the compile cache (`marmeon start`) instead of waiting for the
     // process to exit — a container that is killed never gets there. Does nothing without a cache.
@@ -107,6 +109,7 @@ export class ServeCommand {
         : `${signal} received, shutting down`,
     );
     views?.close();
+    lastError?.close();
     await Promise.all([server.close({ immediately: signal !== 'SIGTERM' }), ...companions.map((companion) => companion.stop())]);
     // A cluster worker: the channel to the primary would keep it alive after the app shut down.
     if (cluster.isWorker) process.disconnect?.();
