@@ -1,7 +1,8 @@
 import { withCode } from '@marmeon/core/internal';
-import { OperationNodeTransformer, type Kysely, type KyselyPlugin, type PluginTransformQueryArgs, type PluginTransformResultArgs, type QueryResult, type RootOperationNode, type TableNode, type UnknownRow } from 'kysely';
+import { OperationNodeTransformer, RawNode, type Kysely, type KyselyPlugin, type PluginTransformQueryArgs, type PluginTransformResultArgs, type QueryResult, type RootOperationNode, type TableNode, type UnknownRow } from 'kysely';
 import { isBookkeepingName } from './bookkeeping.ts';
 import type { Connections } from './connections.ts';
+import { isRawSchemaChange } from './metadata.ts';
 import { SchemaError } from './schema/schema-error.ts';
 
 // How the migrator reaches the bookkeeping of a database whose bookkeeping the app's connection refuses. Not API: only the migrator
@@ -80,7 +81,7 @@ export function onlyBookkeeping(): KyselyPlugin {
   });
 }
 
-/** On `schema.db` in a migration: a write to the migrator's tables throws before it is sent. Raw SQL is not looked into. */
+/** On the `db` of a `schema.data()` step: a write to the migrator's tables throws before it is sent. Raw SQL is not looked into. */
 export function noBookkeepingWrites(): KyselyPlugin {
   return new Plugin(WRITES, (table) => {
     const name = lastSegment(table.table.identifier.name);
@@ -89,6 +90,41 @@ export function noBookkeepingWrites(): KyselyPlugin {
       withCode('D4', `Cannot write to "${name}": the table belongs to the migrator's bookkeeping, and changing it by hand would make the secret columns or the soft deletes unreadable. See docs/migrations.md#how-the-migrator-keeps-track.`),
     );
   });
+}
+
+/** The nodes of statements that create, change or drop schema objects. */
+const SCHEMA_CHANGES = new Set([
+  'CreateTableNode', 'AlterTableNode', 'DropTableNode', 'CreateIndexNode', 'DropIndexNode', 'CreateViewNode', 'DropViewNode',
+  'CreateSchemaNode', 'DropSchemaNode', 'CreateTypeNode', 'DropTypeNode', 'AlterTypeNode', 'RefreshMaterializedViewNode',
+]);
+
+/** The text of a raw node with the raw nodes inside it written out (`sql\`${sql.raw('create table …')}\``); other parameters are a `?`. */
+export function rawText(node: RawNode): string {
+  let text = node.sqlFragments[0] ?? '';
+  node.parameters.forEach((parameter, i) => {
+    text += (RawNode.is(parameter) ? rawText(parameter) : '?') + (node.sqlFragments[i + 1] ?? '');
+  });
+  return text;
+}
+
+/**
+ * On the `db` of a `schema.data()` step: DDL, in the query builder or as raw SQL that begins with `create`, `alter`, `drop` or `do`, throws before it is sent. It is a guard
+ * against mistakes, not a sandbox: a plugin-free connection or a compiled query is not looked into. A data step runs after
+ * the plan was made; a schema change there would be missing from what the migration declares.
+ */
+export function noSchemaChanges(): KyselyPlugin {
+  const refuse = (): never => {
+    throw new SchemaError(
+      withCode('D4', 'Cannot change the schema in a schema.data() step: the plan of a migration is made before it runs, and a change made here would not be part of it. Use schema.create(), schema.alter() or schema.raw() instead. See docs/migrations.md#changing-the-data.'),
+    );
+  };
+  return {
+    transformQuery({ node }: PluginTransformQueryArgs): RootOperationNode {
+      if (SCHEMA_CHANGES.has(node.kind) || (RawNode.is(node) && isRawSchemaChange(rawText(node), true))) refuse();
+      return node;
+    },
+    transformResult: ({ result }: PluginTransformResultArgs): Promise<QueryResult<UnknownRow>> => Promise.resolve(result),
+  };
 }
 
 /** The `Schema`s the migrator itself made: they may change its own tables. Nobody else holds one of these. */

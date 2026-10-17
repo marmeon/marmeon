@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
-import { Connections, DatabaseServiceProvider, Migrator, Schema } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, Migrator, type Migration } from '@marmeon/database';
+import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { RedisServiceProvider } from '@marmeon/redis';
@@ -229,8 +230,8 @@ async function boot(driver: Driver, users: UserProvider, options: { signIns?: ne
   await application.container.make(Migrator).migrate();
   const connections = application.container.make(Connections);
   if (driver.sessionsTable) {
-    const migration = ((await import(SESSIONS_MIGRATION.href)) as { default: { up(schema: Schema): Promise<void> } }).default;
-    await migration.up(new Schema(connections.get(), connections.options('default').driver));
+    const migration = ((await import(SESSIONS_MIGRATION.href)) as { default: Migration }).default;
+    await runMigration(connections, migration);
   }
   expect(application.container.make(SessionConfig).driver).toBe(env.SESSION_DRIVER);
   expect(application.container.make(SessionStore).constructor.name, driver.name).toBe(driver.store);

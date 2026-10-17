@@ -13,7 +13,9 @@ const modules: ModuleDefinition[] = [
 describe.each(drivers)('schema markers on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
-  const migrator = () => new Migrator({ modules, root: '/' } as unknown as Application, connections);
+  // SQLite cannot drop a column a foreign key uses: the migration that does is loaded on Postgres only.
+  const all = driver === 'pgsql' ? [...modules, { name: 'drafts', migrations: fixtures('markers-pgsql') }] : modules;
+  const migrator = () => new Migrator({ modules: all, root: '/' } as unknown as Application, connections);
   const markers = async () => (await migrator().markers()).map((m) => [m.table, m.column, m.marker, m.value]);
   const users = [
     ['users', '', 'soft_deletes', null],
@@ -34,7 +36,7 @@ describe.each(drivers)('schema markers on %s', (driver) => {
   });
 
   it('forgets an inverse name with its foreign key column, and knows it again with the column', async () => {
-    await migrator().rollback({ steps: 1 });
+    if (driver === 'pgsql') await migrator().rollback({ steps: 1 });
     expect(await markers()).toEqual([inverse, ...users]);
   });
 

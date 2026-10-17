@@ -8,9 +8,11 @@ import { defineMigration } from '@marmeon/database';
 const TABLE = 'personal_access_tokens';
 
 export default defineMigration({
-  up: async (schema) => {
-    await schema.db.deleteFrom(TABLE).execute();
-    await schema.alter(TABLE, (table) => table.unique('token_hash'));
+  up: (schema) => {
+    schema.data(async (db) => {
+      await db.deleteFrom(TABLE).execute();
+    });
+    schema.alter(TABLE, (table) => table.unique('token_hash'));
   },
   down: (schema) => schema.alter(TABLE, (table) => table.dropUnique(`${TABLE}_token_hash_unique`)),
 });

@@ -6,7 +6,8 @@ import { CommandRegistry } from 'marmeon/internal';
 import { Clock, createApplication, currentLogContext, defineModule, EventRegistry, inTransaction, listen, Logger, Redactor, type Application, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { channels, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
-import { Connections, DatabaseServiceProvider, Schema } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, type Migration } from '@marmeon/database';
+import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Queue, QueueConnections, QueueServiceProvider, type JobPayload } from '@marmeon/queue';
 import { QUEUE_MIGRATION } from '@marmeon/queue/internal';
@@ -556,8 +557,7 @@ describe('s.job()', () => {
       env: { APP_KEY: generateKey(), DB_MANAGED: 'false', DB_DATABASE: join(dir, 'app.sqlite'), QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database' },
       modules: [defineModule({ name: 'jobs', jobs: [StatsJob] })],
     });
-    const schema = new Schema(booted.app.container.make(Connections).get(), 'sqlite');
-    for (const file of [QUEUE_MIGRATION, CACHE_MIGRATION]) await ((await import(file.href)) as { default: { up(schema: Schema): Promise<void> } }).default.up(schema);
+    for (const file of [QUEUE_MIGRATION, CACHE_MIGRATION]) await runMigration(booted.app.container.make(Connections), ((await import(file.href)) as { default: Migration }).default);
     return booted;
   }
 

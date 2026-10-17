@@ -1,5 +1,6 @@
 import { createApplication, defineModule, err, ok, type Container } from '@marmeon/core';
-import { DatabaseServiceProvider, Migrator, Connections, Schema } from '@marmeon/database';
+import { DatabaseServiceProvider, Migrator, Connections, type Migration } from '@marmeon/database';
+import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
@@ -106,8 +107,8 @@ async function boot(users: UserProvider, driver: 'memory' | 'database' = 'memory
   await application.container.make(Migrator).migrate();
   if (driver === 'database') {
     const connections = application.container.make(Connections);
-    const migration = ((await import(SESSIONS_MIGRATION.href)) as { default: { up(schema: Schema): Promise<void> } }).default;
-    await migration.up(new Schema(connections.get(), connections.options('default').driver));
+    const migration = ((await import(SESSIONS_MIGRATION.href)) as { default: Migration }).default;
+    await runMigration(connections, migration);
   }
   const kernel = createHttpKernel(application);
   const browser = (jar: Map<string, string> = new Map()) => {

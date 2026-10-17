@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { ErrorSolutions, type Application, type ModuleDefinition } from '@marmeon/core';
-import { sql, type Kysely } from 'kysely';
+import { AlterTableBuilder, sql, type Kysely } from 'kysely';
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { BOOKKEEPING_READERS, isBookkeepingName, LEGACY, MARKER_KINDS, VERSIONS_TABLE } from './bookkeeping.ts';
 import { bookkeepingConnection } from './books.ts';
@@ -10,6 +10,8 @@ import type { TypeGenerator } from './types-gen/generator.ts';
 import type { CommandInput } from 'marmeon';
 import { BookkeepingVersionError, Connections, DatabaseHealthCheck, Migrator, Repository, Schema, SchemaError, type Migration } from './index.ts';
 import { tableColumns } from './introspection.ts';
+import { dropAllTables } from './migrations/drop-all.ts';
+import { runMigration } from './migrations/run.ts';
 import type { TableMarker } from './schema/blueprint.ts';
 import { databaseSolutions } from './solutions.ts';
 import { SchemaRequirements } from './upgrades.ts';
@@ -21,7 +23,10 @@ const modules: ModuleDefinition[] = [
   { name: 'accounts', migrations: fixtures('accounts') },
   { name: 'drafts', migrations: fixtures('markers') },
 ];
-const migrator = (connections: Connections, only: ModuleDefinition[] = modules) => new Migrator({ modules: only, root: '/' } as unknown as Application, connections);
+// SQLite cannot drop a column a foreign key uses, so that migration is loaded on Postgres only.
+const pgsqlOnly: ModuleDefinition = { name: 'drafts', migrations: fixtures('markers-pgsql') };
+const migrator = (connections: Connections, only: ModuleDefinition[] = modules) =>
+  new Migrator({ modules: only === modules && connections.options().driver === 'pgsql' ? [...modules, pgsqlOnly] : only, root: '/' } as unknown as Application, connections);
 
 const NEW = ['marmeon_migrations', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions'];
 const OLD = ['migrations', 'schema_markers', 'secret_columns', 'table_owners'];
@@ -182,14 +187,15 @@ describe.each(drivers)('the migrator keeps its bookkeeping in marmeon_ tables on
       const later: ModuleDefinition = { name: 'later', migrations: fixtures('plurals') };
       const ran = await migrator(connections, [...modules, later]).migrate();
       expect(ran.map((run) => run.module)).toEqual(['later']);
-      expect((await sql<{ n: number }>`select count(*) as n from marmeon_migrations`.execute(connections.get())).rows[0]!.n).toBe(9);
+      expect((await sql<{ n: number }>`select count(*) as n from marmeon_migrations`.execute(connections.get())).rows[0]!.n).toBe(driver === 'pgsql' ? 9 : 8); // Postgres has one migration more (the column drop)
     });
 
     it('leaves the old tables as they were, and no marmeon_ table, when moving fails half way', async () => {
-      const original = Schema.prototype.rename;
+      // The second table's rename fails when it runs, after the first was done.
+      const original = AlterTableBuilder.prototype.renameTo;
       let calls = 0;
-      const spy = vi.spyOn(Schema.prototype, 'rename').mockImplementation(function (this: Schema, ...args: Parameters<Schema['rename']>) {
-        if (++calls === 2) return Promise.reject(new Error('boom'));
+      const spy = vi.spyOn(AlterTableBuilder.prototype, 'renameTo').mockImplementation(function (this: AlterTableBuilder, ...args: Parameters<typeof original>) {
+        if (++calls === 2) return { execute: () => Promise.reject(new Error('boom')) } as never;
         return original.apply(this, args);
       });
       try {
@@ -197,6 +203,7 @@ describe.each(drivers)('the migrator keeps its bookkeeping in marmeon_ tables on
       } finally {
         spy.mockRestore();
       }
+      expect(calls).toBeGreaterThanOrEqual(2);
       const tables = await allTables(bookkeepingConnection(connections));
       expect(tables).toEqual(expect.arrayContaining(OLD));
       expect(tables.filter((table) => NEW.includes(table))).toEqual([]);
@@ -366,15 +373,15 @@ describe.each(drivers)('the migrator keeps its bookkeeping in marmeon_ tables on
     it('refuses to create, alter, drop or rename a name of the bookkeeping — placeholders and the old names included', async () => {
       await migrator(connections).migrate();
       await sql`select 1`.execute(connections.get()); // loaded
-      const schema = new Schema(connections.get(), driver);
+      const schema = new Schema();
       const names = [...NEW, ...OLD, 'Migrations', 'marmeon_migration_lock'];
       for (const name of names) {
-        await expect(schema.create(name, (table) => table.string('x'))).rejects.toThrow(SchemaError);
-        await expect(schema.alter(name, (table) => table.string('x'))).rejects.toThrow(SchemaError);
-        await expect(schema.drop(name)).rejects.toThrow(/\[marmeon:D4\]/);
-        await expect(schema.dropIfExists(name)).rejects.toThrow(SchemaError);
-        await expect(schema.rename(name, 'elsewhere')).rejects.toThrow(SchemaError);
-        await expect(schema.rename('users', name)).rejects.toThrow(SchemaError);
+        expect(() => schema.create(name, (table) => table.string('x'))).toThrow(SchemaError);
+        expect(() => schema.alter(name, (table) => table.string('x'))).toThrow(SchemaError);
+        expect(() => schema.drop(name)).toThrow(/\[marmeon:D4\]/);
+        expect(() => schema.dropIfExists(name)).toThrow(SchemaError);
+        expect(() => schema.rename(name, 'elsewhere')).toThrow(SchemaError);
+        expect(() => schema.rename('users', name)).toThrow(SchemaError);
       }
       expect(await allTables(connections.get<any>())).toEqual(expect.arrayContaining([...NEW]));
     });
@@ -386,7 +393,7 @@ describe.each(drivers)('the migrator keeps its bookkeeping in marmeon_ tables on
         try {
           await migrator(connectionsHere.connections).migrate();
           const db = connectionsHere.connections.get<any>();
-          await expect(drops(table).up(new Schema(db, driver))).rejects.toThrow(SchemaError);
+          await expect(runMigration(connectionsHere.connections, drops(table))).rejects.toThrow(SchemaError);
           expect(await allTables(db)).toEqual(expect.arrayContaining(NEW));
         } finally {
           await connectionsHere.close();
@@ -515,17 +522,16 @@ describe.each(drivers)('the schema builder and the bookkeeping, on %s', (driver)
   afterEach(() => close());
 
   it('looks at the last segment of a qualified name', async () => {
-    const schema = new Schema(connections.get(), driver);
+    const schema = new Schema();
     const qualified = driver === 'pgsql' ? 'public' : 'main';
     for (const name of ['marmeon_secret_columns', 'secret_columns', 'marmeon_versions']) {
-      await expect(schema.drop(`${qualified}.${name}`)).rejects.toThrow(SchemaError);
-      await expect(schema.rename('users', `${qualified}.${name}`)).rejects.toThrow(SchemaError);
+      expect(() => schema.drop(`${qualified}.${name}`)).toThrow(SchemaError);
+      expect(() => schema.rename('users', `${qualified}.${name}`)).toThrow(SchemaError);
     }
   });
 
   it('keeps the migrator tables when it drops every table, and when the migrator does it drops them too', async () => {
-    const schema = new Schema(connections.get(), driver);
-    await schema.dropAllTables();
+    await dropAllTables(connections.get(), driver, false);
     const tables = await allTables(connections.get<any>());
     expect(tables).not.toContain('users');
     expect(tables).toEqual(expect.arrayContaining(NEW));
@@ -533,7 +539,7 @@ describe.each(drivers)('the schema builder and the bookkeeping, on %s', (driver)
     expect(await allTables(connections.get<any>())).toContain('users');
   });
 
-  it('refuses a write to the books through schema.db in a migration — and records nothing', async () => {
+  it('refuses a write to the books through schema.data() in a migration — and records nothing', async () => {
     const writes: ModuleDefinition = { name: 'writes', migrations: fixtures('writes-books') };
     await expect(migrator(connections, [...modules, writes]).migrate()).rejects.toThrow(/\[marmeon:D4\]/);
     expect((await sql<{ n: number }>`select count(*) as n from marmeon_secret_columns where table_name = 'accounts'`.execute(connections.get())).rows[0]!.n).toBeGreaterThan(0);

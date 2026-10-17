@@ -788,9 +788,9 @@ export default defineMigration({
 const BLANK_MIGRATION = `import { defineMigration } from '@marmeon/database';
 
 export default defineMigration({
-  up: async (schema) => {
-    // await schema.create(…) / schema.alter(…) / schema.db for data
+  up: (schema) => {
+    // schema.create(…) / schema.alter(…) for tables, schema.data(async (db) => …) for data
   },
-  down: async (schema) => {},
+  down: (schema) => {},
 });
 `;

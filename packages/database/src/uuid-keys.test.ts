@@ -2,7 +2,8 @@ import type { Application, ModuleDefinition } from '@marmeon/core';
 import type { Generated } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
-import { Migrator, RecordNotFoundError, Repository, Schema, type Connections } from './index.ts';
+import { Migrator, RecordNotFoundError, Repository, type Connections } from './index.ts';
+import { runMigration } from './migrations/run.ts';
 
 interface UuidTables {
   teams: { id: Generated<string>; name: string };
@@ -104,10 +105,12 @@ describe.each(drivers)('Adding a UUIDv7 column to an existing table on %s', (dri
 
   beforeAll(async () => {
     ({ connections, close } = await freshConnections(driver));
-    const schema = new Schema(connections.get<any>(), driver);
-    await schema.create('notes', (table) => {
-      table.id();
-      table.string('title');
+    await runMigration(connections, {
+      up: (schema) =>
+        schema.create('notes', (table) => {
+          table.id();
+          table.string('title');
+        }),
     });
     for (const title of ['a', 'b', 'c']) await connections.get<any>().insertInto('notes').values({ title }).execute();
   });
@@ -117,12 +120,17 @@ describe.each(drivers)('Adding a UUIDv7 column to an existing table on %s', (dri
 
   if (driver === 'sqlite') {
     it('is refused before anything changes', async () => {
-      const schema = new Schema(connections.get<any>(), driver);
       const before = await columnsOf();
       await expect(
-        schema.alter('notes', (table) => {
-          table.string('subtitle').nullable();
-          table.uuid('public_id').unique().useUuidv7();
+        runMigration(connections, {
+          up: (schema) => {
+            // The refusal covers the whole plan: nothing before the offending step runs either.
+            schema.alter('notes', (table) => table.string('title2').nullable());
+            schema.alter('notes', (table) => {
+              table.string('subtitle').nullable();
+              table.uuid('public_id').unique().useUuidv7();
+            });
+          },
         }),
       ).rejects.toThrow(/schema\.alter\('notes'\) cannot add the UUIDv7 column "public_id" on SQLite.*docs\/migrations\.md#uuid-keys/);
       expect(await columnsOf()).toEqual(before);
@@ -130,8 +138,11 @@ describe.each(drivers)('Adding a UUIDv7 column to an existing table on %s', (dri
   } else {
     it('gives every existing row its own UUIDv7, and new rows too', async () => {
       const db = connections.get<any>();
-      await new Schema(db, driver).alter('notes', (table) => {
-        table.uuid('public_id').unique().useUuidv7();
+      await runMigration(connections, {
+        up: (schema) =>
+          schema.alter('notes', (table) => {
+            table.uuid('public_id').unique().useUuidv7();
+          }),
       });
       const ids = (await db.selectFrom('notes').select('public_id').execute()).map((row: { public_id: string }) => row.public_id);
       expect(ids).toHaveLength(3);

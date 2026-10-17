@@ -11,7 +11,8 @@ import { Connections } from './connections.ts';
 import { UpgradeMigrationsCheck } from './checks.ts';
 import { DatabaseHealthCheck } from './health.ts';
 import { DatabaseServiceProvider } from './provider.ts';
-import { Schema } from './schema/schema.ts';
+import { runMigration } from './migrations/run.ts';
+import type { Schema } from './schema/schema.ts';
 import { collectUpgrades, SchemaRequirements, type MigrationUpgrade } from './upgrades.ts';
 
 const upgrade = (revision: number, name = `upgrade_widgets_${revision}`, set = 'widgets'): MigrationUpgrade => ({
@@ -194,6 +195,8 @@ describe.each(drivers)('schema.rename with indexes on %s', (driver) => {
   });
   afterAll(() => close());
 
+  const run = (up: (schema: Schema) => void) => runMigration(connections, { up });
+
   const build = (schema: Schema, name: string) =>
     schema.create(name, (table) => {
       table.id();
@@ -221,12 +224,13 @@ describe.each(drivers)('schema.rename with indexes on %s', (driver) => {
   }
 
   it('leaves a table as one created under the new name', async () => {
-    const schema = new Schema(connections.get(), driver);
-    await build(schema, 'old_things');
-    await build(schema, 'fresh_things');
-    await schema.rename('old_things', 'fresh_things_renamed', { indexes: true });
+    await run((schema) => {
+      build(schema, 'old_things');
+      build(schema, 'fresh_things');
+      schema.rename('old_things', 'fresh_things_renamed', { indexes: true });
+    });
     const renamed = await describeTable('fresh_things_renamed');
-    await build(schema, 'fresh_things_made');
+    await run((schema) => build(schema, 'fresh_things_made'));
     const made = await describeTable('fresh_things_made');
     const alike = (value: object, from: string, to: string) => JSON.parse(JSON.stringify(value).replaceAll(from, to));
     expect(alike(renamed, 'fresh_things_renamed', 'T')).toEqual(alike(made, 'fresh_things_made', 'T'));
@@ -234,20 +238,22 @@ describe.each(drivers)('schema.rename with indexes on %s', (driver) => {
   });
 
   it('renames each name once when the new name begins with the old one', async () => {
-    const schema = new Schema(connections.get(), driver);
-    await build(schema, 'jobs');
-    await schema.rename('jobs', 'jobs_archive', { indexes: true });
+    await run((schema) => {
+      build(schema, 'jobs');
+      schema.rename('jobs', 'jobs_archive', { indexes: true });
+    });
     const renamed = await describeTable('jobs_archive');
-    await build(schema, 'jobs_archive_made');
+    await run((schema) => build(schema, 'jobs_archive_made'));
     const made = await describeTable('jobs_archive_made');
     expect(JSON.stringify(renamed).replaceAll('jobs_archive', 'T')).toBe(JSON.stringify(made).replaceAll('jobs_archive_made', 'T'));
     expect([...renamed.indexes, ...renamed.constraints, ...renamed.sequences].some((name) => name.includes('archive_archive'))).toBe(false);
   });
 
   it('keeps the names of the indexes without the option', async () => {
-    const schema = new Schema(connections.get(), driver);
-    await build(schema, 'plain_old');
-    await schema.rename('plain_old', 'plain_new');
+    await run((schema) => {
+      build(schema, 'plain_old');
+      schema.rename('plain_old', 'plain_new');
+    });
     const { indexes, constraints } = await describeTable('plain_new');
     expect(indexes).toContain('plain_old_owner_id_index');
     expect(indexes.some((name) => name.startsWith('plain_new_'))).toBe(false);
@@ -263,25 +269,26 @@ describe.each(drivers)('schema.rename with indexes on %s', (driver) => {
   };
 
   it('refuses to rename an index to a name Postgres would cut, and changes nothing', async () => {
-    const schema = new Schema(connections.get(), driver);
-    await schema.create('short', columns);
-    const renamed = schema.rename('short', long, { indexes: true });
+    await run((schema) => schema.create('short', columns));
+    const renamed = run((schema) => schema.rename('short', long, { indexes: true }));
     if (driver === 'sqlite') return void (await expect(renamed).resolves.toBeUndefined());
     await expect(renamed).rejects.toThrow(/\[marmeon:D5\].*a_table_with_a_long_name_to_come_/);
-    // The table is renamed (that is one statement), but no index got a cut name.
-    expect((await describeTable(long)).indexes).toEqual(['short_first_long_column_name_second_long_column_name_index']);
+    // The migration's transaction took the rename back: the table and its index are as they were.
+    expect((await describeTable('short')).indexes).toEqual(['short_first_long_column_name_second_long_column_name_index']);
+    expect((await connections.get<any>().introspection.getTables()).map((table: { name: string }) => table.name)).not.toContain(long);
   });
 
   it('refuses to create an index whose default name Postgres would cut, and accepts one given a name', async () => {
-    const schema = new Schema(connections.get(), driver);
-    const create = schema.create('another_long_table_name_here', columns);
+    const create = run((schema) => schema.create('another_long_table_name_here', columns));
     if (driver === 'sqlite') return void (await expect(create).resolves.toBeUndefined());
     await expect(create).rejects.toThrow(/\[marmeon:D5\]/);
-    await schema.create('named_long', (table) => {
-      table.string('first_long_column_name');
-      table.string('second_long_column_name');
-      table.index(['first_long_column_name', 'second_long_column_name'], 'named_long_columns_index');
-    });
+    await run((schema) =>
+      schema.create('named_long', (table) => {
+        table.string('first_long_column_name');
+        table.string('second_long_column_name');
+        table.index(['first_long_column_name', 'second_long_column_name'], 'named_long_columns_index');
+      }),
+    );
     expect((await describeTable('named_long')).indexes).toEqual(['named_long_columns_index']);
   });
 });
@@ -293,13 +300,18 @@ describe.each(drivers)('the readiness check of the framework tables on %s', (dri
       const requirements = new SchemaRequirements();
       requirements.require({ connection: 'default', table: 'widgets', columns: ['id', 'label'], set: 'widgets' });
       const check = new DatabaseHealthCheck(connections, requirements);
-      const schema = new Schema(connections.get(), driver);
-      await schema.create('widgets', (table) => {
-        table.id();
+      await runMigration(connections, {
+        up: (schema) =>
+          schema.create('widgets', (table) => {
+            table.id();
+          }),
       });
       await expect(check.handle()).rejects.toThrow('[marmeon:D6] widgets lacks label — run marmeon make:upgrade-migrations, then marmeon migrate');
-      await schema.alter('widgets', (table) => {
-        table.string('label').nullable();
+      await runMigration(connections, {
+        up: (schema) =>
+          schema.alter('widgets', (table) => {
+            table.string('label').nullable();
+          }),
       });
       await expect(check.handle()).resolves.toBe('default');
     } finally {
@@ -313,15 +325,21 @@ describe.each(drivers)('the readiness check of the framework tables on %s', (dri
     const here = new Connections({ connections: { default: fresh.options }, root, logger: silent });
     const there = new Connections({ connections: { default: fresh.options }, root, logger: silent });
     try {
-      await new Schema(there.get(), driver).create('widgets', (table) => {
-        table.id();
+      await runMigration(there, {
+        up: (schema) =>
+          schema.create('widgets', (table) => {
+            table.id();
+          }),
       });
       const requirements = new SchemaRequirements();
       requirements.require({ connection: 'default', table: 'widgets', columns: ['id', 'label'], set: 'widgets' });
       const check = new DatabaseHealthCheck(here, requirements);
       await expect(check.handle()).rejects.toThrow('widgets lacks label');
-      await new Schema(there.get(), driver).alter('widgets', (table) => {
-        table.string('label').nullable();
+      await runMigration(there, {
+        up: (schema) =>
+          schema.alter('widgets', (table) => {
+            table.string('label').nullable();
+          }),
       });
       await expect(check.handle()).resolves.toBe('default');
     } finally {

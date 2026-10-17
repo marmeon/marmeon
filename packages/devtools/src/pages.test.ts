@@ -2,7 +2,8 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createApplication, defineModule, Logger, type Application } from '@marmeon/core';
 import { runWithRequest } from '@marmeon/core/internal';
-import { Connections, DatabaseServiceProvider, Migrator, Schema } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, Migrator, type Migration } from '@marmeon/database';
+import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider, view } from '@marmeon/http';
 import { html, Mailer, MailServiceProvider, type Mailable } from '@marmeon/mail';
@@ -85,8 +86,7 @@ async function boot(env: Record<string, string> = {}, { test = true }: { test?: 
   });
   const connections = app.container.make(Connections);
   await new Migrator(app, connections).migrate();
-  const migration = ((await import(QUEUE_MIGRATION.href)) as { default: { up(schema: Schema): Promise<void> } }).default;
-  await migration.up(new Schema(connections.get(), connections.options().driver));
+  await runMigration(connections, ((await import(QUEUE_MIGRATION.href)) as { default: Migration }).default);
   return { app, kernel: createHttpKernel(app), ...(tester ? { tester } : {}) };
 }
 

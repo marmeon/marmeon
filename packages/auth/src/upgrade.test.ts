@@ -2,8 +2,8 @@ import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } fro
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { ConsoleLogger, createApplication, HealthChecks, Logger, SystemClock, type Application, type Container, type ModuleDefinition, type Logger as LoggerType } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider, MakeUpgradeMigrationsCommand, Migrator, Schema, sql, type ConnectionOptions, type Migration } from '@marmeon/database';
-import { SchemaRequirements } from '@marmeon/database/internal';
+import { Connections, DatabaseServiceProvider, MakeUpgradeMigrationsCommand, Migrator, sql, type ConnectionOptions, type Migration } from '@marmeon/database';
+import { runMigration, SchemaRequirements } from '@marmeon/database/internal';
 import { AesGcmEncrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { ServerServiceProvider } from '@marmeon/server';
@@ -67,7 +67,7 @@ const connect = (options: ConnectionOptions, managed: boolean) => new Connection
 async function open(kind: 'sqlite' | 'pgsql', managed = false) {
   if (kind === 'sqlite') {
     const connections = connect({ driver: 'sqlite', database: join(tempDir('marmeon-auth-upgrade-'), 'app.sqlite') }, managed);
-    return { connections, schema: new Schema(connections.get(), 'sqlite'), drop: async () => connections.destroy() };
+    return { connections, drop: async () => connections.destroy() };
   }
   const name = `marmeon_auth_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const admin = connect({ driver: 'pgsql', url: PGSQL_URL! }, false);
@@ -77,7 +77,6 @@ async function open(kind: 'sqlite' | 'pgsql', managed = false) {
   const connections = connect({ driver: 'pgsql', url: url.href, poolMax: 2 }, managed);
   return {
     connections,
-    schema: new Schema(connections.get(), 'pgsql'),
     drop: async () => {
       await connections.destroy();
       await sql`drop database ${sql.id(name)} with (force)`.execute(admin.get());
@@ -117,13 +116,13 @@ describe.each(kinds)('the reissue of the API tokens on %s', (kind) => {
     const old = await open(kind);
     try {
       // `fresh` was made by the kit as it is now; `old` by the first stubs, with an account that has every row.
-      for (const migration of await loadAll(KIT)) await migration.up(fresh.schema);
-      for (const migration of await loadAll(LEGACY)) await migration.up(old.schema);
+      for (const migration of await loadAll(KIT)) await runMigration(fresh.connections, migration);
+      for (const migration of await loadAll(LEGACY)) await runMigration(old.connections, migration);
       await seed(old.connections);
       const before = Object.fromEntries(await Promise.all(TABLES.map(async (table) => [table, await describeTable(old.connections, table)])));
 
       const reissue = await load(new URL(`${UPGRADE.href}2026_02_01_000002_reissue_personal_access_tokens.ts`));
-      await reissue.up(old.schema);
+      await runMigration(old.connections, reissue);
       for (const table of TABLES) {
         expect(await describeTable(old.connections, table), table).toEqual(await describeTable(fresh.connections, table));
         if (table !== 'personal_access_tokens') expect(await describeTable(old.connections, table), `${table} is untouched`).toEqual(before[table]);
@@ -139,7 +138,7 @@ describe.each(kinds)('the reissue of the API tokens on %s', (kind) => {
       // The table of the app stays the app's.
       expect((await sql<{ email: string }>`select email from users`.execute(db)).rows).toEqual([{ email: 'ada@example.com' }]);
 
-      await reissue.down!(old.schema);
+      await runMigration(old.connections, reissue, { direction: 'down' });
       expect(await describeTable(old.connections, 'personal_access_tokens'), 'down restores the table').toEqual(before.personal_access_tokens);
     } finally {
       await fresh.drop();
@@ -150,16 +149,16 @@ describe.each(kinds)('the reissue of the API tokens on %s', (kind) => {
   it("makes a hash one token's alone, and gives it back in the other direction", async () => {
     const old = await open(kind);
     try {
-      for (const migration of await loadAll(LEGACY)) await migration.up(old.schema);
+      for (const migration of await loadAll(LEGACY)) await runMigration(old.connections, migration);
       await seed(old.connections);
       const reissue = await load(TOKENS_REISSUE_MIGRATION);
-      await reissue.up(old.schema);
+      await runMigration(old.connections, reissue);
       const db = old.connections.get<any>();
       const count = async (table: string) => Number((await sql<{ n: number | string }>`select count(*) as n from ${sql.table(table)}`.execute(db)).rows[0]!.n);
       const insert = sql`insert into personal_access_tokens (user_id, name, token_hash, abilities, created_at, updated_at) values (1, 'cli', 'same-hash', ${JSON.stringify(['*'])}, '2026-01-01 00:00:00', '2026-01-01 00:00:00')`;
       await insert.execute(db);
       await expect(insert.execute(db)).rejects.toThrow();
-      await reissue.down!(old.schema);
+      await runMigration(old.connections, reissue, { direction: 'down' });
       await insert.execute(db);
       expect(await count('personal_access_tokens')).toBe(2);
     } finally {

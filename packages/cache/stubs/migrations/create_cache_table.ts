@@ -7,21 +7,21 @@ import { defineMigration } from '@marmeon/database';
 // connection (CACHE_CONNECTION) — with SQLite best a file of its own, so rate limits and locks work inside transactions.
 export default defineMigration({
   connection: cacheTablesConnection,
-  up: async (schema) => {
-    await schema.create('cache', (table) => {
+  up: (schema) => {
+    schema.create('cache', (table) => {
       table.text('key').primary();
       table.text('value');
       table.bigInteger('expiration').nullable();
       table.index('expiration');
     });
-    await schema.create('cache_locks', (table) => {
+    schema.create('cache_locks', (table) => {
       table.text('key').primary();
       table.string('owner');
       table.bigInteger('expiration');
     });
   },
-  down: async (schema) => {
-    await schema.drop('cache_locks');
-    await schema.drop('cache');
+  down: (schema) => {
+    schema.drop('cache_locks');
+    schema.drop('cache');
   },
 });

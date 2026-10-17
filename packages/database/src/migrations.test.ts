@@ -103,7 +103,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
       for (const name of ['a_b', 'ab']) {
         writeFileSync(
           join(dir, `2026_01_01_000000_${name}.ts`),
-          `export default { up: async () => {}, down: async () => { (globalThis as any).__downs.push('${name}'); } };`,
+          `export default { up: () => {}, down: () => { (globalThis as any).__downs.push('${name}'); } };`,
         );
       }
       const ownMigrator = migrator(own.connections, { name: 'x', migrations: dir });
@@ -129,7 +129,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
       await expect(migrator(own.connections, { name: 'x', migrations: dir }).migrate()).rejects.toThrow(/^\[marmeon:D14\] Migration 2026_01_01_000000_no_up \(module "x"\) must/);
       rmSync(join(dir, '2026_01_01_000000_no_up.ts'));
 
-      writeFileSync(join(dir, '2026_01_02_000000_one_way.ts'), 'export default { up: async () => {} };');
+      writeFileSync(join(dir, '2026_01_02_000000_one_way.ts'), 'export default { up: () => {} };');
       const ownMigrator = migrator(own.connections, { name: 'x', migrations: dir });
       await ownMigrator.migrate();
       await expect(ownMigrator.rollback()).rejects.toThrow('[marmeon:D16] Cannot roll back "2026_01_02_000000_one_way" (module "x"): it has no down().');
@@ -142,7 +142,10 @@ describe.each(drivers)('migrations on %s', (driver) => {
 
   it('undoes a failing migration completely and does not record it', async () => {
     const withBroken = migrator(connections, auth, broken);
+    const sent: string[] = [];
+    connections.onQuery((query) => void sent.push(query.sql));
     await expect(withBroken.migrate()).rejects.toThrow('this migration is broken');
+    expect(sent.some((text) => /create table "half"/.test(text))).toBe(true); // it was made, and is undone
     expect(await tables()).toEqual(['marmeon_migrations', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions', 'users']); // `half` is gone; users (earlier file) stays
     expect((await withBroken.status()).map((m) => [m.name, m.batch])).toEqual([
       ['2026_01_01_000000_create_users_table', 1],

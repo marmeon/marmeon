@@ -7,8 +7,8 @@ import { notificationsTableConnection } from '@marmeon/notifications';
 export default defineMigration({
   // NOTIFICATIONS_CONNECTION: where the database channel and the Inbox look.
   connection: notificationsTableConnection,
-  up: async (schema) => {
-    await schema.create('notifications', (table) => {
+  up: (schema) => {
+    schema.create('notifications', (table) => {
       table.uuid('id').primary();
       table.string('recipient_type', 64);
       table.string('recipient_id', 64);
@@ -23,7 +23,7 @@ export default defineMigration({
       table.index('created_at');
     });
   },
-  down: async (schema) => {
-    await schema.drop('notifications');
+  down: (schema) => {
+    schema.drop('notifications');
   },
 });

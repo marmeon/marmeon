@@ -64,34 +64,77 @@ folder does not exist.
 
 ## Migration structure
 
-A migration file exports `defineMigration({ up, down })`. `up` makes the change, and `down` undoes it. Both receive a `Schema`:
+A migration file exports `defineMigration({ up, down })`. `up` makes the change, and `down` undoes it. Both receive a `Schema` and
+**build a plan** with it: each call adds a step and runs nothing. When the migration runs, `migrate` carries out the steps in the
+order they were added, all inside the migration's transaction.
 
-| Method | What it does |
+| Method | What it adds |
 | --- | --- |
 | `schema.create(table, build)` | Creates a table. `build` describes its columns and indexes. |
 | `schema.alter(table, build)` | Changes a table: new columns, indexes, renamed and dropped columns. |
 | `schema.drop(table)` | Drops a table. |
 | `schema.dropIfExists(table)` | Drops a table if it is there. |
 | `schema.rename(from, to)` | Renames a table. |
-| `schema.hasTable(table)` | Whether a table exists. |
-| `schema.hasColumn(table, column)` | Whether a table has a column. |
-| `schema.db` | The connection, inside the migration's transaction: for data changes and anything the schema methods do not cover. |
-| `schema.driver` | `'sqlite'` or `'pgsql'`. |
+| `schema.data(run)` | A change of the data: `run(db, { driver })` is an `async` function, [see below](#changing-the-data). |
+| `schema.raw(statement)` | A statement the schema methods do not cover, [see below](#raw-sql). |
 
-A migration that moves data uses `schema.db` like any Kysely connection. Its tables are typed loosely here, because a migration
-runs against the schema of its own time, not the one `bootstrap/database.d.ts` describes today:
+`up` and `down` are plain functions: `up: (schema) => { … }`. They are not `async`, and do not `await` anything. A function that
+returns a promise is a type error in `defineMigration`, and `migrate` refuses it with error D14 and the name of the file. The
+`schema` is closed when the function returns: a call that comes later, from inside a `schema.data()` callback for one, throws
+instead of adding a step that would not be part of the plan.
 
-```ts title="modules/notes/migrations/2026_10_05_090000_fill_note_slugs.ts"
+A plan is the same every time it is built. Do not let the time, the environment, a file, the database or a value from another file
+decide which steps `up` adds, or what they say: a migration describes one change, and the app has to know what it changed
+without running it. Put what depends on the data into a `schema.data()` step.
+
+A migration without `down` cannot be rolled back. A rollback that reaches it stops there with an error that names it.
+
+### Changing the data
+
+A step added with `schema.data()` runs between the steps around it. The usual shape is a column that is added empty, filled, and only
+then given its constraint:
+
+```ts title="modules/notes/migrations/2026_10_05_090000_add_slug_to_notes_table.ts"
 import { defineMigration, sql } from '@marmeon/database';
 
 export default defineMigration({
-  up: async (schema) => {
-    await schema.db.updateTable('notes').set({ slug: sql`'note-' || id` }).where('slug', '=', '').execute();
+  up: (schema) => {
+    schema.alter('notes', (table) => table.string('slug').nullable());
+    schema.data(async (db) => {
+      await db.updateTable('notes').set({ slug: sql`'note-' || id` }).execute();
+    });
+    // Postgres changes a column to NOT NULL in place; SQLite has no such statement, and the step is skipped there.
+    schema.raw({ pgsql: sql`alter table notes alter column slug set not null` });
   },
+  down: (schema) => schema.alter('notes', (table) => table.dropColumn('slug')),
 });
 ```
 
-A migration without `down` cannot be rolled back. A rollback that reaches it stops there with an error that names it.
+`db` is a Kysely connection inside the migration's transaction, so a step that throws rolls back the schema steps before it too.
+Its tables are typed loosely, because a migration runs against the schema of its own time, not the one `bootstrap/database.d.ts`
+describes today. The second argument tells the driver, `'sqlite'` or `'pgsql'`, for the rare statement that differs.
+
+A data step changes data only. A schema change in it, through the query builder (`db.schema.createTable(…)`) or as raw SQL that
+begins with `create`, `alter`, `drop` or `do`, stops with error D4: add it as a step of its own with `schema.create()`,
+`schema.alter()` or `schema.raw()`. So does a write to the migrator's own tables through the query builder.
+
+This is a guard against mistakes, not a sandbox. Raw SQL that writes to the migrator's tables, and a connection taken from `db` without its plugins or a query compiled by hand,
+are not looked into. Keep to the query
+builder in a data step.
+
+### Raw SQL
+
+`schema.raw()` adds a statement for what the blueprint cannot express, such as an index with a `where` clause or an extension:
+
+```ts
+schema.raw(sql`create index notes_published_index on notes (published_at) where published_at is not null`);
+schema.raw({ sqlite: sql`…`, pgsql: sql`…` }); // one statement per driver; a driver without one skips the step
+```
+
+A statement that names one of the migrator's tables stops with error D4 when the plan is built; that is a check of its words, not a
+parse. Otherwise Marmeon does not look into the statement. A table or column it creates is not entered in the migrator's [books](#how-the-migrator-keeps-track),
+so it has no owner, no secret mark and no timestamp or soft-delete marker. Use `schema.alter()` and `schema.rename()` for
+everything they can do.
 
 ## Running migrations
 
@@ -155,8 +198,8 @@ The migrator keeps its books in tables of the database, five of them, all named 
 
 Every connection a migration runs on has the last four. A connection with `managed: false` has none, and the migration commands
 leave it alone. Do not write to them; a migration that creates, alters, drops or renames
-one stops with a `SchemaError`, as it does for `marmeon_migration_lock`, and so does `schema.db` writing to them. `schema.dropAllTables()`
-leaves them in place. The names `migrations`, `table_owners`, `secret_columns`
+one stops with a `SchemaError`, as it does for `marmeon_migration_lock`, and so does a `schema.data()` step writing to them.
+The names `migrations`, `table_owners`, `secret_columns`
 and `schema_markers` are taken as well, until 1.0.
 
 The secret columns and the soft deletes depend on these tables, so the app never guesses when it cannot read them. A connection
@@ -362,28 +405,28 @@ Which key a table gets is a decision of the app, and two patterns are on offer:
 import { defineMigration } from '@marmeon/database';
 
 export default defineMigration({
-  up: async (schema) => {
+  up: (schema) => {
     // Pattern 1: the UUID is the primary key, and foreign keys hold it.
-    await schema.create('teams', (table) => {
+    schema.create('teams', (table) => {
       table.uuidId();
       table.string('name');
     });
-    await schema.create('members', (table) => {
+    schema.create('members', (table) => {
       table.uuidId();
       table.foreignUuid('team_id').constrained().cascadeOnDelete();
       table.string('name');
     });
     // Pattern 2: an integer primary key for relations and joins, a UUID for URLs, mails and APIs.
-    await schema.create('profiles', (table) => {
+    schema.create('profiles', (table) => {
       table.id();
       table.uuid('public_id').unique().useUuidv7();
       table.string('name');
     });
   },
-  down: async (schema) => {
-    await schema.drop('members');
-    await schema.drop('teams');
-    await schema.drop('profiles');
+  down: (schema) => {
+    schema.drop('members');
+    schema.drop('teams');
+    schema.drop('profiles');
   },
 });
 ```
@@ -417,8 +460,8 @@ schema.alter('profiles', (table) => {
 });
 ```
 
-On SQLite, a UUIDv7 column exists only when the table is created. SQLite adds no column whose default is computed, so
-`schema.alter()` with `useUuidv7()` throws before it changes anything. To give such a table a public key on SQLite, create the
+On SQLite, a UUIDv7 column exists only when the table is created. SQLite adds no column whose default is computed, so a plan with
+`schema.alter()` and `useUuidv7()` is refused before its first step runs, and nothing of the migration changes. To give such a table a public key on SQLite, create the
 table with the column in the first place, which is easiest before the first deploy, or create a new table with the column,
 copy the rows and drop the old one. Marmeon refuses `alter` on SQLite whether or not the table has rows, so a migration that
 works in development works on every deploy.
@@ -698,7 +741,7 @@ An updated database ends up the same as a new one: the same tables, columns, and
 A migration that renames a table keeps the names of its indexes and constraints in step with it by passing `indexes`:
 
 ```ts
-await schema.rename('invoices', 'bills', { indexes: true });
+schema.rename('invoices', 'bills', { indexes: true });
 ```
 
 Every index and constraint whose name begins with `invoices_` is renamed to begin with `bills_`, and on Postgres the

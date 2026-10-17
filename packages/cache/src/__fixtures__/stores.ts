@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { Clock, Logger } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
-import { Connections, Schema, sql, type ConnectionOptions } from '@marmeon/database';
+import { Connections, sql, type ConnectionOptions, type Migration } from '@marmeon/database';
+import { runMigration } from '@marmeon/database/internal';
 import { RedisConnections } from '@marmeon/redis';
 import type { CacheStore, LockStore } from '../cache.ts';
 import { CACHE_MIGRATION } from '../commands/make-cache-table.ts';
@@ -43,8 +44,8 @@ export interface StoreUnderTest {
 
 /** Runs the cache migration (the file `make:cache-table` copies) on a connection. */
 export async function migrate(connections: Connections, name = 'default'): Promise<void> {
-  const migration = ((await import(CACHE_MIGRATION.href)) as { default: { up(schema: Schema): Promise<void> } }).default;
-  await migration.up(new Schema(connections.get(name), connections.options(name).driver));
+  const migration = ((await import(CACHE_MIGRATION.href)) as { default: Migration }).default;
+  await runMigration(connections, migration, { connection: name });
 }
 
 /** A fresh, empty target for `kind` (a new directory, database file, Postgres database or Redis prefix). */

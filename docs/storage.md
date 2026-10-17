@@ -251,13 +251,13 @@ import { uploadsTableConnection } from '@marmeon/storage';
 
 export default defineMigration({
   connection: uploadsTableConnection,
-  up: async (schema) => {
-    await sql`create index if not exists temporary_uploads_expires_at_index on temporary_uploads (expires_at)`.execute(schema.db);
-    await sql`create index if not exists temporary_uploads_session_expires_at_index on temporary_uploads (session, expires_at)`.execute(schema.db);
+  up: (schema) => {
+    schema.raw(sql`create index if not exists temporary_uploads_expires_at_index on temporary_uploads (expires_at)`);
+    schema.raw(sql`create index if not exists temporary_uploads_session_expires_at_index on temporary_uploads (session, expires_at)`);
   },
-  down: async (schema) => {
-    await sql`drop index if exists temporary_uploads_session_expires_at_index`.execute(schema.db);
-    await sql`drop index if exists temporary_uploads_expires_at_index`.execute(schema.db);
+  down: (schema) => {
+    schema.raw(sql`drop index if exists temporary_uploads_session_expires_at_index`);
+    schema.raw(sql`drop index if exists temporary_uploads_expires_at_index`);
   },
 });
 ```

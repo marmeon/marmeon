@@ -2,12 +2,12 @@ import { defineMigration } from '../../../../index.ts';
 
 // Every kind of column and every modifier. What this writes is held in `__fixtures__/formats/ddl`.
 export default defineMigration({
-  up: async (schema) => {
-    await schema.create('ddl_people', (table) => {
+  up: (schema) => {
+    schema.create('ddl_people', (table) => {
       table.id();
       table.string('name');
     });
-    await schema.create('ddl_kinds', (table) => {
+    schema.create('ddl_kinds', (table) => {
       table.id('kind_id');
       table.string('label', 40);
       table.text('body');
@@ -23,7 +23,7 @@ export default defineMigration({
       table.date('day');
       table.timestamp('at');
     });
-    await schema.create('ddl_modifiers', (table) => {
+    schema.create('ddl_modifiers', (table) => {
       table.uuidId();
       table.string('email').unique();
       table.string('nickname').nullable();
@@ -38,15 +38,15 @@ export default defineMigration({
       table.timestamps();
       table.softDeletes();
     });
-    await schema.create('ddl_categories', (table) => {
+    schema.create('ddl_categories', (table) => {
       table.id();
       table.string('title');
     });
-    await schema.create('ddl_codes', (table) => {
+    schema.create('ddl_codes', (table) => {
       table.string('code').primary();
       table.string('title');
     });
-    await schema.create('ddl_keys', (table) => {
+    schema.create('ddl_keys', (table) => {
       table.id();
       table.foreignId('person_id').constrained('ddl_people').cascadeOnDelete();
       table.foreignId('editor_id').constrained('ddl_people').nullOnDelete().inverse('edited_keys').nullable();
@@ -57,12 +57,12 @@ export default defineMigration({
       table.foreignId('ddl_category_id').constrained();
     });
   },
-  down: async (schema) => {
-    await schema.drop('ddl_keys');
-    await schema.drop('ddl_codes');
-    await schema.drop('ddl_categories');
-    await schema.drop('ddl_modifiers');
-    await schema.drop('ddl_kinds');
-    await schema.drop('ddl_people');
+  down: (schema) => {
+    schema.drop('ddl_keys');
+    schema.drop('ddl_codes');
+    schema.drop('ddl_categories');
+    schema.drop('ddl_modifiers');
+    schema.drop('ddl_kinds');
+    schema.drop('ddl_people');
   },
 });

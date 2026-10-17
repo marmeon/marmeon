@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { createApplication, HealthChecks, Logger } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider, Migrator, Schema } from '@marmeon/database';
-import { SchemaRequirements } from '@marmeon/database/internal';
+import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
+import { runMigration, SchemaRequirements } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { describe, expect, it } from 'vitest';
@@ -15,11 +15,11 @@ describe('the temporary_uploads table', () => {
   const providers = [EncryptionServiceProvider, DatabaseServiceProvider, HttpServiceProvider, StorageServiceProvider];
   const env = { APP_KEY: generateKey(), DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', NODE_ENV: 'test', LOG_LEVEL: 'silent' };
 
-  const problems = async (prepare: (schema: Schema) => Promise<void>) => {
+  const problems = async (prepare: (connections: Connections) => Promise<void>) => {
     await using application = await createApplication({ root: tempDir('marmeon-uploads-ready-'), discover: false, providers }, { env, override: (container) => container.instance(Logger, silent) });
     await application.container.make(Migrator).migrate();
     const connections = application.container.make(Connections);
-    await prepare(new Schema(connections.get(), connections.options().driver));
+    await prepare(connections);
     const report = await application.container.make(HealthChecks).run(application.container);
     return report.checks.flatMap((check) => (check.error instanceof Error ? [check.error.message] : []));
   };
@@ -33,11 +33,14 @@ describe('the temporary_uploads table', () => {
   });
 
   it('is red when the table lacks a column', async () => {
-    const messages = await problems(async (schema) => {
-      await schema.create('temporary_uploads', (table) => {
-        table.string('id', 36).primary();
-      });
-    });
+    const messages = await problems((connections) =>
+      runMigration(connections, {
+        up: (schema) =>
+          schema.create('temporary_uploads', (table) => {
+            table.string('id', 36).primary();
+          }),
+      }),
+    );
     expect(messages).toContainEqual(expect.stringMatching(/temporary_uploads lacks session, .*consumed_at — run marmeon make:upgrade-migrations/));
   });
 
