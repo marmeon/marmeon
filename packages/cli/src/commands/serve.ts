@@ -13,6 +13,7 @@ import type { CommandInput } from '../command.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
 import { startMarmeon } from '../spawn.ts';
 import { RouteTypes } from '../route-types.ts';
+import { watchMigrations } from '../migration-watch.ts';
 import { warnUnlisted } from '../unlisted.ts';
 import { writeRouteTypes } from './route-types.ts';
 
@@ -79,6 +80,8 @@ export class ServeCommand {
         output.warn(`Could not check for unlisted jobs and notifications: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+    // A migration file added, changed or removed while the server runs is read again, without a restart.
+    const migrations = development ? await watchMigrations(this.#app, root, output) : undefined;
     let server;
     try {
       server = await startServer({ app: this.#app, mode: development ? 'development' : 'production' });
@@ -86,6 +89,7 @@ export class ServeCommand {
       signals.remove();
       // The route-types watcher would keep the process alive after the failed start.
       views?.close();
+      migrations?.close();
       // A setup problem (no Vite, no marmeon() plugin) or routes that do not say who may call them: a message, not a stack trace.
       if (!(error instanceof ViteSetupError) && !(error instanceof RouteAccessError)) throw error;
       output.error(error.message);
@@ -109,6 +113,7 @@ export class ServeCommand {
         : `${signal} received, shutting down`,
     );
     views?.close();
+    migrations?.close();
     lastError?.close();
     await Promise.all([server.close({ immediately: signal !== 'SIGTERM' }), ...companions.map((companion) => companion.stop())]);
     // A cluster worker: the channel to the primary would keep it alive after the app shut down.

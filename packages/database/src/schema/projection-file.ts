@@ -1,7 +1,7 @@
 import { hash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { MigrationSource } from '../migrations/load.ts';
+import { spendImport, type MigrationSource } from '../migrations/load.ts';
 import { projectMigrations, type ProjectedTable, type SchemaProjection } from './projection.ts';
 
 // The projection of all migration files, kept in `.marmeon/schema.json` so a process does not import every migration to learn the
@@ -186,7 +186,7 @@ export function loadProjection(root: string, files: readonly MigrationSource[], 
   const key = `${root}\0${version}\0${JSON.stringify(sources)}`;
   let projection = loaded.get(key);
   if (!projection) {
-    projection = compute(root, files, sources, options);
+    projection = compute(root, files, sources, options, () => loaded.delete(key));
     loaded.set(key, projection);
     // A failure is not remembered: a fixed migration is asked again.
     projection.catch(() => loaded.delete(key));
@@ -194,10 +194,27 @@ export function loadProjection(root: string, files: readonly MigrationSource[], 
   return projection;
 }
 
-async function compute(root: string, files: readonly MigrationSource[], sources: readonly ProjectionSource[], options: LoadProjectionOptions): Promise<SchemaProjection> {
+async function compute(root: string, files: readonly MigrationSource[], sources: readonly ProjectionSource[], options: LoadProjectionOptions, forget: () => void): Promise<SchemaProjection> {
   const fromDisk = fromFile(root, sources);
   if (fromDisk) return fromDisk;
-  const projection = await (options.project ?? ((all) => projectMigrations(all)))(files);
+  const projection = await (options.project ?? ((all) => projectMigrations(all)))(
+    files.map((file, i) => ({ ...file, sha256: sources[i]!.sha256 })),
+  );
+  // A file edited while its plan was computed: the plan may be of either version, so it is not written under this hash, and not
+  // kept — the next ask reads the files again.
+  let now: ProjectionSource[] | undefined;
+  try {
+    now = sourcesOf(files);
+  } catch {
+    // A file removed meanwhile counts as changed.
+  }
+  if (!now || !sameSources(now, sources)) {
+    sources.forEach((source, i) => {
+      if (source.sha256 !== now?.[i]?.sha256 || source.name !== now[i]!.name) spendImport(files[i]!.path, source.sha256);
+    });
+    forget();
+    return projection;
+  }
   // Any failure to write (a full disk, a read-only directory, a file where the directory should be) leaves the projection in memory: it is a cache.
   try {
     write(root, serialize(projection, sources));

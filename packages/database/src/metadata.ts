@@ -90,6 +90,8 @@ export class SchemaMetadata {
   #projection: SchemaProjection | undefined;
   /** Managed: the migrator of this process handed over the projection, so there is nothing to compare with the database. */
   #handedOver = false;
+  /** Bumped by {@link reload}: a load that started before it must not mark what it compared as ready. */
+  #generation = 0;
   /** Managed: the migrations were compared with the database and fit. */
   #ready = false;
   /** Managed: why the last comparison refused, and when — asked again after {@link RECHECK_MS}. */
@@ -230,6 +232,8 @@ export class SchemaMetadata {
    * are read again and compared with the database, or the catalog is.
    */
   reload(): void {
+    // A load under way started from what is forgotten here: it must not mark the new state ready.
+    this.#generation++;
     this.#handedOver = false;
     this.#ready = false;
     this.#refused = undefined;
@@ -344,9 +348,10 @@ export class SchemaMetadata {
   async #loadMigrated(connection: DatabaseConnection): Promise<void> {
     if (this.#refused && Date.now() - this.#refused.at < RECHECK_MS) throw this.#refused.error;
     if (this.#handedOver) return;
+    const generation = this.#generation;
     const projection = await (this.#source?.projection?.() ?? Promise.resolve(emptyProjection));
-    // The migrator of this process may have handed over its own while the files were read.
-    if (this.#handedOver) return;
+    // The migrator of this process may have handed over its own while the files were read, or a reload asked for them again.
+    if (this.#handedOver || this.#generation !== generation) return;
     if (!this.#ready) {
       try {
         // A connection that follows `default` is as ready as it is; its own database holds no record of migrations.
@@ -357,12 +362,12 @@ export class SchemaMetadata {
           if (unknown.length > 0) this.#source?.ahead?.(unknown);
         }
       } catch (error) {
-        // The migrator of this process handed over meanwhile: the refusal is out of date.
-        if (this.#handedOver) return;
+        // The migrator of this process handed over meanwhile, or a reload came: the refusal is out of date.
+        if (this.#handedOver || this.#generation !== generation) return;
         if (error instanceof MigrationStateError) this.#refused = { error, at: Date.now() };
         throw error;
       }
-      if (this.#handedOver) return;
+      if (this.#handedOver || this.#generation !== generation) return;
       this.#ready = true;
     }
     this.#projection = projection;

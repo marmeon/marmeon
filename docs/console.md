@@ -97,6 +97,10 @@ A command of your own, or of a package, prints its document with `output.json({ 
 
 - **Server code** is watched by Node: a change to a route, a controller or a provider restarts the server. A change to a page
   reaches the browser at once, without a restart.
+- **Migrations** are watched as well: a file you add, change or remove under a module's `migrations/` is read again without a
+  restart, and the app answers `marmeon migrate` run in another terminal within a second
+  ([while you develop](migrations.md#while-you-develop)). The queue worker and the scheduler keep the schema they started with until
+  the server restarts them.
 - **A queue worker** on every queue starts next to the server, unless the default queue connection is `sync`.
 - **The scheduler** starts when a module schedules tasks.
 - **`bootstrap/routes.ts`** is written on every start, and again when a view is added or removed. Route names and views are then

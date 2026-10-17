@@ -8,7 +8,8 @@ import { testEncrypter } from './__fixtures__/encrypter.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { deriveRelations } from './introspection.ts';
-import { factsOf } from './schema/projection.ts';
+import { MigrationStateError } from './migration-state.ts';
+import { emptyProjection, factsOf } from './schema/projection.ts';
 import { MarmeonDriver } from './driver.ts';
 import { changesSchema, isRawSchemaChange, SchemaMetadata } from './metadata.ts';
 import { softDelete, softDeleteFilter } from './schema-resolver.ts';
@@ -365,6 +366,23 @@ describe('schema metadata, unit', () => {
     open();
     await reloading;
     expect(metadata.fresh).toBe(true);
+  });
+
+  it('is not ready when a reload comes while the database is compared: the files are compared again, and refused if they must be', async () => {
+    const { gate: slow, open } = gate();
+    let comparisons = 0;
+    const follow = async () => {
+      // The first comparison is with the files as they were; the files have a migration the database lacks by the second.
+      if (++comparisons === 1) return slow;
+      throw new MigrationStateError('pending', 'other', 'pending', ['2026_01_01_000000_new']);
+    };
+    const metadata = new SchemaMetadata('sqlite', 'other', true, { projection: async () => emptyProjection, follow });
+    const loading = metadata.refresh(fake());
+    await Promise.resolve();
+    metadata.reload();
+    open();
+    await expect(loading).rejects.toBeInstanceOf(MigrationStateError);
+    expect(metadata.ready).toBe(false);
   });
 
   it('sends no catalog query after a savepoint rolled back without a schema change — and loads again after one with it', async () => {
