@@ -1,10 +1,10 @@
-// @marmeon-stub auth 1
+// @marmeon-stub auth 2
 import { defineMigration } from '@marmeon/database';
 
 // "Keep me signed in", one row per device: the selector finds the row, the validator is only stored as a hash.
 export default defineMigration({
   up: (schema) =>
-    schema.create('remember_tokens', (table) => {
+    schema.create('marmeon_remember_tokens', (table) => {
       table.id();
       table.foreignId('user_id').constrained().cascadeOnDelete();
       table.string('selector', 32).unique();
@@ -16,5 +16,5 @@ export default defineMigration({
       table.string('account_fingerprint', 64).nullable();
       table.timestamps();
     }),
-  down: (schema) => schema.drop('remember_tokens'),
+  down: (schema) => schema.drop('marmeon_remember_tokens'),
 });

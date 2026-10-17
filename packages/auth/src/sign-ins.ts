@@ -4,7 +4,7 @@ import { Connections, type Generated } from '@marmeon/database';
 import type { DeviceDescription } from './device.ts';
 
 /** The table the app's migration creates (`marmeon make:sign-ins-table` writes it) — see {@link SignInsTable}. */
-export const SIGN_INS_TABLE = 'sign_ins';
+export const SIGN_INS_TABLE = 'marmeon_sign_ins';
 
 /**
  * The columns {@link DatabaseSignIns} needs. A row is one sign-in of one browser and the authority over it: the session
@@ -21,6 +21,9 @@ export interface SignInsTable {
   created_at: Generated<string | Date>;
   updated_at: Generated<string | Date>;
 }
+
+/** The columns readiness waits for on `marmeon_sign_ins`. */
+export const SIGN_INS_COLUMNS = ['id', 'user_id', 'user_agent', 'remember_selector', 'remember_until', 'signed_in_at', 'last_seen_at', 'created_at', 'updated_at'] as const satisfies readonly (keyof SignInsTable)[];
 
 /** One of the browsers a user is signed in on, as `auth.signIns()` lists it. */
 export interface SignIn {
@@ -94,7 +97,7 @@ export const SEEN_GRANULARITY_SECONDS = 300;
 const ID = /^[A-Za-z0-9_-]{22}$/;
 const USER_AGENT_LENGTH = 255;
 
-/** The default {@link SignInStore}, on the app's `sign_ins` table. */
+/** The default {@link SignInStore}, on the app's `marmeon_sign_ins` table. */
 export class DatabaseSignIns implements SignInStore {
   readonly #connections: Connections;
   readonly #clock: Clock;

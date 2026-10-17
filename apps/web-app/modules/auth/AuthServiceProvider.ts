@@ -14,7 +14,7 @@ export class AuthServiceProvider implements ServiceProvider {
     // binding switches two-factor authentication off for every account.
     container.bind(TwoFactorState, (c) => combineFactors(c.make(TwoFactorStore), c.make(PasskeyStore)));
     // The sign-ins list on the security page: a row per browser signed in, which can be ended one by one. Removing this binding turns the
-    // list off (and the `sign_ins` migration is not needed then).
+    // list off (and the `marmeon_sign_ins` migration is not needed then).
     container.singleton(SignInStore, DatabaseSignIns);
     // The signed-in user's language — after the session's choice, before the browser's (SetLocale of @marmeon/i18n).
     container.scoped(LocalePreference, (c) => ({ preferredLocale: async () => (await c.make(Auth).user())?.locale }));

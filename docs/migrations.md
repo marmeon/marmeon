@@ -665,8 +665,14 @@ the missing one by hand, in front of it.
 A migration that renames a table is a change for a stopped app: let the queue run empty, stop every process of the old release (web,
 workers, scheduler, cron jobs, CI jobs that run `marmeon`), run `marmeon migrate`, then start the new release. The tables of the
 queue (`jobs`, `failed_jobs`), the cache (`cache`, `cache_locks`), the sessions (`sessions`), the temporary uploads
-(`temporary_uploads`) and the notifications (`notifications`) are renamed that way, to `marmeon_jobs`, `marmeon_failed_jobs`,
-`marmeon_cache`, `marmeon_cache_locks`, `marmeon_sessions`, `marmeon_temporary_uploads` and `marmeon_notifications`.
+(`temporary_uploads`), the notifications (`notifications`) and those of the starter kit's auth module (`remember_tokens`,
+`password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications`, `two_factor_recovery_codes`, `passkeys` and `sign_ins`)
+are renamed that way, to `marmeon_jobs`, `marmeon_failed_jobs`, `marmeon_cache`, `marmeon_cache_locks`, `marmeon_sessions`,
+`marmeon_temporary_uploads`, `marmeon_notifications`, `marmeon_remember_tokens`, `marmeon_password_reset_tokens`,
+`marmeon_personal_access_tokens`, `marmeon_two_factor_authentications`, `marmeon_two_factor_recovery_codes`, `marmeon_passkeys` and
+`marmeon_sign_ins`. The rows stay, and so do the columns marked `secret()`: the migration renames the table through the schema builder,
+which moves the marks with it. `users` is your table and keeps its name. The auth tables come in two sets, `auth` and `sign-ins`
+(`marmeon make:sign-ins-table` writes the second on its own).
 
 A migration it wrote is yours like the first one. Keep the first line: without it, the command takes a changed file for
 revision 1.

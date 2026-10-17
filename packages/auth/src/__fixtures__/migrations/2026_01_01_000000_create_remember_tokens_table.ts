@@ -3,7 +3,7 @@ import { defineMigration } from '@marmeon/database';
 // What make:auth writes — here without the foreign key: the package tests keep users in memory.
 export default defineMigration({
   up: (schema) =>
-    schema.create('remember_tokens', (table) => {
+    schema.create('marmeon_remember_tokens', (table) => {
       table.id();
       table.bigInteger('user_id');
       table.string('selector', 32).unique();
@@ -15,5 +15,5 @@ export default defineMigration({
       table.string('account_fingerprint', 64).nullable();
       table.timestamps();
     }),
-  down: (schema) => schema.drop('remember_tokens'),
+  down: (schema) => schema.drop('marmeon_remember_tokens'),
 });

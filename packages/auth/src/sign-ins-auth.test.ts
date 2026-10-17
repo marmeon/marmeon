@@ -215,7 +215,7 @@ async function boot(options: { signIns?: (new (...args: never[]) => SignInStore)
   connectionsOfTest = application.container.make(Connections);
   const db = application.container.make(Connections).get<any>();
   const rows = () => db.selectFrom(SIGN_INS_TABLE).selectAll().execute() as Promise<{ id: string; user_agent: string | null; remember_selector: string | null; last_seen_at: string | Date }[]>;
-  const tokens = async () => (await db.selectFrom('remember_tokens').selectAll().execute()).length as number;
+  const tokens = async () => (await db.selectFrom('marmeon_remember_tokens').selectAll().execute()).length as number;
 
   const browser = (jar: Map<string, string> = new Map()) => {
     const send = async (path: string, init: { method?: string; headers?: Record<string, string> } = {}) => {
@@ -645,7 +645,7 @@ describe('sign-ins tracked by Auth', () => {
       const b = browser();
       await login(b, true);
       // Past AUTH_REMEMBER_DAYS from its creation: refused, though the row still says "remembered".
-      await db.updateTable('remember_tokens').set({ created_at: new Date(Date.now() - 400 * 86_400_000) }).execute();
+      await db.updateTable('marmeon_remember_tokens').set({ created_at: new Date(Date.now() - 400 * 86_400_000) }).execute();
       expect(await b.reopened().who()).toMatchObject({ id: null });
       expect(await rows()).toEqual([]);
     });

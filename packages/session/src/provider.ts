@@ -97,7 +97,7 @@ export class SessionServiceProvider implements ServiceProvider {
       app.container.make(database.Connections).options(connection);
       // /up/ready is red until the table has the new name and every column the store writes.
       const { SchemaRequirements } = await import('@marmeon/database/internal');
-      app.container.make(SchemaRequirements).require({ connection, table: SESSIONS_TABLE, columns: SESSIONS_COLUMNS, set: 'session' });
+      app.container.make(SchemaRequirements).require({ connection, table: SESSIONS_TABLE, columns: SESSIONS_COLUMNS, secrets: ['payload'], set: 'session' });
     }
 
     // The scheduler runs `marmeon session:prune`: then it is the one sweeper, and requests no longer draw the lottery.

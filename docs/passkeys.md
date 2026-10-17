@@ -46,7 +46,7 @@ import { defineMigration } from '@marmeon/database';
 
 export default defineMigration({
   up: (schema) =>
-    schema.create('passkeys', (table) => {
+    schema.create('marmeon_passkeys', (table) => {
       table.id();
       table.foreignId('user_id').constrained().cascadeOnDelete();
       table.string('user_handle', 64); // the account's random handle, the same in each of its rows
@@ -62,7 +62,7 @@ export default defineMigration({
       table.timestamp('last_used_at').nullable();
       table.timestamps();
     }),
-  down: (schema) => schema.drop('passkeys'),
+  down: (schema) => schema.drop('marmeon_passkeys'),
 });
 ```
 
@@ -266,7 +266,7 @@ The routes that ask for registration options and store a new passkey sit behind 
 address nobody confirmed cannot add a passkey, and the password reset of such an account removes the ones it has. See
 [security](security.md#open-registration).
 
-`make:auth` writes the passkeys into a new app (the [starter kit](starter-kit.md#passkeys)): the migration of the `passkeys` table
+`make:auth` writes the passkeys into a new app (the [starter kit](starter-kit.md#passkeys)): the migration of the `marmeon_passkeys` table
 (`foreignId('user_id').constrained().cascadeOnDelete()`, with `suspended_at`), the binding
 `combineFactors(TwoFactorStore, PasskeyStore)` and `PasskeyServiceProvider` in the module, the controllers and routes, the limits of the
 options requests (`passkey-options`, 30 a minute for each client; `passkey-challenge-options`, 10), the mails and the pages, in both languages:

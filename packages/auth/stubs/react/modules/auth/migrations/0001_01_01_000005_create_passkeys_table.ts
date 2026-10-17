@@ -1,11 +1,11 @@
-// @marmeon-stub auth 1
+// @marmeon-stub auth 2
 import { defineMigration } from '@marmeon/database';
 
 // The passkeys of an account. The public key is public (not secret); `user_handle` is the account's random handle, the same in each of its
 // rows and never its id or address; `sign_count` only moves forward (a conditional UPDATE decides).
 export default defineMigration({
   up: (schema) =>
-    schema.create('passkeys', (table) => {
+    schema.create('marmeon_passkeys', (table) => {
       table.id();
       table.foreignId('user_id').constrained().cascadeOnDelete();
       table.string('user_handle', 64);
@@ -22,5 +22,5 @@ export default defineMigration({
       table.timestamp('suspended_at').nullable(); // a sign count went backwards: no sign-in until the owner releases it
       table.timestamps();
     }),
-  down: (schema) => schema.drop('passkeys'),
+  down: (schema) => schema.drop('marmeon_passkeys'),
 });

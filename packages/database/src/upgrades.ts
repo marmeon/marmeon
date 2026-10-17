@@ -23,6 +23,8 @@ export interface TableRequirement {
   readonly connection: string;
   readonly table: string;
   readonly columns: readonly string[];
+  /** Columns that must be marked `.secret()` in the bookkeeping: readiness is red while a table has one unmarked (a table made by hand). */
+  readonly secrets?: readonly string[];
   /** The set of tables the requirement belongs to, as in {@link MigrationUpgrade.set}. */
   readonly set: string;
   /**

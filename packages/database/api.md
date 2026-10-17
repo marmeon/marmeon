@@ -704,6 +704,7 @@ export interface TableRequirement {
     readonly connection: string;
     readonly table: string;
     readonly columns: readonly string[];
+    readonly secrets?: readonly string[];
     readonly set: string;
     readonly unlessAbsent?: readonly string[];
 }

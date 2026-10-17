@@ -7,7 +7,7 @@ export const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] 
 
 const silent: Logger = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
 
-/** Connections on a fresh, migrated database (the remember_tokens fixture); `close()` drops it. */
+/** Connections on a fresh, migrated database (the auth fixture migrations); `close()` drops it. */
 export async function migratedConnections(driver: 'sqlite' | 'pgsql'): Promise<{ connections: Connections; close: () => Promise<void> }> {
   let options: ConnectionOptions = { driver: 'sqlite', database: ':memory:' };
   let drop = async () => {};

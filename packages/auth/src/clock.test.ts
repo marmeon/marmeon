@@ -203,7 +203,7 @@ describe('Auth on the app clock', () => {
     await send('/login', 'POST');
     expect(jar.get('marmeon_remember')).toBeDefined();
     // The token itself outlives the cap (as if issued under a longer setting), so only the cap in `Auth` can refuse it.
-    await application.container.make(Connections).get<any>().updateTable('remember_tokens').set({ expires_at: new Date(clock.now() + 30 * 86_400_000) }).execute();
+    await application.container.make(Connections).get<any>().updateTable('marmeon_remember_tokens').set({ expires_at: new Date(clock.now() + 30 * 86_400_000) }).execute();
     clock.travel({ days: 4 });
     jar.delete('marmeon_session');
     expect(await (await send('/state')).json(), 'inside the cap').toMatchObject({ id: 1 });

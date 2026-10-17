@@ -15,7 +15,7 @@ export class AuthServiceProvider implements ServiceProvider {
     // Accounts may set up a second factor: the authenticator app and passkeys (their tables are in this module's migrations). Removing this
     // binding switches two-factor authentication off for every account.
     container.bind(TwoFactorState, (c) => combineFactors(c.make(TwoFactorStore), c.make(PasskeyStore)));
-    // Every sign-in is a row of the `sign_ins` table (this module's migrations): the security page lists the browsers an account is signed in on,
+    // Every sign-in is a row of the `marmeon_sign_ins` table (this module's migrations): the security page lists the browsers an account is signed in on,
     // and ends one by one. Removing this binding turns the list off — sessions and remember-me cookies then work as before.
     container.singleton(SignInStore, DatabaseSignIns);
     // The signed-in user's language — after the session's choice, before the browser's (SetLocale of @marmeon/i18n).

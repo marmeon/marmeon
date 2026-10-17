@@ -233,9 +233,11 @@ release changes the tables, the package lists the change as `static migrationUpg
 the `revision` it brings the tables to (2 or more), the `name` of the file without timestamp, `createdBy` (the names of the stubs
 that created the set, which tell the command where the app keeps it) and the `contents`, which start with
 `// @marmeon-stub <set> <revision>`. `marmeon make:upgrade-migrations` writes the missing ones into the app. An entry with a path
-in a name, or a revision listed twice for a set, stops the start. Readiness is red while a table a package registered with
-`SchemaRequirements.require` is missing or lacks a column. A requirement with `unlessAbsent: ['<old name>']` is for a table the
-app may never have made (the feature is unused): it applies once the table, or a table under one of the old names, exists. See
+in a name, or a revision listed twice for a set, stops the start. A table the package needs is registered with
+`SchemaRequirements` (from `@marmeon/database/internal`), with the `columns` it reads and writes and, as `secrets`, the columns that must
+be marked `.secret()`: readiness is red while the table is missing, lacks a column or has one unmarked, as in a table made by hand (not
+on a connection with `managed: false`). A requirement with `unlessAbsent: ['<old name>']` is for a table the app may never have made
+(the feature is unused): it applies once the table, or a table under one of the old names, exists. See
 [upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables).
 
 ## Middleware

@@ -3,7 +3,7 @@ import { defineMigration } from '@marmeon/database';
 // What make:sign-ins-table writes — here without the foreign key: the package tests keep users in memory.
 export default defineMigration({
   up: (schema) =>
-    schema.create('sign_ins', (table) => {
+    schema.create('marmeon_sign_ins', (table) => {
       table.string('id', 22).primary();
       table.bigInteger('user_id');
       table.string('user_agent', 255).nullable();
@@ -14,5 +14,5 @@ export default defineMigration({
       table.timestamps();
       table.index('user_id');
     }),
-  down: (schema) => schema.drop('sign_ins'),
+  down: (schema) => schema.drop('marmeon_sign_ins'),
 });
