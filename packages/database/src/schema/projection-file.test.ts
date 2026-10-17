@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from '
 import { join } from 'node:path';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
-import type { MigrationSource } from '../migrations/load.ts';
+import { loadMigration, spendImport, type MigrationSource } from '../migrations/load.ts';
 import { PROJECTION_FILE, PROJECTION_FORMAT, forgetProjections, loadProjection, parseProjectionFile, readProjection, writeProjection } from './projection-file.ts';
 import { planOf } from './plan.ts';
 import { applyPlan, emptyProjection, type SchemaProjection } from './projection.ts';
@@ -86,6 +86,37 @@ describe('the schema projection file', () => {
     expect(project).toHaveBeenCalledTimes(1);
     expect(names(projection)).toEqual(['users', 'articles']);
     expect(Object.keys(parseProjectionFile(readFileSync(join(root, PROJECTION_FILE), 'utf8'))!.tables)).toEqual(['users', 'articles']);
+  });
+
+  it('writes nothing, and asks again next time, when a file changed while its plan was computed', async () => {
+    forgetProjections();
+    const { root, files, edit } = app(create('users'));
+    const original = create('users');
+    // The file is edited after its bytes were hashed: the plan may belong to either version.
+    const project = vi.fn(async () => {
+      edit(0, create('people'));
+      return projecting('users');
+    });
+    await loadProjection(root, files, { project });
+    expect(readProjection(root, files)).toBeUndefined();
+    expect(() => readFileSync(join(root, PROJECTION_FILE))).toThrow();
+
+    // Back to the bytes it was hashed as: asked again, not served from the first answer.
+    edit(0, original);
+    const again = vi.fn(async () => projecting('users'));
+    await loadProjection(root, files, { project: again });
+    expect(again).toHaveBeenCalledTimes(1);
+    expect(readProjection(root, files)).toBeDefined();
+  });
+
+  it('imports a file again, not from the module kept for its old hash, once that import is spent', async () => {
+    const { files, edit } = app("export default { up() {}, marker: 'one' };\n");
+    const file = { ...files[0]!, sha256: 'x'.repeat(64) };
+    expect(await loadMigration(file)).toMatchObject({ marker: 'one' });
+    edit(0, "export default { up() {}, marker: 'two' };\n");
+    expect(await loadMigration(file)).toMatchObject({ marker: 'one' });
+    spendImport(file.path, file.sha256);
+    expect(await loadMigration(file)).toMatchObject({ marker: 'two' });
   });
 
   it('computes it again when a migration file was added or removed', async () => {

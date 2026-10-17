@@ -316,7 +316,9 @@ database. A running app and a migration meet in three places:
 - **In the process that migrates** (`marmeon migrate`, a test), the migrator hands the schema it leaves to that process's connections as
   each migration commits. While a migration's transaction is open, the other connections keep the schema from before it and do not
   wait for it. The `schema.data()` steps of the migration see the schema as the plan has changed it up to them: a table the plan
-  created, with its soft-delete mark, is known to the step that fills it, and to nobody else yet.
+  created, with its soft-delete mark, is known to the step that fills it, and to nobody else yet. A run that fails (`migrate`,
+  `migrate:rollback` or `migrate:reset`) hands the schema back: the next query of that process compares the migration files with the
+  database again, as in a process that starts, instead of trusting a run that did not finish.
 - **In another process** that started before `marmeon migrate` ran, nothing changes while it runs: the process keeps the schema of its
   code, and a column the new migrations add is not in it (the state `ahead` in
   [how the migrator keeps track](#how-the-migrator-keeps-track)). A relation, and every `selectAll()` and `returningAll()` of a table
@@ -340,6 +342,17 @@ the row may hold a column this release does not know. Name the columns.
 > [!WARNING]
 > `migrate:fresh` drops **every** table of the database, also tables that no migration created, and every table of the other
 > connections that migrations run on. Use it on a development database only.
+
+### While you develop
+
+With `marmeon dev` the server watches the migrations directory of every module. A migration file you add, change or remove is read
+again at once, with no restart: the schema of the app is computed from the files again and compared with the database. After you add
+a file, every query is refused with the `MigrationStateError` (D2) that names it, until `marmeon migrate` has run in another terminal;
+the app answers within a second of that. Removing a file the database has already run leaves the app running with the schema of the
+files that remain. Roll a migration back with `marmeon migrate:rollback` (or start over with `marmeon migrate:fresh`) before you change it. If you
+edit one that has already run, the app works with a schema that no longer matches the database, because at run time only the names of the migrations are compared with it, and
+the check of the database against the migrations runs only in `migrate`. A migrations directory that is created while the server
+runs is watched after the next restart. Nothing is watched with any other `NODE_ENV`: a production server reads the migration files once, when it starts.
 
 ### Where the app is protected
 
