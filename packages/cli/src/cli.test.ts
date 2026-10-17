@@ -1,4 +1,6 @@
 import { generateKey } from '@marmeon/encryption';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { marmeon, webApp, webAppCopy } from './__fixtures__/cli.js';
 
@@ -215,5 +217,80 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     const missing = marmeon(webApp, ['db:show', '--database'], { DB_DATABASE: ':memory:' });
     expect(missing.code).toBe(2);
     expect(missing.stderr).toMatch(/argument missing/i);
+  });
+});
+
+describe('marmeon console log lines', { timeout: 30_000 }, () => {
+  /** A copy of the web app whose own provider logs through the console logger while it boots. */
+  function appThatLogsWhileBooting(): string {
+    const app = webAppCopy();
+    writeFileSync(
+      join(app, 'bootstrap', 'LoudProvider.ts'),
+      [
+        "import { ConsoleLogger } from '@marmeon/core';",
+        'export class LoudProvider {',
+        '  register(): void {',
+        "    const logger = new ConsoleLogger({ channel: 'loud' });",
+        "    logger.info('loud boot');",
+        "    logger.debug('loud debug');",
+        '  }',
+        '}',
+        '',
+      ].join('\n'),
+    );
+    const entry = join(app, 'bootstrap', 'app.ts');
+    writeFileSync(
+      entry,
+      readFileSync(entry, 'utf8')
+        .replace("import { AppConfig }", "import { LoudProvider } from './LoudProvider.ts';\nimport { AppConfig }")
+        .replace('  modules: [', '  providers: [LoudProvider],\n  modules: ['),
+    );
+    return app;
+  }
+
+  it('sends them to stderr while the command prints JSON, so stdout is one document', () => {
+    const { code, stdout, stderr } = marmeon(appThatLogsWhileBooting(), ['route:list', '--json']);
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ format: 1 });
+    expect(stdout).not.toContain('loud boot');
+    expect(stderr).toContain('[info] loud boot');
+    expect(stderr).toContain('[debug] loud debug');
+    expect(stdout).not.toContain('loud debug');
+  });
+
+  it('keeps info on stdout without --json', () => {
+    const { code, stdout, stderr } = marmeon(appThatLogsWhileBooting(), ['route:list']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('[info] loud boot');
+    expect(stdout).toContain('[debug] loud debug');
+    expect(stderr).not.toContain('loud boot');
+  });
+
+  it('sends the app logger’s (pino) lines to stderr too, in both formats', () => {
+    for (const format of ['json', 'pretty']) {
+      const app = webAppCopy();
+      const entry = join(app, 'bootstrap', 'app.ts');
+      writeFileSync(join(app, 'bootstrap', 'PinoProvider.ts'), [
+        "import { Logger } from '@marmeon/core';",
+        'export class PinoProvider {',
+        '  boot(app: { container: { make(token: unknown): Logger } }): void {',
+        "    app.container.make(Logger).info('pino boot');",
+        '  }',
+        '}',
+        '',
+      ].join('\n'));
+      writeFileSync(
+        entry,
+        readFileSync(entry, 'utf8')
+          .replace("import { AppConfig }", "import { PinoProvider } from './PinoProvider.ts';\nimport { AppConfig }")
+          .replace('  modules: [', '  providers: [PinoProvider],\n  modules: ['),
+      );
+      const { code, stdout, stderr } = marmeon(app, ['route:list', '--json'], { LOG_LEVEL: 'info', LOG_FORMAT: format });
+      expect(code, stderr).toBe(0);
+      expect(JSON.parse(stdout)).toMatchObject({ format: 1 });
+      expect(stderr).toContain('pino boot');
+      const plain = marmeon(app, ['route:list'], { LOG_LEVEL: 'info', LOG_FORMAT: format });
+      expect(plain.stdout).toContain('pino boot');
+    }
   });
 });
