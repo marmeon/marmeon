@@ -103,7 +103,8 @@ The promise of a version covers the public API. These are part of it:
 - The documents `--json` prints, by their `format`.
 - The table schemas of the migrations the framework ships, the stubs and the `make:*` tables.
 - The protocol between client and server: headers and the page object.
-- Stored formats: queue payloads, encrypted values, tokens and cookies.
+- Stored and wire formats: queue payloads, sessions, encrypted values, tokens, cookies, the bookkeeping and the generated files, as
+  [listed below](#stored-and-wire-formats).
 - Translation keys, `@marmeon/react/styles.css` (its classes and custom properties) and the names of diagnostics channels and the
   shape of their messages.
 
@@ -114,6 +115,60 @@ The same list decides, already in 0.x, whether a pull request is a `breaking` on
 > [!WARNING]
 > **Security hardening.** A security hardening may break in a minor or a patch version. It then has an entry of its own in the
 > [upgrade guide](../UPGRADING.md). Leaving a vulnerability open to keep an API protects nobody.
+
+### Stored and wire formats
+
+Anything that outlives a process or travels between two of them is a format: a record in a queue, a session in its store, a cookie,
+a header between a tab and a server, a file the framework generates. Each carries a mark in a fixed place, and the meaning of that
+mark never changes. A reader knows a set of versions, today one per format, and treats data by that set:
+
+- **Newer than it knows:** it leaves the data alone. A newer process may be running, and what it wrote is not for an older one to
+  overwrite, delete or guess at. The reader refuses, or treats the request as one without the data. Two things end such data
+  all the same: a worker lets a record it cannot read fail after six hours, which takes it out of the queue, and a sign-in or sign-out
+  on an older node ends the newer session of that request.
+- **Older than it supports, or without a mark:** it never interprets the data. What a migration can carry over, `marmeon migrate` carries
+  over (the bookkeeping tables, the framework's tables). Everything else counts as missing: a session starts anew, a cookie is not
+  read, a job fails with its reason and stays readable in the failed jobs.
+
+A reader never guesses and never falls back to a default.
+
+| Format | Mark | A newer version is | An older one, or none, is |
+| --- | --- | --- | --- |
+| [Page protocol](navigation.md#a-tab-of-another-protocol-version) | the header `x-marmeon: 1` on every request of the client | answered with `409` before routing, whatever the method | the same: an old tab sends `true`, or nothing |
+| Page object and region object (JSON) | none; new fields are optional | carried along; without `component`, `props` and `url` it is no page | read as they are |
+| [Job record](queues.md#deploying-while-jobs-wait) | `v` in the payload | put back untouched until a worker reads it; after six hours it fails and leaves the queue | failed at once with the reason, never run |
+| [Queued listener](events.md#queued-listeners) | the listener's `static listener` name, within its event | put back like an unknown job | failed like any record without a version |
+| [Session](session.md#what-a-session-stores) | `_v` in the payload | the request is a guest's; the stored session stays as it is | dropped, a new session starts |
+| [Session and remember-me cookies](session.md#the-__host--prefix) | the name, with `__Host-` when cookies are `Secure` | n/a | a cookie under another name is never read |
+| [Migrator bookkeeping](migrations.md#how-the-migrator-keeps-track) | the row in `marmeon_versions` | every query on the connection fails, `migrate` refuses, `/up/ready` is red | taken over by `marmeon migrate`; until then every query fails |
+| [The framework's tables](migrations.md#upgrading-the-frameworks-tables) | `// @marmeon-stub <set> <revision>` in the app's migration | `make:upgrade-migrations` stops and writes nothing | written by `make:upgrade-migrations` |
+| [Encrypted values](encryption.md#what-the-key-protects) | a version byte, and a context per use (`cookie:<name>`, `session:<key>`, `queue:v1:<job>`) | `DecryptError` | `DecryptError` |
+| [API tokens](api-tokens.md#the-token-format) | the prefix, and a hash under its own domain | not a token: 401, like an unknown one | no longer valid: 401, like an unknown one |
+| [Generated types](queries.md#table-types) (`bootstrap/routes.ts`, `bootstrap/database.d.ts`) | `// @marmeon-format 1` on the third line | `--check` fails with "update `@marmeon/*`"; no command overwrites it | `--check` says another version wrote it; regenerate |
+| [`--json` of a command](console.md) | `format`, the first key | n/a: the command prints its newest | n/a |
+
+Some formats have no version of their own and are kept stable another way:
+
+- **Signed URLs, upload tokens and live tokens** are tied to `APP_KEY` through a key derived per purpose (`marmeon:<purpose>`, so a
+  signature is never also a cookie or session key). A change of the form arrives as a new parameter or a new derivation, so an old
+  link or token fails closed. Links in mails live long, so a signed URL only ever grows. An upload token starts with `tu_`, which
+  serves as its version.
+- **Messages between nodes** (live updates over Redis, the tab sync) carry a `kind` or a `v`. A reader drops a message it does not
+  know. Such a message never carries data: it tells a tab to ask the server, which answers through the route and its authorisation.
+- **`history.state`** holds the URL, component, a key and the scroll position. An entry that does not match loads from the server.
+- **The names of keys** in the cache and the lock store (`limiter:…`, `queue:unique:…`, the scheduler's locks) and the names of
+  [encryption contexts](encryption.md#what-the-key-protects) are format: two nodes must agree on them. A release that renames one
+  does so with the same care as a renamed column.
+
+Fixtures sit under `__fixtures__/formats/`, one per version: the page and region object, the job record, the Redis member, queued
+listeners, mails and notifications, the session payload, the bookkeeping, API tokens and the `--json` documents. A test reads each
+directory with the current code. A pull request that changes or deletes a fixture is a `breaking` one. [Changing a stored or wire format](../CONTRIBUTING.md#changing-a-stored-or-wire-format)
+says how a format moves on.
+
+From 1.0 on, every change of a format ships so that a rolling deploy works: the release that first writes version N is one whose
+readers already read N, and a table is not renamed in place but created anew, written twice and dropped over two releases. The
+upgrade to the first release that marks these formats is the exception, and cannot be rolling: [the upgrade that stops every
+process](deployment.md#the-upgrade-that-stops-every-process) lists what to do and what it costs.
 
 ### Experimental
 

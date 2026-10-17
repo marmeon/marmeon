@@ -662,7 +662,7 @@ The command stops with exit code 1, and writes nothing, when your app is ahead o
 not know), when a first line names another set, or when a later revision is in your app and an earlier one is not: restore
 the missing one by hand, in front of it.
 
-A migration that renames a table is a change for a stopped app: let the queue run empty, stop every process of the old release (web,
+A migration that renames a table is a change for a stopped app ([the order, and what it costs](deployment.md#the-upgrade-that-stops-every-process)): let the queue run empty, stop every process of the old release (web,
 workers, scheduler, cron jobs, CI jobs that run `marmeon`), run `marmeon migrate`, then start the new release. The tables of the
 queue (`jobs`, `failed_jobs`), the cache (`cache`, `cache_locks`), the sessions (`sessions`), the temporary uploads
 (`temporary_uploads`), the notifications (`notifications`) and those of the starter kit's auth module (`remember_tokens`,

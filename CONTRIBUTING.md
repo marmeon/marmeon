@@ -766,6 +766,35 @@ against `dist/` — minified, with production defines, without React, i18n and V
 - `marmeon()` splits an app's first download into a `vendor` and an `index` chunk (`CLIENT_CHUNKS` of `@marmeon/vite`), initial
   modules only; the scenarios are built the same way.
 
+### Changing a stored or wire format
+
+A format is anything that outlives a process or crosses between two: a record, a cookie, a header, a message between nodes, a
+table the framework creates, a file it generates. [The public list](docs/releases.md#stored-and-wire-formats) shows each with its
+mark. Seven rules:
+
+1. **One mark per format, in a fixed place, with a frozen meaning**: a header value (`x-marmeon: 1`), a field (`v` in a job record,
+   `_v` in a session), a version byte, a prefix, a row (`marmeon_versions`), a first line (`// @marmeon-format 1`,
+   `// @marmeon-stub <set> <revision>`). The envelope fields never change name or meaning.
+2. **Additive changes need no new version, only when a reader that ignores the addition permits nothing more and misreads
+   nothing.** A field that is ignored may cost comfort, never protection. Every change that restricts is a new version.
+3. **A reader knows a set of versions**, one table `readers[version]` per format, and a test registers a synthetic next version to
+   show that it reads the versions it should and refuses the one after. A newer version than the set is refused and left
+   untouched, since a newer process may be running. An older version, or none, is carried over by a migration, or counts as
+   missing: never interpreted, never defaulted.
+4. **A writer writes version N only once every reader of the release before reads N**: expand in one release, contract in the
+   next. Without that step, a change of format belongs to a major release with an upgrade guide.
+5. **A fixture per version**, under `__fixtures__/formats/`, append-only, read by a test over the whole directory
+   ([fixtures](#fixtures-of-stored-and-wire-formats)). A format that a pull request changes needs `breaking`.
+6. **Tables the framework creates are named `marmeon_*`** and the stubs carry their revision. A change to one is a revision that
+   `make:upgrade-migrations` writes into the app, and an updated database is identical to a new one: tables, columns, and the names
+   of indexes and constraints. Readiness is red while the bookkeeping or a required column does not fit the code.
+7. **From 1.0 on, a change of format and a rename of a shared table is rolling**: rules 3 and 4, and for a table create anew,
+   write twice, drop over two releases. In a release whose upgrade stops every process, nothing exists only so that an old process
+   can run beside a new one: data of the old release is carried over by a migration or refused.
+
+A change of format also changes its row in the [public list](docs/releases.md#stored-and-wire-formats) and, where it helps a
+mixed fleet, [the deployment page](docs/deployment.md#what-else-a-mixed-fleet-does).
+
 ### Lint
 
 The repository lints itself with `pnpm lint` (`oxlint --deny-warnings`, part of `pnpm run ci`): the root `.oxlintrc.json` has
