@@ -91,24 +91,37 @@ A migration without `down` cannot be rolled back. A rollback that reaches it sto
 
 ### Changing the data
 
-A step added with `schema.data()` runs between the steps around it. The usual shape is a column that is added empty, filled, and only
-then given its constraint:
+A step added with `schema.data()` runs between the steps around it. The usual shape is a column that is added with a default and then
+filled with the real values for the rows that are already there:
 
 ```ts title="modules/notes/migrations/2026_10_05_090000_add_slug_to_notes_table.ts"
 import { defineMigration, sql } from '@marmeon/database';
 
 export default defineMigration({
   up: (schema) => {
-    schema.alter('notes', (table) => table.string('slug').nullable());
+    schema.alter('notes', (table) => table.string('slug').default(''));
     schema.data(async (db) => {
       await db.updateTable('notes').set({ slug: sql`'note-' || id` }).execute();
     });
-    // Postgres changes a column to NOT NULL in place; SQLite has no such statement, and the step is skipped there.
-    schema.raw({ pgsql: sql`alter table notes alter column slug set not null` });
   },
   down: (schema) => schema.alter('notes', (table) => table.dropColumn('slug')),
 });
 ```
+
+A NOT NULL column with a default is added the same way on SQLite and Postgres. On Postgres a column can instead be added nullable and
+made NOT NULL after the backfill, so it keeps no default:
+
+```ts
+schema.alter('notes', (table) => table.string('slug').nullable());
+schema.data(async (db) => {
+  await db.updateTable('notes').set({ slug: sql`'note-' || id` }).execute();
+});
+schema.alter('notes', (table) => table.notNull('slug'));
+```
+
+`table.notNull('slug')` makes an existing column NOT NULL, `table.nullable('slug')` lets it hold NULL again. A row that still has NULL in the
+column stops the migration with the database's error, and the migration is rolled back. SQLite changes no column in place, so `migrate`
+refuses a plan with either call on SQLite before running any step, with error D18; use the form with the default there.
 
 `db` is a Kysely connection inside the migration's transaction, so a step that throws rolls back the schema steps before it too.
 Its tables are typed loosely, because a migration runs against the schema of its own time, not the one `bootstrap/database.d.ts`
@@ -495,10 +508,12 @@ export default defineMigration({
 | `table.renameColumn(from, to)` | Renames a column. |
 | `table.dropIndex(name)` | Drops an index by its name. |
 | `table.dropUnique(name)` | Drops a unique index by its name. |
+| `table.notNull(column)` | Makes an existing column NOT NULL. Postgres only, error D18 on SQLite. |
+| `table.nullable(column)` | Lets an existing column hold NULL. Postgres only, error D18 on SQLite. |
 
-These four work in `alter()` only, and `create()` throws when it finds them. Each change runs as a statement of its own, because
+These six work in `alter()` only, and `create()` throws when it finds them. Each change runs as a statement of its own, because
 SQLite changes a table one step at a time. The order is fixed, whatever order you write them in: dropped indexes first, then
-renamed columns, new columns, new indexes, and dropped columns last. So dropping a column and adding one of the same name needs
+renamed columns, new columns, NOT NULL and nullable changes, new indexes, and dropped columns last. A column in `notNull()` or `nullable()` is named as it is after a `renameColumn`. So dropping a column and adding one of the same name needs
 two `alter()` calls. Two rules come from SQLite as well: a new `NOT NULL` column needs a default, and a column with an index
 cannot be dropped before its index.
 

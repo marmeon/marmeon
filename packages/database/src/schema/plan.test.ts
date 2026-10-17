@@ -21,7 +21,7 @@ describe.each(drivers)('the plan of a migration on %s', (driver: TestDriver) => 
 
   const tables = async () => (await connections.get<any>().introspection.getTables()).map((table) => table.name);
 
-  it('runs a schema change, a data change and the schema change after it in the order they were added', async () => {
+  it.runIf(driver === 'pgsql')('runs a schema change, a data change and the schema change after it in the order they were added', async () => {
     await runMigration(connections, {
       up: (schema) => {
         schema.create('notes', (table) => {
@@ -35,8 +35,7 @@ describe.each(drivers)('the plan of a migration on %s', (driver: TestDriver) => 
         schema.data(async (db) => {
           await sql`update notes set slug = title`.execute(db);
         });
-        // Only Postgres changes a column to NOT NULL in place; the step is skipped on SQLite.
-        schema.raw({ pgsql: sql`alter table notes alter column slug set not null` });
+        schema.alter('notes', (table) => table.notNull('slug'));
       },
     });
     const db = connections.get<any>();
@@ -44,7 +43,84 @@ describe.each(drivers)('the plan of a migration on %s', (driver: TestDriver) => 
       { title: 'a', slug: 'a' },
       { title: 'b', slug: 'b' },
     ]);
-    if (driver === 'pgsql') await expect(db.insertInto('notes').values({ title: 'c', slug: null }).execute()).rejects.toThrow(/not-null|null value/i);
+    await expect(db.insertInto('notes').values({ title: 'c', slug: null }).execute()).rejects.toThrow(/not-null|null value/i);
+  });
+
+  it('refuses to make a column NOT NULL on SQLite before any step runs, and does it on Postgres', async () => {
+    await runMigration(connections, { up: (schema) => schema.create('notes', (table) => { table.id(); table.string('slug').nullable(); }) });
+    const change = runMigration(connections, {
+      up: (schema) => {
+        schema.create('other', (table) => table.id());
+        schema.alter('notes', (table) => table.notNull('slug'));
+      },
+    });
+    if (driver === 'sqlite') {
+      await expect(change).rejects.toThrow(/D18.*cannot make the column "slug" NOT NULL on SQLite.*docs\/migrations\.md#changing-the-data/s);
+      expect(await tables()).not.toContain('other');
+    } else {
+      await change;
+      const db = connections.get<any>();
+      await expect(db.insertInto('notes').values({ slug: null }).execute()).rejects.toThrow(/not-null|null value/i);
+    }
+  });
+
+  it.runIf(driver === 'sqlite')('refuses nullable() on SQLite with D18', async () => {
+    await runMigration(connections, { up: (schema) => schema.create('notes', (table) => { table.id(); table.string('slug'); }) });
+    await expect(runMigration(connections, { up: (schema) => schema.alter('notes', (table) => table.nullable('slug')) })).rejects.toThrow(/D18.*nullable on SQLite/s);
+  });
+
+  it.runIf(driver === 'pgsql')('runs rename, new column, nullability change and drop in that order', async () => {
+    await runMigration(connections, { up: (schema) => schema.create('notes', (table) => { table.id(); table.string('a').nullable(); table.string('z').nullable(); }) });
+    const statements: string[] = [];
+    connections.onQuery((query) => statements.push(query.sql));
+    await runMigration(connections, {
+      up: (schema) =>
+        schema.alter('notes', (table) => {
+          table.dropColumn('z');
+          table.notNull('b');
+          table.string('c').nullable();
+          table.renameColumn('a', 'b');
+        }),
+    });
+    expect(statements.filter((text) => /^alter table/i.test(text))).toEqual([
+      'alter table "notes" rename column "a" to "b"',
+      'alter table "notes" add column "c" varchar(255)',
+      'alter table "notes" alter column "b" set not null',
+      'alter table "notes" drop column "z"',
+    ]);
+  });
+
+  it.runIf(driver === 'pgsql')('lets a column hold NULL again with nullable(), and writes one ALTER per change', async () => {
+    await runMigration(connections, { up: (schema) => schema.create('notes', (table) => { table.id(); table.string('slug'); }) });
+    const statements: string[] = [];
+    connections.onQuery((query) => statements.push(query.sql));
+    await runMigration(connections, { up: (schema) => schema.alter('notes', (table) => table.nullable('slug')) });
+    expect(statements.filter((text) => /^alter table/i.test(text))).toEqual(['alter table "notes" alter column "slug" drop not null']);
+    await connections.get<any>().insertInto('notes').values({ slug: null }).execute();
+  });
+
+  it.runIf(driver === 'pgsql')('rolls the whole migration back when a row still holds NULL', async () => {
+    await runMigration(connections, {
+      up: (schema) => {
+        schema.create('notes', (table) => { table.id(); table.string('slug').nullable(); });
+        schema.data(async (db) => { await db.insertInto('notes').values({ slug: null }).execute(); });
+      },
+    });
+    await expect(
+      runMigration(connections, {
+        up: (schema) => {
+          schema.create('other', (table) => table.id());
+          schema.alter('notes', (table) => table.notNull('slug'));
+        },
+      }),
+    ).rejects.toThrow(/null/i);
+    expect(await tables()).not.toContain('other');
+    await connections.get<any>().insertInto('notes').values({ slug: null }).execute();
+  });
+
+  it('refuses notNull() when a table is created, and a column named twice', () => {
+    expect(() => planOf({ up: (schema) => schema.create('notes', (table) => { table.id(); table.notNull('id'); }) }, 'up')).toThrow(/only work when changing a table/);
+    expect(() => planOf({ up: (schema) => schema.alter('notes', (table) => { table.notNull('slug'); table.nullable('slug'); }) }, 'up')).toThrow(/twice/);
   });
 
   it('hands the data step the driver', async () => {
@@ -170,7 +246,7 @@ describe.each(drivers)('the plan of a migration on %s', (driver: TestDriver) => 
     it('refuses a column, an index and a modifier added later from a data step, and rolls back', async () => {
       let blueprint: Blueprint | undefined;
       let column: { nullable(): unknown } | undefined;
-      const later: Array<() => unknown> = [() => blueprint!.string('injected'), () => blueprint!.index('id'), () => column!.nullable()];
+      const later: Array<() => unknown> = [() => blueprint!.string('injected'), () => blueprint!.index('id'), () => column!.nullable(), () => blueprint!.notNull('name')];
       for (const attempt of later) {
         await expect(
           runMigration(connections, {

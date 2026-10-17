@@ -21,6 +21,10 @@ export declare class Blueprint {
         from: string;
         to: string;
     }[];
+    readonly nullability: {
+        column: string;
+        nullable: boolean;
+    }[];
     readonly markers: Set<TableMarker>;
     constructor(table: string);
     id(name?: string): Column<number>;
@@ -47,6 +51,8 @@ export declare class Blueprint {
     dropIndex(name: string): void;
     dropUnique(name: string): void;
     renameColumn(from: string, to: string): void;
+    notNull(column: string): void;
+    nullable(column: string): void;
     seal(): void;
     allIndexes(): IndexSpec[];
 }
