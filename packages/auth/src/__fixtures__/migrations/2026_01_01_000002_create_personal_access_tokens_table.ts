@@ -2,7 +2,7 @@ import { defineMigration } from '@marmeon/database';
 
 export default defineMigration({
   up: (schema) =>
-    schema.create('personal_access_tokens', (table) => {
+    schema.create('marmeon_personal_access_tokens', (table) => {
       table.id();
       table.bigInteger('user_id');
       table.string('name');
@@ -12,5 +12,5 @@ export default defineMigration({
       table.timestamp('expires_at').nullable();
       table.timestamps();
     }),
-  down: (schema) => schema.drop('personal_access_tokens'),
+  down: (schema) => schema.drop('marmeon_personal_access_tokens'),
 });

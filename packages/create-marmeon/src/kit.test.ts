@@ -81,12 +81,17 @@ it(
     expect(migrated.out).toContain('create_passkeys_table');
     expect(migrated.out).toContain('create_sign_ins_table');
     expect(migrated.code).toBe(0);
+    // The kit is written at the current revision of its tables: nothing is left to upgrade, and nothing renames a table.
+    const upgrades = marmeon('make:upgrade-migrations', '--check');
+    expect(upgrades.out).toContain("The framework's tables have every migration of the installed packages.");
+    expect(upgrades.code).toBe(0);
+    expect(readdirSync(join(root, 'modules/auth/migrations')).filter((file) => /rename/.test(file))).toEqual([]);
     const tables = readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8');
     expect(tables).toContain('password: Secret<string>;');
     // The link's token hash is secret — never in `Row<'users'>`.
     expect(tables).toContain('pending_email_token: Secret<string | null>;');
-    // The module's foreign keys relate its tables: `with('personal_access_tokens')` on users, `with('user')` on a token.
-    expect(tables).toContain("personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id';");
+    // The module's foreign keys relate its tables: `with('marmeon_personal_access_tokens')` on users, `with('user')` on a token.
+    expect(tables).toContain("marmeon_personal_access_tokens: { kind: 'hasMany'; table: 'marmeon_personal_access_tokens'; foreignKey: 'user_id';");
     expect(tables).toContain("user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };");
 
     const typecheck = run(join(root, 'node_modules/.bin/tsc'), ['--noEmit', '-p', root]);

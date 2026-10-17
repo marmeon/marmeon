@@ -65,7 +65,7 @@ describe('pruning accounts whose address was never confirmed', () => {
     }
     expect(await sessions()).toEqual([String(old.id), String(kept.id)].sort());
     expect(await notifications(old)).toBe(1);
-    expect(await count('remember_tokens', old)).toBe(1);
+    expect(await count('marmeon_remember_tokens', old)).toBe(1);
 
     const results = await app.schedule.run(nightAfter(app.clock.now()));
     expect(results.find((result) => result.task === 'auth:prune-unverified')).toMatchObject({ outcome: 'ran' });
@@ -77,11 +77,11 @@ describe('pruning accounts whose address was never confirmed', () => {
     expect(await app.make(UserRepository).find(legacy.id), 'a confirmed account without first_verified_at was deleted').toBeDefined();
     expect(await app.make(UserRepository).find(touched.id), 'a never confirmed account of 40 days was kept: an update extended its days').toBeUndefined();
     expect(await sessions(), 'the deleted account kept its sessions').toEqual([String(kept.id)]);
-    const resets = await sql<{ email: string }>`select email from password_reset_tokens`.execute(app.make(Connections).get());
+    const resets = await sql<{ email: string }>`select email from marmeon_password_reset_tokens`.execute(app.make(Connections).get());
     expect(resets.rows.map((row) => row.email), 'the deleted account kept its reset token').toEqual([kept.email]);
     disk.assertMissing('avatars/old.png').assertExists('avatars/kept.png');
     expect([await notifications(old), await notifications(kept)]).toEqual([0, 1]);
-    for (const table of ['remember_tokens', 'personal_access_tokens', 'profile_links', 'login_activity']) {
+    for (const table of ['marmeon_remember_tokens', 'marmeon_personal_access_tokens', 'profile_links', 'login_activity']) {
       expect([table, await count(table, old), await count(table, kept)]).toEqual([table, 0, 1]);
     }
   });

@@ -160,9 +160,16 @@ export declare class AuthServiceProvider implements ServiceProvider {
             parallelism: number;
         };
     }>)[];
+    static migrationUpgrades: {
+        set: string;
+        revision: number;
+        name: string;
+        createdBy: string[];
+        contents: string;
+    }[];
     static commands: (typeof MakeAuthCommand | typeof EndAllSessionsCommand | typeof PruneTokensCommand | typeof MakeSignInsTableCommand)[];
     register(container: Container): void;
-    boot(app: Application): void;
+    boot(app: Application): Promise<void>;
 }
 // AuthTypes
 export interface AuthTypes {
@@ -510,7 +517,7 @@ export declare class NoStoreWhenSignedIn {
     handle(_ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // PASSWORD_RESET_TABLE
-export declare const PASSWORD_RESET_TABLE = "password_reset_tokens";
+export declare const PASSWORD_RESET_TABLE = "marmeon_password_reset_tokens";
 // PasskeyCloneSuspected
 export declare class PasskeyCloneSuspected {
     #private;
@@ -723,7 +730,7 @@ export declare class PruneTokensCommand {
     handle({ options, output }: CommandInput): Promise<number>;
 }
 // REMEMBER_TABLE
-export declare const REMEMBER_TABLE = "remember_tokens";
+export declare const REMEMBER_TABLE = "marmeon_remember_tokens";
 // RecoveryCodeUsed
 export declare class RecoveryCodeUsed {
     #private;
@@ -1197,7 +1204,7 @@ export interface AuthenticationResponseJSON {
     type: PublicKeyCredentialType;
 }
 // PASSKEYS_TABLE
-export declare const PASSKEYS_TABLE = "passkeys";
+export declare const PASSKEYS_TABLE = "marmeon_passkeys";
 // PasskeyConfig
 export declare const PasskeyConfig: import("@marmeon/core").ConfigDefinition<PasskeyConfigValue>;
 export type PasskeyConfig = ConfigOf<typeof PasskeyConfig>;
@@ -1244,6 +1251,7 @@ export interface PasskeyRecord {
 export declare class PasskeyServiceProvider implements ServiceProvider {
     static config: import("@marmeon/core").ConfigDefinition<import("./config.ts").PasskeyConfigValue>[];
     register(container: Container): void;
+    boot(app: Application): Promise<void>;
 }
 // PasskeyStore
 export declare class PasskeyStore implements TwoFactorState {

@@ -348,21 +348,21 @@ lasts longer. `marmeon auth:prune-tokens` (the starter kit schedules it daily) d
 `AUTH_REMEMBER_DAYS` days, all of them with `0`, so raising the value again does not bring old tokens back. A value above 30 stops
 the boot.
 
-The cookie is consulted when the session has no user, and when the session's [sign-in has reached its limit](#how-long-a-sign-in-lasts). It holds a selector and a secret validator. The `remember_tokens`
+The cookie is consulted when the session has no user, and when the session's [sign-in has reached its limit](#how-long-a-sign-in-lasts). It holds a selector and a secret validator. The `marmeon_remember_tokens`
 table keeps one row per device, with the validator only as its SHA-256 hash, so a leaked table signs nobody in. A table of your
 own needs what the starter kit's migration gives it: a unique `selector` of up to 32 characters, the validator hashes as
 64-character `secret()` columns, a nullable `account_fingerprint` of up to 64 characters, and `user_id` with `cascadeOnDelete()`, so a
 deleted user's tokens go with the account.
 
-An app made before the column existed adds it with a migration, and runs it before the new code serves requests: until the column
+An app made before the column existed adds it with a migration named with the current timestamp, so that it sorts after the rename's, before the new code serves requests: until the column
 is there, a request with a remember-me cookie and no session fails with a database error.
 
-```ts title="modules/auth/migrations/2026_10_15_120000_add_account_fingerprint_to_remember_tokens_table.ts"
+```ts title="modules/auth/migrations/<timestamp>_add_account_fingerprint_to_remember_tokens_table.ts"
 import { defineMigration } from '@marmeon/database';
 
 export default defineMigration({
-  up: (schema) => schema.alter('remember_tokens', (table) => table.string('account_fingerprint', 64).nullable()),
-  down: (schema) => schema.alter('remember_tokens', (table) => table.dropColumn('account_fingerprint')),
+  up: (schema) => schema.alter('marmeon_remember_tokens', (table) => table.string('account_fingerprint', 64).nullable()),
+  down: (schema) => schema.alter('marmeon_remember_tokens', (table) => table.dropColumn('account_fingerprint')),
 });
 ```
 
@@ -983,6 +983,25 @@ it('signs the other browser out', async () => {
 
 To test the controller itself, confirm the password in the test first (the session needs a recent confirmation, a password or a passkey); `POST /confirm-password`
 does that in the starter kit.
+
+## The tables of the stores
+
+The default stores keep their rows in `marmeon_remember_tokens`, `marmeon_password_reset_tokens`, `marmeon_personal_access_tokens`,
+`marmeon_two_factor_authentications` with `marmeon_two_factor_recovery_codes`, `marmeon_passkeys` and `marmeon_sign_ins`; the starter
+kit's migrations create them. The `marmeon_` prefix belongs to the framework, `users` to your app. Column marks stay with the
+tables: the hashes, the validators and the authenticator's secret are `secret()` columns, so `selectAll()` and relations never return them.
+
+`/up/ready` is red until every table of a store the app uses has its name and the columns the store needs, and says which command to
+run. A table counts as used when its store is the database one: remember-me while `AUTH_REMEMBER_DAYS` is above 0, the reset links and
+the API tokens once the app has a `UserProvider`, the sign-ins when `SignInStore` is bound, the second factor when `TwoFactorState` is
+or contains the `TwoFactorStore`, and the passkeys with the `PasskeyServiceProvider`. A store of your own keeps its own table, and
+readiness waits for none of ours: an app that wants no reset links or no API tokens binds a store of its own for them
+(`container.singleton(AccessTokenStore, MyTokens)`), because with a `UserProvider` the default stores count as used. Readiness is also red
+while a column that holds a secret (`token_hash`, `validator_hash`, `secret`, `code_hash`) lacks its `secret()` mark, as in a table made by hand.
+
+An app that created the tables under their old names (`remember_tokens`, `sign_ins`, …) renames them with
+[`marmeon make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables), and stops every process of the old release for the
+`marmeon migrate` that follows. The rows stay: passwords, authenticators, recovery codes, passkeys and reset links keep working.
 
 ## Signed-in pages are never cached
 

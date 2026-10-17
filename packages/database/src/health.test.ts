@@ -3,9 +3,13 @@ import { join } from 'node:path';
 import { createApplication, env, HealthChecks, Logger } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { defineConnection } from './config.ts';
+import { bookkeepingConnection } from './books.ts';
 import { Connections } from './connections.ts';
 import { DatabaseHealthCheck } from './health.ts';
+import { Migrator } from './migrations/migrator.ts';
 import { DatabaseServiceProvider } from './provider.ts';
+import { sql } from 'kysely';
+import { SchemaRequirements } from './upgrades.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const root = tempDir('marmeon-db-health-');
@@ -42,5 +46,43 @@ describe('the database health check', () => {
     expect(report.ok).toBe(false);
     expect(report.checks[0]).toMatchObject({ name: 'database', status: 'failing' });
     expect((report.checks[0]!.error as Error).message).toMatch(/^The database connection "reporting" failed: /);
+  });
+});
+
+describe('the secret columns a table is required to have', () => {
+  const requirement = (connection: string, table: string) => ({ connection, table, columns: ['id', 'token'], secrets: ['token'], set: 'keys' });
+  const messageOf = async (app: Awaited<ReturnType<typeof boot>>) => {
+    const report = await app.container.make(HealthChecks).run(app.container);
+    return { report, message: report.checks[0]!.error instanceof Error ? report.checks[0]!.error.message : '' };
+  };
+
+  it('are red while the bookkeeping does not mark one, with the way to mark it', async () => {
+    await using app = await boot();
+    await app.container.make(Migrator).migrate();
+    const connections = app.container.make(Connections);
+    await sql`create table keys_unmarked (id integer primary key, token varchar(64))`.execute(connections.get());
+    app.container.make(SchemaRequirements).require(requirement('default', 'keys_unmarked'));
+    const { report, message } = await messageOf(app);
+    expect(report.ok).toBe(false);
+    expect(message).toBe('keys_unmarked has token without the secret() mark — a migration marks the column with .secret() (schema.alter), see docs/migrations.md#how-the-migrator-keeps-track');
+  });
+
+  it('are green once the bookkeeping marks them', async () => {
+    await using app = await boot();
+    await app.container.make(Migrator).migrate();
+    const connections = app.container.make(Connections);
+    await sql`create table keys_marked (id integer primary key, token varchar(64))`.execute(connections.get());
+    await sql`insert into marmeon_secret_columns (table_name, column_name) values ('keys_marked', 'token')`.execute(bookkeepingConnection(connections));
+    connections.metadata().invalidate();
+    app.container.make(SchemaRequirements).require(requirement('default', 'keys_marked'));
+    expect((await messageOf(app)).report.ok).toBe(true);
+  });
+
+  it('are not asked of a connection that is not managed: it has no bookkeeping', async () => {
+    const file = join(root, 'foreign.sqlite');
+    await using app = await boot([defineConnection('foreign', { env: env({}), resolve: () => ({ driver: 'sqlite', database: file, managed: false }) })]);
+    await sql`create table keys_foreign (id integer primary key, token varchar(64))`.execute(app.container.make(Connections).get('foreign'));
+    app.container.make(SchemaRequirements).require(requirement('foreign', 'keys_foreign'));
+    expect((await messageOf(app)).report.ok).toBe(true);
   });
 });

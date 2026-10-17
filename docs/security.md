@@ -255,7 +255,7 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
   `AUTH_REMEMBER_DAYS` for "Keep me signed in" (a convenience at AAL1; 30 at most, 0 turns it off), and `SESSION_LIFETIME=60`
   where AAL2 is needed, which holds only behind `twoFactor()`.
   [How long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists them all.
-- Sign-in tracking, if users should see and end their own sign-ins: `SignInStore` bound to `DatabaseSignIns`, the `sign_ins` table, and
+- Sign-in tracking, if users should see and end their own sign-ins: `SignInStore` bound to `DatabaseSignIns`, the `marmeon_sign_ins` table, and
   `auth:prune-tokens` scheduled ([sign-ins](authentication.md#sign-ins)). The starter kit does this.
 - After an incident, `AccountSessions` ends every session and remember-me cookie of an account
   ([ending every session of a user](authentication.md#ending-every-session-of-a-user)).

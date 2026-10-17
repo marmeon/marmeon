@@ -69,7 +69,7 @@ describe('the mail about a copied "keep me signed in" cookie', { timeout: 30_000
     await replay(copy);
     await app.queue.work();
     expect(app.mail.queued(SignInMail)).toHaveLength(1);
-    await app.assertDatabaseCount('remember_tokens', 0);
+    await app.assertDatabaseCount('marmeon_remember_tokens', 0);
   });
 
   it('tells the owner of a validator that was never handed out for a selector that was, and the sign-ins end', async () => {
@@ -80,7 +80,7 @@ describe('the mail about a copied "keep me signed in" cookie', { timeout: 30_000
     await replay(forged); // the second finds the tokens gone: no second mail
     await app.queue.work();
     expect(app.mail.queued(SignInMail)).toHaveLength(1);
-    await app.assertDatabaseCount('remember_tokens', 0);
+    await app.assertDatabaseCount('marmeon_remember_tokens', 0);
   });
 
   it('says nothing when the account is gone by the time the worker runs', async () => {

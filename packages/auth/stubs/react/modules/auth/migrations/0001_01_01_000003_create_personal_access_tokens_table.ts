@@ -1,10 +1,10 @@
-// @marmeon-stub auth 1
+// @marmeon-stub auth 2
 import { defineMigration } from '@marmeon/database';
 
 // API tokens: the secret only as SHA-256, abilities as JSON.
 export default defineMigration({
   up: (schema) =>
-    schema.create('personal_access_tokens', (table) => {
+    schema.create('marmeon_personal_access_tokens', (table) => {
       table.id();
       table.foreignId('user_id').constrained().cascadeOnDelete();
       table.string('name');
@@ -14,5 +14,5 @@ export default defineMigration({
       table.timestamp('expires_at').nullable();
       table.timestamps();
     }),
-  down: (schema) => schema.drop('personal_access_tokens'),
+  down: (schema) => schema.drop('marmeon_personal_access_tokens'),
 });

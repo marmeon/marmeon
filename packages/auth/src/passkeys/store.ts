@@ -5,10 +5,10 @@ import type { SecondFactor, TwoFactorState } from '../two-factor/state.ts';
 import { RECOVERY_CODES_TABLE, TWO_FACTOR_TABLE } from '../two-factor/store.ts';
 
 /** The table the app's migration creates — see {@link PasskeyTable}. */
-export const PASSKEYS_TABLE = 'passkeys';
+export const PASSKEYS_TABLE = 'marmeon_passkeys';
 
 /**
- * The columns {@link PasskeyStore} needs on `passkeys`. The public key is public: stored as it is, not `.secret()`.
+ * The columns {@link PasskeyStore} needs on `marmeon_passkeys`. The public key is public: stored as it is, not `.secret()`.
  * `user_handle` is the account's random handle, the same in every row of the account.
  */
 export interface PasskeyTable {
@@ -30,6 +30,9 @@ export interface PasskeyTable {
   created_at: Generated<string | Date>;
   updated_at: Generated<string | Date>;
 }
+
+/** The columns readiness waits for on `marmeon_passkeys`. */
+export const PASSKEY_COLUMNS = ['id', 'user_id', 'user_handle', 'credential_id', 'public_key', 'algorithm', 'sign_count', 'transports', 'aaguid', 'backup_eligible', 'backed_up', 'name', 'last_used_at', 'suspended_at', 'created_at', 'updated_at'] as const satisfies readonly (keyof PasskeyTable)[];
 
 type Tables = { [PASSKEYS_TABLE]: PasskeyTable; [RECOVERY_CODES_TABLE]: { user_id: number | string }; [TWO_FACTOR_TABLE]: { id: number; user_id: number | string; confirmed_at: string | Date | null } };
 
@@ -97,7 +100,7 @@ function recordOf(row: RowOf<PasskeyTable>): PasskeyRecord {
 }
 
 /**
- * The passkeys of the accounts, on the app's `passkeys` table. Binding it (next to the TOTP store, through `combineFactors`)
+ * The passkeys of the accounts, on the app's `marmeon_passkeys` table. Binding it (next to the TOTP store, through `combineFactors`)
  * as the {@link TwoFactorState} makes a registered passkey a second factor of its account.
  *
  * The sign count is written by a single conditional `UPDATE`: of parallel sign-ins with one counter exactly one wins.

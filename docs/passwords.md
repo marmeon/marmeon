@@ -90,7 +90,7 @@ for an address without an account and while the last token for that address is y
 default. So one address gets at most one mail a minute, however often someone asks. It is one kind on purpose: a kind such as
 `unknown-email` would invite an answer that says "no account".
 
-- **The token** is 256 random bits. The `password_reset_tokens` table keeps only its SHA-256 hash, one row per address: a new
+- **The token** is 256 random bits. The `marmeon_password_reset_tokens` table keeps only its SHA-256 hash, one row per address: a new
   token replaces the older one, and with it the older link.
 - **The job's payload is encrypted,** because it holds an address. The mail is queued once more on its own, so a failing mail
   server retries the mail with this token instead of asking the broker for a second one.
@@ -213,7 +213,7 @@ The [API tokens](api-tokens.md#pruning-tokens) page describes the command.
 
 ## A store of your own
 
-The broker keeps its tokens in a `PasswordResetTokenStore`, by default the `password_reset_tokens` table. To keep them elsewhere,
+The broker keeps its tokens in a `PasswordResetTokenStore`, by default the `marmeon_password_reset_tokens` table. To keep them elsewhere,
 bind your own in a provider:
 
 ```ts
@@ -230,7 +230,7 @@ returns `ok` only for the current, fresh token of the address, and uses it up in
 kind `invalid-token`. A store that deletes an expired token before it answers must return `commitAnyway(err(…))`, so the deletion
 survives a [transaction that returns the err](transactions.md#returning-an-err). Store a hash of the token, never the token.
 
-A `password_reset_tokens` table of your own needs what the starter kit's migration gives it: `email` as its primary key, so an
+A `marmeon_password_reset_tokens` table of your own needs what the starter kit's migration gives it: `email` as its primary key, so an
 address never has two rows, and `token_hash` as a 64-character `secret()` column.
 
 ## Configuration

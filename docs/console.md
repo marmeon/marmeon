@@ -157,7 +157,7 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 | `make:middleware <Name> --module=<m>` | A middleware class in `middleware/`. |
 | `make:migration <snake_case_name> --module=<m> [--no-register]` | A timestamped migration in `migrations/`; adds the folder to the module once. See [migrations](migrations.md#generating-migrations). |
 | `make:upgrade-migrations [--check]` | The migrations that bring the framework's tables in your app to the installed revision, into the module of the migration that created them. `--check` writes nothing and exits with 1 when one is missing. See [migrations](migrations.md#upgrading-the-frameworks-tables). |
-| `make:sign-ins-table [--module=<m>]` | The migration of the `sign_ins` table that `DatabaseSignIns` uses. See [sign-ins](authentication.md#sign-ins). |
+| `make:sign-ins-table [--module=<m>]` | The migration of the `marmeon_sign_ins` table that `DatabaseSignIns` uses. See [sign-ins](authentication.md#sign-ins). |
 
 `--module` names a module that exists: `make:module` comes first. `-m` is short for it.
 

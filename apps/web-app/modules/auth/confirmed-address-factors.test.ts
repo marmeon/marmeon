@@ -19,7 +19,7 @@ afterEach(() => app.close());
 
 const credentialsOf = (user: User) => ({ form: { email: user.email, password: 'password' } });
 const device = () => softAuthenticator({ origin: 'http://localhost', rpId: 'localhost' });
-const FACTOR_TABLES = ['passkeys', 'two_factor_authentications', 'two_factor_recovery_codes', 'personal_access_tokens'] as const;
+const FACTOR_TABLES = ['marmeon_passkeys', 'marmeon_two_factor_authentications', 'marmeon_two_factor_recovery_codes', 'marmeon_personal_access_tokens'] as const;
 
 describe('an unconfirmed address with AUTH_PRIVATE_REGISTRATION=false', { timeout: 30_000 }, () => {
   beforeEach(async () => {
@@ -49,7 +49,7 @@ describe('an unconfirmed address with AUTH_PRIVATE_REGISTRATION=false', { timeou
     const ada = await app.factory(UserFactory).create();
     const cookie = (await app.post('/login', credentialsOf(ada)).assertStatus(303)).cookie(SESSION)!;
     await app.withCookie(SESSION, cookie).post('/settings/two-factor/setup').assertRedirect('/settings/two-factor');
-    await app.assertDatabaseCount('two_factor_authentications', 1);
+    await app.assertDatabaseCount('marmeon_two_factor_authentications', 1);
   });
 });
 
@@ -73,9 +73,9 @@ describe('the reset of an account whose address was never confirmed', { timeout:
     const proven = app.withCookie(SESSION, confirmed.cookie(SESSION) ?? cookie);
     const options = await proven.post('/settings/passkeys/options', { json: {} }).assertOk();
     await proven.post('/settings/passkeys', { json: { response: authenticator.register(options.json() as never), name: 'Squatter', password: 'password' } }).assertOk();
-    await app.assertDatabaseCount('passkeys', 1);
-    await app.assertDatabaseCount('two_factor_authentications', 1);
-    await app.assertDatabaseCount('personal_access_tokens', 1);
+    await app.assertDatabaseCount('marmeon_passkeys', 1);
+    await app.assertDatabaseCount('marmeon_two_factor_authentications', 1);
+    await app.assertDatabaseCount('marmeon_personal_access_tokens', 1);
     return { authenticator };
   }
 
@@ -106,9 +106,9 @@ describe('the reset of an account whose address was never confirmed', { timeout:
 
     await reset(owner);
 
-    await app.assertDatabaseCount('passkeys', 1);
-    await app.assertDatabaseCount('two_factor_authentications', 1);
-    await app.assertDatabaseCount('personal_access_tokens', 1);
+    await app.assertDatabaseCount('marmeon_passkeys', 1);
+    await app.assertDatabaseCount('marmeon_two_factor_authentications', 1);
+    await app.assertDatabaseCount('marmeon_personal_access_tokens', 1);
   });
 
   it('keeps the factors of an account that was confirmed once and then changed its address', async () => {
@@ -119,8 +119,8 @@ describe('the reset of an account whose address was never confirmed', { timeout:
 
     await reset(owner);
 
-    await app.assertDatabaseCount('passkeys', 1);
-    await app.assertDatabaseCount('two_factor_authentications', 1);
-    await app.assertDatabaseCount('personal_access_tokens', 1);
+    await app.assertDatabaseCount('marmeon_passkeys', 1);
+    await app.assertDatabaseCount('marmeon_two_factor_authentications', 1);
+    await app.assertDatabaseCount('marmeon_personal_access_tokens', 1);
   });
 });

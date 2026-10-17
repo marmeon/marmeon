@@ -41,7 +41,7 @@ export class NoTwoFactorState implements TwoFactorState {
 
 /** One state from several sources (`TwoFactorStore`, the passkey store): an account has every factor any source reports, each once. */
 export function combineFactors(...sources: readonly TwoFactorState[]): TwoFactorState {
-  return {
+  const combined: TwoFactorState = {
     async factors(userId) {
       const lists = await Promise.all(sources.map((source) => source.factors(userId)));
       return [...new Set(lists.flat())];
@@ -54,6 +54,16 @@ export function combineFactors(...sources: readonly TwoFactorState[]): TwoFactor
       for (const source of sources) await source.removeAll(userId);
     },
   };
+  SOURCES.set(combined, sources);
+  return combined;
+}
+
+const SOURCES = new WeakMap<TwoFactorState, readonly TwoFactorState[]>();
+
+/** The states a state is made of: those {@link combineFactors} joined, down to the ones that read a table; the state itself otherwise. Package-internal. */
+export function factorSources(state: TwoFactorState): readonly TwoFactorState[] {
+  const parts = SOURCES.get(state);
+  return parts ? parts.flatMap(factorSources) : [state];
 }
 
 /** A passkey's sign-in response as the browser sent it (`AuthenticationResponseJSON`) — opaque here; the passkeys service checks it. */

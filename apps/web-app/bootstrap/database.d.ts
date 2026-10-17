@@ -53,6 +53,57 @@ declare module '@marmeon/database' {
       read_at: Timestamp | null;
       created_at: Timestamp;
     };
+    /** Owned by `auth`. */
+    marmeon_passkeys: {
+      id: Generated<number>;
+      user_id: number;
+      user_handle: string;
+      credential_id: string;
+      public_key: string;
+      algorithm: number;
+      sign_count: number;
+      transports: JsonColumn;
+      aaguid: string;
+      backup_eligible: boolean;
+      backed_up: boolean;
+      name: string;
+      last_used_at: Timestamp | null;
+      suspended_at: Timestamp | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /** Owned by `auth`. */
+    marmeon_password_reset_tokens: {
+      email: string;
+      token_hash: Secret<string>;
+      created_at: Timestamp;
+    };
+    /** Owned by `auth`. */
+    marmeon_personal_access_tokens: {
+      id: Generated<number>;
+      user_id: number;
+      name: string;
+      token_hash: Secret<string>;
+      abilities: JsonColumn;
+      last_used_at: Timestamp | null;
+      expires_at: Timestamp | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /** Owned by `auth`. */
+    marmeon_remember_tokens: {
+      id: Generated<number>;
+      user_id: number;
+      selector: string;
+      validator_hash: Secret<string>;
+      previous_validator_hash: Secret<string | null>;
+      rotated_at: Timestamp | null;
+      last_used_at: Timestamp | null;
+      expires_at: Timestamp;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+      account_fingerprint: string | null;
+    };
     /** Owned by `system`. */
     marmeon_sessions: {
       id: string;
@@ -60,6 +111,18 @@ declare module '@marmeon/database' {
       payload: Secret<string>;
       last_activity: number;
       version: Generated<number>;
+    };
+    /** Owned by `auth`. */
+    marmeon_sign_ins: {
+      id: string;
+      user_id: number;
+      user_agent: string | null;
+      remember_selector: string | null;
+      remember_until: Timestamp | null;
+      signed_in_at: Timestamp;
+      last_seen_at: Timestamp;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
     };
     /** Owned by `system`. */
     marmeon_temporary_uploads: {
@@ -79,79 +142,7 @@ declare module '@marmeon/database' {
       consumed_at: number | null;
     };
     /** Owned by `auth`. */
-    passkeys: {
-      id: Generated<number>;
-      user_id: number;
-      user_handle: string;
-      credential_id: string;
-      public_key: string;
-      algorithm: number;
-      sign_count: number;
-      transports: JsonColumn;
-      aaguid: string;
-      backup_eligible: boolean;
-      backed_up: boolean;
-      name: string;
-      last_used_at: Timestamp | null;
-      suspended_at: Timestamp | null;
-      created_at: Generated<Timestamp>;
-      updated_at: Generated<Timestamp>;
-    };
-    /** Owned by `auth`. */
-    password_reset_tokens: {
-      email: string;
-      token_hash: Secret<string>;
-      created_at: Timestamp;
-    };
-    /** Owned by `auth`. */
-    personal_access_tokens: {
-      id: Generated<number>;
-      user_id: number;
-      name: string;
-      token_hash: Secret<string>;
-      abilities: JsonColumn;
-      last_used_at: Timestamp | null;
-      expires_at: Timestamp | null;
-      created_at: Generated<Timestamp>;
-      updated_at: Generated<Timestamp>;
-    };
-    /** Owned by `user-profile`. */
-    profile_links: {
-      id: Generated<string>;
-      user_id: number;
-      label: string;
-      url: string;
-      created_at: Generated<Timestamp>;
-      updated_at: Generated<Timestamp>;
-    };
-    /** Owned by `auth`. */
-    remember_tokens: {
-      id: Generated<number>;
-      user_id: number;
-      selector: string;
-      validator_hash: Secret<string>;
-      previous_validator_hash: Secret<string | null>;
-      rotated_at: Timestamp | null;
-      last_used_at: Timestamp | null;
-      expires_at: Timestamp;
-      created_at: Generated<Timestamp>;
-      updated_at: Generated<Timestamp>;
-      account_fingerprint: string | null;
-    };
-    /** Owned by `auth`. */
-    sign_ins: {
-      id: string;
-      user_id: number;
-      user_agent: string | null;
-      remember_selector: string | null;
-      remember_until: Timestamp | null;
-      signed_in_at: Timestamp;
-      last_seen_at: Timestamp;
-      created_at: Generated<Timestamp>;
-      updated_at: Generated<Timestamp>;
-    };
-    /** Owned by `auth`. */
-    two_factor_authentications: {
+    marmeon_two_factor_authentications: {
       id: Generated<number>;
       user_id: number;
       secret: Secret<string>;
@@ -161,11 +152,20 @@ declare module '@marmeon/database' {
       updated_at: Generated<Timestamp>;
     };
     /** Owned by `auth`. */
-    two_factor_recovery_codes: {
+    marmeon_two_factor_recovery_codes: {
       id: Generated<number>;
       user_id: number;
       code_hash: Secret<string>;
       used_at: Timestamp | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /** Owned by `user-profile`. */
+    profile_links: {
+      id: Generated<string>;
+      user_id: number;
+      label: string;
+      url: string;
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
     };
@@ -193,36 +193,36 @@ declare module '@marmeon/database' {
     login_activity: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
-    passkeys: {
+    marmeon_passkeys: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
-    personal_access_tokens: {
+    marmeon_personal_access_tokens: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
+    marmeon_remember_tokens: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
+    marmeon_sign_ins: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
+    marmeon_two_factor_authentications: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
+    marmeon_two_factor_recovery_codes: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
     profile_links: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
-    remember_tokens: {
-      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
-    };
-    sign_ins: {
-      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
-    };
-    two_factor_authentications: {
-      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
-    };
-    two_factor_recovery_codes: {
-      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
-    };
     users: {
       login_activity: { kind: 'hasOne'; table: 'login_activity'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
-      passkeys: { kind: 'hasMany'; table: 'passkeys'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
-      personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      marmeon_passkeys: { kind: 'hasMany'; table: 'marmeon_passkeys'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      marmeon_personal_access_tokens: { kind: 'hasMany'; table: 'marmeon_personal_access_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      marmeon_remember_tokens: { kind: 'hasMany'; table: 'marmeon_remember_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      marmeon_sign_ins: { kind: 'hasMany'; table: 'marmeon_sign_ins'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
+      marmeon_two_factor_authentications: { kind: 'hasOne'; table: 'marmeon_two_factor_authentications'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
+      marmeon_two_factor_recovery_codes: { kind: 'hasMany'; table: 'marmeon_two_factor_recovery_codes'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       profile_links: { kind: 'hasMany'; table: 'profile_links'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
-      remember_tokens: { kind: 'hasMany'; table: 'remember_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
-      sign_ins: { kind: 'hasMany'; table: 'sign_ins'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
-      two_factor_authentications: { kind: 'hasOne'; table: 'two_factor_authentications'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
-      two_factor_recovery_codes: { kind: 'hasMany'; table: 'two_factor_recovery_codes'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
     };
   }
   interface TableOwners {
@@ -232,16 +232,16 @@ declare module '@marmeon/database' {
     marmeon_failed_jobs: 'system';
     marmeon_jobs: 'system';
     marmeon_notifications: 'system';
+    marmeon_passkeys: 'auth';
+    marmeon_password_reset_tokens: 'auth';
+    marmeon_personal_access_tokens: 'auth';
+    marmeon_remember_tokens: 'auth';
     marmeon_sessions: 'system';
+    marmeon_sign_ins: 'auth';
     marmeon_temporary_uploads: 'system';
-    passkeys: 'auth';
-    password_reset_tokens: 'auth';
-    personal_access_tokens: 'auth';
+    marmeon_two_factor_authentications: 'auth';
+    marmeon_two_factor_recovery_codes: 'auth';
     profile_links: 'user-profile';
-    remember_tokens: 'auth';
-    sign_ins: 'auth';
-    two_factor_authentications: 'auth';
-    two_factor_recovery_codes: 'auth';
     users: 'auth';
   }
   interface ExposedTables {

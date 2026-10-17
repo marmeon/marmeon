@@ -431,7 +431,7 @@ describe('AccountSessions.endEveryone()', () => {
   it('a reset-token store that cannot be emptied does not keep a session alive: the keys are rotated, the error names the missing steps', async () => {
     class FailingResets {
       forgetEveryone = async () => {
-        throw new Error('no such table: password_reset_tokens');
+        throw new Error('no such table: marmeon_password_reset_tokens');
       };
     }
     const { browser, accounts, count } = await boot(memory, new Users(), { override: (container) => container.instance(PasswordResetTokenStore, new FailingResets() as never) });

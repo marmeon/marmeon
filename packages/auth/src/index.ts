@@ -22,6 +22,7 @@ import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
+import { authMigrationUpgrades, requireAuthTables, UserProviderNotBound } from './upgrades.ts';
 
 export { AccountSessions } from './account-sessions.ts';
 export type { EveryoneEnded } from './account-sessions.ts';
@@ -92,6 +93,8 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
  */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
+  /** `marmeon make:upgrade-migrations` writes the renames of the starter kit's auth tables and of `sign_ins` to their `marmeon_` names. */
+  static migrationUpgrades = authMigrationUpgrades();
   static commands = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand, EndAllSessionsCommand];
 
   register(container: Container): void {
@@ -102,7 +105,7 @@ export class AuthServiceProvider implements ServiceProvider {
     container.scoped(LiveAudience, (c) => new SignInAudience(() => c.make(Auth), c.make(Session)));
     // Policies are built in the request's scope: they may depend on anything a controller can.
     container.scoped(Gate, (scope) => new Gate(scope.make(Auth), (Class) => scope.make(Class)));
-    // On the app's `remember_tokens` table (its migration comes with make:auth); bind your own store to replace it.
+    // On the app's `marmeon_remember_tokens` table (its migration comes with make:auth); bind your own store to replace it.
     container.singleton(RememberTokenStore, DatabaseRememberTokens);
     // Nobody has a second factor until the app binds a source: container.bind(TwoFactorState, TwoFactorStore). Removing that binding turns two-factor off for every account.
     container.singleton(TwoFactorState, NoTwoFactorState);
@@ -119,7 +122,7 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(SignInTracker, (c) => new SignInTracker(container.has(SignInStore) ? () => c.make(SignInStore) : undefined));
     // Until the app binds its own (its auth module does — `marmeon make:auth` writes one), the first use explains.
     container.bind(UserProvider, () => {
-      throw new Error(
+      throw new UserProviderNotBound(
         'Authentication needs to know where users come from: bind a UserProvider in a provider of your auth module — ' +
           'container.bind(UserProvider, UserRepository) — and declare the user type: ' +
           "declare module '@marmeon/auth' { interface AuthTypes { user: User } }. `marmeon make:auth` sets this up.",
@@ -127,7 +130,7 @@ export class AuthServiceProvider implements ServiceProvider {
     });
   }
 
-  boot(app: Application): void {
+  async boot(app: Application): Promise<void> {
     // Nothing a signed-in user saw stays in the browser's HTTP cache (Back after signing out).
     app.container.make(Router).middleware.append('web', NoStoreWhenSignedIn, MiddlewarePriority.preventCaching);
     // Private registration turned off where it counts: said once, at boot — like the log mailer.
@@ -137,5 +140,7 @@ export class AuthServiceProvider implements ServiceProvider {
       app.container.make(Redactor).addKeys(rememberCookieName(config, app.container.make(SessionConfig)));
     }
     if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
+    // /up/ready is red until the tables of the stores in use have their new names and every column the stores need.
+    await requireAuthTables(app.container);
   }
 }

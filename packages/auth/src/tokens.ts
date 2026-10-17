@@ -6,10 +6,10 @@ import type { Duration } from '@marmeon/http';
 import { AuthConfig } from './config.ts';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link AccessTokenTable}. */
-export const ACCESS_TOKEN_TABLE = 'personal_access_tokens';
+export const ACCESS_TOKEN_TABLE = 'marmeon_personal_access_tokens';
 
 /**
- * The columns {@link DatabaseAccessTokens} needs — the `personal_access_tokens` migration `make:auth` writes into
+ * The columns {@link DatabaseAccessTokens} needs — the `marmeon_personal_access_tokens` migration `make:auth` writes into
  * `modules/auth/migrations/` creates them (the token only as its SHA-256, a `secret()` column).
  */
 export interface AccessTokenTable {
@@ -23,6 +23,9 @@ export interface AccessTokenTable {
   created_at: Generated<string | Date>;
   updated_at: Generated<string | Date>;
 }
+
+/** The columns readiness waits for on `marmeon_personal_access_tokens`. */
+export const ACCESS_TOKEN_COLUMNS = ['id', 'user_id', 'name', 'token_hash', 'abilities', 'last_used_at', 'expires_at', 'created_at', 'updated_at'] as const satisfies readonly (keyof AccessTokenTable)[];
 
 /** A token as the app sees it — never with its secret. */
 export interface AccessToken {
@@ -91,7 +94,7 @@ export function parseAccessToken(plainText: string, prefix: string): { id: numbe
   return { id: Number(id), secret };
 }
 
-/** The default {@link AccessTokenStore}, on the app's `personal_access_tokens` table. */
+/** The default {@link AccessTokenStore}, on the app's `marmeon_personal_access_tokens` table. */
 export class DatabaseAccessTokens implements AccessTokenStore {
   readonly #connections: Connections;
   readonly #prefix: string;
