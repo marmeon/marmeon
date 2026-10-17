@@ -9,7 +9,8 @@ import { drivers, freshConnections, freshDatabase, PGSQL_URL, silent } from '../
 import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand } from '../commands/migrate.ts';
 import { Connections, MigrationLockLostError, MigrationLockTimeoutError, Migrator } from '../index.ts';
 import type { TypeGenerator } from '../types-gen/generator.ts';
-import { prepareBookkeeping } from '../bookkeeping-setup.ts';
+import { createMigrationsTable } from '../migration-state.ts';
+import { migratorConnection } from '../migrator-connection.ts';
 import { ADVISORY_KEY, LOCK_TABLE, MigrationLock, ownerOf, STALE_AFTER_MS, type LockOptions } from './lock.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 
@@ -53,7 +54,7 @@ describe.each(drivers)('the migration lock on %s', (driver) => {
       '2026_01_03_000000_add_slug_to_posts_table',
     ]);
     expect(first.length === 0 || second.length === 0).toBe(true); // the one that waited found nothing left
-    const batches = await db().selectFrom('marmeon_migrations').select('batch').distinct().execute();
+    const batches = await db().selectFrom('migrations').select('batch').distinct().execute();
     expect(batches).toHaveLength(1);
   });
 
@@ -104,7 +105,7 @@ describe.each(drivers)('the migration lock on %s', (driver) => {
     void rolling.then(() => (finished = true));
     await pause(500);
     expect(finished).toBe(false);
-    expect(await db().selectFrom('marmeon_migrations').select('name').execute()).toHaveLength(3);
+    expect(await db().selectFrom('migrations').select('name').execute()).toHaveLength(3);
     await held.release();
     expect((await rolling).length).toBeGreaterThan(0);
     await migrator(connections).migrate();
@@ -123,7 +124,7 @@ describe.each(drivers)('the migration lock on %s', (driver) => {
     } finally {
       await held.release();
     }
-    expect(await db().selectFrom('marmeon_migrations').select('name').execute()).toHaveLength(3); // nothing was undone or dropped
+    expect(await db().selectFrom('migrations').select('name').execute()).toHaveLength(3); // nothing was undone or dropped
   });
 
   it('rejects a --wait that is not a number of seconds', async () => {
@@ -136,7 +137,7 @@ describe.each(drivers)('the migration lock on %s', (driver) => {
     await migrator(connections).fresh();
     const free = await acquire({ waitSeconds: 0 });
     await free.release();
-    expect((await db().selectFrom('marmeon_migrations').select('name').execute()).length).toBe(3);
+    expect((await db().selectFrom('migrations').select('name').execute()).length).toBe(3);
   });
 
   it('shows the error of the work, not of letting go after it', async () => {
@@ -256,7 +257,7 @@ describe('the SQLite lock row', () => {
     const options = { driver: 'sqlite', database: file } as const;
     const [one, other] = [1, 2].map(() => new Connections({ connections: { default: options }, root: '/', logger: silent }));
     try {
-      await prepareBookkeeping(one!);
+      await createMigrationsTable(migratorConnection(one!), 'sqlite');
       await sql`create table t (x integer)`.execute(one!.get<any>());
       let waiting: Promise<{ release(): Promise<void> }> | undefined;
       await one!.get<any>().transaction().execute(async (trx) => {
@@ -350,7 +351,9 @@ describe.each(drivers)('a migration that loses the lock on %s', (driver) => {
     }
   };
   const tablesOf = async (name: string) => (await connections.get<any>(name).introspection.getTables()).map((t) => t.name);
-  const recorded = async () => (await connections.get<any>().selectFrom('marmeon_migrations').select('name').execute()).map((row) => row.name);
+  // The record is made with the first migration: when that is rolled back, there is none.
+  const recorded = async () =>
+    (await tablesOf('default')).includes('migrations') ? (await connections.get<any>().selectFrom('migrations').select('name').execute()).map((row) => row.name) : [];
   const app = (...modules: ModuleDefinition[]) =>
     new Migrator({ modules, root: '/', container: { make: () => 'system' } } as unknown as Application, connections);
 

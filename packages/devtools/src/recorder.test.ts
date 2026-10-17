@@ -179,7 +179,7 @@ async function boot(env: Record<string, string> = {}, options: { test?: boolean;
     },
   });
   const connections = app.container.make(Connections);
-  // `people.password` is `.secret()` in its migration — the migrator's bookkeeping tells the query channel.
+  // `people.password` is `.secret()` in its migration — the migrations tell the query channel.
   await new Migrator(app, connections).migrate();
   await sql`insert into people (email) values ('ada@example.com')`.execute(connections.get());
   return { app, root, kernel: createHttpKernel(app), ...(tester ? { tester } : {}) };

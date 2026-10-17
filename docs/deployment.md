@@ -458,8 +458,8 @@ A release that changes a format after 1.0 writes the new version only once the r
 
 ## The upgrade that stops every process
 
-The first release that marks the formats above cannot run next to the one before it: it renames the framework's tables, the
-bookkeeping and the cookies, and reads no record of the old release. Upgrade to it with every process of the old release stopped.
+The first release that marks the formats above cannot run next to the one before it: it renames the cookies, changes the form of API tokens and
+reads no record of the old release. Upgrade to it with every process of the old release stopped.
 The steps below are the order; the [upgrade guide](../UPGRADING.md) names the version.
 
 1. **Before, while the old release runs.**
@@ -469,13 +469,13 @@ The steps below are the order; the [upgrade guide](../UPGRADING.md) names the ve
    - Tell your users that they sign in again, and pick a quiet hour.
 2. **In development.** Run `marmeon make:upgrade-migrations`, `marmeon db:types` and `marmeon route:types`, and commit what they
    write. [`make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables) writes the migration that clears the API tokens. A database with tables of its
-   own that never ran `marmeon migrate` is taken over once with
-   [`migrate --adopt-existing`](migrations.md#adopting-an-existing-database).
+   own that never ran `marmeon migrate` keeps them: `migrate` writes its record of migrations and runs the migrations, and the
+   tables it did not make stay unknown to Marmeon ([how the migrator keeps track](migrations.md#how-the-migrator-keeps-track)).
 3. **Stop every process of the old release**, on every machine: web, workers, the scheduler, cron jobs, and every CI or release job
    that runs `marmeon`. None of them may run after step 4 begins.
 4. **Deploy the new release, run `marmeon migrate --force`, then
    [`marmeon auth:end-all-sessions --force --keep-reset-tokens`](authentication.md#ending-every-session-of-every-account), then start
-   it.** `migrate` moves the bookkeeping to its `marmeon_` tables and runs the migrations from step 2. The second command deletes the
+   it.** `migrate` runs the migrations from step 2. The second command deletes the
    remember-me tokens and the sign-in rows, revokes the API tokens that are left and rotates the session keys, so nothing of the old
    release signs anyone in. It needs `UserProvider.updateEverySessionKey()`, which the starter kit's provider has; a provider of your
    own implements it first. Without `--keep-reset-tokens` it deletes the reset links too. `/up/ready` turns green when the tables and
@@ -497,8 +497,9 @@ The steps below are the order; the [upgrade guide](../UPGRADING.md) names the ve
 **What stays.** Every other table with its rows: users, passwords, second factors and recovery codes, passkeys, reset links (with `--keep-reset-tokens`), uploads,
 notifications and the cache. The sign-in rows are deleted.
 
-A process of the old release that you forgot fails loudly against the database: its tables are renamed, and the old bookkeeping
-names hold a placeholder, so its queries fail instead of running without the list of secret columns. **Redis notices nothing.**
+A process of the old release that you forgot keeps running against the database, with the secret columns its own tables
+(`table_owners`, `secret_columns`, `schema_markers`, which `migrate` leaves in place) name: a column that a new migration marks
+`.secret()` is not hidden from it. **Redis notices nothing.**
 Queue, sessions, cache and live updates on Redis are shared by a forgotten old process and a new one without any error, so step 3
 means every process.
 

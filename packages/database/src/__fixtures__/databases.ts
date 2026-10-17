@@ -1,8 +1,9 @@
 import { ConsoleLogger, type Application, type Logger, type ModuleDefinition } from '@marmeon/core';
-import { sql } from 'kysely';
-import { prepareBookkeeping } from '../bookkeeping-setup.ts';
+import { sql, type Kysely } from 'kysely';
 import { Connections } from '../connections.ts';
 import type { ConnectionOptions } from '../config.ts';
+import { createMigrationsTable } from '../migration-state.ts';
+import { migratorConnection } from '../migrator-connection.ts';
 import { Migrator } from '../migrations/migrator.ts';
 import { TypeGenerator } from '../types-gen/generator.ts';
 
@@ -15,7 +16,7 @@ export const silent: Logger = Object.assign(new ConsoleLogger(), { debug() {}, i
 
 /** A fresh database per suite: SQLite in memory, or a new Postgres database dropped by `drop()`. */
 export async function freshDatabase(driver: 'sqlite' | 'pgsql', { managed = true }: { managed?: boolean } = {}): Promise<{ options: ConnectionOptions; drop: () => Promise<void> }> {
-  // `managed: false` for a test that builds its tables itself instead of migrating them: no bookkeeping, and none is asked for.
+  // `managed: false` for a test that builds its tables itself instead of migrating them: no record of migrations, and none is asked for.
   const unmanaged = managed ? {} : { managed: false };
   if (driver === 'sqlite') return { options: { driver: 'sqlite', database: ':memory:', ...unmanaged }, drop: async () => {} };
   const name = `marmeon_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
@@ -32,15 +33,34 @@ export async function freshDatabase(driver: 'sqlite' | 'pgsql', { managed = true
   };
 }
 
+/** The three tables Marmeon 0.3 kept beside `migrations`, as 0.3 created them — empty, on `db`. Nothing of this release reads or writes them. */
+export async function createLegacyTables(db: Kysely<any>): Promise<void> {
+  await db.schema.createTable('table_owners').addColumn('table_name', 'varchar(255)', (c) => c.primaryKey()).addColumn('module', 'varchar(255)', (c) => c.notNull()).execute();
+  await db.schema
+    .createTable('secret_columns')
+    .addColumn('table_name', 'varchar(255)', (c) => c.notNull())
+    .addColumn('column_name', 'varchar(255)', (c) => c.notNull())
+    .addPrimaryKeyConstraint('secret_columns_pkey', ['table_name', 'column_name'])
+    .execute();
+  await db.schema
+    .createTable('schema_markers')
+    .addColumn('table_name', 'varchar(255)', (c) => c.notNull())
+    .addColumn('column_name', 'varchar(255)', (c) => c.notNull().defaultTo(''))
+    .addColumn('marker', 'varchar(32)', (c) => c.notNull())
+    .addColumn('value', 'varchar(255)')
+    .addPrimaryKeyConstraint('schema_markers_pkey', ['table_name', 'column_name', 'marker'])
+    .execute();
+}
+
 /** A `Connections` on a fresh database; `close()` destroys it and drops the database. */
 export async function freshConnections(
   driver: 'sqlite' | 'pgsql',
-  options: { managed?: boolean; bookkeeping?: boolean } = {},
+  options: { managed?: boolean; record?: boolean } = {},
 ): Promise<{ connections: Connections; close: () => Promise<void> }> {
   const fresh = await freshDatabase(driver, options);
   const connections = new Connections({ connections: { default: fresh.options }, root: '/', logger: silent });
-  // The empty, versioned bookkeeping a first `migrate` writes: a test that builds its tables itself runs the default path.
-  if (options.managed !== false && options.bookkeeping !== false) await prepareBookkeeping(connections);
+  // The empty record of migrations a first `migrate` writes: a test that builds its tables itself runs the default path.
+  if (options.managed !== false && options.record !== false) await createMigrationsTable(migratorConnection(connections), connections.options().driver);
   return {
     connections,
     close: async () => {

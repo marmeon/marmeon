@@ -1,12 +1,12 @@
 import { readlinkSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { withCode } from '@marmeon/core/internal';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { isUniqueViolation } from '../errors.ts';
+import { assertLockReadable, LOCK_TABLE } from '../migration-state.ts';
 import { importPg } from '../postgres.ts';
 
-/** SQLite: the table whose one row is the lock. Postgres needs none — it holds an advisory lock on a connection. */
-export const LOCK_TABLE = 'marmeon_migration_lock';
+export { LOCK_TABLE };
 
 /** The row of {@link LOCK_TABLE} that stands for "a migration is running". */
 const LOCK_NAME = 'migrations';
@@ -289,4 +289,7 @@ async function createLockTable(db: Kysely<any>): Promise<void> {
     .addColumn('acquired_at', 'varchar(32)', (c) => c.notNull())
     .addColumn('heartbeat_at', 'varchar(32)', (c) => c.notNull())
     .execute();
+  // A table of another form is a newer Marmeon's: its rows mean something this release does not know.
+  const found = (await sql<{ name: string }>`select name from pragma_table_info(${LOCK_TABLE})`.execute(db)).rows.map((row) => row.name);
+  assertLockReadable(new Map([[LOCK_TABLE, found]]), 'default');
 }

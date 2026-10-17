@@ -50,12 +50,11 @@ export type { LockHolder } from './migrations/lock.ts';
 export { Migrator } from './migrations/migrator.ts';
 export { secret } from './secrets.ts';
 export type { Secret, SecretReference } from './secrets.ts';
-export type { MigrationFile, MigrationRun, MigrationStatus } from './migrations/migrator.ts';
+export type { MigrateOptions, MigrationFile, MigrationRun, MigrationStatus, UnknownSchema } from './migrations/migrator.ts';
 export type { SchemaMarker } from './introspection.ts';
 export type { ProjectedColumn, ProjectedForeignKey, ProjectedIndex, ProjectedTable, SchemaProjection } from './schema/projection.ts';
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn, UuidColumn } from './schema/blueprint.ts';
 export { Schema, SchemaError } from './schema/schema.ts';
-export { BookkeepingVersionError } from './bookkeeping.ts';
 export { MigrationStateError } from './migration-state.ts';
 // Puts `with()`, `withCount()`, `whereHas()`, `withRelation()` and `withTrashed()` on Kysely's select builder — at runtime (this import) and in the types.
 import './chain.ts';

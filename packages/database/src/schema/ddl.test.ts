@@ -3,13 +3,11 @@ import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
 import { freshConnections, PGSQL_URL } from '../__fixtures__/databases.ts';
-import { bookkeepingConnection } from '../books.ts';
 import { Migrator } from '../index.ts';
 
 // The statements the schema builder writes, held per dialect. An app's old migration runs on a fresh database with whatever the
 // builder writes today, and on an updated one with what it wrote then; if the two differ, apps diverge without anyone noticing.
-// A group holds the schema statements of its migrations and, after them, what the migrator's books say. The books are held by
-// content, not by the statements that wrote them, so a recorder that upserts instead of delete-and-insert is not a change.
+// A group holds the schema statements of its migrations.
 //
 // `MARMEON_UPDATE_DDL=1 pnpm test:pgsql packages/database/src/schema/ddl.test.ts` writes the files again. It is for a new group, a new
 // file: a v1 file that changes is a change of what old migrations build, and a release note has to call it breaking.
@@ -17,12 +15,11 @@ import { Migrator } from '../index.ts';
 // A group may have a sibling directory `<group>-pgsql` for what SQLite cannot do, loaded on Postgres only.
 const GROUPS = ['columns', 'indexes', 'alter', 'rename', 'drop'];
 const POSTGRES_MAJOR = 18;
-const BOOKS = ['marmeon_table_owners', 'marmeon_secret_columns', 'marmeon_schema_markers'];
 
 const directory = (driver: string) => new URL(`../__fixtures__/formats/ddl/${driver}/`, import.meta.url);
 const update = process.env.MARMEON_UPDATE_DDL === '1';
 
-/** What the fixture migrations wrote, per group: the statements that change the schema, then the content of the migrator's books. */
+/** What the fixture migrations wrote, per group: the statements that change the schema. */
 async function record(driver: 'sqlite' | 'pgsql'): Promise<Map<string, string>> {
   const { connections, close } = await freshConnections(driver);
   try {
@@ -33,13 +30,12 @@ async function record(driver: 'sqlite' | 'pgsql'): Promise<Map<string, string>> 
     let statements: string[] = [];
     connections.onQuery((query) => {
       const text = query.sql.trim();
-      // Reads are not what a migration writes, and neither are the transaction, the migration lock and the books (held by content below).
+      // Reads are not what a migration writes, and neither are the transaction, the record of migrations and the migration lock.
       if (/^(select|with|begin|commit|rollback|savepoint|release|pragma)\b/i.test(text)) return;
-      if (/\bmarmeon_(versions|migration_lock|migrations|table_owners|secret_columns|schema_markers)\b/i.test(text)) return;
+      if (/\b(migration_lock|migrations)\b/i.test(text)) return;
       statements.push(query.parameters.length ? `${text};\n-- ${JSON.stringify(query.parameters)}` : `${text};`);
     });
     const written = new Map<string, string>();
-    const books = bookkeepingConnection(connections);
     for (const group of GROUPS) {
       // The groups before it are included: they ran already, and the migrator needs them to know the tables this one changes.
       const included = GROUPS.slice(0, GROUPS.indexOf(group) + 1);
@@ -47,12 +43,7 @@ async function record(driver: 'sqlite' | 'pgsql'): Promise<Map<string, string>> 
       const modules: ModuleDefinition[] = directories.map((directory) => ({ name: 'ddl', migrations: new URL(`../__fixtures__/migrations/ddl/${directory}/`, import.meta.url) }));
       statements = [];
       await new Migrator({ modules, root: '/' } as unknown as Application, connections).migrate();
-      const content: string[] = [];
-      for (const table of BOOKS) {
-        const rows = (await sql<Record<string, unknown>>`select * from ${sql.table(table)}`.execute(books)).rows.map((row) => JSON.stringify(Object.fromEntries(Object.entries(row).sort())));
-        content.push(`-- ${table}`, ...rows.sort().map((row) => `-- ${row}`));
-      }
-      written.set(group, `${[...statements, ...content].join('\n')}\n`);
+      written.set(group, `${statements.join('\n')}\n`);
     }
     return written;
   } finally {

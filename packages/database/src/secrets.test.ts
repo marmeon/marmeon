@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } f
 import { drivers, freshConnections, unfresh } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Migrator, Repository, secret, sql, type Connections, type Generated, type Secret, type RowOf, type Timestamp } from './index.ts';
+import { projectMigrations } from './schema/projection.ts';
 import { renderTypes } from './types-gen/render.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -57,8 +58,16 @@ describe.each(drivers)('secret columns on %s', (driver) => {
 
   const insertAda = () => accounts.insert({ email: 'ada@example.com', password: HASH, totp_secret: 'JBSWY3DP' });
 
-  it('records which columns are secret — through creates, alters, renames and rollbacks', async () => {
-    const secrets = async () => Object.fromEntries([...(await migrator(connections).secrets())].map(([t, c]) => [t, [...c].sort()]));
+  it('knows which columns are secret from the migrations — through creates, alters, renames and rollbacks', async () => {
+    const secrets = async () => {
+      const m = migrator(connections);
+      const ran = new Set((await m.status()).filter((file) => file.batch !== undefined).map((file) => file.name));
+      const { tables } = await projectMigrations(m.files(), { only: ran });
+      return Object.fromEntries([...tables.values()].flatMap((table) => {
+        const secret = table.columns.filter((column) => column.secret).map((column) => column.name).sort();
+        return secret.length > 0 ? [[table.name, secret]] : [];
+      }));
+    };
     expect(await secrets()).toEqual({ accounts: ['password', 'recovery_code', 'totp_secret'] });
     await migrator(connections).rollback({ steps: 1 });
     expect(await secrets()).toEqual({ accounts: ['api_secret', 'password'] });

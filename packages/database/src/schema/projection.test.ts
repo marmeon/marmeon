@@ -5,9 +5,11 @@ import { sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { drivers, freshConnections, type TestDriver } from '../__fixtures__/databases.ts';
-import { isBookkeepingName } from '../bookkeeping.ts';
 import { introspect, tableColumns, type CatalogQuery } from '../introspection.ts';
 import { Migrator, type Connections } from '../index.ts';
+import { isMigratorTable } from '../migration-state.ts';
+import { loadMigration } from '../migrations/load.ts';
+import { runMigration } from '../migrations/run.ts';
 import { kindOf } from '../metadata.ts';
 import { columnType } from '../types-gen/render.ts';
 import { PROJECTION_FILE, forgetProjections } from './projection-file.ts';
@@ -265,8 +267,8 @@ const GROUPS: Record<string, string[]> = {
 };
 /** Directories loaded on Postgres only, next to their group (SQLite cannot do what they do). */
 const PGSQL_ONLY: Record<string, string[]> = { markers: ['markers-pgsql'], nullability: ['nullability-pgsql'], ddl: ['ddl/alter-pgsql'] };
-/** Directories no parity is asked of: they fail on purpose, or write what the projection does not know. */
-const EXCLUDED = ['broken', 'raw-alter', 'raw-rename-column', 'raw-rename-table', 'raw-table', 'writes-books'];
+/** Directories no parity is asked of: they fail on purpose, write what the projection does not know, or are for the order a test runs them in. */
+const EXCLUDED = ['bad-down', 'broken', 'order', 'order-independent', 'order-late', 'raw-add', 'raw-alter', 'raw-rename-column', 'raw-rename-table', 'raw-table', 'writes-record'];
 
 const appMigrations = (app: string): ModuleDefinition[] => {
   const modules = new URL(`../../../../apps/${app}/modules/`, import.meta.url);
@@ -299,18 +301,19 @@ async function generatedColumns(run: CatalogQuery, driver: TestDriver): Promise<
   return new Set(rows.filter((row) => row.generated === true || row.generated === 1).map((row) => `${row.t}\0${row.c}`));
 }
 
-/** Migrates `modules` on a fresh database and compares the projection with what the database says. */
+/** Runs the migrations of `modules` on one fresh database — whatever connection they name — and compares the projection with what the database says. */
 async function expectParity(driver: TestDriver, modules: ModuleDefinition[]): Promise<void> {
   const { connections, close } = await freshConnections(driver);
   try {
-    const migrator = new Migrator({ modules, root: tempDir('marmeon-projection-') } as unknown as Application, connections).onOneConnection();
-    await migrator.migrate();
+    const migrator = new Migrator({ modules, root: tempDir('marmeon-projection-') } as unknown as Application, connections);
+    // One scratch database of every table: the plans run on `default`, as the types are generated for all connections at once.
+    for (const file of migrator.files()) await runMigration(connections, await loadMigration(file));
     const projection = await migrator.projection();
     const run = catalog(connections);
     const real = await introspect(run, driver);
     const all = await tableColumns(run, driver);
     const mine = factsOf(projection, driver);
-    const own = (name: string) => !isBookkeepingName(name) && name !== 'sqlite_sequence';
+    const own = (name: string) => !isMigratorTable(name) && name !== 'sqlite_sequence';
     const tables = projection.tables;
 
     // Tables, columns and their order.
@@ -342,12 +345,6 @@ async function expectParity(driver: TestDriver, modules: ModuleDefinition[]): Pr
         expect(column.default !== null || column.identity, `${table.name}.${column.name} has a default or is generated`).toBe(generated.has(`${table.name}\0${column.name}`));
       }
     }
-    // What the migrator's books say today.
-    expect(mine.secretColumns.toSorted((a, b) => `${a.table}.${a.column}` < `${b.table}.${b.column}` ? -1 : 1)).toEqual(real.secretColumns.toSorted((a, b) => `${a.table}.${a.column}` < `${b.table}.${b.column}` ? -1 : 1));
-    expect(mine.markers).toEqual(real.markers);
-    // The owners are the books' owners.
-    const owners = await migrator.owners();
-    expect(new Map([...tables.values()].map((t) => [t.name, t.module]))).toEqual(new Map([...owners].filter(([name]) => own(name))));
   } finally {
     await close();
   }

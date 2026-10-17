@@ -289,8 +289,8 @@ describe.each(drivers)('the plan of a migration on %s', (driver: TestDriver) => 
     });
 
     it('refuses a write to the tables of the migrator with D4', async () => {
-      await expect(inData((db) => db.insertInto('marmeon_migrations').values({ name: 'forged', module: 'x', batch: 1 }).execute())).rejects.toThrow(/\[marmeon:D4\]/);
-      await expect(inData((db) => db.deleteFrom('marmeon_secret_columns').execute())).rejects.toThrow(SchemaError);
+      await expect(inData((db) => db.insertInto('migrations').values({ name: 'forged', module: 'x', batch: 1 }).execute())).rejects.toThrow(/\[marmeon:D4\]/);
+      await expect(inData((db) => db.deleteFrom('migration_lock').execute())).rejects.toThrow(SchemaError);
     });
   });
 
@@ -326,11 +326,11 @@ describe.each(drivers)('the plan of a migration on %s', (driver: TestDriver) => 
 describe('what up() refuses while it builds the plan', () => {
   it('refuses raw SQL that names a table of the migrator, and allows a literal that only says its name', () => {
     const schema = new Schema();
-    for (const name of ['marmeon_migrations', 'migrations', 'marmeon_migration_lock', 'marmeon_secret_columns']) {
+    for (const name of ['migrations', 'migration_lock']) {
       expect(() => schema.raw(sql`drop table ${sql.raw(name)}`)).toThrow(/\[marmeon:D4\]/);
       expect(() => schema.raw({ pgsql: sql`delete from "${sql.raw(name)}"` })).toThrow(SchemaError);
     }
-    expect(() => schema.raw(sql`select 'marmeon_migrations' as name`)).not.toThrow();
+    expect(() => schema.raw(sql`select 'migrations' as name`)).not.toThrow();
   });
 
   it('does not read the comments of a raw statement', () => {
@@ -364,7 +364,7 @@ describe('what up() refuses while it builds the plan', () => {
         {
           up: (schema) => {
             schema.create('ok', (table) => table.id());
-            schema.drop('marmeon_migrations');
+            schema.drop('migration_lock');
           },
         },
         'up',

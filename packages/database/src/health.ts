@@ -83,7 +83,7 @@ export class DatabaseHealthCheck implements HealthCheck {
     return lacking;
   }
 
-  /** The columns that must be secret and are not marked so in the bookkeeping; none on a connection that is not managed, which has no bookkeeping. */
+  /** The columns that must be secret and are not marked so in the migrations; none on a connection that is not managed, whose migrations Marmeon does not know. */
   #unmarked(required: readonly TableRequirement[]): string[] {
     const unmarked: string[] = [];
     for (const { connection, table, secrets } of required) {

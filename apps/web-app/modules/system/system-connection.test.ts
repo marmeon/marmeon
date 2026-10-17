@@ -45,9 +45,9 @@ describe('the system connection', () => {
 
   it('migrates the cache and session tables into the system file — the rest, the jobs included, into the app’s', async () => {
     const app = await open();
-    expect(await tables(app, 'system')).toEqual(['cache', 'cache_locks', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions', 'sessions']);
+    expect(await tables(app, 'system')).toEqual(['cache', 'cache_locks', 'sessions']);
     const own = await tables(app, 'default');
-    expect(own).toEqual(expect.arrayContaining(['users', 'jobs', 'failed_jobs', 'marmeon_migrations']));
+    expect(own).toEqual(expect.arrayContaining(['users', 'jobs', 'failed_jobs', 'migrations']));
     expect(own).not.toEqual(expect.arrayContaining(['cache']));
     expect(own).not.toEqual(expect.arrayContaining(['sessions']));
   });

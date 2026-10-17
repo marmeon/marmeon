@@ -5,6 +5,7 @@ import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { Connections, Migrator } from './index.ts';
+import { projectMigrations } from './schema/projection.ts';
 import { LOCK_TABLE } from './migrations/lock.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -16,6 +17,9 @@ const broken: ModuleDefinition = { name: 'broken', migrations: fixtures('broken'
 /** The migrator only needs the app's modules and root. */
 const migrator = (connections: Connections, ...modules: ModuleDefinition[]) =>
   new Migrator({ modules, root: '/' } as unknown as Application, connections);
+
+/** Table → the module whose migration created it. */
+const owners = (projection: Awaited<ReturnType<typeof projectMigrations>>) => Object.fromEntries([...projection.tables.values()].map((table) => [table.name, table.module]));
 
 const ISO_UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
 
@@ -44,11 +48,11 @@ describe.each(drivers)('migrations on %s', (driver) => {
       ['2026_01_02_000000_create_posts_table', 'blog', 2],
       ['2026_01_03_000000_add_slug_to_posts_table', 'blog', 2],
     ]);
-    expect(await tables()).toEqual(['articles', 'marmeon_migrations', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions', 'users']);
+    expect(await tables()).toEqual(['articles', 'migrations', 'users']);
   });
 
-  it('records which module owns each table — renames included', async () => {
-    expect(Object.fromEntries(await migrator(connections, auth, blog).owners())).toEqual({ users: 'auth', articles: 'blog' });
+  it('knows which module owns each table from the migrations — renames included', async () => {
+    expect(owners(await projectMigrations(migrator(connections, auth, blog).files()))).toEqual({ users: 'auth', articles: 'blog' });
   });
 
   it('creates columns that read back the same on every driver: NOT NULL by default, defaults, timestamps', async () => {
@@ -85,15 +89,15 @@ describe.each(drivers)('migrations on %s', (driver) => {
     const both = migrator(connections, auth, blog);
     const rolledBack = (await both.rollback()).map((run) => run.name);
     expect(rolledBack).toEqual(['2026_01_03_000000_add_slug_to_posts_table', '2026_01_02_000000_create_posts_table']);
-    expect(await tables()).toEqual(['marmeon_migrations', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions', 'users']);
-    expect(Object.fromEntries(await both.owners())).toEqual({ users: 'auth' });
+    expect(await tables()).toEqual(['migrations', 'users']);
+    expect(owners(await projectMigrations(both.files(), { only: new Set((await both.status()).filter((m) => m.batch !== undefined).map((m) => m.name)) }))).toEqual({ users: 'auth' });
 
     await both.migrate();
     expect((await both.rollback({ steps: 1 })).map((run) => run.name)).toEqual(['2026_01_03_000000_add_slug_to_posts_table']);
     const posts = (await db().introspection.getTables()).find((t) => t.name === 'posts')!;
     expect(posts.columns.map((c) => c.name)).toEqual(['id', 'user_id', 'title', 'body', 'published_at']);
     expect((await both.reset()).length).toBe(2);
-    expect(await tables()).toEqual(['marmeon_migrations', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions']);
+    expect(await tables()).toEqual(['migrations']);
   });
 
   it('rolls back a batch in the reverse of the order it ran, not of the names', async () => {
@@ -109,9 +113,9 @@ describe.each(drivers)('migrations on %s', (driver) => {
       const ownMigrator = migrator(own.connections, { name: 'x', migrations: dir });
       await ownMigrator.migrate();
       const rows = own.connections.get<any>();
-      await rows.updateTable('marmeon_migrations').set({ id: 99 }).where('name', '=', '2026_01_01_000000_a_b').execute();
-      await rows.updateTable('marmeon_migrations').set({ id: 1 }).where('name', '=', '2026_01_01_000000_ab').execute();
-      await rows.updateTable('marmeon_migrations').set({ id: 2 }).where('name', '=', '2026_01_01_000000_a_b').execute();
+      await rows.updateTable('migrations').set({ id: 99 }).where('name', '=', '2026_01_01_000000_a_b').execute();
+      await rows.updateTable('migrations').set({ id: 1 }).where('name', '=', '2026_01_01_000000_ab').execute();
+      await rows.updateTable('migrations').set({ id: 2 }).where('name', '=', '2026_01_01_000000_a_b').execute();
       const downs: string[] = ((globalThis as any).__downs = []);
       await ownMigrator.rollback();
       expect(downs).toEqual(['a_b', 'ab']);
@@ -146,7 +150,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
     connections.onQuery((query) => void sent.push(query.sql));
     await expect(withBroken.migrate()).rejects.toThrow('this migration is broken');
     expect(sent.some((text) => /create table "half"/.test(text))).toBe(true); // it was made, and is undone
-    expect(await tables()).toEqual(['marmeon_migrations', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions', 'users']); // `half` is gone; users (earlier file) stays
+    expect(await tables()).toEqual(['migrations', 'users']); // `half` is gone; users (earlier file) stays
     expect((await withBroken.status()).map((m) => [m.name, m.batch])).toEqual([
       ['2026_01_01_000000_create_users_table', 1],
       ['2026_01_04_000000_create_half_table', undefined],
@@ -157,7 +161,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
     await sql`create table stray (x integer)`.execute(db());
     const runs = await migrator(connections, auth, blog).fresh();
     expect(runs.map((run) => run.name)).toHaveLength(3);
-    expect(await tables()).toEqual(['articles', 'marmeon_migrations', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions', 'users']);
+    expect(await tables()).toEqual(['articles', 'migrations', 'users']);
     expect((await migrator(connections, auth, blog).status()).every((m) => m.batch === 1)).toBe(true);
   });
 });
@@ -181,21 +185,17 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
     for (const drop of drops) await drop();
   });
 
-  it('creates the tables on their connection, keeps the record on default, and owners and secrets with the tables', async () => {
+  it('creates the tables on their connection, keeps the record on default, and knows their owner and secrets from the migrations', async () => {
     const ran = await on(auth, system).migrate();
     expect(ran.map((run) => run.name)).toEqual(['2026_01_01_000000_create_users_table', '2026_01_07_000000_create_counters_table', '2026_01_08_000000_create_audit_table']);
-    expect(await tablesOf('default')).toEqual(['marmeon_migrations', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions', 'users']);
-    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions']);
+    expect(await tablesOf('default')).toEqual(['migrations', 'users']);
+    expect(await tablesOf('system')).toEqual(['audit', 'counters']);
     expect((await on(auth, system).status()).map((m) => [m.name, m.batch])).toEqual([
       ['2026_01_01_000000_create_users_table', 1],
       ['2026_01_07_000000_create_counters_table', 1],
       ['2026_01_08_000000_create_audit_table', 1],
     ]);
-    const owners = await connections.get<any>('system').selectFrom('marmeon_table_owners').selectAll().orderBy('table_name').execute();
-    expect(owners).toEqual([
-      { table_name: 'audit', module: 'system' },
-      { table_name: 'counters', module: 'system' },
-    ]);
+    expect(owners(await projectMigrations(on(auth, system).files()))).toEqual({ users: 'auth', counters: 'system', audit: 'system' });
     // The secret column is known where the table is: a selectAll() there never returns it.
     await connections.get<any>('system').insertInto('counters').values({ key: 'k', n: 1, owner_token: 'secret' }).execute();
     expect(await connections.get<any>('system').selectFrom('counters').selectAll().execute()).toEqual([{ key: 'k', n: 1 }]);
@@ -205,10 +205,10 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
   it('rolls back on the connection the migration ran on', async () => {
     const rolledBack = await on(auth, system).rollback({ steps: 1 });
     expect(rolledBack.map((run) => run.name)).toEqual(['2026_01_08_000000_create_audit_table']);
-    expect(await tablesOf('system')).toEqual(['counters', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions']);
+    expect(await tablesOf('system')).toEqual(['counters']);
     expect((await on(auth, system).status()).at(-1)?.batch).toBeUndefined();
     await on(auth, system).migrate();
-    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions']);
+    expect(await tablesOf('system')).toEqual(['audit', 'counters']);
   });
 
   it('drops the tables of every connection a migration runs on for a fresh start', async () => {
@@ -217,7 +217,7 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
     expect(await on(auth, system).connections()).toEqual(['default', 'system']);
     const ran = await on(auth, system).fresh();
     expect(ran).toHaveLength(3);
-    expect(await tablesOf('system')).toEqual(['audit', 'counters', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions']);
+    expect(await tablesOf('system')).toEqual(['audit', 'counters']);
     expect(await connections.get<any>('system').selectFrom('counters').selectAll().execute()).toEqual([]);
     expect(await connections.get<any>('system').selectFrom('audit').selectAll().execute()).toEqual([]);
   });
@@ -226,27 +226,6 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
     await expect(on({ name: 'elsewhere', migrations: fixtures('elsewhere') }).migrate()).rejects.toThrow(
       '[marmeon:D14] Migration 2026_01_09_000000_create_reports_table (module "elsewhere") runs on the database connection "reporting", which is not configured. Known: default, system.',
     );
-  });
-
-  it('runs everything on default for one database of all tables (db:types)', async () => {
-    const scratch = new Connections({ connections: { default: { driver: 'sqlite', database: ':memory:' } }, root: '/', logger: silent });
-    try {
-      const migrator = new Migrator({ modules: [auth, system], root: '/' } as unknown as Application, scratch).onOneConnection();
-      await migrator.migrate();
-      expect((await scratch.get<any>().introspection.getTables()).map((t) => t.name).filter((name) => name !== LOCK_TABLE).sort()).toEqual([
-        'audit',
-        'counters',
-        'marmeon_migrations',
-        'marmeon_schema_markers',
-        'marmeon_secret_columns',
-        'marmeon_table_owners',
-        'marmeon_versions',
-        'users',
-      ]);
-      expect(Object.fromEntries(await migrator.secrets())).toEqual({ counters: new Set(['owner_token']) });
-    } finally {
-      await scratch.destroy();
-    }
   });
 });
 

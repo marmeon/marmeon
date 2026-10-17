@@ -3,6 +3,7 @@ import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import { deriveRelations, introspect, type ForeignKey, type SchemaFacts } from './introspection.ts';
+import { factsOf, projectMigrations } from './schema/projection.ts';
 import { Migrator, type Connections } from './index.ts';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
@@ -130,7 +131,7 @@ describe.each(drivers)('introspecting foreign keys and unique indexes on %s', (d
 
   const run = <R>(query: string) => sql.raw<R>(query).execute(connections.get()).then((result) => result.rows);
 
-  it('reads the same foreign keys, unique column sets and markers on every driver', async () => {
+  it('reads the same foreign keys and unique column sets on every driver, and the marks come from the migrations', async () => {
     const found = await introspect(run, driver);
     expect(found.foreignKeys).toEqual([
       { table: 'categories', column: 'parent_id', references: 'categories', referenced: 'id', nullable: true },
@@ -142,7 +143,7 @@ describe.each(drivers)('introspecting foreign keys and unique indexes on %s', (d
       { table: 'posts', column: 'author_id', references: 'users', referenced: 'id', nullable: false },
       { table: 'posts', column: 'editor_id', references: 'users', referenced: 'id', nullable: true },
     ]);
-    const uniques = Object.fromEntries([...found.uniques].filter(([table]) => !['marmeon_migrations', 'marmeon_migration_lock', 'marmeon_schema_markers', 'marmeon_secret_columns', 'marmeon_table_owners', 'marmeon_versions'].includes(table)));
+    const uniques = Object.fromEntries([...found.uniques].filter(([table]) => !['migrations', 'migration_lock'].includes(table)));
     expect(uniques).toEqual({
       categories: [['id']],
       comments: [['id']],
@@ -152,7 +153,9 @@ describe.each(drivers)('introspecting foreign keys and unique indexes on %s', (d
       tags: [['id'], ['slug']],
       users: [['email'], ['id']],
     });
-    expect(found.markers.filter((m) => m.table !== 'users')).toEqual([
+    expect(found.markers).toEqual([]);
+    const projection = await projectMigrations(new Migrator({ modules, root: '/' } as unknown as Application, undefined as never).files());
+    expect(factsOf(projection, driver).markers.filter((m) => m.table !== 'users')).toEqual([
       { table: 'comments', column: '', marker: 'soft_deletes', value: null },
       { table: 'comments', column: '', marker: 'timestamps', value: null },
       { table: 'posts', column: '', marker: 'timestamps', value: null },
@@ -173,8 +176,9 @@ describe.each(drivers)('introspecting foreign keys and unique indexes on %s', (d
     }
   });
 
-  it('derives the fixture’s relations from them', async () => {
-    const derived = deriveRelations(await introspect(run, driver));
+  it('derives the fixture’s relations from the keys of the catalog and the marks of the migrations', async () => {
+    const projection = await projectMigrations(new Migrator({ modules, root: '/' } as unknown as Application, undefined as never).files());
+    const derived = deriveRelations({ ...(await introspect(run, driver)), markers: factsOf(projection, driver).markers });
     expect(derived.problems).toEqual([]);
     const names = Object.fromEntries([...derived.relations].map(([table, relations]) => [table, Object.fromEntries([...relations].map(([name, r]) => [name, r.kind]))]));
     expect(names).toEqual({

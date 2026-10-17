@@ -3,7 +3,7 @@ import type { ModuleDefinition } from '@marmeon/core';
 import { sql, type Kysely } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { appOf as fakeApp, drivers, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
-import { inspectionConnection } from './books.ts';
+import { inspectionConnection } from './migrator-connection.ts';
 import type { ConnectionOptions } from './config.ts';
 import { Connections, Migrator, Repository } from './index.ts';
 import { dropAllTables } from './migrations/drop-all.ts';
@@ -42,7 +42,7 @@ describe.each(drivers)('selectAll() and returningAll() spell out the columns the
   beforeEach(async () => {
     const scratch = new Connections({ connections: { default: options }, root, logger: silent });
     opened.push(scratch);
-    await dropAllTables(inspectionConnection(scratch), driver, true);
+    await dropAllTables(inspectionConnection(scratch), driver);
     const release = processOf(newer);
     await new Migrator(fakeApp(newer, root), release).migrate();
     deploying = processOf(older);

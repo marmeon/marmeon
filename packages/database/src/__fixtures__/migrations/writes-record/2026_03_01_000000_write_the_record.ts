@@ -1,10 +1,10 @@
 import { defineMigration } from '../../../index.ts';
 
-// A migration that empties the list of secret columns by hand.
+// Writes to the lock of the migrator from a data step.
 export default defineMigration({
   up: (schema) => {
     schema.data(async (db) => {
-      await db.deleteFrom('marmeon_secret_columns').execute();
+      await db.deleteFrom('migration_lock').execute();
     });
   },
 });

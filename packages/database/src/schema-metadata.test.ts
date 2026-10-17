@@ -7,7 +7,8 @@ import { appOf, drivers, freshDatabase, silent } from './__fixtures__/databases.
 import { testEncrypter } from './__fixtures__/encrypter.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { deriveRelations, introspect } from './introspection.ts';
+import { deriveRelations } from './introspection.ts';
+import { factsOf } from './schema/projection.ts';
 import { MarmeonDriver } from './driver.ts';
 import { changesSchema, isRawSchemaChange, SchemaMetadata } from './metadata.ts';
 import { softDelete, softDeleteFilter } from './schema-resolver.ts';
@@ -72,8 +73,7 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     const db = connections.get<FixtureTables>();
     await db.selectFrom('users').select('id').execute();
     const metadata = connections.metadata();
-    const run = <R>(query: string) => sql.raw<R>(query).execute(db).then((result) => result.rows);
-    expect(metadata.relations).toEqual(deriveRelations(await introspect(run, driver)).relations);
+    expect(metadata.relations).toEqual(deriveRelations(factsOf(connections.projection(), driver)).relations);
     expect(metadata.relations.get('posts')?.get('tags')).toMatchObject({ kind: 'belongsToMany', pivot: 'post_tag' });
     expect([...metadata.softDeletes].sort()).toEqual(['comments', 'users']);
     expect([...metadata.timestamps].sort()).toEqual(['comments', 'posts', 'users']);
@@ -443,12 +443,12 @@ describe('schema metadata, unit', () => {
     await driver.releaseConnection(acquired);
   });
 
-  it('takes a write to the books in any case for a schema change — SQLite reads MARMEON_SECRET_COLUMNS as marmeon_secret_columns', () => {
-    const books = new Kysely<any>({ dialect: new SqliteDialect({ database: async () => ({}) as never }) });
-    expect(changesSchema(books.insertInto('marmeon_secret_columns').values({ table_name: 'a', column_name: 'b' }).toOperationNode())).toBe(true);
-    expect(changesSchema(books.insertInto('MARMEON_SECRET_COLUMNS').values({ table_name: 'a', column_name: 'b' }).toOperationNode())).toBe(true);
-    expect(changesSchema(books.deleteFrom('Marmeon_Schema_Markers').toOperationNode())).toBe(true);
-    expect(changesSchema(books.insertInto('users').values({ name: 'a' }).toOperationNode())).toBe(false);
+  it('takes DDL for a schema change and a write to a table for none', () => {
+    const builder = new Kysely<any>({ dialect: new SqliteDialect({ database: async () => ({}) as never }) });
+    expect(changesSchema(builder.schema.createTable('x').addColumn('id', 'integer').toOperationNode())).toBe(true);
+    expect(changesSchema(builder.schema.dropTable('x').toOperationNode())).toBe(true);
+    expect(changesSchema(builder.insertInto('users').values({ name: 'a' }).toOperationNode())).toBe(false);
+    expect(changesSchema(builder.deleteFrom('migrations').toOperationNode())).toBe(false);
   });
 
   it('is stale after a schema change has run — also when it was loaded again while the change was under way', async () => {

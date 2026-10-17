@@ -4,7 +4,7 @@ import { applyPlan } from '../schema/projection.ts';
 import type { Migration } from './migration.ts';
 
 /**
- * Runs one migration's `up()` (or `down()`) on a connection, in a transaction, without the migrator's books — for tests that need
+ * Runs one migration's `up()` (or `down()`) on a connection, in a transaction, without the record of migrations — for tests that need
  * a table without an app, a migrator or a migrations directory. The connections learn the tables it made (their keys, secret columns
  * and marks) as a migrator would hand them over.
  * @internal
