@@ -1000,7 +1000,7 @@ readiness waits for none of ours: an app that wants no reset links or no API tok
 while a column that holds a secret (`token_hash`, `validator_hash`, `secret`, `code_hash`) lacks its `secret()` mark, as in a table made by hand.
 
 An app that created the tables under their old names (`remember_tokens`, `sign_ins`, …) renames them with
-[`marmeon make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables), and stops every process of the old release for the
+[`marmeon make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables), and [stops every process of the old release](deployment.md#the-upgrade-that-stops-every-process) for the
 `marmeon migrate` that follows. The rows stay: passwords, authenticators, recovery codes, passkeys and reset links keep working.
 
 ## Signed-in pages are never cached

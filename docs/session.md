@@ -229,7 +229,7 @@ and `_auth_*` for a sign-in), and `_v`: the number of the format the object was 
 the session is read, so `session.all()` does not list it. A `put('_v', …)` is replaced by the real mark when the session is written,
 and the next request does not see it.
 
-A session is read by its format, never guessed:
+A session is read by its format, never guessed (the same rule holds for [every stored format](releases.md#stored-and-wire-formats)):
 
 - **A newer format** is a session that a newer version of your app wrote while a rollout is under way. This version cannot know
   what its keys mean (one may restrict what the session may do), so it treats the request as one without a session cookie: a

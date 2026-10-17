@@ -385,7 +385,7 @@ Schedule `queue:prune-failed`, as the [task scheduling](scheduling.md#housekeepi
 
 ### Deploying while jobs wait
 
-Every job record carries a version, `v`, in the payload column. A worker runs a record only when it understands all of it, and
+Every job record carries a version, `v`, in the payload column, as every [stored format](releases.md#stored-and-wire-formats) carries one. A worker runs a record only when it understands all of it, and
 it puts back what it does not:
 
 | The record | What a worker does |

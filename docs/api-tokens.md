@@ -93,6 +93,8 @@ session as flash data, and so write it into the session store.
 
 ## The token format
 
+A token is a [stored and wire format](releases.md#stored-and-wire-formats) like the others: an older form is no longer valid.
+
 A token reads `marmeon_` followed by 40 random letters and digits and a checksum of 8 hexadecimal characters, 56 characters in
 all. Each part has a purpose:
 

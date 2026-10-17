@@ -425,10 +425,74 @@ after the reload, with the old build's script names; keep such caches short, or 
 Sessions are marked with the format they were written in ([What a session stores](session.md#what-a-session-stores)). While two
 versions of your app run side by side, a session written by the newer one is a guest's to the older one, which leaves it as it
 is. After the upgrade from a release that did not mark sessions, every user is signed out once: sessions of the old release carry
-no format and are dropped. Tell your users, or upgrade at a quiet hour.
+no format and are dropped. That upgrade is [not a rolling one](#the-upgrade-that-stops-every-process).
 
 While traffic moves between old and new nodes during a rollout, every visit on an old node is a remember-me sign-in for a user who
 has the cookie: the token rotates and a `Login` event fires. Users without remember-me are guests there.
+
+### What else a mixed fleet does
+
+Every stored format carries a mark, and a node reads only the versions it knows ([the list](releases.md#stored-and-wire-formats)).
+With old and new nodes side by side, from the release that marks them on:
+
+- **Jobs** that an older worker cannot read (a newer record, a job it does not have, a payload its schema rejects) are put back with
+  their attempt given back and run on a newer worker. After six hours they fail with the reason and leave the queue. Keep a worker of the newer release
+  running until the queue has drained ([deploying while jobs wait](queues.md#deploying-while-jobs-wait)). A queued listener is found
+  by its `static listener` name, so renaming its class changes nothing for jobs that wait.
+- **The database** is shared, and a release that changes a table changes it for every node. A migration that renames or drops
+  something an older node uses waits for the release after it. Update a node whose bookkeeping is newer than it reads: it fails every
+  query and fails readiness ([how the migrator keeps track](migrations.md#how-the-migrator-keeps-track)). Two nodes that run
+  `marmeon migrate` at once are safe: one waits for the other ([one migration at a time](migrations.md#one-migration-at-a-time)).
+
+A release that changes a format after 1.0 writes the new version only once the readers of the release before read it
+([the rules](releases.md#stored-and-wire-formats)). Until then, read the [upgrade guide](../UPGRADING.md) of a release before you roll it.
+
+## The upgrade that stops every process
+
+The first release that marks the formats above cannot run next to the one before it: it renames the framework's tables, the
+bookkeeping and the cookies, and reads no record of the old release. Upgrade to it with every process of the old release stopped.
+The steps below are the order; the [upgrade guide](../UPGRADING.md) names the version.
+
+1. **Before, while the old release runs.**
+   - Plan to issue every API token again, and tell whoever uses one (integrations, scripts, clients).
+   - Let the queue run empty: `marmeon queue:work --stop-when-empty`, then `marmeon queue:size` shows 0 for every queue, delayed jobs
+     included. Look at `marmeon queue:failed`, and retry or give up what is in it.
+   - Tell your users that they sign in again, and pick a quiet hour.
+2. **In development.** Run `marmeon make:upgrade-migrations`, `marmeon db:types` and `marmeon route:types`, and commit what they
+   write. [`make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables) renames the tables of the queue, cache, sessions,
+   uploads, notifications and the starter kit's auth module to `marmeon_…`, and clears the API tokens. A database with tables of its
+   own that never ran `marmeon migrate` is taken over once with
+   [`migrate --adopt-existing`](migrations.md#adopting-an-existing-database).
+3. **Stop every process of the old release**, on every machine: web, workers, the scheduler, cron jobs, and every CI or release job
+   that runs `marmeon`. None of them may run after step 4 begins.
+4. **Deploy the new release, run `marmeon migrate --force`, then
+   [`marmeon auth:end-all-sessions --force --keep-reset-tokens`](authentication.md#ending-every-session-of-every-account), then start
+   it.** `migrate` moves the bookkeeping to its `marmeon_` tables and runs the migrations from step 2. The second command deletes the
+   remember-me tokens and the sign-in rows, revokes the API tokens that are left and rotates the session keys, so nothing of the old
+   release signs anyone in. It needs `UserProvider.updateEverySessionKey()`, which the starter kit's provider has; a provider of your
+   own implements it first. Without `--keep-reset-tokens` it deletes the reset links too. `/up/ready` turns green when the tables and
+   their columns are as the code needs them, and says what is missing when they are not ([health checks](health.md#liveness-and-readiness)).
+5. **After the start.** Issue the API tokens again and hand them out.
+
+**What is lost.**
+
+- Every sign-in. Sessions of the old release carry no format and are dropped, and the cookies of the old release have other names
+  ([the `__Host-` prefix](session.md#the-__host--prefix)), so remember-me signs nobody in. Users sign in again, with their second
+  factor where they have one.
+- Every API token. Their form is no longer valid, no code reads it, and the migration deletes the rows
+  ([API tokens](api-tokens.md#the-token-format)).
+- What an open tab had typed and not sent. A tab of the old release gets the `409` on its next request and loads the page anew.
+- Jobs of the old release that did not run, queued listeners included. Delayed ones fail as soon as they are due. Each fails with
+  its reason, its payload stays readable in `queue:failed`, and none can be retried. Jobs that had failed before stay there and cannot
+  be retried either.
+
+**What stays.** Every other table with its rows: users, passwords, second factors and recovery codes, passkeys, reset links (with `--keep-reset-tokens`), uploads,
+notifications and the cache. The sign-in rows are deleted.
+
+A process of the old release that you forgot fails loudly against the database: its tables are renamed, and the old bookkeeping
+names hold a placeholder, so its queries fail instead of running without the list of secret columns. **Redis notices nothing.**
+Queue, sessions, cache and live updates on Redis are shared by a forgotten old process and a new one without any error, so step 3
+means every process.
 
 ## Without Docker: systemd
 
@@ -466,7 +530,8 @@ A single server with Docker Compose is enough for many apps. A few things matter
 
 - `NODE_ENV=production` in the real environment, and no developer's `.env` on the server (`marmeon start` refuses a `NODE_ENV=development` that comes from `.env`).
 - `APP_KEY` set, and the same on every instance. `APP_URL` starts with `https://`.
-- `marmeon migrate --force` once per deployment, for example in a one-off container.
+- `marmeon migrate --force` once per deployment, for example in a one-off container. The release that first marks the stored
+  formats needs [every old process stopped](#the-upgrade-that-stops-every-process) first.
 - The proxy speaks HTTP/2 to browsers, does not buffer event streams and sets `X-Forwarded-*`. `TRUSTED_PROXIES` names it.
 - `HOST=0.0.0.0` where another machine reaches the app directly. `KEEP_ALIVE_TIMEOUT` above the proxy's idle timeout to the app.
 - `MAIL_MAILER=smtp`.
