@@ -198,6 +198,28 @@ export interface LayerClose {
 export const PAGE_HEADER = 'x-marmeon';
 
 /**
+ * The version of the page protocol a client and server speak — the value of `x-marmeon`.
+ * @internal
+ */
+export const PROTOCOL_VERSION = 'true';
+
+/**
+ * Whether `headers` carry this protocol's version — a request's or a response's. Any other value, a merged `true, true` too, is not.
+ * @internal
+ */
+export function speaksProtocol(headers: Headers): boolean {
+  return headers.get(PAGE_HEADER) === PROTOCOL_VERSION;
+}
+
+/**
+ * The headers every request of the client core carries.
+ * @internal
+ */
+export function protocolHeaders(): Record<string, string> {
+  return { [PAGE_HEADER]: PROTOCOL_VERSION };
+}
+
+/**
  * Sent with an action (`useAction`): a request that does not navigate — answered with data (`this.json(…)`), never with
  * a page. Its redirect is not followed: the server answers `204` with {@link ACTION_REDIRECT_HEADER} instead. Its answer
  * is never cached (`Cache-Control: no-store`): it is about who asked, at that moment.
@@ -297,7 +319,7 @@ export type RegionOutcomeStatus = 'unauthorized' | 'forbidden' | 'exception';
 /** The region `request` asks for (`x-marmeon-region`, with `x-marmeon`), or undefined for any other request. */
 export function regionOf(request: Request): RegionKind | undefined {
   const { headers } = request;
-  if (headers.get(PAGE_HEADER) !== 'true') return undefined;
+  if (!speaksProtocol(headers)) return undefined;
   const region = headers.get(REGION_HEADER);
   return region === 'island' || region === 'layer' ? region : undefined;
 }

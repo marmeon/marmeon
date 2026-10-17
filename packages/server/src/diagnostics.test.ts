@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { DevDocument, withDevBody } from './dev-document.ts';
 import { createHttpKernel } from './kernel.ts';
 import { ServerServiceProvider } from './provider.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 /** The app of the current test — the controller reports a query for it. */
 let current: Application | undefined;
@@ -91,7 +92,7 @@ describe('the http.request channel', () => {
     const off = channels.subscribe(application, 'http.request', { end: (message) => void ended.push(message) });
     try {
       await kernel.request('/away');
-      await kernel.request('/reload', { headers: { 'x-marmeon': 'true' } });
+      await kernel.request('/reload', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       await kernel.request('/ping');
     } finally {
       off();
@@ -153,7 +154,7 @@ describe('the render.ssr channel', () => {
       fail = true;
       expect((await kernel.request('/home')).status).toBe(200);
       // A page object (a client-side visit) is not rendered on the server.
-      await kernel.request('/home', { headers: { 'x-marmeon': 'true' } });
+      await kernel.request('/home', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     } finally {
       off();
     }

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/board" }
-import { PAGE_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -69,7 +69,7 @@ beforeEach(() => {
   vi.stubGlobal('EventSource', FakeSource);
   vi.spyOn(window, 'fetch').mockImplementation(async (_input, init = {}) => {
     reloads.push(new Headers(init.headers as Record<string, string>).get('x-marmeon-partial-data') ?? 'all');
-    return new Response(JSON.stringify(board(['a', 'b'])), { headers: { 'content-type': 'application/json', [PAGE_HEADER]: 'true' } });
+    return new Response(JSON.stringify(board(['a', 'b'])), { headers: { 'content-type': 'application/json', [PAGE_HEADER]: PROTOCOL_VERSION } });
   });
 });
 

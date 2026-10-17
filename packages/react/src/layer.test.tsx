@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
 import type { RouteManifest } from '@marmeon/http/page';
-import { LAYER_CLOSE_HEADER, PAGE_HEADER, REGION_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { LAYER_CLOSE_HEADER, PAGE_HEADER, REGION_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { Suspense, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
@@ -124,7 +124,7 @@ const routes: RouteManifest = {
 };
 const page = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null });
 const layer = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ ...page(name, url, props), layer: { key: `app/${name}`, base: '/users/1' } });
-const respond = (body: object, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true', ...headers } });
+const respond = (body: object, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, ...headers } });
 
 let server: (url: string, init: RequestInit) => Response | Promise<Response>;
 let requests: { url: string; method: string; headers: Record<string, string> }[];

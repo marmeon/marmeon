@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
-import { PAGE_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { act, useState, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -122,7 +122,7 @@ let server: (url: string, init: RequestInit) => Response | Promise<Response>;
 let root: Root;
 let container: HTMLElement;
 
-const respond = (body: PageObject, status = 200) => new Response(JSON.stringify(body), { status, headers: { [PAGE_HEADER]: 'true' } });
+const respond = (body: PageObject, status = 200) => new Response(JSON.stringify(body), { status, headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
 
 beforeEach(() => {
   history.replaceState(null, '', '/a');

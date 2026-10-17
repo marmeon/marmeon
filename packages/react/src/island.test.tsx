@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/dashboard" }
 import type { RouteManifest } from '@marmeon/http/page';
-import { PAGE_HEADER, REGION_HEADER, REGION_STATUS_HEADER, type PageObject, type RegionObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, REGION_HEADER, REGION_STATUS_HEADER, type PageObject, type RegionObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -78,7 +78,7 @@ const island = (name: string, url: string, props: Record<string, unknown>, extra
   version: null,
   ...extra,
 });
-const respond = (body: object, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true', ...headers } });
+const respond = (body: object, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, ...headers } });
 
 let server: (url: string, init: RequestInit) => Response | Promise<Response>;
 let requests: { url: string; headers: Record<string, string> }[];

@@ -32,11 +32,12 @@ import {
   IncomingRequest,
   isViewResult,
   LOCATION_HEADER,
-  PAGE_HEADER,
+  protocolHeaders,
   REGION_HEADER,
   REGION_STATUS_HEADER,
   RELOAD_HEADER,
   ResponseLifecycle,
+  speaksProtocol,
   VERSION_HEADER,
   partialReloadOf,
 } from '@marmeon/http/internal';
@@ -250,12 +251,11 @@ export function createHttpKernel(
       logger.error(`An island comes from this site, not from ${target.origin} (${redactor.text(url)})`);
       return { status: 'exception', failure: {} };
     }
-    const headers = new Headers();
+    const headers = new Headers(protocolHeaders());
     for (const name of ISLAND_HEADERS) {
       const value = parent.request.headers.get(name);
       if (value !== null) headers.set(name, value);
     }
-    headers.set(PAGE_HEADER, 'true');
     headers.set(REGION_HEADER, 'island');
     if (version) headers.set(VERSION_HEADER, version);
     if (parent.requestId) headers.set('x-request-id', parent.requestId);
@@ -286,19 +286,18 @@ export function createHttpKernel(
     const origin = new URL(parent.request.url);
     const target = new URL(url, origin);
     if (target.origin !== origin.origin) return { status: 'unavailable', httpStatus: 400 };
-    const headers = new Headers();
+    const headers = new Headers(protocolHeaders());
     for (const name of ISLAND_HEADERS) {
       const value = parent.request.headers.get(name);
       if (value !== null) headers.set(name, value);
     }
-    headers.set(PAGE_HEADER, 'true');
     headers.set(REGION_HEADER, 'layer');
     if (version) headers.set(VERSION_HEADER, version);
     if (parent.requestId) headers.set('x-request-id', parent.requestId);
     const request = new Request(target, { method: 'GET', headers, signal: parent.request.signal });
     try {
       const response = await app.fetch(request, { parent });
-      if (response.status === 200 && response.headers.get(PAGE_HEADER) === 'true') {
+      if (response.status === 200 && speaksProtocol(response.headers)) {
         const page: unknown = await response.json();
         if (isPageObject(page)) return { status: 'page', page: page as PageObject };
         return { status: 'unavailable', httpStatus: 500 };
@@ -634,7 +633,7 @@ export function createHttpKernel(
     // An action's redirect is reported, not followed — and its answer is never cached.
     else if (isActionRequest(request)) response = await toActionResponse(response);
     // A page visit's and an upload target's `fetch` follow redirects and would carry its CSRF header to another origin: that one becomes a full load.
-    else if (request.headers.get(PAGE_HEADER) === 'true' || upload) response = await leaveForeignRedirect(response, request);
+    else if (speaksProtocol(request.headers) || upload) response = await leaveForeignRedirect(response, request);
     // Cookies queued during the request reach the client whatever the outcome.
     const final = await withQueuedCookies(response, state.cookies);
 

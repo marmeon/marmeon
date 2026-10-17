@@ -13,13 +13,13 @@ import type {
 import {
   ACTION_HEADER,
   LOCATION_HEADER,
-  PAGE_HEADER,
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
   PARTIAL_EXCEPT_HEADER,
   PURPOSE_HEADER,
   REGION_HEADER,
   RELOAD_HEADER,
+  speaksProtocol,
   UPLOAD_HEADER,
   VALIDATE_HEADER,
 } from '../../protocol.ts';
@@ -282,7 +282,7 @@ function requestKind(headers: Headers, url: string): TimelineKind | undefined {
   if (headers.get(PURPOSE_HEADER) === 'prefetch') return 'prefetch';
   const region = headers.get(REGION_HEADER);
   if (region !== null) return region === 'layer' ? 'layer' : 'island';
-  if (headers.get(PAGE_HEADER) !== 'true') return undefined;
+  if (!speaksProtocol(headers)) return undefined;
   return headers.has(PARTIAL_COMPONENT_HEADER) ? 'deferred' : 'restore';
 }
 

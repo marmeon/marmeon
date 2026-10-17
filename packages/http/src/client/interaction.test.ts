@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FlashMessage } from '../page.ts';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, FLASH_HEADER, FLASH_WAITING_HEADER, LAYER_CLOSE_HEADER, LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, type PageObject } from '../protocol.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, FLASH_HEADER, FLASH_WAITING_HEADER, LAYER_CLOSE_HEADER, LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
 import type { ConfirmRequest } from './confirm.ts';
 import { dirtyPaths, isDirtyPath } from './forms.ts';
 import { isCurrentLink } from './links.ts';
@@ -84,7 +84,7 @@ describe('flash messages in the core', () => {
     let asked = 0;
     win.handler = (_url, init) => {
       const prefetch = (init.headers as Record<string, string>).purpose === 'prefetch';
-      if (prefetch) return new Response(JSON.stringify(page('/people', { people: 'prefetched' })), { headers: { [PAGE_HEADER]: 'true', 'content-type': 'application/json', [FLASH_WAITING_HEADER]: 'true' } });
+      if (prefetch) return new Response(JSON.stringify(page('/people', { people: 'prefetched' })), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'content-type': 'application/json', [FLASH_WAITING_HEADER]: 'true' } });
       asked++;
       return pageResponse(withFlash(page('/people', { people: 'fresh' }), toast('waiting', 'From the other tab.')));
     };

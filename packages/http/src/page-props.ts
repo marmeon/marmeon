@@ -1,4 +1,4 @@
-import { ONCE_HEADER, ONCE_SCOPE_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, type OnceInfo, type PageObject } from './protocol.ts';
+import { ONCE_HEADER, ONCE_SCOPE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, speaksProtocol, type OnceInfo, type PageObject } from './protocol.ts';
 import { mergeOf, propKind, resolveProp, type OnceProp } from './props.ts';
 import type { SharedData } from './shared-data.ts';
 
@@ -14,7 +14,7 @@ export interface PartialReload {
  */
 export function partialReloadOf(request: Request, component: string): PartialReload | undefined {
   const { headers } = request;
-  if (headers.get(PAGE_HEADER) !== 'true' || headers.get(PARTIAL_COMPONENT_HEADER) !== component) return undefined;
+  if (!speaksProtocol(headers) || headers.get(PARTIAL_COMPONENT_HEADER) !== component) return undefined;
   const only = headers.has(PARTIAL_DATA_HEADER) ? list(headers.get(PARTIAL_DATA_HEADER)) : undefined;
   const except = list(headers.get(PARTIAL_EXCEPT_HEADER));
   return only === undefined && except.length === 0 ? undefined : { only, except };
@@ -47,7 +47,7 @@ export interface OnceContext {
  */
 export function heldOnceProps(request: Request, current: string | undefined): ReadonlySet<string> {
   const { headers } = request;
-  if (headers.get(PAGE_HEADER) !== 'true') return new Set();
+  if (!speaksProtocol(headers)) return new Set();
   if ((headers.get(ONCE_SCOPE_HEADER) ?? undefined) !== current) return new Set();
   return new Set(list(headers.get(ONCE_HEADER)));
 }

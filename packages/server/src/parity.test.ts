@@ -20,6 +20,7 @@ import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { METHOD_FIELD_WINDOW, overrideMethod } from './method-override.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 /** Once props, the two kinds of 409, method spoofing and the CSRF token of a page — on the server. */
 
@@ -58,7 +59,7 @@ describe('once props on the server', async () => {
   application.container.scoped(PageSession, () => ({ csrfToken: () => 'csrf-of-the-session', scope: () => scope, generation: () => undefined }));
   const app = createHttpKernel(application);
   const visit = async (path: string, headers: Record<string, string> = {}) =>
-    (await (await app.request(path, { headers: { 'x-marmeon': 'true', ...headers } })).json()) as PageObject;
+    (await (await app.request(path, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, ...headers } })).json()) as PageObject;
   const reset = () => {
     for (const key of Object.keys(computed)) delete computed[key];
   };
@@ -126,7 +127,7 @@ describe('the two kinds of 409 — a new build may wait, signing in or out never
   }, { env: { APP_KEY: generateKey() } });
   application.container.make(Router).middleware.append('web', SignsInEarly, 220);
   const app = createHttpKernel(application, { version: 'build-2' });
-  const stale = (path: string) => app.request(path, { headers: { 'x-marmeon': 'true', 'x-marmeon-version': 'build-1' } });
+  const stale = (path: string) => app.request(path, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-version': 'build-1' } });
 
   it('a new build: 409 with `x-marmeon-reload: version` — the one the client may postpone', async () => {
     const response = await stale('/a');

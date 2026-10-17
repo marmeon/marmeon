@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/members" }
-import { ACTION_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { ACTION_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import type { TableData } from '@marmeon/table/client';
 import { rowPaginationFeature, rowSelectionFeature, rowSortingFeature, tableFeatures, useTable as useTanStackTable } from '@tanstack/react-table';
 import { act } from 'react';
@@ -190,7 +190,7 @@ beforeEach(() => {
       return Response.json({ done: keys.length, skipped: 0, missing: 0 });
     }
     const page = pageOf(url, document.body.dataset.component ?? 'app/Members');
-    return new Response(JSON.stringify(page), { headers: { [PAGE_HEADER]: 'true', 'content-type': 'application/json' } });
+    return new Response(JSON.stringify(page), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'content-type': 'application/json' } });
   });
 });
 

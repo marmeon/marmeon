@@ -8,7 +8,7 @@
  * render's promise) changes. With it, the render's promise still resolves only once the page is committed.
  */
 import { loadHistoryFallback, loadInstant, type Navigator } from '@marmeon/http/client/adapter';
-import { PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { Suspense, use, ViewTransition, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -96,7 +96,7 @@ Slow.layout = Waiting;
 const pages: Record<string, PageComponent> = { People, Person, Activity, Dirty, Calm, Slow };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, view]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: view })])));
 const page = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null });
-const respond = (body: PageObject) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true' } });
+const respond = (body: PageObject) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
 
 let server: (url: string, init?: RequestInit) => Response | Promise<Response>;
 let root: Root;

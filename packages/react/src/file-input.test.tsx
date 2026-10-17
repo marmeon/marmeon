@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/avatar" }
 import type { RouteManifest, Upload } from '@marmeon/http/page';
-import { PAGE_HEADER, UPLOAD_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, UPLOAD_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -61,7 +61,7 @@ beforeEach(() => {
     const headers = new Headers(init.headers as Record<string, string>);
     if (headers.get(UPLOAD_HEADER) === 'avatar') return Response.json({ token: TOKEN, upload: { method: 'PUT', url: '/_marmeon/uploads/1?signature=x' } });
     submitted.push(JSON.parse(String(init.body)));
-    return new Response(JSON.stringify(page()), { headers: { 'content-type': 'application/json', [PAGE_HEADER]: 'true' } });
+    return new Response(JSON.stringify(page()), { headers: { 'content-type': 'application/json', [PAGE_HEADER]: PROTOCOL_VERSION } });
   });
   // The bytes go over XHR (progress): one that answers when the test says so.
   class FakeXhr extends EventTarget {

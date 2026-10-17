@@ -3,7 +3,7 @@
  * Used once, by the visit it was fetched for, within its `cacheFor`; dropped when the document is left (signing out) and
  * when a non-GET visit changes what it shows. Its code loads with the first prefetch (`prefetchWith` in `lazy.ts`).
  */
-import { FLASH_WAITING_HEADER, PAGE_HEADER, PURPOSE_HEADER, REGION_HEADER, type PageObject } from '../../protocol.ts';
+import { FLASH_WAITING_HEADER, PURPOSE_HEADER, REGION_HEADER, speaksProtocol, type PageObject } from '../../protocol.ts';
 import { LruMap } from '../cache.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, slot } from '../feature.ts';
@@ -135,7 +135,7 @@ export class Prefetches {
       }
       // 409 (a new build, signing in or out), 5xx, a 4xx page, not a page: the visit asks again and handles it. Flash
       // messages wait for the page: the prefetch took none — the visit asks, and its answer brings them.
-      if (!response.ok || response.headers.get(PAGE_HEADER) !== 'true' || response.headers.get(FLASH_WAITING_HEADER) === 'true') {
+      if (!response.ok || !speaksProtocol(response.headers) || response.headers.get(FLASH_WAITING_HEADER) === 'true') {
         await response.body?.cancel();
         return undefined;
       }

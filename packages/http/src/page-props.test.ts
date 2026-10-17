@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { isPrefetch, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER } from './protocol.ts';
+import { isPrefetch, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PROTOCOL_VERSION } from './protocol.ts';
 import { partialReloadOf, resolvePageProps } from './page-props.ts';
 import { always, deepMerge, defer, merge, optional } from './props.ts';
 import { SharedData } from './shared-data.ts';
@@ -18,7 +18,7 @@ function request(headers: Record<string, string> = {}): Request {
 
 function partial(component: string, only?: string, except?: string): Request {
   return request({
-    [PAGE_HEADER]: 'true',
+    [PAGE_HEADER]: PROTOCOL_VERSION,
     [PARTIAL_COMPONENT_HEADER]: component,
     ...(only === undefined ? {} : { [PARTIAL_DATA_HEADER]: only }),
     ...(except === undefined ? {} : { [PARTIAL_EXCEPT_HEADER]: except }),

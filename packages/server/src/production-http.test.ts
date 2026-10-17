@@ -7,7 +7,7 @@ import { createApplication, defineModule, Logger, type Container, type LogContex
 import { CSP_NONCE_PLACEHOLDER } from '@marmeon/core/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { cacheControl, contentSecurityPolicy, HttpServiceProvider, view, type SsrRender } from '@marmeon/http';
-import { PAGE_HEADER } from '@marmeon/http/internal';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { ASSET_CACHE_CONTROL } from './assets.ts';
@@ -242,13 +242,13 @@ describe('the CSP nonce', async () => {
     const html = await response.text();
     expect(html).toContain(`<link rel="modulepreload" href="/assets/Show-1.js" crossorigin nonce="${nonce}">`);
     expect(html).not.toContain(CSP_NONCE_PLACEHOLDER);
-    const visit = await preloaded.request('/page', { headers: { [PAGE_HEADER]: 'true', accept: 'text/html' } });
+    const visit = await preloaded.request('/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, accept: 'text/html' } });
     expect(await visit.text()).not.toContain('<link');
   });
 
   it('a JSON visit or answer neither makes a nonce nor gets the header — nothing in it depends on one', async () => {
     const before = rendered.length;
-    const visit = await app.request('/page', { headers: { [PAGE_HEADER]: 'true', accept: 'text/html, application/xhtml+xml' } });
+    const visit = await app.request('/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, accept: 'text/html, application/xhtml+xml' } });
     expect(visit.headers.get('content-type')).toBe('application/json');
     expect(visit.headers.get('content-security-policy')).toBeNull();
     expect(JSON.stringify(await visit.json())).not.toMatch(/nonce/i);

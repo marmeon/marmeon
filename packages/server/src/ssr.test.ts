@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { FALLBACK_TEMPLATE } from './html.ts';
 import { createHttpKernel, type KernelOptions } from './kernel.ts';
 import { createDocumentRenderer, isBot } from './render.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 const entries: { level: string; message: string; context: LogContext }[] = [];
 class MemoryLogger implements Logger {
@@ -246,7 +247,7 @@ describe('streaming', () => {
       calls++;
       return { html: '' };
     });
-    const response = await app.request('/profile', { headers: { 'x-marmeon': 'true' } });
+    const response = await app.request('/profile', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(((await response.json()) as PageObject).props).toEqual({ name: 'Ada', lastLoginAt: '2026-10-01T12:00:00.600Z' });
     expect(calls).toBe(0);

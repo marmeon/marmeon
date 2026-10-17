@@ -12,6 +12,7 @@ import { SessionServiceProvider } from './provider.ts';
 import { SessionStore } from './store.ts';
 import { Session } from './session.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 class CountVisitsController extends Controller {
   readonly #session: Session;
@@ -181,7 +182,7 @@ describe('StartSession', () => {
   it('keeps flash data through an asset-version reload (409)', async () => {
     const { send } = await boot({ ASSET_VERSION: 'v2' }, { version: 'v2' });
     await send('/save', { method: 'POST' });
-    const stale = await send('/count', { headers: { 'x-marmeon': 'true', 'x-marmeon-version': 'v1' } });
+    const stale = await send('/count', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-version': 'v1' } });
     expect(stale.status).toBe(409);
     expect(await (await send('/count')).json()).toMatchObject({ status: 'Saved.' }); // still there after the reload
   });

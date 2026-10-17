@@ -34,6 +34,7 @@ import { COMPLETE_PENDING, READ_PENDING, sessionFingerprint } from './auth.ts';
 import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { SignInTracker } from './sign-ins.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 interface TestUser {
   id: number;
@@ -538,7 +539,7 @@ describe('Auth (session guard)', () => {
     await add(ada);
     const { send } = browser();
     await login(send);
-    const visit = await send('/logout', { method: 'POST', headers: { 'x-marmeon': 'true' } });
+    const visit = await send('/logout', { method: 'POST', headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     expect([visit.status, visit.headers.get('x-marmeon-location'), visit.headers.get('clear-site-data')]).toEqual([409, '/login', '"storage"']);
     await login(send);
     expect((await send('/logout', { method: 'POST' })).headers.get('clear-site-data')).toBe('"storage"');

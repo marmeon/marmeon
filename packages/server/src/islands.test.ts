@@ -4,8 +4,9 @@ import { abort, AfterResponse, defer, HttpServiceProvider, island, merge, view, 
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
-const ISLAND = { 'x-marmeon': 'true', 'x-marmeon-region': 'island' };
+const ISLAND = { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' };
 
 /** A response's JSON body, for assertions. */
 const json = async (response: Response) => (await response.json()) as { message?: string; props?: unknown; [key: string]: unknown };
@@ -86,7 +87,7 @@ describe('createHttpKernel — islands', async () => {
     const direct = await app.request('/islands/feed', { headers: { accept: 'text/html' } });
     expect(direct.status).toBe(404);
     expect(await direct.text()).toContain('[dashboard/Feed] is an island: it is loaded by');
-    expect((await app.request('/islands/feed', { headers: { 'x-marmeon': 'true' } })).status).toBe(404);
+    expect((await app.request('/islands/feed', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })).status).toBe(404);
     expect((await app.request('/islands/feed', { headers: { ...ISLAND, purpose: 'prefetch' } })).status).toBe(404);
     // In production, a plain 404 — no hint.
     const quiet = await production.request('/islands/feed', { headers: { accept: 'application/json' } });

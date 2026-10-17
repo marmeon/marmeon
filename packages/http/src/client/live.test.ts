@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { PAGE_HEADER, REGION_HEADER, type LiveSubscription, type PageObject, type RegionObject } from '../protocol.ts';
+import { PAGE_HEADER, REGION_HEADER, type LiveSubscription, type PageObject, type RegionObject, PROTOCOL_VERSION } from '../protocol.ts';
 import type { Feature } from './feature.ts';
 import { actions } from './features/actions.ts';
 import { guard } from './features/guard.ts';
@@ -14,7 +14,7 @@ import { boot, FakeChannels, FakeWindow, ORIGIN, page, pageResponse, settle } fr
 /** A subscription as the server signs it into a page — the token is opaque to the client. */
 const follows = (channel: string, only?: string[]): LiveSubscription => ({ channel, ...(only ? { only } : {}), token: `t-${channel.replaceAll('.', '_')}` });
 const livePage = (url: string, live: LiveSubscription[], props: Record<string, unknown> = { profile: 'v1' }, component = 'users/Show'): PageObject => ({ ...page(url, props, component), live });
-const islandResponse = (body: RegionObject) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', 'content-type': 'application/json' } });
+const islandResponse = (body: RegionObject) => new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [REGION_HEADER]: 'island', 'content-type': 'application/json' } });
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Until the feature's chunk is there and it looked at the screen (it syncs 10 ms after a change). */

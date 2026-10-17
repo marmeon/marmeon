@@ -1,6 +1,6 @@
 import { token } from '@marmeon/core';
 import type { HttpContext, Next } from '@marmeon/router';
-import { LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER, VERSION_HEADER } from './protocol.ts';
+import { LOCATION_HEADER, RELOAD_HEADER, speaksProtocol, VERSION_HEADER } from './protocol.ts';
 
 /** The current build's asset version — set by the server kernel; null means "do not check" (development). */
 export interface AssetVersion {
@@ -25,7 +25,7 @@ export class CheckAssetVersion {
     const current = this.#version.value;
     const client = request.headers.get(VERSION_HEADER);
     const stale =
-      current !== null && client !== null && client !== current && request.method === 'GET' && request.headers.get(PAGE_HEADER) === 'true';
+      current !== null && client !== null && client !== current && request.method === 'GET' && speaksProtocol(request.headers);
     if (!stale) return next();
     return new Response(null, { status: 409, headers: { [LOCATION_HEADER]: request.url, [RELOAD_HEADER]: 'version' } });
   }

@@ -6,8 +6,9 @@ import type { Next } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
-const LAYER = { 'x-marmeon': 'true', 'x-marmeon-region': 'layer' };
+const LAYER = { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'layer' };
 
 /** The page object a document carries (`#marmeon-page`). */
 function documentPage(html: string): PageObject {
@@ -93,7 +94,7 @@ describe('createHttpKernel — layers', async () => {
     expect(page).toMatchObject({ component: 'users/Edit', url: '/users/7/edit', layer: { key: 'users/Edit', base: '/users/7' } });
     expect(page.layer).not.toHaveProperty('once');
     // A plain visit (no region header) gets the same: the client opens it over what is on screen.
-    expect(((await (await app.request('/users/7/edit', { headers: { 'x-marmeon': 'true' } })).json()) as PageObject).layer?.base).toBe('/users/7');
+    expect(((await (await app.request('/users/7/edit', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })).json()) as PageObject).layer?.base).toBe('/users/7');
   });
 
   it('a layer answered by an action (not a GET) is shown once', async () => {

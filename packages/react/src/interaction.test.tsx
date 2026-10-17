@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1/edit" }
 import type { FlashMessage, RouteManifest } from '@marmeon/http/page';
-import { PAGE_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -107,7 +107,7 @@ const routes: RouteManifest = {
   'project.destroy': { method: 'delete', path: '/projects/1' },
 };
 const page = (name: string, url: string, props: Record<string, unknown> = {}, extra: Partial<PageObject> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null, ...extra });
-const json = (body: object, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json', [PAGE_HEADER]: 'true', ...headers } });
+const json = (body: object, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json', [PAGE_HEADER]: PROTOCOL_VERSION, ...headers } });
 const toast = (id: string, message: string) => ({ id, key: 'toast', data: { kind: 'success', message } }) as unknown as FlashMessage;
 
 let server: (url: string, init: RequestInit) => Response | Promise<Response>;

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { SessionServiceProvider } from './provider.ts';
 import { Session } from './session.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 class LoginController extends Controller {
   readonly #session: Session;
@@ -241,7 +242,7 @@ describe('VerifyCsrfToken', () => {
     it('a page for a guest carries no token and sets no cookie — 100 times', async () => {
       const { send } = await boot();
       for (let i = 0; i < 100; i++) {
-        const response = await send('/page', { headers: { 'x-marmeon': 'true' } });
+        const response = await send('/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
         expect(response.headers.getSetCookie()).toEqual([]);
         expect(((await response.json()) as PageObject).csrf).toBeUndefined();
       }
@@ -249,7 +250,7 @@ describe('VerifyCsrfToken', () => {
 
     it('a page for a guest draws no token at all — the session that is not kept never makes one', async () => {
       const { send } = await boot();
-      const response = await send('/peek', { headers: { 'x-marmeon': 'true' } });
+      const response = await send('/peek', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       expect(response.status).toBe(200);
       expect(response.headers.getSetCookie()).toEqual([]);
       expect(peeked.persists).toBe(false);
@@ -261,7 +262,7 @@ describe('VerifyCsrfToken', () => {
 
     it('a page whose request keeps the session carries the token it makes — the same the XSRF-TOKEN cookie gets', async () => {
       const { send, token } = await boot();
-      const response = await send('/count', { headers: { 'x-marmeon': 'true' } });
+      const response = await send('/count', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       const page = (await response.json()) as PageObject;
       expect(page.csrf, 'the page of a kept session carries no token').toBeTypeOf('string');
       expect(page.csrf).toMatch(/^[\w-]{40}$/);
@@ -281,7 +282,7 @@ describe('VerifyCsrfToken', () => {
       const failed = await send('/fail', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin', accept: 'text/html' } });
       expect(failed.status).toBe(303);
       expect(failed.headers.getSetCookie().map((cookie) => cookie.split('=')[0]).sort()).toEqual(['XSRF-TOKEN', 'marmeon_session']);
-      const page = (await (await send('/page', { headers: { 'x-marmeon': 'true' } })).json()) as PageObject;
+      const page = (await (await send('/page', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })).json()) as PageObject;
       expect(page.csrf).toBe(token());
       expect(page.props).toMatchObject({ errors: { email: ['Wrong.'] } });
     });

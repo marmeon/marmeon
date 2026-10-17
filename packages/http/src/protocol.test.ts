@@ -9,9 +9,21 @@ describe('@marmeon/http/protocol', () => {
     expect(protocol.PAGE_HEADER).toBe('x-marmeon');
     expect(protocol.UPLOAD_HEADER).toBe('x-marmeon-upload');
     expect(protocol.PAGE_SCRIPT_ID).toBe('marmeon-page');
-    expect(protocol.regionOf(new Request('http://localhost/', { headers: { [protocol.PAGE_HEADER]: 'true', [protocol.REGION_HEADER]: 'island' } }))).toBe('island');
+    expect(protocol.regionOf(new Request('http://localhost/', { headers: { [protocol.PAGE_HEADER]: protocol.PROTOCOL_VERSION, [protocol.REGION_HEADER]: 'island' } }))).toBe('island');
     expect(protocol.isPrefetch(new Request('http://localhost/', { headers: { [protocol.PURPOSE_HEADER]: 'prefetch' } }))).toBe(true);
     expect(protocol.isPageObject({ component: 'a/B', props: {}, url: '/' })).toBe(true);
+  });
+
+  it('asks every protocol question through one helper', () => {
+    const visit = { [protocol.PAGE_HEADER]: protocol.PROTOCOL_VERSION };
+    expect(protocol.protocolHeaders()).toEqual(visit);
+    expect(protocol.speaksProtocol(new Headers(visit))).toBe(true);
+  });
+
+  it('does not take a merged or foreign version for the protocol', () => {
+    expect(protocol.speaksProtocol(new Headers({ [protocol.PAGE_HEADER]: 'true, true' }))).toBe(false);
+    expect(protocol.speaksProtocol(new Headers({ [protocol.PAGE_HEADER]: '2' }))).toBe(false);
+    expect(protocol.speaksProtocol(new Headers())).toBe(false);
   });
 
   it('@marmeon/http/page has no protocol names — it holds the app side', () => {

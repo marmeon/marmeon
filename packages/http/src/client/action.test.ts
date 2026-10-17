@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type PageObject } from '../protocol.ts';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, REGION_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
 import { Navigator } from './navigation.ts';
 import type { RegionOwner } from './owner.ts';
 import { boot, FakeWindow, keptRegions, ORIGIN, page, pageResponse, settle, withActions } from './test-window.ts';
@@ -141,7 +141,7 @@ describe('optimistic patches', () => {
     await settle();
     // The first reload asks for the profile only — a partial reload of the page on screen.
     expect(reloads).toHaveLength(1);
-    expect(reloads[0]!.headers).toMatchObject({ [PAGE_HEADER]: 'true', [PARTIAL_COMPONENT_HEADER]: 'user-profile/Show', [PARTIAL_DATA_HEADER]: 'profile' });
+    expect(reloads[0]!.headers).toMatchObject({ [PAGE_HEADER]: PROTOCOL_VERSION, [PARTIAL_COMPONENT_HEADER]: 'user-profile/Show', [PARTIAL_DATA_HEADER]: 'profile' });
     deletes[1]!.open(json({ deleted: 2 }));
     await settle();
     // The second one replaced it (the first was aborted): it takes both patches over.
@@ -284,7 +284,7 @@ describe('optimistic patches', () => {
     const answer = gate<Response>();
     const islandAnswer = (ids: number[]) =>
       new Response(JSON.stringify({ component: 'dashboard/Links', props: { links: links(...ids) }, url: '/dashboard/links', version: null }), {
-        headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', 'content-type': 'application/json' },
+        headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [REGION_HEADER]: 'island', 'content-type': 'application/json' },
       });
     let islandRequests = 0;
     win.handler = (url, init) => {
@@ -466,7 +466,7 @@ describe('revalidateOnBack for layers and islands', () => {
       if (url.endsWith('/people')) return pageResponse(page('/people', {}, 'user-profile/People'));
       const partial = (init.headers as Record<string, string>)[PARTIAL_DATA_HEADER];
       return new Response(JSON.stringify({ component: 'dashboard/MyActivity', props: partial ? { entries: count++ } : { entries: count++, since: 'today' }, url: '/dashboard/activity', version: null }), {
-        headers: { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island', 'content-type': 'application/json' },
+        headers: { [PAGE_HEADER]: PROTOCOL_VERSION, [REGION_HEADER]: 'island', 'content-type': 'application/json' },
       });
     };
     const owners: RegionOwner[] = [];

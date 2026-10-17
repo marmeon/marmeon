@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { prefersMarkdown } from './negotiate.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 const asks = (accept?: string, extra: Record<string, string> = {}) => prefersMarkdown(new Request('http://localhost/docs', { headers: { ...(accept === undefined ? {} : { accept }), ...extra } }));
 
@@ -40,7 +41,7 @@ describe('prefersMarkdown', () => {
   });
 
   it('is false for a Visit, a partial reload or a layer, whatever it accepts', () => {
-    expect(asks('text/markdown', { 'x-marmeon': 'true' })).toBe(false);
+    expect(asks('text/markdown', { [PAGE_HEADER]: PROTOCOL_VERSION })).toBe(false);
   });
 
   it('counts the first 64 ranges only', () => {

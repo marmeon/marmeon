@@ -7,7 +7,7 @@
  */
 import { devtools, islands, type DevtoolsFeature, type DevtoolsGlobal } from '@marmeon/http/client/adapter';
 import { Navigator } from '@marmeon/http/client/adapter';
-import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { LOCATION_HEADER, PAGE_HEADER, REGION_HEADER, RELOAD_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevtoolsBar, SHORTCUT, STATE_KEY } from './bar.ts';
 import { installDevtoolsHook } from './hook.ts';
@@ -41,10 +41,10 @@ async function server(input: string, init: RequestInit = {}): Promise<Response> 
   if (url.pathname === '/_marmeon/devtools/api/source') return json({ file: '/app/modules/users/controllers/ShowUserController.ts', display: 'modules/users/controllers/ShowUserController.ts', line: 7, editor: '/__open-in-editor?file=x' });
   if (url.pathname === '/__open-in-editor') return void editors.push(url.search), new Response(null, { status: 200 });
   if (url.pathname === '/logout') return new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/login', [RELOAD_HEADER]: 'history' } });
-  if (headers[REGION_HEADER] === 'island') return json({ component: 'dashboard/Activity', props: { items: [CANARY] }, url: url.pathname, version: 'v1' }, { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island' });
+  if (headers[REGION_HEADER] === 'island') return json({ component: 'dashboard/Activity', props: { items: [CANARY] }, url: url.pathname, version: 'v1' }, { [PAGE_HEADER]: PROTOCOL_VERSION, [REGION_HEADER]: 'island' });
   const id = /^\/users\/(\d+)$/.exec(url.pathname)?.[1];
   if (!id) return new Response('not found', { status: 404 });
-  return json(page('users/Show', url.pathname + url.search, { secret: `${CANARY} ${id}`, auth: { user: 'ada' } }, { query: { tab: url.searchParams.get('tab') ?? 'links' }, queryDefaults: { tab: 'links' } }), { [PAGE_HEADER]: 'true' });
+  return json(page('users/Show', url.pathname + url.search, { secret: `${CANARY} ${id}`, auth: { user: 'ada' } }, { query: { tab: url.searchParams.get('tab') ?? 'links' }, queryDefaults: { tab: 'links' } }), { [PAGE_HEADER]: PROTOCOL_VERSION });
 }
 
 /** The whole adapter: a page as text, its islands as text — and the bar the dev hook attaches. */
@@ -102,13 +102,13 @@ describe('the dev hook', () => {
       const discarded = new Navigator({ initialPage: page('users/Show', '/users/1', {}), render });
       const app = new Navigator({ initialPage: page('users/Show', '/users/1', {}), render });
       const thrownAway = discarded.use(devtools);
-      await window.fetch('/users/2', { headers: { [PAGE_HEADER]: 'true' } }); // recorded by both, before either started
+      await window.fetch('/users/2', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } }); // recorded by both, before either started
       expect(thrownAway.timeline).toHaveLength(1);
       const stop = app.start();
       expect(attached).toEqual([app]);
       expect([thrownAway.timeline.length, thrownAway.hydration.length]).toEqual([0, 0]);
       expect(app.use(devtools).hydration.map((issue) => issue.message)).toEqual(['mismatch']);
-      await window.fetch('/users/2', { headers: { [PAGE_HEADER]: 'true' } });
+      await window.fetch('/users/2', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       expect(thrownAway.timeline).toHaveLength(0);
       expect(app.use(devtools).timeline).toHaveLength(2);
       stop();

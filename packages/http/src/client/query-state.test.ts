@@ -7,7 +7,7 @@
 // happy-dom has no Navigation API: the History fallback writes the history — as an adapter attaches it there.
 import { historyFallback } from './features/history-fallback.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '../protocol.ts';
+import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
 import { assertQueryPage, linkQuery, Navigator, queryState, queryUrl, withoutDefaults } from './adapter.ts';
 import { pageQuery } from './adapter.ts';
 
@@ -30,7 +30,7 @@ async function server(input: string, init: RequestInit = {}): Promise<Response> 
   const partial = headers[PARTIAL_COMPONENT_HEADER] === 'people/List' ? headers[PARTIAL_DATA_HEADER]?.split(',') : undefined;
   const props = partial ? { people } : { people, title: 'People' };
   const body: PageObject = { component: 'people/List', url: url.pathname + url.search, props, query, queryDefaults: DEFAULTS, mergeProps: ['people'] };
-  return new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: 'true', 'content-type': 'application/json' } });
+  return new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'content-type': 'application/json' } });
 }
 
 function start(url = '/people') {

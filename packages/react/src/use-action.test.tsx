@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/users/1" }
 import type { RouteManifest } from '@marmeon/http/page';
-import { ACTION_HEADER, ACTION_REDIRECT_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { ACTION_HEADER, ACTION_REDIRECT_HEADER, PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -187,8 +187,8 @@ describe('useAction', () => {
     await wait();
     // Still the ghost: the reload of `links` has not landed.
     expect(container.querySelectorAll('[data-testid="ghost"]')).toHaveLength(1);
-    expect(requests.at(-1)!.headers).toMatchObject({ [PAGE_HEADER]: 'true', [PARTIAL_DATA_HEADER]: 'links' });
-    await act(async () => reload.open(new Response(JSON.stringify({ ...profile(['Notes', 'Blog']), props: { links: [{ id: 1, label: 'Notes' }, { id: 2, label: 'Blog' }] } }), { headers: { [PAGE_HEADER]: 'true' } })));
+    expect(requests.at(-1)!.headers).toMatchObject({ [PAGE_HEADER]: PROTOCOL_VERSION, [PARTIAL_DATA_HEADER]: 'links' });
+    await act(async () => reload.open(new Response(JSON.stringify({ ...profile(['Notes', 'Blog']), props: { links: [{ id: 1, label: 'Notes' }, { id: 2, label: 'Blog' }] } }), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })));
     await wait();
     expect(labels()).toEqual(['Notes', 'Blog']);
     expect(container.querySelectorAll('[data-testid="ghost"]')).toHaveLength(0);
@@ -202,9 +202,9 @@ describe('useAction', () => {
 
   it('revalidateOnBack: Back shows the profile from memory at once, then reloads only `activity` — the view says so', async () => {
     server = (url, init) => {
-      if (url.startsWith('/people')) return new Response(JSON.stringify(page('People', '/people')), { headers: { [PAGE_HEADER]: 'true' } });
+      if (url.startsWith('/people')) return new Response(JSON.stringify(page('People', '/people')), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       const only = (init.headers as Record<string, string>)[PARTIAL_DATA_HEADER];
-      return new Response(JSON.stringify({ ...profile(['Notes']), props: only === 'activity' ? { activity: 'fresh' } : profile(['Notes']).props }), { headers: { [PAGE_HEADER]: 'true' } });
+      return new Response(JSON.stringify({ ...profile(['Notes']), props: only === 'activity' ? { activity: 'fresh' } : profile(['Notes']).props }), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     };
     await mount(profile(['Notes']));
     await click('to-people');
@@ -233,7 +233,7 @@ describe('useAction', () => {
       const cursor = Number(new URL(url, 'https://app.test').searchParams.get('cursor') ?? 0);
       const ids = stored.filter((id) => id > cursor).slice(0, 2);
       const next = stored.some((id) => id > (ids.at(-1) ?? Infinity)) ? String(ids.at(-1)) : null;
-      return new Response(JSON.stringify(feed(url, ids, next)), { headers: { [PAGE_HEADER]: 'true' } });
+      return new Response(JSON.stringify(feed(url, ids, next)), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     };
     history.replaceState(null, '', '/inbox');
     await mount(feed('/inbox', [1, 2], '2'));

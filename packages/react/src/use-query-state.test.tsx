@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/people" }
 import type { RouteManifest } from '@marmeon/http/page';
-import { PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, PARTIAL_DATA_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -122,9 +122,9 @@ beforeEach(() => {
     if (new URL(String(input).replace(window.location.origin, ''), location.href).pathname === '/people/find') {
       if (String(input).replace(window.location.origin, '').includes('q=')) await gate;
       const found = peoplePage(String(input).replace(window.location.origin, '').replace('/people/find', '/people'));
-      return new Response(JSON.stringify({ ...found, component: component(), url: String(input).replace(window.location.origin, ''), layer: { key: 'app/Find', base: '/people' } }), { headers: { [PAGE_HEADER]: 'true' } });
+      return new Response(JSON.stringify({ ...found, component: component(), url: String(input).replace(window.location.origin, ''), layer: { key: 'app/Find', base: '/people' } }), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     }
-    return new Response(JSON.stringify(peoplePage(String(input).replace(window.location.origin, ''))), { headers: { [PAGE_HEADER]: 'true' } });
+    return new Response(JSON.stringify(peoplePage(String(input).replace(window.location.origin, ''))), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
   });
 });
 

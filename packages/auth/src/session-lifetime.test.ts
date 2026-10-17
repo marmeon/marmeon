@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Auth, AuthConfig, AuthServiceProvider, Hasher, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
 import { AUTH_SESSION_KEYS } from './auth.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const HOUR = 3_600_000;
@@ -210,7 +211,7 @@ describe('the absolute lifetime of a sign-in', () => {
     await signIn(b);
     await b.edit((data) => delete data[AUTH_SESSION_KEYS.signedInAt]);
     const stored = await b.stored();
-    expect(await b.who({ 'x-marmeon': 'true', 'x-marmeon-region': 'island' })).toMatchObject({ id: 1 });
+    expect(await b.who({ [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' })).toMatchObject({ id: 1 });
     expect(await b.stored()).toEqual(stored);
     expect(await b.who()).toMatchObject({ id: 1 });
     expect((await b.stored())[AUTH_SESSION_KEYS.signedInAt]).toBe(Math.floor(Date.now() / 1000));
@@ -231,7 +232,7 @@ describe('the absolute lifetime of a sign-in', () => {
     await signIn(b);
     const cookie = b.jar.get('remember_web');
     // An island's request: read-only, it sees the session as the page left it.
-    const island = { 'x-marmeon': 'true', 'x-marmeon-region': 'island' };
+    const island = { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' };
     expect(await b.who(island)).toEqual({ id: 1, viaRemember: false });
     await b.edit((data) => (data[AUTH_SESSION_KEYS.signedInAt] = Math.floor(Date.now() / 1000) - 25 * 3600));
     const stored = await b.stored();

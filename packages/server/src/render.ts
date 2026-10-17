@@ -49,6 +49,7 @@ import {
   PARTIAL_COMPONENT_HEADER,
   PARTIAL_DATA_HEADER,
   PARTIAL_EXCEPT_HEADER,
+  protocolHeaders,
   PURPOSE_HEADER,
   partialReloadOf,
   REGION_HEADER,
@@ -58,6 +59,7 @@ import {
   ResponseLifecycle,
   serializedFlash,
   signedLive,
+  speaksProtocol,
 } from '@marmeon/http/internal';
 import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { ownResponse, RequestNonce, urlFor, type ResponseContext, type ResponseFactory, type RouteLookup } from '@marmeon/router';
@@ -520,11 +522,11 @@ export function createResponseFactory(
     // Serialized once: what the browser gets is also what the server renders from — a Date is a string on both
     // sides (`Serialize<T>`), so the markup hydrates.
     const json = JSON.stringify(page);
-    if (ctx.request.headers.get(PAGE_HEADER) === 'true') {
+    if (speaksProtocol(ctx.request.headers)) {
       // A layer's page object, also to a plain visit: the client opens it over what is on screen.
       return ownResponse(new Response(json, {
         status: result.status,
-        headers: { ...headers, 'content-type': 'application/json', [PAGE_HEADER]: 'true', ...(layer ? { [REGION_HEADER]: 'layer' } : {}) },
+        headers: { ...headers, 'content-type': 'application/json', ...protocolHeaders(), ...(layer ? { [REGION_HEADER]: 'layer' } : {}) },
       }));
     }
 
@@ -594,7 +596,7 @@ async function islandResponse(
   onPage?.(request, region, 'island', () => propOrigins(result.props, undefined, Object.keys(resolved.props)));
   return ownResponse(new Response(JSON.stringify(region), {
     status: 200,
-    headers: { vary: PAGE_VARY, 'content-type': 'application/json', [PAGE_HEADER]: 'true', [REGION_HEADER]: 'island' },
+    headers: { vary: PAGE_VARY, 'content-type': 'application/json', ...protocolHeaders(), [REGION_HEADER]: 'island' },
   }));
 }
 

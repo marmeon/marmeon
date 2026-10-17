@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/register" }
 import type { RouteManifest } from '@marmeon/http/page';
-import { PAGE_HEADER, VALIDATE_HEADER, VALIDATED_HEADER, type PageObject } from '@marmeon/http/protocol';
+import { PAGE_HEADER, VALIDATE_HEADER, VALIDATED_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -149,7 +149,7 @@ describe('useForm(…, { validate }) — live validation', () => {
     server = (request) =>
       request.fields
         ? new Promise((resolve) => (openCheck = resolve))
-        : new Response(JSON.stringify(page({ errors: { password: ['Too short.'] } })), { headers: { 'content-type': 'application/json', [PAGE_HEADER]: 'true' } });
+        : new Response(JSON.stringify(page({ errors: { password: ['Too short.'] } })), { headers: { 'content-type': 'application/json', [PAGE_HEADER]: PROTOCOL_VERSION } });
     await mount(page());
     await type('name', 'A');
     await blur('name');

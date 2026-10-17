@@ -12,6 +12,7 @@ import { Head } from './head.tsx';
 import { Island, useIsland } from './island.tsx';
 import { resolveModulePages } from './pages.ts';
 import { createSsrRenderer } from './server.tsx';
+import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -131,10 +132,10 @@ beforeEach(() => {
     requests.push(String(input).replace(window.location.origin, ''));
     if (String(input).replace(window.location.origin, '').startsWith('/islands/stale')) {
       return new Response(JSON.stringify({ component: 'app/Members', props: { count: 3 }, url: '/islands/stale', version: null }), {
-        headers: { 'x-marmeon': 'true', 'x-marmeon-region': 'island' },
+        headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' },
       });
     }
-    return new Response(JSON.stringify({ component: 'app/Profile', props: { activity: ['fetched'] }, url: '/users/1', version: null }), { headers: { 'x-marmeon': 'true' } });
+    return new Response(JSON.stringify({ component: 'app/Profile', props: { activity: ['fetched'] }, url: '/users/1', version: null }), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
   });
 });
 afterEach(() => vi.restoreAllMocks());
