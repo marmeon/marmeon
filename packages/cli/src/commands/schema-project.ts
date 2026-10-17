@@ -57,7 +57,7 @@ export class SchemaProjectCommand {
   }
 }
 
-function hasPackage(root: string): boolean {
+export function hasPackage(root: string): boolean {
   for (let dir = resolve(root); ; dir = dirname(dir)) {
     if (existsSync(join(dir, 'node_modules', '@marmeon', 'database', 'package.json'))) return true;
     if (dirname(dir) === dir) return false;
