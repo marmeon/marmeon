@@ -1,6 +1,6 @@
 import { SystemClock, type Clock } from '@marmeon/core';
 import type { RedisConnection, RedisScript } from '@marmeon/redis';
-import type { QueueCounts, QueuedPush, QueueDriver, ReleaseOptions, ReservedJob } from '../driver.ts';
+import { withAvailableAt, type QueueCounts, type QueuedPush, type QueueDriver, type ReleaseOptions, type ReservedJob } from '../driver.ts';
 
 /**
  * Moves the due members of the sorted set `from` (score ≤ now) to the end of the list `to` — delayed jobs whose time has
@@ -210,7 +210,8 @@ export class RedisQueueDriver implements QueueDriver {
   async release(job: ReservedJob, delay: number, options: ReleaseOptions = {}): Promise<boolean> {
     const [redis, { release }] = await Promise.all([this.#connection(), loadScripts()]);
     const keys = this.#keys(redis, job.queue);
-    const back = options.refund ? `${job.id}:${job.attempts - 1}:${job.payload}` : member(job);
+    const payload = options.availableAt === undefined ? job.payload : withAvailableAt(job.payload, options.availableAt);
+    const back = `${job.id}:${options.refund ? job.attempts - 1 : job.attempts}:${payload}`;
     return Number(await redis.run(release, [keys.reserved, keys.delayed], [member(job), this.#clock.now() + Math.round(delay * 1000), back])) === 1;
   }
 
@@ -252,7 +253,8 @@ function member(job: ReservedJob): string {
   return `${job.id}:${job.attempts}:${job.payload}`;
 }
 
-function parseMember(value: string): { id: string; attempts: number; payload: string } {
+/** @internal Splits a claimed member `<id>:<attempts>:<payload>`; the payload is opaque to the driver. */
+export function parseMember(value: string): { id: string; attempts: number; payload: string } {
   const first = value.indexOf(':');
   const second = value.indexOf(':', first + 1);
   return { id: value.slice(0, first), attempts: Number(value.slice(first + 1, second)), payload: value.slice(second + 1) };

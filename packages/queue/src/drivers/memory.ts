@@ -1,10 +1,11 @@
 import { SystemClock, type Clock } from '@marmeon/core';
 import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReleaseOptions, ReservedJob } from '../driver.ts';
+import { withAvailableAt } from '../driver.ts';
 
 interface Entry {
   readonly id: string;
   readonly queue: string;
-  readonly payload: string;
+  payload: string;
   attempts: number;
   reservedAt: number | undefined;
   availableAt: number;
@@ -73,6 +74,7 @@ export class MemoryQueueDriver implements QueueDriver {
     if (options.refund) entry.attempts -= 1;
     entry.reservedAt = undefined;
     entry.availableAt = this.#clock.now() + delay * 1000;
+    if (options.availableAt !== undefined) entry.payload = withAvailableAt(entry.payload, options.availableAt);
     return true;
   }
 

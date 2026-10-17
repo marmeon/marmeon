@@ -7,7 +7,7 @@ import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from './__fixtures__/targets.ts';
 import { QueueConnections } from './connections.ts';
-import { Queue, QueueServiceProvider, type JobContext } from './index.ts';
+import { Queue, QueueServiceProvider, type JobContext, type JobRecord } from './index.ts';
 import { parseRecord } from './runner.ts';
 
 const KEY = 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=';
@@ -61,7 +61,7 @@ describe('job metadata', () => {
     await runWithRequest({ requestId: 'req-5' }, () => queue.dispatch(StatsJob, { userId: 5 }));
     await queue.dispatch(StatsJob, { userId: 6 });
     const rows = await application.container.make(Connections).get().selectFrom('jobs' as never).select('payload' as never).orderBy('id' as never).execute();
-    const records = (rows as { payload: string }[]).map((row) => parseRecord(row.payload)!);
+    const records = (rows as { payload: string }[]).map((row) => (parseRecord(row.payload) as { record: JobRecord }).record);
     expect(records.map((record) => record.requestId)).toEqual(['req-5', undefined]);
     expect(records.every((record) => record.traceparent === undefined)).toBe(true);
     expect(channels.built(application)).toBe(0);

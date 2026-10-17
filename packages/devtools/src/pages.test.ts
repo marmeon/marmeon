@@ -354,23 +354,47 @@ describe('what the pages show', () => {
         connection: 'database',
         queue: 'mail',
         job: 'test.report',
-        payload: JSON.stringify({ uuid: 'f00d-0001', job: 'test.report', data: { personId: 9, password: 'hunter2' }, requestId: 'req-1' }),
+        payload: JSON.stringify({ v: 1, uuid: 'f00d-0001', job: 'test.report', data: { personId: 9, password: 'hunter2' }, requestId: 'req-1' }),
         exception: 'Error: The report failed, password=hunter2\n    at handle (/app/jobs.ts:1:1)',
         failedAt: Date.now(),
       });
+      // A record without a version, or of a newer one: no payload shown, and no retry for the one `queue:retry` refuses.
+      await connections.failed().record({
+        uuid: 'f00d-0002',
+        connection: 'database',
+        queue: 'mail',
+        job: 'test.report',
+        payload: JSON.stringify({ uuid: 'f00d-0002', job: 'test.report', data: { personId: 1, secret: 'old-release-data' } }),
+        exception: 'Error: before versions',
+        failedAt: Date.now() - 1000,
+      });
+      await connections.failed().record({
+        uuid: 'f00d-0003',
+        connection: 'database',
+        queue: 'mail',
+        job: 'test.report',
+        payload: JSON.stringify({ v: 9, uuid: 'f00d-0003', job: 'test.report', data: { secret: 'newer-release-data' } }),
+        exception: 'Error: held too long',
+        failedAt: Date.now() - 2000,
+      });
       const page = await (await kernel.request(`${BASE}/queue`)).text();
+      expect(page).not.toContain('queue:retry f00d-0002');
+      expect(page).toContain('marmeon queue:forget f00d-0002');
+      expect(page).toContain('marmeon queue:retry f00d-0003');
+      expect(page).not.toContain('old-release-data');
+      expect(page).not.toContain('newer-release-data');
       expect(page).toMatch(/<td class="mono">default<\/td><td class="num">2<\/td><td class="num">1<\/td><td class="num">1<\/td><td class="num">0<\/td>/);
-      expect(page).toContain('Failed jobs (1)');
+      expect(page).toContain('Failed jobs (3)');
       expect(page).toContain('marmeon queue:retry f00d-0001');
       expect(page).toContain('marmeon queue:forget f00d-0001');
       expect(page).not.toContain('hunter2'); // the stored error and payload, redacted
       expect(page).toContain(`href="${BASE}/requests?requestId=req-1"`);
 
       const api = (await (await kernel.request(`${BASE}/api/queue`)).json()) as { available: boolean; failedTotal: number; connections: { queues: { name: string; size: number }[] }[] };
-      expect(api).toMatchObject({ available: true, failedTotal: 1 });
+      expect(api).toMatchObject({ available: true, failedTotal: 3 });
       expect(api.connections[0]!.queues.find((queue) => queue.name === 'default')?.size).toBe(2);
       // Still there: nothing was retried, forgotten or worked by looking.
-      expect(await connections.failed().all()).toHaveLength(1);
+      expect(await connections.failed().all()).toHaveLength(3);
       expect(await connections.driver('database').size('default')).toBe(2);
     } finally {
       await app.shutdown();

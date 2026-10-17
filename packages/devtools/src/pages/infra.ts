@@ -23,11 +23,12 @@ export interface FailedJobView {
   readonly failedAt: number;
   /** The stored error, redacted. */
   readonly exception: string;
-  /** The job's data, redacted — an encrypted job's only as `[encrypted]`. */
-  readonly payload: unknown;
+  /** The job's data, redacted — an encrypted job's only as `[encrypted]`. Missing for a record this release cannot read. */
+  readonly payload?: unknown;
   /** The request that dispatched it. */
   readonly requestId?: string;
-  readonly retry: string;
+  /** The command to copy. Missing for a record `queue:retry` refuses (this release cannot read it). */
+  readonly retry?: string;
   readonly forget: string;
 }
 
@@ -89,6 +90,7 @@ async function optional<T>(load: () => Promise<T>): Promise<T | undefined> {
 /** The queues of every connection that keeps jobs, and the failed jobs. */
 export async function queueSnapshot(app: Application, redactor: Redactor): Promise<QueueSnapshot> {
   const module = await optional(() => import('@marmeon/queue'));
+  const internal = await optional(() => import('@marmeon/queue/internal'));
   if (!module || !app.container.has(module.QueueConnections)) return { available: false, reason: 'The app has no queue (@marmeon/queue).' };
   const connections = app.container.make(module.QueueConnections);
   const views: QueueView[] = [];
@@ -123,12 +125,9 @@ export async function queueSnapshot(app: Application, redactor: Redactor): Promi
     const all = await bounded(() => connections.failed().all());
     failedTotal = all.length;
     failed = all.slice(0, MAX_FAILED).map((job) => {
-      let record: { data?: unknown; encrypted?: boolean; requestId?: string } = {};
-      try {
-        record = JSON.parse(job.payload) as typeof record;
-      } catch {
-        // A payload that is no record: shown as nothing.
-      }
+      // Only a record this release reads is shown, and offered for retry: a newer one or one without a version is not interpreted.
+      const parsed = internal?.parseRecord(job.payload);
+      const record = parsed?.kind === 'record' ? parsed.record : undefined;
       const exception = job.exception.split('\n').slice(0, 30).join('\n');
       return {
         id: job.uuid,
@@ -137,9 +136,9 @@ export async function queueSnapshot(app: Application, redactor: Redactor): Promi
         queue: job.queue,
         failedAt: job.failedAt,
         exception: redactor.text(exception),
-        payload: redactor.fit(redactor.payload(record.data, record.encrypted === true), 16 * 1024),
-        ...(typeof record.requestId === 'string' ? { requestId: record.requestId } : {}),
-        retry: `marmeon queue:retry ${job.uuid}`,
+        ...(record ? { payload: redactor.fit(redactor.payload(record.data, record.encrypted === true), 16 * 1024) } : {}),
+        ...(record?.requestId === undefined ? {} : { requestId: record.requestId }),
+        ...(parsed?.kind === 'invalid' ? {} : { retry: `marmeon queue:retry ${job.uuid}` }),
         forget: `marmeon queue:forget ${job.uuid}`,
       };
     });

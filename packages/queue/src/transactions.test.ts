@@ -222,7 +222,7 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
     await using application = await app();
     const container = application.container;
     const runner = new JobRunner(container, container.make(JobRegistry), () => Promise.reject(new Error('no cipher')));
-    const prepared = await runner.prepare(JSON.stringify({ uuid: 'u', job: 'test.context', data: { n: 1 }, tries: 1, backoff: [], dispatchedAt: 0 }));
+    const prepared = await runner.prepare(JSON.stringify({ v: 1, uuid: 'u', job: 'test.context', data: { n: 1 }, tries: 1, backoff: [], dispatchedAt: 0 }));
     if (prepared.kind !== 'ready') throw new Error(prepared.kind);
     await container.make(Connections).transaction(() => runner.run(prepared, { attempt: 1, queue: 'default', connection: 'test', signal: new AbortController().signal }));
     expect(application.seen.entries).toEqual([{ n: 1, found: false, inTransaction: false }]);

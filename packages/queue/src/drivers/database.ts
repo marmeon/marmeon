@@ -1,6 +1,7 @@
 import { SystemClock, type Clock } from '@marmeon/core';
 import type { Connection } from '@marmeon/database';
 import type { FailedJob, FailedJobStore, QueueCounts, QueuedPush, QueueDriver, ReleaseOptions, ReservedJob } from '../driver.ts';
+import { withAvailableAt } from '../driver.ts';
 
 /** The tables `marmeon make:queue-table` creates (the app owns the migration; the queue types them itself). */
 export const JOBS_TABLE = 'jobs';
@@ -155,7 +156,7 @@ export class DatabaseQueueDriver implements QueueDriver {
     const { db, sql } = await use(this.#connection, this.#cache);
     const attempts = options.refund ? job.attempts - 1 : job.attempts;
     const result = await sql`update jobs set reserved_at = null, available_at = cast(${this.#clock.now() + Math.round(delay * 1000)} as bigint),
-      attempts = cast(${attempts} as integer)
+      attempts = cast(${attempts} as integer), payload = ${options.availableAt === undefined ? job.payload : withAvailableAt(job.payload, options.availableAt)}
       where id = cast(${Number(job.id)} as bigint) and attempts = cast(${job.attempts} as integer) and reserved_at is not null`.execute(db);
     return result.numAffectedRows === 1n;
   }

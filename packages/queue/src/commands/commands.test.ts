@@ -145,7 +145,7 @@ describe('the queue commands', () => {
     application.clock.freeze(Date.UTC(2026, 9, 2, 12));
     const connections = application.container.make(QueueConnections);
     const failed = connections.failed();
-    const payload = (uuid: string) => JSON.stringify({ uuid, job: 'test.ping', data: { n: 1 }, tries: 1, backoff: [], dispatchedAt: 0 });
+    const payload = (uuid: string) => JSON.stringify({ v: 1, uuid, job: 'test.ping', data: { n: 1 }, tries: 1, backoff: [], dispatchedAt: 0 });
     await failed.record({ uuid: 'old', connection: 'database', queue: 'default', job: 'test.ping', payload: payload('old'), exception: 'Error: old\n    at x', failedAt: application.clock.now() - 200 * 3_600_000 });
     await failed.record({ uuid: 'new', connection: 'database', queue: 'mail', job: 'test.ping', payload: payload('new'), exception: 'Error: new', failedAt: application.clock.now() });
 
@@ -187,6 +187,39 @@ describe('the queue commands', () => {
     const flushed = input('/tmp');
     await application.container.make(QueueFlushCommand).handle(flushed.input);
     expect(flushed.lines).toEqual(['✓ Deleted 1 failed job.']);
+  });
+
+  it('refuses to retry a failed job of a record without a version, and keeps it for reading', async () => {
+    await using application = await app();
+    const connections = application.container.make(QueueConnections);
+    const failed = connections.failed();
+    const old = JSON.stringify({ uuid: 'old', job: 'test.ping', data: { n: 1 }, tries: 1, backoff: [], dispatchedAt: 0 });
+    const current = JSON.stringify({ v: 1, uuid: 'current', job: 'test.ping', data: { n: 1 }, tries: 1, backoff: [], dispatchedAt: 0 });
+    await failed.record({ uuid: 'old', connection: 'database', queue: 'default', job: 'test.ping', payload: old, exception: 'Error: before versions', failedAt: 1 });
+    await failed.record({ uuid: 'current', connection: 'database', queue: 'default', job: 'test.ping', payload: current, exception: 'Error: current', failedAt: 2 });
+
+    const retried = input('/tmp', ['old']);
+    expect(await application.container.make(QueueRetryCommand).handle(retried.input)).toBe(1);
+    expect(retried.lines).toEqual([expect.stringMatching(/^✗ The failed job old cannot be retried: .*before job records carried a version.*docs\/queues\.md#deploying-while-jobs-wait/)]);
+    expect(await connections.driver('database').size('default')).toBe(0);
+    expect((await failed.find('old'))?.payload).toBe(old);
+
+    // `all` skips it, retries the rest, and says it failed.
+    const every = input('/tmp', ['all']);
+    expect(await application.container.make(QueueRetryCommand).handle(every.input)).toBe(1);
+    expect(every.lines).toEqual([expect.stringMatching(/^✗ The failed job old cannot be retried/), '✓ Queued test.ping (current) again on database/default']);
+    expect(await connections.driver('database').size('default')).toBe(1);
+  });
+
+  it('stamps a retried job with the time it is queued again — the time a worker that cannot read it yet counts from', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    const connections = application.container.make(QueueConnections);
+    const payload = JSON.stringify({ v: 2, uuid: 'later', job: 'test.ping', data: { n: 1 }, dispatchedAt: 1, availableAt: 2, extra: true });
+    await connections.failed().record({ uuid: 'later', connection: 'database', queue: 'default', job: 'test.ping', payload, exception: 'Error: x', failedAt: 1 });
+    expect(await application.container.make(QueueRetryCommand).handle(input('/tmp', ['later']).input)).toBe(0);
+    const job = await connections.driver('database').reserve(['default']);
+    expect(JSON.parse(job!.payload)).toEqual({ ...JSON.parse(payload), availableAt: application.clock.now() });
   });
 
   it("the apps' and the starter's jobs tables are the stub's: made with the fair claim's index, no migration adds it later", () => {

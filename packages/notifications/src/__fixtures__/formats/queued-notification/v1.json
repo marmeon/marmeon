@@ -1,0 +1,12 @@
+{
+  "id": "d0000000-0000-4000-8000-000000000001",
+  "notification": "invoice.paid",
+  "recipient": {
+    "type": "user",
+    "id": 7
+  },
+  "data": {
+    "invoice": 1234,
+    "amount": "19.00"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "mailable": "WelcomeMail",
+  "message": {
+    "from": {
+      "address": "hello@example.com",
+      "name": "Example"
+    },
+    "to": [
+      {
+        "address": "ada@example.com"
+      }
+    ],
+    "cc": [],
+    "bcc": [],
+    "replyTo": {
+      "address": "support@example.com"
+    },
+    "subject": "Welcome",
+    "html": "<p>Welcome, Ada.</p>",
+    "text": "Welcome, Ada.",
+    "attachments": [
+      {
+        "filename": "terms.txt",
+        "content": "Terms",
+        "encoding": "utf8",
+        "contentType": "text/plain"
+      }
+    ],
+    "headers": {
+      "x-campaign": "welcome"
+    }
+  }
+}

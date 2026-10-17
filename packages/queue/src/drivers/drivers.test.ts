@@ -73,6 +73,25 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
     });
   });
 
+  it('writes the time a released job can be claimed again into its record, when asked to', async () => {
+    await withQueue(kind, async ({ driver, clock }) => {
+      clock.freeze();
+      await driver.push('default', JSON.stringify({ v: 1, job: 'a', availableAt: 1 }), 0);
+      const job = (await driver.reserve(['default']))!;
+      const at = clock.now() + 10_000;
+      expect(await driver.release(job, 10, { availableAt: at })).toBe(true);
+      clock.travel({ seconds: 10 });
+      const again = (await driver.reserve(['default']))!;
+      expect(JSON.parse(again.payload)).toEqual({ v: 1, job: 'a', availableAt: at });
+      // A payload that is no JSON object stays as it is.
+      expect(await driver.fail(again)).toBe(true);
+      await driver.push('default', 'plain', 0);
+      const plain = (await driver.reserve(['default']))!;
+      expect(await driver.release(plain, 0, { availableAt: at })).toBe(true);
+      expect((await driver.reserve(['default']))!.payload).toBe('plain');
+    });
+  });
+
   it('releases a job back with its attempt given back (refund) — the next claim is the same attempt', async () => {
     await withQueue(kind, async ({ driver, clock }) => {
       clock.freeze();

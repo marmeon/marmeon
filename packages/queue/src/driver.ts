@@ -25,6 +25,23 @@ export interface ReleaseOptions {
    * worker never touches a claim it released, and an older, expired claim has a lower count than any claim after it.
    */
   readonly refund?: boolean;
+  /**
+   * When the job can be claimed again (epoch ms). A driver that keeps the payload writes it into the stored record's `availableAt`
+   * (see {@link withAvailableAt}), so a worker that cannot read the record yet counts how long it waited from here. Optional:
+   * a driver that ignores it leaves the payload as it was.
+   */
+  readonly availableAt?: number;
+}
+
+/** `payload` with its `availableAt` set — unchanged when it is no JSON object. For drivers that honour {@link ReleaseOptions.availableAt}. @internal */
+export function withAvailableAt(payload: string, availableAt: number): string {
+  try {
+    const value: unknown = JSON.parse(payload);
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return payload;
+    return JSON.stringify({ ...value, availableAt });
+  } catch {
+    return payload;
+  }
 }
 
 /** A job to queue: what `push` takes, and what `ack` queues together with the acknowledgement (the next job of a chain). */
@@ -134,6 +151,12 @@ export type FailedJobStoreFactory = (context: FailedJobStoreContext) => FailedJo
  * older or newer release handles the retries the job was dispatched for — also when it does not know the job).
  */
 export interface JobRecord {
+  /**
+   * The record's format version — the one field whose name and meaning never change. A worker runs only versions it can read
+   * and puts newer ones back for a worker that can; a record without it (queued before records were versioned) never runs.
+   * See `docs/queues.md#deploying-while-jobs-wait`.
+   */
+  readonly v: number;
   /** The job's id, stable over retries. */
   readonly uuid: string;
   /** `static job`. */
@@ -145,6 +168,8 @@ export interface JobRecord {
   readonly backoff: readonly number[];
   /** When it was first dispatched (epoch ms). */
   readonly dispatchedAt: number;
+  /** When it could first be claimed (epoch ms): its delay over, its turn in a chain, a retry. Set by whatever pushes it. */
+  readonly availableAt?: number;
   /** A unique job (`dispatch(…, { unique })`): the lock that keeps a second one off the queue, and when the worker frees it. */
   readonly unique?: UniqueRecord;
   /** The rest of its chain (`queue.chain([...])`): queued one after the other, each when the one before succeeded. */

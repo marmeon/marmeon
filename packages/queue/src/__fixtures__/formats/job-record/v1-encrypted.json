@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "uuid": "c0000000-0000-4000-8000-000000000001",
+  "job": "test.reset-link",
+  "data": "AU9A3dg1SV9eixCewtg-6lqYK0uLVrV6nDkIETmQRFRkPvjOERxBvXPjM9rmfecakH3C2E6DmaT_wQfc30XaWjPRjKca4J1baLaiaXJW",
+  "encrypted": true,
+  "tries": 1,
+  "backoff": [],
+  "dispatchedAt": 1790000000000
+}

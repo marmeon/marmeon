@@ -12,8 +12,11 @@ export interface PayloadCipher {
   decrypt(ciphertext: string, context: string): Promise<string>;
 }
 
-/** What a job's payload is bound to when encrypted: its name — a ciphertext cannot be moved to another job. */
-export const cipherContext = (name: string) => `queue:${name}`;
+/**
+ * What a job's payload is bound to when encrypted: the record's version and the job's name — a ciphertext cannot be moved to
+ * another job, nor read under a meaning a later version gives `data`.
+ */
+export const cipherContext = (name: string, version: number = RECORD_VERSION) => `queue:v${version}:${name}`;
 
 /** The payload does not match the job's schema — at dispatch (a bug) or before it runs (a deploy changed the schema). */
 export class JobPayloadError extends QueueError {
@@ -72,10 +75,35 @@ export function delaySeconds(delay: number | Duration | undefined): number {
 /** A queued job, ready to run — or why it cannot. */
 export type Prepared =
   | { readonly kind: 'ready'; readonly record: JobRecord; readonly job: JobClass; readonly payload: unknown }
-  /** Never runnable: no job record, an unreadable or forged payload, a payload the schema rejects — failed at once. */
-  | { readonly kind: 'poison'; readonly record: JobRecord | undefined; readonly reason: string }
-  /** No class for this name in this app (yet — a rolling deploy): released with backoff until its tries are used up. */
-  | { readonly kind: 'unknown'; readonly record: JobRecord };
+  /**
+   * Never runnable, by any worker: no job record, no version, a broken chain, an unreadable or forged payload — failed at once.
+   * `identity`: what a payload that is no record still says about itself, to label the failure.
+   */
+  | { readonly kind: 'poison'; readonly record: JobRecord | undefined; readonly reason: string; readonly identity?: RecordIdentity }
+  /**
+   * Not runnable by this worker, perhaps by another: a newer record version, no class for this name in this app, a payload the
+   * schema rejects (a rolling deploy). Put back untouched until a worker can read it — see {@link FOREIGN_LIMIT_SECONDS}.
+   */
+  | { readonly kind: 'foreign'; readonly reason: string; readonly envelope: RecordEnvelope; readonly record: JobRecord | undefined };
+
+/** What every version of the record keeps in place: the fields a worker may read of a record it does not understand. */
+export interface RecordEnvelope {
+  readonly v: number;
+  readonly uuid: string | undefined;
+  readonly job: string | undefined;
+  /** Epoch ms; undefined when the record carries none a worker can trust. */
+  readonly dispatchedAt: number | undefined;
+  /** Epoch ms from which it could be claimed (its delay, a chain's turn, a retry); undefined when it carries none. */
+  readonly availableAt: number | undefined;
+}
+
+/** What a payload that is no readable record says about itself — read only to label its failure, never to run it. */
+export interface RecordIdentity {
+  readonly uuid?: string;
+  readonly job?: string;
+  /** Its unique lock, if it names a readable one: freed when the record fails. */
+  readonly unique?: UniqueRecord;
+}
 
 const attempts = channels.tracing('queue.job');
 
@@ -107,10 +135,16 @@ export class JobRunner {
   }
 
   async prepare(payload: string): Promise<Prepared> {
-    const record = parseRecord(payload);
-    if (!record) return { kind: 'poison', record: undefined, reason: 'The payload is not a job record (expected JSON with "job" and "data").' };
+    const parsed = parseRecord(payload);
+    if (parsed.kind === 'invalid') return { kind: 'poison', record: undefined, reason: parsed.reason, ...(parsed.identity ? { identity: parsed.identity } : {}) };
+    if (parsed.kind === 'foreign') {
+      return { kind: 'foreign', reason: `The record is version ${parsed.envelope.v}, newer than this worker reads (${supportedVersions()}).`, envelope: parsed.envelope, record: undefined };
+    }
+    const { record } = parsed;
     const job = this.#registry.get(record.job);
-    if (!job) return { kind: 'unknown', record };
+    if (!job) {
+      return { kind: 'foreign', reason: `No job named "${record.job}" is registered in this app (a deploy in progress, or a module's jobs: [...] is missing it).`, envelope: envelopeOf(record), record };
+    }
 
     let data: unknown = record.data;
     if (job.encrypted && !record.encrypted) {
@@ -119,7 +153,7 @@ export class JobRunner {
     if (record.encrypted) {
       try {
         if (typeof data !== 'string') throw new Error('not a ciphertext');
-        data = JSON.parse(await (await this.#cipher()).decrypt(data, cipherContext(record.job)));
+        data = JSON.parse(await (await this.#cipher()).decrypt(data, cipherContext(record.job, record.v)));
       } catch (error) {
         return { kind: 'poison', record, reason: `The encrypted payload of ${record.job} cannot be decrypted (was APP_KEY changed?): ${(error as Error).message}` };
       }
@@ -127,7 +161,8 @@ export class JobRunner {
     try {
       return { kind: 'ready', record, job, payload: await validatePayload(job, data, 'run') };
     } catch (error) {
-      return { kind: 'poison', record, reason: (error as Error).message };
+      // A newer release may have widened the schema (a new enum member): another worker may accept what this one rejects.
+      return { kind: 'foreign', reason: (error as Error).message, envelope: envelopeOf(record), record };
     }
   }
 
@@ -248,50 +283,158 @@ export class JobRunner {
   }
 }
 
-/** A stored payload as a job record — or undefined when it is none. */
-export function parseRecord(payload: string): JobRecord | undefined {
+/** The version of the job record this release writes. */
+export const RECORD_VERSION = 1;
+
+/** How long a worker holds a record it cannot run before it gives up, measured from `dispatchedAt`. */
+export const FOREIGN_LIMIT_SECONDS = 6 * 3600;
+
+/** What a stored payload is to this worker. */
+export type ParsedRecord =
+  | { readonly kind: 'record'; readonly record: JobRecord }
+  /** A version newer than any reader here: only the envelope was read. */
+  | { readonly kind: 'foreign'; readonly envelope: RecordEnvelope }
+  | { readonly kind: 'invalid'; readonly reason: string; readonly identity?: RecordIdentity };
+
+type ReadResult = Extract<ParsedRecord, { kind: 'record' | 'invalid' }>;
+
+/**
+ * One reader per record version, each returning the record in the shape this release works with. A reader sees only objects
+ * with a positive integer `v` equal to its key. A reader that maps a later version onto the v1 shape keeps the original `v` on
+ * the record it returns: `cipherContext` binds an encrypted payload to it. @internal
+ */
+export const RECORD_READERS: Record<number, (value: Record<string, unknown>, depth?: number) => ReadResult> = {
+  1: readV1,
+};
+
+const NOT_A_RECORD = 'The payload is not a job record (expected JSON with "job" and "data").';
+const NO_VERSION = 'The record was queued by a release before job records carried a version — it cannot run; see docs/queues.md#deploying-while-jobs-wait.';
+
+function supportedVersions(): string {
+  return Object.keys(RECORD_READERS).join(', ');
+}
+
+function newestVersion(): number {
+  return Math.max(...Object.keys(RECORD_READERS).map(Number));
+}
+
+/**
+ * A stored payload as a job record, or why it is none: `foreign` when its version is newer than any reader here (never
+ * interpreted — a newer release may have added a field that restricts the job), `invalid` when it has no version, one
+ * that is no longer read, or cannot be read at all (a broken link of its chain included).
+ */
+export function parseRecord(payload: string): ParsedRecord {
   let value: unknown;
   try {
     value = JSON.parse(payload);
   } catch {
-    return undefined;
+    return { kind: 'invalid', reason: NOT_A_RECORD };
   }
-  if (typeof value !== 'object' || value === null || typeof (value as { job?: unknown }).job !== 'string' || !('data' in value)) return undefined;
-  const record = value as Partial<JobRecord> & { job: string; data: unknown };
-  const tries = Number.isInteger(record.tries) && record.tries! >= 1 ? record.tries! : 1;
-  const backoff = Array.isArray(record.backoff) && record.backoff.every((delay) => typeof delay === 'number' && delay >= 0) ? record.backoff : [];
+  const read = readRecord(value, 0);
+  if (read.kind !== 'invalid' || typeof value !== 'object' || value === null || Array.isArray(value)) return read;
+  const identity = identityOf(value as Record<string, unknown>);
+  return identity ? { ...read, identity } : read;
+}
+
+/** The id, name and unique lock a payload claims, as far as they are plainly readable. */
+function identityOf(object: Record<string, unknown>): RecordIdentity | undefined {
+  const unique = uniqueOf(object.unique);
+  const identity = {
+    ...(typeof object.uuid === 'string' && object.uuid ? { uuid: object.uuid } : {}),
+    ...(typeof object.job === 'string' ? { job: object.job } : {}),
+    ...(unique ? { unique } : {}),
+  };
+  return Object.keys(identity).length > 0 ? identity : undefined;
+}
+
+/** The deepest chain nesting a record may have — a bound on the recursion, far above anything the queue writes. */
+const MAX_CHAIN_DEPTH = 1000;
+/** The longest a record may be held: a dispatch time further ahead than this is a wrong clock or a forged record. */
+export const CLOCK_SKEW_MS = 5 * 60_000;
+
+function readRecord(value: unknown, depth: number): ParsedRecord {
+  if (depth > MAX_CHAIN_DEPTH) return { kind: 'invalid', reason: `The record's chain is nested deeper than ${MAX_CHAIN_DEPTH} links.` };
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { kind: 'invalid', reason: NOT_A_RECORD };
+  const object = value as Record<string, unknown>;
+  const version = object.v;
+  if (version === undefined) return typeof object.job === 'string' && 'data' in object ? { kind: 'invalid', reason: NO_VERSION } : { kind: 'invalid', reason: NOT_A_RECORD };
+  if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1) {
+    return { kind: 'invalid', reason: `The record's version (v) is ${JSON.stringify(version)}, not a positive integer — it cannot run.` };
+  }
+  const reader = Object.hasOwn(RECORD_READERS, version) ? RECORD_READERS[version] : undefined;
+  if (reader) return reader(object, depth);
+  if (version > newestVersion()) {
+    return {
+      kind: 'foreign',
+      envelope: {
+        v: version,
+        uuid: typeof object.uuid === 'string' && object.uuid ? object.uuid : undefined,
+        job: typeof object.job === 'string' ? object.job : undefined,
+        dispatchedAt: timeOf(object.dispatchedAt),
+        availableAt: timeOf(object.availableAt),
+      },
+    };
+  }
+  return { kind: 'invalid', reason: `The record's version (${version}) is older than this release reads (${supportedVersions()}) — it cannot run.` };
+}
+
+function timeOf(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function envelopeOf(record: JobRecord): RecordEnvelope {
+  return { v: record.v, uuid: record.uuid, job: record.job, dispatchedAt: timeOf(record.dispatchedAt), availableAt: timeOf(record.availableAt) };
+}
+
+function readV1(record: Record<string, unknown>, depth = 0): ReadResult {
+  if (typeof record.job !== 'string' || !('data' in record)) return { kind: 'invalid', reason: NOT_A_RECORD };
+  const tries = Number.isInteger(record.tries) && (record.tries as number) >= 1 ? (record.tries as number) : 1;
+  const backoff = Array.isArray(record.backoff) && record.backoff.every((delay) => typeof delay === 'number' && delay >= 0) ? (record.backoff as number[]) : [];
+  let chain: JobRecord[] | undefined;
+  if (Array.isArray(record.chain) && record.chain.length > 0) {
+    chain = [];
+    for (const [index, link] of record.chain.entries()) {
+      const read = readRecord(link, depth + 1);
+      if (read.kind !== 'record') {
+        // A chain that silently lost a link would run the rest without it.
+        return { kind: 'invalid', reason: `Link ${index + 1} of the record's chain cannot be read — ${read.kind === 'invalid' ? read.reason : `it is version ${read.envelope.v}`}` };
+      }
+      chain.push(read.record);
+    }
+  }
+  const unique = uniqueOf(record.unique);
   return {
-    uuid: typeof record.uuid === 'string' && record.uuid ? record.uuid : crypto.randomUUID(),
-    job: record.job,
-    data: record.data,
-    ...(record.encrypted === true ? { encrypted: true as const } : {}),
-    tries,
-    backoff,
-    dispatchedAt: typeof record.dispatchedAt === 'number' ? record.dispatchedAt : 0,
-    ...(isUnique(record.unique) ? { unique: record.unique } : {}),
-    ...(Array.isArray(record.chain) && record.chain.length > 0 ? { chain: record.chain.map((link) => parseRecord(JSON.stringify(link))).filter((link) => link !== undefined) } : {}),
-    ...(typeof record.requestId === 'string' ? { requestId: record.requestId } : {}),
-    ...(typeof record.traceparent === 'string' ? { traceparent: record.traceparent } : {}),
+    kind: 'record',
+    record: {
+      v: 1,
+      uuid: typeof record.uuid === 'string' && record.uuid ? record.uuid : crypto.randomUUID(),
+      job: record.job,
+      data: record.data,
+      ...(record.encrypted === true ? { encrypted: true as const } : {}),
+      tries,
+      backoff,
+      dispatchedAt: typeof record.dispatchedAt === 'number' ? record.dispatchedAt : 0,
+      ...(timeOf(record.availableAt) === undefined ? {} : { availableAt: timeOf(record.availableAt)! }),
+      ...(unique ? { unique } : {}),
+      ...(chain ? { chain } : {}),
+      ...(typeof record.requestId === 'string' ? { requestId: record.requestId } : {}),
+      ...(typeof record.traceparent === 'string' ? { traceparent: record.traceparent } : {}),
+    },
   };
 }
 
-function isUnique(value: unknown): value is UniqueRecord {
+/** The unique lock of a record. An `until` this release does not know counts as `done`: the lock then holds longer, never shorter. */
+function uniqueOf(value: unknown): UniqueRecord | undefined {
   const unique = value as Partial<UniqueRecord> | undefined;
-  return (
-    typeof unique === 'object' &&
-    unique !== null &&
-    typeof unique.lock === 'string' &&
-    typeof unique.key === 'string' &&
-    typeof unique.for === 'number' &&
-    unique.for > 0 &&
-    (unique.until === 'processing' || unique.until === 'done')
-  );
+  if (typeof unique !== 'object' || unique === null || typeof unique.lock !== 'string' || typeof unique.key !== 'string' || typeof unique.for !== 'number' || !(unique.for > 0)) return undefined;
+  return { lock: unique.lock, key: unique.key, for: unique.for, until: unique.until === 'processing' ? 'processing' : 'done' };
 }
 
 /** The next job of a record's chain, as the queue stores it — carrying the rest of the chain; undefined at its end. */
-export function nextInChain(record: JobRecord): string | undefined {
+export function nextInChain(record: JobRecord, now: number): string | undefined {
   const [next, ...rest] = record.chain ?? [];
   if (!next) return undefined;
   const { chain: _ignored, ...link } = next;
-  return JSON.stringify(rest.length > 0 ? { ...link, chain: rest } : link);
+  // It becomes claimable now — a worker that cannot read it counts its time held from here, not from the chain's dispatch.
+  return JSON.stringify(rest.length > 0 ? { ...link, availableAt: now, chain: rest } : { ...link, availableAt: now });
 }

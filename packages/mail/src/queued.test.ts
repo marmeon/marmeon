@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Clock, createApplication, Logger, type Application, type LogContext } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
@@ -258,6 +259,18 @@ describe('mail previews', () => {
     const application = await previewApp(environment);
     expect(application.container.make(Router).routes.map((route) => route.path)).not.toContain('/_marmeon/mail');
     expect(application.container.has(MailPreviews)).toBe(false);
+  });
+});
+
+describe('the payload of marmeon.mail as the queue keeps it', () => {
+  it('reads every fixture of the format', async () => {
+    const directory = new URL('./__fixtures__/formats/queued-mail/', import.meta.url);
+    const names = readdirSync(directory);
+    expect(names).toContain('v1.json');
+    for (const name of names) {
+      const result = await SendQueuedMail.schema['~standard'].validate(JSON.parse(readFileSync(new URL(name, directory), 'utf8')));
+      expect(result.issues, name).toBeUndefined();
+    }
   });
 });
 

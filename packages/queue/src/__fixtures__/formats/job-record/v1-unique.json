@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "uuid": "b0000000-0000-4000-8000-000000000001",
+  "job": "test.welcome",
+  "data": {
+    "userId": 7
+  },
+  "tries": 1,
+  "backoff": [],
+  "dispatchedAt": 1790000000000,
+  "unique": {
+    "lock": "queue:unique:test.welcome:stats:7",
+    "key": "stats:7",
+    "for": 3600,
+    "until": "processing"
+  }
+}

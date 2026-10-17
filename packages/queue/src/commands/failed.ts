@@ -3,6 +3,7 @@ import { Clock } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { QueueConnections } from '../connections.ts';
 import type { FailedJob } from '../driver.ts';
+import { parseRecord } from '../runner.ts';
 
 /** The migration `make:queue-table` copies — a real file, so the driver tests run exactly what apps get. */
 export const QUEUE_MIGRATION = new URL('../../stubs/migrations/create_jobs_table.ts', import.meta.url);
@@ -59,9 +60,11 @@ export class QueueRetryCommand {
   static usage = '<id…|all>';
 
   readonly #connections: QueueConnections;
+  readonly #clock: Clock;
 
-  constructor(connections: QueueConnections) {
+  constructor(connections: QueueConnections, clock: Clock) {
     this.#connections = connections;
+    this.#clock = clock;
   }
 
   async handle({ args, output }: CommandInput): Promise<number> {
@@ -86,8 +89,17 @@ export class QueueRetryCommand {
         code = 1;
         continue;
       }
+      // A record no release will run (no version, a broken chain): queued again it would only fail again.
+      const parsed = parseRecord(job.payload);
+      if (parsed.kind === 'invalid') {
+        output.error(`The failed job ${job.uuid} cannot be retried: ${parsed.reason}`);
+        code = 1;
+        continue;
+      }
       const connection = named.driver !== 'sync' ? job.connection : this.#connections.default;
-      await this.#connections.driver(connection).push(job.queue, job.payload, 0);
+      // Claimable from now: a worker that cannot read it yet counts the time it is held from here, not from the first dispatch.
+      const payload = JSON.stringify({ ...(JSON.parse(job.payload) as object), availableAt: this.#clock.now() });
+      await this.#connections.driver(connection).push(job.queue, payload, 0);
       await store.forget(job.uuid);
       output.success(`Queued ${job.job} (${job.uuid}) again on ${connection}/${job.queue}`);
     }
