@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "complete": true,
+  "commands": [
+    { "name": "alpha", "description": "Runs alpha.", "usage": "<Name>", "options": [{ "name": "json", "type": "boolean", "short": "j", "multiple": false, "default": false }], "experimental": false, "launcher": false },
+    { "name": "dev", "usage": null, "options": [], "experimental": false, "launcher": true },
+    { "name": "probe", "description": "Runs probe.", "usage": null, "options": [], "experimental": true, "launcher": false },
+    { "name": "start", "usage": null, "options": [], "experimental": false, "launcher": true }
+  ],
+  "warnings": []
+}

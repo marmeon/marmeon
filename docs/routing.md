@@ -728,6 +728,10 @@ for a policy (the parameter it asks about in brackets, `(…)` for a function, n
 own routes, which guard themselves. The last line counts the routes. The list includes the
 framework's own routes, so it also answers which middleware a request really passes.
 
+`--json` prints the same as a [machine-readable document](console.md#machine-readable-output): `format`, `routes` (each with
+`methods`, `path`, `name`, `group`, `middleware`, `access` and `action`; `access` is a list of checks, or `"framework"` or
+`"none"`) and `warnings`.
+
 ## Testing
 
 `createTestApp` sends requests through the whole app, with its middleware and bindings:

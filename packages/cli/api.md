@@ -55,6 +55,11 @@ export declare class DevProcesses {
     add(process: DevProcess): this;
     all(): DevProcess[];
 }
+// JsonDocument
+export interface JsonDocument {
+    readonly format: number;
+    readonly [key: string]: unknown;
+}
 // Output
 export declare class Output {
     line(text?: string): void;
@@ -62,6 +67,7 @@ export declare class Output {
     success(text: string): void;
     warn(text: string): void;
     error(text: string): void;
+    json(document: JsonDocument): void;
     table(header: readonly string[], rows: readonly (readonly string[])[]): void;
 }
 ```
@@ -168,6 +174,7 @@ marmeon package:build [package directories…] [--clean]
 --clean (boolean)
 // route:list
 marmeon route:list
+--json (boolean)
 // route:types
 marmeon route:types [--check]
 --check (boolean)

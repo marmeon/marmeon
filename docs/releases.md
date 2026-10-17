@@ -100,6 +100,7 @@ The promise of a version covers the public API. These are part of it:
   optional member, or through a base class with a default.
 - The names and defaults of environment variables.
 - The commands of `marmeon`, their flags and exit codes.
+- The documents `--json` prints, by their `format`.
 - The table schemas of the migrations the framework ships, the stubs and the `make:*` tables.
 - The protocol between client and server: headers and the page object.
 - Stored formats: queue payloads, encrypted values, tokens and cookies.

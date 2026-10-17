@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
 import type { CommandClass } from './command.ts';
-import { printCommandHelp, printCommandList } from './commands/list.ts';
-import type { Output } from './output.ts';
+import { printCommandHelp, printCommandList, printCommandListJson } from './commands/list.ts';
+import { Output } from './output.ts';
 
 const lines: string[] = [];
 const output = { line: (text = '') => void lines.push(text) } as unknown as Output;
@@ -24,5 +25,34 @@ describe('experimental commands', () => {
     lines.length = 0;
     printCommandHelp({ output }, command('steady'));
     expect(lines[0]).toBe('Runs steady.');
+  });
+});
+
+describe('list --json', () => {
+  const options = { json: { type: 'boolean', short: 'j', default: false } };
+  const alpha = { ...command('alpha'), usage: '<Name>', options } as unknown as CommandClass;
+  const hidden = { ...command('secret'), hidden: true } as unknown as CommandClass;
+
+  function print(...args: [boolean?, string[]?]): string {
+    const written: string[] = [];
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation((text) => {
+      written.push(String(text));
+      return true;
+    });
+    printCommandListJson({ output: new Output() }, [command('probe', true), alpha, hidden], ...args);
+    write.mockRestore();
+    return written.join('');
+  }
+
+  it('prints one document with the format first, matching the stored format, without hidden commands', () => {
+    const out = print();
+    const document = JSON.parse(out) as { commands: { name: string }[] };
+    expect(Object.keys(document)[0]).toBe('format');
+    expect(document.commands.map((entry) => entry.name)).not.toContain('secret');
+    expect(document).toMatchObject(JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-list/v1.json', import.meta.url), 'utf8')));
+  });
+
+  it('says when the list is incomplete', () => {
+    expect(JSON.parse(print(false, ['App did not load']))).toMatchObject({ complete: false, warnings: ['App did not load'] });
   });
 });
