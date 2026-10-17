@@ -64,9 +64,15 @@ interface DtsFile {
 /** What an exported name stands for. */
 type Target =
   | { readonly kind: 'declaration'; readonly file: string; readonly local: string; readonly typeOnly?: boolean }
-  | { readonly kind: 'external'; readonly text: string; readonly specifier: string; readonly name: string }
+  /** A re-export from another package; `imported` is the name there (none for `export * as ns` and `export *`). */
+  | { readonly kind: 'external'; readonly text: string; readonly specifier: string; readonly name: string; readonly imported?: string }
   /** `export * as ns from './x'`: a module of the package under one name. */
   | { readonly kind: 'namespace'; readonly file: string };
+/** What a name in a declaration stands for: an export of a module of the package, a name another package exports, or a whole module. */
+type Resolved =
+  | Target
+  | { readonly kind: 'foreign'; readonly specifier: string; readonly names: readonly string[] }
+  | { readonly kind: 'module'; readonly source: string };
 
 const MEMBER_TYPES = new Set([
   'PropertyDefinition',
@@ -177,6 +183,7 @@ class Declarations {
       kind: 'external',
       specifier,
       name: exported,
+      ...(imported === undefined ? {} : { imported }),
       text:
         imported === undefined
           ? `export * as ${exported} from '${specifier}';`
@@ -371,11 +378,17 @@ interface Reference {
   readonly path?: readonly string[];
   /** An `import('…')` type: the module and the dotted name it takes from it. */
   readonly importType?: { readonly source: string; readonly path: readonly string[] };
+  /** The members from the declaration down to where the name stands (`['constructor']`); none at the top. */
+  readonly member: readonly string[];
 }
 
-/** The names a declaration uses as types (or as a base class), without type parameters and members marked `@internal`. */
-function referencesOf(file: DtsFile, statement: Statement): Reference[] {
+/**
+ * The names a declaration uses as types (or as a base class), without type parameters and members marked `@internal` — and,
+ * with `stableOnly`, without the members marked `@experimental`.
+ */
+function referencesOf(file: DtsFile, statement: Statement, stableOnly = false): Reference[] {
   const hidden = new Set(internalMembers(file, statement.node));
+  if (stableOnly) for (const { node } of experimentalMembers(file, statement.node)) hidden.add(node);
   const shadow = new Set<string>();
   const collectShadow = (node: Node) => {
     if (node.type === 'TSTypeParameter') shadow.add(nameOf(node.name));
@@ -385,11 +398,14 @@ function referencesOf(file: DtsFile, statement: Statement): Reference[] {
   collectShadow(statement.node);
 
   const out: Reference[] = [];
+  let member: readonly string[] = [];
   const named = (path: string[]) => {
-    if (path.length > 0 && !shadow.has(path[0]!)) out.push({ file, path });
+    if (path.length > 0 && !shadow.has(path[0]!)) out.push({ file, path, member });
   };
   const walk = (node: Node) => {
     if (hidden.has(node)) return;
+    const outer = member;
+    if (MEMBER_TYPES.has(node.type)) member = [...member, memberName(file, node)];
     switch (node.type) {
       case 'TSTypeReference':
         named(pathOf(node.typeName));
@@ -398,7 +414,7 @@ function referencesOf(file: DtsFile, statement: Statement): Reference[] {
         if (node.exprName.type !== 'TSImportType') named(pathOf(node.exprName));
         break;
       case 'TSImportType':
-        out.push({ file, importType: { source: stringOf(node.source) ?? '', path: pathOf(node.qualifier) } });
+        out.push({ file, importType: { source: stringOf(node.source) ?? '', path: pathOf(node.qualifier) }, member });
         break;
       case 'ClassDeclaration':
         named(pathOf(node.superClass));
@@ -411,9 +427,74 @@ function referencesOf(file: DtsFile, statement: Statement): Reference[] {
         if (MEMBER_TYPES.has(node.type) && node.computed) named(pathOf(node.key));
     }
     for (const child of children(node)) walk(child);
+    member = outer;
   };
   walk(statement.node);
   return out;
+}
+
+/** The export a dotted name stands for in a module of the package, through nested `export * as` namespaces. */
+function lookupIn(declarations: Declarations, modulePath: string, names: readonly string[]): Target | undefined {
+  const found = names.length > 0 ? declarations.exportsOf(modulePath).get(names[0]!) : undefined;
+  return found?.kind === 'namespace' ? lookupIn(declarations, found.file, names.slice(1)) : found;
+}
+
+/** What a name that a declaration uses stands for — in the package, or in another one. */
+function resolveReference(declarations: Declarations, reference: Reference): Resolved | undefined {
+  const origin = originOf(reference);
+  if (origin?.kind !== 'import') return origin;
+  if (!origin.source.startsWith('.')) return { kind: 'foreign', specifier: origin.source, names: origin.names };
+  const target = declarations.resolveRelative(origin.from, origin.source);
+  if (!target) return undefined;
+  return origin.names.length === 0 ? { kind: 'module', source: origin.source } : lookupIn(declarations, target, origin.names);
+}
+
+/** Where a name that a declaration uses comes from: a declaration of its own file, or a module and the dotted name it takes from it. */
+function originOf(
+  reference: Reference,
+): { readonly kind: 'declaration'; readonly file: string; readonly local: string } | { readonly kind: 'import'; readonly from: string; readonly source: string; readonly names: readonly string[] } | undefined {
+  const { file } = reference;
+  if (reference.importType) return { kind: 'import', from: file.path, source: reference.importType.source, names: reference.importType.path };
+  const [name, ...rest] = reference.path!;
+  if (file.declarations.has(name!)) return { kind: 'declaration', file: file.path, local: name! };
+  const imported = file.imports.get(name!);
+  return imported ? { kind: 'import', from: file.path, source: imported.source, names: imported.imported === undefined ? rest : [imported.imported, ...rest] } : undefined;
+}
+
+/** The statements an export of the package stands for, without those marked `@internal`; `experimental` when one is marked so. */
+function exportedStatements(declarations: Declarations, target: { readonly file: string; readonly local: string }) {
+  const file = declarations.file(target.file);
+  if (!file) return undefined;
+  const shown = (file.declarations.get(target.local) ?? []).filter((statement) => !hasTag(commentBefore(file, statement.wrapper), 'internal'));
+  if (shown.length === 0) return undefined;
+  return { file, shown, experimental: shown.some((statement) => hasTag(commentBefore(file, statement.wrapper), 'experimental')) };
+}
+
+/** The `.d.ts` files a file reaches through its relative imports and re-exports, itself included. */
+function reachedFiles(declarations: Declarations, path: string, reached = new Set<string>()): Set<string> {
+  if (reached.has(path)) return reached;
+  reached.add(path);
+  for (const statement of declarations.file(path)?.body ?? []) {
+    const source = statement.type === 'ImportDeclaration' || statement.type === 'ExportAllDeclaration' || (statement.type === 'ExportNamedDeclaration' && statement.source)
+      ? stringOf(statement.source)
+      : undefined;
+    if (source?.startsWith('.')) {
+      const target = declarations.resolveRelative(path, source);
+      if (target) reachedFiles(declarations, target, reached);
+    }
+  }
+  return reached;
+}
+
+/** The declarations inside the `declare module '…'` and `declare global` blocks of a file. */
+function* augmentationsOf(file: DtsFile): Generator<{ module: string; local: string; statement: Statement }> {
+  for (const module of file.body.filter((statement) => statement.type === 'TSModuleDeclaration' && (statement.kind === 'global' || statement.id.type === 'Literal'))) {
+    const moduleName = module.kind === 'global' ? 'global' : String(module.id.value);
+    for (const member of (module.body?.body ?? []) as Node[]) {
+      const node = member.type === 'ExportNamedDeclaration' && member.declaration ? (member.declaration as Node) : member;
+      for (const local of DECLARATION_TYPES.has(node.type) ? declaredNames(node) : []) yield { module: moduleName, local, statement: { wrapper: member, node } };
+    }
+  }
 }
 
 interface Collected {
@@ -440,29 +521,15 @@ function collectEntry(declarations: Declarations, entry: string, path: string, c
       declarations.problems.push(`${entry} names ${name} from ${specifier}, whose shape no snapshot holds: keep ${name} public, or stop naming it`);
     }
   };
-  /** The declaration a dotted name stands for in a module of the package, through nested `export * as` namespaces. */
-  const lookup = (modulePath: string, names: readonly string[]) => {
-    const found = names.length > 0 ? declarations.exportsOf(modulePath).get(names[0]!) : undefined;
-    if (found?.kind === 'namespace') lookup(found.file, names.slice(1));
-    else if (found) enqueue(found);
-  };
-  const enter = (from: string, source: string, names: readonly string[]) => {
-    if (!source.startsWith('.')) return note(source, names[0] ?? source);
-    const target = declarations.resolveRelative(from, source);
-    if (!target) return;
-    if (names.length === 0) {
-      declarations.problems.push(`${entry} names a whole module of the package (${source}): the snapshot cannot list its members — name the types it needs`);
-      return;
-    }
-    lookup(target, names);
-  };
   const follow = (reference: Reference) => {
-    const { file } = reference;
-    if (reference.importType) return enter(file.path, reference.importType.source, reference.importType.path);
-    const [name, ...rest] = reference.path!;
-    if (file.declarations.has(name!)) return enqueue({ kind: 'declaration', file: file.path, local: name! });
-    const imported = file.imports.get(name!);
-    if (imported) enter(file.path, imported.source, imported.imported === undefined ? rest : [imported.imported, ...rest]);
+    const target = resolveReference(declarations, reference);
+    if (target?.kind === 'module') {
+      declarations.problems.push(`${entry} names a whole module of the package (${target.source}): the snapshot cannot list its members — name the types it needs`);
+    } else if (target?.kind === 'foreign') {
+      note(target.specifier, target.names[0] ?? target.specifier);
+    } else if (target) {
+      enqueue(target);
+    }
   };
   const enqueue = (target: Target) => {
     if (target.kind === 'namespace') return;
@@ -488,13 +555,10 @@ function collectEntry(declarations: Declarations, entry: string, path: string, c
       declarations.problems.push(`${entry} exports ${name}, a module of the package: the snapshot cannot list its members — export them one by one`);
       continue;
     }
-    const file = declarations.file(target.file);
-    const statements = file?.declarations.get(target.local) ?? [];
-    if (!file || statements.length === 0) continue;
-    const shown = statements.filter((statement) => !hasTag(commentBefore(file, statement.wrapper), 'internal'));
-    if (shown.length === 0) continue;
+    const statements = exportedStatements(declarations, target);
+    if (!statements) continue;
+    const { file, shown, experimental } = statements;
     publicKeys.add(`${target.file}\0${target.local}`);
-    const experimental = shown.some((statement) => hasTag(commentBefore(file, statement.wrapper), 'experimental'));
     const text = shown
       .map((statement) => {
         const deprecated = hasTag(commentBefore(file, statement.wrapper), 'deprecated');
@@ -518,43 +582,18 @@ function collectEntry(declarations: Declarations, entry: string, path: string, c
   }
 
   // The augmentations of the files the entry reaches (the first entry to reach a file owns it).
-  const reached = new Set<string>();
-  const visit = (filePath: string) => {
-    if (reached.has(filePath)) return;
-    reached.add(filePath);
-    const file = declarations.file(filePath);
-    if (!file) return;
-    for (const statement of file.body) {
-      const source = statement.type === 'ImportDeclaration' || statement.type === 'ExportAllDeclaration' || (statement.type === 'ExportNamedDeclaration' && statement.source)
-        ? stringOf(statement.source)
-        : undefined;
-      if (source?.startsWith('.')) {
-        const target = declarations.resolveRelative(filePath, source);
-        if (target) visit(target);
-      }
-    }
-  };
-  visit(path);
   const augmentNames = new Set<string>();
-  for (const filePath of [...reached].sort()) {
+  for (const filePath of [...reachedFiles(declarations, path)].sort()) {
     if (claimed.has(filePath)) continue;
     claimed.add(filePath);
     const file = declarations.file(filePath);
     if (!file) continue;
-    for (const module of file.body.filter((statement) => statement.type === 'TSModuleDeclaration' && (statement.kind === 'global' || statement.id.type === 'Literal'))) {
-      const moduleName = module.kind === 'global' ? 'global' : String(module.id.value);
-      for (const member of (module.body?.body ?? []) as Node[]) {
-        const node = member.type === 'ExportNamedDeclaration' && member.declaration ? (member.declaration as Node) : member;
-        const names = DECLARATION_TYPES.has(node.type) ? declaredNames(node) : [];
-        for (const local of names) {
-          let name = `${moduleName}.${local}`;
-          for (let count = 2; augmentNames.has(name); count++) name = `${moduleName}.${local} (${count})`;
-          augmentNames.add(name);
-          const statement = { wrapper: member, node };
-          items.push({ entry, section: 'augments', name, text: declarationText(file, statement, true) });
-          pending.push(...referencesOf(file, statement));
-        }
-      }
+    for (const { module, local, statement } of augmentationsOf(file)) {
+      let name = `${module}.${local}`;
+      for (let count = 2; augmentNames.has(name); count++) name = `${module}.${local} (${count})`;
+      augmentNames.add(name);
+      items.push({ entry, section: 'augments', name, text: declarationText(file, statement, true) });
+      pending.push(...referencesOf(file, statement));
     }
   }
 
@@ -705,6 +744,159 @@ function experimentalScope(pkg: PackageToSnapshot, problems: string[]): true | R
   return entries;
 }
 
+/** The entry points of a package with types (every subpath of `exports` but `./internal`): their import specifier and `.d.ts`. */
+function entryPoints(pkg: PackageToSnapshot): { entry: string; path: string }[] {
+  const out: { entry: string; path: string }[] = [];
+  for (const [subpath, conditions] of Object.entries((pkg.manifest.exports ?? {}) as Record<string, unknown>)) {
+    if (subpath === './internal' || typeof conditions !== 'object' || conditions === null) continue;
+    const types = (conditions as Record<string, unknown>).types;
+    if (typeof types === 'string') out.push({ entry: subpath === '.' ? pkg.name : `${pkg.name}${subpath.slice(1)}`, path: join(pkg.dir, types) });
+  }
+  return out;
+}
+
+const REEXPORT_ADVICE = 're-export it from an experimental entry point, or stop re-exporting it';
+
+/**
+ * Stability is transitive: a stable item — a declaration of a stable entry point, without its `@experimental` members — must not
+ * name a type that only experimental entry points export, or that is marked `@experimental`, since a minor release may change
+ * that type and with it the stable signature. Names from other packages (`@marmeon/live/testing`) are followed to their
+ * declaration; a helper type that no entry point exports is part of the shape of what names it, so the walk goes through it.
+ * The augmentations a stable entry point reaches and its re-exports from other packages count as stable items too. The
+ * problems by package name; `root` makes the paths in them relative.
+ */
+export function stabilityProblems(packages: readonly PackageToSnapshot[], root: string): Map<string, string[]> {
+  interface Owner {
+    readonly pkg: PackageToSnapshot;
+    readonly declarations: Declarations;
+    readonly path: string;
+    readonly experimental: boolean;
+  }
+  interface Located {
+    readonly declarations: Declarations;
+    readonly file: string;
+    readonly local: string;
+  }
+  type Hit = Located | { readonly entry: string } | undefined;
+  const owners = new Map<string, Owner>();
+  for (const pkg of packages) {
+    const declarations = new Declarations();
+    // Its problems are the snapshot's to report.
+    const scope = experimentalScope(pkg, []);
+    for (const { entry, path } of entryPoints(pkg)) owners.set(entry, { pkg, declarations, path, experimental: scope === true || scope?.has(entry) === true });
+  }
+
+  // Per declaration (`<file>\0<local>`): whether a stable entry point exports it, and the experimental ones that do.
+  const exportedBy = new Map<string, { stable: boolean; experimental: string[] }>();
+  for (const [entry, owner] of owners) {
+    for (const target of owner.declarations.exportsOf(owner.path).values()) {
+      if (target.kind !== 'declaration') continue;
+      const statements = exportedStatements(owner.declarations, target);
+      if (!statements) continue;
+      const key = `${target.file}\0${target.local}`;
+      const record = exportedBy.get(key) ?? { stable: false, experimental: [] };
+      if (owner.experimental || statements.experimental) record.experimental.push(owner.experimental ? entry : `${entry} (@experimental)`);
+      else record.stable = true;
+      exportedBy.set(key, record);
+    }
+  }
+
+  /**
+   * What a dotted name stands for in an entry point of a package, through namespaces and re-exports between packages: a
+   * declaration, a whole entry point (`export * as ns from '@marmeon/…'` with no name left), or nothing for a library or what
+   * no entry point exports. `visited` holds each module and name once, so stars that export each other end.
+   */
+  const across = (specifier: string, names: readonly string[], visited: Set<string>): Hit => {
+    const owner = owners.get(specifier);
+    if (!owner) return undefined;
+    return names.length === 0 ? { entry: specifier } : within(owner.declarations, owner.path, names, visited);
+  };
+  const within = (declarations: Declarations, modulePath: string, names: readonly string[], visited: Set<string>): Hit => {
+    const key = `${modulePath}\0${names.join('.')}`;
+    if (visited.has(key)) return undefined;
+    visited.add(key);
+    const table = declarations.exportsOf(modulePath);
+    const found = table.get(names[0]!);
+    if (found?.kind === 'declaration') return { declarations, file: found.file, local: found.local };
+    if (found?.kind === 'namespace') return names.length > 1 ? within(declarations, found.file, names.slice(1), visited) : undefined;
+    if (found) return across(found.specifier, found.imported === undefined ? names.slice(1) : [found.imported, ...names.slice(1)], visited);
+    // `export * from '@marmeon/…'` is kept under its own key: the name may come through it.
+    for (const star of table.values()) {
+      const hit = star.kind === 'external' && star.name === `* from ${star.specifier}` ? across(star.specifier, names, visited) : undefined;
+      if (hit) return hit;
+    }
+    return undefined;
+  };
+  /** What a name in a declaration stands for, like `across`; a whole module of the package is the snapshot's to report. */
+  const locate = (declarations: Declarations, reference: Reference): Hit => {
+    const origin = originOf(reference);
+    if (origin?.kind === 'declaration') return { declarations, file: origin.file, local: origin.local };
+    if (!origin) return undefined;
+    if (!origin.source.startsWith('.')) return across(origin.source, origin.names, new Set());
+    const target = declarations.resolveRelative(origin.from, origin.source);
+    return target && origin.names.length > 0 ? within(declarations, target, origin.names, new Set()) : undefined;
+  };
+  const where = (found: Located) => {
+    const record = exportedBy.get(`${found.file}\0${found.local}`)!;
+    return `which is experimental (exported by ${record.experimental.join(', ')}; declared in ${relative(root, found.file).split('\\').join('/')})`;
+  };
+
+  const problems = new Map<string, string[]>();
+  const report = (owner: Owner, problem: string) => problems.set(owner.pkg.name, [...(problems.get(owner.pkg.name) ?? []), problem]);
+  /** Reports the experimental types the stable part of `statement` names, and walks into the helper types no entry exports. */
+  const check = (owner: Owner, item: string, declarations: Declarations, file: DtsFile, statement: Statement, seen: Set<string>, via: readonly string[] = [], origin?: string) => {
+    for (const reference of referencesOf(file, statement, true)) {
+      const found = locate(declarations, reference);
+      if (!found) continue;
+      const key = 'entry' in found ? found.entry : `${found.file}\0${found.local}`;
+      // Once per member and type: each member that names it is a problem of its own, a cycle of helpers is not.
+      const named = origin ?? [item, ...reference.member].join('.');
+      if (seen.has(`${named}\0${key}`)) continue;
+      seen.add(`${named}\0${key}`);
+      if ('entry' in found) {
+        if (owners.get(found.entry)!.experimental) report(owner, `${named} names the whole of ${found.entry}, which is experimental: name a stable type`);
+        continue;
+      }
+      const record = exportedBy.get(key);
+      if (record?.stable) continue;
+      if (record) {
+        const through = via.length === 0 ? '' : ` (through ${via.join(', ')})`;
+        report(owner, `${named} names ${found.local}${through}, ${where(found)}: mark it @experimental, or name a stable type`);
+        continue;
+      }
+      const helper = found.declarations.file(found.file);
+      for (const inner of helper?.declarations.get(found.local) ?? []) check(owner, item, found.declarations, helper!, inner, seen, [...via, found.local], named);
+    }
+  };
+
+  const reached = new Set<string>();
+  for (const [entry, owner] of [...owners].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    if (owner.experimental) continue;
+    for (const [name, target] of [...owner.declarations.exportsOf(owner.path)].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+      if (target.kind === 'external') {
+        const found: Hit = target.imported === undefined ? { entry: target.specifier } : across(target.specifier, [target.imported], new Set());
+        if (found && 'entry' in found) {
+          if (owners.get(found.entry)?.experimental) report(owner, `${entry} › ${name} re-exports ${found.entry}, which is experimental: ${REEXPORT_ADVICE}`);
+        } else if (found && exportedBy.get(`${found.file}\0${found.local}`)?.stable === false) {
+          report(owner, `${entry} › ${name} re-exports ${found.local}, ${where(found)}: ${REEXPORT_ADVICE}`);
+        }
+        continue;
+      }
+      if (target.kind !== 'declaration') continue;
+      const statements = exportedStatements(owner.declarations, target);
+      if (!statements || statements.experimental) continue;
+      const seen = new Set<string>();
+      for (const statement of statements.shown) check(owner, `${entry} › ${name}`, owner.declarations, statements.file, statement, seen);
+    }
+    for (const filePath of [...reachedFiles(owner.declarations, owner.path)].sort()) {
+      const file = reached.has(filePath) ? undefined : owner.declarations.file(filePath);
+      reached.add(filePath);
+      for (const { module, local, statement } of file ? augmentationsOf(file) : []) check(owner, `${entry} › ${module}.${local}`, owner.declarations, file!, statement, new Set());
+    }
+  }
+  return problems;
+}
+
 /** The api.md of a package, or none when it has no entry point with types; plus the problems met on the way and what is experimental in it. */
 export function snapshotPackage(
   pkg: PackageToSnapshot,
@@ -720,13 +912,8 @@ export function snapshotPackage(
   const claimed = new Set<string>();
   const used = new Set<string>();
 
-  const exportsField = (pkg.manifest.exports ?? {}) as Record<string, unknown>;
-  for (const [subpath, conditions] of Object.entries(exportsField)) {
-    if (subpath === './internal' || typeof conditions !== 'object' || conditions === null) continue;
-    const types = (conditions as Record<string, unknown>).types;
-    if (typeof types !== 'string') continue;
-    const entry = subpath === '.' ? pkg.name : `${pkg.name}${subpath.slice(1)}`;
-    const collected = collectEntry(declarations, entry, join(pkg.dir, types), claimed, pkg.dir);
+  for (const { entry, path } of entryPoints(pkg)) {
+    const collected = collectEntry(declarations, entry, path, claimed, pkg.dir);
     items.push(...collected.items.map((item) => (scope === true || scope?.has(entry) ? (item.section === 'stable' ? { ...item, section: 'experimental' as const } : item.section === 'referenced' ? { ...item, section: 'experimentalReferenced' as const } : item) : item)));
     foreign.set(entry, [...collected.foreign].sort());
     for (const name of [...collected.foreign].sort()) {
@@ -798,12 +985,14 @@ export async function runApi(root: string, options: { write?: boolean; allowed?:
   const lines: string[] = [];
   let failed = false;
   const experimental = new Set<string>();
-  for (const pkg of frameworkPackages(root)) {
+  const packages = frameworkPackages(root);
+  const stability = stabilityProblems(packages, root);
+  for (const pkg of packages) {
     const { items: runtime, problems: runtimeProblems } = await runtimeItems(pkg);
     const snapshot = snapshotPackage(pkg, allowed[pkg.short] ?? [], runtime);
     const markdown = snapshot.markdown;
     for (const name of snapshot.experimental) experimental.add(name);
-    const problems = [...snapshot.problems, ...runtimeProblems];
+    const problems = [...snapshot.problems, ...runtimeProblems, ...(stability.get(pkg.name) ?? [])];
     const file = join(pkg.dir, 'api.md');
     const shown = relative(root, file).split('\\').join('/');
     if (problems.length > 0) {

@@ -364,7 +364,11 @@ enforce Experimental, but moving something from Stable to Experimental removes i
 
 A class, function, constant or enum that an entry exports only as a type (`export type { Foo }`) carries a `// type-only` line:
 an app can no longer `new` it. A public signature must not name a type of another package's `./internal` (no snapshot holds
-its shape), and an entry cannot export a module of its own package as a namespace; `pnpm api:check` reports both. A
+its shape), and an entry cannot export a module of its own package as a namespace; `pnpm api:check` reports both. Stability is
+transitive: a stable item — a stable declaration without its `@experimental` members, an augmentation or a re-export of a
+stable entry — must not name a type that only experimental entry points export or that is marked `@experimental`, in its
+own package or another one (the check walks through a helper type that no entry exports); `pnpm api:check` names the item,
+the type and the file that declares it — mark the item or member `@experimental`, or name a stable type. A
 `FOREIGN_TYPES` entry that no entry point of its package uses any more is reported, so it gets deleted with the change that
 made it unnecessary.
 
