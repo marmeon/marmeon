@@ -33,6 +33,7 @@ import {
   type SqlBool,
   type UnknownRow,
 } from 'kysely';
+import { withCode } from '@marmeon/core/internal';
 import type { SchemaMetadata } from './metadata.ts';
 import { hasPlaceholder, RELATION, SOFT_DELETE, SOFT_DELETE_FILTER, sourcesOf, TOUCH_COLUMN, WITH_TRASHED, type Source } from './placeholders.ts';
 import { labelOf, relationQuery, type RelationSpec, type RelationsPlugin } from './relations.ts';
@@ -145,8 +146,8 @@ export class SchemaResolver implements KyselyPlugin {
       const after = writtenBy(query.query);
       if (before !== after) {
         throw new Error(
-          `A plugin added to this query changed the tables it writes from ${before || 'none'} to ${after || 'none'} — it was not sent. ` +
-            'A statement writes the tables it was built for. See docs/queries.md#module-boundaries.',
+          withCode('D12', `A plugin added to this query changed the tables it writes from ${before || 'none'} to ${after || 'none'} — it was not sent. ` +
+            'A statement writes the tables it was built for. See docs/queries.md#module-boundaries.'),
         );
       }
     }
@@ -180,7 +181,7 @@ function softly(node: DeleteQueryNode, metadata: SchemaMetadata): RootOperationN
   if (!node.where || !table || !metadata.softDeletes.has(table) || !hasPlaceholder(node.where, SOFT_DELETE)) return node;
   const extra = (['using', 'joins', 'orderBy', 'limit', 'top', 'output', 'explain', 'endModifiers'] as const).filter((part) => node[part] !== undefined);
   if (node.from.froms.length !== 1 || !TableNode.is(node.from.froms[0]!) || extra.length) {
-    throw new Error(`A soft delete of "${table}" runs as an update of the table by its WHERE; it cannot keep ${extra.length ? extra.join(', ') : 'an alias or a second table'}.`);
+    throw new Error(withCode('D12', `A soft delete of "${table}" runs as an update of the table by its WHERE; it cannot keep ${extra.length ? extra.join(', ') : 'an alias or a second table'}.`));
   }
   const update = UpdateQueryNode.create([TableNode.create(table)], node.with);
   return {
@@ -277,7 +278,7 @@ function refuseTaken(node: SelectQueryNode, metadata: SchemaMetadata): void {
   for (const { name, marker } of relations) {
     if (names.filter((other) => other === name).length > 1) {
       const label = labelOf(JSON.parse(String((marker.arguments[0] as ValueNode).value)) as RelationSpec);
-      throw new Error(`${label} adds "${name}", which the query selects already — give it another name with { as }.`);
+      throw new Error(withCode('D12', `${label} adds "${name}", which the query selects already — give it another name with { as }.`));
     }
   }
 }

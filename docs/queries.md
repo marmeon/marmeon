@@ -436,7 +436,7 @@ That goes for a subquery in a relation's `where()` too, as in any query, althoug
 instead: `where('user_id', 'in', (eb) => eb.selectFrom('personal_access_tokens').select('user_id').where(…))`, or with a join.
 
 ```text
-with('personal_access_tokens') selects personal_access_tokens.token_hash, a secret column — a relation never loads one. Read it where it is needed, in a query of its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.
+[marmeon:D9] with('personal_access_tokens') selects personal_access_tokens.token_hash, a secret column — a relation never loads one. Read it where it is needed, in a query of its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.
 ```
 
 A condition may compare a secret column, in the callback of `with()`, `withCount()` or `whereHas()` as in any `where()`: its

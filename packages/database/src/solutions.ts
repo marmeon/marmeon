@@ -1,4 +1,5 @@
 import { defineSolutions } from '@marmeon/core';
+import { DatabaseConnectionError } from './driver.ts';
 import { missingTable } from './errors.ts';
 import { Migrator } from './migrations/migrator.ts';
 
@@ -7,6 +8,28 @@ import { Migrator } from './migrations/migrator.ts';
  * Text only: the error page shows the command, it never runs it.
  */
 export const databaseSolutions = defineSolutions([
+  {
+    for: Error,
+    code: 'D9',
+    solve: () => ({
+      title: 'Name the columns and read a secret one with secret()',
+      text:
+        'A secret column never leaves the database by accident. Select the columns the query needs, and read a secret one with ' +
+        'secret(eb, …) in a query of its own — a relation never loads one.',
+      docs: 'docs/migrations.md#secret-columns',
+    }),
+  },
+  {
+    for: DatabaseConnectionError,
+    code: 'D11',
+    solve: () => ({
+      title: 'Check the connection and start the database',
+      text:
+        'The app has no connection to the database. Start the database, check DB_URL (or the DB_* variables) and the connection\'s name, ' +
+        'and for SQLite that the directory of the file exists.',
+      docs: 'docs/database.md#configuration',
+    }),
+  },
   {
     for: Error,
     when: (e) => missingTable(e) !== undefined,

@@ -1,5 +1,5 @@
 import { err, ok, rollBackOnErr, type Result } from '@marmeon/core';
-import { errOfRollback } from '@marmeon/core/internal';
+import { errOfRollback, withCode } from '@marmeon/core/internal';
 import { HttpError, type RouteBinder, type RouteBindingContext, type RouteBindingWith } from '@marmeon/router';
 import { sql } from 'kysely';
 import type { Connection, NewRowOf, RowOf, RowUpdateOf, SelectQuery, Transaction } from './builder.ts';
@@ -429,7 +429,8 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     for (const [column] of conditions) {
       const secret = metadata.secrets.get(this.#name)?.has(column) === true;
       if (secret || metadata.kinds.get(this.#name)?.has(column) !== true) {
-        throw new TypeError(`${method}() compares columns of ${this.#name} that are not secret — ${column} is ${secret ? 'a secret column' : 'not a column of it'}.`);
+        const message = `${method}() compares columns of ${this.#name} that are not secret — ${column} is ${secret ? 'a secret column' : 'not a column of it'}.`;
+        throw new TypeError(secret ? withCode('D9', message) : message);
       }
     }
     let query = this.query().selectAll().limit(1) as unknown as SelectQuery<any, any, any>;

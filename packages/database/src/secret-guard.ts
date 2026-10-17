@@ -1,3 +1,4 @@
+import { withCode } from '@marmeon/core/internal';
 import {
   AliasNode,
   ColumnNode,
@@ -92,7 +93,7 @@ const ROOTS = {
 export function rootKind(node: { readonly kind: string }): RootKind {
   // `hasOwn`: a kind named like an Object method (`constructor`) is no entry.
   if (!Object.hasOwn(ROOTS, node.kind)) {
-    throw new Error(`The secret guard does not know the statement ${node.kind}, so it cannot check it for secret columns — it is refused. Classify it in secret-guard.ts.`);
+    throw new Error(withCode('D10', `The secret guard does not know the statement ${node.kind}, so it cannot check it for secret columns — it is refused. Classify it in secret-guard.ts.`));
   }
   return ROOTS[node.kind as keyof typeof ROOTS];
 }
@@ -163,7 +164,7 @@ class Guard {
     // SECURITY: the compiler writes an explain's format unescaped; the builder types it, a cast or a plugin need not.
     const format = (node as { explain?: { format?: unknown } }).explain?.format;
     if (format !== undefined && (typeof format !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(format))) {
-      throw new Error(`The explain format ${JSON.stringify(format)} is no plain identifier, and the compiler writes it into the statement as it is — the query was not sent.`);
+      throw new Error(withCode('D10', `The explain format ${JSON.stringify(format)} is no plain identifier, and the compiler writes it into the statement as it is — the query was not sent.`));
     }
     if (kind === 'reads') this.#select(node as SelectQueryNode);
     else if (kind === 'writes') this.#write(node as InsertQueryNode);
@@ -199,8 +200,8 @@ class Guard {
     }
     if (!output.known || !other.known || output.names.length !== other.names.length) {
       throw new Error(
-        `${this.#relation ?? 'This query'} combines a select that passes on a secret column with one whose columns are not known (a selectAll() ` +
-          'of a table the migrations did not create, such as a view), so they cannot be lined up. Name the columns of both. See docs/migrations.md#secret-columns.',
+        withCode('D10', `${this.#relation ?? 'This query'} combines a select that passes on a secret column with one whose columns are not known (a selectAll() ` +
+          'of a table the migrations did not create, such as a view), so they cannot be lined up. Name the columns of both. See docs/migrations.md#secret-columns.'),
       );
     }
     other.names.forEach((name, at) => {
@@ -296,8 +297,8 @@ class Guard {
       const shadows = this.#tables.has(fold(table)) ? 'a table of the migrations' : this.#cte(table) ? 'a common table expression around it' : undefined;
       if (shadows) {
         throw new Error(
-          `${this.#relation ?? 'This query'} names a common table expression "${table}", which is also ${shadows} — rename the expression: whether a ` +
-            'reference means the one or the other differs between databases, so the check for secret columns cannot follow it. See docs/migrations.md#secret-columns.',
+          withCode('D10', `${this.#relation ?? 'This query'} names a common table expression "${table}", which is also ${shadows} — rename the expression: whether a ` +
+            'reference means the one or the other differs between databases, so the check for secret columns cannot follow it. See docs/migrations.md#secret-columns.'),
         );
       }
       if (!SelectQueryNode.is(expression)) {
@@ -347,8 +348,8 @@ class Guard {
       }
       if (pass > bodies.length * 2) {
         throw new Error(
-          `${this.#relation ?? 'This query'} has common table expressions that refer to one another in a way the check for secret columns cannot ` +
-            'settle. Name the columns of each, and read a secret one with secret(eb, …). See docs/migrations.md#secret-columns.',
+          withCode('D10', `${this.#relation ?? 'This query'} has common table expressions that refer to one another in a way the check for secret columns cannot ` +
+            'settle. Name the columns of each, and read a secret one with secret(eb, …). See docs/migrations.md#secret-columns.'),
         );
       }
     }
@@ -400,8 +401,8 @@ class Guard {
         const other = scope.find((candidate) => candidate.ref !== source.ref && fold(candidate.ref) === key);
         if (other) {
           throw new Error(
-            `${this.#relation ?? 'This query'} names "${other.ref}" and "${source.ref}", which differ only in case — rename one: some databases tell ` +
-              'them apart and some do not, so the check for secret columns cannot follow them. See docs/migrations.md#secret-columns.',
+            withCode('D10', `${this.#relation ?? 'This query'} names "${other.ref}" and "${source.ref}", which differ only in case — rename one: some databases tell ` +
+              'them apart and some do not, so the check for secret columns cannot follow them. See docs/migrations.md#secret-columns.'),
           );
         }
       }
@@ -449,8 +450,8 @@ class Guard {
         }
         if (columns === 0) {
           throw new Error(
-            `${this.#relation ?? 'This query'} selects all columns of ${all.map((source) => source.ref).join(', ')}, and every one is a secret column — ` +
-              'name the columns it needs, and read a secret one with secret(eb, …). See docs/migrations.md#secret-columns.',
+            withCode('D9', `${this.#relation ?? 'This query'} selects all columns of ${all.map((source) => source.ref).join(', ')}, and every one is a secret column — ` +
+              'name the columns it needs, and read a secret one with secret(eb, …). See docs/migrations.md#secret-columns.'),
           );
         }
         continue;
@@ -480,14 +481,14 @@ class Guard {
    */
   #named(node: FunctionNode | AggregateFunctionNode): void {
     if (!FUNCTION_NAME.test(node.func)) {
-      throw new Error(`${this.#relation ?? 'This query'} calls a function named ${JSON.stringify(node.func)}, which is no identifier — it could hide a subquery from the check for secret columns. Use a plain function name, or sql\`…\` for anything else.`);
+      throw new Error(withCode('D10', `${this.#relation ?? 'This query'} calls a function named ${JSON.stringify(node.func)}, which is no identifier — it could hide a subquery from the check for secret columns. Use a plain function name, or sql\`…\` for anything else.`));
     }
   }
 
   /** The source `selectAll('name')` names — one of this select's own. */
   #own(name: string, sources: readonly Source[]): Source {
     const source = sources.find((candidate) => fold(candidate.ref) === fold(name));
-    if (!source) throw new Error(`${this.#relation ?? 'This query'} selects all columns of "${name}", which is no table, subquery or alias of its own.`);
+    if (!source) throw new Error(withCode('D10', `${this.#relation ?? 'This query'} selects all columns of "${name}", which is no table, subquery or alias of its own.`));
     return source;
   }
 
@@ -586,8 +587,8 @@ class Guard {
 
   #wholeRow(source: Source): never {
     throw new Error(
-      `${this.#relation ?? 'This query'} reads the whole row of ${source.table ?? source.ref}, secret columns included — name the columns it ` +
-        'needs, and read a secret one with secret(eb, …) in a query of its own. See docs/queries.md#relations-and-secret-columns.',
+      withCode('D9', `${this.#relation ?? 'This query'} reads the whole row of ${source.table ?? source.ref}, secret columns included — name the columns it ` +
+        'needs, and read a secret one with secret(eb, …) in a query of its own. See docs/queries.md#relations-and-secret-columns.'),
     );
   }
 
@@ -605,20 +606,20 @@ class Guard {
   #refuse(what: string): never {
     if (this.#relation !== undefined) {
       throw new Error(
-        `${this.#relation} selects ${what}, a secret column — a relation never loads one. Read it where it is needed, in a query of ` +
-          'its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.',
+        withCode('D9', `${this.#relation} selects ${what}, a secret column — a relation never loads one. Read it where it is needed, in a query of ` +
+          'its own with secret(eb, …). See docs/queries.md#relations-and-secret-columns.'),
       );
     }
     throw new Error(
-      `This query selects ${what}, a secret column, without secret() — read it with secret(eb, …) where it is needed, at every level ` +
-        'of the query that passes it on. See docs/migrations.md#secret-columns.',
+      withCode('D9', `This query selects ${what}, a secret column, without secret() — read it with secret(eb, …) where it is needed, at every level ` +
+        'of the query that passes it on. See docs/migrations.md#secret-columns.'),
     );
   }
 
   #untyped(source: Source): never {
     throw new Error(
-      `${this.#relation ?? 'This query'} reads ${source.ref ? `"${source.ref}", ` : ''}raw SQL or a function in FROM, whose columns cannot be ` +
-        'checked for secret ones. Select from a table, a subquery or a common table expression instead. See docs/queries.md#relations-and-secret-columns.',
+      withCode('D10', `${this.#relation ?? 'This query'} reads ${source.ref ? `"${source.ref}", ` : ''}raw SQL or a function in FROM, whose columns cannot be ` +
+        'checked for secret ones. Select from a table, a subquery or a common table expression instead. See docs/queries.md#relations-and-secret-columns.'),
     );
   }
 }
