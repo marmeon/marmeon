@@ -9,11 +9,11 @@ export const bin = join(repo, 'packages/cli/bin/marmeon.js');
 export const webApp = join(repo, 'apps/web-app');
 export const tsc = join(repo, 'node_modules/.bin/tsc');
 
-export function marmeon(cwd: string, args: string[], env: Record<string, string> = {}) {
+export function marmeon(cwd: string, args: string[], env: Record<string, string> = {}, timeout?: number) {
   // The launcher must re-exec, not think it is the child; and the web app here is the SQLite app of
   // .env.test — `pnpm test:pgsql` points app tests at Postgres, commands get that only when a test says so.
   const { MARMEON_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...parent } = process.env;
-  const result = spawnSync(process.execPath, [bin, ...args], { cwd, encoding: 'utf8', env: { ...parent, NO_COLOR: '1', ...env } });
+  const result = spawnSync(process.execPath, [bin, ...args], { cwd, encoding: 'utf8', timeout, env: { ...parent, NO_COLOR: '1', ...env } });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 

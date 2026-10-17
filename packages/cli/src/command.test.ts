@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CommandRegistry, CommandSetupError, type CommandClass } from './command.ts';
+import { CommandArgumentsError, CommandRegistry, CommandSetupError, parseCommandArgs, type CommandClass } from './command.ts';
 
 function named(name: string, label: string): CommandClass {
   return class {
@@ -51,5 +51,15 @@ describe('CommandRegistry.owner', () => {
 describe('CommandRegistry reserved names', () => {
   it.each(['list', 'help'])('refuses %s, which marmeon answers itself', (name) => {
     expect(() => new CommandRegistry().add([named(name, 'ours')], 'module x')).toThrow(`"${name}" is marmeon's own command`);
+  });
+});
+
+describe('parseCommandArgs', () => {
+  it('wraps a caller’s mistake, but not a broken option definition', () => {
+    const wrong = { command: 'x', options: { force: { type: 'boolean' } } } as unknown as CommandClass;
+    expect(() => parseCommandArgs(wrong, ['--nope'])).toThrow(CommandArgumentsError);
+    const broken = { command: 'x', options: { force: { type: 'boolean', short: 'ab' } } } as unknown as CommandClass;
+    expect(() => parseCommandArgs(broken, [])).toThrow(TypeError);
+    expect(() => parseCommandArgs(broken, [])).not.toThrow(CommandArgumentsError);
   });
 });

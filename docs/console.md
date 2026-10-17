@@ -37,15 +37,28 @@ The generators, `build`, `discover`, `key:generate`, `make:lint-config` and `mak
 before the app has a valid `.env`. `route:types` and `make:command` register the app's providers without booting them, as the
 build does, and need no secret either.
 
-A command's options are checked before it runs. An unknown option is an error that prints the command's usage line.
+A command's options are checked before it runs. An unknown option, an option without its value or a value an option does not take (`--force=x`) is an error that prints
+the command's usage line and exits with 2.
 `marmeon <command> --help` (or `-h`) prints the command's description, its usage line and its options, and runs nothing; after a
 `--`, `--help` is an argument like any other. `marmeon list` shows each command with its description. An unknown command says so
-and exits with 1.
+and exits with 2.
 
 The environment comes from `NODE_ENV` in the shell, then from the app's `.env`. `marmeon dev` is development without one and
 `marmeon start` and `marmeon build` production. Every other command takes what it finds, and without a `NODE_ENV` it behaves like
 production: `migrate` then asks for `--force`. A `NODE_ENV` other than `development`, `test` or `production` stops every command
 before it runs. The [configuration](configuration.md#where-node_env-comes-from) page explains the rules.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | The command succeeded. |
+| `1` | The command ran and failed: the app could not start, or the command reported an error or threw. |
+| `2` | `marmeon` was called wrongly: an unknown command, an unknown option, an option without its value, or a value an option does not take. |
+
+A script can tell a typo from a failure this way. A built-in's options are checked before the app boots; an app's own command is looked
+up once the app has booted, so a failed boot (1) comes first. A few commands have codes of their own: [`tinker`](#running-code-from-a-script) ends with
+130 on a signal, and [`queue:work`](queues.md#timeouts-and-retryafter) with 70 when a job does not stop in time. A command that checks its own arguments, such as `schedule:test` without a name, still exits with 1.
 
 ## The development server
 

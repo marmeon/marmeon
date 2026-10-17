@@ -10,7 +10,21 @@ import { printCommandHelp, printCommandList } from './commands/list.ts';
 import { Output } from './output.ts';
 import { spawnMarmeon } from './spawn.ts';
 
+/** Exit code of a call that is wrong (unknown command, unknown option, missing option value), apart from a command that ran and failed (1). */
+const EXIT_USAGE = 2;
+
 const commands = channels.tracing('command.run');
+
+/**
+ * Checks `argv` against the options of a built-in that needs no app (`marmeon dev` is `serve`; `name` is what the usage line says).
+ * The launcher calls it before it starts `node --watch`, which would wait for changes after a wrong call.
+ * @throws {CommandArgumentsError}
+ * @internal Only for the launcher (`bin/marmeon.js`); not part of the public API.
+ */
+export function checkArgs(command: string, argv: readonly string[], name = command): void {
+  const builtIn = BUILT_IN.find((candidate) => candidate.command === command);
+  if (builtIn && !wantsHelp(argv, builtIn)) parseCommandArgs(builtIn, argv, name);
+}
 
 /** Runs one `marmeon` invocation in the app root (`cwd`) and returns the exit code. */
 export async function run(argv: readonly string[], root = process.cwd()): Promise<number> {
@@ -22,6 +36,17 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   if (builtIn && wantsHelp(rest, builtIn)) {
     printCommandHelp({ output }, builtIn);
     return 0;
+  }
+
+  // A wrong call to a built-in is found before the app boots, so a broken app does not hide it.
+  if (builtIn && !listing) {
+    try {
+      parseCommandArgs(builtIn, rest);
+    } catch (error) {
+      if (!(error instanceof CommandArgumentsError)) throw error;
+      output.error(error.message);
+      return EXIT_USAGE;
+    }
   }
 
   // Boot the application unless the command works without it (generators, tooling).
@@ -48,6 +73,28 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   const registry = app?.container.has(CommandRegistry) ? app.container.make(CommandRegistry) : new CommandRegistry().add(BUILT_IN, 'marmeon');
 
   if (listing) {
+    // `list` and `help` take no options but --help/-h; `help <command>` prints that command's help.
+    const flags = rest.slice(0, rest.includes('--') ? rest.indexOf('--') : undefined);
+    const stray = flags.find((flag) => flag.startsWith('-') && flag !== '--help' && flag !== '-h');
+    if (stray !== undefined) {
+      output.error(`Unknown option '${stray}'\nUsage: marmeon ${name === 'help' ? 'help [command]' : 'list'}`);
+      return EXIT_USAGE;
+    }
+    const target = name === 'help' ? flags.find((flag) => !flag.startsWith('-')) : undefined;
+    if (target !== undefined) {
+      const Target = registry.get(target);
+      if (!Target && !app) {
+        // The app's commands are unknown while it does not boot: not a wrong call.
+        output.error(`Could not start the application, so "${target}" cannot be looked up.`);
+        return 1;
+      }
+      if (!Target) {
+        output.error(`Command "${target}" is not defined. Run "marmeon list" to see all commands.`);
+        return EXIT_USAGE;
+      }
+      printCommandHelp({ output }, Target);
+      return 0;
+    }
     printCommandList({ output }, registry.all());
     return 0;
   }
@@ -55,7 +102,7 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   const Command = registry.get(name);
   if (!Command) {
     output.error(`Command "${name}" is not defined. Run "marmeon list" to see all commands.`);
-    return 1;
+    return EXIT_USAGE;
   }
   if (wantsHelp(rest, Command)) {
     await app?.shutdown();
@@ -66,9 +113,14 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   try {
     parseCommandArgs(Command, rest);
   } catch (error) {
-    if (!(error instanceof CommandArgumentsError)) throw error;
+    if (!(error instanceof CommandArgumentsError)) {
+      printError(output, error);
+      await app?.shutdown();
+      return 1;
+    }
     output.error(error.message);
-    return 1;
+    await app?.shutdown();
+    return EXIT_USAGE;
   }
 
   // Commands are built through the container, so they get constructor injection — in a scope of their own, like a

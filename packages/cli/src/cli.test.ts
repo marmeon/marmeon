@@ -158,10 +158,33 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(marmeon(webApp, ['route:list', '--', '--help']).stdout).not.toContain('Usage: marmeon route:list');
   });
 
+  it('exits with 2 for a wrong call of help and list, and for a wrong call of dev that would wait for changes', () => {
+    expect(marmeon(webApp, ['help', 'nope']).code).toBe(2);
+    expect(marmeon(webApp, ['list', '--nope']).code).toBe(2);
+    // Built-in options are checked before the app boots, so missing secrets do not hide the wrong call.
+    expect(marmeon(webApp, ['route:list', '--nope'], { NODE_ENV: 'production', APP_KEY: '', APP_PREVIOUS_KEYS: '', APP_NAME: '', APP_URL: '' }).code).toBe(2);
+    // An app that does not boot cannot say whether `migrate` exists: not a wrong call.
+    expect(marmeon(webApp, ['help', 'migrate'], { APP_NAME: '', APP_URL: 'localhost' }).code).toBe(1);
+    const help = marmeon(webApp, ['help', 'route:list']);
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain('Usage: marmeon route:list');
+    // Under `node --watch` the launcher would wait for changes: it must end on its own.
+    const dev = marmeon(webApp, ['dev', '--nope'], {}, 20_000);
+    expect(dev.code).toBe(2);
+    expect(dev.stderr).toContain('Usage: marmeon dev');
+  }, 30_000);
+
   it('rejects unknown commands and invalid options', () => {
-    expect(marmeon(webApp, ['nope']).stderr).toContain('Command "nope" is not defined');
+    const unknown = marmeon(webApp, ['nope']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Command "nope" is not defined');
     const invalid = marmeon(webApp, ['route:list', '--verbose']);
-    expect(invalid.code).toBe(1);
+    expect(invalid.code).toBe(2);
     expect(invalid.stderr).toContain("Unknown option '--verbose'");
+    expect(marmeon(webApp, ['route:list', '--nope']).code).toBe(2);
+    // A string option without its value is a wrong call as well.
+    const missing = marmeon(webApp, ['db:show', '--database'], { DB_DATABASE: ':memory:' });
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toMatch(/argument missing/i);
   });
 });
