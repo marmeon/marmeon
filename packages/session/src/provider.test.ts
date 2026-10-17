@@ -76,7 +76,7 @@ describe('SESSION_DRIVER', () => {
     await migrate(app.container.make(Connections));
     expect(app.container.make(SessionStore)).toBeInstanceOf(DatabaseSessionStore);
     const db = app.container.make(Connections).get();
-    const rows = async () => (await sql<{ id: string; user_id: string | null; last_activity: number }>`select id, user_id, last_activity from sessions`.execute(db)).rows;
+    const rows = async () => (await sql<{ id: string; user_id: string | null; last_activity: number }>`select id, user_id, last_activity from marmeon_sessions`.execute(db)).rows;
     const kernel = createHttpKernel(app);
 
     // 100 requests without a cookie that need no session: a status check, a redirect, a 404 of a route, a HEAD, a refused
@@ -119,7 +119,7 @@ describe('SESSION_DRIVER', () => {
     const counted = await kernel.request('/count', { headers: { accept: 'application/json' } });
     const again = await kernel.request('/count', { headers: { accept: 'application/json', cookie: sessionCookie(counted)!.split(';')[0]! } });
     expect(await again.json()).toEqual({ visits: 2 });
-    const [row] = (await sql<{ payload: string }>`select payload from sessions`.execute(app.container.make(Connections).get())).rows;
+    const [row] = (await sql<{ payload: string }>`select payload from marmeon_sessions`.execute(app.container.make(Connections).get())).rows;
     expect(row!.payload).not.toMatch(/visits|_token|\{/);
     const id = await cookieValue(app, sessionCookie(counted)!);
     expect(JSON.parse(await app.container.make(Encrypter).decrypt(row!.payload, `session:${sessionKey(id)}`))).toMatchObject({ visits: 2 });
@@ -157,10 +157,10 @@ describe('SESSION_DRIVER', () => {
     expect([driver, sessions]).toHaveLength(2);
   });
 
-  it('database: an error of the sessions table goes out as the driver wrote it — the store adds no advice of its own', async () => {
+  it('database: an error of the marmeon_sessions table goes out as the driver wrote it — the store adds no advice of its own', async () => {
     const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
     const db = app.container.make(Connections).get();
-    await sql`create table sessions (id varchar(64) primary key, user_id varchar(255), payload text, last_activity bigint)`.execute(db);
+    await sql`create table marmeon_sessions (id varchar(64) primary key, user_id varchar(255), payload text, last_activity bigint)`.execute(db);
     const error = await app.container.make(SessionStore).read('a'.repeat(64)).catch((failure: unknown) => failure);
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toMatch(/version/);
@@ -208,7 +208,7 @@ describe('SESSION_DRIVER=database never joins the app’s transactions', () => {
   const DATA = JSON.stringify({ _token: 'x'.repeat(40), visits: 1 });
   const NEW = { expectedVersion: undefined, lifetimeSeconds: 60 };
   const ids = async (connections: Connections, name = 'default') =>
-    (await sql<{ id: string }>`select id from sessions`.execute(connections.get(name))).rows.map((row) => row.id);
+    (await sql<{ id: string }>`select id from marmeon_sessions`.execute(connections.get(name))).rows.map((row) => row.id);
 
   it('SQLite without a file of its own: a session write inside a transaction refuses loudly', async () => {
     const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
@@ -282,7 +282,7 @@ describe('session:prune', () => {
     const store = app.container.make(SessionStore);
     await store.write('a'.repeat(64), '{"x":1}', { expectedVersion: undefined, lifetimeSeconds: 60 });
     await store.write('b'.repeat(64), '{"x":1}', { expectedVersion: undefined, lifetimeSeconds: 60 });
-    await sql`update sessions set last_activity = last_activity - 120000 where id = ${'a'.repeat(64)}`.execute(app.container.make(Connections).get());
+    await sql`update marmeon_sessions set last_activity = last_activity - 120000 where id = ${'a'.repeat(64)}`.execute(app.container.make(Connections).get());
     const { input: run, lines } = input();
     expect(await app.container.make(PruneSessionsCommand).handle(run)).toBe(0);
     expect(lines).toEqual(['✓ Pruned 1 expired session (database).']);
@@ -320,24 +320,17 @@ describe('make:session-table', () => {
     expect(await new MakeSessionTableCommand().handle(run)).toBe(0);
     const migration = readdirSync(join(root, 'modules/system/migrations')).find((file) => file.endsWith('_create_sessions_table.ts'))!;
     expect(migration).toMatch(/^\d{4}_\d{2}_\d{2}_\d{6}_create_sessions_table\.ts$/);
-    expect(readFileSync(join(root, 'modules/system/migrations', migration), 'utf8')).toContain("schema.create('sessions'");
+    expect(readFileSync(join(root, 'modules/system/migrations', migration), 'utf8')).toContain("schema.create('marmeon_sessions'");
     expect(lines).toEqual([`✓ Created modules/system/migrations/${migration}`, 'Then: marmeon migrate']);
     lines.length = 0;
     expect(await new MakeSessionTableCommand().handle(run)).toBe(1);
-    expect(lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the sessions table has its migration.`]);
+    expect(lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the marmeon_sessions table has its migration.`]);
   });
 
   it('writes one migration: the table as the store writes it — no other to choose', () => {
     expect(Object.keys(MakeSessionTableCommand.options)).toEqual(['module']);
     expect(MakeSessionTableCommand.options.module).toEqual({ type: 'string', short: 'm' });
     expect(MakeSessionTableCommand.usage).toBe('[--module=system]');
-    expect(readdirSync(new URL('../stubs/migrations/', import.meta.url))).toEqual(['create_sessions_table.ts']);
-  });
-
-  it("the web app's sessions table is the stub's — made once, no migration changes it later", () => {
-    const stub = readFileSync(new URL('../stubs/migrations/create_sessions_table.ts', import.meta.url), 'utf8');
-    const migrations = new URL('../../../apps/web-app/modules/system/migrations/', import.meta.url);
-    expect(readdirSync(migrations).filter((file) => file.includes('sessions'))).toEqual(['2026_10_02_203103_create_sessions_table.ts']);
-    expect(readFileSync(new URL('2026_10_02_203103_create_sessions_table.ts', migrations), 'utf8')).toBe(stub);
+    expect(readdirSync(new URL('../stubs/migrations/', import.meta.url))).toEqual(['create_sessions_table.ts', 'rename_sessions_table_to_marmeon.ts']);
   });
 });

@@ -3,7 +3,9 @@ import type { Connection } from '@marmeon/database';
 import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
 
 /** The table `marmeon make:session-table` creates (the app owns the migration; the store types it itself). */
-export const SESSIONS_TABLE = 'sessions';
+export const SESSIONS_TABLE = 'marmeon_sessions';
+/** The columns the store reads and writes; readiness is red while the table lacks one. */
+export const SESSIONS_COLUMNS = ['id', 'user_id', 'payload', 'last_activity', 'version'];
 
 /** A connection of @marmeon/database. */
 export interface DatabaseSessionConnection {
@@ -13,7 +15,7 @@ export interface DatabaseSessionConnection {
 type Sql = (typeof import('@marmeon/database'))['sql'];
 
 /**
- * Sessions in the app's database (`SESSION_DRIVER=database`): a row per session in `sessions` — keyed by the SHA-256 of the
+ * Sessions in the app's database (`SESSION_DRIVER=database`): a row per session in `marmeon_sessions` — keyed by the SHA-256 of the
  * session id (`id`), the payload as text in `payload` (JSON, or encrypted with `SESSION_ENCRYPT`), the signed-in user's
  * id in `user_id` (null for guests), the time of the last write in `last_activity` (epoch milliseconds) and a `version` that
  * goes up with every write. A session lives for the store's lifetime (`SESSION_LIFETIME`) after its last activity.
@@ -44,7 +46,7 @@ export class DatabaseSessionStore implements SessionStore {
 
   async read(key: string): Promise<StoredSession | undefined> {
     const { db, sql } = await this.#use();
-    const { rows } = await sql<{ payload: string; version: number | string }>`select payload, version from sessions where id = ${key} and last_activity > ${this.#oldest()}`.execute(db);
+    const { rows } = await sql<{ payload: string; version: number | string }>`select payload, version from marmeon_sessions where id = ${key} and last_activity > ${this.#oldest()}`.execute(db);
     return rows[0] ? { data: rows[0].payload, version: Number(rows[0].version) } : undefined;
   }
 
@@ -52,33 +54,33 @@ export class DatabaseSessionStore implements SessionStore {
     const { db, sql } = await this.#use();
     const now = this.#clock.now();
     if (expectedVersion === undefined) {
-      const inserted = await sql`insert into sessions (id, user_id, payload, last_activity, version) values (${key}, ${userId}, ${data}, ${now}, 1)
+      const inserted = await sql`insert into marmeon_sessions (id, user_id, payload, last_activity, version) values (${key}, ${userId}, ${data}, ${now}, 1)
         on conflict (id) do nothing`.execute(db);
       return inserted.numAffectedRows === 1n ? 'written' : 'conflict';
     }
-    const updated = await sql`update sessions set user_id = ${userId}, payload = ${data}, last_activity = ${now}, version = version + 1
+    const updated = await sql`update marmeon_sessions set user_id = ${userId}, payload = ${data}, last_activity = ${now}, version = version + 1
       where id = ${key} and version = ${expectedVersion} and last_activity > ${this.#oldest()}`.execute(db);
     if (updated.numAffectedRows === 1n) return 'written';
     // Nothing matched: written by another request since (conflict) — or destroyed, or expired (gone).
-    const { rows } = await sql`select 1 as found from sessions where id = ${key} and last_activity > ${this.#oldest()}`.execute(db);
+    const { rows } = await sql`select 1 as found from marmeon_sessions where id = ${key} and last_activity > ${this.#oldest()}`.execute(db);
     return rows.length > 0 ? 'conflict' : 'gone';
   }
 
   async destroy(key: string): Promise<void> {
     const { db, sql } = await this.#use();
-    await sql`delete from sessions where id = ${key}`.execute(db);
+    await sql`delete from marmeon_sessions where id = ${key}`.execute(db);
   }
 
   /** Every session of the user `userId` — a deleted account's. */
   async destroyUser(userId: string): Promise<number> {
     const { db, sql } = await this.#use();
-    const result = await sql`delete from sessions where user_id = ${userId}`.execute(db);
+    const result = await sql`delete from marmeon_sessions where user_id = ${userId}`.execute(db);
     return Number(result.numAffectedRows ?? 0n);
   }
 
   async gc(lifetimeSeconds: number): Promise<number> {
     const { db, sql } = await this.#use();
-    const result = await sql`delete from sessions where last_activity <= ${this.#clock.now() - lifetimeSeconds * 1000}`.execute(db);
+    const result = await sql`delete from marmeon_sessions where last_activity <= ${this.#clock.now() - lifetimeSeconds * 1000}`.execute(db);
     return Number(result.numAffectedRows ?? 0n);
   }
 

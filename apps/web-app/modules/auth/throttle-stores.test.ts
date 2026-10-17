@@ -42,7 +42,7 @@ describe.each(drivers)('rate limits on the %s store', (driver, redisEnv) => {
     expect(messages.filter((message) => message.startsWith('Too many login attempts'))).toHaveLength(15);
     // Even the right password waits now.
     await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertGuest();
-    if (driver === 'database') await app.assertDatabaseHas('cache', { key: 'limiter:login:ada@example.com|unknown', value: '21' });
+    if (driver === 'database') await app.assertDatabaseHas('marmeon_cache', { key: 'limiter:login:ada@example.com|unknown', value: '21' });
   });
 
   it('holds live validations to 30 a minute per address and route — 40 checks at once, 10 refused', async () => {

@@ -6,22 +6,22 @@ import type { Generated, JsonColumn, Secret, Timestamp } from '@marmeon/database
 
 declare module '@marmeon/database' {
   interface Tables {
+    /** Owned by `user-profile`. */
+    login_activity: {
+      user_id: number;
+      last_login_at: Timestamp;
+    };
     /** Owned by `system`. */
-    cache: {
+    marmeon_cache: {
       key: string;
       value: string;
       expiration: number | null;
     };
     /** Owned by `system`. */
-    cache_locks: {
+    marmeon_cache_locks: {
       key: string;
       owner: string;
       expiration: number;
-    };
-    /** Owned by `user-profile`. */
-    login_activity: {
-      user_id: number;
-      last_login_at: Timestamp;
     };
     /** Owned by `system`. */
     marmeon_failed_jobs: {
@@ -42,6 +42,14 @@ declare module '@marmeon/database' {
       reserved_at: number | null;
       available_at: number;
       created_at: number;
+    };
+    /** Owned by `system`. */
+    marmeon_sessions: {
+      id: string;
+      user_id: string | null;
+      payload: Secret<string>;
+      last_activity: number;
+      version: Generated<number>;
     };
     /** Owned by `system`. */
     notifications: {
@@ -112,14 +120,6 @@ declare module '@marmeon/database' {
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
       account_fingerprint: string | null;
-    };
-    /** Owned by `system`. */
-    sessions: {
-      id: string;
-      user_id: string | null;
-      payload: Secret<string>;
-      last_activity: number;
-      version: Generated<number>;
     };
     /** Owned by `auth`. */
     sign_ins: {
@@ -226,18 +226,18 @@ declare module '@marmeon/database' {
     };
   }
   interface TableOwners {
-    cache: 'system';
-    cache_locks: 'system';
     login_activity: 'user-profile';
+    marmeon_cache: 'system';
+    marmeon_cache_locks: 'system';
     marmeon_failed_jobs: 'system';
     marmeon_jobs: 'system';
+    marmeon_sessions: 'system';
     notifications: 'system';
     passkeys: 'auth';
     password_reset_tokens: 'auth';
     personal_access_tokens: 'auth';
     profile_links: 'user-profile';
     remember_tokens: 'auth';
-    sessions: 'system';
     sign_ins: 'auth';
     temporary_uploads: 'system';
     two_factor_authentications: 'auth';

@@ -1,4 +1,4 @@
-// @marmeon-stub session 1
+// @marmeon-stub session 2
 import { defineMigration } from '@marmeon/database';
 import { sessionTableConnection } from '@marmeon/session';
 
@@ -11,7 +11,7 @@ import { sessionTableConnection } from '@marmeon/session';
 export default defineMigration({
   connection: sessionTableConnection,
   up: async (schema) => {
-    await schema.create('sessions', (table) => {
+    await schema.create('marmeon_sessions', (table) => {
       table.string('id', 64).primary();
       table.string('user_id').nullable();
       table.text('payload').secret();
@@ -22,6 +22,6 @@ export default defineMigration({
     });
   },
   down: async (schema) => {
-    await schema.drop('sessions');
+    await schema.drop('marmeon_sessions');
   },
 });

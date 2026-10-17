@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { collectDrivers } from '@marmeon/core/internal';
@@ -7,10 +8,10 @@ import { CacheConfig } from './config.ts';
 import { CacheSetupError } from './errors.ts';
 import { CacheHealthCheck } from './health.ts';
 import { guardDriver, verifyDriver } from './guarded.ts';
-import { MakeCacheTableCommand } from './commands/make-cache-table.ts';
+import { MakeCacheTableCommand, RENAME_MIGRATION } from './commands/make-cache-table.ts';
 import { CacheClearCommand, CachePruneCommand } from './commands/prune.ts';
 import { LimitLiveValidation, RateLimiter } from './rate-limiter.ts';
-import { DatabaseStore } from './stores/database.ts';
+import { CACHE_COLUMNS, CACHE_LOCKS_COLUMNS, CACHE_LOCKS_TABLE, CACHE_TABLE, DatabaseStore } from './stores/database.ts';
 import { FileStore } from './stores/file.ts';
 import { MemoryStore } from './stores/memory.ts';
 import { RedisStore } from './stores/redis.ts';
@@ -78,6 +79,16 @@ export class CacheServiceProvider implements ServiceProvider {
   static config = [CacheConfig];
   /** The cache takes and frees a key, for `/up/ready`. */
   static health = [CacheHealthCheck];
+  /** `marmeon make:upgrade-migrations` writes the rename of `cache` and `cache_locks` to `marmeon_cache` and `marmeon_cache_locks`. */
+  static migrationUpgrades = [
+    {
+      set: 'cache',
+      revision: 2,
+      name: 'rename_cache_tables_to_marmeon',
+      createdBy: ['create_cache_table'],
+      contents: readFileSync(RENAME_MIGRATION, 'utf8'),
+    },
+  ];
   static commands = [MakeCacheTableCommand, CachePruneCommand, CacheClearCommand];
 
   /** The driver a provider brought under `CACHE_DRIVER`, built once; a factory that failed is not run again. */
@@ -139,6 +150,11 @@ export class CacheServiceProvider implements ServiceProvider {
         throw new CacheSetupError(withCode('S1', 'CACHE_DRIVER=database needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).'));
       }
       app.container.make(database.Connections).options(connection);
+      // /up/ready is red until the tables have the new names and every column the store writes.
+      const { SchemaRequirements } = await import('@marmeon/database/internal');
+      const requirements = app.container.make(SchemaRequirements);
+      requirements.require({ connection, table: CACHE_TABLE, columns: CACHE_COLUMNS, set: 'cache' });
+      requirements.require({ connection, table: CACHE_LOCKS_TABLE, columns: CACHE_LOCKS_COLUMNS, set: 'cache' });
     }
   }
 }
