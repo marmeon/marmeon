@@ -10,7 +10,7 @@ import type { Param, Query } from './url.ts';
  */
 export interface Routes {}
 
-/** What `marmeon route:types` writes per route. */
+/** What `marmeon route:types` writes per route. Grows only by optional members. */
 export interface RouteEntry {
   /** Lower case; a union for routes with several methods (`Route.match`). */
   readonly method: string;

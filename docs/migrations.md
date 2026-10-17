@@ -108,7 +108,7 @@ leaves no half-changed table behind, and it is not recorded. The migrations befo
 
 `migrate` and `migrate:fresh` write the table types afterwards when migrations ran, with `NODE_ENV=development` only. `--no-types`
 skips that. `migrate:rollback` and `migrate:reset` do not write them: after a rollback, run `marmeon db:types` to bring the file
-back in line. The [repositories and queries](queries.md#table-types) page explains the file.
+back in line. With `NODE_ENV=development`, `migrate` and `migrate:fresh` stop before any step (before `migrate:fresh` drops a table) when `bootstrap/database.d.ts` comes from a newer Marmeon, because they would have to write over it; `--no-types` skips this check. The [repositories and queries](queries.md#table-types) page explains the file.
 
 A rollback needs the file of every migration it undoes. One whose file is gone stops it with an error that names the migration.
 
