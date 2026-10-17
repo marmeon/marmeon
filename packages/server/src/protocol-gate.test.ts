@@ -14,7 +14,7 @@ import {
   VERSION_HEADER,
 } from '@marmeon/http/protocol';
 import type { Next } from '@marmeon/router';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { protocolGate } from './protocol-gate.ts';
 import { ServerServiceProvider } from './provider.ts';
@@ -81,7 +81,7 @@ describe('protocol gate', async () => {
       expect(response.headers.get('vary')).toBe(PAGE_HEADER);
       // No session, no cookie, no CSRF verdict (419): the answer has no side effect.
       expect(response.headers.getSetCookie()).toEqual([]);
-      expect(await response.text()).toBe('');
+      expect(await response.text()).toMatch(/^\[marmeon:H1\] /);
     });
   }
 
@@ -143,6 +143,24 @@ describe('protocol gate', async () => {
       expect(gate({ [PAGE_HEADER]: '3' })?.status).toBe(409);
       expect(gate({ [PAGE_HEADER]: 'true' })?.status).toBe(409);
       expect(gate({ [ACTION_HEADER]: 'true' })?.status).toBe(409);
+    });
+  });
+
+  describe('the body of the 409', () => {
+    afterEach(() => vi.unstubAllEnvs());
+    const refuse = () => protocolGate(new Request('http://localhost/x', { method: 'POST', headers: { [PAGE_HEADER]: '99' } }))!;
+
+    it.each(['development', 'test'])('says why in %s, with the code', async (nodeEnv) => {
+      vi.stubEnv('NODE_ENV', nodeEnv);
+      const response = refuse();
+      expect(response.status).toBe(409);
+      expect(await response.text()).toMatch(/^\[marmeon:H1\] .*"99"/);
+    });
+
+    it.each(['production', ''])('is empty with NODE_ENV=%j — no version leaves the server', async (nodeEnv) => {
+      vi.stubEnv('NODE_ENV', nodeEnv);
+      const response = refuse();
+      expect([response.status, await response.text(), response.headers.get('content-type')]).toEqual([409, '', null]);
     });
   });
 });

@@ -1,5 +1,5 @@
 import type { Container, EventClass, EventRegistry, ListenerQueue, QueueableEvent, QueuedListenerClass, QueuedListenerOptions, Resolver, StandardSchemaV1 } from '@marmeon/core';
-import { isQueuedListener } from '@marmeon/core/internal';
+import { isQueuedListener, withCode } from '@marmeon/core/internal';
 import * as v from 'valibot';
 import type { JobContext } from './job.ts';
 import { RECORD_OPTIONS, type Queue } from './queue.ts';
@@ -35,13 +35,13 @@ export class QueuedListeners {
       const entry = this.#byEvent.get(queueable.event) ?? { event: queueable, listeners: new Map<string, QueuedListenerClass>() };
       if (entry.event !== queueable) {
         throw new QueueSetupError(
-          `Two events are named "${queueable.event}": ${entry.event.name} and ${queueable.name}. An event's name is how a worker finds its class for a queued listener — give each its own static event.`,
+          withCode('Q4', `Two events are named "${queueable.event}": ${entry.event.name} and ${queueable.name}. An event's name is how a worker finds its class for a queued listener — give each its own static event.`),
         );
       }
       const known = entry.listeners.get(listener.listener);
       if (known && known !== listener) {
         throw new QueueSetupError(
-          `${known.name} and ${listener.name}, both queued listeners of ${queueable.name}, have the same static listener "${listener.listener}". A worker finds a queued listener by that name within the event — give each its own.`,
+          withCode('Q4', `${known.name} and ${listener.name}, both queued listeners of ${queueable.name}, have the same static listener "${listener.listener}". A worker finds a queued listener by that name within the event — give each its own.`),
         );
       }
       entry.listeners.set(listener.listener, listener);
@@ -67,15 +67,15 @@ export function checkQueueableEvent(event: EventClass, listener: { readonly name
   const label = event.name || 'the event';
   const jobEvent = event === (JobEvent as EventClass) || event.prototype instanceof JobEvent;
   if (typeof statics.event !== 'string' || !NAME.test(statics.event)) {
-    throw new QueueSetupError(
+    throw new QueueSetupError(withCode('Q4',
       `${listener.name} is a queued listener (static queue) of ${label}, which cannot be queued: give ${label} static event = 'module.what-happened' (a stable name — never the class name)` +
         ` and static schema (what is queued of it, as JSON — IDs, not records).` +
         (jobEvent ? ' Job events (JobQueued …) never can: their listeners run where the job runs — remove static queue.' : '') +
-        (typeof statics.event === 'string' ? ` "${statics.event}" is not a name like that.` : ''),
+        (typeof statics.event === 'string' ? ` "${statics.event}" is not a name like that.` : '')),
     );
   }
   if (typeof (statics.schema as StandardSchemaV1 | undefined)?.['~standard']?.validate !== 'function') {
-    throw new QueueSetupError(`${label} (${statics.event}) has a queued listener (${listener.name}) and needs static schema — a Standard Schema of what is queued of it, e.g. v.object({ userId: v.number() }).`);
+    throw new QueueSetupError(withCode('Q4', `${label} (${statics.event}) has a queued listener (${listener.name}) and needs static schema — a Standard Schema of what is queued of it, e.g. v.object({ userId: v.number() }).`));
   }
   return event as EventClass & QueueableEvent;
 }
@@ -91,29 +91,29 @@ function checkListenerName(listener: QueuedListenerClass): void {
   const label = `${listener.name || 'A queued listener'} (static queue)`;
   throw new QueueSetupError(
     typeof name === 'string'
-      ? `${label}: "${name}" is not a name like 'module.send-welcome-mail' — lowercase words joined by . : _ or -.`
-      : `${label} needs static listener — the stable name its queued jobs carry, never the class name (a rename or a minifier changes that): static listener = '<module>.${kebab(listener.name)}'.`,
+      ? withCode('Q4', `${label}: "${name}" is not a name like 'module.send-welcome-mail' — lowercase words joined by . : _ or -.`)
+      : withCode('Q3', `${label} needs static listener — the stable name its queued jobs carry, never the class name (a rename or a minifier changes that): static listener = '<module>.${kebab(listener.name)}'.`),
   );
 }
 
 function checkListenerOptions(listener: QueuedListenerClass): void {
   const options = listener.queue as QueuedListenerOptions & Record<string, unknown>;
   const label = `${listener.name} (static queue)`;
-  if (typeof listener.prototype?.handle !== 'function') throw new QueueSetupError(`${label} needs a handle(payload) method.`);
+  if (typeof listener.prototype?.handle !== 'function') throw new QueueSetupError(withCode('Q4', `${label} needs a handle(payload) method.`));
   for (const key of Object.keys(options)) {
-    if (key === 'afterCommit') throw new QueueSetupError(`${label}: afterCommit is always on: queued listeners join the transaction — remove it.`);
+    if (key === 'afterCommit') throw new QueueSetupError(withCode('Q4', `${label}: afterCommit is always on: queued listeners join the transaction — remove it.`));
     if (!['queue', 'connection', 'delay', 'tries', 'backoff'].includes(key)) {
-      throw new QueueSetupError(`${label}: unknown setting "${key}" — static queue takes queue, connection, delay, tries and backoff.`);
+      throw new QueueSetupError(withCode('Q4', `${label}: unknown setting "${key}" — static queue takes queue, connection, delay, tries and backoff.`));
     }
   }
   for (const key of ['queue', 'connection'] as const) {
-    if (options[key] !== undefined && (typeof options[key] !== 'string' || options[key] === '')) throw new QueueSetupError(`${label}: ${key} must be a name, not ${JSON.stringify(options[key])}.`);
+    if (options[key] !== undefined && (typeof options[key] !== 'string' || options[key] === '')) throw new QueueSetupError(withCode('Q4', `${label}: ${key} must be a name, not ${JSON.stringify(options[key])}.`));
   }
   const { tries, backoff } = options;
-  if (tries !== undefined && (!Number.isInteger(tries) || tries < 1)) throw new QueueSetupError(`${label}: tries must be a whole number ≥ 1, not ${String(tries)}.`);
+  if (tries !== undefined && (!Number.isInteger(tries) || tries < 1)) throw new QueueSetupError(withCode('Q4', `${label}: tries must be a whole number ≥ 1, not ${String(tries)}.`));
   const delays = backoff === undefined ? [] : typeof backoff === 'number' ? [backoff] : backoff;
   if (!Array.isArray(delays) || delays.some((delay) => !(typeof delay === 'number' && delay >= 0))) {
-    throw new QueueSetupError(`${label}: backoff must be seconds ≥ 0 — a number or a list like [10, 60, 300].`);
+    throw new QueueSetupError(withCode('Q4', `${label}: backoff must be seconds ≥ 0 — a number or a list like [10, 60, 300].`));
   }
 }
 

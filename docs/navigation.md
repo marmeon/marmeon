@@ -418,7 +418,8 @@ layers, prefetches, actions, live validations and uploads. `PROTOCOL_VERSION` in
 answers a request that comes from the client but names another version, or none, with `409` before it routes it. No middleware and no
 controller runs, whatever the method, so a form, an action or a validation of an old tab never reaches code that reads it
 differently. The answer carries the address to load in `x-marmeon-location`: the URL of a visit, and for a write the page it was sent
-from (its `Referer`, when it is this site's), else `/`. It sets and stores nothing, and no cache keeps it.
+from (its `Referer`, when it is this site's), else `/`. It sets and stores nothing, and no cache keeps it. In development and
+tests its body says why, starting with `[marmeon:H1]`; in production the body is empty.
 
 The tab loads that address as a whole document. A visit follows the rules above: with unsaved changes it asks, and the app can
 postpone it. An action, a live validation or an upload cannot be postponed, because what it sends cannot be answered. Whatever

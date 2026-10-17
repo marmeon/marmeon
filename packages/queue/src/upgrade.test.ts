@@ -107,7 +107,7 @@ describe('a database that still has jobs and failed_jobs', () => {
     const output = { success: () => {}, warn: () => {}, line: () => {}, error: (line: string) => lines.push(line) };
     const code = await application.container.make(QueueWorkCommand).handle({ root: '/tmp', args: [], options: { 'stop-when-empty': true }, output, spawn: async () => 0 } as never);
     expect(code).toBe(1);
-    expect(lines).toEqual(['The queue tables of the connection "default" are still named jobs and failed_jobs, not marmeon_jobs and marmeon_failed_jobs — run marmeon make:upgrade-migrations, then marmeon migrate.']);
+    expect(lines).toEqual(['[marmeon:D6] The queue tables of the connection "default" are still named jobs and failed_jobs, not marmeon_jobs and marmeon_failed_jobs — run marmeon make:upgrade-migrations, then marmeon migrate.']);
   });
 });
 

@@ -2,6 +2,7 @@ import cluster from 'node:cluster';
 import { ConfigError, invalidConfiguration, loadEnv, validateConfig, type ConfigDefinition } from './config/config.ts';
 import { EnvironmentConfig } from './config/environment-config.ts';
 import { Container } from './container.ts';
+import { withCode } from './error-codes.ts';
 import { coreSolutions } from './core-solutions.ts';
 import { Redactor } from './redact.ts';
 import { ErrorSolutions } from './solutions.ts';
@@ -134,7 +135,7 @@ export class Application {
       const provider = this.container.make(Provider);
       const hooks = [provider.register, provider.boot, provider.shutdown].some((hook) => typeof hook === 'function');
       if (!hooks && !Provider.config?.length && !Provider.health?.length && !Provider.solutions?.length && !declaredCommands(Provider) && !declaredDrivers(Provider)) {
-        throw new TypeError(`${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, ${DRIVER_STATICS.map((key) => `static ${key}`).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`);
+        throw new TypeError(withCode('K9', `${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, ${DRIVER_STATICS.map((key) => `static ${key}`).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`));
       }
       provider.register?.(this.container);
       this.#providers.push(provider);
@@ -231,7 +232,7 @@ const BOOT_OPTIONS = ['env', 'phase', 'container', 'override'] as const;
  */
 export async function createApplication(definition: ApplicationDefinition, options: CreateApplicationOptions = {}): Promise<Application> {
   for (const key of BOOT_OPTIONS) {
-    if (key in definition) throw new TypeError(`\`${key}\` is a boot option: pass it as createApplication(definition, { ${key} }), not in the definition.`);
+    if (key in definition) throw new TypeError(withCode('K10', `\`${key}\` is a boot option: pass it as createApplication(definition, { ${key} }), not in the definition.`));
   }
   const container = options.container ?? new Container();
   const modules = definition.modules ?? [];

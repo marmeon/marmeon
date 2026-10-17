@@ -1,3 +1,4 @@
+import { withCode } from '@marmeon/core/internal';
 import { CommandSetupError } from '../command.ts';
 import type { CheckProblem } from './report.ts';
 
@@ -50,18 +51,18 @@ export class CheckRegistry {
     for (const check of checks) {
       const label = `${(check as { name?: string } | undefined)?.name || 'A check'} (${source})`;
       if (typeof check !== 'function' || typeof check.check !== 'string' || !NAME.test(check.check)) {
-        throw new CheckSetupError(`${label} needs a \`static check\` in kebab-case (\`'route-types'\`), got ${JSON.stringify((check as { check?: unknown } | undefined)?.check)}.`);
+        throw new CheckSetupError(withCode('K11', `${label} needs a \`static check\` in kebab-case (\`'route-types'\`), got ${JSON.stringify((check as { check?: unknown } | undefined)?.check)}.`));
       }
       if (check.phase !== 'build' && check.phase !== 'run') {
-        throw new CheckSetupError(`${label} needs \`static phase = 'build' | 'run'\`, got ${JSON.stringify(check.phase)}.`);
+        throw new CheckSetupError(withCode('K11', `${label} needs \`static phase = 'build' | 'run'\`, got ${JSON.stringify(check.phase)}.`));
       }
       if ((BUILT_IN_CHECKS as readonly string[]).includes(check.check)) {
-        throw new CheckSetupError(`"${check.check}" is one of marmeon's own checks — ${label} cannot use it. Rename it.`);
+        throw new CheckSetupError(withCode('K11', `"${check.check}" is one of marmeon's own checks — ${label} cannot use it. Rename it.`));
       }
       const taken = this.#checks.get(check.check);
       if (!taken) this.#checks.set(check.check, { check, source });
       else if (taken.check !== check) {
-        throw new CheckSetupError(`Two checks are named "${check.check}": ${taken.check.name} (${taken.source}) and ${check.name} (${source}). Rename one — its static check is how marmeon finds it.`);
+        throw new CheckSetupError(withCode('K11', `Two checks are named "${check.check}": ${taken.check.name} (${taken.source}) and ${check.name} (${source}). Rename one — its static check is how marmeon finds it.`));
       }
     }
     return this;

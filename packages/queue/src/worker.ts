@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { outsideTransaction, Redactor, type Clock, type Logger } from '@marmeon/core';
-import { describeError } from '@marmeon/core/internal';
+import { describeError, withCode, withoutCode } from '@marmeon/core/internal';
 import { backoffDelay, type FailedJobStore, type JobRecord, type QueueDriver, type ReservedJob } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, type JobEvent, type JobEvents } from './events.ts';
 import { JobOnceBusyError, ONCE_BUSY_DELAY, releaseUnique } from './locks.ts';
@@ -444,7 +444,7 @@ export class Worker {
     }
     const age = Math.max(0, (now - Math.max(dispatchedAt, availableAt ?? 0)) / 1000);
     if (age > FOREIGN_LIMIT_SECONDS) {
-      return failNow(new Error(`${reason} No worker could run it within ${FOREIGN_LIMIT_SECONDS / 3600} hours.`), ' (no worker could run it in time)');
+      return failNow(new Error(withCode('Q2', `${withoutCode(reason)} No worker could run it within ${FOREIGN_LIMIT_SECONDS / 3600} hours.`)), ' (no worker could run it in time)');
     }
     const delay = Math.min(300, Math.max(15, Math.floor(age / 4)));
     const release = async () => {

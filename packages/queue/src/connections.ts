@@ -223,7 +223,7 @@ export class QueueConnections {
     await sql`select 1`.execute(db);
     const tables = this.#container.make((await importDatabase()).Connections).metadata(options.connection).kinds;
     if (tables.has(JOBS_TABLE) || !tables.has('jobs')) return undefined;
-    return `The queue tables of the connection "${options.connection}" are still named jobs and failed_jobs, not ${JOBS_TABLE} and ${FAILED_JOBS_TABLE} — run marmeon make:upgrade-migrations, then marmeon migrate.`;
+    return withCode('D6', `The queue tables of the connection "${options.connection}" are still named jobs and failed_jobs, not ${JOBS_TABLE} and ${FAILED_JOBS_TABLE} — run marmeon make:upgrade-migrations, then marmeon migrate.`);
   }
 
   async #tables(connection: string) {

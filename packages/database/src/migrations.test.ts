@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
@@ -121,6 +121,25 @@ describe.each(drivers)('migrations on %s', (driver) => {
     }
   });
 
+  it('names the file that cannot be loaded or rolled back, with its code', async () => {
+    const own = await freshConnections(driver);
+    try {
+      const dir = mkdtempSync(join(tempDir('marmeon-migrations-'), 'm-'));
+      writeFileSync(join(dir, '2026_01_01_000000_no_up.ts'), 'export default {};');
+      await expect(migrator(own.connections, { name: 'x', migrations: dir }).migrate()).rejects.toThrow(/^\[marmeon:D14\] Migration 2026_01_01_000000_no_up \(module "x"\) must/);
+      rmSync(join(dir, '2026_01_01_000000_no_up.ts'));
+
+      writeFileSync(join(dir, '2026_01_02_000000_one_way.ts'), 'export default { up: async () => {} };');
+      const ownMigrator = migrator(own.connections, { name: 'x', migrations: dir });
+      await ownMigrator.migrate();
+      await expect(ownMigrator.rollback()).rejects.toThrow('[marmeon:D16] Cannot roll back "2026_01_02_000000_one_way" (module "x"): it has no down().');
+      rmSync(join(dir, '2026_01_02_000000_one_way.ts'));
+      await expect(ownMigrator.rollback()).rejects.toThrow('[marmeon:D16] Cannot roll back "2026_01_02_000000_one_way" (module "x"): its file is gone.');
+    } finally {
+      await own.close();
+    }
+  });
+
   it('undoes a failing migration completely and does not record it', async () => {
     const withBroken = migrator(connections, auth, broken);
     await expect(withBroken.migrate()).rejects.toThrow('this migration is broken');
@@ -202,7 +221,7 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
 
   it('refuses a connection that is not configured — with the migration', async () => {
     await expect(on({ name: 'elsewhere', migrations: fixtures('elsewhere') }).migrate()).rejects.toThrow(
-      'Migration 2026_01_09_000000_create_reports_table (module "elsewhere") runs on the database connection "reporting", which is not configured. Known: default, system.',
+      '[marmeon:D14] Migration 2026_01_09_000000_create_reports_table (module "elsewhere") runs on the database connection "reporting", which is not configured. Known: default, system.',
     );
   });
 
@@ -236,14 +255,14 @@ describe('migration files', () => {
     const dir = mkdtempSync(join(root, 'm-'));
     writeFileSync(join(dir, 'create_users.ts'), '');
     expect(() => app([{ name: 'shop', migrations: dir }]).files()).toThrow(
-      'Migration file name "create_users.ts" (module "shop") must look like 2026_10_01_120000_create_users_table.ts.',
+      '[marmeon:D14] Migration file name "create_users.ts" (module "shop") must look like 2026_10_01_120000_create_users_table.ts.',
     );
     const twice = [
       { name: 'a', migrations: fixtures('auth') },
       { name: 'b', migrations: fixtures('auth') },
     ];
-    expect(() => app(twice).files()).toThrow('Two migrations are named "2026_01_01_000000_create_users_table" (modules "a" and "b").');
-    expect(() => app([{ name: 'gone', migrations: 'nope' }]).files()).toThrow(/migrations directory of module "gone" does not exist/);
+    expect(() => app(twice).files()).toThrow('[marmeon:D15] Two migrations are named "2026_01_01_000000_create_users_table" (modules "a" and "b").');
+    expect(() => app([{ name: 'gone', migrations: 'nope' }]).files()).toThrow(/\[marmeon:D14\] The migrations directory of module "gone" does not exist/);
   });
 
   it('orders migrations of the same timestamp by code point, whatever the locale', () => {

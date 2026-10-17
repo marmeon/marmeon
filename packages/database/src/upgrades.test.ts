@@ -8,6 +8,7 @@ import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { drivers, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { MakeUpgradeMigrationsCommand } from './commands/make-upgrade-migrations.ts';
 import { Connections } from './connections.ts';
+import { UpgradeMigrationsCheck } from './checks.ts';
 import { DatabaseHealthCheck } from './health.ts';
 import { DatabaseServiceProvider } from './provider.ts';
 import { Schema } from './schema/schema.ts';
@@ -52,7 +53,9 @@ describe('marmeon make:upgrade-migrations', () => {
 
   it('writes every revision above the stub, in the module of the migration that created the set, one second apart', () => {
     const root = appAt(1);
-    expect(run(root, providers, { check: true }).code, '--check before').toBe(1);
+    const before = run(root, providers, { check: true });
+    expect(before.code, '--check before').toBe(1);
+    expect(before.lines[0]).toBe("✗ [marmeon:D6] Migrations for the framework's tables are missing — run marmeon make:upgrade-migrations:");
     const { code, files } = run(root, providers);
     expect(code).toBe(0);
     expect(files).toHaveLength(3);
@@ -119,9 +122,36 @@ describe('marmeon make:upgrade-migrations', () => {
   });
 });
 
+describe('marmeon check: upgrade-migrations', () => {
+  const providers = [provider('WidgetsProvider', [upgrade(2), upgrade(3)])];
+  const check = (root: string, list: readonly ServiceProviderClass[] = providers) => new UpgradeMigrationsCheck({ root, providers: list } as unknown as Application);
+
+  it('is named upgrade-migrations and needs the app registered only', () => {
+    expect([UpgradeMigrationsCheck.check, UpgradeMigrationsCheck.phase]).toEqual(['upgrade-migrations', 'build']);
+  });
+
+  it('names each missing revision with D6 and the command that writes it', () => {
+    expect(check(appAt(1)).handle()).toEqual([
+      expect.objectContaining({ severity: 'error', code: 'D6', message: 'the widgets tables lack revision 2 (upgrade_widgets_2)', fix: 'marmeon make:upgrade-migrations' }),
+      expect.objectContaining({ severity: 'error', code: 'D6', message: 'the widgets tables lack revision 3 (upgrade_widgets_3)', fix: 'marmeon make:upgrade-migrations' }),
+    ]);
+  });
+
+  it('passes once the command has written them, and for a set the app does not use', () => {
+    const root = appAt(1);
+    run(root, providers);
+    expect(check(root).handle()).toEqual([]);
+    expect(check(appAt(1), [provider('OtherProvider', [{ ...upgrade(2, 'upgrade_gadgets_2', 'gadgets'), createdBy: ['create_gadgets_table'] }])]).handle()).toEqual([]);
+  });
+
+  it('reports what is wrong with the files, without a code', () => {
+    expect(check(appAt(5)).handle()).toEqual([expect.objectContaining({ severity: 'error', message: expect.stringContaining('revision 5 of widgets') })]);
+  });
+});
+
 describe('the upgrades a provider lists', () => {
   it('stops the start on a name that is a path', () => {
-    expect(() => collectUpgrades([provider('Bad', [upgrade(2, '../../escape')])])).toThrow(/Bad lists the migration upgrade "\.\.\/\.\.\/escape".*without timestamp or path/);
+    expect(() => collectUpgrades([provider('Bad', [upgrade(2, '../../escape')])])).toThrow(/\[marmeon:D17\] Bad lists the migration upgrade "\.\.\/\.\.\/escape".*without timestamp or path/);
   });
 
   it('stops on a createdBy that is a path', () => {
@@ -267,7 +297,7 @@ describe.each(drivers)('the readiness check of the framework tables on %s', (dri
       await schema.create('widgets', (table) => {
         table.id();
       });
-      await expect(check.handle()).rejects.toThrow('widgets lacks label — run marmeon make:upgrade-migrations, then marmeon migrate');
+      await expect(check.handle()).rejects.toThrow('[marmeon:D6] widgets lacks label — run marmeon make:upgrade-migrations, then marmeon migrate');
       await schema.alter('widgets', (table) => {
         table.string('label').nullable();
       });
@@ -306,7 +336,7 @@ describe.each(drivers)('the readiness check of the framework tables on %s', (dri
     try {
       const requirements = new SchemaRequirements();
       requirements.require({ connection: 'default', table: 'nothing_here', columns: [], set: 'widgets' });
-      await expect(new DatabaseHealthCheck(connections, requirements).handle()).rejects.toThrow('nothing_here is missing — run marmeon make:upgrade-migrations');
+      await expect(new DatabaseHealthCheck(connections, requirements).handle()).rejects.toThrow('[marmeon:D6] nothing_here is missing — run marmeon make:upgrade-migrations');
     } finally {
       await close();
     }
@@ -323,6 +353,6 @@ describe('readiness with a requirement', () => {
     app.container.make(SchemaRequirements).require({ connection: 'default', table: 'missing_things', columns: ['id'], set: 'things' });
     const report = await app.container.make(HealthChecks).run(app.container);
     expect(report.ok).toBe(false);
-    expect((report.checks[0]!.error as Error).message).toBe('missing_things is missing — run marmeon make:upgrade-migrations, then marmeon migrate');
+    expect((report.checks[0]!.error as Error).message).toBe('[marmeon:D6] missing_things is missing — run marmeon make:upgrade-migrations, then marmeon migrate');
   });
 });
