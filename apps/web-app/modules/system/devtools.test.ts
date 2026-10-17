@@ -105,7 +105,7 @@ describe('the devtools', () => {
       await new FileStore({ directory }).write(app.devtools.entries());
       const written = readdirSync(directory).map((name) => readFileSync(join(directory, name), 'utf8')).join('');
       expect(written.split('\n').length).toBeGreaterThan(50);
-      const secrets = { password, newPassword, resetToken, apiToken, apiSecret: apiToken.split('|')[1]!, csrf, hash: String(hash), ...Object.fromEntries(sessions.map((cookie, i) => [`session${i}`, cookie])) };
+      const secrets = { password, newPassword, resetToken, apiToken, apiSecret: apiToken.slice('marmeon_'.length, -8), csrf, hash: String(hash), ...Object.fromEntries(sessions.map((cookie, i) => [`session${i}`, cookie])) };
       const found = Object.entries(secrets).filter(([, value]) => written.includes(value)).map(([name]) => name);
       expect(found).toEqual([]);
     } finally {

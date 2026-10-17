@@ -16,7 +16,7 @@ export default function AccessTokens({ tokens }: Props) {
   // says no (someone else's id: 404; the password confirmation ran out: 423). It succeeded: the patch is the list now.
   const revoke = useAction('auth.tokens.destroy');
   // Type-to-confirm: the token's name, typed exactly — a wrong text sends nothing. "Token revoked." comes as a toast.
-  const revokeToken = (id: number, name: string) =>
+  const revokeToken = (id: number | string, name: string) =>
     void revoke.submit({
       params: { token: id },
       confirm: { title: t('tokens.revoke_title', { name }), message: t('tokens.revoke_confirm'), prompt: name, confirmLabel: t('tokens.revoke'), destructive: true },

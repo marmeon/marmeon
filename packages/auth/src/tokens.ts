@@ -1,7 +1,7 @@
-import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 import { crc32 } from 'node:zlib';
 import { Clock, token } from '@marmeon/core';
-import { Connections, secret, type Generated, type JsonColumn, type Secret } from '@marmeon/database';
+import { Connections, sql, type Generated, type JsonColumn, type Secret } from '@marmeon/database';
 import type { Duration } from '@marmeon/http';
 import { AuthConfig } from './config.ts';
 
@@ -10,10 +10,10 @@ export const ACCESS_TOKEN_TABLE = 'marmeon_personal_access_tokens';
 
 /**
  * The columns {@link DatabaseAccessTokens} needs — the `marmeon_personal_access_tokens` migration `make:auth` writes into
- * `modules/auth/migrations/` creates them (the token only as its SHA-256, a `secret()` column).
+ * `modules/auth/migrations/` creates them (the token only as its hash, a unique `secret()` column).
  */
 export interface AccessTokenTable {
-  id: Generated<number>;
+  id: Generated<AccessTokenId>;
   user_id: number | string;
   name: string;
   token_hash: Secret<string>;
@@ -27,9 +27,12 @@ export interface AccessTokenTable {
 /** The columns readiness waits for on `marmeon_personal_access_tokens`. */
 export const ACCESS_TOKEN_COLUMNS = ['id', 'user_id', 'name', 'token_hash', 'abilities', 'last_used_at', 'expires_at', 'created_at', 'updated_at'] as const satisfies readonly (keyof AccessTokenTable)[];
 
+/** The primary key of a token row: a number in the starter kit's table, a string in one with UUID keys. */
+export type AccessTokenId = number | string;
+
 /** A token as the app sees it — never with its secret. */
 export interface AccessToken {
-  readonly id: number;
+  readonly id: AccessTokenId;
   readonly userId: number | string;
   readonly name: string;
   readonly abilities: readonly string[];
@@ -44,21 +47,20 @@ export interface WithToken {
 }
 
 /**
- * Personal access tokens: opaque, `marmeon_<id>|<40 characters><crc32>`. The prefix
- * and the checksum let secret scanners find leaked tokens and let typos fail without a query; only a
- * SHA-256 of the secret is stored — 62⁴⁰ ≈ 2²³⁸ possibilities need no slow hash, and a slow hash per
- * API request would be a lever for anyone sending invalid tokens.
+ * Personal access tokens: opaque, `marmeon_<40 characters><crc32>`. The prefix and the checksum let secret scanners find leaked
+ * tokens; only a SHA-256 of the secret, under a prefix of its own, is stored and looked up — 62⁴⁰ ≈ 2²³⁸ possibilities need no
+ * slow hash, and a slow hash per API request would be a lever for anyone sending invalid tokens. See `docs/api-tokens.md#the-token-format`.
  */
 export interface AccessTokenStore {
   /** A new token — the plain text is returned once and never stored. */
   create(userId: number | string, name: string, options?: { abilities?: readonly string[]; expiresIn?: Duration }): Promise<{ plainText: string; token: AccessToken }>;
-  /** The token for a presented plain text — `undefined` for malformed, unknown, wrong, revoked or expired ones. */
+  /** The token for a presented plain text — `undefined` for malformed, unknown, wrong, revoked or expired ones, all alike. */
   find(plainText: string): Promise<AccessToken | undefined>;
   /** Notes the use (at most once a minute, not a write per request). */
   touch(token: AccessToken): Promise<void>;
   list(userId: number | string): Promise<AccessToken[]>;
   /** Revokes one token of the user — `false` if the user has no such token. */
-  revoke(userId: number | string, id: number): Promise<boolean>;
+  revoke(userId: number | string, id: AccessTokenId): Promise<boolean>;
   /** Revokes every token of the user (a new password with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) — how many. */
   revokeAll(userId: number | string): Promise<number>;
   /**
@@ -83,15 +85,25 @@ function seconds(duration: Duration): number {
 
 const checksum = (value: string) => crc32(value).toString(16).padStart(8, '0');
 
-/** Splits and checks a presented token — without the database. */
-export function parseAccessToken(plainText: string, prefix: string): { id: number; secret: string } | undefined {
+/** The domain the hash of a token's secret is taken in: a secret hashed any other way (the plain SHA-256 of tokens with a `|`, the form issued before) finds no row. */
+const HASH_DOMAIN = 'marmeon-access-token:v2:';
+/** The domain of a presented string that is no token: it costs the same lookup and can match no stored hash. */
+const MALFORMED_DOMAIN = 'marmeon-access-token:malformed:';
+
+/** What is stored for a token — and what is looked up for the one presented. */
+export function hashToken(value: string): string {
+  return sha256(`${HASH_DOMAIN}${value}`);
+}
+
+/** Checks the shape and the checksum of a presented token — without the database. */
+export function parseAccessToken(plainText: string, prefix: string): { secret: string } | undefined {
   if (typeof plainText !== 'string' || !plainText.startsWith(prefix)) return undefined;
-  const match = /^(\d{1,15})\|([A-Za-z0-9]{40})([0-9a-f]{8})$/.exec(plainText.slice(prefix.length));
+  const match = /^([A-Za-z0-9]{40})([0-9a-f]{8})$/.exec(plainText.slice(prefix.length));
   if (!match) return undefined;
-  const [, id, secret, sum] = match as unknown as [string, string, string, string];
-  // The checksum covers prefix, id and secret: a typo anywhere fails here, before any query.
-  if (checksum(`${prefix}${id}|${secret}`) !== sum) return undefined;
-  return { id: Number(id), secret };
+  const [, secret, sum] = match as unknown as [string, string, string];
+  // The checksum covers prefix and secret: a typo anywhere fails here.
+  if (checksum(`${prefix}${secret}`) !== sum) return undefined;
+  return { secret };
 }
 
 /** The default {@link AccessTokenStore}, on the app's `marmeon_personal_access_tokens` table. */
@@ -114,7 +126,7 @@ export class DatabaseAccessTokens implements AccessTokenStore {
       .values({
         user_id: userId,
         name,
-        token_hash: sha256(secret),
+        token_hash: hashToken(secret),
         abilities: JSON.stringify(abilities),
         last_used_at: null,
         expires_at: expiresIn === undefined ? null : new Date(now.getTime() + seconds(expiresIn) * 1000),
@@ -123,20 +135,23 @@ export class DatabaseAccessTokens implements AccessTokenStore {
       })
       .returning(['id', 'user_id', 'name', 'abilities', 'last_used_at', 'expires_at', 'created_at'])
       .executeTakeFirstOrThrow();
-    const body = `${this.#prefix}${row.id}|${secret}`;
+    const body = `${this.#prefix}${secret}`;
     return { plainText: `${body}${checksum(body)}`, token: toToken(row) };
   }
 
   async find(plainText: string): Promise<AccessToken | undefined> {
+    if (typeof plainText !== 'string' || !plainText.startsWith(this.#prefix)) return undefined;
+    // Whatever the app's prefix starts runs the same indexed query, found or not: a token with a `|` (the form issued before), a
+    // mistyped one, a cut-off one and an unknown one cost the same and get the same answer. A string of the wrong shape is hashed
+    // whole under a domain of its own, so it matches no row. The hash is not the sender's to choose, so finding it in the index
+    // tells nothing about it.
     const parsed = parseAccessToken(plainText, this.#prefix);
-    if (!parsed) return undefined;
-    // Looked up by id; the secret is compared in constant time (never `where token_hash = ?`).
     const row = await this.#db()
       .selectFrom(ACCESS_TOKEN_TABLE)
-      .select((eb) => ['id', 'user_id', 'name', secret(eb, 'token_hash'), 'abilities', 'last_used_at', 'expires_at', 'created_at'])
-      .where('id', '=', parsed.id)
+      .select(['id', 'user_id', 'name', 'abilities', 'last_used_at', 'expires_at', 'created_at'])
+      .where(sql<boolean>`${sql.ref('token_hash')} = ${parsed ? hashToken(parsed.secret) : sha256(`${MALFORMED_DOMAIN}${plainText}`)}`)
       .executeTakeFirst();
-    if (!row || !equal(sha256(parsed.secret), row.token_hash)) return undefined;
+    if (!row) return undefined;
     if (row.expires_at !== null && new Date(row.expires_at).getTime() <= this.#clock.now()) return undefined;
     return toToken(row);
   }
@@ -156,7 +171,7 @@ export class DatabaseAccessTokens implements AccessTokenStore {
     return rows.map(toToken);
   }
 
-  async revoke(userId: number | string, id: number): Promise<boolean> {
+  async revoke(userId: number | string, id: AccessTokenId): Promise<boolean> {
     const result = await this.#db().deleteFrom(ACCESS_TOKEN_TABLE).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
     return result.numDeletedRows > 0n;
   }
@@ -184,7 +199,7 @@ export class DatabaseAccessTokens implements AccessTokenStore {
   }
 }
 
-function toToken(row: { id: number; user_id: number | string; name: string; abilities: unknown; last_used_at: string | Date | null; expires_at: string | Date | null; created_at: string | Date }): AccessToken {
+function toToken(row: { id: AccessTokenId; user_id: number | string; name: string; abilities: unknown; last_used_at: string | Date | null; expires_at: string | Date | null; created_at: string | Date }): AccessToken {
   const iso = (value: string | Date | null) => (value === null ? null : new Date(value).toISOString());
   return {
     id: row.id,
@@ -204,10 +219,4 @@ export function tokenCan(token: AccessToken, ability: string): boolean {
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('base64url');
-}
-
-function equal(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  return left.byteLength === right.byteLength && timingSafeEqual(left, right);
 }

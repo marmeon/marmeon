@@ -15,7 +15,7 @@ import { PasskeyServiceProvider } from './passkeys/provider.ts';
 import { PGSQL_URL } from './__fixtures__/databases.ts';
 import { AuthServiceProvider, AccessTokenStore, combineFactors, DatabaseSignIns, RememberTokenStore, SignInStore, TwoFactorState, TwoFactorStore, UserProvider } from './index.ts';
 import { factorSources, NoTwoFactorState } from './two-factor/state.ts';
-import { AUTH_RENAME_MIGRATION, SIGN_INS_RENAME_MIGRATION } from './upgrades.ts';
+import { AUTH_RENAME_MIGRATION, SIGN_INS_RENAME_MIGRATION, TOKENS_REISSUE_MIGRATION } from './upgrades.ts';
 
 const silent: LoggerType = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
 
@@ -123,17 +123,22 @@ describe.each(kinds)('the upgrade of the auth tables on %s', (kind) => {
       await seed(old.connections);
       const before = Object.fromEntries(await Promise.all(TABLES.map(async (table) => [table, await describeTable(old.connections, table)])));
 
-      const upgrades = [await load(new URL(`${UPGRADE.href}2026_02_01_000000_rename_auth_tables_to_marmeon.ts`)), await load(new URL(`${UPGRADE.href}2026_02_01_000001_rename_sign_ins_table_to_marmeon.ts`))];
+      const upgrades = [
+        await load(new URL(`${UPGRADE.href}2026_02_01_000000_rename_auth_tables_to_marmeon.ts`)),
+        await load(new URL(`${UPGRADE.href}2026_02_01_000001_rename_sign_ins_table_to_marmeon.ts`)),
+        await load(new URL(`${UPGRADE.href}2026_02_01_000002_reissue_personal_access_tokens.ts`)),
+      ];
       for (const upgrade of upgrades) await upgrade.up(old.schema);
       for (const table of TABLES) {
         expect(await describeTable(old.connections, `marmeon_${table}`), table).toEqual(await describeTable(fresh.connections, `marmeon_${table}`));
         const { rows } = await sql<{ n: number | string }>`select count(*) as n from ${sql.table(`marmeon_${table}`)}`.execute(old.connections.get());
-        expect(Number(rows[0]!.n), `rows of marmeon_${table}`).toBe(1);
+        // The API tokens of the first release are the one thing the upgrade deletes.
+        expect(Number(rows[0]!.n), `rows of marmeon_${table}`).toBe(table === 'personal_access_tokens' ? 0 : 1);
       }
       const db = old.connections.get<any>();
       expect((await sql<{ validator_hash: string }>`select validator_hash from marmeon_remember_tokens`.execute(db)).rows).toEqual([{ validator_hash: 'validator-hash' }]);
       expect((await sql<{ token_hash: string }>`select token_hash from marmeon_password_reset_tokens`.execute(db)).rows).toEqual([{ token_hash: 'reset-hash' }]);
-      expect((await sql<{ token_hash: string }>`select token_hash from marmeon_personal_access_tokens`.execute(db)).rows).toEqual([{ token_hash: 'access-hash' }]);
+      expect((await sql<{ token_hash: string }>`select token_hash from marmeon_personal_access_tokens`.execute(db)).rows).toEqual([]);
       expect((await sql<{ name: string }>`select name from marmeon_passkeys`.execute(db)).rows).toEqual([{ name: 'Laptop' }]);
       // The table of the app stays the app's.
       expect((await sql<{ email: string }>`select email from users`.execute(db)).rows).toEqual([{ email: 'ada@example.com' }]);
@@ -159,6 +164,37 @@ describe.each(kinds)('the upgrade of the auth tables on %s', (kind) => {
       await upgrade.down!(old.schema);
       expect(await old.schema.hasTable('remember_tokens')).toBe(true);
     } finally {
+      await old.drop();
+    }
+  });
+
+  it('deletes the API tokens and nothing else, and leaves an app without the table alone', async () => {
+    const bare = await open(kind);
+    const old = await open(kind);
+    try {
+      const reissue = await load(TOKENS_REISSUE_MIGRATION);
+      await reissue.up(bare.schema);
+      await reissue.down!(bare.schema);
+
+      for (const migration of await loadAll(LEGACY)) await migration.up(old.schema);
+      await seed(old.connections);
+      await (await load(AUTH_RENAME_MIGRATION)).up(old.schema);
+      await reissue.up(old.schema);
+      const db = old.connections.get<any>();
+      const count = async (table: string) => Number((await sql<{ n: number | string }>`select count(*) as n from ${sql.table(table)}`.execute(db)).rows[0]!.n);
+      expect(await count('marmeon_personal_access_tokens')).toBe(0);
+      for (const table of ['marmeon_remember_tokens', 'marmeon_password_reset_tokens', 'marmeon_two_factor_authentications', 'marmeon_two_factor_recovery_codes', 'marmeon_passkeys', 'users']) {
+        expect(await count(table), table).toBe(1);
+      }
+      // A hash is now one token's alone.
+      const insert = sql`insert into marmeon_personal_access_tokens (user_id, name, token_hash, abilities, created_at, updated_at) values (1, 'cli', 'same-hash', ${JSON.stringify(['*'])}, '2026-01-01 00:00:00', '2026-01-01 00:00:00')`;
+      await insert.execute(db);
+      await expect(insert.execute(db)).rejects.toThrow();
+      await reissue.down!(old.schema);
+      await insert.execute(db);
+      expect(await count('marmeon_personal_access_tokens')).toBe(2);
+    } finally {
+      await bare.drop();
       await old.drop();
     }
   });
@@ -200,9 +236,12 @@ describe.each(kinds)('the secret columns across the rename, on %s', (kind) => {
       await migrator(connections, LEGACY, UPGRADE).migrate();
       const renamed = (table: string) => `marmeon_${table}`;
       expect(await marked(connections)).toEqual(expected(renamed));
+      // The token of the first release is gone; one issued since stands in its place.
+      await sql`insert into marmeon_personal_access_tokens (user_id, name, token_hash, abilities, created_at, updated_at)
+        values (1, 'cli', 'new-hash', ${JSON.stringify(['*'])}, '2026-01-01 00:00:00', '2026-01-01 00:00:00')`.execute(connections.get());
       await withoutSecrets(renamed);
 
-      await migrator(connections, LEGACY, UPGRADE).rollback({ steps: 2 });
+      await migrator(connections, LEGACY, UPGRADE).rollback({ steps: 3 });
       expect(await marked(connections)).toEqual(expected((table) => table));
       await withoutSecrets((table) => table);
     } finally {
@@ -377,18 +416,22 @@ describe('the sources of a second factor', () => {
 });
 
 describe('the revisions the auth tables list', () => {
-  it('are revision 2 of the auth set and of the sign-ins set, for apps that created the tables with the first stubs', () => {
+  it('are revision 2 and 3 of the auth set and revision 2 of the sign-ins set, for apps that created the tables with the first stubs', () => {
     const upgrades = AuthServiceProvider.migrationUpgrades;
     expect(upgrades.map(({ set, revision, name }) => ({ set, revision, name }))).toEqual([
       { set: 'auth', revision: 2, name: 'rename_auth_tables_to_marmeon' },
+      { set: 'auth', revision: 3, name: 'reissue_personal_access_tokens' },
       { set: 'sign-ins', revision: 2, name: 'rename_sign_ins_table_to_marmeon' },
     ]);
     expect(upgrades[0]!.createdBy).toEqual(expect.arrayContaining(['create_remember_tokens_table', 'create_two_factor_tables', 'create_two_factor_authentications_table', 'create_passkeys_table']));
-    expect(upgrades[1]!.createdBy).toEqual(['create_sign_ins_table']);
+    expect(upgrades[1]!.createdBy).toEqual(['create_personal_access_tokens_table']);
+    expect(upgrades[2]!.createdBy).toEqual(['create_sign_ins_table']);
     expect(upgrades[0]!.contents).toBe(readFileSync(AUTH_RENAME_MIGRATION, 'utf8'));
-    expect(upgrades[1]!.contents).toBe(readFileSync(SIGN_INS_RENAME_MIGRATION, 'utf8'));
+    expect(upgrades[1]!.contents).toBe(readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'));
+    expect(upgrades[2]!.contents).toBe(readFileSync(SIGN_INS_RENAME_MIGRATION, 'utf8'));
     expect(upgrades[0]!.contents).toMatch(/^\/\/ @marmeon-stub auth 2\n/);
-    expect(upgrades[1]!.contents).toMatch(/^\/\/ @marmeon-stub sign-ins 2\n/);
+    expect(upgrades[1]!.contents).toMatch(/^\/\/ @marmeon-stub auth 3\n/);
+    expect(upgrades[2]!.contents).toMatch(/^\/\/ @marmeon-stub sign-ins 2\n/);
   });
 
   it('are what the first stubs and the stubs now say: revision 1 before, revision 2 after, and the new names only after', () => {
@@ -399,7 +442,8 @@ describe('the revisions the auth tables list', () => {
     }
     for (const file of filesOf(KIT).filter((name) => !name.includes('users'))) {
       const contents = readFileSync(new URL(file, KIT), 'utf8');
-      expect(contents, file).toMatch(file.includes('sign_ins') ? /^\/\/ @marmeon-stub sign-ins 2\n/ : /^\/\/ @marmeon-stub auth 2\n/);
+      // The tokens' table is the only one the third revision changes.
+      expect(contents, file).toMatch(file.includes('sign_ins') ? /^\/\/ @marmeon-stub sign-ins 2\n/ : file.includes('personal_access') ? /^\/\/ @marmeon-stub auth 3\n/ : /^\/\/ @marmeon-stub auth 2\n/);
       expect(contents.match(/schema\.(create|drop)\('[a-z_]+'/g)!.every((call) => call.includes("'marmeon_")), file).toBe(true);
     }
     const signIns = readFileSync(new URL('../stubs/migrations/create_sign_ins_table.ts', import.meta.url), 'utf8');
@@ -415,14 +459,19 @@ describe('the migrations in the apps', () => {
   it("the web app's tables come from the first stubs and the renames, the blank app's and the starter's have none", () => {
     const web = 'apps/web-app/modules/auth/migrations/';
     const files = migrationsOf(web);
-    const renames = files.filter((file) => /rename/.test(file));
-    expect(renames).toEqual([expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_rename_auth_tables_to_marmeon\.ts$/), expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_rename_sign_ins_table_to_marmeon\.ts$/)]);
-    expect(readFileSync(new URL(web + renames[0], repo), 'utf8')).toBe(readFileSync(AUTH_RENAME_MIGRATION, 'utf8'));
-    expect(readFileSync(new URL(web + renames[1], repo), 'utf8')).toBe(readFileSync(SIGN_INS_RENAME_MIGRATION, 'utf8'));
-    // The renames come after every migration that creates or changes the old tables.
+    const upgrades = files.filter((file) => /(rename|reissue)/.test(file));
+    expect(upgrades).toEqual([
+      expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_rename_auth_tables_to_marmeon\.ts$/),
+      expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_rename_sign_ins_table_to_marmeon\.ts$/),
+      expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_reissue_personal_access_tokens\.ts$/),
+    ]);
+    expect(readFileSync(new URL(web + upgrades[0], repo), 'utf8')).toBe(readFileSync(AUTH_RENAME_MIGRATION, 'utf8'));
+    expect(readFileSync(new URL(web + upgrades[1], repo), 'utf8')).toBe(readFileSync(SIGN_INS_RENAME_MIGRATION, 'utf8'));
+    expect(readFileSync(new URL(web + upgrades[2], repo), 'utf8')).toBe(readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'));
+    // The upgrades come after every migration that creates or changes the old tables, the reissue after the rename it needs.
     const sorted = [...files].sort();
-    expect(sorted.slice(-2)).toEqual(renames);
-    for (const file of files.filter((name) => !/rename/.test(name))) expect(readFileSync(new URL(web + file, repo), 'utf8'), file).not.toContain('marmeon_');
+    expect(sorted.slice(-3)).toEqual(upgrades);
+    for (const file of files.filter((name) => !/(rename|reissue)/.test(name))) expect(readFileSync(new URL(web + file, repo), 'utf8'), file).not.toContain('marmeon_');
     for (const directory of ['apps/blank-app/modules/system/migrations/', 'packages/create-marmeon/template/base/modules/system/migrations/']) expect(migrationsOf(directory), directory).toEqual([]);
   });
 });

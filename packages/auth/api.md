@@ -19,7 +19,7 @@ export type AbilityOf<P> = Exclude<{
 }[keyof P], 'before'> & string;
 // AccessToken
 export interface AccessToken {
-    readonly id: number;
+    readonly id: AccessTokenId;
     readonly userId: number | string;
     readonly name: string;
     readonly abilities: readonly string[];
@@ -27,6 +27,8 @@ export interface AccessToken {
     readonly expiresAt: string | null;
     readonly createdAt: string;
 }
+// AccessTokenId
+export type AccessTokenId = number | string;
 // AccessTokenStore
 export interface AccessTokenStore {
     create(userId: number | string, name: string, options?: {
@@ -39,7 +41,7 @@ export interface AccessTokenStore {
     find(plainText: string): Promise<AccessToken | undefined>;
     touch(token: AccessToken): Promise<void>;
     list(userId: number | string): Promise<AccessToken[]>;
-    revoke(userId: number | string, id: number): Promise<boolean>;
+    revoke(userId: number | string, id: AccessTokenId): Promise<boolean>;
     revokeAll(userId: number | string): Promise<number>;
     prune(graceSeconds?: number): Promise<number>;
     revokeEveryone?(): Promise<number>;
@@ -222,7 +224,7 @@ export declare class DatabaseAccessTokens implements AccessTokenStore {
     find(plainText: string): Promise<AccessToken | undefined>;
     touch(token: AccessToken): Promise<void>;
     list(userId: number | string): Promise<AccessToken[]>;
-    revoke(userId: number | string, id: number): Promise<boolean>;
+    revoke(userId: number | string, id: AccessTokenId): Promise<boolean>;
     revokeAll(userId: number | string): Promise<number>;
     revokeEveryone(): Promise<number>;
     prune(graceSeconds?: number): Promise<number>;
@@ -1061,7 +1063,6 @@ export declare function describeDevice(userAgent: string | undefined): DeviceDes
 export declare function guest(home?: string): MiddlewareClass<{}, {}>;
 // parseAccessToken
 export declare function parseAccessToken(plainText: string, prefix: string): {
-    id: number;
     secret: string;
 } | undefined;
 // password
@@ -1405,7 +1406,7 @@ export declare const ACCOUNT_STILL_CLAIMED: unique symbol;
 export declare const ANNOUNCE_ENDED: unique symbol;
 // AccessToken
 export interface AccessToken {
-    readonly id: number;
+    readonly id: AccessTokenId;
     readonly userId: number | string;
     readonly name: string;
     readonly abilities: readonly string[];
@@ -1413,6 +1414,8 @@ export interface AccessToken {
     readonly expiresAt: string | null;
     readonly createdAt: string;
 }
+// AccessTokenId
+export type AccessTokenId = number | string;
 // AccessTokenStore
 export interface AccessTokenStore {
     create(userId: number | string, name: string, options?: {
@@ -1425,7 +1428,7 @@ export interface AccessTokenStore {
     find(plainText: string): Promise<AccessToken | undefined>;
     touch(token: AccessToken): Promise<void>;
     list(userId: number | string): Promise<AccessToken[]>;
-    revoke(userId: number | string, id: number): Promise<boolean>;
+    revoke(userId: number | string, id: AccessTokenId): Promise<boolean>;
     revokeAll(userId: number | string): Promise<number>;
     prune(graceSeconds?: number): Promise<number>;
     revokeEveryone?(): Promise<number>;
@@ -2109,7 +2112,7 @@ export declare const ACCOUNT_STILL_CLAIMED: unique symbol;
 export declare const ANNOUNCE_ENDED: unique symbol;
 // AccessToken
 export interface AccessToken {
-    readonly id: number;
+    readonly id: AccessTokenId;
     readonly userId: number | string;
     readonly name: string;
     readonly abilities: readonly string[];
@@ -2117,6 +2120,8 @@ export interface AccessToken {
     readonly expiresAt: string | null;
     readonly createdAt: string;
 }
+// AccessTokenId
+export type AccessTokenId = number | string;
 // AccessTokenStore
 export interface AccessTokenStore {
     create(userId: number | string, name: string, options?: {
@@ -2129,7 +2134,7 @@ export interface AccessTokenStore {
     find(plainText: string): Promise<AccessToken | undefined>;
     touch(token: AccessToken): Promise<void>;
     list(userId: number | string): Promise<AccessToken[]>;
-    revoke(userId: number | string, id: number): Promise<boolean>;
+    revoke(userId: number | string, id: AccessTokenId): Promise<boolean>;
     revokeAll(userId: number | string): Promise<number>;
     prune(graceSeconds?: number): Promise<number>;
     revokeEveryone?(): Promise<number>;

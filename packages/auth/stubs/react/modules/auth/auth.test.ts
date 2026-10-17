@@ -303,7 +303,7 @@ describe('API tokens', { timeout: 30_000 }, () => {
     await api(plainText).get('/api/user').assertOk().assertExactJson({ id: ada.id, name: ada.name, email: ada.email });
     await api(plainText.slice(0, -1) + (plainText.endsWith('a') ? 'b' : 'a')).get('/api/user').assertUnauthorized(); // checksum
     await app.expectingJson().get('/api/user').assertUnauthorized();
-    await sudo.delete(`/settings/tokens/${/^\w*?(\d+)\|/.exec(plainText)![1]}`).assertRedirect('/settings/tokens');
+    await sudo.delete(`/settings/tokens/${(await app.make(AccessTokenStore).list(ada.id))[0]!.id}`).assertRedirect('/settings/tokens');
     await api(plainText).get('/api/user').assertUnauthorized();
   });
 

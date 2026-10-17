@@ -28,8 +28,8 @@ export const AuthConfig = defineConfig('auth', {
     AUTH_RESET_EXPIRE: whole(60, 1),
     /** Seconds before another reset link is sent to the same e-mail. */
     AUTH_RESET_THROTTLE: whole(60, 0),
-    /** The prefix of API tokens (`marmeon_12|…`) — secret scanners recognize leaked tokens by it. */
-    AUTH_TOKEN_PREFIX: env.string().regex(/^[a-z0-9_]{0,16}$/, 'lower-case letters, digits and _ only').default('marmeon_'),
+    /** The prefix of API tokens (`marmeon_…`) — secret scanners recognize leaked tokens by it. */
+    AUTH_TOKEN_PREFIX: env.string().regex(/^(?:[a-z0-9_]{0,15}_)?$/, 'empty, or lower-case letters and digits ending in _ (16 at most)').default('marmeon_'),
     /**
      * Private registration (the default): registration and the change of address never tell whether an address has an account —
      * the same answer in the same time, a note to the owner instead. `false` (anything but `true`/`false` stops the boot; empty

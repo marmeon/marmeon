@@ -24,7 +24,7 @@ does not start. The [authorization](authorization.md#every-route-decides) page h
 The module lists the file as `apiRoutes` in its definition, and the route answers `GET /api/notes`:
 
 ```sh
-curl -H "Authorization: Bearer marmeon_12|…" https://example.com/api/notes
+curl -H "Authorization: Bearer marmeon_…" https://example.com/api/notes
 ```
 
 The [starter kit](starter-kit.md) has a page where users create and revoke their tokens, and `GET /api/user`, which answers who a
@@ -93,14 +93,22 @@ session as flash data, and so write it into the session store.
 
 ## The token format
 
-A token reads `marmeon_12|` followed by 40 random letters and digits and a checksum of 8 hexadecimal characters. Each part has a
-purpose:
+A token reads `marmeon_` followed by 40 random letters and digits and a checksum of 8 hexadecimal characters, 56 characters in
+all. Each part has a purpose:
 
-- **The prefix**, `AUTH_TOKEN_PREFIX`, lets secret scanners recognize a leaked token, for example in a public repository. It may
-  hold lower-case letters, digits and `_`, at most 16 of them.
-- **The number** is the token's row, so the lookup is one query by id.
-- **The checksum**, a CRC32 over everything before it, lets a typo fail before any query. `parseAccessToken(plainText, prefix)`
-  checks the format and the checksum without the database.
+- **The prefix**, `AUTH_TOKEN_PREFIX`, lets secret scanners recognize a leaked token, for example in a public repository. It is
+  empty or holds lower-case letters and digits and ends in `_`, at most 16 characters, so a log or a scanner can tell the token from a word.
+- **The checksum**, a CRC32 over the prefix and the 40 characters, lets a secret scanner tell a real token from a random string.
+  `parseAccessToken(plainText, prefix)` checks the format and the checksum without the database.
+
+The token holds nothing of the row, so it tells nobody how many tokens exist. The database keeps the SHA-256 of
+`marmeon-access-token:v2:` followed by the 40 characters, base64url, in `token_hash`, and finds the token by that column, which has a
+unique index. To find tokens in a repository, search for `marmeon_[A-Za-z0-9]{40}[0-9a-f]{8}` (with your prefix in place of
+`marmeon_`).
+
+Every presented string that starts with your prefix costs one query by hash and gets the same `401 Unauthenticated.`: a token
+that does not exist, one that expired or was revoked, one with a wrong checksum or length, and one of the form issued before
+(`marmeon_12|…`, with a `|`). Nothing in the answer says which it was. A string without your prefix is none of your tokens and costs no query.
 
 40 random characters give 62⁴⁰ possibilities, about 2²³⁸. That needs no slow hash: a fast SHA-256 stays out of reach of guessing,
 and a slow hash per API request would hand anyone who sends invalid tokens a way to load the server.
@@ -129,8 +137,8 @@ export class ListNotesApiController extends Controller {
 ```
 
 A missing, malformed, unknown, revoked or expired token, and one whose user no longer exists, get the same answer:
-`401 {"message":"Unauthenticated."}` with `WWW-Authenticate: Bearer`. A session cookie counts for nothing here. The secret is
-compared in constant time. `ctx.token` holds the token without its secret: `id`, `userId`, `name`, `abilities`, `lastUsedAt`,
+`401 {"message":"Unauthenticated."}` with `WWW-Authenticate: Bearer`. A session cookie counts for nothing here. The token is
+found by the hash of its secret, which a sender cannot choose, so the lookup tells nothing about it. `ctx.token` holds the token without its secret: `id`, `userId`, `name`, `abilities`, `lastUsedAt`,
 `expiresAt` and `createdAt`. The token's last use is written at most once a minute, not on every request.
 
 `can()` and the gate ask their policies about the token's user here, and the token's abilities are checked on top. The
@@ -228,13 +236,24 @@ hash of each secret, never the secret. `revokeAll(userId)` deletes every token o
 calls it inside its transaction, so a store on the database joins it.
 
 A `marmeon_personal_access_tokens` table of your own needs what the starter kit's migration gives it: `token_hash` as a 64-character
-`secret()` column, `abilities` as JSON, and `user_id` with `cascadeOnDelete()`, so a deleted user's tokens go with the account.
+`secret()` column with a unique index (`DatabaseAccessTokens` finds a token by it), `abilities` as JSON, and `user_id` with
+`cascadeOnDelete()`, so a deleted user's tokens go with the account. The primary key may be a number or a UUID: `AccessToken.id` is
+`number | string`.
+
+Tokens with a `|`, the form issued before, are no longer valid, and no code reads them. The starter kit's migration
+`marmeon make:upgrade-migrations` writes deletes every row of `marmeon_personal_access_tokens` and adds the unique index. A table
+of your own that has no such migration gets the same by hand: delete the old rows (they were hashed another way and match no new
+token, but they are only dead weight and show up in lists) and add `unique(token_hash)`. Then issue every token again and hand it
+to the integration, script or client that used the old one.
+
+Keep the order: stop the processes of the old release, run `marmeon migrate`, then start the new release. Started earlier, the new
+release issues tokens that the migration then deletes with the old ones.
 
 ## Configuration
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `AUTH_TOKEN_PREFIX` | `marmeon_` | The prefix of every token. Lower-case letters, digits and `_`, at most 16. Changing it invalidates every token made before. |
+| `AUTH_TOKEN_PREFIX` | `marmeon_` | The prefix of every token. Empty, or lower-case letters and digits ending in `_`, at most 16 characters; anything else stops the start. Changing it invalidates every token made before. |
 | `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password and a password reset revoke every token of the user. Only `true` and `false` start; an empty one counts as unset. |
 
 ## Testing

@@ -1,4 +1,4 @@
-import { Auth, authenticate, Hasher, PasswordHasher, TwoFactorState, type PasswordHash } from '@marmeon/auth';
+import { AccessTokenStore, Auth, authenticate, Hasher, PasswordHasher, TwoFactorState, type PasswordHash } from '@marmeon/auth';
 import { ConsoleLogger, defineModule, Logger, type LogContext } from '@marmeon/core';
 import { Controller, defineRoutes, everyone } from '@marmeon/http';
 import { Connections } from '@marmeon/database';
@@ -822,6 +822,8 @@ describe('API tokens', () => {
     const page = await (await sudo(user)).navigating().post('/settings/tokens', { json: { current_password: 'password', name: 'CLI', abilities } }).assertOk();
     return (page.page()!.props as { plainText: string }).plainText;
   };
+  /** The id of the user's one token — the token itself holds none. */
+  const idOf = async (user: User) => (await app.make(AccessTokenStore).list(user.id))[0]!.id;
   const api = (token?: string) => app.withHeaders(token === undefined ? {} : { authorization: `Bearer ${token}` }).expectingJson();
 
   it('creates a token in a layer over the list — its plain text is that answer only, a layer shown once — and the API takes it', async () => {
@@ -833,7 +835,7 @@ describe('API tokens', () => {
     const created = await session.layering().post('/settings/tokens', { json: { current_password: 'password', name: 'Backup script', abilities: ['users:read'] } }).assertOk().assertLayer('auth/NewAccessToken');
     expect(created.page()!.layer).toEqual({ key: 'tokens.create', base: '/settings/tokens', once: true });
     const plainText = (created.page()!.props as { plainText: string }).plainText;
-    expect(plainText).toMatch(/^marmeon_\d+\|[A-Za-z0-9]{40}[0-9a-f]{8}$/);
+    expect(plainText).toMatch(/^marmeon_[A-Za-z0-9]{40}[0-9a-f]{8}$/);
     expect(JSON.stringify(created.session())).not.toContain(plainText); // not flashed
     expect(created.headers.get('cache-control')).toContain('no-store');
     await session.navigating().get('/settings/tokens').assertPage('auth/AccessTokens', (props) => {
@@ -863,35 +865,65 @@ describe('API tokens', () => {
     const login = await app.post('/login', credentialsOf(ada));
     await app.withCookie(SESSION, login.cookie(SESSION)!).expectingJson().get('/api/users').assertUnauthorized();
     // Revoked: dead at once.
-    const id = Number(/^marmeon_(\d+)\|/.exec(plainText)![1]);
+    const id = Number(await idOf(ada));
     // An action: JSON back, never cached.
     await (await sudo(ada)).acting().delete(`/settings/tokens/${id}`).assertOk().assertExactJson({ revoked: id }).assertHeader('cache-control', 'no-store');
     await api(plainText).get('/api/users').assertUnauthorized();
   });
 
-  it('another user’s token id with a wrong secret is a 401 — and a broken checksum costs no query', async () => {
+  it('a forged token, a broken checksum, one of the first form and an unknown one get the same 401 through the same one lookup', async () => {
     const alan = await app.factory(UserFactory).create();
     const alansToken = await createToken(alan);
-    const id = /^marmeon_(\d+)\|/.exec(alansToken)![1]!;
     const { crc32 } = await import('node:zlib');
-    const forgedBody = `marmeon_${id}|${'x'.repeat(40)}`;
-    await api(`${forgedBody}${crc32(forgedBody).toString(16).padStart(8, '0')}`).get('/api/users').assertUnauthorized();
-
-    const queries: string[] = [];
-    const stop = app.make(Connections).onQuery((query) => queries.push(query.sql));
+    const withChecksum = (body: string) => `${body}${crc32(body).toString(16).padStart(8, '0')}`;
+    const secret = alansToken.slice('marmeon_'.length, -8);
     const typo = alansToken.slice(0, -9) + (alansToken.at(-9) === 'a' ? 'b' : 'a') + alansToken.slice(-8);
-    await api(typo).get('/api/users').assertUnauthorized();
+    const presented = [withChecksum(`marmeon_${'x'.repeat(40)}`), typo, withChecksum(`marmeon_${await idOf(alan)}|${secret}`), alansToken.slice(0, -1)];
+
+    const lookups: string[] = [];
+    const stop = app.make(Connections).onQuery((query) => {
+      if (query.sql.includes('token_hash')) lookups.push(query.sql);
+    });
+    const bodies = new Set<string>();
+    for (const token of presented) {
+      const response = await api(token).get('/api/users').assertUnauthorized();
+      bodies.add(JSON.stringify(response.json()) + response.headers.get('www-authenticate'));
+    }
+    expect(lookups).toHaveLength(presented.length);
+    expect(new Set(lookups).size).toBe(1);
+    // The answer of a token that is none of ours is the same.
+    const unknown = await api().get('/api/users').assertUnauthorized();
+    bodies.add(JSON.stringify(unknown.json()) + unknown.headers.get('www-authenticate'));
+    // Not one of the app's tokens (another prefix): no lookup at all.
+    await api(alansToken.replace('marmeon_', 'other_')).get('/api/users').assertUnauthorized();
     stop();
-    expect(queries).toEqual([]);
+    expect(lookups).toHaveLength(presented.length);
+    expect(bodies.size).toBe(1);
   });
 
   it('revokes only your own tokens — someone else’s id is a 404', async () => {
     const ada = await app.factory(UserFactory).create();
     const alan = await app.factory(UserFactory).create();
     const alansToken = await createToken(alan);
-    const id = /^marmeon_(\d+)\|/.exec(alansToken)![1];
+    const id = await idOf(alan);
     await (await sudo(ada)).expectingJson().delete(`/settings/tokens/${id}`).assertNotFound();
     await api(alansToken).get('/api/users').assertOk();
+  });
+
+  it('revokes by number; anything else, a UUID included, is a 404 without a query', async () => {
+    const ada = await app.factory(UserFactory).create();
+    await createToken(ada);
+    const session = (await sudo(ada)).expectingJson();
+    const queries: string[] = [];
+    const stop = app.make(Connections).onQuery((query) => queries.push(query.sql));
+    await session.delete('/settings/tokens/not-an-id').assertNotFound();
+    await session.delete('/settings/tokens/1%20or%201=1').assertNotFound();
+    expect(queries.filter((sql) => /marmeon_personal_access_tokens/.test(sql))).toEqual([]);
+    await session.delete('/settings/tokens/0190a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2b').assertNotFound();
+    expect(queries.filter((sql) => /marmeon_personal_access_tokens/.test(sql))).toEqual([]);
+    stop();
+    expect(await app.make(AccessTokenStore).list(ada.id)).toHaveLength(1);
+    await session.delete(`/settings/tokens/${await idOf(ada)}`).assertOk();
   });
 
   it('the token page is sudo mode', async () => {

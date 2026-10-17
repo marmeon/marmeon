@@ -13,10 +13,16 @@ import { UserProvider } from './user.ts';
 /** The migration `make:upgrade-migrations` writes for apps whose auth tables still have the old names. */
 export const AUTH_RENAME_MIGRATION = new URL('../stubs/migrations/rename_auth_tables_to_marmeon.ts', import.meta.url);
 
+/** The migration `make:upgrade-migrations` writes for apps whose API tokens still have the first release's form. */
+export const TOKENS_REISSUE_MIGRATION = new URL('../stubs/migrations/reissue_personal_access_tokens.ts', import.meta.url);
+
 /** The migration `make:upgrade-migrations` writes for apps whose sign-ins table still has the old name. */
 export const SIGN_INS_RENAME_MIGRATION = new URL('../stubs/migrations/rename_sign_ins_table_to_marmeon.ts', import.meta.url);
 
-/** The renames of the auth tables: the starter kit's tables as one set, and the sign-ins list, which `make:sign-ins-table` writes on its own. */
+/**
+ * The upgrades of the auth tables: the renames of the starter kit's tables as one set and the reissue of the API tokens on top of
+ * it, and the sign-ins list, which `make:sign-ins-table` writes on its own.
+ */
 export function authMigrationUpgrades() {
   return [
     {
@@ -33,6 +39,13 @@ export function authMigrationUpgrades() {
         'create_passkeys_table',
       ],
       contents: readFileSync(AUTH_RENAME_MIGRATION, 'utf8'),
+    },
+    {
+      set: 'auth',
+      revision: 3,
+      name: 'reissue_personal_access_tokens',
+      createdBy: ['create_personal_access_tokens_table'],
+      contents: readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'),
     },
     {
       set: 'sign-ins',
