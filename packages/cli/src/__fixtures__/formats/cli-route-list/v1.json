@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "routes": [
+    { "methods": ["GET"], "path": "/_marmeon/own", "name": null, "group": null, "middleware": [], "access": "framework", "action": "Closure" },
+    { "methods": ["GET"], "path": "/open", "name": "open", "group": null, "middleware": [], "access": "none", "action": "Closure" },
+    { "methods": ["GET"], "path": "/grouped", "name": null, "group": "web", "middleware": ["Named"], "access": ["can Note.view(note)"], "action": "Closure" }
+  ],
+  "warnings": []
+}

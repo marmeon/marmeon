@@ -6,6 +6,7 @@ import type { CommandInput } from '../command.ts';
 export class RouteListCommand {
   static command = 'route:list';
   static description = 'List all registered routes';
+  static options = { json: { type: 'boolean' } } as const;
 
   readonly #router: Router;
 
@@ -13,7 +14,23 @@ export class RouteListCommand {
     this.#router = router;
   }
 
-  handle({ output }: CommandInput): void {
+  handle({ options, output }: CommandInput): void {
+    if (options.json === true) {
+      output.json({
+        format: 1,
+        routes: this.#router.routes.map((route) => ({
+          methods: [...route.methods],
+          path: route.path,
+          name: route.routeName ?? null,
+          group: route.group ?? null,
+          middleware: this.#router.middlewareFor(route).map(middlewareName),
+          access: this.#accessList(route),
+          action: actionName(route.action),
+        })),
+        warnings: [],
+      });
+      return;
+    }
     // Middleware in execution order: global, the route's group, its own.
     const rows = this.#router.routes.map((route) => [
       route.methods.join('|'),
@@ -30,10 +47,17 @@ export class RouteListCommand {
   }
 
   // The framework's own routes decide for themselves (signatures, their own checks), so they say so instead of `none`.
-  #access(route: RouteDefinition): string {
+  // `framework` and `none` stand alone; otherwise one label per check.
+  #accessList(route: RouteDefinition): string[] | 'framework' | 'none' {
     if (this.#router.isFrameworkRoute(route)) return 'framework';
     const checks = routeAccess(route);
-    return checks.length === 0 ? 'none' : checks.map(accessLabel).join(' + ');
+    return checks.length === 0 ? 'none' : checks.map(accessLabel);
+  }
+
+  // The table joins the labels with `+`.
+  #access(route: RouteDefinition): string {
+    const list = this.#accessList(route);
+    return typeof list === 'string' ? list : list.join(' + ');
   }
 }
 

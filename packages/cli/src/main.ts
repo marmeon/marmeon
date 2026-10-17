@@ -6,8 +6,8 @@ import { coreSolutions, loadDiscoveredPackages, messageBase, trace } from '@marm
 import { channels, type CommandRunMessage } from '@marmeon/core/diagnostics';
 import { CommandArgumentsError, CommandRegistry, CommandSetupError, parseCommandArgs, runCommand, wantsHelp } from './command.ts';
 import { BUILT_IN } from './built-in.ts';
-import { printCommandHelp, printCommandList } from './commands/list.ts';
-import { Output } from './output.ts';
+import { printCommandHelp, printCommandList, printCommandListJson } from './commands/list.ts';
+import { Output, style } from './output.ts';
 import { spawnMarmeon } from './spawn.ts';
 
 /** Exit code of a call that is wrong (unknown command, unknown option, missing option value), apart from a command that ran and failed (1). */
@@ -32,6 +32,10 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   const [name = 'list', ...rest] = argv;
   const builtIn = BUILT_IN.find((command) => command.command === name);
   const listing = name === 'list' || name === 'help' || name === '--help' || name === '-h';
+  const json = listing && rest.includes('--json');
+  // With --json stdout holds the document or nothing: what a failed command says goes to stderr.
+  const failing = rest.includes('--json') ? 'stderr' : 'stdout';
+  let warning: string | undefined;
   // A built-in's help needs no app; an app's command is known once the app booted.
   if (builtIn && wantsHelp(rest, builtIn)) {
     printCommandHelp({ output }, builtIn);
@@ -60,10 +64,11 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
         // Node's code (ERR_…) beside its message: what one searches for.
         const code = (loaded as { code?: unknown }).code;
         output.error(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}${typeof code === 'string' ? ` (${code})` : ''}`);
-        await printSolutions(output, loaded, root);
+        await printSolutions(output, loaded, root, failing);
         return 1;
       }
-      output.warn(`${loaded.message.split('\n')[0]} — showing built-in commands only.`);
+      warning = `${loaded.message.split('\n')[0]} — showing built-in commands only.`;
+      if (!json) output.warn(warning);
     } else {
       app = loaded;
     }
@@ -73,15 +78,19 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
   const registry = app?.container.has(CommandRegistry) ? app.container.make(CommandRegistry) : new CommandRegistry().add(BUILT_IN, 'marmeon');
 
   if (listing) {
-    // `list` and `help` take no options but --help/-h; `help <command>` prints that command's help.
+    // `list` and `help` take no options but --help/-h and --json; `help <command>` prints that command's help.
     const flags = rest.slice(0, rest.includes('--') ? rest.indexOf('--') : undefined);
-    const stray = flags.find((flag) => flag.startsWith('-') && flag !== '--help' && flag !== '-h');
+    const stray = flags.find((flag) => flag.startsWith('-') && flag !== '--help' && flag !== '-h' && flag !== '--json');
     if (stray !== undefined) {
       output.error(`Unknown option '${stray}'\nUsage: marmeon ${name === 'help' ? 'help [command]' : 'list'}`);
       return EXIT_USAGE;
     }
     const target = name === 'help' ? flags.find((flag) => !flag.startsWith('-')) : undefined;
     if (target !== undefined) {
+      if (json) {
+        output.error(`--json lists every command and takes no command name.\nUsage: marmeon help --json`);
+        return EXIT_USAGE;
+      }
       const Target = registry.get(target);
       if (!Target && !app) {
         // The app's commands are unknown while it does not boot: not a wrong call.
@@ -95,7 +104,8 @@ export async function run(argv: readonly string[], root = process.cwd()): Promis
       printCommandHelp({ output }, Target);
       return 0;
     }
-    printCommandList({ output }, registry.all());
+    if (json) printCommandListJson({ output }, registry.all(), warning === undefined, warning === undefined ? [] : [warning]);
+    else printCommandList({ output }, registry.all());
     return 0;
   }
 
@@ -159,17 +169,18 @@ function printError(output: Output, error: unknown): void {
  * What to do about an error the app could not start with — the solutions of the core and of the installed packages
  * (`APP_KEY` → `marmeon key:generate`), as text. Never fails itself.
  */
-async function printSolutions(output: Output, error: Error, root: string): Promise<void> {
+async function printSolutions(output: Output, error: Error, root: string, stream: 'stdout' | 'stderr'): Promise<void> {
+  const line = (text = '') => (stream === 'stderr' ? void process.stderr.write(`${text}\n`) : output.line(text));
   try {
     const discovered = await loadDiscoveredPackages({ root }).catch(() => undefined);
     const providers = (discovered?.providers ?? []) as ServiceProviderClass[];
     const solutions = await new ErrorSolutions([...providers.flatMap((Provider) => Provider.solutions ?? []), ...coreSolutions]).find(error);
     for (const solution of solutions) {
-      output.line();
-      output.info(`How to fix it${solution.code ? ` (${solution.code})` : ''}: ${solution.title}`);
-      output.line(`  ${solution.text}`);
-      if (solution.command) output.line(`  $ ${solution.command}`);
-      if (solution.docs) output.line(`  docs: ${solution.docs}`);
+      line();
+      line(`${stream === 'stderr' ? 'ℹ' : style('cyan', 'ℹ')} How to fix it${solution.code ? ` (${solution.code})` : ''}: ${solution.title}`);
+      line(`  ${solution.text}`);
+      if (solution.command) line(`  $ ${solution.command}`);
+      if (solution.docs) line(`  docs: ${solution.docs}`);
     }
   } catch {
     // The error itself was printed — that is what counts.

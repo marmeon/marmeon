@@ -60,6 +60,30 @@ A script can tell a typo from a failure this way. A built-in's options are check
 up once the app has booted, so a failed boot (1) comes first. A few commands have codes of their own: [`tinker`](#running-code-from-a-script) ends with
 130 on a signal, and [`queue:work`](queues.md#timeouts-and-retryafter) with 70 when a job does not stop in time. A command that checks its own arguments, such as `schedule:test` without a name, still exits with 1.
 
+## Machine-readable output
+
+A command that takes `--json` prints one JSON document instead of its text, for scripts and tools:
+
+```sh
+pnpm marmeon route:list --json
+```
+
+- The first key of the document is `format`, a whole number: the version of that command's document. Each command counts on its
+  own, so `route:list` format 1 and another command's format 1 are different formats.
+- A new field is no new version. Removing or renaming a field, or changing its type or meaning, is a new `format` and a breaking
+  change. `--json` always prints the newest format.
+- stdout holds the document and nothing else; warnings are in its `warnings` list. A missing value is `null`, never left out.
+- When the command fails (exit code other than 0), stdout stays empty and the message is on stderr, as without `--json`. Parse
+  stdout only after exit code 0.
+
+| Command | Document |
+| --- | --- |
+| `route:list --json` | [Listing routes](routing.md#listing-routes) |
+| `list --json` | The commands `marmeon list` shows. `complete` is `false` when the app did not load and only the built-in commands are known. Each command has `name`, `description`, `usage`, `options` (`name`, `type`, `short`, `multiple`, `default`), `experimental` and `launcher` (`dev` and `start`, which the launcher runs). |
+
+A command of your own, or of a package, prints its document with `output.json({ format: 1, … })` and declares
+`static options = { json: { type: 'boolean' } }`.
+
 ## The development server
 
 `marmeon dev`, which `pnpm dev` runs, serves the app with Vite in front of it and starts what the app needs next to it. The
@@ -93,7 +117,7 @@ start`, and `marmeon dev` refuses it.
 | `dev` | The development server, with a worker and the scheduler next to it. |
 | `build [--no-typecheck]` | Builds the app for production. See [deployment](deployment.md#building-and-starting). |
 | `start [--workers=N]` | Starts the production server on the build. It refuses to run when `NODE_ENV=development` or `test` comes from `.env` alone: use `marmeon dev`, set `NODE_ENV=production` to try the build, or set `NODE_ENV=development` in the shell to start the development stack on purpose. |
-| `route:list` | Every route with its method, path, name, group, middleware, who may call it (`ACCESS`) and action. See [listing routes](routing.md#listing-routes). |
+| `route:list [--json]` | Every route with its method, path, name, group, middleware, who may call it (`ACCESS`) and action. See [listing routes](routing.md#listing-routes). |
 | `route:types [--check]` | Writes `bootstrap/routes.ts`. `--check` fails when it is out of date, for CI. It also exits with 1 and lists every route that does not say who may call it, so `marmeon build` stops on one. See [typed route names](routing.md#typed-route-names) and [every route decides](authorization.md#every-route-decides). |
 | `discover` | Finds the installed packages and their providers. See [discovery](modules.md#marmeon-discover). |
 | `key:generate [--show] [--force]` | Sets `APP_KEY` in `.env`. |

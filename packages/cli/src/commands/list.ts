@@ -29,6 +29,36 @@ const LAUNCHER = [
   { command: 'start', description: 'Start the production server (after marmeon build)' },
 ] as unknown as CommandClass[];
 
+/**
+ * `marmeon list --json`: the commands `printCommandList` shows, with their options. `complete` is false when the app did not
+ * load and only the built-ins are known; why is in `warnings`.
+ */
+export function printCommandListJson({ output }: Pick<CommandInput, 'output'>, commands: readonly CommandClass[], complete = true, warnings: readonly string[] = []): void {
+  const launcher = new Set(LAUNCHER.map((command) => command.command));
+  const visible = [...LAUNCHER, ...commands.filter((command) => !command.hidden)];
+  output.json({
+    format: 1,
+    complete,
+    commands: visible
+      .sort((a, b) => a.command.localeCompare(b.command))
+      .map((command) => ({
+        name: command.command,
+        description: command.description,
+        usage: command.usage ?? null,
+        options: Object.entries(command.options ?? {}).map(([name, option]) => ({
+          name,
+          type: option.type,
+          short: option.short ?? null,
+          multiple: option.multiple === true,
+          default: option.default ?? null,
+        })),
+        experimental: command.experimental === true,
+        launcher: launcher.has(command.command),
+      })),
+    warnings,
+  });
+}
+
 /** `marmeon <command> --help`: what the command does, its usage line and its options. */
 export function printCommandHelp({ output }: Pick<CommandInput, 'output'>, command: CommandClass): void {
   output.line(`${command.description}${marker(command)}`);

@@ -62,7 +62,7 @@ export interface TaskRun {
 }
 
 /** The output of a scheduled command goes to the log, as the task's. */
-type OutputLike = { line(text?: string): void; info(text: string): void; success(text: string): void; warn(text: string): void; error(text: string): void; table(header: readonly string[], rows: readonly (readonly string[])[]): void };
+type OutputLike = { line(text?: string): void; info(text: string): void; success(text: string): void; warn(text: string): void; error(text: string): void; json(document: { readonly format: number; readonly [key: string]: unknown }): void; table(header: readonly string[], rows: readonly (readonly string[])[]): void };
 
 async function importQueue() {
   try {

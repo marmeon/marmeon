@@ -33,6 +33,33 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(stdout).toMatch(/GET\s+\/_marmeon\/live\s.*\sframework\s+LiveStreamController/);
   });
 
+  it('prints route:list and list as one JSON document with the format first', () => {
+    const routes = marmeon(webApp, ['route:list', '--json']);
+    expect(routes.code).toBe(0);
+    expect(Object.keys(JSON.parse(routes.stdout))[0]).toBe('format');
+    expect(JSON.parse(routes.stdout)).toMatchObject({ format: 1, warnings: [] });
+    const list = marmeon(webApp, ['list', '--json']);
+    expect(list.code).toBe(0);
+    expect(JSON.parse(list.stdout)).toMatchObject({ format: 1, complete: true });
+    expect(JSON.parse(list.stdout).commands.find((command: { name: string }) => command.name === 'dev')).toMatchObject({ launcher: true });
+  });
+
+  it('lists the built-in commands as incomplete when the app does not load, with the reason in the document and nothing on stderr', () => {
+    const { code, stdout, stderr } = marmeon(webApp, ['list', '--json'], { APP_NAME: '', APP_URL: 'localhost' });
+    expect(code).toBe(0);
+    expect(stderr).toBe('');
+    const document = JSON.parse(stdout) as { complete: boolean; warnings: string[] };
+    expect(document.complete).toBe(false);
+    expect(document.warnings).toHaveLength(1);
+  });
+
+  it('writes nothing to stdout when a command fails with --json', () => {
+    const { code, stdout, stderr } = marmeon(webApp, ['route:list', '--json'], { APP_NAME: '', APP_URL: 'localhost' });
+    expect(code).toBe(1);
+    expect(stdout).toBe('');
+    expect(stderr).toContain('Invalid configuration');
+  });
+
   it('prints configuration errors without Node internals and exits with 1', () => {
     const { code, stderr } = marmeon(webApp, ['route:list'], { APP_NAME: '', APP_URL: 'localhost' });
     expect(code).toBe(1);
@@ -162,6 +189,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
   it('exits with 2 for a wrong call of help and list, and for a wrong call of dev that would wait for changes', () => {
     expect(marmeon(webApp, ['help', 'nope']).code).toBe(2);
     expect(marmeon(webApp, ['list', '--nope']).code).toBe(2);
+    expect(marmeon(webApp, ['help', 'route:list', '--json']).code).toBe(2);
     // Built-in options are checked before the app boots, so missing secrets do not hide the wrong call.
     expect(marmeon(webApp, ['route:list', '--nope'], { NODE_ENV: 'production', APP_KEY: '', APP_PREVIOUS_KEYS: '', APP_NAME: '', APP_URL: '' }).code).toBe(2);
     // An app that does not boot cannot say whether `migrate` exists: not a wrong call.
