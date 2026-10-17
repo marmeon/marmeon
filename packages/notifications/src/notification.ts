@@ -38,7 +38,7 @@ export interface NotificationMail {
 export interface NotificationChannelMap {
   /** A mail, composed by `toMail(recipient, data, t)` in the recipient's language and queued (`mailer.queue`). */
   mail: { toMail(recipient: any, data: any, t: Translator): NotificationMail | Promise<NotificationMail> };
-  /** A row in the `marmeon_notifications` table — what `toDatabase(data, recipient)` returns, checked by `static database`. */
+  /** A row in the `notifications` table — what `toDatabase(data, recipient)` returns, checked by `static database`. */
   database: { toDatabase(data: any, recipient: any): unknown };
 }
 
@@ -61,11 +61,11 @@ export interface NotificationQueueOptions {
 
 /** The static side of a notification class: a stable name and the schema of its data — like a job's. */
 export interface NotificationStatics {
-  /** The notification's stable name — what the queue and the `marmeon_notifications` table store, never the class name: `'auth.new-sign-in'`. */
+  /** The notification's stable name — what the queue and the `notifications` table store, never the class name: `'auth.new-sign-in'`. */
   readonly notification: string;
   /** The schema of its data (Standard Schema) — checked when it is sent and again before it is delivered. */
   readonly schema: StandardSchemaV1;
-  /** The schema of what `toDatabase()` returns — what the `marmeon_notifications` table keeps and the inbox reads back. */
+  /** The schema of what `toDatabase()` returns — what the `notifications` table keeps and the inbox reads back. */
   readonly database?: StandardSchemaV1;
   /** Where its job runs (and its mail is queued). */
   readonly queue?: NotificationQueueOptions;

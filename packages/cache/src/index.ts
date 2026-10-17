@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { collectDrivers } from '@marmeon/core/internal';
@@ -8,7 +7,7 @@ import { CacheConfig } from './config.ts';
 import { CacheSetupError } from './errors.ts';
 import { CacheHealthCheck } from './health.ts';
 import { guardDriver, verifyDriver } from './guarded.ts';
-import { MakeCacheTableCommand, RENAME_MIGRATION } from './commands/make-cache-table.ts';
+import { MakeCacheTableCommand } from './commands/make-cache-table.ts';
 import { CacheClearCommand, CachePruneCommand } from './commands/prune.ts';
 import { LimitLiveValidation, RateLimiter } from './rate-limiter.ts';
 import { CACHE_COLUMNS, CACHE_LOCKS_COLUMNS, CACHE_LOCKS_TABLE, CACHE_TABLE, DatabaseStore } from './stores/database.ts';
@@ -79,16 +78,6 @@ export class CacheServiceProvider implements ServiceProvider {
   static config = [CacheConfig];
   /** The cache takes and frees a key, for `/up/ready`. */
   static health = [CacheHealthCheck];
-  /** `marmeon make:upgrade-migrations` writes the rename of `cache` and `cache_locks` to `marmeon_cache` and `marmeon_cache_locks`. */
-  static migrationUpgrades = [
-    {
-      set: 'cache',
-      revision: 2,
-      name: 'rename_cache_tables_to_marmeon',
-      createdBy: ['create_cache_table'],
-      contents: readFileSync(RENAME_MIGRATION, 'utf8'),
-    },
-  ];
   static commands = [MakeCacheTableCommand, CachePruneCommand, CacheClearCommand];
 
   /** The driver a provider brought under `CACHE_DRIVER`, built once; a factory that failed is not run again. */

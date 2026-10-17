@@ -7,7 +7,7 @@ const driverName = () => env.string().regex(/^[a-z][a-z0-9-]*$/, 'must be a driv
 const seconds = (name: string) => env.integer(`${name} must be a number of seconds`).min(1).default(90);
 
 /**
- * The queue connections: `sync` runs a job at once, in the dispatching process; `database` keeps jobs in the `marmeon_jobs`
+ * The queue connections: `sync` runs a job at once, in the dispatching process; `database` keeps jobs in the `jobs`
  * table, `redis` in Redis; a provider can bring more (`static queueDrivers`, `docs/drivers.md#queue-drivers-and-failed-job-stores`). `retryAfter` must be longer
  * than any job's `timeout` plus the worker's `--stop-timeout`, or a second worker would claim a job still running —
  * `queue:work` refuses to start otherwise. See `docs/queues.md#configuration`.
@@ -22,7 +22,7 @@ export const QueueConfig = defineConfig('queue', {
     REDIS_QUEUE: env.string().default('default'),
     REDIS_QUEUE_RETRY_AFTER: seconds('REDIS_QUEUE_RETRY_AFTER'),
     QUEUE_FAILED_DRIVER: driverName().default('database'),
-    /** The database connection of `marmeon_failed_jobs` (default: DB_QUEUE_CONNECTION). */
+    /** The database connection of `failed_jobs` (default: DB_QUEUE_CONNECTION). */
     QUEUE_FAILED_CONNECTION: env.string().optional(),
   }),
   resolve: (e) => {
@@ -42,7 +42,7 @@ export type QueueConfig = ConfigOf<typeof QueueConfig>;
 
 /**
  * The connection the queue's tables belong on — for the migration `marmeon make:queue-table` writes (`connection` in
- * `defineMigration`): `DB_QUEUE_CONNECTION`. It creates `marmeon_failed_jobs` there too, so a `QUEUE_FAILED_CONNECTION` of its own (with
+ * `defineMigration`): `DB_QUEUE_CONNECTION`. It creates `failed_jobs` there too, so a `QUEUE_FAILED_CONNECTION` of its own (with
  * failed jobs kept in the database) stops the migration with what to do, instead of creating the table where nothing looks.
  */
 export function queueTablesConnection(container: Resolver): string {
@@ -51,7 +51,7 @@ export function queueTablesConnection(container: Resolver): string {
   const jobs = database && 'connection' in database ? database.connection : 'default';
   if (config.failed.driver === 'database' && config.failed.connection !== jobs) {
     throw new Error(
-      `The migration of make:queue-table creates marmeon_jobs and marmeon_failed_jobs on one connection, DB_QUEUE_CONNECTION (${jobs}) — but QUEUE_FAILED_CONNECTION is ${config.failed.connection}. Split it: this migration keeps marmeon_jobs with connection: '${jobs}', a migration of its own creates marmeon_failed_jobs with connection: '${config.failed.connection}' — or let both use one connection.`,
+      `The migration of make:queue-table creates jobs and failed_jobs on one connection, DB_QUEUE_CONNECTION (${jobs}) — but QUEUE_FAILED_CONNECTION is ${config.failed.connection}. Split it: this migration keeps jobs with connection: '${jobs}', a migration of its own creates failed_jobs with connection: '${config.failed.connection}' — or let both use one connection.`,
     );
   }
   return jobs;

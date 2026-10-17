@@ -109,7 +109,7 @@ yourself with Kysely, `queue.using(trx).dispatch(…)` writes through it. The
 
 ### Secrets in payloads
 
-The `marmeon_jobs` and `marmeon_failed_jobs` tables, and Redis, are a database: a reset link or a signed URL in a payload is a secret at rest.
+The `jobs` and `failed_jobs` tables, and Redis, are a database: a reset link or a signed URL in a payload is a secret at rest.
 Keep ids in a payload and read the rest in the job. When a payload must carry a secret, or personal data such as an address,
 encrypt it:
 
@@ -130,7 +130,7 @@ export class SendPasswordResetLinkJob {
 `static encrypted = true` encrypts the payload with the app's `APP_KEY`, and `APP_PREVIOUS_KEYS` still decrypt it. It needs
 `@marmeon/encryption`, which every new app has; without it the start fails. A plain payload for an encrypted job is never run:
 the job fails at once. The framework's own jobs are always encrypted: queued mails with their links, queued listeners and queued
-notifications. The error text in `marmeon_failed_jobs` and the worker's log lines are [redacted](logging.md#keeping-secrets-out-of-the-log)
+notifications. The error text in `failed_jobs` and the worker's log lines are [redacted](logging.md#keeping-secrets-out-of-the-log)
 like any log entry.
 
 ## Writing jobs
@@ -299,14 +299,14 @@ every queue, and restarts it when the code changes. It runs none with `QUEUE_CON
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `QUEUE_CONNECTION` | `database` | The default connection: `database`, `redis`, `sync` or the name of a driver a package brings. |
-| `DB_QUEUE_CONNECTION` | `default` | The database connection of the `marmeon_jobs` table. |
+| `DB_QUEUE_CONNECTION` | `default` | The database connection of the `jobs` table. |
 | `DB_QUEUE` | `default` | The default queue of the `database` connection. |
 | `DB_QUEUE_RETRY_AFTER` | `90` | Seconds before a claimed job of the `database` connection may be claimed again. |
 | `REDIS_QUEUE_CONNECTION` | `default` | The Redis connection of the `redis` queue. |
 | `REDIS_QUEUE` | `default` | The default queue of the `redis` connection. |
 | `REDIS_QUEUE_RETRY_AFTER` | `90` | Seconds before a claimed job of the `redis` connection may be claimed again. |
-| `QUEUE_FAILED_DRIVER` | `database` | Where failed jobs go: `database`, the `marmeon_failed_jobs` table, `null`, which only logs them, or the name of a store a package brings. |
-| `QUEUE_FAILED_CONNECTION` | `DB_QUEUE_CONNECTION` | The database connection of `marmeon_failed_jobs`. |
+| `QUEUE_FAILED_DRIVER` | `database` | Where failed jobs go: `database`, the `failed_jobs` table, `null`, which only logs them, or the name of a store a package brings. |
+| `QUEUE_FAILED_CONNECTION` | `DB_QUEUE_CONNECTION` | The database connection of `failed_jobs`. |
 
 A connection the app does not configure, a driver name nobody brought, an unknown database or Redis connection or a missing driver
 package stops the app at its start, with what to do.
@@ -315,14 +315,14 @@ package stops the app at its start, with what to do.
 
 | Driver | Where jobs wait | Use it for |
 | --- | --- | --- |
-| `database` | The `marmeon_jobs` table. | The default. No extra service, and a dispatch is part of the app's transaction. |
+| `database` | The `jobs` table. | The default. No extra service, and a dispatch is part of the app's transaction. |
 | `redis` | Lists and sorted sets in Redis. | Many jobs, in an app that runs Redis anyway. |
 | `sync` | Nowhere: `handle()` runs at the dispatch, in a scope of its own, and its error is the dispatch's. | Scripts, and tests that want the work done at once. |
 
 Exactly one worker claims a job, also with many workers on Postgres or Redis. The `redis` driver needs `@marmeon/redis`, which
 brings the Redis client. The [Redis](redis.md#which-connection-a-driver-uses) page covers its connection.
 
-The `database` driver needs its tables, `marmeon_jobs` and `marmeon_failed_jobs`. A new app has them. Otherwise write the migration and run it:
+The `database` driver needs its tables, `jobs` and `failed_jobs`. A new app has them. Otherwise write the migration and run it:
 
 ```sh
 pnpm marmeon make:queue-table
@@ -330,15 +330,8 @@ pnpm marmeon migrate
 ```
 
 `make:queue-table` writes into the `system` module, or the module that `--module` names. The migration runs on
-`DB_QUEUE_CONNECTION`, and the [migrations](migrations.md#the-frameworks-tables) page says what to do when `marmeon_failed_jobs` goes
+`DB_QUEUE_CONNECTION`, and the [migrations](migrations.md#the-frameworks-tables) page says what to do when `failed_jobs` goes
 elsewhere.
-
-An app made with an earlier release has the tables under their old names, `jobs` and `failed_jobs`. In development, run
-`marmeon make:upgrade-migrations`, commit what it writes, and regenerate `bootstrap/database.d.ts` with `marmeon db:types`. To deploy,
-let the queue run empty, stop every process of the old release (web, workers, scheduler, cron jobs), deploy, run `marmeon migrate`,
-then start the new release. A process of the old release that keeps running fails on the renamed tables. The rows stay: a job still
-queued under the old release has no format mark and goes to `marmeon_failed_jobs`, where it never runs. Until the migration has run,
-`/up/ready` is red and `queue:work` refuses to start and says so. An app with a `QUEUE_FAILED_CONNECTION` of its own splits the rename migration the way it split the one that created the tables: `jobs` on one connection, `failed_jobs` on the other, each with its own `connection`. See [upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables).
 
 ### Queue drivers and failed-job stores
 

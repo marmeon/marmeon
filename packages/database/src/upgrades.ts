@@ -11,7 +11,7 @@ export interface MigrationUpgrade {
   readonly set: string;
   /** The revision this migration brings the set to (the first stub is revision 1). */
   readonly revision: number;
-  /** The file name without timestamp: `rename_queue_tables_to_marmeon`. */
+  /** The file name without timestamp: `reissue_personal_access_tokens`. */
   readonly name: string;
   /** The names (without timestamp) of the migrations that created the set — where the app keeps it. */
   readonly createdBy: readonly string[];
@@ -28,11 +28,8 @@ export interface TableRequirement {
   readonly secrets?: readonly string[];
   /** The set of tables the requirement belongs to, as in {@link MigrationUpgrade.set}. */
   readonly set: string;
-  /**
-   * Old names of the table. When given, the requirement is only checked once the table or one of these exists: an app that never
-   * made the table (the feature is unused) stays ready, an app that still has the old table does not.
-   */
-  readonly unlessAbsent?: readonly string[];
+  /** Only checked when the table exists: an app that never made it (the feature is unused) stays ready, one with a table that lacks a column does not. */
+  readonly whenPresent?: true;
 }
 
 const MARK = /^\/\/ @marmeon-stub (\S+) (\d+)\r?\n/;

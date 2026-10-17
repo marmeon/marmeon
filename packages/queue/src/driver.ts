@@ -60,7 +60,7 @@ export interface QueueCounts {
 }
 
 /**
- * The contract of a queue driver: `sync` runs at once, `database` keeps jobs in the `marmeon_jobs` table, `redis` in
+ * The contract of a queue driver: `sync` runs at once, `database` keeps jobs in the `jobs` table, `redis` in
  * lists. A claim must be atomic across processes — two workers never hold the same job at once — and counts the
  * attempt. `ack`, `release` and `fail` act only on the claim they are given: if the claim expired (after `retryAfter`)
  * and another worker holds the job now, they change nothing and return false. A driver that expects `retryAfter` to guard
@@ -198,7 +198,7 @@ export function backoffDelay(backoff: readonly number[], attempt: number): numbe
   return backoff[Math.min(attempt - 1, backoff.length - 1)] ?? 0;
 }
 
-/** A failed job, as `marmeon_failed_jobs` keeps it. */
+/** A failed job, as `failed_jobs` keeps it. */
 export interface FailedJob {
   /** The job's id. */
   readonly uuid: string;
@@ -214,7 +214,7 @@ export interface FailedJob {
   readonly failedAt: number;
 }
 
-/** Where failed jobs go: the `marmeon_failed_jobs` table, or memory (tests). */
+/** Where failed jobs go: the `failed_jobs` table, or memory (tests). */
 export interface FailedJobStore {
   /** Records a failure — again for the same job id replaces the entry. */
   record(job: FailedJob): Promise<void>;

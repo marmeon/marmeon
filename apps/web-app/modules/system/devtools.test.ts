@@ -59,7 +59,7 @@ describe('the devtools', () => {
     expect(recorded).not.toMatch(/\$argon2id\$/);
   });
 
-  // The sessions in the database too: their statements (`marmeon_sessions.payload` is a secret column) carry the session id.
+  // The sessions in the database too: their statements (`sessions.payload` is a secret column) carry the session id.
   // A whole account's life in one test — registration, two sign-ins, sign-out, a password reset through the worker, an API token — and
   // every file the recorder wrote: 0.1 s here, past 5 s on a fully loaded machine; its own time, like the page test below.
   it.each(['memory', 'database'])('keep none of a session’s secrets — registration, login, reset, API token — in what they write (sessions: %s)', { timeout: 20_000 }, async (driver) => {
@@ -98,7 +98,7 @@ describe('the devtools', () => {
 
     const { password: hash } = await app.make(Database).selectFrom('users').select((eb) => secret(eb, 'password')).where('email', '=', email).executeTakeFirstOrThrow();
     expect(String(hash)).toMatch(/^\$argon2id\$/);
-    if (driver === 'database') expect(app.devtools.entries('query').some((query) => query.content.sql.includes('"marmeon_sessions"') || query.content.sql.includes('marmeon_sessions'))).toBe(true);
+    if (driver === 'database') expect(app.devtools.entries('query').some((query) => query.content.sql.includes('"sessions"') || query.content.sql.includes('sessions'))).toBe(true);
     // What the store writes, as it writes it: NDJSON files.
     const directory = mkdtempSync(join(tmpdir(), 'marmeon-devtools-plain-'));
     try {

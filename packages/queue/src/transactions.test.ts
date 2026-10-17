@@ -89,7 +89,7 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
       },
     });
     const connections = application.container.make(Connections);
-    await sql`delete from marmeon_jobs`.execute(connections.get());
+    await sql`delete from jobs`.execute(connections.get());
     await sql`delete from handled`.execute(connections.get());
     return Object.assign(application, { seen });
   }
@@ -100,7 +100,7 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
     const connections = application.container.make(Connections);
     // Another process's view: its own connection.
     const other = databaseConnections(connectionOptions(target));
-    const outside = () => sql<{ count: number | string }>`select count(*) as count from marmeon_jobs`.execute(other.get()).then(({ rows }) => Number(rows[0]!.count));
+    const outside = () => sql<{ count: number | string }>`select count(*) as count from jobs`.execute(other.get()).then(({ rows }) => Number(rows[0]!.count));
     try {
       await expect(
         connections.transaction(async () => {

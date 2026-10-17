@@ -396,7 +396,7 @@ describe.each(drivers)('the migrator keeps its bookkeeping in marmeon_ tables on
 
     it('knows its names', () => {
       expect([...NEW, ...OLD, 'marmeon_migration_lock'].every(isBookkeepingName)).toBe(true);
-      expect(['users', 'marmeon_jobs', 'jobs'].some(isBookkeepingName)).toBe(false);
+      expect(['users', 'jobs', 'sessions'].some(isBookkeepingName)).toBe(false);
       expect(VERSIONS_TABLE).toBe('marmeon_versions');
     });
   });

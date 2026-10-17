@@ -197,13 +197,6 @@ export declare class NotificationServiceProvider implements ServiceProvider {
     static config: import("@marmeon/core").ConfigDefinition<{
         connection: string;
     }>[];
-    static migrationUpgrades: {
-        set: string;
-        revision: number;
-        name: string;
-        createdBy: string[];
-        contents: string;
-    }[];
     static commands: (typeof MakeNotificationsTableCommand | typeof PruneNotificationsCommand)[];
     register(container: Container): void;
     boot(app: Application): Promise<void>;

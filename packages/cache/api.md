@@ -79,13 +79,6 @@ export declare class CacheServiceProvider implements ServiceProvider {
         prefix: string;
     }>[];
     static health: (typeof CacheHealthCheck)[];
-    static migrationUpgrades: {
-        set: string;
-        revision: number;
-        name: string;
-        createdBy: string[];
-        contents: string;
-    }[];
     static commands: (typeof MakeCacheTableCommand | typeof CachePruneCommand | typeof CacheClearCommand)[];
     register(container: Container): void;
     boot(app: Application): Promise<void>;

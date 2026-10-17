@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs';
 import { Application, Clock, EventRegistry, ListenerQueue, Logger, Redactor, type Container, type ServiceProvider } from '@marmeon/core';
 import { isQueuedListener } from '@marmeon/core/internal';
-import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand, RENAME_MIGRATION } from './commands/failed.ts';
+import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 import { QueueWorkCommand } from './commands/work.ts';
 import { QueueConfig } from './config.ts';
 import { FAILED_JOBS_COLUMNS, FAILED_JOBS_TABLE, JOBS_COLUMNS, JOBS_TABLE } from './drivers/database.ts';
@@ -88,16 +87,6 @@ export class QueueServiceProvider implements ServiceProvider {
   static config = [QueueConfig];
   /** The default connection's driver answers, for `/up/ready`. */
   static health = [QueueHealthCheck];
-  /** `marmeon make:upgrade-migrations` writes the rename of `jobs` and `failed_jobs` to `marmeon_jobs` and `marmeon_failed_jobs`. */
-  static migrationUpgrades = [
-    {
-      set: 'queue',
-      revision: 2,
-      name: 'rename_queue_tables_to_marmeon',
-      createdBy: ['create_jobs_table'],
-      contents: readFileSync(RENAME_MIGRATION, 'utf8'),
-    },
-  ];
   static commands = [QueueWorkCommand, QueueFailedCommand, QueueRetryCommand, QueueForgetCommand, QueueFlushCommand, QueuePruneFailedCommand, QueueSizeCommand, MakeQueueTableCommand];
 
   register(container: Container): void {

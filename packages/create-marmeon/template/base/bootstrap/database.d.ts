@@ -7,7 +7,7 @@ import type { Generated } from '@marmeon/database';
 declare module '@marmeon/database' {
   interface Tables {
     /** Owned by `system`. */
-    marmeon_failed_jobs: {
+    failed_jobs: {
       uuid: string;
       connection: string;
       queue: string;
@@ -17,7 +17,7 @@ declare module '@marmeon/database' {
       failed_at: number;
     };
     /** Owned by `system`. */
-    marmeon_jobs: {
+    jobs: {
       id: Generated<number>;
       queue: string;
       payload: string;
@@ -29,8 +29,8 @@ declare module '@marmeon/database' {
   }
   interface Relations {}
   interface TableOwners {
-    marmeon_failed_jobs: 'system';
-    marmeon_jobs: 'system';
+    failed_jobs: 'system';
+    jobs: 'system';
   }
   interface ExposedTables {}
   interface Modules {

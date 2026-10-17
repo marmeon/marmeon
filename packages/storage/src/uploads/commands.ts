@@ -8,24 +8,21 @@ import { TemporaryUploads } from './service.ts';
 /** The migration `make:uploads-table` copies — a real file, so the tests run exactly what apps get. */
 export const UPLOADS_MIGRATION = new URL('../../stubs/migrations/create_temporary_uploads_table.ts', import.meta.url);
 
-/** The migration `make:upgrade-migrations` writes for apps whose table still has the old name. */
-export const RENAME_MIGRATION = new URL('../../stubs/migrations/rename_temporary_uploads_table_to_marmeon.ts', import.meta.url);
-
-/** The connection `marmeon_temporary_uploads` belongs on — for the migration `make:uploads-table` writes: `UPLOADS_CONNECTION`. */
+/** The connection `temporary_uploads` belongs on — for the migration `make:uploads-table` writes: `UPLOADS_CONNECTION`. */
 export function uploadsTableConnection(container: Resolver): string {
   return container.make(UploadsConfig).connection;
 }
 
-/** `marmeon make:uploads-table [--module=system]`: the migration of `marmeon_temporary_uploads` into an app module. */
+/** `marmeon make:uploads-table [--module=system]`: the migration of `temporary_uploads` into an app module. */
 export class MakeUploadsTableCommand {
   static command = 'make:uploads-table';
-  static description = 'Create the migration for temporary uploads (marmeon_temporary_uploads)';
+  static description = 'Create the migration for temporary uploads (temporary_uploads)';
   static usage = '[--module=system]';
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
     const { publishMigration } = await import('@marmeon/database/internal');
-    return publishMigration(input, { name: 'create_temporary_uploads_table', table: 'marmeon_temporary_uploads', contents: readFileSync(UPLOADS_MIGRATION, 'utf8') });
+    return publishMigration(input, { name: 'create_temporary_uploads_table', table: 'temporary_uploads', contents: readFileSync(UPLOADS_MIGRATION, 'utf8') });
   }
 }
 

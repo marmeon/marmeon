@@ -40,7 +40,7 @@ export interface StoreUnderTest {
   readonly store: SessionStore;
   readonly clock: TestClock;
   readonly target: StoreTarget;
-  /** How many rows the `marmeon_sessions` table holds (database stores only). */
+  /** How many rows the `sessions` table holds (database stores only). */
   rows(): Promise<number>;
   pass(ms: number): Promise<void>;
   close(): Promise<void>;
@@ -123,7 +123,7 @@ export function openStore(target: StoreTarget, clock: Clock): { store: SessionSt
       const db = connections.get();
       return {
         store: new DatabaseSessionStore({ db }, LIFETIME, clock),
-        rows: async () => Number((await sql<{ count: number | string }>`select count(*) as count from marmeon_sessions`.execute(db)).rows[0]!.count),
+        rows: async () => Number((await sql<{ count: number | string }>`select count(*) as count from sessions`.execute(db)).rows[0]!.count),
         close: () => connections.destroy(),
       };
     }
