@@ -174,13 +174,14 @@ export class Schema {
     const table = sql`t.oid = to_regclass(quote_ident(${to}::text))`;
     // Every name is read before the first is changed: `to` may itself begin with `<from>_`, and a name already renamed must not be taken for an old one.
     const names = async (query: ReturnType<typeof sql<{ name: string }>>) => (await query.execute(this.db)).rows.map((row) => row.name).filter((name) => name.startsWith(prefix));
-    const constraints = await names(sql<{ name: string }>`select c.conname as name from pg_constraint c join pg_class t on t.oid = c.conrelid where ${table}`);
-    const indexes = await names(sql<{ name: string }>`select i.relname as name from pg_index x join pg_class t on t.oid = x.indrelid join pg_class i on i.oid = x.indexrelid where ${table}`);
+    const constraints = await names(sql<{ name: string }>`select c.conname as name from pg_constraint c join pg_class t on t.oid = c.conrelid where ${table} order by c.conname`);
+    const indexes = await names(sql<{ name: string }>`select i.relname as name from pg_index x join pg_class t on t.oid = x.indrelid join pg_class i on i.oid = x.indexrelid where ${table} order by i.relname`);
     const sequences = await names(sql<{ name: string }>`
       select s.relname as name from pg_class s
       join pg_depend d on d.objid = s.oid and d.classid = 'pg_class'::regclass and d.refclassid = 'pg_class'::regclass and d.deptype in ('a', 'i')
       join pg_class t on t.oid = d.refobjid
-      where s.relkind = 'S' and ${table}`);
+      where s.relkind = 'S' and ${table}
+      order by s.relname`);
     for (const name of [...constraints, ...indexes, ...sequences]) this.#fits(renamed(name), 'name after the rename');
     for (const name of constraints) await sql`alter table ${sql.table(to)} rename constraint ${sql.id(name)} to ${sql.id(renamed(name))}`.execute(this.db);
     // Renaming a constraint renamed the index behind it (the primary key, a unique constraint) too.
@@ -194,7 +195,7 @@ export class Schema {
   async #renameIndexesSqlite(from: string, to: string): Promise<void> {
     const prefix = `${from}_`;
     // Indexes behind a primary key or a column's `unique` have no statement (`sql is null`) and no name to choose.
-    const indexes = await sql<{ name: string; sql: string }>`select name, sql from sqlite_master where type = 'index' and tbl_name = ${to} and sql is not null`.execute(this.db);
+    const indexes = await sql<{ name: string; sql: string }>`select name, sql from sqlite_master where type = 'index' and tbl_name = ${to} and sql is not null order by name`.execute(this.db);
     for (const { name, sql: statement } of indexes.rows) {
       if (!name.startsWith(prefix)) continue;
       const created = statement.replace(/^(\s*create\s+(?:unique\s+)?index\s+(?:if\s+not\s+exists\s+)?)(?:"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|(\S+))/i, (_, head: string) => `${head}"${to}_${name.slice(prefix.length)}"`);
