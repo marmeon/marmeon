@@ -51,7 +51,7 @@ export declare abstract class AccessTokenStore {
 // AccountSessions
 export declare class AccountSessions {
     #private;
-    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings);
+    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings, changes?: () => EmailChangeStore | undefined);
     [ANNOUNCE_ENDED](userId: string | number): Promise<void>;
     end(userId: AuthUserId): Promise<Result<EndedSessions, {
         readonly kind: 'missing';
@@ -231,6 +231,19 @@ export declare class DatabaseAccessTokens extends AccessTokenStore {
     revokeEveryone(): Promise<number>;
     prune(graceSeconds?: number): Promise<number>;
 }
+// DatabaseEmailChanges
+export declare class DatabaseEmailChanges extends EmailChangeStore {
+    #private;
+    constructor(connections: Connections, clock: Clock, options?: {
+        readonly usersTable?: string;
+    });
+    create(userId: AuthUserId, email: string, expiresAt: Date, sessionKey: string | null): Promise<string | undefined>;
+    pending(userId: AuthUserId, email: string, value: string): Promise<Date | undefined>;
+    claim(userId: AuthUserId, value: string, now: Date): Promise<string | undefined>;
+    forget(userId: AuthUserId): Promise<void>;
+    prune(now: Date): Promise<number>;
+    forgetEveryone(): Promise<number>;
+}
 // DatabasePasswordResetTokens
 export declare class DatabasePasswordResetTokens extends PasswordResetTokenStore {
     #private;
@@ -273,6 +286,19 @@ export declare class DatabaseSignIns extends SignInStore {
 export interface DeviceDescription {
     readonly browser: string | undefined;
     readonly system: string | undefined;
+}
+// EMAIL_CHANGES_TABLE
+export declare const EMAIL_CHANGES_TABLE = "email_changes";
+// EmailChangeStore
+export declare abstract class EmailChangeStore {
+    #private;
+    constructor();
+    abstract create(userId: AuthUserId, email: string, expiresAt: Date, sessionKey: string | null): Promise<string | undefined>;
+    abstract pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined>;
+    abstract claim(userId: AuthUserId, token: string, now: Date): Promise<string | undefined>;
+    abstract forget(userId: AuthUserId): Promise<void>;
+    abstract prune(now: Date): Promise<number>;
+    abstract forgetEveryone(): Promise<number>;
 }
 // EmailVerification
 export declare class EmailVerification {
@@ -716,8 +742,8 @@ export declare class PruneTokensCommand {
         unverifiedDays: number;
         revokeTokensOnPasswordChange: boolean;
         protected: boolean;
-    }> | typeof SignInStore | typeof AccessTokenStore | typeof PasswordResetTokenStore)[];
-    constructor(resets: PasswordResetTokenStore, access: AccessTokenStore, config: AuthConfig, sessionConfig: SessionConfig, signIns: SignInStore);
+    }> | import("@marmeon/core").Token<Clock> | typeof Container | typeof SignInStore | typeof AccessTokenStore | typeof PasswordResetTokenStore)[];
+    constructor(resets: PasswordResetTokenStore, access: AccessTokenStore, config: AuthConfig, sessionConfig: SessionConfig, signIns: SignInStore, container?: Pick<Container, 'has' | 'make'>, clock?: Clock);
     handle({ options, output }: CommandInput): Promise<number>;
 }
 // RecoveryCodeUsed
@@ -1091,7 +1117,7 @@ export declare class NewPassword {
     constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: () => SignInStore, endings?: SessionEndings, factors?: () => {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
-    });
+    }, changes?: () => EmailChangeStore | undefined);
     store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{
         readonly revoked: number;
         readonly sessionKey: string;
@@ -1416,7 +1442,7 @@ export declare abstract class AccessTokenStore {
 // AccountSessions
 export declare class AccountSessions {
     #private;
-    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings);
+    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings, changes?: () => EmailChangeStore | undefined);
     [ANNOUNCE_ENDED](userId: string | number): Promise<void>;
     end(userId: AuthUserId): Promise<Result<EndedSessions, {
         readonly kind: 'missing';
@@ -1580,6 +1606,17 @@ export interface DeviceDescription {
     readonly browser: string | undefined;
     readonly system: string | undefined;
 }
+// EmailChangeStore
+export declare abstract class EmailChangeStore {
+    #private;
+    constructor();
+    abstract create(userId: AuthUserId, email: string, expiresAt: Date, sessionKey: string | null): Promise<string | undefined>;
+    abstract pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined>;
+    abstract claim(userId: AuthUserId, token: string, now: Date): Promise<string | undefined>;
+    abstract forget(userId: AuthUserId): Promise<void>;
+    abstract prune(now: Date): Promise<number>;
+    abstract forgetEveryone(): Promise<number>;
+}
 // EndedSessions
 export interface EndedSessions {
     readonly removed: number;
@@ -1626,7 +1663,7 @@ export declare class NewPassword {
     constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: () => SignInStore, endings?: SessionEndings, factors?: () => {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
-    });
+    }, changes?: () => EmailChangeStore | undefined);
     store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{
         readonly revoked: number;
         readonly sessionKey: string;
@@ -2109,7 +2146,7 @@ export declare abstract class AccessTokenStore {
 // AccountSessions
 export declare class AccountSessions {
     #private;
-    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings);
+    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings, changes?: () => EmailChangeStore | undefined);
     [ANNOUNCE_ENDED](userId: string | number): Promise<void>;
     end(userId: AuthUserId): Promise<Result<EndedSessions, {
         readonly kind: 'missing';
@@ -2221,6 +2258,17 @@ export interface DeviceDescription {
     readonly browser: string | undefined;
     readonly system: string | undefined;
 }
+// EmailChangeStore
+export declare abstract class EmailChangeStore {
+    #private;
+    constructor();
+    abstract create(userId: AuthUserId, email: string, expiresAt: Date, sessionKey: string | null): Promise<string | undefined>;
+    abstract pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined>;
+    abstract claim(userId: AuthUserId, token: string, now: Date): Promise<string | undefined>;
+    abstract forget(userId: AuthUserId): Promise<void>;
+    abstract prune(now: Date): Promise<number>;
+    abstract forgetEveryone(): Promise<number>;
+}
 // EndedSessions
 export interface EndedSessions {
     readonly removed: number;
@@ -2253,7 +2301,7 @@ export declare class NewPassword {
     constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: () => SignInStore, endings?: SessionEndings, factors?: () => {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
-    });
+    }, changes?: () => EmailChangeStore | undefined);
     store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{
         readonly revoked: number;
         readonly sessionKey: string;

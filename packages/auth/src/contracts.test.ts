@@ -3,6 +3,7 @@ import { coreSolutions } from '@marmeon/core/internal';
 import { Connections } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
 import { AuthServiceProvider } from './index.ts';
+import { DatabaseEmailChanges, EmailChangeStore } from './email-changes.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseSignIns, SignInStore } from './sign-ins.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
@@ -19,6 +20,7 @@ const DEFAULTS: Record<string, Record<string, string>> = {
   PasswordResetTokenStore: {},
   AccessTokenStore: {},
   SignInStore: {},
+  EmailChangeStore: {},
   TwoFactorState: {},
 };
 
@@ -32,6 +34,7 @@ describe('the contracts of the auth stores', () => {
     ['PasswordResetTokenStore', PasswordResetTokenStore],
     ['AccessTokenStore', AccessTokenStore],
     ['SignInStore', SignInStore],
+    ['EmailChangeStore', EmailChangeStore],
     ['TwoFactorState', TwoFactorState],
   ] as const)('%s has no method with a default that is not listed', (name, base) => {
     expect(methodsOf(base)).toEqual(Object.keys(DEFAULTS[name]!));
@@ -42,6 +45,7 @@ describe('the contracts of the auth stores', () => {
     ['PasswordResetTokenStore', PasswordResetTokenStore],
     ['AccessTokenStore', AccessTokenStore],
     ['SignInStore', SignInStore],
+    ['EmailChangeStore', EmailChangeStore],
     ['TwoFactorState', TwoFactorState],
   ] as const)('%s refuses to be built itself, but not through a subclass', (name, base) => {
     expect(() => Reflect.construct(base as new () => object, [])).toThrow(new RegExp(`K1.*${name} is abstract: bind a `));
@@ -68,6 +72,9 @@ describe('the contracts of the auth stores', () => {
     expect(app.container.make(AccessTokenStore)).toBeInstanceOf(DatabaseAccessTokens);
     expect(app.container.make(PasswordResetTokenStore)).toBeInstanceOf(DatabasePasswordResetTokens);
     expect(app.container.make(SignInStore)).toBeInstanceOf(DatabaseSignIns);
+    expect(app.container.has(EmailChangeStore), 'opt-in: the package binds none').toBe(false);
+    app.container.singleton(EmailChangeStore, DatabaseEmailChanges);
+    expect(app.container.make(EmailChangeStore)).toBeInstanceOf(DatabaseEmailChanges);
     expect(app.container.make(TwoFactorState)).toBeInstanceOf(NoTwoFactorState);
   });
 });
