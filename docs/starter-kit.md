@@ -34,10 +34,15 @@ framework bring them.
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
 | `auth.test.ts` and twelve more | The module's own tests. |
 
-The module is wiring and pages: the repository, the routes, the controllers, the views, the mails and the migrations. The package holds
-the rest: the guard, the stores (`DatabaseSignIns`, `DatabasePasswordResetTokens`, `DatabaseAccessTokens`, `TwoFactorStore`), the
-hasher and the statements of `credentialWriter()`, so the module has no store of its own to keep up to date. What you could implement
+The module is wiring and pages: the repository, the routes, the controllers, the views, the mails and the migrations. About
+sign-ins, passwords, factors and sessions it decides nothing: the limits, the checks, the single-use links and the ending of sessions are
+services of `@marmeon/auth`, which the controllers call; [what the package decides](authentication.md#what-the-package-decides) lists them, and a package update brings
+their fixes. The stores come with the package too, so the module has no store of its own to keep up to date. What you could implement
 yourself, and which members are required, is listed under [what your app implements](authentication.md#what-your-app-implements).
+
+The module does decide a few things of its own, described under [private registration](#private-registration): that registration
+answers alike, in the same time and with a hash, for a new and a taken address; how many mails go to one address and
+the lock per recipient in `SendAccountExistsMailJob` and `SendEmailChangeMailJob`; `ConfirmedAddress`; and `auth:prune-unverified`.
 
 The module's routes each say who may call them, as the app's do. Its groups decide with `everyone`: the sign-in and registration
 pages are open to guests, and every action behind `authenticate()` concerns only the signed-in user's own account. A route you
@@ -138,14 +143,8 @@ The owner gets a mail when the factor is turned on or off, when a recovery code 
 wrong code followed the right password ("someone knows your password", at most once an hour for each account). They are queued
 listeners in `listeners/`, and `mail/TwoFactorMail.ts` writes them in the account's language.
 
-A user who lost the phone and the recovery codes is let in by an operator, once sure it is the owner:
-
-```sh
-marmeon auth:reset-two-factor ada@example.com --force
-```
-
-The command also ends every session and remember-me cookie of the account, so a finder of the lost device cannot enrol a new factor
-from a session that is still open; the owner signs in again with the password. The address is looked up exactly as typed (only trimmed) and the kit stores it in lower case, so type it in lower case.
+A user who lost the phone and the recovery codes is let in by an operator with `marmeon auth:reset-two-factor`, which comes with
+`@marmeon/auth` ([operator reset](two-factor-authentication.md#operator-reset)). The kit stores addresses in lower case, so type it in lower case.
 
 The kit does not require it anywhere: the `twoFactor()` middleware is provided and not installed. It comes with the page it
 needs, `/settings/two-factor/verify`; [Two-Factor Authentication](two-factor-authentication.md#in-the-starter-kit) shows the line
@@ -156,11 +155,11 @@ pages and listeners that use it.
 
 The login page has a button "Sign in with a passkey" (and the browser's autofill in the e-mail field offers them too), but only after the
 page has loaded and only in a browser that has passkeys: without JavaScript there is the password form alone. A passkey signs in without a
-password and without a second step. On `/settings/passkeys` a user adds a passkey with a name and **their password, for every passkey**
-(a passkey outlives a password change, so a stolen session must not be able to add one), renames it, and removes it, which asks for the password for every passkey and, since that password was just typed, signs out the other devices. The first passkey
-turns on two-factor authentication: it signs out the other devices and shows ten recovery codes once, and from then on a sign-in with the
-password asks for a passkey, a code or a recovery code on `/two-factor-challenge`. Removing the last factor takes
-the recovery codes with it. A passkey whose counter went backwards, which suggests a copy, is suspended and shown with a form to release it.
+password and without a second step. On `/settings/passkeys` a user adds a passkey with a name and **their password, for every passkey**, renames it, and removes it. The first passkey
+turns on two-factor authentication: the page shows ten recovery codes once, and from then on a sign-in with the
+password asks for a passkey, a code or a recovery code on `/two-factor-challenge`. A passkey that looks copied is suspended and shown with a form to release it.
+What `Passkeys` decides on the way (the password for every change, the sessions it ends, the suspension) is on the
+[passkeys](passkeys.md) page.
 
 The owner gets a mail when a passkey is added, removed or suspended, and when a failed passkey sign-in tried one of theirs (at most once an
 hour for each account). Passkeys survive a password reset, so a reset also mails the list of passkeys the account still has: whoever
@@ -170,9 +169,9 @@ The owner also gets a mail when an old or forged "keep me signed in" cookie was 
 account was ended, and the mail names the time, the address and a parsed browser and system. It says plainly that it is usually someone who holds a copy, and that a browser of the owner can also send an old cookie when a page did not finish loading as it was renewed. `mail/SignInMail.ts` writes it in the account's language.
 
 Passkeys need the relying party from `APP_URL`: open the app as exactly that address, `http://localhost:3000` while developing (not
-`127.0.0.1`). [Passkeys](passkeys.md#in-the-starter-kit) explains the rest. `marmeon auth:reset-two-factor` removes passkeys with
-the authenticator and the recovery codes. To switch passkeys off, remove `PasskeyServiceProvider` from `index.ts`, `PasskeyStore` from the
-binding in `AuthServiceProvider.ts`, and the routes, pages, listeners and imports of `@marmeon/auth/passkeys` that use them.
+`127.0.0.1`). [Passkeys](passkeys.md#in-the-starter-kit) explains the rest. To switch passkeys off, remove `PasskeyServiceProvider` from `index.ts`, `PasskeyStore` from the
+binding in `AuthServiceProvider.ts`, and the routes, pages, listeners and imports of `@marmeon/auth/passkeys` that use them. The five
+views that run a ceremony also import `@marmeon/auth/passkeys/browser`; remove those calls with the buttons that start them.
 
 ## Private registration
 
@@ -189,11 +188,10 @@ Three more rules follow from it:
   a notice until its owner clicks the link in the mail while signed in. Whoever registers with somebody else's address cannot
   confirm it, and the real owner takes the account over with a password reset.
 - **A form field never asks the database.** The live check of the form only looks at the address's format.
-- **A change of address waits for its link.** A new address on the security page is kept aside until the link sent to it is
-  clicked, and the answer is the same for a free and a taken address. The owner of a taken address gets a note instead, and
-  nothing changes. A pending change expires after 60 minutes. It is kept in the table `email_changes`, not on `users`, which other
-  modules may read; the security decisions are those of `EmailChange` in `@marmeon/auth` (see
-  [changing the address](authentication.md#changing-the-address)), the module binds its `DatabaseEmailChanges` store and writes the address.
+- **A change of address waits for its link.** The answer is the same for a free and a taken address.
+  The owner of a taken address gets a note, and nothing changes.
+  `EmailChange` of `@marmeon/auth` decides this ([changing the address](authentication.md#changing-the-address)).
+  The module binds its `DatabaseEmailChanges` store, sends the mail and writes the address.
 
 The price is that someone who forgot they have an account learns it only from their inbox, and nobody can start before the
 mailer and a queue worker run.
@@ -244,41 +242,6 @@ again. The owner's password reset removes whatever an account with an unconfirme
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` as well for the other accounts, as the
 [API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains.
 
-## Guesses against one account
-
-Besides the limits per client, `Auth.attempt()` stops password sign-ins to one account after 100 a day (`AUTH_ACCOUNT_SIGN_INS_PER_DAY`), whichever
-clients they come from: a guess spread over many addresses still ends. The count is kept per account (an address without one: per address,
-normalised, under an HMAC of it), and is taken before the password
-is checked; a failed or a right password both count until a sign-in succeeds, and a successful sign-in and a completed password reset clear it.
-Past 100, nothing is checked, not even the right password, and the form says: "Too many failed sign-ins for this account. Reset your password
-or sign in with a passkey." Passkey sign-in and the password reset stay open (a passkey sign-in clears the count too), so the owner has two ways in. The answer is the same for an
-address that has no account (its failures are counted too), and so is the work: the `Lockout` event of that moment (`scope: 'account'`, once
-per day and account or address) makes `QueueLockoutMail` queue `SendLockoutMailJob`, and the job mails the owner only when an account exists.
-
-The cost is one cache entry per address tried, kept for a day, for addresses with and without an account (its key is an HMAC of the
-address, so it cannot be cut down). A public deployment should keep the counts in the `database` or `redis` cache store, not in
-`file`, and keep `cache:prune` scheduled (see [cache](cache.md)), so a flood of made-up addresses does not pile up.
-
-Anyone can lock out an address they know by sending 100 wrong passwords. That is the price of the limit: the owner resets the password or uses a
-passkey, and the mail says so. A browser that signed in with the password or completed a reset carries a device cookie and keeps signing in
-past the limit (see [limits on password sign-ins](authentication.md#limits-on-password-sign-ins)).
-
-## Signing an account out everywhere
-
-After a lost device or a suspected theft, an operator ends every session and every "keep me signed in" cookie of an account:
-
-```sh
-marmeon auth:end-sessions ada@example.com --force
-```
-
-The command asks `AccountSessions` of `@marmeon/auth` (see [Authentication](authentication.md#ending-every-session-of-a-user)) and
-prints how many stored sessions it deleted at once; the others end at their next request. The address is looked up exactly as typed (only trimmed), and the kit stores it in lower case. The password still signs in, so change
-it first when it may be known. `--force` is required in every environment, an unknown address fails with exit code 1, and an error
-of the call is shown, not hidden.
-
-After a leak, `marmeon auth:end-all-sessions --force` ends the sessions of every account at once. The module's `UserRepository` has
-the `updateEverySessionKey()` it needs; see [ending every session of every account](authentication.md#ending-every-session-of-every-account).
-
 ## Mail, the queue and the scheduler
 
 Every mail of the module goes through the queue, on its `mail` queue. A new app has the queue's table and `marmeon dev` starts a
@@ -287,6 +250,9 @@ mailer, `MAIL_MAILER=smtp`, and a worker, `marmeon queue:work`. The [deployment]
 
 The scheduler deletes expired reset links and API tokens, takes expired remember-me tokens off their sign-ins and deletes the sign-ins that are over every night at 03:10, and the changes of address
 that nobody confirmed in time. `marmeon dev` runs the scheduler for you. On a server, run `marmeon schedule:work`.
+
+The mail that tells an owner the account's daily ceiling was reached is the kit's too: `QueueLockoutMail` queues `SendLockoutMailJob`
+([limits on password sign-ins](authentication.md#limits-on-password-sign-ins)).
 
 ### Accounts nobody confirmed
 
