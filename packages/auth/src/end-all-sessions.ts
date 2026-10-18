@@ -33,9 +33,9 @@ export class EndAllSessionsCommand {
   }
 
   async handle({ args, options, output }: CommandInput): Promise<number> {
-    // A stray argument is most likely a mistyped `auth:end-sessions <email>`, which must not end every account's sessions.
+    // A stray argument is most likely a mistyped `auth:end-sessions <identifier>`, which must not end every account's sessions.
     if (args.length > 0) {
-      output.error(`auth:end-all-sessions takes no arguments (got "${args.join(' ')}"). To sign out one account, use auth:end-sessions <email> --force.`);
+      output.error(`auth:end-all-sessions takes no arguments (got "${args.join(' ')}"). To sign out one account, use auth:end-sessions <identifier> --force.`);
       return 1;
     }
     for (const old of ['api-tokens', 'reset-tokens']) {

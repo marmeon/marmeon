@@ -1,12 +1,11 @@
 import { Connections } from '@marmeon/database';
-import { TwoFactorStore } from '@marmeon/auth';
+import { ResetTwoFactorCommand, TwoFactorStore } from '@marmeon/auth';
 import { twoFactorCode, cookieNames } from '@marmeon/auth/testing';
 import { Logger } from '@marmeon/core';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { NotifyAboutFailedTwoFactor } from './listeners/NotifyAboutFailedTwoFactor.ts';
-import { ResetTwoFactorCommand } from './commands/ResetTwoFactorCommand.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { TwoFactorMail } from './mail/TwoFactorMail.ts';
 import { TwoFactorNotices } from './two-factor-notices.ts';
@@ -333,7 +332,7 @@ describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
     const ada = await app.factory(UserFactory).create();
     await enable(ada);
     const info = vi.spyOn(app.make(Logger), 'info');
-    expect(await reset([ada.email.toUpperCase()])).toEqual({ code: 0, lines: [`Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}, and ended its sessions.`] });
+    expect(await reset([` ${ada.email} `])).toEqual({ code: 0, lines: [`Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}, and ended its sessions.`] });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('second factor'), { userId: ada.id });
     await app.assertDatabaseCount('two_factor_authentications', 0);
     await app.assertDatabaseCount('two_factor_recovery_codes', 0);
@@ -382,7 +381,7 @@ describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
     expect(refused.lines[0]).toContain('pass --force');
     await app.withCookie(SESSION, cookie).expectingJson().get('/dashboard').assertOk();
     await app.assertDatabaseCount('two_factor_authentications', 1);
-    expect(await reset(['nobody@example.com'])).toEqual({ code: 1, lines: ['No account has the address nobody@example.com.'] });
+    expect(await reset(['nobody@example.com'])).toEqual({ code: 1, lines: ['No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.'] });
     expect((await reset([])).code).toBe(1);
     const grace = await app.factory(UserFactory).create();
     expect(await reset([grace.email])).toEqual({ code: 0, lines: [`${grace.email} has no second factor.`] });

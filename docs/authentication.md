@@ -847,7 +847,7 @@ sign-ins are gone by then. The starter kit's accounts have a `session_key` colum
 A custom `SignInStore` needs `remembered(cookie)`, which says whether the token of a cookie is still stored and must see an `endAll()` at once (no cache, no lagging replica), or a session survives `end()`; a sign-in by a
 remember-me cookie asks it right before it starts. A store without `endAll()` (JavaScript, a cast) makes `end()` throw error A6 before it changes anything.
 
-The starter kit brings this as a command, `marmeon auth:end-sessions <email> --force`, for an operator who has no admin page
+`@marmeon/auth` brings this as a command, `marmeon auth:end-sessions <identifier> --force` (the identifier as your sign-in form normalizes it; the account is found by `UserProvider.findForLogin()`), for an operator who has no admin page
 ([Starter kit](starter-kit.md#signing-an-account-out-everywhere)).
 
 `UserSessions` of `@marmeon/session` is the low-level variant, and deleting an account needs it. The starter kit's
@@ -914,7 +914,7 @@ It also revokes every API token and deletes every password-reset token, since a 
 `--keep-api-tokens` and `--keep-reset-tokens` (`accessTokens: false`, `resetTokens: false`) leave them, and the output names what was
 kept. The old `--api-tokens` and `--reset-tokens` are refused with a hint, and nothing is ended.
 
-The command takes no arguments (a mistyped `auth:end-sessions <email>` is refused, not widened), prints the environment it runs
+The command takes no arguments (a mistyped `auth:end-sessions <identifier>` is refused, not widened), prints the environment it runs
 in, and logs the operator and the host. `--force` is required in every environment, since it cannot be undone.
 
 | | Ended |

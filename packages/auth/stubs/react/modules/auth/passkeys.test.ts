@@ -1,10 +1,10 @@
+import { ResetTwoFactorCommand } from '@marmeon/auth';
 import { softAuthenticator, twoFactorCode, cookieNames } from '@marmeon/auth/testing';
 import { RateLimiter } from '@marmeon/cache';
 import { Connections } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import { ResetTwoFactorCommand } from './commands/ResetTwoFactorCommand.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { NotifyAboutFailedPasskeySignIn } from './listeners/NotifyAboutFailedPasskeySignIn.ts';
 import { TwoFactorMail } from './mail/TwoFactorMail.ts';
