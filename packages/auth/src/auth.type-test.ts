@@ -4,10 +4,12 @@ import type { AccountSessions } from './account-sessions.ts';
 import type { Auth } from './auth.ts';
 import type { Hasher, PasswordHash } from './hashing.ts';
 import { PasswordResetTokenStore } from './password-reset.ts';
+import { SignInStore, type RememberedDevice, type RememberTokenError, type SignInRecord } from './sign-ins.ts';
 import { AccessTokenStore } from './tokens.ts';
 import { TwoFactorState } from './two-factor/state.ts';
 import type { PasskeyRecord } from './passkeys/store.ts';
 import type { AccessToken } from './tokens.ts';
+import type { Result } from '@marmeon/core';
 import type { AuthUserId, Credentials, UserProvider } from './user.ts';
 
 declare const auth: Auth;
@@ -65,7 +67,7 @@ export async function everyoneEndedIsReadOnly() {
   const ended = await accountSessions.endEveryone();
   // @ts-expect-error what endEveryone() did is read-only
   ended.accounts = 1;
-  return ended.rememberTokens + ended.signIns;
+  return ended.resetTokens + ended.signIns;
 }
 
 // A provider keeps the whole contract: the session-key methods, and a password write that says whether it wrote.
@@ -222,6 +224,134 @@ export class TokensByImplements implements AccessTokenStore {
 // @ts-expect-error an object literal is no AccessTokenStore either
 export const tokensLiteral: AccessTokenStore = { create: async () => ({}) as never, find: async () => undefined, touch: async () => {}, list: async () => [], revoke: async () => false, revokeAll: async () => 0, prune: async () => 0, revokeEveryone: async () => 0 };
 
+// The same for the sign-ins: a store extends the class and implements every method — the remember-me ones included.
+export class CompleteSignIns extends SignInStore {
+  async create() {
+    return 'id';
+  }
+  async seen() {
+    return true;
+  }
+  async list(): Promise<readonly SignInRecord[]> {
+    return [];
+  }
+  async end() {
+    return false;
+  }
+  async endAll() {
+    return 0;
+  }
+  async endEveryone() {
+    return 0;
+  }
+  async prune() {
+    return 0;
+  }
+  async issueToken() {
+    return 'selector.validator';
+  }
+  async dropToken() {}
+  async consume(): Promise<Result<RememberedDevice, RememberTokenError>> {
+    return { ok: false, error: { kind: 'invalid' } };
+  }
+  async remembered() {
+    return false;
+  }
+  async forgetToken() {}
+  async rebind(): Promise<Result<void, RememberTokenError>> {
+    return { ok: true, value: undefined };
+  }
+}
+// @ts-expect-error consume() is required: without it no remember-me cookie could be checked, or a copy of one reported
+export class SignInsWithoutConsume extends SignInStore {
+  async create() {
+    return 'id';
+  }
+  async seen() {
+    return true;
+  }
+  async list(): Promise<readonly SignInRecord[]> {
+    return [];
+  }
+  async end() {
+    return false;
+  }
+  async endAll() {
+    return 0;
+  }
+  async endEveryone() {
+    return 0;
+  }
+  async prune() {
+    return 0;
+  }
+  async issueToken() {
+    return 'selector.validator';
+  }
+  async dropToken() {}
+  async remembered() {
+    return false;
+  }
+  async forgetToken() {}
+  async rebind(): Promise<Result<void, RememberTokenError>> {
+    return { ok: true, value: undefined };
+  }
+}
+// @ts-expect-error a store that only implements the contract does not fit: it has to extend the class
+export class SignInsByImplements implements SignInStore {
+  async create() {
+    return 'id';
+  }
+  async seen() {
+    return true;
+  }
+  async list(): Promise<readonly SignInRecord[]> {
+    return [];
+  }
+  async end() {
+    return false;
+  }
+  async endAll() {
+    return 0;
+  }
+  async endEveryone() {
+    return 0;
+  }
+  async prune() {
+    return 0;
+  }
+  async issueToken() {
+    return 'selector.validator';
+  }
+  async dropToken() {}
+  async consume(): Promise<Result<RememberedDevice, RememberTokenError>> {
+    return { ok: false, error: { kind: 'invalid' } };
+  }
+  async remembered() {
+    return false;
+  }
+  async forgetToken() {}
+  async rebind(): Promise<Result<void, RememberTokenError>> {
+    return { ok: true, value: undefined };
+  }
+}
+// @ts-expect-error an object literal is no SignInStore either
+export const signInsLiteral: SignInStore = {
+  create: async () => 'id',
+  seen: async () => true,
+  list: async () => [],
+  end: async () => false,
+  endAll: async () => 0,
+  endEveryone: async () => 0,
+  prune: async () => 0,
+  issueToken: async () => 'selector.validator',
+  dropToken: async () => {},
+  consume: async () => ({ ok: false, error: { kind: 'invalid' } }),
+  remembered: async () => false,
+  forgetToken: async () => {},
+  rebind: async () => ({ ok: true, value: undefined }),
+};
+
 export class CompleteFactors extends TwoFactorState {
   async factors() {
     return [];
@@ -277,6 +407,19 @@ export function storesTakeTheAppsUserId() {
   expectTypeOf<Parameters<TwoFactorState['factors']>[0]>().toEqualTypeOf<AuthUserId>();
   expectTypeOf<Parameters<TwoFactorState['enabledSince']>[0]>().toEqualTypeOf<AuthUserId>();
   expectTypeOf<Parameters<TwoFactorState['removeAll']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<SignInStore['create']>[0]['userId']>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<SignInStore['seen']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<SignInStore['list']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<SignInStore['end']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<SignInStore['endAll']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<SignInStore['issueToken']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<SignInStore['dropToken']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<SignInStore['rebind']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<SignInRecord['userId']>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<RememberedDevice['userId']>().toEqualTypeOf<AuthUserId>();
+  // The window of a prune is not optional any more: a store that forgets the days leaves tokens a raised setting would revive.
+  // @ts-expect-error the number of days is required
+  void ((store: SignInStore) => store.prune({ idleSeconds: 1, maxSeconds: 1 }));
   expectTypeOf<AccessToken['userId']>().toEqualTypeOf<AuthUserId>();
   expectTypeOf<PasskeyRecord['userId']>().toEqualTypeOf<AuthUserId>();
   // @ts-expect-error the package's test user has a number as its id

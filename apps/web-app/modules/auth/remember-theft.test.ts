@@ -1,3 +1,4 @@
+import { Connections } from '@marmeon/database';
 import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -8,6 +9,9 @@ import { SignInNotices } from './sign-in-notices.ts';
 import { UserRepository } from './UserRepository.ts';
 import type { User } from './users.ts';
 import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
+
+/** How many sign-ins hold a remember-me token (the token hangs on the row of its sign-in). */
+const rememberTokens = async () => (await app.make(Connections).get<any>().selectFrom('sign_ins').select('id').where('remember_selector', 'is not', null).execute()).length;
 
 // Cold starts in a hook with its own time, not in the first test's 5 s.
 beforeAll(warmUp, WARM_UP_TIMEOUT);
@@ -69,7 +73,7 @@ describe('the mail about a copied "keep me signed in" cookie', { timeout: 30_000
     await replay(copy);
     await app.queue.work();
     expect(app.mail.queued(SignInMail)).toHaveLength(1);
-    await app.assertDatabaseCount('remember_tokens', 0);
+    expect(await rememberTokens(), 'sign-ins holding a remember-me token').toBe(0);
   });
 
   it('tells the owner of a validator that was never handed out for a selector that was, and the sign-ins end', async () => {
@@ -80,7 +84,7 @@ describe('the mail about a copied "keep me signed in" cookie', { timeout: 30_000
     await replay(forged); // the second finds the tokens gone: no second mail
     await app.queue.work();
     expect(app.mail.queued(SignInMail)).toHaveLength(1);
-    await app.assertDatabaseCount('remember_tokens', 0);
+    expect(await rememberTokens(), 'sign-ins holding a remember-me token').toBe(0);
   });
 
   it('says nothing when the account is gone by the time the worker runs', async () => {

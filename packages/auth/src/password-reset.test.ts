@@ -4,10 +4,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, type PasswordResetTokenTable } from './password-reset.ts';
 import { PasswordHasher, type PasswordHash } from './hashing.ts';
-import type { RememberTokenStore } from './remember.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens, type AccessTokenStore } from './tokens.ts';
 import { NewPassword } from './new-password.ts';
-import { SignInTracker } from './sign-ins.ts';
+import { signInStore } from './test-helpers/stores.ts';
 import type { AuthUser, AuthUserId, UserProvider } from './user.ts';
 
 function must<T>(result: Result<T, { readonly kind: string }>): T {
@@ -36,7 +35,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
     updateSessionKey: async () => false,
     updateEverySessionKey: async () => ({ accounts: 0, sampleId: undefined }),
   };
-  const remember = { forgetUser: async (id: unknown) => void forgotten.push(id) } as unknown as RememberTokenStore;
+  const signIns = signInStore({ endAll: async (id) => (forgotten.push(id), 0) });
   const logged: unknown[] = [];
   const logger = Object.assign(new ConsoleLogger(), { info: (message: string, context?: unknown) => void logged.push({ message, context }) });
   const broker = (revokeTokensOnPasswordChange = false, accessTokens: AccessTokenStore = apiTokens) =>
@@ -44,10 +43,9 @@ describe.each(drivers)('password reset on %s', (driver) => {
       users,
       tokens,
       hasher,
-      remember,
       { dispatch: async (event: object) => void events.push(event) } as never,
       { resetExpire: 60, resetThrottle: 60 } as never,
-      new NewPassword(() => accessTokens, () => connections, { revokeTokensOnPasswordChange } as never, logger, new SignInTracker(undefined)),
+      new NewPassword(() => accessTokens, () => connections, { revokeTokensOnPasswordChange } as never, logger, () => signIns),
     );
   let apiTokens: DatabaseAccessTokens;
 

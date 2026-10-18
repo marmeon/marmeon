@@ -1,14 +1,14 @@
 import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, Migrator, sql } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { AccountSessions, Auth, authenticate, AuthServiceProvider, Failed, Hasher, PasswordHasher, RememberTokenReused, RememberTokenStore, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
+import { AccountSessions, Auth, authenticate, AuthServiceProvider, Failed, Hasher, PasswordHasher, RememberTokenReused, SignInStore, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
 import { COMPLETE_PENDING, SIGN_IN_VERIFIED } from './auth.ts';
 import { NewPassword } from './new-password.ts';
-import { REMEMBER_TABLE } from './remember.ts';
+import { SIGN_INS_TABLE } from './sign-ins.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
@@ -159,10 +159,10 @@ class RecordReused {
 
 /**
  * `hold` is the point where a request stops until the test lets it go: after the hasher compared the password (`verify`), right before
- * a remember-me token is written (`create`), or after one was consumed (`consume`) — the slow steps another request can land in. `verify`
+ * a remember-me token is written (`issue`), or after one was consumed (`consume`) — the slow steps another request can land in. `verify`
  * holds from the start; the others only after `arm()`, so that the test can set an account up first.
  */
-async function boot(options: { totp?: boolean; noRebind?: boolean; hold: 'verify' | 'create' | 'consume' }) {
+async function boot(options: { totp?: boolean; hold: 'verify' | 'issue' | 'consume' }) {
   failed.length = 0;
   reused.length = 0;
   const users = new Users();
@@ -197,29 +197,16 @@ async function boot(options: { totp?: boolean; noRebind?: boolean; hold: 'verify
           return right;
         },
       });
-      const tokens = container.make(RememberTokenStore);
-      container.instance(RememberTokenStore, {
-        create: async (...args) => {
-          if (options.hold === 'create' && armed) {
+      const signIns = container.make(SignInStore);
+      container.instance(
+        SignInStore,
+        new HoldingSignIns(signIns, async (point) => {
+          if (options.hold === point && armed) {
             entered();
             await gate;
           }
-          return tokens.create(...args);
-        },
-        consume: async (cookie) => {
-          const consumed = await tokens.consume(cookie);
-          if (options.hold === 'consume' && armed) {
-            entered();
-            await gate;
-          }
-          return consumed;
-        },
-        exists: (cookie) => tokens.exists(cookie),
-        forget: (cookie) => tokens.forget(cookie),
-        forgetUser: (...args) => tokens.forgetUser(...args),
-        prune: (days) => tokens.prune(days),
-        ...(options.noRebind ? {} : { rebind: (userId: number | string, cookie: string, fingerprint: string) => tokens.rebind!(userId, cookie, fingerprint) }),
-      });
+        }),
+      );
       if (options.totp) container.instance(TwoFactorState, twoFactorState({ factors: async () => ['totp'] }));
     },
   });
@@ -246,10 +233,66 @@ async function boot(options: { totp?: boolean; noRebind?: boolean; hold: 'verify
   };
   const { send, jar } = browser();
   users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
-  const tokenCount = async () => (await application.container.make(Connections).get<any>().selectFrom(REMEMBER_TABLE).selectAll().execute()).length as number;
+  const tokenCount = async () =>
+    (await application.container.make(Connections).get<any>().selectFrom(SIGN_INS_TABLE).select('id').where(sql<boolean>`${sql.ref('remember_selector')} is not null`).execute()).length as number;
   const end = async () => void (await application.container.make(AccountSessions).end(1));
   const arm = () => void (armed = true);
   return { application, users, send, jar, browser, arm, held, release, hasher, tokenCount, end };
+}
+
+/** A sign-in store that stops where a test asks it to: `hold('issue')` before a token is made, `hold('consume')` after a cookie was checked. */
+class HoldingSignIns extends SignInStore {
+  readonly #inner: SignInStore;
+  readonly #hold: (point: 'issue' | 'consume') => Promise<void>;
+
+  constructor(inner: SignInStore, hold: (point: 'issue' | 'consume') => Promise<void>) {
+    super();
+    this.#inner = inner;
+    this.#hold = hold;
+  }
+
+  create(...args: Parameters<SignInStore['create']>) {
+    return this.#inner.create(...args);
+  }
+  seen(...args: Parameters<SignInStore['seen']>) {
+    return this.#inner.seen(...args);
+  }
+  list(...args: Parameters<SignInStore['list']>) {
+    return this.#inner.list(...args);
+  }
+  end(...args: Parameters<SignInStore['end']>) {
+    return this.#inner.end(...args);
+  }
+  endAll(...args: Parameters<SignInStore['endAll']>) {
+    return this.#inner.endAll(...args);
+  }
+  endEveryone() {
+    return this.#inner.endEveryone();
+  }
+  prune(...args: Parameters<SignInStore['prune']>) {
+    return this.#inner.prune(...args);
+  }
+  async issueToken(...args: Parameters<SignInStore['issueToken']>) {
+    await this.#hold('issue');
+    return this.#inner.issueToken(...args);
+  }
+  dropToken(...args: Parameters<SignInStore['dropToken']>) {
+    return this.#inner.dropToken(...args);
+  }
+  async consume(cookie: string) {
+    const consumed = await this.#inner.consume(cookie);
+    await this.#hold('consume');
+    return consumed;
+  }
+  remembered(cookie: string) {
+    return this.#inner.remembered(cookie);
+  }
+  forgetToken(cookie: string) {
+    return this.#inner.forgetToken(cookie);
+  }
+  rebind(...args: Parameters<SignInStore['rebind']>) {
+    return this.#inner.rebind(...args);
+  }
 }
 
 type World = Awaited<ReturnType<typeof boot>>;
@@ -279,7 +322,7 @@ describe('a password sign-in while the account changes', () => {
     const world = await boot({ hold: 'verify' });
     const reset = async () => {
       const container = world.application.container;
-      await container.make(NewPassword).store(world.users, container.make(RememberTokenStore), 1, await world.hasher.make('reset'), 'reset');
+      await container.make(NewPassword).store(world.users, 1, await world.hasher.make('reset'), 'reset');
     };
     const answer = await during(world, attempt(world, true), reset);
     expect(answer).toMatchObject({ ok: false, kind: 'invalid-credentials' });
@@ -325,7 +368,7 @@ describe('a rehash only over the hash that was verified', () => {
   const oldCosts = () => new PasswordHasher({ driver: 'scrypt', argon2: { memory: 1024, time: 1, parallelism: 1 }, scrypt: { cost: 10, blockSize: 8, parallelism: 1 } });
   const reset = (world: World) => async () => {
     const container = world.application.container;
-    await container.make(NewPassword).store(world.users, container.make(RememberTokenStore), 1, await world.hasher.make('reset'), 'reset');
+    await container.make(NewPassword).store(world.users, 1, await world.hasher.make('reset'), 'reset');
   };
 
   it('keeps the password of a reset that landed between the check and the rehash', async () => {
@@ -413,6 +456,13 @@ const login = async (send: World['send'], remember = true) => {
   expect(answer.ok).toBe(true);
 };
 
+/** The sign-in whose row an ending took meanwhile does not stand: its token cannot be made, so no cookie is handed out and no session is signed in. */
+async function expectNotSignedIn(world: World, jar: Map<string, string>, send: World['send']) {
+  expect(jar.has('marmeon_remember'), 'no cookie was handed out').toBe(false);
+  expect((await send('/me')).status).toBe(401);
+  expect(await world.tokenCount()).toBe(0);
+}
+
 /** The remember-me cookie alone must not sign in: the first request stays a guest, and the token is gone afterwards. */
 async function expectRefused(world: World, jar: Map<string, string>, send: World['send']) {
   expect(jar.has('marmeon_remember'), 'the sign-in handed out a cookie').toBe(true);
@@ -423,62 +473,69 @@ async function expectRefused(world: World, jar: Map<string, string>, send: World
 }
 
 describe('a remember-me token is bound to the account state it was issued under', () => {
-  it('is refused when AccountSessions.end() ran between the check and the token (attempt)', async () => {
-    const world = await boot({ hold: 'create' });
+  it('is refused at its first use when only the key changed between the check and the token (the rows stay)', async () => {
+    const world = await boot({ hold: 'issue' });
     world.arm();
-    await during(world, attempt(world, true), world.end);
+    await during(world, attempt(world, true), async () => void (await world.users.updateSessionKey(1, 'another-key', null)));
     await expectRefused(world, world.jar, world.send);
   });
 
-  it('is refused when a password reset ran between the check and the token', async () => {
-    const world = await boot({ hold: 'create' });
+  it('does not sign in when AccountSessions.end() ran between the check and the token (attempt)', async () => {
+    const world = await boot({ hold: 'issue' });
+    world.arm();
+    await during(world, attempt(world, true), world.end);
+    await expectNotSignedIn(world, world.jar, world.send);
+  });
+
+  it('does not sign in when a password reset ran between the check and the token', async () => {
+    const world = await boot({ hold: 'issue' });
     world.arm();
     const reset = async () => {
       const container = world.application.container;
-      await container.make(NewPassword).store(world.users, container.make(RememberTokenStore), 1, await world.hasher.make('reset'), 'reset');
+      await container.make(NewPassword).store(world.users, 1, await world.hasher.make('reset'), 'reset');
     };
     await during(world, attempt(world, true), reset);
-    await expectRefused(world, world.jar, world.send);
+    await expectNotSignedIn(world, world.jar, world.send);
   });
 
-  it('is refused when updatePassword() of another device ran in between', async () => {
-    const world = await boot({ hold: 'create' });
+  it('does not sign in when updatePassword() of another device ran in between', async () => {
+    const world = await boot({ hold: 'issue' });
     const other = world.browser();
     await login(other.send, false);
     world.arm();
     await during(world, attempt(world, true), async () => void (await other.send('/change-password', {})));
-    await expectRefused(world, world.jar, world.send);
+    await expectNotSignedIn(world, world.jar, world.send);
   });
 
-  it('is refused when logoutOtherDevices() of another device ran in between', async () => {
-    const world = await boot({ hold: 'create' });
+  it('does not sign in when logoutOtherDevices() of another device ran in between', async () => {
+    const world = await boot({ hold: 'issue' });
     const other = world.browser();
     await login(other.send, false);
     world.arm();
     await during(world, attempt(world, true), async () => expect(await (await other.send('/logout-others', {})).json()).toEqual({ done: true }));
-    await expectRefused(world, world.jar, world.send);
+    await expectNotSignedIn(world, world.jar, world.send);
   });
 
-  it('is refused for login()', async () => {
-    const world = await boot({ hold: 'create' });
+  it('does not sign in login() either', async () => {
+    const world = await boot({ hold: 'issue' });
     world.arm();
     await during(world, async () => (await world.send('/login-as', {})).json(), world.end);
-    await expectRefused(world, world.jar, world.send);
+    await expectNotSignedIn(world, world.jar, world.send);
   });
 
-  it('is refused when the second factor finishes the sign-in', async () => {
-    const world = await boot({ totp: true, hold: 'create' });
+  it('does not sign in when the second factor finishes the sign-in', async () => {
+    const world = await boot({ totp: true, hold: 'issue' });
     expect(await attempt(world, true)()).toMatchObject({ kind: 'two-factor-required', pending: true });
     world.arm();
     await during(world, async () => (await world.send('/complete', {})).json(), world.end);
-    await expectRefused(world, world.jar, world.send);
+    await expectNotSignedIn(world, world.jar, world.send);
   });
 
-  it('is refused for the passkey sign-in', async () => {
-    const world = await boot({ hold: 'create' });
+  it('does not sign in the passkey sign-in either', async () => {
+    const world = await boot({ hold: 'issue' });
     world.arm();
     await during(world, async () => (await world.send('/passkey', {})).json(), world.end);
-    await expectRefused(world, world.jar, world.send);
+    await expectNotSignedIn(world, world.jar, world.send);
   });
 
   it('is refused when its cookie is being consumed while end() runs', async () => {
@@ -494,7 +551,7 @@ describe('a remember-me token is bound to the account state it was issued under'
   });
 
   it('is refused after the key changed although the token itself survived (a delete that did not happen)', async () => {
-    const world = await boot({ hold: 'create' });
+    const world = await boot({ hold: 'issue' });
     await login(world.send);
     const device = world.browser();
     device.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
@@ -505,9 +562,9 @@ describe('a remember-me token is bound to the account state it was issued under'
   });
 
   it('is refused when the row has no fingerprint (a token from before the column)', async () => {
-    const world = await boot({ hold: 'create' });
+    const world = await boot({ hold: 'issue' });
     await login(world.send);
-    await world.application.container.make(Connections).get<any>().updateTable(REMEMBER_TABLE).set({ account_fingerprint: null }).execute();
+    await world.application.container.make(Connections).get<any>().updateTable(SIGN_INS_TABLE).set({ remember_fingerprint: null }).execute();
     const device = world.browser();
     device.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
     expect((await device.send('/me')).status).toBe(401);
@@ -515,7 +572,7 @@ describe('a remember-me token is bound to the account state it was issued under'
   });
 
   it('keeps the token of the device that updateSessionKey() leaves signed in', async () => {
-    const world = await boot({ hold: 'create' });
+    const world = await boot({ hold: 'issue' });
     await login(world.send);
     const device = world.browser();
     device.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
@@ -526,31 +583,18 @@ describe('a remember-me token is bound to the account state it was issued under'
     expect((await later.send('/me')).status, 'the token this device kept').toBe(200);
   });
 
-  it('fails closed with a store that cannot rebind: the kept device signs in again', async () => {
-    const world = await boot({ hold: 'create', noRebind: true });
-    await login(world.send);
-    const device = world.browser();
-    device.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
-    expect((await device.send('/me')).status).toBe(200);
-    expect(await (await device.send('/end-others', {})).json()).toEqual({ done: true });
-    const later = world.browser();
-    later.jar.set('marmeon_remember', device.jar.get('marmeon_remember')!);
-    expect((await later.send('/me')).status, 'the kept token no longer fits').toBe(401);
-    expect(await world.tokenCount()).toBe(0);
-  });
-
   it.each([
     ['logoutOtherDevices()', '/logout-others'],
     ['updateSessionKey()', '/end-others'],
   ])('does not keep the token of a thief who rotated the owner\'s cookie: %s ends everything and reports the copy', async (_name, route) => {
-    const world = await boot({ hold: 'create' });
+    const world = await boot({ hold: 'issue' });
     await login(world.send);
     const owner = world.send;
     const thief = world.browser();
     thief.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
     expect((await thief.send('/me')).status, 'the copy signs in and rotates the cookie').toBe(200);
     // The owner's cookie is the previous validator, and past the grace window.
-    await world.application.container.make(Connections).get<any>().updateTable(REMEMBER_TABLE).set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
+    await world.application.container.make(Connections).get<any>().updateTable(SIGN_INS_TABLE).set({ remember_rotated_at: new Date(Date.now() - 3_600_000) }).execute();
 
     expect(await (await owner(route, {})).json()).toEqual({ done: false });
     expect(await world.tokenCount(), 'no token is kept').toBe(0);
@@ -566,7 +610,7 @@ describe('a remember-me token is bound to the account state it was issued under'
     ['logoutOtherDevices()', '/logout-others'],
     ['updateSessionKey()', '/end-others'],
   ])('%s keeps the owner\'s device when the cookie is only the validator that was just rotated (a lost response)', async (_name, route) => {
-    const world = await boot({ hold: 'create' });
+    const world = await boot({ hold: 'issue' });
     await login(world.send);
     const other = world.browser();
     other.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
@@ -580,7 +624,7 @@ describe('a remember-me token is bound to the account state it was issued under'
   });
 
   it('keeps working for an untouched account, and for the device that logoutOtherDevices() leaves signed in', async () => {
-    const world = await boot({ hold: 'create' });
+    const world = await boot({ hold: 'issue' });
     await login(world.send);
     const device = world.browser();
     device.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);

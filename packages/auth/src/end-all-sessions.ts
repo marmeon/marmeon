@@ -68,7 +68,7 @@ export class EndAllSessionsCommand {
     const count = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'}`;
     const kept = [...(accessTokens ? [] : ['API tokens']), ...(resetTokens ? [] : ['password-reset tokens'])];
     output.success(
-      `Ended every session of ${count(ended.accounts, 'account')}: ${count(ended.rememberTokens, 'remember-me token')} and ${count(ended.signIns, 'sign-in')} deleted` +
+      `Ended every session of ${count(ended.accounts, 'account')}: ${count(ended.signIns, 'sign-in')} deleted (remember-me tokens with them)` +
         `${resetTokens ? `, ${count(ended.resetTokens, 'password-reset token')} deleted` : ''}${accessTokens ? `, ${count(ended.accessTokens, 'API token')} revoked` : ''}. ` +
         'Sessions of every driver end at their next request (environment: ' + environment.describe() + ').',
     );

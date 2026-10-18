@@ -894,17 +894,19 @@ The command stops with exit code 1, and writes nothing, when your app is ahead o
 not know), when a first line names another set, or when a later revision is in your app and an earlier one is not: restore
 the missing one by hand, in front of it.
 
-The tables of the starter kit's auth module (`remember_tokens`, `password_reset_tokens`, `personal_access_tokens`,
+The tables of the starter kit's auth module (`password_reset_tokens`, `personal_access_tokens`,
 `two_factor_authentications`, `two_factor_recovery_codes`, `passkeys` and `sign_ins`) keep their names. The `auth` set has
 later revisions. The first, `reissue_personal_access_tokens`, deletes every row of `personal_access_tokens` and adds a unique index on
 `token_hash`, because API tokens with a `|`, the form issued before, are no longer valid. See
 [API tokens](api-tokens.md#a-store-of-your-own). It touches no other table. The second, `fill_empty_session_keys`, gives every
 account whose `users.session_key` is `NULL` a random value from the database's own cryptographic generator, one for each row. The new
 key changes the account's fingerprint, so an account that had none is signed out once, on every device; accounts that had a key keep
-their sessions. It does not touch the password or any other column. The `sign-ins` set (`sign_ins`, written by
-`marmeon make:sign-ins-table` or by the starter kit) has one later revision, `add_remember_columns_to_sign_ins`: five nullable
-columns that hold the remember-me token on the row of its sign-in. It deletes nothing and does not copy the tokens of
-`remember_tokens`.
+their sessions. It does not touch the password or any other column. The third, `drop_remember_tokens_table`, drops the
+`remember_tokens` table: the tokens live on the rows of `sign_ins` now. Its tokens are not copied, so every "keep me signed in" cookie
+of the first release stops working. The `sign-ins` set (`sign_ins`, written by `marmeon make:sign-ins-table` or by the starter kit) has
+one later revision, `add_remember_columns_to_sign_ins`: five nullable columns that hold the remember-me token on the row of its
+sign-in, and the selector column made again as a `secret()` column (a column cannot be marked later), which loses the selectors it
+held. It deletes every sign-in, since the sessions end with the upgrade anyway and a row that kept a remember time without a token would be listed as kept signed in. Run both with the [upgrade that stops every process](deployment.md#the-upgrade-that-stops-every-process).
 
 A migration it wrote is yours like the first one. Keep the first line: without it, the command takes a changed file for
 revision 1.

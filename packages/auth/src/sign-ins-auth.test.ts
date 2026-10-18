@@ -1,5 +1,5 @@
 import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, Migrator, sql } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { COMPLETE_PENDING, SIGN_IN_VERIFIED, AUTH_SESSION_KEYS } from './auth.ts';
 import { NewPassword } from './new-password.ts';
-import { AccountSessions, Auth, PasswordChanged, AuthServiceProvider, RememberTokenStore, DatabaseRememberTokens, DatabaseSignIns, Hasher, SignInStore, TwoFactorState, UserProvider, type AuthUser, type Credentials, type PasswordHash, type SecondFactor } from './index.ts';
+import { AccountSessions, Auth, PasswordChanged, AuthServiceProvider, DatabaseSignIns, Hasher, SignInStore, TwoFactorState, UserProvider, type AuthUser, type Credentials, type PasswordHash, type SecondFactor } from './index.ts';
 import { SIGN_INS_TABLE } from './sign-ins.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
@@ -56,11 +56,11 @@ class Factors extends TwoFactorState {
   async removeAll(): Promise<void> {}
 }
 
-/** Deletes every row just before the store continues one: a sign-in ended between the token check and the resume. */
+/** Deletes every row just before the store says whether the token is still held: a sign-in ended between the token check and the continuation. */
 class EndedMeanwhile extends DatabaseSignIns {
-  override async resume(...args: Parameters<DatabaseSignIns['resume']>) {
-    await this.end(1, (await this.list(1, { idleSeconds: 1e9, maxSeconds: 1e9 }))[0]!.id);
-    return super.resume(...args);
+  override async remembered(cookie: string) {
+    await this.endAll(1);
+    return super.remembered(cookie);
   }
 }
 
@@ -74,6 +74,13 @@ class RecordPasswordChanged {
 /** A store that cannot end the rows of the other devices. */
 class CannotEndAll extends DatabaseSignIns {
   override async endAll(): Promise<number> {
+    throw new Error('store down');
+  }
+}
+
+/** A store that cannot hang a token on a row. */
+class CannotIssue extends DatabaseSignIns {
+  override async issueToken(): Promise<string> {
     throw new Error('store down');
   }
 }
@@ -199,7 +206,7 @@ const routes = openRoutes((Route) => {
   Route.post('/act', ActController);
 });
 
-async function boot(options: { signIns?: (new (...args: never[]) => SignInStore) | false; env?: Record<string, string> } = {}) {
+async function boot(options: { signIns?: new (...args: never[]) => SignInStore; env?: Record<string, string> } = {}) {
   const users = new Users();
   const factors = new Factors();
   const application = await createApplication({
@@ -213,7 +220,7 @@ async function boot(options: { signIns?: (new (...args: never[]) => SignInStore)
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
       container.instance(TwoFactorState, factors);
-      if (options.signIns !== false) container.singleton(SignInStore, (options.signIns ?? DatabaseSignIns) as never);
+      if (options.signIns) container.singleton(SignInStore, options.signIns as never);
     },
   });
   await application.container.make(Migrator).migrate();
@@ -222,8 +229,9 @@ async function boot(options: { signIns?: (new (...args: never[]) => SignInStore)
   const store = application.container.make(SessionStore);
   connectionsOfTest = application.container.make(Connections);
   const db = application.container.make(Connections).get<any>();
-  const rows = () => db.selectFrom(SIGN_INS_TABLE).selectAll().execute() as Promise<{ id: string; user_agent: string | null; remember_selector: string | null; last_seen_at: string | Date }[]>;
-  const tokens = async () => (await db.selectFrom('remember_tokens').selectAll().execute()).length as number;
+  const rows = () => db.selectFrom(SIGN_INS_TABLE).selectAll().execute() as Promise<{ id: string; user_agent: string | null; last_seen_at: string | Date }[]>;
+  /** How many sign-ins hold a remember-me token. */
+  const tokens = async () => (await db.selectFrom(SIGN_INS_TABLE).select('id').where(sql<boolean>`${sql.ref('remember_selector')} is not null`).execute()).length as number;
 
   const browser = (jar: Map<string, string> = new Map()) => {
     const send = async (path: string, init: { method?: string; headers?: Record<string, string> } = {}) => {
@@ -260,26 +268,14 @@ const login = (b: ReturnType<Awaited<ReturnType<typeof boot>>['browser']>, remem
   b.send('/login', { headers: { 'x-remember': remember ? 'yes' : 'no', 'x-user': user } });
 
 describe('sign-ins tracked by Auth', () => {
-  it('without a bound store changes nothing: no key in the session, no row', async () => {
-    const { browser, rows } = await boot({ signIns: false });
-    const b = browser();
-    await login(b, true);
-    expect(await b.who()).toEqual({ id: 1, viaRemember: false });
-    expect(AUTH_SESSION_KEYS.signIn in (await b.stored())).toBe(false);
-    expect(await rows()).toEqual([]);
-    expect(await b.reopened().who()).toEqual({ id: 1, viaRemember: true });
-    expect(await rows()).toEqual([]);
-    await b.send('/logout');
-    expect(await b.who()).toMatchObject({ id: null });
-  });
-
   it('a password sign-in makes one row, which the session names', async () => {
-    const { browser, rows } = await boot();
+    const { browser, rows, tokens } = await boot();
     const b = browser();
     await login(b);
     const [row] = await rows();
     expect(await rows()).toHaveLength(1);
-    expect(row).toMatchObject({ user_agent: 'Test Browser', remember_selector: null });
+    expect(row).toMatchObject({ user_agent: 'Test Browser' });
+    expect(await tokens(), 'no token without remember-me').toBe(0);
     expect((await b.stored())[AUTH_SESSION_KEYS.signIn]).toBe(row!.id);
     expect(await b.who()).toEqual({ id: 1, viaRemember: false });
   });
@@ -329,11 +325,11 @@ describe('sign-ins tracked by Auth', () => {
   });
 
   it('a remember-me sign-in continues the row of its token: one browser, one entry', async () => {
-    const { browser, rows } = await boot();
+    const { browser, rows, tokens } = await boot();
     const b = browser();
     await login(b, true);
     const [row] = await rows();
-    expect(row!.remember_selector).toMatch(/^[\w-]{22}$/);
+    expect(await tokens(), 'the token hangs on the row').toBe(1);
     const back = b.reopened();
     expect(await back.who()).toEqual({ id: 1, viaRemember: true });
     expect((await rows()).map((each) => each.id)).toEqual([row!.id]);
@@ -363,7 +359,7 @@ describe('sign-ins tracked by Auth', () => {
     expect(await b.who()).toMatchObject({ id: null });
   });
 
-  it('a remember-me token without a row (made before sign-ins were switched on) signs nobody in and is forgotten', async () => {
+  it('a remember-me token whose row is gone signs nobody in and is forgotten', async () => {
     const { browser, db, rows, tokens } = await boot();
     const b = browser();
     await login(b, true);
@@ -383,7 +379,7 @@ describe('sign-ins tracked by Auth', () => {
     expect(await tokens()).toBe(0);
   });
 
-  it('a session from before sign-ins were switched on gets its row at the next request', async () => {
+  it('a session without a sign-in key (made by actingAs(), say) gets its row at the next request', async () => {
     const { browser, rows, db } = await boot();
     const b = browser();
     await login(b);
@@ -434,6 +430,31 @@ describe('sign-ins tracked by Auth', () => {
     expect(b.jar.has('marmeon_remember')).toBe(false);
   });
 
+  it('a store that cannot issue the token leaves nobody signed in: no row, no cookie', async () => {
+    const { browser, rows } = await boot({ signIns: CannotIssue });
+    const b = browser();
+    expect((await login(b, true)).status).toBe(500);
+    expect(await rows(), 'the row made first is ended again').toEqual([]);
+    expect(b.jar.has('marmeon_remember')).toBe(false);
+    expect(await b.who()).toEqual({ id: null, viaRemember: false });
+  });
+
+  it('logout ends the row of the remember-me cookie even when it is another row than the session\'s', async () => {
+    const { browser, rows } = await boot();
+    const b = browser();
+    await login(b, true);
+    const other = browser();
+    await login(other);
+    const cookieRow = (await b.stored())[AUTH_SESSION_KEYS.signIn] as string;
+    const sessionRow = (await other.stored())[AUTH_SESSION_KEYS.signIn] as string;
+    await b.edit((data) => (data[AUTH_SESSION_KEYS.signIn] = sessionRow));
+    await b.send('/logout');
+    const left = (await rows()).map((row) => row.id);
+    expect(left, 'the row of the cookie is gone').not.toContain(cookieRow);
+    expect(left, 'and so is the row of the session').not.toContain(sessionRow);
+    expect(await b.reopened().who()).toMatchObject({ id: null });
+  });
+
   it('a password sign-in drops the remember-me token a guest carries, so two rows never stay alive', async () => {
     const { browser, tokens } = await boot();
     const first = browser();
@@ -465,14 +486,14 @@ describe('sign-ins tracked by Auth', () => {
     const { browser, rows } = await boot();
     const b = browser();
     await login(b, true);
-    const original = DatabaseRememberTokens.prototype.forget;
-    DatabaseRememberTokens.prototype.forget = async () => {
+    const original = DatabaseSignIns.prototype.forgetToken;
+    DatabaseSignIns.prototype.forgetToken = async () => {
       throw new Error('store down');
     };
     try {
       await b.send('/logout');
     } finally {
-      DatabaseRememberTokens.prototype.forget = original;
+      DatabaseSignIns.prototype.forgetToken = original;
     }
     expect(await rows()).toEqual([]);
     expect(await b.who()).toMatchObject({ id: null });
@@ -599,13 +620,6 @@ describe('sign-ins tracked by Auth', () => {
       expect(await rows()).toHaveLength(1);
     });
 
-    it('throws, naming the remedy, without a bound store', async () => {
-      const { browser } = await boot({ signIns: false });
-      const b = browser();
-      await login(b);
-      expect(await (await b.send('/act', { headers: { 'x-action': 'end', 'x-id': 'A'.repeat(22) } })).json()).toEqual({ threw: expect.stringContaining('SignInStore') });
-    });
-
     it('leaves out sign-ins older than the absolute lifetime, unless a remember-me cookie keeps them', async () => {
       const { browser, db } = await boot();
       const laptop = browser();
@@ -637,15 +651,18 @@ describe('sign-ins tracked by Auth', () => {
       }
     });
 
-    it('a store that cannot end the other rows does not fail a password change that was stored: the event still fires', async () => {
+    it('a store that cannot end the other rows fails a new password and a new key, and stores neither: the tokens on those rows would live on', async () => {
       const { browser, users } = await boot({ signIns: CannotEndAll });
       const b = browser();
       await login(b);
+      const hash = users.hash;
       const before = RecordPasswordChanged.count;
-      expect(await b.act('password')).toEqual({ ok: true });
-      expect(RecordPasswordChanged.count).toBe(before + 1);
-      expect(users.hash).not.toBeNull();
-      expect(await b.act('key')).toEqual({ ok: true });
+      expect(await b.act('password')).toEqual({ threw: 'store down' });
+      expect(RecordPasswordChanged.count).toBe(before);
+      expect(users.hash, 'the old password stands').toBe(hash);
+      expect(await b.act('key')).toEqual({ threw: 'store down' });
+      expect(users.keys.get(1) ?? null, 'and so does the old key').toBeNull();
+      expect(await b.who()).toMatchObject({ id: 1 });
     });
 
     it('a refused remember-me token takes its row off the list, not only its token', async () => {
@@ -653,18 +670,18 @@ describe('sign-ins tracked by Auth', () => {
       const b = browser();
       await login(b, true);
       // Past AUTH_REMEMBER_DAYS from its creation: refused, though the row still says "remembered".
-      await db.updateTable('remember_tokens').set({ created_at: new Date(Date.now() - 400 * 86_400_000) }).execute();
+      await db.updateTable(SIGN_INS_TABLE).set({ remember_created_at: new Date(Date.now() - 400 * 86_400_000) }).execute();
       expect(await b.reopened().who()).toMatchObject({ id: null });
       expect(await rows()).toEqual([]);
     });
 
     it('keeps no row for this device after a password change took its remember-me token', async () => {
-      const { browser, rows } = await boot();
+      const { browser, tokens } = await boot();
       const laptop = browser();
       await login(laptop, true);
       await laptop.act('confirm');
       await laptop.act('password');
-      expect((await rows())[0]!.remember_selector).toBeNull();
+      expect(await tokens()).toBe(0);
       expect((await laptop.list())[0]!.remembered).toBe(false);
     });
 
@@ -685,7 +702,7 @@ describe('sign-ins tracked by Auth', () => {
       await login(browser(), true);
       await login(browser(), false, bob.email);
       const container = application.container;
-      await container.make(NewPassword).store(users, container.make(RememberTokenStore), 1, 'x' as never, 'reset');
+      await container.make(NewPassword).store(users, 1, 'x' as never, 'reset');
       expect((await rows()).map((row) => row.id)).toHaveLength(1);
     });
 

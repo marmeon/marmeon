@@ -19,11 +19,9 @@ import {
   Auth,
   authenticate,
   AuthServiceProvider,
-  DatabaseRememberTokens,
   DatabaseSignIns,
   EverySessionEnded,
   PasswordResetTokenStore,
-  RememberTokenStore,
   SignInStore,
   TwoFactorState,
   UserProvider,
@@ -31,7 +29,6 @@ import {
   type Credentials,
 } from './index.ts';
 import { SIGN_INS_TABLE } from './sign-ins.ts';
-import { REMEMBER_TABLE } from './remember.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
@@ -251,11 +248,11 @@ describe.each(drivers)('AccountSessions.endEveryone() with SESSION_DRIVER=$name'
     for (const b of [a, b1, b2]) expect((await b.send('/me')).status, 'before').toBe(200);
     expect(await (await waiting.send('/waiting')).json(), 'before').toEqual({ state: 'waiting' });
 
-    expect(await accounts.endEveryone()).toEqual({ accounts: 3, rememberTokens: 3, resetTokens: 0, accessTokens: 0, signIns: 0 });
+    expect(await accounts.endEveryone()).toEqual({ accounts: 3, resetTokens: 0, accessTokens: 0, signIns: 3 });
     for (const b of [a, b1, b2]) expect((await b.send('/me')).status).toBe(401);
     for (const cookie of cookies) expect(await rememberWho(browser, cookie)).toEqual({ id: null });
     expect(await (await waiting.send('/waiting')).json(), 'the code entry is expired').toEqual({ state: 'expired' });
-    expect(await count(REMEMBER_TABLE)).toBe(0);
+    expect(await count(SIGN_INS_TABLE)).toBe(0);
 
     const again = browser();
     await again.send('/as/1', { method: 'POST' });
@@ -267,14 +264,14 @@ describe.each(drivers)('AccountSessions.endEveryone() with SESSION_DRIVER=$name'
     await browser().send('/as/1', { method: 'POST' });
     await accounts.endEveryone();
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ accounts: 3, rememberTokens: 1, resetTokens: 0, accessTokens: 0, signIns: 0 });
+    expect(events[0]).toMatchObject({ accounts: 3, resetTokens: 0, accessTokens: 0, signIns: 1 });
     expect(events[0]!.at).toBeInstanceOf(Date);
   });
 });
 
 describe('AccountSessions.endEveryone()', () => {
-  it('deletes the sign-in rows when they are switched on, and reads nothing of them when they are not', async () => {
-    const withRows = await boot(memory, new Users(), { signIns: DatabaseSignIns });
+  it('deletes the sign-ins, their remember-me tokens with them', async () => {
+    const withRows = await boot(memory, new Users());
     const laptop = withRows.browser();
     await laptop.send('/as/1', { method: 'POST' });
     await withRows.browser().send('/as/2', { method: 'POST' });
@@ -282,10 +279,7 @@ describe('AccountSessions.endEveryone()', () => {
     expect(await withRows.accounts.endEveryone()).toMatchObject({ signIns: 2 });
     expect(await withRows.count(SIGN_INS_TABLE)).toBe(0);
     expect((await laptop.send('/me')).status).toBe(401);
-
-    // No store bound: the tracker must not be asked (it throws when it is).
-    const without = await boot(memory, new Users());
-    expect(await without.accounts.endEveryone()).toMatchObject({ signIns: 0 });
+    expect(await withRows.accounts.endEveryone(), 'nothing left to end').toMatchObject({ signIns: 0 });
   });
 
   it('revokes every API token by default, and keeps them when asked', async () => {
@@ -328,7 +322,7 @@ describe('AccountSessions.endEveryone()', () => {
     await laptop.send('/as/1', { method: 'POST' });
     const cookie = laptop.jar.get('marmeon_remember')!;
     await expect(accounts.endEveryone()).rejects.toThrow(/\[marmeon:A5\].*updateEverySessionKey\(key\).*session_key/s);
-    expect(await count(REMEMBER_TABLE), 'the tokens stay').toBe(1);
+    expect(await count(SIGN_INS_TABLE), 'the sign-ins stay').toBe(1);
     expect((await laptop.send('/me')).status, 'the session stays').toBe(200);
     expect(await rememberWho(browser, cookie)).toEqual({ id: 1 });
     expect(events).toHaveLength(0);
@@ -344,7 +338,7 @@ describe('AccountSessions.endEveryone()', () => {
     });
     await browser().send('/as/1', { method: 'POST' });
     await expect(accounts.endEveryone()).rejects.toThrow(/^\[marmeon:A6\] .*PasswordResetTokenStore\.forgetEveryone\(\).*--keep-reset-tokens.*Nothing was changed/s);
-    expect(await count(REMEMBER_TABLE), 'the tokens stay').toBe(1);
+    expect(await count(SIGN_INS_TABLE), 'the sign-ins stay').toBe(1);
     expect([...users.rows.values()].map((row) => row.key)).toEqual([null, null, null]);
     expect(await accounts.endEveryone({ resetTokens: false }), 'kept: the store is not needed').toMatchObject({ accounts: 3 });
   });
@@ -359,7 +353,7 @@ describe('AccountSessions.endEveryone()', () => {
     });
     await browser().send('/as/1', { method: 'POST' });
     await expect(accounts.endEveryone()).rejects.toThrow(/^\[marmeon:A6\] .*AccessTokenStore\.revokeEveryone\(\).*--keep-api-tokens.*Nothing was changed/s);
-    expect(await count(REMEMBER_TABLE)).toBe(1);
+    expect(await count(SIGN_INS_TABLE)).toBe(1);
     expect(await accounts.endEveryone({ accessTokens: false }), 'kept: the store is not needed').toMatchObject({ accounts: 3 });
   });
 
@@ -381,7 +375,7 @@ describe('AccountSessions.endEveryone()', () => {
     const { browser, accounts, connections, count } = await boot(memory, users);
     await browser().send('/as/1', { method: 'POST' });
     await expect(connections.transaction(() => accounts.endEveryone())).rejects.toThrow(/outside a database transaction/);
-    expect(await count(REMEMBER_TABLE)).toBe(1);
+    expect(await count(SIGN_INS_TABLE)).toBe(1);
     expect([...users.rows.values()].map((row) => row.key)).toEqual([null, null, null]);
   });
 
@@ -426,8 +420,8 @@ describe('AccountSessions.endEveryone()', () => {
     const { browser, accounts, count } = await boot(memory, new Users(), { override: (container) => container.instance(PasswordResetTokenStore, new FailingResets() as never) });
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
-    await expect(accounts.endEveryone({ resetTokens: true })).rejects.toThrow(/failed at "password-reset tokens".*rememberTokens 1, accounts 3.*every session is already ended; still missing: resetTokens/s);
-    expect(await count(REMEMBER_TABLE)).toBe(0);
+    await expect(accounts.endEveryone({ resetTokens: true })).rejects.toThrow(/failed at "password-reset tokens".*signIns 1, accounts 3.*every session is already ended; still missing: resetTokens/s);
+    expect(await count(SIGN_INS_TABLE)).toBe(0);
     expect((await laptop.send('/me')).status, 'the keys did their work').toBe(401);
   });
 
@@ -450,17 +444,17 @@ describe('AccountSessions.endEveryone()', () => {
 
   it('a failure before the keys are written says they are NOT rotated, and a second call finishes', async () => {
     let failing = true;
-    class FailingRemember extends DatabaseRememberTokens {
-      override async forgetEveryone(): Promise<number> {
+    class FailingSignIns extends DatabaseSignIns {
+      override async endEveryone(): Promise<number> {
         if (failing) throw new Error('the table is locked');
-        return super.forgetEveryone();
+        return super.endEveryone();
       }
     }
     const users = new Users();
-    const { browser, accounts } = await boot(memory, users, { override: (container) => container.singleton(RememberTokenStore, FailingRemember) });
+    const { browser, accounts } = await boot(memory, users, { signIns: FailingSignIns });
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
-    await expect(accounts.endEveryone()).rejects.toThrow(/failed at "remember-me tokens".*NOT rotated.*every session is still live.*run it again/s);
+    await expect(accounts.endEveryone()).rejects.toThrow(/failed at "sign-ins".*NOT rotated.*every session is still live.*run it again/s);
     expect((await laptop.send('/me')).status).toBe(200);
     failing = false;
     await accounts.endEveryone();
@@ -477,19 +471,6 @@ describe('AccountSessions.endEveryone()', () => {
     const { accounts } = await boot(memory, new NoSample());
     await expect(accounts.endEveryone()).rejects.toThrow(/failed at "session keys".*written but could not be confirmed/s);
     await expect(accounts.endEveryone()).rejects.toMatchObject({ cause: { message: expect.stringContaining('sampleId') } });
-  });
-
-  it('a failure after the keys were written says so', async () => {
-    class BrokenSignIns extends DatabaseSignIns {
-      override async endEveryone(): Promise<number> {
-        throw new Error('the table is locked');
-      }
-    }
-    const { browser, accounts } = await boot(memory, new Users(), { signIns: BrokenSignIns });
-    const laptop = browser();
-    await laptop.send('/as/1', { method: 'POST' });
-    await expect(accounts.endEveryone()).rejects.toThrow(/failed at "sign-in rows".*every session is already ended; still missing: signIns/s);
-    expect((await laptop.send('/me')).status, 'the keys did their work').toBe(401);
   });
 
   it('a listener that fails after the work is done does not fail the call', async () => {
@@ -512,22 +493,22 @@ describe('AccountSessions.endEveryone()', () => {
   });
 });
 
-describe.each(databaseDrivers)('DatabaseRememberTokens.forgetEveryone() on %s', (driver) => {
-  it('deletes every token, even one dated in the future, which a time condition would keep', async () => {
+describe.each(databaseDrivers)('DatabaseSignIns.endEveryone() on %s', (driver) => {
+  it('deletes every sign-in, even one that lives on in the future, which a time condition would keep', async () => {
     const { connections, close } = await migratedConnections(driver);
     try {
       const clock = new TestClock();
       clock.freeze(Date.parse('2026-10-05T10:00:00Z'));
-      const store = new DatabaseRememberTokens(connections, clock);
-      await store.create(1, new Date(clock.now() + 86_400_000), 'fingerprint');
+      const store = new DatabaseSignIns(connections, clock);
+      await store.issueToken(1, await store.create({ userId: 1, userAgent: undefined }), { until: new Date(clock.now() + 86_400_000), fingerprint: 'fingerprint' });
       const future = new Date(clock.now() + 30 * 86_400_000);
       await connections
         .get<any>()
-        .insertInto(REMEMBER_TABLE)
-        .values({ user_id: 2, selector: 'f'.repeat(22), validator_hash: 'x'.repeat(64), expires_at: future, created_at: future, updated_at: future })
+        .insertInto(SIGN_INS_TABLE)
+        .values({ id: 'f'.repeat(22), user_id: 2, remember_selector: 'e'.repeat(22), remember_validator_hash: 'x'.repeat(43), remember_until: future, signed_in_at: future, last_seen_at: future, created_at: future, updated_at: future })
         .execute();
-      expect(await store.forgetEveryone()).toBe(2);
-      expect(await connections.get<any>().selectFrom(REMEMBER_TABLE).selectAll().execute()).toEqual([]);
+      expect(await store.endEveryone()).toBe(2);
+      expect(await connections.get<any>().selectFrom(SIGN_INS_TABLE).selectAll().execute()).toEqual([]);
     } finally {
       await close();
     }

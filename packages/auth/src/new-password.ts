@@ -4,12 +4,11 @@ import { withCode } from '@marmeon/core/internal';
 import type { Connections } from '@marmeon/database';
 import type { SessionEndings } from '@marmeon/session';
 import { accountScope } from '@marmeon/session/internal';
-import { keyNotStored, passwordHashWritten, writeRefused } from './account-sessions.ts';
+import { keyNotStored, missingSignInMethod, passwordHashWritten, writeRefused } from './account-sessions.ts';
 import type { AuthConfig } from './config.ts';
 import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
 import type { PasswordHash } from './hashing.ts';
-import type { RememberTokenStore } from './remember.ts';
-import { SignInTracker } from './sign-ins.ts';
+import type { SignInStore } from './sign-ins.ts';
 import type { AccessTokenStore } from './tokens.ts';
 import { factorSources, NoTwoFactorState, type TwoFactorState } from './two-factor/state.ts';
 import type { AuthUser, AuthUserId, UserProvider } from './user.ts';
@@ -19,8 +18,7 @@ export class AccountClaimLost extends Error {}
 
 /**
  * Stores a new password — what `Auth.updatePassword()` and `PasswordBroker.reset()` share: the new hash with a new session key (that
- * ends every other session), every remember-me token
- * of the user dropped, and with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` every API token of the user revoked, in one
+ * ends every other session), every sign-in of the user ended but the current one of a change (tokens with them), and with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` every API token of the user revoked, in one
  * transaction with the new hash (the app's `UserProvider` joins it), the tokens first — a password that changed never
  * leaves a token behind, and a failed revocation keeps the old password. The token store and the connections are looked up
  * only then: an app that keeps its tokens is not asked for them.
@@ -35,7 +33,7 @@ export class NewPassword {
   readonly #connections: () => Connections;
   readonly #config: AuthConfig;
   readonly #logger: Logger;
-  readonly #signIns: SignInTracker;
+  readonly #signIns: () => SignInStore;
   readonly #endings: SessionEndings | undefined;
   readonly #factors: (() => { readonly state: TwoFactorState; readonly events: EventDispatcher }) | undefined;
   #warnedUnknownVerification = false;
@@ -45,7 +43,7 @@ export class NewPassword {
     connections: () => Connections,
     config: AuthConfig,
     logger: Logger,
-    signIns: SignInTracker = new SignInTracker(undefined),
+    signIns: () => SignInStore,
     endings?: SessionEndings,
     factors?: () => { readonly state: TwoFactorState; readonly events: EventDispatcher },
   ) {
@@ -64,11 +62,12 @@ export class NewPassword {
    * `user` it was made for: with `email_verified_at` of `null` it removes the account's factors and tokens too. A user without that
    * property (an app that does not verify addresses, or a provider that did not load the column) loses nothing; with a factor source
    * bound, that is logged once. A change passes `read`, the session key its session was checked against (`null`: none): the provider
-   * writes the new key only over that one, in the statement of the hash (`expectedSessionKey`). A new key written over the key of an
+   * writes the new key only over that one, in the statement of the hash (`expectedSessionKey`), and `keep`, the id of its own sign-in,
+   * which stays without its remember-me token (every other sign-in ends). A new key written over the key of an
    * `AccountSessions.end()` that landed meanwhile would bring the ended session back, so a refused write — or a later key found
    * when it is read back — throws {@link AccountClaimLost}. Everything runs in one transaction, so that also rolls the tokens back.
    */
-  async store(users: UserProvider, remember: RememberTokenStore, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{ readonly revoked: number; readonly sessionKey: string }> {
+  async store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{ readonly revoked: number; readonly sessionKey: string }> {
     const sessionKey = randomBytes(32).toString('base64url');
     const unconfirmed = via === 'reset' && user !== undefined && neverConfirmed(user);
     if (via === 'reset' && user !== undefined && (user as { email_verified_at?: unknown }).email_verified_at === undefined) this.#warnVerificationUnknown();
@@ -90,9 +89,12 @@ export class NewPassword {
       // The tokens go first: a revocation that fails writes no hash, also where the provider keeps its accounts outside this
       // transaction — a new password never stands next to live tokens.
       const revoked = revoke ? await this.#tokens().revokeAll(id) : 0;
-      // The remember-me tokens go before the hash and key: a remember-me sign-in that is running (it consumed its token, then reads the
-      // account) must not see the new key next to a token that still exists.
-      await remember.forgetUser(id);
+      // The sign-ins go before the hash and key, tokens with them: a remember-me sign-in that is running (it consumed its token, then
+      // reads the account) must not see the new key next to a token that still exists. A change keeps its own sign-in, but not its token.
+      const signIns = this.#signIns();
+      if (typeof signIns.endAll !== 'function' || typeof signIns.dropToken !== 'function') throw missingSignInMethod('NewPassword', typeof signIns.endAll !== 'function' ? 'endAll' : 'dropToken');
+      await signIns.endAll(id, via === 'change' ? keep : undefined);
+      if (via === 'change' && keep !== undefined) await signIns.dropToken(id, keep);
       // Inside the transaction: the tokens revoked above come back when the provider refuses to write. The new key is what ends every
       // other session (the fingerprint is made of the id and the key), written in the same statement as the hash.
       // The key a reset replaces is read now, so the read-back below can tell an ignored `sessionKey` from a later ending.
@@ -109,8 +111,6 @@ export class NewPassword {
         if (typeof stored.sessionKey !== 'string' || stored.sessionKey === previous) throw keyNotStored('NewPassword');
         if (guarded) throw new AccountClaimLost('The sessions of the account ended before its password was changed.');
       }
-      // A reset has no session of its own to keep: every sign-in of the user is over, and none stays listed (a change keeps the current one, `Auth` ends the others).
-      if (via === 'reset' && this.#signIns.enabled) await this.#signIns.endAll(id);
       return revoked;
     };
     const revokeTokens = this.#config.revokeTokensOnPasswordChange || unconfirmed;

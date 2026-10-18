@@ -15,7 +15,7 @@ import {
   confirmedPassword,
   Failed,
   PasswordChanged,
-  RememberTokenStore,
+  SignInStore,
   guest,
   Hasher,
   Login,
@@ -33,9 +33,8 @@ import { COMPLETE_PENDING, READ_PENDING } from './auth.ts';
 import { SessionFingerprints } from './fingerprint.ts';
 import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
-import { twoFactorState } from './test-helpers/stores.ts';
+import { DelegatingSignIns, signInStore, twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers as SharedUsers } from './test-helpers/users.ts';
-import { SignInTracker } from './sign-ins.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
 interface TestUser {
@@ -261,7 +260,7 @@ const routes = openRoutes((Route) => {
 
 const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
 
-async function boot(options: { env?: Record<string, string>; users?: MemoryUsers; logger?: Logger; factors?: Map<number, SecondFactor[]>; consume?: (real: RememberTokenStore) => RememberTokenStore['consume'] } = {}) {
+async function boot(options: { env?: Record<string, string>; users?: MemoryUsers; logger?: Logger; factors?: Map<number, SecondFactor[]>; consume?: (real: SignInStore) => SignInStore['consume'] } = {}) {
   const users = options.users ?? new MemoryUsers();
   const application = await createApplication({
     root: import.meta.dirname,
@@ -282,8 +281,16 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
       container.instance(UserProvider, users as UserProvider);
       if (options.logger) container.instance(Logger, options.logger);
       if (options.consume) {
-        const real = container.make(RememberTokenStore);
-        container.instance(RememberTokenStore, { ...real, create: (...a) => real.create(...a), exists: (c) => real.exists(c), forget: (c) => real.forget(c), forgetUser: (...a) => real.forgetUser(...a), prune: (n) => real.prune(n), consume: options.consume(real) });
+        const real = container.make(SignInStore);
+        const consume = options.consume(real);
+        container.instance(
+          SignInStore,
+          new (class extends DelegatingSignIns {
+            override consume(cookie: string) {
+              return consume(cookie);
+            }
+          })(real),
+        );
       }
       if (options.factors) container.instance(TwoFactorState, twoFactorState({ factors: async (id) => options.factors!.get(Number(id)) ?? [] }));
     },
@@ -385,7 +392,7 @@ describe('Auth (session guard)', () => {
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
+    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();
@@ -410,7 +417,7 @@ describe('Auth (session guard)', () => {
       const real = new PasswordHasher();
       const hasher = { make: real.make.bind(real), verify: real.verify.bind(real), needsRehash: () => false, dummyVerify: async () => false as const, ...(floor === undefined ? {} : { failureFloorMs: () => floor }) } as unknown as Hasher;
       const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-      const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
+      const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
       return { users, hasher, auth };
     };
     const timed = async (run: () => Promise<unknown>) => {
@@ -474,7 +481,7 @@ describe('Auth (session guard)', () => {
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
     const dispatched: unknown[] = [];
     const events = { dispatch: async (event: unknown) => void dispatched.push(event) } as never;
-    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
+    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
     const answers = [
       await auth.attempt('ada@example.com', 'wrong'),
       await auth.attempt('nobody@example.com', 'secret'),
@@ -674,13 +681,13 @@ describe('remember me', () => {
 
   describe('how long it lasts', () => {
     const tokenCount = async (application: Awaited<ReturnType<typeof boot>>['application']) =>
-      (await application.container.make(Connections).get<any>().selectFrom('remember_tokens').select('id').execute()).length;
+      (await application.container.make(Connections).get<any>().selectFrom('sign_ins').select('id').where('remember_selector', 'is not', null).execute()).length;
     const age = (application: Awaited<ReturnType<typeof boot>>['application'], madeDaysAgo: number, expiresInDays: number) =>
       application.container
         .make(Connections)
         .get<any>()
-        .updateTable('remember_tokens')
-        .set({ created_at: new Date(Date.now() - madeDaysAgo * 86_400_000), expires_at: new Date(Date.now() + expiresInDays * 86_400_000) })
+        .updateTable('sign_ins')
+        .set({ remember_created_at: new Date(Date.now() - madeDaysAgo * 86_400_000), remember_until: new Date(Date.now() + expiresInDays * 86_400_000) })
         .execute();
 
     it('refuses values above 30 days at boot, and accepts 0 and the default', async () => {
@@ -705,7 +712,8 @@ describe('remember me', () => {
       const { add, users, browser, application } = await boot({ env: { AUTH_REMEMBER_DAYS: '0' } });
       await add(ada);
       // A token a higher value issued: valid by its row, encrypted like the app's own cookie.
-      const raw = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 10 * 86_400_000), application.container.make(SessionFingerprints).of((await users.findById(1))!));
+      const signIns = application.container.make(SignInStore);
+      const raw = await signIns.issueToken(1, await signIns.create({ userId: 1, userAgent: undefined }), { until: new Date(Date.now() + 10 * 86_400_000), fingerprint: application.container.make(SessionFingerprints).of((await users.findById(1))!) });
       const cookie = encodeURIComponent(await application.container.make(Encrypter).encrypt(raw, 'cookie:marmeon_remember'));
       expect(await tokenCount(application)).toBe(1);
       const reopened = browser(new Map([['marmeon_remember', cookie]]));
@@ -731,22 +739,20 @@ describe('remember me', () => {
       await add(ada);
       const laptop = browser();
       await rememberLogin(laptop.send);
-      const real = application.container.make(RememberTokenStore);
       const forgotten: string[] = [];
-      application.container.instance(RememberTokenStore, {
-        create: (...args) => real.create(...args),
-        consume: async (cookie) => {
-          const result = await real.consume(cookie);
-          return result.ok ? { ...result, value: { ...result.value, expiresAt: new Date(Number.NaN) } } : result;
-        },
-        forget: async (cookie) => {
-          forgotten.push(cookie);
-          await real.forget(cookie);
-        },
-        exists: (cookie) => real.exists(cookie),
-        forgetUser: (...args) => real.forgetUser(...args),
-        prune: (days) => real.prune(days),
-      });
+      application.container.instance(
+        SignInStore,
+        new (class extends DelegatingSignIns {
+          override async consume(cookie: string) {
+            const result = await super.consume(cookie);
+            return result.ok ? { ...result, value: { ...result.value, expiresAt: new Date(Number.NaN) } } : result;
+          }
+          override async forgetToken(cookie: string) {
+            forgotten.push(cookie);
+            await super.forgetToken(cookie);
+          }
+        })(application.container.make(SignInStore)),
+      );
       const reopened = browser(new Map([['marmeon_remember', laptop.jar.get('marmeon_remember')!]]));
       expect(await (await reopened.send('/who')).json()).toEqual({ id: null, viaRemember: false });
       expect(reopened.jar.has('marmeon_remember')).toBe(false);
@@ -949,7 +955,7 @@ describe('remember me', () => {
     it('is dispatched when the store reports a stale validator that was not the one just replaced', async () => {
       const { add, browser } = await boot({
         consume: (real) => async () => {
-          await real.forgetUser(1);
+          await real.endAll(1);
           return err({ kind: 'stolen', userId: 1, reused: false });
         },
       });
@@ -1107,7 +1113,8 @@ describe('remember me', () => {
     users.rows.delete(1);
     expect(await (await browser(new Map([['marmeon_remember', laptop.jar.get('marmeon_remember')!]])).send('/who')).json()).toMatchObject({ id: null });
     // A cookie the app did not encrypt is not even read.
-    const plain = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 60_000), 'fingerprint');
+    const signIns = application.container.make(SignInStore);
+    const plain = await signIns.issueToken(1, await signIns.create({ userId: 1, userAgent: undefined }), { until: new Date(Date.now() + 60_000), fingerprint: 'fingerprint' });
     expect(await (await browser(new Map([['marmeon_remember', plain]])).send('/who')).json()).toMatchObject({ id: null });
   });
 });

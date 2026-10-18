@@ -7,7 +7,7 @@ import { migratedConnections } from './__fixtures__/databases.ts';
 import { AccountSessions } from './account-sessions.ts';
 import { EndAllSessionsCommand } from './end-all-sessions.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE } from './password-reset.ts';
-import { DatabaseRememberTokens, REMEMBER_TABLE } from './remember.ts';
+import { DatabaseSignIns, SIGN_INS_TABLE } from './sign-ins.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens } from './tokens.ts';
 import { AuthServiceProvider, type AuthUser } from './index.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
@@ -35,16 +35,16 @@ describe('auth:end-all-sessions', () => {
 
   async function setup() {
     const db = connections.get<any>();
-    for (const table of [REMEMBER_TABLE, PASSWORD_RESET_TABLE, ACCESS_TOKEN_TABLE]) await db.deleteFrom(table).execute();
+    for (const table of [SIGN_INS_TABLE, PASSWORD_RESET_TABLE, ACCESS_TOKEN_TABLE]) await db.deleteFrom(table).execute();
     const clock = new TestClock();
     const users = new Users();
-    const remember = new DatabaseRememberTokens(connections, clock);
+    const signIns = new DatabaseSignIns(connections, clock);
     const resets = new DatabasePasswordResetTokens(connections, clock);
     const access = new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock);
-    await remember.create(1, new Date(clock.now() + 3_600_000), 'fingerprint');
+    await signIns.issueToken(1, await signIns.create({ userId: 1, userAgent: undefined }), { until: new Date(clock.now() + 3_600_000), fingerprint: 'fingerprint' });
     await resets.create('ada@example.com', 0);
     const token = await access.create(1, 'ci');
-    const accounts = new AccountSessions(users, remember, undefined, undefined, undefined, clock, () => resets, () => access);
+    const accounts = new AccountSessions(users, signIns, undefined, undefined, clock, () => resets, () => access);
     const lines: string[] = [];
     const output = { line: (line: string) => lines.push(line), success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
     const info = vi.fn();
@@ -61,22 +61,22 @@ describe('auth:end-all-sessions', () => {
     expect(lines[1]).toContain('pass --force');
     for (const word of ['remember-me', '--keep-api-tokens', '--keep-reset-tokens', 'Passkeys']) expect(lines[1]).toContain(word);
     expect(users.key).toBeNull();
-    expect(await rows(REMEMBER_TABLE)).toBe(1);
+    expect(await rows(SIGN_INS_TABLE)).toBe(1);
   });
 
   it('ends every session with --force, revokes the API and reset tokens, and says what it did not touch', async () => {
     const { users, run, lines, rows, access, token, info } = await setup();
     expect(await run({ force: true })).toBe(0);
     expect(users.key).toMatch(/^[\w-]{43}$/);
-    expect(await rows(REMEMBER_TABLE)).toBe(0);
+    expect(await rows(SIGN_INS_TABLE)).toBe(0);
     expect(await rows(PASSWORD_RESET_TABLE)).toBe(0);
     expect(await access.find(token.plainText)).toBeUndefined();
     expect(lines).toEqual([
       `Environment: ${environment.describe()}`,
-      `Ended every session of 1 account: 1 remember-me token and 0 sign-ins deleted, 1 password-reset token deleted, 1 API token revoked. Sessions of every driver end at their next request (environment: ${environment.describe()}).`,
+      `Ended every session of 1 account: 1 sign-in deleted (remember-me tokens with them), 1 password-reset token deleted, 1 API token revoked. Sessions of every driver end at their next request (environment: ${environment.describe()}).`,
       expect.stringMatching(/^Not touched: passkeys, second factors .*PasskeyRegistered, TwoFactorEnabled, RecoveryCodesGenerated.*auth:reset-two-factor/),
     ]);
-    expect(info).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ operator: userInfo().username, host: hostname(), accounts: 1, rememberTokens: 1 }));
+    expect(info).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ operator: userInfo().username, host: hostname(), accounts: 1, signIns: 1 }));
   });
 
   it('keeps the tokens it is told to keep, and names them', async () => {
@@ -101,7 +101,7 @@ describe('auth:end-all-sessions', () => {
       expect(lines[0]).toContain(`--${kept}`);
     }
     expect(users.key).toBeNull();
-    expect(await rows(REMEMBER_TABLE)).toBe(1);
+    expect(await rows(SIGN_INS_TABLE)).toBe(1);
     expect(await rows(PASSWORD_RESET_TABLE)).toBe(1);
     expect(await access.find(token.plainText)).toBeDefined();
   });
@@ -111,7 +111,7 @@ describe('auth:end-all-sessions', () => {
     expect(await run({ force: true }, undefined, ['alice@example.com'])).toBe(1);
     expect(lines).toEqual(['✗ auth:end-all-sessions takes no arguments (got "alice@example.com"). To sign out one account, use auth:end-sessions <email> --force.']);
     expect(users.key).toBeNull();
-    expect(await rows(REMEMBER_TABLE)).toBe(1);
+    expect(await rows(SIGN_INS_TABLE)).toBe(1);
   });
 
   it('is registered by the auth provider', () => {
@@ -119,7 +119,7 @@ describe('auth:end-all-sessions', () => {
   });
 
   it('passes the --keep options through', async () => {
-    const endEveryone = vi.fn(async () => ({ accounts: 0, rememberTokens: 0, resetTokens: 0, accessTokens: 0, signIns: 0 }));
+    const endEveryone = vi.fn(async () => ({ accounts: 0, resetTokens: 0, accessTokens: 0, signIns: 0 }));
     const { run } = await setup();
     await run({ force: true }, { endEveryone });
     await run({ force: true, 'keep-api-tokens': true }, { endEveryone });
@@ -133,14 +133,25 @@ describe('auth:end-all-sessions', () => {
 
   it('refuses before changing anything when an API-token store cannot revoke every token', async () => {
     const { users, run, lines, rows } = await setup();
-    const remember = new DatabaseRememberTokens(connections, new TestClock());
-    const stubborn = new AccountSessions(new Users(), remember, undefined, undefined, undefined, undefined, () => ({ forgetEveryone: async () => 0 }) as never, () => ({}) as never);
+    const signIns = new DatabaseSignIns(connections, new TestClock());
+    const stubborn = new AccountSessions(new Users(), signIns, undefined, undefined, undefined, () => ({ forgetEveryone: async () => 0 }) as never, () => ({}) as never);
     expect(await run({ force: true }, stubborn)).toBe(1);
     expect(lines[1]).toContain('[marmeon:A6]');
     expect(lines[1]).toContain('AccessTokenStore.revokeEveryone()');
     expect(lines[1]).toContain('--keep-api-tokens');
     expect(users.key).toBeNull();
-    expect(await rows(REMEMBER_TABLE)).toBe(1);
+    expect(await rows(SIGN_INS_TABLE)).toBe(1);
+  });
+
+  it('refuses before changing anything when the sign-in store cannot end every sign-in', async () => {
+    const { users, run, lines, rows } = await setup();
+    // A JavaScript store (or a cast) that left a method out: TypeScript refuses to compile it.
+    const incomplete = new AccountSessions(new Users(), { endAll: async () => 0 } as never, undefined, undefined, undefined, undefined, undefined);
+    expect(await run({ force: true, 'keep-api-tokens': true, 'keep-reset-tokens': true }, incomplete)).toBe(1);
+    expect(lines[1]).toContain('[marmeon:A6]');
+    expect(lines[1]).toContain('SignInStore.endEveryone()');
+    expect(users.key).toBeNull();
+    expect(await rows(SIGN_INS_TABLE)).toBe(1);
   });
 
   it('prints the thrown state message and exits non-zero when it fails', async () => {
@@ -155,11 +166,11 @@ describe('auth:end-all-sessions', () => {
 
   it('refuses before changing anything when the provider cannot write every key', async () => {
     const { run, lines, rows } = await setup();
-    const remember = new DatabaseRememberTokens(connections, new TestClock());
-    const keyless = new AccountSessions({ ...new Users(), findById: async () => undefined } as never, remember, undefined);
+    const signIns = new DatabaseSignIns(connections, new TestClock());
+    const keyless = new AccountSessions({ ...new Users(), findById: async () => undefined } as never, signIns, undefined);
     // An object spread drops the prototype method, so the provider has no updateEverySessionKey().
     expect(await run({ force: true }, keyless)).toBe(1);
     expect(lines[1]).toContain('updateEverySessionKey');
-    expect(await rows(REMEMBER_TABLE)).toBe(1);
+    expect(await rows(SIGN_INS_TABLE)).toBe(1);
   });
 });

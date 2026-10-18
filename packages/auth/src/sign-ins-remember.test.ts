@@ -8,7 +8,7 @@ import { DatabaseSignIns, SIGN_INS_TABLE, type RememberedDevice, type RememberTo
 const LONG: SignInWindow = { idleSeconds: 365 * 86_400, maxSeconds: 365 * 86_400 };
 const NARROW: SignInWindow = { idleSeconds: 60, maxSeconds: 3600 };
 
-// The remember-me token on the sign-in row: every case of the former `remember_tokens` store, and the ones the row adds.
+// The remember-me token on the sign-in row: every case of a remember-me store, and the ones the row adds.
 describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
@@ -19,7 +19,7 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
     connections
       .get<{ [SIGN_INS_TABLE]: SignInsTable }>()
       .selectFrom(SIGN_INS_TABLE)
-      .select((eb) => ['id', 'user_id', 'remember_selector', secret(eb, 'remember_validator_hash')])
+      .select((eb) => ['id', 'user_id', secret(eb, 'remember_selector'), secret(eb, 'remember_validator_hash')])
       .execute();
   /** A new sign-in of the user with a token on it: the cookie, and the id of the row. */
   async function issue(userId: number, until = inAMonth(), fingerprint = 'fp') {
@@ -249,7 +249,7 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
     const [row] = await tokenColumns();
     expect(Date.now() - new Date(row!.signed_in_at).getTime()).toBeLessThan(60_000);
     await connections.get<any>().updateTable(SIGN_INS_TABLE).set({ remember_until: new Date(Date.now() - 1000), last_seen_at: new Date(Date.now() - 300_000) }).execute();
-    expect(await signIns.prune(NARROW)).toBe(0);
+    expect(await signIns.prune(NARROW, 30)).toBe(0);
     expect((await rows()).map((r) => r.id)).toEqual([id]);
   });
 
@@ -307,11 +307,11 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
     expect((await signIns.list(2, LONG)).map((signIn) => signIn.remembered), 'no token, not remembered').toEqual([false]);
   });
 
-  it('prune() without the days leaves a row alone while its token lives, and deletes the rows that are over', async () => {
+  it('prune() leaves a row alone while its token lives, and deletes the rows that are over', async () => {
     const living = await issue(1);
     const ended = await issue(2, new Date(Date.now() - 1000));
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 2 * 3600_000 });
-    expect(await signIns.prune(NARROW)).toBe(1);
+    expect(await signIns.prune(NARROW, 30)).toBe(1);
     expect((await rows()).map((row) => row.id)).toEqual([living.id]);
     expect(await signIns.remembered(living.cookie)).toBe(true);
     expect(await signIns.remembered(ended.cookie)).toBe(false);
@@ -402,7 +402,8 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
     await signIns.dropToken(1, id);
     expect(await signIns.consume(cookie)).toStrictEqual(err({ kind: 'invalid' }));
     expect(await signIns.seen(1, id, false)).toBe(true);
-    expect(await tokenColumns()).toEqual([expect.objectContaining({ remember_selector: null, remember_until: null, remember_created_at: null, remember_fingerprint: null, remember_rotated_at: null })]);
+    expect(await tokenColumns()).toEqual([expect.objectContaining({ remember_until: null, remember_created_at: null, remember_fingerprint: null, remember_rotated_at: null })]);
+    expect(await rows(), 'the selector is a secret column: read by name').toEqual([expect.objectContaining({ remember_selector: null, remember_validator_hash: null })]);
   });
 
   it('consume() of a token whose sign-in was ended is invalid', async () => {
@@ -411,9 +412,14 @@ describe.each(drivers)('the remember-me token of DatabaseSignIns on %s', (driver
     expect(await signIns.consume(cookie)).toStrictEqual(err({ kind: 'invalid' }));
   });
 
-  it('a row with a selector but no validator (made by create() with remember) is no token', async () => {
+  it('a row with a selector but no validator (not made by issueToken()) is no token', async () => {
     const selector = 'a'.repeat(22);
-    await signIns.create({ userId: 1, userAgent: 'Agent', remember: { selector, until: inAMonth() } });
+    const now = new Date();
+    await connections
+      .get<any>()
+      .insertInto(SIGN_INS_TABLE)
+      .values({ id: 'c'.repeat(22), user_id: 1, remember_selector: selector, remember_until: inAMonth(), signed_in_at: now, last_seen_at: now, created_at: now, updated_at: now })
+      .execute();
     const cookie = `${selector}.${'b'.repeat(43)}`;
     expect(await signIns.consume(cookie)).toStrictEqual(err({ kind: 'invalid' }));
     expect(await signIns.remembered(cookie)).toBe(false);

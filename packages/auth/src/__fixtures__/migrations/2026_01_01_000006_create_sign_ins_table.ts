@@ -7,7 +7,7 @@ export default defineMigration({
       table.string('id', 22).primary();
       table.bigInteger('user_id');
       table.string('user_agent', 255).nullable();
-      table.string('remember_selector', 32).nullable().unique();
+      table.string('remember_selector', 32).nullable().secret().unique();
       table.timestamp('remember_until').nullable();
       table.timestamp('signed_in_at');
       table.timestamp('last_seen_at');

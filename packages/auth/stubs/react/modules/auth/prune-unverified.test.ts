@@ -1,4 +1,4 @@
-import { AccessTokenStore, PASSWORD_RESET_TABLE, PasswordResetTokenStore, REMEMBER_TABLE, RememberTokenStore } from '@marmeon/auth';
+import { AccessTokenStore, PASSWORD_RESET_TABLE, PasswordResetTokenStore, SIGN_INS_TABLE, SignInStore } from '@marmeon/auth';
 import { Connections } from '@marmeon/database';
 import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
@@ -69,7 +69,8 @@ describe('pruning accounts whose address was never confirmed — the default', {
     const young = await made(5, false, { email: 'young@example.com' });
     const session = await signIn(old); // it may sign in — and sees only the notice (private registration)
     for (const user of [old, confirmed]) {
-      await app.make(RememberTokenStore).create(user.id, new Date(app.clock.now() + 30 * DAY), 'fingerprint');
+      const signIns = app.make(SignInStore);
+      await signIns.issueToken(user.id, await signIns.create({ userId: user.id, userAgent: undefined }), { until: new Date(app.clock.now() + 30 * DAY), fingerprint: 'fingerprint' });
       await app.make(AccessTokenStore).create(user.id, 'cli', { expiresIn: '365d' });
       await app.make(PasswordResetTokenStore).create(user.email, 0);
     }
@@ -80,7 +81,7 @@ describe('pruning accounts whose address was never confirmed — the default', {
     expect(await exists(confirmed), 'a confirmed account was deleted').toBe(true);
     expect(await exists(young), 'an account unconfirmed for 6 days was deleted').toBe(true);
     const db = app.make(Connections).get<any>();
-    expect((await db.selectFrom(REMEMBER_TABLE).select('user_id').execute()).map((row) => Number(row.user_id))).toEqual([confirmed.id]);
+    expect((await db.selectFrom(SIGN_INS_TABLE).select('user_id').where('remember_selector', 'is not', null).execute()).map((row) => Number(row.user_id))).toEqual([confirmed.id]);
     expect((await db.selectFrom(PASSWORD_RESET_TABLE).select('email').execute()).map((row) => row.email)).toEqual([confirmed.email]);
     expect(await app.make(AccessTokenStore).list(old.id)).toEqual([]);
     expect(await app.make(AccessTokenStore).list(confirmed.id)).toHaveLength(1);

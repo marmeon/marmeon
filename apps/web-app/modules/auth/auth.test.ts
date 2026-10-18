@@ -26,6 +26,9 @@ import type { UpdatePasswordController } from './controllers/UpdatePasswordContr
 import type { ShowLoginController } from './controllers/ShowLoginController.ts';
 import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 
+/** How many sign-ins hold a remember-me token (the token hangs on the row of its sign-in). */
+const rememberTokens = async () => (await app.make(Connections).get<any>().selectFrom('sign_ins').select('id').where('remember_selector', 'is not', null).execute()).length;
+
 // Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
@@ -452,7 +455,7 @@ describe('remember me', () => {
     const login = await rememberLogin(ada).assertAuthenticated(ada);
     const cookie = login.cookie(REMEMBER)!;
     expect(cookie).toMatch(/^[\w-]{22}\.[\w-]{43}$/);
-    await app.assertDatabaseCount('remember_tokens', 1);
+    expect(await rememberTokens(), 'sign-ins holding a remember-me token').toBe(1);
 
     const later = await app.withCookie(REMEMBER, cookie).get('/users/me').assertRedirect(`/users/${ada.public_id}`).assertAuthenticated(ada);
     expect(later.cookie(REMEMBER)).not.toBe(cookie);
@@ -463,7 +466,7 @@ describe('remember me', () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', credentialsOf(ada));
     expect(login.cookie(REMEMBER)).toBeUndefined();
-    await app.assertDatabaseCount('remember_tokens', 0);
+    expect(await rememberTokens(), 'sign-ins holding a remember-me token').toBe(0);
   });
 
   it('offers the checkbox by default', async () => {
@@ -482,7 +485,7 @@ describe('remember me', () => {
       const ada = await app.factory(UserFactory).create();
       const login = await rememberLogin(ada).assertAuthenticated(ada);
       expect(login.cookie(REMEMBER)).toBeUndefined();
-      await app.assertDatabaseCount('remember_tokens', 0);
+      expect(await rememberTokens(), 'sign-ins holding a remember-me token').toBe(0);
     });
   });
 
@@ -498,7 +501,7 @@ describe('remember me', () => {
     } finally {
       vi.useRealTimers();
     }
-    await app.assertDatabaseCount('remember_tokens', 0);
+    expect(await rememberTokens(), 'sign-ins holding a remember-me token').toBe(0);
   });
 
   it('signing out forgets this device only', async () => {
@@ -506,7 +509,7 @@ describe('remember me', () => {
     const laptop = await rememberLogin(ada);
     const phone = await rememberLogin(ada);
     await app.withCookie(SESSION, laptop.cookie(SESSION)!).withCookie(REMEMBER, laptop.cookie(REMEMBER)!).post('/logout').assertGuest();
-    await app.assertDatabaseCount('remember_tokens', 1);
+    expect(await rememberTokens(), 'sign-ins holding a remember-me token').toBe(1);
     await app.withCookie(REMEMBER, phone.cookie(REMEMBER)!).get('/users/me').assertAuthenticated(ada);
   });
 });

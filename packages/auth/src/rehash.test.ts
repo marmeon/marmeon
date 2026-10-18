@@ -5,9 +5,9 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { Auth, authenticate, AuthServiceProvider, Hasher, PasswordHasher, RememberTokenStore, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
+import { Auth, authenticate, AuthServiceProvider, Hasher, PasswordHasher, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
 import { NewPassword } from './new-password.ts';
-import { REMEMBER_TABLE } from './remember.ts';
+import { SIGN_INS_TABLE } from './sign-ins.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 
@@ -175,7 +175,7 @@ describe('what ends the sign-ins of the other devices', () => {
     const world = await boot();
     const { a, b } = await twoDevices(world);
     const container = world.application.container;
-    await container.make(NewPassword).store(world.users, container.make(RememberTokenStore), 1, await world.hasher.make('reset'), 'reset');
+    await container.make(NewPassword).store(world.users, 1, await world.hasher.make('reset'), 'reset');
     expect((await a.send('/me')).status).toBe(401);
     expect((await b.send('/me')).status).toBe(401);
     a.reopen();
@@ -264,7 +264,7 @@ describe('an AccountSessions.end() that lands between the check of the session a
     expect(ended).not.toBe(key);
     expect(users.rows.get(1)!.hash, 'the password was not changed').toBe(hash);
     expect(a.jar.has('marmeon_remember'), 'the cookie of this device went with the session').toBe(false);
-    expect(await world.application.container.make(Connections).get<any>().selectFrom(REMEMBER_TABLE).selectAll().execute(), 'and its token').toHaveLength(0);
+    expect(await world.application.container.make(Connections).get<any>().selectFrom(SIGN_INS_TABLE).selectAll().execute(), 'and its sign-in, token included').toHaveLength(0);
     expect((await a.send('/me')).status).toBe(401);
     expect(users.rows.get(1)!.key, 'and nothing wrote over the key of end()').toBe(ended);
   });

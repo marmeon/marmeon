@@ -1,9 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Container, Key } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
-import { AuthConfig } from './config.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_COLUMNS, PASSWORD_RESET_TABLE, PasswordResetTokenStore } from './password-reset.ts';
-import { DatabaseRememberTokens, REMEMBER_COLUMNS, REMEMBER_TABLE, RememberTokenStore } from './remember.ts';
 import { DatabaseSignIns, SIGN_INS_COLUMNS, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
 import { ACCESS_TOKEN_COLUMNS, ACCESS_TOKEN_TABLE, AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { factorSources, TwoFactorState } from './two-factor/state.ts';
@@ -19,7 +17,10 @@ export const SIGN_INS_REMEMBER_MIGRATION = new URL('../stubs/migrations/add_reme
 /** The migration that gives accounts without a session key a random one. */
 export const SESSION_KEYS_MIGRATION = new URL('../stubs/migrations/fill_empty_session_keys.ts', import.meta.url);
 
-/** The upgrades of the auth tables: the reissue of the API tokens, random session keys for accounts that have none, and the remember-me columns of `sign_ins`. */
+/** The migration that drops the `remember_tokens` table, whose tokens live on the rows of `sign_ins` now. */
+export const REMEMBER_TOKENS_DROP_MIGRATION = new URL('../stubs/migrations/drop_remember_tokens_table.ts', import.meta.url);
+
+/** The upgrades of the auth tables: the reissue of the API tokens, random session keys for accounts that have none, the end of `remember_tokens`, and the remember-me columns of `sign_ins`. */
 export function authMigrationUpgrades() {
   return [
     {
@@ -35,6 +36,13 @@ export function authMigrationUpgrades() {
       name: 'fill_empty_session_keys',
       createdBy: ['create_personal_access_tokens_table', 'create_users_table'],
       contents: readFileSync(SESSION_KEYS_MIGRATION, 'utf8'),
+    },
+    {
+      set: 'auth',
+      revision: 4,
+      name: 'drop_remember_tokens_table',
+      createdBy: ['create_remember_tokens_table'],
+      contents: readFileSync(REMEMBER_TOKENS_DROP_MIGRATION, 'utf8'),
     },
     {
       set: 'sign-ins',
@@ -80,10 +88,9 @@ export async function requireAuthTables(container: Container): Promise<void> {
     }
   };
 
-  if (container.make(AuthConfig).remember && bound(RememberTokenStore) instanceof DatabaseRememberTokens) need(REMEMBER_TABLE, REMEMBER_COLUMNS, ['validator_hash', 'previous_validator_hash'], 'auth');
   if (bound(PasswordResetTokenStore) instanceof DatabasePasswordResetTokens) need(PASSWORD_RESET_TABLE, PASSWORD_RESET_COLUMNS, ['token_hash'], 'auth');
   if (bound(AccessTokenStore) instanceof DatabaseAccessTokens) need(ACCESS_TOKEN_TABLE, ACCESS_TOKEN_COLUMNS, ['token_hash'], 'auth');
-  if (bound(SignInStore) instanceof DatabaseSignIns) need(SIGN_INS_TABLE, SIGN_INS_COLUMNS, ['remember_validator_hash', 'remember_previous_validator_hash'], 'sign-ins');
+  if (bound(SignInStore) instanceof DatabaseSignIns) need(SIGN_INS_TABLE, SIGN_INS_COLUMNS, ['remember_selector', 'remember_validator_hash', 'remember_previous_validator_hash'], 'sign-ins');
   // The authenticator app is a source of the state the app bound, alone or joined with the passkeys.
   const state = bound(TwoFactorState);
   if (state && factorSources(state).some((source) => source instanceof TwoFactorStore)) {

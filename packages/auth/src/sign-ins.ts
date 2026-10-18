@@ -1,7 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { Clock, commitAnyway, err, ok, token, type Result } from '@marmeon/core';
+import { Clock, commitAnyway, err, ok, type Result } from '@marmeon/core';
 import { Connections, secret, sql, type Generated, type Secret } from '@marmeon/database';
 import type { DeviceDescription } from './device.ts';
+import type { AuthUserId } from './user.ts';
 
 /** The table the app's migration creates (`marmeon make:sign-ins-table` writes it) — see {@link SignInsTable}. */
 export const SIGN_INS_TABLE = 'sign_ins';
@@ -14,7 +15,8 @@ export interface SignInsTable {
   id: string;
   user_id: number | string;
   user_agent: string | null;
-  remember_selector: string | null;
+  /** The part of the remember-me cookie that finds the row. Whoever knows it can end the sign-in, so it is a secret as well. */
+  remember_selector: Secret<string | null>;
   remember_until: string | Date | null;
   /** The validator of the remember-me cookie, only as SHA-256 — the cookie is the secret, the database is not. */
   remember_validator_hash: Secret<string | null>;
@@ -68,7 +70,7 @@ export interface SignIn {
 /** A sign-in as listed to its user. */
 export interface SignInRecord {
   readonly id: string;
-  readonly userId: number | string;
+  readonly userId: AuthUserId;
   /** The browser's `User-Agent`, cut to 255 characters; feed it to `describeDevice()`. */
   readonly userAgent: string | undefined;
   /** Whether a remember-me cookie keeps this browser signed in. */
@@ -81,7 +83,7 @@ export interface SignInRecord {
 
 /** What a valid remember-me cookie proved: the user, the sign-in it belongs to, and the rotated cookie value — `undefined` when a concurrent request already rotated it. */
 export interface RememberedDevice {
-  readonly userId: number | string;
+  readonly userId: AuthUserId;
   /** The id of the sign-in row the token hangs on. */
   readonly signIn: string;
   readonly cookie: string | undefined;
@@ -108,7 +110,7 @@ export type RememberTokenError =
   | { readonly kind: 'invalid' }
   | {
       readonly kind: 'stolen';
-      readonly userId: number | string;
+      readonly userId: AuthUserId;
       /** The presented validator was the one just replaced by a rotation. Information only: an older validator or one never issued, on a known selector, comes from someone who held the cookie (the selector is random), and `Auth` announces every `stolen` the same way. */
       readonly reused?: boolean;
     };
@@ -120,71 +122,70 @@ export interface SignInWindow {
 }
 
 /**
- * The sign-ins of the app's users, one row per browser. Opt-in: bind `SignInStore` to `DatabaseSignIns` and create the
- * table with `marmeon make:sign-ins-table`. Every method that takes an id first checks its shape and asks nothing for a
- * malformed one; every query names the user, or the selector of a cookie.
+ * The sign-ins of the app's users, one row per browser, and the remember-me token that keeps a browser signed in. Every app with a
+ * `UserProvider` has them: `DatabaseSignIns` on the `sign_ins` table (`marmeon make:sign-ins-table` writes it). Every method that takes
+ * an id first checks its shape and asks nothing for a malformed one; every query names the user, or the selector of a cookie.
+ *
+ * Your own store extends this class and implements every method; none has a default, and a member added later has one only if it is
+ * not security-relevant. See `docs/authentication.md#your-own-stores`.
  */
-export interface SignInStore {
-  /** A new sign-in; returns its id (128 random bits, base64url). */
-  create(input: { userId: number | string; userAgent: string | undefined; remember?: { selector: string; until: Date } }): Promise<string>;
-  /** Continues the sign-in that owns this remember-me selector (the same browser is one row): its id, or `undefined` when there is no such row — never creates one. */
-  resume(userId: number | string, selector: string, until: Date): Promise<string | undefined>;
-  /** Sets or removes the remember-me selector of a sign-in. */
-  remember(userId: number | string, id: string, remember: { selector: string; until: Date } | undefined): Promise<void>;
-  /** Deletes the sign-in of the user that holds this remember-me selector (its token was dropped); `false` when there is none. Never matches by selector alone. */
-  endRemembered(userId: number | string, selector: string): Promise<boolean>;
+export abstract class SignInStore {
+  /** A mark without meaning: only a subclass fits the type, so a store that merely `implements` this contract does not compile. */
+  readonly #contract = true;
+
+  /** A new sign-in, without a remember-me token; returns its id (128 random bits, base64url). */
+  abstract create(input: { userId: AuthUserId; userAgent: string | undefined }): Promise<string>;
   /** Whether the sign-in still exists; with `touch`, also writes `last_seen_at` when it is older than {@link SEEN_GRANULARITY_SECONDS}. Never creates one. */
-  seen(userId: number | string, id: string, touch: boolean): Promise<boolean>;
+  abstract seen(userId: AuthUserId, id: string, touch: boolean): Promise<boolean>;
   /** The user's living sign-ins, the most recently seen first. */
-  list(userId: number | string, window: SignInWindow): Promise<readonly SignInRecord[]>;
-  /** Deletes one sign-in of the user; `false` when there is none (another user's id is none). */
-  end(userId: number | string, id: string): Promise<boolean>;
-  /** Deletes every sign-in of the user, except `except`; how many. */
-  endAll(userId: number | string, except?: string): Promise<number>;
-  /** Deletes every sign-in of every user; how many. */
-  endEveryone(): Promise<number>;
+  abstract list(userId: AuthUserId, window: SignInWindow): Promise<readonly SignInRecord[]>;
+  /** Deletes one sign-in of the user, token included; `false` when there is none (another user's id is none). */
+  abstract end(userId: AuthUserId, id: string): Promise<boolean>;
+  /** Deletes every sign-in of the user, tokens included, except the one with the id `except`; how many. */
+  abstract endAll(userId: AuthUserId, except?: string): Promise<number>;
+  /** Deletes every sign-in of every user, tokens included; how many. */
+  abstract endEveryone(): Promise<number>;
   /**
-   * Deletes exactly the rows `list` does not show, of every user; how many. With `rememberMaxAgeDays` it first takes the token off every
-   * row whose token has expired or was made that many days ago or earlier (`AUTH_REMEMBER_DAYS`; the row stays while its session lives):
-   * a lowered or zeroed setting must not leave tokens that a raised one would revive. `0` takes every token off.
+   * Deletes exactly the rows `list` does not show, of every user; how many. It first takes the token off every row whose token has
+   * expired or was made `rememberMaxAgeDays` days ago or earlier (`AUTH_REMEMBER_DAYS`; the row stays while its session lives): a
+   * lowered or zeroed setting must not leave tokens that a raised one would revive. `0` takes every token off.
    */
-  prune(window: SignInWindow, rememberMaxAgeDays?: number): Promise<number>;
+  abstract prune(window: SignInWindow, rememberMaxAgeDays: number): Promise<number>;
 
   /**
    * Hangs a new remember-me token on the sign-in, replacing the one it has; returns the cookie value `<selector>.<validator>`. `fingerprint`
    * is the account state the sign-in verified (a SHA-256, safe to store): persist it with the token and hand it back from `consume()`. A
    * store that drops it makes every cookie useless. Throws when the user has no such sign-in — nothing is written, no cookie exists.
    */
-  issueToken(userId: number | string, id: string, token: { until: Date; fingerprint: string }): Promise<string>;
+  abstract issueToken(userId: AuthUserId, id: string, token: { until: Date; fingerprint: string }): Promise<string>;
   /** Takes the token off the sign-in; the row stays. Another user's id changes nothing. */
-  dropToken(userId: number | string, id: string): Promise<void>;
+  abstract dropToken(userId: AuthUserId, id: string): Promise<void>;
   /**
    * Checks a cookie value and rotates it — an `err` for unknown, malformed or expired tokens (`invalid`) and for a copied cookie (`stolen`).
    * Deleting every sign-in of the account and choosing the one request that reports `stolen` must be one atomic step: a failed statement
    * deletes nothing, so the next replay reports it again. The revocation of a `stolen` token and the removal of an expired one must
    * commit even inside a transaction that returns the err (`commitAnyway`).
    */
-  consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+  abstract consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
   /**
    * Whether the sign-in of this cookie still holds its token (found by its selector, the validator is not checked); `false` for a malformed
    * cookie. It must see an `end()` at once (read-after-write: no cache, no lagging replica): an answer of `true` for an ended sign-in
    * lets a session survive `AccountSessions.end()`.
    */
-  remembered(cookie: string): Promise<boolean>;
+  abstract remembered(cookie: string): Promise<boolean>;
   /**
    * Ends the sign-in of this cookie, token and row (sign-out on this device). A malformed or unknown cookie deletes nothing. It deletes by
    * the selector alone: the selector is as secret as the cookie, and whoever knows it can do more through `consume()`; a check of the
    * validator would keep a sign-out with a stale cookie from ending the sign-in.
    */
-  forgetToken(cookie: string): Promise<void>;
+  abstract forgetToken(cookie: string): Promise<void>;
   /**
    * Replaces the fingerprint of the token of this cookie, if it belongs to `userId` and the cookie carries the row's current validator
    * (or the previous one inside the grace window, as `consume()` accepts) — for the device that stays signed in when
    * `auth.updateSessionKey()` or `logoutOtherDevices()` changes the account on purpose.
    */
-  rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
+  abstract rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
 }
-export const SignInStore = token<SignInStore>('SignInStore');
 
 /** `last_seen_at` is written at most this often — no write per request, and a coarse time is all a list needs. */
 export const SEEN_GRANULARITY_SECONDS = 300;
@@ -210,58 +211,27 @@ const NO_TOKEN = {
 const USER_AGENT_LENGTH = 255;
 
 /** The default {@link SignInStore}, on the app's `sign_ins` table. */
-export class DatabaseSignIns implements SignInStore {
+export class DatabaseSignIns extends SignInStore {
   readonly #connections: Connections;
   readonly #clock: Clock;
 
   constructor(connections: Connections, clock: Clock) {
+    super();
     this.#connections = connections;
     this.#clock = clock;
   }
 
-  async create(input: { userId: number | string; userAgent: string | undefined; remember?: { selector: string; until: Date } }): Promise<string> {
+  async create(input: { userId: AuthUserId; userAgent: string | undefined }): Promise<string> {
     const id = randomBytes(16).toString('base64url');
     const now = this.#now();
     await this.#db()
       .insertInto(SIGN_INS_TABLE)
-      .values({
-        id,
-        user_id: input.userId,
-        user_agent: cleanUserAgent(input.userAgent),
-        remember_selector: input.remember?.selector ?? null,
-        remember_until: input.remember?.until ?? null,
-        signed_in_at: now,
-        last_seen_at: now,
-        created_at: now,
-        updated_at: now,
-      })
+      .values({ id, user_id: input.userId, user_agent: cleanUserAgent(input.userAgent), signed_in_at: now, last_seen_at: now, created_at: now, updated_at: now })
       .execute();
     return id;
   }
 
-  async resume(userId: number | string, selector: string, until: Date): Promise<string | undefined> {
-    const now = this.#now();
-    const row = await this.#db()
-      .updateTable(SIGN_INS_TABLE)
-      .set({ signed_in_at: now, last_seen_at: now, remember_until: until, updated_at: now })
-      .where('remember_selector', '=', selector)
-      .where('user_id', '=', userId)
-      .returning('id')
-      .executeTakeFirst();
-    return row?.id;
-  }
-
-  async remember(userId: number | string, id: string, remember: { selector: string; until: Date } | undefined): Promise<void> {
-    if (!ID.test(id)) return;
-    await this.#db()
-      .updateTable(SIGN_INS_TABLE)
-      .set({ remember_selector: remember?.selector ?? null, remember_until: remember?.until ?? null, updated_at: this.#now() })
-      .where('id', '=', id)
-      .where('user_id', '=', userId)
-      .execute();
-  }
-
-  async seen(userId: number | string, id: string, touch: boolean): Promise<boolean> {
+  async seen(userId: AuthUserId, id: string, touch: boolean): Promise<boolean> {
     if (!ID.test(id)) return false;
     const db = this.#db();
     const row = await db.selectFrom(SIGN_INS_TABLE).select('last_seen_at').where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
@@ -276,11 +246,11 @@ export class DatabaseSignIns implements SignInStore {
     return true;
   }
 
-  async list(userId: number | string, window: SignInWindow): Promise<readonly SignInRecord[]> {
+  async list(userId: AuthUserId, window: SignInWindow): Promise<readonly SignInRecord[]> {
     const now = this.#clock.now();
     const rows = await this.#db()
       .selectFrom(SIGN_INS_TABLE)
-      .select(['id', 'user_id', 'user_agent', 'remember_selector', 'remember_until', 'signed_in_at', 'last_seen_at', 'created_at'])
+      .select(['id', 'user_id', 'user_agent', 'remember_until', 'signed_in_at', 'last_seen_at', 'created_at'])
       .where('user_id', '=', userId)
       .where((eb) =>
         eb.or([
@@ -292,7 +262,7 @@ export class DatabaseSignIns implements SignInStore {
       .execute();
     return rows.map((row) => ({
       id: row.id,
-      userId: row.user_id,
+      userId: row.user_id as AuthUserId,
       userAgent: row.user_agent ?? undefined,
       remembered: row.remember_until !== null && new Date(row.remember_until).getTime() > now,
       signedInAt: new Date(row.signed_in_at),
@@ -301,18 +271,13 @@ export class DatabaseSignIns implements SignInStore {
     }));
   }
 
-  async endRemembered(userId: number | string, selector: string): Promise<boolean> {
-    const result = await this.#db().deleteFrom(SIGN_INS_TABLE).where('user_id', '=', userId).where('remember_selector', '=', selector).executeTakeFirst();
-    return result.numDeletedRows > 0n;
-  }
-
-  async end(userId: number | string, id: string): Promise<boolean> {
+  async end(userId: AuthUserId, id: string): Promise<boolean> {
     if (!ID.test(id)) return false;
     const result = await this.#db().deleteFrom(SIGN_INS_TABLE).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
     return result.numDeletedRows > 0n;
   }
 
-  async endAll(userId: number | string, except?: string): Promise<number> {
+  async endAll(userId: AuthUserId, except?: string): Promise<number> {
     let query = this.#db().deleteFrom(SIGN_INS_TABLE).where('user_id', '=', userId);
     if (except !== undefined && ID.test(except)) query = query.where('id', '!=', except);
     return Number((await query.executeTakeFirst()).numDeletedRows);
@@ -322,16 +287,14 @@ export class DatabaseSignIns implements SignInStore {
     return Number((await this.#db().deleteFrom(SIGN_INS_TABLE).executeTakeFirst()).numDeletedRows);
   }
 
-  async prune(window: SignInWindow, rememberMaxAgeDays?: number): Promise<number> {
+  async prune(window: SignInWindow, rememberMaxAgeDays: number): Promise<number> {
     const now = this.#clock.now();
-    if (rememberMaxAgeDays !== undefined) {
-      await this.#db()
-        .updateTable(SIGN_INS_TABLE)
-        .set({ ...NO_TOKEN, updated_at: new Date(now) })
-        .where('remember_selector', 'is not', null)
-        .where((eb) => eb.or([eb('remember_until', '<=', new Date(now)), eb('remember_created_at', '<=', new Date(now - rememberMaxAgeDays * 86_400_000))]))
-        .execute();
-    }
+    await this.#db()
+      .updateTable(SIGN_INS_TABLE)
+      .set({ ...NO_TOKEN, updated_at: new Date(now) })
+      .where(sql<boolean>`${sql.ref('remember_selector')} is not null`)
+      .where((eb) => eb.or([eb('remember_until', '<=', new Date(now)), eb('remember_created_at', '<=', new Date(now - rememberMaxAgeDays * 86_400_000))]))
+      .execute();
     const result = await this.#db()
       .deleteFrom(SIGN_INS_TABLE)
       // Written positively, not as `not(alive)`: a null `remember_until` would make that null, and the row would stay.
@@ -345,7 +308,7 @@ export class DatabaseSignIns implements SignInStore {
     return Number(result.numDeletedRows);
   }
 
-  async issueToken(userId: number | string, id: string, token: { until: Date; fingerprint: string }): Promise<string> {
+  async issueToken(userId: AuthUserId, id: string, token: { until: Date; fingerprint: string }): Promise<string> {
     const selector = randomBytes(16).toString('base64url');
     const validator = randomBytes(32).toString('base64url');
     const now = this.#now();
@@ -371,7 +334,7 @@ export class DatabaseSignIns implements SignInStore {
     return `${selector}.${validator}`;
   }
 
-  async dropToken(userId: number | string, id: string): Promise<void> {
+  async dropToken(userId: AuthUserId, id: string): Promise<void> {
     if (!ID.test(id)) return;
     await this.#db()
       .updateTable(SIGN_INS_TABLE)
@@ -397,7 +360,7 @@ export class DatabaseSignIns implements SignInStore {
         'remember_created_at',
         'remember_fingerprint',
       ])
-      .where('remember_selector', '=', parts.selector)
+      .where(selectorIs(parts.selector))
       .executeTakeFirst();
     // A row with a selector but no validator was not made by `issueToken()`: no cookie can match it.
     if (!row || row.remember_validator_hash === null || row.remember_created_at === null) return err({ kind: 'invalid' });
@@ -405,13 +368,13 @@ export class DatabaseSignIns implements SignInStore {
     // `!(a > b)`: an unreadable time counts as expired.
     if (!(expiresAt.getTime() > this.#clock.now())) {
       // Only the token goes: the row is the sign-in, which lives by its own session.
-      await db.updateTable(SIGN_INS_TABLE).set({ ...NO_TOKEN, updated_at: this.#now() }).where('id', '=', row.id).where('remember_selector', '=', parts.selector).execute();
+      await db.updateTable(SIGN_INS_TABLE).set({ ...NO_TOKEN, updated_at: this.#now() }).where('id', '=', row.id).where(selectorIs(parts.selector)).execute();
       return commitAnyway(err({ kind: 'invalid' })); // the update stays when an ambient transaction would roll back an err
     }
 
     const createdAt = new Date(row.remember_created_at);
     const device = (rotated: string | undefined): Result<RememberedDevice, RememberTokenError> =>
-      ok({ userId: row.user_id, signIn: row.id, cookie: rotated, expiresAt, createdAt, fingerprint: row.remember_fingerprint ?? undefined });
+      ok({ userId: row.user_id as AuthUserId, signIn: row.id, cookie: rotated, expiresAt, createdAt, fingerprint: row.remember_fingerprint ?? undefined });
     const presented = sha256(parts.validator);
     if (equal(presented, row.remember_validator_hash)) {
       const validator = randomBytes(32).toString('base64url');
@@ -431,13 +394,13 @@ export class DatabaseSignIns implements SignInStore {
         .selectFrom(SIGN_INS_TABLE)
         .select((eb) => [secret(eb, 'remember_previous_validator_hash'), 'remember_rotated_at', 'remember_until', 'remember_created_at', 'remember_fingerprint'])
         .where('id', '=', row.id)
-        .where('remember_selector', '=', parts.selector)
+        .where(selectorIs(parts.selector))
         .executeTakeFirst();
       if (!current || current.remember_previous_validator_hash === null || !equal(presented, current.remember_previous_validator_hash) || current.remember_rotated_at === null || current.remember_created_at === null) return err({ kind: 'invalid' });
       const freshUntil = new Date(current.remember_until ?? 0);
       if (!(this.#clock.now() - new Date(current.remember_rotated_at).getTime() < GRACE_MS && freshUntil.getTime() > this.#clock.now())) return err({ kind: 'invalid' });
       // What the row says now, not what the first read said: the token may have been re-stamped meanwhile.
-      return ok({ userId: row.user_id, signIn: row.id, cookie: undefined, expiresAt: freshUntil, createdAt: new Date(current.remember_created_at), fingerprint: current.remember_fingerprint ?? undefined });
+      return ok({ userId: row.user_id as AuthUserId, signIn: row.id, cookie: undefined, expiresAt: freshUntil, createdAt: new Date(current.remember_created_at), fingerprint: current.remember_fingerprint ?? undefined });
     }
     const rotatedAt = row.remember_rotated_at === null ? 0 : new Date(row.remember_rotated_at).getTime();
     const previous = row.remember_previous_validator_hash !== null && equal(presented, row.remember_previous_validator_hash);
@@ -449,7 +412,7 @@ export class DatabaseSignIns implements SignInStore {
     const removed = await db.deleteFrom(SIGN_INS_TABLE).where('user_id', '=', row.user_id).returning('id').execute();
     if (!removed.some((signIn) => signIn.id === row.id)) return commitAnyway(err({ kind: 'invalid' }));
     // The revocation must survive an ambient transaction that would roll back on an err.
-    return commitAnyway(err({ kind: 'stolen', userId: row.user_id, reused: previous }));
+    return commitAnyway(err({ kind: 'stolen', userId: row.user_id as AuthUserId, reused: previous }));
   }
 
   async remembered(cookie: string): Promise<boolean> {
@@ -458,7 +421,7 @@ export class DatabaseSignIns implements SignInStore {
     const row = await this.#db()
       .selectFrom(SIGN_INS_TABLE)
       .select('id')
-      .where('remember_selector', '=', parts.selector)
+      .where(selectorIs(parts.selector))
       .where(sql<boolean>`${sql.ref('remember_validator_hash')} is not null`)
       .executeTakeFirst();
     return row !== undefined;
@@ -466,10 +429,10 @@ export class DatabaseSignIns implements SignInStore {
 
   async forgetToken(cookie: string): Promise<void> {
     const parts = parseCookie(cookie);
-    if (parts) await this.#db().deleteFrom(SIGN_INS_TABLE).where('remember_selector', '=', parts.selector).execute();
+    if (parts) await this.#db().deleteFrom(SIGN_INS_TABLE).where(selectorIs(parts.selector)).execute();
   }
 
-  async rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>> {
+  async rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>> {
     const parts = parseCookie(cookie);
     if (!parts) return err({ kind: 'invalid' });
     const db = this.#db();
@@ -477,7 +440,7 @@ export class DatabaseSignIns implements SignInStore {
     const row = await db
       .selectFrom(SIGN_INS_TABLE)
       .select((eb) => ['id', 'user_id', secret(eb, 'remember_validator_hash'), secret(eb, 'remember_previous_validator_hash'), 'remember_rotated_at', 'remember_until'])
-      .where('remember_selector', '=', parts.selector)
+      .where(selectorIs(parts.selector))
       .where('user_id', '=', userId)
       .executeTakeFirst();
     if (!row || row.remember_validator_hash === null || !(new Date(row.remember_until ?? 0).getTime() > this.#clock.now())) return err({ kind: 'invalid' });
@@ -500,7 +463,7 @@ export class DatabaseSignIns implements SignInStore {
     // Every sign-in of the account goes in one statement, and only the request that removed this row reports it.
     const removed = await db.deleteFrom(SIGN_INS_TABLE).where('user_id', '=', row.user_id).returning('id').execute();
     if (!removed.some((signIn) => signIn.id === row.id)) return commitAnyway(err({ kind: 'invalid' }));
-    return commitAnyway(err({ kind: 'stolen', userId: row.user_id, reused: previous }));
+    return commitAnyway(err({ kind: 'stolen', userId: row.user_id as AuthUserId, reused: previous }));
   }
 
   #now(): Date {
@@ -515,6 +478,9 @@ export class DatabaseSignIns implements SignInStore {
 // A row lives while its remember-me cookie does, or while it is within the idle limit (plus the write granularity) and the absolute one.
 const lastSeenLimit = (now: number, window: SignInWindow) => new Date(now - (window.idleSeconds + SEEN_GRANULARITY_SECONDS) * 1000);
 const signedInLimit = (now: number, window: SignInWindow) => new Date(now - window.maxSeconds * 1000);
+
+/** The row whose remember-me selector this is. The column is a secret, so it is named in raw SQL like the other secrets. */
+const selectorIs = (selector: string) => sql<boolean>`${sql.ref('remember_selector')} = ${selector}`;
 
 function parseCookie(cookie: string): { selector: string; validator: string } | undefined {
   const [selector, validator, ...rest] = cookie.split('.');
@@ -537,65 +503,4 @@ function cleanUserAgent(userAgent: string | undefined): string | null {
   // Control and format characters (bidi overrides included) out; a cut must not leave half of a surrogate pair.
   const clean = (userAgent ?? '').replace(/[\p{Cc}\p{Cf}]/gu, '').slice(0, USER_AGENT_LENGTH).replace(/[\uD800-\uDBFF]$/, '');
   return clean === '' ? null : clean;
-}
-
-/**
- * What `Auth` holds of the sign-ins: the app's {@link SignInStore} when it has bound one, else nothing — then `Auth` keeps and checks
- * no sign-in rows. Package-internal; the store is looked up on first use.
- */
-export class SignInTracker {
-  readonly #store: (() => SignInStore) | undefined;
-
-  constructor(store: (() => SignInStore) | undefined) {
-    this.#store = store;
-  }
-
-  get enabled(): boolean {
-    return this.#store !== undefined;
-  }
-
-  create(input: Parameters<SignInStore['create']>[0]): Promise<string> {
-    return this.#need().create(input);
-  }
-
-  resume(userId: number | string, selector: string, until: Date): Promise<string | undefined> {
-    return this.#need().resume(userId, selector, until);
-  }
-
-  seen(userId: number | string, id: string, touch: boolean): Promise<boolean> {
-    return this.#need().seen(userId, id, touch);
-  }
-
-  remember(userId: number | string, id: string, remember: { selector: string; until: Date } | undefined): Promise<void> {
-    return this.#need().remember(userId, id, remember);
-  }
-
-  endRemembered(userId: number | string, selector: string): Promise<boolean> {
-    return this.#need().endRemembered(userId, selector);
-  }
-
-  list(userId: number | string, window: SignInWindow): Promise<readonly SignInRecord[]> {
-    return this.#need().list(userId, window);
-  }
-
-  endAll(userId: number | string, except?: string): Promise<number> {
-    return this.#need().endAll(userId, except);
-  }
-
-  endEveryone(): Promise<number> {
-    return this.#need().endEveryone();
-  }
-
-  prune(window: SignInWindow): Promise<number> {
-    return this.#need().prune(window);
-  }
-
-  end(userId: number | string, id: string): Promise<boolean> {
-    return this.#need().end(userId, id);
-  }
-
-  #need(): SignInStore {
-    if (!this.#store) throw new Error('auth: no SignInStore is bound — bind it with container.singleton(SignInStore, DatabaseSignIns).');
-    return this.#store();
-  }
 }

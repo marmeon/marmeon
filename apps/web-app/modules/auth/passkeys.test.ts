@@ -74,8 +74,15 @@ describe('passkeys', () => {
 
     await as().put('/settings/email', { json: { email: 'new@example.com', current_password: 'password' } }).assertStatus(303);
     await as().post('/settings/tokens', { json: { ...token, current_password: 'password' } }).assertOk();
+    // Another device that signed in with the same passkey: removing the passkey signs it out (a thief with a clone would keep it otherwise).
+    const secondOptions = await app.post('/passkeys/sign-in/options', { json: {} }).assertOk();
+    const secondGuest = secondOptions.cookie(SESSION)!;
+    const second = await app.withCookie(SESSION, secondGuest).post('/passkeys/sign-in', { json: { response: authenticator.authenticate(secondOptions.json() as never) } }).assertRedirect('/users/me');
+    const otherDevice = second.cookie(SESSION) ?? secondGuest;
+    await app.withCookie(SESSION, otherDevice).get('/users/me').assertRedirect(`/users/${ada.public_id}`); // a signed-in session is sent on to its own page
     await as().post(`/settings/passkeys/${id}/remove`, { json: { password: 'password' } }).assertOk();
     await app.assertDatabaseCount('passkeys', 0);
+    await app.withCookie(SESSION, otherDevice).expectingJson().get('/users/me').assertUnauthorized();
   });
 
   it('a session that got in with a passkey alone types the password to make new recovery codes — the owner\'s codes stay otherwise', async () => {

@@ -556,6 +556,18 @@ describe('Passkeys: registering', () => {
     expect(await booted.browser(new Map(remembered)).pk('who')).toEqual({ id: null });
   });
 
+  it('takes the remember-me token of this device off its sign-in when the first passkey is registered, and keeps the sign-in', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login(ada.email, 'secret', true);
+    const withToken = () => booted.connections.get<any>().selectFrom('sign_ins').select('id').where('remember_selector', 'is not', null).execute();
+    expect(await withToken()).toHaveLength(1);
+    expect(await addPasskey(b, device())).toMatchObject({ ok: true });
+    expect(await withToken(), 'no token: it was made before the factor').toEqual([]);
+    expect(await booted.connections.get<any>().selectFrom('sign_ins').select('id').execute(), 'the sign-in of this device stays').toHaveLength(1);
+    expect(await b.pk('who')).toEqual({ id: 1 });
+  });
+
   it('signs out the other devices when the first passkey is registered, and keeps this one', async () => {
     const booted = await boot();
     const other = booted.browser();
@@ -648,7 +660,7 @@ describe('Passkeys: signing in without a password', () => {
     }
     expect(await b.pk('who')).toEqual({ id: null });
     expect(b.jar.has('marmeon_remember')).toBe(false);
-    expect(await rows(booted, 'remember_tokens')).toHaveLength(0);
+    expect(await booted.connections.get<any>().selectFrom('sign_ins').select('id').where('remember_selector', 'is not', null).execute(), 'no remember-me token').toHaveLength(0);
   });
 
   it('registering the first passkey answers signed-out when this device\'s remember-me cookie turns out to be a copy', async () => {
@@ -656,7 +668,7 @@ describe('Passkeys: signing in without a password', () => {
     const b = booted.browser();
     await b.login(ada.email, 'secret', true);
     await booted.browser(new Map([['marmeon_remember', b.jar.get('marmeon_remember')!]])).pk('who'); // somebody else rotates the cookie
-    await booted.connections.get<any>().updateTable('remember_tokens').set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
+    await booted.connections.get<any>().updateTable('sign_ins').set({ remember_rotated_at: new Date(Date.now() - 3_600_000) }).execute();
     expect(await addPasskey(b, device())).toEqual({ ok: false, kind: 'signed-out' });
     expect(await b.pk('who')).toEqual({ id: null });
     expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(0);

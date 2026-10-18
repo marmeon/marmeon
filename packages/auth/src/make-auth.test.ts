@@ -63,7 +63,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
     expect(passkeyTable).toContain('suspended_at');
     expect(readFileSync(join(root, 'modules/auth/AuthServiceProvider.ts'), 'utf8')).toContain('combineFactors(c.make(TwoFactorStore), c.make(PasskeyStore))');
     // The sign-ins list: opt-in by the binding of its store, the table of it, and the route that ends one.
-    expect(readFileSync(join(root, 'modules/auth/AuthServiceProvider.ts'), 'utf8')).toContain('container.singleton(SignInStore, DatabaseSignIns)');
+    expect(readFileSync(join(root, 'modules/auth/AuthServiceProvider.ts'), 'utf8')).not.toContain('SignInStore');
     expect(readFileSync(join(root, 'modules/auth/migrations/0001_01_01_000006_create_sign_ins_table.ts'), 'utf8')).toContain("foreignId('user_id').constrained().cascadeOnDelete()");
     expect(existsSync(join(root, 'modules/auth/controllers/EndSignInController.ts'))).toBe(true);
     const app = readFileSync(join(root, 'bootstrap/app.ts'), 'utf8');

@@ -377,34 +377,21 @@ gets a cookie, `marmeon_remember`, that is encrypted, `HttpOnly`, and `Secure` a
 `AUTH_REMEMBER_DAYS=0` turns remember me off: `remember: true` still signs in, without a token or cookie, and the starter kit
 hides the checkbox. No cookie signs in any more, and a cookie that is presented has its token deleted. The bound also holds for
 tokens issued under a higher value: a token older than `AUTH_REMEMBER_DAYS` days is refused and deleted, even if its row says it
-lasts longer. `marmeon auth:prune-tokens` (the starter kit schedules it daily) deletes every token that expired or is older than
-`AUTH_REMEMBER_DAYS` days, all of them with `0`, so raising the value again does not bring old tokens back. A value above 30 stops
-the boot.
+lasts longer. `marmeon auth:prune-tokens` (the starter kit schedules it daily) takes the token off every sign-in whose token expired
+or is older than `AUTH_REMEMBER_DAYS` days, all of them with `0`, so raising the value again does not bring old tokens back. A value
+above 30 stops the boot.
 
-The cookie is consulted when the session has no user, and when the session's [sign-in has reached its limit](#how-long-a-sign-in-lasts). It holds a selector and a secret validator. The `remember_tokens`
-table keeps one row per device, with the validator only as its SHA-256 hash, so a leaked table signs nobody in. A table of your
-own needs what the starter kit's migration gives it: a unique `selector` of up to 32 characters, the validator hashes as
-64-character `secret()` columns, a nullable `account_fingerprint` of up to 64 characters, and `user_id` with `cascadeOnDelete()`, so a
-deleted user's tokens go with the account.
-
-An app made before the column existed adds it with a migration named with the current timestamp, so that it sorts after the rename's, before the new code serves requests: until the column
-is there, a request with a remember-me cookie and no session fails with a database error.
-
-```ts title="modules/auth/migrations/<timestamp>_add_account_fingerprint_to_remember_tokens_table.ts"
-import { defineMigration } from '@marmeon/database';
-
-export default defineMigration({
-  up: (schema) => schema.alter('remember_tokens', (table) => table.string('account_fingerprint', 64).nullable()),
-  down: (schema) => schema.alter('remember_tokens', (table) => table.dropColumn('account_fingerprint')),
-});
-```
+The cookie is consulted when the session has no user, and when the session's [sign-in has reached its limit](#how-long-a-sign-in-lasts). It holds a selector and a secret validator, and the token hangs on the row of its [sign-in](#sign-ins): the
+`sign_ins` table keeps one row per browser, with the validator only as its SHA-256 hash, so a leaked table signs nobody in. The selector is a
+`secret()` column as well, since whoever knows it can end the sign-in. A remember-me sign-in continues the row of its token, so one browser is one entry. Every app that has a `UserProvider`
+has sign-ins and with them the remember-me token; the starter kit's migration creates the table, and `marmeon make:sign-ins-table` writes it for an app
+that handles authentication itself (see [the columns](#sign-ins)).
 
 A token is bound to the account state the sign-in verified: it stores the same fingerprint a session keeps (an HMAC of the
 account's id and session key under a key derived from `APP_KEY`, never the key itself), and a cookie signs in only while the account still has that
 fingerprint. A reset, a new password, a new session key or an ending of the account's sessions therefore refuses every token made
 before it, even one a sign-in wrote a moment after the account changed. A refused token is deleted and the request is a guest, like
-an invalid one. A token without a fingerprint, such as a row from before the column existed, is refused: when you add the column,
-the cookies of existing devices stop working once and the users sign in again. The device that stays signed in when
+an invalid one. A token without a fingerprint is refused. The device that stays signed in when
 `updateSessionKey()` or `logoutOtherDevices()` changes the account keeps its token. A rehash during `attempt()` (new `HASH_*` costs,
 say) changes the password hash and nothing the fingerprint is made of: no session and no remember-me cookie of the user's other
 devices ends by it. A token made before the fingerprint left out the hash is refused once, like a token without a fingerprint.
@@ -412,24 +399,23 @@ devices ends by it. A token made before the fingerprint left out the hash is ref
 - **Every use rotates the validator.** The cookie gets a new value, and the old one stops working. A second tab that sends the old
   value within 10 seconds of the rotation still passes.
 - **A copied cookie ends every remember-me token and every session of the user.** An old validator that comes back later, even after
-  the owner's browser has rotated several times since, means two browsers hold the same cookie, and the one that used it first already has a session. All of the user's remember-me tokens are
-  deleted, every session ends at its next request (see [ending every session of a user](#ending-every-session-of-a-user)), and
+  the owner's browser has rotated several times since, means two browsers hold the same cookie, and the one that used it first already has a session. All of the user's sign-ins are
+  deleted, their tokens with them, every session ends at its next request (see [ending every session of a user](#ending-every-session-of-a-user)), and
   the app logs a warning with the address and the browser of the request that presented the old cookie, and dispatches
   [`RememberTokenReused`](#events) so the app can tell the owner. The request that presented the old cookie is a guest. If the `UserProvider` cannot store a session
   key, ending the sessions fails: that is logged as an error, the event says `sessionsEnded: false`, and only the tokens are gone.
   A false alarm, such as a lost response after a rotation or a browser that restores an old cookie, signs the user out on every
   device.
-- **A sign-in without "remember me" drops the cookie the browser already carried.** One token per device: the sign-in deletes the token
-  of the cookie it finds and the cookie with it, whether or not [sign-in tracking](#sign-ins) is on. With tracking, the row of that token
-  is deleted too, so the list does not show a browser as kept signed in by a cookie that no longer works. Only the row of the user who
-  signs in is deleted: on a shared browser the cookie of another user loses its token, and its row stays listed until its remember time
-  ends or its owner ends it.
+- **A sign-in without "remember me" drops the cookie the browser already carried.** One token per device: the sign-in ends the sign-in of
+  the cookie it finds, and the cookie goes with it. The list does not show a browser as kept signed in by a cookie that no longer
+  works. This ends the row of another user too, on a shared browser: the cookie is replaced either way.
 - **Requests that only read never use it.** An island cannot sign in: rotating the token there would hand the new value to no
   one. The next page request signs in.
 
-To keep the tokens somewhere else than the table, bind your own `RememberTokenStore`. Its `create()` receives the fingerprint, and
-`consume()` must return it as `fingerprint` (kept over every rotation); a store that drops it makes every cookie useless. The optional
-`rebind(userId, cookie, fingerprint)` replaces it for the device that stays signed in; it checks the validator of the cookie like `consume()` does (the current one, or the previous one inside the grace window) and answers a `Result`: `err({ kind: 'stolen', userId, reused })` for a stale validator, after deleting the user's tokens, and `invalid` for an unknown row. `logoutOtherDevices()` and `updateSessionKey()` then end every session of the account, as at a copied cookie, and keep no token. Its `consume()` returns `createdAt` with the device: when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it. `createdAt` also sets the `AUTH_REMEMBER_DAYS` bound, and a missing or invalid one refuses every remember-me sign-in. `prune(maxAgeDays)` must delete the tokens that expired and those made `maxAgeDays` days ago or earlier (every token with `0`). When an old validator comes back, `consume()` returns `err({ kind: 'stolen', userId, reused })` and must have deleted the user's tokens; deleting them and deciding which request reports are one atomic step (one `DELETE … RETURNING`, say), so that a failed statement deletes nothing and the next replay reports the theft again. The window that remains is a process that dies, or an `AccountSessions.end()` that fails (it is logged), between the deletion and ending the sessions: the tokens are gone, the sessions of the thief are not, until they expire. `reused: true` means the presented validator was the one just replaced by a rotation; it is information only. An older validator, or one that was never issued, presented with a known selector is a copy as well (the selector is random), and every `stolen` dispatches `RememberTokenReused`. Of parallel requests that present the old validator, only the one that removed the token reports `stolen`; the others get `invalid`.
+The token is part of the sign-in store: to keep it somewhere else than the `sign_ins` table, bind your own [`SignInStore`](#your-own-stores), which
+holds both. `issueToken(userId, id, { until, fingerprint })` hangs a token on a sign-in and returns the cookie value; it must
+persist the fingerprint and hand it back from `consume()` (kept over every rotation), and a store that drops it makes every cookie useless.
+`rebind(userId, cookie, fingerprint)` replaces it for the device that stays signed in; it checks the validator of the cookie like `consume()` does (the current one, or the previous one inside the grace window) and answers a `Result`: `err({ kind: 'stolen', userId, reused })` for a stale validator, after deleting the user's sign-ins, and `invalid` for an unknown row. `logoutOtherDevices()` and `updateSessionKey()` then end every session of the account, as at a copied cookie, and keep no token. `consume()` returns the device: `userId`, the `signIn` the token hangs on, the rotated `cookie`, `expiresAt`, `createdAt` and the `fingerprint`. `createdAt` is when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it. `createdAt` also sets the `AUTH_REMEMBER_DAYS` bound, and a missing or invalid one refuses every remember-me sign-in. `prune(window, rememberMaxAgeDays)` must take the token off the sign-ins whose token expired or was made that many days ago or earlier (every token with `0`) and delete the rows the list does not show. When an old validator comes back, `consume()` returns `err({ kind: 'stolen', userId, reused })` and must have deleted the user's sign-ins; deleting them and deciding which request reports are one atomic step (one `DELETE … RETURNING`, say), so that a failed statement deletes nothing and the next replay reports the theft again. The window that remains is a process that dies, or an `AccountSessions.end()` that fails (it is logged), between the deletion and ending the sessions: the sign-ins are gone, the sessions of the thief are not, until they expire. `reused: true` means the presented validator was the one just replaced by a rotation; it is information only. An older validator, or one that was never issued, presented with a known selector is a copy as well (the selector is random), and every `stolen` dispatches `RememberTokenReused`. Of parallel requests that present the old validator, only the one that removed the token reports `stolen`; the others get `invalid`. `remembered(cookie)` says whether the sign-in of a cookie still holds its token and must see an `end()` at once (no cache, no lagging replica): a sign-in by a remember-me cookie asks it right before it starts. `forgetToken(cookie)` ends the sign-in of a cookie, token and row.
 
 ## Sudo mode
 
@@ -496,7 +482,7 @@ password); `takePasswordCheck(limiter, scope, userId)` counts one and returns th
 
 `updatePassword(password)` stores a new hash for the signed-in user, together with a new session key. The key is what ends sessions:
 the hash is not part of the fingerprint a session keeps, so this session is bound to the new key and stays signed in. Every other session ends at its
-next request, every remember-me token of the user is deleted, this device's included, and `PasswordChanged` is dispatched. With
+next request, every other sign-in of the user is deleted and this device's remember-me token is taken off, and `PasswordChanged` is dispatched. With
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token of the user is revoked as well, in the same transaction as the new
 hash, and the log says how many.
 
@@ -700,7 +686,7 @@ export class EndSessionsController extends Controller {
 `end(id)` answers `missing` for an id that is no account (and for one that is not a valid id, such as `NaN` or an empty
 string), and writes nothing then. Otherwise it goes in three steps, in this order:
 
-1. It deletes every remember-me token of the account, so no cookie signs in again, and a remember-me sign-in that is running
+1. It ends every sign-in of the account, remember-me tokens with them, so no cookie signs in again, and a remember-me sign-in that is running
    finds its token gone.
 2. It stores a new session key with `updateSessionKey()` of your `UserProvider`. The fingerprint of every session changes, so each
    one ends at its next request, with every driver.
@@ -708,10 +694,10 @@ string), and writes nothing then. Otherwise it goes in three steps, in this orde
 
 The session key is what ends the sessions, so your `UserProvider` must store one: a provider without `updateSessionKey()` does not
 compile, and at run time `end()` throws error A5 before it changes anything, and names what to add. It also throws when `findById()` does not hand the new key back; the
-remember-me tokens are gone by then. The starter kit's accounts have a `session_key` column. A request that is running while `end()` replaces the key cannot bind its session to the new state, so it is signed out as well; Inside a database transaction `end()` throws: each step commits on its own, and a rollback would bring the deleted tokens back.
+sign-ins are gone by then. The starter kit's accounts have a `session_key` column. A request that is running while `end()` replaces the key cannot bind its session to the new state, so it is signed out as well; Inside a database transaction `end()` throws: each step commits on its own, and a rollback would bring the deleted tokens back.
 
-A custom `RememberTokenStore` needs `exists(cookie)`, which says whether the token of a cookie is still stored and must see a `forgetUser()` at once (no cache, no lagging replica), or a session survives `end()`; a sign-in by a
-remember-me cookie asks it right before it starts.
+A custom `SignInStore` needs `remembered(cookie)`, which says whether the token of a cookie is still stored and must see an `endAll()` at once (no cache, no lagging replica), or a session survives `end()`; a sign-in by a
+remember-me cookie asks it right before it starts. A store without `endAll()` (JavaScript, a cast) makes `end()` throw error A6 before it changes anything.
 
 The starter kit brings this as a command, `marmeon auth:end-sessions <email> --force`, for an operator who has no admin page
 ([Starter kit](starter-kit.md#signing-an-account-out-everywhere)).
@@ -773,7 +759,7 @@ From code, such as a job or an admin controller, `AccountSessions.endEveryone()`
 [`end()`](#ending-every-session-of-a-user):
 
 ```ts
-const ended = await this.#accounts.endEveryone(); // { accounts, rememberTokens, resetTokens, accessTokens, signIns }
+const ended = await this.#accounts.endEveryone(); // { accounts, resetTokens, accessTokens, signIns }
 ```
 
 It also revokes every API token and deletes every password-reset token, since a thief who held a session may have created either.
@@ -787,8 +773,7 @@ in, and logs the operator and the host. `--force` is required in every environme
 | --- | --- |
 | Sessions of every driver, on every instance | At their next request. No restart or deploy is needed. |
 | Pending second-factor steps, password and second-factor confirmations | With the session they live in. |
-| Remember-me tokens | All deleted. |
-| Sign-in rows | All deleted, with [sign-ins](#sign-ins) switched on. |
+| Sign-ins and their remember-me tokens | All deleted. |
 | Password-reset tokens | All deleted, unless `--keep-reset-tokens` (`resetTokens: false`). |
 | API tokens | All revoked, unless `--keep-api-tokens` (`accessTokens: false`). |
 | Open live streams | Closed at once, in every process; each browser that connects again is checked and, signed out, is told to stop. A guest's stream stays. See [real-time updates](realtime.md#following-a-channel). |
@@ -816,8 +801,8 @@ one fresh random key into every account with a single `UPDATE`, so every session
 its driver. The fingerprint includes the account's id, so two accounts never share one though the key is the same. The
 statement locks the rows of the user table until it finishes, which is acceptable for an emergency.
 
-The order is fixed: the remember-me tokens first, so that no cookie signs in again once a later step fails; then the keys; then
-the reset tokens and the API tokens, unless kept, then the sign-in rows. The key is written to every row, so a second factor
+The order is fixed: the sign-ins first, remember-me tokens with them, so that no cookie signs in again once a later step fails; then the keys; then
+the sign-ins once more, for one that a running sign-in made in between, then the reset tokens and the API tokens, unless kept. The key is written to every row, so a second factor
 that is being stored at that moment is refused. The call throws, naming the remedy and before anything is deleted, when the
 `UserProvider` or a store it will use lacks its method, and inside a database transaction.
 
@@ -871,7 +856,7 @@ skipped. Return how many rows it wrote (a whole number, 0 or more) and the id of
 framework refuses a count that is not a whole number, but it cannot tell a true `0` from a statement that wrote nothing. Do not
 touch `updated_at`: no account changed.
 
-A custom `RememberTokenStore` needs `forgetEveryone()`, since the call always deletes the remember-me tokens. A custom
+A custom `SignInStore` needs `endEveryone()`, since the call always ends the sign-ins. A custom
 `PasswordResetTokenStore` needs `forgetEveryone()` and a custom `AccessTokenStore` needs `revokeEveryone()`, unless you pass
 `--keep-reset-tokens` or `--keep-api-tokens`. [Your own stores](#your-own-stores) extend an abstract class that requires both, so a
 store without them does not compile; in JavaScript, or through a cast, the call refuses with error A6 before it changes anything. Each
@@ -883,28 +868,16 @@ deletes every row in one statement and returns how many.
 
 ## Sign-ins
 
-By default the framework knows only sessions, and a session does not say whose it is on which browser. Sign-in tracking is opt-in:
-it keeps one row per browser a user is signed in on, so the user can see them and sign out of one.
-
-To switch it on, write the migration of the table, run it, and bind the store:
+Every app with a `UserProvider` keeps one row per browser a user is signed in on, so the user can see them and sign out of one. The remember-me
+token of a browser hangs on the same row. The default store, `DatabaseSignIns`, is bound by the auth package, on the `sign_ins` table: the
+starter kit's migrations create it, and an app that handles authentication itself writes the migration and runs it:
 
 ```sh
 pnpm marmeon make:sign-ins-table
 pnpm marmeon migrate
 ```
 
-```ts title="modules/auth/AuthServiceProvider.ts"
-import { DatabaseSignIns, SignInStore } from '@marmeon/auth';
-import type { Container, ServiceProvider } from '@marmeon/core';
-
-export class AuthServiceProvider implements ServiceProvider {
-  register(container: Container): void {
-    container.singleton(SignInStore, DatabaseSignIns);
-  }
-}
-```
-
-Without the binding `auth.signIns()` and `auth.endSignIn()` throw and `Auth` keeps no rows. The starter kit and the web app bind it.
+`/up/ready` is red until the table has every column below, and the selector and validators carry the `secret()` mark.
 
 A row is the authority over its sign-in. The session carries only the row's random id (128 bits), and every request checks that the row
 is still there, with every session driver: a session whose row is gone ends at its next request, and so does its remember-me cookie,
@@ -915,7 +888,11 @@ which hangs on the same row. That is the end of a single session ASVS 7.5.2 asks
 | `id` | 22 characters of base64url, the only thing the session stores. |
 | `user_id` | The account; the rows go with it (`cascadeOnDelete()`). |
 | `user_agent` | The browser's `User-Agent`, cleaned of control characters and cut to 255 characters. |
-| `remember_selector`, `remember_until` | The selector of the browser's [remember-me](#remember-me) token and when it ends, or `null`. |
+| `remember_selector` | The selector of the browser's [remember-me](#remember-me) token, unique, or `null` (a `secret()` column: whoever knows it can end the sign-in). |
+| `remember_until` | When the token ends, or `null`. |
+| `remember_validator_hash`, `remember_previous_validator_hash` | The SHA-256 of the cookie's validator, and of the one a rotation replaced (accepted for 10 seconds, for a second tab), or `null`; `secret()` columns. |
+| `remember_rotated_at`, `remember_created_at` | When the validator was last rotated and when the token was made (kept over rotations), or `null`. |
+| `remember_fingerprint` | The fingerprint of the account state the token was issued under, or `null`. |
 | `signed_in_at` | The sign-in, or the sign-in by remember-me cookie that continued the row. |
 | `last_seen_at` | The last request, exact to 5 minutes: it is written at most that often, so most requests write nothing. |
 
@@ -973,25 +950,21 @@ The rows of the other devices are deleted wherever the other devices are signed 
 been signed out already:
 
 - `logout()` ends the row of this browser, and a sign-in over another sign-in ends the row it replaces.
-- A new password with `updatePassword()`, `logoutOtherDevices()` and `updateSessionKey()` end the rows of every other device and keep the
-  current one. This happens after the new key is stored; a failure is logged, and the sessions are over by their fingerprint anyway.
+- A new password with `updatePassword()`, `logoutOtherDevices()` and `updateSessionKey()` end the rows of every other device, tokens with them, and keep the
+  current one (a new password takes its token off, since the user typed the password again). The rows go before the new key or hash is stored, in the same transaction for a password: if a store
+  cannot end them, nothing is changed and the call throws, because a token that survives would sign the other device in again.
 - A password reset ends every row of the user, since it has no session of its own to keep.
 - Each of these also closes the account's open live streams, after the commit of the request's transaction.
 - [`AccountSessions.end()`](#ending-every-session-of-a-user) ends every row of the user.
-- A copied remember-me cookie ends every row of the user, as it ends all their sessions. A token refused for its age (`AUTH_REMEMBER_DAYS`) or for predating the second factor, and one that is already deleted, take their row with them. A token past its end is only rejected and leaves its row, which `prune` removes; a row ended from the list ends its token on its next use.
+- A copied remember-me cookie ends every row of the user, as it ends all their sessions. A token refused for its age (`AUTH_REMEMBER_DAYS`) or for predating the second factor takes its row with it. A token past its end is only taken off its row, which stays while its session lives; a row ended from the list takes its token with it.
 
 `UserSessions.end()` alone does not touch the rows.
 
 ### Pruning sign-ins
 
 A row of a browser that never came back stays in the table. `marmeon auth:prune-tokens` deletes exactly the rows the list does not
-show, for every user, together with the expired tokens; with a bound `SignInStore` its output counts them. It uses `SESSION_LIFETIME`
+show, for every user, and takes expired tokens off their rows; its output counts the rows. It uses `SESSION_LIFETIME`
 and `AUTH_SESSION_MAX_HOURS`, so it is the one command to schedule.
-
-### Switching it on for a running app
-
-A session that is open when the store gets bound is given its row at its next request, so nobody is signed out. A remember-me cookie
-made before has no row, and a cookie without a row never signs in: those devices sign in once more by password.
 
 ### Testing
 
@@ -1036,7 +1009,7 @@ does that in the starter kit.
 
 ## Your own stores
 
-`PasswordResetTokenStore`, `AccessTokenStore` and `TwoFactorState` are abstract classes. The class is the contract and the key you bind it under: `container.singleton(AccessTokenStore, YourTokens)` and a constructor that
+`PasswordResetTokenStore`, `AccessTokenStore`, `SignInStore` and `TwoFactorState` are abstract classes. The class is the contract and the key you bind it under: `container.singleton(AccessTokenStore, YourTokens)` and a constructor that
 asks for an `AccessTokenStore` work as they always did. A store of your own extends the class, calls `super()` and implements every method:
 
 ```ts
@@ -1061,7 +1034,7 @@ export class RedisAccessTokens extends AccessTokenStore {
 A class that only `implements` the contract, and an object literal, do not compile: the class carries a private mark that only a
 subclass has. That is deliberate. A member added after 1.0 comes with a default in the class, so a store that extends it keeps working;
 a structural copy would break at the first call of the new member. Extend the classes of the framework only where they are abstract: the
-stores it ships (`DatabaseAccessTokens`, `DatabasePasswordResetTokens`, `TwoFactorStore`, `PasskeyStore`) are implementations, and an
+stores it ships (`DatabaseAccessTokens`, `DatabasePasswordResetTokens`, `DatabaseSignIns`, `TwoFactorStore`, `PasskeyStore`) are implementations, and an
 override of one of their methods can break the guarantee of another.
 
 The ids these stores take are `AuthUserId`, the type of `id` in your [`AuthTypes`](#the-user-type-and-where-users-come-from) user: a
@@ -1089,22 +1062,22 @@ to them the same way, and any other member is optional, with the behaviour when 
 
 ## The tables of the stores
 
-The default stores keep their rows in `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`,
-`two_factor_authentications` with `two_factor_recovery_codes`, `passkeys` and `sign_ins`; the starter
+The default stores keep their rows in `sign_ins` (with the remember-me tokens), `password_reset_tokens`, `personal_access_tokens`,
+`two_factor_authentications` with `two_factor_recovery_codes` and `passkeys`; the starter
 kit's migrations create them. `users` is your app's own table. Column marks stay with the
 tables: the hashes, the validators and the authenticator's secret are `secret()` columns, so `selectAll()` and relations never return them.
 
 `/up/ready` is red until every table of a store the app uses has the columns the store needs, and says which command to
-run. A table counts as used when its store is the database one: remember-me while `AUTH_REMEMBER_DAYS` is above 0, the reset links and
-the API tokens once the app has a `UserProvider`, the sign-ins when `SignInStore` is bound, the second factor when `TwoFactorState` is
+run. A table counts as used when its store is the database one: the sign-ins, the reset links and
+the API tokens once the app has a `UserProvider`, the second factor when `TwoFactorState` is
 or contains the `TwoFactorStore`, and the passkeys with the `PasskeyServiceProvider`. A store of your own keeps its own table, and
 readiness waits for none of ours: an app that wants no reset links or no API tokens binds a store of its own for them
 (`container.singleton(AccessTokenStore, MyTokens)`), because with a `UserProvider` the default stores count as used. Readiness is also red
 while a column that holds a secret (`token_hash`, `validator_hash`, `secret`, `code_hash`) lacks its `secret()` mark, as in a table made by hand.
 
-An app that created the tables under their old names (`remember_tokens`, `sign_ins`, …) renames them with
+An app that created the tables with the first stubs brings them up to date with
 [`marmeon make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables), and [stops every process of the old release](deployment.md#the-upgrade-that-stops-every-process) for the
-`marmeon migrate` that follows. The rows stay: passwords, authenticators, recovery codes, passkeys and reset links keep working.
+`marmeon migrate` that follows. The `remember_tokens` table is dropped: its tokens are not copied, every sign-in ends, and everybody signs in once more. Passwords, authenticators, recovery codes, passkeys and reset links keep working.
 
 ## Signed-in pages are never cached
 
@@ -1129,14 +1102,14 @@ stay in the browser after a sign-out: set your own header only on answers that h
 | `Registered` | Your registration, after it created the account | `user` |
 | `PasswordChanged` | `updatePassword()` | `user`, `revokedTokens` (the API tokens the new password revoked, `0` unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) |
 | `PasswordReset` | A reset with a link from the mail | `user`, `revokedTokens` (as for `PasswordChanged`) |
-| `EverySessionEnded` | `AccountSessions.endEveryone()`, `auth:end-all-sessions` | `at`, `accounts`, `rememberTokens`, `resetTokens`, `accessTokens`, `signIns` (the counts), see [ending every session of every account](#ending-every-session-of-every-account) |
+| `EverySessionEnded` | `AccountSessions.endEveryone()`, `auth:end-all-sessions` | `at`, `accounts`, `resetTokens`, `accessTokens`, `signIns` (the counts), see [ending every session of every account](#ending-every-session-of-every-account) |
 | `RememberTokenReused` | A [remember-me cookie](#remember-me) that a rotation had replaced came back, however many rotations ago, or a known cookie came with a validator that was never issued: it was copied | `user`, `at`, `ip`, `userAgent`, `sessionsEnded` |
 | `TwoFactorEnabled`, `TwoFactorDisabled`, `RecoveryCodesGenerated`, `RecoveryCodeUsed`, `TwoFactorChallengeFailed` | The second factor of an account changes or is used | See [two-factor authentication](two-factor-authentication.md#events) |
 
 `Failed` carries what was typed as the identifier, never the password. Use it for an audit log, and never show it to the client:
 it tells whether the address has an account. The `ip` and `userAgent` of `Login` are the request's, the address resolved through
 `TRUSTED_PROXIES` like `ctx.ip`, unless the call to `attempt()` or `login()` passed others. Outside a request they are `null`.
-`RememberTokenReused` is dispatched once for each copied cookie, after the user's remember-me tokens were deleted and their sessions ended (or could not be, see `sessionsEnded`), and only for an account that still exists. Its `ip` and `userAgent` belong to the request that presented the old or never-issued value: whoever holds the copy, possibly the thief, or, more rarely, the owner's browser that missed the response carrying a renewal (a cancelled load, a dropped connection), so a mail should say so. A cookie that is no longer the current or just-replaced one cannot come from a browser that kept up with the rotations, so the owner is told for every old copy. `ip` is `null` when it is not an address, `userAgent` has its control characters removed and is cut to 512 characters, and `sessionsEnded` is `false` when the `UserProvider` could not end the sessions (the tokens are gone either way). The event never carries the cookie or a token. The `userAgent` is text the client chose: show a parsed browser and system (`describeDevice()`) in a mail, not the raw header. A queued listener gets `{ userId, at, ip, userAgent, sessionsEnded }`, with `at` as an ISO 8601 string. The starter kit mails the owner.
+`RememberTokenReused` is dispatched once for each copied cookie, after the user's sign-ins were deleted and their sessions ended (or could not be, see `sessionsEnded`), and only for an account that still exists. Its `ip` and `userAgent` belong to the request that presented the old or never-issued value: whoever holds the copy, possibly the thief, or, more rarely, the owner's browser that missed the response carrying a renewal (a cancelled load, a dropped connection), so a mail should say so. A cookie that is no longer the current or just-replaced one cannot come from a browser that kept up with the rotations, so the owner is told for every old copy. `ip` is `null` when it is not an address, `userAgent` has its control characters removed and is cut to 512 characters, and `sessionsEnded` is `false` when the `UserProvider` could not end the sessions (the tokens are gone either way). The event never carries the cookie or a token. The `userAgent` is text the client chose: show a parsed browser and system (`describeDevice()`) in a mail, not the raw header. A queued listener gets `{ userId, at, ip, userAgent, sessionsEnded }`, with `at` as an ISO 8601 string. The starter kit mails the owner.
 A queueable event's payload has a name — `RememberTokenReusedPayload`, `LoginPayload` and so on, each the same as `EventPayload<typeof …>` of its class.
 
 `Lockout` and `Registered` are dispatched by your app's code, the starter kit's controllers, not by the package.

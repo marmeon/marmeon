@@ -29,7 +29,7 @@ framework bring them.
 | `mail/` | Ten mails: the confirmation of an address, the reset link, the notes about a change of address and about a known address, the notes about the second factor and about passkeys, the note about a copied "keep me signed in" cookie, and the note that an account stopped taking passwords. |
 | `jobs/`, `listeners/`, `tasks/` | The work that runs on the queue or on a schedule. |
 | `middleware/` | `ShareAuthProps` and `ConfirmedAddress`. |
-| `migrations/` | The tables `users`, `remember_tokens`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, `passkeys` and `sign_ins`. An app generated before the remember-me table had its `account_fingerprint` column adds it with the migration shown under [remember me](authentication.md#remember-me). |
+| `migrations/` | The tables `users`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, `passkeys` and `sign_ins`, which also holds the remember-me tokens. An app generated before the tokens moved onto the sign-ins runs [`marmeon make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables). |
 | `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`: never seed a server with it. |
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
 | `auth.test.ts` and twelve more | The module's own tests. |
@@ -277,7 +277,7 @@ Every mail of the module goes through the queue, on its `mail` queue. A new app 
 worker, so this works from the first start. By default the mailer writes each mail to the log. On a server you need a real
 mailer, `MAIL_MAILER=smtp`, and a worker, `marmeon queue:work`. The [deployment](deployment.md) page shows both.
 
-The scheduler deletes expired reset links, remember-me tokens and API tokens every night at 03:10, and the changes of address
+The scheduler deletes expired reset links and API tokens, takes expired remember-me tokens off their sign-ins and deletes the sign-ins that are over every night at 03:10, and the changes of address
 that nobody confirmed in time. `marmeon dev` runs the scheduler for you. On a server, run `marmeon schedule:work`.
 
 ### Accounts nobody confirmed
@@ -316,7 +316,7 @@ patterns work, and [UUID keys](migrations.md#uuid-keys) weighs them:
   the routes you bind to `UserRepository`, such as a profile at `/users/:user`, then take the UUID. A route that takes the integer id answers 404. SQLite adds
   such a column only when the table is created, so make the change before the first migration or run `migrate:fresh`.
 - **A UUID as the primary key.** Replace `table.id()` with `table.uuidId()` in the `users` migration, before the first
-  migration, and make the tables that reference users use `foreignUuid()`: `remember_tokens` and `personal_access_tokens` use
+  migration, and make the tables that reference users use `foreignUuid()`: `sign_ins` and `personal_access_tokens` use
   `foreignId('user_id')`. Code that types a user id as a `number`, such as `UserRepository.findById(id: number)`, has to follow.
   Sessions, notifications and `AuthUserId` already allow a string.
 

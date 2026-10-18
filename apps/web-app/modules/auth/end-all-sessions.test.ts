@@ -57,7 +57,7 @@ describe('AccountSessions.endEveryone() with the app\'s repository', () => {
     await app.withCookie(SESSION, session).get('/users/me').assertAuthenticated(ada);
     for (const cookie of bobs) await app.withCookie(SESSION, cookie).get('/users/me').assertAuthenticated(bob);
 
-    expect(await app.make(AccountSessions).endEveryone()).toMatchObject({ accounts: 2, rememberTokens: 1, signIns: 3 });
+    expect(await app.make(AccountSessions).endEveryone()).toMatchObject({ accounts: 2, signIns: 3 });
 
     await app.withCookie(SESSION, session).expectingJson().get('/users/me').assertUnauthorized();
     await app.withCookie(REMEMBER, remember).expectingJson().get('/users/me').assertUnauthorized();

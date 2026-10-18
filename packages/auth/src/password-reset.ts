@@ -5,7 +5,6 @@ import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
-import { RememberTokenStore } from './remember.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link PasswordResetTokenTable}. */
@@ -124,14 +123,12 @@ export class PasswordBroker {
   readonly #hasher: Hasher;
   readonly #events: EventDispatcher;
   readonly #config: AuthConfig;
-  readonly #remember: RememberTokenStore;
   readonly #newPassword: NewPassword;
 
   constructor(
     users: UserProvider,
     tokens: PasswordResetTokenStore,
     hasher: Hasher,
-    remember: RememberTokenStore,
     events: EventDispatcher,
     config: AuthConfig,
     newPassword: NewPassword,
@@ -141,7 +138,6 @@ export class PasswordBroker {
     this.#hasher = hasher;
     this.#events = events;
     this.#config = config;
-    this.#remember = remember;
     this.#newPassword = newPassword;
   }
 
@@ -167,7 +163,7 @@ export class PasswordBroker {
     if (!consumed.ok) return consumed; // as the store made it: an expired token's deletion keeps its commitAnyway
     const found = await this.#users.findForLogin(email);
     if (!found) return commitAnyway(err({ kind: 'invalid-token' })); // the token is used up for good
-    const { revoked } = await this.#newPassword.store(this.#users, this.#remember, idOf(found.user), await this.#hasher.make(password), 'reset', found.user);
+    const { revoked } = await this.#newPassword.store(this.#users, idOf(found.user), await this.#hasher.make(password), 'reset', found.user);
     await this.#events.dispatch(new PasswordReset(found.user, revoked));
     return ok(found.user);
   }
