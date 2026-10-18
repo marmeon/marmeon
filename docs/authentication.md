@@ -98,9 +98,10 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
 }
 ```
 
-The example leaves out `updateSessionKey()` and `updateEverySessionKey()`, which a provider needs as well: see
+The example leaves out `updateSessionKey()` and `updateEverySessionKey()`, which a provider needs as well, see
 [signing out other devices without a password](#signing-out-other-devices-without-a-password) and
-[for your own user provider](#for-your-own-user-provider). The starter kit's `UserRepository` has all of them.
+[for your own user provider](#for-your-own-user-provider). The starter kit's `UserRepository` has all of them, and a provider of
+your own that leaves one out does not compile.
 
 `Credentials` is `{ user, passwordHash, sessionKey }`: the hash travels next to the user, never inside it, so it cannot reach a page by
 accident. A user who cannot sign in with a password has `passwordHash: null`. The `sessionKey` is a value of
@@ -138,17 +139,6 @@ Give every account a key when you create it (32 random bytes, `base64url`, as `a
 still allows `null`, but a `null` key cannot be locked when a factor is added, and the framework can only compare against it, not hold
 the row. The starter kit's `register()`, factory and seeder do, and its upgrade migration fills the `NULL` keys of existing accounts with
 random values (an account that had none is signed out once, since its fingerprint changes).
-
-`updateSessionKey()` and `updateEverySessionKey()` are required as well, see [signing out other devices without a password](#signing-out-other-devices-without-a-password)
-and [ending every session of every account](#ending-every-session-of-every-account). A provider of your own that leaves one out does
-not compile, and one without them at run time (JavaScript, a cast) throws error A5 when the method is needed.
-
-At run time the framework checks only what it can: that `updatePasswordHash()` and `updateSessionKey()` answer with a boolean, that
-`findById()` hands a new key back, and that `updateEverySessionKey()` counts and names an account. It cannot tell a provider that
-ignores `expected` and answers `true` from a correct one. The compare-and-set is yours: test it in your app (a write over a stale
-`expected` must return `false` and leave the row alone). A JavaScript provider written against the old positional parameter
-(`updatePasswordHash(id, hash, expected)`) receives an object there now: its compare never matches, and a sign-in that needs a rehash is
-refused as a wrong password until it takes `{ expected }`.
 
 ## Protecting routes
 
@@ -815,52 +805,8 @@ After the write, `AccountSessions` reads one account back with `findById()` and 
 `findById()` must therefore return the `session_key` column as `sessionKey` straight from the database, with no cache and no lagging
 replica. A cache would fail the read-back; a cache or replica that only some lookups hit slips past it and leaves those sessions live.
 
-### For your own user provider
-
-A `UserProvider` of your own implements every method: `findById()` and `findForLogin()` (both with `sessionKey`),
-`updatePasswordHash()` (answering with a boolean), `updateSessionKey()` and `updateEverySessionKey()`. The last three decide
-whether a session survives, so the package writes them for you: `credentialWriter(db, { table })` returns them for a table with the
-columns `id`, `password`, `session_key` and `updated_at` (`table` defaults to `'users'` and must be a plain lower-case name, or it
-throws a `TypeError`). Delegate to it, as the starter kit's `UserRepository` does. The kit keeps the default table; a repository of
-your own passes its table, which `Repository.table` gives (it is public):
-
-```ts
-import { credentialWriter } from '@marmeon/auth';
-
-updatePasswordHash(id: number, hash: PasswordHash, options?: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null }) {
-  return credentialWriter(this.db, { table: this.table }).updatePasswordHash(id, hash, options);
-}
-updateSessionKey(id: number, key: string, expected: string | null | undefined) {
-  return credentialWriter(this.db, { table: this.table }).updateSessionKey(id, key, expected);
-}
-updateEverySessionKey(key: string) {
-  return credentialWriter(this.db, { table: this.table }).updateEverySessionKey(key);
-}
-```
-
-Pass the repository's own connection (`this.db`): it follows an enclosing transaction, which keeps a new password, its session key and
-the revoked tokens in one unit. A fix to the statements reaches you with an update of `@marmeon/auth`; the copy in your repository does
-not. Write them yourself only when the columns differ; `updateEverySessionKey()` for comparison:
-
-```ts
-async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number | undefined }> {
-  const result = await this.db.updateTable('users').set({ session_key: key }).executeTakeFirst(); // one UPDATE, no WHERE
-  const accounts = Number(result.numUpdatedRows);
-  const sample = accounts > 0 ? await this.db.selectFrom('users').select('id').where(sql<boolean>`session_key = ${key}`).limit(1).executeTakeFirst() : undefined;
-  return { accounts, sampleId: sample?.id };
-}
-```
-
-It is one statement and has no `WHERE`: no tenant or soft-delete scope, since a sample cannot reveal an account the statement
-skipped. Return how many rows it wrote (a whole number, 0 or more) and the id of one account it wrote (`sampleId`, which an empty table cannot give). The
-framework refuses a count that is not a whole number, but it cannot tell a true `0` from a statement that wrote nothing. Do not
-touch `updated_at`: no account changed.
-
-A custom `SignInStore` needs `endEveryone()`, since the call always ends the sign-ins. A custom
-`PasswordResetTokenStore` needs `forgetEveryone()` and a custom `AccessTokenStore` needs `revokeEveryone()`, unless you pass
-`--keep-reset-tokens` or `--keep-api-tokens`. [Your own stores](#your-own-stores) extend an abstract class that requires both, so a
-store without them does not compile; in JavaScript, or through a cast, the call refuses with error A6 before it changes anything. Each
-deletes every row in one statement and returns how many.
+A `UserProvider` of your own writes `updateEverySessionKey()` too, and a store of your own the methods that delete every row:
+[what your app implements](#what-your-app-implements) says how.
 
 `AccountSessions` covers the accounts of the bound `UserProvider`; accounts in another table with their own provider are not ended.
 
@@ -1007,10 +953,81 @@ it('signs the other browser out', async () => {
 To test the controller itself, confirm the password in the test first (the session needs a recent confirmation, a password or a passkey); `POST /confirm-password`
 does that in the starter kit.
 
-## Your own stores
+## What your app implements
 
-`PasswordResetTokenStore`, `AccessTokenStore`, `SignInStore` and `TwoFactorState` are abstract classes. The class is the contract and the key you bind it under: `container.singleton(AccessTokenStore, YourTokens)` and a constructor that
-asks for an `AccessTokenStore` work as they always did. A store of your own extends the class, calls `super()` and implements every method:
+Most apps implement one contract: the `UserProvider`, which the starter kit's `UserRepository` already is. The rest ship with
+the package and keep their rows in the database. Each of them is a contract you can bind your own implementation under, for rows in
+another place:
+
+| Contract | Kind | Required members | Default | If a member is missing |
+| --- | --- | --- | --- | --- |
+| `UserProvider` (`@marmeon/auth`) | Interface | `findById`, `findForLogin`, `updatePasswordHash`, `updateSessionKey`, `updateEverySessionKey` (both finders return `Credentials` with `sessionKey`) | None: the app binds one. The starter kit's `UserRepository` delegates the last three to `credentialWriter()`. | Does not compile. In JavaScript or through a cast, a missing `updateSessionKey` or `updateEverySessionKey` is error A5 when needed; any other member is a plain `TypeError`. |
+| `Hasher` (`@marmeon/auth`) | Interface | `make`, `verify`, `needsRehash`, `dummyVerify`, `failureFloorMs` | `PasswordHasher` (Argon2id by default), bound by the package. | Does not compile. In JavaScript, error A6 at the first sign-in without `failureFloorMs`, or when it answers anything but a finite number of milliseconds, 0 or more. |
+| `SignInStore` (`@marmeon/auth`) | Abstract class | `create`, `seen`, `list`, `end`, `endAll`, `endEveryone`, `prune`, `issueToken`, `dropToken`, `consume`, `remembered`, `forgetToken`, `rebind` | `DatabaseSignIns` on `sign_ins`, once the app has a `UserProvider`. | Does not compile. In JavaScript, error A6 for `endAll`, `dropToken` or `endEveryone`, before anything is ended. |
+| `PasswordResetTokenStore` (`@marmeon/auth`) | Abstract class | `create`, `consume`, `forget`, `prune`, `forgetEveryone` | `DatabasePasswordResetTokens` on `password_reset_tokens`. | Does not compile. In JavaScript, error A6 for `forgetEveryone`. |
+| `AccessTokenStore` (`@marmeon/auth`) | Abstract class | `create`, `find`, `touch`, `list`, `revoke`, `revokeAll`, `prune`, `revokeEveryone` | `DatabaseAccessTokens` on `personal_access_tokens`. | Does not compile. In JavaScript, error A6 for `revokeEveryone`. |
+| `TwoFactorState` (`@marmeon/auth`) | Abstract class | `factors`, `enabledSince`, `removeAll` | `NoTwoFactorState`: nobody has a second factor. The starter kit binds `TwoFactorStore` (on `two_factor_authentications` with `two_factor_recovery_codes`) and the passkeys. | Does not compile. In JavaScript, error A6 when `combineFactors()` is called or before a password reset spends its token. |
+| `SessionStore` (`@marmeon/session`) | Abstract class | `read`, `write`, `destroy`, `gc` (`destroyUser` is optional) | The store of `SESSION_DRIVER`: `file`, `database`, `redis` or `memory`. | Does not compile. |
+
+The A5 and A6 errors are listed under [error codes](errors.md#server-error-codes). `TwoFactorStore` and `PasskeyStore` are
+implementations, not contracts: you bind them, you do not extend them. The drivers of cache, queue and storage are interfaces of
+their own packages.
+
+Whether a member is required or optional follows from one question, [whether it is security-relevant](#security-relevant-members):
+a member that is never has a default.
+
+### For your own user provider
+
+A `UserProvider` implements every method of the table. `findById()` and `findForLogin()` both return the `sessionKey`, and
+`updatePasswordHash()` answers with a boolean. The other three decide whether a session survives, so the package writes them for
+you: `credentialWriter(db, { table })` returns them for a table with the columns `id`, `password`, `session_key` and `updated_at`
+(`table` defaults to `'users'` and must be a plain lower-case name, or it throws a `TypeError`). Delegate to it, as the starter
+kit's `UserRepository` does. The kit keeps the default table; a repository of your own passes its table, which `Repository.table`
+gives (it is public):
+
+```ts
+import { credentialWriter } from '@marmeon/auth';
+
+updatePasswordHash(id: number, hash: PasswordHash, options?: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null }) {
+  return credentialWriter(this.db, { table: this.table }).updatePasswordHash(id, hash, options);
+}
+updateSessionKey(id: number, key: string, expected: string | null | undefined) {
+  return credentialWriter(this.db, { table: this.table }).updateSessionKey(id, key, expected);
+}
+updateEverySessionKey(key: string) {
+  return credentialWriter(this.db, { table: this.table }).updateEverySessionKey(key);
+}
+```
+
+Pass the repository's own connection (`this.db`): it follows an enclosing transaction, which keeps a new password, its session key and
+the revoked tokens in one unit. A fix to the statements reaches you with an update of `@marmeon/auth`; the copy in your repository does
+not. Write them yourself only when the columns differ; `updateEverySessionKey()` for comparison:
+
+```ts
+async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number | undefined }> {
+  const result = await this.db.updateTable('users').set({ session_key: key }).executeTakeFirst(); // one UPDATE, no WHERE
+  const accounts = Number(result.numUpdatedRows);
+  const sample = accounts > 0 ? await this.db.selectFrom('users').select('id').where(sql<boolean>`session_key = ${key}`).limit(1).executeTakeFirst() : undefined;
+  return { accounts, sampleId: sample?.id };
+}
+```
+
+It is one statement and has no `WHERE`: no tenant or soft-delete scope, since a sample cannot reveal an account the statement
+skipped. Return how many rows it wrote (a whole number, 0 or more) and the id of one account it wrote (`sampleId`, which an empty table cannot give). The
+framework refuses a count that is not a whole number, but it cannot tell a true `0` from a statement that wrote nothing. Do not
+touch `updated_at`: no account changed.
+
+At run time the framework checks only what it can: that `updatePasswordHash()` and `updateSessionKey()` answer with a boolean, that
+`findById()` hands a new key back, and that `updateEverySessionKey()` counts and names an account. It cannot tell a provider that
+ignores `expected` or `expectedSessionKey` and answers `true` from a correct one. Those compare-and-sets are yours when you write the
+statements: test them in your app (a write over a stale `expected` or `expectedSessionKey` must return `false` and leave the row
+alone).
+
+### Your own stores
+
+The stores in the table are abstract classes. The class is the contract and the key you bind it under:
+`container.singleton(AccessTokenStore, YourTokens)` and a constructor that asks for an `AccessTokenStore` work as with any other key.
+A store of your own extends the class, calls `super()` and implements every abstract method:
 
 ```ts
 import { AccessTokenStore } from '@marmeon/auth';
@@ -1033,14 +1050,21 @@ export class RedisAccessTokens extends AccessTokenStore {
 
 A class that only `implements` the contract, and an object literal, do not compile: the class carries a private mark that only a
 subclass has. That is deliberate. A member added after 1.0 comes with a default in the class, so a store that extends it keeps working;
-a structural copy would break at the first call of the new member. Extend the classes of the framework only where they are abstract: the
-stores it ships (`DatabaseAccessTokens`, `DatabasePasswordResetTokens`, `DatabaseSignIns`, `TwoFactorStore`, `PasskeyStore`) are implementations, and an
-override of one of their methods can break the guarantee of another.
+a structural copy would break at the first call of the new member.
+
+Extend the classes of the framework only where they are abstract. The stores it ships (`DatabaseSignIns`, `DatabaseAccessTokens`,
+`DatabasePasswordResetTokens`, `TwoFactorStore`, `PasskeyStore` and the session stores) are implementations, and an override of one of
+their methods can break the guarantee of another: a store of your own extends the base class, never a `Database…` store.
 
 The ids these stores take are `AuthUserId`, the type of `id` in your [`AuthTypes`](#the-user-type-and-where-users-come-from) user: a
 number if your users have a number, a string for UUIDs.
 
-`SessionStore` of `@marmeon/session` follows the same rules; see [a store of your own](session.md#a-store-of-your-own).
+The call that [ends every session of every account](#ending-every-session-of-every-account) needs `SignInStore.endEveryone()`,
+and `PasswordResetTokenStore.forgetEveryone()` and `AccessTokenStore.revokeEveryone()` unless you pass `--keep-reset-tokens` or
+`--keep-api-tokens`. Each deletes every row in one statement and returns how many. The call refuses with error A6 before it changes
+anything when a store lacks its method.
+
+A `SessionStore` follows the same rules; see [a store of your own](session.md#a-store-of-your-own).
 
 ### Security-relevant members
 
@@ -1054,20 +1078,25 @@ security-relevant if at least one of these holds:
 3. **A guarantee rests on its atomicity.** A caller bases a security property on its being atomic, a compare-and-set or read-after-write.
 4. **A default that does nothing would fail open.** A default that does nothing or answers the empty value (`0`, `[]`, `undefined`,
    `true`, `false`) would make the app accept what it refuses otherwise, keep alive what it ends otherwise, skip a limit or a factor, or
-   hide a way in from the account's owner that the owner could otherwise see and end (so `SignInStore.list` is security-relevant).
+   hide a way in from the account's owner that the owner could otherwise see and end. So `SignInStore.list` is security-relevant: a
+   `[]` would hide every browser the owner is signed in on.
 
 When in doubt, a member is security-relevant. What is none of these is display metadata (a device name, "last seen"), statistics,
-tidying up rows that are no longer valid and could not become valid again through any setting, and hints for performance. A security-relevant member arrives
-after 1.0 only as a security hardening (which may break in a minor version and has its own entry in `UPGRADING.md`) or in a major version.
-Any other new member arrives as a method with a default. `UserProvider` and `Hasher` are interfaces; a security-relevant member is added
-to them the same way, and any other member is optional, with the behaviour when it is missing documented.
+tidying up rows that are no longer valid and could not become valid again through any setting, and hints for performance.
+`SessionStore.destroyUser` is the one optional member today: a session it would leave standing ends at its next request anyway,
+because the guard finds no user or a changed fingerprint.
+
+A security-relevant member arrives after 1.0 only as a [security hardening](releases.md#what-is-public-api) (which may break in a
+minor version and has its own entry in `UPGRADING.md`) or in a major version. Any other new member arrives as a method with a default.
+`UserProvider` and `Hasher` are interfaces; a security-relevant member is added to them the same way, and any other member is
+optional, with the behaviour when it is missing documented.
 
 ## The tables of the stores
 
 The default stores keep their rows in `sign_ins` (with the remember-me tokens), `password_reset_tokens`, `personal_access_tokens`,
-`two_factor_authentications` with `two_factor_recovery_codes` and `passkeys`; the starter
-kit's migrations create them. `users` is your app's own table. Column marks stay with the
-tables: the hashes, the validators and the authenticator's secret are `secret()` columns, so `selectAll()` and relations never return them.
+`two_factor_authentications` with `two_factor_recovery_codes` and `passkeys`; the starter kit's migrations create them. `users` is your
+app's own table. Column marks stay with the tables: the hashes, the validators and the authenticator's secret are `secret()`
+columns, so `selectAll()` and relations never return them.
 
 `/up/ready` is red until every table of a store the app uses has the columns the store needs, and says which command to
 run. A table counts as used when its store is the database one: the sign-ins, the reset links and
@@ -1078,8 +1107,9 @@ readiness waits for none of ours: an app that wants no reset links or no API tok
 while a column that holds a secret (`token_hash`, `validator_hash`, `secret`, `code_hash`) lacks its `secret()` mark, as in a table made by hand.
 
 An app that created the tables with the first stubs brings them up to date with
-[`marmeon make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables), and [stops every process of the old release](deployment.md#the-upgrade-that-stops-every-process) for the
-`marmeon migrate` that follows. The `remember_tokens` table is dropped: its tokens are not copied, every sign-in ends, and everybody signs in once more. Passwords, authenticators, recovery codes, passkeys and reset links keep working.
+[`marmeon make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables) and [stops every process of the old
+release](deployment.md#the-upgrade-that-stops-every-process) for the `marmeon migrate` that follows. Passwords, authenticators,
+recovery codes, passkeys and reset links keep working; every sign-in ends.
 
 ## Signed-in pages are never cached
 
