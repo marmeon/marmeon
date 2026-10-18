@@ -299,7 +299,7 @@ data stays for the page. A write there throws in development and in tests, and i
 
 ## A store of your own
 
-A store extends `SessionStore` of `@marmeon/session`, calls `super()` and implements its methods:
+A store extends `SessionStore` of `@marmeon/session`, calls `super()` and implements its methods. If nothing is bound for `SessionStore`, building the abstract class itself fails with K1 and the line `SessionStore is abstract: bind a store with container.singleton(SessionStore, YourStore)`.
 
 ```ts
 abstract class SessionStore {

@@ -1,4 +1,6 @@
 import { hash } from 'node:crypto';
+import { ContainerError } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 export type SessionPayload = Record<string, unknown>;
 
 /** A session as its store keeps it: the payload as text (JSON, or encrypted with `SESSION_ENCRYPT`) and its version. */
@@ -48,6 +50,11 @@ export type SessionWriteResult = 'written' | 'conflict' | 'gone';
 export abstract class SessionStore {
   /** A mark without meaning: only a subclass fits the type, so a store that merely `implements` this contract does not compile. */
   readonly #contract = true;
+
+  /** Refuses to be built itself: the container builds an unbound abstract key as an empty object, which would fail much later. */
+  constructor() {
+    if (new.target === SessionStore) throw new ContainerError(withCode('K1', `SessionStore is abstract: bind a store with container.singleton(SessionStore, YourStore).`), { reason: 'unbound', key: 'SessionStore', path: [] });
+  }
 
   abstract read(key: string): Promise<StoredSession | undefined>;
   abstract write(key: string, data: string, options: SessionWrite): Promise<SessionWriteResult>;

@@ -1,10 +1,11 @@
 import { createHash, randomInt } from 'node:crypto';
 import { crc32 } from 'node:zlib';
-import { Clock } from '@marmeon/core';
+import { Clock, ContainerError } from '@marmeon/core';
 import { Connections, sql, type Generated, type JsonColumn, type Secret } from '@marmeon/database';
 import type { Duration } from '@marmeon/http';
 import { AuthConfig } from './config.ts';
 import type { AuthUserId } from './user.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link AccessTokenTable}. */
 export const ACCESS_TOKEN_TABLE = 'personal_access_tokens';
@@ -58,6 +59,11 @@ export interface WithToken {
 export abstract class AccessTokenStore {
   /** A mark without meaning: only a subclass fits the type, so a store that merely `implements` this contract does not compile. */
   readonly #contract = true;
+
+  /** Refuses to be built itself: the container builds an unbound abstract key as an empty object, which would fail much later. */
+  constructor() {
+    if (new.target === AccessTokenStore) throw new ContainerError(withCode('K1', `AccessTokenStore is abstract: bind a store with container.singleton(AccessTokenStore, YourStore).`), { reason: 'unbound', key: 'AccessTokenStore', path: [] });
+  }
 
   /** A new token — the plain text is returned once and never stored. */
   abstract create(userId: AuthUserId, name: string, options?: { abilities?: readonly string[]; expiresIn?: Duration }): Promise<{ plainText: string; token: AccessToken }>;

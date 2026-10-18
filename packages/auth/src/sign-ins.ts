@@ -1,8 +1,9 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { Clock, commitAnyway, err, ok, type Result } from '@marmeon/core';
+import { Clock, commitAnyway, ContainerError, err, ok, type Result } from '@marmeon/core';
 import { Connections, secret, sql, type Generated, type Secret } from '@marmeon/database';
 import type { DeviceDescription } from './device.ts';
 import type { AuthUserId } from './user.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /** The table the app's migration creates (`marmeon make:sign-ins-table` writes it) — see {@link SignInsTable}. */
 export const SIGN_INS_TABLE = 'sign_ins';
@@ -132,6 +133,11 @@ export interface SignInWindow {
 export abstract class SignInStore {
   /** A mark without meaning: only a subclass fits the type, so a store that merely `implements` this contract does not compile. */
   readonly #contract = true;
+
+  /** Refuses to be built itself: the container builds an unbound abstract key as an empty object, which would fail much later. */
+  constructor() {
+    if (new.target === SignInStore) throw new ContainerError(withCode('K1', `SignInStore is abstract: bind a store with container.singleton(SignInStore, YourStore).`), { reason: 'unbound', key: 'SignInStore', path: [] });
+  }
 
   /** A new sign-in, without a remember-me token; returns its id (128 random bits, base64url). */
   abstract create(input: { userId: AuthUserId; userAgent: string | undefined }): Promise<string>;

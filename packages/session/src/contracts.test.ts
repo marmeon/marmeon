@@ -1,3 +1,4 @@
+import { createApplication } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { SessionStore } from './store.ts';
 import { DatabaseSessionStore } from './stores/database.ts';
@@ -18,9 +19,9 @@ const DEFAULTS: Record<string, Record<string, string>> = {
 };
 
 // Reflect.ownKeys sees symbol-keyed members too. A default can also be an instance field (`readonly x = async () => 0`): the instance of
-// the abstract class has no own key at all, since the private mark is invisible to it.
+// an instance of an empty subclass has no own key at all, since the private mark is invisible to it.
 const methodsOf = (base: abstract new () => object) => Reflect.ownKeys(base.prototype).filter((name) => name !== 'constructor');
-const fieldsOf = (base: abstract new () => object) => Reflect.ownKeys(Reflect.construct(base as new () => object, []));
+const fieldsOf = (base: abstract new () => object) => Reflect.ownKeys(Reflect.construct(base as new () => object, [], class extends (base as new () => object) {}));
 
 class PlainStore extends SessionStore {
   async read() {
@@ -39,6 +40,14 @@ describe('the contract of the session stores', () => {
   it('SessionStore has no method with a default that is not listed', () => {
     expect(methodsOf(SessionStore)).toEqual(Object.keys(DEFAULTS.SessionStore!));
     expect(fieldsOf(SessionStore), 'only the private mark, which is no own key').toEqual([]);
+  });
+
+  it('refuses to be built itself, and an unbound container key says so instead of failing at the first call', async () => {
+    expect(() => Reflect.construct(SessionStore as new () => object, [])).toThrow(/K1.*SessionStore is abstract: bind a store/);
+    expect(new PlainStore()).toBeInstanceOf(SessionStore);
+    const app = await createApplication({ root: import.meta.dirname, discover: false, providers: [] }, { env: {} });
+    expect(() => app.container.make(SessionStore)).toThrow(/K1.*SessionStore is abstract/);
+    expect(() => app.container.make(SessionStore)).toThrow(expect.objectContaining({ reason: 'unbound', key: 'SessionStore' }));
   });
 
   it('gives no store a destroyUser it did not write: a default of 0 would hide that the store cannot find a user’s sessions', async () => {

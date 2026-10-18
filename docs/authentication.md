@@ -1027,8 +1027,9 @@ alone).
 
 The stores in the table are abstract classes. The class is the contract and the key you bind it under:
 `container.singleton(AccessTokenStore, YourTokens)` and a constructor that asks for an `AccessTokenStore` work as with any other key.
+Building the abstract class itself, which is what an unbound key amounts to, fails with K1 and the line
+`AccessTokenStore is abstract: bind a store with container.singleton(AccessTokenStore, YourStore)`.
 A store of your own extends the class, calls `super()` and implements every abstract method:
-
 ```ts
 import { AccessTokenStore } from '@marmeon/auth';
 

@@ -346,7 +346,7 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 
 | Code | Package | Meaning |
 | --- | --- | --- |
-| K1 | `core` | Nothing is bound for a token or an interface. [The container's errors](container.md#the-containers-errors) |
+| K1 | `core` | Nothing is bound for a token or an interface, or an abstract store class (`SessionStore`, `AccessTokenStore`, …) was built itself because no store is bound. [The container's errors](container.md#the-containers-errors) |
 | K2 | `core` | A scoped service was resolved outside a scope, or by a singleton. [The container's errors](container.md#the-containers-errors) |
 | K3 | `core` | A class takes constructor arguments but has no injection list. [Constructor injection](container.md#constructor-injection) |
 | K4 | `core` | Classes that need each other to be built. [The container's errors](container.md#the-containers-errors) |

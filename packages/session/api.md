@@ -148,6 +148,7 @@ export declare class SessionSetupError extends Error {
 // SessionStore
 export declare abstract class SessionStore {
     #private;
+    constructor();
     abstract read(key: string): Promise<StoredSession | undefined>;
     abstract write(key: string, data: string, options: SessionWrite): Promise<SessionWriteResult>;
     abstract destroy(key: string): Promise<void>;
