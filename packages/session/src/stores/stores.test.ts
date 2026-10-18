@@ -4,6 +4,7 @@ import { EncryptedSessionCodec, plainSessionCodec, type SessionCodec } from '../
 import type { SessionConfig } from '../config.ts';
 import { Session } from '../session.ts';
 import { createSessionId, SESSION_USER_KEY, sessionKey, type SessionPayload, type SessionStore, type SessionWrite } from '../store.ts';
+import { wrapped } from '../test-helpers/wrapped-store.ts';
 import { UserSessions } from '../user-sessions.ts';
 import { LIFETIME, storeKinds, storeUnderTest, type StoreUnderTest } from '../__fixtures__/stores.ts';
 
@@ -38,20 +39,20 @@ function signOutDuringSave(store: SessionStore, key: string, signOut: () => Prom
     armed = false;
     await signOut();
   };
-  return {
-    arm: () => void (armed = true),
-    read: async (k) => {
-      const data = await store.read(k);
-      if (k === key) await strike();
-      return data;
-    },
-    write: async (k, data, options) => {
-      if (k === key && options.expectedVersion !== undefined) await strike();
-      return store.write(k, data, options);
-    },
-    destroy: (k) => store.destroy(k),
-    gc: (lifetime) => store.gc(lifetime),
-  };
+  return Object.assign(
+    wrapped(store, {
+      read: async (k) => {
+        const data = await store.read(k);
+        if (k === key) await strike();
+        return data;
+      },
+      write: async (k, data, options) => {
+        if (k === key && options.expectedVersion !== undefined) await strike();
+        return store.write(k, data, options);
+      },
+    }),
+    { arm: () => void (armed = true) },
+  );
 }
 
 // ONE suite for every session store: memory, file, database on SQLite — and on Postgres (`pnpm test:pgsql`) and Redis
@@ -269,7 +270,7 @@ describe.each(storeKinds)('the %s session store', (kind) => {
     const signedIn = await request(store, undefined, (session) => session.put(SESSION_USER_KEY, '7'));
     const key = sessionKey(signedIn.id);
     let armed = false;
-    const hooked: SessionStore = {
+    const hooked = wrapped(store, {
       read: async (k) => {
         if (armed && k === key) {
           armed = false;
@@ -277,10 +278,7 @@ describe.each(storeKinds)('the %s session store', (kind) => {
         }
         return store.read(k);
       },
-      write: (k, data, options) => store.write(k, data, options),
-      destroy: (k) => store.destroy(k),
-      gc: (lifetime) => store.gc(lifetime),
-    };
+    });
     const slow = new Session(hooked, config, plainSessionCodec);
     await slow.start(signedIn.id);
     slow.put('seen', true);

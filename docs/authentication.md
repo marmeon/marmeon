@@ -1067,6 +1067,8 @@ override of one of their methods can break the guarantee of another.
 The ids these stores take are `AuthUserId`, the type of `id` in your [`AuthTypes`](#the-user-type-and-where-users-come-from) user: a
 number if your users have a number, a string for UUIDs.
 
+`SessionStore` of `@marmeon/session` follows the same rules; see [a store of your own](session.md#a-store-of-your-own).
+
 ### Security-relevant members
 
 Every member that is security-relevant is `abstract` and never gets a default, not after 1.0 either. A member counts as

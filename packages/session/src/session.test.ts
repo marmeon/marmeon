@@ -6,9 +6,10 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import { plainSessionCodec } from './codec.ts';
 import type { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
-import { sessionKey, type SessionPayload, type SessionStore } from './store.ts';
+import { sessionKey, SessionStore, type SessionPayload } from './store.ts';
 import { FileSessionStore } from './stores/file.ts';
 import { MemorySessionStore } from './stores/memory.ts';
+import { wrapped } from './test-helpers/wrapped-store.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 declare module './session.ts' {
@@ -202,12 +203,7 @@ describe('Session', () => {
   it('does not write a new session that holds nothing — data, flash or a handed-out token keep it', async () => {
     const store = new MemorySessionStore();
     const writes: string[] = [];
-    const counting: SessionStore = {
-      read: (key) => store.read(key),
-      write: async (key, data, options) => (writes.push(key), store.write(key, data, options)),
-      destroy: (key) => store.destroy(key),
-      gc: () => store.gc(),
-    };
+    const counting = wrapped(store, { write: async (key, data, options) => (writes.push(key), store.write(key, data, options)) });
     const save = async (use: (session: Session) => void = () => {}) => {
       const session = new Session(counting, config, plainSessionCodec);
       await session.start(undefined);
@@ -254,12 +250,11 @@ describe('Session', () => {
     const store = new MemorySessionStore();
     const { id } = await request(store, undefined, (session) => session.put('visits', 1));
     const calls: string[] = [];
-    const watched: SessionStore = {
+    const watched = wrapped(store, {
       read: (key) => (calls.push('read'), store.read(key)),
       write: (key, data, options) => (calls.push(`write@${options.expectedVersion}`), store.write(key, data, options)),
       destroy: (key) => (calls.push('destroy'), store.destroy(key)),
-      gc: () => store.gc(),
-    };
+    });
     await request(watched, id, (session) => session.put('visits', 2));
     expect(calls).toEqual(['read', 'write@1']); // the load, then the write-back over the version it loaded
     calls.length = 0;
@@ -278,15 +273,13 @@ describe('Session', () => {
     const { id } = await request(store, undefined, (session) => session.put('visits', 1));
     let writes = 0;
     // Every write meets a newer version: another request always got there first.
-    const busy: SessionStore = {
+    const busy = wrapped(store, {
       read: async (key) => {
         const current = await store.read(key);
         return current && { data: JSON.stringify({ ...JSON.parse(current.data), elsewhere: writes }), version: current.version + writes };
       },
       write: async () => (writes++, 'conflict'),
-      destroy: (key) => store.destroy(key),
-      gc: () => store.gc(),
-    };
+    });
     const session = new Session(busy, config, plainSessionCodec);
     await session.start(id);
     session.put('visits', 2);
@@ -301,7 +294,7 @@ describe('Session', () => {
   it('stores a session under the SHA-256 of its id — never the id', async () => {
     const store = new MemorySessionStore();
     const keys: string[] = [];
-    const watched: SessionStore = { read: (key) => store.read(key), write: (key, data, options) => (keys.push(key), store.write(key, data, options)), destroy: (key) => store.destroy(key), gc: () => store.gc() };
+    const watched = wrapped(store, { write: (key, data, options) => (keys.push(key), store.write(key, data, options)) });
     const { id } = await request(watched, undefined, (session) => session.put('visits', 1));
     expect(keys).toEqual([sessionKey(id)]);
     expect(sessionKey(id)).toMatch(/^[0-9a-f]{64}$/);
@@ -437,8 +430,14 @@ describe('Session — read-only (an island)', () => {
 
 // Type guarantees (never called — checked by the build): a store says what its compare-and-set did.
 function storeContract() {
-  // @ts-expect-error -- a store with writeIfExists and payload objects is no SessionStore
-  const legacy: SessionStore = { read: async () => undefined, write: async () => {}, writeIfExists: async () => true, destroy: async () => {}, gc: async () => 0 };
+  class Legacy extends SessionStore {
+    async read() { return undefined; }
+    // @ts-expect-error -- a store with writeIfExists and payload objects is no SessionStore
+    async write() {}
+    async writeIfExists() { return true; }
+    async destroy() {}
+    async gc() { return 0; }
+  }
   const store: SessionStore = new MemorySessionStore();
   // @ts-expect-error -- a payload is text (JSON, or encrypted) — the store never sees an object
   void store.write('k', { user: 1 }, { expectedVersion: 1, lifetimeSeconds: 60 });
@@ -446,6 +445,6 @@ function storeContract() {
   const written: Promise<boolean> = store.write('k', '{}', { expectedVersion: 1, lifetimeSeconds: 60 });
   // @ts-expect-error -- the expected version is required: undefined for a new key, said out loud
   void store.write('k', '{}', { lifetimeSeconds: 60 });
-  return [legacy, written];
+  return [Legacy, written];
 }
 void storeContract;

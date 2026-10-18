@@ -1,6 +1,4 @@
 import { hash } from 'node:crypto';
-import { token } from '@marmeon/core';
-
 export type SessionPayload = Record<string, unknown>;
 
 /** A session as its store keeps it: the payload as text (JSON, or encrypted with `SESSION_ENCRYPT`) and its version. */
@@ -34,8 +32,8 @@ export interface SessionWrite {
 export type SessionWriteResult = 'written' | 'conflict' | 'gone';
 
 /**
- * Where session data lives: `file`, `database`, `redis` and `memory` implement this
- * contract (`stores/`).
+ * Where session data lives: `file`, `database`, `redis` and `memory` implement this contract (`stores/`). It is the key the
+ * app's store is bound and resolved under.
  *
  * Every method takes the session's **key** — `sessionKey(id)`, the SHA-256 of the id the cookie carries — never the id:
  * whoever reads the store (a leaked backup, a replica, a shared Redis) gets no cookie that works. The payload is text the
@@ -43,21 +41,27 @@ export type SessionWriteResult = 'written' | 'conflict' | 'gone';
  *
  * `write` is ONE atomic step of the store — compare-and-set on the version: there is no moment between "it is at
  * version n" and "store version n + 1" in which another request's write or `destroy` could slip.
+ *
+ * Your own store extends this class and implements every abstract method; a member added later has a default only if it is not
+ * security-relevant. See `docs/session.md#a-store-of-your-own`.
  */
-export interface SessionStore {
-  read(key: string): Promise<StoredSession | undefined>;
-  write(key: string, data: string, options: SessionWrite): Promise<SessionWriteResult>;
-  destroy(key: string): Promise<void>;
+export abstract class SessionStore {
+  /** A mark without meaning: only a subclass fits the type, so a store that merely `implements` this contract does not compile. */
+  readonly #contract = true;
+
+  abstract read(key: string): Promise<StoredSession | undefined>;
+  abstract write(key: string, data: string, options: SessionWrite): Promise<SessionWriteResult>;
+  abstract destroy(key: string): Promise<void>;
   /** Removes expired sessions; returns how many (0 for stores that expire on their own: Redis). */
-  gc(lifetimeSeconds: number): Promise<number>;
+  abstract gc(lifetimeSeconds: number): Promise<number>;
   /**
    * Removes every session of the user `userId` (its id as text) — how many. Only a store that knows whose a session is has it
-   * (`database`: the `user_id` column). Without it a deleted user's sessions end at their next request anyway — the guard of
-   * `@marmeon/auth` finds no user and invalidates them — and expire with their lifetime.
+   * (`database`: the `user_id` column), and a store without it has no default: `UserSessions` tells the two apart by its absence.
+   * It is optional and not security-relevant because a session it would have left standing ends at its next request anyway — the
+   * guard of `@marmeon/auth` finds no user, or a changed fingerprint, and invalidates it — and expires with its lifetime.
    */
   destroyUser?(userId: string): Promise<number>;
 }
-export const SessionStore = token<SessionStore>('SessionStore');
 
 /** Session ids are 40 URL-safe characters — anything else is never looked up (no path tricks). */
 export const SESSION_ID = /^[A-Za-z0-9_-]{40}$/;

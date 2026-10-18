@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { RedisConnection, RedisScript } from '@marmeon/redis';
-import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
+import { SessionStore, type SessionWrite, type SessionWriteResult, type StoredSession } from '../store.ts';
 
 /** A named Lua script (the shape of `defineRedisScript` — built here, as @marmeon/redis is an optional peer). */
 function script(name: string, lua: string): RedisScript {
@@ -36,10 +36,11 @@ export type RedisSessionConnection = RedisConnection | (() => Promise<RedisConne
  * so `gc` has nothing to do. Writing is a Lua script — compare the version, write, renew — one atomic step: a session a
  * sign-out deleted meanwhile stays deleted, one another request wrote meanwhile is a conflict.
  */
-export class RedisSessionStore implements SessionStore {
+export class RedisSessionStore extends SessionStore {
   readonly #connection: () => Promise<RedisConnection>;
 
   constructor(connection: RedisSessionConnection) {
+    super();
     this.#connection = typeof connection === 'function' ? connection : async () => connection;
   }
 

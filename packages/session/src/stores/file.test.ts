@@ -8,7 +8,8 @@ import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { plainSessionCodec } from '../codec.ts';
 import type { SessionConfig } from '../config.ts';
 import { Session } from '../session.ts';
-import { sessionKey, type SessionStore, type SessionWrite } from '../store.ts';
+import { sessionKey, type SessionWrite } from '../store.ts';
+import { wrapped } from '../test-helpers/wrapped-store.ts';
 import { FileSessionStore } from './file.ts';
 
 const NEW = { expectedVersion: undefined, lifetimeSeconds: 60 } satisfies SessionWrite;
@@ -85,10 +86,7 @@ describe('the file session store meets a write in progress', () => {
     const files = new FileSessionStore(directory, new TestClock());
     let writer: { done: Promise<void> } | undefined;
     // After the first conflict the file is torn until a writer finishes: the retry's read has to wait for it.
-    const store: SessionStore = {
-      read: (key) => files.read(key),
-      destroy: (key) => files.destroy(key),
-      gc: (lifetime) => files.gc(lifetime),
+    const store = wrapped(files, {
       write: async (key, data, options) => {
         const result = await files.write(key, data, options);
         if (result === 'conflict' && !writer) {
@@ -98,7 +96,7 @@ describe('the file session store meets a write in progress', () => {
         }
         return result;
       },
-    };
+    });
     const first = new Session(store, config, plainSessionCodec);
     await first.start();
     first.put('base', 1);
