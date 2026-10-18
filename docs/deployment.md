@@ -445,12 +445,14 @@ With old and new nodes side by side, from the release that marks them on:
   their attempt given back and run on a newer worker. After six hours they fail with the reason and leave the queue. Keep a worker of the newer release
   running until the queue has drained ([deploying while jobs wait](queues.md#deploying-while-jobs-wait)). A queued listener is found
   by its `static listener` name, so renaming its class changes nothing for jobs that wait.
-- **The database** is shared, and a release that changes a table changes it for every node. A migration that renames or drops
-  something an older node uses waits for the release after it. A node whose code has migrations the database lacks (it started before
-  `marmeon migrate` finished) fails every query and fails readiness until they ran, within a second of it; a node that finds more
-  migrations in the database than its code has keeps running with the schema it knows
-  ([how the migrator keeps track](migrations.md#how-the-migrator-keeps-track)). Update a node whose record of migrations is newer than it
-  reads: it fails every query and fails readiness. Two nodes that run
+- **The database** is shared, and a release that changes a table changes it for every node. Run `marmeon migrate --force` first, then
+  roll the nodes. A migration that drops or renames a column or table breaks the previous release's `selectAll()`, `returningAll()`,
+  relations and finders on that table for the rollout: stop its processes before `migrate`
+  ([deploying new migrations](migrations.md#deploying-new-migrations)). A node whose code has migrations the database lacks (it started before
+  `marmeon migrate` finished) fails every query and fails readiness until they ran, within a second of it. An older node that finds more
+  migrations in the database than its code has keeps running with the schema it knows: its `selectAll()` names only the columns it knows
+  and hides the secret ones it knows ([how the migrator keeps track](migrations.md#how-the-migrator-keeps-track)). Update a node
+  whose record of migrations is newer than it reads: it fails every query and fails readiness. Two nodes that run
   `marmeon migrate` at once are safe: one waits for the other ([one migration at a time](migrations.md#one-migration-at-a-time)).
 
 A release that changes a format after 1.0 writes the new version only once the readers of the release before read it
@@ -470,7 +472,7 @@ The steps below are the order; the [upgrade guide](../UPGRADING.md) names the ve
 2. **In development.** Run `marmeon make:upgrade-migrations`, `marmeon db:types` and `marmeon route:types`, and commit what they
    write. [`make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables) writes the migration that clears the API tokens. A database with tables of its
    own that never ran `marmeon migrate` keeps them: `migrate` writes its record of migrations and runs the migrations, and the
-   tables it did not make stay unknown to Marmeon ([how the migrator keeps track](migrations.md#how-the-migrator-keeps-track)).
+   tables it did not make stay unknown to Marmeon, unguarded ([how the app knows its schema](migrations.md#how-the-app-knows-its-schema)).
 3. **Stop every process of the old release**, on every machine: web, workers, the scheduler, cron jobs, and every CI or release job
    that runs `marmeon`. None of them may run after step 4 begins.
 4. **Deploy the new release, run `marmeon migrate --force`, then
@@ -499,7 +501,8 @@ notifications and the cache. The sign-in rows are deleted.
 
 A process of the old release that you forgot keeps running against the database, with the secret columns its own tables
 (`table_owners`, `secret_columns`, `schema_markers`, which `migrate` leaves in place) name: a column that a new migration marks
-`.secret()` is not hidden from it. **Redis notices nothing.**
+`.secret()` is not hidden from it. Drop those three tables by hand once no process of the old release runs
+([the three tables](migrations.md#how-the-migrator-keeps-track)). **Redis notices nothing.**
 Queue, sessions, cache and live updates on Redis are shared by a forgotten old process and a new one without any error, so step 3
 means every process.
 
