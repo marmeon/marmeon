@@ -1,6 +1,6 @@
 import { byCodePoint, type Relation } from '../introspection.ts';
 import type { Driver } from '../schema/blueprint.ts';
-import type { ProjectedColumn, ProjectedTable, SchemaProjection } from '../schema/projection.ts';
+import { knownColumns, type ProjectedColumn, type ProjectedTable, type SchemaProjection } from '../schema/projection.ts';
 
 export interface SchemaSnapshot {
   readonly driver: Driver;
@@ -62,7 +62,7 @@ export function renderTypes(snapshot: SchemaSnapshot): Rendered {
   const tableLines: string[] = [];
   for (const table of tables) {
     tableLines.push(...describe(table, exposedBy.get(table.name)), `    ${key(table.name)}: {`);
-    for (const column of table.columns) tableLines.push(`      ${key(column.name)}: ${render(table.name, column, snapshot.driver, warnings)};`);
+    for (const column of knownColumns(table)) tableLines.push(`      ${key(column.name)}: ${render(table.name, column, snapshot.driver, warnings)};`);
     tableLines.push('    };');
   }
 

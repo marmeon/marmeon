@@ -158,7 +158,7 @@ column that raw SQL made with `schema.alter()` or `schema.rename()` stops with e
 anything: every table with its columns in order, their types, nullability, defaults and secret marks, its unique column sets, indexes
 and foreign keys (with `onDelete` and `inverse`), its `timestamps()` and `softDeletes()` marks and the module that created it. It
 replays the migrations in the order of their names, and applies the steps of each as `migrate` runs them: in an `alter`, dropped indexes first, then renamed columns, new columns, `notNull()`
-and `nullable()` changes (by the column's name after the renames), new indexes and last the dropped columns. `schema.raw()` and
+and `nullable()` changes (by the column's name after the renames), new indexes, retired columns and last the dropped columns. A retired column stays in it, marked, and is left out of everything Marmeon derives from it except the secret marks. `schema.raw()` and
 `schema.data()` steps change nothing in it. `migrate` computes it before it runs the first pending migration, so a plan it cannot hold stops the run
 at once. Error D19 stops a table name that two migrations create without a `drop` between them, a column added twice, and a change of a table or column
 no migration created with the blueprint (`alter`, `rename`, `renameColumn()`, `notNull()`, `nullable()`, or an index on it); dropping such a table is allowed.
@@ -370,13 +370,54 @@ invisible to them. That makes a migration safe for them when it only adds:
 - **A new table or index, and a new column that is nullable or has a default, is safe** at any moment.
 - **Dropping or renaming a column breaks the queries of the previous release.** Their `selectAll()`, `returningAll()`, relations and
   finders on that table name every column the previous release knows, so they fail for as long as the rollout lasts, even when that
-  release no longer uses the column. Stop the previous release's processes before `migrate`, or have it name its columns on that
-  table and use no finder, repository write or relation on it. Dropping or renaming a whole table breaks it the same way. Do not drop or rename in the release that stops using the
-  column: the one before it is still running.
+  release no longer uses the column. Dropping or renaming a whole table breaks it the same way. There are three ways to deal with it:
+  1. **Accept the risk, knowingly.** Drop or rename in the release that stops using the column. The old instances fail on that table
+     until they are replaced; for a short rollout, or a table few requests touch, that can be the right price.
+  2. **Retire the column in the release before, and drop it in the next.** `table.retire('column')` changes only what Marmeon knows:
+     [see below](#retiring-a-column). The release that retires it stops reading and writing the column while the previous one still
+     does, and the release after it drops it with `dropColumn()` when no instance that knows the column is left.
+  3. **Stop the previous release's processes before `migrate`**, then run it and start the new release. Nothing old is running when
+     the column goes; the price is the downtime between the two.
+
+  A whole table needs no `retire()`: stop using it in one release and drop it in the next.
 - **A new `NOT NULL` column** breaks the inserts of an old instance. Add it with a default, or nullable and make it `NOT NULL` with
   `notNull()` only in the release after (Postgres only; SQLite refuses `notNull()` with D18, so use the default there).
 - **A new secret column** is hidden from old instances, since they select only the columns they know. A query of theirs that names the
   column, or raw SQL, still reads it.
+
+### Retiring a column
+
+```ts title="modules/notes/migrations/2026_10_20_100000_retire_legacy_slug_of_notes_table.ts"
+import { defineMigration } from '@marmeon/database';
+
+export default defineMigration({
+  up: (schema) => schema.alter('notes', (table) => table.retire('legacy_slug')),
+  down: () => {},
+});
+```
+
+`retire()` runs no statement. The column stays in the database, and leaves what Marmeon knows of the table: `selectAll()` and
+`returningAll()` no longer write it out, relations and finders no longer use it, and `marmeon db:types` leaves it out of
+`bootstrap/database.d.ts`, so the code of the retiring release cannot name it. `migrate` does not report it as a column no migration
+made, but the check after each migration still expects it in the database until `dropColumn()`, so do not drop it with raw SQL. The release that follows drops it with `table.dropColumn('legacy_slug')`, which runs the
+`ALTER TABLE`.
+
+- **A retired secret column stays secret** until it is dropped: a query that names it is still refused (error D9).
+- **A retired column cannot be changed.** `renameColumn()`, `notNull()`, `nullable()` and an index on it stop with error D19; only
+  `dropColumn()` works. Nor can a primary key, the column of `timestamps()` or `softDeletes()`, or a column another table's foreign
+  key references be retired. A foreign key on a retired column and the relation it gave are no longer known; the constraint stays in
+  the database until the column is dropped.
+- **A fixed default in a unique index is refused.** A column with a `default(value)` or `useCurrent()` default that is in a unique
+  index (its own `unique()` or a composite one) would get the same value from every insert of the new release, and the second insert
+  would fail, or a composite index would silently make the other column unique. Error D19 asks for `table.dropUnique(name)` first, in
+  the same `alter()` or an earlier one.
+- **A foreign key cannot point at a retired column**: `constrained(table, column)` on one stops with error D19.
+- **The column has to be nullable or have a default**, because the new release inserts without it and the database must accept
+  that. A `NOT NULL` column without a default is refused with error D19 rather than left to fail on the first insert in production.
+  On Postgres make it nullable in an earlier migration with `table.nullable('column')`; on SQLite, which cannot change a column,
+  use the third way above.
+- **Retire in the release before the drop, not in the same one.** Marmeon cannot tell which instances still run: the drop has to wait
+  until every instance of the release before the retirement is gone.
 
 For an app that ran on Marmeon 0.3, see [how the migrator keeps track](#how-the-migrator-keeps-track).
 
@@ -616,10 +657,11 @@ export default defineMigration({
 | `table.dropUnique(name)` | Drops a unique index by its name. |
 | `table.notNull(column)` | Makes an existing column NOT NULL. Postgres only, error D18 on SQLite. |
 | `table.nullable(column)` | Lets an existing column hold NULL. Postgres only, error D18 on SQLite. |
+| `table.retire(column)` | Takes a column out of use, one release before it is dropped. Changes no statement; see [retiring a column](#retiring-a-column). |
 
-These six work in `alter()` only, and `create()` throws when it finds them. Each change runs as a statement of its own, because
+These seven work in `alter()` only, and `create()` throws when it finds them. Each change runs as a statement of its own, because
 SQLite changes a table one step at a time. The order is fixed, whatever order you write them in: dropped indexes first, then
-renamed columns, new columns, NOT NULL and nullable changes, new indexes, and dropped columns last. A column in `notNull()` or `nullable()` is named as it is after a `renameColumn`. So dropping a column and adding one of the same name needs
+renamed columns, new columns, NOT NULL and nullable changes, new indexes, retired columns, and dropped columns last. A column in `notNull()` or `nullable()` is named as it is after a `renameColumn`. So dropping a column and adding one of the same name needs
 two `alter()` calls. Two rules come from SQLite as well: a new `NOT NULL` column needs a default, and a column with an index
 cannot be dropped before its index.
 

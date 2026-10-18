@@ -140,6 +140,118 @@ describe('the projection of a plan', () => {
     expect(notes.uniques).toEqual([['id']]);
   });
 
+  describe('retiring a column', () => {
+    const members = (s: Schema) =>
+      s.create('members', (t) => {
+        t.id();
+        t.string('name');
+        t.string('pin').nullable().secret();
+        t.string('badge').default('none');
+        t.string('nickname').nullable().unique();
+        t.foreignId('team_id').constrained('teams').nullable();
+        t.string('slug');
+        t.unique(['slug', 'nickname']);
+        t.timestamps();
+      });
+    const teams = (s: Schema) => s.create('teams', (t) => t.id());
+    const retire = (...columns: string[]): Up => (s) => s.alter('members', (t) => columns.forEach((column) => t.retire(column)));
+
+    it('keeps the column in the table but leaves it out of what Marmeon knows: columns, types, keys and unique sets', () => {
+      const projection = project(teams, members, retire('badge', 'team_id', 'nickname'));
+      const facts = factsOf(projection, 'sqlite');
+      expect(names(table(projection, 'members'))).toEqual(['id', 'name', 'pin', 'badge', 'nickname', 'team_id', 'slug', 'created_at', 'updated_at']);
+      expect(facts.columns.get('members')).toEqual(['id', 'name', 'pin', 'slug', 'created_at', 'updated_at']);
+      expect([...facts.types.get('members')!.keys()]).toEqual(['id', 'name', 'pin', 'slug', 'created_at', 'updated_at']);
+      expect(facts.foreignKeys.filter((key) => key.table === 'members')).toEqual([]);
+      expect(table(projection, 'members').foreignKeys).toEqual([]);
+      expect(table(projection, 'members').uniques).toEqual([['id']]);
+      expect(Object.fromEntries(facts.uniques).members).toEqual([['id']]);
+    });
+
+    it('leaves a retired column out of the generated types, and a secret one stays secret in the facts', () => {
+      const projection = project(teams, members, retire('pin'));
+      expect(factsOf(projection, 'pgsql').secretColumns).toEqual([{ table: 'members', column: 'pin' }]);
+      expect(factsOf(projection, 'pgsql').columns.get('members')).not.toContain('pin');
+      expect(table(projection, 'members').columns.find((c) => c.name === 'pin')).toMatchObject({ secret: true, retired: true });
+    });
+
+    it('is dropped by a later dropColumn, which takes the secret mark with it', () => {
+      const projection = project(teams, members, retire('pin', 'badge'), (s) => s.alter('members', (t) => { t.dropColumn('pin'); t.dropColumn('badge'); }));
+      expect(names(table(projection, 'members'))).toEqual(['id', 'name', 'nickname', 'team_id', 'slug', 'created_at', 'updated_at']);
+      expect(factsOf(projection, 'sqlite').secretColumns).toEqual([]);
+      expect(table(projection, 'members').indexes.map((i) => i.name)).toEqual(['members_nickname_unique', 'members_slug_nickname_unique']);
+    });
+
+    it('may be named again once it is dropped', () => {
+      const projection = project(teams, members, retire('pin'), (s) => s.alter('members', (t) => t.dropColumn('pin')), (s) => s.alter('members', (t) => t.string('pin').nullable()));
+      expect(table(projection, 'members').columns.find((c) => c.name === 'pin')).toMatchObject({ secret: false });
+      expect(table(projection, 'members').columns.find((c) => c.name === 'pin')!.retired).toBeUndefined();
+    });
+
+    it('refuses everything but a drop on a retired column (D19)', () => {
+      const base = [teams, members, retire('badge')] as const;
+      expect(() => project(...base, (s) => s.alter('members', (t) => t.renameColumn('badge', 'tag')))).toThrow(/D19.*"members\.badge".*retired/s);
+      expect(() => project(...base, (s) => s.alter('members', (t) => t.notNull('badge')))).toThrow(/D19.*retired/s);
+      expect(() => project(...base, (s) => s.alter('members', (t) => t.nullable('badge')))).toThrow(/D19.*retired/s);
+      expect(() => project(...base, (s) => s.alter('members', (t) => t.index('badge')))).toThrow(/D19.*retired/s);
+      expect(() => project(...base, (s) => s.alter('members', (t) => t.unique(['slug', 'badge'])))).toThrow(/D19.*retired/s);
+      expect(() => project(...base, (s) => s.alter('members', (t) => t.string('badge')))).toThrow(/D19.*has it already/s);
+      expect(() => project(...base, retire('badge'))).toThrow(/D19.*already retired|D19.*earlier migration retired/s);
+    });
+
+    it('refuses a column that is NOT NULL without a default, because the inserts of the new release would fail (D19)', () => {
+      expect(() => project(teams, members, retire('slug'))).toThrow(/D19.*"members\.slug".*NOT NULL and has no default.*nullable/s);
+      // Nullable, or with a default, the database fills it in (or leaves it NULL) when the insert does not know the column.
+      expect(() => project(teams, members, retire('pin', 'badge'))).not.toThrow();
+      expect(() => project(teams, members, (s) => s.alter('members', (t) => { t.nullable('slug'); t.retire('slug'); }))).not.toThrow();
+    });
+
+    it('refuses a column with a fixed default in a unique index: the second insert of the new release would write the same value (D19)', () => {
+      const created = (s: Schema) => s.create('codes', (t) => { t.id(); t.string('slug'); t.string('code').default('none').unique(); t.timestamp('seen_at').useCurrent(); t.unique(['slug', 'seen_at']); });
+      expect(() => project(created, (s) => s.alter('codes', (t) => t.retire('code')))).toThrow(/D19.*"codes\.code".*fixed default.*codes_code_unique.*dropUnique/s);
+      expect(() => project(created, (s) => s.alter('codes', (t) => t.retire('seen_at')))).toThrow(/D19.*"codes\.seen_at".*codes_slug_seen_at_unique/s);
+      // The index goes first, in this alter (dropped indexes come first) or an earlier one.
+      expect(() => project(created, (s) => s.alter('codes', (t) => { t.dropUnique('codes_code_unique'); t.retire('code'); }))).not.toThrow();
+      expect(() => project(created, (s) => s.alter('codes', (t) => t.dropUnique('codes_code_unique')), (s) => s.alter('codes', (t) => t.retire('code')))).not.toThrow();
+      // A nullable column without a default may stay in a unique index: NULL is never equal to NULL.
+      expect(() => project(teams, members, retire('nickname'))).not.toThrow();
+    });
+
+    it('refuses a foreign key that points at a retired column (D19)', () => {
+      const owners = (s: Schema) => s.create('owners', (t) => { t.id(); t.bigInteger('code').nullable(); });
+      const retired = (s: Schema) => s.alter('owners', (t) => t.retire('code'));
+      expect(() => project(owners, retired, (s) => s.create('pets', (t) => { t.id(); t.foreignId('owner_code').constrained('owners', 'code'); }))).toThrow(/D19.*"pets\.owner_code".*"owners\.code".*retired/s);
+      expect(() => project(owners, retired, (s) => s.create('pets', (t) => { t.id(); t.foreignId('owner_id').constrained('owners'); }))).not.toThrow();
+      expect(() => project(owners, retired, (s) => s.create('pets', (t) => t.id()), (s) => s.alter('pets', (t) => t.foreignId('owner_code').constrained('owners', 'code')))).toThrow(/D19.*retired/s);
+    });
+
+    it('refuses a primary key, a mark column, a column that is not there and one another table references (D19)', () => {
+      expect(() => project(teams, members, retire('id'))).toThrow(/D19.*primary key/s);
+      expect(() => project(teams, members, retire('created_at'))).toThrow(/D19.*timestamps/s);
+      expect(() => project(teams, members, retire('gone'))).toThrow(/D19.*"members\.gone"/s);
+      expect(() =>
+        project(
+          (s) => s.create('owners', (t) => { t.id(); t.bigInteger('code').unique().default(1); }),
+          (s) => s.create('pets', (t) => { t.id(); t.foreignId('owner_code').constrained('owners', 'code'); }),
+          (s) => s.alter('owners', (t) => t.retire('code')),
+        ),
+      ).toThrow(/D19.*"owners\.code".*"pets" references/s);
+    });
+
+    it('changes nothing in the database: an alter that only retires has no statement', async () => {
+      const { Blueprint } = await import('./blueprint.ts');
+      const blueprint = new Blueprint('members');
+      blueprint.retire('pin');
+      expect(blueprint.retirements).toEqual(['pin']);
+      blueprint.seal();
+      expect(() => blueprint.retire('badge')).toThrow(/closed/);
+    });
+
+    it('works in alter() only', () => {
+      expect(() => project((s) => s.create('members', (t) => { t.id(); t.retire('id'); }))).toThrow(/only work when changing a table/);
+    });
+  });
+
   it('drops an index by name, and with it the unique set', () => {
     const projection = project(
       (s) => s.create('notes', (t) => { t.id(); t.string('slug').unique(); }),
@@ -258,6 +370,9 @@ const GROUPS: Record<string, string[]> = {
   'ddl-columns': ['ddl/columns'],
   'ddl-indexes': ['ddl/columns', 'ddl/indexes'],
   ddl: ['ddl/columns', 'ddl/indexes', 'ddl/alter', 'ddl/rename', 'ddl/drop'],
+  // Retiring leaves the column in the database, dropping it later takes it out.
+  retired: ['retired-old', 'retired'],
+  'retired-drop': ['retired-old', 'retired', 'retired-drop'],
   'known-columns': ['known-columns'],
   'known-columns-old': ['known-columns-old'],
   nullability: ['nullability'],
@@ -322,16 +437,27 @@ async function expectParity(driver: TestDriver, modules: ModuleDefinition[]): Pr
       if (!own(name)) continue;
       const projected = tables.get(name)!;
       expect(projected.columns.map((c) => c.name), `columns of ${name}`).toEqual([...types.keys()]);
+      // What the database has beyond the columns Marmeon knows is exactly what the migrations retired.
+      expect(mine.columns.get(name), `known columns of ${name}`).toEqual(projected.columns.filter((c) => !c.retired).map((c) => c.name));
       for (const [column, type] of types) {
+        expect(projected.columns.find((c) => c.name === column)!.nullable, `${name}.${column} nullable`).toBe(all.nullable.has(`${name}\0${column}`));
+        if (projected.columns.find((c) => c.name === column)!.retired) continue;
         const declared = mine.types.get(name)!.get(column)!;
         expect(columnType(declared, driver), `${name}.${column}: ${declared} against ${type}`).toBe(columnType(type, driver));
         expect(kindOf(declared), `${name}.${column}`).toEqual(kindOf(type));
-        expect(projected.columns.find((c) => c.name === column)!.nullable, `${name}.${column} nullable`).toBe(all.nullable.has(`${name}\0${column}`));
       }
     }
     // Keys and the relations' facts.
-    expect(mine.foreignKeys).toEqual(real.foreignKeys.filter((key) => own(key.table)));
-    expect(Object.fromEntries(mine.uniques)).toEqual(Object.fromEntries([...real.uniques].filter(([name]) => own(name))));
+    // The database keeps the constraints of a retired column; Marmeon does not know them.
+    const retired = (name: string, column: string) => tables.get(name)?.columns.find((c) => c.name === column)?.retired === true;
+    expect(mine.foreignKeys).toEqual(real.foreignKeys.filter((key) => own(key.table) && !retired(key.table, key.column)));
+    expect(Object.fromEntries(mine.uniques)).toEqual(
+      Object.fromEntries(
+        [...real.uniques]
+          .filter(([name]) => own(name))
+          .map(([name, sets]) => [name, sets.filter((set) => !set.some((column) => retired(name, column)))] as const),
+      ),
+    );
     // What happens to a row of the referenced table, and which columns the database fills in when an insert gives none.
     const deletes = await onDelete(run, driver);
     for (const table of tables.values()) {

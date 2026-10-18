@@ -19,6 +19,11 @@ export interface ProjectedColumn {
   readonly identity: boolean;
   readonly default: 'value' | 'now' | 'uuidv7' | null;
   readonly secret: boolean;
+  /**
+   * Taken out of use with `retire()`: the database still has it, Marmeon does not know it any more — except that a secret one stays
+   * secret. Present only when set, so a projection that retires nothing reads the same as before.
+   */
+  readonly retired?: boolean;
 }
 
 export interface ProjectedIndex {
@@ -41,7 +46,7 @@ export interface ProjectedTable {
   readonly name: string;
   /** The module whose migration created it. */
   readonly module: string;
-  /** In the order the database has them: new ones last, a renamed one where it was. */
+  /** In the order the database has them: new ones last, a renamed one where it was. Retired ones are among them; see {@link knownColumns}. */
   readonly columns: readonly ProjectedColumn[];
   /** The column sets that identify a row: the primary key and the unique indexes. */
   readonly uniques: readonly (readonly string[])[];
@@ -68,9 +73,18 @@ function unknown(where: string, what: string): SchemaError {
   );
 }
 
+function retiredColumn(where: string, table: string, column: string): SchemaError {
+  return new SchemaError(withCode('D19', `${where} changes "${table}.${column}", which an earlier migration retired. A retired column can only be dropped with dropColumn().`));
+}
+
 /** Another mistake in a plan that makes the projection impossible (a name taken twice, a column that is there already). */
 function conflict(message: string): SchemaError {
   return new SchemaError(withCode('D19', message));
+}
+
+/** The columns of a table that Marmeon knows: all but the retired ones. */
+export function knownColumns(table: ProjectedTable): ProjectedColumn[] {
+  return table.columns.filter((column) => !column.retired);
 }
 
 export const emptyProjection: SchemaProjection = { migrations: [], tables: new Map() };
@@ -89,11 +103,13 @@ export function applyPlan(projection: SchemaProjection, steps: readonly PlanStep
           throw conflict(`${where} creates table "${step.table}", which an earlier migration created and no migration dropped. Every connection shares one namespace of table names.`);
         }
         tables.set(step.table, change(blank(step.table, file.module), step.blueprint, where));
+        referencesLive(tables, step.blueprint, where);
         break;
       }
       case 'alter': {
         if (!tables.has(step.table)) throw unknown(where, `table "${step.table}"`);
         alter(tables, step.blueprint, where);
+        referencesLive(tables, step.blueprint, where);
         break;
       }
       case 'drop':
@@ -162,11 +178,13 @@ export function factsOf(projection: SchemaProjection, driver: Driver): Introspec
   const markers: SchemaMarker[] = [];
   const secretColumns: { table: string; column: string }[] = [];
   for (const table of projection.tables.values()) {
-    columns.set(table.name, table.columns.map((column) => column.name));
-    types.set(table.name, new Map(table.columns.map((column) => [column.name, column.type[driver]])));
+    const known = knownColumns(table);
+    columns.set(table.name, known.map((column) => column.name));
+    types.set(table.name, new Map(known.map((column) => [column.name, column.type[driver]])));
+    // A retired column stays secret until it is dropped: reading it explicitly is still refused.
     for (const column of table.columns) if (column.secret) secretColumns.push({ table: table.name, column: column.name });
     for (const marker of table.markers) markers.push({ table: table.name, column: '', marker, value: null });
-    const nullable = new Map(table.columns.map((column) => [column.name, column.nullable]));
+    const nullable = new Map(known.map((column) => [column.name, column.nullable]));
     for (const key of table.foreignKeys) {
       foreignKeys.push({ table: table.name, column: key.column, references: key.references, referenced: key.referenced, nullable: nullable.get(key.column) ?? false });
       if (key.inverse) markers.push({ table: table.name, column: key.column, marker: 'inverse', value: key.inverse });
@@ -183,9 +201,24 @@ export function factsOf(projection: SchemaProjection, driver: Driver): Introspec
   };
 }
 
+/** A foreign key that a blueprint adds must not point at a column an earlier migration retired. */
+function referencesLive(tables: ReadonlyMap<string, ProjectedTable>, blueprint: Blueprint, where: string): void {
+  for (const spec of blueprint.columns) {
+    if (!spec.references) continue;
+    const target = tables.get(spec.references.table)?.columns.find((c) => c.name === spec.references!.column);
+    if (target?.retired) {
+      throw conflict(`${where} makes "${blueprint.table}.${spec.name}" reference "${spec.references.table}.${spec.references.column}", which an earlier migration retired. A retired column can only be dropped.`);
+    }
+  }
+}
+
 /** Changes a known table; the foreign keys that point at a column it renames follow, as the database makes them. */
 function alter(tables: Map<string, ProjectedTable>, blueprint: Blueprint, where: string): void {
   const before = tables.get(blueprint.table)!;
+  for (const column of blueprint.retirements) {
+    const reference = [...tables.values()].find((other) => other.foreignKeys.some((k) => k.references === blueprint.table && k.referenced === column));
+    if (reference) throw conflict(`${where} retires "${blueprint.table}.${column}", which a foreign key of "${reference.name}" references. Drop that foreign key's column first.`);
+  }
   const after = change(before, blueprint, where);
   tables.set(blueprint.table, after);
   for (const { from, to } of blueprint.renames) {
@@ -219,11 +252,16 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
   let { columns, indexes, foreignKeys, markers } = table;
   const name = table.name;
   const has = (column: string) => columns.some((c) => c.name === column);
+  // A retired column can only be dropped: anything else would change what Marmeon has stopped knowing.
+  const live = (column: string, what: string) => {
+    if (!has(column)) throw unknown(where, `column "${name}.${column}"${what}`);
+    if (columns.some((c) => c.name === column && c.retired)) throw retiredColumn(where, name, column);
+  };
 
   for (const index of blueprint.dropIndexes) indexes = indexes.filter((other) => other.name !== index);
 
   for (const { from, to } of blueprint.renames) {
-    if (!has(from)) throw unknown(where, `column "${name}.${from}"`);
+    live(from, '');
     if (has(to)) throw conflict(`${where} renames "${name}.${from}" to "${to}", but the table has a column of that name.`);
     columns = columns.map((c) => (c.name === from ? { ...c, name: to } : c));
     indexes = indexes.map((i) => ({ ...i, columns: i.columns.map((c) => (c === from ? to : c)) }));
@@ -241,15 +279,42 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     }
   }
 
-  for (const { column } of blueprint.nullability) if (!has(column)) throw unknown(where, `column "${name}.${column}"`);
+  for (const { column } of blueprint.nullability) live(column, '');
   for (const { column, nullable } of blueprint.nullability) columns = columns.map((c) => (c.name === column ? { ...c, nullable: nullable && !c.primary } : c));
 
   for (const index of blueprint.allIndexes()) {
-    for (const column of index.columns) if (!has(column)) throw unknown(where, `column "${name}.${column}" (in index "${index.name}")`);
+    for (const column of index.columns) live(column, ` (in index "${index.name}")`);
     indexes = [...indexes.filter((other) => other.name !== index.name), { name: index.name, columns: index.columns, unique: index.unique }];
   }
 
   for (const marker of blueprint.markers) if (!markers.includes(marker)) markers = [...markers, marker];
+
+  for (const column of blueprint.retirements) {
+    const found = columns.find((c) => c.name === column);
+    if (!found) throw unknown(where, `column "${name}.${column}"`);
+    if (found.retired) throw conflict(`${where} retires "${name}.${column}", which an earlier migration retired. Drop it with dropColumn().`);
+    if (found.primary || (MARKER_COLUMNS[column] !== undefined && markers.includes(MARKER_COLUMNS[column]))) {
+      throw conflict(`${where} retires "${name}.${column}", which is ${found.primary ? 'part of the primary key' : 'the column of a timestamps() or softDeletes() mark'}; Marmeon needs it.`);
+    }
+    // The new release inserts without a column it does not know; the database has to accept that.
+    if (!found.nullable && found.default === null && !found.identity) {
+      throw conflict(
+        `${where} retires "${name}.${column}", which is NOT NULL and has no default: the inserts of the release that no longer knows it would fail. ` +
+          `Make it nullable in an earlier migration (table.nullable('${column}'), Postgres only), or drop it with dropColumn() once no process of the previous release is running. See docs/migrations.md#deploying-new-migrations.`,
+      );
+    }
+    // Every insert of the new release would write the same value, and a unique index would refuse the second.
+    const unique = indexes.find((i) => i.unique && i.columns.includes(column));
+    if (unique &&(found.default === 'value' || found.default === 'now')) {
+      throw conflict(
+        `${where} retires "${name}.${column}", which has a fixed default and is in the unique index "${unique.name}": the second insert of the release that no longer knows it would write the same value again. ` +
+          `Drop the unique index first with dropUnique('${unique.name}'), in this or an earlier alter. See docs/migrations.md#retiring-a-column.`,
+      );
+    }
+    columns = columns.map((c) => (c.name === column ? { ...c, retired: true } : c));
+    // The relation and the finders that rested on it are gone; the constraint stays in the database.
+    foreignKeys = foreignKeys.filter((k) => k.column !== column);
+  }
 
   for (const column of blueprint.drops) {
     columns = columns.filter((c) => c.name !== column);
@@ -265,8 +330,10 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
 /** The primary key, and every unique index, as column sets without a repeated one. */
 function uniqueSets(columns: readonly ProjectedColumn[], indexes: readonly ProjectedIndex[]): string[][] {
   const sets: string[][] = [];
+  const retired = new Set(columns.filter((c) => c.retired).map((c) => c.name));
   const add = (set: string[]) => {
-    if (set.length && !sets.some((other) => other.join('\0') === set.join('\0'))) sets.push(set);
+    // A set with a retired column identifies no row for the code that no longer knows the column.
+    if (set.length && !set.some((column) => retired.has(column)) && !sets.some((other) => other.join('\0') === set.join('\0'))) sets.push(set);
   };
   add(columns.filter((c) => c.primary).map((c) => c.name));
   for (const index of indexes) if (index.unique) add([...index.columns]);

@@ -251,6 +251,14 @@ describe('renderTypes', () => {
     expect(warnings).toEqual(['Column "legacy.area" has type "polygon", which has no TypeScript mapping yet — typed as unknown.']);
   });
 
+  it('leaves a retired column out, a secret one included', () => {
+    const { source } = renderTypes(snapshot(table('members', [column('name'), column('nickname', 'text', { retired: true }), column('pin', 'text', { secret: true, retired: true })])));
+    expect(source).toContain('name: string;');
+    expect(source).not.toContain('nickname');
+    expect(source).not.toContain('pin');
+    expect(source).not.toContain('Secret');
+  });
+
   it('refuses to expose a table the module does not own', () => {
     const base = snapshot(table('users', [column('id')]));
     expect(() => renderTypes({ ...base, exposes: new Map([['shop', ['users']]]) })).toThrow('Module "shop" exposes "users", but module "auth" owns it.');
