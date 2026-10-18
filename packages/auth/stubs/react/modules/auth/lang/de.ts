@@ -416,9 +416,9 @@ export default {
       suspended: {
         subject: 'Ein Passkey wurde gesperrt',
         preview: 'Ein Passkey deines Kontos wurde womöglich kopiert',
-        intro: 'der Passkey „{name}“ deines Kontos hat mit einem Zähler geantwortet, der rückwärts ging, er wurde womöglich kopiert. Er wurde gesperrt: Er kann sich erst wieder anmelden, wenn du ihn freigibst.',
-        intro_unnamed: 'ein Passkey deines Kontos hat mit einem Zähler geantwortet, der rückwärts ging, er wurde womöglich kopiert. Er wurde gesperrt: Er kann sich erst wieder anmelden, wenn du ihn freigibst.',
-        outro: 'Unter Einstellungen, Passkeys kannst du ihn mit deinem Passwort freigeben oder entfernen. Kennst du ihn nicht, entferne ihn und setze dein Passwort zurück.',
+        intro: 'der Passkey „{name}“ deines Kontos hat mit einem Zähler geantwortet, der rückwärts ging, er wurde womöglich kopiert. Er wurde gesperrt: Er kann sich erst wieder anmelden, wenn du ihn freigibst. Alle Geräte deines Kontos wurden abgemeldet.',
+        intro_unnamed: 'ein Passkey deines Kontos hat mit einem Zähler geantwortet, der rückwärts ging, er wurde womöglich kopiert. Er wurde gesperrt: Er kann sich erst wieder anmelden, wenn du ihn freigibst. Alle Geräte deines Kontos wurden abgemeldet.',
+        outro: 'Melde dich mit deinem Passwort neu an. Unter Einstellungen, Passkeys kannst du ihn mit deinem Passwort freigeben oder entfernen. Kennst du ihn nicht, entferne ihn und setze dein Passwort zurück.',
       },
       after_reset: {
         subject: 'Dein Passwort wurde zurückgesetzt — diese Passkeys melden weiter an',

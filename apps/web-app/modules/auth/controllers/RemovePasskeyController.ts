@@ -1,4 +1,4 @@
-import { Auth, type Authenticated } from '@marmeon/auth';
+import type { Authenticated } from '@marmeon/auth';
 import { Passkeys } from '@marmeon/auth/passkeys';
 import { abort, Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
@@ -10,17 +10,15 @@ export const RemovePasskeyRequest = defineRequest({
   schema: r.object({ password: r.string().max(4096).default('') }),
 });
 
-/** Removes a passkey of the signed-in user. The password is asked for every passkey; the last factor takes the recovery codes along. */
+/** Removes a passkey of the signed-in user. The password is asked for every passkey; the last factor takes the recovery codes along, and the other devices are signed out. */
 export class RemovePasskeyController extends Controller {
   static request = RemovePasskeyRequest;
 
-  readonly #auth: Auth;
   readonly #passkeys: Passkeys;
   readonly #translator: Translator;
 
-  constructor(auth: Auth, passkeys: Passkeys, translator: Translator) {
+  constructor(passkeys: Passkeys, translator: Translator) {
     super();
-    this.#auth = auth;
     this.#passkeys = passkeys;
     this.#translator = translator;
   }
@@ -29,8 +27,6 @@ export class RemovePasskeyController extends Controller {
     const id = /^\d{1,15}$/.test(ctx.params.passkey) ? Number(ctx.params.passkey) : 0;
     const done = await this.#passkeys.remove(id, ctx.body.password === '' ? undefined : ctx.body.password);
     if (done.ok) {
-      // The password was just typed: whatever a stolen passkey started on other devices ends with this, as when a password changes.
-      await this.#auth.updateSessionKey();
       return this.json({ removed: id }).flash('toast', { kind: 'success', message: this.#translator.get('auth.passkeys.removed') });
     }
     switch (done.error.kind) {

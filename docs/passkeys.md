@@ -226,8 +226,9 @@ recovery codes once in the answer of the registration, and dispatches `TwoFactor
 new codes. `remove()` of the last factor takes the recovery codes in the same transaction, and the store decides inside it, so two
 removals at once cannot both pass without the password.
 
-`remove()` ends no session. The starter kit's controller follows it with `auth.updateSessionKey()` (the password was just checked); an app that removes a
-passkey through the package API does the same, because the sessions of someone who holds a cloned passkey would otherwise live on.
+`remove()` ends the account's other sessions and their remember-me sign-ins itself, with `auth.updateSessionKey()` once the passkey is gone, and keeps the
+session that removed it: the sessions of someone who holds a cloned or stolen passkey must not outlive its removal, and an app cannot forget the call. The removal
+is not undone when this session ended meanwhile; the result is `ok` all the same. A wrong or missing password, an unknown id and another account's passkey end nothing.
 
 An account holds at most 20 passkeys; the 21st answers `limit`. Names lose control and invisible format characters (a bidi override would otherwise
 reorder the text of the list). Registration accepts ES256 and EdDSA keys, and RSA keys only with the exponent 65537 and at most 4096 bits.
@@ -239,14 +240,17 @@ with a new session key, so `register()` throws for it.
 
 An authenticator counts its uses. A sign-in whose count is not above the stored one, while either is above zero, may come from a copied key
 and is refused with `clone-suspected`: the stored count stays as it was, the passkey is **suspended**, a `PasskeyCloneSuspected` event is dispatched
-and a warning is logged. A suspended passkey signs nobody in, neither on its own nor as a second factor, and the list shows it as suspended.
+and a warning is logged. **Every session of the account ends**, the session that met the suspicion included, with its remember-me sign-ins
+(`AccountSessions.end()`), before the event is dispatched: whatever the copy started must not outlive the suspicion, and the owner signs in again with
+the password and another factor. A response that fails for any other reason, such as a bad signature, ends nothing. A suspended passkey signs nobody in, neither on its own nor as a second factor, and the list shows it as suspended.
 Only its owner can lift that: `release()` and `remove()` of a suspended passkey need the password typed now, so someone who holds a stolen
 session cannot tidy the evidence away. Synchronised passkeys report 0 every time, which is allowed. The new count is written with a conditional `UPDATE`, so two
 sign-ins with one count cannot both succeed. The challenge makes a replay of a response impossible in the first place.
 
 The rule also suspends the legitimate device when a real signature carries a count that went backwards, for example when two ceremonies of one
 authenticator finish in the other order, or when an authenticator counts wrongly. That is intended: the server cannot tell a copy from a faulty
-counter, so it fails closed. If it is the account's only factor, the owner signs in with a recovery code and lifts the suspension with `release()`.
+counter, so it fails closed. If it is the account's only factor, the owner signs in with a recovery code and lifts the suspension with `release()`. The honest owner is signed out everywhere once and signs in again; an account whose only way in was this passkey comes back through the password reset. Ending the sessions needs
+a `UserProvider` that stores a session key, and the sign-in must not run inside a database transaction, as [`AccountSessions.end()`](authentication.md#ending-every-session-of-a-user) requires; if ending fails, the passkey stays suspended, the event is dispatched and the error is logged.
 
 ## What it protects against, and what not
 
@@ -302,7 +306,7 @@ removes the passkeys together with the authenticator and the recovery codes.
 | --- | --- | --- |
 | `PasskeyRegistered` | `register()` added a passkey | `user`, `name` |
 | `PasskeyRemoved` | `remove()` removed one, or the password reset of an account with an unconfirmed address removed them | `user`, `via` (`user` or `reset`) |
-| `PasskeyCloneSuspected` | A sign-in was refused for its sign count, and the passkey suspended | `user`, `passkeyId` |
+| `PasskeyCloneSuspected` | A sign-in was refused for its sign count, the passkey suspended and every session of the account ended | `user`, `passkeyId` |
 | `PasskeySignInFailed` | A passwordless sign-in failed against a passkey that exists: a wrong signature or user handle. Nothing for an unknown passkey | `user`, `at`, `ip`, `userAgent` |
 | `Login` | A passwordless sign-in | `via: 'passkey'` |
 | `TwoFactorChallengeFailed` | A wrong passkey after the password, at a step-up, or when confirming sudo mode | `user`, `at`, `ip`, `userAgent`, `during` (`sign-in`, `step-up` or `confirm`) |
