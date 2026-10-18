@@ -30,6 +30,8 @@ export { AccountSessions } from './account-sessions.ts';
 export type { EveryoneEnded } from './account-sessions.ts';
 export type { EndedSessions } from './account-sessions.ts';
 export { Auth } from './auth.ts';
+export { credentialWriter } from './credential-writer.ts';
+export type { CredentialWriter } from './credential-writer.ts';
 export type { AttemptError, LoginOptions } from './auth.ts';
 export { AuthConfig, rememberCookieName } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
