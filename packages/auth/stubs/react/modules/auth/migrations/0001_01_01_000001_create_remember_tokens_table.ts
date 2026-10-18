@@ -1,4 +1,4 @@
-// @marmeon-stub auth 2
+// @marmeon-stub auth 3
 import { defineMigration } from '@marmeon/database';
 
 // "Keep me signed in", one row per device: the selector finds the row, the validator is only stored as a hash.

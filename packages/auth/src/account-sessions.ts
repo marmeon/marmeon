@@ -58,6 +58,17 @@ export function passwordHashWritten(answer: unknown, caller: string): boolean {
   );
 }
 
+/** The error for a password write whose new session key `findById()` does not hand back: the provider ignored `sessionKey`, so no other session would end. */
+export function keyNotStored(caller: string): Error {
+  return new Error(
+    withCode(
+      'A5',
+      `${caller}: UserProvider.updatePasswordHash(id, hash, { sessionKey }) must store the session key in the same statement and findById() must hand it back as sessionKey — ` +
+        'the other sessions would stay signed in. Nothing is changed where the write runs in a transaction.',
+    ),
+  );
+}
+
 /** The error for a write without `expected` that answered `false`: it must write regardless, so the account is gone or the provider is scoped. */
 export function writeRefused(caller: string): Error {
   return new Error(

@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { hash as oneShotHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { afterCommit, afterRollback, Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { ClientHistory, RequestInfo } from '@marmeon/http';
@@ -10,7 +10,8 @@ import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
 import { AuthConfig, rememberCookieName } from './config.ts';
 import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, RememberTokenReused, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
-import { NewPassword } from './new-password.ts';
+import { SessionFingerprints } from './fingerprint.ts';
+import { AccountClaimLost, NewPassword } from './new-password.ts';
 import type { PasswordCheckScope } from './password-throttle.ts';
 import { RememberTokenStore, selectorOf } from './remember.ts';
 import { describeDevice } from './device.ts';
@@ -24,7 +25,7 @@ import type {} from '@marmeon/cache';
 export const AUTH_SESSION_KEYS = {
   /** The user's id (the session package's key: the `database` session driver copies it into `user_id`). */
   id: SESSION_USER_KEY,
-  /** The account's fingerprint when the session signed in: its id, password hash and session key. */
+  /** The account's fingerprint when the session signed in: its id and session key (`SessionFingerprints`). */
   password: '_auth_password',
   /** When the password was last typed (sign-in, confirmation), in Unix seconds — for `confirmedPassword()`. */
   confirmedAt: '_auth_confirmed_at',
@@ -55,7 +56,7 @@ export const PENDING_SECONDS = 300;
  */
 export interface PendingSecondFactor {
   readonly id: string | number;
-  /** The account's fingerprint at the password step: a new password or session key in between ends the wait. */
+  /** The account's fingerprint at the password step: a new session key in between (a new password writes one) ends the wait. */
   readonly fingerprint: string;
   readonly remember: boolean;
   readonly via: LoginVia;
@@ -70,8 +71,6 @@ export interface PendingSecondFactor {
 /** Reads the pending state (package-internal, for `TwoFactor`): the account it names, and how often a factor failed. `undefined` when none waits or it ran out. */
 export const READ_PENDING = Symbol('marmeon.auth.readPending');
 
-/** Signs out every other device without a second password check (package-internal): `TwoFactor.confirm()` has checked the password itself. */
-export const SIGN_OUT_OTHER_DEVICES = Symbol('marmeon.auth.signOutOtherDevices');
 
 /**
  * Checks this session against the account, in the transaction of the caller (package-internal): `TwoFactor.confirm()` and
@@ -133,16 +132,6 @@ declare module '@marmeon/cache' {
   }
 }
 
-/**
- * What the session remembers of the account: a SHA-256 of its id, its password hash and its session key. A new
- * password or a new session key (`auth.updateSessionKey()`) changes it, so every other session's fingerprint stops matching —
- * and that session ends. Two accounts never share one, also without a password. The hash itself never goes into the session.
- */
-export function sessionFingerprint(credentials: Credentials): string {
-  const parts = [String(idOf(credentials.user)), credentials.passwordHash ?? '', credentials.sessionKey ?? ''];
-  return oneShotHash('sha256', `marmeon-auth:${JSON.stringify(parts)}`, 'base64url');
-}
-
 export interface LoginOptions {
   /** Keeps this browser signed in for up to `AUTH_REMEMBER_DAYS` days without the password — a convenience, not a proof. See `docs/authentication.md#remember-me`. */
   readonly remember?: boolean;
@@ -190,6 +179,7 @@ export class Auth {
    * read would bind it to the new state and let it survive.
    */
   #verified: Credentials | undefined;
+  readonly #fingerprints: SessionFingerprints;
 
   constructor(
     session: Session,
@@ -208,7 +198,9 @@ export class Auth {
     accountSessions: AccountSessions,
     signIns: SignInTracker,
     clock: Clock,
+    fingerprints: SessionFingerprints,
   ) {
+    this.#fingerprints = fingerprints;
     this.#session = session;
     this.#users = users;
     this.#hasher = hasher;
@@ -242,7 +234,7 @@ export class Auth {
     if (!credentials) return err({ kind: 'invalid-credentials' });
     // The fingerprint from the account as findById() sees it — what every later request compares with (the session key included).
     const current = await this.#credentials(credentials.user);
-    // Only what was verified is bound (see `#verified`). A reset, a password change or an ending that committed during the slow
+    // Only what was verified is bound (see `#verified`). A reset, a password change or an ending (each writes a new key) that committed during the slow
     // check changed the account since; the request cannot tell that from a wrong password, and a new attempt checks the new state.
     if (!(await this.#sameAccount(identifier, credentials, current))) {
       await this.#events.dispatch(new Failed(identifier, credentials.user));
@@ -257,7 +249,7 @@ export class Auth {
   }
 
   /**
-   * Signs `user` in (after registration, say): new session id and CSRF token, fingerprint of the current hash. `'signed-in'`, or
+   * Signs `user` in (after registration, say): new session id and CSRF token, fingerprint of the account's id and current session key. `'signed-in'`, or
    * `'two-factor-required'` for an account with a second factor — then nobody is signed in, exactly as with `attempt()`. For a new
    * authentication only: called in a request that is signed in already, it reads the account anew and binds the session to it.
    */
@@ -280,7 +272,7 @@ export class Auth {
     const pending = this.#pending();
     if (pending === undefined) return this.#session.started && this.#session.has(AUTH_SESSION_KEYS.pending) ? this[DROP_EXPIRED]() : undefined;
     const found = await this.#users.findById(pending.id as never);
-    if (!found || !equal(pending.fingerprint, sessionFingerprint(found))) return this[DROP_EXPIRED]();
+    if (!found || !this.#fingerprints.matches(pending.fingerprint, found)) return this[DROP_EXPIRED]();
     return { userId: pending.id, factors: pending.factors, failures: pending.failures, remember: pending.remember };
   }
 
@@ -314,7 +306,7 @@ export class Auth {
     this.#session.forget(AUTH_SESSION_KEYS.pending);
     if (String(pending.id) !== String(verifiedUserId)) return err({ kind: 'expired' });
     const found = await this.#users.findById(pending.id as never);
-    if (!found || !equal(pending.fingerprint, sessionFingerprint(found))) return err({ kind: 'expired' });
+    if (!found || !this.#fingerprints.matches(pending.fingerprint, found)) return err({ kind: 'expired' });
     await (await this.#login(found, { remember: pending.remember }, pending.via)).announce();
     // Only a typed password confirms, dated when it was typed. The sign-in starts then too, so the confirmation stays inside it (`passwordRecentlyConfirmed`).
     if (pending.via === 'attempt' && typeof pending.typedAt === 'number') {
@@ -341,7 +333,7 @@ export class Auth {
   ): Promise<Result<AuthUser, { readonly kind: 'expired' }>> {
     const found = await this.#users.findById(verifiedUserId as never);
     if (!found) return err({ kind: 'expired' });
-    if (checkedAgainst !== undefined && !equal(sessionFingerprint(found), sessionFingerprint(checkedAgainst))) return err({ kind: 'expired' });
+    if (checkedAgainst !== undefined && !this.#fingerprints.matches(this.#fingerprints.of(found), checkedAgainst)) return err({ kind: 'expired' });
     await (await this.#login(checkedAgainst ?? found, { remember: options.remember === true }, 'passkey')).announce();
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
     this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
@@ -479,7 +471,7 @@ export class Auth {
   }
 
   /**
-   * Sets a new password for the signed-in user. Every other session ends (their fingerprint no
+   * Sets a new password for the signed-in user, together with a new session key. Every other session ends (their fingerprint no
    * longer matches) and every remember-me token is dropped — this device's too; this session stays.
    * With `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token of the user is revoked in the transaction of the new hash.
    */
@@ -487,20 +479,26 @@ export class Auth {
     const user = await this.#requireUser('updatePassword');
     const verified = this.#requireVerified();
     const hash = await this.#hasher.make(password);
-    const revoked = await this.#newPassword.store(this.#users, this.#remember, idOf(user), hash, 'change');
+    // The hash took its time: an `AccountSessions.end()` that landed meanwhile must not be written over — a session it ended stays ended.
+    const stored = await this.#newPassword.store(this.#users, this.#remember, idOf(user), hash, 'change', undefined, verified.sessionKey ?? null).catch(async (error: unknown) => {
+      if (!(error instanceof AccountClaimLost)) throw error;
+      await this.#end();
+      throw new Error('auth.updatePassword() needs a signed-in user — this session was ended while the password was changed.', { cause: error });
+    });
+    const { revoked, sessionKey } = stored;
     this.#cookies.delete(this.#rememberCookie);
-    this.#anchor({ ...verified, passwordHash: hash });
+    this.#anchor({ ...verified, passwordHash: hash, sessionKey });
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
-    await this.#endOtherSignIns(idOf(user), true); // after the hash: the hash is what ends the other sessions, the rows only leave the list
+    await this.#endOtherSignIns(idOf(user), true); // after the key: the key is what ends the other sessions, the rows only leave the list
     await this.#events.dispatch(new PasswordChanged(user, revoked));
     await this.#announceEnded(idOf(user)); // last: this tab's new session is saved by the time its stream connects again
   }
 
   /**
-   * Signs out every other device: checks `password`, then hashes it
-   * anew — a new salt, a new hash, so the other sessions' fingerprints stop matching — and drops the
-   * other devices' remember-me tokens. `false` for a wrong password; also when the password changed meanwhile (a reset landed after this
-   * request read the account: the hash is not written, and the reset has ended every sign-in, this one from its next request); and when
+   * Signs out every other device: checks `password`, then stores a new session key (the password and its hash stay as they are), so
+   * the other sessions' fingerprints stop matching, and drops the other devices' remember-me tokens. `false` for a wrong
+   * password; also when the session key changed meanwhile (a reset or `AccountSessions.end()` landed after this request read the
+   * account: nothing is written, and that ending has ended every sign-in, this one from its next request); and when
    * this device's remember-me cookie turns out to be a copy (its validator is stale: somebody else holds a newer one) — then every
    * token and session of the account is ended, like at a copied cookie, and this device is signed out too. It does not throttle the
    * password check: the caller must
@@ -509,31 +507,7 @@ export class Auth {
   async logoutOtherDevices(password: string): Promise<boolean> {
     await this.#requireUser('logoutOtherDevices');
     if (!(await this.confirmPassword(password))) return false;
-    return this[SIGN_OUT_OTHER_DEVICES](password);
-  }
-
-  /**
-   * The signing out of `logoutOtherDevices()` for a caller that has just checked `password` itself: a new hash (the other sessions'
-   * fingerprints stop matching), the other devices' remember-me tokens gone, a new fingerprint for this session. `false`
-   * when the stored hash is no longer the one this request read: the hash is not written, the reset that changed it has ended every
-   * sign-in (this one from its next request), and the other devices' tokens are gone already. Also `false` when this device's remember-me cookie is a stale copy (see `#rebindOwnToken()`).
-   */
-  async [SIGN_OUT_OTHER_DEVICES](password: string): Promise<boolean> {
-    const user = await this.#requireUser('logoutOtherDevices');
-    const verified = this.#requireVerified();
-    const hash = await this.#hasher.make(password);
-    // Tokens before the hash (as `NewPassword` and `AccountSessions` do): a remember-me sign-in that is running must not read the new
-    // hash and still find its token.
-    await this.#remember.forgetUser(idOf(user), this.#cookies.get(this.#rememberCookie));
-    // Over the hash this request verified; an account without one has nothing to compare, so nothing is written.
-    if (verified.passwordHash === null) return false;
-    // `false`: the password changed meanwhile. The hash is not written; that change has ended every sign-in, this one from its next request.
-    if (!passwordHashWritten(await this.#users.updatePasswordHash(idOf(user) as never, hash, { expected: verified.passwordHash }), 'auth.logoutOtherDevices()')) return false;
-    this.#anchor({ ...verified, passwordHash: hash });
-    if (!(await this.#rebindOwnToken())) return false; // this device's token stays, for the new state — unless it is a copy
-    await this.#endOtherSignIns(idOf(user), false); // after the hash, see updatePassword()
-    await this.#announceEnded(idOf(user));
-    return true;
+    return this.updateSessionKey();
   }
 
   /**
@@ -567,7 +541,7 @@ export class Auth {
    * caller runs `ACCOUNT_STILL_CLAIMED` after the rollback, so that dropping the device's remember-me token is not rolled back too.
    * Invariant: a factor stays only while the session still fits the account. With an account that has a session key, the same-key compare-and-set takes the row's lock until the commit (on the connection of the
    * transaction), so an ending cannot land between this check and the factor. A `null` key is never rotated and cannot be locked
-   * (a rotation would sign the other devices out). Every ending writes the account's row (the key, the hash or the row itself), so a
+   * (a rotation would sign the other devices out). Every ending writes the account's row (the key, which every new password writes too, or the row itself), so a
    * fresh read sees each ending that committed before it.
    */
   async [CLAIM_ACCOUNT](): Promise<boolean> {
@@ -584,7 +558,7 @@ export class Auth {
   }
 
   /**
-   * The check of `CLAIM_ACCOUNT` without a lock: the whole fingerprint (key, hash, row) is read afresh, and a session that no longer fits
+   * The check of `CLAIM_ACCOUNT` without a lock: the whole fingerprint (id and key) is read afresh, the row too, and a session that no longer fits
    * is signed out (outside any transaction, so it stays ended). Callers run it after the factor is committed — it also covers an
    * account without a session key and a provider whose compare-and-set takes no lock for this transaction — and after a rollback
    * that `CLAIM_ACCOUNT` asked for. `false`: the session ended meanwhile.
@@ -596,7 +570,7 @@ export class Auth {
   }
 
   /**
-   * Whether the account is still what `findForLogin()` verified: `false` for a real change (hash or key) during the check. Throws when
+   * Whether the account is still what `findForLogin()` verified: `false` for a real change (the session key) during the check. Throws when
    * the provider hands the session key back from only one of `findForLogin()` and `findById()` — that is the provider's contract, not a race.
    */
   async #sameAccount(identifier: string, credentials: Credentials, current: Credentials): Promise<boolean> {
@@ -614,31 +588,31 @@ export class Auth {
       const again = await this.#users.findForLogin(identifier);
       if (again !== undefined && again.sessionKey === undefined) throw contract('findForLogin', 'findById');
     }
-    return equal(sessionFingerprint(current), sessionFingerprint(credentials));
+    return this.#fingerprints.matches(this.#fingerprints.of(current), credentials);
   }
 
   async #fits(verified: Credentials): Promise<boolean> {
     const found = await this.#users.findById(idOf(verified.user) as never);
-    return found !== undefined && equal(sessionFingerprint(found), sessionFingerprint(verified));
+    return found !== undefined && this.#fingerprints.matches(this.#fingerprints.of(found), verified);
   }
 
   /**
    * Tells the live streams of the account that some of its sign-ins ended: they close and the browsers still signed in connect again
    * (this one included — it is checked and stays). After the commit of the request's transaction, so a reconnecting stream cannot read
-   * the old hash; a failure is logged by `AccountSessions`, never thrown.
+   * the old key; a failure is logged by `AccountSessions`, never thrown.
    */
   async #announceEnded(userId: string | number): Promise<void> {
     await afterCommit(() => this.#accountSessions[ANNOUNCE_ENDED](userId));
   }
 
   /**
-   * Deletes the rows of the user's other sign-ins (the other devices were signed out by the caller's hash or key already; this takes
+   * Deletes the rows of the user's other sign-ins (the other devices were signed out by the caller's new key already; this takes
    * them off the list). `ownTokenGone`: the caller dropped this device's remember-me token too, so this row stops claiming one.
    */
   async #endOtherSignIns(userId: string | number, ownTokenGone: boolean): Promise<void> {
     if (!this.#signIns.enabled) return;
     const own = this.#ownSignIn();
-    // Clean-up after the real effect (the hash or the key is stored): a failing store is logged, never turned into a failed password change.
+    // Clean-up after the real effect (the new key is stored): a failing store is logged, never turned into a failed password change.
     try {
       await this.#signIns.endAll(userId, own?.id);
       if (ownTokenGone && own !== undefined) await this.#signIns.remember(userId, own.id, undefined);
@@ -681,7 +655,7 @@ export class Auth {
 
   /** Binds this session to `credentials`, which are built from what this request verified and wrote itself (see `#verified`). */
   #anchor(credentials: Credentials): void {
-    this.#session.put(AUTH_SESSION_KEYS.password, sessionFingerprint(credentials));
+    this.#session.put(AUTH_SESSION_KEYS.password, this.#fingerprints.of(credentials));
     this.#verified = credentials;
   }
 
@@ -694,7 +668,7 @@ export class Auth {
     const cookie = this.#cookies.get(this.#rememberCookie);
     if (cookie === undefined || this.#remember.rebind === undefined) return true;
     const verified = this.#requireVerified();
-    const result = await this.#remember.rebind(idOf(verified.user), cookie, sessionFingerprint(verified));
+    const result = await this.#remember.rebind(idOf(verified.user), cookie, this.#fingerprints.of(verified));
     if (result.ok) return true;
     if (result.error.kind === 'invalid') {
       this.#cookies.delete(this.#rememberCookie); // no row to keep: the cookie is of no use
@@ -811,7 +785,7 @@ export class Auth {
       expiresAt = new Date(this.#clock.now() + this.#config.rememberDays * 86_400_000);
       // Stamped with the fingerprint that was verified, never a fresh read: if the account changed since, the token no longer fits it
       // and `#fromRememberCookie` refuses it at its first use.
-      token = await this.#remember.create(idOf(user), expiresAt, sessionFingerprint(credentials));
+      token = await this.#remember.create(idOf(user), expiresAt, this.#fingerprints.of(credentials));
     }
     let signIn: string | undefined;
     if (this.#signIns.enabled) {
@@ -863,7 +837,7 @@ export class Auth {
     }
     this.#session.put(AUTH_SESSION_KEYS.pending, {
       id: idOf(credentials.user),
-      fingerprint: sessionFingerprint(credentials),
+      fingerprint: this.#fingerprints.of(credentials),
       remember,
       via,
       ...(via === 'attempt' ? { typedAt: this.#now() } : {}),
@@ -894,8 +868,8 @@ export class Auth {
     if (id === undefined) return this.#fromRememberCookie();
     const found = await this.#users.findById(id as never);
     const fingerprint = this.#session.get(AUTH_SESSION_KEYS.password);
-    if (!found || typeof fingerprint !== 'string' || !equal(fingerprint, sessionFingerprint(found))) {
-      // Deleted, or the password or the session key changed since this session signed in: this session ends — by the next request that may
+    if (!found || !this.#fingerprints.matches(fingerprint, found)) {
+      // Deleted, or the session key changed since this session signed in (a new password writes one): this session ends — by the next request that may
       // write it (an island's is read-only: for it, nobody is signed in).
       if (!this.#session.readOnly) this.#session.invalidate();
       return undefined;
@@ -1033,7 +1007,7 @@ export class Auth {
     // Invariant: a token signs in only the account state it was issued under (the fingerprint sessions are bound to as well). A token
     // made before a reset, a new password or an ending, or one without a fingerprint, is refused whatever the order of those writes was;
     // it is never re-bound to the account's present key.
-    if (device.fingerprint == null || !equal(device.fingerprint, sessionFingerprint(found))) {
+    if (device.fingerprint == null || !this.#fingerprints.matches(device.fingerprint, found)) {
       await this.#remember.forget(device.cookie ?? cookie);
       await this.#endRememberedRow(device.userId, device.cookie ?? cookie);
       this.#cookies.delete(this.#rememberCookie);
@@ -1128,10 +1102,4 @@ export class Auth {
     if (!user) throw new Error(`auth.${method}() needs a signed-in user — put the route behind authenticate().`);
     return user;
   }
-}
-
-function equal(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  return left.byteLength === right.byteLength && timingSafeEqual(left, right);
 }

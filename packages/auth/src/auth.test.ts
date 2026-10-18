@@ -29,7 +29,8 @@ import {
   type UserOf,
 } from './index.ts';
 import { AUTH_SESSION_KEYS } from './auth.ts';
-import { COMPLETE_PENDING, READ_PENDING, sessionFingerprint } from './auth.ts';
+import { COMPLETE_PENDING, READ_PENDING } from './auth.ts';
+import { SessionFingerprints } from './fingerprint.ts';
 import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers as SharedUsers } from './test-helpers/users.ts';
@@ -383,7 +384,7 @@ describe('Auth (session guard)', () => {
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never);
+    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();
@@ -408,7 +409,7 @@ describe('Auth (session guard)', () => {
       const real = new PasswordHasher();
       const hasher = { make: real.make.bind(real), verify: real.verify.bind(real), needsRehash: () => false, dummyVerify: async () => false as const, failureFloorMs: () => floor } as unknown as Hasher;
       const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-      const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never);
+      const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
       return { users, hasher, auth };
     };
     const timed = async (run: () => Promise<unknown>) => {
@@ -447,7 +448,7 @@ describe('Auth (session guard)', () => {
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
     const dispatched: unknown[] = [];
     const events = { dispatch: async (event: unknown) => void dispatched.push(event) } as never;
-    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never);
+    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
     const answers = [
       await auth.attempt('ada@example.com', 'wrong'),
       await auth.attempt('nobody@example.com', 'secret'),
@@ -480,17 +481,19 @@ describe('Auth (session guard)', () => {
     expect(users.rows.get(1)!.hash).toMatch(/^\$argon2id\$v=19\$m=1024,t=1,p=1\$/);
   });
 
-  it('a password changed elsewhere ends the other sessions on their next request', async () => {
+  it('a new session key elsewhere (a password change, a reset) ends the other sessions on their next request', async () => {
     const { add, users, browser, application } = await boot();
     await add(ada);
     const laptop = browser();
     await login(laptop.send);
     expect((await laptop.send('/me')).status).toBe(200);
-    // The password changes (on another device, by a reset) — the hash changes:
-    users.rows.get(1)!.hash = await application.container.make(Hasher).make('new secret');
+    // The password changes (on another device, by a reset) — and with it the key:
+    const row = users.rows.get(1)!;
+    row.hash = await application.container.make(Hasher).make('new secret');
+    row.key = 'the-key-the-new-password-wrote-0123456789';
     expect((await laptop.send('/me')).status).toBe(401);
     // … and stays out: the session was invalidated, not just this request refused.
-    users.rows.get(1)!.hash = null;
+    row.key = null;
     expect((await laptop.send('/me')).status).toBe(401);
   });
 
@@ -676,7 +679,7 @@ describe('remember me', () => {
       const { add, users, browser, application } = await boot({ env: { AUTH_REMEMBER_DAYS: '0' } });
       await add(ada);
       // A token a higher value issued: valid by its row, encrypted like the app's own cookie.
-      const raw = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 10 * 86_400_000), sessionFingerprint((await users.findById(1))!));
+      const raw = await application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 10 * 86_400_000), application.container.make(SessionFingerprints).of((await users.findById(1))!));
       const cookie = encodeURIComponent(await application.container.make(Encrypter).encrypt(raw, 'cookie:marmeon_remember'));
       expect(await tokenCount(application)).toBe(1);
       const reopened = browser(new Map([['marmeon_remember', cookie]]));
@@ -1411,7 +1414,7 @@ describe('Auth with a second factor (pending state)', () => {
     await booted.add(ada);
     const { send } = booted.browser();
     await login(send);
-    booted.users.rows.get(1)!.hash = await booted.application.container.make(Hasher).make('new password');
+    Object.assign(booted.users.rows.get(1)!, { hash: await booted.application.container.make(Hasher).make('new password'), key: 'the-key-the-new-password-wrote-0123456789' });
     expect(await (await post(send, '/complete-pending')).json()).toEqual({ ok: false, kind: 'expired' });
     expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
     expect(await (await send('/pending')).json()).toEqual({ pending: null, user: null });
@@ -1422,7 +1425,7 @@ describe('Auth with a second factor (pending state)', () => {
     await booted.add(ada);
     const { send } = booted.browser();
     await login(send);
-    booted.users.rows.get(1)!.hash = await booted.application.container.make(Hasher).make('new password');
+    Object.assign(booted.users.rows.get(1)!, { hash: await booted.application.container.make(Hasher).make('new password'), key: 'the-key-the-new-password-wrote-0123456789' });
     expect(await (await post(send, '/complete-pending', { direct: true })).json()).toEqual({ ok: false, kind: 'expired' });
     expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
   });

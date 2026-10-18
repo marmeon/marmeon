@@ -5,7 +5,7 @@ import { DecryptError, Encrypter } from '@marmeon/encryption';
 import { RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
-import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, COMPLETE_PENDING, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
+import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, COMPLETE_PENDING, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE } from '../auth.ts';
 import { claimRefused } from '../account-sessions.ts';
 import { AuthConfig, rememberCookieName } from '../config.ts';
 import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, TwoFactorEnabled, TwoFactorDisabled } from '../events.ts';
@@ -196,13 +196,13 @@ export class TwoFactor {
    * Starts setting up an authenticator app: a new key, not yet in force. Needs a signed-in user with a recent confirmation
    * (`confirmedPassword()`: a password or a passkey); throws when an authenticator is already on (turn it off first), when no source of factors is bound
    * (`TwoFactorState` is still the default that knows none, so the factor would never be asked for) and for an account without a
-   * password (turning the factor on signs the other devices out, which takes the hash). Replaces an earlier unconfirmed key.
+   * password (turning the factor on checks it, and signs the other devices out with a new session key). Replaces an earlier unconfirmed key.
    */
   async begin(): Promise<TotpSetup> {
     const user = await this.#requireUser('begin');
     // Without a bound source of factors a confirmed factor would never be asked for at sign-in: fail closed before anything is stored.
     if (this.#state instanceof NoTwoFactorState) throw new Error('Two-factor authentication needs a source of factors: bind TwoFactorState to combineFactors(TwoFactorStore) in a provider of your auth module.');
-    // Turning the factor on signs the other devices out, which needs the password hash: an account without a password cannot do it.
+    // Turning the factor on is confirmed with the account's password (and signs the other devices out with a new session key): an account without one cannot do it.
     if (((await this.#users.findById(idOf(user) as never))?.passwordHash ?? null) === null) throw new Error('twoFactor.begin() needs an account with a password: turning the factor on signs out the other devices with it.');
     await this.#requireRecentPassword('begin');
     await this.#requireRecentSecondFactor('begin', idOf(user));
@@ -224,7 +224,7 @@ export class TwoFactor {
 
   /**
    * Turns the authenticator on with the first code it shows and the account's password, typed in the same form. Throttled like a
-   * challenge. Every other device is signed out: its sessions end (the password is hashed anew, so their fingerprints stop matching)
+   * challenge. Every other device is signed out: its sessions end (a new session key, so their fingerprints stop matching)
    * and so do its remember-me tokens — each session of the account has then proven a second factor. API tokens are not touched.
    * `recoveryCodes` are the account's new codes, shown now and never again, when this is its first factor, else `null`.
    *
@@ -254,7 +254,7 @@ export class TwoFactor {
     // Before the factor is on, so that a failure after this point leaves the factor off and the other devices out — never the factor on
     // and an old session alive. A remember-me token made between here and the update is refused by its date (`enabledSince`).
     // `false`: this device's remember-me cookie was a copy, and everything of the account is ended, this session too.
-    if (!(await this.#auth[SIGN_OUT_OTHER_DEVICES](password))) return err({ kind: 'signed-out' });
+    if (!(await this.#auth.updateSessionKey())) return err({ kind: 'signed-out' });
     const encrypted = await this.#encrypt(secret, id);
     const hashes = recoveryCodes === null ? null : recoveryCodes.map((recoveryCode) => hashRecoveryCode(id, recoveryCode));
     // The session is checked against the account in the transaction that stores the factor (with a session key, the account's row stays
@@ -271,7 +271,7 @@ export class TwoFactor {
     if (!stored.value) return err({ kind: 'not-started' });
     // Once more now that the factor is committed, with a fresh read and no lock (also for an account without a session key, whose row
     // could not be locked): an ending that landed in between takes the factor out again. Before the second sign-out below, which
-    // writes the hash anew.
+    // writes the key anew.
     if (!(await this.#auth[ACCOUNT_STILL_CLAIMED]())) {
       try {
         await this.#store.removeTotp(id, { lastFactor: (await this.#state.factors(id)).every((factor) => factor === 'totp') });
@@ -285,7 +285,7 @@ export class TwoFactor {
     // commit (its sign-in read "no factor") dies here. Later sign-ins see the factor and are held back. This device's token goes too,
     // as after a password change: the next sign-in makes a new one after the code.
     try {
-      await this.#auth[SIGN_OUT_OTHER_DEVICES](password);
+      await this.#auth.updateSessionKey();
       await this.#remember.forgetUser(id);
     } catch (error) {
       // The factor stays on (later sign-ins are asked for it); what is left to end are sessions that raced the activation: tell the operators.

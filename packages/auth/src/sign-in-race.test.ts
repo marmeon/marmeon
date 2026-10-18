@@ -23,6 +23,14 @@ class Users extends MemoryUsers<AuthUser> {
     this.rows.get(id)!.hash = hash;
     return undefined as never;
   }
+
+  /** Same, for the session key. */
+  silentKey = false;
+  override async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+    if (!this.silentKey) return super.updateSessionKey(id, key, expected);
+    this.rows.get(id)!.key = key;
+    return undefined as never;
+  }
 }
 
 class LoginController extends Controller {
@@ -355,35 +363,46 @@ describe('a rehash only over the hash that was verified', () => {
     expect((await world.send('/me')).status).toBe(401);
   });
 
-  it('logoutOtherDevices() over a provider that does not say whether it wrote throws A5 and does not report success', async () => {
+  it('logoutOtherDevices() over a provider whose key write does not say whether it wrote throws A5 and does not report success', async () => {
     const world = await boot({ hold: 'verify' });
     world.release();
     await login(world.send, false);
-    world.users.silent = true;
+    world.users.silentKey = true;
     const response = await world.send('/logout-others', {});
     expect(response.status).toBe(500);
     const body = (await response.json()) as { thrown?: string; done?: boolean };
-    expect(body.thrown).toMatch(/^\[marmeon:A5\] auth\.logoutOtherDevices\(\)/);
+    expect(body.thrown).toMatch(/^\[marmeon:A5\] auth\.updateSessionKey\(\)/);
     expect(body.done).toBeUndefined();
   });
 
-  it('logoutOtherDevices() writes nothing when a reset landed meanwhile', async () => {
+  it('logoutOtherDevices() writes nothing when a reset landed meanwhile, and leaves the hash as it is', async () => {
+    const world = await boot({ hold: 'verify' });
+    world.release();
+    await login(world.send, false);
+    const reset = await world.hasher.make('reset');
+    // The reset lands after this request read the account and before its write: it writes the hash and a new key first.
+    const real = world.users.updateSessionKey.bind(world.users);
+    world.users.updateSessionKey = async (id, key, expected) => {
+      Object.assign(world.users.rows.get(1)!, { hash: reset, key: 'r'.repeat(43) });
+      world.users.updateSessionKey = real;
+      return real(id, key, expected);
+    };
+    const answer = (await (await world.send('/logout-others', {})).json()) as { done: boolean };
+    expect(answer.done).toBe(false);
+    expect(world.users.rows.get(1)!.hash, 'the reset hash is untouched').toBe(reset);
+    expect(world.users.rows.get(1)!.key, 'and so is its key').toBe('r'.repeat(43));
+    expect((await world.send('/me')).status).toBe(401);
+  });
+
+  it('logoutOtherDevices() leaves the password hash as it is', async () => {
     const world = await boot({ hold: 'verify' });
     world.release();
     await login(world.send, false);
     const before = world.users.rows.get(1)!.hash;
-    // The reset lands after this request read the account and before its write: the provider resets first, then runs the write.
-    const real = world.users.updatePasswordHash.bind(world.users);
-    world.users.updatePasswordHash = async (id, hash, options) => {
-      world.users.rows.get(1)!.hash = await world.hasher.make('reset');
-      world.users.updatePasswordHash = real;
-      return real(id, hash, options);
-    };
     const answer = (await (await world.send('/logout-others', {})).json()) as { done: boolean };
-    expect(answer.done).toBe(false);
-    expect(world.users.rows.get(1)!.hash).not.toBe(before);
-    expect(await world.hasher.verify('reset', world.users.rows.get(1)!.hash!)).toBe(true);
-    expect((await world.send('/me')).status).toBe(401);
+    expect(answer.done).toBe(true);
+    expect(world.users.rows.get(1)!.hash).toBe(before);
+    expect((await world.send('/me')).status, 'this device stays').toBe(200);
   });
 });
 

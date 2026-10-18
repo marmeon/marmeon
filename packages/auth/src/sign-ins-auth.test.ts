@@ -26,9 +26,11 @@ class Users implements UserProvider {
   async findForLogin(email: string): Promise<Credentials | undefined> {
     return this.findById(email === bob.email ? 2 : 1);
   }
-  async updatePasswordHash(_id: unknown, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string } = {}): Promise<boolean> {
+  async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string; readonly expectedSessionKey?: string | null } = {}): Promise<boolean> {
     if (options.expected !== undefined && this.hash !== options.expected) return false;
+    if (options.sessionKey !== undefined && options.expectedSessionKey !== undefined && (this.keys.get(id) ?? null) !== options.expectedSessionKey) return false;
     this.hash = hash;
+    if (options.sessionKey !== undefined) this.keys.set(id, options.sessionKey);
     return true;
   }
   async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number }> {

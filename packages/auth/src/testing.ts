@@ -6,7 +6,8 @@ import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } fr
 import { cbor } from './cbor.ts';
 import { Clock, type Container } from '@marmeon/core';
 import { SessionConfig, sessionCookieName } from '@marmeon/session';
-import { AUTH_SESSION_KEYS, sessionFingerprint } from './auth.ts';
+import { AUTH_SESSION_KEYS } from './auth.ts';
+import { SessionFingerprints } from './fingerprint.ts';
 import { AuthConfig, rememberCookieName } from './config.ts';
 import { AccessTokenStore } from './tokens.ts';
 import { TwoFactorState } from './two-factor/state.ts';
@@ -25,7 +26,7 @@ export async function authenticatedSession(container: Container, user: AuthUser)
   const credentials = await scope.make(UserProvider).findById(id as never);
   if (!credentials) throw new Error(`actingAs(): there is no user ${id} — create it first (e.g. with a factory).`);
   const proven = (await scope.make(TwoFactorState).factors(id)).length > 0 ? { [AUTH_SESSION_KEYS.twoFactorAt]: Math.floor(scope.make(Clock).now() / 1000) } : {};
-  return { [AUTH_SESSION_KEYS.id]: id, [AUTH_SESSION_KEYS.password]: sessionFingerprint(credentials), ...proven };
+  return { [AUTH_SESSION_KEYS.id]: id, [AUTH_SESSION_KEYS.password]: scope.make(SessionFingerprints).of(credentials), ...proven };
 }
 
 /**

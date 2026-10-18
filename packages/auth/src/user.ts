@@ -36,8 +36,9 @@ export interface Credentials<U = AuthUser> {
   /** `null` for users who cannot sign in with a password (e.g. only by link or OAuth). */
   readonly passwordHash: PasswordHash | null;
   /**
-   * A value of the account that `auth.updateSessionKey()` replaces to end the account's other sessions — a `session_key`
-   * column the app keeps. `null` while the account has none (seeded or imported accounts).
+   * A value of the account that ends its other sessions when it changes — a `session_key` column the app keeps. Every new password
+   * (`auth.updatePassword()`, a reset), `auth.logoutOtherDevices()` and `auth.updateSessionKey()` replace it; a rehash at sign-in does not.
+   * The session fingerprint is made of the account's id and this key only: a hash you write yourself ends no session. `null` while the account has none (seeded or imported accounts).
    */
   readonly sessionKey: string | null;
 }
@@ -47,7 +48,7 @@ export interface Credentials<U = AuthUser> {
  * `container.bind(UserProvider, UserRepository)`. The hash travels next to the user, never inside it.
  */
 export interface UserProvider<U = AuthUser> {
-  /** The user and their current hash (the session checks it on every request). Returns `sessionKey` (`null` when the account has none) — `findForLogin()` must too, or `attempt()` throws. It must read after write (no cache, no lagging replica): every session and remember-me check compares what it returns with what was just written. */
+  /** The user and their current hash and session key (the session checks the key on every request). Returns `sessionKey` (`null` when the account has none) — `findForLogin()` must too, or `attempt()` throws. It must read after write (no cache, no lagging replica): every session and remember-me check compares what it returns with what was just written. */
   findById(id: U extends { readonly id: infer Id } ? Id : never): Promise<Credentials<U> | undefined>;
   /** By what people type to sign in — usually the e-mail, already normalized by the request schema. Returns `sessionKey` (`null` when the account has none), as `findById()` does, or `attempt()` throws. */
   findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
@@ -56,13 +57,17 @@ export interface UserProvider<U = AuthUser> {
    * write `hash` only when the stored hash equals `expected`, in **one** statement (`UPDATE … WHERE password = expected`) — a rehash
    * over the hash it verified, or `logoutOtherDevices()`, must never put an old password back over a reset that landed meanwhile.
    * Without `expected` it writes regardless (a reset, a new password) and returns `true` once it wrote. With `sessionKey` the **same**
-   * statement stores that session key as well (see `updateSessionKey()`), so the hash and the key never stand apart.
+   * statement stores that session key as well (see `updateSessionKey()`), so the hash and the key never stand apart. A new password
+   * (`auth.updatePassword()`, a reset) always passes one, and `findById()` must hand it back: it is what ends the other sessions. A rehash
+   * at sign-in passes none and ends nothing. A change of the signed-in user passes `expectedSessionKey` too (`null`: none): with
+   * `sessionKey`, write only where the stored key equals it (`IS NULL` for `null`), in the **same** statement, and return `false` otherwise —
+   * an `AccountSessions.end()` that landed since the session was checked must not be written over, or the session it ended would come back.
    * An answer that is not a boolean is refused: a provider that does not say whether it wrote could put an old hash back unnoticed.
    */
   updatePasswordHash(
     id: U extends { readonly id: infer Id } ? Id : never,
     hash: PasswordHash,
-    options?: { readonly expected?: PasswordHash; readonly sessionKey?: string },
+    options?: { readonly expected?: PasswordHash; readonly sessionKey?: string; readonly expectedSessionKey?: string | null },
   ): Promise<boolean>;
   /**
    * Stores a new session key (`auth.updateSessionKey()`, `AccountSessions`); `findById()` and `findForLogin()` hand it back as

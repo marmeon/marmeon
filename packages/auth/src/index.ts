@@ -11,6 +11,8 @@ import { DEFAULT_HASHER_OPTIONS, HASH_LIMITS, Hasher, PasswordHasher } from './h
 import { Gate } from './gate.ts';
 import { SignInAudience } from './live-audience.ts';
 import { MakeAuthCommand } from './make-auth.ts';
+import { EncryptionConfig } from '@marmeon/encryption';
+import { SessionFingerprints } from './fingerprint.ts';
 import { NewPassword } from './new-password.ts';
 import { EndAllSessionsCommand } from './end-all-sessions.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
@@ -100,6 +102,7 @@ export class AuthServiceProvider implements ServiceProvider {
   register(container: Container): void {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
     container.instance(Hasher, new PasswordHasher(container.make(HashConfig)));
+    container.singleton(SessionFingerprints, (c) => new SessionFingerprints(c.make(EncryptionConfig)));
     container.scoped(Auth);
     // A live stream (`@marmeon/live`) asks it whether its sign-in still stands, when it opens and when its browser reconnects.
     container.scoped(LiveAudience, (c) => new SignInAudience(() => c.make(Auth), c.make(Session)));

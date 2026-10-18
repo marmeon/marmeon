@@ -12,7 +12,7 @@ import { CsrfProtection, SessionConfig, SessionServiceProvider, SessionStore } f
 import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
 import { freshPgsqlDatabase, PGSQL_URL } from './__fixtures__/databases.ts';
 import { AccountSessions, Auth, authenticate, AuthServiceProvider, Hasher, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
-import { sessionFingerprint } from './auth.ts';
+import { SessionFingerprints } from './fingerprint.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 
@@ -243,16 +243,19 @@ async function boot(driver: Driver, users: UserProvider) {
 const link: AuthUser = { id: 2, name: 'Link', email: 'link@example.com' };
 const zelda: AuthUser = { id: 3, name: 'Zelda', email: 'zelda@example.com' };
 
+const fingerprints = new SessionFingerprints({ key: new Uint8Array(32).fill(1), previousKeys: [] });
+
 describe('the fingerprint of an account', () => {
-  it('differs between two accounts without a password, and changes with the session key or the hash', () => {
-    const of = (user: AuthUser, passwordHash: PasswordHash | null, sessionKey: string | null = null) => sessionFingerprint({ user, passwordHash, sessionKey });
+  it('differs between two accounts without a password, and changes with the session key — not with the hash', () => {
+    const of = (user: AuthUser, passwordHash: PasswordHash | null, sessionKey: string | null = null) => fingerprints.of({ user, passwordHash, sessionKey });
     expect(of(link, null), 'two passwordless accounts').not.toBe(of(zelda, null));
     expect(of(link, null, 'key-1')).not.toBe(of(link, null, 'key-2'));
     expect(of(link, null, 'key-1')).not.toBe(of(link, null));
-    expect(of(link, '$argon2id$a' as PasswordHash)).not.toBe(of(link, '$argon2id$b' as PasswordHash));
-    // No key and an empty one are the same account state; the hash never goes into the session as it is.
+    // A rehash (another hash, the same key) leaves it as it is; the key never goes into the session as it is.
+    expect(of(link, '$argon2id$a' as PasswordHash, 'key-1')).toBe(of(link, '$argon2id$b' as PasswordHash, 'key-1'));
+    expect(of(link, '$argon2id$a' as PasswordHash)).toBe(of(link, null));
+    expect(of(link, null, 'key-1')).not.toContain('key-1');
     expect(of(link, null)).toBe(of(link, null, null));
-    expect(of(link, '$argon2id$a' as PasswordHash)).not.toContain('argon2');
   });
 
   it('types: the session key and updateSessionKey are required — a provider without them is none', () => {

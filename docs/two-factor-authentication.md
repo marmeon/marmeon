@@ -119,7 +119,7 @@ The page needs neither `innerHTML` nor a `style` attribute. The key is not in fo
 unconfirmed key.
 
 `begin()` throws when no source of factors is bound (`TwoFactorState` is still the default that knows none), and for an account
-without a password: turning the factor on signs the other devices out, which takes the password hash.
+without a password: turning the factor on asks for it, and signs the other devices out with a new session key.
 
 The user types the first code the app shows and the account's password into one form: `confirm(code, password)`. It returns a
 [`Result`](errors.md#results): `ok` with `recoveryCodes`, or an `err` of kind `not-started`, `invalid-password`, `invalid-code` or
@@ -128,7 +128,7 @@ on, and then:
 
 - **The other devices are signed out.** Their sessions end and so do their [remember-me](authentication.md#remember-me) tokens:
   every session of the account has then proven a second factor. This session stays and gets the new fingerprint, the way
-  [`logoutOtherDevices(password)`](authentication.md#changing-the-password) does it, without a second password check. The signing out
+  [`logoutOtherDevices(password)`](authentication.md#changing-the-password) does it (a new session key), without a second password check. The signing out
   runs twice, before the factor is switched on and again right after, so that a sign-in racing the activation does not survive it.
   Say so on the page before the user submits.
 - **API tokens are not revoked.** They are integrations of your app, such as scripts and CI, and revoking them is your decision. List

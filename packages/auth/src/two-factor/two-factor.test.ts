@@ -10,10 +10,10 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountSessions, authenticate, Auth, AuthServiceProvider, Hasher, Login, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, type Credentials, type PasswordHash } from '../index.ts';
+import { AccountSessions, authenticate, Auth, AuthServiceProvider, Hasher, Login, PasswordHasher, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, type Credentials, type PasswordHash } from '../index.ts';
 import { authenticatedSession, twoFactorCode } from '../testing.ts';
 import { TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, type RecoveryCodeTable, type TwoFactorTable } from './store.ts';
-import { sessionFingerprint } from '../auth.ts';
+import { SessionFingerprints } from '../fingerprint.ts';
 import { twoFactor } from './middleware.ts';
 import { TwoFactor, type ConfirmError } from './two-factor.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
@@ -42,9 +42,10 @@ class MemoryUsers implements UserProvider<TestUser> {
     for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash, sessionKey: this.keys.get(row.user.id) ?? null };
     return undefined;
   }
-  async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string } = {}): Promise<boolean> {
+  async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string; readonly expectedSessionKey?: string | null } = {}): Promise<boolean> {
     const row = this.rows.get(Number(id));
     if (!row || (options.expected !== undefined && row.hash !== options.expected)) return false;
+    if (options.sessionKey !== undefined && options.expectedSessionKey !== undefined && (this.keys.get(Number(id)) ?? null) !== options.expectedSessionKey) return false;
     row.hash = hash;
     if (options.sessionKey !== undefined) this.keys.set(Number(id), options.sessionKey);
     return true;
@@ -415,7 +416,7 @@ describe('TwoFactor: setting up', () => {
       const confirm = booted.store.confirm.bind(booted.store);
       let raced: string | undefined;
       vi.spyOn(booted.store, 'confirm').mockImplementation(async (...args) => {
-        raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000), sessionFingerprint((await booted.users.findById(1))!));
+        raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000), booted.application.container.make(SessionFingerprints).of((await booted.users.findById(1))!));
         await new Promise((resolve) => setTimeout(resolve, 10));
         return confirm(...args);
       });
@@ -436,7 +437,7 @@ describe('TwoFactor: setting up', () => {
     const confirm = booted.store.confirm.bind(booted.store);
     let raced: string | undefined;
     vi.spyOn(booted.store, 'confirm').mockImplementation(async (...args) => {
-      raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000), sessionFingerprint((await booted.users.findById(1))!));
+      raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000), booted.application.container.make(SessionFingerprints).of((await booted.users.findById(1))!));
       return confirm(...args); // the clock is frozen: created_at and confirmed_at are the same instant
     });
     expect((await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);
@@ -797,16 +798,20 @@ describe('TwoFactor: signing in', () => {
     const booted = await boot();
     const { secret: key, recoveryCodes } = await enable(booted);
     const b = await waiting(booted);
-    booted.users.rows.get(1)!.hash = await booted.application.container.make(Hasher).make('another');
+    const change = async (password: string, key: string) => {
+      booted.users.rows.get(1)!.hash = await booted.application.container.make(Hasher).make(password);
+      booted.users.keys.set(1, key); // a new password writes a new key with it
+    };
+    await change('another', 'key-of-another');
     const stepAfterEnable = (await booted.store.find(1))?.lastUsedStep;
     events.length = 0;
     expect(await b.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toEqual({ ok: false, kind: 'expired' });
     expect(await b.tf('who')).toEqual({ id: null });
     const second = await waiting(booted, ada.email, 'another');
-    booted.users.rows.get(1)!.hash = await booted.application.container.make(Hasher).make('a third');
+    await change('a third', 'key-of-a-third');
     expect(await second.tf('challenge', { code: '000000' })).toEqual({ ok: false, kind: 'expired' }); // a wrong code too, and it is not counted as a failure
     const third = await waiting(booted, ada.email, 'a third');
-    booted.users.rows.get(1)!.hash = await booted.application.container.make(Hasher).make('a fourth');
+    await change('a fourth', 'key-of-a-fourth');
     expect(await third.tf('challenge', { recoveryCode: recoveryCodes[0] })).toEqual({ ok: false, kind: 'expired' });
     expect(await booted.store.remainingRecoveryCodes(1)).toBe(10); // the recovery code is still good
     expect(events.filter((event) => event instanceof TwoFactorChallengeFailed || event instanceof RecoveryCodeUsed)).toEqual([]);
@@ -1299,6 +1304,32 @@ describe('twoFactor() middleware', () => {
     expect(await authenticatedSession(booted.application.container, ada)).toHaveProperty('_auth_two_factor_at', Date.parse('2020-01-01T00:00:00Z') / 1000);
   });
 
+  const oldCosts = () => new PasswordHasher({ driver: 'scrypt', argon2: { memory: 1024, time: 1, parallelism: 1 }, scrypt: { cost: 10, blockSize: 8, parallelism: 1 } });
+
+  it('a rehash of the password on another device does not end a waiting sign-in', async () => {
+    const booted = await boot();
+    const { secret: key } = await enable(booted);
+    const waitingDevice = await waiting(booted);
+    booted.users.rows.get(1)!.hash = await oldCosts().make('secret');
+    const stale = booted.users.rows.get(1)!.hash;
+    await waiting(booted); // the password is checked on another device: the stored hash has old costs and is written anew
+    expect(booted.users.rows.get(1)!.hash, 'rehashed').not.toBe(stale);
+    expect(await waitingDevice.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toEqual({ ok: true, id: 1 });
+  });
+
+  it('a rehash of the password on another device does not end a setup in progress', async () => {
+    const booted = await boot();
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    booted.users.rows.get(1)!.hash = await oldCosts().make('secret');
+    const stale = booted.users.rows.get(1)!.hash;
+    await booted.browser().login(); // the password is checked on another device: the stored hash has old costs and is written anew
+    expect(booted.users.rows.get(1)!.hash, 'rehashed').not.toBe(stale);
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ ok: true });
+    expect(await booted.store.factors(1)).toEqual(['totp']);
+  });
+
   it('takes only a positive maxAge', () => {
     for (const maxAge of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) expect(() => twoFactor({ setup: 'a', verify: 'b', maxAge })).toThrow('seconds above zero');
   });
@@ -1321,12 +1352,16 @@ describe('twoFactor() middleware', () => {
 });
 
 describe('TwoFactor: the session must still fit the account when the factor is stored', () => {
-  /** Runs `change` right after the password hash is written to sign the other devices out — the moment another device could act. */
+  /** Runs `change` right after the new session key is written to sign the other devices out — the moment another device could act. */
   function interleave(users: MemoryUsers, change: () => void | Promise<void>) {
-    const write = users.updatePasswordHash.bind(users);
-    users.updatePasswordHash = async (id, hash, options) => {
-      const wrote = await write(id, hash, options);
-      await change();
+    const write = users.updateSessionKey.bind(users);
+    let done = false;
+    users.updateSessionKey = async (id, key, expected) => {
+      const wrote = await write(id, key, expected);
+      if (!done && wrote) {
+        done = true;
+        await change();
+      }
       return wrote;
     };
   }
@@ -1337,7 +1372,10 @@ describe('TwoFactor: the session must still fit the account when the factor is s
     const b = booted.browser();
     await b.login();
     const setup = await b.tf('begin');
-    interleave(booted.users, () => void (booted.users.rows.get(1)!.hash = other));
+    interleave(booted.users, () => {
+      booted.users.rows.get(1)!.hash = other;
+      booted.users.keys.set(1, 'changed-elsewhere'); // a new password writes a new key with it
+    });
     expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ ok: false, kind: 'signed-out' });
     expect(await booted.store.factors(1)).toEqual([]);
     expect(await booted.store.remainingRecoveryCodes(1)).toBe(0);
@@ -1377,7 +1415,7 @@ describe('TwoFactor: the session must still fit the account when the factor is s
     const b = booted.browser();
     await b.login();
     const setup = await b.tf('begin');
-    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ thrown: expect.stringMatching(/^\[marmeon:A5\] Auth needs UserProvider\.updateSessionKey/) });
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ thrown: expect.stringMatching(/^\[marmeon:A5\] auth\.updateSessionKey\(\) needs UserProvider\.updateSessionKey/) });
     expect(await booted.store.factors(1)).toEqual([]);
   });
 
@@ -1387,8 +1425,9 @@ describe('TwoFactor: the session must still fit the account when the factor is s
     const booted = await boot({}, { users });
     const write = vi.spyOn(users, 'updateSessionKey');
     const { b } = await enable(booted);
-    expect(write).toHaveBeenCalledWith(1, 'k'.repeat(43), 'k'.repeat(43)); // the claim: the same key, compare-and-set
-    expect(users.keys.get(1)).toBe('k'.repeat(43));
+    expect(users.keys.get(1), 'the sign-out of the other devices wrote a new one').not.toBe('k'.repeat(43));
+    const first = write.mock.calls[0]![1]; // the first sign-out; the claim holds that key
+    expect(write).toHaveBeenCalledWith(1, first, first); // the same key, compare-and-set
     expect(await booted.store.factors(1)).toEqual(['totp']);
     expect(await b.tf('who')).toEqual({ id: 1 });
   });
@@ -1401,12 +1440,7 @@ describe('TwoFactor: the session must still fit the account when the factor is s
     await b.login();
     const setup = await b.tf('begin');
     const removal = vi.spyOn(TwoFactorStore.prototype, 'removeTotp');
-    const write = users.updatePasswordHash.bind(users);
-    users.updatePasswordHash = async (id, hash, options) => {
-      const wrote = await write(id, hash, options);
-      users.keys.set(1, 'e'.repeat(43)); // AccountSessions.end() lands right after the other devices were signed out
-      return wrote;
-    };
+    interleave(users, () => void users.keys.set(1, 'e'.repeat(43))); // AccountSessions.end() lands right after the other devices were signed out
     try {
       expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ ok: false, kind: 'signed-out' });
       expect(removal, 'the in-transaction claim caught it, not the check after the commit').not.toHaveBeenCalled();
@@ -1425,7 +1459,8 @@ describe('TwoFactor: the session must still fit the account when the factor is s
     const b = booted.browser();
     await b.login();
     const setup = await b.tf('begin');
-    users.updateSessionKey = async () => false; // a provider that counts only rows whose value changed
+    const write = users.updateSessionKey.bind(users);
+    users.updateSessionKey = async (id, key, expected) => (key === expected ? false : write(id, key, expected)); // a provider that counts only rows whose value changed
     expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ thrown: expect.stringContaining('must return true when key equals the stored key') });
     expect(await booted.store.factors(1)).toEqual([]);
   });
@@ -1474,6 +1509,7 @@ describe('TwoFactor: the session must still fit the account when the factor is s
     const spy = vi.spyOn(TwoFactorStore.prototype, 'confirm').mockImplementation(async function (this: TwoFactorStore, ...args) {
       const stored = await confirm.apply(this, args);
       booted.users.rows.get(1)!.hash = other;
+      booted.users.keys.set(1, 'changed-elsewhere');
       return stored;
     });
     try {

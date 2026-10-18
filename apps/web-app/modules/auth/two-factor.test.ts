@@ -304,10 +304,14 @@ describe('two-factor authentication', () => {
 describe('a session that ends while the authenticator is set up', () => {
   /** The moment after the other devices are signed out, an operator ends the account's sessions. */
   function endSessionsAfterSignOut() {
-    const write = UserRepository.prototype.updatePasswordHash;
-    return vi.spyOn(UserRepository.prototype, 'updatePasswordHash').mockImplementation(async function (this: UserRepository, id, hash, expected) {
-      const wrote = await write.call(this, id, hash, expected);
-      await this.updateSessionKey(id, 'e'.repeat(40), undefined);
+    const write = UserRepository.prototype.updateSessionKey;
+    let ended = false;
+    return vi.spyOn(UserRepository.prototype, 'updateSessionKey').mockImplementation(async function (this: UserRepository, id, key, expected) {
+      const wrote = await write.call(this, id, key, expected);
+      if (wrote && !ended) {
+        ended = true;
+        await write.call(this, id, 'e'.repeat(40), undefined);
+      }
       return wrote;
     });
   }
@@ -333,14 +337,15 @@ describe('a session that ends while the authenticator is set up', () => {
     expect(await app.make(TwoFactorStore).factors(ada.id)).toEqual([]);
   });
 
-  it('holds the account\'s row on a real session_key and keeps the key', async () => {
+  it('holds the account\'s row on a real session_key, which the sign-out of the other devices replaced', async () => {
     const ada = await app.factory(UserFactory).create();
     const key = 'k'.repeat(43);
     await app.make(UserRepository).updateSessionKey(ada.id, key, null);
     const { cookie, secret } = await begin(ada);
     await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(secret), password: 'password' } }).assertLayer('auth/RecoveryCodes');
     expect(await app.make(TwoFactorStore).factors(ada.id)).toEqual(['totp']);
-    expect((await app.make(UserRepository).findById(ada.id))?.sessionKey).toBe(key);
+    expect((await app.make(UserRepository).findById(ada.id))?.sessionKey).toMatch(/^[\w-]{43}$/);
+    expect((await app.make(UserRepository).findById(ada.id))?.sessionKey).not.toBe(key);
   });
 
   it('stops at the lock when a real session_key was replaced meanwhile', async () => {

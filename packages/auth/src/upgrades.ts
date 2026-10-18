@@ -16,7 +16,10 @@ export const TOKENS_REISSUE_MIGRATION = new URL('../stubs/migrations/reissue_per
 /** The migration `make:upgrade-migrations` writes for apps whose `sign_ins` table has no columns for the remember-me token. */
 export const SIGN_INS_REMEMBER_MIGRATION = new URL('../stubs/migrations/add_remember_columns_to_sign_ins.ts', import.meta.url);
 
-/** The upgrades of the auth tables: the reissue of the API tokens, and the remember-me columns of `sign_ins`. */
+/** The migration that gives accounts without a session key a random one. */
+export const SESSION_KEYS_MIGRATION = new URL('../stubs/migrations/fill_empty_session_keys.ts', import.meta.url);
+
+/** The upgrades of the auth tables: the reissue of the API tokens, random session keys for accounts that have none, and the remember-me columns of `sign_ins`. */
 export function authMigrationUpgrades() {
   return [
     {
@@ -25,6 +28,13 @@ export function authMigrationUpgrades() {
       name: 'reissue_personal_access_tokens',
       createdBy: ['create_personal_access_tokens_table'],
       contents: readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'),
+    },
+    {
+      set: 'auth',
+      revision: 3,
+      name: 'fill_empty_session_keys',
+      createdBy: ['create_personal_access_tokens_table', 'create_users_table'],
+      contents: readFileSync(SESSION_KEYS_MIGRATION, 'utf8'),
     },
     {
       set: 'sign-ins',

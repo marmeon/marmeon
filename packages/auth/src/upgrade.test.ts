@@ -16,7 +16,7 @@ import { PasskeyServiceProvider } from './passkeys/provider.ts';
 import { PGSQL_URL } from './__fixtures__/databases.ts';
 import { AuthServiceProvider, AccessTokenStore, combineFactors, DatabaseSignIns, RememberTokenStore, SignInStore, TwoFactorState, TwoFactorStore, UserProvider } from './index.ts';
 import { factorSources, NoTwoFactorState } from './two-factor/state.ts';
-import { SIGN_INS_REMEMBER_MIGRATION, TOKENS_REISSUE_MIGRATION } from './upgrades.ts';
+import { SESSION_KEYS_MIGRATION, SIGN_INS_REMEMBER_MIGRATION, TOKENS_REISSUE_MIGRATION } from './upgrades.ts';
 
 const silent: LoggerType = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
 
@@ -178,6 +178,29 @@ describe.each(kinds)('the reissue of the API tokens on %s', (kind) => {
     }
   });
 });
+
+describe.each(kinds)('the random session keys of accounts that have none, on %s', (kind) => {
+  it('gives every NULL key its own random value, with the database\'s generator, and leaves a key that is there alone', async () => {
+    const database = await open(kind);
+    try {
+      for (const migration of await loadAll(KIT)) await runMigration(database.connections, migration);
+      const db = database.connections.get<any>();
+      for (const n of [1, 2, 3]) {
+        await sql`insert into users (name, email, password, created_at, updated_at) values (${`User ${n}`}, ${`user${n}@example.com`}, 'hash', '2026-01-01 00:00:00', '2026-01-01 00:00:00')`.execute(db);
+      }
+      await sql`update users set session_key = ${'k'.repeat(43)} where id = 3`.execute(db);
+      await runMigration(database.connections, await load(SESSION_KEYS_MIGRATION));
+      const keys = (await sql<{ id: number; session_key: string }>`select id, session_key from users order by id`.execute(db)).rows;
+      expect(keys[2]!.session_key, 'a key that was there').toBe('k'.repeat(43));
+      const filled = keys.slice(0, 2).map((row) => row.session_key);
+      for (const key of filled) expect(key).toMatch(/^[0-9a-f]{64}$/);
+      expect(new Set(filled).size, 'one for each row').toBe(2);
+    } finally {
+      await database.drop();
+    }
+  });
+});
+
 
 describe.each(kinds)('the secret columns across the reissue, on %s', (kind) => {
   const modules = (...directories: URL[]) => directories.map((migrations, index) => ({ name: `part${index}`, migrations }));
@@ -441,25 +464,28 @@ describe('the sources of a second factor', () => {
 });
 
 describe('the revision the auth tables list', () => {
-  it('is revision 2 of the auth set and of the sign-ins set, for apps that created these tables with the first stubs', () => {
+  it('lists the auth set up to revision 3 and the sign-ins set at revision 2, for apps that created these tables with the first stubs', () => {
     const upgrades = AuthServiceProvider.migrationUpgrades;
     expect(upgrades.map(({ set, revision, name, createdBy }) => ({ set, revision, name, createdBy }))).toEqual([
       { set: 'auth', revision: 2, name: 'reissue_personal_access_tokens', createdBy: ['create_personal_access_tokens_table'] },
+      { set: 'auth', revision: 3, name: 'fill_empty_session_keys', createdBy: ['create_personal_access_tokens_table', 'create_users_table'] },
       { set: 'sign-ins', revision: 2, name: 'add_remember_columns_to_sign_ins', createdBy: ['create_sign_ins_table'] },
     ]);
     expect(upgrades[0]!.contents).toBe(readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'));
     expect(upgrades[0]!.contents).toMatch(/^\/\/ @marmeon-stub auth 2\n/);
-    expect(upgrades[1]!.contents).toBe(readFileSync(SIGN_INS_REMEMBER_MIGRATION, 'utf8'));
-    expect(upgrades[1]!.contents).toMatch(/^\/\/ @marmeon-stub sign-ins 2\n/);
+    expect(upgrades[1]!.contents).toBe(readFileSync(SESSION_KEYS_MIGRATION, 'utf8'));
+    expect(upgrades[1]!.contents).toMatch(/^\/\/ @marmeon-stub auth 3\n/);
+    expect(upgrades[2]!.contents).toBe(readFileSync(SIGN_INS_REMEMBER_MIGRATION, 'utf8'));
+    expect(upgrades[2]!.contents).toMatch(/^\/\/ @marmeon-stub sign-ins 2\n/);
   });
 
-  it('is what the first stubs and the stubs now say: no mark (revision 1) before, revision 2 after, and the plain names in both', () => {
+  it('is what the first stubs and the stubs now say: no mark (revision 1) before, revision 3 after, and the plain names in both', () => {
     for (const file of filesOf(LEGACY).filter((name) => !name.includes('users'))) {
       expect(readFileSync(new URL(file, LEGACY), 'utf8'), file).not.toMatch(/^\/\/ @marmeon-stub/);
     }
     for (const file of filesOf(KIT).filter((name) => !name.includes('users'))) {
       const contents = readFileSync(new URL(file, KIT), 'utf8');
-      expect(contents, file).toMatch(file.includes('sign_ins') ? /^\/\/ @marmeon-stub sign-ins 2\n/ : /^\/\/ @marmeon-stub auth 2\n/);
+      expect(contents, file).toMatch(file.includes('sign_ins') ? /^\/\/ @marmeon-stub sign-ins 2\n/ : /^\/\/ @marmeon-stub auth 3\n/);
       expect(contents, file).not.toContain('marmeon_');
     }
     const signIns = readFileSync(new URL('../stubs/migrations/create_sign_ins_table.ts', import.meta.url), 'utf8');
@@ -486,15 +512,16 @@ describe('marmeon make:upgrade-migrations for the auth tables', () => {
     return new MakeUpgradeMigrationsCommand({ providers: [AuthServiceProvider] } as unknown as Application).handle({ root, args: [], options, output } as unknown as CommandInput);
   };
 
-  it('writes the reissue and the remember-me columns, and nothing else, for an app made with the first stubs', () => {
+  it('writes the reissue, the session keys and the remember-me columns, and nothing else, for an app made with the first stubs', () => {
     const { root, files } = appWith(LEGACY);
     const before = files();
     expect(run(root, { check: true }), '--check before').toBe(1);
     expect(run(root)).toBe(0);
     const written = files().filter((file) => !before.includes(file));
-    expect(written).toEqual([expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_reissue_personal_access_tokens\.ts$/), expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_add_remember_columns_to_sign_ins\.ts$/)]);
+    expect(written).toHaveLength(3);
     const contents = (pattern: RegExp) => readFileSync(join(root, 'modules/auth/migrations', written.find((file) => pattern.test(file))!), 'utf8');
     expect(contents(/reissue/)).toBe(readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'));
+    expect(contents(/fill_empty_session_keys/)).toBe(readFileSync(SESSION_KEYS_MIGRATION, 'utf8'));
     expect(contents(/remember/)).toBe(readFileSync(SIGN_INS_REMEMBER_MIGRATION, 'utf8'));
     expect(run(root, { check: true }), '--check after').toBe(0);
   });
