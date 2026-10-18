@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getPasskey, passkeysAvailable, postJson } from '../passkeys.ts';
+import { getPasskey, passkeysAvailable, postJson } from '@marmeon/auth/passkeys/browser';
 import { Head, useForm, useRoute, useTranslation } from '@marmeon/react';
 
 /** Proves the second factor again in the session that is already signed in (`TwoFactor.stepUp()`). */

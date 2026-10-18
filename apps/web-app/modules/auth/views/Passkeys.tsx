@@ -4,7 +4,7 @@ import { Head, Link, useRoute, useTranslation } from '@marmeon/react';
 import { AppLayout } from '../../../layouts/AppLayout.tsx';
 import type { ShowPasskeysController } from '../controllers/ShowPasskeysController.ts';
 import { SettingsLayout } from '../layouts/SettingsLayout.tsx';
-import { createPasskey, passkeysAvailable, postJson } from '../passkeys.ts';
+import { createPasskey, passkeysAvailable, postJson } from '@marmeon/auth/passkeys/browser';
 
 type Props = PageProps<ShowPasskeysController>;
 

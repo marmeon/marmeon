@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Head, useForm, useRoute, useTranslation } from '@marmeon/react';
 import { AppLayout } from '../layouts/AppLayout.tsx';
-import { getPasskey, passkeysAvailable, postJson } from '../passkeys.ts';
+import { getPasskey, passkeysAvailable, postJson } from '@marmeon/auth/passkeys/browser';
 
 /** Proves the second factor again in the session that is already signed in (`TwoFactor.stepUp()`): where `twoFactor()` sends a session that has not. `totp` and `passkey`: which factors the account has — the page offers the authenticator app's code and a passkey accordingly (recovery codes always). */
 export default function TwoFactorVerify({ totp, passkey }: { totp: boolean; passkey: boolean }) {

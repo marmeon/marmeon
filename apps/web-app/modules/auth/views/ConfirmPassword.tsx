@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Head, useForm, useRoute, useTranslation } from '@marmeon/react';
-import { getPasskey, passkeysAvailable, postJson } from '../passkeys.ts';
+import { getPasskey, passkeysAvailable, postJson } from '@marmeon/auth/passkeys/browser';
 
 /** `passkey`: the account has a passkey that can confirm instead of the password; the button appears after hydration, in a browser that can use one. */
 export default function ConfirmPassword({ passkey }: { passkey: boolean }) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getPasskey, passkeysAvailable, postJson } from '../passkeys.ts';
+import { getPasskey, passkeysAvailable, postJson } from '@marmeon/auth/passkeys/browser';
 import { Head, Link, useForm, useRoute, useTranslation } from '@marmeon/react';
 
 export default function TwoFactorChallenge({ totp, passkey }: { totp: boolean; passkey: boolean }) {

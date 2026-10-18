@@ -129,8 +129,9 @@ having passed a second factor and as freshly [confirmed for sudo mode](authentic
 
 On the login page, show the passkey button after hydration and only where `PublicKeyCredential` exists, so that without JavaScript there is
 just the password form. Put `autocomplete="username webauthn"` on the e-mail field and start the request with `mediation: 'conditional'`
-to offer the passkeys inside the browser's autofill. The example app keeps this small browser code in `modules/auth/passkeys.ts`: it
-uses `PublicKeyCredential.parseRequestOptionsFromJSON()` and `credential.toJSON()` where they exist and a base64url fallback elsewhere.
+to offer the passkeys inside the browser's autofill. The browser code comes with the package, from `@marmeon/auth/passkeys/browser`
+(see [The browser side](#the-browser-side)): it uses `PublicKeyCredential.parseRequestOptionsFromJSON()` and `credential.toJSON()` where
+they exist and a base64url fallback elsewhere.
 
 ## As a second factor
 
@@ -284,10 +285,28 @@ options requests (`auth.passkey-sign-in-options`, 30 a minute for each client; `
 | `auth/TwoFactorChallenge` | A button for a passkey when the account has one, the code form when it has an authenticator app, the recovery code always. |
 | `auth/Passkeys` | In the settings: the list with the dates, rename, release of a suspended passkey, removal, and the form that adds one with a name and the password. The first passkey shows the recovery codes once. |
 
-`modules/auth/passkeys.ts` is the browser side, written as app code you can change: it uses the browser's own conversion of the
-options and responses where it has one (`parseCreationOptionsFromJSON`, `toJSON()`) and a short fallback otherwise. The conditional sign-in
-in the e-mail field ends with an `AbortController` when the button is pressed or the page closes, and does not start again after a
-sign-in. The pages send no inline script and no `style`, so a strict content security policy accepts them.
+The conditional sign-in in the e-mail field ends with an `AbortController` when the button is pressed or the page closes, and does not
+start again after a sign-in. The pages send no inline script and no `style`, so a strict content security policy accepts them.
+
+### The browser side
+
+`@marmeon/auth/passkeys/browser` is the code the pages run, so a fix reaches an app with an update of the package. It imports nothing,
+neither the server side of `@marmeon/auth` nor a Node module, and so belongs in a client bundle:
+
+```tsx
+import { createPasskey, getPasskey, passkeysAvailable, postJson } from '@marmeon/auth/passkeys/browser';
+```
+
+| Export | What it does |
+| --- | --- |
+| `passkeysAvailable()` | Whether this browser can make and use passkeys at all. Show the button only where it is `true`, after hydration. |
+| `conditionalAvailable()` | Whether the browser can offer passkeys in the e-mail field's autofill. |
+| `createPasskey(options)` | Asks the authenticator for a new passkey and returns the JSON the server takes. Throws when the user cancels. |
+| `getPasskey(options, { conditional, signal })` | Asks the authenticator to sign in; `conditional` waits in the autofill until `signal` ends it. |
+| `postJson(url, body, signal)` | A same-origin JSON `POST`; a redirect (a finished sign-in) is followed by the page. |
+| `bufferFromBase64Url()`, `base64UrlFromBuffer()` | The converters between the server's base64url text and the bytes WebAuthn uses. |
+
+Apps made before the package shipped it have `modules/auth/passkeys.ts`; it keeps working. Import from `@marmeon/auth/passkeys/browser` in the five views instead, then delete the file.
 
 An account with a passkey has a second factor, so `twoFactor()` applies to it. The kit's `/settings/two-factor/verify` page, where
 `twoFactor()` sends a session, offers a passkey, the code of an authenticator app and a recovery code, as the sign-in does (its options

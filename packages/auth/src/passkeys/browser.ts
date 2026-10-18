@@ -1,5 +1,10 @@
-// The browser side of passkeys: WebAuthn takes and gives ArrayBuffers, the server speaks JSON (base64url). Current browsers convert
-// themselves (`parse…FromJSON`, `toJSON()`); the small fallback below covers the rest. App code, so the app owns it.
+/**
+ * `@marmeon/auth/passkeys/browser` — the browser side of passkeys: WebAuthn takes and gives ArrayBuffers, the server speaks JSON
+ * (base64url). Current browsers convert themselves (`parse…FromJSON`, `toJSON()`); a small fallback covers the rest. It runs in the
+ * page and imports nothing, in particular nothing from the server side of the package. See `docs/passkeys.md#the-browser-side`.
+ *
+ * @module
+ */
 
 /** Whether this browser can make and use passkeys at all. */
 export function passkeysAvailable(): boolean {
@@ -11,11 +16,13 @@ export async function conditionalAvailable(): Promise<boolean> {
   return passkeysAvailable() && (await window.PublicKeyCredential.isConditionalMediationAvailable?.()) === true;
 }
 
-const toBuffer = (value: string): ArrayBuffer => {
+/** base64url text (what the server sends) to the bytes WebAuthn takes. */
+export const bufferFromBase64Url = (value: string): ArrayBuffer => {
   const padded = value.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
   return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0)).buffer;
 };
-const toBase64Url = (buffer: ArrayBuffer | null): string => {
+/** The bytes WebAuthn gives to base64url text (what the server takes); `null` is an empty string. */
+export const base64UrlFromBuffer = (buffer: ArrayBuffer | null): string => {
   if (buffer === null) return '';
   return btoa(String.fromCharCode(...new Uint8Array(buffer))).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 };
@@ -27,9 +34,9 @@ function creationOptions(json: Json): PublicKeyCredentialCreationOptions {
   if (native) return native(json);
   return {
     ...json,
-    challenge: toBuffer(json.challenge),
-    user: { ...json.user, id: toBuffer(json.user.id) },
-    excludeCredentials: (json.excludeCredentials ?? []).map((credential: Json) => ({ ...credential, id: toBuffer(credential.id) })),
+    challenge: bufferFromBase64Url(json.challenge),
+    user: { ...json.user, id: bufferFromBase64Url(json.user.id) },
+    excludeCredentials: (json.excludeCredentials ?? []).map((credential: Json) => ({ ...credential, id: bufferFromBase64Url(credential.id) })),
   } as PublicKeyCredentialCreationOptions;
 }
 
@@ -38,8 +45,8 @@ function requestOptions(json: Json): PublicKeyCredentialRequestOptions {
   if (native) return native(json);
   return {
     ...json,
-    challenge: toBuffer(json.challenge),
-    allowCredentials: (json.allowCredentials ?? []).map((credential: Json) => ({ ...credential, id: toBuffer(credential.id) })),
+    challenge: bufferFromBase64Url(json.challenge),
+    allowCredentials: (json.allowCredentials ?? []).map((credential: Json) => ({ ...credential, id: bufferFromBase64Url(credential.id) })),
   } as PublicKeyCredentialRequestOptions;
 }
 
@@ -51,12 +58,12 @@ export async function createPasskey(optionsJson: Json): Promise<Json> {
   const response = credential.response as AuthenticatorAttestationResponse;
   return {
     id: credential.id,
-    rawId: toBase64Url(credential.rawId),
+    rawId: base64UrlFromBuffer(credential.rawId),
     type: credential.type,
     clientExtensionResults: credential.getClientExtensionResults(),
     response: {
-      clientDataJSON: toBase64Url(response.clientDataJSON),
-      attestationObject: toBase64Url(response.attestationObject),
+      clientDataJSON: base64UrlFromBuffer(response.clientDataJSON),
+      attestationObject: base64UrlFromBuffer(response.attestationObject),
       transports: response.getTransports?.() ?? [],
     },
   };
@@ -74,14 +81,14 @@ export async function getPasskey(optionsJson: Json, { conditional = false, signa
   const response = credential.response as AuthenticatorAssertionResponse;
   return {
     id: credential.id,
-    rawId: toBase64Url(credential.rawId),
+    rawId: base64UrlFromBuffer(credential.rawId),
     type: credential.type,
     clientExtensionResults: credential.getClientExtensionResults(),
     response: {
-      clientDataJSON: toBase64Url(response.clientDataJSON),
-      authenticatorData: toBase64Url(response.authenticatorData),
-      signature: toBase64Url(response.signature),
-      userHandle: response.userHandle === null ? undefined : toBase64Url(response.userHandle),
+      clientDataJSON: base64UrlFromBuffer(response.clientDataJSON),
+      authenticatorData: base64UrlFromBuffer(response.authenticatorData),
+      signature: base64UrlFromBuffer(response.signature),
+      userHandle: response.userHandle === null ? undefined : base64UrlFromBuffer(response.userHandle),
     },
   };
 }
