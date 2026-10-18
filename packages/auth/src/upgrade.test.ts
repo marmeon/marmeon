@@ -16,7 +16,7 @@ import { PasskeyServiceProvider } from './passkeys/provider.ts';
 import { PGSQL_URL } from './__fixtures__/databases.ts';
 import { AuthServiceProvider, AccessTokenStore, combineFactors, DatabaseSignIns, RememberTokenStore, SignInStore, TwoFactorState, TwoFactorStore, UserProvider } from './index.ts';
 import { factorSources, NoTwoFactorState } from './two-factor/state.ts';
-import { TOKENS_REISSUE_MIGRATION } from './upgrades.ts';
+import { SIGN_INS_REMEMBER_MIGRATION, TOKENS_REISSUE_MIGRATION } from './upgrades.ts';
 
 const silent: LoggerType = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
 
@@ -36,6 +36,8 @@ const SECRETS: Record<string, readonly string[]> = {
   two_factor_authentications: ['secret'],
   two_factor_recovery_codes: ['code_hash'],
 };
+/** The secret columns the upgrade of `sign_ins` adds. */
+const REMEMBER_SECRETS = ['sign_ins.remember_previous_validator_hash', 'sign_ins.remember_validator_hash'];
 
 const load = async (file: URL) => ((await import(file.href)) as { default: Migration }).default;
 const filesOf = (directory: URL) => readdirSync(directory).filter((file) => file.endsWith('.ts')).sort();
@@ -122,10 +124,12 @@ describe.each(kinds)('the reissue of the API tokens on %s', (kind) => {
       const before = Object.fromEntries(await Promise.all(TABLES.map(async (table) => [table, await describeTable(old.connections, table)])));
 
       const reissue = await load(new URL(`${UPGRADE.href}2026_02_01_000002_reissue_personal_access_tokens.ts`));
+      const remember = await load(new URL(`${UPGRADE.href}2026_02_01_000003_add_remember_columns_to_sign_ins.ts`));
       await runMigration(old.connections, reissue);
+      await runMigration(old.connections, remember);
       for (const table of TABLES) {
         expect(await describeTable(old.connections, table), table).toEqual(await describeTable(fresh.connections, table));
-        if (table !== 'personal_access_tokens') expect(await describeTable(old.connections, table), `${table} is untouched`).toEqual(before[table]);
+        if (table !== 'personal_access_tokens' && table !== 'sign_ins') expect(await describeTable(old.connections, table), `${table} is untouched`).toEqual(before[table]);
         const { rows } = await sql<{ n: number | string }>`select count(*) as n from ${sql.table(table)}`.execute(old.connections.get());
         // The API tokens of the first release are the one thing the upgrade deletes.
         expect(Number(rows[0]!.n), `rows of ${table}`).toBe(table === 'personal_access_tokens' ? 0 : 1);
@@ -138,8 +142,16 @@ describe.each(kinds)('the reissue of the API tokens on %s', (kind) => {
       // The table of the app stays the app's.
       expect((await sql<{ email: string }>`select email from users`.execute(db)).rows).toEqual([{ email: 'ada@example.com' }]);
 
+      // The sign-in keeps its row; only the columns of the remember-me token are new, and empty.
+      expect((await sql<{ remember_selector: string | null; remember_validator_hash: string | null; remember_fingerprint: string | null }>`select remember_selector, remember_validator_hash, remember_fingerprint from sign_ins`.execute(db)).rows).toEqual([
+        { remember_selector: null, remember_validator_hash: null, remember_fingerprint: null },
+      ]);
+
       await runMigration(old.connections, reissue, { direction: 'down' });
       expect(await describeTable(old.connections, 'personal_access_tokens'), 'down restores the table').toEqual(before.personal_access_tokens);
+      await runMigration(old.connections, remember, { direction: 'down' });
+      expect(await describeTable(old.connections, 'sign_ins'), 'down restores the sign-ins').toEqual(before.sign_ins);
+      expect(Number((await sql<{ n: number | string }>`select count(*) as n from sign_ins`.execute(db)).rows[0]!.n), 'down keeps the sign-in').toBe(1);
     } finally {
       await fresh.drop();
       await old.drop();
@@ -173,6 +185,7 @@ describe.each(kinds)('the secret columns across the reissue, on %s', (kind) => {
   /** The secret columns the connections hide: what the migrations that ran say. */
   const marked = async (connections: Connections) => [...connections.metadata().secrets].flatMap(([table, columns]) => [...columns].map((column) => `${table}.${column}`)).sort();
   const expected = ['users.password', 'users.pending_email_token', 'users.session_key', ...Object.entries(SECRETS).flatMap(([table, columns]) => columns.map((column) => `${table}.${column}`))].sort();
+  const expectedUpgraded = [...expected, ...REMEMBER_SECRETS].sort();
   /** Every row of the table as `selectAll()` gives it: the columns it names. */
   const columnsOf = async (connections: Connections, table: string) => Object.keys(await connections.get<any>().selectFrom(table).selectAll().executeTakeFirstOrThrow()).sort();
 
@@ -199,7 +212,9 @@ describe.each(kinds)('the secret columns across the reissue, on %s', (kind) => {
       await withoutSecrets();
 
       await migrator(connections, LEGACY, UPGRADE).migrate();
-      expect(await marked(connections)).toEqual(expected);
+      expect(await marked(connections)).toEqual(expectedUpgraded);
+      expect(await columnsOf(connections, 'sign_ins'), 'the validators of the remember-me token never come back from selectAll()').not.toContain('remember_validator_hash');
+      expect(await columnsOf(connections, 'sign_ins')).not.toContain('remember_previous_validator_hash');
       // The token of the first release is gone; one issued since stands in its place.
       await sql`insert into personal_access_tokens (user_id, name, token_hash, abilities, created_at, updated_at)
         values (1, 'cli', 'new-hash', ${JSON.stringify(['*'])}, '2026-01-01 00:00:00', '2026-01-01 00:00:00')`.execute(connections.get());
@@ -357,6 +372,57 @@ describe('a database that lacks the auth tables', () => {
     expect(messages).toContain('personal_access_tokens has token_hash without the secret() mark');
   });
 
+  it('makes /up/ready red while sign_ins has no columns for the remember-me token, and says which command writes them', async () => {
+    await using application = await open(
+      { AUTH_REMEMBER_DAYS: '0' },
+      (container) => {
+        signedIn(container);
+        container.singleton(SignInStore, DatabaseSignIns);
+      },
+      [],
+      [{ name: 'legacy', migrations: LEGACY }],
+    );
+    await application.container.make(Migrator).migrate();
+    const report = await application.container.make(HealthChecks).run(application.container);
+    expect(report.ok).toBe(false);
+    const messages = report.checks.flatMap((check) => (check.error instanceof Error ? [check.error.message] : [])).join('\n');
+    expect(messages).toContain('sign_ins');
+    expect(messages).toContain('remember_validator_hash');
+    expect(messages).toContain('remember_fingerprint');
+    expect(messages).toContain('make:upgrade-migrations');
+  });
+
+  it('makes /up/ready red while the validators of sign_ins lack their secret() mark', async () => {
+    await using application = await open({ AUTH_REMEMBER_DAYS: '0' }, (container) => {
+      signedIn(container);
+      container.singleton(SignInStore, DatabaseSignIns);
+    });
+    await application.container.make(Migrator).migrate();
+    await runMigration(application.container.make(Connections), {
+      up: (schema) => {
+        schema.create('sign_ins', (table) => {
+          table.string('id', 22).primary();
+          table.integer('user_id');
+          table.string('user_agent', 255).nullable();
+          table.string('remember_selector', 32).nullable().unique();
+          table.timestamp('remember_until').nullable();
+          table.string('remember_validator_hash', 64).nullable();
+          table.string('remember_previous_validator_hash', 64).nullable();
+          table.timestamp('remember_rotated_at').nullable();
+          table.timestamp('remember_created_at').nullable();
+          table.string('remember_fingerprint', 64).nullable();
+          table.timestamp('signed_in_at');
+          table.timestamp('last_seen_at');
+          table.timestamps();
+        });
+      },
+    });
+    const report = await application.container.make(HealthChecks).run(application.container);
+    expect(report.ok).toBe(false);
+    const messages = report.checks.flatMap((check) => (check.error instanceof Error ? [check.error.message] : [])).join('\n');
+    expect(messages).toContain('sign_ins has remember_validator_hash, remember_previous_validator_hash without the secret() mark');
+  });
+
   it('waits for the passkeys table when the passkeys are switched on', async () => {
     await using application = await open({ APP_URL: 'http://localhost:3000' }, () => {}, [PasskeyServiceProvider]);
     expect(await required(application)).toEqual([PASSKEYS_TABLE]);
@@ -375,13 +441,16 @@ describe('the sources of a second factor', () => {
 });
 
 describe('the revision the auth tables list', () => {
-  it('is revision 2 of the auth set, for apps that created the tokens table with the first stubs', () => {
+  it('is revision 2 of the auth set and of the sign-ins set, for apps that created these tables with the first stubs', () => {
     const upgrades = AuthServiceProvider.migrationUpgrades;
     expect(upgrades.map(({ set, revision, name, createdBy }) => ({ set, revision, name, createdBy }))).toEqual([
       { set: 'auth', revision: 2, name: 'reissue_personal_access_tokens', createdBy: ['create_personal_access_tokens_table'] },
+      { set: 'sign-ins', revision: 2, name: 'add_remember_columns_to_sign_ins', createdBy: ['create_sign_ins_table'] },
     ]);
     expect(upgrades[0]!.contents).toBe(readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'));
     expect(upgrades[0]!.contents).toMatch(/^\/\/ @marmeon-stub auth 2\n/);
+    expect(upgrades[1]!.contents).toBe(readFileSync(SIGN_INS_REMEMBER_MIGRATION, 'utf8'));
+    expect(upgrades[1]!.contents).toMatch(/^\/\/ @marmeon-stub sign-ins 2\n/);
   });
 
   it('is what the first stubs and the stubs now say: no mark (revision 1) before, revision 2 after, and the plain names in both', () => {
@@ -390,11 +459,12 @@ describe('the revision the auth tables list', () => {
     }
     for (const file of filesOf(KIT).filter((name) => !name.includes('users'))) {
       const contents = readFileSync(new URL(file, KIT), 'utf8');
-      expect(contents, file).toMatch(file.includes('sign_ins') ? /^\/\/ @marmeon-stub sign-ins 1\n/ : /^\/\/ @marmeon-stub auth 2\n/);
+      expect(contents, file).toMatch(file.includes('sign_ins') ? /^\/\/ @marmeon-stub sign-ins 2\n/ : /^\/\/ @marmeon-stub auth 2\n/);
       expect(contents, file).not.toContain('marmeon_');
     }
     const signIns = readFileSync(new URL('../stubs/migrations/create_sign_ins_table.ts', import.meta.url), 'utf8');
-    expect(signIns).toMatch(/^\/\/ @marmeon-stub sign-ins 1\n/);
+    expect(signIns).toMatch(/^\/\/ @marmeon-stub sign-ins 2\n/);
+    expect(signIns).toContain("'remember_validator_hash', 64).nullable().secret()");
     expect(signIns).toContain("schema.create('sign_ins'");
   });
 });
@@ -416,14 +486,16 @@ describe('marmeon make:upgrade-migrations for the auth tables', () => {
     return new MakeUpgradeMigrationsCommand({ providers: [AuthServiceProvider] } as unknown as Application).handle({ root, args: [], options, output } as unknown as CommandInput);
   };
 
-  it('writes the reissue and nothing else for an app made with the first stubs', () => {
+  it('writes the reissue and the remember-me columns, and nothing else, for an app made with the first stubs', () => {
     const { root, files } = appWith(LEGACY);
     const before = files();
     expect(run(root, { check: true }), '--check before').toBe(1);
     expect(run(root)).toBe(0);
     const written = files().filter((file) => !before.includes(file));
-    expect(written).toEqual([expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_reissue_personal_access_tokens\.ts$/)]);
-    expect(readFileSync(join(root, 'modules/auth/migrations', written[0]!), 'utf8')).toBe(readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'));
+    expect(written).toEqual([expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_reissue_personal_access_tokens\.ts$/), expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_add_remember_columns_to_sign_ins\.ts$/)]);
+    const contents = (pattern: RegExp) => readFileSync(join(root, 'modules/auth/migrations', written.find((file) => pattern.test(file))!), 'utf8');
+    expect(contents(/reissue/)).toBe(readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'));
+    expect(contents(/remember/)).toBe(readFileSync(SIGN_INS_REMEMBER_MIGRATION, 'utf8'));
     expect(run(root, { check: true }), '--check after').toBe(0);
   });
 
@@ -440,14 +512,17 @@ describe('the migrations in the apps', () => {
   const repo = new URL('../../../', import.meta.url);
   const migrationsOf = (directory: string) => readdirSync(new URL(directory, repo)).filter((file) => /(remember|password_reset|personal_access|two_factor|passkeys|sign_ins|auth_tables)/.test(file));
 
-  it("the web app's tables come from the first stubs and the reissue, the blank app's and the starter's have none", () => {
+  it("the web app's tables come from the first stubs and the upgrades, the blank app's and the starter's have none", () => {
     const web = 'apps/web-app/modules/auth/migrations/';
     const files = migrationsOf(web);
-    const upgrades = files.filter((file) => /reissue/.test(file));
-    expect(upgrades).toEqual([expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_reissue_personal_access_tokens\.ts$/)]);
-    expect(readFileSync(new URL(web + upgrades[0], repo), 'utf8')).toBe(readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'));
-    // The reissue comes after every migration that creates or changes the tokens table.
-    expect([...files].sort().at(-1)).toBe(upgrades[0]);
+    const reissue = files.filter((file) => /reissue/.test(file));
+    const remember = files.filter((file) => /add_remember_columns/.test(file));
+    expect(reissue).toEqual([expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_reissue_personal_access_tokens\.ts$/)]);
+    expect(remember).toEqual([expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_add_remember_columns_to_sign_ins\.ts$/)]);
+    expect(readFileSync(new URL(web + reissue[0], repo), 'utf8')).toBe(readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'));
+    expect(readFileSync(new URL(web + remember[0], repo), 'utf8')).toBe(readFileSync(SIGN_INS_REMEMBER_MIGRATION, 'utf8'));
+    // The upgrades come after every migration that creates or changes the tables they touch.
+    expect([...files].sort().slice(-2)).toEqual([reissue[0], remember[0]]);
     for (const file of files) expect(readFileSync(new URL(web + file, repo), 'utf8'), file).not.toContain('marmeon_');
     for (const directory of ['apps/blank-app/modules/system/migrations/', 'packages/create-marmeon/template/base/modules/system/migrations/']) expect(migrationsOf(directory), directory).toEqual([]);
   });

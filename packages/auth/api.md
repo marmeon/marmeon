@@ -248,7 +248,7 @@ export declare class DatabaseRememberTokens implements RememberTokenStore {
     #private;
     constructor(connections: Connections, clock: Clock);
     create(userId: number | string, expiresAt: Date, fingerprint: string): Promise<string>;
-    consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+    consume(cookie: string): Promise<Result<Omit<RememberedDevice, 'signIn'>, RememberTokenError>>;
     exists(cookie: string): Promise<boolean>;
     rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
     forget(cookie: string): Promise<void>;
@@ -279,7 +279,16 @@ export declare class DatabaseSignIns implements SignInStore {
     end(userId: number | string, id: string): Promise<boolean>;
     endAll(userId: number | string, except?: string): Promise<number>;
     endEveryone(): Promise<number>;
-    prune(window: SignInWindow): Promise<number>;
+    prune(window: SignInWindow, rememberMaxAgeDays?: number): Promise<number>;
+    issueToken(userId: number | string, id: string, token: {
+        until: Date;
+        fingerprint: string;
+    }): Promise<string>;
+    dropToken(userId: number | string, id: string): Promise<void>;
+    consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+    remembered(cookie: string): Promise<boolean>;
+    forgetToken(cookie: string): Promise<void>;
+    rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
 }
 // DeviceDescription
 export interface DeviceDescription {
@@ -814,7 +823,7 @@ export interface RememberTokenReusedPayload {
 // RememberTokenStore
 export interface RememberTokenStore {
     create(userId: number | string, expiresAt: Date, fingerprint: string): Promise<string>;
-    consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+    consume(cookie: string): Promise<Result<Omit<RememberedDevice, 'signIn'>, RememberTokenError>>;
     exists(cookie: string): Promise<boolean>;
     forget(cookie: string): Promise<void>;
     rebind?(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
@@ -826,6 +835,7 @@ export declare const RememberTokenStore: import("@marmeon/core").Token<RememberT
 // RememberedDevice
 export interface RememberedDevice {
     readonly userId: number | string;
+    readonly signIn: string;
     readonly cookie: string | undefined;
     readonly expiresAt: Date;
     readonly createdAt: Date;
@@ -889,7 +899,16 @@ export interface SignInStore {
     end(userId: number | string, id: string): Promise<boolean>;
     endAll(userId: number | string, except?: string): Promise<number>;
     endEveryone(): Promise<number>;
-    prune(window: SignInWindow): Promise<number>;
+    prune(window: SignInWindow, rememberMaxAgeDays?: number): Promise<number>;
+    issueToken(userId: number | string, id: string, token: {
+        until: Date;
+        fingerprint: string;
+    }): Promise<string>;
+    dropToken(userId: number | string, id: string): Promise<void>;
+    consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+    remembered(cookie: string): Promise<boolean>;
+    forgetToken(cookie: string): Promise<void>;
+    rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
 }
 export declare const SignInStore: import("@marmeon/core").Token<SignInStore>;
 // SignInWindow
@@ -1739,7 +1758,7 @@ export type RememberTokenError = {
 // RememberTokenStore
 export interface RememberTokenStore {
     create(userId: number | string, expiresAt: Date, fingerprint: string): Promise<string>;
-    consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+    consume(cookie: string): Promise<Result<Omit<RememberedDevice, 'signIn'>, RememberTokenError>>;
     exists(cookie: string): Promise<boolean>;
     forget(cookie: string): Promise<void>;
     rebind?(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
@@ -1751,6 +1770,7 @@ export declare const RememberTokenStore: import("@marmeon/core").Token<RememberT
 // RememberedDevice
 export interface RememberedDevice {
     readonly userId: number | string;
+    readonly signIn: string;
     readonly cookie: string | undefined;
     readonly expiresAt: Date;
     readonly createdAt: Date;
@@ -1811,7 +1831,16 @@ export interface SignInStore {
     end(userId: number | string, id: string): Promise<boolean>;
     endAll(userId: number | string, except?: string): Promise<number>;
     endEveryone(): Promise<number>;
-    prune(window: SignInWindow): Promise<number>;
+    prune(window: SignInWindow, rememberMaxAgeDays?: number): Promise<number>;
+    issueToken(userId: number | string, id: string, token: {
+        until: Date;
+        fingerprint: string;
+    }): Promise<string>;
+    dropToken(userId: number | string, id: string): Promise<void>;
+    consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+    remembered(cookie: string): Promise<boolean>;
+    forgetToken(cookie: string): Promise<void>;
+    rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
 }
 export declare const SignInStore: import("@marmeon/core").Token<SignInStore>;
 // SignInTracker
@@ -2351,7 +2380,7 @@ export type RememberTokenError = {
 // RememberTokenStore
 export interface RememberTokenStore {
     create(userId: number | string, expiresAt: Date, fingerprint: string): Promise<string>;
-    consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+    consume(cookie: string): Promise<Result<Omit<RememberedDevice, 'signIn'>, RememberTokenError>>;
     exists(cookie: string): Promise<boolean>;
     forget(cookie: string): Promise<void>;
     rebind?(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
@@ -2363,6 +2392,7 @@ export declare const RememberTokenStore: import("@marmeon/core").Token<RememberT
 // RememberedDevice
 export interface RememberedDevice {
     readonly userId: number | string;
+    readonly signIn: string;
     readonly cookie: string | undefined;
     readonly expiresAt: Date;
     readonly createdAt: Date;
@@ -2421,7 +2451,16 @@ export interface SignInStore {
     end(userId: number | string, id: string): Promise<boolean>;
     endAll(userId: number | string, except?: string): Promise<number>;
     endEveryone(): Promise<number>;
-    prune(window: SignInWindow): Promise<number>;
+    prune(window: SignInWindow, rememberMaxAgeDays?: number): Promise<number>;
+    issueToken(userId: number | string, id: string, token: {
+        until: Date;
+        fingerprint: string;
+    }): Promise<string>;
+    dropToken(userId: number | string, id: string): Promise<void>;
+    consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+    remembered(cookie: string): Promise<boolean>;
+    forgetToken(cookie: string): Promise<void>;
+    rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
 }
 export declare const SignInStore: import("@marmeon/core").Token<SignInStore>;
 // SignInTracker

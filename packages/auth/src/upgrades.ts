@@ -13,7 +13,10 @@ import { UserProvider } from './user.ts';
 /** The migration `make:upgrade-migrations` writes for apps whose API tokens still have the first release's form. */
 export const TOKENS_REISSUE_MIGRATION = new URL('../stubs/migrations/reissue_personal_access_tokens.ts', import.meta.url);
 
-/** The upgrade of the auth tables: the reissue of the API tokens, the one change of the starter kit's tables since its first release. */
+/** The migration `make:upgrade-migrations` writes for apps whose `sign_ins` table has no columns for the remember-me token. */
+export const SIGN_INS_REMEMBER_MIGRATION = new URL('../stubs/migrations/add_remember_columns_to_sign_ins.ts', import.meta.url);
+
+/** The upgrades of the auth tables: the reissue of the API tokens, and the remember-me columns of `sign_ins`. */
 export function authMigrationUpgrades() {
   return [
     {
@@ -22,6 +25,13 @@ export function authMigrationUpgrades() {
       name: 'reissue_personal_access_tokens',
       createdBy: ['create_personal_access_tokens_table'],
       contents: readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'),
+    },
+    {
+      set: 'sign-ins',
+      revision: 2,
+      name: 'add_remember_columns_to_sign_ins',
+      createdBy: ['create_sign_ins_table'],
+      contents: readFileSync(SIGN_INS_REMEMBER_MIGRATION, 'utf8'),
     },
   ];
 }
@@ -63,7 +73,7 @@ export async function requireAuthTables(container: Container): Promise<void> {
   if (container.make(AuthConfig).remember && bound(RememberTokenStore) instanceof DatabaseRememberTokens) need(REMEMBER_TABLE, REMEMBER_COLUMNS, ['validator_hash', 'previous_validator_hash'], 'auth');
   if (bound(PasswordResetTokenStore) instanceof DatabasePasswordResetTokens) need(PASSWORD_RESET_TABLE, PASSWORD_RESET_COLUMNS, ['token_hash'], 'auth');
   if (bound(AccessTokenStore) instanceof DatabaseAccessTokens) need(ACCESS_TOKEN_TABLE, ACCESS_TOKEN_COLUMNS, ['token_hash'], 'auth');
-  if (bound(SignInStore) instanceof DatabaseSignIns) need(SIGN_INS_TABLE, SIGN_INS_COLUMNS, [], 'sign-ins');
+  if (bound(SignInStore) instanceof DatabaseSignIns) need(SIGN_INS_TABLE, SIGN_INS_COLUMNS, ['remember_validator_hash', 'remember_previous_validator_hash'], 'sign-ins');
   // The authenticator app is a source of the state the app bound, alone or joined with the passkeys.
   const state = bound(TwoFactorState);
   if (state && factorSources(state).some((source) => source instanceof TwoFactorStore)) {
