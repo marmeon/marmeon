@@ -21,7 +21,7 @@ framework bring them.
 | Part | What it is |
 | --- | --- |
 | `index.ts` | The module's definition: its provider, the listeners that send the confirmation mail and the notes about the second factor and about passkeys, the queued jobs, the migrations, the seeder, the routes, the schedule and the commands `auth:end-sessions`, `auth:prune-unverified` and `auth:reset-two-factor`. |
-| `AuthServiceProvider.ts` | Finds users through the `UserRepository`, binds the authenticator app and passkeys as the sources of second factors, shares `auth` with every page, and sets the rate limits of its forms. |
+| `AuthServiceProvider.ts` | Finds users through the `UserRepository`, binds the authenticator app and passkeys as the sources of second factors, and shares `auth` with every page. The rate limits of its forms are those of `@marmeon/auth` ([the limits of the auth routes](authentication.md#the-limits-of-the-auth-routes)). |
 | `users.ts`, `UserRepository.ts` | The `User` type and the only code that reads a password hash or a session key. It is the app's `UserProvider`: the statements that write a hash or a session key are `credentialWriter()` of `@marmeon/auth`, so a fix to them reaches you with a package update. The `session_key` column lets `auth.updateSessionKey()` end an account's other sessions with every session driver. |
 | `routes.ts`, `api-routes.ts` | The pages and forms, and `GET /api/user` for API tokens. |
 | `controllers/` | 46 controllers, one per endpoint. A form's controller validates it with a request schema. |

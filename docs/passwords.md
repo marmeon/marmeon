@@ -96,7 +96,7 @@ default. So one address gets at most one mail a minute, however often someone as
   server retries the mail with this token instead of asking the broker for a second one.
 - **The link comes from `APP_URL`,** never from a request's `Host` header, so nobody can make the mail point to another site.
 
-The starter kit also limits the form to five requests a minute per client with `throttle('password-reset')`.
+The starter kit also limits the form to five requests a minute per client with `throttle('auth.password-reset-link')`, and the form that sets the new password to ten with `throttle('auth.password-reset')`.
 
 ## The link
 

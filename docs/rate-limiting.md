@@ -9,31 +9,34 @@ so every new app has them.
 
 You define a named limiter once, in a service provider's `boot()`, and put it on routes with `throttle()`:
 
-```ts title="modules/auth/AuthServiceProvider.ts"
+```ts title="modules/newsletter/NewsletterServiceProvider.ts"
 import { clientKey, Limit, RateLimiter } from '@marmeon/cache';
 import type { Application, ServiceProvider } from '@marmeon/core';
 
-export class AuthServiceProvider implements ServiceProvider {
+export class NewsletterServiceProvider implements ServiceProvider {
   boot(app: Application): void {
     const limiter = app.container.make(RateLimiter);
-    limiter.for('register', (ctx) => Limit.perMinute(10).by(clientKey(ctx.ip)));
-    limiter.for('password-reset', (ctx) => Limit.perMinute(5).by(clientKey(ctx.ip)));
+    limiter.for('newsletter.subscribe', (ctx) => Limit.perMinute(10).by(clientKey(ctx.ip)));
   }
 }
 ```
 
-```ts title="modules/auth/routes.ts"
+```ts title="modules/newsletter/routes.ts"
 import { throttle } from '@marmeon/cache';
 import { defineRoutes, everyone } from '@marmeon/http';
-import { RegisterController } from './controllers/RegisterController.ts';
+import { SubscribeController } from './controllers/SubscribeController.ts';
 
 export default defineRoutes((Route) => {
-  Route.middleware(throttle('register')).authorize(everyone).post('/register', RegisterController).name('auth.register.store');
+  Route.middleware(throttle('newsletter.subscribe')).authorize(everyone).post('/newsletter', SubscribeController).name('newsletter.subscribe');
 });
 ```
 
-The eleventh registration from one client within a minute gets a `429 Too Many Requests` instead of an account. The starter
-kit limits registrations, reset links, a new confirmation mail and the change of an address this way.
+The eleventh subscription from one client within a minute gets a `429 Too Many Requests` instead of a mail. The starter kit's auth module
+does the same for its routes, with limiters that `@marmeon/auth` defines.
+
+A package can define limiters of its own: `@marmeon/auth` defines the `auth.*` ones for the starter kit's routes
+([the limits of the auth routes](authentication.md#the-limits-of-the-auth-routes)). It defines a name only while it is free, so your
+`limiter.for('auth.login', …)` replaces the default, whether your provider boots before or after the package. Replacing `auth.login` removes the protection against one client trying many addresses; keep a limit per client in it.
 
 ## Defining limiters
 
@@ -104,7 +107,7 @@ import { ResendVerificationController } from './controllers/ResendVerificationCo
 
 export default defineRoutes((Route) => {
   const signedIn = Route.middleware(authenticate()).authorize(everyone);
-  signedIn.middleware(throttle('verification')).post('/email/verification-notification', ResendVerificationController);
+  signedIn.middleware(throttle('auth.verification')).post('/email/verification-notification', ResendVerificationController);
 });
 ```
 
