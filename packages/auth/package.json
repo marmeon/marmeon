@@ -116,9 +116,6 @@
   "peerDependenciesMeta": {
     "marmeon": {
       "optional": true
-    },
-    "@marmeon/cache": {
-      "optional": true
     }
   }
 }

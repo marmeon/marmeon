@@ -2,6 +2,7 @@ import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } fro
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { ConsoleLogger, createApplication, HealthChecks, Logger, SystemClock, type Application, type Container, type ModuleDefinition, type Logger as LoggerType } from '@marmeon/core';
+import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, MakeUpgradeMigrationsCommand, Migrator, sql, type ConnectionOptions, type Migration } from '@marmeon/database';
 import { runMigration, SchemaRequirements } from '@marmeon/database/internal';
 import { AesGcmEncrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
@@ -305,8 +306,8 @@ describe.each(kinds)('the secret columns across the reissue, on %s', (kind) => {
 });
 
 describe('a database that lacks the auth tables', () => {
-  const env = { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', NODE_ENV: 'test', APP_KEY: generateKey(), SESSION_DRIVER: 'memory', LOG_LEVEL: 'silent' };
-  const providers = [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider];
+  const env = { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', NODE_ENV: 'test', APP_KEY: generateKey(), SESSION_DRIVER: 'memory', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory' };
+  const providers = [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider];
   const open = (more: Record<string, string> = {}, wire: (container: Container) => void = () => {}, extra: (typeof AuthServiceProvider | typeof PasskeyServiceProvider)[] = [], modules: ModuleDefinition[] = []) =>
     createApplication(
       { root: '/tmp', discover: false, providers: [...providers, ...extra], modules },

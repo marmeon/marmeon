@@ -382,7 +382,7 @@ account's id and session key under a key derived from `APP_KEY`, never the key i
 fingerprint. A reset, a new password, a new session key or an ending of the account's sessions therefore refuses every token made
 before it, even one a sign-in wrote a moment after the account changed. A refused token is deleted and the request is a guest, like
 an invalid one. A token without a fingerprint is refused. The device that stays signed in when
-`updateSessionKey()` or `logoutOtherDevices()` changes the account keeps its token. A rehash during `attempt()` (new `HASH_*` costs,
+`updateSessionKey()` changes the account keeps its token. A rehash during `attempt()` (new `HASH_*` costs,
 say) changes the password hash and nothing the fingerprint is made of: no session and no remember-me cookie of the user's other
 devices ends by it. A token made before the fingerprint left out the hash is refused once, like a token without a fingerprint.
 
@@ -405,7 +405,7 @@ devices ends by it. A token made before the fingerprint left out the hash is ref
 The token is part of the sign-in store: to keep it somewhere else than the `sign_ins` table, bind your own [`SignInStore`](#your-own-stores), which
 holds both. `issueToken(userId, id, { until, fingerprint })` hangs a token on a sign-in and returns the cookie value; it must
 persist the fingerprint and hand it back from `consume()` (kept over every rotation), and a store that drops it makes every cookie useless.
-`rebind(userId, cookie, fingerprint)` replaces it for the device that stays signed in; it checks the validator of the cookie like `consume()` does (the current one, or the previous one inside the grace window) and answers a `Result`: `err({ kind: 'stolen', userId, reused })` for a stale validator, after deleting the user's sign-ins, and `invalid` for an unknown row. `logoutOtherDevices()` and `updateSessionKey()` then end every session of the account, as at a copied cookie, and keep no token. `consume()` returns the device: `userId`, the `signIn` the token hangs on, the rotated `cookie`, `expiresAt`, `createdAt` and the `fingerprint`. `createdAt` is when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it. `createdAt` also sets the `AUTH_REMEMBER_DAYS` bound, and a missing or invalid one refuses every remember-me sign-in. `prune(window, rememberMaxAgeDays)` must take the token off the sign-ins whose token expired or was made that many days ago or earlier (every token with `0`) and delete the rows the list does not show. When an old validator comes back, `consume()` returns `err({ kind: 'stolen', userId, reused })` and must have deleted the user's sign-ins; deleting them and deciding which request reports are one atomic step (one `DELETE … RETURNING`, say), so that a failed statement deletes nothing and the next replay reports the theft again. The window that remains is a process that dies, or an `AccountSessions.end()` that fails (it is logged), between the deletion and ending the sessions: the sign-ins are gone, the sessions of the thief are not, until they expire. `reused: true` means the presented validator was the one just replaced by a rotation; it is information only. An older validator, or one that was never issued, presented with a known selector is a copy as well (the selector is random), and every `stolen` dispatches `RememberTokenReused`. Of parallel requests that present the old validator, only the one that removed the token reports `stolen`; the others get `invalid`. `remembered(cookie)` says whether the sign-in of a cookie still holds its token and must see an `end()` at once (no cache, no lagging replica): a sign-in by a remember-me cookie asks it right before it starts. `forgetToken(cookie)` ends the sign-in of a cookie, token and row.
+`rebind(userId, cookie, fingerprint)` replaces it for the device that stays signed in; it checks the validator of the cookie like `consume()` does (the current one, or the previous one inside the grace window) and answers a `Result`: `err({ kind: 'stolen', userId, reused })` for a stale validator, after deleting the user's sign-ins, and `invalid` for an unknown row. `updateSessionKey()` then end every session of the account, as at a copied cookie, and keep no token. `consume()` returns the device: `userId`, the `signIn` the token hangs on, the rotated `cookie`, `expiresAt`, `createdAt` and the `fingerprint`. `createdAt` is when the token was made, kept over every rotation. A token made before the account's [second factor](two-factor-authentication.md#setting-up) was confirmed is refused by it. `createdAt` also sets the `AUTH_REMEMBER_DAYS` bound, and a missing or invalid one refuses every remember-me sign-in. `prune(window, rememberMaxAgeDays)` must take the token off the sign-ins whose token expired or was made that many days ago or earlier (every token with `0`) and delete the rows the list does not show. When an old validator comes back, `consume()` returns `err({ kind: 'stolen', userId, reused })` and must have deleted the user's sign-ins; deleting them and deciding which request reports are one atomic step (one `DELETE … RETURNING`, say), so that a failed statement deletes nothing and the next replay reports the theft again. The window that remains is a process that dies, or an `AccountSessions.end()` that fails (it is logged), between the deletion and ending the sessions: the sign-ins are gone, the sessions of the thief are not, until they expire. `reused: true` means the presented validator was the one just replaced by a rotation; it is information only. An older validator, or one that was never issued, presented with a known selector is a copy as well (the selector is random), and every `stolen` dispatches `RememberTokenReused`. Of parallel requests that present the old validator, only the one that removed the token reports `stolen`; the others get `invalid`. `remembered(cookie)` says whether the sign-in of a cookie still holds its token and must see an `end()` at once (no cache, no lagging replica): a sign-in by a remember-me cookie asks it right before it starts. `forgetToken(cookie)` ends the sign-in of a cookie, token and row.
 
 ## Sudo mode
 
@@ -440,8 +440,9 @@ Everyone else goes to `auth.password.confirm`, and after the confirmation back t
 `423 {"message":"Password confirmation required."}`. `confirmedPassword({ confirmRoute, seconds })` names another page or another
 time.
 
-The confirmation page posts the password to `auth.confirmPassword(password)`, which checks it and notes the time. For a user
-without a password it takes as long and returns `false`. A user with a passkey can confirm with it instead:
+The confirmation page posts the password to `auth.checkPassword(password)`, which checks it and notes the time. It answers a
+`Result`: `ok`, or `invalid-password`, or `throttled` ([below](#how-password-checks-are-counted)). For a user without a password it takes as long and answers
+`invalid-password`. A user with a passkey can confirm with it instead:
 [`passkeys.confirm()`](passkeys.md#confirming-sudo-mode) notes the time the same way, and a [passwordless sign-in](passkeys.md#passwordless-sign-in)
 counts as a fresh confirmation, since the passkey was proven just now. `attempt()` notes the time as well (for an account with a
 second factor, dated when the password was typed, not when the factor was proven); `login()` does not, since nobody proved anything, and it forgets a
@@ -451,7 +452,7 @@ second factor afterwards does not change that. A confirmation counts only inside
 A confirmation is enough to reach a page, but not for every action. What lets whoever holds the session stay in the account after the
 owner has recovered it asks for the **current password in the same form**, whatever confirmed sudo mode, such as: changing the e-mail
 address, creating an API token, registering, releasing or removing a passkey, turning two-factor authentication on or off
-(`TwoFactor.confirm(code, password)`, `disable(password)`; `confirm()` checks the password before the code, so only whoever knows it spends the code budget), making new recovery codes (`regenerateRecoveryCodes(password)`) and changing the password. A passkey alone can confirm sudo mode, so without that second question a hijacked session could add a way in that
+(`TwoFactor.confirm(code, password)`, `disable(password)`, which answers a `Result` like `checkPassword()`; `confirm()` checks the password before the code, so only whoever knows it spends the code budget), making new recovery codes (`regenerateRecoveryCodes(password)`) and changing the password. A passkey alone can confirm sudo mode, so without that second question a hijacked session could add a way in that
 survives the owner's recovery.
 
 Every `confirmedPassword()` route is reachable with a passkey alone, the reading ones too (a data export) and those that end or rename something else (ending another sign-in, renaming a passkey). Whatever creates a way into the account asks for the password in its form, as above; add that question to your own routes of the same kind.
@@ -461,12 +462,19 @@ A confirmation or a proven second factor dated up to a minute ahead of this serv
 An account with neither a password nor a passkey, such as one created by a sign-in link or by an OAuth provider your app wrote, has
 no way to confirm sudo mode yet: `confirmedPassword()` never lets it through.
 
-The password checks are counted for each sign-in (five a minute and twenty an hour, a right password clears the minute) and, for a sign-in that did not begin
-with a typed password, also for the account (twenty an hour across all such sign-ins). The starter kit does so for the confirmation, the password change, "sign out other
-devices", turning two-factor authentication off, the e-mail change and a new API token; `Passkeys` and `regenerateRecoveryCodes()` do it themselves. A stolen session must not become a way to guess the password, and a passkey-only session
-that uses up the account's count must not lock out the owner, who typed the password to sign in: the account's count never applies to a sign-in made by `attempt()`.
-When the account's count is what holds a check up, `takePasswordCheck()` answers `throttled` with `account: true`, and the starter kit then says "Sign in again with your password to continue" instead of a wait. `auth.passwordCheckScope()` says whose checks these are (the sign-in's own random key, which a new session id within the sign-in keeps, and whether it began with a typed
-password); `takePasswordCheck(limiter, scope, userId)` counts one and returns the seconds to wait, and `clearPasswordCheck()` clears the minute after a right password.
+### How password checks are counted
+
+`checkPassword()` counts every check of a signed-in user's password, before it is made, and a held-up check is answered without hashing the password. The checks are counted for each sign-in (five a minute and twenty an hour, a right password clears the minute) and, for a sign-in that did not begin
+with a typed password, also for the account (twenty an hour across all such sign-ins). The starter kit's confirmation, password change, "sign out other
+devices", e-mail change and new API token call it, and `TwoFactor` and `Passkeys` call it for their own password checks. A stolen session must not become a way to guess the password, and a passkey-only session
+that uses up the account's count must not lock out the owner, who typed the password to sign in: the account's hourly count never applies to a sign-in made by `attempt()`.
+On top of both, one generous cap holds for every sign-in of the account, typed or not: 100 checks a day. Stolen sessions cannot add up their own limits past it, whatever `AUTH_SESSION_MAX_HOURS` allows. It too answers `throttled` with `account: true`.
+When the account's count is what holds a check up, `checkPassword()` answers `throttled` with `account: true`, and the starter kit then says "Sign in again with your password to continue" instead of a wait. An empty password is `invalid-password` and counts nothing, since there is nothing to guess.
+
+No method of `Auth` checks a password without counting. `checkPassword()` answers a `Result`, which is an object even for a wrong password: test `.ok`, never its truthiness. `auth.passwordCheckScope()` says whose checks these are (the sign-in's own random key, which a new session id within the sign-in keeps, and whether it began with a typed
+password); for a secret of your own that a signed-in user types, `takePasswordCheck(limiter, scope, userId)` counts one and returns the seconds to wait, and `clearPasswordCheck()` clears the minute after a right one.
+
+The counts live in the app's `RateLimiter`, so signing in needs `@marmeon/cache` with its provider registered. An app that has a `UserProvider` and no limiter stops at boot with error A7.
 
 ## Changing the password
 
@@ -476,16 +484,15 @@ next request, every other sign-in of the user is deleted and this device's remem
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token of the user is revoked as well, in the same transaction as the new
 hash, and the log says how many.
 
-`updatePassword()` does not check the current password. The controller does that first, as the starter kit's does, through the
-throttle of its password checks:
+`updatePassword()` does not check the current password. The controller does that first, as the starter kit's does, with
+`checkPassword()`:
 
 ```ts title="modules/auth/controllers/UpdatePasswordController.ts"
 import { Auth, password, type Authenticated } from '@marmeon/auth';
-import { RateLimiter } from '@marmeon/cache';
-import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
-import { throttlePasswordChecks } from '../throttle.ts';
+import { passwordCheckMessage } from '../password-errors.ts';
 
 export const UpdatePasswordRequest = defineRequest({
   schema: r.object({ current_password: r.string().required().max(4096), password: password(), password_confirmation: r.string() }).confirmed('password'),
@@ -495,33 +502,38 @@ export class UpdatePasswordController extends Controller {
   static request = UpdatePasswordRequest;
 
   readonly #auth: Auth;
-  readonly #limiter: RateLimiter;
   readonly #translator: Translator;
 
-  constructor(auth: Auth, limiter: RateLimiter, translator: Translator) {
+  constructor(auth: Auth, translator: Translator) {
     super();
     this.#auth = auth;
-    this.#limiter = limiter;
     this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof UpdatePasswordRequest> & Authenticated) {
-    await throttlePasswordChecks(this.#limiter, this.#translator, this.#auth, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
+    const checked = await this.#auth.checkPassword(ctx.body.current_password);
+    if (!checked.ok) throw new ValidationError({ current_password: [passwordCheckMessage(this.#translator, checked.error)] });
     await this.#auth.updatePassword(ctx.body.password);
     return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.password_changed') });
   }
 }
 ```
 
-`throttlePasswordChecks()` in `modules/auth/throttle.ts` counts the try before the check, per sign-in and per account as above, and
-throws a field error for a wrong password. Never check a signed-in user's password without such a limit. The handler's
+`passwordCheckMessage()` in `modules/auth/password-errors.ts` turns the error into the text of the field: the wrong password, the wait, or the
+request to sign in again. The handler's
 `& Authenticated` types the context: `ctx.user` is there because the route sits behind `authenticate()`. The
 [hashing](hashing.md#the-password-rule) page explains the `password()` rule.
 
-`logoutOtherDevices(password)` signs out every other device without changing the password, or its hash. It checks the password,
-returns `false` when it is wrong or when the account's sessions ended meanwhile (a reset landed during the request: nothing is
-written), and otherwise stores a new session key, like [`updateSessionKey()`](#signing-out-other-devices-without-a-password). The other
-sessions end at their next request, and the remember-me tokens of the other devices are deleted.
+To sign out every other device with the password, without changing the password or its hash, check it and then call
+[`updateSessionKey()`](#signing-out-other-devices-without-a-password), as the starter kit's controller does:
+
+```ts
+const checked = await this.#auth.checkPassword(ctx.body.password);
+if (!checked.ok) throw new ValidationError({ password: [passwordCheckMessage(this.#translator, checked.error)] });
+await this.#auth.updateSessionKey();
+```
+
+The other sessions end at their next request, and the remember-me tokens of the other devices are deleted.
 
 The starter kit runs both routes with `.block()`: one such request per session at a time. Two at once could leave the session
 with the fingerprint of the other request's key, and sign it out. The [session](session.md#requests-that-must-not-overlap) page
@@ -597,7 +609,7 @@ The write is a compare-and-set because a request can run while the sessions of t
 (`AccountSessions.end()`, or another device calling this). Such a request must not bind its session to the key it did not check.
 `updateSessionKey()` returns `true` when it replaced the key, and `false` when another request had replaced it first: this session
 was ended meanwhile and is signed out now. `AccountSessions.end()` passes `undefined` as `expected`: it writes regardless of the stored key, so
-no request can keep it from ending the sessions. Use `undefined` for nothing else. The same holds for `updatePassword()` and `logoutOtherDevices()`: they anchor the
+no request can keep it from ending the sessions. Use `undefined` for nothing else. The same holds for `updatePassword()`: it anchors the
 session to what the request verified, so a session that was ended meanwhile ends at its next request.
 
 ```ts title="modules/auth/controllers/SignOutOtherDevicesController.ts"
@@ -619,8 +631,8 @@ export class SignOutOtherDevicesController extends Controller {
 }
 ```
 
-Run such a route with `.block()` as well. `logoutOtherDevices(password)` stays the way for an account with a password: it checks
-the password first. An account whose key is still `null` has the id alone in its fingerprint until a new password or a sign-out of the other
+Run such a route with `.block()` as well. For an account with a password, ask for it first with `checkPassword()`, as
+[above](#changing-the-password). An account whose key is still `null` has the id alone in its fingerprint until a new password or a sign-out of the other
 devices writes a key.
 
 ### API tokens
@@ -734,7 +746,7 @@ of an account, such as a "delete my account" page: `accounts.delete([user.id])`.
 `UserSessions.canEnd()` tells whether the store is one of these. `UserSessions.end(id)` returns how many sessions it ended. Only the `database` driver can find a user's sessions, by the `user_id` column of its
 table, and removes them. The other drivers cannot tell whose a session is, so `end()` returns `0` there: for a deleted account
 that does no harm, since its sessions end at their next request. For a user who still exists, a new fingerprint ends the other
-sessions with every driver: a new password, `logoutOtherDevices(password)` or `updateSessionKey()`. `UserSessions.end(id)` ends every session of a user at once, the current one included, and only with the `database` driver.
+sessions with every driver: a new password or `updateSessionKey()`. `UserSessions.end(id)` ends every session of a user at once, the current one included, and only with the `database` driver.
 
 ## Ending every session of every account
 
@@ -896,7 +908,7 @@ The rows of the other devices are deleted wherever the other devices are signed 
 been signed out already:
 
 - `logout()` ends the row of this browser, and a sign-in over another sign-in ends the row it replaces.
-- A new password with `updatePassword()`, `logoutOtherDevices()` and `updateSessionKey()` end the rows of every other device, tokens with them, and keep the
+- A new password with `updatePassword()` and `updateSessionKey()` end the rows of every other device, tokens with them, and keep the
   current one (a new password takes its token off, since the user typed the password again). The rows go before the new key or hash is stored, in the same transaction for a password: if a store
   cannot end them, nothing is changed and the call throws, because a token that survives would sign the other device in again.
 - A password reset ends every row of the user, since it has no session of its own to keep.

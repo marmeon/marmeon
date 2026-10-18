@@ -9,7 +9,7 @@ import { claimRefused } from '../account-sessions.ts';
 import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, DROP_REMEMBER_TOKEN, READ_PENDING, SIGN_IN_VERIFIED } from '../auth.ts';
 import { AuthConfig, rememberCookieName } from '../config.ts';
 import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
-import { clearPasswordCheck, takePasswordCheck, type PasswordThrottled } from '../password-throttle.ts';
+import type { PasswordThrottled } from '../password-throttle.ts';
 import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from '../two-factor/proof.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
 import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict } from '../two-factor/state.ts';
@@ -181,7 +181,7 @@ export class Passkeys implements SecondFactorPasskeys {
   /**
    * Adds the passkey the browser made. Needs a signed-in user with a recent confirmation (`confirmedPassword()`: a password or a passkey), and the password again in the same form —
    * for every passkey, not only the first: a passkey outlives a password change, so a stolen session in the sudo window must not be able to add one.
-   * The password check is throttled per account (five a minute, twenty an hour). When it is the account's first factor, the other
+   * The password check is throttled per sign-in (five a minute, twenty an hour), and per account where the sign-in did not begin with a typed password; see `Auth.checkPassword()`. When it is the account's first factor, the other
    * devices are signed out — sessions and remember-me tokens, a second time after the insert, as `TwoFactor.confirm()` does — and the
    * account gets recovery codes, shown now and never again. `recoveryCodes` is `null` for a later passkey.
    *
@@ -204,7 +204,7 @@ export class Passkeys implements SecondFactorPasskeys {
     const first = (await this.#state.factors(id)).length === 0;
     // The first factor is turned on with the account's password (checked below), and signs the other devices out with a new session key.
     if (first && ((await this.#users.findById(id as never))?.passwordHash ?? null) === null) throw new Error('passkeys.register() needs an account with a password for its first factor: the password is checked before it is turned on.');
-    const checked = await this.#checkPassword(id, password);
+    const checked = await this.#auth.checkPassword(password ?? '');
     if (!checked.ok) return err(checked.error);
 
     const verified = await verifyRegistration(response, { ...this.#config.relyingParty(), challenge: taken.value.challenge }, this.#logger);
@@ -398,7 +398,7 @@ export class Passkeys implements SecondFactorPasskeys {
    * form, for every passkey: a passkey alone can confirm sudo mode, and taking the other passkeys away is how a holder of one session
    * would lock the owner out. When it is the account's last factor — no other passkey, no authenticator app — the recovery codes go
    * with it, as with `TwoFactor.disable()`. The store decides inside its transaction, so parallel removals cannot both pass. The
-   * password is checked under the per-account throttle of `register()` (five a minute, twenty an hour).
+   * password is checked under the throttle of `Auth.checkPassword()` (five a minute, twenty an hour).
    */
   async remove(id: number, password?: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | PasswordThrottled>> {
     const user = await this.#requireRecentPassword('remove');
@@ -406,7 +406,7 @@ export class Passkeys implements SecondFactorPasskeys {
     await this.#requireRecentSecondFactor('remove', userId);
     // Without a password (an empty form field is none) nothing is counted: there is nothing to guess.
     if (password === undefined || password === '') return err({ kind: 'invalid-password' });
-    const checked = await this.#checkPassword(userId, password);
+    const checked = await this.#auth.checkPassword(password ?? '');
     if (!checked.ok) return err(checked.error);
     // Typed now, so the last factor may go too — and a suspended passkey (a possible clone) goes only this way.
     const removed = await this.#store.remove(userId, id, { lastFactorAllowed: true });
@@ -417,7 +417,7 @@ export class Passkeys implements SecondFactorPasskeys {
   }
 
   /**
-   * Lets a suspended passkey sign in again — the password typed now, under the throttle of `register()`. `not-found` when the account has
+   * Lets a suspended passkey sign in again — the password typed now, under the throttle of `Auth.checkPassword()`. `not-found` when the account has
    * no suspended passkey with this id. Suspending is the answer to a sign count that went backwards (a possible clone): the owner decides.
    */
   async release(id: number, password: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | PasswordThrottled>> {
@@ -425,19 +425,9 @@ export class Passkeys implements SecondFactorPasskeys {
     const userId = idOf(user);
     await this.#requireRecentSecondFactor('release', userId);
     if (!(await this.#store.forUser(userId)).some((passkey) => passkey.id === id && passkey.suspendedAt !== null)) return err({ kind: 'not-found' });
-    const checked = await this.#checkPassword(userId, password);
+    const checked = await this.#auth.checkPassword(password ?? '');
     if (!checked.ok) return err(checked.error);
     return (await this.#store.release(userId, id)) ? ok() : err({ kind: 'not-found' });
-  }
-
-  /** The password of the signed-in user, typed now: counted before it is checked (see `takePasswordCheck()`), the sign-in's minute cleared by a success. */
-  async #checkPassword(userId: AuthUserId, password: string | undefined): Promise<Result<void, { readonly kind: 'invalid-password' } | PasswordThrottled>> {
-    const scope = this.#auth.passwordCheckScope();
-    const wait = await takePasswordCheck(this.#limiter, scope, userId);
-    if (wait !== undefined) return err(wait);
-    if (password === undefined || !(await this.#auth.confirmPassword(password))) return err({ kind: 'invalid-password' });
-    await clearPasswordCheck(this.#limiter, scope);
-    return ok();
   }
 
   // -- Checking a response ---------------------------------------------------------------------------------------------------

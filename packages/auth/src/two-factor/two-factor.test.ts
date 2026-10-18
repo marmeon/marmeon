@@ -129,12 +129,16 @@ class TwoFactorController extends Controller {
         case 'regenerate':
           return await this.#twoFactor.regenerateRecoveryCodes(body.password ?? 'secret').then((done) => (done.ok ? { codes: done.value } : { codes: null, ...done.error }));
         case 'disable':
-          return { disabled: await this.#twoFactor.disable(body.password) };
+          return { disabled: (await this.#twoFactor.disable(body.password)).ok };
+        case 'disable-result': {
+          const disabled = await this.#twoFactor.disable(body.password);
+          return disabled.ok ? { error: null } : { error: disabled.error };
+        }
         case 'recent-proof':
           await this.#twoFactor.requireRecentProof('changeEmail');
           return { ok: true };
         case 'confirm-password':
-          return { confirmed: await this.#auth.confirmPassword(body.password) };
+          return { confirmed: (await this.#auth.checkPassword(body.password)).ok };
         case 'who':
           return { id: (await this.#auth.user())?.id ?? null };
         default:
@@ -1090,7 +1094,15 @@ describe('TwoFactor: turning off', () => {
     expect(await booted.browser().login()).toEqual({ signedIn: true });
   });
 
-  it('with the right password it removes an unfinished setup and answers true', async () => {
+  it('counts the password like every check: a held-up disable keeps the factor, also for the right password', async () => {
+    const booted = await boot();
+    const { b } = await enable(booted);
+    for (let i = 0; i < 5; i++) expect(await b.tf('disable-result', { password: 'wrong' })).toEqual({ error: { kind: 'invalid-password' } });
+    expect(await b.tf('disable-result', { password: 'secret' })).toMatchObject({ error: { kind: 'throttled' } });
+    expect(await b.tf('status')).toMatchObject({ factors: ['totp'] });
+  });
+
+  it('with the right password it removes an unfinished setup and answers ok', async () => {
     const booted = await boot();
     const b = booted.browser();
     await b.login();

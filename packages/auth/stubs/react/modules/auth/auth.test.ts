@@ -331,6 +331,23 @@ describe('password checks of a signed-in user', () => {
     }
     await session.post('/confirm-password', { form: { password: 'password' } }).assertInvalid({ password: /^Too many attempts/ });
   });
+
+  // Each form checks the password through `auth.checkPassword()`: the sixth try of a minute shows the wait, whatever the password.
+  const forms = [
+    { name: 'confirming sudo mode', field: 'password', send: (s: ReturnType<typeof continuing>, password: string) => s.post('/confirm-password', { form: { password } }) },
+    { name: 'a new password', field: 'current_password', send: (s: ReturnType<typeof continuing>, password: string) => s.put('/settings/password', { form: { current_password: password, password: 'a new password', password_confirmation: 'a new password' } }) },
+    { name: 'a new API token', field: 'current_password', send: (s: ReturnType<typeof continuing>, password: string) => s.post('/settings/tokens', { json: { current_password: password, name: 'CLI', abilities: ['users:read'] } }) },
+    { name: 'turning the authenticator off', field: 'password', send: (s: ReturnType<typeof continuing>, password: string) => s.post('/settings/two-factor/disable', { form: { password } }) },
+    { name: 'signing out the other devices', field: 'password', send: (s: ReturnType<typeof continuing>, password: string) => s.post('/settings/devices/logout', { form: { password } }) },
+  ];
+  for (const { name, field, send } of forms) {
+    it(`holds up the sixth wrong try of ${name}`, async () => {
+      const ada = await app.factory(UserFactory).create();
+      const session = continuing(await app.post('/login', credentials(ada)));
+      for (let attempt = 0; attempt < 5; attempt++) await send(session, 'wrong').assertInvalid({ [field]: /^The password is incorrect/ });
+      await send(session, 'password').assertInvalid({ [field]: /^Too many attempts/ });
+    });
+  }
 });
 
 describe('API tokens', { timeout: 30_000 }, () => {

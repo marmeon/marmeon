@@ -1,5 +1,6 @@
 import { Clock, createApplication, defineModule, type Container } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
+import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider } from '@marmeon/http';
@@ -50,7 +51,7 @@ class ConfirmController extends Controller {
     this.#auth = auth;
   }
   async handle() {
-    return { confirmed: await this.#auth.confirmPassword('secret') };
+    return { confirmed: (await this.#auth.checkPassword('secret')).ok };
   }
 }
 
@@ -126,10 +127,10 @@ async function boot(env: Record<string, string> = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'auth-clock-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
   }, {
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', ...env },
+    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', ...env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(Clock, clock);

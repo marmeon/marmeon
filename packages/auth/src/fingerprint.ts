@@ -5,7 +5,7 @@ import { idOf, type Credentials } from './user.ts';
 /**
  * What a session (and a remember-me token) remembers of the account: an HMAC-SHA256 of its id and its session key, under a key that
  * `APP_KEY` derives (HKDF, context `auth-session`). Whoever reads the database or a leaked store cannot make one: the account's id and
- * key are not enough. A new session key — which every new password, reset, `logoutOtherDevices()`, `updateSessionKey()` and
+ * key are not enough. A new session key — which every new password, reset, `updateSessionKey()` and
  * `AccountSessions` store — changes it, so every other session ends. The password hash is not part of it, so a rehash at sign-in ends
  * nothing. A fingerprint made under a key of `APP_PREVIOUS_KEYS` is still accepted.
  */

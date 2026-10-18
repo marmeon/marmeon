@@ -202,8 +202,8 @@ address and for a wrong, used or expired token. `createToken()` answers `unavail
 whose last link went out moments ago. Do not add kinds of your own that tell these apart.
 
 Two calls are not `Result`s because nothing failed: a unique job that is already queued or running makes `dispatch()` return `undefined`, and
-`job.once()` returns `false` when the work already ran. Yes-or-no questions, such as `lock.get()` without a callback,
-`auth.check()` and `auth.confirmPassword()`, stay `boolean`.
+`job.once()` returns `false` when the work already ran. Yes-or-no questions, such as `lock.get()` without a callback
+and `auth.check()`, stay `boolean`.
 
 ## Reporting
 
@@ -389,6 +389,7 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | A4 | `encryption` | A payload did not decrypt: changed, from another key or for another context. [Encrypting and decrypting](encryption.md#encrypting-and-decrypting) |
 | A5 | `auth` | A `UserProvider` breaks its contract: `updatePasswordHash()` or `updateSessionKey()` does not answer with a boolean (or `updatePasswordHash()` answers `false` without `expected`), `updateSessionKey()` / `updateEverySessionKey()` is missing (JavaScript, a cast), `updateSessionKey(id, k, k)` is refused for the stored key, a new key is not handed back by `findById()` (also the one a new password passes to `updatePasswordHash()` as `sessionKey`), `findForLogin()` and `findById()` disagree on `sessionKey`, or `updateEverySessionKey()` returns no count or no `sampleId`. [The user type](authentication.md#the-user-type-and-where-users-come-from), [for your own user provider](authentication.md#for-your-own-user-provider) |
 | A6 | `auth` | A store or hasher breaks its contract (JavaScript, a cast; TypeScript refuses to compile most of it): a `PasswordResetTokenStore` without `forgetEveryone()`, an `AccessTokenStore` without `revokeEveryone()`, a `SignInStore` without `endAll()`, `dropToken()` or `endEveryone()` (found before anything is ended), a source of `TwoFactorState` without `factors()`, `enabledSince()` or `removeAll()` (found when `combineFactors()` is called and before a reset token is spent), or a `Hasher` without `failureFloorMs()` or with one that answers anything but a finite number of milliseconds, 0 or more. [What your app implements](authentication.md#what-your-app-implements), [hashing](hashing.md#making-and-checking-hashes) |
+| A7 | `auth` | Signing in needs a rate limiter and none is bound: the provider of `@marmeon/cache` is not registered, while a `UserProvider` is bound. [How password checks are counted](authentication.md#how-password-checks-are-counted) |
 | Q1 | `queue` | A job record has no version (it was queued by an earlier release) and is moved to the failed jobs. [Deploying while jobs wait](queues.md#deploying-while-jobs-wait) |
 | Q2 | `queue` | A job no worker could read within six hours is moved to the failed jobs. [Deploying while jobs wait](queues.md#deploying-while-jobs-wait) |
 | Q3 | `queue` | A queued listener has no `static listener`, the stable name its jobs carry. [Queued listeners](events.md#queued-listeners) |

@@ -77,7 +77,7 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter);
     attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
     login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
@@ -101,7 +101,7 @@ export declare class Auth {
     check(): Promise<boolean>;
     id(): Promise<AuthUserId | undefined>;
     viaRemember(): boolean;
-    confirmPassword(password: string): Promise<boolean>;
+    checkPassword(password: string): Promise<Result<void, PasswordCheckError>>;
     passwordCheckScope(): PasswordCheckScope;
     passwordRecentlyConfirmed(seconds?: number): boolean;
     signIns(): Promise<readonly SignIn[]>;
@@ -111,7 +111,6 @@ export declare class Auth {
         readonly kind: 'current';
     }>>;
     updatePassword(password: string): Promise<void>;
-    logoutOtherDevices(password: string): Promise<boolean>;
     updateSessionKey(): Promise<boolean>;
     [DROP_REMEMBER_TOKEN](): Promise<void>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
@@ -601,6 +600,10 @@ export declare class PasswordChanged {
     readonly revokedTokens: number;
     constructor(user: AuthUser, revokedTokens?: number);
 }
+// PasswordCheckError
+export type PasswordCheckError = {
+    readonly kind: 'invalid-password';
+} | PasswordThrottled;
 // PasswordCheckScope
 export interface PasswordCheckScope {
     readonly session: string;
@@ -1435,7 +1438,7 @@ export type AttestationConveyancePreference = 'none' | 'indirect' | 'direct' | '
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter);
     attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
     login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
@@ -1459,7 +1462,7 @@ export declare class Auth {
     check(): Promise<boolean>;
     id(): Promise<AuthUserId | undefined>;
     viaRemember(): boolean;
-    confirmPassword(password: string): Promise<boolean>;
+    checkPassword(password: string): Promise<Result<void, PasswordCheckError>>;
     passwordCheckScope(): PasswordCheckScope;
     passwordRecentlyConfirmed(seconds?: number): boolean;
     signIns(): Promise<readonly SignIn[]>;
@@ -1469,7 +1472,6 @@ export declare class Auth {
         readonly kind: 'current';
     }>>;
     updatePassword(password: string): Promise<void>;
-    logoutOtherDevices(password: string): Promise<boolean>;
     updateSessionKey(): Promise<boolean>;
     [DROP_REMEMBER_TOKEN](): Promise<void>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
@@ -1635,6 +1637,10 @@ export declare class NewPassword {
 export type PasskeyAssertion = object;
 // PasskeyVerdict
 export type PasskeyVerdict = 'valid' | 'wrong' | 'stale';
+// PasswordCheckError
+export type PasswordCheckError = {
+    readonly kind: 'invalid-password';
+} | PasswordThrottled;
 // PasswordCheckScope
 export interface PasswordCheckScope {
     readonly session: string;
@@ -2045,10 +2051,8 @@ export declare class TwoFactor {
     confirm(code: string, password: string): Promise<Result<{
         recoveryCodes: readonly string[] | null;
     }, ConfirmError>>;
-    regenerateRecoveryCodes(password: string): Promise<Result<readonly string[], {
-        readonly kind: 'invalid-password';
-    } | PasswordThrottled>>;
-    disable(password: string): Promise<boolean>;
+    regenerateRecoveryCodes(password: string): Promise<Result<readonly string[], PasswordCheckError>>;
+    disable(password: string): Promise<Result<void, PasswordCheckError>>;
     requireRecentProof(action: string): Promise<void>;
 }
 // TwoFactorMiddlewareOptions
@@ -2125,7 +2129,7 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter);
     attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
     login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
@@ -2149,7 +2153,7 @@ export declare class Auth {
     check(): Promise<boolean>;
     id(): Promise<AuthUserId | undefined>;
     viaRemember(): boolean;
-    confirmPassword(password: string): Promise<boolean>;
+    checkPassword(password: string): Promise<Result<void, PasswordCheckError>>;
     passwordCheckScope(): PasswordCheckScope;
     passwordRecentlyConfirmed(seconds?: number): boolean;
     signIns(): Promise<readonly SignIn[]>;
@@ -2159,7 +2163,6 @@ export declare class Auth {
         readonly kind: 'current';
     }>>;
     updatePassword(password: string): Promise<void>;
-    logoutOtherDevices(password: string): Promise<boolean>;
     updateSessionKey(): Promise<boolean>;
     [DROP_REMEMBER_TOKEN](): Promise<void>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
@@ -2261,6 +2264,10 @@ export declare class NewPassword {
 export type PasskeyAssertion = object;
 // PasskeyVerdict
 export type PasskeyVerdict = 'valid' | 'wrong' | 'stale';
+// PasswordCheckError
+export type PasswordCheckError = {
+    readonly kind: 'invalid-password';
+} | PasswordThrottled;
 // PasswordCheckScope
 export interface PasswordCheckScope {
     readonly session: string;

@@ -1,9 +1,8 @@
 import { Auth, password, type Authenticated } from '@marmeon/auth';
-import { RateLimiter } from '@marmeon/cache';
-import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
-import { throttlePasswordChecks } from '../throttle.ts';
+import { passwordCheckMessage } from '../password-errors.ts';
 
 export const UpdatePasswordRequest = defineRequest({
   schema: r.object({ current_password: r.string().required().max(4096), password: password(), password_confirmation: r.string() }).confirmed('password'),
@@ -19,18 +18,17 @@ export class UpdatePasswordController extends Controller {
   static request = UpdatePasswordRequest;
 
   readonly #auth: Auth;
-  readonly #limiter: RateLimiter;
   readonly #translator: Translator;
 
-  constructor(auth: Auth, limiter: RateLimiter, translator: Translator) {
+  constructor(auth: Auth, translator: Translator) {
     super();
     this.#auth = auth;
-    this.#limiter = limiter;
     this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof UpdatePasswordRequest> & Authenticated) {
-    await throttlePasswordChecks(this.#limiter, this.#translator, this.#auth, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
+    const checked = await this.#auth.checkPassword(ctx.body.current_password);
+    if (!checked.ok) throw new ValidationError({ current_password: [passwordCheckMessage(this.#translator, checked.error)] });
     await this.#auth.updatePassword(ctx.body.password);
     return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.password_changed') });
   }

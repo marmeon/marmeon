@@ -1,4 +1,6 @@
 import { Clock, defineConfig, env, EventDispatcher, Logger, Redactor, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { RateLimiter } from '@marmeon/cache';
+import { withCode } from '@marmeon/core/internal';
 import { Connections } from '@marmeon/database';
 import { LiveAudience } from '@marmeon/http';
 import { Session, SessionConfig, SessionEndings, UserSessions } from '@marmeon/session';
@@ -23,7 +25,7 @@ import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
-import { authMigrationUpgrades, requireAuthTables, UserProviderNotBound } from './upgrades.ts';
+import { authenticationIsSetUp, authMigrationUpgrades, requireAuthTables, UserProviderNotBound } from './upgrades.ts';
 
 export { AccountSessions } from './account-sessions.ts';
 export type { EveryoneEnded } from './account-sessions.ts';
@@ -51,7 +53,7 @@ export { describeDevice } from './device.ts';
 export type { DeviceDescription } from './device.ts';
 export { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 export { clearPasswordCheck, takePasswordCheck } from './password-throttle.ts';
-export type { PasswordCheckScope, PasswordThrottled } from './password-throttle.ts';
+export type { PasswordCheckError, PasswordCheckScope, PasswordThrottled } from './password-throttle.ts';
 export { DatabaseSignIns, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
 export type { RememberedDevice, RememberTokenError, SignIn, SignInRecord, SignInWindow } from './sign-ins.ts';
 export { password } from './rules.ts';
@@ -64,6 +66,12 @@ export { UserProvider } from './user.ts';
 export type { AuthTypes, AuthTypesNotDeclared, AuthUser, AuthUserId, Authenticated, Credentials, UserOf } from './user.ts';
 export { HashError, Hasher, MAX_PASSWORD_BYTES, PasswordHasher } from './hashing.ts';
 export type { Argon2Options, HashDriver, HasherOptions, PasswordHash, ScryptOptions } from './hashing.ts';
+
+/** A password sign-in without a rate limiter is a free guessing oracle: with a `UserProvider` bound, the cache package has to be registered. */
+function requireRateLimiter(container: Container): void {
+  if (!authenticationIsSetUp(container)) return;
+  if (!container.has(RateLimiter)) throw new Error(withCode('A7', 'Signing in needs @marmeon/cache: install it and register its provider (marmeon discover finds it).'));
+}
 
 const whole = (fallback: number, [min, max]: readonly [number, number]) => env.integer().min(min).max(max).default(fallback);
 
@@ -143,5 +151,6 @@ export class AuthServiceProvider implements ServiceProvider {
     if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
     // /up/ready is red until the tables of the stores in use have every column the stores need.
     await requireAuthTables(app.container);
+    requireRateLimiter(app.container);
   }
 }

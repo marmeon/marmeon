@@ -3,6 +3,7 @@ import { Passkeys, type RegistrationResponseJSON } from '@marmeon/auth/passkeys'
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
+import { passwordCheckMessage } from '../password-errors.ts';
 
 export const RegisterPasskeyRequest = defineRequest({
   schema: r.object({
@@ -35,9 +36,9 @@ export class RegisterPasskeyController extends Controller {
     if (done.ok) return this.json({ recoveryCodes: done.value.recoveryCodes });
     switch (done.error.kind) {
       case 'invalid-password':
-        return this.json({ field: 'password', error: this.#translator.get('auth.validation.password_incorrect') }, 422);
+        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, 422);
       case 'throttled':
-        return this.json({ field: 'password', error: done.error.account ? this.#translator.get('auth.validation.throttled_account') : this.#translator.get('auth.validation.throttled', { seconds: done.error.retryAfter }) }, 429);
+        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, 429);
       case 'signed-out':
         // The session ended meanwhile and nothing was stored: the page's next request lands on the sign-in.
         return this.json({ error: this.#translator.get('auth.passkeys.register_failed') }, 401);

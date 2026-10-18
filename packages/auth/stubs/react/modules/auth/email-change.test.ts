@@ -1,6 +1,7 @@
 import { Auth } from '@marmeon/auth';
 import { TwoFactor } from '@marmeon/auth/two-factor';
 import { Limit, RateLimiter } from '@marmeon/cache';
+import { err, ok } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { UrlSigner } from '@marmeon/http';
 import type { Mailable } from '@marmeon/mail';
@@ -225,7 +226,7 @@ describe('the change of address asks for a recent factor itself', () => {
   const controllerAsking = (check: () => Promise<void>) => {
     const scope = app.container.createScope();
     scope.instance(TwoFactor, { requireRecentProof: check } as unknown as TwoFactor);
-    scope.instance(Auth, { confirmPassword: async (password: string) => password === 'password', passwordCheckScope: () => ({ session: 'test', typed: true }) } as unknown as Auth);
+    scope.instance(Auth, { checkPassword: async (password: string) => (password === 'password' ? ok() : err({ kind: 'invalid-password' })) } as unknown as Auth);
     return scope.make(UpdateEmailController);
   };
   const handle = (controller: UpdateEmailController, user: User, email: string) => controller.handle({ body: { email, current_password: 'password' }, user } as never);

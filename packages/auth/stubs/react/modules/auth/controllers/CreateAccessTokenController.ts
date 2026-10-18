@@ -1,10 +1,9 @@
 import { AccessTokenStore, Auth, type Authenticated } from '@marmeon/auth';
-import { RateLimiter } from '@marmeon/cache';
-import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
 import { abilityDescriptions, TOKEN_ABILITIES, type TokenAbility } from '../abilities.ts';
-import { throttlePasswordChecks } from '../throttle.ts';
+import { passwordCheckMessage } from '../password-errors.ts';
 
 const abilityNames = [...TOKEN_ABILITIES] as [TokenAbility, ...TokenAbility[]];
 
@@ -35,19 +34,18 @@ export class CreateAccessTokenController extends Controller {
 
   readonly #tokens: AccessTokenStore;
   readonly #auth: Auth;
-  readonly #limiter: RateLimiter;
   readonly #translator: Translator;
 
-  constructor(tokens: AccessTokenStore, auth: Auth, limiter: RateLimiter, translator: Translator) {
+  constructor(tokens: AccessTokenStore, auth: Auth, translator: Translator) {
     super();
     this.#tokens = tokens;
     this.#auth = auth;
-    this.#limiter = limiter;
     this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof CreateAccessTokenRequest> & Authenticated) {
-    await throttlePasswordChecks(this.#limiter, this.#translator, this.#auth, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
+    const checked = await this.#auth.checkPassword(ctx.body.current_password);
+    if (!checked.ok) throw new ValidationError({ current_password: [passwordCheckMessage(this.#translator, checked.error)] });
     const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: '90d' });
     return this.view('auth/AccessTokens', {
       tokens: await this.#tokens.list(ctx.user.id),

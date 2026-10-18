@@ -188,7 +188,7 @@ export abstract class SignInStore {
   /**
    * Replaces the fingerprint of the token of this cookie, if it belongs to `userId` and the cookie carries the row's current validator
    * (or the previous one inside the grace window, as `consume()` accepts) — for the device that stays signed in when
-   * `auth.updateSessionKey()` or `logoutOtherDevices()` changes the account on purpose.
+   * `auth.updateSessionKey()` changes the account on purpose.
    */
   abstract rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
 }

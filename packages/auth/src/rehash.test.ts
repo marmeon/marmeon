@@ -1,4 +1,5 @@
 import { createApplication, defineModule, type Container } from '@marmeon/core';
+import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
@@ -64,7 +65,7 @@ class LogoutOthersController extends Controller {
     this.#auth = auth;
   }
   async handle() {
-    return { done: await this.#auth.logoutOtherDevices('secret') };
+    return { done: (await this.#auth.checkPassword('secret')).ok && (await this.#auth.updateSessionKey()) };
   }
 }
 
@@ -85,10 +86,10 @@ async function boot(users = new MemoryUsers<AuthUser>()) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'rehash-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
   }, {
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
+    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users);
@@ -184,7 +185,7 @@ describe('what ends the sign-ins of the other devices', () => {
     expect((await b.send('/me')).status).toBe(401);
   });
 
-  it('logoutOtherDevices: the others, with the password hash as it was', async () => {
+  it('signing out the other devices: the others, with the password hash as it was', async () => {
     const world = await boot();
     const { a, b } = await twoDevices(world);
     const hash = world.users.rows.get(1)!.hash;

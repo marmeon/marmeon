@@ -3,6 +3,7 @@ import { Passkeys } from '@marmeon/auth/passkeys';
 import { abort, Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
+import { passwordCheckMessage } from '../password-errors.ts';
 
 export const ReleasePasskeyRequest = defineRequest({
   schema: r.object({ password: r.string().required().max(4096) }),
@@ -30,9 +31,9 @@ export class ReleasePasskeyController extends Controller {
       case 'not-found':
         return abort(404);
       case 'throttled':
-        return this.json({ field: 'password', error: done.error.account ? this.#translator.get('auth.validation.throttled_account') : this.#translator.get('auth.validation.throttled', { seconds: done.error.retryAfter }) }, 429);
+        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, 429);
       case 'invalid-password':
-        return this.json({ field: 'password', error: this.#translator.get('auth.validation.password_incorrect') }, 422);
+        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, 422);
     }
   }
 }

@@ -12,13 +12,12 @@ import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, RememberTokenRe
 import { Hasher } from './hashing.ts';
 import { SessionFingerprints } from './fingerprint.ts';
 import { AccountClaimLost, NewPassword } from './new-password.ts';
-import type { PasswordCheckScope } from './password-throttle.ts';
+import { clearPasswordCheck, takePasswordCheck, type PasswordCheckError, type PasswordCheckScope } from './password-throttle.ts';
 import { describeDevice } from './device.ts';
 import { SignInStore, type SignIn } from './sign-ins.ts';
 import { TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
-// An optional peer: it only types a rate limiter's `ctx.user` (below) where the app has the cache — nothing of it is loaded.
-import type {} from '@marmeon/cache';
+import { RateLimiter } from '@marmeon/cache';
 
 /** Session keys of the signed-in user — `_`-prefixed: framework bookkeeping, left out of `session.all()`. */
 export const AUTH_SESSION_KEYS = {
@@ -187,6 +186,7 @@ export class Auth {
   readonly #accountSessions: AccountSessions;
   readonly #signIns: SignInStore;
   readonly #clock: Clock;
+  readonly #limiter: RateLimiter;
   #user: Promise<AuthUser | undefined> | undefined;
   /**
    * The credentials this request checked its session against (`#resolve`) or signed in with (`#login`).
@@ -214,7 +214,9 @@ export class Auth {
     signIns: SignInStore,
     clock: Clock,
     fingerprints: SessionFingerprints,
+    limiter: RateLimiter,
   ) {
+    this.#limiter = limiter;
     this.#fingerprints = fingerprints;
     this.#session = session;
     this.#users = users;
@@ -399,14 +401,24 @@ export class Auth {
   }
 
   /**
-   * Checks the signed-in user's password again (before sensitive actions) and, if right, notes the
-   * time for `confirmedPassword()`. Takes as long when there is no user or no password.
+   * Checks the signed-in user's password again (before sensitive actions) and, if right, notes the time for `confirmedPassword()`.
+   * The check is counted before it is made, in one atomic step, per sign-in and per account (see `takePasswordCheck()`), and a right
+   * password clears the sign-in's minute: a stolen session cannot guess the password at the speed of the hasher. `throttled` is
+   * answered without hashing, also for the right password. An empty password is `invalid-password` and counts nothing: there is
+   * nothing to guess. Takes as long when there is no password. Throws without a signed-in user.
    */
-  async confirmPassword(password: string): Promise<boolean> {
+  async checkPassword(password: string): Promise<Result<void, PasswordCheckError>> {
+    const user = await this.#requireUser('checkPassword');
+    if (password === '') return err({ kind: 'invalid-password' });
+    const scope = this.passwordCheckScope();
+    const held = await takePasswordCheck(this.#limiter, scope, idOf(user));
+    if (held !== undefined) return err(held);
     const credentials = await this.#current();
-    const ok = credentials?.passwordHash ? await this.#hasher.verify(password, credentials.passwordHash) : await this.#hasher.dummyVerify(password);
-    if (ok) this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
-    return ok;
+    const right = credentials?.passwordHash ? await this.#hasher.verify(password, credentials.passwordHash) : await this.#hasher.dummyVerify(password);
+    if (!right) return err({ kind: 'invalid-password' });
+    await clearPasswordCheck(this.#limiter, scope);
+    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
+    return ok();
   }
 
   /**
@@ -507,27 +519,13 @@ export class Auth {
   }
 
   /**
-   * Signs out every other device: checks `password`, then stores a new session key (the password and its hash stay as they are), so
-   * the other sessions' fingerprints stop matching, and drops the other devices' remember-me tokens. `false` for a wrong
-   * password; also when the session key changed meanwhile (a reset or `AccountSessions.end()` landed after this request read the
-   * account: nothing is written, and that ending has ended every sign-in, this one from its next request); and when
-   * this device's remember-me cookie turns out to be a copy (its validator is stale: somebody else holds a newer one) — then every
-   * token and session of the account is ended, like at a copied cookie, and this device is signed out too. It does not throttle the
-   * password check: the caller must
-   * (`takePasswordCheck()`, as the starter kit's `throttlePasswordChecks()` does).
-   */
-  async logoutOtherDevices(password: string): Promise<boolean> {
-    await this.#requireUser('logoutOtherDevices');
-    if (!(await this.confirmPassword(password))) return false;
-    return this.updateSessionKey();
-  }
-
-  /**
-   * Signs out every other device without a password — for accounts that sign in by link or OAuth, or whenever the app
-   * confirmed the user its own way before: stores a new random session key (`UserProvider.updateSessionKey()`), so the other
+   * Signs out every other device — after `checkPassword()` where the account has a password, or whenever the app
+   * confirmed the user its own way (a link, OAuth): stores a new random session key (`UserProvider.updateSessionKey()`), so the other
    * sessions' fingerprints stop matching, and drops the other devices' remember-me tokens; this session stays. Throws when the
    * provider cannot store a key, or does not hand it back from `findById()` — it never pretends to have signed anybody out.
-   * `false`: this session was ended meanwhile (another device or `AccountSessions.end()` replaced the key) — it is signed out now.
+   * `false`: this session was ended meanwhile (another device or `AccountSessions.end()` replaced the key) — it is signed out now. Also `false` when this device's remember-me cookie turns out to be a copy
+   * (its validator is stale: somebody else holds a newer one): then every token and session of the account is ended, like at a copied
+   * cookie, and this device is signed out too.
    */
   async updateSessionKey(): Promise<boolean> {
     const user = await this.#requireUser('updateSessionKey');

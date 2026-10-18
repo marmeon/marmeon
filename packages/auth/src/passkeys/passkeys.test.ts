@@ -180,7 +180,7 @@ class PasskeyController extends Controller {
         case 'remove':
           return result(await this.#passkeys.remove(body.id, body.password));
         case 'confirm-password':
-          return { confirmed: await this.#auth.confirmPassword(body.password) };
+          return { confirmed: (await this.#auth.checkPassword(body.password)).ok };
         case 'who':
           return { id: (await this.#auth.user())?.id ?? null };
         default:

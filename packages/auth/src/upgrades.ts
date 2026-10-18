@@ -60,7 +60,7 @@ export class UserProviderNotBound extends Error {
 }
 
 /** Whether the app bound a `UserProvider` of its own. What else a bound one throws when it is built is no concern of this check. */
-function authenticationIsSetUp(container: Container): boolean {
+export function authenticationIsSetUp(container: Container): boolean {
   try {
     container.make(UserProvider);
     return true;

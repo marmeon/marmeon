@@ -7,12 +7,15 @@ import { PasswordResetTokenStore } from './password-reset.ts';
 import { SignInStore, type RememberedDevice, type RememberTokenError, type SignInRecord } from './sign-ins.ts';
 import { AccessTokenStore } from './tokens.ts';
 import { TwoFactorState } from './two-factor/state.ts';
+import type { TwoFactor } from './two-factor/two-factor.ts';
+import type { PasswordCheckError } from './password-throttle.ts';
 import type { PasskeyRecord } from './passkeys/store.ts';
 import type { AccessToken } from './tokens.ts';
 import type { Result } from '@marmeon/core';
 import type { AuthUserId, Credentials, UserProvider } from './user.ts';
 
 declare const auth: Auth;
+declare const twoFactor: TwoFactor;
 declare const accountSessions: AccountSessions;
 
 export async function exhaustive() {
@@ -424,4 +427,32 @@ export function storesTakeTheAppsUserId() {
   expectTypeOf<PasskeyRecord['userId']>().toEqualTypeOf<AuthUserId>();
   // @ts-expect-error the package's test user has a number as its id
   return factors.factors('1');
+}
+
+export async function checkPasswordIsAResult() {
+  const checked = await auth.checkPassword('secret');
+  expectTypeOf(checked).toEqualTypeOf<Result<void, PasswordCheckError>>();
+  if (!checked.ok) {
+    switch (checked.error.kind) {
+      case 'invalid-password':
+        return 'invalid';
+      case 'throttled':
+        return checked.error.retryAfter;
+    }
+  }
+  return undefined;
+}
+
+export async function theUnthrottledChecksAreGone() {
+  // @ts-expect-error a Result is always truthy, so `if (await auth.confirmPassword(p))` would pass every check: the method is gone
+  await auth.confirmPassword('secret');
+  // @ts-expect-error replaced by `checkPassword()` followed by `updateSessionKey()`
+  await auth.logoutOtherDevices('secret');
+}
+
+export async function disablingTwoFactorIsAResult() {
+  expectTypeOf(await twoFactor.disable('secret')).toEqualTypeOf<Result<void, PasswordCheckError>>();
+  // @ts-expect-error a Result is not a boolean: `if (await twoFactor.disable(p))` would be true for a wrong password
+  const disabled: boolean = await twoFactor.disable('secret');
+  return disabled;
 }

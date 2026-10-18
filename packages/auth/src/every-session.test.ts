@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
+import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, type Migration } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
@@ -176,7 +177,7 @@ async function boot(driver: Driver, users: UserProvider, options: { signIns?: ne
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, ...(driver.providers ?? []), AuthServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, ...(driver.providers ?? []), CacheServiceProvider, AuthServiceProvider],
     modules: [
       defineModule({
         name: 'every-session-test',
@@ -186,7 +187,7 @@ async function boot(driver: Driver, users: UserProvider, options: { signIns?: ne
       }),
     ],
   }, {
-    env: { APP_KEY: generateKey(), SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', ...env },
+    env: { APP_KEY: generateKey(), SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:', ...env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users);
