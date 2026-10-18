@@ -8,6 +8,7 @@ import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { accessTokenStore } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import {
   abilities,
@@ -139,21 +140,13 @@ for (const user of users.values()) (provider as MemoryUsers<AuthUser>).add(user)
 const noRemember: RememberTokenStore = { create: async () => '', consume: async () => err({ kind: 'invalid' }), exists: async () => false, forget: async () => {}, forgetUser: async () => {}, prune: async () => 0 };
 
 /** API tokens in memory: the plain text is `<user>/<abilities>` — what the token guard needs, nothing more. */
-const memoryTokens: AccessTokenStore = {
-  create: async () => {
-    throw new Error('not used');
-  },
+const memoryTokens: AccessTokenStore = accessTokenStore({
   find: async (plainText) => {
     const [user, granted = '*'] = plainText.split('/');
     if (!users.has(Number(user))) return undefined;
     return { id: Number(user), userId: Number(user), name: 'test', abilities: granted.split(','), lastUsedAt: null, expiresAt: null, createdAt: '' } satisfies AccessToken;
   },
-  touch: async () => {},
-  list: async () => [],
-  revoke: async () => false,
-  revokeAll: async () => 0,
-  prune: async () => 0,
-};
+});
 
 /** The handler asks the gate itself, so the registrar has no policy to name; a check of its own keeps the route from counting as open. */
 const handlerAsks = () => true;

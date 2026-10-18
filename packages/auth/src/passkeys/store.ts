@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { Clock, err, ok, type Result } from '@marmeon/core';
 import { Connections, Repository, type Generated, type RowOf } from '@marmeon/database';
-import type { SecondFactor, TwoFactorState } from '../two-factor/state.ts';
+import { TwoFactorState, type SecondFactor } from '../two-factor/state.ts';
 import { RECOVERY_CODES_TABLE, TWO_FACTOR_TABLE } from '../two-factor/store.ts';
+import type { AuthUserId } from '../user.ts';
 
 /** The table the app's migration creates — see {@link PasskeyTable}. */
 export const PASSKEYS_TABLE = 'passkeys';
@@ -39,7 +40,7 @@ type Tables = { [PASSKEYS_TABLE]: PasskeyTable; [RECOVERY_CODES_TABLE]: { user_i
 /** A stored passkey. */
 export interface PasskeyRecord {
   readonly id: number;
-  readonly userId: number | string;
+  readonly userId: AuthUserId;
   /** The account's user handle, base64url. */
   readonly userHandle: string;
   readonly credentialId: string;
@@ -59,7 +60,7 @@ export interface PasskeyRecord {
 
 /** What {@link PasskeyStore.create} takes: a verified registration plus the account and a name. */
 export interface NewPasskey {
-  readonly userId: number | string;
+  readonly userId: AuthUserId;
   readonly userHandle: string;
   readonly credentialId: string;
   readonly publicKey: string;
@@ -82,7 +83,7 @@ function recordOf(row: RowOf<PasskeyTable>): PasskeyRecord {
   const transports = typeof row.transports === 'string' ? (JSON.parse(row.transports) as unknown) : row.transports;
   return {
     id: Number(row.id),
-    userId: row.user_id,
+    userId: row.user_id as AuthUserId,
     userHandle: row.user_handle,
     credentialId: row.credential_id,
     publicKey: row.public_key,
@@ -105,23 +106,24 @@ function recordOf(row: RowOf<PasskeyTable>): PasskeyRecord {
  *
  * The sign count is written by a single conditional `UPDATE`: of parallel sign-ins with one counter exactly one wins.
  */
-export class PasskeyStore implements TwoFactorState {
+export class PasskeyStore extends TwoFactorState {
   readonly #connections: Connections;
   readonly #clock: Clock;
 
   constructor(connections: Connections, clock: Clock) {
+    super();
     this.#connections = connections;
     this.#clock = clock;
   }
 
   /** `['passkey']` when the account has at least one passkey. */
-  async factors(userId: number | string): Promise<readonly SecondFactor[]> {
+  async factors(userId: AuthUserId): Promise<readonly SecondFactor[]> {
     const row = await this.#db().selectFrom(PASSKEYS_TABLE).select('id').where('user_id', '=', userId).executeTakeFirst();
     return row === undefined ? [] : ['passkey'];
   }
 
   /** The registration of the account's oldest passkey. */
-  async enabledSince(userId: number | string): Promise<Date | undefined> {
+  async enabledSince(userId: AuthUserId): Promise<Date | undefined> {
     const row = await this.#db().selectFrom(PASSKEYS_TABLE).select('created_at').where('user_id', '=', userId).orderBy('created_at', 'asc').executeTakeFirst();
     return row === undefined ? undefined : new Date(row.created_at);
   }
@@ -132,7 +134,7 @@ export class PasskeyStore implements TwoFactorState {
    * same value to {@link create} — it never asks again: the authenticator holds the handle from the options, and a passkey stored
    * with another one could not sign in. An account may therefore end up with two handles after a race; that is harmless.
    */
-  async userHandle(userId: number | string): Promise<string> {
+  async userHandle(userId: AuthUserId): Promise<string> {
     const row = await this.#db().selectFrom(PASSKEYS_TABLE).select('user_handle').where('user_id', '=', userId).executeTakeFirst();
     return row?.user_handle ?? randomBytes(32).toString('base64url');
   }
@@ -169,7 +171,7 @@ export class PasskeyStore implements TwoFactorState {
   }
 
   /** The account's passkeys, oldest first. */
-  async forUser(userId: number | string): Promise<readonly PasskeyRecord[]> {
+  async forUser(userId: AuthUserId): Promise<readonly PasskeyRecord[]> {
     const rows = await this.#db().selectFrom(PASSKEYS_TABLE).selectAll().where('user_id', '=', userId).orderBy('id', 'asc').execute();
     return rows.map(recordOf);
   }
@@ -197,13 +199,13 @@ export class PasskeyStore implements TwoFactorState {
   }
 
   /** Lets the account's suspended passkey sign in again; `false` when it has none that is suspended. The caller has checked the password. */
-  async release(userId: number | string, id: number): Promise<boolean> {
+  async release(userId: AuthUserId, id: number): Promise<boolean> {
     const result = await this.#db().updateTable(PASSKEYS_TABLE).set({ suspended_at: null, updated_at: this.#now() }).where('id', '=', id).where('user_id', '=', userId).where('suspended_at', 'is not', null).executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
 
   /** Renames the account's passkey; `false` when it has none with this id. */
-  async rename(userId: number | string, id: number, name: string): Promise<boolean> {
+  async rename(userId: AuthUserId, id: number, name: string): Promise<boolean> {
     const result = await this.#db().updateTable(PASSKEYS_TABLE).set({ name, updated_at: this.#now() }).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
@@ -215,7 +217,7 @@ export class PasskeyStore implements TwoFactorState {
    * cannot both see another factor still there. The recovery codes go with the last factor in the same transaction (they belong to
    * the account's factors, not to this one); a refusal changes nothing.
    */
-  async remove(userId: number | string, id: number, { lastFactorAllowed }: { lastFactorAllowed: boolean }): Promise<Result<{ lastFactor: boolean }, { kind: 'not-found' } | { kind: 'last-factor' }>> {
+  async remove(userId: AuthUserId, id: number, { lastFactorAllowed }: { lastFactorAllowed: boolean }): Promise<Result<{ lastFactor: boolean }, { kind: 'not-found' } | { kind: 'last-factor' }>> {
     return this.#connections.transaction(async () => {
       const db = this.#db();
       if (this.#connections.options().driver === 'pgsql') await db.selectFrom(PASSKEYS_TABLE).select('id').where('user_id', '=', userId).forUpdate().execute();
@@ -231,7 +233,7 @@ export class PasskeyStore implements TwoFactorState {
   }
 
   /** Removes every passkey of the account (the operator's reset); the recovery codes are the caller's. */
-  async removeAll(userId: number | string): Promise<void> {
+  async removeAll(userId: AuthUserId): Promise<void> {
     await this.#db().deleteFrom(PASSKEYS_TABLE).where('user_id', '=', userId).execute();
   }
 

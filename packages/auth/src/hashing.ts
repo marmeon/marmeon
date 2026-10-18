@@ -38,11 +38,12 @@ export interface Hasher {
   /**
    * The time a failed sign-in is padded to, in milliseconds: the slowest of the fastest checks this process has seen for each
    * set of hash parameters (driver and costs). So once a process has verified a hash of an older, slower set, a failure no
-   * longer answers faster than a check over it. Optional; without it nothing is padded. It cannot know a parameter set that
-   * this process has not verified yet (after a restart, or on another node), so a first failed sign-in over such a hash can still
-   * be told apart. Declaring the previous costs would close that gap.
+   * longer answers faster than a check over it. Required: `0` gives up the padding of failed sign-ins, and with it the equal
+   * response time of a known and an unknown address. It cannot know a parameter set that this process has not verified yet (after
+   * a restart, or on another node), so a first failed sign-in over such a hash can still be told apart. Declaring the previous
+   * costs would close that gap.
    */
-  failureFloorMs?(): number | Promise<number>;
+  failureFloorMs(): number | Promise<number>;
 }
 export const Hasher = token<Hasher>('Hasher');
 

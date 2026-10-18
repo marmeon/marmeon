@@ -1,4 +1,6 @@
 import { token } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
+import type { AuthUserId } from '../user.ts';
 
 /** A kind of second factor an account can have. */
 export type SecondFactor = 'totp' | 'passkey';
@@ -9,25 +11,30 @@ export type SecondFactor = 'totp' | 'passkey';
  * source behaves as before. Binding a source switches two-factor on for the accounts that set a factor up — never for the rest.
  *
  * Removing the binding switches it off for everyone: accounts with a factor then sign in with the password alone.
+ *
+ * Your own source extends this class and implements every method; none has a default, and a member added later has one only if it is
+ * not security-relevant. See `docs/authentication.md#your-own-stores`.
  */
-export interface TwoFactorState {
-  factors(userId: number | string): Promise<readonly SecondFactor[]>;
+export abstract class TwoFactorState {
+  /** A mark without meaning: only a subclass fits the type, so a source that merely `implements` this contract does not compile. */
+  readonly #contract = true;
+
+  abstract factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
   /**
    * Since when the account has had a second factor — the earliest confirmation of the factors it has now — or `undefined` without
    * one. A remember-me token made before that moment never proved a factor, and is refused.
    */
-  enabledSince(userId: number | string): Promise<Date | undefined>;
+  abstract enabledSince(userId: AuthUserId): Promise<Date | undefined>;
   /**
    * Removes every factor the source holds for the account, recovery codes included — what the reset of an account with an unconfirmed
    * address does (`NewPassword`) and the operator's reset command. Dispatches nothing. A source that keeps a factor here leaves it standing
    * through such a reset: the reset logs an error then.
    */
-  removeAll(userId: number | string): Promise<void>;
+  abstract removeAll(userId: AuthUserId): Promise<void>;
 }
-export const TwoFactorState = token<TwoFactorState>('TwoFactorState');
 
 /** The default {@link TwoFactorState}: no account has a factor, and nothing is queried. */
-export class NoTwoFactorState implements TwoFactorState {
+export class NoTwoFactorState extends TwoFactorState {
   async factors(): Promise<readonly SecondFactor[]> {
     return [];
   }
@@ -41,21 +48,37 @@ export class NoTwoFactorState implements TwoFactorState {
 
 /** One state from several sources (`TwoFactorStore`, the passkey store): an account has every factor any source reports, each once. */
 export function combineFactors(...sources: readonly TwoFactorState[]): TwoFactorState {
-  const combined: TwoFactorState = {
-    async factors(userId) {
-      const lists = await Promise.all(sources.map((source) => source.factors(userId)));
-      return [...new Set(lists.flat())];
-    },
-    async enabledSince(userId) {
-      const dates = (await Promise.all(sources.map((source) => source.enabledSince(userId)))).filter((date): date is Date => date !== undefined);
-      return dates.length === 0 ? undefined : new Date(Math.min(...dates.map((date) => date.getTime())));
-    },
-    async removeAll(userId) {
-      for (const source of sources) await source.removeAll(userId);
-    },
-  };
+  const combined = new CombinedFactors(sources);
   SOURCES.set(combined, sources);
   return combined;
+}
+
+class CombinedFactors extends TwoFactorState {
+  readonly #sources: readonly TwoFactorState[];
+
+  constructor(sources: readonly TwoFactorState[]) {
+    super();
+    for (const source of sources) {
+      for (const method of ['factors', 'enabledSince', 'removeAll'] as const) {
+        if (typeof source[method] !== 'function') throw new TypeError(withCode('A6', `combineFactors() was given a source without ${method}(userId) (JavaScript, a cast): every source extends TwoFactorState.`));
+      }
+    }
+    this.#sources = sources;
+  }
+
+  async factors(userId: AuthUserId): Promise<readonly SecondFactor[]> {
+    const lists = await Promise.all(this.#sources.map((source) => source.factors(userId)));
+    return [...new Set(lists.flat())];
+  }
+
+  async enabledSince(userId: AuthUserId): Promise<Date | undefined> {
+    const dates = (await Promise.all(this.#sources.map((source) => source.enabledSince(userId)))).filter((date): date is Date => date !== undefined);
+    return dates.length === 0 ? undefined : new Date(Math.min(...dates.map((date) => date.getTime())));
+  }
+
+  async removeAll(userId: AuthUserId): Promise<void> {
+    for (const source of this.#sources) await source.removeAll(userId);
+  }
 }
 
 const SOURCES = new WeakMap<TwoFactorState, readonly TwoFactorState[]>();
@@ -85,7 +108,7 @@ export interface SecondFactorPasskeys {
    * open challenge of this account and of `during` (the waiting sign-in, or the signed-in session's step-up) used up either way. Never throws for a bad response — a verdict other than `valid`. Package-internal (a symbol key):
    * `TwoFactor` calls it after it has read the waiting sign-in and counted the attempt, so an app cannot call it without those.
    */
-  [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
+  [VERIFY_SECOND_FACTOR](userId: AuthUserId, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
 }
 /** The key of {@link SecondFactorPasskeys.verify}'s method. */
 export const VERIFY_SECOND_FACTOR = Symbol('marmeon.auth.verifySecondFactor');

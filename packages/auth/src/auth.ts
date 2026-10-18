@@ -97,7 +97,7 @@ export const PENDING_MAX_FAILURES = 5;
 
 /** What {@link READ_PENDING} hands out. */
 export interface PendingView {
-  readonly userId: string | number;
+  readonly userId: AuthUserId;
   readonly factors: readonly SecondFactor[];
   readonly failures: number;
   readonly remember: boolean;
@@ -142,6 +142,18 @@ export interface LoginOptions {
   readonly ip?: string | undefined;
   /** The browser's `User-Agent` header for the `Login` event — default: the request's, like `ip`. */
   readonly userAgent?: string | undefined;
+}
+
+/** The longest a failed sign-in is padded to, whatever the hasher says. */
+export const MAX_FLOOR_MS = 10_000;
+
+/** What `Hasher.failureFloorMs()` answered, as the time to pad to: refused unless a finite number of 0 or more, and never above {@link MAX_FLOOR_MS}. */
+export function paddedTo(floor: unknown): number {
+  if (typeof floor !== 'number' || !Number.isFinite(floor) || floor < 0) {
+    throw new Error(withCode('A6', `Hasher.failureFloorMs() must answer a finite number of milliseconds, 0 or more; it answered ${String(floor)}.`));
+  }
+  // A hasher that counts seconds instead of milliseconds would hold every failed sign-in for minutes: a lever for anyone sending wrong passwords.
+  return Math.min(floor, MAX_FLOOR_MS);
 }
 
 /**
@@ -273,7 +285,7 @@ export class Auth {
     if (pending === undefined) return this.#session.started && this.#session.has(AUTH_SESSION_KEYS.pending) ? this[DROP_EXPIRED]() : undefined;
     const found = await this.#users.findById(pending.id as never);
     if (!found || !this.#fingerprints.matches(pending.fingerprint, found)) return this[DROP_EXPIRED]();
-    return { userId: pending.id, factors: pending.factors, failures: pending.failures, remember: pending.remember };
+    return { userId: pending.id as AuthUserId, factors: pending.factors, failures: pending.failures, remember: pending.remember };
   }
 
   [DROP_EXPIRED](): 'expired' {
@@ -695,12 +707,16 @@ export class Auth {
    * parameters this process has verified. A parameter set it has not verified yet (after a restart, on another node) is not known.
    */
   async #padFailure(started: number): Promise<undefined> {
-    const left = ((await this.#hasher.failureFloorMs?.()) ?? 0) - (performance.now() - started);
+    const left = paddedTo(await this.#hasher.failureFloorMs()) - (performance.now() - started);
     if (left > 0) await sleep(left); // real time, not the app Clock: waiting costs no CPU
     return undefined;
   }
 
   async #check(identifier: string, password: string): Promise<Credentials | undefined> {
+    // A hasher without failureFloorMs() (JavaScript, a cast) would let the response time tell which addresses have an account.
+    if (typeof this.#hasher.failureFloorMs !== 'function') {
+      throw new Error(withCode('A6', 'The Hasher needs failureFloorMs(): the time a failed sign-in is padded to, in milliseconds (0 gives up the padding). See docs/hashing.md#making-and-checking-hashes.'));
+    }
     const started = performance.now();
     const found = await this.#users.findForLogin(identifier);
     if (!found || found.passwordHash === null) {
@@ -1016,7 +1032,7 @@ export class Auth {
     // Refused: a token made before the account's second factor existed (it proved none; a sign-in racing the activation can make one),
     // one past `AUTH_REMEMBER_DAYS` from its creation (also when issued under a longer setting), and any with an unreadable time
     // (an Invalid Date compares false with everything) — never taken as "after" or "not yet over".
-    const since = await this.#twoFactor.enabledSince(device.userId);
+    const since = await this.#twoFactor.enabledSince(idOf(found.user));
     const madeAt = device.createdAt?.getTime();
     const cap = Number.isFinite(madeAt) ? madeAt! + this.#config.rememberDays * 86_400_000 : Number.NaN;
     const expired = !(cap > this.#clock.now()) || !Number.isFinite(device.expiresAt.getTime());
@@ -1049,7 +1065,7 @@ export class Auth {
     // Every token of an account with a factor was made on a device that proved it (tokens made before the factor existed are dropped
     // when it is turned on), so this device has proven it too — at the time the token was made, which rotation keeps: a stolen cookie
     // does not turn into a fresh proof for the middleware's `maxAge`.
-    if ((await this.#twoFactor.factors(device.userId)).length > 0) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(madeAt! / 1000));
+    if ((await this.#twoFactor.factors(idOf(found.user))).length > 0) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(madeAt! / 1000));
     return found.user;
   }
 

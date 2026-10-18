@@ -1,6 +1,7 @@
 import { Clock } from '@marmeon/core';
 import { Connections, secret, sql, type Generated, type Secret } from '@marmeon/database';
-import type { SecondFactor, TwoFactorState } from './state.ts';
+import type { AuthUserId } from '../user.ts';
+import { TwoFactorState, type SecondFactor } from './state.ts';
 
 /** The tables the app's migration creates (`make:auth` writes them) — see {@link TwoFactorTable} and {@link RecoveryCodeTable}. */
 export const TWO_FACTOR_TABLE = 'two_factor_authentications';
@@ -49,28 +50,29 @@ type Tables = { [TWO_FACTOR_TABLE]: TwoFactorTable; [RECOVERY_CODES_TABLE]: Reco
  * Replay protection lives here, in single conditional `UPDATE`s: a TOTP step and a recovery code each count at most once,
  * however many requests race for them.
  */
-export class TwoFactorStore implements TwoFactorState {
+export class TwoFactorStore extends TwoFactorState {
   readonly #connections: Connections;
   readonly #clock: Clock;
 
   constructor(connections: Connections, clock: Clock) {
+    super();
     this.#connections = connections;
     this.#clock = clock;
   }
 
   /** `['totp']` once the authenticator is confirmed; a setup that was begun but not confirmed changes nothing about signing in. */
-  async factors(userId: number | string): Promise<readonly SecondFactor[]> {
+  async factors(userId: AuthUserId): Promise<readonly SecondFactor[]> {
     const row = await this.#db().selectFrom(TWO_FACTOR_TABLE).select('id').where('user_id', '=', userId).where('confirmed_at', 'is not', null).executeTakeFirst();
     return row === undefined ? [] : ['totp'];
   }
 
-  async enabledSince(userId: number | string): Promise<Date | undefined> {
+  async enabledSince(userId: AuthUserId): Promise<Date | undefined> {
     const row = await this.#db().selectFrom(TWO_FACTOR_TABLE).select('confirmed_at').where('user_id', '=', userId).where('confirmed_at', 'is not', null).executeTakeFirst();
     return row?.confirmed_at == null ? undefined : new Date(row.confirmed_at);
   }
 
   /** @internal The account's authenticator row, confirmed or not; the service decrypts the secret. */
-  async find(userId: number | string): Promise<TotpRecord | undefined> {
+  async find(userId: AuthUserId): Promise<TotpRecord | undefined> {
     const row = await this.#db()
       .selectFrom(TWO_FACTOR_TABLE)
       .select((eb) => [secret(eb, 'secret'), 'confirmed_at', 'last_used_step'])
@@ -81,7 +83,7 @@ export class TwoFactorStore implements TwoFactorState {
   }
 
   /** Starts setting up an authenticator with this (encrypted) secret, replacing an unconfirmed attempt. Throws when one is already confirmed: disable it first. */
-  async startSetup(userId: number | string, encryptedSecret: string): Promise<void> {
+  async startSetup(userId: AuthUserId, encryptedSecret: string): Promise<void> {
     const now = this.#now();
     // One statement decides, so parallel starts (a double click) never collide: the unique index on `user_id` turns the second into an
     // update of the unconfirmed row, and a confirmed row is never touched — then nothing changes and we refuse.
@@ -106,7 +108,7 @@ export class TwoFactorStore implements TwoFactorState {
    * The caller must afterwards drop the user's remember-me tokens except this device's (`remember.forgetUser(id, ownCookie)`): they
    * were made without a second factor, and the remember-me sign-in treats every surviving token of such an account as having proven one.
    */
-  async confirm(userId: number | string, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean> {
+  async confirm(userId: AuthUserId, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean> {
     return this.#connections.transaction(async () => {
       const now = this.#now();
       const result = await this.#db()
@@ -125,7 +127,7 @@ export class TwoFactorStore implements TwoFactorState {
    * Accepts a TOTP `step` — and stores the secret re-encrypted with the current key — only when it is newer than every step
    * used before. One conditional `UPDATE` decides: a code works once, even for parallel requests, and no older code works after a newer one.
    */
-  async useStep(userId: number | string, step: number, reencryptedSecret: string): Promise<boolean> {
+  async useStep(userId: AuthUserId, step: number, reencryptedSecret: string): Promise<boolean> {
     const result = await this.#db()
       .updateTable(TWO_FACTOR_TABLE)
       .set({ last_used_step: step, secret: reencryptedSecret, updated_at: this.#now() })
@@ -137,7 +139,7 @@ export class TwoFactorStore implements TwoFactorState {
   }
 
   /** Spends a recovery code by its hash: how many are left, or `undefined` when it is unknown or already spent. One conditional `UPDATE`: a code works once, even in parallel. */
-  async consumeRecoveryCode(userId: number | string, codeHash: string): Promise<number | undefined> {
+  async consumeRecoveryCode(userId: AuthUserId, codeHash: string): Promise<number | undefined> {
     const now = this.#now();
     const result = await this.#db()
       .updateTable(RECOVERY_CODES_TABLE)
@@ -151,7 +153,7 @@ export class TwoFactorStore implements TwoFactorState {
   }
 
   /** Replaces every recovery code of the account (spent or not) with these hashes, in one transaction. */
-  async replaceRecoveryCodes(userId: number | string, codeHashes: readonly string[]): Promise<void> {
+  async replaceRecoveryCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void> {
     await this.#connections.transaction(async () => {
       // Two requests making new codes at once would interleave their deletes and inserts: the account's row is the lock.
       if (this.#connections.options().driver === 'pgsql') {
@@ -161,7 +163,7 @@ export class TwoFactorStore implements TwoFactorState {
     });
   }
 
-  async remainingRecoveryCodes(userId: number | string): Promise<number> {
+  async remainingRecoveryCodes(userId: AuthUserId): Promise<number> {
     const row = await this.#db()
       .selectFrom(RECOVERY_CODES_TABLE)
       .select((eb) => eb.fn.countAll<number | string>().as('remaining'))
@@ -172,7 +174,7 @@ export class TwoFactorStore implements TwoFactorState {
   }
 
   /** Removes the authenticator; with `lastFactor` the recovery codes go in the same transaction (they belong to the account's factors, not to this one). */
-  async removeTotp(userId: number | string, { lastFactor }: { lastFactor: boolean }): Promise<void> {
+  async removeTotp(userId: AuthUserId, { lastFactor }: { lastFactor: boolean }): Promise<void> {
     await this.#connections.transaction(async () => {
       await this.#db().deleteFrom(TWO_FACTOR_TABLE).where('user_id', '=', userId).execute();
       if (lastFactor) await this.#db().deleteFrom(RECOVERY_CODES_TABLE).where('user_id', '=', userId).execute();
@@ -180,11 +182,11 @@ export class TwoFactorStore implements TwoFactorState {
   }
 
   /** Removes the authenticator and every recovery code (the operator's reset). */
-  async removeAll(userId: number | string): Promise<void> {
+  async removeAll(userId: AuthUserId): Promise<void> {
     await this.removeTotp(userId, { lastFactor: true });
   }
 
-  async #replaceCodes(userId: number | string, codeHashes: readonly string[]): Promise<void> {
+  async #replaceCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void> {
     const db = this.#db();
     await db.deleteFrom(RECOVERY_CODES_TABLE).where('user_id', '=', userId).execute();
     if (codeHashes.length === 0) return;

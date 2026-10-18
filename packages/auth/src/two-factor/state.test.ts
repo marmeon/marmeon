@@ -2,10 +2,11 @@ import { createApplication } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthServiceProvider, combineFactors, TwoFactorState, TwoFactorStore } from '../index.ts';
+import { twoFactorState } from '../test-helpers/stores.ts';
 import type { SecondFactor } from './state.ts';
 
-const source = (...factors: SecondFactor[]): TwoFactorState => ({ removeAll: async () => {}, factors: async () => factors, enabledSince: async () => undefined });
-const since = (date: Date | undefined): TwoFactorState => ({ removeAll: async () => {}, factors: async () => [], enabledSince: async () => date });
+const source = (...factors: SecondFactor[]): TwoFactorState => twoFactorState({ factors: async () => factors });
+const since = (date: Date | undefined): TwoFactorState => twoFactorState({ enabledSince: async () => date });
 
 describe('TwoFactorState default', () => {
   const boot = () => createApplication({ root: import.meta.dirname, discover: false, providers: [AuthServiceProvider] }, { env: {} });

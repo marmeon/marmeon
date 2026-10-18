@@ -20,7 +20,7 @@ export type AbilityOf<P> = Exclude<{
 // AccessToken
 export interface AccessToken {
     readonly id: AccessTokenId;
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly name: string;
     readonly abilities: readonly string[];
     readonly lastUsedAt: string | null;
@@ -30,23 +30,23 @@ export interface AccessToken {
 // AccessTokenId
 export type AccessTokenId = number | string;
 // AccessTokenStore
-export interface AccessTokenStore {
-    create(userId: number | string, name: string, options?: {
+export declare abstract class AccessTokenStore {
+    #private;
+    abstract create(userId: AuthUserId, name: string, options?: {
         abilities?: readonly string[];
         expiresIn?: Duration;
     }): Promise<{
         plainText: string;
         token: AccessToken;
     }>;
-    find(plainText: string): Promise<AccessToken | undefined>;
-    touch(token: AccessToken): Promise<void>;
-    list(userId: number | string): Promise<AccessToken[]>;
-    revoke(userId: number | string, id: AccessTokenId): Promise<boolean>;
-    revokeAll(userId: number | string): Promise<number>;
-    prune(graceSeconds?: number): Promise<number>;
-    revokeEveryone?(): Promise<number>;
+    abstract find(plainText: string): Promise<AccessToken | undefined>;
+    abstract touch(token: AccessToken): Promise<void>;
+    abstract list(userId: AuthUserId): Promise<AccessToken[]>;
+    abstract revoke(userId: AuthUserId, id: AccessTokenId): Promise<boolean>;
+    abstract revokeAll(userId: AuthUserId): Promise<number>;
+    abstract prune(graceSeconds?: number): Promise<number>;
+    abstract revokeEveryone(): Promise<number>;
 }
-export declare const AccessTokenStore: import("@marmeon/core").Token<AccessTokenStore>;
 // AccountSessions
 export declare class AccountSessions {
     #private;
@@ -210,10 +210,10 @@ export interface Credentials<U = AuthUser> {
     readonly sessionKey: string | null;
 }
 // DatabaseAccessTokens
-export declare class DatabaseAccessTokens implements AccessTokenStore {
+export declare class DatabaseAccessTokens extends AccessTokenStore {
     #private;
     constructor(connections: Connections, config: AuthConfig, clock: Clock);
-    create(userId: number | string, name: string, { abilities, expiresIn }?: {
+    create(userId: AuthUserId, name: string, { abilities, expiresIn }?: {
         abilities?: readonly string[];
         expiresIn?: Duration;
     }): Promise<{
@@ -222,14 +222,14 @@ export declare class DatabaseAccessTokens implements AccessTokenStore {
     }>;
     find(plainText: string): Promise<AccessToken | undefined>;
     touch(token: AccessToken): Promise<void>;
-    list(userId: number | string): Promise<AccessToken[]>;
-    revoke(userId: number | string, id: AccessTokenId): Promise<boolean>;
-    revokeAll(userId: number | string): Promise<number>;
+    list(userId: AuthUserId): Promise<AccessToken[]>;
+    revoke(userId: AuthUserId, id: AccessTokenId): Promise<boolean>;
+    revokeAll(userId: AuthUserId): Promise<number>;
     revokeEveryone(): Promise<number>;
     prune(graceSeconds?: number): Promise<number>;
 }
 // DatabasePasswordResetTokens
-export declare class DatabasePasswordResetTokens implements PasswordResetTokenStore {
+export declare class DatabasePasswordResetTokens extends PasswordResetTokenStore {
     #private;
     constructor(connections: Connections, clock: Clock);
     create(email: string, throttleSeconds: number): Promise<Result<string, {
@@ -427,7 +427,7 @@ export interface Hasher {
     verify(password: string, hash: PasswordHash): Promise<boolean>;
     needsRehash(hash: PasswordHash): boolean;
     dummyVerify(password: string): Promise<false>;
-    failureFloorMs?(): number | Promise<number>;
+    failureFloorMs(): number | Promise<number>;
 }
 export declare const Hasher: import("@marmeon/core").Token<Hasher>;
 // HasherOptions
@@ -651,18 +651,18 @@ export declare class PasswordReset {
     constructor(user: AuthUser, revokedTokens?: number);
 }
 // PasswordResetTokenStore
-export interface PasswordResetTokenStore {
-    create(email: string, throttleSeconds: number): Promise<Result<string, {
+export declare abstract class PasswordResetTokenStore {
+    #private;
+    abstract create(email: string, throttleSeconds: number): Promise<Result<string, {
         readonly kind: 'throttled';
     }>>;
-    consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, {
+    abstract consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, {
         readonly kind: 'invalid-token';
     }>>;
-    forget(email: string): Promise<void>;
-    prune(maxAgeSeconds: number): Promise<number>;
-    forgetEveryone?(): Promise<number>;
+    abstract forget(email: string): Promise<void>;
+    abstract prune(maxAgeSeconds: number): Promise<number>;
+    abstract forgetEveryone(): Promise<number>;
 }
-export declare const PasswordResetTokenStore: import("@marmeon/core").Token<PasswordResetTokenStore>;
 // PasswordRuleOptions
 export interface PasswordRuleOptions {
     readonly min?: number;
@@ -735,7 +735,7 @@ export declare class PruneTokensCommand {
         unverifiedDays: number;
         revokeTokensOnPasswordChange: boolean;
         protected: boolean;
-    }> | import("@marmeon/core").Token<AccessTokenStore> | import("@marmeon/core").Token<PasswordResetTokenStore> | import("@marmeon/core").Token<RememberTokenStore> | typeof SignInTracker)[];
+    }> | import("@marmeon/core").Token<RememberTokenStore> | typeof SignInTracker | typeof AccessTokenStore | typeof PasswordResetTokenStore)[];
     constructor(resets: PasswordResetTokenStore, remember: RememberTokenStore, access: AccessTokenStore, config: AuthConfig, sessionConfig?: SessionConfig, signIns?: SignInTracker);
     handle({ options, output }: CommandInput): Promise<number>;
 }
@@ -975,28 +975,28 @@ export interface TwoFactorEnabledPayload {
     factor: 'totp' | 'passkey';
 }
 // TwoFactorState
-export interface TwoFactorState {
-    factors(userId: number | string): Promise<readonly SecondFactor[]>;
-    enabledSince(userId: number | string): Promise<Date | undefined>;
-    removeAll(userId: number | string): Promise<void>;
+export declare abstract class TwoFactorState {
+    #private;
+    abstract factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
+    abstract enabledSince(userId: AuthUserId): Promise<Date | undefined>;
+    abstract removeAll(userId: AuthUserId): Promise<void>;
 }
-export declare const TwoFactorState: import("@marmeon/core").Token<TwoFactorState>;
 // TwoFactorStore
-export declare class TwoFactorStore implements TwoFactorState {
+export declare class TwoFactorStore extends TwoFactorState {
     #private;
     constructor(connections: Connections, clock: Clock);
-    factors(userId: number | string): Promise<readonly SecondFactor[]>;
-    enabledSince(userId: number | string): Promise<Date | undefined>;
-    startSetup(userId: number | string, encryptedSecret: string): Promise<void>;
-    confirm(userId: number | string, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean>;
-    useStep(userId: number | string, step: number, reencryptedSecret: string): Promise<boolean>;
-    consumeRecoveryCode(userId: number | string, codeHash: string): Promise<number | undefined>;
-    replaceRecoveryCodes(userId: number | string, codeHashes: readonly string[]): Promise<void>;
-    remainingRecoveryCodes(userId: number | string): Promise<number>;
-    removeTotp(userId: number | string, { lastFactor }: {
+    factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
+    enabledSince(userId: AuthUserId): Promise<Date | undefined>;
+    startSetup(userId: AuthUserId, encryptedSecret: string): Promise<void>;
+    confirm(userId: AuthUserId, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean>;
+    useStep(userId: AuthUserId, step: number, reencryptedSecret: string): Promise<boolean>;
+    consumeRecoveryCode(userId: AuthUserId, codeHash: string): Promise<number | undefined>;
+    replaceRecoveryCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void>;
+    remainingRecoveryCodes(userId: AuthUserId): Promise<number>;
+    removeTotp(userId: AuthUserId, { lastFactor }: {
         lastFactor: boolean;
     }): Promise<void>;
-    removeAll(userId: number | string): Promise<void>;
+    removeAll(userId: AuthUserId): Promise<void>;
 }
 // UserOf
 export type UserOf<Types> = Types extends {
@@ -1125,7 +1125,7 @@ export declare class NewPassword {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
     });
-    store(users: UserProvider, remember: RememberTokenStore, id: string | number, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
+    store(users: UserProvider, remember: RememberTokenStore, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
         readonly revoked: number;
         readonly sessionKey: string;
     }>;
@@ -1150,7 +1150,7 @@ export interface PendingSecondFactor {
 }
 // PendingView
 export interface PendingView {
-    readonly userId: string | number;
+    readonly userId: AuthUserId;
     readonly factors: readonly SecondFactor[];
     readonly failures: number;
     readonly remember: boolean;
@@ -1263,7 +1263,7 @@ export type PasskeyError = {
 // PasskeyRecord
 export interface PasskeyRecord {
     readonly id: number;
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly userHandle: string;
     readonly credentialId: string;
     readonly publicKey: string;
@@ -1285,21 +1285,21 @@ export declare class PasskeyServiceProvider implements ServiceProvider {
     boot(app: Application): Promise<void>;
 }
 // PasskeyStore
-export declare class PasskeyStore implements TwoFactorState {
+export declare class PasskeyStore extends TwoFactorState {
     #private;
     constructor(connections: Connections, clock: Clock);
-    factors(userId: number | string): Promise<readonly SecondFactor[]>;
-    enabledSince(userId: number | string): Promise<Date | undefined>;
-    userHandle(userId: number | string): Promise<string>;
+    factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
+    enabledSince(userId: AuthUserId): Promise<Date | undefined>;
+    userHandle(userId: AuthUserId): Promise<string>;
     create(passkey: NewPasskey): Promise<Result<PasskeyRecord, {
         kind: 'duplicate';
     }>>;
-    forUser(userId: number | string): Promise<readonly PasskeyRecord[]>;
+    forUser(userId: AuthUserId): Promise<readonly PasskeyRecord[]>;
     updateCounter(id: number, previous: number, next: number, backedUp: boolean): Promise<boolean>;
     suspend(id: number): Promise<boolean>;
-    release(userId: number | string, id: number): Promise<boolean>;
-    rename(userId: number | string, id: number, name: string): Promise<boolean>;
-    remove(userId: number | string, id: number, { lastFactorAllowed }: {
+    release(userId: AuthUserId, id: number): Promise<boolean>;
+    rename(userId: AuthUserId, id: number, name: string): Promise<boolean>;
+    remove(userId: AuthUserId, id: number, { lastFactorAllowed }: {
         lastFactorAllowed: boolean;
     }): Promise<Result<{
         lastFactor: boolean;
@@ -1308,7 +1308,7 @@ export declare class PasskeyStore implements TwoFactorState {
     } | {
         kind: 'last-factor';
     }>>;
-    removeAll(userId: number | string): Promise<void>;
+    removeAll(userId: AuthUserId): Promise<void>;
 }
 // PasskeySummary
 export interface PasskeySummary {
@@ -1437,7 +1437,7 @@ export declare const ANNOUNCE_ENDED: unique symbol;
 // AccessToken
 export interface AccessToken {
     readonly id: AccessTokenId;
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly name: string;
     readonly abilities: readonly string[];
     readonly lastUsedAt: string | null;
@@ -1447,23 +1447,23 @@ export interface AccessToken {
 // AccessTokenId
 export type AccessTokenId = number | string;
 // AccessTokenStore
-export interface AccessTokenStore {
-    create(userId: number | string, name: string, options?: {
+export declare abstract class AccessTokenStore {
+    #private;
+    abstract create(userId: AuthUserId, name: string, options?: {
         abilities?: readonly string[];
         expiresIn?: Duration;
     }): Promise<{
         plainText: string;
         token: AccessToken;
     }>;
-    find(plainText: string): Promise<AccessToken | undefined>;
-    touch(token: AccessToken): Promise<void>;
-    list(userId: number | string): Promise<AccessToken[]>;
-    revoke(userId: number | string, id: AccessTokenId): Promise<boolean>;
-    revokeAll(userId: number | string): Promise<number>;
-    prune(graceSeconds?: number): Promise<number>;
-    revokeEveryone?(): Promise<number>;
+    abstract find(plainText: string): Promise<AccessToken | undefined>;
+    abstract touch(token: AccessToken): Promise<void>;
+    abstract list(userId: AuthUserId): Promise<AccessToken[]>;
+    abstract revoke(userId: AuthUserId, id: AccessTokenId): Promise<boolean>;
+    abstract revokeAll(userId: AuthUserId): Promise<number>;
+    abstract prune(graceSeconds?: number): Promise<number>;
+    abstract revokeEveryone(): Promise<number>;
 }
-export declare const AccessTokenStore: import("@marmeon/core").Token<AccessTokenStore>;
 // AccountSessions
 export declare class AccountSessions {
     #private;
@@ -1647,7 +1647,7 @@ export interface Hasher {
     verify(password: string, hash: PasswordHash): Promise<boolean>;
     needsRehash(hash: PasswordHash): boolean;
     dummyVerify(password: string): Promise<false>;
-    failureFloorMs?(): number | Promise<number>;
+    failureFloorMs(): number | Promise<number>;
 }
 export declare const Hasher: import("@marmeon/core").Token<Hasher>;
 // LoginOptions
@@ -1658,7 +1658,7 @@ export interface LoginOptions {
 }
 // NewPasskey
 export interface NewPasskey {
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly userHandle: string;
     readonly credentialId: string;
     readonly publicKey: string;
@@ -1677,7 +1677,7 @@ export declare class NewPassword {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
     });
-    store(users: UserProvider, remember: RememberTokenStore, id: string | number, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
+    store(users: UserProvider, remember: RememberTokenStore, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
         readonly revoked: number;
         readonly sessionKey: string;
     }>;
@@ -1697,18 +1697,18 @@ export type PasswordHash = string & {
     readonly [passwordHash]: true;
 };
 // PasswordResetTokenStore
-export interface PasswordResetTokenStore {
-    create(email: string, throttleSeconds: number): Promise<Result<string, {
+export declare abstract class PasswordResetTokenStore {
+    #private;
+    abstract create(email: string, throttleSeconds: number): Promise<Result<string, {
         readonly kind: 'throttled';
     }>>;
-    consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, {
+    abstract consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, {
         readonly kind: 'invalid-token';
     }>>;
-    forget(email: string): Promise<void>;
-    prune(maxAgeSeconds: number): Promise<number>;
-    forgetEveryone?(): Promise<number>;
+    abstract forget(email: string): Promise<void>;
+    abstract prune(maxAgeSeconds: number): Promise<number>;
+    abstract forgetEveryone(): Promise<number>;
 }
-export declare const PasswordResetTokenStore: import("@marmeon/core").Token<PasswordResetTokenStore>;
 // PasswordThrottled
 export interface PasswordThrottled {
     readonly kind: 'throttled';
@@ -1717,7 +1717,7 @@ export interface PasswordThrottled {
 }
 // PendingView
 export interface PendingView {
-    readonly userId: string | number;
+    readonly userId: AuthUserId;
     readonly factors: readonly SecondFactor[];
     readonly failures: number;
     readonly remember: boolean;
@@ -1794,7 +1794,7 @@ export declare const SIGN_IN_VERIFIED: unique symbol;
 export type SecondFactor = 'totp' | 'passkey';
 // SecondFactorPasskeys
 export interface SecondFactorPasskeys {
-    [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
+    [VERIFY_SECOND_FACTOR](userId: AuthUserId, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
 }
 export declare const SecondFactorPasskeys: import("@marmeon/core").Token<SecondFactorPasskeys>;
 // SessionFingerprints
@@ -1883,28 +1883,28 @@ export interface SignInWindow {
     readonly maxSeconds: number;
 }
 // TwoFactorState
-export interface TwoFactorState {
-    factors(userId: number | string): Promise<readonly SecondFactor[]>;
-    enabledSince(userId: number | string): Promise<Date | undefined>;
-    removeAll(userId: number | string): Promise<void>;
+export declare abstract class TwoFactorState {
+    #private;
+    abstract factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
+    abstract enabledSince(userId: AuthUserId): Promise<Date | undefined>;
+    abstract removeAll(userId: AuthUserId): Promise<void>;
 }
-export declare const TwoFactorState: import("@marmeon/core").Token<TwoFactorState>;
 // TwoFactorStore
-export declare class TwoFactorStore implements TwoFactorState {
+export declare class TwoFactorStore extends TwoFactorState {
     #private;
     constructor(connections: Connections, clock: Clock);
-    factors(userId: number | string): Promise<readonly SecondFactor[]>;
-    enabledSince(userId: number | string): Promise<Date | undefined>;
-    startSetup(userId: number | string, encryptedSecret: string): Promise<void>;
-    confirm(userId: number | string, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean>;
-    useStep(userId: number | string, step: number, reencryptedSecret: string): Promise<boolean>;
-    consumeRecoveryCode(userId: number | string, codeHash: string): Promise<number | undefined>;
-    replaceRecoveryCodes(userId: number | string, codeHashes: readonly string[]): Promise<void>;
-    remainingRecoveryCodes(userId: number | string): Promise<number>;
-    removeTotp(userId: number | string, { lastFactor }: {
+    factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
+    enabledSince(userId: AuthUserId): Promise<Date | undefined>;
+    startSetup(userId: AuthUserId, encryptedSecret: string): Promise<void>;
+    confirm(userId: AuthUserId, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean>;
+    useStep(userId: AuthUserId, step: number, reencryptedSecret: string): Promise<boolean>;
+    consumeRecoveryCode(userId: AuthUserId, codeHash: string): Promise<number | undefined>;
+    replaceRecoveryCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void>;
+    remainingRecoveryCodes(userId: AuthUserId): Promise<number>;
+    removeTotp(userId: AuthUserId, { lastFactor }: {
         lastFactor: boolean;
     }): Promise<void>;
-    removeAll(userId: number | string): Promise<void>;
+    removeAll(userId: AuthUserId): Promise<void>;
 }
 // UserOf
 export type UserOf<Types> = Types extends {
@@ -2164,7 +2164,7 @@ export declare const ANNOUNCE_ENDED: unique symbol;
 // AccessToken
 export interface AccessToken {
     readonly id: AccessTokenId;
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly name: string;
     readonly abilities: readonly string[];
     readonly lastUsedAt: string | null;
@@ -2174,23 +2174,23 @@ export interface AccessToken {
 // AccessTokenId
 export type AccessTokenId = number | string;
 // AccessTokenStore
-export interface AccessTokenStore {
-    create(userId: number | string, name: string, options?: {
+export declare abstract class AccessTokenStore {
+    #private;
+    abstract create(userId: AuthUserId, name: string, options?: {
         abilities?: readonly string[];
         expiresIn?: Duration;
     }): Promise<{
         plainText: string;
         token: AccessToken;
     }>;
-    find(plainText: string): Promise<AccessToken | undefined>;
-    touch(token: AccessToken): Promise<void>;
-    list(userId: number | string): Promise<AccessToken[]>;
-    revoke(userId: number | string, id: AccessTokenId): Promise<boolean>;
-    revokeAll(userId: number | string): Promise<number>;
-    prune(graceSeconds?: number): Promise<number>;
-    revokeEveryone?(): Promise<number>;
+    abstract find(plainText: string): Promise<AccessToken | undefined>;
+    abstract touch(token: AccessToken): Promise<void>;
+    abstract list(userId: AuthUserId): Promise<AccessToken[]>;
+    abstract revoke(userId: AuthUserId, id: AccessTokenId): Promise<boolean>;
+    abstract revokeAll(userId: AuthUserId): Promise<number>;
+    abstract prune(graceSeconds?: number): Promise<number>;
+    abstract revokeEveryone(): Promise<number>;
 }
-export declare const AccessTokenStore: import("@marmeon/core").Token<AccessTokenStore>;
 // AccountSessions
 export declare class AccountSessions {
     #private;
@@ -2322,7 +2322,7 @@ export interface Hasher {
     verify(password: string, hash: PasswordHash): Promise<boolean>;
     needsRehash(hash: PasswordHash): boolean;
     dummyVerify(password: string): Promise<false>;
-    failureFloorMs?(): number | Promise<number>;
+    failureFloorMs(): number | Promise<number>;
 }
 export declare const Hasher: import("@marmeon/core").Token<Hasher>;
 // LoginOptions
@@ -2338,7 +2338,7 @@ export declare class NewPassword {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
     });
-    store(users: UserProvider, remember: RememberTokenStore, id: string | number, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
+    store(users: UserProvider, remember: RememberTokenStore, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
         readonly revoked: number;
         readonly sessionKey: string;
     }>;
@@ -2358,18 +2358,18 @@ export type PasswordHash = string & {
     readonly [passwordHash]: true;
 };
 // PasswordResetTokenStore
-export interface PasswordResetTokenStore {
-    create(email: string, throttleSeconds: number): Promise<Result<string, {
+export declare abstract class PasswordResetTokenStore {
+    #private;
+    abstract create(email: string, throttleSeconds: number): Promise<Result<string, {
         readonly kind: 'throttled';
     }>>;
-    consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, {
+    abstract consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, {
         readonly kind: 'invalid-token';
     }>>;
-    forget(email: string): Promise<void>;
-    prune(maxAgeSeconds: number): Promise<number>;
-    forgetEveryone?(): Promise<number>;
+    abstract forget(email: string): Promise<void>;
+    abstract prune(maxAgeSeconds: number): Promise<number>;
+    abstract forgetEveryone(): Promise<number>;
 }
-export declare const PasswordResetTokenStore: import("@marmeon/core").Token<PasswordResetTokenStore>;
 // PasswordThrottled
 export interface PasswordThrottled {
     readonly kind: 'throttled';
@@ -2378,7 +2378,7 @@ export interface PasswordThrottled {
 }
 // PendingView
 export interface PendingView {
-    readonly userId: string | number;
+    readonly userId: AuthUserId;
     readonly factors: readonly SecondFactor[];
     readonly failures: number;
     readonly remember: boolean;
@@ -2422,7 +2422,7 @@ export declare const SIGN_IN_VERIFIED: unique symbol;
 export type SecondFactor = 'totp' | 'passkey';
 // SecondFactorPasskeys
 export interface SecondFactorPasskeys {
-    [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
+    [VERIFY_SECOND_FACTOR](userId: AuthUserId, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
 }
 export declare const SecondFactorPasskeys: import("@marmeon/core").Token<SecondFactorPasskeys>;
 // SessionFingerprints
@@ -2511,28 +2511,28 @@ export interface SignInWindow {
     readonly maxSeconds: number;
 }
 // TwoFactorState
-export interface TwoFactorState {
-    factors(userId: number | string): Promise<readonly SecondFactor[]>;
-    enabledSince(userId: number | string): Promise<Date | undefined>;
-    removeAll(userId: number | string): Promise<void>;
+export declare abstract class TwoFactorState {
+    #private;
+    abstract factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
+    abstract enabledSince(userId: AuthUserId): Promise<Date | undefined>;
+    abstract removeAll(userId: AuthUserId): Promise<void>;
 }
-export declare const TwoFactorState: import("@marmeon/core").Token<TwoFactorState>;
 // TwoFactorStore
-export declare class TwoFactorStore implements TwoFactorState {
+export declare class TwoFactorStore extends TwoFactorState {
     #private;
     constructor(connections: Connections, clock: Clock);
-    factors(userId: number | string): Promise<readonly SecondFactor[]>;
-    enabledSince(userId: number | string): Promise<Date | undefined>;
-    startSetup(userId: number | string, encryptedSecret: string): Promise<void>;
-    confirm(userId: number | string, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean>;
-    useStep(userId: number | string, step: number, reencryptedSecret: string): Promise<boolean>;
-    consumeRecoveryCode(userId: number | string, codeHash: string): Promise<number | undefined>;
-    replaceRecoveryCodes(userId: number | string, codeHashes: readonly string[]): Promise<void>;
-    remainingRecoveryCodes(userId: number | string): Promise<number>;
-    removeTotp(userId: number | string, { lastFactor }: {
+    factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
+    enabledSince(userId: AuthUserId): Promise<Date | undefined>;
+    startSetup(userId: AuthUserId, encryptedSecret: string): Promise<void>;
+    confirm(userId: AuthUserId, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean>;
+    useStep(userId: AuthUserId, step: number, reencryptedSecret: string): Promise<boolean>;
+    consumeRecoveryCode(userId: AuthUserId, codeHash: string): Promise<number | undefined>;
+    replaceRecoveryCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void>;
+    remainingRecoveryCodes(userId: AuthUserId): Promise<number>;
+    removeTotp(userId: AuthUserId, { lastFactor }: {
         lastFactor: boolean;
     }): Promise<void>;
-    removeAll(userId: number | string): Promise<void>;
+    removeAll(userId: AuthUserId): Promise<void>;
 }
 // UserOf
 export type UserOf<Types> = Types extends {

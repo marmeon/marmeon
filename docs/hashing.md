@@ -54,7 +54,7 @@ password even for a known address, so both take the same time, and keeps quiet a
 | `verify(password, hash)` | Whether the password matches, compared in constant time. A broken or tampered hash is `false`, never an error. |
 | `needsRehash(hash)` | Whether the hash was made by another driver or with other costs than the configured ones. |
 | `dummyVerify(password)` | Takes as long as a real check, and is always `false`. |
-| `failureFloorMs()` | The time a failed sign-in is padded to, in milliseconds (see below). Optional on a custom hasher; without it nothing is padded. |
+| `failureFloorMs()` | The time a failed sign-in is padded to, in milliseconds (see below). A custom hasher implements it; `0` gives up the padding of failed sign-ins, and with it the equal response time of a known and an unknown address. It must answer a finite number of milliseconds, 0 or more; `Auth.attempt()` pads to at most 10 seconds and throws error A6 without a valid answer. |
 
 `dummyVerify()` is for the sign-in of an unknown address: without it, the quick answer would tell a stranger that the address has
 no account. `Auth.attempt()` uses it, and rehashes a password whose hash `needsRehash()` by itself after a successful sign-in — only over the hash it verified: when the password was reset meanwhile, the new hash stays and the sign-in fails. A rehash ends no session and no remember-me cookie of the user's other devices: the session keeps no hash, only a fingerprint of the account's id and session key. The provider's `updatePasswordHash()` has to tell whether it wrote (see [`UserProvider`](authentication.md#the-user-type-and-where-users-come-from)).

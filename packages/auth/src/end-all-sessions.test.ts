@@ -136,6 +136,7 @@ describe('auth:end-all-sessions', () => {
     const remember = new DatabaseRememberTokens(connections, new TestClock());
     const stubborn = new AccountSessions(new Users(), remember, undefined, undefined, undefined, undefined, () => ({ forgetEveryone: async () => 0 }) as never, () => ({}) as never);
     expect(await run({ force: true }, stubborn)).toBe(1);
+    expect(lines[1]).toContain('[marmeon:A6]');
     expect(lines[1]).toContain('AccessTokenStore.revokeEveryone()');
     expect(lines[1]).toContain('--keep-api-tokens');
     expect(users.key).toBeNull();

@@ -8,7 +8,7 @@ import type { RememberTokenStore } from './remember.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens, type AccessTokenStore } from './tokens.ts';
 import { NewPassword } from './new-password.ts';
 import { SignInTracker } from './sign-ins.ts';
-import type { AuthUser, UserProvider } from './user.ts';
+import type { AuthUser, AuthUserId, UserProvider } from './user.ts';
 
 function must<T>(result: Result<T, { readonly kind: string }>): T {
   if (!result.ok) throw new Error('expected an ok result');
@@ -133,7 +133,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
   it('a failed revocation rolls the transaction back — every token stays valid', async () => {
     const adas = [await apiTokens.create(1, 'cli')];
     const failing: AccessTokenStore = Object.assign(Object.create(apiTokens) as AccessTokenStore, {
-      revokeAll: async (userId: number | string) => {
+      revokeAll: async (userId: AuthUserId) => {
         await apiTokens.revokeAll(userId);
         throw new Error('the revocation failed after its delete');
       },

@@ -45,7 +45,7 @@ class Users implements UserProvider {
 }
 
 /** A second factor the test switches on and off. */
-class Factors implements TwoFactorState {
+class Factors extends TwoFactorState {
   on = false;
   async factors(): Promise<readonly SecondFactor[]> {
     return this.on ? ['totp'] : [];

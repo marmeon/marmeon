@@ -10,7 +10,7 @@ import { claimRefused } from '../account-sessions.ts';
 import { AuthConfig, rememberCookieName } from '../config.ts';
 import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, TwoFactorEnabled, TwoFactorDisabled } from '../events.ts';
 import { RememberTokenStore } from '../remember.ts';
-import { idOf, UserProvider, type AuthUser } from '../user.ts';
+import { idOf, UserProvider, type AuthUser, type AuthUserId } from '../user.ts';
 import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from './proof.ts';
 import { clearPasswordCheck, takePasswordCheck, type PasswordThrottled } from '../password-throttle.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from './recovery-codes.ts';
@@ -351,12 +351,12 @@ export class TwoFactor {
   }
 
   /** Whether `input` is a valid second factor of the account right now — checked against the store, not against what the sign-in saw. */
-  async #verify(userId: string | number, input: SecondFactorInput, during: 'sign-in' | 'step-up' = 'sign-in'): Promise<PasskeyVerdict> {
+  async #verify(userId: AuthUserId, input: SecondFactorInput, during: 'sign-in' | 'step-up' = 'sign-in'): Promise<PasskeyVerdict> {
     if ('passkey' in input) return this.#passkeys[VERIFY_SECOND_FACTOR](userId, input.passkey, during);
     return (await this.#verifyCode(userId, input)) ? 'valid' : 'wrong';
   }
 
-  async #verifyCode(userId: string | number, input: Exclude<SecondFactorInput, { passkey: unknown }>): Promise<boolean> {
+  async #verifyCode(userId: AuthUserId, input: Exclude<SecondFactorInput, { passkey: unknown }>): Promise<boolean> {
     if ('recoveryCode' in input) {
       // Recovery codes need no secret that decrypts; they work while the account has any factor.
       if ((await this.#state.factors(userId)).length === 0) return false;
@@ -382,16 +382,16 @@ export class TwoFactor {
   }
 
   // Per account only: a password reset, which whoever controls the mailbox can ask for, must not hand out fresh attempts.
-  #codeKey(window: (typeof TOTP_WINDOWS)[number]['name'], userId: string | number): string {
+  #codeKey(window: (typeof TOTP_WINDOWS)[number]['name'], userId: AuthUserId): string {
     return `two-factor-${window}:${userId}`;
   }
 
-  #recoveryKey(userId: string | number): string {
+  #recoveryKey(userId: AuthUserId): string {
     return `two-factor-recovery:${userId}`;
   }
 
   /** Counts one code attempt in the three windows; the seconds to wait when any is used up, else `undefined`. */
-  async #throttleCodes(userId: string | number): Promise<number | undefined> {
+  async #throttleCodes(userId: AuthUserId): Promise<number | undefined> {
     const waits: number[] = [];
     for (const window of TOTP_WINDOWS) {
       const key = this.#codeKey(window.name, userId);
@@ -400,17 +400,17 @@ export class TwoFactor {
     return waits.length === 0 ? undefined : Math.max(1, ...waits);
   }
 
-  async #throttleRecovery(userId: string | number): Promise<number | undefined> {
+  async #throttleRecovery(userId: AuthUserId): Promise<number | undefined> {
     const key = this.#recoveryKey(userId);
     return (await this.#limiter.attempt(key, RECOVERY_WINDOW.attempts, RECOVERY_WINDOW.seconds)) ? undefined : Math.max(1, await this.#limiter.availableIn(key));
   }
 
   /** The secret is bound to its account: a row copied to another account does not decrypt there. */
-  #encrypt(secret: string, userId: string | number): Promise<string> {
+  #encrypt(secret: string, userId: AuthUserId): Promise<string> {
     return this.#encrypter.encrypt(secret, context(userId));
   }
 
-  async #decrypt(payload: string, userId: string | number): Promise<string | undefined> {
+  async #decrypt(payload: string, userId: AuthUserId): Promise<string | undefined> {
     try {
       return await this.#encrypter.decrypt(payload, context(userId));
     } catch (error) {
@@ -456,13 +456,13 @@ export class TwoFactor {
   }
 
   /** On an account that has a factor, the session must have proven one lately: the password alone does not change the factors. */
-  async #requireRecentSecondFactor(method: string, userId: string | number, call = `${method}()`): Promise<void> {
+  async #requireRecentSecondFactor(method: string, userId: AuthUserId, call = `${method}()`): Promise<void> {
     if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE, this.#now())) {
       throw new Error(`twoFactor.${call} needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
     }
   }
 }
 
-function context(userId: string | number): string {
+function context(userId: AuthUserId): string {
   return `marmeon-auth:two-factor:${userId}`;
 }

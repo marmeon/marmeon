@@ -28,11 +28,12 @@ import {
   type PasswordHash,
   type UserOf,
 } from './index.ts';
-import { AUTH_SESSION_KEYS } from './auth.ts';
+import { AUTH_SESSION_KEYS, MAX_FLOOR_MS, paddedTo } from './auth.ts';
 import { COMPLETE_PENDING, READ_PENDING } from './auth.ts';
 import { SessionFingerprints } from './fingerprint.ts';
 import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers as SharedUsers } from './test-helpers/users.ts';
 import { SignInTracker } from './sign-ins.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
@@ -284,7 +285,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
         const real = container.make(RememberTokenStore);
         container.instance(RememberTokenStore, { ...real, create: (...a) => real.create(...a), exists: (c) => real.exists(c), forget: (c) => real.forget(c), forgetUser: (...a) => real.forgetUser(...a), prune: (n) => real.prune(n), consume: options.consume(real) });
       }
-      if (options.factors) container.instance(TwoFactorState, { removeAll: async () => {}, factors: async (id) => options.factors!.get(Number(id)) ?? [], enabledSince: async () => undefined });
+      if (options.factors) container.instance(TwoFactorState, twoFactorState({ factors: async (id) => options.factors!.get(Number(id)) ?? [] }));
     },
   });
   await application.container.make(Migrator).migrate();
@@ -404,10 +405,10 @@ describe('Auth (session guard)', () => {
 
   describe('the time floor of a failed sign-in', () => {
     // A stub hasher reports a slow recent check: nothing real is hashed, so the lower bound cannot flake.
-    const boot = (floor: number) => {
+    const boot = (floor: number | undefined) => {
       const users = new MemoryUsers();
       const real = new PasswordHasher();
-      const hasher = { make: real.make.bind(real), verify: real.verify.bind(real), needsRehash: () => false, dummyVerify: async () => false as const, failureFloorMs: () => floor } as unknown as Hasher;
+      const hasher = { make: real.make.bind(real), verify: real.verify.bind(real), needsRehash: () => false, dummyVerify: async () => false as const, ...(floor === undefined ? {} : { failureFloorMs: () => floor }) } as unknown as Hasher;
       const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
       const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
       return { users, hasher, auth };
@@ -429,6 +430,31 @@ describe('Auth (session guard)', () => {
       const { users, auth } = boot(300);
       users.rows.set(1, { user: ada, hash: null, key: null });
       expect(await timed(() => auth.attempt('ada@example.com', 'x'))).toBeGreaterThanOrEqual(295);
+    });
+
+    it('refuses a hasher without failureFloorMs() with a coded error, before any check', async () => {
+      const { users, hasher, auth } = boot(undefined);
+      users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
+      await expect(auth.attempt('ada@example.com', 'secret')).rejects.toThrow(/^\[marmeon:A6\] The Hasher needs failureFloorMs\(\)/);
+    });
+
+    it.each([['NaN', Number.NaN], ['-1', -1], ['Infinity', Infinity], ['a string', '300' as unknown as number]])('refuses a floor of %s with a coded error', async (_name, floor) => {
+      const { users, hasher, auth } = boot(floor);
+      users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
+      await expect(auth.attempt('ada@example.com', 'wrong')).rejects.toThrow(/^\[marmeon:A6\] Hasher\.failureFloorMs\(\)/);
+    });
+
+    it('refuses a floor of undefined with a coded error', async () => {
+      const { users, hasher, auth } = boot(undefined);
+      users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
+      await expect(auth.attempt('ada@example.com', 'wrong')).rejects.toThrow(/^\[marmeon:A6\]/);
+    });
+
+    it('caps the padding at ten seconds, and keeps a floor below it', () => {
+      expect(paddedTo(300_000)).toBe(MAX_FLOOR_MS);
+      expect(paddedTo(MAX_FLOOR_MS)).toBe(MAX_FLOOR_MS);
+      expect(paddedTo(250)).toBe(250);
+      expect(paddedTo(0)).toBe(0);
     });
 
     it('does not delay a success', async () => {

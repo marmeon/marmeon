@@ -148,10 +148,19 @@ describe('the failure ceiling of an account', { timeout: 60_000 }, () => {
 
   it('leads the right password of an account with a second factor to the challenge, and starts the count over', async () => {
     let withFactor: unknown;
+    class OneFactor extends TwoFactorState {
+      async factors(id: unknown) {
+        return id === withFactor ? (['totp'] as const) : [];
+      }
+      async enabledSince() {
+        return undefined;
+      }
+      async removeAll() {}
+    }
     await app.close(); // one database app per test
     app = await createTestApp(application, {
       database: 'refresh',
-      override: (c) => c.instance(TwoFactorState, { factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined, removeAll: async () => {} }),
+      override: (c) => c.instance(TwoFactorState, new OneFactor()),
     });
     ({ session: SESSION } = cookieNames(app));
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });

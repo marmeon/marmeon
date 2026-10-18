@@ -96,8 +96,12 @@ An app needs TypeScript 7 and the options of the starter's `tsconfig.json`: `era
 The promise of a version covers the public API. These are part of it:
 
 - The exports of each package's entry points, `.` and the documented subpaths, types included.
-- Interfaces an app implements itself, such as stores and drivers: a new required member is a break. An extension arrives as an
-  optional member, or through a base class with a default.
+- `PasswordResetTokenStore`, `AccessTokenStore` and `TwoFactorState` of `@marmeon/auth` are abstract classes your store extends. A member added later has a default —
+  unless it is [security-relevant](authentication.md#security-relevant-members), which comes only as a security hardening or in a major
+  version and never has a default. `UserProvider` and `Hasher` are interfaces: a security-relevant member is added the same way; any
+  other member is optional.
+- Other interfaces an app implements itself, such as the drivers of cache, queue and storage: a new required member is a break. An
+  extension arrives as an optional member.
 - The names and defaults of environment variables.
 - The commands of `marmeon`, their flags and exit codes.
 - The documents `--json` prints, by their `format`.

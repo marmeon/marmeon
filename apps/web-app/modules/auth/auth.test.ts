@@ -52,6 +52,27 @@ const fixtures = defineModule({
 let app: TestApp;
 let SESSION: string;
 let REMEMBER: string;
+
+/** A second-factor source that reports an authenticator for the one account `holder()` names. */
+class TotpFor extends TwoFactorState {
+  readonly #holder: () => unknown;
+
+  constructor(holder: () => unknown) {
+    super();
+    this.#holder = holder;
+  }
+
+  async factors(id: unknown) {
+    return id === this.#holder() ? (['totp'] as const) : [];
+  }
+
+  async enabledSince() {
+    return undefined;
+  }
+
+  async removeAll() {}
+}
+
 beforeEach(async () => {
   app = await createTestApp({ ...application, modules: [...application.modules!, fixtures] }, { database: 'refresh' });
   ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
@@ -261,7 +282,7 @@ describe('auth module', () => {
     await app.close(); // one database app per test
     app = await createTestApp(application, {
       database: 'refresh',
-      override: (c) => c.instance(TwoFactorState, { removeAll: async () => {}, factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined }),
+      override: (c) => c.instance(TwoFactorState, new TotpFor(() => withFactor)),
     });
     ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
@@ -619,7 +640,7 @@ describe('password reset', () => {
     await app.close(); // one database app per test
     app = await createTestApp(application, {
       database: 'refresh',
-      override: (c) => c.instance(TwoFactorState, { removeAll: async () => {}, factors: async (id) => (id === withFactor ? ['totp'] : []), enabledSince: async () => undefined }),
+      override: (c) => c.instance(TwoFactorState, new TotpFor(() => withFactor)),
     });
     ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
