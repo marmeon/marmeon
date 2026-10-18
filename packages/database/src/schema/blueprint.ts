@@ -179,6 +179,8 @@ export class Blueprint {
   readonly renames: { from: string; to: string }[] = [];
   /** Existing columns that become NOT NULL (`nullable: false`) or nullable (`nullable: true`). */
   readonly nullability: { column: string; nullable: boolean }[] = [];
+  /** Columns taken out of use (`retire()`): the projection forgets them, the database keeps them. */
+  readonly retirements: string[] = [];
   /** `timestamps()` and `softDeletes()` were called. */
   readonly markers = new Set<TableMarker>();
 
@@ -328,6 +330,12 @@ export class Blueprint {
     this.#nullability(column, true);
   }
 
+  /** Changing a table only: takes a column out of use one release before it is dropped; runs no statement. See `docs/migrations.md#retiring-a-column`. */
+  retire(column: string): void {
+    this.#open();
+    this.retirements.push(column);
+  }
+
   /**
    * Closes the description once the callback that built it has returned: a column modifier or a new column after that (from an
    * `async` callback, or a later step) throws instead of changing a table the plan already holds.
@@ -340,7 +348,7 @@ export class Blueprint {
       if (spec.default) Object.freeze(spec.default);
       Object.freeze(spec);
     }
-    for (const list of [this.columns, this.indexes, this.drops, this.dropIndexes, this.renames, this.nullability]) Object.freeze(list);
+    for (const list of [this.columns, this.indexes, this.drops, this.dropIndexes, this.renames, this.nullability, this.retirements]) Object.freeze(list);
   }
 
   /** Every index to create: table-level ones and `.unique()` on columns — all named, so all droppable. */

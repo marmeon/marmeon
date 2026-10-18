@@ -1,0 +1,192 @@
+{
+ "format": 2,
+ "database": "0.3.0",
+ "migrations": [
+  {
+   "name": "2026_01_01_000000_create_users_and_posts",
+   "module": "app",
+   "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+ ],
+ "tables": {
+  "users": {
+   "name": "users",
+   "module": "app",
+   "columns": [
+    {
+     "name": "id",
+     "type": {
+      "sqlite": "integer",
+      "pgsql": "bigint"
+     },
+     "nullable": false,
+     "primary": true,
+     "identity": true,
+     "default": null,
+     "secret": false
+    },
+    {
+     "name": "email",
+     "type": {
+      "sqlite": "varchar(100)",
+      "pgsql": "varchar(100)"
+     },
+     "nullable": false,
+     "primary": false,
+     "identity": false,
+     "default": null,
+     "secret": false
+    },
+    {
+     "name": "password",
+     "type": {
+      "sqlite": "varchar(255)",
+      "pgsql": "varchar(255)"
+     },
+     "nullable": false,
+     "primary": false,
+     "identity": false,
+     "default": null,
+     "secret": true
+    },
+    {
+     "name": "legacy",
+     "type": {
+      "sqlite": "varchar(255)",
+      "pgsql": "varchar(255)"
+     },
+     "nullable": true,
+     "primary": false,
+     "identity": false,
+     "default": null,
+     "secret": false,
+     "retired": true
+    },
+    {
+     "name": "created_at",
+     "type": {
+      "sqlite": "datetime",
+      "pgsql": "timestamptz(3)"
+     },
+     "nullable": false,
+     "primary": false,
+     "identity": false,
+     "default": "now",
+     "secret": false
+    },
+    {
+     "name": "updated_at",
+     "type": {
+      "sqlite": "datetime",
+      "pgsql": "timestamptz(3)"
+     },
+     "nullable": false,
+     "primary": false,
+     "identity": false,
+     "default": "now",
+     "secret": false
+    },
+    {
+     "name": "deleted_at",
+     "type": {
+      "sqlite": "datetime",
+      "pgsql": "timestamptz(3)"
+     },
+     "nullable": true,
+     "primary": false,
+     "identity": false,
+     "default": null,
+     "secret": false
+    }
+   ],
+   "uniques": [
+    [
+     "id"
+    ],
+    [
+     "email"
+    ]
+   ],
+   "indexes": [
+    {
+     "name": "users_email_unique",
+     "columns": [
+      "email"
+     ],
+     "unique": true
+    }
+   ],
+   "foreignKeys": [],
+   "markers": [
+    "soft_deletes",
+    "timestamps"
+   ]
+  },
+  "posts": {
+   "name": "posts",
+   "module": "app",
+   "columns": [
+    {
+     "name": "id",
+     "type": {
+      "sqlite": "integer",
+      "pgsql": "bigint"
+     },
+     "nullable": false,
+     "primary": true,
+     "identity": true,
+     "default": null,
+     "secret": false
+    },
+    {
+     "name": "user_id",
+     "type": {
+      "sqlite": "integer",
+      "pgsql": "bigint"
+     },
+     "nullable": false,
+     "primary": false,
+     "identity": false,
+     "default": null,
+     "secret": false
+    },
+    {
+     "name": "title",
+     "type": {
+      "sqlite": "varchar(255)",
+      "pgsql": "varchar(255)"
+     },
+     "nullable": false,
+     "primary": false,
+     "identity": false,
+     "default": null,
+     "secret": false
+    }
+   ],
+   "uniques": [
+    [
+     "id"
+    ]
+   ],
+   "indexes": [
+    {
+     "name": "posts_title_index",
+     "columns": [
+      "title"
+     ],
+     "unique": false
+    }
+   ],
+   "foreignKeys": [
+    {
+     "column": "user_id",
+     "references": "users",
+     "referenced": "id",
+     "onDelete": "cascade",
+     "inverse": "written"
+    }
+   ],
+   "markers": []
+  }
+ }
+}

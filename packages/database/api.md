@@ -25,6 +25,7 @@ export declare class Blueprint {
         column: string;
         nullable: boolean;
     }[];
+    readonly retirements: string[];
     readonly markers: Set<TableMarker>;
     constructor(table: string);
     id(name?: string): Column<number>;
@@ -53,6 +54,7 @@ export declare class Blueprint {
     renameColumn(from: string, to: string): void;
     notNull(column: string): void;
     nullable(column: string): void;
+    retire(column: string): void;
     seal(): void;
     allIndexes(): IndexSpec[];
 }
@@ -556,6 +558,7 @@ export interface ProjectedColumn {
     readonly identity: boolean;
     readonly default: 'value' | 'now' | 'uuidv7' | null;
     readonly secret: boolean;
+    readonly retired?: boolean;
 }
 // ProjectedForeignKey
 export interface ProjectedForeignKey {

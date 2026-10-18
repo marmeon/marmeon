@@ -147,10 +147,11 @@ describe('the schema projection file', () => {
   it.each([
     ['a column type that is not text', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], type: { sqlite: 1, pgsql: 'bigint' } }] } } })],
     ['an unknown default', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], default: 'random' }] } } })],
+    ['a retired flag that is not a boolean', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, columns: [{ ...file.tables.users.columns[0], retired: 'yes' }] } } })],
     ['an unknown marker', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, markers: ['hidden'] } } })],
     ['an unknown onDelete', (file: Record<string, any>) => ({ ...file, tables: { users: { ...file.tables.users, foreignKeys: [{ column: 'id', references: 'x', referenced: 'id', onDelete: 'explode' }] } } })],
   ])('does not accept a file with %s', (_, change) => {
-    const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v1.json', import.meta.url), 'utf8')) as Record<string, any>;
+    const file = JSON.parse(readFileSync(new URL('../__fixtures__/formats/schema-projection/v2.json', import.meta.url), 'utf8')) as Record<string, any>;
     expect(parseProjectionFile(JSON.stringify(file))).toBeDefined();
     expect(parseProjectionFile(JSON.stringify(change(file)))).toBeUndefined();
   });
@@ -166,7 +167,7 @@ describe('the schema projection file', () => {
   });
 
   it.each([
-    ['another format', (file: Record<string, unknown>) => ({ ...file, format: 2 })],
+    ['another format', (file: Record<string, unknown>) => ({ ...file, format: 3 })],
     ['another version of the package', (file: Record<string, unknown>) => ({ ...file, database: '0.0.0-other' })],
     ['a table that is not one', (file: Record<string, unknown>) => ({ ...file, tables: { users: { name: 'users' } } })],
   ])('computes it again for a file of %s', async (_, change) => {
@@ -249,14 +250,21 @@ describe('the schema projection file', () => {
     expect(readFileSync(path, 'utf8')).toBe(before);
   });
 
-  it('is read from every fixture of a format this version wrote', () => {
+  it('reads every fixture of the current format, and computes the projection again for one of an older format', () => {
     const directory = new URL('../__fixtures__/formats/schema-projection/', import.meta.url);
     const fixtures = readdirSync(directory).filter((name) => name.endsWith('.json'));
-    expect(fixtures).toContain('v1.json');
+    expect(fixtures).toContain(`v${PROJECTION_FORMAT}.json`);
     for (const name of fixtures) {
-      const file = parseProjectionFile(readFileSync(new URL(name, directory), 'utf8'));
+      const text = readFileSync(new URL(name, directory), 'utf8');
+      const format = Number(/^v(\d+)/.exec(name)![1]);
+      expect((JSON.parse(text) as { format: number }).format, name).toBe(format);
+      const file = parseProjectionFile(text);
+      if (format !== PROJECTION_FORMAT) {
+        // The file is a cache: another format is not an error, the projection is computed from the migrations and written over it.
+        expect(file, name).toBeUndefined();
+        continue;
+      }
       expect(file, name).toBeDefined();
-      expect(`v${file!.format}`, name).toBe(name.replace(/(-.*)?\.json$/, ''));
       expect(Object.keys(file!.tables)).toContain('users');
       expect(file!.tables.users!.columns.some((column) => column.secret)).toBe(true);
     }

@@ -16,7 +16,7 @@ export const PROJECTION_FILE = '.marmeon/schema.json';
  * change to what a plan step does to the projection, or to the shape of the file, bumps it: the version of the package does not
  * change between commits of this repository, so only the format invalidates a file written by older code.
  */
-export const PROJECTION_FORMAT = 1;
+export const PROJECTION_FORMAT = 2;
 
 /** A migration file the projection was computed from: its name, module and the SHA-256 of its bytes. */
 export interface ProjectionSource {
@@ -73,6 +73,7 @@ function isTable(value: unknown, name: string): value is ProjectedTable {
         typeof c.primary === 'boolean' &&
         typeof c.identity === 'boolean' &&
         typeof c.secret === 'boolean' &&
+        (c.retired === undefined || typeof c.retired === 'boolean') &&
         (c.default === null || DEFAULTS.has(c.default as string)),
     ) &&
     Array.isArray(table.uniques) &&
