@@ -40,6 +40,14 @@ describe('CommandRegistry.add', () => {
     expect(registry.get('db:seed')).toBe(PackageSeed);
   });
 
+  it('refuses a module that still carries a command a package took over, and the package keeps the name', () => {
+    const FromPackage = named('auth:end-sessions', 'package');
+    const FromModule = named('auth:end-sessions', 'module');
+    const registry = new CommandRegistry().add([FromPackage], 'AuthServiceProvider');
+    expect(() => registry.add([FromModule], 'module auth')).toThrow(/^\[marmeon:K8\] Two commands are named "auth:end-sessions"/);
+    expect(registry.get('auth:end-sessions')).toBe(FromPackage);
+  });
+
   it('works without a source', () => {
     const registry = new CommandRegistry().add([named('a:b', 'one')]);
     expect(() => registry.add([named('a:b', 'two')])).toThrow('(a package)');

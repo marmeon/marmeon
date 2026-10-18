@@ -18,9 +18,7 @@ import { SendLockoutMailJob } from './jobs/SendLockoutMailJob.ts';
 import { SendEmailChangeMailJob } from './jobs/SendEmailChangeMailJob.ts';
 import { SendPasswordResetLinkJob } from './jobs/SendPasswordResetLinkJob.ts';
 import { AuthServiceProvider } from './AuthServiceProvider.ts';
-import { EndSessionsCommand } from './commands/EndSessionsCommand.ts';
 import { PruneUnverifiedCommand } from './commands/PruneUnverifiedCommand.ts';
-import { ResetTwoFactorCommand } from './commands/ResetTwoFactorCommand.ts';
 import apiRoutes from './api-routes.ts';
 import routes from './routes.ts';
 import { schedule } from './schedule.ts';
@@ -72,7 +70,6 @@ export default defineModule({
   // line on in schedule.ts (marmeon schedule:work).
   schedule,
   // marmeon auth:prune-unverified — the accounts whose address was not confirmed in time (by hand, or by the schedule once turned on).
-  // marmeon auth:reset-two-factor <email> --force — lets in an owner who lost the phone and the recovery codes.
-  // marmeon auth:end-sessions <email> --force — signs an account out everywhere (a lost device, a suspected theft).
-  commands: [EndSessionsCommand, PruneUnverifiedCommand, ResetTwoFactorCommand],
+  // marmeon auth:reset-two-factor and auth:end-sessions come with @marmeon/auth.
+  commands: [PruneUnverifiedCommand],
 });

@@ -109,7 +109,7 @@ describe('auth:end-all-sessions', () => {
   it('takes no arguments: a mistyped per-account call changes nothing', async () => {
     const { users, run, lines, rows } = await setup();
     expect(await run({ force: true }, undefined, ['alice@example.com'])).toBe(1);
-    expect(lines).toEqual(['✗ auth:end-all-sessions takes no arguments (got "alice@example.com"). To sign out one account, use auth:end-sessions <email> --force.']);
+    expect(lines).toEqual(['✗ auth:end-all-sessions takes no arguments (got "alice@example.com"). To sign out one account, use auth:end-sessions <identifier> --force.']);
     expect(users.key).toBeNull();
     expect(await rows(SIGN_INS_TABLE)).toBe(1);
   });

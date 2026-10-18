@@ -191,7 +191,7 @@ export declare class AuthServiceProvider implements ServiceProvider {
         createdBy: string[];
         contents: string;
     }[];
-    static commands: (typeof MakeAuthCommand | typeof EndAllSessionsCommand | typeof PruneTokensCommand | typeof MakeSignInsTableCommand)[];
+    static commands: (typeof MakeAuthCommand | typeof EndAllSessionsCommand | typeof EndSessionsCommand | typeof ResetTwoFactorCommand | typeof PruneTokensCommand | typeof MakeSignInsTableCommand)[];
     register(container: Container): void;
     boot(app: Application): Promise<void>;
 }
@@ -419,6 +419,21 @@ export declare class EndAllSessionsCommand {
     };
     static inject: (import("@marmeon/core").Token<Logger> | typeof AccountSessions)[];
     constructor(accounts: AccountSessions, logger?: Logger);
+    handle({ args, options, output }: CommandInput): Promise<number>;
+}
+// EndSessionsCommand
+export declare class EndSessionsCommand {
+    #private;
+    static command: string;
+    static description: string;
+    static usage: string;
+    static options: {
+        readonly force: {
+            readonly type: 'boolean';
+        };
+    };
+    static inject: readonly Key[];
+    constructor(users: UserProvider, accounts: AccountSessions, logger: Logger);
     handle({ args, options, output }: CommandInput): Promise<number>;
 }
 // EndedSessions
@@ -929,6 +944,21 @@ export interface RememberedDevice {
 export type RequestEmailChangeError = PasswordCheckError | {
     readonly kind: 'duplicate';
 };
+// ResetTwoFactorCommand
+export declare class ResetTwoFactorCommand {
+    #private;
+    static command: string;
+    static description: string;
+    static usage: string;
+    static options: {
+        readonly force: {
+            readonly type: 'boolean';
+        };
+    };
+    static inject: readonly Key[];
+    constructor(users: UserProvider, accounts: AccountSessions, state: TwoFactorState, events: EventDispatcher, logger: Logger);
+    handle({ args, options, output }: CommandInput): Promise<number>;
+}
 // ResourceOf
 export type ResourceOf<P, K extends keyof P> = (K extends unknown ? Contravariant<ResourcesOf<P, K> extends [] ? unknown : ResourcesOf<P, K> extends [(infer R)?] ? R : never> : never) extends (resource: infer R) => void ? R : never;
 // ResourcelessAbility
@@ -2767,9 +2797,15 @@ marmeon auth:end-all-sessions --force [--keep-api-tokens] [--keep-reset-tokens]
 --keep-api-tokens (boolean)
 --keep-reset-tokens (boolean)
 --reset-tokens (boolean)
+// auth:end-sessions
+marmeon auth:end-sessions <identifier> --force
+--force (boolean)
 // auth:prune-tokens
 marmeon auth:prune-tokens [--hours=0]
 --hours (string)
+// auth:reset-two-factor
+marmeon auth:reset-two-factor <identifier> --force
+--force (boolean)
 // make:auth
 marmeon make:auth [--adapter=react] [--force]
 --adapter (string)

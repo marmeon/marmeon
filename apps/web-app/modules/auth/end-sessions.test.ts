@@ -1,9 +1,9 @@
 import { Logger } from '@marmeon/core';
+import { EndSessionsCommand } from '@marmeon/auth';
 import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import { EndSessionsCommand } from './commands/EndSessionsCommand.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
 
@@ -36,7 +36,7 @@ describe('marmeon auth:end-sessions', () => {
     await app.withCookie(SESSION, session).get('/users/me').assertAuthenticated(ada);
 
     const info = vi.spyOn(app.make(Logger), 'info');
-    const done = await run([` ${ada.email.toUpperCase()} `]);
+    const done = await run([` ${ada.email} `]);
     expect(done.code).toBe(0);
     expect(done.lines[0]).toContain(`of ${ada.email};`);
     expect(info).toHaveBeenCalledWith(expect.stringContaining('every session'), { userId: ada.id });
@@ -59,7 +59,7 @@ describe('marmeon auth:end-sessions', () => {
   });
 
   it('says so for an unknown address or none', async () => {
-    expect(await run(['nobody@example.com'])).toEqual({ code: 1, lines: ['No account has the address nobody@example.com.'] });
+    expect(await run(['nobody@example.com'])).toEqual({ code: 1, lines: ['No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.'] });
     expect((await run([])).code).toBe(1);
   });
 });

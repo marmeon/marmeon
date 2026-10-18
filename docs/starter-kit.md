@@ -20,7 +20,7 @@ framework bring them.
 
 | Part | What it is |
 | --- | --- |
-| `index.ts` | The module's definition: its provider, the listeners that send the confirmation mail and the notes about the second factor and about passkeys, the queued jobs, the migrations, the seeder, the routes, the schedule and the commands `auth:end-sessions`, `auth:prune-unverified` and `auth:reset-two-factor`. |
+| `index.ts` | The module's definition: its provider, the listeners that send the confirmation mail and the notes about the second factor and about passkeys, the queued jobs, the migrations, the seeder, the routes, the schedule and the command `auth:prune-unverified` (`auth:end-sessions` and `auth:reset-two-factor` come with `@marmeon/auth`). |
 | `AuthServiceProvider.ts` | Finds users through the `UserRepository`, binds the authenticator app and passkeys as the sources of second factors, and shares `auth` with every page. The rate limits of its forms are those of `@marmeon/auth` ([the limits of the auth routes](authentication.md#the-limits-of-the-auth-routes)). |
 | `users.ts`, `UserRepository.ts` | The `User` type and the only code that reads a password hash or a session key. It is the app's `UserProvider`: the statements that write a hash or a session key are `credentialWriter()` of `@marmeon/auth`, so a fix to them reaches you with a package update. The `session_key` column lets `auth.updateSessionKey()` end an account's other sessions with every session driver. |
 | `routes.ts`, `api-routes.ts` | The pages and forms, and `GET /api/user` for API tokens. |
@@ -145,7 +145,7 @@ marmeon auth:reset-two-factor ada@example.com --force
 ```
 
 The command also ends every session and remember-me cookie of the account, so a finder of the lost device cannot enrol a new factor
-from a session that is still open; the owner signs in again with the password.
+from a session that is still open; the owner signs in again with the password. The address is looked up exactly as typed (only trimmed) and the kit stores it in lower case, so type it in lower case.
 
 The kit does not require it anywhere: the `twoFactor()` middleware is provided and not installed. It comes with the page it
 needs, `/settings/two-factor/verify`; [Two-Factor Authentication](two-factor-authentication.md#in-the-starter-kit) shows the line
@@ -170,7 +170,7 @@ The owner also gets a mail when an old or forged "keep me signed in" cookie was 
 account was ended, and the mail names the time, the address and a parsed browser and system. It says plainly that it is usually someone who holds a copy, and that a browser of the owner can also send an old cookie when a page did not finish loading as it was renewed. `mail/SignInMail.ts` writes it in the account's language.
 
 Passkeys need the relying party from `APP_URL`: open the app as exactly that address, `http://localhost:3000` while developing (not
-`127.0.0.1`). [Passkeys](passkeys.md#in-the-starter-kit) explains the rest. The kit's `marmeon auth:reset-two-factor` removes passkeys with
+`127.0.0.1`). [Passkeys](passkeys.md#in-the-starter-kit) explains the rest. `marmeon auth:reset-two-factor` removes passkeys with
 the authenticator and the recovery codes. To switch passkeys off, remove `PasskeyServiceProvider` from `index.ts`, `PasskeyStore` from the
 binding in `AuthServiceProvider.ts`, and the routes, pages, listeners and imports of `@marmeon/auth/passkeys` that use them.
 
@@ -270,7 +270,7 @@ marmeon auth:end-sessions ada@example.com --force
 ```
 
 The command asks `AccountSessions` of `@marmeon/auth` (see [Authentication](authentication.md#ending-every-session-of-a-user)) and
-prints how many stored sessions it deleted at once; the others end at their next request. The password still signs in, so change
+prints how many stored sessions it deleted at once; the others end at their next request. The address is looked up exactly as typed (only trimmed), and the kit stores it in lower case. The password still signs in, so change
 it first when it may be known. `--force` is required in every environment, an unknown address fails with exit code 1, and an error
 of the call is shown, not hidden.
 
