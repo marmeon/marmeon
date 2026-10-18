@@ -17,7 +17,7 @@ import { PasskeyServiceProvider } from './passkeys/provider.ts';
 import { PGSQL_URL } from './__fixtures__/databases.ts';
 import { AuthServiceProvider, AccessTokenStore, combineFactors, DatabaseEmailChanges, DatabaseSignIns, EmailChangeStore, SignInStore, TwoFactorState, TwoFactorStore, UserProvider } from './index.ts';
 import { factorSources, NoTwoFactorState } from './two-factor/state.ts';
-import { REMEMBER_TOKENS_DROP_MIGRATION, SESSION_KEYS_MIGRATION, SIGN_INS_REMEMBER_MIGRATION, TOKENS_REISSUE_MIGRATION } from './upgrades.ts';
+import { EMAIL_CHANGES_MOVE_MIGRATION, REMEMBER_TOKENS_DROP_MIGRATION, SESSION_KEYS_MIGRATION, SIGN_INS_REMEMBER_MIGRATION, TOKENS_REISSUE_MIGRATION } from './upgrades.ts';
 
 const silent: LoggerType = Object.assign(new ConsoleLogger(), { debug() {}, info() {} });
 
@@ -39,6 +39,8 @@ const SECRETS: Record<string, readonly string[]> = {
   two_factor_authentications: ['secret'],
   two_factor_recovery_codes: ['code_hash'],
 };
+/** The secret columns of `email_changes`, which holds what `users.pending_email_token` did. */
+const EMAIL_CHANGE_SECRETS = ['email_changes.session_key', 'email_changes.token_hash'];
 /** The secret columns of `sign_ins` after the upgrade: the selector is made again, as a secret, and the validators are new. */
 const REMEMBER_SECRETS = ['sign_ins.remember_previous_validator_hash', 'sign_ins.remember_selector', 'sign_ins.remember_validator_hash'];
 
@@ -228,13 +230,80 @@ describe.each(kinds)('the random session keys of accounts that have none, on %s'
 });
 
 
+describe.each(kinds)('the change of address moved to its own table (no open change is carried over), on %s', (kind) => {
+  const MOVE = new URL('2026_02_01_000005_move_email_changes_to_their_own_table.ts', UPGRADE);
+  const TOKEN = 'T'.repeat(43);
+  const OTHER_TOKEN = 'O'.repeat(43);
+  const DAY = 86_400_000;
+
+  /** An app of the first stubs and the earlier upgrades, with an account that has a change waiting, one whose change expired, and one with none. */
+  async function appWithChanges() {
+    const database = await open(kind);
+    for (const migration of await loadAll(LEGACY)) await runMigration(database.connections, migration);
+    for (const file of ['2026_02_01_000002_reissue_personal_access_tokens.ts', '2026_02_01_000003_add_remember_columns_to_sign_ins.ts', '2026_02_01_000004_drop_remember_tokens_table.ts']) {
+      await runMigration(database.connections, await load(new URL(file, UPGRADE)));
+    }
+    const db = database.connections.get<any>();
+    const now = Date.now();
+    const user = (n: number, extra: Record<string, unknown>) =>
+      sql`insert into users (name, email, password, session_key, created_at, updated_at, pending_email, pending_email_token, pending_email_expires_at)
+        values (${`User ${n}`}, ${`user${n}@example.com`}, 'hash', ${`key-of-${n}`}, '2026-01-01 00:00:00', '2026-01-01 00:00:00', ${extra.email ?? null}, ${extra.token ?? null}, ${extra.expires ?? null})`.execute(db);
+    await user(1, { email: 'new1@example.com', token: sha256(TOKEN), expires: new Date(now + DAY) });
+    await user(2, { email: 'new2@example.com', token: sha256(OTHER_TOKEN), expires: new Date(now - 1000) });
+    await user(3, {});
+    return { ...database, db };
+  }
+
+  it('carries no change over, expired or not — an open one is asked for again, its old link finds nothing — and takes the three columns off users', async () => {
+    const { connections, db, drop } = await appWithChanges();
+    try {
+      await runMigration(connections, await load(MOVE));
+      expect((await sql`select * from email_changes`.execute(db)).rows, 'no change is carried over').toEqual([]);
+      const columns = (await describeTable(connections, 'users')).columns.map((column: string) => column.split(':')[0]);
+      for (const column of ['pending_email', 'pending_email_token', 'pending_email_expires_at']) expect(columns, `users keeps ${column}`).not.toContain(column);
+      expect(columns).toContain('session_key');
+      expect((await sql`select email from users order by id`.execute(db)).rows, 'the accounts are untouched').toHaveLength(3);
+
+      // The link of a change that was open before the upgrade works for nobody, whichever account and token it names.
+      const changes = new DatabaseEmailChanges(connections, new SystemClock());
+      expect(await changes.claim(1, TOKEN, new Date())).toBeUndefined();
+      expect(await changes.claim(2, OTHER_TOKEN, new Date())).toBeUndefined();
+      expect(await changes.pending(1, 'new1@example.com', TOKEN)).toBeUndefined();
+      expect(await changes.waiting(1)).toBeUndefined();
+      // … and the account can ask again.
+      expect(await changes.create(1, 'new1@example.com', new Date(Date.now() + DAY), 'key-of-1')).toMatch(/^[\w-]{43}$/);
+    } finally {
+      await drop();
+    }
+  });
+
+  it('leaves a database made with the first stubs like one made with the kit now, and goes back without the data', async () => {
+    const fresh = await open(kind);
+    const { connections, db, drop } = await appWithChanges();
+    try {
+      for (const migration of await loadAll(KIT)) await runMigration(fresh.connections, migration);
+      await runMigration(connections, await load(MOVE));
+      for (const table of ['users', 'email_changes']) expect(await describeTable(connections, table), table).toEqual(await describeTable(fresh.connections, table));
+
+      await runMigration(connections, await load(MOVE), { direction: 'down' });
+      const columns = (await describeTable(connections, 'users')).columns.map((column: string) => column.split(':')[0]);
+      for (const column of ['pending_email', 'pending_email_token', 'pending_email_expires_at']) expect(columns, `down puts ${column} back`).toContain(column);
+      expect((await sql`select pending_email from users`.execute(db)).rows.every((row: any) => row.pending_email === null), 'the data is not brought back').toBe(true);
+      expect((await connections.get<any>().introspection.getTables()).map((table: { name: string }) => table.name)).not.toContain('email_changes');
+    } finally {
+      await drop();
+      await fresh.drop();
+    }
+  });
+});
+
 describe.each(kinds)('the secret columns across the reissue, on %s', (kind) => {
   const modules = (...directories: URL[]) => directories.map((migrations, index) => ({ name: `part${index}`, migrations }));
   const migrator = (connections: Connections, ...directories: URL[]) => new Migrator({ modules: modules(...directories), root: '/' } as unknown as Application, connections);
   /** The secret columns the connections hide: what the migrations that ran say. */
   const marked = async (connections: Connections) => [...connections.metadata().secrets].flatMap(([table, columns]) => [...columns].map((column) => `${table}.${column}`)).sort();
   const expected = ['users.password', 'users.pending_email_token', 'users.session_key', ...Object.entries(SECRETS).flatMap(([table, columns]) => columns.map((column) => `${table}.${column}`))].sort();
-  const expectedUpgraded = [...expected.filter((column) => !column.startsWith('remember_tokens.')), ...REMEMBER_SECRETS].sort();
+  const expectedUpgraded = [...expected.filter((column) => !column.startsWith('remember_tokens.') && column !== 'users.pending_email_token'), ...REMEMBER_SECRETS, ...EMAIL_CHANGE_SECRETS].sort();
   /** Every row of the table as `selectAll()` gives it: the columns it names. */
   const columnsOf = async (connections: Connections, table: string) => Object.keys(await connections.get<any>().selectFrom(table).selectAll().executeTakeFirstOrThrow()).sort();
 
@@ -275,7 +344,7 @@ describe.each(kinds)('the secret columns across the reissue, on %s', (kind) => {
         values (1, 'cli', 'new-hash', ${JSON.stringify(['*'])}, '2026-01-01 00:00:00', '2026-01-01 00:00:00')`.execute(connections.get());
       await withoutSecrets(true);
 
-      await migrator(connections, LEGACY, UPGRADE).rollback({ steps: 2 });
+      await migrator(connections, LEGACY, UPGRADE).rollback({ steps: 3 });
       expect(await marked(connections)).toEqual(expected);
       // The table comes back empty: a token of the first release is not brought back.
       await sql`insert into remember_tokens (user_id, selector, validator_hash, expires_at, account_fingerprint, created_at, updated_at)
@@ -527,12 +596,13 @@ describe('the sources of a second factor', () => {
 });
 
 describe('the revision the auth tables list', () => {
-  it('lists the auth set up to revision 4 and the sign-ins set at revision 2, for apps that created these tables with the first stubs', () => {
+  it('lists the auth set up to revision 5 and the sign-ins set at revision 2, for apps that created these tables with the first stubs', () => {
     const upgrades = AuthServiceProvider.migrationUpgrades;
     expect(upgrades.map(({ set, revision, name, createdBy }) => ({ set, revision, name, createdBy }))).toEqual([
       { set: 'auth', revision: 2, name: 'reissue_personal_access_tokens', createdBy: ['create_personal_access_tokens_table'] },
       { set: 'auth', revision: 3, name: 'fill_empty_session_keys', createdBy: ['create_personal_access_tokens_table', 'create_users_table'] },
       { set: 'auth', revision: 4, name: 'drop_remember_tokens_table', createdBy: ['create_remember_tokens_table'] },
+      { set: 'auth', revision: 5, name: 'move_email_changes_to_their_own_table', createdBy: ['create_users_table'] },
       { set: 'sign-ins', revision: 2, name: 'add_remember_columns_to_sign_ins', createdBy: ['create_sign_ins_table'] },
     ]);
     expect(upgrades[0]!.contents).toBe(readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'));
@@ -541,17 +611,19 @@ describe('the revision the auth tables list', () => {
     expect(upgrades[1]!.contents).toMatch(/^\/\/ @marmeon-stub auth 3\n/);
     expect(upgrades[2]!.contents).toBe(readFileSync(REMEMBER_TOKENS_DROP_MIGRATION, 'utf8'));
     expect(upgrades[2]!.contents).toMatch(/^\/\/ @marmeon-stub auth 4\n/);
-    expect(upgrades[3]!.contents).toBe(readFileSync(SIGN_INS_REMEMBER_MIGRATION, 'utf8'));
-    expect(upgrades[3]!.contents).toMatch(/^\/\/ @marmeon-stub sign-ins 2\n/);
+    expect(upgrades[3]!.contents).toBe(readFileSync(EMAIL_CHANGES_MOVE_MIGRATION, 'utf8'));
+    expect(upgrades[3]!.contents).toMatch(/^\/\/ @marmeon-stub auth 5\n/);
+    expect(upgrades[4]!.contents).toBe(readFileSync(SIGN_INS_REMEMBER_MIGRATION, 'utf8'));
+    expect(upgrades[4]!.contents).toMatch(/^\/\/ @marmeon-stub sign-ins 2\n/);
   });
 
-  it('is what the first stubs and the stubs now say: no mark (revision 1) before, revision 4 after, and the plain names in both', () => {
+  it('is what the first stubs and the stubs now say: no mark (revision 1) before, revision 5 after, and the plain names in both', () => {
     for (const file of filesOf(LEGACY).filter((name) => !name.includes('users'))) {
       expect(readFileSync(new URL(file, LEGACY), 'utf8'), file).not.toMatch(/^\/\/ @marmeon-stub/);
     }
     for (const file of filesOf(KIT).filter((name) => !name.includes('users'))) {
       const contents = readFileSync(new URL(file, KIT), 'utf8');
-      expect(contents, file).toMatch(file.includes('sign_ins') ? /^\/\/ @marmeon-stub sign-ins 2\n/ : /^\/\/ @marmeon-stub auth 4\n/);
+      expect(contents, file).toMatch(file.includes('sign_ins') ? /^\/\/ @marmeon-stub sign-ins 2\n/ : /^\/\/ @marmeon-stub auth 5\n/);
       expect(contents, file).not.toContain('marmeon_');
     }
     const signIns = readFileSync(new URL('../stubs/migrations/create_sign_ins_table.ts', import.meta.url), 'utf8');
@@ -580,17 +652,18 @@ describe('marmeon make:upgrade-migrations for the auth tables', () => {
     return new MakeUpgradeMigrationsCommand({ providers: [AuthServiceProvider] } as unknown as Application).handle({ root, args: [], options, output } as unknown as CommandInput);
   };
 
-  it('writes the reissue, the session keys, the end of remember_tokens and the remember-me columns, and nothing else, for an app made with the first stubs', () => {
+  it('writes the reissue, the session keys, the end of remember_tokens, the table of the changes of address and the remember-me columns, and nothing else, for an app made with the first stubs', () => {
     const { root, files } = appWith(LEGACY);
     const before = files();
     expect(run(root, { check: true }), '--check before').toBe(1);
     expect(run(root)).toBe(0);
     const written = files().filter((file) => !before.includes(file));
-    expect(written).toHaveLength(4);
+    expect(written).toHaveLength(5);
     const contents = (pattern: RegExp) => readFileSync(join(root, 'modules/auth/migrations', written.find((file) => pattern.test(file))!), 'utf8');
     expect(contents(/reissue/)).toBe(readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'));
     expect(contents(/fill_empty_session_keys/)).toBe(readFileSync(SESSION_KEYS_MIGRATION, 'utf8'));
     expect(contents(/drop_remember_tokens/)).toBe(readFileSync(REMEMBER_TOKENS_DROP_MIGRATION, 'utf8'));
+    expect(contents(/move_email_changes/)).toBe(readFileSync(EMAIL_CHANGES_MOVE_MIGRATION, 'utf8'));
     expect(contents(/add_remember_columns/)).toBe(readFileSync(SIGN_INS_REMEMBER_MIGRATION, 'utf8'));
     expect(run(root, { check: true }), '--check after').toBe(0);
   });
@@ -622,6 +695,9 @@ describe('the migrations in the apps', () => {
     expect(readFileSync(new URL(web + dropped[0], repo), 'utf8')).toBe(readFileSync(REMEMBER_TOKENS_DROP_MIGRATION, 'utf8'));
     // The upgrades come after every migration that creates or changes the tables they touch.
     expect([...files].sort().slice(-3)).toEqual([reissue[0], remember[0], dropped[0]]);
+    const moved = readdirSync(new URL(web, repo)).filter((file) => /move_email_changes_to_their_own_table/.test(file));
+    expect(moved).toEqual([expect.stringMatching(/^\d{4}_\d{2}_\d{2}_\d{6}_move_email_changes_to_their_own_table\.ts$/)]);
+    expect(readFileSync(new URL(web + moved[0], repo), 'utf8')).toBe(readFileSync(EMAIL_CHANGES_MOVE_MIGRATION, 'utf8'));
     for (const file of files) expect(readFileSync(new URL(web + file, repo), 'utf8'), file).not.toContain('marmeon_');
     for (const directory of ['apps/blank-app/modules/system/migrations/', 'packages/create-marmeon/template/base/modules/system/migrations/']) expect(migrationsOf(directory), directory).toEqual([]);
   });

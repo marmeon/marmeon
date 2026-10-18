@@ -78,8 +78,8 @@ class ActController extends Controller {
           };
         case 'confirm':
           return { result: await this.#emailChange.confirm(body.user!, body.token!, apply) };
-        case 'pending':
-          return { result: (await this.#emailChange.pending(1, body.email!, body.token!))?.toISOString() ?? null };
+        case 'waiting':
+          return { result: (await this.#emailChange.waiting())?.email ?? null };
         case 'cancel':
           await this.#emailChange.cancel();
           return { done: true };
@@ -438,15 +438,35 @@ describe('EmailChange.confirm()', () => {
   });
 });
 
-describe('EmailChange.pending()', () => {
-  it('tells the mail job the expiry of a live change, and nothing of a used or foreign one', async () => {
-    const { browser } = await boot();
+describe('EmailChange.waiting() and a repeated request', () => {
+  it('names the address that waits for the signed-in user, and needs a signed-in user', async () => {
+    const { browser, rotate } = await boot();
+    const first = await browser(1);
+    expect((await first.act({ action: 'waiting' })).result).toBeNull();
+    await first.request('new@example.com');
+    expect((await first.act({ action: 'waiting' })).result).toBe('new@example.com');
+    await rotate('another-key');
+    expect((await first.act({ action: 'waiting' })).threw, 'a new session key ends the session itself').toContain('signed-in user');
+  });
+
+  it('leaves the change and its link alone when the same address is asked for again: no second mail, the first link still works', async () => {
+    const { browser, rows } = await boot();
     const first = await browser(1);
     await first.request('new@example.com');
-    const { token, expiresAt } = world.delivered[0]!;
-    expect((await first.act({ action: 'pending', email: 'new@example.com', token })).result).toBe(expiresAt.toISOString());
-    expect((await first.act({ action: 'pending', email: 'other@example.com', token })).result).toBeNull();
-    await first.confirm('1', token);
-    expect((await first.act({ action: 'pending', email: 'new@example.com', token })).result).toBeNull();
+    const { token } = world.delivered[0]!;
+    expect((await first.request('new@example.com')).result).toMatchObject({ ok: true, value: { pending: true } });
+    expect(world.delivered, 'deliver is not called again').toHaveLength(1);
+    expect(await rows()).toEqual([{ user_id: 1, email: 'new@example.com' }]);
+    expect((await first.confirm('1', token)).result, 'the first link is not dead').toMatchObject({ ok: true });
+  });
+
+  it('replaces the change when another address is asked for', async () => {
+    const { browser } = await boot();
+    const first = await browser(1);
+    await first.request('one@example.com');
+    const { token } = world.delivered[0]!;
+    await first.request('two@example.com');
+    expect(world.delivered).toHaveLength(2);
+    expect((await first.confirm('1', token)).result).toMatchObject({ ok: false, error: { kind: 'invalid' } });
   });
 });

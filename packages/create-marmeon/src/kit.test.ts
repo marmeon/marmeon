@@ -80,6 +80,7 @@ it(
     expect(migrated.out).toContain('create_two_factor_tables');
     expect(migrated.out).toContain('create_passkeys_table');
     expect(migrated.out).toContain('create_sign_ins_table');
+    expect(migrated.out).toContain('create_email_changes_table');
     expect(migrated.code).toBe(0);
     // The kit is written at the current revision of its tables: nothing is left to upgrade, and nothing renames a table.
     const upgrades = marmeon('make:upgrade-migrations', '--check');
@@ -88,8 +89,9 @@ it(
     expect(readdirSync(join(root, 'modules/auth/migrations')).filter((file) => /rename/.test(file))).toEqual([]);
     const tables = readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8');
     expect(tables).toContain('password: Secret<string>;');
-    // The link's token hash is secret — never in `Row<'users'>`.
-    expect(tables).toContain('pending_email_token: Secret<string | null>;');
+    // A change of address waits in its own table, whose token hash and session key are secret — `users` holds no address its owner has not confirmed.
+    expect(tables).toMatch(/email_changes: \{[^}]*token_hash: Secret<string>;[^}]*session_key: Secret<string \| null>;/);
+    expect(tables).not.toContain('pending_email');
     // The module's foreign keys relate its tables: `with('personal_access_tokens')` on users, `with('user')` on a token.
     expect(tables).toContain("personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id';");
     expect(tables).toContain("user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };");
@@ -122,8 +124,8 @@ it(
     const ran = (file: string, describe: string) => tests.out.match(new RegExp(`✓ modules/auth/${file}\\.test\\.ts > ${describe.replace(/[()]/g, '\\$&')}`, 'g'))?.length ?? 0;
     expect(ran('registration', 'private registration — the default')).toBe(8);
     expect(ran('registration', 'registration with AUTH_PRIVATE_REGISTRATION=false')).toBe(5);
-    expect(ran('email-change', 'changing the address (private registration) — the default')).toBe(8);
-    expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false')).toBe(2);
+    expect(ran('email-change', 'changing the address (private registration) — the default')).toBe(14);
+    expect(ran('email-change', 'changing the address with AUTH_PRIVATE_REGISTRATION=false')).toBe(3);
     // Unconfirmed accounts are deleted after AUTH_UNVERIFIED_DAYS by the command, in both behaviours — the module schedules no
     // deletion (the app turns it on).
     expect(ran('prune-unverified', 'pruning accounts whose address was never confirmed — the default')).toBe(6);

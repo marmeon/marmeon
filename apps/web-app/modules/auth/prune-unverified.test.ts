@@ -115,13 +115,13 @@ describe('pruning accounts whose address was never confirmed', () => {
     const kj = await made(30, false, 'kj@example.com');
     await app.make(UserRepository).markEmailVerified(kj.id);
     // AUTH_PRIVATE_REGISTRATION=false: a new address at once, unconfirmed.
-    expect(await app.make(UserRepository).changeEmail(kj.id, 'katherine@nasa.example')).toMatchObject({ ok: true, value: { email_verified_at: null } });
+    expect(await app.make(UserRepository).applyEmailChange(kj.id, 'katherine@nasa.example', null)).toMatchObject({ ok: true, value: { email_verified_at: null } });
     const first = (await app.make(UserRepository).find(kj.id))?.first_verified_at;
     expect(first, 'the first confirmation was not kept').not.toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 5));
     await app.make(UserRepository).markEmailVerified(kj.id); // a second confirmation keeps the first's time
     expect((await app.make(UserRepository).find(kj.id))?.first_verified_at).toEqual(first);
-    await app.make(UserRepository).changeEmail(kj.id, 'kj@nasa.example');
+    await app.make(UserRepository).applyEmailChange(kj.id, 'kj@nasa.example', null);
     app.travel({ days: 30 });
     expect(await app.make(UserRepository).unconfirmedSince(new Date(app.clock.now() - 7 * DAY), 100)).toEqual([]);
     expect(await app.make(AccountDeletion).delete([kj.id], { unconfirmedSince: new Date(app.clock.now() - 7 * DAY) })).toEqual([]);
@@ -129,7 +129,7 @@ describe('pruning accounts whose address was never confirmed', () => {
   });
 
   it('the verification link records the first confirmation itself — whatever clears the address later', async () => {
-    // changeEmail() keeps a confirmation too (coalesce) and so hides a link that records none in the test above — here the
+    // applyEmailChange() keeps a confirmation too (coalesce) and so hides a link that records none in the test above — here the
     // link's own write, before anything else touches the account.
     app = await createTestApp(application, { database: 'refresh' });
     app.freeze();
@@ -145,7 +145,7 @@ describe('pruning accounts whose address was never confirmed', () => {
     app.freeze();
     const longAgo = new Date(app.clock.now() - 400 * DAY).toISOString();
     const legacy = (await app.factory(UserFactory).create({ email: 'legacy@example.com', created_at: longAgo, updated_at: longAgo, email_verified_at: longAgo, first_verified_at: null })) as User;
-    expect(await app.make(UserRepository).changeEmail(legacy.id, 'legacy@new.example')).toMatchObject({ ok: true, value: { email_verified_at: null } });
+    expect(await app.make(UserRepository).applyEmailChange(legacy.id, 'legacy@new.example', null)).toMatchObject({ ok: true, value: { email_verified_at: null } });
     expect((await app.make(UserRepository).find(legacy.id))?.first_verified_at, 'the change dropped the only confirmation').not.toBeNull();
     app.travel({ days: 30 });
     await app.schedule.run(nightAfter(app.clock.now()));

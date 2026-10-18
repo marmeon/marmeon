@@ -866,7 +866,8 @@ describe('e-mail verification', () => {
     const login = await app.post('/login', { form: { email: kj.email, password: 'orbital mechanics' } });
     const session = app.withCookie(SESSION, login.cookie(SESSION)!);
     await session.put('/settings/email', { form: { current_password: 'orbital mechanics', email: ' Katherine@NASA.example ' } }).assertFlashed('toast', { message: 'We sent a link to the new address. Your address changes once you click it there — within 60 minutes, signed in.' });
-    expect(await userBy('kj@example.com')).toMatchObject({ id: kj.id, pending_email: 'katherine@nasa.example' });
+    expect(await userBy('kj@example.com')).toMatchObject({ id: kj.id, email: 'kj@example.com' });
+    await app.assertDatabaseHas('email_changes', { user_id: kj.id, email: 'katherine@nasa.example' });
   });
 });
 

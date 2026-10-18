@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { credentialWriter, type Credentials, type PasswordHash, type UserProvider } from '@marmeon/auth';
-import { commitAnyway, err, ok, type Result } from '@marmeon/core';
+import { err, ok, type Result } from '@marmeon/core';
 import { Repository, secret, sql } from '@marmeon/database';
 import type { User } from './users.ts';
 
@@ -43,87 +43,19 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /**
-   * A new address at once, unverified — `duplicate` when another account has it, `missing` when the account is gone. Only with
-   * `AUTH_PRIVATE_REGISTRATION=false`: the default keeps a change pending (`requestEmailChange`) until its link is clicked.
+   * Writes `email` as the account's address, confirmed `verifiedAt` (`null`: not yet) — what `EmailChange` hands its `apply` handlers. The
+   * unique index decides whether another account has the address (`duplicate`); `missing` when this account is gone.
    */
-  async changeEmail(id: number, email: string): Promise<Result<User, { kind: 'duplicate' } | { kind: 'missing' }>> {
+  async applyEmailChange(id: number, email: string, verifiedAt: Date | null): Promise<Result<User, { kind: 'duplicate' } | { kind: 'missing' }>> {
     // A confirmed account stays one: what confirmed it — its link, or `email_verified_at` alone (an import, a seeder, an
-    // admin) — is kept in `first_verified_at` before the new address clears `email_verified_at`, so `auth:prune-unverified` never takes it.
+    // admin) — is kept in `first_verified_at` before a new address clears `email_verified_at`, so the prune of unconfirmed accounts never takes it.
     // (A taken address changes nothing else: the account was confirmed all the same.)
     await this.db.updateTable('users').set({ first_verified_at: sql<Date>`coalesce(first_verified_at, email_verified_at)` }).where('id', '=', id).execute();
-    return this.tryUpdate(id, { email, email_verified_at: null, pending_email: null, pending_email_token: null, pending_email_expires_at: null });
-  }
-
-  /**
-   * A change of address, pending (private registration): the new address waits beside the account's own — with the hash of
-   * its link's token and when it expires — until the link is clicked. A newer request replaces it (and so its link). Written the
-   * same for a free address and a taken one: whether another account has it is never asked here.
-   */
-  async requestEmailChange(id: number, change: { email: string; tokenHash: string; expiresAt: Date }): Promise<void> {
-    await this.update(id, { pending_email: change.email, pending_email_token: change.tokenHash, pending_email_expires_at: change.expiresAt });
-  }
-
-  /** When the pending change of `id` to `email` with this token expires — `undefined` once it is replaced, used, cancelled or pruned. */
-  async pendingEmailChange(id: number, email: string, tokenHash: string): Promise<Date | undefined> {
-    const row = await this.query()
-      .select('pending_email_expires_at')
-      .where('id', '=', id)
-      .where('pending_email', '=', email)
-      .where(sql.ref('pending_email_token'), '=', tokenHash)
-      .executeTakeFirst();
-    return row?.pending_email_expires_at ? new Date(row.pending_email_expires_at) : undefined;
-  }
-
-  /**
-   * The click on a change link: the pending address becomes the account's, confirmed `now`. Only for the account `id` (the signed-in
-   * user), only with the token of its current request, only before it expires — and only once: the token is claimed in the same
-   * statement that checks it, so two clicks at once change it once. `taken` when another account has the address by now: the
-   * unique index decides (`tryUpdate`), and the request is dropped for good. The previous address comes back for the note to it.
-   * Propagated out of an enclosing transaction, the `taken` err rolls the dropped request back — re-mark it with `commitAnyway` (see
-   * docs/transactions.md#returning-an-err).
-   */
-  async confirmEmailChange(
-    id: number,
-    tokenHash: string,
-    now: Date,
-  ): Promise<Result<{ user: User; previous: string }, { kind: 'invalid' } | { kind: 'taken'; email: string }>> {
-    return this.transaction(async (users) => {
-      const claimed = await users.db
-        .updateTable('users')
-        .set({ pending_email_token: null })
-        .where('id', '=', id)
-        .where(sql.ref('pending_email_token'), '=', tokenHash)
-        .where('pending_email_expires_at', '>', now.toISOString())
-        .returning(['email', 'pending_email'])
-        .executeTakeFirst();
-      if (!claimed?.pending_email) return err({ kind: 'invalid' });
-      const changes = { pending_email: null, pending_email_expires_at: null };
-      const changed = await users.tryUpdate(id, { email: claimed.pending_email, email_verified_at: now, ...changes });
-      if (!changed.ok) {
-        if (changed.error.kind === 'missing') return err({ kind: 'invalid' });
-        await users.update(id, changes);
-        // Committed although it is an err: the dropped request must stay dropped, so its link no longer works.
-        return commitAnyway(err({ kind: 'taken', email: claimed.pending_email }));
-      }
-      // A confirmed address — the first one, if the account had none before (kept for good).
-      await users.db.updateTable('users').set({ first_verified_at: now }).where('id', '=', id).where('first_verified_at', 'is', null).execute();
-      return ok({ user: changed.value, previous: claimed.email });
-    });
-  }
-
-  /** Drops a pending change of address (its link stops working). */
-  async cancelEmailChange(id: number): Promise<void> {
-    await this.update(id, { pending_email: null, pending_email_token: null, pending_email_expires_at: null });
-  }
-
-  /** Clears the pending changes of address that expired before `now` (the schedule) — how many. */
-  async pruneEmailChanges(now: Date): Promise<number> {
-    const result = await this.db
-      .updateTable('users')
-      .set({ pending_email: null, pending_email_token: null, pending_email_expires_at: null })
-      .where('pending_email_expires_at', '<=', now.toISOString())
-      .executeTakeFirst();
-    return Number(result.numUpdatedRows);
+    const changed = await this.tryUpdate(id, { email, email_verified_at: verifiedAt });
+    if (!changed.ok) return err(changed.error);
+    // A confirmed address — the first one, if the account had none before (kept for good).
+    if (verifiedAt) await this.db.updateTable('users').set({ first_verified_at: verifiedAt }).where('id', '=', id).where('first_verified_at', 'is', null).execute();
+    return ok(changed.value);
   }
 
   /**

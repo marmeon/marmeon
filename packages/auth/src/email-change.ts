@@ -118,6 +118,11 @@ export class EmailChange {
       return ok({ pending: false, value: applied.value });
     }
 
+    // The same address is already waiting for its link: it stays, with the link that was sent — replacing it would kill that link, and the
+    // mail to one address is limited, so the new link might never arrive. The answer is the same as for any request. Before the pause: no
+    // mail went out, so the account's pause is not used up by it.
+    if ((await this.#store.waiting(userId))?.email === email) return ok({ pending: true });
+
     // One request a pause per account: a right password clears the password throttle, so without this a loop could mail any address.
     // A request inside the pause is answered like the others and does nothing.
     const pause = `email-change:account:${userId}`;
@@ -149,11 +154,13 @@ export class EmailChange {
   }
 
   /**
-   * The expiry of the change of `userId` to `email`, as long as `token` is its token and it has not expired: what the mail job asks
-   * before it sends the link (it has no session). `undefined` when the change was replaced, used or dropped meanwhile.
+   * The address the signed-in user asked for and has not confirmed, with its expiry — `undefined` when none waits (it expired, was used or
+   * dropped, or the account's sessions were ended since). For a page that shows it. A mail job has no session and cannot build this
+   * service: it asks `EmailChangeStore.pending()`.
    */
-  pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined> {
-    return this.#store.pending(userId, email, token);
+  async waiting(): Promise<{ readonly email: string; readonly expiresAt: Date } | undefined> {
+    const user = await this.#requireUser('waiting');
+    return this.#store.waiting(idOf(user));
   }
 
   /**

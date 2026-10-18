@@ -234,15 +234,18 @@ describe('make:auth', { timeout: 30_000 }, () => {
     expect(await new MakeAuthCommand().handle(plain.input)).toBe(0);
     expect(plain.lines.filter((line) => line.startsWith('!'))).toEqual([]);
     expect(existsSync(join(STUBS, 'react', 'private-registration'))).toBe(false);
-    // The change of address is pending by default and immediate with the switch off: both in the one controller.
+    // The change of address is `EmailChange`'s (pending by default, immediate with the switch off), kept in its own table.
     const controller = readFileSync(join(defaults, 'modules/auth/controllers/UpdateEmailController.ts'), 'utf8');
-    expect(controller).toContain('requestEmailChange');
-    expect(controller).toContain('changeEmail');
+    expect(controller).toContain('EmailChange');
+    expect(controller).toContain('applyEmailChange');
+    expect(readdirSync(join(defaults, 'modules/auth/migrations'))).toContain('0001_01_01_000007_create_email_changes_table.ts');
     // The users table is made with every column it has — no migration adds one later (no app is older than its table).
     const migrations = readdirSync(join(defaults, 'modules/auth/migrations')).filter((file) => file.includes('users_table'));
     expect(migrations).toEqual(['0001_01_01_000000_create_users_table.ts']);
     const users = readFileSync(join(defaults, 'modules/auth/migrations', migrations[0]!), 'utf8');
-    for (const column of ['pending_email', 'pending_email_token', 'pending_email_expires_at', 'first_verified_at', 'session_key']) expect(users).toContain(`'${column}'`);
+    for (const column of ['first_verified_at', 'session_key']) expect(users).toContain(`'${column}'`);
+    // An address its owner has not confirmed is not on `users`, which other modules read.
+    for (const column of ['pending_email', 'pending_email_token', 'pending_email_expires_at']) expect(users).not.toContain(`'${column}'`);
     expect(plain.lines).toContain('Registration and the change of address are private: they never tell whether an address has an account (AUTH_PRIVATE_REGISTRATION=false makes them say "taken").');
   });
 
@@ -250,7 +253,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
     const folder = join(repo, 'apps/web-app/modules/auth/migrations');
     const files = readdirSync(folder).filter((file) => file.includes('users_table'));
     const create = files.find((file) => file.endsWith('_create_users_table.ts'))!;
-    const columns = ['pending_email', 'pending_email_token', 'pending_email_expires_at', 'first_verified_at', 'session_key'];
+    const columns = ['first_verified_at', 'session_key'];
     const users = readFileSync(join(folder, create), 'utf8');
     for (const column of columns) expect(users, `${create} makes no ${column}`).toContain(`'${column}'`);
     // Another migration that names one of them adds it to a table made without it — and backfills rows no app has.

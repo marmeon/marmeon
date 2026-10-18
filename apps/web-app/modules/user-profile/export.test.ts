@@ -30,7 +30,7 @@ describe('"Download my data" (a private disk and a signed, expiring URL)', () =>
     download.assertHeader('content-type', 'application/json').assertHeader('x-content-type-options', 'nosniff').assertHeader('content-security-policy', 'sandbox');
     download.assertHeader('cache-control', 'private, no-store');
     const data = JSON.parse(download.body) as { account: Record<string, unknown>; profile: { links: { label: string }[] } };
-    expect(data.account).toMatchObject({ id: ada.id, name: 'Ada', email: 'ada@example.com' });
+    expect(data.account).toMatchObject({ id: ada.id, name: 'Ada', email: 'ada@example.com', pending_email: null });
     expect(data.profile.links.map((link) => link.label)).toEqual(['Blog']);
     expect(download.body).not.toMatch(/password|\$argon2/); // never the hash
 

@@ -29,7 +29,7 @@ framework bring them.
 | `mail/` | Ten mails: the confirmation of an address, the reset link, the notes about a change of address and about a known address, the notes about the second factor and about passkeys, the note about a copied "keep me signed in" cookie, and the note that an account stopped taking passwords. |
 | `jobs/`, `listeners/`, `tasks/` | The work that runs on the queue or on a schedule. |
 | `middleware/` | `ShareAuthProps` and `ConfirmedAddress`. |
-| `migrations/` | The tables `users`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, `passkeys` and `sign_ins`, which also holds the remember-me tokens. An app generated before the tokens moved onto the sign-ins runs [`marmeon make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables). |
+| `migrations/` | The tables `users`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, `passkeys`, `sign_ins`, which also holds the remember-me tokens, and `email_changes`, where a change of address waits for its link. An app generated before the tokens moved onto the sign-ins or the changes of address onto their own table runs [`marmeon make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables). |
 | `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`: never seed a server with it. |
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
 | `auth.test.ts` and twelve more | The module's own tests. |
@@ -191,7 +191,9 @@ Three more rules follow from it:
 - **A form field never asks the database.** The live check of the form only looks at the address's format.
 - **A change of address waits for its link.** A new address on the security page is kept aside until the link sent to it is
   clicked, and the answer is the same for a free and a taken address. The owner of a taken address gets a note instead, and
-  nothing changes. A pending change expires after 60 minutes.
+  nothing changes. A pending change expires after 60 minutes. It is kept in the table `email_changes`, not on `users`, which other
+  modules may read; the security decisions are those of `EmailChange` in `@marmeon/auth` (see
+  [changing the address](authentication.md#changing-the-address)), the module binds its `DatabaseEmailChanges` store and writes the address.
 
 The price is that someone who forgot they have an account learns it only from their inbox, and nobody can start before the
 mailer and a queue worker run.
@@ -297,11 +299,9 @@ The command is not scheduled by itself, because deleting accounts is your app's 
 
 ```ts title="modules/auth/schedule.ts"
 import { defineSchedule } from '@marmeon/scheduler';
-import { PruneEmailChanges } from './tasks/PruneEmailChanges.ts';
 
 export const schedule = defineSchedule((s) => {
   s.command('auth:prune-tokens').daily().at('03:10').onOneServer();
-  s.call(PruneEmailChanges).daily().at('03:10').onOneServer().name('auth.prune-email-changes');
   s.command('auth:prune-unverified').daily().at('03:20').onOneServer();
 });
 ```

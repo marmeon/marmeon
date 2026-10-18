@@ -541,7 +541,7 @@ with a typed password, also for the account (twenty an hour across all such sign
 devices", e-mail change and new API token call it, and `TwoFactor` and `Passkeys` call it for their own password checks. A stolen session must not become a way to guess the password, and a passkey-only session
 that uses up the account's count must not lock out the owner, who typed the password to sign in: the account's hourly count never applies to a sign-in made by `attempt()`.
 On top of both, one generous cap holds for every sign-in of the account, typed or not: 100 checks a day. Stolen sessions cannot add up their own limits past it, whatever `AUTH_SESSION_MAX_HOURS` allows. It too answers `throttled` with `account: true`.
-When the account's count is what holds a check up, `checkPassword()` answers `throttled` with `account: true`, and the starter kit then says "Sign in again with your password to continue" instead of a wait. An empty password is `invalid-password` and counts nothing, since there is nothing to guess.
+When the account's count is what holds a check up, `checkPassword()` answers `throttled` with `account: true`, and the starter kit then says how long to wait and that signing in again with the password lifts the hourly part of the count, not the daily one. An empty password is `invalid-password` and counts nothing, since there is nothing to guess.
 
 No method of `Auth` checks a password without counting. `checkPassword()` answers a `Result`, which is an object even for a wrong password: test `.ok`, never its truthiness. `auth.passwordCheckScope()` says whose checks these are (the sign-in's own random key, which a new session id within the sign-in keeps, and whether it began with a typed
 password); for a secret of your own that a signed-in user types, `takePasswordCheck(limiter, scope, userId)` counts one and returns the seconds to wait, and `clearPasswordCheck()` clears the minute after a right one.
@@ -725,7 +725,7 @@ const result = await this.#emailChange.request(ctx.body.email, ctx.body.current_
     await this.#queue.dispatch(SendEmailChangeMailJob, { user: userId, email, token });
   },
   // `AUTH_PRIVATE_REGISTRATION=false`: write the address at once, unconfirmed.
-  apply: (userId, email, verifiedAt) => this.#users.changeEmail(userId, email, verifiedAt),
+  apply: (userId, email, verifiedAt) => this.#users.applyEmailChange(userId, email, verifiedAt),
 });
 if (!result.ok) {
   // `invalid-password` and `throttled` as for `checkPassword()`, or `duplicate` (only without private registration)
@@ -752,7 +752,7 @@ What `EmailChange` decides, so that your controllers do not have to:
   back. Without private registration there is no pause: the address is written at once, and your app throttles the confirmation mail it sends
   for it (`throttle()` on the route, or a limiter of your own).
 - **One link, used once.** The token is stored only as a SHA-256 hash, expires after `AUTH_EMAIL_CHANGE_MINUTES` (60 by default, 5 to
-  1440), and a newer request replaces the older one. `confirm()` claims it and calls `apply` in one transaction, so a write that fails
+  1440), and a request for another address replaces the older one. `confirm()` claims it and calls `apply` in one transaction, so a write that fails
   leaves the link usable. If another account took the address meanwhile the answer is `taken` and the link is spent all the same.
 - **Only for the account it names.** `confirm()` answers `wrong-account` when another user is signed in, and keeps the link for the right
   one. The store also keeps the session key the request was checked against, so a link ends when the sessions of the account are ended or
@@ -782,9 +782,11 @@ export class NotifyAboutNewAddress {
 ```
 The module registers it with `listeners: [listen(EmailChanged, NotifyAboutNewAddress)]`.
 
-`cancel()` drops the signed-in user's own pending change. `pending(userId, email, token)` is for the mail job, which has no session: it
-answers the expiry while the change is still that one, and `undefined` once it was replaced, used or dropped, so a link is not sent for a
-change that no longer stands. `confirm()` answers one of `not-found`, `wrong-account`, `invalid` (unknown, used, expired, replaced or
+`cancel()` drops the signed-in user's own pending change, and `waiting()` tells the address that waits and its expiry (or `undefined`), for
+a page that shows it. `EmailChange` is built per request, because it needs the session, so a queue worker cannot use it: the mail job asks
+the `EmailChangeStore` instead, `store.pending(userId, email, token)`, which answers the expiry while the change is still that one and
+`undefined` once it was replaced, used or dropped, so that a link is not sent for a change that no longer stands. A request for the
+address that already waits leaves the change and its link as they are: `deliver` is not called and the answer is the same. `confirm()` answers one of `not-found`, `wrong-account`, `invalid` (unknown, used, expired, replaced or
 `apply` answered `missing`) and `taken`. The route that opens the link needs a signed-in user and throws without one.
 
 ## Ending every session of a user
@@ -1124,7 +1126,7 @@ another place:
 | `SignInStore` (`@marmeon/auth`) | Abstract class | `create`, `seen`, `list`, `end`, `endAll`, `endEveryone`, `prune`, `issueToken`, `dropToken`, `consume`, `remembered`, `forgetToken`, `rebind` | `DatabaseSignIns` on `sign_ins`, once the app has a `UserProvider`. | Does not compile. In JavaScript, error A6 for `endAll`, `dropToken` or `endEveryone`, before anything is ended. |
 | `PasswordResetTokenStore` (`@marmeon/auth`) | Abstract class | `create`, `consume`, `forget`, `prune`, `forgetEveryone` | `DatabasePasswordResetTokens` on `password_reset_tokens`. | Does not compile. In JavaScript, error A6 for `forgetEveryone`. |
 | `AccessTokenStore` (`@marmeon/auth`) | Abstract class | `create`, `find`, `touch`, `list`, `revoke`, `revokeAll`, `prune`, `revokeEveryone` | `DatabaseAccessTokens` on `personal_access_tokens`. | Does not compile. In JavaScript, error A6 for `revokeEveryone`. |
-| `EmailChangeStore` (`@marmeon/auth`) | Abstract class | `create`, `pending`, `claim`, `forget`, `prune`, `forgetEveryone` | None: the app binds one, `container.singleton(EmailChangeStore, DatabaseEmailChanges)` for the default on `email_changes`. | Does not compile. In JavaScript, error A6 for `forget` and `forgetEveryone`, before anything is written or ended. |
+| `EmailChangeStore` (`@marmeon/auth`) | Abstract class | `create`, `pending`, `waiting`, `claim`, `forget`, `prune`, `forgetEveryone` | None: the app binds one, `container.singleton(EmailChangeStore, DatabaseEmailChanges)` for the default on `email_changes`. | Does not compile. In JavaScript, error A6 for `forget` and `forgetEveryone`, before anything is written or ended. |
 | `TwoFactorState` (`@marmeon/auth`) | Abstract class | `factors`, `enabledSince`, `removeAll` | `NoTwoFactorState`: nobody has a second factor. The starter kit binds `TwoFactorStore` (on `two_factor_authentications` with `two_factor_recovery_codes`) and the passkeys. | Does not compile. In JavaScript, error A6 when `combineFactors()` is called or before a password reset spends its token. |
 | `SessionStore` (`@marmeon/session`) | Abstract class | `read`, `write`, `destroy`, `gc` (`destroyUser` is optional) | The store of `SESSION_DRIVER`: `file`, `database`, `redis` or `memory`. | Does not compile. |
 

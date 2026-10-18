@@ -278,8 +278,8 @@ The framework's tables grow until something prunes them. Schedule these commands
 | `uploads:prune` | Uploads that were never used, or used up. | [File storage](storage.md#the-uploads-table) |
 | `auth:prune-tokens` | Expired reset and API tokens, remember-me tokens that expired or are older than `AUTH_REMEMBER_DAYS` (taken off their sign-ins), the sign-ins that are over, and, where the app binds an `EmailChangeStore`, changes of address nobody confirmed in time. | [Remember me](authentication.md#remember-me), [sign-ins](authentication.md#pruning-sign-ins) |
 
-The starter kit's auth module schedules `auth:prune-tokens` and its own `PruneEmailChanges` task, which clears the changes of
-address nobody confirmed in time, at 03:10. Its schedule also holds `auth:prune-unverified`, which deletes accounts whose address
+The starter kit's auth module schedules `auth:prune-tokens` at 03:10, which also clears the changes of address nobody confirmed in
+time, since the kit binds an `EmailChangeStore`. Its schedule also holds `auth:prune-unverified`, which deletes accounts whose address
 was never confirmed, as a line that is commented out: deleting accounts is your app's decision, so turn it on deliberately. The
 [starter kit](starter-kit.md#accounts-nobody-confirmed) page explains it.
 

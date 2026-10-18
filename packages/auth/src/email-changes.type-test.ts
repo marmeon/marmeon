@@ -10,6 +10,9 @@ export class CompleteChanges extends EmailChangeStore {
   async pending() {
     return undefined;
   }
+  async waiting() {
+    return undefined;
+  }
   async claim() {
     return undefined;
   }
@@ -29,6 +32,9 @@ export class ChangesWithoutForgetEveryone extends EmailChangeStore {
   async pending() {
     return undefined;
   }
+  async waiting() {
+    return undefined;
+  }
   async claim() {
     return undefined;
   }
@@ -43,6 +49,9 @@ export class ChangesWithoutClaim extends EmailChangeStore {
     return 'token';
   }
   async pending() {
+    return undefined;
+  }
+  async waiting() {
     return undefined;
   }
   async forget() {}
@@ -61,6 +70,9 @@ export class ChangesByImplements implements EmailChangeStore {
   async pending() {
     return undefined;
   }
+  async waiting() {
+    return undefined;
+  }
   async claim() {
     return undefined;
   }
@@ -76,6 +88,7 @@ export class ChangesByImplements implements EmailChangeStore {
 export const changesLiteral: EmailChangeStore = {
   create: async () => 'token',
   pending: async () => undefined,
+  waiting: async () => undefined,
   claim: async () => undefined,
   forget: async () => {},
   prune: async () => 0,
@@ -85,6 +98,7 @@ export const changesLiteral: EmailChangeStore = {
 export function storeTakesTheAppsUserId() {
   expectTypeOf<Parameters<EmailChangeStore['create']>[0]>().toEqualTypeOf<AuthUserId>();
   expectTypeOf<Parameters<EmailChangeStore['pending']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<EmailChangeStore['waiting']>[0]>().toEqualTypeOf<AuthUserId>();
   expectTypeOf<Parameters<EmailChangeStore['claim']>[0]>().toEqualTypeOf<AuthUserId>();
   expectTypeOf<Parameters<EmailChangeStore['forget']>[0]>().toEqualTypeOf<AuthUserId>();
 }

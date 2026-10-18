@@ -1,6 +1,7 @@
-import { Lockout, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, PasswordReset, RecoveryCodeUsed, Registered, RememberTokenReused, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '@marmeon/auth';
+import { EmailChanged, Lockout, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, PasswordReset, RecoveryCodeUsed, Registered, RememberTokenReused, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '@marmeon/auth';
 import { PasskeyServiceProvider } from '@marmeon/auth/passkeys';
 import { defineModule, listen } from '@marmeon/core';
+import { NotifyAboutEmailChange } from './listeners/NotifyAboutEmailChange.ts';
 import { NotifyAboutFailedPasskeySignIn } from './listeners/NotifyAboutFailedPasskeySignIn.ts';
 import { NotifyAboutFailedTwoFactor } from './listeners/NotifyAboutFailedTwoFactor.ts';
 import { NotifyAboutPasskeyCloneSuspected } from './listeners/NotifyAboutPasskeyCloneSuspected.ts';
@@ -55,6 +56,8 @@ export default defineModule({
     listen(Lockout, QueueLockoutMail),
     // Not queued (the event cannot be): it queues the mail that lists the passkeys a password reset left standing.
     listen(PasswordReset, NotifyAboutPasskeysAfterReset),
+    // Not queued (the language is the account's, read when it runs): it queues the note to the old address once an address changed.
+    listen(EmailChanged, NotifyAboutEmailChange),
   ],
   // Queued work — a worker (`marmeon queue:work`, started by `marmeon dev`) runs only registered jobs.
   // Private registration: the note to an account's owner that someone signed up with its address; the link to a new
@@ -66,7 +69,7 @@ export default defineModule({
   seeders: [UserSeeder],
   routes,
   apiRoutes,
-  // Scheduled work: the nightly prune of tokens and expired changes of address — and of unconfirmed accounts once you turn its
+  // Scheduled work: the nightly prune of tokens and expired changes of address (`auth:prune-tokens`) — and of unconfirmed accounts once you turn its
   // line on in schedule.ts (marmeon schedule:work).
   schedule,
   // marmeon auth:prune-unverified — the accounts whose address was not confirmed in time (by hand, or by the schedule once turned on).

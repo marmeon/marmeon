@@ -184,19 +184,29 @@ With private registration, a new address on the security page waits beside the o
 - **The same answer for every address.** The request stores the pending address and queues one job, whether the address is free or
   belongs to another account. The worker sends the link to a free address, and a note to the owner of a taken one. Nothing changes
   for anybody until a link is opened.
-- **One link, one request.** The users table keeps the pending address, the SHA-256 hash of the link's token and when it expires,
-  60 minutes after the request. A newer request replaces the link. The link works only for the signed-in account it names, only
-  once and only before it expires.
+- **One link, one request.** The table `email_changes` keeps the pending address, the SHA-256 hash of the link's token and when it
+  expires, 60 minutes after the request. `users` holds none of it, so no other module that reads `users` sees an address its owner
+  has not confirmed. A newer request replaces the link. The link works only for the signed-in account it names, only
+  once and only before it expires, and only while the account's sessions have not been ended since the request.
+- **A repeated request changes nothing.** Asking again for the address that already waits leaves the change and its link as they are and
+  sends no second mail, with the same answer as any request. An account also waits a minute (`AUTH_EMAIL_CHANGE_THROTTLE`) after a
+  request that sent a link.
+- **Limits on the mail to one address.** The job that mails the link sends at most one mail an hour to an address for one account and
+  three an hour to the address whoever asks, so that requests from many accounts cannot turn your domain into a mail cannon against a
+  stranger, and one account cannot use up the share of another.
 - **Confirmed by the click.** The new address becomes the account's, confirmed, and the old address gets a note. When another
   account took the address in the meantime, the click is refused with 409: the address stays as it was, and the request is
   dropped, so its link no longer works.
 
 The change page sits behind `confirmedPassword()` and allows six requests a minute per user, since every request sends a mail. A
-pending address signs nobody in and gets no reset link. Typing the account's own address again drops a pending change, and the
-scheduler clears expired ones every night.
+pending address signs nobody in and gets no reset link. Typing the account's own address again drops a pending change, and
+`auth:prune-tokens` clears expired ones every night. The starter kit's controllers are thin: `EmailChange` of `@marmeon/auth` decides
+the factor, the password and the link, the module writes the address (`UserRepository.applyEmailChange`) and the `EmailChanged`
+listener tells the old address.
 
 With `AUTH_PRIVATE_REGISTRATION=false`, the address changes at once, unconfirmed, and a confirmation link goes to it. A taken
-address is a field error, and the old address gets a note about the change.
+address is a field error, and the old address gets a note about the change. There is no pause between requests then, so the starter kit sends
+the confirmation link and the note at most once an hour to an address; the address is changed all the same.
 
 An app with its own controllers gets the security decisions of this flow from `EmailChange` of `@marmeon/auth`: see [changing the address](authentication.md#changing-the-address).
 
