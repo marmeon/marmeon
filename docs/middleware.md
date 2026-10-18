@@ -163,18 +163,17 @@ The `middleware` option of `defineApplication()` adds middleware to the global s
 ```ts title="bootstrap/app.ts"
 import { join } from 'node:path';
 import { defineApplication } from '@marmeon/core';
-import { contentSecurityPolicy } from '@marmeon/http';
+import { contentSecurityPolicy, securityHeaders } from '@marmeon/http';
 import system from '#modules/system';
 import { AppConfig } from '../config/app.ts';
 import { ResponseTime } from '../middleware/ResponseTime.ts';
-import { SecurityHeaders } from '../middleware/SecurityHeaders.ts';
 
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig],
   modules: [system],
   middleware: {
-    global: [SecurityHeaders, contentSecurityPolicy(), ResponseTime],
+    global: [securityHeaders(), contentSecurityPolicy(), ResponseTime],
     web: [],
     api: [],
   },
@@ -248,19 +247,19 @@ A response may not be the request's own to change. A controller can return the s
 headers of some responses, such as those of `Response.redirect()`, cannot change at all. `editableResponse()` hands you a response
 whose headers you may set:
 
-```ts title="middleware/SecurityHeaders.ts"
+```ts title="middleware/PreventIndexing.ts"
 import { editableResponse, type HttpContext, type Next } from '@marmeon/http';
 
-export class SecurityHeaders {
+export class PreventIndexing {
   async handle(_ctx: HttpContext, next: Next<{}>) {
-    const secured = editableResponse(await next());
-    secured.headers.set('x-content-type-options', 'nosniff');
-    secured.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
-    secured.headers.set('x-frame-options', 'DENY');
-    return secured;
+    const marked = editableResponse(await next());
+    marked.headers.set('x-robots-tag', 'noindex');
+    return marked;
   }
 }
 ```
+
+`securityHeaders()` is built the same way.
 
 When the framework made the response for this request, such as a page, a redirect, JSON from `this.json()` or an error page,
 `editableResponse()` returns it as it is. Any other response is copied once, and the copy belongs to the request from then on. So
@@ -276,7 +275,7 @@ copy. Never mark a response that could be handed out twice.
 ## Errors in middleware
 
 An error thrown in a middleware becomes a response at that layer: the exception handler renders it, and the middleware outside of
-it still runs on the way out. So a 403 from `RequireBetaAccess` still passes the session, the cookies and `SecurityHeaders`, and
+it still runs on the way out. So a 403 from `RequireBetaAccess` still passes the session, the cookies and `securityHeaders()`, and
 the error page carries the same headers as every other page.
 
 ## After the response

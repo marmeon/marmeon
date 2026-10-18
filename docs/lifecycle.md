@@ -51,7 +51,7 @@ A request then passes these stages, in this order:
 | 4 | Assets | In production, `/assets/*` is served from the build, with the precompressed copy the browser accepts. |
 | 5 | The route | The router matches method and path. A request no route matches still passes the global middleware, then ends in a 404. |
 | 6 | A scope | The request gets a container scope of its own. Every controller, middleware and scoped service of this request is built in it, and nothing of it reaches another request. |
-| 7 | Global middleware | The middleware of every request, such as your app's `SecurityHeaders` and its Content-Security-Policy. |
+| 7 | Global middleware | The middleware of every request, such as `securityHeaders()` and the Content-Security-Policy. |
 | 8 | Group middleware | The middleware of the route's group, `web` or `api`. |
 | 9 | Route middleware | The route's own middleware, such as `authenticate()`, in the order you added it. |
 | 10 | Bindings | Bound parameters are looked up, such as a note by its id. None found is a 404. |

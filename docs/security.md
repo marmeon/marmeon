@@ -115,9 +115,9 @@ until they expire. The [encryption](encryption.md#rotating-the-key) page explain
   `<script type="application/json">`. The browser reads an island's or a deferred group's streamed data only from such a script
   with its own `id`, so sanitised user HTML that guesses an `id` cannot replace it, and a deferred block only fills the props of
   its own group.
-- **Security headers.** A new app's `middleware/SecurityHeaders.ts` sends `nosniff`, a strict `Referrer-Policy` and
-  `X-Frame-Options: DENY` on every response. Its switch for `Strict-Transport-Security` is off until you turn it on, once the site
-  answers over HTTPS alone. The [Content Security Policy](csp.md#the-other-security-headers) page lists them.
+- **Security headers.** A new app lists `securityHeaders()` from `@marmeon/http`, which sends `nosniff`, a strict `Referrer-Policy` and
+  `X-Frame-Options: DENY` on every response. Its `hsts` option for `Strict-Transport-Security` is off until you turn it on, once the
+  site answers over HTTPS alone; no route can weaken `nosniff` or HSTS. The [Content Security Policy](csp.md#the-other-security-headers) page lists them.
 - **Behind a proxy,** `X-Forwarded-*` headers count only from the addresses in `TRUSTED_PROXIES`. Otherwise any client could choose
   its own address, for rate limits and logs, and its own scheme. `*` trusts the direct peer only, and is safe only when nothing
   but your proxy can reach the app. The [deployment](deployment.md#trusted-proxies) page explains the values.
@@ -283,7 +283,7 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
 - `abilities()` on every API route that acts: without it, every token of a user acts with all of the user's rights.
 - `OTEL_TRUST_TRACEPARENT` only behind an edge that owns the header, and `OTEL_RECORD_QUERY_VALUES` only when your URLs carry no
   personal data.
-- HSTS once the site answers over HTTPS only: the switch in `middleware/SecurityHeaders.ts`, or the proxy.
+- HSTS once the site answers over HTTPS only: the `hsts` option of `securityHeaders()`, or the proxy.
 - `TRUSTED_PROXIES` set to exactly your proxy, or `*` for the direct peer when nothing else can reach the app. The proxy sets
   `X-Forwarded-*` itself and does not compress pages.
 - `SESSION_ENCRYPT=true` when the session store is shared.

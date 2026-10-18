@@ -65,6 +65,8 @@ export { cacheControl, ClearClientHistory, ClientHistory } from './client-histor
 export type { SiteData } from './client-history.ts';
 export { compilePolicy, contentSecurityPolicy, CookieDefaults, DEFAULT_CSP, NONCE } from './csp.ts';
 export type { ContentSecurityPolicyOptions, CspDirectives, CspSource } from './csp.ts';
+export { securityHeaders } from './security-headers.ts';
+export type { HstsOptions, ReferrerPolicy, SecurityHeadersOptions } from './security-headers.ts';
 export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
 export type { Duration, SignedPathOptions, SignedRouteOptions } from './signed-urls.ts';
 

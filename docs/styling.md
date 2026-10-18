@@ -95,17 +95,16 @@ attributes, limit styles too:
 ```ts title="bootstrap/app.ts"
 import { join } from 'node:path';
 import { defineApplication } from '@marmeon/core';
-import { contentSecurityPolicy, NONCE } from '@marmeon/http';
+import { contentSecurityPolicy, NONCE, securityHeaders } from '@marmeon/http';
 import system from '#modules/system';
 import { AppConfig } from '../config/app.ts';
-import { SecurityHeaders } from '../middleware/SecurityHeaders.ts';
 
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig],
   modules: [system],
   middleware: {
-    global: [SecurityHeaders, contentSecurityPolicy({ styleSrc: ["'self'", NONCE] })],
+    global: [securityHeaders(), contentSecurityPolicy({ styleSrc: ["'self'", NONCE] })],
   },
 });
 ```

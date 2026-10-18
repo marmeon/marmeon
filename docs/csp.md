@@ -10,17 +10,16 @@ put a `<script>` into a page, through a comment field that escapes too little, t
 ```ts title="bootstrap/app.ts"
 import { join } from 'node:path';
 import { defineApplication } from '@marmeon/core';
-import { contentSecurityPolicy } from '@marmeon/http';
+import { contentSecurityPolicy, securityHeaders } from '@marmeon/http';
 import system from '#modules/system';
 import { AppConfig } from '../config/app.ts';
-import { SecurityHeaders } from '../middleware/SecurityHeaders.ts';
 
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig],
   modules: [system],
   middleware: {
-    global: [SecurityHeaders, contentSecurityPolicy()],
+    global: [securityHeaders(), contentSecurityPolicy()],
   },
 });
 ```
@@ -80,10 +79,9 @@ default out:
 ```ts title="bootstrap/app.ts"
 import { join } from 'node:path';
 import { defineApplication } from '@marmeon/core';
-import { contentSecurityPolicy, NONCE } from '@marmeon/http';
+import { contentSecurityPolicy, NONCE, securityHeaders } from '@marmeon/http';
 import system from '#modules/system';
 import { AppConfig } from '../config/app.ts';
-import { SecurityHeaders } from '../middleware/SecurityHeaders.ts';
 
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
@@ -91,7 +89,7 @@ export default defineApplication({
   modules: [system],
   middleware: {
     global: [
-      SecurityHeaders,
+      securityHeaders(),
       contentSecurityPolicy({
         styleSrc: ["'self'", NONCE],
         imgSrc: ["'self'", 'data:', 'https://images.example.com'],
@@ -150,7 +148,7 @@ carries a nonce, the app logs a warning once per path. Keep pages with a nonce p
 
 ## The other security headers
 
-A new app's `middleware/SecurityHeaders.ts` adds three headers to every response, pages, API answers, redirects and 404s alike:
+`securityHeaders()` from `@marmeon/http`, which a new app lists next to the policy, adds three headers to every response, pages, API answers, redirects and 404s alike:
 
 | Header | Effect |
 | --- | --- |
@@ -158,15 +156,32 @@ A new app's `middleware/SecurityHeaders.ts` adds three headers to every response
 | `Referrer-Policy: strict-origin-when-cross-origin` | Other sites learn your origin from a link, never the path and query. |
 | `X-Frame-Options: DENY` | No page, not even one of your own, can show your pages in a frame. This stops clickjacking. |
 
-The file also holds a switch for `Strict-Transport-Security`, `false` by default. To turn it on, set:
+A route that sets its own `X-Frame-Options` or `Referrer-Policy` keeps it, so a page made for embedding can say `SAMEORIGIN`. This
+holds for a response passed through from elsewhere too, as long as the value is a valid one (`DENY` or `SAMEORIGIN`; known
+referrer policies only). A value a browser would ignore, such as `ALLOW-FROM …`, `ALLOWALL` or an empty one, is replaced by the
+configured value. Where the Content-Security-Policy sets `frame-ancestors`, as in the web app and the website, it decides for
+documents, and a `SAMEORIGIN` from a route changes nothing there. `nosniff` and `Strict-Transport-Security` always follow the configuration: no route can weaken them. The options change or leave out the
+other two:
 
-```ts title="middleware/SecurityHeaders.ts"
-const HSTS: string | false = 'max-age=31536000; includeSubDomains';
+```ts
+securityHeaders({ frameOptions: 'SAMEORIGIN', referrerPolicy: 'same-origin' });
+securityHeaders({ frameOptions: false }); // none
+```
+
+With `frameOptions: false`, only `frameAncestors` of the policy protects against framing, and it covers HTML documents alone: SVG, PDF
+and XML answers then have no protection against framing.
+
+`Strict-Transport-Security` is off by default. To turn it on, pass `hsts`:
+
+```ts title="bootstrap/app.ts"
+securityHeaders({ hsts: { maxAge: 31_536_000, includeSubDomains: true } });
 ```
 
 With it, browsers refuse plain HTTP for your host for a year, and with `includeSubDomains` for every subdomain too. Turn it on
 only once all of them answer over HTTPS: a browser that has seen the header cannot reach an HTTP-only part any more.
-The header goes out only on HTTPS responses. A proxy that terminates TLS can send it instead.
+The header goes out only on HTTPS responses (behind a proxy: `TRUSTED_PROXIES`). A proxy that terminates TLS can send it instead.
+`maxAge` is a whole number of seconds. To withdraw HSTS, send `maxAge: 0` for a while: browsers that have seen the header then forget it (not together with `preload`). `preload` asks for the browsers' preload lists and needs `includeSubDomains` and a
+`maxAge` of at least 31536000, a year; `securityHeaders()` throws a `TypeError` for anything else when the app starts.
 
 ## Testing
 

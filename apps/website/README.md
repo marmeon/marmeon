@@ -103,7 +103,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   Vite bundles into `/assets/` (dev dependencies; the image needs none). `base.css` has the reset, links, buttons, focus ring and
   helpers. `favicon.svg` carries its own dark variant. `modules/site/contrast.test.ts` computes the WCAG contrast of the tokens
   in both themes.
-- **Headers:** `modules/site/middleware/SecurityHeaders.ts`, global like the policy (so the 404 has them too): `nosniff`,
+- **Headers:** `securityHeaders()` in `SiteServiceProvider`, global like the policy (so the 404 has them too): `nosniff`,
   `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` — the same for everybody, so cacheable.
   `Strict-Transport-Security` comes from Caddy (`deploy/website/Caddyfile`). `pnpm website:check` and `pnpm website:image` check `nosniff`
   on the pages they fetch.

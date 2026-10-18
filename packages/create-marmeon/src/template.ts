@@ -312,7 +312,6 @@ export function readme({ title, packageManager, kit, docker }: ReadmeOptions): s
         ]
       : []),
     'modules/system/         the framework drivers\' tables (the queue\'s jobs) — `marmeon make:*-table` writes there',
-    'middleware/             SecurityHeaders (nosniff, referrer policy, frame options, an HSTS switch)',
     'config/app.ts           APP_NAME, APP_URL',
     'storage/                the SQLite database, sessions, cache, uploads (git keeps the folders only)',
     ...(docker ? ['Dockerfile              `marmeon make:docker`: the image; compose.production.yaml runs web, worker and scheduler'] : []),
