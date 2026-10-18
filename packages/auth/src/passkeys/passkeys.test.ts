@@ -84,9 +84,12 @@ class MemoryUsers implements UserProvider<TestUser> {
 }
 
 const events: object[] = [];
+/** Runs while an event is handled, to see the state the event finds. */
+let whileHandling: (() => Promise<void>) | undefined;
 class RecordEvent {
-  handle(event: object) {
+  async handle(event: object) {
     events.push(event);
+    await whileHandling?.();
   }
 }
 
@@ -320,6 +323,7 @@ const rows = (booted: Booted, table: string) => booted.connections.get<any>().se
 
 afterEach(() => {
   events.length = 0;
+  whileHandling = undefined;
 });
 
 describe('Passkeys: registering', () => {
@@ -825,13 +829,17 @@ describe('Passkeys: replay, clones and audit signals', () => {
   it('suspends a passkey whose counter went backwards: it signs nobody in until the password releases it', async () => {
     const booted = await boot();
     const authenticator = device();
-    const { b: owner } = await enrolled(booted, authenticator);
+    const { b: owner, recoveryCodes } = await enrolled(booted, authenticator);
     for (let i = 0; i < 2; i++) {
       const b = booted.browser();
       await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options')) });
     }
     const b = booted.browser();
     expect(await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options'), { signCount: 1 }) })).toEqual({ ok: false, kind: 'clone-suspected' });
+    // Every session of the account ended with the suspicion, the owner's too: they sign in again.
+    expect(await owner.pk('who')).toEqual({ id: null });
+    await owner.login();
+    expect(await owner.pk('challenge', { recoveryCode: recoveryCodes[0] })).toMatchObject({ ok: true });
     expect(await owner.pk('list')).toMatchObject([{ suspended: true }]);
     // The honest key, with a counter that would pass, finds no usable passkey meanwhile.
     const again = booted.browser();
@@ -848,12 +856,14 @@ describe('Passkeys: replay, clones and audit signals', () => {
   it('removes a suspended passkey only with the password, though another factor remains', async () => {
     const booted = await boot();
     const authenticator = device();
-    const { b: owner } = await enrolled(booted, authenticator);
+    const { b: owner, recoveryCodes } = await enrolled(booted, authenticator);
     await addPasskey(owner, device('EdDSA'), 'Phone');
     const b = booted.browser();
     await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options')) });
     const c = booted.browser();
     await c.pk('sign-in', { response: authenticator.authenticate(await c.pk('sign-in-options'), { signCount: 1 }) });
+    await owner.login();
+    expect(await owner.pk('challenge', { recoveryCode: recoveryCodes[0] })).toMatchObject({ ok: true });
     expect(await owner.pk('remove', { id: 1 })).toEqual({ ok: false, kind: 'invalid-password' });
     expect(await owner.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
   });
@@ -968,7 +978,7 @@ describe('Passkeys: as the second factor', () => {
     const b = await waiting(booted);
     const options = await b.pk('challenge-options');
     const response = authenticator.authenticate(options.value);
-    expect(await owner.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
+    expect(await booted.application.container.make(PasskeyStore).remove(ada.id, 1, { lastFactorAllowed: true })).toMatchObject({ ok: true });
     expect(await b.pk('challenge', { passkey: response })).toMatchObject({ ok: false, kind: 'invalid-code' });
     expect(await b.pk('who')).toEqual({ id: null });
   });
@@ -1747,6 +1757,159 @@ describe('Passkeys: managing', () => {
     await store.confirm(1, 5, 'enc', null);
     expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: true });
     expect(await rows(booted, RECOVERY_CODES_TABLE)).toHaveLength(10);
+  });
+});
+
+describe('Passkeys: ending sessions', () => {
+  const signInRows = (booted: Booted) => rows(booted, 'sign_ins');
+
+  /** A second browser of the account, signed in with the passkey and remembered. */
+  async function remembered(booted: Booted, authenticator: Device): Promise<Browser> {
+    const other = booted.browser();
+    expect(await other.pk('sign-in', { response: authenticator.authenticate(await other.pk('sign-in-options')), remember: true })).toMatchObject({ ok: true });
+    expect(await other.pk('who')).toEqual({ id: ada.id });
+    return other;
+  }
+
+  it('removing a passkey ends the other sessions and their remember-me sign-ins, and keeps this one', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b } = await enrolled(booted, authenticator);
+    await addPasskey(b, device('EdDSA'), 'Phone');
+    const other = await remembered(booted, authenticator);
+    const remembering = (await signInRows(booted)).map((row) => row.id);
+    expect(remembering.length).toBeGreaterThan(0);
+    expect(await b.pk('remove', { id: 2, password: 'secret' })).toMatchObject({ ok: true });
+    expect(await other.pk('who')).toEqual({ id: null });
+    expect(await signInRows(booted), 'only the sign-in of this device is left').toHaveLength(remembering.length - 1);
+    expect(await b.pk('who')).toEqual({ id: ada.id });
+  });
+
+  it('a wrong or missing password for remove() ends nothing', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b } = await enrolled(booted, authenticator);
+    await addPasskey(b, device('EdDSA'), 'Phone');
+    const other = await remembered(booted, authenticator);
+    const remembering = (await signInRows(booted)).length;
+    expect(await b.pk('remove', { id: 2, password: 'wrong' })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await b.pk('remove', { id: 2 })).toEqual({ ok: false, kind: 'invalid-password' });
+    expect(await b.pk('remove', { id: 99, password: 'secret' })).toEqual({ ok: false, kind: 'not-found' });
+    expect(await other.pk('who')).toEqual({ id: ada.id });
+    expect(await signInRows(booted)).toHaveLength(remembering);
+  });
+
+  it('removing a passkey of one account ends no session of another', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b } = await enrolled(booted, authenticator);
+    const other = await remembered(booted, authenticator);
+    const bobKey = device();
+    const { b: bob1 } = await enrolled(booted, bobKey, bob.email);
+    const bob2 = booted.browser();
+    expect(await bob2.pk('sign-in', { response: bobKey.authenticate(await bob2.pk('sign-in-options')) })).toMatchObject({ ok: true });
+    expect(await bob2.pk('who')).toEqual({ id: bob.id });
+    expect(await bob1.pk('remove', { id: 1, password: 'secret' })).toEqual({ ok: false, kind: 'not-found' });
+    expect(await bob2.pk('who'), 'a passkey that is not theirs ends nothing').toEqual({ id: bob.id });
+    expect(await bob1.pk('remove', { id: 2, password: 'secret' })).toMatchObject({ ok: true });
+    expect(await bob2.pk('who')).toEqual({ id: null });
+    expect(await other.pk('who')).toEqual({ id: ada.id });
+    expect(await b.pk('who')).toEqual({ id: ada.id });
+  });
+
+  it('a possible copy ends every session of the account, remember-me sign-ins included, before the owner is told', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    const other = await remembered(booted, authenticator);
+    const stale = booted.browser();
+    const response = authenticator.authenticate(await stale.pk('sign-in-options'), { signCount: 1 });
+    events.length = 0;
+    const seen: { signIns: number; key: string | undefined }[] = [];
+    whileHandling = async () => void seen.push({ signIns: (await signInRows(booted)).length, key: booted.users.keys.get(ada.id) });
+    const keyBefore = booted.users.keys.get(ada.id);
+    expect(await stale.pk('sign-in', { response })).toEqual({ ok: false, kind: 'clone-suspected' });
+    expect(events.filter((event) => event instanceof PasskeyCloneSuspected)).toHaveLength(1);
+    expect(seen, 'the event finds the sessions already ended').toHaveLength(1);
+    expect(seen[0]).toMatchObject({ signIns: 0 });
+    expect(seen[0]!.key).not.toBe(keyBefore);
+    expect(await owner.pk('who')).toEqual({ id: null });
+    expect(await other.pk('who')).toEqual({ id: null });
+    expect(await signInRows(booted)).toHaveLength(0);
+  });
+
+  it('removing a passkey ends the other sessions even when a listener of its event throws', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b } = await enrolled(booted, authenticator);
+    await addPasskey(b, device('EdDSA'), 'Phone');
+    const other = await remembered(booted, authenticator);
+    whileHandling = async () => {
+      throw new Error('queue unreachable');
+    };
+    expect(await b.pk('remove', { id: 2, password: 'secret' })).toMatchObject({ thrown: expect.any(String) });
+    whileHandling = undefined;
+    expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(1);
+    expect(await other.pk('who')).toEqual({ id: null });
+  });
+
+  it('a possible copy stays suspended and is announced when ending the sessions fails', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    await enrolled(booted, authenticator);
+    const stale = booted.browser();
+    const response = authenticator.authenticate(await stale.pk('sign-in-options'), { signCount: 1 });
+    // Two honest uses first, so that the stale count is backwards.
+    for (let i = 0; i < 2; i++) {
+      const c = booted.browser();
+      await c.pk('sign-in', { response: authenticator.authenticate(await c.pk('sign-in-options')) });
+    }
+    events.length = 0;
+    booted.users.updateSessionKey = async () => {
+      throw new Error('store down');
+    };
+    expect(await stale.pk('sign-in', { response })).toEqual({ ok: false, kind: 'clone-suspected' });
+    expect(events.filter((event) => event instanceof PasskeyCloneSuspected)).toHaveLength(1);
+    expect((await rows(booted, PASSKEYS_TABLE))[0]!.suspended_at).not.toBeNull();
+  });
+
+  it('a possible copy met while confirming ends the confirming session too', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    for (let i = 0; i < 2; i++) {
+      const b = booted.browser();
+      await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options')) });
+    }
+    const options = await owner.pk('confirm-options');
+    expect(await owner.pk('confirm', { response: authenticator.authenticate(options.value, { signCount: 1 }) })).toMatchObject({ ok: false, kind: 'clone-suspected' });
+    expect(await owner.pk('who')).toEqual({ id: null });
+  });
+
+  it('an invalid signature is no suspicion of a copy and ends nothing', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    const other = await remembered(booted, authenticator);
+    const remembering = (await signInRows(booted)).length;
+    const b = booted.browser();
+    expect(await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options'), { badSignature: true }) })).toEqual({ ok: false, kind: 'invalid' });
+    expect(await owner.pk('who')).toEqual({ id: ada.id });
+    expect(await other.pk('who')).toEqual({ id: ada.id });
+    expect(await signInRows(booted)).toHaveLength(remembering);
+  });
+
+  it('a possible copy of one account ends no session of another', async () => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: ada1 } = await enrolled(booted, authenticator);
+    const { b: bob1 } = await enrolled(booted, device(), bob.email);
+    const b = booted.browser();
+    await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options')) });
+    const c = booted.browser();
+    expect(await c.pk('sign-in', { response: authenticator.authenticate(await c.pk('sign-in-options'), { signCount: 1 }) })).toEqual({ ok: false, kind: 'clone-suspected' });
+    expect(await ada1.pk('who')).toEqual({ id: null });
+    expect(await bob1.pk('who')).toEqual({ id: bob.id });
   });
 });
 

@@ -573,7 +573,7 @@ export interface PasskeyCloneSuspectedPayload {
 /** @internal The validation behind `PasskeyCloneSuspected.schema`; the type tests compare its output with `PasskeyCloneSuspectedPayload`. */
 export const passkeyCloneSuspectedSchema = v.object({ userId, passkeyId: v.number() });
 
-/** A passkey answered with a sign count that did not move forward: it may have been copied. The sign-in was refused. Queueable: `{ userId, passkeyId }`. */
+/** A passkey answered with a sign count that did not move forward: it may have been copied. The sign-in was refused, the passkey suspended and every session of the account ended before this event. Queueable: `{ userId, passkeyId }`. */
 export class PasskeyCloneSuspected {
   static readonly event = 'auth.passkey-clone-suspected';
   static readonly schema: StandardSchemaV1<PasskeyCloneSuspectedPayload> = passkeyCloneSuspectedSchema;

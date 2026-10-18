@@ -1431,7 +1431,7 @@ export interface PasskeyTable {
 // Passkeys
 export declare class Passkeys implements SecondFactorPasskeys {
     #private;
-    constructor(auth: Auth, session: Session, store: PasskeyStore, twoFactorStore: TwoFactorStore, state: TwoFactorState, config: PasskeyConfig, authConfig: AuthConfig, connections: Connections, limiter: RateLimiter, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, clock: Clock, logger: Logger, sessionConfig: SessionConfig);
+    constructor(auth: Auth, session: Session, store: PasskeyStore, twoFactorStore: TwoFactorStore, state: TwoFactorState, config: PasskeyConfig, authConfig: AuthConfig, connections: Connections, limiter: RateLimiter, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, clock: Clock, logger: Logger, sessionConfig: SessionConfig, accountSessions: AccountSessions);
     registrationOptions(): Promise<PublicKeyCredentialCreationOptionsJSON>;
     register(response: RegistrationResponseJSON, name: string, password?: string): Promise<Result<{
         recoveryCodes: readonly string[] | null;

@@ -5,7 +5,7 @@ import { Connections } from '@marmeon/database';
 import { RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
-import { claimRefused } from '../account-sessions.ts';
+import { AccountSessions, claimRefused } from '../account-sessions.ts';
 import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, DROP_REMEMBER_TOKEN, READ_PENDING, SIGN_IN_VERIFIED } from '../auth.ts';
 import { AuthConfig, rememberCookieName } from '../config.ts';
 import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
@@ -92,11 +92,12 @@ export interface PasskeySummary {
  *
  * Invariants: a challenge works once and only for its purpose (it leaves the session before anything is checked); user verification is
  * required everywhere; RP ID and origins come from configuration; a passkey signs in only its own account; a sign count that does not
- * move forward refuses the sign-in and is never written; the first passkey is a factor like an authenticator app and ends the other
- * devices' sessions. Every failure refuses.
+ * move forward refuses the sign-in, is never written and ends every session of the account; the first passkey is a factor like an authenticator app and ends the other
+ * devices' sessions, and so does removing one. Every failure refuses.
  */
 export class Passkeys implements SecondFactorPasskeys {
   readonly #auth: Auth;
+  readonly #accountSessions: AccountSessions;
   readonly #session: Session;
   readonly #store: PasskeyStore;
   readonly #twoFactorStore: TwoFactorStore;
@@ -130,8 +131,10 @@ export class Passkeys implements SecondFactorPasskeys {
     clock: Clock,
     logger: Logger,
     sessionConfig: SessionConfig,
+    accountSessions: AccountSessions,
   ) {
     this.#auth = auth;
+    this.#accountSessions = accountSessions;
     this.#session = session;
     this.#store = store;
     this.#twoFactorStore = twoFactorStore;
@@ -399,6 +402,9 @@ export class Passkeys implements SecondFactorPasskeys {
    * would lock the owner out. When it is the account's last factor — no other passkey, no authenticator app — the recovery codes go
    * with it, as with `TwoFactor.disable()`. The store decides inside its transaction, so parallel removals cannot both pass. The
    * password is checked under the throttle of `Auth.checkPassword()` (five a minute, twenty an hour).
+   *
+   * Once the passkey is gone, the account's other sessions and remember-me sign-ins end and this one stays: whatever a stolen passkey
+   * started elsewhere ends with it. When this session itself ended meanwhile, the removal stands and the result is still `ok`.
    */
   async remove(id: number, password?: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | PasswordThrottled>> {
     const user = await this.#requireRecentPassword('remove');
@@ -411,6 +417,9 @@ export class Passkeys implements SecondFactorPasskeys {
     // Typed now, so the last factor may go too — and a suspended passkey (a possible clone) goes only this way.
     const removed = await this.#store.remove(userId, id, { lastFactorAllowed: true });
     if (!removed.ok) return err(removed.error.kind === 'last-factor' ? { kind: 'invalid-password' } : { kind: 'not-found' });
+    // Before the events: a listener that throws (a queue that cannot be reached) must not leave the thief's sessions alive. The other devices'
+    // sessions and remember-me tokens end here and this one stays.
+    await this.#auth.updateSessionKey();
     await this.#events.dispatch(new PasskeyRemoved(user));
     if (removed.value.lastFactor) await this.#events.dispatch(new TwoFactorDisabled(user, 'user'));
     return ok();
@@ -478,8 +487,17 @@ export class Passkeys implements SecondFactorPasskeys {
         // The counter is not written: the stored one stays the last that was honest. The passkey is suspended — it signs nobody in until
         // its owner releases it with the password — and the owner is told.
         await this.#store.suspend(record.id);
-        if (found) await this.#events.dispatch(new PasskeyCloneSuspected(found.user, record.id));
+        // Every session of the account ends, this one too, before the owner is told: whatever the copy started must not outlive the suspicion.
         this.#logger.warn('A passkey answered with a sign count that did not move forward: it may have been copied, and is suspended', { user: record.userId, passkey: record.id });
+        // Never throws: the suspension, the event and the refusal must stand even when ending the sessions fails (inside an app's transaction a throw
+        // would roll the suspension back and leave the clone open).
+        try {
+          const ended = await this.#accountSessions.end(record.userId as never);
+          if (!ended.ok) this.#logger.warn('A passkey looked copied, but its account is gone, so no sessions were ended', { user: record.userId, passkey: record.id });
+        } catch (error) {
+          this.#logger.error('A passkey looked copied and was suspended, but the sessions of its account could not be ended', { user: record.userId, passkey: record.id, error: error instanceof Error ? error.message : String(error) });
+        }
+        if (found) await this.#events.dispatch(new PasskeyCloneSuspected(found.user, record.id));
       } else if (purposeIsSignIn && found) {
         // A passkey that exists answered wrongly (signature, user handle): the owner may want to know. The client learns nothing.
         await this.#events.dispatch(new PasskeySignInFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent }, new Date(this.#clock.now())));

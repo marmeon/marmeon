@@ -350,10 +350,13 @@ describe('passkeys', { timeout: 30_000 }, () => {
 
   it('a passkey whose counter went backwards is suspended, and is released only with the right password', async () => {
     const ada = await app.factory(UserFactory).create();
-    const { cookie, authenticator } = await enrol(ada);
+    const { cookie: ownerCookie, authenticator, recoveryCodes } = await enrol(ada);
     await (await signInWith(authenticator)).answer.assertRedirect('/dashboard');
-    // A counter that does not move forward suspends the passkey.
+    // A counter that does not move forward suspends the passkey, and ends every session of the account, the owner's too.
     await (await signInWith(authenticator, { signCount: 1 })).answer.assertStatus(422);
+    await app.withCookie(SESSION, ownerCookie).get('/dashboard').assertGuest();
+    const waiting = (await app.post('/login', credentialsOf(ada)).assertRedirect('/two-factor-challenge')).cookie(SESSION)!;
+    const cookie = (await app.withCookie(SESSION, waiting).post('/two-factor-challenge', { form: { recovery_code: recoveryCodes[0]! } }).assertRedirect('/dashboard')).cookie(SESSION) ?? waiting;
     const id = await passkeyIdOf();
     const page = () => app.withCookie(SESSION, cookie).navigating().get('/settings/passkeys');
     await page().assertPage('auth/Passkeys', { passkeys: [{ suspended: true }] });
@@ -392,6 +395,7 @@ describe('the mails about passkeys', { timeout: 30_000 }, () => {
     const suspended = (await sent()).at(-1)!;
     expect(suspended.subject).toBe('A passkey was suspended');
     expect(suspended.text).toContain('“Work laptop”');
+    expect(suspended.text).toContain('signed out');
   });
 
   it('after a password reset, lists the passkeys that still sign in', async () => {

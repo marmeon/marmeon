@@ -383,12 +383,15 @@ describe('passkeys', () => {
 
   it('releases a suspended passkey only with the right password', async () => {
     const ada = await app.factory(UserFactory).create();
-    const { cookie, authenticator } = await enrol(ada);
-    // A counter that does not move forward suspends the passkey.
+    const { cookie: ownerCookie, authenticator, recoveryCodes } = await enrol(ada);
+    // A counter that does not move forward suspends the passkey, and ends every session of the account, the owner's too.
     const first = await app.post('/passkeys/sign-in/options', { json: {} }).assertOk();
     await app.withCookie(SESSION, first.cookie(SESSION)!).post('/passkeys/sign-in', { json: { response: authenticator.authenticate(first.json() as never) } }).assertRedirect('/users/me');
     const second = await app.post('/passkeys/sign-in/options', { json: {} }).assertOk();
     await app.withCookie(SESSION, second.cookie(SESSION)!).post('/passkeys/sign-in', { json: { response: authenticator.authenticate(second.json() as never, { signCount: 1 }) } }).assertStatus(422);
+    await app.withCookie(SESSION, ownerCookie).get('/users/me').assertGuest();
+    const waiting = (await app.post('/login', credentialsOf(ada)).assertRedirect('/two-factor-challenge')).cookie(SESSION)!;
+    const cookie = (await app.withCookie(SESSION, waiting).post('/two-factor-challenge', { form: { recovery_code: recoveryCodes[0]! } }).assertRedirect('/users/me')).cookie(SESSION) ?? waiting;
     const [{ id }] = (await app.make(Connections).get<any>().selectFrom('passkeys').select('id').execute()) as [{ id: number }];
     const page = () => app.withCookie(SESSION, cookie).navigating().get('/settings/passkeys');
     await page().assertPage('auth/Passkeys', { passkeys: [{ suspended: true }] });
