@@ -641,6 +641,80 @@ A new password revokes the user's API tokens only with `AUTH_REVOKE_TOKENS_ON_PA
 never does. Otherwise a token stays valid until it expires or is revoked on the tokens page. The
 [API tokens](api-tokens.md#revoking-every-token-with-a-new-password) page explains when to turn it on.
 
+## Changing the address
+
+`EmailChange` decides what is a matter of security when a signed-in user asks for a new address, and leaves the writing of the address
+and the mail to your app, which owns the `users` table. It is opt-in: bind a store first,
+`container.singleton(EmailChangeStore, DatabaseEmailChanges)`, or building `EmailChange` fails with K1. Ask for it in a controller:
+```ts
+const result = await this.#emailChange.request(ctx.body.email, ctx.body.current_password, {
+  // Private registration (the default): put the link in the mail. Called inside the transaction that stores the change.
+  deliver: async ({ userId, email, token }) => {
+    await this.#queue.dispatch(SendEmailChangeMailJob, { user: userId, email, token });
+  },
+  // `AUTH_PRIVATE_REGISTRATION=false`: write the address at once, unconfirmed.
+  apply: (userId, email, verifiedAt) => this.#users.changeEmail(userId, email, verifiedAt),
+});
+if (!result.ok) {
+  // `invalid-password` and `throttled` as for `checkPassword()`, or `duplicate` (only without private registration)
+}
+```
+`apply` answers `ok(user)`, or `err({ kind: 'duplicate' })` when another account has the address and `err({ kind: 'missing' })` when the
+account is gone. The link opens a route that calls `confirm(linkUserId, token, apply)` with the account named in the URL and the token;
+`verifiedAt` is then the time of the click.
+
+What `EmailChange` decides, so that your controllers do not have to:
+
+- **A fresh factor.** `request()` throws on an account that has a second factor unless this session proved one within fifteen
+  minutes. Put the route behind `confirmedSecondFactor()`; the check is repeated in the service, so a route added by hand cannot skip it.
+- **The password, throttled.** `request()` checks the password with `checkPassword()`, so a wrong one is counted like every other
+  [password check](#how-password-checks-are-counted) and the `err` is its (`invalid-password`, `throttled`). A passkey alone can confirm
+  sudo mode, and a hijacked session must not take the account over by changing the address and then resetting the password.
+- **The same answer for every address.** With private registration, `request()` stores the change and calls `deliver` in one transaction,
+  whether the address is free or belongs to another account, and never asks. If `deliver` throws, nothing is stored. Your mail job
+  decides what the owner of a taken address is sent.
+- **One link a minute.** A right password clears the password throttle, so a loop of valid requests would otherwise mail any address from
+  your domain. After a request that sent a link, the account waits `AUTH_EMAIL_CHANGE_THROTTLE` seconds (60 by default, `0` turns it off);
+  a request inside the pause gets the same answer, `{ pending: true }`, and sends and stores nothing. A user who typed a wrong address
+  asks again after the pause. A request that stored and sent nothing (the mail could not be handed over, the session had ended) gives the pause
+  back. Without private registration there is no pause: the address is written at once, and your app throttles the confirmation mail it sends
+  for it (`throttle()` on the route, or a limiter of your own).
+- **One link, used once.** The token is stored only as a SHA-256 hash, expires after `AUTH_EMAIL_CHANGE_MINUTES` (60 by default, 5 to
+  1440), and a newer request replaces the older one. `confirm()` claims it and calls `apply` in one transaction, so a write that fails
+  leaves the link usable. If another account took the address meanwhile the answer is `taken` and the link is spent all the same.
+- **Only for the account it names.** `confirm()` answers `wrong-account` when another user is signed in, and keeps the link for the right
+  one. The store also keeps the session key the request was checked against, so a link ends when the sessions of the account are ended or
+  its password changes (see [the stores](#your-own-stores)).
+- **Without private registration** `request()` writes at once with `verifiedAt` `null`, `duplicate` is the `err`, and `confirm()` answers
+  `not-found`: there are no links. The write happens only while the session still fits the account; otherwise the session ends and
+  `request()` throws.
+- **The token is a secret.** The job that mails the link carries it in its payload, and `jobs` is a table: make the job
+  `static readonly encrypted = true` (see [queues](queues.md#secrets-in-payloads)), and keep the token out of logs.
+- **Your own transaction.** `confirm()` runs in a transaction of its own. Called inside one of yours, a `taken` answer rolls the spent link
+  back with it, so the link works again; return the `err` after your transaction has committed.
+
+The old address should be told. `EmailChanged` (`userId`, `previousEmail`, `email`) is dispatched once the address is written, by
+`confirm()` and by `request()` without private registration; a listener sends the note:
+```ts
+export class NotifyAboutNewAddress {
+  readonly #mailer: Mailer;
+
+  constructor(mailer: Mailer) {
+    this.#mailer = mailer;
+  }
+
+  async handle(event: EmailChanged): Promise<void> {
+    if (event.previousEmail !== null) await this.#mailer.queue(new EmailChangedMail(event.previousEmail, event.email), { queue: 'mail' });
+  }
+}
+```
+The module registers it with `listeners: [listen(EmailChanged, NotifyAboutNewAddress)]`.
+
+`cancel()` drops the signed-in user's own pending change. `pending(userId, email, token)` is for the mail job, which has no session: it
+answers the expiry while the change is still that one, and `undefined` once it was replaced, used or dropped, so a link is not sent for a
+change that no longer stands. `confirm()` answers one of `not-found`, `wrong-account`, `invalid` (unknown, used, expired, replaced or
+`apply` answered `missing`) and `taken`. The route that opens the link needs a signed-in user and throws without one.
+
 ## Ending every session of a user
 
 A session signs in with a fingerprint of the account, its id and session key, and every request compares it with
@@ -1157,6 +1231,7 @@ stay in the browser after a sign-out: set your own header only on answers that h
 | `Lockout` | The starter kit's login throttle turns an attempt away, or an account takes no more password sign-ins for the day (once) | `identifier`, `ip` |
 | `Registered` | Your registration, after it created the account | `user` |
 | `PasswordChanged` | `updatePassword()` | `user`, `revokedTokens` (the API tokens the new password revoked, `0` unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) |
+| `EmailChanged` | `EmailChange.confirm()`, and `EmailChange.request()` without private registration, once the address is written | `userId`, `previousEmail` (`null` if the user had none), `email` |
 | `PasswordReset` | A reset with a link from the mail | `user`, `revokedTokens` (as for `PasswordChanged`) |
 | `EverySessionEnded` | `AccountSessions.endEveryone()`, `auth:end-all-sessions` | `at`, `accounts`, `resetTokens`, `accessTokens`, `signIns` (the counts), see [ending every session of every account](#ending-every-session-of-every-account) |
 | `RememberTokenReused` | A [remember-me cookie](#remember-me) that a rotation had replaced came back, however many rotations ago, or a known cookie came with a validator that was never issued: it was copied | `user`, `at`, `ip`, `userAgent`, `sessionsEnded` |
@@ -1204,6 +1279,8 @@ listeners.
 | `AUTH_PASSWORD_TIMEOUT` | `900` | Seconds a typed password or a proven passkey counts for `confirmedPassword()`. |
 | `AUTH_RESET_EXPIRE` | `60` | Minutes a password reset link works. See [password reset](passwords.md#configuration). |
 | `AUTH_RESET_THROTTLE` | `60` | Seconds before another reset link goes to the same address. |
+| `AUTH_EMAIL_CHANGE_MINUTES` | `60` | Minutes the link of a change of address works: 5 to 1440. See [changing the address](#changing-the-address). |
+| `AUTH_EMAIL_CHANGE_THROTTLE` | `60` | Seconds an account waits after a request for a new address that sent a link; `0` turns the pause off. See [changing the address](#changing-the-address). |
 | `AUTH_TOKEN_PREFIX` | `marmeon_` | The prefix of API tokens. See [API tokens](api-tokens.md#the-token-format). |
 | `AUTH_PRIVATE_REGISTRATION` | `true` | The private registration of the starter kit. See [starter kit](starter-kit.md#private-registration). |
 | `AUTH_UNVERIFIED_DAYS` | `7` | Days before `auth:prune-unverified` deletes an account without a confirmed address. See [email verification](verification.md#unconfirmed-accounts). |

@@ -61,6 +61,12 @@ export declare class AccountSessions {
         readonly resetTokens?: boolean;
     }): Promise<EveryoneEnded>;
 }
+// ApplyEmail
+export type ApplyEmail<U> = (userId: AuthUserId, email: string, verifiedAt: Date | null) => Promise<Result<U, {
+    readonly kind: 'duplicate';
+} | {
+    readonly kind: 'missing';
+}>>;
 // Argon2Options
 export interface Argon2Options {
     readonly memory: number;
@@ -114,6 +120,7 @@ export declare class Auth {
     updateSessionKey(): Promise<boolean>;
     [DROP_REMEMBER_TOKEN](): Promise<void>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
+    [VERIFIED_SESSION_KEY](): string | null;
     [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
 }
 // AuthConfig
@@ -126,6 +133,8 @@ export declare const AuthConfig: import("@marmeon/core").ConfigDefinition<{
     passwordTimeout: number;
     resetExpire: number;
     resetThrottle: number;
+    emailChangeMinutes: number;
+    emailChangeThrottle: number;
     tokenPrefix: string;
     privateRegistration: boolean;
     unverifiedDays: number;
@@ -144,6 +153,8 @@ export declare class AuthServiceProvider implements ServiceProvider {
         passwordTimeout: number;
         resetExpire: number;
         resetThrottle: number;
+        emailChangeMinutes: number;
+        emailChangeThrottle: number;
         tokenPrefix: string;
         privateRegistration: boolean;
         unverifiedDays: number;
@@ -199,6 +210,21 @@ export declare class AuthorizationError extends HttpError {
     name: string;
     constructor(status?: 403 | 404, message?: string);
 }
+// ConfirmEmailChangeError
+export type ConfirmEmailChangeError =
+{
+    readonly kind: 'not-found';
+}
+ | {
+    readonly kind: 'wrong-account';
+}
+ | {
+    readonly kind: 'invalid';
+}
+ | {
+    readonly kind: 'taken';
+    readonly email: string;
+};
 // ConfirmedPasswordOptions
 export interface ConfirmedPasswordOptions<N extends string = string> {
     readonly confirmRoute?: CheckRouteName<N>;
@@ -289,6 +315,27 @@ export interface DeviceDescription {
 }
 // EMAIL_CHANGES_TABLE
 export declare const EMAIL_CHANGES_TABLE = "email_changes";
+// EmailChange
+export declare class EmailChange {
+    #private;
+    constructor(auth: Auth, session: Session, state: TwoFactorState, store: EmailChangeStore, config: AuthConfig, clock: Clock, connections: Connections, limiter: RateLimiter, events: EventDispatcher);
+    request<U>(email: string, currentPassword: string, handlers: EmailChangeHandlers<U>): Promise<Result<EmailChangeRequested<U>, RequestEmailChangeError>>;
+    cancel(): Promise<void>;
+    pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined>;
+    confirm<U>(linkUserId: string, token: string, apply: ApplyEmail<U>): Promise<Result<U, ConfirmEmailChangeError>>;
+}
+// EmailChangeHandlers
+export interface EmailChangeHandlers<U> {
+    readonly deliver: (change: PendingEmailChange) => Promise<void>;
+    readonly apply: ApplyEmail<U>;
+}
+// EmailChangeRequested
+export type EmailChangeRequested<U> = {
+    readonly pending: true;
+} | {
+    readonly pending: false;
+    readonly value: U;
+};
 // EmailChangeStore
 export declare abstract class EmailChangeStore {
     #private;
@@ -299,6 +346,14 @@ export declare abstract class EmailChangeStore {
     abstract forget(userId: AuthUserId): Promise<void>;
     abstract prune(now: Date): Promise<number>;
     abstract forgetEveryone(): Promise<number>;
+}
+// EmailChanged
+export declare class EmailChanged {
+    #private;
+    readonly userId: AuthUserId;
+    readonly previousEmail: string | null;
+    readonly email: string;
+    constructor(userId: AuthUserId, previousEmail: string | null, email: string);
 }
 // EmailVerification
 export declare class EmailVerification {
@@ -685,6 +740,13 @@ export interface PasswordThrottled {
     readonly retryAfter: number;
     readonly account?: true;
 }
+// PendingEmailChange
+export interface PendingEmailChange {
+    readonly userId: AuthUserId;
+    readonly email: string;
+    readonly token: string;
+    readonly expiresAt: Date;
+}
 // PolicyClass
 export type PolicyClass<P = object> = new (...args: any[]) => P;
 // PolicyResponse
@@ -737,6 +799,8 @@ export declare class PruneTokensCommand {
         passwordTimeout: number;
         resetExpire: number;
         resetThrottle: number;
+        emailChangeMinutes: number;
+        emailChangeThrottle: number;
         tokenPrefix: string;
         privateRegistration: boolean;
         unverifiedDays: number;
@@ -833,6 +897,10 @@ export interface RememberedDevice {
     readonly createdAt: Date;
     readonly fingerprint: string | undefined;
 }
+// RequestEmailChangeError
+export type RequestEmailChangeError = PasswordCheckError | {
+    readonly kind: 'duplicate';
+};
 // ResourceOf
 export type ResourceOf<P, K extends keyof P> = (K extends unknown ? Contravariant<ResourcesOf<P, K> extends [] ? unknown : ResourcesOf<P, K> extends [(infer R)?] ? R : never> : never) extends (resource: infer R) => void ? R : never;
 // ResourcelessAbility
@@ -1163,6 +1231,8 @@ export declare class SessionFingerprints {
     of(credentials: Credentials): string;
     matches(stored: unknown, credentials: Credentials): boolean;
 }
+// VERIFIED_SESSION_KEY
+export declare const VERIFIED_SESSION_KEY: unique symbol;
 // missing
 declare const missing: unique symbol;
 // passwordHash
@@ -1501,6 +1571,7 @@ export declare class Auth {
     updateSessionKey(): Promise<boolean>;
     [DROP_REMEMBER_TOKEN](): Promise<void>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
+    [VERIFIED_SESSION_KEY](): string | null;
     [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
 }
 // AuthConfig
@@ -1513,6 +1584,8 @@ export declare const AuthConfig: import("@marmeon/core").ConfigDefinition<{
     passwordTimeout: number;
     resetExpire: number;
     resetThrottle: number;
+    emailChangeMinutes: number;
+    emailChangeThrottle: number;
     tokenPrefix: string;
     privateRegistration: boolean;
     unverifiedDays: number;
@@ -1891,6 +1964,8 @@ export interface UserProvider<U = AuthUser> {
 export declare const UserProvider: Token<UserProvider>;
 // UserVerificationRequirement
 export type UserVerificationRequirement = 'discouraged' | 'preferred' | 'required';
+// VERIFIED_SESSION_KEY
+export declare const VERIFIED_SESSION_KEY: unique symbol;
 // VERIFY_SECOND_FACTOR
 export declare const VERIFY_SECOND_FACTOR: unique symbol;
 // missing
@@ -2203,6 +2278,7 @@ export declare class Auth {
     updateSessionKey(): Promise<boolean>;
     [DROP_REMEMBER_TOKEN](): Promise<void>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
+    [VERIFIED_SESSION_KEY](): string | null;
     [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
 }
 // AuthConfig
@@ -2215,6 +2291,8 @@ export declare const AuthConfig: import("@marmeon/core").ConfigDefinition<{
     passwordTimeout: number;
     resetExpire: number;
     resetThrottle: number;
+    emailChangeMinutes: number;
+    emailChangeThrottle: number;
     tokenPrefix: string;
     privateRegistration: boolean;
     unverifiedDays: number;
@@ -2494,6 +2572,8 @@ export interface UserProvider<U = AuthUser> {
     }>;
 }
 export declare const UserProvider: Token<UserProvider>;
+// VERIFIED_SESSION_KEY
+export declare const VERIFIED_SESSION_KEY: unique symbol;
 // VERIFY_SECOND_FACTOR
 export declare const VERIFY_SECOND_FACTOR: unique symbol;
 // missing
@@ -2507,6 +2587,10 @@ declare const passwordHash: unique symbol;
 ```ts
 // APP_NAME
 `APP_NAME` — optional
+// AUTH_EMAIL_CHANGE_MINUTES
+`AUTH_EMAIL_CHANGE_MINUTES` = `60`
+// AUTH_EMAIL_CHANGE_THROTTLE
+`AUTH_EMAIL_CHANGE_THROTTLE` = `60`
 // AUTH_PASSWORD_TIMEOUT
 `AUTH_PASSWORD_TIMEOUT` = `900`
 // AUTH_PRIVATE_REGISTRATION

@@ -79,6 +79,9 @@ export const CLAIM_ACCOUNT = Symbol('marmeon.auth.claimAccount');
 /** The check of `CLAIM_ACCOUNT` without the lock (package-internal): runs after every commit of a factor, and after a rollback that `CLAIM_ACCOUNT` asked for. */
 export const ACCOUNT_STILL_CLAIMED = Symbol('marmeon.auth.accountStillClaimed');
 
+/** The session key of the account this request verified (package-internal): `string`, or `null` for an account without one. Throws without a verified sign-in. */
+export const VERIFIED_SESSION_KEY = Symbol('marmeon.auth.verifiedSessionKey');
+
 /**
  * Takes the remember-me token off the sign-in of this session (package-internal): the factor that was just turned on makes this
  * device's token one that never proved it. The session and its row stay; the caller removes the cookie.
@@ -570,6 +573,10 @@ export class Auth {
       if (!held) return false;
     }
     return this.#fits(verified);
+  }
+
+  [VERIFIED_SESSION_KEY](): string | null {
+    return this.#requireVerified().sessionKey ?? null;
   }
 
   /**

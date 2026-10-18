@@ -198,7 +198,7 @@ The framework's packages dispatch events of their own, classes like any other:
 
 | Package | Events |
 | --- | --- |
-| `@marmeon/auth` | `Login`, `Logout`, `Failed`, `Lockout`, `Registered`, `PasswordChanged`, `PasswordReset` |
+| `@marmeon/auth` | `Login`, `Logout`, `Failed`, `Lockout`, `Registered`, `PasswordChanged`, `PasswordReset`, `EmailChanged` |
 | `@marmeon/queue` | `JobQueued`, `JobProcessing`, `JobProcessed`, `JobReleased`, `JobFailed`, all extending `JobEvent` |
 | `@marmeon/scheduler` | `ScheduledTaskStarting`, `ScheduledTaskFinished`, `ScheduledTaskFailed`, `ScheduledTaskSkipped`, all extending `ScheduledTaskEvent` |
 

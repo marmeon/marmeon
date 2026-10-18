@@ -4,6 +4,7 @@ import type { SessionConfig } from '@marmeon/session';
 const whole = (fallback: number, min: number) => env.integer().min(min).default(fallback);
 const DAYS = 'a whole number of days (0 keeps unconfirmed accounts)';
 const REMEMBER = 'a whole number of days from 0 (off) to 30';
+const MINUTES = 'a whole number of minutes from 5 to 1440';
 const HOURS = 'a whole number of hours from 1 to 720';
 
 export const AuthConfig = defineConfig('auth', {
@@ -28,6 +29,10 @@ export const AuthConfig = defineConfig('auth', {
     AUTH_RESET_EXPIRE: whole(60, 1),
     /** Seconds before another reset link is sent to the same e-mail. */
     AUTH_RESET_THROTTLE: whole(60, 0),
+    /** How long the link of a change of address works, in minutes (5 to 1440). See `docs/authentication.md#changing-the-address`. */
+    AUTH_EMAIL_CHANGE_MINUTES: env.integer(MINUTES).min(5, MINUTES).max(1440, MINUTES).default(60),
+    /** Seconds an account must wait between two requests that send a link for a new address (private registration); a request inside the pause is answered as usual and sends nothing. */
+    AUTH_EMAIL_CHANGE_THROTTLE: whole(60, 0),
     /** The prefix of API tokens (`marmeon_…`) — secret scanners recognize leaked tokens by it. */
     AUTH_TOKEN_PREFIX: env.string().regex(/^(?:[a-z0-9_]{0,15}_)?$/, 'empty, or lower-case letters and digits ending in _ (16 at most)').default('marmeon_'),
     /**
@@ -64,6 +69,8 @@ export const AuthConfig = defineConfig('auth', {
     passwordTimeout: e.AUTH_PASSWORD_TIMEOUT,
     resetExpire: e.AUTH_RESET_EXPIRE,
     resetThrottle: e.AUTH_RESET_THROTTLE,
+    emailChangeMinutes: e.AUTH_EMAIL_CHANGE_MINUTES,
+    emailChangeThrottle: e.AUTH_EMAIL_CHANGE_THROTTLE,
     tokenPrefix: e.AUTH_TOKEN_PREFIX,
     privateRegistration: e.AUTH_PRIVATE_REGISTRATION === 'true',
     /** Days before `auth:prune-unverified` deletes an account without a confirmed address — 0: it deletes none. */
