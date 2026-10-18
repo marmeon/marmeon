@@ -1,3 +1,4 @@
+import { CacheServiceProvider } from '@marmeon/cache';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { createApplication, defineModule, type Container } from '@marmeon/core';
@@ -65,10 +66,10 @@ async function signedIn(env: Record<string, string> = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'session-format-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
   }, {
-    env: { NODE_ENV: 'test', APP_KEY: FIXTURE_KEY, ...env, SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:' },
+    env: { NODE_ENV: 'test', APP_KEY: FIXTURE_KEY, ...env, SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:' },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, new Users());

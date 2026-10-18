@@ -3,6 +3,7 @@ import { Passkeys } from '@marmeon/auth/passkeys';
 import { abort, Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
+import { passwordCheckMessage } from '../password-errors.ts';
 
 export const RemovePasskeyRequest = defineRequest({
   // Needed for every passkey: typed now, however recently a password or a passkey confirmed sudo mode.
@@ -29,16 +30,16 @@ export class RemovePasskeyController extends Controller {
     const done = await this.#passkeys.remove(id, ctx.body.password === '' ? undefined : ctx.body.password);
     if (done.ok) {
       // The password was just typed: whatever a stolen passkey started on other devices ends with this, as when a password changes.
-      await this.#auth.logoutOtherDevices(ctx.body.password);
+      await this.#auth.updateSessionKey();
       return this.json({ removed: id }).flash('toast', { kind: 'success', message: this.#translator.get('auth.passkeys.removed') });
     }
     switch (done.error.kind) {
       case 'not-found':
         return abort(404);
       case 'throttled':
-        return this.json({ field: 'password', error: done.error.account ? this.#translator.get('auth.validation.throttled_account') : this.#translator.get('auth.validation.throttled', { seconds: done.error.retryAfter }) }, 429);
+        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, 429);
       case 'invalid-password':
-        return this.json({ field: 'password', error: this.#translator.get('auth.validation.password_incorrect') }, 422);
+        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, 422);
     }
   }
 }

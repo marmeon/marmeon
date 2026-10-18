@@ -1,9 +1,8 @@
 import { Auth, type Authenticated } from '@marmeon/auth';
-import { RateLimiter } from '@marmeon/cache';
-import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
-import { throttlePasswordChecks } from '../throttle.ts';
+import { passwordCheckMessage } from '../password-errors.ts';
 
 export const ConfirmPasswordRequest = defineRequest({
   schema: r.object({ password: r.string().required().max(4096) }),
@@ -14,18 +13,17 @@ export class ConfirmPasswordController extends Controller {
   static request = ConfirmPasswordRequest;
 
   readonly #auth: Auth;
-  readonly #limiter: RateLimiter;
   readonly #translator: Translator;
 
-  constructor(auth: Auth, limiter: RateLimiter, translator: Translator) {
+  constructor(auth: Auth, translator: Translator) {
     super();
     this.#auth = auth;
-    this.#limiter = limiter;
     this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof ConfirmPasswordRequest> & Authenticated) {
-    await throttlePasswordChecks(this.#limiter, this.#translator, this.#auth, ctx.user.id, 'password', () => this.#auth.confirmPassword(ctx.body.password));
+    const checked = await this.#auth.checkPassword(ctx.body.password);
+    if (!checked.ok) throw new ValidationError({ password: [passwordCheckMessage(this.#translator, checked.error)] });
     return this.redirect().intended().route('auth.security');
   }
 }

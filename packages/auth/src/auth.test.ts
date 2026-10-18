@@ -1,4 +1,5 @@
 import { createApplication, defineModule, err, inTransaction, listen, Logger, ok, type Container, type LogContext } from '@marmeon/core';
+import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ClientHistory, Controller, NO_REQUEST_INFO, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
@@ -98,7 +99,7 @@ class ConfirmPasswordController extends Controller {
   }
   async handle(ctx: HttpContext) {
     const { password } = (await ctx.input()) as { password: string };
-    return (await this.#auth.confirmPassword(password)) ? this.redirect().intended().route('home') : Response.json({ message: 'Wrong password.' }, { status: 422 });
+    return (await this.#auth.checkPassword(password)).ok ? this.redirect().intended().route('home') : Response.json({ message: 'Wrong password.' }, { status: 422 });
   }
 }
 
@@ -121,7 +122,8 @@ class LogoutOtherDevicesController extends Controller {
     this.#auth = auth;
   }
   async handle(ctx: HttpContext) {
-    return { done: await this.#auth.logoutOtherDevices(((await ctx.input()) as { password: string }).password) };
+    const checked = await this.#auth.checkPassword(((await ctx.input()) as { password: string }).password);
+    return { done: checked.ok && (await this.#auth.updateSessionKey()) };
   }
 }
 
@@ -265,7 +267,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [
       defineModule({
         name: 'auth-test',
@@ -275,7 +277,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
       }),
     ],
   }, {
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', ...CHEAP, ...options.env },
+    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:', ...CHEAP, ...options.env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
@@ -392,7 +394,7 @@ describe('Auth (session guard)', () => {
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
+    const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never);
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();
@@ -417,7 +419,7 @@ describe('Auth (session guard)', () => {
       const real = new PasswordHasher();
       const hasher = { make: real.make.bind(real), verify: real.verify.bind(real), needsRehash: () => false, dummyVerify: async () => false as const, ...(floor === undefined ? {} : { failureFloorMs: () => floor }) } as unknown as Hasher;
       const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-      const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
+      const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never);
       return { users, hasher, auth };
     };
     const timed = async (run: () => Promise<unknown>) => {
@@ -481,7 +483,7 @@ describe('Auth (session guard)', () => {
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
     const dispatched: unknown[] = [];
     const events = { dispatch: async (event: unknown) => void dispatched.push(event) } as never;
-    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }));
+    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never);
     const answers = [
       await auth.attempt('ada@example.com', 'wrong'),
       await auth.attempt('nobody@example.com', 'secret'),
@@ -631,9 +633,9 @@ describe('authenticate() and guest()', () => {
     const application = await createApplication({
       root: import.meta.dirname,
       discover: false,
-      providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
+      providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
       modules: [defineModule({ name: 'auth-test', routes })], // boots: make:auth must run in apps without an auth module
-    }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', DB_DATABASE: ':memory:', LOG_LEVEL: 'silent', ...CHEAP } });
+    }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', DB_DATABASE: ':memory:', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', ...CHEAP } });
     const response = await createHttpKernel(application).request('/me', { headers: { accept: 'application/json' } });
     expect(response.status).toBe(500);
     expect(() => application.container.make(UserProvider)).toThrow('container.bind(UserProvider, UserRepository)');

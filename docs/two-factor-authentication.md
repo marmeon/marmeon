@@ -128,7 +128,7 @@ on, and then:
 
 - **The other devices are signed out.** Their sessions end and so do their [remember-me](authentication.md#remember-me) tokens:
   every session of the account has then proven a second factor. This session stays and gets the new fingerprint, the way
-  [`logoutOtherDevices(password)`](authentication.md#changing-the-password) does it (a new session key), without a second password check. The signing out
+  [`updateSessionKey()`](authentication.md#signing-out-other-devices-without-a-password) does it (a new session key), without a second password check. The signing out
   runs twice, before the factor is switched on and again right after, so that a sign-in racing the activation does not survive it.
   Say so on the page before the user submits.
 - **API tokens are not revoked.** They are integrations of your app, such as scripts and CI, and revoking them is your decision. List
@@ -228,12 +228,15 @@ setup page stays reachable. An app with its own routes for these methods has to 
 
 ## Turning it off
 
-`disable(password)` (see [Changing the factors](#changing-the-factors) for the proof it needs) checks the password typed now and returns `false` for a wrong one, with nothing changed. With the right one it
-removes the authenticator, and the recovery codes with the last factor, and returns `true`. Throttle the password checks in the
-caller; the example app uses the same limiter as for its other password checks.
+`disable(password)` (see [Changing the factors](#changing-the-factors) for the proof it needs) checks the password typed now, under the
+throttle of [`auth.checkPassword()`](authentication.md#how-password-checks-are-counted), and answers a `Result`: `err` with `invalid-password` or `throttled`
+for a password that was not accepted, with nothing changed. With the right one it
+removes the authenticator, and the recovery codes with the last factor, and answers `ok`. A `Result` is an object even for a wrong password: test `.ok`, never its truthiness.
+
 
 ```ts title="modules/auth/controllers/DisableTwoFactorController.ts"
-await throttlePasswordChecks(this.#limiter, this.#translator, this.#auth, ctx.user.id, 'password', () => this.#twoFactor.disable(ctx.body.password));
+const disabled = await this.#twoFactor.disable(ctx.body.password);
+if (!disabled.ok) throw new ValidationError({ password: [passwordCheckMessage(this.#translator, disabled.error)] });
 ```
 
 ## What it protects against, and what not

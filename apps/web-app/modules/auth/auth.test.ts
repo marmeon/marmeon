@@ -595,6 +595,24 @@ describe('security settings', () => {
     for (let attempt = 1; attempt <= 5; attempt++) await session.post('/confirm-password', { form: { password: `guess ${attempt}` } });
     await session.post('/confirm-password', { form: { password: 'password' } }).assertInvalid<ConfirmPasswordController>({ password: /^Too many attempts/ });
   });
+
+  // Each form checks the password through `auth.checkPassword()`: the sixth try of a minute shows the wait, whatever the password.
+  type Session = ReturnType<typeof app.withCookie>;
+  const forms = [
+    { name: 'a new password', field: 'current_password', send: (s: Session, password: string) => s.put('/settings/password', { form: { current_password: password, password: 'a new password', password_confirmation: 'a new password' } }) },
+    { name: 'a new API token', field: 'current_password', send: (s: Session, password: string) => s.post('/settings/tokens', { json: { current_password: password, name: 'CLI', abilities: ['users:read'] } }) },
+    { name: 'turning the authenticator off', field: 'password', send: (s: Session, password: string) => s.post('/settings/two-factor/disable', { form: { password } }) },
+    { name: 'signing out the other devices', field: 'password', send: (s: Session, password: string) => s.post('/settings/devices/logout', { form: { password } }) },
+  ];
+  for (const { name, field, send } of forms) {
+    it(`holds up the sixth wrong try of ${name}`, async () => {
+      const ada = await app.factory(UserFactory).create();
+      const login = await app.post('/login', credentialsOf(ada));
+      const session = app.withCookie(SESSION, login.cookie(SESSION)!);
+      for (let attempt = 0; attempt < 5; attempt++) await send(session, 'wrong').assertInvalid({ [field]: /^The password is incorrect/ });
+      await send(session, 'password').assertInvalid({ [field]: /^Too many attempts/ });
+    });
+  }
 });
 
 describe('password reset', () => {

@@ -1,4 +1,5 @@
 import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
+import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, sql } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
@@ -171,12 +172,12 @@ class ActController extends Route {
           return result.ok ? { ok: true } : { error: result.error.kind };
         }
         case 'confirm':
-          return { ok: await this.auth.confirmPassword('secret') };
+          return { ok: (await this.auth.checkPassword('secret')).ok };
         case 'password':
           await this.auth.updatePassword('new password');
           return { ok: true };
         case 'others':
-          return { ok: await this.auth.logoutOtherDevices('secret') };
+          return { ok: (await this.auth.checkPassword('secret')).ok && (await this.auth.updateSessionKey()) };
         case 'key':
           return { ok: await this.auth.updateSessionKey() };
         default:
@@ -212,10 +213,10 @@ async function boot(options: { signIns?: new (...args: never[]) => SignInStore; 
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'sign-ins-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(PasswordChanged, RecordPasswordChanged)] })],
   }, {
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', ...options.env },
+    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', ...options.env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);

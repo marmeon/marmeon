@@ -218,16 +218,16 @@ Both the registration and the list are behind `confirmedPassword()` ("sudo mode"
 same form for every passkey, not only the first**. A passkey outlives a password change and a password reset, and it works without the password.
 Someone who held a stolen session inside the sudo window could otherwise add one and keep a way in that survives the owner's recovery.
 Typing the password costs the owner a second; the check is counted per sign-in (five a minute and twenty an hour) and, for a sign-in that did not begin with a typed
-password, per account (twenty an hour), in the same limiter as `remove()`, so it is no oracle for guessing the password and a passkey-only session cannot lock out the owner who signed in with it ([how](authentication.md#sudo-mode)). The example app's `throttlePasswordChecks()` helper is for the password forms
-of your own; `Passkeys` throttles its checks itself.
+password, per account (twenty an hour), in the same limiter as `remove()`, so it is no oracle for guessing the password and a passkey-only session cannot lock out the owner who signed in with it ([how](authentication.md#sudo-mode)). The password forms of your own use [`auth.checkPassword()`](authentication.md#how-password-checks-are-counted), which counts the same way;
+`Passkeys` calls it itself.
 
 The first passkey also signs out every other device (sessions and remember-me tokens, a second time after the insert), shows the
 recovery codes once in the answer of the registration, and dispatches `TwoFactorEnabled` with `factor: 'passkey'`. A later passkey makes no
 new codes. `remove()` of the last factor takes the recovery codes in the same transaction, and the store decides inside it, so two
 removals at once cannot both pass without the password.
 
-`remove()` ends no session. The starter kit's controller follows it with `auth.logoutOtherDevices(password)`; an app that removes a
-passkey through the package API does the same, or `updateSessionKey()`, because the sessions of someone who holds a cloned passkey would otherwise live on.
+`remove()` ends no session. The starter kit's controller follows it with `auth.updateSessionKey()` (the password was just checked); an app that removes a
+passkey through the package API does the same, because the sessions of someone who holds a cloned passkey would otherwise live on.
 
 An account holds at most 20 passkeys; the 21st answers `limit`. Names lose control and invisible format characters (a bidi override would otherwise
 reorder the text of the list). Registration accepts ES256 and EdDSA keys, and RSA keys only with the exponent 65537 and at most 4096 bits.

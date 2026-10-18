@@ -1,6 +1,5 @@
 import { Auth, AuthConfig, type Authenticated } from '@marmeon/auth';
 import { TwoFactor } from '@marmeon/auth/two-factor';
-import { RateLimiter } from '@marmeon/cache';
 import { Clock } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
@@ -11,7 +10,7 @@ import { rules as r } from '@marmeon/validation';
 import { EMAIL_CHANGE_MINUTES, newEmailChangeToken } from '../email-change.ts';
 import { SendEmailChangeMailJob } from '../jobs/SendEmailChangeMailJob.ts';
 import { EmailChangedMail } from '../mail/EmailChangedMail.ts';
-import { throttlePasswordChecks } from '../throttle.ts';
+import { passwordCheckMessage } from '../password-errors.ts';
 import { UserRepository } from '../UserRepository.ts';
 import { VerificationMailer } from '../verification.ts';
 
@@ -45,7 +44,6 @@ export class UpdateEmailController extends Controller {
   readonly #mailer: Mailer;
   readonly #private: boolean;
   readonly #auth: Auth;
-  readonly #limiter: RateLimiter;
 
   constructor(
     connections: Connections,
@@ -59,7 +57,6 @@ export class UpdateEmailController extends Controller {
     mailer: Mailer,
     config: AuthConfig,
     auth: Auth,
-    limiter: RateLimiter,
   ) {
     super();
     this.#connections = connections;
@@ -73,14 +70,14 @@ export class UpdateEmailController extends Controller {
     this.#mailer = mailer;
     this.#private = config.privateRegistration;
     this.#auth = auth;
-    this.#limiter = limiter;
   }
 
   async handle(ctx: ContextOf<typeof UpdateEmailRequest> & Authenticated) {
     // Also without the route's confirmedSecondFactor(): a route added by hand to this controller must not skip the factor.
     await this.#twoFactor.requireRecentProof('changeEmail');
     // Typed now, whatever confirmed sudo mode: a session that got in by a passkey alone must not be able to move the account to another address.
-    await throttlePasswordChecks(this.#limiter, this.#translator, this.#auth, ctx.user.id, 'current_password', () => this.#auth.confirmPassword(ctx.body.current_password));
+    const checked = await this.#auth.checkPassword(ctx.body.current_password);
+    if (!checked.ok) throw new ValidationError({ current_password: [passwordCheckMessage(this.#translator, checked.error)] });
     const { email } = ctx.body;
     if (!this.#private) return this.#changeNow(ctx.user, email);
     // The account's own address again: a pending change is dropped.

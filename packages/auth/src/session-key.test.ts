@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApplication, defineModule, type Container } from '@marmeon/core';
+import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, type Migration } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
@@ -125,7 +126,7 @@ class RacingController extends Controller {
     await between?.();
     if (ctx.params.action === 'key') return { result: await this.#auth.updateSessionKey() };
     if (ctx.params.action === 'password') return { result: await this.#auth.updatePassword('a new password') };
-    return { result: await this.#auth.logoutOtherDevices('secret') };
+    return { result: (await this.#auth.checkPassword('secret')).ok && (await this.#auth.updateSessionKey()) };
   }
 }
 
@@ -195,10 +196,10 @@ async function boot(driver: Driver, users: UserProvider) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, ...(driver.providers ?? []), AuthServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, ...(driver.providers ?? []), CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'session-key-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
   }, {
-    env: { APP_KEY: generateKey(), SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', ...env },
+    env: { APP_KEY: generateKey(), SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', ...env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users);
@@ -417,7 +418,7 @@ describe('a request that checked its session before AccountSessions.end() ran', 
     expect((await laptop.send('/me')).status).toBe(401);
   });
 
-  it('logoutOtherDevices() does not bind the session to the state it did not check', async () => {
+  it('signing out the other devices does not bind the session to the state it did not check', async () => {
     const { laptop } = await racing('others');
     expect((await laptop.send('/me')).status).toBe(401);
   });

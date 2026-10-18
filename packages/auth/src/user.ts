@@ -37,7 +37,7 @@ export interface Credentials<U = AuthUser> {
   readonly passwordHash: PasswordHash | null;
   /**
    * A value of the account that ends its other sessions when it changes — a `session_key` column the app keeps. Every new password
-   * (`auth.updatePassword()`, a reset), `auth.logoutOtherDevices()` and `auth.updateSessionKey()` replace it; a rehash at sign-in does not.
+   * (`auth.updatePassword()`, a reset) and `auth.updateSessionKey()` replace it; a rehash at sign-in does not.
    * The session fingerprint is made of the account's id and this key only: a hash you write yourself ends no session. `null` while the account has none (seeded or imported accounts).
    */
   readonly sessionKey: string | null;
@@ -55,7 +55,7 @@ export interface UserProvider<U = AuthUser> {
   /**
    * Stores a new hash (rehash on login, password change, reset) and returns whether it wrote. With `expected` it is a compare-and-set:
    * write `hash` only when the stored hash equals `expected`, in **one** statement (`UPDATE … WHERE password = expected`) — a rehash
-   * over the hash it verified, or `logoutOtherDevices()`, must never put an old password back over a reset that landed meanwhile.
+   * over the hash it verified, must never put an old password back over a reset that landed meanwhile.
    * Without `expected` it writes regardless (a reset, a new password) and returns `true` once it wrote. With `sessionKey` the **same**
    * statement stores that session key as well (see `updateSessionKey()`), so the hash and the key never stand apart. A new password
    * (`auth.updatePassword()`, a reset) always passes one, and `findById()` must hand it back: it is what ends the other sessions. A rehash

@@ -1,3 +1,4 @@
+import { CacheServiceProvider } from '@marmeon/cache';
 import { createApplication, defineModule, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
@@ -180,10 +181,10 @@ async function boot() {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, AuthServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'gate-test', routes, apiRoutes })],
   }, {
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
+    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, provider);

@@ -1,4 +1,5 @@
 import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
+import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, sql } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
@@ -125,7 +126,7 @@ class LogoutOthersController extends Controller {
   }
   async handle() {
     try {
-      return { done: await this.#auth.logoutOtherDevices('secret') };
+      return { done: (await this.#auth.checkPassword('secret')).ok && (await this.#auth.updateSessionKey()) };
     } catch (error) {
       return Response.json({ thrown: (error as Error).message }, { status: 500 });
     }
@@ -175,10 +176,10 @@ async function boot(options: { totp?: boolean; hold: 'verify' | 'issue' | 'consu
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'sign-in-race-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(Failed, RecordFailed), listen(RememberTokenReused, RecordReused)] })],
   }, {
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
+    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users);
@@ -408,7 +409,7 @@ describe('a rehash only over the hash that was verified', () => {
     expect((await world.send('/me')).status).toBe(401);
   });
 
-  it('logoutOtherDevices() over a provider whose key write does not say whether it wrote throws A5 and does not report success', async () => {
+  it('signing out the other devices over a provider whose key write does not say whether it wrote throws A5 and does not report success', async () => {
     const world = await boot({ hold: 'verify' });
     world.release();
     await login(world.send, false);
@@ -420,7 +421,7 @@ describe('a rehash only over the hash that was verified', () => {
     expect(body.done).toBeUndefined();
   });
 
-  it('logoutOtherDevices() writes nothing when a reset landed meanwhile, and leaves the hash as it is', async () => {
+  it('signing out the other devices writes nothing when a reset landed meanwhile, and leaves the hash as it is', async () => {
     const world = await boot({ hold: 'verify' });
     world.release();
     await login(world.send, false);
@@ -439,7 +440,7 @@ describe('a rehash only over the hash that was verified', () => {
     expect((await world.send('/me')).status).toBe(401);
   });
 
-  it('logoutOtherDevices() leaves the password hash as it is', async () => {
+  it('signing out the other devices leaves the password hash as it is', async () => {
     const world = await boot({ hold: 'verify' });
     world.release();
     await login(world.send, false);
@@ -507,7 +508,7 @@ describe('a remember-me token is bound to the account state it was issued under'
     await expectNotSignedIn(world, world.jar, world.send);
   });
 
-  it('does not sign in when logoutOtherDevices() of another device ran in between', async () => {
+  it('does not sign in when another device signed out the other devices in between', async () => {
     const world = await boot({ hold: 'issue' });
     const other = world.browser();
     await login(other.send, false);
@@ -584,7 +585,7 @@ describe('a remember-me token is bound to the account state it was issued under'
   });
 
   it.each([
-    ['logoutOtherDevices()', '/logout-others'],
+    ['signing out the other devices', '/logout-others'],
     ['updateSessionKey()', '/end-others'],
   ])('does not keep the token of a thief who rotated the owner\'s cookie: %s ends everything and reports the copy', async (_name, route) => {
     const world = await boot({ hold: 'issue' });
@@ -607,7 +608,7 @@ describe('a remember-me token is bound to the account state it was issued under'
   });
 
   it.each([
-    ['logoutOtherDevices()', '/logout-others'],
+    ['signing out the other devices', '/logout-others'],
     ['updateSessionKey()', '/end-others'],
   ])('%s keeps the owner\'s device when the cookie is only the validator that was just rotated (a lost response)', async (_name, route) => {
     const world = await boot({ hold: 'issue' });
@@ -623,7 +624,7 @@ describe('a remember-me token is bound to the account state it was issued under'
     expect(reused).toHaveLength(0);
   });
 
-  it('keeps working for an untouched account, and for the device that logoutOtherDevices() leaves signed in', async () => {
+  it('keeps working for an untouched account, and for the device that stays signed in when the others are signed out', async () => {
     const world = await boot({ hold: 'issue' });
     await login(world.send);
     const device = world.browser();

@@ -1,4 +1,5 @@
 import { createApplication, defineModule, type Container } from '@marmeon/core';
+import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
@@ -58,10 +59,10 @@ async function boot(env: Record<string, string> = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'session-lifetime-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
   }, {
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', ...env },
+    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', ...env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
