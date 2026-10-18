@@ -32,6 +32,7 @@ export type AccessTokenId = number | string;
 // AccessTokenStore
 export declare abstract class AccessTokenStore {
     #private;
+    constructor();
     abstract create(userId: AuthUserId, name: string, options?: {
         abilities?: readonly string[];
         expiresIn?: Duration;
@@ -629,6 +630,7 @@ export declare class PasswordReset {
 // PasswordResetTokenStore
 export declare abstract class PasswordResetTokenStore {
     #private;
+    constructor();
     abstract create(email: string, throttleSeconds: number): Promise<Result<string, {
         readonly kind: 'throttled';
     }>>;
@@ -844,6 +846,7 @@ export interface SignInRecord {
 // SignInStore
 export declare abstract class SignInStore {
     #private;
+    constructor();
     abstract create(input: {
         userId: AuthUserId;
         userAgent: string | undefined;
@@ -931,6 +934,7 @@ export interface TwoFactorEnabledPayload {
 // TwoFactorState
 export declare abstract class TwoFactorState {
     #private;
+    constructor();
     abstract factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
     abstract enabledSince(userId: AuthUserId): Promise<Date | undefined>;
     abstract removeAll(userId: AuthUserId): Promise<void>;
@@ -1390,6 +1394,7 @@ export type AccessTokenId = number | string;
 // AccessTokenStore
 export declare abstract class AccessTokenStore {
     #private;
+    constructor();
     abstract create(userId: AuthUserId, name: string, options?: {
         abilities?: readonly string[];
         expiresIn?: Duration;
@@ -1642,6 +1647,7 @@ export type PasswordHash = string & {
 // PasswordResetTokenStore
 export declare abstract class PasswordResetTokenStore {
     #private;
+    constructor();
     abstract create(email: string, throttleSeconds: number): Promise<Result<string, {
         readonly kind: 'throttled';
     }>>;
@@ -1759,6 +1765,7 @@ export interface SignInRecord {
 // SignInStore
 export declare abstract class SignInStore {
     #private;
+    constructor();
     abstract create(input: {
         userId: AuthUserId;
         userAgent: string | undefined;
@@ -1787,6 +1794,7 @@ export interface SignInWindow {
 // TwoFactorState
 export declare abstract class TwoFactorState {
     #private;
+    constructor();
     abstract factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
     abstract enabledSince(userId: AuthUserId): Promise<Date | undefined>;
     abstract removeAll(userId: AuthUserId): Promise<void>;
@@ -2078,6 +2086,7 @@ export type AccessTokenId = number | string;
 // AccessTokenStore
 export declare abstract class AccessTokenStore {
     #private;
+    constructor();
     abstract create(userId: AuthUserId, name: string, options?: {
         abilities?: readonly string[];
         expiresIn?: Duration;
@@ -2264,6 +2273,7 @@ export type PasswordHash = string & {
 // PasswordResetTokenStore
 export declare abstract class PasswordResetTokenStore {
     #private;
+    constructor();
     abstract create(email: string, throttleSeconds: number): Promise<Result<string, {
         readonly kind: 'throttled';
     }>>;
@@ -2348,6 +2358,7 @@ export interface SignInRecord {
 // SignInStore
 export declare abstract class SignInStore {
     #private;
+    constructor();
     abstract create(input: {
         userId: AuthUserId;
         userAgent: string | undefined;
@@ -2376,6 +2387,7 @@ export interface SignInWindow {
 // TwoFactorState
 export declare abstract class TwoFactorState {
     #private;
+    constructor();
     abstract factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
     abstract enabledSince(userId: AuthUserId): Promise<Date | undefined>;
     abstract removeAll(userId: AuthUserId): Promise<void>;

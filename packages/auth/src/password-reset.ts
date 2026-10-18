@@ -1,11 +1,12 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { Clock, commitAnyway, err, EventDispatcher, ok, type Result } from '@marmeon/core';
+import { Clock, commitAnyway, ContainerError, err, EventDispatcher, ok, type Result } from '@marmeon/core';
 import { Connections, secret, sql, type Secret } from '@marmeon/database';
 import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
+import { withCode } from '@marmeon/core/internal';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link PasswordResetTokenTable}. */
 export const PASSWORD_RESET_TABLE = 'password_reset_tokens';
@@ -33,6 +34,11 @@ export const PASSWORD_RESET_COLUMNS = ['email', 'token_hash', 'created_at'] as c
 export abstract class PasswordResetTokenStore {
   /** A mark without meaning: only a subclass fits the type, so a store that merely `implements` this contract does not compile. */
   readonly #contract = true;
+
+  /** Refuses to be built itself: the container builds an unbound abstract key as an empty object, which would fail much later. */
+  constructor() {
+    if (new.target === PasswordResetTokenStore) throw new ContainerError(withCode('K1', `PasswordResetTokenStore is abstract: bind a store with container.singleton(PasswordResetTokenStore, YourStore).`), { reason: 'unbound', key: 'PasswordResetTokenStore', path: [] });
+  }
 
   /** A new token for `email`, replacing an older one — an `err` of kind `throttled` while the last one is younger than `throttleSeconds`. */
   abstract create(email: string, throttleSeconds: number): Promise<Result<string, { readonly kind: 'throttled' }>>;

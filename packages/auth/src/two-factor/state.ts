@@ -1,4 +1,4 @@
-import { token } from '@marmeon/core';
+import { ContainerError, token } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import type { AuthUserId } from '../user.ts';
 
@@ -18,6 +18,11 @@ export type SecondFactor = 'totp' | 'passkey';
 export abstract class TwoFactorState {
   /** A mark without meaning: only a subclass fits the type, so a source that merely `implements` this contract does not compile. */
   readonly #contract = true;
+
+  /** Refuses to be built itself: the container builds an unbound abstract key as an empty object, which would fail much later. */
+  constructor() {
+    if (new.target === TwoFactorState) throw new ContainerError(withCode('K1', `TwoFactorState is abstract: bind a source of second factors with container.bind(TwoFactorState, …) or combineFactors().`), { reason: 'unbound', key: 'TwoFactorState', path: [] });
+  }
 
   abstract factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
   /**
