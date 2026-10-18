@@ -4,9 +4,10 @@ import { withCode } from '@marmeon/core/internal';
 import type { Connections } from '@marmeon/database';
 import type { SessionEndings } from '@marmeon/session';
 import { accountScope } from '@marmeon/session/internal';
-import { keyNotStored, missingSignInMethod, passwordHashWritten, writeRefused } from './account-sessions.ts';
+import { keyNotStored, missingEmailChangeMethod, missingSignInMethod, passwordHashWritten, writeRefused } from './account-sessions.ts';
 import type { AuthConfig } from './config.ts';
 import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
+import type { EmailChangeStore } from './email-changes.ts';
 import type { PasswordHash } from './hashing.ts';
 import type { SignInStore } from './sign-ins.ts';
 import type { AccessTokenStore } from './tokens.ts';
@@ -36,8 +37,10 @@ export class NewPassword {
   readonly #signIns: () => SignInStore;
   readonly #endings: SessionEndings | undefined;
   readonly #factors: (() => { readonly state: TwoFactorState; readonly events: EventDispatcher }) | undefined;
+  readonly #changes: (() => EmailChangeStore | undefined) | undefined;
   #warnedUnknownVerification = false;
 
+  /** `changes` hands back the change-of-address store the app bound, or `undefined`: a new password drops the account's pending change. */
   constructor(
     tokens: () => AccessTokenStore,
     connections: () => Connections,
@@ -46,7 +49,9 @@ export class NewPassword {
     signIns: () => SignInStore,
     endings?: SessionEndings,
     factors?: () => { readonly state: TwoFactorState; readonly events: EventDispatcher },
+    changes?: () => EmailChangeStore | undefined,
   ) {
+    this.#changes = changes;
     this.#factors = factors;
     this.#endings = endings;
     this.#tokens = tokens;
@@ -71,6 +76,8 @@ export class NewPassword {
     const sessionKey = randomBytes(32).toString('base64url');
     const unconfirmed = via === 'reset' && user !== undefined && neverConfirmed(user);
     if (via === 'reset' && user !== undefined && (user as { email_verified_at?: unknown }).email_verified_at === undefined) this.#warnVerificationUnknown();
+    const changes = this.#changes?.();
+    if (changes && typeof changes.forget !== 'function') throw missingEmailChangeMethod('NewPassword', 'forget');
     const removed: { passkeys: boolean; factors: boolean } = { passkeys: false, factors: false };
     // A reset has no session of its own to keep: it writes over whatever key stands.
     const guarded = via === 'change' && read !== undefined;
@@ -95,6 +102,8 @@ export class NewPassword {
       if (typeof signIns.endAll !== 'function' || typeof signIns.dropToken !== 'function') throw missingSignInMethod('NewPassword', typeof signIns.endAll !== 'function' ? 'endAll' : 'dropToken');
       await signIns.endAll(id, via === 'change' ? keep : undefined);
       if (via === 'change' && keep !== undefined) await signIns.dropToken(id, keep);
+      // A change of address a thief asked for under the old password must not survive the new one.
+      await changes?.forget(id);
       // Inside the transaction: the tokens revoked above come back when the provider refuses to write. The new key is what ends every
       // other session (the fingerprint is made of the id and the key), written in the same statement as the hash.
       // The key a reset replaces is read now, so the read-back below can tell an ignored `sessionKey` from a later ending.
@@ -141,6 +150,8 @@ export class NewPassword {
    * the reset of an account with an unconfirmed address would otherwise fail after the token is used up, and the owner could never reset.
    */
   assertReady(): void {
+    const changes = this.#changes?.();
+    if (changes && typeof changes.forget !== 'function') throw missingEmailChangeMethod('NewPassword', 'forget');
     const state = this.#factors?.().state;
     if (state && factorSources(state).some((source) => typeof source.removeAll !== 'function')) {
       throw new TypeError(

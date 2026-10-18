@@ -4,6 +4,7 @@ import type { SessionEndings, UserSessions } from '@marmeon/session';
 import { withCode } from '@marmeon/core/internal';
 import { accountScope } from '@marmeon/session/internal';
 import { EverySessionEnded } from './events.ts';
+import type { EmailChangeStore } from './email-changes.ts';
 import type { PasswordResetTokenStore } from './password-reset.ts';
 import type { SignInStore } from './sign-ins.ts';
 import type { AccessTokenStore } from './tokens.ts';
@@ -129,6 +130,17 @@ export function missingSignInMethod(caller: string, method: string): Error {
   );
 }
 
+/** The error for a change-of-address store without a method that drops changes (JavaScript, a cast; a TypeScript store cannot leave it out). */
+export function missingEmailChangeMethod(caller: string, method: string): Error {
+  return new Error(
+    withCode(
+      'A6',
+      `${caller} needs EmailChangeStore.${method}(): a change of address a thief asked for must not outlive the end of the sessions or a new password. A store extends EmailChangeStore and implements every method. ` +
+        'Nothing was changed. See docs/authentication.md#your-own-stores.',
+    ),
+  );
+}
+
 /** The key of `AccountSessions`' announcement that sign-ins ended — for `Auth`, not re-exported from the package. */
 export const ANNOUNCE_ENDED = Symbol('announceEnded');
 
@@ -164,8 +176,12 @@ export class AccountSessions {
   readonly #access: (() => AccessTokenStore) | undefined;
   readonly #logger: Logger | undefined;
   readonly #endings: SessionEndings | undefined;
+  readonly #changes: (() => EmailChangeStore | undefined) | undefined;
 
-  /** Built by the container. Built by hand without the reset-token or API-token store, `endEveryone()` refuses unless it keeps them. */
+  /**
+   * Built by the container. Built by hand without the reset-token or API-token store, `endEveryone()` refuses unless it keeps them.
+   * `changes` hands back the change-of-address store the app bound, or `undefined` when it bound none: the changes of the account go too.
+   */
   constructor(
     users: UserProvider,
     signIns: SignInStore,
@@ -176,7 +192,9 @@ export class AccountSessions {
     access?: () => AccessTokenStore,
     logger?: Logger,
     endings?: SessionEndings,
+    changes?: () => EmailChangeStore | undefined,
   ) {
+    this.#changes = changes;
     this.#users = users;
     this.#signIns = signIns;
     this.#sessions = sessions;
@@ -214,6 +232,8 @@ export class AccountSessions {
     if (typeof this.#users.updateSessionKey !== 'function') {
       throw missingSessionKeyMethod('AccountSessions.end()');
     }
+    const changes = this.#changes?.();
+    if (changes && typeof changes.forget !== 'function') throw missingEmailChangeMethod('AccountSessions.end()', 'forget');
     const id = userId as string | number;
     if (id === '' || (typeof id === 'number' && !Number.isSafeInteger(id))) return err({ kind: 'missing' });
     const found = await this.#users.findById(id as never);
@@ -233,6 +253,8 @@ export class AccountSessions {
       const removed = (await this.#sessions?.end(id)) ?? 0;
       // Rows a request made since the first `endAll()` (a sign-in that was running) go too; the key has ended their sessions already.
       await this.#signIns.endAll(idOf(found.user));
+      // Last, after the key: every session is over whatever fails above, and a store that fails here leaves only this step to run again.
+      await changes?.forget(idOf(found.user));
       return ok({ removed });
     } finally {
       await this[ANNOUNCE_ENDED](idOf(found.user)); // the account's own id, not the one the caller wrote
@@ -277,6 +299,8 @@ export class AccountSessions {
     if (revokeResets && this.#resets === undefined) throw new Error('AccountSessions.endEveryone() needs the PasswordResetTokenStore, which the container passes in (or pass { resetTokens: false } to keep the reset tokens).');
     const resets = revokeResets ? this.#resets?.() : undefined;
     if (revokeResets && typeof resets?.forgetEveryone !== 'function') throw refuse('PasswordResetTokenStore', 'forgetEveryone', '{ resetTokens: false } (--keep-reset-tokens)');
+    const changes = this.#changes?.();
+    if (changes && typeof changes.forgetEveryone !== 'function') throw refuse('EmailChangeStore', 'forgetEveryone');
     const revokeAccess = accessTokens;
     const access = revokeAccess ? this.#access?.() : undefined;
     if (revokeAccess && typeof access?.revokeEveryone !== 'function') throw refuse('AccessTokenStore', 'revokeEveryone', '{ accessTokens: false } (--keep-api-tokens)');
@@ -286,7 +310,7 @@ export class AccountSessions {
     // second-factor step. Everything else follows the keys, so a store that cannot be emptied (a missing table) never keeps a session
     // alive. A step that fails leaves the ones before it done, and a second call finishes.
     const done: Record<string, number> = {};
-    const later = [...(resets ? ['resetTokens'] : []), ...(access ? ['accessTokens'] : [])];
+    const later = [...(resets ? ['resetTokens'] : []), ...(access ? ['accessTokens'] : []), ...(changes ? ['emailChanges'] : [])];
     let keys: 'not-rotated' | 'unconfirmed' | 'rotated' = 'not-rotated';
     const step = async <T>(name: string, run: () => Promise<T>): Promise<T> => {
       try {
@@ -351,8 +375,10 @@ export class AccountSessions {
       done.signIns = signIns += await step('sign-ins', () => this.#signIns.endEveryone());
       const revokedResets = (done.resetTokens = resets ? await step('password-reset tokens', () => resets.forgetEveryone!()) : 0);
       const revokedAccess = (done.accessTokens = access ? await step('API tokens', () => access.revokeEveryone!()) : 0);
+      // Last: the opt-in store must not hold back the API tokens when it fails.
+      if (changes) done.emailChanges = await step('changes of address', () => changes.forgetEveryone());
       const ended: EveryoneEnded = { accounts, resetTokens: revokedResets, accessTokens: revokedAccess, signIns };
-      this.#logger?.warn('Ended every session of every account', { ...ended });
+      this.#logger?.warn('Ended every session of every account', { ...ended, emailChanges: done.emailChanges });
       // The work is done: a listener that fails must not make the caller run it again.
       try {
         await this.#events?.dispatch(new EverySessionEnded(new Date(this.#clock?.now() ?? Date.now()), ended));

@@ -20,6 +20,7 @@ import { EndAllSessionsCommand } from './end-all-sessions.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
 import { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 import { DatabaseSignIns, SignInStore } from './sign-ins.ts';
+import { EmailChangeStore } from './email-changes.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
@@ -38,6 +39,7 @@ export { AuthConfig, rememberCookieName } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
 export { EverySessionEnded, Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenReused, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from './events.ts';
 export type { LoginVia, EverySessionEndedInput, EverySessionEndedPayload, LoginInput, LoginPayload, PasskeyCloneSuspectedPayload, PasskeyRegisteredPayload, PasskeyRemovedInput, PasskeyRemovedPayload, PasskeySignInFailedInput, PasskeySignInFailedPayload, RecoveryCodeUsedPayload, RecoveryCodesGeneratedPayload, RegisteredPayload, RememberTokenReusedInput, RememberTokenReusedPayload, TwoFactorChallengeFailedInput, TwoFactorChallengeFailedPayload, TwoFactorDisabledPayload, TwoFactorEnabledPayload } from './events.ts';
+export { DatabaseEmailChanges, EMAIL_CHANGES_TABLE, EmailChangeStore } from './email-changes.ts';
 export { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
 export { abilities, authenticate, confirmedPassword, guest } from './middleware.ts';
 export type { AuthenticateOptions, ConfirmedPasswordOptions } from './middleware.ts';
@@ -126,9 +128,9 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
     // A new password (a change, a reset): the token store and the connections only when it revokes the API tokens.
-    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger), () => c.make(SignInStore), container.has(SessionEndings) ? c.make(SessionEndings) : undefined, () => ({ state: c.make(TwoFactorState), events: c.make(EventDispatcher) })));
+    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger), () => c.make(SignInStore), container.has(SessionEndings) ? c.make(SessionEndings) : undefined, () => ({ state: c.make(TwoFactorState), events: c.make(EventDispatcher) }), () => (container.has(EmailChangeStore) ? c.make(EmailChangeStore) : undefined)));
     // `bind`, not `singleton`: the UserProvider it holds is bound per use as well.
-    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(SignInStore), container.has(UserSessions) ? c.make(UserSessions) : undefined, c.make(EventDispatcher), c.make(Clock), () => c.make(PasswordResetTokenStore), () => c.make(AccessTokenStore), c.make(Logger), container.has(SessionEndings) ? c.make(SessionEndings) : undefined));
+    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(SignInStore), container.has(UserSessions) ? c.make(UserSessions) : undefined, c.make(EventDispatcher), c.make(Clock), () => c.make(PasswordResetTokenStore), () => c.make(AccessTokenStore), c.make(Logger), container.has(SessionEndings) ? c.make(SessionEndings) : undefined, () => (container.has(EmailChangeStore) ? c.make(EmailChangeStore) : undefined)));
     // Until the app binds its own (its auth module does — `marmeon make:auth` writes one), the first use explains.
     container.bind(UserProvider, () => {
       throw new UserProviderNotBound(

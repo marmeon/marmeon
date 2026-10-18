@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Container, Key } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
+import { DatabaseEmailChanges, EMAIL_CHANGE_COLUMNS, EMAIL_CHANGES_TABLE, EmailChangeStore } from './email-changes.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_COLUMNS, PASSWORD_RESET_TABLE, PasswordResetTokenStore } from './password-reset.ts';
 import { DatabaseSignIns, SIGN_INS_COLUMNS, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
 import { ACCESS_TOKEN_COLUMNS, ACCESS_TOKEN_TABLE, AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
@@ -89,6 +90,7 @@ export async function requireAuthTables(container: Container): Promise<void> {
   };
 
   if (bound(PasswordResetTokenStore) instanceof DatabasePasswordResetTokens) need(PASSWORD_RESET_TABLE, PASSWORD_RESET_COLUMNS, ['token_hash'], 'auth');
+  if (bound(EmailChangeStore) instanceof DatabaseEmailChanges) need(EMAIL_CHANGES_TABLE, EMAIL_CHANGE_COLUMNS, ['session_key', 'token_hash'], 'auth');
   if (bound(AccessTokenStore) instanceof DatabaseAccessTokens) need(ACCESS_TOKEN_TABLE, ACCESS_TOKEN_COLUMNS, ['token_hash'], 'auth');
   if (bound(SignInStore) instanceof DatabaseSignIns) need(SIGN_INS_TABLE, SIGN_INS_COLUMNS, ['remember_selector', 'remember_validator_hash', 'remember_previous_validator_hash'], 'sign-ins');
   // The authenticator app is a source of the state the app bound, alone or joined with the passkeys.

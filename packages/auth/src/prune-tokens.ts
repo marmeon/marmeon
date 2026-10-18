@@ -1,5 +1,7 @@
+import { Clock, Container, SystemClock } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { AuthConfig } from './config.ts';
+import { EmailChangeStore } from './email-changes.ts';
 import { PasswordResetTokenStore } from './password-reset.ts';
 import { SessionConfig } from '@marmeon/session';
 import { SignInStore } from './sign-ins.ts';
@@ -8,7 +10,7 @@ import { AccessTokenStore } from './tokens.ts';
 /**
  * `marmeon auth:prune-tokens [--hours=0]`: deletes what can no longer be used — reset tokens older than `AUTH_RESET_EXPIRE`,
  * remember-me tokens that expired or are older than `AUTH_REMEMBER_DAYS` (all of them with `0`), API tokens expired more than
- * `--hours` ago (a lookup drops only the one it finds), and sign-ins that are over. Valid reset and API tokens stay. For the scheduler:
+ * `--hours` ago (a lookup drops only the one it finds), changes of address that expired (when the app bound an `EmailChangeStore`), and sign-ins that are over. Valid reset and API tokens and changes of address stay. For the scheduler:
  * `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()`.
  */
 export class PruneTokensCommand {
@@ -16,15 +18,19 @@ export class PruneTokensCommand {
   static description = 'Delete expired password reset and API tokens, and sign-ins that are over';
   static usage = '[--hours=0]';
   static options = { hours: { type: 'string' } } as const;
-  static inject = [PasswordResetTokenStore, AccessTokenStore, AuthConfig, SessionConfig, SignInStore];
+  static inject = [PasswordResetTokenStore, AccessTokenStore, AuthConfig, SessionConfig, SignInStore, Container, Clock];
 
   readonly #resets: PasswordResetTokenStore;
   readonly #access: AccessTokenStore;
   readonly #config: AuthConfig;
   readonly #sessionConfig: SessionConfig;
   readonly #signIns: SignInStore;
+  readonly #clock: Clock;
+  readonly #container: Pick<Container, 'has' | 'make'> | undefined;
 
-  constructor(resets: PasswordResetTokenStore, access: AccessTokenStore, config: AuthConfig, sessionConfig: SessionConfig, signIns: SignInStore) {
+  constructor(resets: PasswordResetTokenStore, access: AccessTokenStore, config: AuthConfig, sessionConfig: SessionConfig, signIns: SignInStore, container?: Pick<Container, 'has' | 'make'>, clock: Clock = new SystemClock()) {
+    this.#clock = clock;
+    this.#container = container;
     this.#resets = resets;
     this.#access = access;
     this.#config = config;
@@ -41,8 +47,11 @@ export class PruneTokensCommand {
     const resets = await this.#resets.prune(this.#config.resetExpire * 60);
     const access = await this.#access.prune(hours * 3600);
     const signIns = await this.#signIns.prune({ idleSeconds: this.#sessionConfig.lifetime * 60, maxSeconds: this.#config.sessionMaxSeconds }, this.#config.rememberDays);
+    // Opt-in: the store exists only where the app bound one.
+    const changes = this.#container?.has(EmailChangeStore) ? await this.#container.make(EmailChangeStore).prune(new Date(this.#clock.now())) : undefined;
     const count = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'}`;
-    output.success(`Pruned ${count(resets, 'password reset token')}, ${count(access, 'API token')} and ${count(signIns, 'sign-in')}.`);
+    const parts = [count(resets, 'password reset token'), count(access, 'API token'), count(signIns, 'sign-in'), ...(changes === undefined ? [] : [`${changes} change${changes === 1 ? '' : 's'} of address`])];
+    output.success(`Pruned ${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}.`);
     return 0;
   }
 }

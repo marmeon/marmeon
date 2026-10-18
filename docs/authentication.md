@@ -978,6 +978,7 @@ another place:
 | `SignInStore` (`@marmeon/auth`) | Abstract class | `create`, `seen`, `list`, `end`, `endAll`, `endEveryone`, `prune`, `issueToken`, `dropToken`, `consume`, `remembered`, `forgetToken`, `rebind` | `DatabaseSignIns` on `sign_ins`, once the app has a `UserProvider`. | Does not compile. In JavaScript, error A6 for `endAll`, `dropToken` or `endEveryone`, before anything is ended. |
 | `PasswordResetTokenStore` (`@marmeon/auth`) | Abstract class | `create`, `consume`, `forget`, `prune`, `forgetEveryone` | `DatabasePasswordResetTokens` on `password_reset_tokens`. | Does not compile. In JavaScript, error A6 for `forgetEveryone`. |
 | `AccessTokenStore` (`@marmeon/auth`) | Abstract class | `create`, `find`, `touch`, `list`, `revoke`, `revokeAll`, `prune`, `revokeEveryone` | `DatabaseAccessTokens` on `personal_access_tokens`. | Does not compile. In JavaScript, error A6 for `revokeEveryone`. |
+| `EmailChangeStore` (`@marmeon/auth`) | Abstract class | `create`, `pending`, `claim`, `forget`, `prune`, `forgetEveryone` | None: the app binds one, `container.singleton(EmailChangeStore, DatabaseEmailChanges)` for the default on `email_changes`. | Does not compile. In JavaScript, error A6 for `forget` and `forgetEveryone`, before anything is written or ended. |
 | `TwoFactorState` (`@marmeon/auth`) | Abstract class | `factors`, `enabledSince`, `removeAll` | `NoTwoFactorState`: nobody has a second factor. The starter kit binds `TwoFactorStore` (on `two_factor_authentications` with `two_factor_recovery_codes`) and the passkeys. | Does not compile. In JavaScript, error A6 when `combineFactors()` is called or before a password reset spends its token. |
 | `SessionStore` (`@marmeon/session`) | Abstract class | `read`, `write`, `destroy`, `gc` (`destroyUser` is optional) | The store of `SESSION_DRIVER`: `file`, `database`, `redis` or `memory`. | Does not compile. |
 
@@ -1066,7 +1067,7 @@ subclass has. That is deliberate. A member added after 1.0 comes with a default 
 a structural copy would break at the first call of the new member.
 
 Extend the classes of the framework only where they are abstract. The stores it ships (`DatabaseSignIns`, `DatabaseAccessTokens`,
-`DatabasePasswordResetTokens`, `TwoFactorStore`, `PasskeyStore` and the session stores) are implementations, and an override of one of
+`DatabasePasswordResetTokens`, `DatabaseEmailChanges`, `TwoFactorStore`, `PasskeyStore` and the session stores) are implementations, and an override of one of
 their methods can break the guarantee of another: a store of your own extends the base class, never a `Database…` store.
 
 The ids these stores take are `AuthUserId`, the type of `id` in your [`AuthTypes`](#the-user-type-and-where-users-come-from) user: a
@@ -1076,6 +1077,14 @@ The call that [ends every session of every account](#ending-every-session-of-eve
 and `PasswordResetTokenStore.forgetEveryone()` and `AccessTokenStore.revokeEveryone()` unless you pass `--keep-reset-tokens` or
 `--keep-api-tokens`. Each deletes every row in one statement and returns how many. The call refuses with error A6 before it changes
 anything when a store lacks its method.
+
+`EmailChangeStore` is opt-in: the package binds none, and an app without a change of address needs nothing. Once one is bound, a new
+password (a change or a reset), `AccountSessions.end()` and `AccountSessions.endEveryone()` drop the pending changes of the account (of
+every account), so that a link a thief asked for does not outlive them; they need `forget()` and `forgetEveryone()` for it and refuse with
+error A6 when the store lacks one. `create()` takes the session key the asking session was checked against and stores the change only while that key is still the account's,
+in one statement, so a request that runs next to a new password cannot leave a change behind; it answers `undefined` when the key has
+changed. The key is kept in the row, and `claim()` uses the change only while the account still holds it, so a link ends when the key is replaced by anything, such as signing out the other devices. `DatabaseEmailChanges` depends on the `id` and `session_key` columns of the `users` table: it reads the key there when it stores a change and again when it uses one up, and a change of an account that is gone cannot be used. For another table pass `{ usersTable }` (a plain lower-case name), which needs a factory binding: `container.singleton(EmailChangeStore, (c) => new DatabaseEmailChanges(c.make(Connections), c.make(Clock), { usersTable: 'accounts' }))`. `claim()` uses a change up in one statement and answers `undefined` for a token that is malformed,
+unknown, used, expired or another account's. `marmeon auth:prune-tokens` also deletes the expired changes.
 
 A `SessionStore` follows the same rules; see [a store of your own](session.md#a-store-of-your-own).
 
@@ -1107,13 +1116,15 @@ optional, with the behaviour when it is missing documented.
 ## The tables of the stores
 
 The default stores keep their rows in `sign_ins` (with the remember-me tokens), `password_reset_tokens`, `personal_access_tokens`,
-`two_factor_authentications` with `two_factor_recovery_codes` and `passkeys`; the starter kit's migrations create them. `users` is your
+`two_factor_authentications` with `two_factor_recovery_codes` and `passkeys`, and `email_changes` once the app binds the `DatabaseEmailChanges`
+(one row per account that asked for a new address and has not confirmed it, the link's token only as a `secret()` SHA-256 hash; `users`
+never holds an address its owner has not confirmed, so no other module reads one). The starter kit's migrations create them. `users` is your
 app's own table. Column marks stay with the tables: the hashes, the validators and the authenticator's secret are `secret()`
 columns, so `selectAll()` and relations never return them.
 
 `/up/ready` is red until every table of a store the app uses has the columns the store needs, and says which command to
 run. A table counts as used when its store is the database one: the sign-ins, the reset links and
-the API tokens once the app has a `UserProvider`, the second factor when `TwoFactorState` is
+the API tokens once the app has a `UserProvider`, the change-of-address links when the app binds `DatabaseEmailChanges`, the second factor when `TwoFactorState` is
 or contains the `TwoFactorStore`, and the passkeys with the `PasskeyServiceProvider`. A store of your own keeps its own table, and
 readiness waits for none of ours: an app that wants no reset links or no API tokens binds a store of its own for them
 (`container.singleton(AccessTokenStore, MyTokens)`), because with a `UserProvider` the default stores count as used. Readiness is also red

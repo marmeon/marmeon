@@ -15,7 +15,7 @@ import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { PASSKEY_COLUMNS, PASSKEYS_TABLE } from './passkeys/store.ts';
 import { PasskeyServiceProvider } from './passkeys/provider.ts';
 import { PGSQL_URL } from './__fixtures__/databases.ts';
-import { AuthServiceProvider, AccessTokenStore, combineFactors, DatabaseSignIns, SignInStore, TwoFactorState, TwoFactorStore, UserProvider } from './index.ts';
+import { AuthServiceProvider, AccessTokenStore, combineFactors, DatabaseEmailChanges, DatabaseSignIns, EmailChangeStore, SignInStore, TwoFactorState, TwoFactorStore, UserProvider } from './index.ts';
 import { factorSources, NoTwoFactorState } from './two-factor/state.ts';
 import { REMEMBER_TOKENS_DROP_MIGRATION, SESSION_KEYS_MIGRATION, SIGN_INS_REMEMBER_MIGRATION, TOKENS_REISSUE_MIGRATION } from './upgrades.ts';
 
@@ -373,6 +373,20 @@ describe('a database that lacks the auth tables', () => {
       'two_factor_authentications',
       'two_factor_recovery_codes',
     ]);
+  });
+
+  it('waits for email_changes only once the database store of the changes of address is bound, and is red while the table is missing', async () => {
+    await using plain = await open({}, signedIn);
+    expect(await required(plain), 'opt-in: the package binds no store').not.toContain('email_changes');
+    await using application = await open({}, (container) => {
+      signedIn(container);
+      container.singleton(EmailChangeStore, DatabaseEmailChanges);
+    });
+    expect(await required(application)).toContain('email_changes');
+    expect(application.container.make(SchemaRequirements).all().find((requirement) => requirement.table === 'email_changes')?.secrets, 'the token hash is a secret column').toEqual(['session_key', 'token_hash']);
+    await application.container.make(Migrator).migrate();
+    const report = await application.container.make(HealthChecks).run(application.container);
+    expect(report.checks.flatMap((check) => (check.error instanceof Error ? [check.error.message] : [])).join('\n')).toContain('email_changes is missing');
   });
 
   it('leaves out the table of a store the app replaced, and keeps the sign-ins table although remember-me is off', async () => {
