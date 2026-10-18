@@ -1,4 +1,4 @@
-import { AccessTokenStore, Auth, authenticate } from '@marmeon/auth';
+import { AccessTokenStore, Auth, authenticate, PasswordHasher } from '@marmeon/auth';
 import { defineModule } from '@marmeon/core';
 import { Controller, defineRoutes, everyone } from '@marmeon/http';
 import type { SharedProps } from '@marmeon/http/page';
@@ -207,11 +207,23 @@ describe('security settings', { timeout: 30_000 }, () => {
     await continuing(laptop).put('/settings/password', { form: { current_password: 'password', password: 'a new password', password_confirmation: 'a new password' } }).assertAuthenticated(ada);
     await continuing(phone).expectingJson().get('/dashboard').assertUnauthorized();
   });
+
+  it('a rehash of the password at sign-in ends no other session', async () => {
+    const legacy = await new PasswordHasher({ driver: 'scrypt', argon2: { memory: 1024, time: 1, parallelism: 1 }, scrypt: { cost: 10, blockSize: 8, parallelism: 1 } }).make('password');
+    const ada = await app.factory(UserFactory).create();
+    const phone = await app.post('/login', credentials(ada));
+    // The costs moved on since: the next sign-in with the password writes the hash anew — and leaves the phone signed in.
+    await app.make(UserRepository).updatePasswordHash(ada.id, legacy);
+    await app.post('/login', credentials(ada)).assertAuthenticated(ada);
+    expect((await app.make(UserRepository).findForLogin(ada.email))?.passwordHash).toMatch(/^\$argon2id\$/);
+    await continuing(phone).expectingJson().get('/dashboard').assertOk();
+  });
 });
 
 describe('the session key', { timeout: 30_000 }, () => {
   it('a new key signs out every session of the account but leaves other accounts alone', async () => {
-    const ada = await app.factory(UserFactory).create();
+    // An account from before registrations gave a key: its key is NULL.
+    const ada = await app.factory(UserFactory).create({ session_key: null });
     const grace = await app.factory(UserFactory).create();
     const phone = await app.post('/login', credentials(ada));
     const other = await app.post('/login', credentials(grace));
@@ -236,7 +248,7 @@ describe('the session key', { timeout: 30_000 }, () => {
   });
 
   it('compares and sets: a key replaces only the one that was read, and says whether it did', async () => {
-    const ada = await app.factory(UserFactory).create();
+    const ada = await app.factory(UserFactory).create({ session_key: null });
     const users = app.make(UserRepository);
     const first = 'a-first-key-of-at-least-32-characters-x';
     expect(await users.updateSessionKey(ada.id, first, 'not-the-stored-key'), 'wrong expectation on a fresh account').toBe(false);
@@ -252,7 +264,7 @@ describe('the session key', { timeout: 30_000 }, () => {
   });
 
   it('compares and sets the password hash: with an expectation it writes only over the stored hash, and says whether it did', async () => {
-    const ada = await app.factory(UserFactory).create();
+    const ada = await app.factory(UserFactory).create({ session_key: null });
     const users = app.make(UserRepository);
     const stored = async () => (await users.findForLogin(ada.email))?.passwordHash;
     const h1 = (await stored())!;
@@ -274,8 +286,25 @@ describe('the session key', { timeout: 30_000 }, () => {
     expect(await stored()).toBe('h5');
   });
 
+  it('compares and sets the session key together with the hash: expectedSessionKey, null included, in the one statement', async () => {
+    const none = await app.factory(UserFactory).create({ session_key: null });
+    const users = app.make(UserRepository);
+    const kept = 'a-key-that-stays-of-at-least-32-characters-x';
+    const next = 'a-key-written-with-the-hash-of-at-least-32-characters';
+    expect(await users.updatePasswordHash(none.id, 'h1' as never, { sessionKey: next, expectedSessionKey: kept }), 'the account has none').toBe(false);
+    expect((await users.findById(none.id))?.sessionKey).toBeNull();
+    expect(await users.updatePasswordHash(none.id, 'h1' as never, { sessionKey: next, expectedSessionKey: null }), 'NULL matches IS NULL').toBe(true);
+    expect((await users.findById(none.id))?.sessionKey).toBe(next);
+    expect(await users.updatePasswordHash(none.id, 'h2' as never, { sessionKey: kept, expectedSessionKey: null }), 'a key is there now').toBe(false);
+    expect((await users.findById(none.id))?.passwordHash).toBe('h1');
+    expect(await users.updatePasswordHash(none.id, 'h2' as never, { sessionKey: kept, expectedSessionKey: next })).toBe(true);
+    // A registration gives its account a key, as the factory does.
+    const created = await users.register({ name: 'New', email: 'new@example.com', password: 'h' as never, locale: 'en' });
+    expect(created.ok && (await users.findById(created.value.id))?.sessionKey).toMatch(/^[\w-]{43}$/);
+  });
+
   it('is a secret column: not in a select-all result, handed back by the provider as sessionKey', async () => {
-    const ada = await app.factory(UserFactory).create();
+    const ada = await app.factory(UserFactory).create({ session_key: null });
     const users = app.make(UserRepository);
     expect((await users.findById(ada.id))?.sessionKey).toBeNull();
     await users.updateSessionKey(ada.id, 'a-new-key-of-at-least-32-characters', null);

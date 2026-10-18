@@ -41,10 +41,11 @@ export class MemoryUsers<U extends { readonly id: number; readonly email?: strin
     return undefined;
   }
 
-  /** With `expected` only while the stored hash is that one; with `sessionKey` the key is written together with the hash. */
-  async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string } = {}): Promise<boolean> {
+  /** With `expected` only while the stored hash is that one; with `sessionKey` the key is written together with the hash, and with `expectedSessionKey` only over that key. */
+  async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string; readonly expectedSessionKey?: string | null } = {}): Promise<boolean> {
     const row = this.rows.get(id);
     if (!row || (options.expected !== undefined && row.hash !== options.expected)) return false;
+    if (options.sessionKey !== undefined && options.expectedSessionKey !== undefined && row.key !== options.expectedSessionKey) return false;
     row.hash = hash;
     if (options.sessionKey !== undefined) row.key = options.sessionKey;
     return true;

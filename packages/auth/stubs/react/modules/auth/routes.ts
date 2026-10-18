@@ -100,7 +100,7 @@ export default defineRoutes((Route) => {
   confirmedAddress.post('/confirm-password/passkey', PasskeyConfirmController).name('auth.password.confirm.passkey').block();
   // "Sudo mode": the security page asks for the password again unless a password or a passkey confirmed it within 15 minutes.
   confirmedAddress.middleware(confirmedPassword()).get('/settings/security', ShowSecurityController).name('auth.security');
-  // A new hash in the database and its fingerprint in the session must stay a pair: one of these requests per session at a
+  // A new session key in the database and its fingerprint in the session must stay a pair: one of these requests per session at a
   // time (block()) — two at once could leave the session with the other's fingerprint, and sign it out.
   confirmedAddress.put('/settings/password', UpdatePasswordController).name('auth.password.update').block();
   confirmedAddress.post('/settings/devices/logout', LogoutOtherDevicesController).name('auth.devices.logout').block();

@@ -4,12 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { PasswordBroker } from './password-reset.ts';
 import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
 import type { PasswordHash } from './hashing.ts';
-import { NewPassword } from './new-password.ts';
+import { AccountClaimLost, NewPassword } from './new-password.ts';
 import type { RememberTokenStore } from './remember.ts';
 import { SignInTracker } from './sign-ins.ts';
 import type { AccessTokenStore } from './tokens.ts';
 import { combineFactors, NoTwoFactorState, type SecondFactor, type TwoFactorState } from './two-factor/state.ts';
-import type { UserProvider } from './user.ts';
+import { MemoryUsers } from './test-helpers/users.ts';
+import type { AuthUser, UserProvider } from './user.ts';
 
 // What a reset of an account with an unconfirmed address takes away — and what it leaves alone.
 
@@ -47,7 +48,8 @@ function setup({ state, revokeTokensOnPasswordChange = false }: { state: TwoFact
       }
     },
   } as unknown as Connections;
-  const users = { updatePasswordHash: async () => true } as unknown as UserProvider;
+  const users = new MemoryUsers<AuthUser>();
+  users.add({ id: 1, name: 'Ada', email: 'ada@example.com' }, 'old' as unknown as PasswordHash, 'old-session-key-of-the-account-0123456789');
   const remember = { forgetUser: async () => {} } as unknown as RememberTokenStore;
   const newPassword = new NewPassword(
     () => tokens,
@@ -65,13 +67,13 @@ function setup({ state, revokeTokensOnPasswordChange = false }: { state: TwoFact
 describe('NewPassword over a provider that does not say whether it wrote', () => {
   it('refuses it with its code, and writes nothing more', async () => {
     const { newPassword, remember } = setup({ state: source([]) });
-    const silent = { updatePasswordHash: async () => undefined } as unknown as UserProvider;
+    const silent = { findById: async () => undefined, updatePasswordHash: async () => undefined } as unknown as UserProvider;
     await expect(newPassword.store(silent, remember, 1, hash, 'change')).rejects.toThrow(/^\[marmeon:A5\] NewPassword: UserProvider\.updatePasswordHash/);
   });
 });
 
 describe('NewPassword over a provider that refuses a write without expected', () => {
-  const refusing = { updatePasswordHash: async () => false } as unknown as UserProvider;
+  const refusing = { findById: async () => undefined, updatePasswordHash: async () => false } as unknown as UserProvider;
 
   it('throws A5 inside the transaction, so the revoked API tokens come back', async () => {
     const { newPassword, remember, revokedCount, rollbacks } = setup({ state: source([]), revokeTokensOnPasswordChange: true });
@@ -87,11 +89,74 @@ describe('NewPassword over a provider that refuses a write without expected', ()
   });
 });
 
+describe('NewPassword and the session key', () => {
+  it('stores the hash with a new key, and returns that key', async () => {
+    const { newPassword, remember, users } = setup({ state: source([]) });
+    const first = await newPassword.store(users, remember, 1, hash, 'change');
+    expect(first.sessionKey).toMatch(/^[\w-]{43}$/);
+    expect(users.rows.get(1)).toMatchObject({ hash, key: first.sessionKey });
+    expect((await newPassword.store(users, remember, 1, hash, 'reset')).sessionKey, 'a key for every password').not.toBe(first.sessionKey);
+  });
+
+  it('gives an account that had no key one', async () => {
+    const { newPassword, remember, users } = setup({ state: source([]) });
+    users.add({ id: 2, name: 'Bob', email: 'bob@example.com' }, null, null);
+    const { sessionKey } = await newPassword.store(users, remember, 2, hash, 'change');
+    expect(users.rows.get(2)?.key).toBe(sessionKey);
+  });
+
+  it('throws A5 inside the transaction when the provider ignores sessionKey, so nothing stands', async () => {
+    const { newPassword, remember, users, revokedCount, rollbacks } = setup({ state: source([]), revokeTokensOnPasswordChange: true });
+    users.updatePasswordHash = async (id, newHash) => {
+      users.rows.get(id)!.hash = newHash; // writes the hash, drops the key
+      return true;
+    };
+    await expect(newPassword.store(users, remember, 1, hash, 'change')).rejects.toThrow(/^\[marmeon:A5\] NewPassword: UserProvider\.updatePasswordHash\(id, hash, \{ sessionKey \}\) must store the session key/);
+    expect(revokedCount()).toBe(1);
+    expect(rollbacks()).toBe(1);
+  });
+
+  it('throws A5 for an account with no key whose provider ignores sessionKey: it would stay without the row lock', async () => {
+    const { newPassword, remember, users } = setup({ state: source([]) });
+    users.add({ id: 2, name: 'Bob', email: 'bob@example.com' }, null, null);
+    users.updatePasswordHash = async () => true;
+    await expect(newPassword.store(users, remember, 2, hash, 'reset')).rejects.toThrow(/\[marmeon:A5\]/);
+  });
+
+  it('treats another key than the one written as a later ending, not as a broken provider: a change loses its claim, a reset stands', async () => {
+    const { newPassword, remember, users, rollbacks } = setup({ state: source([]) });
+    const write = users.updatePasswordHash.bind(users);
+    users.updatePasswordHash = async (id, newHash, options) => {
+      const wrote = await write(id, newHash, options);
+      users.rows.get(id)!.key = 'a-key-that-is-not-the-one-written-0123456789'; // an ending lands right after the write
+      return wrote;
+    };
+    await expect(newPassword.store(users, remember, 1, hash, 'change', undefined, 'old-session-key-of-the-account-0123456789')).rejects.toBeInstanceOf(AccountClaimLost);
+    expect(rollbacks()).toBe(1);
+    users.rows.get(1)!.key = 'old-session-key-of-the-account-0123456789'; // the memory provider does not roll back
+    await expect(newPassword.store(users, remember, 1, hash, 'reset')).resolves.toMatchObject({ revoked: 0 });
+  });
+
+  it('refuses the write of a change over a key that is no longer the one its session read, and writes nothing', async () => {
+    const { newPassword, remember, users, rollbacks } = setup({ state: source([]) });
+    await expect(newPassword.store(users, remember, 1, hash, 'change', undefined, 'another-key-than-the-stored-one-0123456789')).rejects.toBeInstanceOf(AccountClaimLost);
+    expect(users.rows.get(1)).toMatchObject({ hash: 'old', key: 'old-session-key-of-the-account-0123456789' });
+    expect(rollbacks()).toBe(1);
+    await expect(newPassword.store(users, remember, 1, hash, 'change', undefined, 'old-session-key-of-the-account-0123456789')).resolves.toMatchObject({ sessionKey: expect.any(String) });
+  });
+
+  it('compares a change of an account without a key with NULL', async () => {
+    const { newPassword, remember, users } = setup({ state: source([]) });
+    users.add({ id: 2, name: 'Bob', email: 'bob@example.com' }, null, 'a-key-that-ended-the-sessions-0123456789');
+    await expect(newPassword.store(users, remember, 2, hash, 'change', undefined, null)).rejects.toBeInstanceOf(AccountClaimLost);
+  });
+});
+
 describe('NewPassword after a reset of an unconfirmed address', () => {
   it('removes the factors and revokes the API tokens even with revokeTokensOnPasswordChange=false, and says so in two events', async () => {
     const state = source(['passkey', 'totp']);
     const { reset, events, revokedCount } = setup({ state });
-    expect(await reset({ id: 1, email_verified_at: null })).toBe(1);
+    expect((await reset({ id: 1, email_verified_at: null })).revoked).toBe(1);
     expect(state.removed).toBe(1);
     expect(await state.factors(1)).toEqual([]);
     expect(revokedCount()).toBe(1);
@@ -139,7 +204,7 @@ describe('NewPassword after a reset it leaves alone', () => {
   it('keeps the factors and the tokens of a confirmed account', async () => {
     const state = source(['passkey']);
     const { reset, events, revokedCount } = setup({ state });
-    expect(await reset({ id: 1, email_verified_at: '2026-01-01T00:00:00Z' })).toBe(0);
+    expect((await reset({ id: 1, email_verified_at: '2026-01-01T00:00:00Z' })).revoked).toBe(0);
     expect(state.removed).toBe(0);
     expect(revokedCount()).toBe(0);
     expect(events).toEqual([]);

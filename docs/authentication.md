@@ -85,10 +85,11 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   /**
    * Writes `hash` and answers whether it wrote. With `expected`, only where the stored hash still equals it, in one statement: a
    * rehash or "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes
-   * regardless. With `sessionKey`, the same statement stores that session key too.
+   * regardless. With `sessionKey`, the same statement stores that session key too, and with `expectedSessionKey` as well (`null`:
+   * none) only where the stored key still is that one.
    */
-  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string } = {}): Promise<boolean> {
-    const { expected, sessionKey } = options;
+  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null } = {}): Promise<boolean> {
+    const { expected, sessionKey, expectedSessionKey } = options;
     // An empty key would give the fingerprint of an account without one (NULL).
     if (sessionKey !== undefined && sessionKey.length < 32) throw new Error('A session key is at least 32 characters: use a random value.');
     // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
@@ -97,6 +98,9 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
       .set({ password: hash, ...(sessionKey === undefined ? {} : { session_key: sessionKey }), updated_at: new Date() })
       .where('id', '=', id)
       .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
+      .$if(sessionKey !== undefined && expectedSessionKey !== undefined, (query) =>
+        query.where(expectedSessionKey === null ? sql<boolean>`session_key is null` : sql<boolean>`session_key = ${expectedSessionKey}`),
+      )
       .executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
@@ -125,12 +129,33 @@ the request's schema normalized it; the starter kit's schema trims the address a
 bound, the first use of `UserProvider` throws an error that says how to bind one.
 
 `updatePasswordHash(id, hash, { expected, sessionKey })` returns whether it wrote, and is a compare-and-set when `expected` is given: it
-writes only where the stored hash still equals `expected`, in one statement. With `sessionKey` the same statement stores that session key. `attempt()` rehashes over the hash it verified, and
-`logoutOtherDevices()` writes over the hash its request read, so a password reset that lands in between is never turned back to the old
-password: the rehash makes the sign-in an `invalid-credentials` (a new attempt checks the new password), and `logoutOtherDevices()`
-returns `false`. A reset or a new password passes no `expected` and writes regardless. The answer must be a boolean: a provider that returns
-nothing is refused with error A5 (see [error codes](errors.md#server-error-codes)) at the first write, since it could turn a reset back
-without anyone noticing.
+writes only where the stored hash still equals `expected`, in one statement. With `sessionKey` the same statement stores that session key.
+`attempt()` rehashes over the hash it verified, so a password reset that lands in between is never turned back to the old password:
+the rehash makes the sign-in an `invalid-credentials` (a new attempt checks the new password). A rehash passes no `sessionKey`: it
+changes the hash and nothing a session is bound to, so no sign-in ends. A reset or a new password passes no `expected`, writes
+regardless, and **always passes a new `sessionKey`**: the key is what ends the other sessions, and `findById()` has to hand it back at once.
+The framework reads it back after the write and refuses a provider that ignored it with error A5 (see [error
+codes](errors.md#server-error-codes)). The answer must be a boolean: a provider that returns nothing is refused with the same error at
+the first write, since it could turn a reset back without anyone noticing.
+
+A new password of the signed-in user (`updatePassword()`) also passes `expectedSessionKey`, the key its session was checked against
+(`null` for an account without one). With `sessionKey`, write only where the stored key equals it, in the **same** statement
+(`session_key IS NULL` for `null`, else `session_key = ?`), and return `false` otherwise: an `AccountSessions.end()` that landed after the
+session was checked has replaced the key, and a password change must not write over it, or the session `end()` just ended would come
+back. A `false` there is no contract break: `updatePassword()` signs this session out and throws. **A provider must evaluate
+`expectedSessionKey`.** One that ignores it still passes the read-back, and the framework cannot tell, so the protection is silently gone: test it in
+your app (a write over a stale `expectedSessionKey` must return `false` and leave the row alone). `updateSessionKey(id, key, null)` compares
+with `IS NULL` for the same reason.
+
+The new password and the read-back run in one database transaction (`NewPassword` always opens one), so an error A5, or a lost
+`expectedSessionKey`, rolls the hash and the revocation of API tokens back, where your provider writes through the same connection (the
+starter kit's does). A provider that writes elsewhere keeps what it wrote: after an A5 the new hash may be stored without the key, and
+no session ended. Fix the provider, then end the sessions with `AccountSessions.end()`.
+
+Give every account a key when you create it (32 random bytes, `base64url`, as `auth.updateSessionKey()` draws them). The contract
+still allows `null`, but a `null` key cannot be locked when a factor is added, and the framework can only compare against it, not hold
+the row. The starter kit's `register()`, factory and seeder do, and its upgrade migration fills the `NULL` keys of existing accounts with
+random values (an account that had none is signed out once, since its fingerprint changes).
 
 `updateSessionKey()` and `updateEverySessionKey()` are required as well, see [signing out other devices without a password](#signing-out-other-devices-without-a-password)
 and [ending every session of every account](#ending-every-session-of-every-account). A provider of your own that leaves one out does
@@ -254,7 +279,8 @@ factor](two-factor-authentication.md). Nobody is signed in then: no `Login` even
 `undefined`. The session keeps the right password for five minutes, `auth.pendingSecondFactor()` names the factors it waits for,
 and the error carries them as `factors`. Redirect to the page that asks for the code. An app that ignores the case still signs
 nobody in. Without a source of factors bound (see [Setting up](two-factor-authentication.md#setting-up)) the case never happens. When the stored hash was made with other costs than the
-configured ones, `attempt()` hashes the password again and stores the new hash. It also notes the time, so the password counts as
+configured ones, `attempt()` hashes the password again and stores the new hash; no session of the account ends by it (see [changing the
+password](#changing-the-password)). It also notes the time, so the password counts as
 just confirmed for [sudo mode](#sudo-mode).
 
 A password reset, a new password or [an ending of every session](#ending-every-session-of-a-user) that lands while the password is
@@ -281,8 +307,11 @@ to the session:
 
 - **A new session.** The session gets a new id and a new CSRF token, and keeps its data. An id handed out before the sign-in signs
   nobody in: this stops session fixation.
-- **A fingerprint, not the hash.** The session keeps a SHA-256 of the account's id, password hash and session key, never the hash
-  itself. Two accounts never share one, also without a password.
+- **A fingerprint, not the key.** The session keeps an HMAC-SHA256 of the account's id and session key, under a key derived from
+  `APP_KEY`, never the session key itself. Whoever reads the database cannot compute one, so a stolen copy of the table is no way into
+  a session store. The password hash is not part of it, so a rehash at sign-in ends no session. Two accounts never share one, also
+  without a key. **Rotating `APP_KEY`:** move the old key to `APP_PREVIOUS_KEYS`, and the fingerprints made under it stay valid; without
+  it, every session and every remember-me token of every account ends once.
 - **A fresh page.** The browser loads the next page in full, so no page kept in its memory from before the sign-in comes back. A
   sign-in by the remember-me cookie continues the same person's session and skips this.
 
@@ -388,14 +417,15 @@ export default defineMigration({
 });
 ```
 
-A token is bound to the account state the sign-in verified: it stores the same fingerprint a session keeps (a SHA-256 of the
-account's id, password hash and session key, never the hash itself), and a cookie signs in only while the account still has that
+A token is bound to the account state the sign-in verified: it stores the same fingerprint a session keeps (an HMAC of the
+account's id and session key under a key derived from `APP_KEY`, never the key itself), and a cookie signs in only while the account still has that
 fingerprint. A reset, a new password, a new session key or an ending of the account's sessions therefore refuses every token made
 before it, even one a sign-in wrote a moment after the account changed. A refused token is deleted and the request is a guest, like
 an invalid one. A token without a fingerprint, such as a row from before the column existed, is refused: when you add the column,
 the cookies of existing devices stop working once and the users sign in again. The device that stays signed in when
-`updateSessionKey()` or `logoutOtherDevices()` changes the account keeps its token. A rehash during `attempt()` (new `HASH_*` costs, say)
-changes the password hash and so the fingerprint; the sign-in itself is stamped with the new one. It refuses the remember-me cookies of the user's other devices, not only their sessions.
+`updateSessionKey()` or `logoutOtherDevices()` changes the account keeps its token. A rehash during `attempt()` (new `HASH_*` costs,
+say) changes the password hash and nothing the fingerprint is made of: no session and no remember-me cookie of the user's other
+devices ends by it. A token made before the fingerprint left out the hash is refused once, like a token without a fingerprint.
 
 - **Every use rotates the validator.** The cookie gets a new value, and the old one stops working. A second tab that sends the old
   value within 10 seconds of the rotation still passes.
@@ -482,7 +512,8 @@ password); `takePasswordCheck(limiter, scope, userId)` counts one and returns th
 
 ## Changing the password
 
-`updatePassword(password)` stores a new hash for the signed-in user. This session stays signed in. Every other session ends at its
+`updatePassword(password)` stores a new hash for the signed-in user, together with a new session key. The key is what ends sessions:
+the hash is not part of the fingerprint a session keeps, so this session is bound to the new key and stays signed in. Every other session ends at its
 next request, every remember-me token of the user is deleted, this device's included, and `PasswordChanged` is dispatched. With
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token of the user is revoked as well, in the same transaction as the new
 hash, and the log says how many.
@@ -529,12 +560,13 @@ throws a field error for a wrong password. Never check a signed-in user's passwo
 `& Authenticated` types the context: `ctx.user` is there because the route sits behind `authenticate()`. The
 [hashing](hashing.md#the-password-rule) page explains the `password()` rule.
 
-`logoutOtherDevices(password)` signs out every other device without changing the password. It checks the password, returns `false`
-when it is wrong or when the password changed meanwhile (a reset landed during the request: nothing is written), and otherwise hashes it again with a new salt. The other sessions end at their next request, and the
-remember-me tokens of the other devices are deleted.
+`logoutOtherDevices(password)` signs out every other device without changing the password, or its hash. It checks the password,
+returns `false` when it is wrong or when the account's sessions ended meanwhile (a reset landed during the request: nothing is
+written), and otherwise stores a new session key, like [`updateSessionKey()`](#signing-out-other-devices-without-a-password). The other
+sessions end at their next request, and the remember-me tokens of the other devices are deleted.
 
 The starter kit runs both routes with `.block()`: one such request per session at a time. Two at once could leave the session
-with the fingerprint of the other request's hash, and sign it out. The [session](session.md#requests-that-must-not-overlap) page
+with the fingerprint of the other request's key, and sign it out. The [session](session.md#requests-that-must-not-overlap) page
 explains `block()`.
 
 ### Signing out other devices without a password
@@ -578,10 +610,11 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   /**
    * Writes `hash` and answers whether it wrote. With `expected`, only where the stored hash still equals it, in one statement: a
    * rehash or "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes
-   * regardless. With `sessionKey`, the same statement stores that session key too.
+   * regardless. With `sessionKey`, the same statement stores that session key too, and with `expectedSessionKey` as well (`null`:
+   * none) only where the stored key still is that one.
    */
-  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string } = {}): Promise<boolean> {
-    const { expected, sessionKey } = options;
+  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null } = {}): Promise<boolean> {
+    const { expected, sessionKey, expectedSessionKey } = options;
     // An empty key would give the fingerprint of an account without one (NULL).
     if (sessionKey !== undefined && sessionKey.length < 32) throw new Error('A session key is at least 32 characters: use a random value.');
     // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
@@ -590,6 +623,9 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
       .set({ password: hash, ...(sessionKey === undefined ? {} : { session_key: sessionKey }), updated_at: new Date() })
       .where('id', '=', id)
       .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
+      .$if(sessionKey !== undefined && expectedSessionKey !== undefined, (query) =>
+        query.where(expectedSessionKey === null ? sql<boolean>`session_key is null` : sql<boolean>`session_key = ${expectedSessionKey}`),
+      )
       .executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
@@ -653,7 +689,8 @@ export class SignOutOtherDevicesController extends Controller {
 ```
 
 Run such a route with `.block()` as well. `logoutOtherDevices(password)` stays the way for an account with a password: it checks
-the password first. An app without session keys keeps its fingerprints of id and hash.
+the password first. An account whose key is still `null` has the id alone in its fingerprint until a new password or a sign-out of the other
+devices writes a key.
 
 ### API tokens
 
@@ -663,11 +700,18 @@ never does. Otherwise a token stays valid until it expires or is revoked on the 
 
 ## Ending every session of a user
 
-A session signs in with a fingerprint of the account, its id, password hash and session key, and every request compares it with
-the account as it is now. When the password or the session key changes anywhere, every other session stops matching and ends at
-its next request. When the user is deleted, the lookup
+A session signs in with a fingerprint of the account, its id and session key, and every request compares it with
+the account as it is now. When the session key changes anywhere, every other session stops matching and ends at its next request:
+a new password and a reset write a new key with the hash, so they end the sessions too, and a rehash of the password at sign-in
+does not. A password hash written without a key ends nothing. When the user is deleted, the lookup
 finds nobody, and the session ends the same way. A request that only reads, such as an island, treats such a session as a guest
 and leaves the ending to the next page request. The account's open live streams close at once and their browsers are checked when they connect again ([real-time updates](realtime.md#following-a-channel)).
+
+> [!WARNING]
+> A password hash you write yourself ends no session. An admin tool, a script or a test that sets `password` directly leaves every
+> sign-in of the account alive. Write a new session key with the hash (`updatePasswordHash(id, hash, { sessionKey })`, as
+> `updatePassword()` and the password reset do), or call `AccountSessions.end()` after it. Raising the `HASH_*` costs signs nobody out;
+> to end every sign-in, run `marmeon auth:end-all-sessions --force`.
 
 `AccountSessions` of `@marmeon/auth` ends every session of an account, and every remember-me cookie with them. Use it after an
 incident, from a command, a job or an admin controller. Put the route behind `authenticate()` and decide who may call it with `authorize(can(…))`, such as with a policy of your own:
@@ -953,7 +997,7 @@ been signed out already:
 
 - `logout()` ends the row of this browser, and a sign-in over another sign-in ends the row it replaces.
 - A new password with `updatePassword()`, `logoutOtherDevices()` and `updateSessionKey()` end the rows of every other device and keep the
-  current one. This happens after the new hash or key is stored; a failure is logged, and the sessions are over by their fingerprint anyway.
+  current one. This happens after the new key is stored; a failure is logged, and the sessions are over by their fingerprint anyway.
 - A password reset ends every row of the user, since it has no session of its own to keep.
 - Each of these also closes the account's open live streams, after the commit of the request's transaction.
 - [`AccountSessions.end()`](#ending-every-session-of-a-user) ends every row of the user.

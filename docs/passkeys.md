@@ -229,8 +229,8 @@ removals at once cannot both pass without the password.
 An account holds at most 20 passkeys; the 21st answers `limit`. Names lose control and invisible format characters (a bidi override would otherwise
 reorder the text of the list). Registration accepts ES256 and EdDSA keys, and RSA keys only with the exponent 65537 and at most 4096 bits.
 
-An account without a password cannot register its first factor: turning it on signs out the other devices with the password hash, so
-`register()` throws for it.
+An account without a password cannot register its first factor: turning it on asks for the password, and signs out the other devices
+with a new session key, so `register()` throws for it.
 
 ## Counter and cloned keys
 

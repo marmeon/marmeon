@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { defineFactory } from '@marmeon/database';
 
 /**
@@ -13,6 +14,8 @@ export const UserFactory = defineFactory(
     name: `User ${sequence}`,
     email: `user${sequence}@example.com`,
     password: FACTORY_PASSWORD_HASH,
+    // A key from the start, as a registration gives one: a test that writes `password` writes a new `session_key` with it.
+    session_key: randomBytes(32).toString('base64url'),
     bio: '',
     email_verified_at: new Date().toISOString(),
     // Confirmed once: never deleted by auth:prune-unverified.

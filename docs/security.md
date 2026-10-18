@@ -133,6 +133,11 @@ until they expire. The [encryption](encryption.md#rotating-the-key) page explain
   per client and per address, and a signed-in user's password checks per sign-in, and per account for a sign-in that did not begin with a typed password: the confirmation, the password change and "sign
   out other devices". The password change and "sign out other devices" run one at a time per session. The
   [rate limiting](rate-limiting.md#defining-limiters) page covers limiters.
+- **A session ends with the account's session key, not with its password hash.** Every new password, reset and "sign out other
+  devices" writes a new key, and a session keeps only a fingerprint of the account's id and that key. A rehash at sign-in (new
+  `HASH_*` costs) writes the hash alone and ends nothing, so raising the costs signs nobody out. A hash you write yourself, in an admin
+  tool or a script, ends no session either: write a new key with it, or call `AccountSessions.end()`. The
+  [authentication](authentication.md#changing-the-password) page explains how.
 - **A sign-in tells nothing.** An unknown address and a wrong password get the same answer in the same time. The
   [authentication](authentication.md#signing-in) page explains how.
 - **Validation never tells whether a record exists while a field is typed.** The `unique` and `exists` rules and an async

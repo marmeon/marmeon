@@ -895,10 +895,13 @@ not know), when a first line names another set, or when a later revision is in y
 the missing one by hand, in front of it.
 
 The tables of the starter kit's auth module (`remember_tokens`, `password_reset_tokens`, `personal_access_tokens`,
-`two_factor_authentications`, `two_factor_recovery_codes`, `passkeys` and `sign_ins`) keep their names. The `auth` set has one
-later revision: `reissue_personal_access_tokens` deletes every row of `personal_access_tokens` and adds a unique index on
+`two_factor_authentications`, `two_factor_recovery_codes`, `passkeys` and `sign_ins`) keep their names. The `auth` set has
+later revisions. The first, `reissue_personal_access_tokens`, deletes every row of `personal_access_tokens` and adds a unique index on
 `token_hash`, because API tokens with a `|`, the form issued before, are no longer valid. See
-[API tokens](api-tokens.md#a-store-of-your-own). It touches no other table. The `sign-ins` set (`sign_ins`, written by
+[API tokens](api-tokens.md#a-store-of-your-own). It touches no other table. The second, `fill_empty_session_keys`, gives every
+account whose `users.session_key` is `NULL` a random value from the database's own cryptographic generator, one for each row. The new
+key changes the account's fingerprint, so an account that had none is signed out once, on every device; accounts that had a key keep
+their sessions. It does not touch the password or any other column. The `sign-ins` set (`sign_ins`, written by
 `marmeon make:sign-ins-table` or by the starter kit) has one later revision, `add_remember_columns_to_sign_ins`: five nullable
 columns that hold the remember-me token on the row of its sign-in. It deletes nothing and does not copy the tokens of
 `remember_tokens`.

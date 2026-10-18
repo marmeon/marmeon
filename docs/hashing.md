@@ -57,7 +57,7 @@ password even for a known address, so both take the same time, and keeps quiet a
 | `failureFloorMs()` | The time a failed sign-in is padded to, in milliseconds (see below). Optional on a custom hasher; without it nothing is padded. |
 
 `dummyVerify()` is for the sign-in of an unknown address: without it, the quick answer would tell a stranger that the address has
-no account. `Auth.attempt()` uses it, and rehashes a password whose hash `needsRehash()` by itself after a successful sign-in — only over the hash it verified: when the password was reset meanwhile, the new hash stays and the sign-in fails; the provider's `updatePasswordHash()` has to tell whether it wrote (see [`UserProvider`](authentication.md#the-user-type-and-where-users-come-from)).
+no account. `Auth.attempt()` uses it, and rehashes a password whose hash `needsRehash()` by itself after a successful sign-in — only over the hash it verified: when the password was reset meanwhile, the new hash stays and the sign-in fails. A rehash ends no session and no remember-me cookie of the user's other devices: the session keeps no hash, only a fingerprint of the account's id and session key. The provider's `updatePasswordHash()` has to tell whether it wrote (see [`UserProvider`](authentication.md#the-user-type-and-where-users-come-from)).
 
 A broken hash is checked like a good one: `verify()` spends the time of a real check on it, and so does an argon2id hash on a Node
 without argon2. After you change the driver or the costs, accounts that still hold an older, slower hash would take longer to
@@ -84,7 +84,7 @@ Both come from `node:crypto`. The app makes the hasher when it starts: on a Node
 names `HASH_DRIVER=scrypt`, not the first sign-in.
 
 `verify()` checks hashes of either driver, whatever is configured. Switching drivers or raising the costs needs no mass reset:
-every user's hash is made anew, with the new settings, at their next sign-in.
+every user's hash is made anew, with the new settings, at their next sign-in, and nobody is signed out by it.
 
 ## Limits
 
@@ -127,7 +127,7 @@ explains `confirmed()` and its message.
 
 The hash is a secret column of the users table, so `Row<'users'>` and every query that selects all columns leave it out. Only the
 `UserProvider` reads it, and hands it next to the user as `Credentials`, never inside it. The session keeps only a fingerprint of
-the account, its id, hash and session key, which the [authentication](authentication.md#ending-every-session-of-a-user) page
+the account, its id and session key, which the [authentication](authentication.md#ending-every-session-of-a-user) page
 explains.
 
 ## Configuration

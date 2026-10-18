@@ -1,4 +1,4 @@
-// @marmeon-stub auth 2
+// @marmeon-stub auth 3
 import { defineMigration } from '@marmeon/database';
 
 // API tokens: only a hash of the secret, found by its unique index; abilities as JSON.

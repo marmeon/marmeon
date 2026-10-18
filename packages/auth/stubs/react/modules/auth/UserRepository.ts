@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { Credentials, PasswordHash, UserProvider } from '@marmeon/auth';
 import { commitAnyway, err, ok, type Result } from '@marmeon/core';
 import { Repository, secret, sql } from '@marmeon/database';
@@ -27,7 +28,8 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
 
   /** A new user — or `duplicate` when the e-mail is taken (decided by the unique index, so two sign-ups cannot race past a check). */
   register(values: { name: string; email: string; password: PasswordHash; locale: string }): Promise<Result<User, { kind: 'duplicate' }>> {
-    return this.tryInsert(values);
+    // A key from the start: an account whose key is NULL has no row to lock when a factor is added (docs/authentication.md#the-user-type-and-where-users-come-from).
+    return this.tryInsert({ ...values, session_key: randomBytes(32).toString('base64url') });
   }
 
   async markEmailVerified(id: number): Promise<void> {
@@ -159,10 +161,12 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   /**
    * Writes `hash` and answers whether it wrote. With `expected`, only where the stored hash still equals it, in one statement: a
    * rehash or "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes
-   * regardless. With `sessionKey`, the same statement stores that session key too, so the hash and the key never stand apart.
+   * regardless. With `sessionKey`, the same statement stores that session key too, so the hash and the key never stand apart; with
+   * `expectedSessionKey` as well (`null`: none), only where the stored key still is that one — a session that was ended since it was
+   * checked (`AccountSessions.end()` replaced the key) must not be brought back by a password change.
    */
-  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string } = {}): Promise<boolean> {
-    const { expected, sessionKey } = options;
+  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null } = {}): Promise<boolean> {
+    const { expected, sessionKey, expectedSessionKey } = options;
     // An empty key would give the fingerprint of an account without one (NULL).
     if (sessionKey !== undefined && sessionKey.length < 32) throw new Error('A session key is at least 32 characters: use a random value, as auth.updateSessionKey() does.');
     // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
@@ -171,6 +175,9 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
       .set({ password: hash, ...(sessionKey === undefined ? {} : { session_key: sessionKey }), updated_at: new Date() })
       .where('id', '=', id)
       .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
+      .$if(sessionKey !== undefined && expectedSessionKey !== undefined, (query) =>
+        query.where(expectedSessionKey === null ? sql<boolean>`session_key is null` : sql<boolean>`session_key = ${expectedSessionKey}`),
+      )
       .executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }

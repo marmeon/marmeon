@@ -6,7 +6,7 @@ import { RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
 import { claimRefused } from '../account-sessions.ts';
-import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, READ_PENDING, SIGN_IN_VERIFIED, SIGN_OUT_OTHER_DEVICES } from '../auth.ts';
+import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, READ_PENDING, SIGN_IN_VERIFIED } from '../auth.ts';
 import { AuthConfig, rememberCookieName } from '../config.ts';
 import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
 import { clearPasswordCheck, takePasswordCheck, type PasswordThrottled } from '../password-throttle.ts';
@@ -206,8 +206,8 @@ export class Passkeys implements SecondFactorPasskeys {
     if ((await this.#store.forUser(id)).length >= MAX_PASSKEYS) return err({ kind: 'limit' });
 
     const first = (await this.#state.factors(id)).length === 0;
-    // Turning the first factor on signs the other devices out, which hashes the password anew.
-    if (first && ((await this.#users.findById(id as never))?.passwordHash ?? null) === null) throw new Error('passkeys.register() needs an account with a password for its first factor: turning it on signs out the other devices with it.');
+    // The first factor is turned on with the account's password (checked below), and signs the other devices out with a new session key.
+    if (first && ((await this.#users.findById(id as never))?.passwordHash ?? null) === null) throw new Error('passkeys.register() needs an account with a password for its first factor: the password is checked before it is turned on.');
     const checked = await this.#checkPassword(id, password);
     if (!checked.ok) return err(checked.error);
 
@@ -218,7 +218,7 @@ export class Passkeys implements SecondFactorPasskeys {
 
     // Before the factor exists, so that a failure after this point leaves it off and the other devices out — never the factor on and an old session alive.
     // `false`: this device's remember-me cookie was a copy, and everything of the account is ended, this session too.
-    if (first && !(await this.#auth[SIGN_OUT_OTHER_DEVICES](password!))) return err({ kind: 'signed-out' });
+    if (first && !(await this.#auth.updateSessionKey())) return err({ kind: 'signed-out' });
     const created = await this.#connections.transaction(async () => {
       // First, so the account's row is locked until the commit: a session that ended meanwhile stores no passkey.
       if (!(await this.#auth[CLAIM_ACCOUNT]())) return err({ kind: 'signed-out' } as const);
@@ -237,7 +237,7 @@ export class Passkeys implements SecondFactorPasskeys {
       return err(created.error);
     }
     // Once more now that the passkey is committed, with a fresh read and no lock (also for an account without a session key, whose row
-    // could not be locked): an ending that landed in between takes it out again. Before the second sign-out below, which writes the hash anew.
+    // could not be locked): an ending that landed in between takes it out again. Before the second sign-out below, which writes the key anew.
     if (!(await this.#auth[ACCOUNT_STILL_CLAIMED]())) {
       try {
         await this.#store.remove(id, created.value.id, { lastFactorAllowed: true });
@@ -251,7 +251,7 @@ export class Passkeys implements SecondFactorPasskeys {
     if (first) {
       // Once more, now that the factor is committed: a session or token made in the window since the first sign-out dies here.
       try {
-        await this.#auth[SIGN_OUT_OTHER_DEVICES](password!);
+        await this.#auth.updateSessionKey();
         await this.#remember.forgetUser(id);
       } catch (error) {
         this.#logger.error('A passkey was registered as the first factor, but signing out the other devices a second time failed: sessions made meanwhile may be open', { user: id, error: error instanceof Error ? error.message : String(error) });

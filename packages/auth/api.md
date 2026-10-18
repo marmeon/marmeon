@@ -76,7 +76,7 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, remember: RememberTokenStore, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInTracker, clock: Clock);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, remember: RememberTokenStore, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInTracker, clock: Clock, fingerprints: SessionFingerprints);
     attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
     login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
@@ -111,7 +111,6 @@ export declare class Auth {
     }>>;
     updatePassword(password: string): Promise<void>;
     logoutOtherDevices(password: string): Promise<boolean>;
-    [SIGN_OUT_OTHER_DEVICES](password: string): Promise<boolean>;
     updateSessionKey(): Promise<boolean>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
     [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
@@ -1016,6 +1015,7 @@ export interface UserProvider<U = AuthUser> {
     } ? Id : never, hash: PasswordHash, options?: {
         readonly expected?: PasswordHash;
         readonly sessionKey?: string;
+        readonly expectedSessionKey?: string | null;
     }): Promise<boolean>;
     updateSessionKey(id: U extends {
         readonly id: infer Id;
@@ -1125,7 +1125,10 @@ export declare class NewPassword {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
     });
-    store(users: UserProvider, remember: RememberTokenStore, id: string | number, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser): Promise<number>;
+    store(users: UserProvider, remember: RememberTokenStore, id: string | number, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
+        readonly revoked: number;
+        readonly sessionKey: string;
+    }>;
     assertReady(): void;
 }
 // PasswordHasherInternals
@@ -1160,8 +1163,13 @@ export declare const READ_PENDING: unique symbol;
 export declare const RECORD_PENDING_FAILURE: unique symbol;
 // SIGN_IN_VERIFIED
 export declare const SIGN_IN_VERIFIED: unique symbol;
-// SIGN_OUT_OTHER_DEVICES
-export declare const SIGN_OUT_OTHER_DEVICES: unique symbol;
+// SessionFingerprints
+export declare class SessionFingerprints {
+    #private;
+    constructor({ key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>);
+    of(credentials: Credentials): string;
+    matches(stored: unknown, credentials: Credentials): boolean;
+}
 // SignInTracker
 export declare class SignInTracker {
     #private;
@@ -1481,7 +1489,7 @@ export type AttestationConveyancePreference = 'none' | 'indirect' | 'direct' | '
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, remember: RememberTokenStore, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInTracker, clock: Clock);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, remember: RememberTokenStore, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInTracker, clock: Clock, fingerprints: SessionFingerprints);
     attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
     login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
@@ -1516,7 +1524,6 @@ export declare class Auth {
     }>>;
     updatePassword(password: string): Promise<void>;
     logoutOtherDevices(password: string): Promise<boolean>;
-    [SIGN_OUT_OTHER_DEVICES](password: string): Promise<boolean>;
     updateSessionKey(): Promise<boolean>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
     [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
@@ -1670,7 +1677,10 @@ export declare class NewPassword {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
     });
-    store(users: UserProvider, remember: RememberTokenStore, id: string | number, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser): Promise<number>;
+    store(users: UserProvider, remember: RememberTokenStore, id: string | number, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
+        readonly revoked: number;
+        readonly sessionKey: string;
+    }>;
     assertReady(): void;
 }
 // PasskeyAssertion
@@ -1780,8 +1790,6 @@ export interface RememberedDevice {
 export type ResidentKeyRequirement = 'discouraged' | 'preferred' | 'required';
 // SIGN_IN_VERIFIED
 export declare const SIGN_IN_VERIFIED: unique symbol;
-// SIGN_OUT_OTHER_DEVICES
-export declare const SIGN_OUT_OTHER_DEVICES: unique symbol;
 // SecondFactor
 export type SecondFactor = 'totp' | 'passkey';
 // SecondFactorPasskeys
@@ -1789,6 +1797,13 @@ export interface SecondFactorPasskeys {
     [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
 }
 export declare const SecondFactorPasskeys: import("@marmeon/core").Token<SecondFactorPasskeys>;
+// SessionFingerprints
+export declare class SessionFingerprints {
+    #private;
+    constructor({ key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>);
+    of(credentials: Credentials): string;
+    matches(stored: unknown, credentials: Credentials): boolean;
+}
 // SignIn
 export interface SignIn {
     readonly id: string;
@@ -1908,6 +1923,7 @@ export interface UserProvider<U = AuthUser> {
     } ? Id : never, hash: PasswordHash, options?: {
         readonly expected?: PasswordHash;
         readonly sessionKey?: string;
+        readonly expectedSessionKey?: string | null;
     }): Promise<boolean>;
     updateSessionKey(id: U extends {
         readonly id: infer Id;
@@ -2198,7 +2214,7 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, remember: RememberTokenStore, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInTracker, clock: Clock);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, remember: RememberTokenStore, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInTracker, clock: Clock, fingerprints: SessionFingerprints);
     attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
     login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
@@ -2233,7 +2249,6 @@ export declare class Auth {
     }>>;
     updatePassword(password: string): Promise<void>;
     logoutOtherDevices(password: string): Promise<boolean>;
-    [SIGN_OUT_OTHER_DEVICES](password: string): Promise<boolean>;
     updateSessionKey(): Promise<boolean>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
     [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
@@ -2323,7 +2338,10 @@ export declare class NewPassword {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
     });
-    store(users: UserProvider, remember: RememberTokenStore, id: string | number, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser): Promise<number>;
+    store(users: UserProvider, remember: RememberTokenStore, id: string | number, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
+        readonly revoked: number;
+        readonly sessionKey: string;
+    }>;
     assertReady(): void;
 }
 // PasskeyAssertion
@@ -2400,8 +2418,6 @@ export interface RememberedDevice {
 }
 // SIGN_IN_VERIFIED
 export declare const SIGN_IN_VERIFIED: unique symbol;
-// SIGN_OUT_OTHER_DEVICES
-export declare const SIGN_OUT_OTHER_DEVICES: unique symbol;
 // SecondFactor
 export type SecondFactor = 'totp' | 'passkey';
 // SecondFactorPasskeys
@@ -2409,6 +2425,13 @@ export interface SecondFactorPasskeys {
     [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
 }
 export declare const SecondFactorPasskeys: import("@marmeon/core").Token<SecondFactorPasskeys>;
+// SessionFingerprints
+export declare class SessionFingerprints {
+    #private;
+    constructor({ key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>);
+    of(credentials: Credentials): string;
+    matches(stored: unknown, credentials: Credentials): boolean;
+}
 // SignIn
 export interface SignIn {
     readonly id: string;
@@ -2528,6 +2551,7 @@ export interface UserProvider<U = AuthUser> {
     } ? Id : never, hash: PasswordHash, options?: {
         readonly expected?: PasswordHash;
         readonly sessionKey?: string;
+        readonly expectedSessionKey?: string | null;
     }): Promise<boolean>;
     updateSessionKey(id: U extends {
         readonly id: infer Id;
