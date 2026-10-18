@@ -2,7 +2,7 @@
 import type { AccountSessions } from './account-sessions.ts';
 import type { Auth } from './auth.ts';
 import type { PasswordHash } from './hashing.ts';
-import type { UserProvider } from './user.ts';
+import type { Credentials, UserProvider } from './user.ts';
 
 declare const auth: Auth;
 declare const accountSessions: AccountSessions;
@@ -62,18 +62,30 @@ export async function everyoneEndedIsReadOnly() {
   return ended.rememberTokens + ended.signIns;
 }
 
-// A provider written before `expected` existed (it returns nothing) is still a provider; one that answers with something else is not.
-export const oldProvider: UserProvider = {
+// A provider keeps the whole contract: the session-key methods, and a password write that says whether it wrote.
+export const fullProvider: UserProvider = {
   findById: async () => undefined,
   findForLogin: async () => undefined,
-  updatePasswordHash: async (_id: unknown, _hash: PasswordHash): Promise<void> => {},
+  updatePasswordHash: async (_id, _hash, _options): Promise<boolean> => true,
+  updateSessionKey: async (): Promise<boolean> => true,
+  updateEverySessionKey: async () => ({ accounts: 0, sampleId: undefined }),
 };
-export const casProvider: UserProvider = { ...oldProvider, updatePasswordHash: async (_id, _hash, _expected?: PasswordHash): Promise<boolean> => true };
+// @ts-expect-error updateSessionKey() is required: without it nobody could be signed out
+export const withoutSessionKey: UserProvider = { ...fullProvider, updateSessionKey: undefined };
+// @ts-expect-error updateEverySessionKey() is required
+export const withoutEveryKey: UserProvider = { ...fullProvider, updateEverySessionKey: undefined };
 export const wrongProvider: UserProvider = {
-  ...oldProvider,
-  // @ts-expect-error updatePasswordHash() answers a boolean or nothing
-  updatePasswordHash: async (): Promise<string> => 'written',
+  ...fullProvider,
+  // @ts-expect-error updatePasswordHash() answers whether it wrote — nothing is not an answer
+  updatePasswordHash: async (): Promise<void> => {},
 };
+export const blindProvider: UserProvider = {
+  ...fullProvider,
+  // @ts-expect-error the old third parameter, the expected hash, is an option now
+  updatePasswordHash: async (_id: number, _hash: PasswordHash, _expected?: PasswordHash): Promise<boolean> => true,
+};
+// @ts-expect-error Credentials without sessionKey
+export const keylessCredentials: Credentials = { user: { id: 1 } as never, passwordHash: null };
 
 export async function endEveryoneKnowsItsOptions() {
   await accountSessions.endEveryone({ accessTokens: false, resetTokens: false });

@@ -3,7 +3,7 @@ import { Connections, sql } from '@marmeon/database';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { freshPgsqlDatabase, PGSQL_URL } from './__fixtures__/databases.ts';
 import { rotateSessionKey } from './account-sessions.ts';
-import type { AuthUser, Credentials, PasswordHash, UserProvider } from './index.ts';
+import type { AuthUser, Credentials, UserProvider } from './index.ts';
 
 interface AccountsTable {
   accounts: { id: number; session_key: string | null };
@@ -28,7 +28,12 @@ class Accounts implements UserProvider {
   async findForLogin(): Promise<Credentials | undefined> {
     return undefined;
   }
-  async updatePasswordHash(_id: number, _hash: PasswordHash): Promise<void> {}
+  async updatePasswordHash(): Promise<boolean> {
+    return false;
+  }
+  async updateEverySessionKey(): Promise<{ accounts: number; sampleId: undefined }> {
+    return { accounts: 0, sampleId: undefined };
+  }
   async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
     let update = this.#db().updateTable('accounts').set({ session_key: key }).where('id', '=', Number(id));
     if (expected !== undefined) update = expected === null ? update.where('session_key', 'is', null) : update.where('session_key', '=', expected);

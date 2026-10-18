@@ -36,8 +36,18 @@ function setup({ state, revokeTokensOnPasswordChange = false }: { state: TwoFact
   const logger = { info: (message: string, context?: unknown) => logged.push({ level: 'info', message, context }), warn: (message: string) => logged.push({ level: 'warn', message }), error: (message: string, context?: unknown) => logged.push({ level: 'error', message, context }) } as unknown as Logger;
   let revoked = 0;
   const tokens = { revokeAll: async () => ++revoked } as unknown as AccessTokenStore;
-  const connections = { transaction: async (run: () => Promise<unknown>) => run() } as unknown as Connections;
-  const users = { updatePasswordHash: async () => {} } as unknown as UserProvider;
+  let rollbacks = 0;
+  const connections = {
+    transaction: async (run: () => Promise<unknown>) => {
+      try {
+        return await run();
+      } catch (error) {
+        rollbacks++; // a rejection leaves the real transaction: everything it wrote is rolled back
+        throw error;
+      }
+    },
+  } as unknown as Connections;
+  const users = { updatePasswordHash: async () => true } as unknown as UserProvider;
   const remember = { forgetUser: async () => {} } as unknown as RememberTokenStore;
   const newPassword = new NewPassword(
     () => tokens,
@@ -49,8 +59,33 @@ function setup({ state, revokeTokensOnPasswordChange = false }: { state: TwoFact
     () => ({ state, events: { dispatch: async (event: object) => void events.push(event) } as unknown as EventDispatcher }),
   );
   const reset = (user: object) => newPassword.store(users, remember, 1, hash, 'reset', user as never);
-  return { reset, events, logged, revokedCount: () => revoked, newPassword, users, remember };
+  return { reset, events, logged, revokedCount: () => revoked, rollbacks: () => rollbacks, newPassword, users, remember };
 }
+
+describe('NewPassword over a provider that does not say whether it wrote', () => {
+  it('refuses it with its code, and writes nothing more', async () => {
+    const { newPassword, remember } = setup({ state: source([]) });
+    const silent = { updatePasswordHash: async () => undefined } as unknown as UserProvider;
+    await expect(newPassword.store(silent, remember, 1, hash, 'change')).rejects.toThrow(/^\[marmeon:A5\] NewPassword: UserProvider\.updatePasswordHash/);
+  });
+});
+
+describe('NewPassword over a provider that refuses a write without expected', () => {
+  const refusing = { updatePasswordHash: async () => false } as unknown as UserProvider;
+
+  it('throws A5 inside the transaction, so the revoked API tokens come back', async () => {
+    const { newPassword, remember, revokedCount, rollbacks } = setup({ state: source([]), revokeTokensOnPasswordChange: true });
+    await expect(newPassword.store(refusing, remember, 1, hash, 'change')).rejects.toThrow(/^\[marmeon:A5\] NewPassword: UserProvider\.updatePasswordHash\(id, hash\) answered false without expected/);
+    expect(revokedCount(), 'the tokens were revoked inside the transaction').toBe(1);
+    expect(rollbacks(), 'and it rolled back').toBe(1);
+  });
+
+  it('fires no event for a reset that wrote nothing', async () => {
+    const { newPassword, remember, events } = setup({ state: source(['totp']) });
+    await expect(newPassword.store(refusing, remember, 1, hash, 'reset', { id: 1, email_verified_at: null } as never)).rejects.toThrow(/\[marmeon:A5\]/);
+    expect(events).toEqual([]);
+  });
+});
 
 describe('NewPassword after a reset of an unconfirmed address', () => {
   it('removes the factors and revokes the API tokens even with revokeTokensOnPasswordChange=false, and says so in two events', async () => {

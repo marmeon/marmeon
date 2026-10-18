@@ -52,36 +52,33 @@ declare module '../user.ts' {
   }
 }
 
+/** Accounts in memory that keep the whole `UserProvider` contract; `keys` holds the session keys (an account without one has `null`). */
 class MemoryUsers implements UserProvider<TestUser> {
   readonly rows = new Map<number, { user: TestUser; hash: PasswordHash | null }>();
+  readonly keys = new Map<number, string>();
   async findById(id: number): Promise<Credentials<TestUser> | undefined> {
     const row = this.rows.get(Number(id));
-    return row && { user: row.user, passwordHash: row.hash };
+    return row && { user: row.user, passwordHash: row.hash, sessionKey: this.keys.get(Number(id)) ?? null };
   }
   async findForLogin(email: string): Promise<Credentials<TestUser> | undefined> {
-    for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash };
+    for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash, sessionKey: this.keys.get(row.user.id) ?? null };
     return undefined;
   }
-  async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
-    this.rows.get(Number(id))!.hash = hash;
-  }
-}
-
-/** A provider that stores a session key (null until something sets one), as an app's repository with a `session_key` column does. */
-class KeyedUsers extends MemoryUsers {
-  readonly keys = new Map<number, string>();
-  override async findById(id: number): Promise<Credentials<TestUser> | undefined> {
-    const found = await super.findById(id);
-    return found && { ...found, sessionKey: this.keys.get(Number(id)) ?? null };
-  }
-  override async findForLogin(email: string): Promise<Credentials<TestUser> | undefined> {
-    const found = await super.findForLogin(email);
-    return found && { ...found, sessionKey: this.keys.get(found.user.id) ?? null };
+  async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string } = {}): Promise<boolean> {
+    const row = this.rows.get(Number(id));
+    if (!row || (options.expected !== undefined && row.hash !== options.expected)) return false;
+    row.hash = hash;
+    if (options.sessionKey !== undefined) this.keys.set(Number(id), options.sessionKey);
+    return true;
   }
   async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
     if (expected !== undefined && (this.keys.get(Number(id)) ?? null) !== expected) return false;
     this.keys.set(Number(id), key);
     return true;
+  }
+  async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number }> {
+    for (const id of this.rows.keys()) this.keys.set(id, key);
+    return { accounts: this.rows.size, sampleId: 1 };
   }
 }
 
@@ -365,7 +362,7 @@ describe('Passkeys: registering', () => {
   });
 
   it('signs nobody out for a further passkey, also on an account whose session key is null, and leaves the key null', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     const booted = await boot({}, { users });
     const { b } = await enrolled(booted);
     const hash = users.rows.get(1)!.hash;
@@ -376,7 +373,7 @@ describe('Passkeys: registering', () => {
   });
 
   it('locks the account\'s row when it has a session key: the passkey is stored, the key stays, a further passkey signs nobody out', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     users.keys.set(1, 'k'.repeat(43));
     const booted = await boot({}, { users });
     const { b } = await enrolled(booted);
@@ -389,16 +386,17 @@ describe('Passkeys: registering', () => {
   });
 
   it('stops at the lock when the session key was replaced meanwhile: nothing is stored and nothing had to be taken out again', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     users.keys.set(1, 'k'.repeat(43));
     const booted = await boot({}, { users });
     const b = booted.browser();
     await b.login();
     const removed = [vi.spyOn(PasskeyStore.prototype, 'remove'), vi.spyOn(TwoFactorStore.prototype, 'removeTotp')];
     const write = users.updatePasswordHash.bind(users);
-    users.updatePasswordHash = async (id, hash) => {
-      await write(id, hash);
+    users.updatePasswordHash = async (id, hash, options) => {
+      const wrote = await write(id, hash, options);
       users.keys.set(1, 'e'.repeat(43)); // AccountSessions.end() lands right after the other devices were signed out
+      return wrote;
     };
     try {
       expect(await addPasskey(b, device())).toEqual({ ok: false, kind: 'signed-out' });
@@ -412,7 +410,7 @@ describe('Passkeys: registering', () => {
   });
 
   it('throws, and names the rule, when updateSessionKey(id, k, k) says false for the key that is stored', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     users.keys.set(1, 'k'.repeat(43));
     const booted = await boot({}, { users });
     const b = booted.browser();
@@ -444,7 +442,7 @@ describe('Passkeys: registering', () => {
   });
 
   it('takes the passkey out again when the sessions were ended after the transaction, on an account without a session key', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     const booted = await boot({}, { users });
     const b = booted.browser();
     await b.login();
@@ -566,9 +564,10 @@ describe('Passkeys: registering', () => {
     await b.login();
     // The moment after this request signed the other devices out, another device sets its own password.
     const write = booted.users.updatePasswordHash.bind(booted.users);
-    booted.users.updatePasswordHash = async (id, hash) => {
-      await write(id, hash);
+    booted.users.updatePasswordHash = async (id, hash, options) => {
+      const wrote = await write(id, hash, options);
       booted.users.rows.get(1)!.hash = other;
+      return wrote;
     };
     expect(await addPasskey(b, device())).toEqual({ ok: false, kind: 'signed-out' });
     expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(0);
@@ -609,10 +608,10 @@ describe('Passkeys: signing in without a password', () => {
   });
 
   it.each([
-    ['the account sessions were ended', (users: KeyedUsers) => void users.keys.set(1, 'e'.repeat(43))],
-    ['the password was reset', (users: KeyedUsers) => void (users.rows.get(1)!.hash = null)],
+    ['the account sessions were ended', (users: MemoryUsers) => void users.keys.set(1, 'e'.repeat(43))],
+    ['the password was reset', (users: MemoryUsers) => void (users.rows.get(1)!.hash = null)],
   ])('signs nobody in when %s between the check of the assertion and the sign-in', async (_name, change) => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     const booted = await boot({}, { users });
     const authenticator = device();
     await enrolled(booted, authenticator);

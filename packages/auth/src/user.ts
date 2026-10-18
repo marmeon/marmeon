@@ -37,9 +37,9 @@ export interface Credentials<U = AuthUser> {
   readonly passwordHash: PasswordHash | null;
   /**
    * A value of the account that `auth.updateSessionKey()` replaces to end the account's other sessions — a `session_key`
-   * column the app keeps. Optional: without it, only a new password hash ends them.
+   * column the app keeps. `null` while the account has none (seeded or imported accounts).
    */
-  readonly sessionKey?: string | null;
+  readonly sessionKey: string | null;
 }
 
 /**
@@ -47,18 +47,23 @@ export interface Credentials<U = AuthUser> {
  * `container.bind(UserProvider, UserRepository)`. The hash travels next to the user, never inside it.
  */
 export interface UserProvider<U = AuthUser> {
-  /** The user and their current hash (the session checks it on every request). Returns `sessionKey` when the account has one — also `findForLogin()` must, or `attempt()` throws. It must read after write (no cache, no lagging replica): every session and remember-me check compares what it returns with what was just written. */
+  /** The user and their current hash (the session checks it on every request). Returns `sessionKey` (`null` when the account has none) — `findForLogin()` must too, or `attempt()` throws. It must read after write (no cache, no lagging replica): every session and remember-me check compares what it returns with what was just written. */
   findById(id: U extends { readonly id: infer Id } ? Id : never): Promise<Credentials<U> | undefined>;
-  /** By what people type to sign in — usually the e-mail, already normalized by the request schema. Returns `sessionKey` when the account has one, as `findById()` does, or `attempt()` throws. */
+  /** By what people type to sign in — usually the e-mail, already normalized by the request schema. Returns `sessionKey` (`null` when the account has none), as `findById()` does, or `attempt()` throws. */
   findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
   /**
-   * Stores a new hash (rehash on login, password change, reset). With `expected` it is a compare-and-set: write `hash` only when the
-   * stored hash equals `expected`, in **one** statement (`UPDATE … WHERE password = expected`), and return whether it wrote — a rehash
+   * Stores a new hash (rehash on login, password change, reset) and returns whether it wrote. With `expected` it is a compare-and-set:
+   * write `hash` only when the stored hash equals `expected`, in **one** statement (`UPDATE … WHERE password = expected`) — a rehash
    * over the hash it verified, or `logoutOtherDevices()`, must never put an old password back over a reset that landed meanwhile.
-   * Without `expected` it writes regardless (a reset, a new password). Returning nothing means "written blindly", as a provider
-   * written before `expected` existed does; such a provider is as exposed to that race as it was.
+   * Without `expected` it writes regardless (a reset, a new password) and returns `true` once it wrote. With `sessionKey` the **same**
+   * statement stores that session key as well (see `updateSessionKey()`), so the hash and the key never stand apart.
+   * An answer that is not a boolean is refused: a provider that does not say whether it wrote could put an old hash back unnoticed.
    */
-  updatePasswordHash(id: U extends { readonly id: infer Id } ? Id : never, hash: PasswordHash, expected?: PasswordHash): Promise<boolean | void>;
+  updatePasswordHash(
+    id: U extends { readonly id: infer Id } ? Id : never,
+    hash: PasswordHash,
+    options?: { readonly expected?: PasswordHash; readonly sessionKey?: string },
+  ): Promise<boolean>;
   /**
    * Stores a new session key (`auth.updateSessionKey()`, `AccountSessions`); `findById()` and `findForLogin()` hand it back as
    * `sessionKey`. Compare-and-set: write `key` only when the stored key equals `expected` (`null`: none), in **one** statement
@@ -67,9 +72,8 @@ export interface UserProvider<U = AuthUser> {
    * account, and must not fail because somebody else replaced the key at the same time.
    * `updateSessionKey(id, k, k)` with `k` the stored key must return `true`: a new factor takes the account's row lock that way, and
    * a provider that skips no-op writes or counts only changed rows would sign the user out of every factor setup.
-   * Optional — needed only by apps that end the other sessions of an account without changing its password.
    */
-  updateSessionKey?(id: U extends { readonly id: infer Id } ? Id : never, key: string, expected: string | null | undefined): Promise<boolean>;
+  updateSessionKey(id: U extends { readonly id: infer Id } ? Id : never, key: string, expected: string | null | undefined): Promise<boolean>;
   /**
    * Writes `key` into the session key of **every** account in **one** statement (`UPDATE users SET session_key = ?`), whatever the
    * stored keys are, and returns how many rows it wrote. `AccountSessions.endEveryone()` calls it with one fresh key for all
@@ -77,9 +81,9 @@ export interface UserProvider<U = AuthUser> {
    * at once (read-after-write; no cache). Answer with how many rows you wrote and the id of one account you wrote (`sampleId`,
    * required when `accounts > 0`; an empty table has none to give): `AccountSessions` reads it back and throws unless its `sessionKey` is `key`, since otherwise
    * every session would stay live. The UPDATE must have no `WHERE` clause (no tenant or soft-delete scope) — a sample cannot
-   * detect a scoped one. Optional — needed only by apps that end every session at once.
+   * detect a scoped one.
    */
-  updateEverySessionKey?(key: string): Promise<{ readonly accounts: number; readonly sampleId: (U extends { readonly id: infer Id } ? Id : never) | undefined }>;
+  updateEverySessionKey(key: string): Promise<{ readonly accounts: number; readonly sampleId: (U extends { readonly id: infer Id } ? Id : never) | undefined }>;
 }
 // Annotated: the declaration then names `UserProvider` instead of spelling out the app's user type.
 export const UserProvider: Token<UserProvider> = token<UserProvider>('UserProvider');

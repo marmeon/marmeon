@@ -182,7 +182,7 @@ the token is deleted with a condition on its hash, and only one delete finds it.
 
 A successful reset:
 
-- stores a new hash, so every session of the user ends at its next request,
+- stores a new hash, so every session of the user ends at its next request (the provider's `updatePasswordHash()` answers whether it wrote; a provider that answers with something else is refused with error A5),
 - deletes every remember-me token of the user,
 - with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, revokes every API token of the user, in the same transaction as the new hash,
 - when the address of the user was never confirmed (`email_verified_at` and `first_verified_at` are both `null`), also removes every

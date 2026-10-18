@@ -1,10 +1,11 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { hash as oneShotHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { afterCommit, afterRollback, Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 import { ClientHistory, RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
-import { ANNOUNCE_ENDED, AccountSessions, notABoolean, rotateSessionKey } from './account-sessions.ts';
+import { ANNOUNCE_ENDED, AccountSessions, missingSessionKeyMethod, notABoolean, passwordHashWritten, rotateSessionKey } from './account-sessions.ts';
 import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
 import { AuthConfig, rememberCookieName } from './config.ts';
 import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, RememberTokenReused, type LoginVia } from './events.ts';
@@ -527,7 +528,7 @@ export class Auth {
     // Over the hash this request verified; an account without one has nothing to compare, so nothing is written.
     if (verified.passwordHash === null) return false;
     // `false`: the password changed meanwhile. The hash is not written; that change has ended every sign-in, this one from its next request.
-    if ((await this.#users.updatePasswordHash(idOf(user) as never, hash, verified.passwordHash)) === false) return false;
+    if (!passwordHashWritten(await this.#users.updatePasswordHash(idOf(user) as never, hash, { expected: verified.passwordHash }), 'auth.logoutOtherDevices()')) return false;
     this.#anchor({ ...verified, passwordHash: hash });
     if (!(await this.#rebindOwnToken())) return false; // this device's token stays, for the new state — unless it is a copy
     await this.#endOtherSignIns(idOf(user), false); // after the hash, see updatePassword()
@@ -564,15 +565,16 @@ export class Auth {
    * Whether this session still fits the account, decided inside the transaction that stores a factor: `false` means it ended meanwhile
    * (`AccountSessions.end()`, a password change or a key rotation elsewhere) and the caller rolls back. It ends nothing itself — the
    * caller runs `ACCOUNT_STILL_CLAIMED` after the rollback, so that dropping the device's remember-me token is not rolled back too.
-   * Invariant: a factor stays only while the session still fits the account. With a provider that has `updateSessionKey()` and an
-   * account that has a session key, the same-key compare-and-set takes the row's lock until the commit (on the connection of the
+   * Invariant: a factor stays only while the session still fits the account. With an account that has a session key, the same-key compare-and-set takes the row's lock until the commit (on the connection of the
    * transaction), so an ending cannot land between this check and the factor. A `null` key is never rotated and cannot be locked
    * (a rotation would sign the other devices out). Every ending writes the account's row (the key, the hash or the row itself), so a
    * fresh read sees each ending that committed before it.
    */
   async [CLAIM_ACCOUNT](): Promise<boolean> {
     const verified = this.#requireVerified();
-    if (typeof this.#users.updateSessionKey === 'function' && typeof verified.sessionKey === 'string') {
+    if (typeof verified.sessionKey === 'string') {
+      // A provider without the method (JavaScript, a cast) would skip the lock without a word: refuse it.
+      if (typeof this.#users.updateSessionKey !== 'function') throw missingSessionKeyMethod('Auth');
       // The same key, compare-and-set: writes nothing new, but takes the row's lock until the commit.
       const held: unknown = await this.#users.updateSessionKey(idOf(verified.user) as never, verified.sessionKey, verified.sessionKey);
       if (typeof held !== 'boolean') throw notABoolean('Auth');
@@ -600,8 +602,11 @@ export class Auth {
   async #sameAccount(identifier: string, credentials: Credentials, current: Credentials): Promise<boolean> {
     const contract = (missing: string, has: string) =>
       new Error(
-        `auth: ${this.#users.constructor.name}.${missing}() returned no sessionKey, but ${has}() returns one for this account. ` +
-          'Hand the stored key back from both methods (see docs/authentication.md#the-user-type-and-where-users-come-from).',
+        withCode(
+          'A5',
+          `auth: ${this.#users.constructor.name}.${missing}() returned no sessionKey, but ${has}() returns one for this account. ` +
+            'Hand the stored key back from both methods (see docs/authentication.md#the-user-type-and-where-users-come-from).',
+        ),
       );
     if (credentials.sessionKey != null && current.sessionKey === undefined) throw contract('findById', 'findForLogin');
     if (credentials.sessionKey === undefined && current.sessionKey != null) {
@@ -736,8 +741,8 @@ export class Auth {
     if (!this.#hasher.needsRehash(found.passwordHash)) return found;
     const passwordHash = await this.#hasher.make(password);
     // Only over the hash that was verified: a reset that landed during the slow check stays. The sign-in is then refused like a wrong
-    // password (without a `Failed` event); the next attempt checks the new state. `undefined` is a provider that writes blindly.
-    if ((await this.#users.updatePasswordHash(idOf(found.user) as never, passwordHash, found.passwordHash)) === false) return undefined;
+    // password (without a `Failed` event); the next attempt checks the new state.
+    if (!passwordHashWritten(await this.#users.updatePasswordHash(idOf(found.user) as never, passwordHash, { expected: found.passwordHash }), 'auth.attempt()')) return undefined;
     return { ...found, passwordHash };
   }
 

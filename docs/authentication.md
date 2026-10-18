@@ -83,43 +83,65 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /**
-   * With `expected`, writes only where the stored hash still equals it, in one statement, and answers whether it wrote: a rehash or
-   * "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes regardless.
+   * Writes `hash` and answers whether it wrote. With `expected`, only where the stored hash still equals it, in one statement: a
+   * rehash or "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes
+   * regardless. With `sessionKey`, the same statement stores that session key too.
    */
-  async updatePasswordHash(id: number, hash: PasswordHash, expected?: PasswordHash): Promise<boolean> {
+  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string } = {}): Promise<boolean> {
+    const { expected, sessionKey } = options;
+    // An empty key would give the fingerprint of an account without one (NULL).
+    if (sessionKey !== undefined && sessionKey.length < 32) throw new Error('A session key is at least 32 characters: use a random value.');
     // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
     const result = await this.db
       .updateTable('users')
-      .set({ password: hash, updated_at: new Date() })
+      .set({ password: hash, ...(sessionKey === undefined ? {} : { session_key: sessionKey }), updated_at: new Date() })
       .where('id', '=', id)
       .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
       .executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
 
+  // updateSessionKey() and updateEverySessionKey() complete the provider, see below.
+
   async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
-    const row = await query.selectAll().select((eb) => secret(eb, 'password')).executeTakeFirst();
+    const row = await query.selectAll().select((eb) => [secret(eb, 'password'), secret(eb, 'session_key')]).executeTakeFirst();
     if (!row) return undefined;
-    const { password, ...user } = row;
-    return { user, passwordHash: password as PasswordHash };
+    const { password, session_key, ...user } = row;
+    return { user, passwordHash: password as PasswordHash, sessionKey: session_key };
   }
 }
 ```
 
-`Credentials` is `{ user, passwordHash }`: the hash travels next to the user, never inside it, so it cannot reach a page by
-accident. A user who cannot sign in with a password has `passwordHash: null`. `Credentials` may also carry a `sessionKey`, a value of
+The example leaves out `updateSessionKey()` and `updateEverySessionKey()`, which a provider needs as well: see
+[signing out other devices without a password](#signing-out-other-devices-without-a-password) and
+[for your own user provider](#for-your-own-user-provider). The starter kit's `UserRepository` has all of them.
+
+`Credentials` is `{ user, passwordHash, sessionKey }`: the hash travels next to the user, never inside it, so it cannot reach a page by
+accident. A user who cannot sign in with a password has `passwordHash: null`. The `sessionKey` is a value of
 the account that ends its other sessions when it changes, as [signing out without a password](#signing-out-other-devices-without-a-password)
-explains. Both `findById()` and `findForLogin()` must return it: a `findForLogin()` that leaves out a key `findById()` returns makes
-`attempt()` throw, and a bad sign-in is not what it reports. `findForLogin()` gets what the person typed after
+explains; it is `null` for an account that has none yet. Both `findById()` and `findForLogin()` must return it: a `findForLogin()` that
+leaves out a key `findById()` returns makes `attempt()` throw, and a bad sign-in is not what it reports. `findForLogin()` gets what the person typed after
 the request's schema normalized it; the starter kit's schema trims the address and makes it lower case. Until a provider is
 bound, the first use of `UserProvider` throws an error that says how to bind one.
 
-`updatePasswordHash(id, hash, expected?)` is a compare-and-set when `expected` is given: it writes only where the stored hash still
-equals `expected`, in one statement, and returns whether it wrote. `attempt()` rehashes over the hash it verified, and
+`updatePasswordHash(id, hash, { expected, sessionKey })` returns whether it wrote, and is a compare-and-set when `expected` is given: it
+writes only where the stored hash still equals `expected`, in one statement. With `sessionKey` the same statement stores that session key. `attempt()` rehashes over the hash it verified, and
 `logoutOtherDevices()` writes over the hash its request read, so a password reset that lands in between is never turned back to the old
 password: the rehash makes the sign-in an `invalid-credentials` (a new attempt checks the new password), and `logoutOtherDevices()`
-returns `false`. A reset or a new password passes no `expected` and writes regardless. A provider that returns nothing still works, but writes blindly and keeps that race; add
-`expected` to a provider of your own.
+returns `false`. A reset or a new password passes no `expected` and writes regardless. The answer must be a boolean: a provider that returns
+nothing is refused with error A5 (see [error codes](errors.md#server-error-codes)) at the first write, since it could turn a reset back
+without anyone noticing.
+
+`updateSessionKey()` and `updateEverySessionKey()` are required as well, see [signing out other devices without a password](#signing-out-other-devices-without-a-password)
+and [ending every session of every account](#ending-every-session-of-every-account). A provider of your own that leaves one out does
+not compile, and one without them at run time (JavaScript, a cast) throws error A5 when the method is needed.
+
+At run time the framework checks only what it can: that `updatePasswordHash()` and `updateSessionKey()` answer with a boolean, that
+`findById()` hands a new key back, and that `updateEverySessionKey()` counts and names an account. It cannot tell a provider that
+ignores `expected` and answers `true` from a correct one. The compare-and-set is yours: test it in your app (a write over a stale
+`expected` must return `false` and leave the row alone). A JavaScript provider written against the old positional parameter
+(`updatePasswordHash(id, hash, expected)`) receives an object there now: its compare never matches, and a sign-in that needs a rehash is
+refused as a wrong password until it takes `{ expected }`.
 
 ## Protecting routes
 
@@ -554,14 +576,18 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /**
-   * With `expected`, writes only where the stored hash still equals it, in one statement, and answers whether it wrote: a rehash or
-   * "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes regardless.
+   * Writes `hash` and answers whether it wrote. With `expected`, only where the stored hash still equals it, in one statement: a
+   * rehash or "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes
+   * regardless. With `sessionKey`, the same statement stores that session key too.
    */
-  async updatePasswordHash(id: number, hash: PasswordHash, expected?: PasswordHash): Promise<boolean> {
+  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string } = {}): Promise<boolean> {
+    const { expected, sessionKey } = options;
+    // An empty key would give the fingerprint of an account without one (NULL).
+    if (sessionKey !== undefined && sessionKey.length < 32) throw new Error('A session key is at least 32 characters: use a random value.');
     // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
     const result = await this.db
       .updateTable('users')
-      .set({ password: hash, updated_at: new Date() })
+      .set({ password: hash, ...(sessionKey === undefined ? {} : { session_key: sessionKey }), updated_at: new Date() })
       .where('id', '=', id)
       .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
       .executeTakeFirst();
@@ -595,10 +621,10 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
 factor calls it with the same key twice to lock the account's row until the factor is stored. A provider that skips writes that change
 nothing, or counts only rows whose value changed, must still return `true` there; otherwise `confirm()` and `register()` throw an error that names this rule.
 
-`updateSessionKey()` checks nothing itself: confirm the user your own way first, such as with a fresh link. Without
-`updateSessionKey` on the provider it throws an error that names the method, and it throws as well when `findById()` does not hand
-the new key back, or when `updateSessionKey()` of the provider does not answer with a boolean (an older provider, which took no
-`expected`). It never leaves the other devices signed in while it seems to have worked.
+`updateSessionKey()` checks nothing itself: confirm the user your own way first, such as with a fresh link. A provider has to
+implement `updateSessionKey()`; one that lacks it at run time (JavaScript, a cast) makes the call throw error A5 that names the method.
+It throws as well when `findById()` does not hand the new key back, or when `updateSessionKey()` of the provider does not answer with
+a boolean. It never leaves the other devices signed in while it seems to have worked.
 
 The write is a compare-and-set because a request can run while the sessions of the account are being ended
 (`AccountSessions.end()`, or another device calling this). Such a request must not bind its session to the key it did not check.
@@ -681,8 +707,8 @@ string), and writes nothing then. Otherwise it goes in three steps, in this orde
    one ends at its next request, with every driver.
 3. It deletes the sessions a store can find at once (only `database`, by its `user_id` column) and returns how many: `removed`.
 
-The session key is what ends the sessions, so your `UserProvider` must store one: without `updateSessionKey()`, `end()` throws
-before it changes anything, and names what to add. It also throws when `findById()` does not hand the new key back; the
+The session key is what ends the sessions, so your `UserProvider` must store one: a provider without `updateSessionKey()` does not
+compile, and at run time `end()` throws error A5 before it changes anything, and names what to add. It also throws when `findById()` does not hand the new key back; the
 remember-me tokens are gone by then. The starter kit's accounts have a `session_key` column. A request that is running while `end()` replaces the key cannot bind its session to the new state, so it is signed out as well; Inside a database transaction `end()` throws: each step commits on its own, and a rollback would bring the deleted tokens back.
 
 A custom `RememberTokenStore` needs `exists(cookie)`, which says whether the token of a cookie is still stored and must see a `forgetUser()` at once (no cache, no lagging replica), or a session survives `end()`; a sign-in by a
@@ -807,7 +833,9 @@ replica. A cache would fail the read-back; a cache or replica that only some loo
 
 ### For your own user provider
 
-The starter kit's `UserRepository` implements `updateEverySessionKey()`. A provider of your own needs it too:
+A `UserProvider` of your own implements every method: `findById()` and `findForLogin()` (both with `sessionKey`),
+`updatePasswordHash()` (answering with a boolean), `updateSessionKey()` and `updateEverySessionKey()`. The starter kit's
+`UserRepository` implements `updateEverySessionKey()` like this, and so does a provider of your own:
 
 ```ts
 async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number | undefined }> {
@@ -819,7 +847,8 @@ async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: 
 ```
 
 It is one statement and has no `WHERE`: no tenant or soft-delete scope, since a sample cannot reveal an account the statement
-skipped. Return how many rows it wrote and the id of one account it wrote (`sampleId`, which an empty table cannot give). Do not
+skipped. Return how many rows it wrote (a whole number, 0 or more) and the id of one account it wrote (`sampleId`, which an empty table cannot give). The
+framework refuses a count that is not a whole number, but it cannot tell a true `0` from a statement that wrote nothing. Do not
 touch `updated_at`: no account changed.
 
 A custom `RememberTokenStore` needs `forgetEveryone()`, since the call always deletes the remember-me tokens. A custom

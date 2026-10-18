@@ -14,22 +14,13 @@ import { freshPgsqlDatabase, PGSQL_URL } from './__fixtures__/databases.ts';
 import { AccountSessions, Auth, authenticate, AuthServiceProvider, Hasher, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
 import { sessionFingerprint } from './auth.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { MemoryUsers } from './test-helpers/users.ts';
 
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/create_sessions_table.ts', import.meta.url);
 
 /** Accounts in memory, with a session key each — what an app's repository keeps in a `session_key` column. */
-class KeyedUsers implements UserProvider {
-  readonly rows = new Map<number, { user: AuthUser; hash: PasswordHash | null; key: string | null }>();
-
-  async findById(id: number): Promise<Credentials | undefined> {
-    const row = this.rows.get(id);
-    return row && { user: row.user, passwordHash: row.hash, sessionKey: row.key };
-  }
-  async findForLogin(email: string): Promise<Credentials | undefined> {
-    for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash, sessionKey: row.key };
-    return undefined;
-  }
+class KeyedUsers extends MemoryUsers<AuthUser> {
   /** Runs once, right after the next write of a hash or a key — a request of another device landing in the middle of a change. */
   afterWrite: (() => Promise<unknown>) | undefined;
   async #written() {
@@ -37,33 +28,26 @@ class KeyedUsers implements UserProvider {
     this.afterWrite = undefined;
     await hook?.();
   }
-  async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
-    this.rows.get(id)!.hash = hash;
-    await this.#written();
-  }
   /** Runs once, between a request's sign-in check and the action it then takes — another request landing at that moment. */
   between: (() => Promise<unknown>) | undefined;
-  /** Compare-and-set, as a repository does it in one statement. */
-  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
-    const row = this.rows.get(id)!;
-    if (expected !== undefined && (row.key ?? null) !== expected) return false;
-    row.key = key;
-    await this.#written();
-    return true;
+
+  override async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string } = {}): Promise<boolean> {
+    const wrote = await super.updatePasswordHash(id, hash, options);
+    if (wrote) await this.#written();
+    return wrote;
+  }
+  override async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+    const wrote = await super.updateSessionKey(id, key, expected);
+    if (wrote) await this.#written();
+    return wrote;
   }
 }
 
-/** Accounts without a session key — the provider an app had before it wanted passwordless sign-out. */
-class PlainUsers implements UserProvider {
-  readonly rows = new Map<number, AuthUser>();
-  async findById(id: number): Promise<Credentials | undefined> {
-    const user = this.rows.get(id);
-    return user && { user, passwordHash: null };
-  }
-  async findForLogin(): Promise<Credentials | undefined> {
-    return undefined;
-  }
-  async updatePasswordHash(): Promise<void> {}
+/** A provider that cannot store a key (JavaScript, or a cast): a TypeScript provider cannot leave `updateSessionKey()` out. */
+function plainUsers(): UserProvider {
+  const users = new KeyedUsers();
+  users.rows.set(2, { user: { id: 2, name: 'Link', email: 'link@example.com' }, hash: null, key: null });
+  return Object.assign(users, { updateSessionKey: undefined }) as never;
 }
 
 class SignInController extends Controller {
@@ -261,7 +245,7 @@ const zelda: AuthUser = { id: 3, name: 'Zelda', email: 'zelda@example.com' };
 
 describe('the fingerprint of an account', () => {
   it('differs between two accounts without a password, and changes with the session key or the hash', () => {
-    const of = (user: AuthUser, passwordHash: PasswordHash | null, sessionKey?: string | null) => sessionFingerprint({ user, passwordHash, sessionKey });
+    const of = (user: AuthUser, passwordHash: PasswordHash | null, sessionKey: string | null = null) => sessionFingerprint({ user, passwordHash, sessionKey });
     expect(of(link, null), 'two passwordless accounts').not.toBe(of(zelda, null));
     expect(of(link, null, 'key-1')).not.toBe(of(link, null, 'key-2'));
     expect(of(link, null, 'key-1')).not.toBe(of(link, null));
@@ -271,17 +255,19 @@ describe('the fingerprint of an account', () => {
     expect(of(link, '$argon2id$a' as PasswordHash)).not.toContain('argon2');
   });
 
-  it('types: the session key and updateSessionKey are optional — a provider without them still is one', () => {
+  it('types: the session key and updateSessionKey are required — a provider without them is none', () => {
+    expectTypeOf<{ user: AuthUser; passwordHash: null; sessionKey: null }>().toMatchTypeOf<Credentials>();
+    // @ts-expect-error — the account has to hand its session key back
     expectTypeOf<{ user: AuthUser; passwordHash: null }>().toMatchTypeOf<Credentials>();
-    expectTypeOf<PlainUsers>().toMatchTypeOf<UserProvider>();
-    expectTypeOf<Credentials['sessionKey']>().toEqualTypeOf<string | null | undefined>();
-    class WrongKey extends PlainUsers {
-      async updateSessionKey(_id: number, _key: number, _expected: string | null | undefined): Promise<boolean> {
+    expectTypeOf<KeyedUsers>().toMatchTypeOf<UserProvider>();
+    expectTypeOf<Credentials['sessionKey']>().toEqualTypeOf<string | null>();
+    class WrongKey extends KeyedUsers {
+      // @ts-expect-error — the key is a string
+      override async updateSessionKey(_id: number, _key: number, _expected: string | null | undefined): Promise<boolean> {
         return true;
       }
     }
-    // @ts-expect-error — the key is a string
-    expectTypeOf<WrongKey>().toMatchTypeOf<UserProvider>();
+    expectTypeOf<WrongKey>().not.toBeNever();
   });
 });
 
@@ -321,7 +307,7 @@ describe('a password sign-in after a new session key', () => {
     class KeylessLogin extends KeyedUsers {
       override async findForLogin(email: string): Promise<Credentials | undefined> {
         const found = await super.findForLogin(email);
-        return found && { user: found.user, passwordHash: found.passwordHash };
+        return found && ({ user: found.user, passwordHash: found.passwordHash } as never);
       }
     }
     const users = new KeylessLogin();
@@ -337,7 +323,7 @@ describe('a password sign-in after a new session key', () => {
     class KeylessById extends KeyedUsers {
       override async findById(id: number): Promise<Credentials | undefined> {
         const found = await super.findById(id);
-        return found && { user: found.user, passwordHash: found.passwordHash };
+        return found && ({ user: found.user, passwordHash: found.passwordHash } as never);
       }
     }
     const users = new KeylessById();
@@ -352,7 +338,7 @@ describe('a password sign-in after a new session key', () => {
       reads = 0;
       override async findForLogin(email: string): Promise<Credentials | undefined> {
         const found = await super.findForLogin(email);
-        return found && (this.reads++ === 0 ? { user: found.user, passwordHash: found.passwordHash } : found);
+        return found && (this.reads++ === 0 ? ({ user: found.user, passwordHash: found.passwordHash } as never) : found);
       }
     }
     const users = new LateKey();
@@ -373,13 +359,11 @@ describe('a password sign-in after a new session key', () => {
 
 describe('auth.updateSessionKey() fails loudly', () => {
   it('when the UserProvider cannot store a key — naming what to implement', async () => {
-    const users = new PlainUsers();
-    users.rows.set(2, link);
-    const { browser } = await boot(drivers[0]!, users);
+    const { browser } = await boot(drivers[0]!, plainUsers());
     const laptop = browser();
     await laptop.send('/as/2', { method: 'POST' });
     const body = await (await laptop.send('/end-other-sessions', { method: 'POST' })).json();
-    expect(body, JSON.stringify(body)).toMatchObject({ error: expect.stringMatching(/updateSessionKey\(id, key, expected\)/) });
+    expect(body, JSON.stringify(body)).toMatchObject({ error: expect.stringMatching(/\[marmeon:A5\].*updateSessionKey\(id, key, expected\)/) });
     expect((await laptop.send('/me')).status).toBe(200);
   });
 
@@ -387,7 +371,7 @@ describe('auth.updateSessionKey() fails loudly', () => {
     class ForgetfulUsers extends KeyedUsers {
       override async findById(id: number): Promise<Credentials | undefined> {
         const found = await super.findById(id);
-        return found && { user: found.user, passwordHash: found.passwordHash };
+        return found && ({ user: found.user, passwordHash: found.passwordHash } as never);
       }
     }
     const users = new ForgetfulUsers();

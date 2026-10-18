@@ -6,23 +6,24 @@ import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { Auth, AuthServiceProvider, authenticate, Hasher, TwoFactorState, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
+import { Auth, AuthServiceProvider, authenticate, Hasher, TwoFactorState, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
 import { AUTH_SESSION_KEYS } from './auth.ts';
 import { confirmedSecondFactor } from './two-factor/confirmed.ts';
 import { twoFactor } from './two-factor/middleware.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { MemoryUsers } from './test-helpers/users.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
-class Users implements UserProvider {
-  hash: PasswordHash | null = null;
-  async findById(): Promise<Credentials | undefined> {
-    return { user: ada, passwordHash: this.hash };
+class Users extends MemoryUsers<AuthUser> {
+  constructor() {
+    super();
+    this.add(ada);
   }
-  async findForLogin(): Promise<Credentials | undefined> {
-    return { user: ada, passwordHash: this.hash };
+  /** The password of the one account. */
+  set hash(hash: PasswordHash | null) {
+    this.rows.get(ada.id)!.hash = hash;
   }
-  async updatePasswordHash(): Promise<void> {}
 }
 
 class LoginController extends Controller {
