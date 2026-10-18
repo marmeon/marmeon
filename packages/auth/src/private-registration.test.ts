@@ -71,3 +71,22 @@ describe('AUTH_UNVERIFIED_DAYS', () => {
     }
   });
 });
+
+describe('AUTH_EMAIL_CHANGE_MINUTES and AUTH_EMAIL_CHANGE_THROTTLE', () => {
+  const config = async (env: Record<string, string>) => (await boot({ NODE_ENV: 'test', ...env })).app.container.make(AuthConfig);
+
+  it('keep the link between 5 and 1440 minutes, 60 unless set; a value outside stops the boot', async () => {
+    expect((await config({})).emailChangeMinutes).toBe(60);
+    expect((await config({ AUTH_EMAIL_CHANGE_MINUTES: '5' })).emailChangeMinutes).toBe(5);
+    expect((await config({ AUTH_EMAIL_CHANGE_MINUTES: '1440' })).emailChangeMinutes).toBe(1440);
+    for (const value of ['4', '1441', '1.5', 'hour']) {
+      await expect(boot({ NODE_ENV: 'test', AUTH_EMAIL_CHANGE_MINUTES: value }), value).rejects.toThrow(/K6[\s\S]*auth: AUTH_EMAIL_CHANGE_MINUTES/);
+    }
+  });
+
+  it('pauses between two links of an account for 60 seconds unless set, 0 turns the pause off', async () => {
+    expect((await config({})).emailChangeThrottle).toBe(60);
+    expect((await config({ AUTH_EMAIL_CHANGE_THROTTLE: '0' })).emailChangeThrottle).toBe(0);
+    await expect(boot({ NODE_ENV: 'test', AUTH_EMAIL_CHANGE_THROTTLE: '-1' })).rejects.toThrow(/auth: AUTH_EMAIL_CHANGE_THROTTLE/);
+  });
+});

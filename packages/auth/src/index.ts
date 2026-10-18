@@ -20,6 +20,7 @@ import { EndAllSessionsCommand } from './end-all-sessions.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
 import { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 import { DatabaseSignIns, SignInStore } from './sign-ins.ts';
+import { EmailChange } from './email-change.ts';
 import { EmailChangeStore } from './email-changes.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
@@ -37,8 +38,10 @@ export type { CredentialWriter } from './credential-writer.ts';
 export type { AttemptError, LoginOptions } from './auth.ts';
 export { AuthConfig, rememberCookieName } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
-export { EverySessionEnded, Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenReused, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from './events.ts';
+export { EmailChanged, EverySessionEnded, Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenReused, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from './events.ts';
 export type { LoginVia, EverySessionEndedInput, EverySessionEndedPayload, LoginInput, LoginPayload, PasskeyCloneSuspectedPayload, PasskeyRegisteredPayload, PasskeyRemovedInput, PasskeyRemovedPayload, PasskeySignInFailedInput, PasskeySignInFailedPayload, RecoveryCodeUsedPayload, RecoveryCodesGeneratedPayload, RegisteredPayload, RememberTokenReusedInput, RememberTokenReusedPayload, TwoFactorChallengeFailedInput, TwoFactorChallengeFailedPayload, TwoFactorDisabledPayload, TwoFactorEnabledPayload } from './events.ts';
+export { EmailChange } from './email-change.ts';
+export type { ApplyEmail, ConfirmEmailChangeError, EmailChangeHandlers, EmailChangeRequested, PendingEmailChange, RequestEmailChangeError } from './email-change.ts';
 export { DatabaseEmailChanges, EMAIL_CHANGES_TABLE, EmailChangeStore } from './email-changes.ts';
 export { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
 export { abilities, authenticate, confirmedPassword, guest } from './middleware.ts';
@@ -113,6 +116,8 @@ export class AuthServiceProvider implements ServiceProvider {
     container.instance(Hasher, new PasswordHasher(container.make(HashConfig)));
     container.singleton(SessionFingerprints, (c) => new SessionFingerprints(c.make(EncryptionConfig)));
     container.scoped(Auth);
+    // Opt-in like TwoFactorState: nothing binds an EmailChangeStore here, so making it without one fails with K1.
+    container.scoped(EmailChange);
     // A live stream (`@marmeon/live`) asks it whether its sign-in still stands, when it opens and when its browser reconnects.
     container.scoped(LiveAudience, (c) => new SignInAudience(() => c.make(Auth), c.make(Session)));
     // Policies are built in the request's scope: they may depend on anything a controller can.

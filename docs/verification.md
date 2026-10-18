@@ -197,6 +197,8 @@ scheduler clears expired ones every night.
 With `AUTH_PRIVATE_REGISTRATION=false`, the address changes at once, unconfirmed, and a confirmation link goes to it. A taken
 address is a field error, and the old address gets a note about the change.
 
+An app with its own controllers gets the security decisions of this flow from `EmailChange` of `@marmeon/auth`: see [changing the address](authentication.md#changing-the-address).
+
 ## Unconfirmed accounts
 
 `marmeon auth:prune-unverified`, a command of the starter kit's auth module, deletes the accounts whose address was never

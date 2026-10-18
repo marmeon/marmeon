@@ -149,6 +149,23 @@ export class Registered {
 }
 
 /**
+ * An account's address changed (`EmailChange.confirm()`, or `EmailChange.request()` without private registration): `previousEmail` is
+ * the address it had, which the owner should be told about — `null` when the user has none. The new address is `email`.
+ */
+export class EmailChanged {
+  readonly #event = true;
+  readonly userId: AuthUserId;
+  readonly previousEmail: string | null;
+  readonly email: string;
+
+  constructor(userId: AuthUserId, previousEmail: string | null, email: string) {
+    this.userId = userId;
+    this.previousEmail = previousEmail;
+    this.email = email;
+  }
+}
+
+/**
  * A user changed their password (`Auth.updatePassword()`) — every other session and remember-me token ended, and with
  * `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true` every API token (`revokedTokens`: how many).
  */
