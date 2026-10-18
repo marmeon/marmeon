@@ -141,7 +141,6 @@ it(
     expect(ran('end-sessions', 'marmeon auth:end-sessions')).toBe(3);
     expect(ran('end-all-sessions', 'UserRepository.updateEverySessionKey()')).toBe(3);
     expect(ran('end-all-sessions', "AccountSessions.endEveryone() with the app's repository")).toBe(1);
-    expect(ran('passkeys-browser', 'the base64url converters of the browser code')).toBe(3);
     expect(tests.code).toBe(0);
 
     // A stale bootstrap/routes.ts fails the CI check.

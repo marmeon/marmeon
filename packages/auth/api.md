@@ -2088,6 +2088,43 @@ declare const missing: unique symbol;
 declare const passwordHash: unique symbol;
 ```
 
+## `@marmeon/auth/passkeys/browser`
+
+Types from other packages: none
+
+### Stable
+
+```ts
+// base64UrlFromBuffer
+export declare const base64UrlFromBuffer: (buffer: ArrayBuffer | null) => string;
+// bufferFromBase64Url
+export declare const bufferFromBase64Url: (value: string) => ArrayBuffer;
+// conditionalAvailable
+export declare function conditionalAvailable(): Promise<boolean>;
+// createPasskey
+export declare function createPasskey(optionsJson: Json): Promise<Json>;
+// getPasskey
+export declare function getPasskey(optionsJson: Json, { conditional, signal }?: {
+    conditional?: boolean;
+    signal?: AbortSignal;
+}): Promise<Json>;
+// passkeysAvailable
+export declare function passkeysAvailable(): boolean;
+// postJson
+export declare function postJson(url: string, body?: Json, signal?: AbortSignal): Promise<{
+    ok: boolean;
+    status: number;
+    data: Json;
+}>;
+```
+
+### Referenced, not exported
+
+```ts
+// Json
+type Json = Record<string, any>;
+```
+
 ## `@marmeon/auth/testing`
 
 Types from other packages: none

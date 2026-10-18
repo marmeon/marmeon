@@ -56,9 +56,9 @@ describe('make:auth', { timeout: 30_000 }, () => {
     expect(readFileSync(join(root, 'modules/auth/migrations/0001_01_01_000004_create_two_factor_tables.ts'), 'utf8')).toContain("foreignId('user_id').constrained().cascadeOnDelete()");
     // auth:reset-two-factor comes with the package, not with the module.
     expect(existsSync(join(root, 'modules/auth/commands/ResetTwoFactorCommand.ts'))).toBe(false);
-    // Passkeys: the page and the browser code, and the table (a foreign key that cascades, and the mark of a suspended passkey).
+    // Passkeys: the page (the browser code comes from the package), and the table (a foreign key that cascades, and the mark of a suspended passkey).
     expect(existsSync(join(root, 'modules/auth/views/Passkeys.tsx'))).toBe(true);
-    expect(existsSync(join(root, 'modules/auth/passkeys.ts'))).toBe(true);
+    expect(existsSync(join(root, 'modules/auth/passkeys.ts'))).toBe(false);
     const passkeyTable = readFileSync(join(root, 'modules/auth/migrations/0001_01_01_000005_create_passkeys_table.ts'), 'utf8');
     expect(passkeyTable).toContain("foreignId('user_id').constrained().cascadeOnDelete()");
     expect(passkeyTable).toContain('suspended_at');

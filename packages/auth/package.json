@@ -41,6 +41,11 @@
       "types": "./dist/passkeys/index.d.ts",
       "default": "./dist/passkeys/index.js"
     },
+    "./passkeys/browser": {
+      "@marmeon/source": "./src/passkeys/browser.ts",
+      "types": "./dist/passkeys/browser.d.ts",
+      "default": "./dist/passkeys/browser.js"
+    },
     "./testing": {
       "@marmeon/source": "./src/testing.ts",
       "types": "./dist/testing.d.ts",
@@ -62,6 +67,10 @@
       "./passkeys": {
         "types": "./dist/passkeys/index.d.ts",
         "default": "./dist/passkeys/index.js"
+      },
+      "./passkeys/browser": {
+        "types": "./dist/passkeys/browser.d.ts",
+        "default": "./dist/passkeys/browser.js"
       },
       "./testing": {
         "types": "./dist/testing.d.ts",
@@ -88,6 +97,9 @@
   "marmeon": {
     "providers": [
       "AuthServiceProvider"
+    ],
+    "browser": [
+      "src/passkeys/browser.ts"
     ]
   },
   "dependencies": {

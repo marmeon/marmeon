@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Head, Link, useForm, useRoute, useTranslation } from '@marmeon/react';
 import { AppLayout } from '../layouts/AppLayout.tsx';
-import { getPasskey, passkeysAvailable, postJson } from '../passkeys.ts';
+import { getPasskey, passkeysAvailable, postJson } from '@marmeon/auth/passkeys/browser';
 
 /** `totp` and `passkey`: which factors the account has — the page offers the authenticator app's code and a passkey accordingly (recovery codes always). */
 export default function TwoFactorChallenge({ totp, passkey }: { totp: boolean; passkey: boolean }) {

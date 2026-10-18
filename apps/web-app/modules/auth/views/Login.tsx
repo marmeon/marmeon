@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PageProps } from '@marmeon/http';
 import { Head, Link, useForm, useRoute, useTranslation } from '@marmeon/react';
 import type { ShowLoginController } from '../controllers/ShowLoginController.ts';
-import { conditionalAvailable, getPasskey, passkeysAvailable, postJson } from '../passkeys.ts';
+import { conditionalAvailable, getPasskey, passkeysAvailable, postJson } from '@marmeon/auth/passkeys/browser';
 
 type Props = PageProps<ShowLoginController>;
 
