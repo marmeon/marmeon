@@ -28,10 +28,13 @@ describe.each(drivers)('password reset on %s', (driver) => {
   const events: object[] = [];
   const written: boolean[] = [];
   let accountGone = false;
+  let refuseWrites = false;
   const users: UserProvider = {
     findById: async () => undefined,
-    findForLogin: async (email) => (email === ada.email && !accountGone ? { user: ada, passwordHash: hash } : undefined),
-    updatePasswordHash: async (_id, next) => void ((hash = next), written.push(inTransaction())),
+    findForLogin: async (email) => (email === ada.email && !accountGone ? { user: ada, passwordHash: hash, sessionKey: null } : undefined),
+    updatePasswordHash: async (_id, next) => (refuseWrites ? false : ((hash = next), written.push(inTransaction()), true)),
+    updateSessionKey: async () => false,
+    updateEverySessionKey: async () => ({ accounts: 0, sampleId: undefined }),
   };
   const remember = { forgetUser: async (id: unknown) => void forgotten.push(id) } as unknown as RememberTokenStore;
   const logged: unknown[] = [];
@@ -57,6 +60,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
   beforeEach(async () => {
     await connections.get<any>().deleteFrom(PASSWORD_RESET_TABLE).execute();
     accountGone = false;
+    refuseWrites = false;
     hash = await hasher.make('old password');
     await connections.get<any>().deleteFrom(ACCESS_TOKEN_TABLE).execute();
     forgotten.length = 0;
@@ -87,6 +91,24 @@ describe.each(drivers)('password reset on %s', (driver) => {
     // The same token a second time
     expect(await broker().reset('ada@example.com', created.ok ? created.value.token : '', 'another')).toStrictEqual(err({ kind: 'invalid-token' }));
     expect(await hasher.verify('new password', hash)).toBe(true);
+  });
+
+  it('is no success when the provider writes nothing: it throws A5 and fires no event', async () => {
+    const before = hash;
+    const created = must(await broker().createToken('ada@example.com'));
+    refuseWrites = true;
+    await expect(broker().reset('ada@example.com', created.token, 'new password')).rejects.toThrow(/^\[marmeon:A5\] PasswordBroker|^\[marmeon:A5\] NewPassword/);
+    expect(hash).toBe(before);
+    expect(events.map((event) => event.constructor.name)).not.toContain('PasswordReset');
+  });
+
+  it('keeps the API tokens when the provider writes nothing: the revocation rolls back with the refused write', async () => {
+    const token = await apiTokens.create(1, 'cli');
+    const created = must(await broker(true).createToken('ada@example.com'));
+    refuseWrites = true;
+    await expect(broker(true).reset('ada@example.com', created.token, 'new password')).rejects.toThrow(/^\[marmeon:A5\] NewPassword/);
+    expect(await apiTokens.find(token.plainText), 'the token is still valid').toBeDefined();
+    expect(events.map((event) => event.constructor.name)).not.toContain('PasswordReset');
   });
 
   it('revokes every API token of the user with AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true — in the transaction of the new hash, and says so', async () => {

@@ -8,6 +8,7 @@ import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { MemoryUsers } from './test-helpers/users.ts';
 import {
   abilities,
   AccessTokenStore,
@@ -24,7 +25,6 @@ import {
   type AccessToken,
   type Authenticated,
   type AuthUser,
-  type Credentials,
 } from './index.ts';
 
 interface Post {
@@ -134,11 +134,8 @@ const users = new Map<number, AuthUser>([
   [3, { id: 3, name: 'Banned', email: 'banned@example.com' }],
   [4, { id: 4, name: 'Root', email: 'root@example.com' }],
 ]);
-const provider: UserProvider = {
-  findById: async (id) => (users.has(id as number) ? ({ user: users.get(id as number)!, passwordHash: null } as Credentials) : undefined),
-  findForLogin: async () => undefined,
-  updatePasswordHash: async () => {},
-};
+const provider: UserProvider = new MemoryUsers<AuthUser>();
+for (const user of users.values()) (provider as MemoryUsers<AuthUser>).add(user);
 const noRemember: RememberTokenStore = { create: async () => '', consume: async () => err({ kind: 'invalid' }), exists: async () => false, forget: async () => {}, forgetUser: async () => {}, prune: async () => 0 };
 
 /** API tokens in memory: the plain text is `<user>/<abilities>` — what the token guard needs, nothing more. */

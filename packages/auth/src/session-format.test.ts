@@ -6,22 +6,20 @@ import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider, SessionStore } from '@marmeon/session';
 import { afterAll, describe, expect, it } from 'vitest';
-import { Auth, authenticate, AuthServiceProvider, UserProvider, type AuthUser, type Credentials } from './index.ts';
+import { Auth, authenticate, AuthServiceProvider, UserProvider, type AuthUser } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { MemoryUsers } from './test-helpers/users.ts';
 
 const FIXTURES = new URL('../../session/src/__fixtures__/formats/session-payload/', import.meta.url);
 const NEW = { expectedVersion: undefined, lifetimeSeconds: 600 };
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
-class Users implements UserProvider {
-  async findById(id: number): Promise<Credentials | undefined> {
-    return id === ada.id ? { user: ada, passwordHash: null, sessionKey: null } : undefined;
+class Users extends MemoryUsers<AuthUser> {
+  constructor() {
+    super();
+    this.add(ada);
   }
-  async findForLogin(): Promise<Credentials | undefined> {
-    return undefined;
-  }
-  async updatePasswordHash(): Promise<void> {}
 }
 
 class SignInController extends Controller {

@@ -6,8 +6,9 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { authenticate, Auth, AuthServiceProvider, Hasher, TwoFactorState, UserProvider, type Credentials, type PasswordHash } from '../index.ts';
+import { authenticate, Auth, AuthServiceProvider, Hasher, TwoFactorState, UserProvider, type PasswordHash } from '../index.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
+import { MemoryUsers as SharedUsers } from '../test-helpers/users.ts';
 import { confirmedSecondFactor } from './confirmed.ts';
 
 interface TestUser {
@@ -24,16 +25,14 @@ declare module '../user.ts' {
 
 const ada: TestUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
-class MemoryUsers implements UserProvider<TestUser> {
-  hash: PasswordHash | null = null;
-  async findById(): Promise<Credentials<TestUser> | undefined> {
-    return { user: ada, passwordHash: this.hash };
+class MemoryUsers extends SharedUsers<TestUser> {
+  constructor() {
+    super();
+    this.add(ada);
   }
-  async findForLogin(): Promise<Credentials<TestUser> | undefined> {
-    return { user: ada, passwordHash: this.hash };
-  }
-  async updatePasswordHash(_id: number, hash: PasswordHash): Promise<void> {
-    this.hash = hash;
+  /** The password of the one account. */
+  set hash(hash: PasswordHash | null) {
+    this.rows.get(ada.id)!.hash = hash;
   }
 }
 

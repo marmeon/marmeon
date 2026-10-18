@@ -9,22 +9,19 @@ import { EndAllSessionsCommand } from './end-all-sessions.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE } from './password-reset.ts';
 import { DatabaseRememberTokens, REMEMBER_TABLE } from './remember.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens } from './tokens.ts';
-import { AuthServiceProvider, type AuthUser, type Credentials, type UserProvider } from './index.ts';
+import { AuthServiceProvider, type AuthUser } from './index.ts';
+import { MemoryUsers } from './test-helpers/users.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
-class Users implements UserProvider {
-  key: string | null = null;
-  async findById(): Promise<Credentials | undefined> {
-    return { user: ada, passwordHash: null, sessionKey: this.key };
+class Users extends MemoryUsers<AuthUser> {
+  constructor() {
+    super();
+    this.add(ada);
   }
-  async findForLogin(): Promise<Credentials | undefined> {
-    return undefined;
-  }
-  async updatePasswordHash(): Promise<void> {}
-  async updateEverySessionKey(key: string) {
-    this.key = key;
-    return { accounts: 1, sampleId: ada.id };
+  /** The session key of the one account. */
+  get key(): string | null {
+    return this.rows.get(ada.id)!.key;
   }
 }
 

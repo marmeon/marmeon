@@ -157,14 +157,18 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /**
-   * With `expected`, writes only where the stored hash still equals it, in one statement, and answers whether it wrote: a rehash or
-   * "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes regardless.
+   * Writes `hash` and answers whether it wrote. With `expected`, only where the stored hash still equals it, in one statement: a
+   * rehash or "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes
+   * regardless. With `sessionKey`, the same statement stores that session key too, so the hash and the key never stand apart.
    */
-  async updatePasswordHash(id: number, hash: PasswordHash, expected?: PasswordHash): Promise<boolean> {
+  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string } = {}): Promise<boolean> {
+    const { expected, sessionKey } = options;
+    // An empty key would give the fingerprint of an account without one (NULL).
+    if (sessionKey !== undefined && sessionKey.length < 32) throw new Error('A session key is at least 32 characters: use a random value, as auth.updateSessionKey() does.');
     // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
     const result = await this.db
       .updateTable('users')
-      .set({ password: hash, updated_at: new Date() })
+      .set({ password: hash, ...(sessionKey === undefined ? {} : { session_key: sessionKey }), updated_at: new Date() })
       .where('id', '=', id)
       .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
       .executeTakeFirst();

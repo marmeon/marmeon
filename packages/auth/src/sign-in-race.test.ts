@@ -5,43 +5,23 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { AccountSessions, Auth, authenticate, AuthServiceProvider, Failed, Hasher, PasswordHasher, RememberTokenReused, RememberTokenStore, UserProvider, type AuthUser, type Credentials, type PasswordHash } from './index.ts';
+import { AccountSessions, Auth, authenticate, AuthServiceProvider, Failed, Hasher, PasswordHasher, RememberTokenReused, RememberTokenStore, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
 import { COMPLETE_PENDING, SIGN_IN_VERIFIED } from './auth.ts';
 import { NewPassword } from './new-password.ts';
 import { REMEMBER_TABLE } from './remember.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { MemoryUsers } from './test-helpers/users.ts';
 import { TwoFactorState } from './two-factor/state.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 
-class Users implements UserProvider {
-  readonly rows = new Map<number, { user: AuthUser; hash: PasswordHash | null; key: string | null }>();
-  /** A provider written before `expected` existed writes blindly and answers nothing. */
-  blind = false;
-  async findById(id: number): Promise<Credentials | undefined> {
-    const row = this.rows.get(id);
-    return row && { user: row.user, passwordHash: row.hash, sessionKey: row.key };
-  }
-  async findForLogin(email: string): Promise<Credentials | undefined> {
-    for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash, sessionKey: row.key };
-    return undefined;
-  }
-  async updatePasswordHash(id: number, hash: PasswordHash, expected?: PasswordHash): Promise<boolean | void> {
-    const row = this.rows.get(id)!;
-    if (this.blind) {
-      row.hash = hash;
-      return undefined;
-    }
-    if (expected !== undefined && row.hash !== expected) return false;
-    row.hash = hash;
-    return true;
-  }
-  /** Compare-and-set; `expected === undefined` writes regardless. */
-  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
-    const row = this.rows.get(id);
-    if (!row || (expected !== undefined && row.key !== expected)) return false;
-    row.key = key;
-    return true;
+class Users extends MemoryUsers<AuthUser> {
+  /** A provider written before the answer was required: it writes and says nothing. */
+  silent = false;
+  override async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string } = {}): Promise<boolean> {
+    if (!this.silent) return super.updatePasswordHash(id, hash, options);
+    this.rows.get(id)!.hash = hash;
+    return undefined as never;
   }
 }
 
@@ -53,7 +33,12 @@ class LoginController extends Controller {
   }
   async handle(ctx: HttpContext) {
     const { email, password, remember } = (await ctx.input()) as { email: string; password: string; remember?: boolean };
-    const result = await this.#auth.attempt(email, password, { remember: remember === true });
+    let result;
+    try {
+      result = await this.#auth.attempt(email, password, { remember: remember === true });
+    } catch (error) {
+      return Response.json({ thrown: (error as Error).message }, { status: 500 });
+    }
     return Response.json({ ok: result.ok, kind: result.ok ? null : result.error.kind, pending: this.#auth.pendingSecondFactor() !== undefined });
   }
 }
@@ -130,7 +115,11 @@ class LogoutOthersController extends Controller {
     this.#auth = auth;
   }
   async handle() {
-    return { done: await this.#auth.logoutOtherDevices('secret') };
+    try {
+      return { done: await this.#auth.logoutOtherDevices('secret') };
+    } catch (error) {
+      return Response.json({ thrown: (error as Error).message }, { status: 500 });
+    }
   }
 }
 
@@ -355,13 +344,27 @@ describe('a rehash only over the hash that was verified', () => {
     expect((await send('/me')).status, 'the remember-me token carries the new hash').toBe(200);
   });
 
-  it('rehashes as before over a provider that writes blindly', async () => {
+  it('refuses a provider that does not say whether it wrote: the sign-in fails loudly and no session starts', async () => {
     const world = await boot({ hold: 'verify' });
-    world.users.blind = true;
+    world.users.silent = true;
     world.users.rows.get(1)!.hash = await oldCosts().make('secret');
     world.release();
-    expect(((await (await world.send('/login', { email: ada.email, password: 'secret' })).json()) as { ok: boolean }).ok).toBe(true);
-    expect(world.users.rows.get(1)!.hash).toMatch(/^\$argon2id/);
+    const response = await world.send('/login', { email: ada.email, password: 'secret' });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ thrown: expect.stringMatching(/^\[marmeon:A5\] auth\.attempt\(\)/) });
+    expect((await world.send('/me')).status).toBe(401);
+  });
+
+  it('logoutOtherDevices() over a provider that does not say whether it wrote throws A5 and does not report success', async () => {
+    const world = await boot({ hold: 'verify' });
+    world.release();
+    await login(world.send, false);
+    world.users.silent = true;
+    const response = await world.send('/logout-others', {});
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as { thrown?: string; done?: boolean };
+    expect(body.thrown).toMatch(/^\[marmeon:A5\] auth\.logoutOtherDevices\(\)/);
+    expect(body.done).toBeUndefined();
   });
 
   it('logoutOtherDevices() writes nothing when a reset landed meanwhile', async () => {
@@ -371,10 +374,10 @@ describe('a rehash only over the hash that was verified', () => {
     const before = world.users.rows.get(1)!.hash;
     // The reset lands after this request read the account and before its write: the provider resets first, then runs the write.
     const real = world.users.updatePasswordHash.bind(world.users);
-    world.users.updatePasswordHash = async (id, hash, expected) => {
+    world.users.updatePasswordHash = async (id, hash, options) => {
       world.users.rows.get(1)!.hash = await world.hasher.make('reset');
       world.users.updatePasswordHash = real;
-      return real(id, hash, expected);
+      return real(id, hash, options);
     };
     const answer = (await (await world.send('/logout-others', {})).json()) as { done: boolean };
     expect(answer.done).toBe(false);

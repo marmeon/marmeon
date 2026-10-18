@@ -256,14 +256,22 @@ describe('the session key', { timeout: 30_000 }, () => {
     const users = app.make(UserRepository);
     const stored = async () => (await users.findForLogin(ada.email))?.passwordHash;
     const h1 = (await stored())!;
-    expect(await users.updatePasswordHash(ada.id, 'h2' as never, 'h0' as never), 'a hash that is not stored').toBe(false);
+    expect(await users.updatePasswordHash(ada.id, 'h2' as never, { expected: 'h0' as never }), 'a hash that is not stored').toBe(false);
     expect(await stored()).toBe(h1);
-    expect(await users.updatePasswordHash(ada.id, 'h2' as never, h1)).toBe(true);
+    expect(await users.updatePasswordHash(ada.id, 'h2' as never, { expected: h1 })).toBe(true);
     expect(await stored()).toBe('h2');
-    expect(await users.updatePasswordHash(ada.id, 'h3' as never, h1), 'h1 no longer matches').toBe(false);
+    expect(await users.updatePasswordHash(ada.id, 'h3' as never, { expected: h1 }), 'h1 no longer matches').toBe(false);
     expect(await stored()).toBe('h2');
     expect(await users.updatePasswordHash(ada.id, 'h4' as never), 'without an expectation it writes regardless').toBe(true);
     expect(await stored()).toBe('h4');
+    const key = 'a-key-written-with-the-hash-of-at-least-32-characters';
+    expect(await users.updatePasswordHash(ada.id, 'h5' as never, { expected: 'h0' as never, sessionKey: key }), 'a hash that is not stored writes neither').toBe(false);
+    expect((await users.findById(ada.id))?.sessionKey).toBeNull();
+    expect(await users.updatePasswordHash(ada.id, 'h5' as never, { expected: 'h4' as never, sessionKey: key }), 'the hash and the key in one statement').toBe(true);
+    expect(await stored()).toBe('h5');
+    expect((await users.findById(ada.id))?.sessionKey).toBe(key);
+    await expect(users.updatePasswordHash(ada.id, 'h6' as never, { sessionKey: 'too-short' })).rejects.toThrow(/at least 32 characters/);
+    expect(await stored()).toBe('h5');
   });
 
   it('is a secret column: not in a select-all result, handed back by the provider as sessionKey', async () => {

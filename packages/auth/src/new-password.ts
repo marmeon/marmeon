@@ -2,6 +2,7 @@ import { afterCommit, type EventDispatcher, type Logger } from '@marmeon/core';
 import type { Connections } from '@marmeon/database';
 import type { SessionEndings } from '@marmeon/session';
 import { accountScope } from '@marmeon/session/internal';
+import { passwordHashWritten, writeRefused } from './account-sessions.ts';
 import type { AuthConfig } from './config.ts';
 import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
 import type { PasswordHash } from './hashing.ts';
@@ -79,7 +80,8 @@ export class NewPassword {
       // The remember-me tokens go before the hash: a remember-me sign-in that is running (it consumed its token, then reads the
       // account) must not see the new hash next to a token that still exists.
       await remember.forgetUser(id);
-      await users.updatePasswordHash(id as never, hash);
+      // Inside the transaction: the tokens revoked above come back when the provider refuses to write.
+      if (!passwordHashWritten(await users.updatePasswordHash(id as never, hash), 'NewPassword')) throw writeRefused('NewPassword');
       // A reset has no session of its own to keep: every sign-in of the user is over, and none stays listed (a change keeps the current one, `Auth` ends the others).
       if (via === 'reset' && this.#signIns.enabled) await this.#signIns.endAll(id);
       return revoked;

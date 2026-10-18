@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { type Clock, err, type EventDispatcher, inTransaction, type Logger, ok, type Result } from '@marmeon/core';
 import type { SessionEndings, UserSessions } from '@marmeon/session';
+import { withCode } from '@marmeon/core/internal';
 import { accountScope } from '@marmeon/session/internal';
 import { EverySessionEnded } from './events.ts';
 import type { PasswordResetTokenStore } from './password-reset.ts';
@@ -12,16 +13,59 @@ import { idOf, UserProvider, type AuthUserId } from './user.ts';
 /** The error for a claim on the account's row that failed while the session still fits the account: the provider's `updateSessionKey(id, k, k)` did not return `true`. */
 export function claimRefused(caller: string): Error {
   return new Error(
-    `${caller}: UserProvider.updateSessionKey(id, key, expected) returned false for the key the session holds, which is still the stored one. ` +
-      'It must return true when key equals the stored key and expected matches it, even if no value changes (do not skip no-op writes or count only changed rows).',
+    withCode(
+      'A5',
+      `${caller}: UserProvider.updateSessionKey(id, key, expected) returned false for the key the session holds, which is still the stored one. ` +
+        'It must return true when key equals the stored key and expected matches it, even if no value changes (do not skip no-op writes or count only changed rows).',
+    ),
   );
 }
 
 /** The error for a provider whose `updateSessionKey()` does not answer with a boolean (the old contract). */
 export function notABoolean(caller: string): Error {
   return new Error(
-    `${caller}: UserProvider.updateSessionKey(id, key, expected) must return whether it stored the key (compare-and-set: write only ` +
-      'when the stored key equals expected, in one statement). See docs/authentication.md#signing-out-other-devices-without-a-password.',
+    withCode(
+      'A5',
+      `${caller}: UserProvider.updateSessionKey(id, key, expected) must return whether it stored the key (compare-and-set: write only ` +
+        'when the stored key equals expected, in one statement). See docs/authentication.md#signing-out-other-devices-without-a-password.',
+    ),
+  );
+}
+
+/** The error for a provider without `updateSessionKey()` — a JavaScript app or a cast; a TypeScript provider cannot leave it out. */
+export function missingSessionKeyMethod(caller: string): Error {
+  return new Error(
+    withCode(
+      'A5',
+      `${caller} needs UserProvider.updateSessionKey(id, key, expected): store the key in a column of the account ` +
+        '(a session_key column) and hand it back as sessionKey from findById() and findForLogin().',
+    ),
+  );
+}
+
+/**
+ * Whether the provider wrote: `answer` of `UserProvider.updatePasswordHash()`, which must be a boolean. Anything else is a provider
+ * that does not say — it could put an old hash back over a reset that landed meanwhile, and nobody would know.
+ */
+export function passwordHashWritten(answer: unknown, caller: string): boolean {
+  if (typeof answer === 'boolean') return answer;
+  throw new Error(
+    withCode(
+      'A5',
+      `${caller}: UserProvider.updatePasswordHash(id, hash, { expected, sessionKey }) must return whether it wrote the hash (compare-and-set: ` +
+        'with expected, write only when the stored hash equals it, in one statement). See docs/authentication.md#for-your-own-user-provider.',
+    ),
+  );
+}
+
+/** The error for a write without `expected` that answered `false`: it must write regardless, so the account is gone or the provider is scoped. */
+export function writeRefused(caller: string): Error {
+  return new Error(
+    withCode(
+      'A5',
+      `${caller}: UserProvider.updatePasswordHash(id, hash) answered false without expected: the account is gone, or the provider filters its UPDATE. ` +
+        'It must write regardless of the stored hash. Nothing was changed.',
+    ),
   );
 }
 
@@ -37,16 +81,14 @@ export async function rotateSessionKey(
   expected: string | null | undefined,
   caller: string,
 ): Promise<{ readonly kind: 'rotated'; readonly key: string } | { readonly kind: 'conflict' }> {
-  if (typeof users.updateSessionKey !== 'function') {
-    throw new Error(
-      `${caller} needs UserProvider.updateSessionKey(id, key, expected): store the key in a column of the account ` +
-        '(a session_key column) and hand it back as sessionKey from findById() and findForLogin().',
-    );
-  }
+  if (typeof users.updateSessionKey !== 'function') throw missingSessionKeyMethod(caller);
   const notReturned = () =>
     new Error(
-      `${caller} stored a new key, but UserProvider.findById() does not hand it back as sessionKey — the other ` +
-        'sessions would stay signed in. Return the session_key column as sessionKey from findById() and findForLogin().',
+      withCode(
+        'A5',
+        `${caller} stored a new key, but UserProvider.findById() does not hand it back as sessionKey — the other ` +
+          'sessions would stay signed in. Return the session_key column as sessionKey from findById() and findForLogin().',
+      ),
     );
   const key = randomBytes(32).toString('base64url');
   const stored: unknown = await users.updateSessionKey(id as never, key, expected);
@@ -153,10 +195,7 @@ export class AccountSessions {
       throw new Error('AccountSessions.end() must run outside a database transaction: each step commits on its own, and a rollback would bring the deleted remember-me tokens back.');
     }
     if (typeof this.#users.updateSessionKey !== 'function') {
-      throw new Error(
-        'AccountSessions.end() needs UserProvider.updateSessionKey(id, key, expected) to end the sessions of every session driver: store the key in a ' +
-          'column of the account (a session_key column) and hand it back as sessionKey from findById() and findForLogin().',
-      );
+      throw missingSessionKeyMethod('AccountSessions.end()');
     }
     const id = userId as string | number;
     if (id === '' || (typeof id === 'number' && !Number.isSafeInteger(id))) return err({ kind: 'missing' });
@@ -201,8 +240,11 @@ export class AccountSessions {
     const users = this.#users;
     if (typeof users.updateEverySessionKey !== 'function') {
       throw new Error(
-        'AccountSessions.endEveryone() needs UserProvider.updateEverySessionKey(key): write the key into the session_key column of every account ' +
-          'with one UPDATE, and hand it back as sessionKey from findById() and findForLogin().',
+        withCode(
+          'A5',
+          'AccountSessions.endEveryone() needs UserProvider.updateEverySessionKey(key): write the key into the session_key column of every account ' +
+            'with one UPDATE, and hand it back as sessionKey from findById() and findForLogin().',
+        ),
       );
     }
     // Every store this call will use is checked now: a store written before these methods existed must refuse before anything is deleted.
@@ -258,21 +300,24 @@ export class AccountSessions {
         const written: unknown = await users.updateEverySessionKey!(key);
         keys = 'unconfirmed';
         const count = (written as { accounts?: unknown } | null | undefined)?.accounts;
-        if (typeof count !== 'number') {
-          throw new Error('UserProvider.updateEverySessionKey(key) must return { accounts, sampleId }: how many accounts it wrote, as a number.');
+        if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
+          throw new Error(withCode('A5', 'UserProvider.updateEverySessionKey(key) must return { accounts, sampleId }: how many accounts it wrote, as a count (a whole number, 0 or more).'));
         }
         const sampleId = (written as { sampleId?: unknown }).sampleId;
         if (sampleId === undefined) {
           if (count > 0) {
-            throw new Error('UserProvider.updateEverySessionKey(key) must return the id of one account it wrote (sampleId), so that the new key can be read back.');
+            throw new Error(withCode('A5', 'UserProvider.updateEverySessionKey(key) must return the id of one account it wrote (sampleId), so that the new key can be read back.'));
           }
         } else {
           const credentials = await users.findById(sampleId as never);
           if (credentials?.sessionKey !== key) {
             throw new Error(
-              'cannot confirm the new key: UserProvider.updateEverySessionKey(key) wrote, but findById(sampleId) ' +
-                (credentials === undefined ? 'finds no account' : 'does not hand the new key back as sessionKey (is it cached, or not returned?)') +
-                ' — every session may still be live. findById() must return the session_key column as sessionKey, read after the write.',
+              withCode(
+                'A5',
+                'cannot confirm the new key: UserProvider.updateEverySessionKey(key) wrote, but findById(sampleId) ' +
+                  (credentials === undefined ? 'finds no account' : 'does not hand the new key back as sessionKey (is it cached, or not returned?)') +
+                  ' — every session may still be live. findById() must return the session_key column as sessionKey, read after the write.',
+              ),
             );
           }
         }

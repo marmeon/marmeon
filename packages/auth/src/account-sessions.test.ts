@@ -8,36 +8,12 @@ import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
 import { AccountSessions, Auth, authenticate, AuthServiceProvider, UserProvider, type AuthUser, type Credentials } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { MemoryUsers } from './test-helpers/users.ts';
 
 const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/create_sessions_table.ts', import.meta.url);
 
 /** Accounts in memory, with a session key; `KeylessUsers` cannot store one. */
-class Users implements UserProvider {
-  readonly rows = new Map<number, { user: AuthUser; key: string | null }>();
-  /** Runs once, after the next `findById()` has read its row — a request of another process landing at that moment. */
-  after: (() => Promise<unknown>) | undefined;
-
-  async findById(id: number): Promise<Credentials | undefined> {
-    const row = this.rows.get(id);
-    const found = row && { user: row.user, passwordHash: null, sessionKey: row.key };
-    const hook = this.after;
-    this.after = undefined;
-    await hook?.();
-    return found;
-  }
-  async findForLogin(): Promise<Credentials | undefined> {
-    return undefined;
-  }
-  async updatePasswordHash(): Promise<void> {}
-  /** Compare-and-set; `expected === undefined` writes regardless, as `AccountSessions.end()` asks. */
-  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
-    const row = this.rows.get(id);
-    if (!row) return false;
-    if (expected !== undefined && (row.key ?? null) !== expected) return false;
-    row.key = key;
-    return true;
-  }
-}
+class Users extends MemoryUsers<AuthUser> {}
 
 class KeylessUsers extends Users {
   // @ts-expect-error — a provider that cannot store a key has no such method
@@ -134,8 +110,8 @@ const rememberWho = async (browser: Awaited<ReturnType<typeof boot>>['browser'],
 describe('AccountSessions.end()', () => {
   it('ends every session of the account and its remember-me cookies, and spares other accounts', async () => {
     const users = new Users();
-    users.rows.set(1, { user: ada, key: null });
-    users.rows.set(2, { user: { id: 2, name: 'Bob', email: 'bob@example.com' }, key: null });
+    users.add(ada);
+    users.add({ id: 2, name: 'Bob', email: 'bob@example.com' });
     const { browser, accounts } = await boot(users);
     const laptop = browser();
     const phone = browser();
@@ -158,7 +134,7 @@ describe('AccountSessions.end()', () => {
 
   it('deletes the rows at once with the database driver', async () => {
     const users = new Users();
-    users.rows.set(1, { user: ada, key: null });
+    users.add(ada);
     const { browser, accounts } = await boot(users, 'database');
     await browser().send('/as/1', { method: 'POST' });
     await browser().send('/as/1', { method: 'POST' });
@@ -167,7 +143,7 @@ describe('AccountSessions.end()', () => {
 
   it('answers missing for an id that is no account, and writes nothing', async () => {
     const users = new Users();
-    users.rows.set(1, { user: ada, key: null });
+    users.add(ada);
     const { browser, accounts } = await boot(users);
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
@@ -182,7 +158,7 @@ describe('AccountSessions.end()', () => {
 
   it('throws inside a database transaction, before it writes anything', async () => {
     const users = new Users();
-    users.rows.set(1, { user: ada, key: null });
+    users.add(ada);
     const { browser, accounts, connections } = await boot(users);
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
@@ -194,7 +170,7 @@ describe('AccountSessions.end()', () => {
 
   it('is not starved by a request that replaces the key at the same moment: that request is signed out, end() succeeds', async () => {
     const users = new Users();
-    users.rows.set(1, { user: ada, key: null });
+    users.add(ada);
     const { browser, accounts } = await boot(users);
     const attacker = browser();
     await attacker.send('/as/1', { method: 'POST' });
@@ -209,12 +185,12 @@ describe('AccountSessions.end()', () => {
 
   it('throws before it writes anything when the provider cannot store a session key', async () => {
     const users = new KeylessUsers();
-    users.rows.set(1, { user: ada, key: null });
-    const { browser, accounts } = await boot(users, 'database');
+    users.add(ada);
+    const { browser, accounts } = await boot(users as never, 'database');
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
     const cookie = laptop.jar.get('marmeon_remember')!;
-    await expect(accounts.end(1)).rejects.toThrow(/updateSessionKey\(id, key, expected\).*session_key/s);
+    await expect(accounts.end(1)).rejects.toThrow(/\[marmeon:A5\].*updateSessionKey\(id, key, expected\).*session_key/s);
     expect((await laptop.send('/me')).status, 'the session stays').toBe(200);
     expect(await rememberWho(browser, cookie), 'the tokens stay').toEqual({ id: 1 });
   });
@@ -227,7 +203,7 @@ describe('AccountSessions.end()', () => {
       }
     }
     const users = new ForgetfulUsers();
-    users.rows.set(1, { user: ada, key: null });
+    users.add(ada);
     const { browser, accounts } = await boot(users);
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
@@ -238,7 +214,7 @@ describe('AccountSessions.end()', () => {
 
   it('a remember-me sign-in that is running when the account is ended stays a guest', async () => {
     const users = new Users();
-    users.rows.set(1, { user: ada, key: null });
+    users.add(ada);
     const { browser, accounts } = await boot(users);
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });

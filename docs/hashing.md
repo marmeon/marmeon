@@ -57,7 +57,7 @@ password even for a known address, so both take the same time, and keeps quiet a
 | `failureFloorMs()` | The time a failed sign-in is padded to, in milliseconds (see below). Optional on a custom hasher; without it nothing is padded. |
 
 `dummyVerify()` is for the sign-in of an unknown address: without it, the quick answer would tell a stranger that the address has
-no account. `Auth.attempt()` uses it, and rehashes a password whose hash `needsRehash()` by itself after a successful sign-in — only over the hash it verified: when the password was reset meanwhile, the new hash stays and the sign-in fails (see [`UserProvider`](authentication.md#the-user-type-and-where-users-come-from)).
+no account. `Auth.attempt()` uses it, and rehashes a password whose hash `needsRehash()` by itself after a successful sign-in — only over the hash it verified: when the password was reset meanwhile, the new hash stays and the sign-in fails; the provider's `updatePasswordHash()` has to tell whether it wrote (see [`UserProvider`](authentication.md#the-user-type-and-where-users-come-from)).
 
 A broken hash is checked like a good one: `verify()` spends the time of a real check on it, and so does an argon2id hash on a Node
 without argon2. After you change the driver or the costs, accounts that still hold an older, slower hash would take longer to

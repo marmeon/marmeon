@@ -25,7 +25,6 @@ import {
   UserProvider,
   type Authenticated,
   type AuthTypesNotDeclared,
-  type Credentials,
   type PasswordHash,
   type UserOf,
 } from './index.ts';
@@ -33,6 +32,7 @@ import { AUTH_SESSION_KEYS } from './auth.ts';
 import { COMPLETE_PENDING, READ_PENDING, sessionFingerprint } from './auth.ts';
 import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { MemoryUsers as SharedUsers } from './test-helpers/users.ts';
 import { SignInTracker } from './sign-ins.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
@@ -48,35 +48,19 @@ declare module './user.ts' {
   }
 }
 
-/** Users in memory — what an app's repository does with its table. */
-class MemoryUsers implements UserProvider<TestUser> {
-  readonly rows = new Map<number, { user: TestUser; hash: PasswordHash | null; key?: string }>();
+/** Users in memory — what an app's repository does with its table; it records the writes of hashes. */
+class MemoryUsers extends SharedUsers<TestUser> {
   readonly rehashed: number[] = [];
   /** Whether each new hash was written inside a database transaction. */
   readonly inTransaction: boolean[] = [];
 
-  async findById(id: number): Promise<Credentials<TestUser> | undefined> {
-    const row = this.rows.get(id);
-    return row && { user: row.user, passwordHash: row.hash, sessionKey: row.key ?? null };
-  }
-
-  async findForLogin(email: string): Promise<Credentials<TestUser> | undefined> {
-    for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash, sessionKey: row.key ?? null };
-    return undefined;
-  }
-
-  async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
-    this.rows.get(id)!.hash = hash;
-    this.rehashed.push(id);
-    this.inTransaction.push(inTransaction());
-  }
-
-  /** Compare-and-set; `expected === undefined` writes regardless. */
-  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
-    const row = this.rows.get(id);
-    if (!row || (expected !== undefined && (row.key ?? null) !== expected)) return false;
-    row.key = key;
-    return true;
+  override async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string } = {}): Promise<boolean> {
+    const wrote = await super.updatePasswordHash(id, hash, options);
+    if (wrote) {
+      this.rehashed.push(id);
+      this.inTransaction.push(inTransaction());
+    }
+    return wrote;
   }
 }
 
@@ -305,7 +289,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
   await application.container.make(Migrator).migrate();
   const kernel = createHttpKernel(application);
   const hasher = application.container.make(Hasher);
-  const add = async (user: TestUser, password = 'secret') => users.rows.set(user.id, { user, hash: await hasher.make(password) });
+  const add = async (user: TestUser, password = 'secret') => users.rows.set(user.id, { user, hash: await hasher.make(password), key: null });
 
   /** A tiny browser: keeps the session cookie between requests. */
   const browser = (jar: Map<string, string> = new Map()) => {
@@ -397,7 +381,7 @@ describe('Auth (session guard)', () => {
   it('enumeration by timing: an unknown e-mail takes as long as a wrong password', { retry: 2 }, async () => {
     const users = new MemoryUsers();
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
-    users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
+    users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
     const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, new SignInTracker(undefined), { now: () => Date.now() } as never);
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
@@ -435,20 +419,20 @@ describe('Auth (session guard)', () => {
 
     it('pads an unknown address and a wrong password to the slowest recent hash', async () => {
       const { users, hasher, auth } = boot(300);
-      users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
+      users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
       expect(await timed(() => auth.attempt('nobody@example.com', 'x'))).toBeGreaterThanOrEqual(295);
       expect(await timed(() => auth.attempt('ada@example.com', 'wrong'))).toBeGreaterThanOrEqual(295);
     });
 
     it('pads an account without a password', async () => {
       const { users, auth } = boot(300);
-      users.rows.set(1, { user: ada, hash: null });
+      users.rows.set(1, { user: ada, hash: null, key: null });
       expect(await timed(() => auth.attempt('ada@example.com', 'x'))).toBeGreaterThanOrEqual(295);
     });
 
     it('does not delay a success', async () => {
       const { users, hasher, auth } = boot(5000);
-      users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
+      users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
       let result: unknown;
       expect(await timed(async () => (result = await auth.attempt('ada@example.com', 'secret')))).toBeLessThan(2500);
       expect(result).toStrictEqual(ok(ada));
@@ -458,8 +442,8 @@ describe('Auth (session guard)', () => {
   it('answers with one error for an unknown identifier, a wrong password and an account without a password', async () => {
     const users = new MemoryUsers();
     const hasher = new PasswordHasher();
-    users.rows.set(1, { user: ada, hash: await hasher.make('secret') });
-    users.rows.set(2, { user: { id: 2, name: 'Link', email: 'link@example.com' }, hash: null });
+    users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
+    users.rows.set(2, { user: { id: 2, name: 'Link', email: 'link@example.com' }, hash: null, key: null });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
     const dispatched: unknown[] = [];
     const events = { dispatch: async (event: unknown) => void dispatched.push(event) } as never;
@@ -490,7 +474,7 @@ describe('Auth (session guard)', () => {
   it('rehashes a password made with other costs when its owner signs in', async () => {
     const { users, browser } = await boot();
     const old = await new PasswordHasher({ driver: 'scrypt', argon2: { memory: 1024, time: 1, parallelism: 1 }, scrypt: { cost: 10, blockSize: 8, parallelism: 1 } }).make('secret');
-    users.rows.set(1, { user: ada, hash: old });
+    users.rows.set(1, { user: ada, hash: old, key: null });
     await login(browser().send);
     expect(users.rehashed).toEqual([1]);
     expect(users.rows.get(1)!.hash).toMatch(/^\$argon2id\$v=19\$m=1024,t=1,p=1\$/);
@@ -512,7 +496,7 @@ describe('Auth (session guard)', () => {
 
   it('refuses users without a password and sessions of deleted users', async () => {
     const { users, add, browser } = await boot();
-    users.rows.set(2, { user: { id: 2, name: 'Link', email: 'link@example.com' }, hash: null });
+    users.rows.set(2, { user: { id: 2, name: 'Link', email: 'link@example.com' }, hash: null, key: null });
     expect((await login(browser().send, 'secret', 'link@example.com')).status).toBe(422);
     await add(ada);
     const { send } = browser();
@@ -1115,6 +1099,23 @@ describe('password changes and confirmation', () => {
     expect(await (await browser(new Map([['marmeon_remember', phoneRemember]])).send('/who')).json()).toMatchObject({ id: null });
     expect(events).toEqual([expect.any(PasswordChanged)]);
     expect((await login(browser().send, 'a new secret')).status).toBe(303);
+  });
+
+  it('does not report a password change that the provider did not write: it throws A5, fires no event, and the password stays', async () => {
+    class Refusing extends MemoryUsers {
+      override async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string } = {}): Promise<boolean> {
+        return options.expected === undefined ? false : super.updatePasswordHash(id, hash, options);
+      }
+    }
+    const { add, browser } = await boot({ users: new Refusing() });
+    await add(ada);
+    const laptop = browser();
+    await login(laptop.send);
+    events.length = 0;
+    const body = (await (await laptop.send('/password', { method: 'POST', json: { password: 'a new secret' } })).json()) as Record<string, unknown>;
+    expect(body).not.toEqual({ changed: true });
+    expect(events.some((event) => event instanceof PasswordChanged)).toBe(false);
+    expect((await login(browser().send, 'secret')).status).toBe(303);
   });
 
   it('revokes every API token of the user with a new password — with AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true, in the transaction of the new hash', async () => {

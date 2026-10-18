@@ -30,31 +30,24 @@ declare module '../user.ts' {
   }
 }
 
+/** Accounts in memory that keep the whole `UserProvider` contract; `keys` holds the session keys (an account without one has `null`). */
 class MemoryUsers implements UserProvider<TestUser> {
   readonly rows = new Map<number, { user: TestUser; hash: PasswordHash | null }>();
+  readonly keys = new Map<number, string>();
   async findById(id: number): Promise<Credentials<TestUser> | undefined> {
     const row = this.rows.get(Number(id));
-    return row && { user: row.user, passwordHash: row.hash };
+    return row && { user: row.user, passwordHash: row.hash, sessionKey: this.keys.get(Number(id)) ?? null };
   }
   async findForLogin(email: string): Promise<Credentials<TestUser> | undefined> {
-    for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash };
+    for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash, sessionKey: this.keys.get(row.user.id) ?? null };
     return undefined;
   }
-  async updatePasswordHash(id: number, hash: PasswordHash): Promise<void> {
-    this.rows.get(Number(id))!.hash = hash;
-  }
-}
-
-/** A provider that stores a session key, so `confirm()` can lock the account's row. */
-class KeyedUsers extends MemoryUsers {
-  readonly keys = new Map<number, string>();
-  override async findById(id: number): Promise<Credentials<TestUser> | undefined> {
-    const found = await super.findById(id);
-    return found && { ...found, sessionKey: this.keys.get(Number(id)) ?? null };
-  }
-  override async findForLogin(email: string): Promise<Credentials<TestUser> | undefined> {
-    const found = await super.findForLogin(email);
-    return found && { ...found, sessionKey: this.keys.get(found.user.id) ?? null };
+  async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string } = {}): Promise<boolean> {
+    const row = this.rows.get(Number(id));
+    if (!row || (options.expected !== undefined && row.hash !== options.expected)) return false;
+    row.hash = hash;
+    if (options.sessionKey !== undefined) this.keys.set(Number(id), options.sessionKey);
+    return true;
   }
   async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
     if (expected !== undefined && (this.keys.get(Number(id)) ?? null) !== expected) return false;
@@ -821,7 +814,7 @@ describe('TwoFactor: signing in', () => {
   });
 
   it('AccountSessions.endEveryone() ends a waiting sign-in: the code is expired and nothing is used up', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     const booted = await boot({}, { users });
     const { secret: key, recoveryCodes } = await enable(booted);
     const b = await waiting(booted);
@@ -1331,9 +1324,10 @@ describe('TwoFactor: the session must still fit the account when the factor is s
   /** Runs `change` right after the password hash is written to sign the other devices out — the moment another device could act. */
   function interleave(users: MemoryUsers, change: () => void | Promise<void>) {
     const write = users.updatePasswordHash.bind(users);
-    users.updatePasswordHash = async (id, hash) => {
-      await write(id, hash);
+    users.updatePasswordHash = async (id, hash, options) => {
+      const wrote = await write(id, hash, options);
       await change();
+      return wrote;
     };
   }
 
@@ -1352,7 +1346,7 @@ describe('TwoFactor: the session must still fit the account when the factor is s
   });
 
   it('stores nothing when the account\'s sessions were ended meanwhile, on a provider that keeps a session key', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     const booted = await boot({}, { users });
     const b = booted.browser();
     await b.login();
@@ -1364,7 +1358,7 @@ describe('TwoFactor: the session must still fit the account when the factor is s
   });
 
   it('stores nothing when every session was ended meanwhile (AccountSessions.endEveryone())', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     const booted = await boot({}, { users });
     const b = booted.browser();
     await b.login();
@@ -1376,8 +1370,19 @@ describe('TwoFactor: the session must still fit the account when the factor is s
     expect(await b.tf('who')).toEqual({ id: null });
   });
 
+  it('refuses a provider that cannot take the lock instead of storing the factor unlocked', async () => {
+    const users = Object.assign(new MemoryUsers(), { updateSessionKey: undefined }) as unknown as MemoryUsers;
+    users.keys.set(1, 'k'.repeat(43));
+    const booted = await boot({}, { users });
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ thrown: expect.stringMatching(/^\[marmeon:A5\] Auth needs UserProvider\.updateSessionKey/) });
+    expect(await booted.store.factors(1)).toEqual([]);
+  });
+
   it('locks the account\'s row when it has a session key: the factor is stored, the key stays, this session stays', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     users.keys.set(1, 'k'.repeat(43));
     const booted = await boot({}, { users });
     const write = vi.spyOn(users, 'updateSessionKey');
@@ -1389,7 +1394,7 @@ describe('TwoFactor: the session must still fit the account when the factor is s
   });
 
   it('stops at the lock when the session key was replaced meanwhile: nothing is stored and nothing had to be taken out again', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     users.keys.set(1, 'k'.repeat(43));
     const booted = await boot({}, { users });
     const b = booted.browser();
@@ -1397,9 +1402,10 @@ describe('TwoFactor: the session must still fit the account when the factor is s
     const setup = await b.tf('begin');
     const removal = vi.spyOn(TwoFactorStore.prototype, 'removeTotp');
     const write = users.updatePasswordHash.bind(users);
-    users.updatePasswordHash = async (id, hash) => {
-      await write(id, hash);
+    users.updatePasswordHash = async (id, hash, options) => {
+      const wrote = await write(id, hash, options);
       users.keys.set(1, 'e'.repeat(43)); // AccountSessions.end() lands right after the other devices were signed out
+      return wrote;
     };
     try {
       expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toEqual({ ok: false, kind: 'signed-out' });
@@ -1413,7 +1419,7 @@ describe('TwoFactor: the session must still fit the account when the factor is s
   });
 
   it('throws, and names the rule, when updateSessionKey(id, k, k) says false for the key that is stored', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     users.keys.set(1, 'k'.repeat(43));
     const booted = await boot({}, { users });
     const b = booted.browser();
@@ -1425,7 +1431,7 @@ describe('TwoFactor: the session must still fit the account when the factor is s
   });
 
   it('answers a provider whose updateSessionKey() does not return a boolean with an error naming the remedy', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     users.keys.set(1, 'k'.repeat(43));
     const booted = await boot({}, { users });
     const b = booted.browser();
@@ -1437,7 +1443,7 @@ describe('TwoFactor: the session must still fit the account when the factor is s
   });
 
   it('takes the factor out again when the sessions were ended after the transaction, on an account without a session key', async () => {
-    const users = new KeyedUsers(); // its key is null: nothing to lock, so the check is repeated after the commit
+    const users = new MemoryUsers(); // its key is null: nothing to lock, so the check is repeated after the commit
     const booted = await boot({}, { users });
     const b = booted.browser();
     await b.login();
@@ -1479,7 +1485,7 @@ describe('TwoFactor: the session must still fit the account when the factor is s
   });
 
   it('confirms as before when nothing happened, signing the other devices out and keeping this one', async () => {
-    const users = new KeyedUsers();
+    const users = new MemoryUsers();
     const booted = await boot({}, { users });
     const elsewhere = booted.browser();
     await elsewhere.login();

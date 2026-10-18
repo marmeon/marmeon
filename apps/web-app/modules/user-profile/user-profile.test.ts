@@ -282,7 +282,7 @@ describe('user-profile module', () => {
     const stub: User = { id: 7, public_id: '0190a000-0000-7000-8000-000000000007', name: 'Grace (stub)', email: 'grace@example.com', bio: 'from a test double', created_at: '', updated_at: '', email_verified_at: '2026-10-01T00:00:00.000Z', first_verified_at: '2026-10-01T00:00:00.000Z', locale: null, avatar_path: null, pending_email: null, pending_email_expires_at: null };
     class StubUserRepository extends UserRepository {
       override async findById(id: number) {
-        return id === stub.id ? { user: stub, passwordHash: null } : undefined;
+        return id === stub.id ? { user: stub, passwordHash: null, sessionKey: null } : undefined;
       }
       override async list() {
         return [{ id: stub.id, name: stub.name }];

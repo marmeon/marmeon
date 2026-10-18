@@ -208,7 +208,7 @@ export interface ConfirmedPasswordOptions<N extends string = string> {
 export interface Credentials<U = AuthUser> {
     readonly user: U;
     readonly passwordHash: PasswordHash | null;
-    readonly sessionKey?: string | null;
+    readonly sessionKey: string | null;
 }
 // DatabaseAccessTokens
 export declare class DatabaseAccessTokens implements AccessTokenStore {
@@ -994,11 +994,14 @@ export interface UserProvider<U = AuthUser> {
     findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
     updatePasswordHash(id: U extends {
         readonly id: infer Id;
-    } ? Id : never, hash: PasswordHash, expected?: PasswordHash): Promise<boolean | void>;
-    updateSessionKey?(id: U extends {
+    } ? Id : never, hash: PasswordHash, options?: {
+        readonly expected?: PasswordHash;
+        readonly sessionKey?: string;
+    }): Promise<boolean>;
+    updateSessionKey(id: U extends {
         readonly id: infer Id;
     } ? Id : never, key: string, expected: string | null | undefined): Promise<boolean>;
-    updateEverySessionKey?(key: string): Promise<{
+    updateEverySessionKey(key: string): Promise<{
         readonly accounts: number;
         readonly sampleId: (U extends {
             readonly id: infer Id;
@@ -1591,7 +1594,7 @@ export declare const COMPLETE_PENDING: unique symbol;
 export interface Credentials<U = AuthUser> {
     readonly user: U;
     readonly passwordHash: PasswordHash | null;
-    readonly sessionKey?: string | null;
+    readonly sessionKey: string | null;
 }
 // DROP_EXPIRED
 declare const DROP_EXPIRED: unique symbol;
@@ -1873,11 +1876,14 @@ export interface UserProvider<U = AuthUser> {
     findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
     updatePasswordHash(id: U extends {
         readonly id: infer Id;
-    } ? Id : never, hash: PasswordHash, expected?: PasswordHash): Promise<boolean | void>;
-    updateSessionKey?(id: U extends {
+    } ? Id : never, hash: PasswordHash, options?: {
+        readonly expected?: PasswordHash;
+        readonly sessionKey?: string;
+    }): Promise<boolean>;
+    updateSessionKey(id: U extends {
         readonly id: infer Id;
     } ? Id : never, key: string, expected: string | null | undefined): Promise<boolean>;
-    updateEverySessionKey?(key: string): Promise<{
+    updateEverySessionKey(key: string): Promise<{
         readonly accounts: number;
         readonly sampleId: (U extends {
             readonly id: infer Id;
@@ -2245,7 +2251,7 @@ export declare const COMPLETE_PENDING: unique symbol;
 export interface Credentials<U = AuthUser> {
     readonly user: U;
     readonly passwordHash: PasswordHash | null;
-    readonly sessionKey?: string | null;
+    readonly sessionKey: string | null;
 }
 // DROP_EXPIRED
 declare const DROP_EXPIRED: unique symbol;
@@ -2480,11 +2486,14 @@ export interface UserProvider<U = AuthUser> {
     findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
     updatePasswordHash(id: U extends {
         readonly id: infer Id;
-    } ? Id : never, hash: PasswordHash, expected?: PasswordHash): Promise<boolean | void>;
-    updateSessionKey?(id: U extends {
+    } ? Id : never, hash: PasswordHash, options?: {
+        readonly expected?: PasswordHash;
+        readonly sessionKey?: string;
+    }): Promise<boolean>;
+    updateSessionKey(id: U extends {
         readonly id: infer Id;
     } ? Id : never, key: string, expected: string | null | undefined): Promise<boolean>;
-    updateEverySessionKey?(key: string): Promise<{
+    updateEverySessionKey(key: string): Promise<{
         readonly accounts: number;
         readonly sampleId: (U extends {
             readonly id: infer Id;

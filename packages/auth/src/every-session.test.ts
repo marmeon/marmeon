@@ -33,6 +33,7 @@ import {
 import { SIGN_INS_TABLE } from './sign-ins.ts';
 import { REMEMBER_TABLE } from './remember.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { MemoryUsers } from './test-helpers/users.ts';
 
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/create_sessions_table.ts', import.meta.url);
@@ -42,36 +43,10 @@ const bob: AuthUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
 const cy: AuthUser = { id: 3, name: 'Cy', email: 'cy@example.com' };
 
 /** Accounts in memory, with a session key that one call writes for all of them. */
-class Users implements UserProvider {
-  readonly rows = new Map<number, { user: AuthUser; key: string | null }>();
-  /** Runs once, after the next `findById()` has read its row — a request of another process landing at that moment. */
-  after: (() => Promise<unknown>) | undefined;
-
+class Users extends MemoryUsers<AuthUser> {
   constructor() {
-    for (const user of [ada, bob, cy]) this.rows.set(user.id, { user, key: null });
-  }
-  async findById(id: number): Promise<Credentials | undefined> {
-    const row = this.rows.get(id);
-    const found = row && { user: row.user, passwordHash: null, sessionKey: row.key };
-    const hook = this.after;
-    this.after = undefined;
-    await hook?.();
-    return found;
-  }
-  async findForLogin(): Promise<Credentials | undefined> {
-    return undefined;
-  }
-  async updatePasswordHash(): Promise<void> {}
-  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
-    const row = this.rows.get(id);
-    if (!row) return false;
-    if (expected !== undefined && (row.key ?? null) !== expected) return false;
-    row.key = key;
-    return true;
-  }
-  async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number }> {
-    for (const row of this.rows.values()) row.key = key;
-    return { accounts: this.rows.size, sampleId: ada.id };
+    super();
+    for (const user of [ada, bob, cy]) this.add(user);
   }
 }
 
@@ -347,11 +322,11 @@ describe('AccountSessions.endEveryone()', () => {
   });
 
   it('throws before it deletes anything when the provider cannot write every key', async () => {
-    const { browser, accounts, count } = await boot(memory, new KeylessUsers());
+    const { browser, accounts, count } = await boot(memory, new KeylessUsers() as never);
     const laptop = browser();
     await laptop.send('/as/1', { method: 'POST' });
     const cookie = laptop.jar.get('marmeon_remember')!;
-    await expect(accounts.endEveryone()).rejects.toThrow(/updateEverySessionKey\(key\).*session_key/s);
+    await expect(accounts.endEveryone()).rejects.toThrow(/\[marmeon:A5\].*updateEverySessionKey\(key\).*session_key/s);
     expect(await count(REMEMBER_TABLE), 'the tokens stay').toBe(1);
     expect((await laptop.send('/me')).status, 'the session stays').toBe(200);
     expect(await rememberWho(browser, cookie)).toEqual({ id: 1 });
@@ -418,6 +393,18 @@ describe('AccountSessions.endEveryone()', () => {
     }
     const { accounts } = await boot(memory, new Silent());
     await expect(accounts.endEveryone()).rejects.toThrow(/failed at "session keys"/);
+    expect(events).toHaveLength(0);
+  });
+
+  it.each([Number.NaN, -1, 1.5])('throws when the provider counts %s accounts', async (count) => {
+    class Counting extends Users {
+      override async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number | undefined }> {
+        const written = await super.updateEverySessionKey(key);
+        return { ...written, accounts: count };
+      }
+    }
+    const { accounts } = await boot(memory, new Counting());
+    await expect(accounts.endEveryone()).rejects.toMatchObject({ cause: { message: expect.stringMatching(/^\[marmeon:A5\] .*as a count/) } });
     expect(events).toHaveLength(0);
   });
 
