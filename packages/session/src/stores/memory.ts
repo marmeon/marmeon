@@ -1,5 +1,5 @@
 import { SystemClock, type Clock } from '@marmeon/core';
-import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
+import { SessionStore, type SessionWrite, type SessionWriteResult, type StoredSession } from '../store.ts';
 
 interface Entry {
   data: string;
@@ -11,11 +11,12 @@ interface Entry {
  * In-process, lost on restart. For tests. Atomic because every operation runs synchronously — no `await` between looking a
  * session up and writing it.
  */
-export class MemorySessionStore implements SessionStore {
+export class MemorySessionStore extends SessionStore {
   readonly #sessions = new Map<string, Entry>();
   readonly #clock: Clock;
 
   constructor(clock: Clock = new SystemClock()) {
+    super();
     this.#clock = clock;
   }
 

@@ -299,22 +299,27 @@ data stays for the page. A write there throws in development and in tests, and i
 
 ## A store of your own
 
-A store implements `SessionStore` of `@marmeon/session`:
+A store extends `SessionStore` of `@marmeon/session`, calls `super()` and implements its methods:
 
 ```ts
-interface SessionStore {
-  read(key: string): Promise<{ data: string; version: number } | undefined>;
-  write(key: string, data: string, options: { expectedVersion: number | undefined; lifetimeSeconds: number; userId?: string | null }): Promise<'written' | 'conflict' | 'gone'>;
-  destroy(key: string): Promise<void>;
-  gc(lifetimeSeconds: number): Promise<number>;
+abstract class SessionStore {
+  abstract read(key: string): Promise<{ data: string; version: number } | undefined>;
+  abstract write(key: string, data: string, options: { expectedVersion: number | undefined; lifetimeSeconds: number; userId?: string | null }): Promise<'written' | 'conflict' | 'gone'>;
+  abstract destroy(key: string): Promise<void>;
+  abstract gc(lifetimeSeconds: number): Promise<number>;
   destroyUser?(userId: string): Promise<number>;
 }
 ```
 
+The class is also the key you bind your store under: `container.singleton(SessionStore, YourStore)`. A class that only `implements` the
+contract, and an object literal, do not compile: the class carries a private mark that only a subclass has, so a member added later
+cannot break a store silently. [Your own stores](authentication.md#your-own-stores) tells which members get a default. Extend only
+`SessionStore` itself, never one of the stores the framework ships.
+
 `key` is the hash of the session's id and `data` is opaque text: keep both as they are. A write with `expectedVersion: undefined`
 creates the key at version 1, and answers `conflict` when something is stored under it already. A write with a number replaces
 exactly that version: `conflict` when the stored version differs, `gone` when there is none. Compare and write in one atomic step.
-`destroyUser` is optional and ends every session of a user.
+`destroyUser` is optional, has no default and ends every session of a user; a store without it keeps sessions until their next request ends them (`UserSessions.canEnd()` says which). With `noImplicitOverride`, write `override` before it.
 
 ## Testing
 

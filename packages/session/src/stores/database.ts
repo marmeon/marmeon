@@ -1,6 +1,6 @@
 import { SystemClock, type Clock } from '@marmeon/core';
 import type { Connection } from '@marmeon/database';
-import type { SessionStore, SessionWrite, SessionWriteResult, StoredSession } from '../store.ts';
+import { SessionStore, type SessionWrite, type SessionWriteResult, type StoredSession } from '../store.ts';
 
 /** The table `marmeon make:session-table` creates (the app owns the migration; the store types it itself). */
 export const SESSIONS_TABLE = 'sessions';
@@ -24,7 +24,7 @@ type Sql = (typeof import('@marmeon/database'))['sql'];
  * sign-out deleted meanwhile — or another request wrote meanwhile — matches nothing, on Postgres and SQLite alike, across any
  * number of processes. A new session is `INSERT … ON CONFLICT DO NOTHING`: it never replaces a row.
  */
-export class DatabaseSessionStore implements SessionStore {
+export class DatabaseSessionStore extends SessionStore {
   readonly #connection: () => Promise<DatabaseSessionConnection>;
   readonly #lifetime: number;
   readonly #clock: Clock;
@@ -39,6 +39,7 @@ export class DatabaseSessionStore implements SessionStore {
     lifetimeSeconds: number,
     clock: Clock = new SystemClock(),
   ) {
+    super();
     this.#connection = typeof connection === 'function' ? connection : async () => connection;
     this.#lifetime = lifetimeSeconds;
     this.#clock = clock;
@@ -72,7 +73,7 @@ export class DatabaseSessionStore implements SessionStore {
   }
 
   /** Every session of the user `userId` — a deleted account's. */
-  async destroyUser(userId: string): Promise<number> {
+  override async destroyUser(userId: string): Promise<number> {
     const { db, sql } = await this.#use();
     const result = await sql`delete from sessions where user_id = ${userId}`.execute(db);
     return Number(result.numAffectedRows ?? 0n);

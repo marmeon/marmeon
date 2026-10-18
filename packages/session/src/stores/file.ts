@@ -4,7 +4,7 @@ import { link, open, readdir, readFile, rm, stat, utimes, writeFile } from 'node
 import { join } from 'node:path';
 import { SystemClock, type Clock } from '@marmeon/core';
 import { withFileGuard } from '@marmeon/core/internal';
-import { SESSION_KEY, type SessionStore, type SessionWrite, type SessionWriteResult, type StoredSession } from '../store.ts';
+import { SESSION_KEY, SessionStore, type SessionWrite, type SessionWriteResult, type StoredSession } from '../store.ts';
 
 interface Stored {
   /** A digest of the other fields, first in the line — absent in files written before it existed, which are read unchecked. */
@@ -28,11 +28,12 @@ const GUARD_TIMEOUT_MS = 10_000;
  * meets a torn line — or one whose `check` does not match its fields (new head, old tail: still valid JSON) — reads once more
  * under the guard, which every writer holds for its whole write: that read sees a whole record or one broken for good (as long as the writer finishes within `STALE_GUARD_MS`).
  */
-export class FileSessionStore implements SessionStore {
+export class FileSessionStore extends SessionStore {
   readonly #directory: string;
   readonly #clock: Clock;
 
   constructor(directory: string, clock: Clock = new SystemClock()) {
+    super();
     this.#directory = directory;
     this.#clock = clock;
     mkdirSync(directory, { recursive: true });

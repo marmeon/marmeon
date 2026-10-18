@@ -146,14 +146,14 @@ export declare class SessionSetupError extends Error {
     name: string;
 }
 // SessionStore
-export interface SessionStore {
-    read(key: string): Promise<StoredSession | undefined>;
-    write(key: string, data: string, options: SessionWrite): Promise<SessionWriteResult>;
-    destroy(key: string): Promise<void>;
-    gc(lifetimeSeconds: number): Promise<number>;
+export declare abstract class SessionStore {
+    #private;
+    abstract read(key: string): Promise<StoredSession | undefined>;
+    abstract write(key: string, data: string, options: SessionWrite): Promise<SessionWriteResult>;
+    abstract destroy(key: string): Promise<void>;
+    abstract gc(lifetimeSeconds: number): Promise<number>;
     destroyUser?(userId: string): Promise<number>;
 }
-export declare const SessionStore: import("@marmeon/core").Token<SessionStore>;
 // SessionWrite
 export interface SessionWrite {
     readonly expectedVersion: number | undefined;

@@ -6,6 +6,7 @@ import { createHttpKernel } from '@marmeon/server';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SessionServiceProvider } from './provider.ts';
 import { SessionStore } from './store.ts';
+import { wrapped } from './test-helpers/wrapped-store.ts';
 import { redisConnections, storeKinds, storeUnderTest, type StoreUnderTest } from './__fixtures__/stores.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
@@ -51,12 +52,7 @@ describe.each(storeKinds)('guests and the %s session store', (kind) => {
     current = await storeUnderTest(kind);
     let writes = 0;
     const store = current.store;
-    const counting: SessionStore = {
-      read: (key) => store.read(key),
-      write: (key, data, options) => (writes++, store.write(key, data, options)),
-      destroy: (key) => store.destroy(key),
-      gc: (lifetime) => store.gc(lifetime),
-    };
+    const counting = wrapped(store, { write: (key, data, options) => (writes++, store.write(key, data, options)) });
     const application = await createApplication({
       root: import.meta.dirname,
       discover: false,
