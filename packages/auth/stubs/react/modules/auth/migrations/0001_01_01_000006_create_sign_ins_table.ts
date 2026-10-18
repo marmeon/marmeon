@@ -1,4 +1,4 @@
-// @marmeon-stub sign-ins 1
+// @marmeon-stub sign-ins 2
 import { defineMigration } from '@marmeon/database';
 
 // The sign-ins list: a row per sign-in of a browser, and the authority over it — the session carries only the row's random id, and a
@@ -15,6 +15,13 @@ export default defineMigration({
       table.timestamp('signed_in_at');
       table.timestamp('last_seen_at');
       table.timestamps();
+      // The remember-me token of the device: the validator only as a SHA-256, the one before it for the grace after a rotation, and the
+      // fingerprint of the account state it was issued under.
+      table.string('remember_validator_hash', 64).nullable().secret();
+      table.string('remember_previous_validator_hash', 64).nullable().secret();
+      table.timestamp('remember_rotated_at').nullable();
+      table.timestamp('remember_created_at').nullable();
+      table.string('remember_fingerprint', 64).nullable();
       table.index('user_id');
     }),
   down: (schema) => schema.drop('sign_ins'),

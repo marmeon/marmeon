@@ -186,6 +186,11 @@ declare module '@marmeon/database' {
       last_seen_at: Timestamp;
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
+      remember_validator_hash: Secret<string | null>;
+      remember_previous_validator_hash: Secret<string | null>;
+      remember_rotated_at: Timestamp | null;
+      remember_created_at: Timestamp | null;
+      remember_fingerprint: string | null;
     };
     /**
      * Owned by `system`.

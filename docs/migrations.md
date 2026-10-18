@@ -898,8 +898,10 @@ The tables of the starter kit's auth module (`remember_tokens`, `password_reset_
 `two_factor_authentications`, `two_factor_recovery_codes`, `passkeys` and `sign_ins`) keep their names. The `auth` set has one
 later revision: `reissue_personal_access_tokens` deletes every row of `personal_access_tokens` and adds a unique index on
 `token_hash`, because API tokens with a `|`, the form issued before, are no longer valid. See
-[API tokens](api-tokens.md#a-store-of-your-own). It touches no other table. The `sign_ins` table has no later revision;
-`marmeon make:sign-ins-table` writes it on its own.
+[API tokens](api-tokens.md#a-store-of-your-own). It touches no other table. The `sign-ins` set (`sign_ins`, written by
+`marmeon make:sign-ins-table` or by the starter kit) has one later revision, `add_remember_columns_to_sign_ins`: five nullable
+columns that hold the remember-me token on the row of its sign-in. It deletes nothing and does not copy the tokens of
+`remember_tokens`.
 
 A migration it wrote is yours like the first one. Keep the first line: without it, the command takes a changed file for
 revision 1.

@@ -9,7 +9,7 @@ describe.each(drivers)('DatabaseRememberTokens on %s', (driver) => {
   let close: () => Promise<void>;
   let tokens: DatabaseRememberTokens;
   const inAMonth = () => new Date(Date.now() + 30 * 86_400_000);
-  const issued = (result: Result<RememberedDevice, RememberTokenError>) => (result.ok ? result.value.cookie : undefined);
+  const issued = (result: Result<Omit<RememberedDevice, 'signIn'>, RememberTokenError>) => (result.ok ? result.value.cookie : undefined);
   const rows = () => connections.get<{ [REMEMBER_TABLE]: RememberTokenTable }>().selectFrom(REMEMBER_TABLE).select((eb) => ['user_id', 'selector', secret(eb, 'validator_hash')]).execute();
 
   beforeAll(async () => {

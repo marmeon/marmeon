@@ -38,7 +38,7 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
   it('stores no address and no secret — only the columns of the table', async () => {
     await signIns.create({ userId: 1, userAgent: 'Agent' });
     expect(Object.keys((await rows())[0]!).sort()).toEqual(
-      ['created_at', 'id', 'last_seen_at', 'remember_selector', 'remember_until', 'signed_in_at', 'updated_at', 'user_agent', 'user_id'],
+      ['created_at', 'id', 'last_seen_at', 'remember_created_at', 'remember_fingerprint', 'remember_rotated_at', 'remember_selector', 'remember_until', 'signed_in_at', 'updated_at', 'user_agent', 'user_id'],
     );
   });
 

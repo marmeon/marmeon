@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Clock, commitAnyway, err, ok, token, type Result } from '@marmeon/core';
 import { Connections, secret, sql, type Generated, type Secret } from '@marmeon/database';
+import type { RememberedDevice, RememberTokenError } from './sign-ins.ts';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link RememberTokenTable}. */
 export const REMEMBER_TABLE = 'remember_tokens';
@@ -27,37 +28,7 @@ export interface RememberTokenTable {
 /** The columns readiness waits for on `remember_tokens`. */
 export const REMEMBER_COLUMNS = ['id', 'user_id', 'selector', 'validator_hash', 'previous_validator_hash', 'rotated_at', 'last_used_at', 'expires_at', 'account_fingerprint', 'created_at', 'updated_at'] as const satisfies readonly (keyof RememberTokenTable)[];
 
-/** What a valid remember-me cookie proved: the user, and the rotated cookie value — `undefined` when a concurrent request already rotated it. */
-export interface RememberedDevice {
-  readonly userId: number | string;
-  readonly cookie: string | undefined;
-  readonly expiresAt: Date;
-  /**
-   * When the token was made (rotation keeps it), on the same clock as `confirmed_at` of the second factor and with its time zone — a
-   * database default without a zone would compare wrongly. A token made before (or in the same millisecond as) the account's
-   * second factor never proved one, and is refused.
-   */
-  readonly createdAt: Date;
-  /**
-   * The fingerprint the token was created with (rotation keeps it), `undefined` for a token that has none. `Auth` signs a device in only
-   * when it equals the account's present fingerprint; a token without one is refused.
-   */
-  readonly fingerprint: string | undefined;
-}
-
-/**
- * Why a remember-me cookie did not sign anyone in. `invalid` covers unknown, malformed and expired tokens alike;
- * `stolen` means an old validator came back after rotation: the cookie was copied, and every token of the user is gone now.
- * `Auth` then ends the user's sessions too (`AccountSessions.end()`), the one the copy already signed in included.
- */
-export type RememberTokenError =
-  | { readonly kind: 'invalid' }
-  | {
-      readonly kind: 'stolen';
-      readonly userId: number | string;
-      /** The presented validator was the one just replaced by a rotation. Information only: an older validator or one never issued, on a known selector, comes from someone who held the cookie (the selector is random), and `Auth` announces every `stolen` the same way. */
-      readonly reused?: boolean;
-    };
+export type { RememberedDevice, RememberTokenError } from './sign-ins.ts';
 
 /**
  * Remember-me tokens, one per device: `<selector>.<validator>` in the cookie, the selector in
@@ -72,7 +43,7 @@ export interface RememberTokenStore {
    */
   create(userId: number | string, expiresAt: Date, fingerprint: string): Promise<string>;
   /** Checks a cookie value and rotates it — an `err` for unknown, malformed or expired tokens (`invalid`) and for a copied cookie (`stolen`). Deleting every token of the account and choosing the one request that reports `stolen` must be one atomic step: a failed statement deletes nothing, so the next replay reports it again. The revocation of a `stolen` token and the deletion of an expired one must commit even inside a transaction that returns the err (`commitAnyway`). */
-  consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+  consume(cookie: string): Promise<Result<Omit<RememberedDevice, 'signIn'>, RememberTokenError>>;
   /**
    * Whether the token of this cookie is still stored (found by its selector, the validator is not checked); `false` for a
    * malformed cookie. It must see a `forgetUser()` at once (read-after-write: no cache, no lagging replica): an answer of `true` for a forgotten token lets a session survive `AccountSessions.end()`. A sign-in asks it right before it starts, to notice that `end()` took the token meanwhile.
@@ -128,7 +99,7 @@ export class DatabaseRememberTokens implements RememberTokenStore {
     return `${selector}.${validator}`;
   }
 
-  async consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>> {
+  async consume(cookie: string): Promise<Result<Omit<RememberedDevice, 'signIn'>, RememberTokenError>> {
     const parts = parse(cookie);
     if (!parts) return err({ kind: 'invalid' }); // malformed: no query
     const db = this.#db();
