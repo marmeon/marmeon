@@ -145,7 +145,7 @@ export default defineRoutes((Route) => {
   factors.post('/settings/passkeys/:passkey/release', ReleasePasskeyController).name('auth.passkeys.release').block();
   factors.post('/settings/passkeys/:passkey/remove', RemovePasskeyController).name('auth.passkeys.destroy').block();
   // Ending one sign-in: sudo mode (a stolen session must not sign its owner out elsewhere without the password). The id is looked up
-  // within `ctx.user`'s own sign-ins; another account's is not found. Without a bound `SignInStore` (AuthServiceProvider) the page lists none.
+  // within `ctx.user`'s own sign-ins; another account's is not found.
   sudo.post('/settings/sign-ins/:signIn/end', EndSignInController).name('auth.sign-ins.destroy');
   sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
   // Creating one is a layer over the list; its answer — the plain text — replaces it, shown once.

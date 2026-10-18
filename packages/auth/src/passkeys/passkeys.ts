@@ -6,11 +6,10 @@ import { RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
 import { claimRefused } from '../account-sessions.ts';
-import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, READ_PENDING, SIGN_IN_VERIFIED } from '../auth.ts';
+import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, DROP_REMEMBER_TOKEN, READ_PENDING, SIGN_IN_VERIFIED } from '../auth.ts';
 import { AuthConfig, rememberCookieName } from '../config.ts';
 import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
 import { clearPasswordCheck, takePasswordCheck, type PasswordThrottled } from '../password-throttle.ts';
-import { RememberTokenStore } from '../remember.ts';
 import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from '../two-factor/proof.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
 import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict } from '../two-factor/state.ts';
@@ -106,7 +105,6 @@ export class Passkeys implements SecondFactorPasskeys {
   readonly #authConfig: AuthConfig;
   readonly #rememberCookie: string;
   readonly #connections: Connections;
-  readonly #remember: RememberTokenStore;
   readonly #limiter: RateLimiter;
   readonly #events: EventDispatcher;
   readonly #request: RequestInfo;
@@ -124,7 +122,6 @@ export class Passkeys implements SecondFactorPasskeys {
     config: PasskeyConfig,
     authConfig: AuthConfig,
     connections: Connections,
-    remember: RememberTokenStore,
     limiter: RateLimiter,
     events: EventDispatcher,
     request: RequestInfo,
@@ -142,7 +139,6 @@ export class Passkeys implements SecondFactorPasskeys {
     this.#config = config;
     this.#authConfig = authConfig;
     this.#connections = connections;
-    this.#remember = remember;
     this.#limiter = limiter;
     this.#events = events;
     this.#request = request;
@@ -252,7 +248,7 @@ export class Passkeys implements SecondFactorPasskeys {
       // Once more, now that the factor is committed: a session or token made in the window since the first sign-out dies here.
       try {
         await this.#auth.updateSessionKey();
-        await this.#remember.forgetUser(id);
+        await this.#auth[DROP_REMEMBER_TOKEN]();
       } catch (error) {
         this.#logger.error('A passkey was registered as the first factor, but signing out the other devices a second time failed: sessions made meanwhile may be open', { user: id, error: error instanceof Error ? error.message : String(error) });
         throw error;

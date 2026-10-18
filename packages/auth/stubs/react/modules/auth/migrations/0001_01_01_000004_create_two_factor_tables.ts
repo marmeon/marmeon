@@ -1,4 +1,4 @@
-// @marmeon-stub auth 3
+// @marmeon-stub auth 4
 import { defineMigration } from '@marmeon/database';
 
 // The authenticator app of an account (its secret encrypted, bound to the user, unconfirmed until the first code was shown) and the

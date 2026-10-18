@@ -98,7 +98,7 @@ async function boot(env: Record<string, string> = {}) {
     return { send, who, jar, stored, edit };
   };
   const setTokenEnd = (inMs: number) =>
-    application.container.make(Connections).get<any>().updateTable('remember_tokens').set({ expires_at: new Date(Date.now() + inMs) }).execute();
+    application.container.make(Connections).get<any>().updateTable('sign_ins').set({ remember_until: new Date(Date.now() + inMs) }).execute();
   return { application, browser, setTokenEnd };
 }
 

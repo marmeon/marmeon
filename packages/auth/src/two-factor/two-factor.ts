@@ -5,11 +5,10 @@ import { DecryptError, Encrypter } from '@marmeon/encryption';
 import { RequestInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
-import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, COMPLETE_PENDING, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE } from '../auth.ts';
+import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, COMPLETE_PENDING, DROP_REMEMBER_TOKEN, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE } from '../auth.ts';
 import { claimRefused } from '../account-sessions.ts';
 import { AuthConfig, rememberCookieName } from '../config.ts';
 import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, TwoFactorEnabled, TwoFactorDisabled } from '../events.ts';
-import { RememberTokenStore } from '../remember.ts';
 import { idOf, UserProvider, type AuthUser, type AuthUserId } from '../user.ts';
 import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from './proof.ts';
 import { clearPasswordCheck, takePasswordCheck, type PasswordThrottled } from '../password-throttle.ts';
@@ -74,7 +73,6 @@ export class TwoFactor {
   readonly #store: TwoFactorStore;
   readonly #encrypter: Encrypter;
   readonly #limiter: RateLimiter;
-  readonly #remember: RememberTokenStore;
   readonly #events: EventDispatcher;
   readonly #request: RequestInfo;
   readonly #users: UserProvider;
@@ -92,7 +90,6 @@ export class TwoFactor {
     store: TwoFactorStore,
     encrypter: Encrypter,
     limiter: RateLimiter,
-    remember: RememberTokenStore,
     events: EventDispatcher,
     request: RequestInfo,
     users: UserProvider,
@@ -110,7 +107,6 @@ export class TwoFactor {
     this.#store = store;
     this.#encrypter = encrypter;
     this.#limiter = limiter;
-    this.#remember = remember;
     this.#events = events;
     this.#request = request;
     this.#users = users;
@@ -286,7 +282,7 @@ export class TwoFactor {
     // as after a password change: the next sign-in makes a new one after the code.
     try {
       await this.#auth.updateSessionKey();
-      await this.#remember.forgetUser(id);
+      await this.#auth[DROP_REMEMBER_TOKEN]();
     } catch (error) {
       // The factor stays on (later sign-ins are asked for it); what is left to end are sessions that raced the activation: tell the operators.
       this.#logger.error('Two-factor authentication was turned on, but signing out the other devices a second time failed: sessions made while it was turned on may be open', { user: id, error: error instanceof Error ? error.message : String(error) });

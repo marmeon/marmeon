@@ -1,4 +1,4 @@
-// @marmeon-stub auth 3
+// @marmeon-stub auth 4
 import { defineMigration } from '@marmeon/database';
 
 // One reset token per e-mail, only as a hash: the plain token exists only in the mail.

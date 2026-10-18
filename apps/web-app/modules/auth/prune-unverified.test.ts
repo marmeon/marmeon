@@ -65,7 +65,7 @@ describe('pruning accounts whose address was never confirmed', () => {
     }
     expect(await sessions()).toEqual([String(old.id), String(kept.id)].sort());
     expect(await notifications(old)).toBe(1);
-    expect(await count('remember_tokens', old)).toBe(1);
+    expect(await count('sign_ins', old)).toBe(1);
 
     const results = await app.schedule.run(nightAfter(app.clock.now()));
     expect(results.find((result) => result.task === 'auth:prune-unverified')).toMatchObject({ outcome: 'ran' });
@@ -81,7 +81,7 @@ describe('pruning accounts whose address was never confirmed', () => {
     expect(resets.rows.map((row) => row.email), 'the deleted account kept its reset token').toEqual([kept.email]);
     disk.assertMissing('avatars/old.png').assertExists('avatars/kept.png');
     expect([await notifications(old), await notifications(kept)]).toEqual([0, 1]);
-    for (const table of ['remember_tokens', 'personal_access_tokens', 'profile_links', 'login_activity']) {
+    for (const table of ['sign_ins', 'personal_access_tokens', 'profile_links', 'login_activity']) {
       expect([table, await count(table, old), await count(table, kept)]).toEqual([table, 0, 1]);
     }
   });

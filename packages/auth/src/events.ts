@@ -184,7 +184,6 @@ export class PasswordReset {
 export interface EverySessionEndedPayload {
   at: string;
   accounts: number;
-  rememberTokens: number;
   resetTokens: number;
   accessTokens: number;
   signIns: number;
@@ -196,12 +195,12 @@ export interface EverySessionEndedInput extends Omit<EverySessionEndedPayload, '
 }
 
 /** @internal The validation behind `EverySessionEnded.schema`; the type tests compare its output with `EverySessionEndedPayload`. */
-export const everySessionEndedSchema = v.object({ at: instant, accounts: v.number(), rememberTokens: v.number(), resetTokens: v.number(), accessTokens: v.number(), signIns: v.number() });
+export const everySessionEndedSchema = v.object({ at: instant, accounts: v.number(), resetTokens: v.number(), accessTokens: v.number(), signIns: v.number() });
 
 /**
- * Every session of every account was ended at once (`AccountSessions.endEveryone()`). Queueable: `{ at, accounts, rememberTokens,
- * resetTokens, accessTokens, signIns }` (`at` as an ISO-8601 string) — how many accounts got a new session key, and how many
- * remember-me tokens, password-reset tokens, API tokens (0 unless asked for) and sign-in rows were deleted.
+ * Every session of every account was ended at once (`AccountSessions.endEveryone()`). Queueable: `{ at, accounts, resetTokens,
+ * accessTokens, signIns }` (`at` as an ISO-8601 string) — how many accounts got a new session key, and how many password-reset
+ * tokens, API tokens (0 unless asked for) and sign-ins (their remember-me tokens with them) were deleted.
  */
 export class EverySessionEnded {
   static readonly event = 'auth.every-session-ended';
@@ -209,15 +208,13 @@ export class EverySessionEnded {
   readonly #event = true;
   readonly at: Date;
   readonly accounts: number;
-  readonly rememberTokens: number;
   readonly resetTokens: number;
   readonly accessTokens: number;
   readonly signIns: number;
 
-  constructor(at: Date, counts: { readonly accounts: number; readonly rememberTokens: number; readonly resetTokens: number; readonly accessTokens: number; readonly signIns: number }) {
+  constructor(at: Date, counts: { readonly accounts: number; readonly resetTokens: number; readonly accessTokens: number; readonly signIns: number }) {
     this.at = at;
     this.accounts = counts.accounts;
-    this.rememberTokens = counts.rememberTokens;
     this.resetTokens = counts.resetTokens;
     this.accessTokens = counts.accessTokens;
     this.signIns = counts.signIns;

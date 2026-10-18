@@ -3,6 +3,7 @@ import { Connections } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
 import { AuthServiceProvider } from './index.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
+import { DatabaseSignIns, SignInStore } from './sign-ins.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { NoTwoFactorState, TwoFactorState } from './two-factor/state.ts';
 
@@ -16,6 +17,7 @@ import { NoTwoFactorState, TwoFactorState } from './two-factor/state.ts';
 const DEFAULTS: Record<string, Record<string, string>> = {
   PasswordResetTokenStore: {},
   AccessTokenStore: {},
+  SignInStore: {},
   TwoFactorState: {},
 };
 
@@ -28,6 +30,7 @@ describe('the contracts of the auth stores', () => {
   it.each([
     ['PasswordResetTokenStore', PasswordResetTokenStore],
     ['AccessTokenStore', AccessTokenStore],
+    ['SignInStore', SignInStore],
     ['TwoFactorState', TwoFactorState],
   ] as const)('%s has no method with a default that is not listed', (name, base) => {
     expect(methodsOf(base)).toEqual(Object.keys(DEFAULTS[name]!));
@@ -39,6 +42,7 @@ describe('the contracts of the auth stores', () => {
     app.container.instance(Connections, {} as Connections); // the database provider is not part of this app
     expect(app.container.make(AccessTokenStore)).toBeInstanceOf(DatabaseAccessTokens);
     expect(app.container.make(PasswordResetTokenStore)).toBeInstanceOf(DatabasePasswordResetTokens);
+    expect(app.container.make(SignInStore)).toBeInstanceOf(DatabaseSignIns);
     expect(app.container.make(TwoFactorState)).toBeInstanceOf(NoTwoFactorState);
   });
 });

@@ -1,4 +1,4 @@
-import { createApplication, defineModule, err, type Container } from '@marmeon/core';
+import { createApplication, defineModule, type Container } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { abort, Controller, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
 import type { RouteBinder } from '@marmeon/router';
@@ -8,7 +8,7 @@ import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { openRoutes } from './test-helpers/open-routes.ts';
-import { accessTokenStore } from './test-helpers/stores.ts';
+import { accessTokenStore, signInStore } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import {
   abilities,
@@ -21,7 +21,7 @@ import {
   deny,
   denyAsNotFound,
   Gate,
-  RememberTokenStore,
+  SignInStore,
   UserProvider,
   type AccessToken,
   type Authenticated,
@@ -137,7 +137,6 @@ const users = new Map<number, AuthUser>([
 ]);
 const provider: UserProvider = new MemoryUsers<AuthUser>();
 for (const user of users.values()) (provider as MemoryUsers<AuthUser>).add(user);
-const noRemember: RememberTokenStore = { create: async () => '', consume: async () => err({ kind: 'invalid' }), exists: async () => false, forget: async () => {}, forgetUser: async () => {}, prune: async () => 0 };
 
 /** API tokens in memory: the plain text is `<user>/<abilities>` — what the token guard needs, nothing more. */
 const memoryTokens: AccessTokenStore = accessTokenStore({
@@ -188,7 +187,7 @@ async function boot() {
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, provider);
-      container.instance(RememberTokenStore, noRemember);
+      container.instance(SignInStore, signInStore());
       container.instance(AccessTokenStore, memoryTokens);
     },
   });

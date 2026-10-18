@@ -478,7 +478,7 @@ The steps below are the order; the [upgrade guide](../UPGRADING.md) names the ve
 4. **Deploy the new release, run `marmeon migrate --force`, then
    [`marmeon auth:end-all-sessions --force --keep-reset-tokens`](authentication.md#ending-every-session-of-every-account), then start
    it.** `migrate` runs the migrations from step 2. The second command deletes the
-   remember-me tokens and the sign-in rows, revokes the API tokens that are left and rotates the session keys, so nothing of the old
+   sign-ins (and with them the remember-me tokens), revokes the API tokens that are left and rotates the session keys, so nothing of the old
    release signs anyone in. It needs `UserProvider.updateEverySessionKey()`, which the starter kit's provider has; a provider of your
    own implements it first. Without `--keep-reset-tokens` it deletes the reset links too. `/up/ready` turns green when the tables and
    their columns are as the code needs them, and says what is missing when they are not ([health checks](health.md#liveness-and-readiness)).

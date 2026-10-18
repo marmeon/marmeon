@@ -5,13 +5,11 @@ import { PasswordBroker } from './password-reset.ts';
 import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
 import type { PasswordHash } from './hashing.ts';
 import { AccountClaimLost, NewPassword } from './new-password.ts';
-import type { RememberTokenStore } from './remember.ts';
-import { SignInTracker } from './sign-ins.ts';
 import type { AccessTokenStore } from './tokens.ts';
 import { combineFactors, NoTwoFactorState, type SecondFactor, type TwoFactorState } from './two-factor/state.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import type { AuthUser, UserProvider } from './user.ts';
-import { twoFactorState } from './test-helpers/stores.ts';
+import { signInStore, twoFactorState } from './test-helpers/stores.ts';
 
 // What a reset of an account with an unconfirmed address takes away — and what it leaves alone.
 
@@ -52,25 +50,60 @@ function setup({ state, revokeTokensOnPasswordChange = false }: { state: TwoFact
   } as unknown as Connections;
   const users = new MemoryUsers<AuthUser>();
   users.add({ id: 1, name: 'Ada', email: 'ada@example.com' }, 'old' as unknown as PasswordHash, 'old-session-key-of-the-account-0123456789');
-  const remember = { forgetUser: async () => {} } as unknown as RememberTokenStore;
+  const ended: { op: 'endAll' | 'dropToken'; args: unknown[] }[] = [];
+  const signIns = signInStore({
+    endAll: async (...args) => (ended.push({ op: 'endAll', args }), 0),
+    dropToken: async (...args) => void ended.push({ op: 'dropToken', args }),
+  });
   const newPassword = new NewPassword(
     () => tokens,
     () => connections,
     { revokeTokensOnPasswordChange } as never,
     logger,
-    new SignInTracker(undefined),
+    () => signIns,
     undefined,
     () => ({ state, events: { dispatch: async (event: object) => void events.push(event) } as unknown as EventDispatcher }),
   );
-  const reset = (user: object) => newPassword.store(users, remember, 1, hash, 'reset', user as never);
-  return { reset, events, logged, revokedCount: () => revoked, rollbacks: () => rollbacks, newPassword, users, remember };
+  const reset = (user: object) => newPassword.store(users, 1, hash, 'reset', user as never);
+  return { reset, events, logged, revokedCount: () => revoked, rollbacks: () => rollbacks, newPassword, users, ended };
 }
+
+describe('NewPassword and the sign-ins of the account', () => {
+  it('a reset ends every sign-in of the user, tokens with them', async () => {
+    const { reset, ended } = setup({ state: source([]) });
+    await reset({ id: 1, email_verified_at: new Date() });
+    expect(ended).toEqual([{ op: 'endAll', args: [1, undefined] }]);
+  });
+
+  it('a change keeps the sign-in it is made in, without its token, and ends the others', async () => {
+    const { newPassword, users, ended } = setup({ state: source([]) });
+    await newPassword.store(users, 1, hash, 'change', undefined, 'old-session-key-of-the-account-0123456789', 'A'.repeat(22));
+    expect(ended).toEqual([
+      { op: 'endAll', args: [1, 'A'.repeat(22)] },
+      { op: 'dropToken', args: [1, 'A'.repeat(22)] },
+    ]);
+  });
+
+  it('a change without a sign-in of its own ends all of them', async () => {
+    const { newPassword, users, ended } = setup({ state: source([]) });
+    await newPassword.store(users, 1, hash, 'change');
+    expect(ended).toEqual([{ op: 'endAll', args: [1, undefined] }]);
+  });
+
+  it('refuses a sign-in store that lacks a method, with its code, before the hash is written', async () => {
+    const { users, rollbacks } = setup({ state: source([]) });
+    const incomplete = new NewPassword(() => ({}) as never, () => ({ transaction: async (run: () => Promise<unknown>) => run() }) as never, {} as never, {} as never, () => ({ dropToken: async () => {} }) as never);
+    await expect(incomplete.store(users, 1, hash, 'reset')).rejects.toThrow(/^\[marmeon:A6\] NewPassword needs SignInStore\.endAll\(\)/);
+    expect(users.rows.get(1)?.hash, 'not written').toBe('old');
+    expect(rollbacks()).toBe(0);
+  });
+});
 
 describe('NewPassword over a provider that does not say whether it wrote', () => {
   it('refuses it with its code, and writes nothing more', async () => {
-    const { newPassword, remember } = setup({ state: source([]) });
+    const { newPassword } = setup({ state: source([]) });
     const silent = { findById: async () => undefined, updatePasswordHash: async () => undefined } as unknown as UserProvider;
-    await expect(newPassword.store(silent, remember, 1, hash, 'change')).rejects.toThrow(/^\[marmeon:A5\] NewPassword: UserProvider\.updatePasswordHash/);
+    await expect(newPassword.store(silent, 1, hash, 'change')).rejects.toThrow(/^\[marmeon:A5\] NewPassword: UserProvider\.updatePasswordHash/);
   });
 });
 
@@ -78,79 +111,79 @@ describe('NewPassword over a provider that refuses a write without expected', ()
   const refusing = { findById: async () => undefined, updatePasswordHash: async () => false } as unknown as UserProvider;
 
   it('throws A5 inside the transaction, so the revoked API tokens come back', async () => {
-    const { newPassword, remember, revokedCount, rollbacks } = setup({ state: source([]), revokeTokensOnPasswordChange: true });
-    await expect(newPassword.store(refusing, remember, 1, hash, 'change')).rejects.toThrow(/^\[marmeon:A5\] NewPassword: UserProvider\.updatePasswordHash\(id, hash\) answered false without expected/);
+    const { newPassword, revokedCount, rollbacks } = setup({ state: source([]), revokeTokensOnPasswordChange: true });
+    await expect(newPassword.store(refusing, 1, hash, 'change')).rejects.toThrow(/^\[marmeon:A5\] NewPassword: UserProvider\.updatePasswordHash\(id, hash\) answered false without expected/);
     expect(revokedCount(), 'the tokens were revoked inside the transaction').toBe(1);
     expect(rollbacks(), 'and it rolled back').toBe(1);
   });
 
   it('fires no event for a reset that wrote nothing', async () => {
-    const { newPassword, remember, events } = setup({ state: source(['totp']) });
-    await expect(newPassword.store(refusing, remember, 1, hash, 'reset', { id: 1, email_verified_at: null } as never)).rejects.toThrow(/\[marmeon:A5\]/);
+    const { newPassword, events } = setup({ state: source(['totp']) });
+    await expect(newPassword.store(refusing, 1, hash, 'reset', { id: 1, email_verified_at: null } as never)).rejects.toThrow(/\[marmeon:A5\]/);
     expect(events).toEqual([]);
   });
 });
 
 describe('NewPassword and the session key', () => {
   it('stores the hash with a new key, and returns that key', async () => {
-    const { newPassword, remember, users } = setup({ state: source([]) });
-    const first = await newPassword.store(users, remember, 1, hash, 'change');
+    const { newPassword, users } = setup({ state: source([]) });
+    const first = await newPassword.store(users, 1, hash, 'change');
     expect(first.sessionKey).toMatch(/^[\w-]{43}$/);
     expect(users.rows.get(1)).toMatchObject({ hash, key: first.sessionKey });
-    expect((await newPassword.store(users, remember, 1, hash, 'reset')).sessionKey, 'a key for every password').not.toBe(first.sessionKey);
+    expect((await newPassword.store(users, 1, hash, 'reset')).sessionKey, 'a key for every password').not.toBe(first.sessionKey);
   });
 
   it('gives an account that had no key one', async () => {
-    const { newPassword, remember, users } = setup({ state: source([]) });
+    const { newPassword, users } = setup({ state: source([]) });
     users.add({ id: 2, name: 'Bob', email: 'bob@example.com' }, null, null);
-    const { sessionKey } = await newPassword.store(users, remember, 2, hash, 'change');
+    const { sessionKey } = await newPassword.store(users, 2, hash, 'change');
     expect(users.rows.get(2)?.key).toBe(sessionKey);
   });
 
   it('throws A5 inside the transaction when the provider ignores sessionKey, so nothing stands', async () => {
-    const { newPassword, remember, users, revokedCount, rollbacks } = setup({ state: source([]), revokeTokensOnPasswordChange: true });
+    const { newPassword, users, revokedCount, rollbacks } = setup({ state: source([]), revokeTokensOnPasswordChange: true });
     users.updatePasswordHash = async (id, newHash) => {
       users.rows.get(id)!.hash = newHash; // writes the hash, drops the key
       return true;
     };
-    await expect(newPassword.store(users, remember, 1, hash, 'change')).rejects.toThrow(/^\[marmeon:A5\] NewPassword: UserProvider\.updatePasswordHash\(id, hash, \{ sessionKey \}\) must store the session key/);
+    await expect(newPassword.store(users, 1, hash, 'change')).rejects.toThrow(/^\[marmeon:A5\] NewPassword: UserProvider\.updatePasswordHash\(id, hash, \{ sessionKey \}\) must store the session key/);
     expect(revokedCount()).toBe(1);
     expect(rollbacks()).toBe(1);
   });
 
   it('throws A5 for an account with no key whose provider ignores sessionKey: it would stay without the row lock', async () => {
-    const { newPassword, remember, users } = setup({ state: source([]) });
+    const { newPassword, users } = setup({ state: source([]) });
     users.add({ id: 2, name: 'Bob', email: 'bob@example.com' }, null, null);
     users.updatePasswordHash = async () => true;
-    await expect(newPassword.store(users, remember, 2, hash, 'reset')).rejects.toThrow(/\[marmeon:A5\]/);
+    await expect(newPassword.store(users, 2, hash, 'reset')).rejects.toThrow(/\[marmeon:A5\]/);
   });
 
   it('treats another key than the one written as a later ending, not as a broken provider: a change loses its claim, a reset stands', async () => {
-    const { newPassword, remember, users, rollbacks } = setup({ state: source([]) });
+    const { newPassword, users, rollbacks } = setup({ state: source([]) });
     const write = users.updatePasswordHash.bind(users);
     users.updatePasswordHash = async (id, newHash, options) => {
       const wrote = await write(id, newHash, options);
       users.rows.get(id)!.key = 'a-key-that-is-not-the-one-written-0123456789'; // an ending lands right after the write
       return wrote;
     };
-    await expect(newPassword.store(users, remember, 1, hash, 'change', undefined, 'old-session-key-of-the-account-0123456789')).rejects.toBeInstanceOf(AccountClaimLost);
+    await expect(newPassword.store(users, 1, hash, 'change', undefined, 'old-session-key-of-the-account-0123456789')).rejects.toBeInstanceOf(AccountClaimLost);
     expect(rollbacks()).toBe(1);
     users.rows.get(1)!.key = 'old-session-key-of-the-account-0123456789'; // the memory provider does not roll back
-    await expect(newPassword.store(users, remember, 1, hash, 'reset')).resolves.toMatchObject({ revoked: 0 });
+    await expect(newPassword.store(users, 1, hash, 'reset')).resolves.toMatchObject({ revoked: 0 });
   });
 
   it('refuses the write of a change over a key that is no longer the one its session read, and writes nothing', async () => {
-    const { newPassword, remember, users, rollbacks } = setup({ state: source([]) });
-    await expect(newPassword.store(users, remember, 1, hash, 'change', undefined, 'another-key-than-the-stored-one-0123456789')).rejects.toBeInstanceOf(AccountClaimLost);
+    const { newPassword, users, rollbacks } = setup({ state: source([]) });
+    await expect(newPassword.store(users, 1, hash, 'change', undefined, 'another-key-than-the-stored-one-0123456789')).rejects.toBeInstanceOf(AccountClaimLost);
     expect(users.rows.get(1)).toMatchObject({ hash: 'old', key: 'old-session-key-of-the-account-0123456789' });
     expect(rollbacks()).toBe(1);
-    await expect(newPassword.store(users, remember, 1, hash, 'change', undefined, 'old-session-key-of-the-account-0123456789')).resolves.toMatchObject({ sessionKey: expect.any(String) });
+    await expect(newPassword.store(users, 1, hash, 'change', undefined, 'old-session-key-of-the-account-0123456789')).resolves.toMatchObject({ sessionKey: expect.any(String) });
   });
 
   it('compares a change of an account without a key with NULL', async () => {
-    const { newPassword, remember, users } = setup({ state: source([]) });
+    const { newPassword, users } = setup({ state: source([]) });
     users.add({ id: 2, name: 'Bob', email: 'bob@example.com' }, null, 'a-key-that-ended-the-sessions-0123456789');
-    await expect(newPassword.store(users, remember, 2, hash, 'change', undefined, null)).rejects.toBeInstanceOf(AccountClaimLost);
+    await expect(newPassword.store(users, 2, hash, 'change', undefined, null)).rejects.toBeInstanceOf(AccountClaimLost);
   });
 });
 
@@ -230,8 +263,8 @@ describe('NewPassword after a reset it leaves alone', () => {
 
   it('removes nothing on a password change, whatever the address', async () => {
     const state = source(['passkey']);
-    const { newPassword, users, remember } = setup({ state });
-    await newPassword.store(users, remember, 1, hash, 'change', { id: 1, email_verified_at: null } as never);
+    const { newPassword, users } = setup({ state });
+    await newPassword.store(users, 1, hash, 'change', { id: 1, email_verified_at: null } as never);
     expect(state.removed).toBe(0);
   });
 });
@@ -259,7 +292,7 @@ describe('a TwoFactorState without removeAll', () => {
     const old = { factors: async () => [], enabledSince: async () => undefined } as unknown as TwoFactorState; // a source without removeAll() (a cast)
     const { newPassword } = setup({ state: old });
     let consumed = 0;
-    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, {} as never, { resetExpire: 60 } as never, newPassword);
+    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, { resetExpire: 60 } as never, newPassword);
     await expect(broker.reset('a@example.com', 'x', 'pw')).rejects.toThrow(/^\[marmeon:A6\] .*removeAll/);
     expect(consumed).toBe(0);
   });
@@ -269,7 +302,7 @@ describe('a TwoFactorState without removeAll', () => {
     const { newPassword } = setup({ state: combineFactors(twoFactorState(), inner) });
     (inner as unknown as { removeAll: unknown }).removeAll = undefined;
     let consumed = 0;
-    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, {} as never, { resetExpire: 60 } as never, newPassword);
+    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, { resetExpire: 60 } as never, newPassword);
     await expect(broker.reset('a@example.com', 'x', 'pw')).rejects.toThrow(/^\[marmeon:A6\] .*removeAll/);
     expect(consumed).toBe(0);
   });

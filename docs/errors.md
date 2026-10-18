@@ -169,7 +169,7 @@ a transaction, an `err` rolls the transaction back, as the [transactions](transa
 | `auth.attempt()` | `invalid-credentials`, `two-factor-required` | [Authentication](authentication.md#signing-in) |
 | `twoFactor.challenge()` | `no-challenge`, `expired`, `invalid-code`, `throttled` | [Two-factor authentication](two-factor-authentication.md#the-sign-in) |
 | `twoFactor.confirm()` | `not-started`, `invalid-password`, `invalid-code`, `throttled` | [Two-factor authentication](two-factor-authentication.md#setting-up) |
-| `RememberTokenStore.consume()` | `invalid`, `stolen` | [Authentication](authentication.md#remember-me) |
+| `SignInStore.consume()` | `invalid`, `stolen` | [Authentication](authentication.md#remember-me) |
 | `AccountSessions.end()` | `missing` | [Authentication](authentication.md#ending-every-session-of-a-user) |
 | `PasswordBroker.createToken()` | `unavailable` | [Password reset](passwords.md#asking-for-a-link) |
 | `PasswordBroker.reset()` | `invalid-token` | [Password reset](passwords.md#resetting-the-password) |
@@ -181,15 +181,15 @@ These `err` kinds are closed: a new kind comes only with a new method, never as 
 exhaustive `switch` over them with `satisfies never` keeps compiling across minor versions. Other unions are open, as
 [when a union grows](releases.md#when-a-union-grows) explains.
 
-`RememberTokenStore` and `PasswordResetTokenStore` are the contracts a store of your own implements, so the table lists the kinds
+`SignInStore` and `PasswordResetTokenStore` are the contracts a store of your own implements, so the table lists the kinds
 each has to return. A `get(callback)` whose callback returns a `Result` gives a nested one: the lock's `ok` holds the callback's
 result. An exception from the callback is rethrown, not turned into an `err`.
 
 Some of these `err`s must survive the transaction they are returned from, because the work behind them is a protective one. They
 are made with [`commitAnyway()`](transactions.md#returning-an-err), and a store of your own does the same:
 
-- `RememberTokenStore.consume()` for `stolen` (all of the user's remember-me tokens are revoked) and for `invalid` on an expired
-  token (the token is deleted).
+- `SignInStore.consume()` for `stolen` (all of the user's sign-ins are deleted, their tokens with them) and for `invalid` on an expired
+  token (the token is taken off its sign-in).
 - `PasswordResetTokenStore.consume()` and, through it, `PasswordBroker.reset()` for `invalid-token` on an expired token (the token
   is deleted). `reset()` also commits the `invalid-token` of an account that is gone, so that the token stays used up.
 
@@ -388,7 +388,7 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | A3 | `session` | Sessions are not set up: a driver whose package or provider is missing. [Drivers](session.md#drivers) |
 | A4 | `encryption` | A payload did not decrypt: changed, from another key or for another context. [Encrypting and decrypting](encryption.md#encrypting-and-decrypting) |
 | A5 | `auth` | A `UserProvider` breaks its contract: `updatePasswordHash()` or `updateSessionKey()` does not answer with a boolean (or `updatePasswordHash()` answers `false` without `expected`), `updateSessionKey()` / `updateEverySessionKey()` is missing (JavaScript, a cast), `updateSessionKey(id, k, k)` is refused for the stored key, a new key is not handed back by `findById()` (also the one a new password passes to `updatePasswordHash()` as `sessionKey`), `findForLogin()` and `findById()` disagree on `sessionKey`, or `updateEverySessionKey()` returns no count or no `sampleId`. [The user type](authentication.md#the-user-type-and-where-users-come-from), [for your own user provider](authentication.md#for-your-own-user-provider) |
-| A6 | `auth` | A store or hasher breaks its contract (JavaScript, a cast; TypeScript refuses to compile most of it): a `PasswordResetTokenStore` without `forgetEveryone()`, an `AccessTokenStore` without `revokeEveryone()`, a `RememberTokenStore` without `forgetEveryone()`, a source of `TwoFactorState` without `factors()`, `enabledSince()` or `removeAll()` (found when `combineFactors()` is called and before a reset token is spent), or a `Hasher` without `failureFloorMs()` or with one that answers anything but a finite number of milliseconds, 0 or more. [Your own stores](authentication.md#your-own-stores), [hashing](hashing.md#making-and-checking-hashes) |
+| A6 | `auth` | A store or hasher breaks its contract (JavaScript, a cast; TypeScript refuses to compile most of it): a `PasswordResetTokenStore` without `forgetEveryone()`, an `AccessTokenStore` without `revokeEveryone()`, a `SignInStore` without `endAll()`, `dropToken()` or `endEveryone()` (found before anything is ended), a source of `TwoFactorState` without `factors()`, `enabledSince()` or `removeAll()` (found when `combineFactors()` is called and before a reset token is spent), or a `Hasher` without `failureFloorMs()` or with one that answers anything but a finite number of milliseconds, 0 or more. [Your own stores](authentication.md#your-own-stores), [hashing](hashing.md#making-and-checking-hashes) |
 | Q1 | `queue` | A job record has no version (it was queued by an earlier release) and is moved to the failed jobs. [Deploying while jobs wait](queues.md#deploying-while-jobs-wait) |
 | Q2 | `queue` | A job no worker could read within six hours is moved to the failed jobs. [Deploying while jobs wait](queues.md#deploying-while-jobs-wait) |
 | Q3 | `queue` | A queued listener has no `static listener`, the stable name its jobs carry. [Queued listeners](events.md#queued-listeners) |

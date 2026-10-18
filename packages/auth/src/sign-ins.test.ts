@@ -5,7 +5,7 @@ import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { DatabaseSignIns, SEEN_GRANULARITY_SECONDS, SIGN_INS_TABLE, type SignInsTable, type SignInWindow } from './sign-ins.ts';
 
 const WINDOW: SignInWindow = { idleSeconds: 3600, maxSeconds: 86_400 };
-const SELECTOR = 'a'.repeat(22);
+const FINGERPRINT = 'f'.repeat(43);
 
 describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
   let connections: Connections;
@@ -13,6 +13,11 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
   let clock: TestClock;
   let signIns: DatabaseSignIns;
   const inAMonth = () => new Date(clock.now() + 30 * 86_400_000);
+  /** A new sign-in that holds a remember-me token; its id, and the cookie of the token. */
+  const remembered = async (userId: number, userAgent: string | undefined, until = inAMonth()) => {
+    const id = await signIns.create({ userId, userAgent });
+    return { id, cookie: await signIns.issueToken(userId, id, { until, fingerprint: FINGERPRINT }) };
+  };
   const rows = () => connections.get<{ [SIGN_INS_TABLE]: SignInsTable }>().selectFrom(SIGN_INS_TABLE).selectAll().execute();
 
   beforeAll(async () => {
@@ -38,7 +43,7 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
   it('stores no address and no secret — only the columns of the table', async () => {
     await signIns.create({ userId: 1, userAgent: 'Agent' });
     expect(Object.keys((await rows())[0]!).sort()).toEqual(
-      ['created_at', 'id', 'last_seen_at', 'remember_created_at', 'remember_fingerprint', 'remember_rotated_at', 'remember_selector', 'remember_until', 'signed_in_at', 'updated_at', 'user_agent', 'user_id'],
+      ['created_at', 'id', 'last_seen_at', 'remember_created_at', 'remember_fingerprint', 'remember_rotated_at', 'remember_until', 'signed_in_at', 'updated_at', 'user_agent', 'user_id'],
     );
   });
 
@@ -57,7 +62,7 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
   it('endEveryone deletes the rows of every user, dead or alive, and counts them', async () => {
     await signIns.create({ userId: 1, userAgent: undefined });
     await signIns.create({ userId: 2, userAgent: undefined });
-    await signIns.create({ userId: 2, userAgent: undefined, remember: { selector: SELECTOR, until: inAMonth() } });
+    await remembered(2, undefined);
     expect(await signIns.endEveryone()).toBe(3);
     expect(await rows()).toEqual([]);
     expect(await signIns.endEveryone()).toBe(0);
@@ -73,35 +78,17 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
     expect(await signIns.endAll(1, '../x'), 'a malformed exception keeps nothing').toBe(1);
   });
 
-  describe('resume', () => {
-    it('continues the row that owns the selector, for its user only', async () => {
-      const id = await signIns.create({ userId: 1, userAgent: 'Agent', remember: { selector: SELECTOR, until: inAMonth() } });
-      clock.travel({ hours: 2 });
-      expect(await signIns.resume(1, SELECTOR, inAMonth())).toBe(id);
-      const [row] = await rows();
-      expect(new Date(row!.signed_in_at).getTime()).toBe(clock.now());
-      expect(new Date(row!.last_seen_at).getTime()).toBe(clock.now());
-      expect(await rows()).toHaveLength(1);
-    });
-
-    it('creates nothing for another user or an unknown selector', async () => {
-      await signIns.create({ userId: 1, userAgent: 'Agent', remember: { selector: SELECTOR, until: inAMonth() } });
-      expect(await signIns.resume(2, SELECTOR, inAMonth())).toBeUndefined();
-      expect(await signIns.resume(1, 'b'.repeat(22), inAMonth())).toBeUndefined();
-      expect(await rows()).toHaveLength(1);
-    });
-  });
-
-  it('remember sets and removes the selector of a sign-in', async () => {
+  it('a token makes the sign-in listed as remembered, and dropping it ends that — for its owner only', async () => {
     const id = await signIns.create({ userId: 1, userAgent: undefined });
     expect((await signIns.list(1, WINDOW))[0]!.remembered).toBe(false);
-    await signIns.remember(1, id, { selector: SELECTOR, until: inAMonth() });
+    const cookie = await signIns.issueToken(1, id, { until: inAMonth(), fingerprint: FINGERPRINT });
     expect((await signIns.list(1, WINDOW))[0]!.remembered).toBe(true);
-    await signIns.remember(2, id, undefined); // not the owner: nothing changes
+    await signIns.dropToken(2, id); // not the owner: nothing changes
     expect((await signIns.list(1, WINDOW))[0]!.remembered).toBe(true);
-    await signIns.remember(1, id, undefined);
+    await signIns.dropToken(1, id);
     expect((await signIns.list(1, WINDOW))[0]!.remembered).toBe(false);
-    expect(await signIns.resume(1, SELECTOR, inAMonth())).toBeUndefined();
+    expect(await signIns.consume(cookie)).toMatchObject({ ok: false, error: { kind: 'invalid' } });
+    expect(await rows(), 'the row stays').toHaveLength(1);
   });
 
   describe('seen', () => {
@@ -137,15 +124,15 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
       const fresh = await signIns.create({ userId: 1, userAgent: 'fresh' });
       const idle = await signIns.create({ userId: 1, userAgent: 'idle' });
       const old = await signIns.create({ userId: 1, userAgent: 'old' });
-      const remembered = await signIns.create({ userId: 1, userAgent: 'remembered', remember: { selector: SELECTOR, until: inAMonth() } });
-      const expiredRemember = await signIns.create({ userId: 1, userAgent: 'expired remember', remember: { selector: 'c'.repeat(22), until: new Date(clock.now() + 3_600_000) } });
+      const { id: kept } = await remembered(1, 'remembered');
+      const { id: expiredRemember } = await remembered(1, 'expired remember', new Date(clock.now() + 3_600_000));
       const other = await signIns.create({ userId: 2, userAgent: 'other' });
       const db = connections.get<any>();
       const set = (id: string, values: Record<string, Date>) => db.updateTable(SIGN_INS_TABLE).set(values).where('id', '=', id).execute();
       const ago = (seconds: number) => new Date(clock.now() - seconds * 1000);
       await set(idle, { last_seen_at: ago(WINDOW.idleSeconds + SEEN_GRANULARITY_SECONDS + 60) });
       await set(old, { signed_in_at: ago(WINDOW.maxSeconds + 60) });
-      await set(remembered, { last_seen_at: ago(10 * 86_400), signed_in_at: ago(10 * 86_400) }); // the cookie, not the session, keeps it
+      await set(kept, { last_seen_at: ago(10 * 86_400), signed_in_at: ago(10 * 86_400) }); // the cookie, not the session, keeps it
       await set(expiredRemember, { last_seen_at: ago(WINDOW.idleSeconds + SEEN_GRANULARITY_SECONDS + 60) });
       clock.travel({ hours: 2 }); // the one-hour remember-me of `expiredRemember` is over; `fresh` is beyond the idle limit too
       await set(fresh, { last_seen_at: ago(60) });
@@ -155,13 +142,13 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
       expect(listed).toEqual(['fresh', 'remembered']); // most recently seen first
       expect((await signIns.list(2, WINDOW)).map((record) => record.userAgent)).toEqual(['other']);
 
-      expect(await signIns.prune(WINDOW)).toBe(3);
+      expect(await signIns.prune(WINDOW, 30)).toBe(3);
       expect((await rows()).map((row) => row.user_agent).sort()).toEqual(['fresh', 'other', 'remembered']);
-      expect(await signIns.prune(WINDOW)).toBe(0);
+      expect(await signIns.prune(WINDOW, 30)).toBe(0);
     });
 
     it('lists the record as the store knows it', async () => {
-      await signIns.create({ userId: 1, userAgent: 'Agent', remember: { selector: SELECTOR, until: inAMonth() } });
+      await remembered(1, 'Agent');
       const [record] = await signIns.list(1, WINDOW);
       expect(record).toMatchObject({ userId: 1, userAgent: 'Agent', remembered: true });
       expect(record!.signedInAt).toEqual(new Date(clock.now()));
@@ -171,19 +158,10 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
   });
 
   it('does not list an expired remember-me as active', async () => {
-    await signIns.create({ userId: 1, userAgent: undefined, remember: { selector: SELECTOR, until: new Date(clock.now() + 60_000) } });
+    await remembered(1, undefined, new Date(clock.now() + 60_000));
     expect((await signIns.list(1, WINDOW))[0]!.remembered).toBe(true);
     clock.travel({ seconds: 120 });
     expect((await signIns.list(1, WINDOW))[0]!.remembered).toBe(false);
-  });
-
-  it('endRemembered ends the row of that selector for that user only — never by selector alone', async () => {
-    await signIns.create({ userId: 1, userAgent: undefined, remember: { selector: SELECTOR, until: inAMonth() } });
-    expect(await signIns.endRemembered(2, SELECTOR), 'another user').toBe(false);
-    expect(await rows()).toHaveLength(1);
-    expect(await signIns.endRemembered(1, 'b'.repeat(22))).toBe(false);
-    expect(await signIns.endRemembered(1, SELECTOR)).toBe(true);
-    expect(await rows()).toEqual([]);
   });
 
   it('asks the database nothing for a malformed id', async () => {
@@ -192,7 +170,7 @@ describe.each(drivers)('DatabaseSignIns on %s', (driver) => {
     for (const id of ['', '../x', 'a'.repeat(21), 'a'.repeat(23), "' or 1=1 --"]) {
       expect(await signIns.seen(1, id, true)).toBe(false);
       expect(await signIns.end(1, id)).toBe(false);
-      await signIns.remember(1, id, undefined);
+      await signIns.dropToken(1, id);
     }
     stop();
     expect(queries).toEqual([]);

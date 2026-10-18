@@ -50,7 +50,7 @@ export declare abstract class AccessTokenStore {
 // AccountSessions
 export declare class AccountSessions {
     #private;
-    constructor(users: UserProvider, remember: RememberTokenStore, sessions: UserSessions | undefined, signIns?: SignInTracker, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings);
+    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings);
     [ANNOUNCE_ENDED](userId: string | number): Promise<void>;
     end(userId: AuthUserId): Promise<Result<EndedSessions, {
         readonly kind: 'missing';
@@ -76,7 +76,7 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, remember: RememberTokenStore, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInTracker, clock: Clock, fingerprints: SessionFingerprints);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints);
     attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
     login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
@@ -112,6 +112,7 @@ export declare class Auth {
     updatePassword(password: string): Promise<void>;
     logoutOtherDevices(password: string): Promise<boolean>;
     updateSessionKey(): Promise<boolean>;
+    [DROP_REMEMBER_TOKEN](): Promise<void>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
     [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
 }
@@ -244,52 +245,29 @@ export declare class DatabasePasswordResetTokens extends PasswordResetTokenStore
     forgetEveryone(): Promise<number>;
     prune(maxAgeSeconds: number): Promise<number>;
 }
-// DatabaseRememberTokens
-export declare class DatabaseRememberTokens implements RememberTokenStore {
-    #private;
-    constructor(connections: Connections, clock: Clock);
-    create(userId: number | string, expiresAt: Date, fingerprint: string): Promise<string>;
-    consume(cookie: string): Promise<Result<Omit<RememberedDevice, 'signIn'>, RememberTokenError>>;
-    exists(cookie: string): Promise<boolean>;
-    rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
-    forget(cookie: string): Promise<void>;
-    forgetUser(userId: number | string, except?: string): Promise<void>;
-    forgetEveryone(): Promise<number>;
-    prune(maxAgeDays: number): Promise<number>;
-}
 // DatabaseSignIns
-export declare class DatabaseSignIns implements SignInStore {
+export declare class DatabaseSignIns extends SignInStore {
     #private;
     constructor(connections: Connections, clock: Clock);
     create(input: {
-        userId: number | string;
+        userId: AuthUserId;
         userAgent: string | undefined;
-        remember?: {
-            selector: string;
-            until: Date;
-        };
     }): Promise<string>;
-    resume(userId: number | string, selector: string, until: Date): Promise<string | undefined>;
-    remember(userId: number | string, id: string, remember: {
-        selector: string;
-        until: Date;
-    } | undefined): Promise<void>;
-    seen(userId: number | string, id: string, touch: boolean): Promise<boolean>;
-    list(userId: number | string, window: SignInWindow): Promise<readonly SignInRecord[]>;
-    endRemembered(userId: number | string, selector: string): Promise<boolean>;
-    end(userId: number | string, id: string): Promise<boolean>;
-    endAll(userId: number | string, except?: string): Promise<number>;
+    seen(userId: AuthUserId, id: string, touch: boolean): Promise<boolean>;
+    list(userId: AuthUserId, window: SignInWindow): Promise<readonly SignInRecord[]>;
+    end(userId: AuthUserId, id: string): Promise<boolean>;
+    endAll(userId: AuthUserId, except?: string): Promise<number>;
     endEveryone(): Promise<number>;
-    prune(window: SignInWindow, rememberMaxAgeDays?: number): Promise<number>;
-    issueToken(userId: number | string, id: string, token: {
+    prune(window: SignInWindow, rememberMaxAgeDays: number): Promise<number>;
+    issueToken(userId: AuthUserId, id: string, token: {
         until: Date;
         fingerprint: string;
     }): Promise<string>;
-    dropToken(userId: number | string, id: string): Promise<void>;
+    dropToken(userId: AuthUserId, id: string): Promise<void>;
     consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
     remembered(cookie: string): Promise<boolean>;
     forgetToken(cookie: string): Promise<void>;
-    rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
+    rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
 }
 // DeviceDescription
 export interface DeviceDescription {
@@ -350,13 +328,11 @@ export declare class EverySessionEnded {
     static readonly schema: StandardSchemaV1<EverySessionEndedInput, EverySessionEndedPayload>;
     readonly at: Date;
     readonly accounts: number;
-    readonly rememberTokens: number;
     readonly resetTokens: number;
     readonly accessTokens: number;
     readonly signIns: number;
     constructor(at: Date, counts: {
         readonly accounts: number;
-        readonly rememberTokens: number;
         readonly resetTokens: number;
         readonly accessTokens: number;
         readonly signIns: number;
@@ -370,7 +346,6 @@ export interface EverySessionEndedInput extends Omit<EverySessionEndedPayload, '
 export interface EverySessionEndedPayload {
     at: string;
     accounts: number;
-    rememberTokens: number;
     resetTokens: number;
     accessTokens: number;
     signIns: number;
@@ -378,7 +353,6 @@ export interface EverySessionEndedPayload {
 // EveryoneEnded
 export interface EveryoneEnded {
     readonly accounts: number;
-    readonly rememberTokens: number;
     readonly resetTokens: number;
     readonly accessTokens: number;
     readonly signIns: number;
@@ -608,7 +582,7 @@ export interface PasskeySignInFailedPayload {
 // PasswordBroker
 export declare class PasswordBroker {
     #private;
-    constructor(users: UserProvider, tokens: PasswordResetTokenStore, hasher: Hasher, remember: RememberTokenStore, events: EventDispatcher, config: AuthConfig, newPassword: NewPassword);
+    constructor(users: UserProvider, tokens: PasswordResetTokenStore, hasher: Hasher, events: EventDispatcher, config: AuthConfig, newPassword: NewPassword);
     createToken(email: string): Promise<Result<{
         user: AuthUser;
         token: string;
@@ -737,12 +711,10 @@ export declare class PruneTokensCommand {
         unverifiedDays: number;
         revokeTokensOnPasswordChange: boolean;
         protected: boolean;
-    }> | import("@marmeon/core").Token<RememberTokenStore> | typeof SignInTracker | typeof AccessTokenStore | typeof PasswordResetTokenStore)[];
-    constructor(resets: PasswordResetTokenStore, remember: RememberTokenStore, access: AccessTokenStore, config: AuthConfig, sessionConfig?: SessionConfig, signIns?: SignInTracker);
+    }> | typeof SignInStore | typeof AccessTokenStore | typeof PasswordResetTokenStore)[];
+    constructor(resets: PasswordResetTokenStore, access: AccessTokenStore, config: AuthConfig, sessionConfig: SessionConfig, signIns: SignInStore);
     handle({ options, output }: CommandInput): Promise<number>;
 }
-// REMEMBER_TABLE
-export declare const REMEMBER_TABLE = "remember_tokens";
 // RecoveryCodeUsed
 export declare class RecoveryCodeUsed {
     #private;
@@ -789,7 +761,7 @@ export type RememberTokenError = {
     readonly kind: 'invalid';
 } | {
     readonly kind: 'stolen';
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly reused?: boolean;
 };
 // RememberTokenReused
@@ -821,21 +793,9 @@ export interface RememberTokenReusedPayload {
     userAgent: string | null;
     sessionsEnded: boolean;
 }
-// RememberTokenStore
-export interface RememberTokenStore {
-    create(userId: number | string, expiresAt: Date, fingerprint: string): Promise<string>;
-    consume(cookie: string): Promise<Result<Omit<RememberedDevice, 'signIn'>, RememberTokenError>>;
-    exists(cookie: string): Promise<boolean>;
-    forget(cookie: string): Promise<void>;
-    rebind?(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
-    forgetUser(userId: number | string, except?: string): Promise<void>;
-    prune(maxAgeDays: number): Promise<number>;
-    forgetEveryone?(): Promise<number>;
-}
-export declare const RememberTokenStore: import("@marmeon/core").Token<RememberTokenStore>;
 // RememberedDevice
 export interface RememberedDevice {
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly signIn: string;
     readonly cookie: string | undefined;
     readonly expiresAt: Date;
@@ -850,6 +810,8 @@ export type ResourcelessAbility<P> = {
 }[AbilityOf<P>];
 // ResourcesOf
 export type ResourcesOf<P, K extends keyof P> = P[K] extends (user: AuthUser, ...resources: infer R) => unknown ? R : never;
+// SIGN_INS_TABLE
+export declare const SIGN_INS_TABLE = "sign_ins";
 // ScryptOptions
 export interface ScryptOptions {
     readonly cost: number;
@@ -872,7 +834,7 @@ export interface SignIn {
 // SignInRecord
 export interface SignInRecord {
     readonly id: string;
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly userAgent: string | undefined;
     readonly remembered: boolean;
     readonly signedInAt: Date;
@@ -880,38 +842,28 @@ export interface SignInRecord {
     readonly createdAt: Date;
 }
 // SignInStore
-export interface SignInStore {
-    create(input: {
-        userId: number | string;
+export declare abstract class SignInStore {
+    #private;
+    abstract create(input: {
+        userId: AuthUserId;
         userAgent: string | undefined;
-        remember?: {
-            selector: string;
-            until: Date;
-        };
     }): Promise<string>;
-    resume(userId: number | string, selector: string, until: Date): Promise<string | undefined>;
-    remember(userId: number | string, id: string, remember: {
-        selector: string;
-        until: Date;
-    } | undefined): Promise<void>;
-    endRemembered(userId: number | string, selector: string): Promise<boolean>;
-    seen(userId: number | string, id: string, touch: boolean): Promise<boolean>;
-    list(userId: number | string, window: SignInWindow): Promise<readonly SignInRecord[]>;
-    end(userId: number | string, id: string): Promise<boolean>;
-    endAll(userId: number | string, except?: string): Promise<number>;
-    endEveryone(): Promise<number>;
-    prune(window: SignInWindow, rememberMaxAgeDays?: number): Promise<number>;
-    issueToken(userId: number | string, id: string, token: {
+    abstract seen(userId: AuthUserId, id: string, touch: boolean): Promise<boolean>;
+    abstract list(userId: AuthUserId, window: SignInWindow): Promise<readonly SignInRecord[]>;
+    abstract end(userId: AuthUserId, id: string): Promise<boolean>;
+    abstract endAll(userId: AuthUserId, except?: string): Promise<number>;
+    abstract endEveryone(): Promise<number>;
+    abstract prune(window: SignInWindow, rememberMaxAgeDays: number): Promise<number>;
+    abstract issueToken(userId: AuthUserId, id: string, token: {
         until: Date;
         fingerprint: string;
     }): Promise<string>;
-    dropToken(userId: number | string, id: string): Promise<void>;
-    consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
-    remembered(cookie: string): Promise<boolean>;
-    forgetToken(cookie: string): Promise<void>;
-    rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
+    abstract dropToken(userId: AuthUserId, id: string): Promise<void>;
+    abstract consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+    abstract remembered(cookie: string): Promise<boolean>;
+    abstract forgetToken(cookie: string): Promise<void>;
+    abstract rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
 }
-export declare const SignInStore: import("@marmeon/core").Token<SignInStore>;
 // SignInWindow
 export interface SignInWindow {
     readonly idleSeconds: number;
@@ -1124,14 +1076,16 @@ export type CheckAbility<P, K extends string, Allowed extends string, Missing ex
 type Contravariant<T> = T extends unknown ? (resource: T) => void : never;
 // DROP_EXPIRED
 declare const DROP_EXPIRED: unique symbol;
+// DROP_REMEMBER_TOKEN
+export declare const DROP_REMEMBER_TOKEN: unique symbol;
 // NewPassword
 export declare class NewPassword {
     #private;
-    constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns?: SignInTracker, endings?: SessionEndings, factors?: () => {
+    constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: () => SignInStore, endings?: SessionEndings, factors?: () => {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
     });
-    store(users: UserProvider, remember: RememberTokenStore, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
+    store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{
         readonly revoked: number;
         readonly sessionKey: string;
     }>;
@@ -1175,25 +1129,6 @@ export declare class SessionFingerprints {
     constructor({ key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>);
     of(credentials: Credentials): string;
     matches(stored: unknown, credentials: Credentials): boolean;
-}
-// SignInTracker
-export declare class SignInTracker {
-    #private;
-    constructor(store: (() => SignInStore) | undefined);
-    get enabled(): boolean;
-    create(input: Parameters<SignInStore['create']>[0]): Promise<string>;
-    resume(userId: number | string, selector: string, until: Date): Promise<string | undefined>;
-    seen(userId: number | string, id: string, touch: boolean): Promise<boolean>;
-    remember(userId: number | string, id: string, remember: {
-        selector: string;
-        until: Date;
-    } | undefined): Promise<void>;
-    endRemembered(userId: number | string, selector: string): Promise<boolean>;
-    list(userId: number | string, window: SignInWindow): Promise<readonly SignInRecord[]>;
-    endAll(userId: number | string, except?: string): Promise<number>;
-    endEveryone(): Promise<number>;
-    prune(window: SignInWindow): Promise<number>;
-    end(userId: number | string, id: string): Promise<boolean>;
 }
 // missing
 declare const missing: unique symbol;
@@ -1347,7 +1282,7 @@ export interface PasskeyTable {
 // Passkeys
 export declare class Passkeys implements SecondFactorPasskeys {
     #private;
-    constructor(auth: Auth, session: Session, store: PasskeyStore, twoFactorStore: TwoFactorStore, state: TwoFactorState, config: PasskeyConfig, authConfig: AuthConfig, connections: Connections, remember: RememberTokenStore, limiter: RateLimiter, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, clock: Clock, logger: Logger, sessionConfig: SessionConfig);
+    constructor(auth: Auth, session: Session, store: PasskeyStore, twoFactorStore: TwoFactorStore, state: TwoFactorState, config: PasskeyConfig, authConfig: AuthConfig, connections: Connections, limiter: RateLimiter, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, clock: Clock, logger: Logger, sessionConfig: SessionConfig);
     registrationOptions(): Promise<PublicKeyCredentialCreationOptionsJSON>;
     register(response: RegistrationResponseJSON, name: string, password?: string): Promise<Result<{
         recoveryCodes: readonly string[] | null;
@@ -1473,7 +1408,7 @@ export declare abstract class AccessTokenStore {
 // AccountSessions
 export declare class AccountSessions {
     #private;
-    constructor(users: UserProvider, remember: RememberTokenStore, sessions: UserSessions | undefined, signIns?: SignInTracker, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings);
+    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings);
     [ANNOUNCE_ENDED](userId: string | number): Promise<void>;
     end(userId: AuthUserId): Promise<Result<EndedSessions, {
         readonly kind: 'missing';
@@ -1495,7 +1430,7 @@ export type AttestationConveyancePreference = 'none' | 'indirect' | 'direct' | '
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, remember: RememberTokenStore, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInTracker, clock: Clock, fingerprints: SessionFingerprints);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints);
     attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
     login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
@@ -1531,6 +1466,7 @@ export declare class Auth {
     updatePassword(password: string): Promise<void>;
     logoutOtherDevices(password: string): Promise<boolean>;
     updateSessionKey(): Promise<boolean>;
+    [DROP_REMEMBER_TOKEN](): Promise<void>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
     [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
 }
@@ -1630,6 +1566,8 @@ export interface Credentials<U = AuthUser> {
 }
 // DROP_EXPIRED
 declare const DROP_EXPIRED: unique symbol;
+// DROP_REMEMBER_TOKEN
+export declare const DROP_REMEMBER_TOKEN: unique symbol;
 // DeviceDescription
 export interface DeviceDescription {
     readonly browser: string | undefined;
@@ -1642,7 +1580,6 @@ export interface EndedSessions {
 // EveryoneEnded
 export interface EveryoneEnded {
     readonly accounts: number;
-    readonly rememberTokens: number;
     readonly resetTokens: number;
     readonly accessTokens: number;
     readonly signIns: number;
@@ -1679,11 +1616,11 @@ export interface NewPasskey {
 // NewPassword
 export declare class NewPassword {
     #private;
-    constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns?: SignInTracker, endings?: SessionEndings, factors?: () => {
+    constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: () => SignInStore, endings?: SessionEndings, factors?: () => {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
     });
-    store(users: UserProvider, remember: RememberTokenStore, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
+    store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{
         readonly revoked: number;
         readonly sessionKey: string;
     }>;
@@ -1768,24 +1705,12 @@ export type RememberTokenError = {
     readonly kind: 'invalid';
 } | {
     readonly kind: 'stolen';
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly reused?: boolean;
 };
-// RememberTokenStore
-export interface RememberTokenStore {
-    create(userId: number | string, expiresAt: Date, fingerprint: string): Promise<string>;
-    consume(cookie: string): Promise<Result<Omit<RememberedDevice, 'signIn'>, RememberTokenError>>;
-    exists(cookie: string): Promise<boolean>;
-    forget(cookie: string): Promise<void>;
-    rebind?(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
-    forgetUser(userId: number | string, except?: string): Promise<void>;
-    prune(maxAgeDays: number): Promise<number>;
-    forgetEveryone?(): Promise<number>;
-}
-export declare const RememberTokenStore: import("@marmeon/core").Token<RememberTokenStore>;
 // RememberedDevice
 export interface RememberedDevice {
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly signIn: string;
     readonly cookie: string | undefined;
     readonly expiresAt: Date;
@@ -1824,7 +1749,7 @@ export interface SignIn {
 // SignInRecord
 export interface SignInRecord {
     readonly id: string;
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly userAgent: string | undefined;
     readonly remembered: boolean;
     readonly signedInAt: Date;
@@ -1832,56 +1757,27 @@ export interface SignInRecord {
     readonly createdAt: Date;
 }
 // SignInStore
-export interface SignInStore {
-    create(input: {
-        userId: number | string;
+export declare abstract class SignInStore {
+    #private;
+    abstract create(input: {
+        userId: AuthUserId;
         userAgent: string | undefined;
-        remember?: {
-            selector: string;
-            until: Date;
-        };
     }): Promise<string>;
-    resume(userId: number | string, selector: string, until: Date): Promise<string | undefined>;
-    remember(userId: number | string, id: string, remember: {
-        selector: string;
-        until: Date;
-    } | undefined): Promise<void>;
-    endRemembered(userId: number | string, selector: string): Promise<boolean>;
-    seen(userId: number | string, id: string, touch: boolean): Promise<boolean>;
-    list(userId: number | string, window: SignInWindow): Promise<readonly SignInRecord[]>;
-    end(userId: number | string, id: string): Promise<boolean>;
-    endAll(userId: number | string, except?: string): Promise<number>;
-    endEveryone(): Promise<number>;
-    prune(window: SignInWindow, rememberMaxAgeDays?: number): Promise<number>;
-    issueToken(userId: number | string, id: string, token: {
+    abstract seen(userId: AuthUserId, id: string, touch: boolean): Promise<boolean>;
+    abstract list(userId: AuthUserId, window: SignInWindow): Promise<readonly SignInRecord[]>;
+    abstract end(userId: AuthUserId, id: string): Promise<boolean>;
+    abstract endAll(userId: AuthUserId, except?: string): Promise<number>;
+    abstract endEveryone(): Promise<number>;
+    abstract prune(window: SignInWindow, rememberMaxAgeDays: number): Promise<number>;
+    abstract issueToken(userId: AuthUserId, id: string, token: {
         until: Date;
         fingerprint: string;
     }): Promise<string>;
-    dropToken(userId: number | string, id: string): Promise<void>;
-    consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
-    remembered(cookie: string): Promise<boolean>;
-    forgetToken(cookie: string): Promise<void>;
-    rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
-}
-export declare const SignInStore: import("@marmeon/core").Token<SignInStore>;
-// SignInTracker
-export declare class SignInTracker {
-    #private;
-    constructor(store: (() => SignInStore) | undefined);
-    get enabled(): boolean;
-    create(input: Parameters<SignInStore['create']>[0]): Promise<string>;
-    resume(userId: number | string, selector: string, until: Date): Promise<string | undefined>;
-    seen(userId: number | string, id: string, touch: boolean): Promise<boolean>;
-    remember(userId: number | string, id: string, remember: {
-        selector: string;
-        until: Date;
-    } | undefined): Promise<void>;
-    endRemembered(userId: number | string, selector: string): Promise<boolean>;
-    list(userId: number | string, window: SignInWindow): Promise<readonly SignInRecord[]>;
-    endAll(userId: number | string, except?: string): Promise<number>;
-    endEveryone(): Promise<number>;
-    prune(window: SignInWindow): Promise<number>;
-    end(userId: number | string, id: string): Promise<boolean>;
+    abstract dropToken(userId: AuthUserId, id: string): Promise<void>;
+    abstract consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+    abstract remembered(cookie: string): Promise<boolean>;
+    abstract forgetToken(cookie: string): Promise<void>;
+    abstract rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
 }
 // SignInWindow
 export interface SignInWindow {
@@ -2128,7 +2024,7 @@ export interface TotpSetup {
 // TwoFactor
 export declare class TwoFactor {
     #private;
-    constructor(auth: Auth, session: Session, state: TwoFactorState, store: TwoFactorStore, encrypter: Encrypter, limiter: RateLimiter, remember: RememberTokenStore, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, config: AuthConfig, clock: Clock, logger: Logger, passkeys: SecondFactorPasskeys, connections: Connections, sessionConfig: SessionConfig);
+    constructor(auth: Auth, session: Session, state: TwoFactorState, store: TwoFactorStore, encrypter: Encrypter, limiter: RateLimiter, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, config: AuthConfig, clock: Clock, logger: Logger, passkeys: SecondFactorPasskeys, connections: Connections, sessionConfig: SessionConfig);
     challenge(input: SecondFactorInput): Promise<Result<AuthUser, ChallengeError>>;
     stepUp(input: SecondFactorInput): Promise<Result<void, ChallengeError>>;
     status(): Promise<{
@@ -2200,7 +2096,7 @@ export declare abstract class AccessTokenStore {
 // AccountSessions
 export declare class AccountSessions {
     #private;
-    constructor(users: UserProvider, remember: RememberTokenStore, sessions: UserSessions | undefined, signIns?: SignInTracker, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings);
+    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings);
     [ANNOUNCE_ENDED](userId: string | number): Promise<void>;
     end(userId: AuthUserId): Promise<Result<EndedSessions, {
         readonly kind: 'missing';
@@ -2220,7 +2116,7 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, remember: RememberTokenStore, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInTracker, clock: Clock, fingerprints: SessionFingerprints);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints);
     attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
     login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
@@ -2256,6 +2152,7 @@ export declare class Auth {
     updatePassword(password: string): Promise<void>;
     logoutOtherDevices(password: string): Promise<boolean>;
     updateSessionKey(): Promise<boolean>;
+    [DROP_REMEMBER_TOKEN](): Promise<void>;
     [CLAIM_ACCOUNT](): Promise<boolean>;
     [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
 }
@@ -2305,6 +2202,8 @@ export interface Credentials<U = AuthUser> {
 }
 // DROP_EXPIRED
 declare const DROP_EXPIRED: unique symbol;
+// DROP_REMEMBER_TOKEN
+export declare const DROP_REMEMBER_TOKEN: unique symbol;
 // DeviceDescription
 export interface DeviceDescription {
     readonly browser: string | undefined;
@@ -2317,7 +2216,6 @@ export interface EndedSessions {
 // EveryoneEnded
 export interface EveryoneEnded {
     readonly accounts: number;
-    readonly rememberTokens: number;
     readonly resetTokens: number;
     readonly accessTokens: number;
     readonly signIns: number;
@@ -2340,11 +2238,11 @@ export interface LoginOptions {
 // NewPassword
 export declare class NewPassword {
     #private;
-    constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns?: SignInTracker, endings?: SessionEndings, factors?: () => {
+    constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: () => SignInStore, endings?: SessionEndings, factors?: () => {
         readonly state: TwoFactorState;
         readonly events: EventDispatcher;
     });
-    store(users: UserProvider, remember: RememberTokenStore, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{
+    store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{
         readonly revoked: number;
         readonly sessionKey: string;
     }>;
@@ -2398,24 +2296,12 @@ export type RememberTokenError = {
     readonly kind: 'invalid';
 } | {
     readonly kind: 'stolen';
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly reused?: boolean;
 };
-// RememberTokenStore
-export interface RememberTokenStore {
-    create(userId: number | string, expiresAt: Date, fingerprint: string): Promise<string>;
-    consume(cookie: string): Promise<Result<Omit<RememberedDevice, 'signIn'>, RememberTokenError>>;
-    exists(cookie: string): Promise<boolean>;
-    forget(cookie: string): Promise<void>;
-    rebind?(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
-    forgetUser(userId: number | string, except?: string): Promise<void>;
-    prune(maxAgeDays: number): Promise<number>;
-    forgetEveryone?(): Promise<number>;
-}
-export declare const RememberTokenStore: import("@marmeon/core").Token<RememberTokenStore>;
 // RememberedDevice
 export interface RememberedDevice {
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly signIn: string;
     readonly cookie: string | undefined;
     readonly expiresAt: Date;
@@ -2452,7 +2338,7 @@ export interface SignIn {
 // SignInRecord
 export interface SignInRecord {
     readonly id: string;
-    readonly userId: number | string;
+    readonly userId: AuthUserId;
     readonly userAgent: string | undefined;
     readonly remembered: boolean;
     readonly signedInAt: Date;
@@ -2460,56 +2346,27 @@ export interface SignInRecord {
     readonly createdAt: Date;
 }
 // SignInStore
-export interface SignInStore {
-    create(input: {
-        userId: number | string;
+export declare abstract class SignInStore {
+    #private;
+    abstract create(input: {
+        userId: AuthUserId;
         userAgent: string | undefined;
-        remember?: {
-            selector: string;
-            until: Date;
-        };
     }): Promise<string>;
-    resume(userId: number | string, selector: string, until: Date): Promise<string | undefined>;
-    remember(userId: number | string, id: string, remember: {
-        selector: string;
-        until: Date;
-    } | undefined): Promise<void>;
-    endRemembered(userId: number | string, selector: string): Promise<boolean>;
-    seen(userId: number | string, id: string, touch: boolean): Promise<boolean>;
-    list(userId: number | string, window: SignInWindow): Promise<readonly SignInRecord[]>;
-    end(userId: number | string, id: string): Promise<boolean>;
-    endAll(userId: number | string, except?: string): Promise<number>;
-    endEveryone(): Promise<number>;
-    prune(window: SignInWindow, rememberMaxAgeDays?: number): Promise<number>;
-    issueToken(userId: number | string, id: string, token: {
+    abstract seen(userId: AuthUserId, id: string, touch: boolean): Promise<boolean>;
+    abstract list(userId: AuthUserId, window: SignInWindow): Promise<readonly SignInRecord[]>;
+    abstract end(userId: AuthUserId, id: string): Promise<boolean>;
+    abstract endAll(userId: AuthUserId, except?: string): Promise<number>;
+    abstract endEveryone(): Promise<number>;
+    abstract prune(window: SignInWindow, rememberMaxAgeDays: number): Promise<number>;
+    abstract issueToken(userId: AuthUserId, id: string, token: {
         until: Date;
         fingerprint: string;
     }): Promise<string>;
-    dropToken(userId: number | string, id: string): Promise<void>;
-    consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
-    remembered(cookie: string): Promise<boolean>;
-    forgetToken(cookie: string): Promise<void>;
-    rebind(userId: number | string, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
-}
-export declare const SignInStore: import("@marmeon/core").Token<SignInStore>;
-// SignInTracker
-export declare class SignInTracker {
-    #private;
-    constructor(store: (() => SignInStore) | undefined);
-    get enabled(): boolean;
-    create(input: Parameters<SignInStore['create']>[0]): Promise<string>;
-    resume(userId: number | string, selector: string, until: Date): Promise<string | undefined>;
-    seen(userId: number | string, id: string, touch: boolean): Promise<boolean>;
-    remember(userId: number | string, id: string, remember: {
-        selector: string;
-        until: Date;
-    } | undefined): Promise<void>;
-    endRemembered(userId: number | string, selector: string): Promise<boolean>;
-    list(userId: number | string, window: SignInWindow): Promise<readonly SignInRecord[]>;
-    endAll(userId: number | string, except?: string): Promise<number>;
-    endEveryone(): Promise<number>;
-    prune(window: SignInWindow): Promise<number>;
-    end(userId: number | string, id: string): Promise<boolean>;
+    abstract dropToken(userId: AuthUserId, id: string): Promise<void>;
+    abstract consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
+    abstract remembered(cookie: string): Promise<boolean>;
+    abstract forgetToken(cookie: string): Promise<void>;
+    abstract rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
 }
 // SignInWindow
 export interface SignInWindow {

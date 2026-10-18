@@ -1,12 +1,18 @@
-import { AccessTokenStore, PASSWORD_RESET_TABLE, PasswordResetTokenStore, REMEMBER_TABLE, RememberTokenStore } from '@marmeon/auth';
+import { AccessTokenStore, PASSWORD_RESET_TABLE, PasswordResetTokenStore, SIGN_INS_TABLE, SignInStore } from '@marmeon/auth';
 import { Connections } from '@marmeon/database';
 import { SessionLottery } from '@marmeon/session';
-import { createTestApp } from '@marmeon/testing';
+import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { RebuildMemberStatsJob } from '../user-profile/jobs/RebuildMemberStatsJob.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
+
+/** A sign-in of the user that a remember-me token keeps until `until`. */
+async function rememberedSignIn(app: TestApp, userId: number, until: Date) {
+  const signIns = app.make(SignInStore);
+  await signIns.issueToken(userId, await signIns.create({ userId, userAgent: undefined }), { until, fingerprint: 'fingerprint' });
+}
 
 // Cold starts in a hook with its own time, not in the first test's 5 s (the worker's database, the queues, mjml, the mails).
 beforeAll(warmUp, WARM_UP_TIMEOUT);
@@ -21,12 +27,12 @@ describe('the schedule', () => {
     app.freeze(Date.parse('2026-10-04T12:00:00Z'));
     // Yesterday: tokens that expire long before tonight.
     await app.make(PasswordResetTokenStore).create(ada!.email, 0);
-    await app.make(RememberTokenStore).create(ada!.id, new Date(app.clock.now() + 3_600_000), 'fingerprint');
+    await rememberedSignIn(app, ada!.id, new Date(app.clock.now() + 3_600_000));
     const expired = await app.make(AccessTokenStore).create(ada!.id, 'one hour', { expiresIn: '1h' });
     // Tonight, shortly before the prune: valid ones.
     app.travelTo(Date.parse('2026-10-05T00:50:00Z'));
     await app.make(PasswordResetTokenStore).create(alan!.email, 0);
-    await app.make(RememberTokenStore).create(alan!.id, new Date(app.clock.now() + 30 * 86_400_000), 'fingerprint');
+    await rememberedSignIn(app, alan!.id, new Date(app.clock.now() + 30 * 86_400_000));
     const valid = await app.make(AccessTokenStore).create(alan!.id, 'a year', { expiresIn: '365d' });
 
     // (The data exports are cleared every ten minutes.)
@@ -42,7 +48,7 @@ describe('the schedule', () => {
 
     const db = app.make(Connections).get<any>();
     expect((await db.selectFrom(PASSWORD_RESET_TABLE).select('email').execute()).map((row) => row.email)).toEqual([alan!.email]);
-    expect((await db.selectFrom(REMEMBER_TABLE).select('user_id').execute()).map((row) => Number(row.user_id))).toEqual([alan!.id]);
+    expect((await db.selectFrom(SIGN_INS_TABLE).select('user_id').where('remember_selector', 'is not', null).execute()).map((row) => Number(row.user_id))).toEqual([alan!.id]);
     expect((await app.make(AccessTokenStore).list(ada!.id)).map((token) => token.id)).toEqual([]);
     expect((await app.make(AccessTokenStore).list(alan!.id)).map((token) => token.id)).toEqual([valid.token.id]);
     expect(await app.make(AccessTokenStore).find(expired.plainText)).toBeUndefined();

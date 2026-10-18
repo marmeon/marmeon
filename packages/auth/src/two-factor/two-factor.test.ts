@@ -10,7 +10,7 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountSessions, authenticate, Auth, AuthServiceProvider, Hasher, Login, PasswordHasher, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, type Credentials, type PasswordHash } from '../index.ts';
+import { AccountSessions, authenticate, Auth, AuthServiceProvider, Hasher, Login, PasswordHasher, RecoveryCodesGenerated, RecoveryCodeUsed, SignInStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, type Credentials, type PasswordHash } from '../index.ts';
 import { authenticatedSession, twoFactorCode } from '../testing.ts';
 import { TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, type RecoveryCodeTable, type TwoFactorTable } from './store.ts';
 import { SessionFingerprints } from '../fingerprint.ts';
@@ -250,7 +250,15 @@ async function boot(env: Record<string, string> = {}, options: { state?: 'unboun
   };
 
   const connections = application.container.make(Connections);
-  return { application, users, browser, connections, store: application.container.make(TwoFactorStore), appKey };
+  /** A remember-me token on a new sign-in of Ada, made right now — as another device's sign-in would. */
+  const issueToken = async () => {
+    const signIns = application.container.make(SignInStore);
+    const user = (await users.findById(1))!;
+    return signIns.issueToken(1, await signIns.create({ userId: 1, userAgent: 'racer' }), { until: new Date(Date.now() + 86_400_000), fingerprint: application.container.make(SessionFingerprints).of(user) });
+  };
+  /** The sign-ins that hold a remember-me token. */
+  const tokenRows = () => connections.get<any>().selectFrom('sign_ins').select('id').where('remember_selector', 'is not', null).execute();
+  return { application, users, browser, connections, store: application.container.make(TwoFactorStore), appKey, issueToken, tokenRows };
 }
 
 type Booted = Awaited<ReturnType<typeof boot>>;
@@ -401,10 +409,10 @@ describe('TwoFactor: setting up', () => {
     const setup = await b.tf('begin');
     // Somebody else rotated the cookie, and the owner's validator is past the grace window.
     await booted.browser(new Map([['marmeon_remember', b.jar.get('marmeon_remember')!]])).tf('who');
-    await booted.connections.get<any>().updateTable('remember_tokens').set({ rotated_at: new Date(Date.now() - 3_600_000) }).execute();
+    await booted.connections.get<any>().updateTable('sign_ins').set({ remember_rotated_at: new Date(Date.now() - 3_600_000) }).execute();
     expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ ok: false, kind: 'signed-out' });
     expect(await b.tf('who')).toEqual({ id: null });
-    expect(await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute()).toEqual([]);
+    expect(await booted.tokenRows()).toEqual([]);
   });
 
   it('a remember-me token made between signing out the other devices and switching the factor on is refused by its date', async () => {
@@ -417,7 +425,7 @@ describe('TwoFactor: setting up', () => {
       const confirm = booted.store.confirm.bind(booted.store);
       let raced: string | undefined;
       vi.spyOn(booted.store, 'confirm').mockImplementation(async (...args) => {
-        raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000), booted.application.container.make(SessionFingerprints).of((await booted.users.findById(1))!));
+        raced = await booted.issueToken();
         await new Promise((resolve) => setTimeout(resolve, 10));
         return confirm(...args);
       });
@@ -438,7 +446,7 @@ describe('TwoFactor: setting up', () => {
     const confirm = booted.store.confirm.bind(booted.store);
     let raced: string | undefined;
     vi.spyOn(booted.store, 'confirm').mockImplementation(async (...args) => {
-      raced = await booted.application.container.make(RememberTokenStore).create(1, new Date(Date.now() + 86_400_000), booted.application.container.make(SessionFingerprints).of((await booted.users.findById(1))!));
+      raced = await booted.issueToken();
       return confirm(...args); // the clock is frozen: created_at and confirmed_at are the same instant
     });
     expect((await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);
@@ -457,6 +465,18 @@ describe('TwoFactor: setting up', () => {
     const setup = await thisDevice.tf('begin');
     expect((await thisDevice.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);
     expect(await other.tf('who')).toEqual({ id: null });
+    expect(await thisDevice.tf('who')).toEqual({ id: 1 });
+  });
+
+  it('takes the remember-me token of this device off its sign-in, and keeps the sign-in', async () => {
+    const booted = await boot();
+    const thisDevice = booted.browser();
+    await thisDevice.login(ada.email, 'secret', true);
+    expect(await booted.tokenRows()).toHaveLength(1);
+    const setup = await thisDevice.tf('begin');
+    expect((await thisDevice.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).ok).toBe(true);
+    expect(await booted.tokenRows(), 'no token: it was made before the factor').toEqual([]);
+    expect(await booted.connections.get<any>().selectFrom('sign_ins').select('id').execute(), 'the sign-in of this device stays').toHaveLength(1);
     expect(await thisDevice.tf('who')).toEqual({ id: 1 });
   });
 
@@ -528,9 +548,8 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     expect(events.filter((event) => event instanceof Login)).toEqual([]); // no listener sees a sign-in that is taken back
     expect(await b.tf('who')).toEqual({ id: null });
     expect(b.jar.has('marmeon_remember')).toBe(false);
-    expect(await booted.application.container.make(RememberTokenStore).prune(30)).toBe(0);
-    const rows = await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute();
-    expect(rows).toEqual([]);
+    expect(await booted.tokenRows()).toEqual([]);
+    expect(await booted.connections.get<any>().selectFrom('sign_ins').select('id').execute(), 'and the sign-in is taken back with it').toEqual([]);
   });
 
   it('fails closed when the second read of the factors throws: nobody stays signed in, no cookie, no token', async () => {
@@ -546,7 +565,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     await b.login(ada.email, 'secret', true); // answers 500
     expect(b.jar.has('marmeon_remember')).toBe(false);
     expect(await b.tf('who')).toEqual({ id: null });
-    expect(await booted.connections.get<any>().selectFrom('remember_tokens').select('id').execute()).toEqual([]);
+    expect(await booted.tokenRows()).toEqual([]);
   });
 
   it('fails closed when forgetting the token throws: nobody stays signed in, and the token signs nobody in', async () => {
@@ -554,17 +573,17 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     const factorSince = new Date(Date.now() + 60_000); // the commit that the second read saw, later than the token
     const state = twoFactorState({ removeAll: async () => {}, factors: async () => (reads++ === 0 ? [] : ['totp']), enabledSince: async () => (reads > 1 ? factorSince : undefined) });
     const booted = await boot({}, { state });
-    const tokens = booted.application.container.make(RememberTokenStore);
+    const signIns = booted.application.container.make(SignInStore);
     let token: string | undefined;
-    const create = tokens.create.bind(tokens);
-    vi.spyOn(tokens, 'create').mockImplementation(async (...args) => (token = await create(...args)));
-    vi.spyOn(tokens, 'forget').mockRejectedValue(new Error('the database went away'));
+    const issue = signIns.issueToken.bind(signIns);
+    vi.spyOn(signIns, 'issueToken').mockImplementation(async (...args) => (token = await issue(...args)));
+    vi.spyOn(signIns, 'forgetToken').mockRejectedValue(new Error('the database went away'));
     const b = booted.browser();
     await b.login(ada.email, 'secret', true); // answers 500
     expect(b.jar.has('marmeon_remember')).toBe(false);
     expect(await b.tf('who')).toEqual({ id: null });
     expect(token).toBeDefined();
-    expect(await booted.browser(new Map([['marmeon_remember', token!]])).tf('who')).toEqual({ id: null }); // refused by its date
+    expect(await booted.browser(new Map([['marmeon_remember', token!]])).tf('who')).toEqual({ id: null }); // its row was ended first
   });
 
   it('a remember-me token whose time cannot be read is refused, not taken as a proof', async () => {
@@ -575,13 +594,13 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     await first.login(ada.email, 'secret', true);
     const cookie = first.jar.get('marmeon_remember')!;
     on = true;
-    const tokens = booted.application.container.make(RememberTokenStore);
-    const consume = tokens.consume.bind(tokens);
-    vi.spyOn(tokens, 'consume').mockImplementation(async (value) => {
+    const signIns = booted.application.container.make(SignInStore);
+    const consume = signIns.consume.bind(signIns);
+    vi.spyOn(signIns, 'consume').mockImplementation(async (value) => {
       const result = await consume(value);
       return result.ok ? { ok: true, value: { ...result.value, createdAt: new Date(Number.NaN) } } : result;
     });
-    const forget = vi.spyOn(tokens, 'forget');
+    const forget = vi.spyOn(signIns, 'forgetToken');
     const b = booted.browser(new Map([['marmeon_remember', cookie]]));
     expect(await b.tf('who')).toEqual({ id: null });
     expect(forget).toHaveBeenCalled();
@@ -607,9 +626,9 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     const first = booted.browser();
     await first.login(ada.email, 'secret', true);
     on = true;
-    const tokens = booted.application.container.make(RememberTokenStore);
-    const consume = tokens.consume.bind(tokens);
-    vi.spyOn(tokens, 'consume').mockImplementation(async (value) => {
+    const signIns = booted.application.container.make(SignInStore);
+    const consume = signIns.consume.bind(signIns);
+    vi.spyOn(signIns, 'consume').mockImplementation(async (value) => {
       const result = await consume(value);
       return result.ok ? { ok: true, value: { ...result.value, createdAt: new Date(Number.NaN) } } : result;
     });
@@ -623,12 +642,13 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     const b = booted.browser();
     await b.login();
     const setup = await b.tf('begin');
-    const tokens = booted.application.container.make(RememberTokenStore);
-    const forgetUser = tokens.forgetUser.bind(tokens);
+    const signIns = booted.application.container.make(SignInStore);
+    const endAll = signIns.endAll.bind(signIns);
     let calls = 0;
-    vi.spyOn(tokens, 'forgetUser').mockImplementation(async (...args) => {
-      if (++calls === 2) throw new Error('the database went away');
-      return forgetUser(...args);
+    vi.spyOn(signIns, 'endAll').mockImplementation(async (...args) => {
+      // The first sign-out ends the other sign-ins before and after its key; the second one, after the commit, before its key.
+      if (++calls === 3) throw new Error('the database went away');
+      return endAll(...args);
     });
     expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ thrown: 'the database went away' });
     expect(await booted.store.factors(1)).toEqual(['totp']);

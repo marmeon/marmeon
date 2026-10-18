@@ -226,6 +226,9 @@ recovery codes once in the answer of the registration, and dispatches `TwoFactor
 new codes. `remove()` of the last factor takes the recovery codes in the same transaction, and the store decides inside it, so two
 removals at once cannot both pass without the password.
 
+`remove()` ends no session. The starter kit's controller follows it with `auth.logoutOtherDevices(password)`; an app that removes a
+passkey through the package API does the same, or `updateSessionKey()`, because the sessions of someone who holds a cloned passkey would otherwise live on.
+
 An account holds at most 20 passkeys; the 21st answers `limit`. Names lose control and invisible format characters (a bidi override would otherwise
 reorder the text of the list). Registration accepts ES256 and EdDSA keys, and RSA keys only with the exponent 65537 and at most 4096 bits.
 

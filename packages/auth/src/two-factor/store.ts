@@ -105,8 +105,9 @@ export class TwoFactorStore extends TwoFactorState {
    * account's first factor — its recovery code hashes are stored, all in one transaction. `false` when there is nothing
    * to confirm (never started, or already confirmed); then nothing changed.
    *
-   * The caller must afterwards drop the user's remember-me tokens except this device's (`remember.forgetUser(id, ownCookie)`): they
-   * were made without a second factor, and the remember-me sign-in treats every surviving token of such an account as having proven one.
+   * The caller must afterwards end the user's other sign-ins (`auth.updateSessionKey()`) and take this device's remember-me token off its
+   * own (`DROP_REMEMBER_TOKEN`): they were made without a second factor, and the remember-me sign-in treats every surviving token of such
+   * an account as having proven one.
    */
   async confirm(userId: AuthUserId, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean> {
     return this.#connections.transaction(async () => {

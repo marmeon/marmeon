@@ -17,9 +17,8 @@ import { NewPassword } from './new-password.ts';
 import { EndAllSessionsCommand } from './end-all-sessions.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
 import { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
-import { SignInStore, SignInTracker } from './sign-ins.ts';
+import { DatabaseSignIns, SignInStore } from './sign-ins.ts';
 import { DatabasePasswordResetTokens, PasswordResetTokenStore } from './password-reset.ts';
-import { DatabaseRememberTokens, RememberTokenStore } from './remember.ts';
 import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
@@ -40,11 +39,9 @@ export type { LoginVia, EverySessionEndedInput, EverySessionEndedPayload, LoginI
 export { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
 export { abilities, authenticate, confirmedPassword, guest } from './middleware.ts';
 export type { AuthenticateOptions, ConfirmedPasswordOptions } from './middleware.ts';
-export { DatabaseRememberTokens, REMEMBER_TABLE, RememberTokenStore } from './remember.ts';
 export { combineFactors, TwoFactorState } from './two-factor/state.ts';
 export type { SecondFactor } from './two-factor/state.ts';
 export { TwoFactorStore } from './two-factor/store.ts';
-export type { RememberedDevice, RememberTokenError } from './remember.ts';
 export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
 export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
 export { MakeAuthCommand } from './make-auth.ts';
@@ -55,8 +52,8 @@ export type { DeviceDescription } from './device.ts';
 export { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 export { clearPasswordCheck, takePasswordCheck } from './password-throttle.ts';
 export type { PasswordCheckScope, PasswordThrottled } from './password-throttle.ts';
-export { DatabaseSignIns, SignInStore } from './sign-ins.ts';
-export type { SignIn, SignInRecord, SignInWindow } from './sign-ins.ts';
+export { DatabaseSignIns, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
+export type { RememberedDevice, RememberTokenError, SignIn, SignInRecord, SignInWindow } from './sign-ins.ts';
 export { password } from './rules.ts';
 export { EmailVerification, verified } from './verification.ts';
 export type { VerifiableUser, VerificationLinkOptions, VerifiedOptions } from './verification.ts';
@@ -92,7 +89,7 @@ export const HashConfig = defineConfig('hash', {
 export type HashConfig = ConfigOf<typeof HashConfig>;
 
 /**
- * Registers the `Hasher` (`HASH_DRIVER`), `Auth` (per request) and the remember-me store, and adds
+ * Registers the `Hasher` (`HASH_DRIVER`), `Auth` (per request) and the sign-in store, and adds
  * `NoStoreWhenSignedIn` to the `web` group. Found by `marmeon discover`.
  */
 export class AuthServiceProvider implements ServiceProvider {
@@ -110,8 +107,9 @@ export class AuthServiceProvider implements ServiceProvider {
     container.scoped(LiveAudience, (c) => new SignInAudience(() => c.make(Auth), c.make(Session)));
     // Policies are built in the request's scope: they may depend on anything a controller can.
     container.scoped(Gate, (scope) => new Gate(scope.make(Auth), (Class) => scope.make(Class)));
-    // On the app's `remember_tokens` table (its migration comes with make:auth); bind your own store to replace it.
-    container.singleton(RememberTokenStore, DatabaseRememberTokens);
+    // On the app's `sign_ins` table (its migration comes with make:auth, or `marmeon make:sign-ins-table`): a row per signed-in browser,
+    // and the remember-me token that keeps it so. Bind your own store (a class that extends SignInStore) to replace it.
+    container.singleton(SignInStore, DatabaseSignIns);
     // Nobody has a second factor until the app binds a source: container.bind(TwoFactorState, TwoFactorStore). Removing that binding turns two-factor off for every account.
     container.singleton(TwoFactorState, NoTwoFactorState);
     // Nor does anybody have a passkey as a second factor, until the app registers PasskeyServiceProvider (the passkeys subpath).
@@ -120,11 +118,9 @@ export class AuthServiceProvider implements ServiceProvider {
     container.singleton(PasswordResetTokenStore, DatabasePasswordResetTokens);
     container.singleton(AccessTokenStore, DatabaseAccessTokens);
     // A new password (a change, a reset): the token store and the connections only when it revokes the API tokens.
-    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger), c.make(SignInTracker), container.has(SessionEndings) ? c.make(SessionEndings) : undefined, () => ({ state: c.make(TwoFactorState), events: c.make(EventDispatcher) })));
+    container.singleton(NewPassword, (c) => new NewPassword(() => c.make(AccessTokenStore), () => c.make(Connections), c.make(AuthConfig), c.make(Logger), () => c.make(SignInStore), container.has(SessionEndings) ? c.make(SessionEndings) : undefined, () => ({ state: c.make(TwoFactorState), events: c.make(EventDispatcher) })));
     // `bind`, not `singleton`: the UserProvider it holds is bound per use as well.
-    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(RememberTokenStore), container.has(UserSessions) ? c.make(UserSessions) : undefined, c.make(SignInTracker), c.make(EventDispatcher), c.make(Clock), () => c.make(PasswordResetTokenStore), () => c.make(AccessTokenStore), c.make(Logger), container.has(SessionEndings) ? c.make(SessionEndings) : undefined));
-    // Sign-ins are opt-in: without `container.singleton(SignInStore, DatabaseSignIns)` (and its table) `Auth` tracks none.
-    container.singleton(SignInTracker, (c) => new SignInTracker(container.has(SignInStore) ? () => c.make(SignInStore) : undefined));
+    container.bind(AccountSessions, (c) => new AccountSessions(c.make(UserProvider), c.make(SignInStore), container.has(UserSessions) ? c.make(UserSessions) : undefined, c.make(EventDispatcher), c.make(Clock), () => c.make(PasswordResetTokenStore), () => c.make(AccessTokenStore), c.make(Logger), container.has(SessionEndings) ? c.make(SessionEndings) : undefined));
     // Until the app binds its own (its auth module does — `marmeon make:auth` writes one), the first use explains.
     container.bind(UserProvider, () => {
       throw new UserProviderNotBound(

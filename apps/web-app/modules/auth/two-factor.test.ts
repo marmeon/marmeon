@@ -1,3 +1,4 @@
+import { Connections } from '@marmeon/database';
 import { TwoFactorStore } from '@marmeon/auth';
 import { twoFactorCode, cookieNames } from '@marmeon/auth/testing';
 import { Encrypter } from '@marmeon/encryption';
@@ -8,6 +9,9 @@ import { UserFactory } from './factories/UserFactory.ts';
 import { UserRepository } from './UserRepository.ts';
 import type { User } from './users.ts';
 import { WARM_UP_TIMEOUT, warmUp } from './warm-up.ts';
+
+/** How many sign-ins hold a remember-me token (the token hangs on the row of its sign-in). */
+const rememberTokens = async () => (await app.make(Connections).get<any>().selectFrom('sign_ins').select('id').where('remember_selector', 'is not', null).execute()).length;
 
 beforeAll(warmUp, WARM_UP_TIMEOUT);
 
@@ -123,10 +127,10 @@ describe('two-factor authentication', () => {
     const { secret } = await enable(ada);
     const login = await app.post('/login', credentialsOf(ada, { remember: 'on' })).assertRedirect('/two-factor-challenge');
     expect(login.cookie(REMEMBER)).toBeUndefined();
-    await app.assertDatabaseCount('remember_tokens', 0);
+    expect(await rememberTokens(), 'sign-ins holding a remember-me token').toBe(0);
     const done = await app.withCookie(SESSION, login.cookie(SESSION)!).post('/two-factor-challenge', { form: { code: twoFactorCode(secret, inSeconds(30)) } }).assertAuthenticated(ada);
     expect(done.cookie(REMEMBER)).toMatch(/^[\w-]{22}\.[\w-]{43}$/);
-    await app.assertDatabaseCount('remember_tokens', 1);
+    expect(await rememberTokens(), 'sign-ins holding a remember-me token').toBe(1);
   });
 
   it('turns it off with the password: a wrong one changes nothing, the right one ends the factor and the codes', async () => {

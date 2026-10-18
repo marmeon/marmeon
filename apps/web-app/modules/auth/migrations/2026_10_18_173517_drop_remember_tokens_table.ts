@@ -1,9 +1,12 @@
-// @marmeon-stub auth 3
+// @marmeon-stub auth 4
 import { defineMigration } from '@marmeon/database';
 
-// "Keep me signed in", one row per device: the selector finds the row, the validator is only stored as a hash.
+// The remember-me token of a device lives on the row of its sign-in (`sign_ins`) now, and the table that held them goes. The tokens
+// are not copied: the upgrade ends every session once (the session fingerprint changed with it), and every "keep me signed in"
+// cookie signs in again only after the password.
 export default defineMigration({
-  up: (schema) =>
+  up: (schema) => schema.drop('remember_tokens'),
+  down: (schema) =>
     schema.create('remember_tokens', (table) => {
       table.id();
       table.foreignId('user_id').constrained().cascadeOnDelete();
@@ -16,5 +19,4 @@ export default defineMigration({
       table.string('account_fingerprint', 64).nullable();
       table.timestamps();
     }),
-  down: (schema) => schema.drop('remember_tokens'),
 });

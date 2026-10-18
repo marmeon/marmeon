@@ -85,7 +85,7 @@ describe('the observation hooks in the web app', () => {
       await db.selectFrom('users').select('id').execute();
       await sql`select count(*) from users`.execute(db);
       await sql`select count(*) from profile_links`.execute(db);
-      await db.selectFrom('profile_links').where('user_id', 'in', db.selectFrom('remember_tokens').select('user_id')).select('id').execute();
+      await db.selectFrom('profile_links').where('user_id', 'in', db.selectFrom('sign_ins').select('user_id')).select('id').execute();
     } finally {
       recorded.stop();
     }
