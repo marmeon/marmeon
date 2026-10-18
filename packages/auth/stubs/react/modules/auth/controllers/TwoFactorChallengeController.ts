@@ -1,3 +1,4 @@
+import { Auth } from '@marmeon/auth';
 import { TwoFactor } from '@marmeon/auth/two-factor';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
@@ -16,11 +17,13 @@ export class TwoFactorChallengeController extends Controller {
   static request = TwoFactorChallengeRequest;
 
   readonly #twoFactor: TwoFactor;
+  readonly #auth: Auth;
   readonly #translator: Translator;
 
-  constructor(twoFactor: TwoFactor, translator: Translator) {
+  constructor(twoFactor: TwoFactor, auth: Auth, translator: Translator) {
     super();
     this.#twoFactor = twoFactor;
+    this.#auth = auth;
     this.#translator = translator;
   }
 
@@ -28,7 +31,14 @@ export class TwoFactorChallengeController extends Controller {
     const { code, recovery_code: recoveryCode } = ctx.body;
     const field = recoveryCode !== '' ? 'recovery_code' : 'code';
     const done = await this.#twoFactor.challenge(recoveryCode !== '' ? { recoveryCode } : { code });
-    if (done.ok) return this.redirect().intended().route('dashboard');
+    if (done.ok) {
+      // A sign-in that began with the typed password proved it: this browser gets its device cookie (see LoginController).
+      if (this.#auth.passwordCheckScope().typed) {
+        const device = await this.#auth.deviceCookie();
+        if (device) ctx.cookies.set(device.name, device.value, device.options);
+      }
+      return this.redirect().intended().route('dashboard');
+    }
 
     switch (done.error.kind) {
       case 'no-challenge':

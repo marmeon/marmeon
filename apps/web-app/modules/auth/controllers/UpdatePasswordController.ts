@@ -30,6 +30,9 @@ export class UpdatePasswordController extends Controller {
     const checked = await this.#auth.checkPassword(ctx.body.current_password);
     if (!checked.ok) throw new ValidationError({ current_password: [passwordCheckMessage(this.#translator, checked.error)] });
     await this.#auth.updatePassword(ctx.body.password);
+    // The new session key made the cookie of this browser worthless: it gets a new one.
+    const device = await this.#auth.deviceCookie();
+    if (device) ctx.cookies.set(device.name, device.value, device.options);
     return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.password_changed') });
   }
 }

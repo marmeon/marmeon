@@ -108,7 +108,9 @@ accident. A user who cannot sign in with a password has `passwordHash: null`. Th
 the account that ends its other sessions when it changes, as [signing out without a password](#signing-out-other-devices-without-a-password)
 explains; it is `null` for an account that has none yet. Both `findById()` and `findForLogin()` must return it: a `findForLogin()` that
 leaves out a key `findById()` returns makes `attempt()` throw, and a bad sign-in is not what it reports. `findForLogin()` gets what the person typed after
-the request's schema normalized it; the starter kit's schema trims the address and makes it lower case. Until a provider is
+the request's schema normalized it; the starter kit's schema trims the address and makes it lower case. Compare it exactly (binary,
+case-sensitive) with the stored, normalized address: a database collation that treats `é` and `e`, or trailing spaces, as equal finds
+an account for a spelling that has a counter of its own, and so lets anyone test which spellings an account answers to. Until a provider is
 bound, the first use of `UserProvider` throws an error that says how to bind one.
 
 `updatePasswordHash(id, hash, { expected, sessionKey })` returns whether it wrote, and is a compare-and-set when `expected` is given: it
@@ -181,13 +183,11 @@ on [ending every session of a user](#ending-every-session-of-a-user) explains.
 
 ## Signing in
 
-`attempt()` checks a password and signs the user in. The starter kit's `LoginController` counts the attempt first and checks
-afterwards:
+`attempt()` checks a password and signs the user in, and it limits itself (see [Limits](#limits-on-password-sign-ins)). The
+starter kit's `LoginController` only maps its answers:
 
 ```ts title="modules/auth/controllers/LoginController.ts"
-import { Auth, Lockout } from '@marmeon/auth';
-import { clientKey, RateLimiter } from '@marmeon/cache';
-import { EventDispatcher } from '@marmeon/core';
+import { Auth } from '@marmeon/auth';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
@@ -204,42 +204,35 @@ export class LoginController extends Controller {
   static request = LoginRequest;
 
   readonly #auth: Auth;
-  readonly #limiter: RateLimiter;
-  readonly #events: EventDispatcher;
   readonly #translator: Translator;
 
-  constructor(auth: Auth, limiter: RateLimiter, events: EventDispatcher, translator: Translator) {
+  constructor(auth: Auth, translator: Translator) {
     super();
     this.#auth = auth;
-    this.#limiter = limiter;
-    this.#events = events;
     this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof LoginRequest>) {
     const { email, password, remember } = ctx.body;
-    const key = `login:${email}|${clientKey(ctx.ip)}`;
-    if (!(await this.#limiter.attempt(key, 5, 60))) {
-      await this.#events.dispatch(new Lockout(email, ctx.ip));
-      throw new ValidationError({ email: [this.#translator.get('auth.login.throttled', { seconds: await this.#limiter.availableIn(key) })] }, { email });
-    }
     const signedIn = await this.#auth.attempt(email, password, { remember });
-    if (!signedIn.ok) {
+    if (signedIn.ok) return this.redirect().intended().route('dashboard');
+    switch (signedIn.error.kind) {
       // The password was right, but the account has a second factor: nobody is signed in yet, the code comes next.
-      if (signedIn.error.kind === 'two-factor-required') {
-        await this.#limiter.clear(key);
+      case 'two-factor-required':
         return this.redirect().route('auth.two-factor.challenge');
+      case 'throttled': {
+        const message = signedIn.error.account ? this.#translator.get('auth.login.locked') : this.#translator.get('auth.login.throttled', { seconds: signedIn.error.retryAfter });
+        throw new ValidationError({ email: [message] }, { email });
       }
-      throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
+      case 'invalid-credentials':
+        throw new ValidationError({ email: [this.#translator.get('auth.login.failed')] }, { email });
     }
-    await this.#limiter.clear(key);
-    return this.redirect().intended().route('dashboard');
   }
 }
 ```
 
 `attempt(identifier, password, { remember })` returns a [`Result`](errors.md#results): `ok` with the user, or an `err` of kind
-`invalid-credentials` or `two-factor-required`. An unknown address, a wrong password and an account without a password all give
+`invalid-credentials`, `two-factor-required` or `throttled`. An unknown address, a wrong password and an account without a password all give
 `invalid-credentials`, the same answer in the same time: for an unknown address, the hasher spends as long on a check that always
 fails. A failed attempt also waits until it has taken as long as a check over the slowest hash parameters this process has
 verified, so accounts with an older hash (after a change of driver or costs) are not told apart either, see
@@ -255,6 +248,48 @@ configured ones, `attempt()` hashes the password again and stores the new hash; 
 password](#changing-the-password)). It also notes the time, so the password counts as
 just confirmed for [sudo mode](#sudo-mode).
 
+### Limits on password sign-ins
+
+`attempt()` counts every password sign-in before it reads the account or checks the password, in one atomic step, so guesses sent
+at once cannot all slip past a limit. An app with its own login controller has them without writing any of it.
+
+| Limit | Default | Setting | Answer |
+| --- | --- | --- | --- |
+| One identifier from one client (an IPv6 address counts as its /64) | 5 a minute | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` (1 to 60) | `throttled` with `retryAfter` seconds |
+| One account, from all clients together | 100 a day | `AUTH_ACCOUNT_SIGN_INS_PER_DAY` (10 to 100000) | `throttled` with `account: true` |
+| One device cookie of the account's owner, instead of the line above | 10 an hour | fixed | after that the cookie counts as none |
+
+A held-up attempt checks no password, the right one included, and does no hashing. Past the account's ceiling waiting does not
+help: the way back in is a [password reset](passwords.md) or a [passkey](passkeys.md). For an identifier without an account the
+answer, the lookup and the count are the same as for one with an account, so the limit tells nothing about which addresses exist.
+A password sign-in of the owner, a sign-in by passkey or second factor, and a password reset start the account's count over; a
+right password clears the minute of that client. A sign-in through the remember-me cookie does not: a stolen cookie must not
+reset the budget of guesses. Refusals of the ceiling wait as long as a wrong password does. The spellings of an address that differ in case or surrounding spaces share their
+counts.
+
+The counts live in the [cache](cache.md) under keys that hold no address: the identifier is an HMAC under a key derived from
+`APP_KEY` (an account that exists is counted by its id), so a dump of the cache is no list of addresses that were tried. They are
+short-lived, so changing `APP_KEY` only starts them over. `Auth` needs `@marmeon/cache` for this: the boot stops without it.
+
+Anyone who knows only an address can use up the account's ceiling and so keep its owner from signing in with the password. The
+**device cookie** is the answer, after the OWASP pattern of device cookies: a browser that signs in with the password, or completes a
+password reset, gets a signed, long-lived cookie (`marmeon_device`, with the `__Host-` prefix over HTTPS; `HttpOnly`, `SameSite`
+and `Secure` as the session's cookies). It holds the account's id, a random nonce and the date, signed with an HMAC under a key
+derived from `APP_KEY` and bound to the account's session key, so a new password, `AccountSessions.end()` and `endEveryone()` make
+every earlier cookie worthless when the provider keeps a session key (with `null` the cookies survive, as do the sessions). The browser that
+changed the password gets a new cookie from `auth.deviceCookie()`, and so does one that finishes a second factor after a typed password. `AUTH_DEVICE_COOKIE_DAYS` sets how long it lasts (default 90, `0` turns it off). With a valid cookie for
+exactly the account found, an attempt does not count against the shared ceiling but against the cookie's own limit of ten an hour; past
+it, the cookie counts as none until the hour is over. The limit per client always applies. A cookie that does not fit (none, forged,
+expired, of another account, from before a new key) and an unknown account take the same path, and the answer does not tell which it
+was. Set the cookie from your own login and reset controllers: `auth.deviceCookie()` after a successful `attempt()` and
+`broker.deviceCookie(user)` after a successful `reset()` give the name, value and options (`ctx.cookies.set(device.name, device.value,
+device.options)`); the starter kit's controllers do. A stolen cookie gives its thief ten guesses an hour on that one account, no
+more than the thief of a session has.
+
+Each refused attempt of the first kind dispatches a [`Lockout`](#events) with `scope: 'client'`; the account's ceiling dispatches
+one with `scope: 'account'`, once per window. The starter kit's `QueueLockoutMail` listens for the second and queues the mail to
+the owner. The route's own limit per client (`login-client`, 30 a minute whatever the identifier) stays middleware.
+
 A password reset, a new password or [an ending of every session](#ending-every-session-of-a-user) that lands while the password is
 still being checked ends that sign-in too: `attempt()` answers `invalid-credentials`, like for a wrong password, and a new attempt
 checks the new state.
@@ -269,8 +304,8 @@ in `modules/auth/AuthServiceProvider.ts`. The
 
 The starter kit counts one more thing: the password sign-ins to one account from every client together, 100 a day. The 101st gets
 "Too many failed sign-ins for this account. Reset your password or sign in with a passkey." even with the right password, for an address
-without an account as for one with. A sign-in that succeeds and a completed password reset start the count over; a passkey sign-in is not
-affected. The owner gets a mail once. See [the starter kit](starter-kit.md#guesses-against-one-account).
+without an account as for one with. A sign-in that succeeds and a completed password reset start the count over; a passkey sign-in starts it
+over too. The owner's own browser keeps signing in past it with its [device cookie](#limits-on-password-sign-ins). The owner gets a mail once. See [the starter kit](starter-kit.md#guesses-against-one-account).
 
 `login(user)` signs a user in without a password, for example right after a registration. It returns `'signed-in'`, or
 `'two-factor-required'` for an account with a second factor: that account is not signed in, exactly as with `attempt()`. A
@@ -1228,7 +1263,7 @@ stay in the browser after a sign-out: set your own header only on answers that h
 | `Login` | `attempt()`, `login()`, a sign-in by the remember-me cookie | `user`, `remember`, `at`, `via` (`attempt`, `login`, `remember` or `passkey`), `ip`, `userAgent` |
 | `Logout` | `logout()` | `user` |
 | `Failed` | `attempt()` with an unknown identifier or a wrong password | `identifier`, and `user` when the identifier is known |
-| `Lockout` | The starter kit's login throttle turns an attempt away, or an account takes no more password sign-ins for the day (once) | `identifier`, `ip` |
+| `Lockout` | `attempt()` turns an attempt away (`scope: 'client'`), or an account takes no more password sign-ins for the day (`scope: 'account'`, once per window) | `identifier`, `ip`, `scope` |
 | `Registered` | Your registration, after it created the account | `user` |
 | `PasswordChanged` | `updatePassword()` | `user`, `revokedTokens` (the API tokens the new password revoked, `0` unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) |
 | `EmailChanged` | `EmailChange.confirm()`, and `EmailChange.request()` without private registration, once the address is written | `userId`, `previousEmail` (`null` if the user had none), `email` |
@@ -1243,7 +1278,7 @@ it tells whether the address has an account. The `ip` and `userAgent` of `Login`
 `RememberTokenReused` is dispatched once for each copied cookie, after the user's sign-ins were deleted and their sessions ended (or could not be, see `sessionsEnded`), and only for an account that still exists. Its `ip` and `userAgent` belong to the request that presented the old or never-issued value: whoever holds the copy, possibly the thief, or, more rarely, the owner's browser that missed the response carrying a renewal (a cancelled load, a dropped connection), so a mail should say so. A cookie that is no longer the current or just-replaced one cannot come from a browser that kept up with the rotations, so the owner is told for every old copy. `ip` is `null` when it is not an address, `userAgent` has its control characters removed and is cut to 512 characters, and `sessionsEnded` is `false` when the `UserProvider` could not end the sessions (the tokens are gone either way). The event never carries the cookie or a token. The `userAgent` is text the client chose: show a parsed browser and system (`describeDevice()`) in a mail, not the raw header. A queued listener gets `{ userId, at, ip, userAgent, sessionsEnded }`, with `at` as an ISO 8601 string. The starter kit mails the owner.
 A queueable event's payload has a name — `RememberTokenReusedPayload`, `LoginPayload` and so on, each the same as `EventPayload<typeof …>` of its class.
 
-`Lockout` and `Registered` are dispatched by your app's code, the starter kit's controllers, not by the package.
+`Registered` is dispatched by your app's code, the starter kit's controllers, not by the package; `Lockout` comes from `attempt()`.
 
 A listener reacts to a sign-in without the auth module knowing about it:
 
@@ -1276,6 +1311,9 @@ listeners.
 | `AUTH_SESSION_MAX_HOURS` | `24` | The longest a sign-in lasts in hours, however active: 1 to 720. A valid remember-me cookie signs in again. See [how long a sign-in lasts](#how-long-a-sign-in-lasts). |
 | `AUTH_REMEMBER_DAYS` | `30` | Days the remember-me cookie keeps a user signed in, from the sign-in: 0 to 30. `0` turns remember me off: no cookie signs in. |
 | `AUTH_REMEMBER_COOKIE` | `marmeon_remember` | The name of the remember-me cookie: letters, digits, `_` and `-`. Over HTTPS it gets the `__Host-` prefix. |
+| `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` | `5` | Password sign-ins a minute for one identifier from one client: 1 to 60. See [limits](#limits-on-password-sign-ins). |
+| `AUTH_ACCOUNT_SIGN_INS_PER_DAY` | `100` | Password sign-ins a day for one account, from all clients: 10 to 100000. |
+| `AUTH_DEVICE_COOKIE_DAYS` | `90` | Days the device cookie lasts that a password sign-in or a completed reset hands the browser: 0 to 365, `0` turns it off. |
 | `AUTH_PASSWORD_TIMEOUT` | `900` | Seconds a typed password or a proven passkey counts for `confirmedPassword()`. |
 | `AUTH_RESET_EXPIRE` | `60` | Minutes a password reset link works. See [password reset](passwords.md#configuration). |
 | `AUTH_RESET_THROTTLE` | `60` | Seconds before another reset link goes to the same address. |

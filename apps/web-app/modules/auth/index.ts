@@ -1,9 +1,10 @@
-import { Login, Registered, RememberTokenReused } from '@marmeon/auth';
+import { Lockout, Login, Registered, RememberTokenReused } from '@marmeon/auth';
 import { PasskeyServiceProvider } from '@marmeon/auth/passkeys';
 import { defineModule, listen } from '@marmeon/core';
 import { NotifyAboutNewSignIn } from './listeners/NotifyAboutNewSignIn.ts';
 import { NotifyAboutRememberTokenReused } from './listeners/NotifyAboutRememberTokenReused.ts';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
+import { QueueLockoutMail } from './listeners/QueueLockoutMail.ts';
 import { QueueWelcomeMail } from './listeners/QueueWelcomeMail.ts';
 import { SendAccountExistsMailJob } from './jobs/SendAccountExistsMailJob.ts';
 import { SendLockoutMailJob } from './jobs/SendLockoutMailJob.ts';
@@ -33,7 +34,7 @@ export default defineModule({
   providers: [AuthServiceProvider, PasskeyServiceProvider],
   // SendEmailVerification is a queued listener (static queue): a worker runs it after the registration committed.
   // NotifyAboutNewSignIn is queued too: a sign-in with a password becomes a notification (bell + mail) in a worker.
-  listeners: [listen(Registered, SendEmailVerification), listen(Registered, QueueWelcomeMail), listen(Login, NotifyAboutNewSignIn), listen(RememberTokenReused, NotifyAboutRememberTokenReused)],
+  listeners: [listen(Registered, SendEmailVerification), listen(Registered, QueueWelcomeMail), listen(Login, NotifyAboutNewSignIn), listen(RememberTokenReused, NotifyAboutRememberTokenReused), listen(Lockout, QueueLockoutMail)],
   // The module's notifications (a worker finds them by name) — and how a notification finds a user again.
   notifications: [NewSignInNotification],
   recipients: { user: UserRecipients },

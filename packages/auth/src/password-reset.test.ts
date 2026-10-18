@@ -6,6 +6,7 @@ import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, type
 import { PasswordHasher, type PasswordHash } from './hashing.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens, type AccessTokenStore } from './tokens.ts';
 import { NewPassword } from './new-password.ts';
+import { NO_LOGIN_LIMITS } from './test-helpers/login-limits.ts';
 import { signInStore } from './test-helpers/stores.ts';
 import type { AuthUser, AuthUserId, UserProvider } from './user.ts';
 
@@ -26,6 +27,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
   const forgotten: unknown[] = [];
   const events: object[] = [];
   const written: boolean[] = [];
+  const cleared: (number | string)[] = [];
   let accountGone = false;
   let refuseWrites = false;
   const users: UserProvider = {
@@ -46,6 +48,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
       { dispatch: async (event: object) => void events.push(event) } as never,
       { resetExpire: 60, resetThrottle: 60 } as never,
       new NewPassword(() => accessTokens, () => connections, { revokeTokensOnPasswordChange } as never, logger, () => signIns),
+      { ...NO_LOGIN_LIMITS, clearAccount: async (id: number | string) => void cleared.push(id) } as never,
     );
   let apiTokens: DatabaseAccessTokens;
 
@@ -64,6 +67,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
     forgotten.length = 0;
     events.length = 0;
     written.length = 0;
+    cleared.length = 0;
     logged.length = 0;
   });
   afterEach(() => vi.useRealTimers());
@@ -85,6 +89,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
     expect((await broker().reset('ada@example.com', created.ok ? created.value.token : '', 'new password')).ok).toBe(true);
     expect(await hasher.verify('new password', hash)).toBe(true);
     expect(forgotten).toEqual([1]);
+    expect(cleared, 'the account takes passwords again').toEqual([1]);
     expect(events.map((event) => event.constructor.name)).toEqual(['PasswordReset']);
     // The same token a second time
     expect(await broker().reset('ada@example.com', created.ok ? created.value.token : '', 'another')).toStrictEqual(err({ kind: 'invalid-token' }));

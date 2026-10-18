@@ -9,6 +9,7 @@ import type { PasswordHash } from './hashing.ts';
 import { NewPassword } from './new-password.ts';
 import { DatabasePasswordResetTokens, PasswordBroker } from './password-reset.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
+import { NO_LOGIN_LIMITS } from './test-helpers/login-limits.ts';
 import { signInStore } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import type { AuthUser } from './user.ts';
@@ -287,7 +288,7 @@ describe.each(drivers)('changes of address on %s', (driver) => {
     it('refuses a reset over a store that lacks forget() before the reset token is spent', async () => {
       const resets = new DatabasePasswordResetTokens(connections, clock);
       const memory = users();
-      const broker = new PasswordBroker(memory, resets, { make: async () => hash } as never, { dispatch: async () => {} } as never, { resetExpire: 60, resetThrottle: 0 } as never, newPassword({} as unknown as EmailChangeStore));
+      const broker = new PasswordBroker(memory, resets, { make: async () => hash } as never, { dispatch: async () => {} } as never, { resetExpire: 60, resetThrottle: 0 } as never, newPassword({} as unknown as EmailChangeStore), NO_LOGIN_LIMITS as never);
       const created = await broker.createToken(ada.email!);
       if (!created.ok) throw new Error('no token');
       await expect(broker.reset(ada.email!, created.value.token, 'a new password')).rejects.toThrow(/^\[marmeon:A6\] NewPassword needs EmailChangeStore\.forget\(\)/);

@@ -2,6 +2,7 @@
 import { expectTypeOf } from 'vitest';
 import type { AccountSessions } from './account-sessions.ts';
 import type { Auth } from './auth.ts';
+import { Lockout } from './events.ts';
 import type { Hasher, PasswordHash } from './hashing.ts';
 import { PasswordResetTokenStore } from './password-reset.ts';
 import { SignInStore, type RememberedDevice, type RememberTokenError, type SignInRecord } from './sign-ins.ts';
@@ -456,3 +457,8 @@ export async function disablingTwoFactorIsAResult() {
   const disabled: boolean = await twoFactor.disable('secret');
   return disabled;
 }
+
+// A Lockout says which limit it is: building one without `scope` is a type error.
+// @ts-expect-error scope is required
+new Lockout('ada@example.com', '203.0.113.1');
+expectTypeOf(new Lockout('ada@example.com', undefined, 'client').scope).toEqualTypeOf<'client' | 'account'>();

@@ -105,18 +105,20 @@ export class Failed {
 }
 
 /**
- * Too many failed sign-ins from one identifier and address — dispatched by the app's login throttle. The starter kit also dispatches it
- * once per window when an account passes its daily ceiling of password sign-ins; then `ip` is only the request that tipped it over, not
- * the source of the guesses, so a listener that blocks addresses must not act on it.
+ * Too many password sign-ins, dispatched by `Auth.attempt()`. `scope` says which limit: `client` is one identifier from one address
+ * (every refused attempt); `account` is the account's daily ceiling (once per window), and then `ip` is only the request that tipped it
+ * over, not the source of the guesses, so a listener that blocks addresses must not act on it. See `docs/authentication.md#events`.
  */
 export class Lockout {
   readonly #event = true;
   readonly identifier: string;
   readonly ip: string | undefined;
+  readonly scope: 'client' | 'account';
 
-  constructor(identifier: string, ip: string | undefined) {
+  constructor(identifier: string, ip: string | undefined, scope: 'client' | 'account') {
     this.identifier = identifier;
     this.ip = ip;
+    this.scope = scope;
   }
 }
 
