@@ -11,6 +11,7 @@ import type { AccessTokenStore } from './tokens.ts';
 import { combineFactors, NoTwoFactorState, type SecondFactor, type TwoFactorState } from './two-factor/state.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import type { AuthUser, UserProvider } from './user.ts';
+import { twoFactorState } from './test-helpers/stores.ts';
 
 // What a reset of an account with an unconfirmed address takes away — and what it leaves alone.
 
@@ -19,15 +20,16 @@ const hash = 'hash' as unknown as PasswordHash;
 /** A source holding `factors` until `removeAll()`; `stubborn` keeps them, as a source that failed to delete would. */
 function source(initial: readonly SecondFactor[], { stubborn = false } = {}) {
   let held = [...initial];
-  const state: TwoFactorState & { removed: number } = {
-    removed: 0,
-    factors: async () => held,
-    enabledSince: async () => undefined,
-    removeAll: async () => {
-      state.removed++;
-      if (!stubborn) held = [];
-    },
-  };
+  const state = Object.assign(
+    twoFactorState({
+      factors: async () => held,
+      removeAll: async () => {
+        state.removed++;
+        if (!stubborn) held = [];
+      },
+    }),
+    { removed: 0 },
+  );
   return state;
 }
 
@@ -254,12 +256,26 @@ describe('NewPassword for an address that was confirmed once', () => {
 
 describe('a TwoFactorState without removeAll', () => {
   it('refuses the reset before the token is spent', async () => {
-    const old = { factors: async () => [], enabledSince: async () => undefined } as unknown as TwoFactorState;
+    const old = { factors: async () => [], enabledSince: async () => undefined } as unknown as TwoFactorState; // a source without removeAll() (a cast)
     const { newPassword } = setup({ state: old });
     let consumed = 0;
     const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, {} as never, { resetExpire: 60 } as never, newPassword);
-    await expect(broker.reset('a@example.com', 'x', 'pw')).rejects.toThrow('removeAll');
+    await expect(broker.reset('a@example.com', 'x', 'pw')).rejects.toThrow(/^\[marmeon:A6\] .*removeAll/);
     expect(consumed).toBe(0);
+  });
+
+  it('refuses the reset when a source inside a combination lost its removeAll', async () => {
+    const inner = twoFactorState();
+    const { newPassword } = setup({ state: combineFactors(twoFactorState(), inner) });
+    (inner as unknown as { removeAll: unknown }).removeAll = undefined;
+    let consumed = 0;
+    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, {} as never, { resetExpire: 60 } as never, newPassword);
+    await expect(broker.reset('a@example.com', 'x', 'pw')).rejects.toThrow(/^\[marmeon:A6\] .*removeAll/);
+    expect(consumed).toBe(0);
+  });
+
+  it('is refused already when the combination is made', () => {
+    expect(() => combineFactors({ factors: async () => [], enabledSince: async () => undefined } as never)).toThrow(/^\[marmeon:A6\] combineFactors\(\).*removeAll/);
   });
 });
 

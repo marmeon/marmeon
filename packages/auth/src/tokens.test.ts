@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { abilities, authenticate } from './middleware.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens, hashToken, parseAccessToken, tokenCan, type AccessTokenTable, type WithToken } from './tokens.ts';
+import type { AuthUserId } from './user.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 const checksumOf = (value: string) => crc32(value).toString(16).padStart(8, '0');
@@ -152,10 +153,11 @@ describe.each(drivers)('API tokens on %s', (driver) => {
     const own = await migratedConnections(driver, new URL('./__fixtures__/uuid-migrations/', import.meta.url));
     try {
       const store = new DatabaseAccessTokens(own.connections, { tokenPrefix: 'marmeon_' } as never, new SystemClock());
-      const { plainText, token } = await store.create('11111111-1111-4111-8111-111111111111', 'CLI');
+      const owner = '11111111-1111-4111-8111-111111111111' as unknown as AuthUserId;
+      const { plainText, token } = await store.create(owner, 'CLI');
       expect(typeof token.id).toBe('string');
       expect((await store.find(plainText))!.id).toBe(token.id);
-      expect(await store.revoke('11111111-1111-4111-8111-111111111111', token.id)).toBe(true);
+      expect(await store.revoke(owner, token.id)).toBe(true);
       expect(await store.find(plainText)).toBeUndefined();
     } finally {
       await own.close();

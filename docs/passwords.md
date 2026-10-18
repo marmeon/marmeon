@@ -194,8 +194,8 @@ A successful reset:
   afterwards; one that is still there is logged as an error. It then dispatches `PasskeyRemoved` (`via: 'reset'`) and `TwoFactorDisabled`
   (`via: 'reset'`) for what went. A user without an `email_verified_at` property loses nothing, and with a `TwoFactorState` bound the
   app logs a warning once that the rule is off: the `UserProvider` has to load that column (and `first_verified_at`) for the rule to apply. The removal calls `removeAll(userId)` of the `TwoFactorState` binding, which every source
-  implements: `TwoFactorStore`, `PasskeyStore` and `combineFactors()` do, and a source of your own must. `reset()` throws before it spends the
-  token when the bound source has no `removeAll()` (an older source), so the link stays usable once you fixed it,
+  implements: `TwoFactorStore`, `PasskeyStore` and `combineFactors()` do, and a source of your own must (it extends `TwoFactorState`, which requires it). `reset()` throws before it spends the
+  token when the bound source has no `removeAll()` (JavaScript, a cast), so the link stays usable once you fixed it,
 - dispatches `PasswordReset`, with `revokedTokens`, the number of API tokens it revoked.
 
 It does not sign the user in: the starter kit sends them to the login page. The `password()` rule is explained on the
@@ -214,14 +214,16 @@ The [API tokens](api-tokens.md#pruning-tokens) page describes the command.
 ## A store of your own
 
 The broker keeps its tokens in a `PasswordResetTokenStore`, by default the `password_reset_tokens` table. To keep them elsewhere,
-bind your own in a provider:
+bind your own in a provider. It extends the abstract class (see [your own stores](authentication.md#your-own-stores)) and implements
+every method:
 
 ```ts
-interface PasswordResetTokenStore {
-  create(email: string, throttleSeconds: number): Promise<Result<string, { kind: 'throttled' }>>;
-  consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, { kind: 'invalid-token' }>>;
-  forget(email: string): Promise<void>;
-  prune(maxAgeSeconds: number): Promise<number>;
+abstract class PasswordResetTokenStore {
+  abstract create(email: string, throttleSeconds: number): Promise<Result<string, { kind: 'throttled' }>>;
+  abstract consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, { kind: 'invalid-token' }>>;
+  abstract forget(email: string): Promise<void>;
+  abstract prune(maxAgeSeconds: number): Promise<number>;
+  abstract forgetEveryone(): Promise<number>;
 }
 ```
 
@@ -229,6 +231,7 @@ interface PasswordResetTokenStore {
 returns `ok` only for the current, fresh token of the address, and uses it up in the same step; every other case is one `err` of
 kind `invalid-token`. A store that deletes an expired token before it answers must return `commitAnyway(err(…))`, so the deletion
 survives a [transaction that returns the err](transactions.md#returning-an-err). Store a hash of the token, never the token.
+`forgetEveryone()` deletes every token in one statement and returns how many: [ending every session of every account](authentication.md#ending-every-session-of-every-account) calls it.
 
 A `password_reset_tokens` table of your own needs what the starter kit's migration gives it: `email` as its primary key, so an
 address never has two rows, and `token_hash` as a 64-character `secret()` column.

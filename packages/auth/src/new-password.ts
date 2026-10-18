@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { afterCommit, type EventDispatcher, type Logger } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 import type { Connections } from '@marmeon/database';
 import type { SessionEndings } from '@marmeon/session';
 import { accountScope } from '@marmeon/session/internal';
@@ -10,8 +11,8 @@ import type { PasswordHash } from './hashing.ts';
 import type { RememberTokenStore } from './remember.ts';
 import { SignInTracker } from './sign-ins.ts';
 import type { AccessTokenStore } from './tokens.ts';
-import { NoTwoFactorState, type TwoFactorState } from './two-factor/state.ts';
-import type { AuthUser, UserProvider } from './user.ts';
+import { factorSources, NoTwoFactorState, type TwoFactorState } from './two-factor/state.ts';
+import type { AuthUser, AuthUserId, UserProvider } from './user.ts';
 
 /** Thrown by {@link NewPassword.store} when the session key of the account changed since the caller read it (an ending landed meanwhile): the password change is rolled back. */
 export class AccountClaimLost extends Error {}
@@ -67,7 +68,7 @@ export class NewPassword {
    * `AccountSessions.end()` that landed meanwhile would bring the ended session back, so a refused write — or a later key found
    * when it is read back — throws {@link AccountClaimLost}. Everything runs in one transaction, so that also rolls the tokens back.
    */
-  async store(users: UserProvider, remember: RememberTokenStore, id: string | number, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{ readonly revoked: number; readonly sessionKey: string }> {
+  async store(users: UserProvider, remember: RememberTokenStore, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null): Promise<{ readonly revoked: number; readonly sessionKey: string }> {
     const sessionKey = randomBytes(32).toString('base64url');
     const unconfirmed = via === 'reset' && user !== undefined && neverConfirmed(user);
     if (via === 'reset' && user !== undefined && (user as { email_verified_at?: unknown }).email_verified_at === undefined) this.#warnVerificationUnknown();
@@ -136,13 +137,18 @@ export class NewPassword {
   }
 
   /**
-   * Throws, before a reset token is spent, when the bound `TwoFactorState` cannot remove its factors (an older source without `removeAll()`):
+   * Throws, before a reset token is spent, when a source of the bound `TwoFactorState` cannot remove its factors (no `removeAll()`: JavaScript, a cast):
    * the reset of an account with an unconfirmed address would otherwise fail after the token is used up, and the owner could never reset.
    */
   assertReady(): void {
     const state = this.#factors?.().state;
-    if (state && typeof state.removeAll !== 'function') {
-      throw new TypeError('The bound TwoFactorState has no removeAll(userId): a password reset could not remove the factors of an account with an unconfirmed address. Implement removeAll() in your source (docs/two-factor-authentication.md#setting-up).');
+    if (state && factorSources(state).some((source) => typeof source.removeAll !== 'function')) {
+      throw new TypeError(
+        withCode(
+          'A6',
+          'The bound TwoFactorState has a source without removeAll(userId): a password reset could not remove the factors of an account with an unconfirmed address. Implement removeAll() in your source (docs/two-factor-authentication.md#setting-up).',
+        ),
+      );
     }
   }
 

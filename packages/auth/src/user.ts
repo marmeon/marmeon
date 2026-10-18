@@ -98,9 +98,9 @@ export interface Authenticated {
   readonly user: AuthUser;
 }
 
-/** The id of a user — typed loosely inside the package, which does not know the app's user type. */
-export function idOf(user: unknown): string | number {
+/** The id of a user, checked to be a string or a number; its type is the app's, which the package cannot see. */
+export function idOf(user: unknown): AuthUserId {
   const id = (user as { id?: unknown }).id;
   if (typeof id !== 'string' && typeof id !== 'number') throw new TypeError('A user needs an `id` (string or number) to be signed in.');
-  return id;
+  return id as AuthUserId;
 }

@@ -897,8 +897,9 @@ touch `updated_at`: no account changed.
 
 A custom `RememberTokenStore` needs `forgetEveryone()`, since the call always deletes the remember-me tokens. A custom
 `PasswordResetTokenStore` needs `forgetEveryone()` and a custom `AccessTokenStore` needs `revokeEveryone()`, unless you pass
-`--keep-reset-tokens` or `--keep-api-tokens`; without the method the call refuses before it changes anything. Each deletes every row in
-one statement and returns how many.
+`--keep-reset-tokens` or `--keep-api-tokens`. [Your own stores](#your-own-stores) extend an abstract class that requires both, so a
+store without them does not compile; in JavaScript, or through a cast, the call refuses with error A6 before it changes anything. Each
+deletes every row in one statement and returns how many.
 
 `AccountSessions` covers the accounts of the bound `UserProvider`; accounts in another table with their own provider are not ended.
 
@@ -1056,6 +1057,59 @@ it('signs the other browser out', async () => {
 
 To test the controller itself, confirm the password in the test first (the session needs a recent confirmation, a password or a passkey); `POST /confirm-password`
 does that in the starter kit.
+
+## Your own stores
+
+`PasswordResetTokenStore`, `AccessTokenStore` and `TwoFactorState` are abstract classes. The class is the contract and the key you bind it under: `container.singleton(AccessTokenStore, YourTokens)` and a constructor that
+asks for an `AccessTokenStore` work as they always did. A store of your own extends the class, calls `super()` and implements every method:
+
+```ts
+import { AccessTokenStore } from '@marmeon/auth';
+
+export class RedisAccessTokens extends AccessTokenStore {
+  readonly #redis: Redis;
+
+  constructor(redis: Redis) {
+    super();
+    this.#redis = redis;
+  }
+
+  async revokeEveryone(): Promise<number> {
+    // …
+  }
+
+  // create, find, touch, list, revoke, revokeAll and prune as well
+}
+```
+
+A class that only `implements` the contract, and an object literal, do not compile: the class carries a private mark that only a
+subclass has. That is deliberate. A member added after 1.0 comes with a default in the class, so a store that extends it keeps working;
+a structural copy would break at the first call of the new member. Extend the classes of the framework only where they are abstract: the
+stores it ships (`DatabaseAccessTokens`, `DatabasePasswordResetTokens`, `TwoFactorStore`, `PasskeyStore`) are implementations, and an
+override of one of their methods can break the guarantee of another.
+
+The ids these stores take are `AuthUserId`, the type of `id` in your [`AuthTypes`](#the-user-type-and-where-users-come-from) user: a
+number if your users have a number, a string for UUIDs.
+
+### Security-relevant members
+
+Every member that is security-relevant is `abstract` and never gets a default, not after 1.0 either. A member counts as
+security-relevant if at least one of these holds:
+
+1. **It ends or checks a proof.** It ends, revokes, deletes or checks a proof (a session, a sign-in, a remember-me, reset or API token, a
+   factor, a recovery code, a passkey) or decides whether one is still valid (`consume`, `find`, `factors`, `destroy`).
+2. **It handles a secret or a binding.** It writes, reads or compares secret material, or the state a fingerprint or a proof is built
+   from (a hash, a validator, a fingerprint, a session key, the count of failed attempts).
+3. **A guarantee rests on its atomicity.** A caller bases a security property on its being atomic, a compare-and-set or read-after-write.
+4. **A default that does nothing would fail open.** A default that does nothing or answers the empty value (`0`, `[]`, `undefined`,
+   `true`, `false`) would make the app accept what it refuses otherwise, keep alive what it ends otherwise, skip a limit or a factor, or
+   hide a way in from the account's owner that the owner could otherwise see and end (so `SignInStore.list` is security-relevant).
+
+When in doubt, a member is security-relevant. What is none of these is display metadata (a device name, "last seen"), statistics,
+tidying up rows that are no longer valid and could not become valid again through any setting, and hints for performance. A security-relevant member arrives
+after 1.0 only as a security hardening (which may break in a minor version and has its own entry in `UPGRADING.md`) or in a major version.
+Any other new member arrives as a method with a default. `UserProvider` and `Hasher` are interfaces; a security-relevant member is added
+to them the same way, and any other member is optional, with the behaviour when it is missing documented.
 
 ## The tables of the stores
 

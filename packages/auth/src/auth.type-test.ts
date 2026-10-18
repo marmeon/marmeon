@@ -1,8 +1,14 @@
 // Type guarantees of `Auth.attempt()` and `Auth.login()` — checked by `tsc` (typecheck), never run.
+import { expectTypeOf } from 'vitest';
 import type { AccountSessions } from './account-sessions.ts';
 import type { Auth } from './auth.ts';
-import type { PasswordHash } from './hashing.ts';
-import type { Credentials, UserProvider } from './user.ts';
+import type { Hasher, PasswordHash } from './hashing.ts';
+import { PasswordResetTokenStore } from './password-reset.ts';
+import { AccessTokenStore } from './tokens.ts';
+import { TwoFactorState } from './two-factor/state.ts';
+import type { PasskeyRecord } from './passkeys/store.ts';
+import type { AccessToken } from './tokens.ts';
+import type { AuthUserId, Credentials, UserProvider } from './user.ts';
 
 declare const auth: Auth;
 declare const accountSessions: AccountSessions;
@@ -91,4 +97,188 @@ export async function endEveryoneKnowsItsOptions() {
   await accountSessions.endEveryone({ accessTokens: false, resetTokens: false });
   // @ts-expect-error an unknown option is refused
   await accountSessions.endEveryone({ passkeys: true });
+}
+
+// The stores are abstract classes: a store extends one and implements every method, none has a default.
+export class CompleteResets extends PasswordResetTokenStore {
+  async create() {
+    return { ok: true as const, value: 'token' };
+  }
+  async consume() {
+    return { ok: true as const, value: undefined };
+  }
+  async forget() {}
+  async prune() {
+    return 0;
+  }
+  async forgetEveryone() {
+    return 0;
+  }
+}
+// @ts-expect-error forgetEveryone() is required: without it the emergency switch would leave reset links alive
+export class ResetsWithoutEveryone extends PasswordResetTokenStore {
+  async create() {
+    return { ok: true as const, value: 'token' };
+  }
+  async consume() {
+    return { ok: true as const, value: undefined };
+  }
+  async forget() {}
+  async prune() {
+    return 0;
+  }
+}
+
+// @ts-expect-error a store that only implements the contract does not fit: it has to extend the class
+export class ResetsByImplements implements PasswordResetTokenStore {
+  async create() {
+    return { ok: true as const, value: 'token' };
+  }
+  async consume() {
+    return { ok: true as const, value: undefined };
+  }
+  async forget() {}
+  async prune() {
+    return 0;
+  }
+  async forgetEveryone() {
+    return 0;
+  }
+}
+// @ts-expect-error an object literal is no PasswordResetTokenStore either
+export const resetsLiteral: PasswordResetTokenStore = { create: async () => ({ ok: true as const, value: 'token' }), consume: async () => ({ ok: true as const, value: undefined }), forget: async () => {}, prune: async () => 0, forgetEveryone: async () => 0 };
+
+export class CompleteTokens extends AccessTokenStore {
+  async create(): Promise<never> {
+    throw new Error('unused');
+  }
+  async find() {
+    return undefined;
+  }
+  async touch() {}
+  async list() {
+    return [];
+  }
+  async revoke() {
+    return false;
+  }
+  async revokeAll() {
+    return 0;
+  }
+  async prune() {
+    return 0;
+  }
+  async revokeEveryone() {
+    return 0;
+  }
+}
+// @ts-expect-error revokeEveryone() is required: without it the emergency switch would leave API tokens alive
+export class TokensWithoutEveryone extends AccessTokenStore {
+  async create(): Promise<never> {
+    throw new Error('unused');
+  }
+  async find() {
+    return undefined;
+  }
+  async touch() {}
+  async list() {
+    return [];
+  }
+  async revoke() {
+    return false;
+  }
+  async revokeAll() {
+    return 0;
+  }
+  async prune() {
+    return 0;
+  }
+}
+// @ts-expect-error a store that only implements the contract does not fit: it has to extend the class
+export class TokensByImplements implements AccessTokenStore {
+  async create(): Promise<never> {
+    throw new Error('unused');
+  }
+  async find() {
+    return undefined;
+  }
+  async touch() {}
+  async list() {
+    return [];
+  }
+  async revoke() {
+    return false;
+  }
+  async revokeAll() {
+    return 0;
+  }
+  async prune() {
+    return 0;
+  }
+  async revokeEveryone() {
+    return 0;
+  }
+}
+// @ts-expect-error an object literal is no AccessTokenStore either
+export const tokensLiteral: AccessTokenStore = { create: async () => ({}) as never, find: async () => undefined, touch: async () => {}, list: async () => [], revoke: async () => false, revokeAll: async () => 0, prune: async () => 0, revokeEveryone: async () => 0 };
+
+export class CompleteFactors extends TwoFactorState {
+  async factors() {
+    return [];
+  }
+  async enabledSince() {
+    return undefined;
+  }
+  async removeAll() {}
+}
+// @ts-expect-error removeAll() is required: a reset would leave a factor standing
+export class FactorsWithoutRemoveAll extends TwoFactorState {
+  async factors() {
+    return [];
+  }
+  async enabledSince() {
+    return undefined;
+  }
+}
+// @ts-expect-error a source that only implements the contract does not fit: it has to extend the class
+export class FactorsByImplements implements TwoFactorState {
+  async factors() {
+    return [];
+  }
+  async enabledSince() {
+    return undefined;
+  }
+  async removeAll() {}
+}
+
+// @ts-expect-error an object literal is no TwoFactorState either
+export const factorsLiteral: TwoFactorState = { factors: async () => [], enabledSince: async () => undefined, removeAll: async () => {} };
+
+declare const tokens: AccessTokenStore;
+export async function userIdIsTheApps() {
+  await tokens.revokeAll(1);
+  // @ts-expect-error the package's test user has a number as its id, and the stores take that type
+  await tokens.revokeAll('1');
+}
+
+// A hasher states how long a failed sign-in is padded to.
+declare const hasherParts: Omit<Hasher, 'failureFloorMs'>;
+export const fullHasher: Hasher = { ...hasherParts, failureFloorMs: () => 0 };
+// @ts-expect-error failureFloorMs() is required: without it the response time tells which addresses have an account
+export const floorlessHasher: Hasher = { ...hasherParts };
+
+// The id every store takes is the app's: AuthUserId, in each method and in the records that carry one.
+declare const factors: TwoFactorState;
+export function storesTakeTheAppsUserId() {
+  expectTypeOf<Parameters<AccessTokenStore['create']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<AccessTokenStore['list']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<AccessTokenStore['revoke']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<AccessTokenStore['revokeAll']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<TwoFactorState['factors']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<TwoFactorState['enabledSince']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<Parameters<TwoFactorState['removeAll']>[0]>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<AccessToken['userId']>().toEqualTypeOf<AuthUserId>();
+  expectTypeOf<PasskeyRecord['userId']>().toEqualTypeOf<AuthUserId>();
+  // @ts-expect-error the package's test user has a number as its id
+  return factors.factors('1');
 }

@@ -33,6 +33,7 @@ import {
 import { SIGN_INS_TABLE } from './sign-ins.ts';
 import { REMEMBER_TABLE } from './remember.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
@@ -193,7 +194,7 @@ async function boot(driver: Driver, users: UserProvider, options: { signIns?: ne
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users);
       // Cy has a second factor: signing Cy in leaves a sign-in that waits for it.
-      container.instance(TwoFactorState, { removeAll: async () => {}, factors: async (id) => (Number(id) === cy.id ? ['totp' as const] : []), enabledSince: async () => new Date(0) });
+      container.instance(TwoFactorState, twoFactorState({ factors: async (id) => (Number(id) === cy.id ? ['totp' as const] : []), enabledSince: async () => new Date(0) }));
       if (options.signIns) container.singleton(SignInStore, options.signIns as never);
       options.override?.(container);
     },
@@ -338,11 +339,11 @@ describe('AccountSessions.endEveryone()', () => {
     const { browser, accounts, count } = await boot(memory, users, {
       override: (c) => {
         const real = c.make(PasswordResetTokenStore);
-        c.instance(PasswordResetTokenStore, { create: (...args) => real.create(...args), consume: (...args) => real.consume(...args), forget: (email) => real.forget(email), prune: (age) => real.prune(age) });
+        c.instance(PasswordResetTokenStore, { create: (...args) => real.create(...args), consume: (...args) => real.consume(...args), forget: (email) => real.forget(email), prune: (age) => real.prune(age) } satisfies Omit<PasswordResetTokenStore, 'forgetEveryone'> as never);
       },
     });
     await browser().send('/as/1', { method: 'POST' });
-    await expect(accounts.endEveryone()).rejects.toThrow(/PasswordResetTokenStore\.forgetEveryone\(\).*--keep-reset-tokens.*Nothing was changed/s);
+    await expect(accounts.endEveryone()).rejects.toThrow(/^\[marmeon:A6\] .*PasswordResetTokenStore\.forgetEveryone\(\).*--keep-reset-tokens.*Nothing was changed/s);
     expect(await count(REMEMBER_TABLE), 'the tokens stay').toBe(1);
     expect([...users.rows.values()].map((row) => row.key)).toEqual([null, null, null]);
     expect(await accounts.endEveryone({ resetTokens: false }), 'kept: the store is not needed').toMatchObject({ accounts: 3 });
@@ -353,11 +354,11 @@ describe('AccountSessions.endEveryone()', () => {
     const { browser, accounts, count } = await boot(memory, users, {
       override: (c) => {
         const real = c.make(AccessTokenStore);
-        c.instance(AccessTokenStore, { create: (...args) => real.create(...args), find: (t) => real.find(t), touch: (t) => real.touch(t), list: (id) => real.list(id), revoke: (u, id) => real.revoke(u, id), revokeAll: (id) => real.revokeAll(id), prune: (g) => real.prune(g) });
+        c.instance(AccessTokenStore, { create: (...args) => real.create(...args), find: (t) => real.find(t), touch: (t) => real.touch(t), list: (id) => real.list(id), revoke: (u, id) => real.revoke(u, id), revokeAll: (id) => real.revokeAll(id), prune: (g) => real.prune(g) } satisfies Omit<AccessTokenStore, 'revokeEveryone'> as never);
       },
     });
     await browser().send('/as/1', { method: 'POST' });
-    await expect(accounts.endEveryone()).rejects.toThrow(/AccessTokenStore\.revokeEveryone\(\).*--keep-api-tokens.*Nothing was changed/s);
+    await expect(accounts.endEveryone()).rejects.toThrow(/^\[marmeon:A6\] .*AccessTokenStore\.revokeEveryone\(\).*--keep-api-tokens.*Nothing was changed/s);
     expect(await count(REMEMBER_TABLE)).toBe(1);
     expect(await accounts.endEveryone({ accessTokens: false }), 'kept: the store is not needed').toMatchObject({ accounts: 3 });
   });

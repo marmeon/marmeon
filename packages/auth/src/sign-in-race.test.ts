@@ -10,6 +10,7 @@ import { COMPLETE_PENDING, SIGN_IN_VERIFIED } from './auth.ts';
 import { NewPassword } from './new-password.ts';
 import { REMEMBER_TABLE } from './remember.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
+import { twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 import { TwoFactorState } from './two-factor/state.ts';
 
@@ -186,6 +187,7 @@ async function boot(options: { totp?: boolean; noRebind?: boolean; hold: 'verify
         make: (password) => real.make(password),
         needsRehash: (hash) => real.needsRehash(hash),
         dummyVerify: (password) => real.dummyVerify(password),
+        failureFloorMs: () => real.failureFloorMs(),
         verify: async (password, hash) => {
           const right = await real.verify(password, hash);
           if (options.hold === 'verify' && armed) {
@@ -218,7 +220,7 @@ async function boot(options: { totp?: boolean; noRebind?: boolean; hold: 'verify
         prune: (days) => tokens.prune(days),
         ...(options.noRebind ? {} : { rebind: (userId: number | string, cookie: string, fingerprint: string) => tokens.rebind!(userId, cookie, fingerprint) }),
       });
-      if (options.totp) container.instance(TwoFactorState, { factors: async () => ['totp'], enabledSince: async () => undefined, removeAll: async () => {} });
+      if (options.totp) container.instance(TwoFactorState, twoFactorState({ factors: async () => ['totp'] }));
     },
   });
   await application.container.make(Migrator).migrate();

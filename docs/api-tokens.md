@@ -233,9 +233,9 @@ export const schedule = defineSchedule((s) => {
 ## A store of your own
 
 Tokens live in the `personal_access_tokens` table by default, through `DatabaseAccessTokens`. To keep them elsewhere, bind your own
-`AccessTokenStore` in a provider. It implements `create`, `find`, `touch`, `list`, `revoke`, `revokeAll` and `prune`, and keeps a
+`AccessTokenStore` in a provider. It extends that abstract class (see [your own stores](authentication.md#your-own-stores)) and implements `create`, `find`, `touch`, `list`, `revoke`, `revokeAll`, `prune` and `revokeEveryone`, and keeps a
 hash of each secret, never the secret. `revokeAll(userId)` deletes every token of the user and returns how many; a new password
-calls it inside its transaction, so a store on the database joins it.
+calls it inside its transaction, so a store on the database joins it. `revokeEveryone()` deletes the tokens of every user in one statement: `AccountSessions.endEveryone()` calls it, and a store without it does not compile.
 
 A `personal_access_tokens` table of your own needs what the starter kit's migration gives it: `token_hash` as a 64-character
 `secret()` column with a unique index (`DatabaseAccessTokens` finds a token by it), `abilities` as JSON, and `user_id` with

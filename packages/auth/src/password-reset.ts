@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { Clock, commitAnyway, err, EventDispatcher, ok, token, type Result } from '@marmeon/core';
+import { Clock, commitAnyway, err, EventDispatcher, ok, type Result } from '@marmeon/core';
 import { Connections, secret, sql, type Secret } from '@marmeon/database';
 import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
@@ -27,32 +27,38 @@ export const PASSWORD_RESET_COLUMNS = ['email', 'token_hash', 'created_at'] as c
 /**
  * Reset tokens: one per e-mail, stored only as SHA-256 (256 random bits need no slow hash),
  * used once, valid for a while.
+ *
+ * Your own store extends this class and implements every method; none has a default, and a member added later has one only if it is
+ * not security-relevant. See `docs/authentication.md#your-own-stores`.
  */
-export interface PasswordResetTokenStore {
+export abstract class PasswordResetTokenStore {
+  /** A mark without meaning: only a subclass fits the type, so a store that merely `implements` this contract does not compile. */
+  readonly #contract = true;
+
   /** A new token for `email`, replacing an older one — an `err` of kind `throttled` while the last one is younger than `throttleSeconds`. */
-  create(email: string, throttleSeconds: number): Promise<Result<string, { readonly kind: 'throttled' }>>;
+  abstract create(email: string, throttleSeconds: number): Promise<Result<string, { readonly kind: 'throttled' }>>;
   /**
    * Uses `token` up if it is the current token of `email` and younger than `maxAgeSeconds`; otherwise an `err` of kind `invalid-token`
    * — one kind for a malformed, unknown, wrong and expired token on purpose. The deletion of an expired token must commit even inside a
    * transaction that returns the err (`commitAnyway`).
    */
-  consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, { readonly kind: 'invalid-token' }>>;
-  forget(email: string): Promise<void>;
+  abstract consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, { readonly kind: 'invalid-token' }>>;
+  abstract forget(email: string): Promise<void>;
   /** Deletes every token older than `maxAgeSeconds` — expired ones nobody used (`marmeon auth:prune-tokens`). How many. */
-  prune(maxAgeSeconds: number): Promise<number>;
+  abstract prune(maxAgeSeconds: number): Promise<number>;
   /** Deletes every token, valid or not (`AccountSessions.endEveryone()`): a link that was mailed before a leak must not work after it. How many. */
-  forgetEveryone?(): Promise<number>;
+  abstract forgetEveryone(): Promise<number>;
 }
-export const PasswordResetTokenStore = token<PasswordResetTokenStore>('PasswordResetTokenStore');
 
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 /** The default {@link PasswordResetTokenStore}, on the app's `password_reset_tokens` table. */
-export class DatabasePasswordResetTokens implements PasswordResetTokenStore {
+export class DatabasePasswordResetTokens extends PasswordResetTokenStore {
   readonly #connections: Connections;
   readonly #clock: Clock;
 
   constructor(connections: Connections, clock: Clock) {
+    super();
     this.#connections = connections;
     this.#clock = clock;
   }

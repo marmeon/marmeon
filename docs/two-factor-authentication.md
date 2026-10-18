@@ -71,7 +71,7 @@ export class AuthServiceProvider implements ServiceProvider {
 }
 ```
 
-`TwoFactorState` answers which factors an account has (`factors()`), since when (`enabledSince()`, the earliest confirmation) and removes them all (`removeAll()`, which a source of your own must implement). Without a binding it says "none" and asks nothing, so an app that does
+`TwoFactorState` answers which factors an account has (`factors()`), since when (`enabledSince()`, the earliest confirmation) and removes them all (`removeAll()`). `TwoFactorState` is an abstract class: a source of your own extends it and implements all three, see [your own stores](authentication.md#your-own-stores). Without a binding it says "none" and asks nothing, so an app that does
 not bind it behaves exactly as before. Removing the binding later switches two-factor authentication off for every account: users
 who set it up sign in with the password alone. `combineFactors()` joins several sources into one: the authenticator app is `TwoFactorStore`,
 and [passkeys](passkeys.md) add `PasskeyStore` (`combineFactors(c.make(TwoFactorStore), c.make(PasskeyStore))`). Recovery codes belong to the

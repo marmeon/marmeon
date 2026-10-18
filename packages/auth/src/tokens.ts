@@ -1,9 +1,10 @@
 import { createHash, randomInt } from 'node:crypto';
 import { crc32 } from 'node:zlib';
-import { Clock, token } from '@marmeon/core';
+import { Clock } from '@marmeon/core';
 import { Connections, sql, type Generated, type JsonColumn, type Secret } from '@marmeon/database';
 import type { Duration } from '@marmeon/http';
 import { AuthConfig } from './config.ts';
+import type { AuthUserId } from './user.ts';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link AccessTokenTable}. */
 export const ACCESS_TOKEN_TABLE = 'personal_access_tokens';
@@ -33,7 +34,7 @@ export type AccessTokenId = number | string;
 /** A token as the app sees it — never with its secret. */
 export interface AccessToken {
   readonly id: AccessTokenId;
-  readonly userId: number | string;
+  readonly userId: AuthUserId;
   readonly name: string;
   readonly abilities: readonly string[];
   readonly lastUsedAt: string | null;
@@ -50,28 +51,33 @@ export interface WithToken {
  * Personal access tokens: opaque, `marmeon_<40 characters><crc32>`. The prefix and the checksum let secret scanners find leaked
  * tokens; only a SHA-256 of the secret, under a prefix of its own, is stored and looked up — 62⁴⁰ ≈ 2²³⁸ possibilities need no
  * slow hash, and a slow hash per API request would be a lever for anyone sending invalid tokens. See `docs/api-tokens.md#the-token-format`.
+ *
+ * Your own store extends this class and implements every method; none has a default, and a member added later has one only if it is
+ * not security-relevant. See `docs/authentication.md#your-own-stores`.
  */
-export interface AccessTokenStore {
+export abstract class AccessTokenStore {
+  /** A mark without meaning: only a subclass fits the type, so a store that merely `implements` this contract does not compile. */
+  readonly #contract = true;
+
   /** A new token — the plain text is returned once and never stored. */
-  create(userId: number | string, name: string, options?: { abilities?: readonly string[]; expiresIn?: Duration }): Promise<{ plainText: string; token: AccessToken }>;
+  abstract create(userId: AuthUserId, name: string, options?: { abilities?: readonly string[]; expiresIn?: Duration }): Promise<{ plainText: string; token: AccessToken }>;
   /** The token for a presented plain text — `undefined` for malformed, unknown, wrong, revoked or expired ones, all alike. */
-  find(plainText: string): Promise<AccessToken | undefined>;
+  abstract find(plainText: string): Promise<AccessToken | undefined>;
   /** Notes the use (at most once a minute, not a write per request). */
-  touch(token: AccessToken): Promise<void>;
-  list(userId: number | string): Promise<AccessToken[]>;
+  abstract touch(token: AccessToken): Promise<void>;
+  abstract list(userId: AuthUserId): Promise<AccessToken[]>;
   /** Revokes one token of the user — `false` if the user has no such token. */
-  revoke(userId: number | string, id: AccessTokenId): Promise<boolean>;
+  abstract revoke(userId: AuthUserId, id: AccessTokenId): Promise<boolean>;
   /** Revokes every token of the user (a new password with `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) — how many. */
-  revokeAll(userId: number | string): Promise<number>;
+  abstract revokeAll(userId: AuthUserId): Promise<number>;
   /**
    * Deletes the tokens that expired more than `graceSeconds` ago (`marmeon auth:prune-tokens`) — they stop working when
    * they expire, but stay listed until pruned. How many. Tokens without an expiry stay until revoked.
    */
-  prune(graceSeconds?: number): Promise<number>;
+  abstract prune(graceSeconds?: number): Promise<number>;
   /** Revokes the tokens of every user (`AccountSessions.endEveryone()`, unless `accessTokens: false`) — how many. */
-  revokeEveryone?(): Promise<number>;
+  abstract revokeEveryone(): Promise<number>;
 }
-export const AccessTokenStore = token<AccessTokenStore>('AccessTokenStore');
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const UNIT = { s: 1, m: 60, h: 3600, d: 86_400 } as const;
@@ -107,18 +113,19 @@ export function parseAccessToken(plainText: string, prefix: string): { secret: s
 }
 
 /** The default {@link AccessTokenStore}, on the app's `personal_access_tokens` table. */
-export class DatabaseAccessTokens implements AccessTokenStore {
+export class DatabaseAccessTokens extends AccessTokenStore {
   readonly #connections: Connections;
   readonly #prefix: string;
   readonly #clock: Clock;
 
   constructor(connections: Connections, config: AuthConfig, clock: Clock) {
+    super();
     this.#connections = connections;
     this.#prefix = config.tokenPrefix;
     this.#clock = clock;
   }
 
-  async create(userId: number | string, name: string, { abilities = ['*'], expiresIn }: { abilities?: readonly string[]; expiresIn?: Duration } = {}) {
+  async create(userId: AuthUserId, name: string, { abilities = ['*'], expiresIn }: { abilities?: readonly string[]; expiresIn?: Duration } = {}) {
     const secret = Array.from({ length: 40 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('');
     const now = new Date(this.#clock.now());
     const row = await this.#db()
@@ -161,7 +168,7 @@ export class DatabaseAccessTokens implements AccessTokenStore {
     await this.#db().updateTable(ACCESS_TOKEN_TABLE).set({ last_used_at: new Date(this.#clock.now()) }).where('id', '=', token.id).execute();
   }
 
-  async list(userId: number | string): Promise<AccessToken[]> {
+  async list(userId: AuthUserId): Promise<AccessToken[]> {
     const rows = await this.#db()
       .selectFrom(ACCESS_TOKEN_TABLE)
       .select(['id', 'user_id', 'name', 'abilities', 'last_used_at', 'expires_at', 'created_at'])
@@ -171,12 +178,12 @@ export class DatabaseAccessTokens implements AccessTokenStore {
     return rows.map(toToken);
   }
 
-  async revoke(userId: number | string, id: AccessTokenId): Promise<boolean> {
+  async revoke(userId: AuthUserId, id: AccessTokenId): Promise<boolean> {
     const result = await this.#db().deleteFrom(ACCESS_TOKEN_TABLE).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
     return result.numDeletedRows > 0n;
   }
 
-  async revokeAll(userId: number | string): Promise<number> {
+  async revokeAll(userId: AuthUserId): Promise<number> {
     const result = await this.#db().deleteFrom(ACCESS_TOKEN_TABLE).where('user_id', '=', userId).executeTakeFirst();
     return Number(result.numDeletedRows);
   }
@@ -203,7 +210,7 @@ function toToken(row: { id: AccessTokenId; user_id: number | string; name: strin
   const iso = (value: string | Date | null) => (value === null ? null : new Date(value).toISOString());
   return {
     id: row.id,
-    userId: row.user_id,
+    userId: row.user_id as AuthUserId,
     name: row.name,
     abilities: Array.isArray(row.abilities) ? row.abilities.map(String) : [],
     lastUsedAt: iso(row.last_used_at),

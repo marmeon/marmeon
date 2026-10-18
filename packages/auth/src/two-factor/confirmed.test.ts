@@ -8,6 +8,7 @@ import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/sessio
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authenticate, Auth, AuthServiceProvider, Hasher, TwoFactorState, UserProvider, type PasswordHash } from '../index.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
+import { twoFactorState } from '../test-helpers/stores.ts';
 import { MemoryUsers as SharedUsers } from '../test-helpers/users.ts';
 import { confirmedSecondFactor } from './confirmed.ts';
 
@@ -82,7 +83,7 @@ async function boot() {
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
-      container.instance(TwoFactorState, { removeAll: async () => {}, factors: async () => factors, enabledSince: async () => undefined });
+      container.instance(TwoFactorState, twoFactorState({ factors: async () => factors }));
     },
   });
   await application.container.make(Migrator).migrate();

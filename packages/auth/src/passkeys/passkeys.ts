@@ -15,7 +15,7 @@ import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from '../two-factor/p
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
 import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict } from '../two-factor/state.ts';
 import { TwoFactorStore } from '../two-factor/store.ts';
-import { idOf, UserProvider, type AuthUser, type Credentials } from '../user.ts';
+import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from '../user.ts';
 import { CHALLENGE_SECONDS, issueChallenge, takeChallenge, type ChallengePurpose } from './challenge.ts';
 import { PasskeyConfig } from './config.ts';
 import { PasskeyStore, type PasskeyRecord } from './store.ts';
@@ -374,7 +374,7 @@ export class Passkeys implements SecondFactorPasskeys {
   }
 
   /** @internal What `TwoFactor.challenge({ passkey })` and `stepUp({ passkey })` call, after they have found the account and counted the attempt. */
-  async [VERIFY_SECOND_FACTOR](userId: number | string, assertion: PasskeyAssertion, during: 'sign-in' | 'step-up' = 'sign-in'): Promise<PasskeyVerdict> {
+  async [VERIFY_SECOND_FACTOR](userId: AuthUserId, assertion: PasskeyAssertion, during: 'sign-in' | 'step-up' = 'sign-in'): Promise<PasskeyVerdict> {
     // No challenge to answer (a timeout, a double submit) is `stale`; only an answer that was given and failed is `wrong`.
     const challenge = await this.#takeChallenge(during === 'step-up' ? 'step-up' : 'second-factor', userId);
     if (!challenge.ok) return 'stale';
@@ -435,7 +435,7 @@ export class Passkeys implements SecondFactorPasskeys {
   }
 
   /** The password of the signed-in user, typed now: counted before it is checked (see `takePasswordCheck()`), the sign-in's minute cleared by a success. */
-  async #checkPassword(userId: number | string, password: string | undefined): Promise<Result<void, { readonly kind: 'invalid-password' } | PasswordThrottled>> {
+  async #checkPassword(userId: AuthUserId, password: string | undefined): Promise<Result<void, { readonly kind: 'invalid-password' } | PasswordThrottled>> {
     const scope = this.#auth.passwordCheckScope();
     const wait = await takePasswordCheck(this.#limiter, scope, userId);
     if (wait !== undefined) return err(wait);
@@ -536,7 +536,7 @@ export class Passkeys implements SecondFactorPasskeys {
   }
 
   /** On an account that has a factor, the session must have proven one lately: the password alone does not change the factors. */
-  async #requireRecentSecondFactor(method: string, userId: number | string): Promise<void> {
+  async #requireRecentSecondFactor(method: string, userId: AuthUserId): Promise<void> {
     if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE, this.#now())) {
       throw new Error(`passkeys.${method}() needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
     }

@@ -239,7 +239,7 @@ export class AccountSessions {
    * rest follows them, so a store that fails never keeps a session alive. It also deletes every password-reset token and revokes
    * every API token, since a thief may hold either; `resetTokens: false` and `accessTokens: false` keep them. Each session of every driver and
    * instance ends at its next request. Throws, naming the remedy and before anything is deleted, when the `UserProvider` has no
-   * `updateEverySessionKey()` or a store it will use lacks its optional `forgetEveryone()`/`revokeEveryone()`; throws when the
+   * `updateEverySessionKey()` or a store it will use lacks its `forgetEveryone()`/`revokeEveryone()` (JavaScript, a cast); throws when the
    * provider's `sampleId` account cannot be read back with the new key (a missing `sampleId` is an error too); throws inside a
    * database transaction, as `end()` does. A later failure leaves the earlier steps done (the error says which); calling again is safe. See
    * `docs/authentication.md#ending-every-session-of-every-account`.
@@ -258,9 +258,14 @@ export class AccountSessions {
         ),
       );
     }
-    // Every store this call will use is checked now: a store written before these methods existed must refuse before anything is deleted.
+    // Every store this call will use is checked now: a store without the method (JavaScript, a cast) must refuse before anything is deleted.
     const refuse = (store: string, method: string, keep?: string) =>
-      new Error(`AccountSessions.endEveryone() needs ${store}.${method}() — delete every row of the store in one statement${keep === undefined ? '' : `, or keep what it holds with ${keep}`}. Nothing was changed.`);
+      new Error(
+        withCode(
+          'A6',
+          `AccountSessions.endEveryone() needs ${store}.${method}() — delete every row of the store in one statement${keep === undefined ? '' : `, or keep what it holds with ${keep}`}. Nothing was changed.`,
+        ),
+      );
     if (typeof this.#remember.forgetEveryone !== 'function') throw refuse('RememberTokenStore', 'forgetEveryone');
     const revokeResets = resetTokens;
     if (revokeResets && this.#resets === undefined) throw new Error('AccountSessions.endEveryone() needs the PasswordResetTokenStore, which the container passes in (or pass { resetTokens: false } to keep the reset tokens).');
