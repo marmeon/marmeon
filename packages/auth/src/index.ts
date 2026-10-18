@@ -18,6 +18,7 @@ import { SessionFingerprints } from './fingerprint.ts';
 import { LoginThrottle } from './login-throttle.ts';
 import { NewPassword } from './new-password.ts';
 import { EndAllSessionsCommand } from './end-all-sessions.ts';
+import { defineAuthRouteLimits } from './route-limits.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
 import { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 import { DatabaseSignIns, SignInStore } from './sign-ins.ts';
@@ -162,5 +163,7 @@ export class AuthServiceProvider implements ServiceProvider {
     // /up/ready is red until the tables of the stores in use have every column the stores need.
     await requireAuthTables(app.container);
     requireRateLimiter(app.container);
+    // The limits of the auth routes (`throttle('auth.login')` …); an app's limiter of the same name replaces one. Without @marmeon/cache no route throttles.
+    if (app.container.has(RateLimiter)) defineAuthRouteLimits(app.container.make(RateLimiter));
   }
 }

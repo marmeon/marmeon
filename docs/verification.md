@@ -173,8 +173,9 @@ The listener is queued inside the registration's transaction, so an account that
 server never fails a registration: the job tries again. Nothing goes out without a queue worker, which `marmeon dev` starts for
 you.
 
-The notice page offers to send the mail again. Its route, `auth.verification.send`, allows three requests a minute per user with
-`throttle('verification')`.
+The notice page offers to send the mail again. Its route, `auth.verification.send`, allows three requests a minute and ten a day per user with
+`throttle('auth.verification')`; the controller sends at most five mails an hour to one address, and a refused request answers like
+a sent one.
 
 ## Changing the address
 

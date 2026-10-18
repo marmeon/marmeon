@@ -61,28 +61,28 @@ export default defineRoutes((Route) => {
   const guests = Route.middleware(guest('/users/me')).authorize(everyone);
   guests.get('/', ShowLoginController);
   guests.get('/login', ShowLoginController).name('auth.login');
-  guests.middleware(throttle('login-client')).post('/login', LoginController).name('auth.login.store');
+  guests.middleware(throttle('auth.login')).post('/login', LoginController).name('auth.login.store');
   // The second step of signing in: a correct password waits here for the code (a guest still — nobody is signed in yet). One
   // request per session at a time (block()): two codes at once could not both be counted.
   guests.get('/two-factor-challenge', ShowTwoFactorChallengeController).name('auth.two-factor.challenge');
-  guests.post('/two-factor-challenge', TwoFactorChallengeController).name('auth.two-factor.challenge.store').block();
+  guests.middleware(throttle('auth.two-factor-challenge')).post('/two-factor-challenge', TwoFactorChallengeController).name('auth.two-factor.challenge.store').block();
   // Passkeys, the browser's way in: sign in with one alone, or prove one after the password. JSON in and out; the session's one challenge
   // is opened by the options and spent by the answer, one request per session at a time (block()). Failures are throttled per address
   // and account inside `Passkeys`; the options only get a loose limit against load.
-  guests.middleware(throttle('passkey-options')).post('/passkeys/sign-in/options', PasskeySignInOptionsController).name('auth.passkeys.sign-in.options');
-  guests.post('/passkeys/sign-in', PasskeySignInController).name('auth.passkeys.sign-in').block();
-  guests.middleware(throttle('passkey-challenge-options')).post('/two-factor-challenge/passkey/options', PasskeyChallengeOptionsController).name('auth.passkeys.challenge.options');
-  guests.post('/two-factor-challenge/passkey', PasskeyChallengeController).name('auth.passkeys.challenge').block();
+  guests.middleware(throttle('auth.passkey-sign-in-options')).post('/passkeys/sign-in/options', PasskeySignInOptionsController).name('auth.passkeys.sign-in.options');
+  guests.middleware(throttle('auth.passkey-sign-in')).post('/passkeys/sign-in', PasskeySignInController).name('auth.passkeys.sign-in').block();
+  guests.middleware(throttle('auth.passkey-challenge-options')).post('/two-factor-challenge/passkey/options', PasskeyChallengeOptionsController).name('auth.passkeys.challenge.options');
+  guests.middleware(throttle('auth.passkey-challenge')).post('/two-factor-challenge/passkey', PasskeyChallengeController).name('auth.passkeys.challenge').block();
   guests.get('/register', ShowRegisterController).name('auth.register');
   // A few sign-ups per minute and address — live validation of the form does not count.
-  guests.middleware(throttle('register')).post('/register', RegisterController).name('auth.register.store');
+  guests.middleware(throttle('auth.register')).post('/register', RegisterController).name('auth.register.store');
   // Private registration (the default): every sign-up ends here — a new address and a known one alike (404 with
   // AUTH_PRIVATE_REGISTRATION=false: a sign-up signs in then).
   guests.get('/register/sent', ShowRegistrationSentController).name('auth.register.sent');
   guests.get('/forgot-password', ShowForgotPasswordController).name('auth.password.request');
-  guests.middleware(throttle('password-reset')).post('/forgot-password', SendPasswordResetLinkController).name('auth.password.email');
+  guests.middleware(throttle('auth.password-reset-link')).post('/forgot-password', SendPasswordResetLinkController).name('auth.password.email');
   guests.get('/reset-password', ShowResetPasswordController).name('auth.password.reset');
-  guests.post('/reset-password', ResetPasswordController).name('auth.password.store');
+  guests.middleware(throttle('auth.password-reset')).post('/reset-password', ResetPasswordController).name('auth.password.store');
 
   // Decided for this module's own routes only: each concerns the signed-in user's own account, and the ids in the paths (passkeys,
   // tokens, verification links) are looked up within `ctx.user` or bound by a signature. A route you add needs its own decision:
@@ -97,7 +97,7 @@ export default defineRoutes((Route) => {
   confirmed.get('/confirm-password', ShowConfirmPasswordController).name('auth.password.confirm');
   confirmed.post('/confirm-password', ConfirmPasswordController).name('auth.password.confirm.store');
   // Confirming with a passkey: the options open a challenge per call, so they are limited per user.
-  confirmed.middleware(throttle('passkey-confirm-options')).post('/confirm-password/passkey/options', PasskeyConfirmOptionsController).name('auth.password.confirm.passkey.options');
+  confirmed.middleware(throttle('auth.passkey-confirm-options')).post('/confirm-password/passkey/options', PasskeyConfirmOptionsController).name('auth.password.confirm.passkey.options');
   confirmed.post('/confirm-password/passkey', PasskeyConfirmController).name('auth.password.confirm.passkey').block();
   // "Sudo mode": the security page asks for the password again unless a password or a passkey confirmed it within 15 minutes.
   confirmed.middleware(confirmedPassword()).get('/settings/security', ShowSecurityController).name('auth.security');
@@ -107,7 +107,7 @@ export default defineRoutes((Route) => {
   confirmed.post('/settings/devices/logout', LogoutOtherDevicesController).name('auth.devices.logout').block();
   // Private registration: a new address is pending until the link sent to it is clicked — the same answer for every
   // address; a few requests a minute per user (each one sends a mail somewhere). With AUTH_PRIVATE_REGISTRATION=false it changes at once.
-  confirmed.middleware(confirmedPassword()).middleware(confirmedSecondFactor({ verify: 'auth.two-factor.verify' })).middleware(throttle('email-change')).put('/settings/email', UpdateEmailController).name('auth.email.update');
+  confirmed.middleware(confirmedPassword()).middleware(confirmedSecondFactor({ verify: 'auth.two-factor.verify' })).middleware(throttle('auth.email-change')).put('/settings/email', UpdateEmailController).name('auth.email.update');
   // API tokens: as good as a session — sudo mode for all of it.
   const sudo = confirmed.middleware(confirmedPassword());
   // Changing the factors takes a factor proven within 15 minutes as well, where the account has one: the password alone, with a session
@@ -132,7 +132,7 @@ export default defineRoutes((Route) => {
   confirmed.get('/settings/two-factor/verify', ShowTwoFactorVerifyController).name('auth.two-factor.verify');
   confirmed.post('/settings/two-factor/verify', TwoFactorVerifyController).name('auth.two-factor.verify.store').block();
   // The same with a passkey: the options open a challenge, so they have a limit of their own (per user); the check is throttled per account inside `TwoFactor`.
-  confirmed.middleware(throttle('passkey-step-up-options')).post('/settings/two-factor/verify/passkey/options', PasskeyStepUpOptionsController).name('auth.passkeys.step-up.options');
+  confirmed.middleware(throttle('auth.passkey-step-up-options')).post('/settings/two-factor/verify/passkey/options', PasskeyStepUpOptionsController).name('auth.passkeys.step-up.options');
   confirmed.post('/settings/two-factor/verify/passkey', PasskeyStepUpController).name('auth.passkeys.step-up').block();
   // Only for sessions that proved a second factor within 15 minutes — an example of `twoFactor()`. An app chooses where to put it; nothing else
   // here requires a factor, and the framework never installs it by itself.
@@ -158,7 +158,7 @@ export default defineRoutes((Route) => {
   // the server builds it (for the mail), so the browser never learns its name or pattern.
   account.get('/email/verify', ShowVerifyEmailNoticeController).name('auth.verification.notice');
   account.middleware(signed()).get('/email/verify/:id/:hash', VerifyEmailController).name('auth.verification.verify').internal();
-  account.middleware(throttle('verification')).post('/email/verification-notification', ResendVerificationController).name('auth.verification.send');
+  account.middleware(throttle('auth.verification')).post('/email/verification-notification', ResendVerificationController).name('auth.verification.send');
   // The link to a new address (private registration): signed, expiring, for its own user and request only — internal too
   // (404 with AUTH_PRIVATE_REGISTRATION=false).
   account.middleware(signed()).get('/email/change/:id/:token', ConfirmEmailChangeController).name('auth.email.confirm').internal();

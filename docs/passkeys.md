@@ -276,7 +276,7 @@ address nobody confirmed cannot add a passkey, and the password reset of such an
 `make:auth` writes the passkeys into a new app (the [starter kit](starter-kit.md#passkeys)): the migration of the `passkeys` table
 (`foreignId('user_id').constrained().cascadeOnDelete()`, with `suspended_at`), the binding
 `combineFactors(TwoFactorStore, PasskeyStore)` and `PasskeyServiceProvider` in the module, the controllers and routes, the limits of the
-options requests (`passkey-options`, 30 a minute for each client; `passkey-challenge-options`, 10), the mails and the pages, in both languages:
+options requests (`auth.passkey-sign-in-options`, 30 a minute for each client; `auth.passkey-challenge-options`, 10), and of the two requests that check an answer (`auth.passkey-sign-in`, `auth.passkey-challenge`, 10), the mails and the pages, in both languages:
 
 | Page | What it does |
 | --- | --- |
@@ -291,7 +291,7 @@ sign-in. The pages send no inline script and no `style`, so a strict content sec
 
 An account with a passkey has a second factor, so `twoFactor()` applies to it. The kit's `/settings/two-factor/verify` page, where
 `twoFactor()` sends a session, offers a passkey, the code of an authenticator app and a recovery code, as the sign-in does (its options
-request has its own limit, `passkey-step-up-options`, 10 a minute for each user). On `/settings/two-factor` an account with passkeys only
+request has its own limit, `auth.passkey-step-up-options`, 10 a minute for each user). On `/settings/two-factor` an account with passkeys only
 shows "Protected by passkeys", the recovery codes left and "Make new recovery codes".
 
 The kit's listeners mail the owner on `PasskeyRegistered`, `PasskeyRemoved`, `PasskeyCloneSuspected` and `PasskeySignInFailed` (the

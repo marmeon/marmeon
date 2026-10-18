@@ -101,7 +101,7 @@ describe('changing the address (private registration) — the default', { timeou
     const session = await signIn(await app.factory(UserFactory).create({ email: 'kj@example.com' }));
     app.freeze(); // no sudo window, throttle window or expiry passes while it measures
     // The throttle still counts every change — with room for all of them.
-    app.make(RateLimiter).for('email-change', (ctx) => Limit.perMinute(1_000_000).by(String(ctx.user?.id)));
+    app.make(RateLimiter).for('auth.email-change', (ctx) => Limit.perMinute(1_000_000).by(String(ctx.user?.id)));
     // A change takes about a millisecond — less than a busy machine's noise. So a measurement is a run of four changes, and a pair is
     // two runs of each kind in mirrored order (free, taken, taken, free — the next pair the other way round). Twenty-one pairs
     // counted, the first warms up; the median of the paired ratios counts (a busy machine slows both halves of a pair alike).

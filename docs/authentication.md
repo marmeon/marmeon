@@ -288,7 +288,8 @@ more than the thief of a session has.
 
 Each refused attempt of the first kind dispatches a [`Lockout`](#events) with `scope: 'client'`; the account's ceiling dispatches
 one with `scope: 'account'`, once per window. The starter kit's `QueueLockoutMail` listens for the second and queues the mail to
-the owner. The route's own limit per client (`login-client`, 30 a minute whatever the identifier) stays middleware.
+the owner. The route's own limit per client (`auth.login`, 30 a minute whatever the identifier) stays middleware; it counts apart from the
+limits inside `attempt()`, so a failed sign-in is one attempt for each of them and none counts twice against the same limit.
 
 A password reset, a new password or [an ending of every session](#ending-every-session-of-a-user) that lands while the password is
 still being checked ends that sign-in too: `attempt()` answers `invalid-credentials`, like for a wrong password, and a new attempt
@@ -296,10 +297,10 @@ checks the new state.
 
 The limit is counted before the password is checked, in one atomic step: guesses sent at the same moment cannot all slip under
 it. Five failed attempts a minute for one address from one client lock it for the rest of the minute; a client is its IPv4
-address or its IPv6 /64 ([`clientKey()`](rate-limiting.md#keys-and-the-clients-address)). The starter kit also puts a `login-client`
+address or its IPv6 /64 ([`clientKey()`](rate-limiting.md#keys-and-the-clients-address)). The starter kit also puts an `auth.login`
 limit on `POST /login`: 30 requests a minute from one client, whichever addresses they name. It counts every request, successful
 sign-ins and validation failures included, so a CGNAT, a school or an office behind one address shares the 30 a minute. The number is
-in `modules/auth/AuthServiceProvider.ts`. The
+that of [the limits of the auth routes](#the-limits-of-the-auth-routes). The
 [rate limiting](rate-limiting.md#defining-limiters) page covers limiters.
 
 The starter kit counts one more thing: the password sign-ins to one account from every client together, 100 a day. The 101st gets
@@ -321,6 +322,42 @@ to the session:
   it, every session and every remember-me token of every account ends once.
 - **A fresh page.** The browser loads the next page in full, so no page kept in its memory from before the sign-in comes back. A
   sign-in by the remember-me cookie continues the same person's session and skips this.
+
+### The limits of the auth routes
+
+`@marmeon/auth` defines a rate limiter for every route of the starter kit's auth module, when its provider boots and `@marmeon/cache`
+is there. Every request that changes something and that a guest can send carries `throttle()` with one of them, and so do four routes
+for signed-in users (the passkey options, the verification mail and the change of address). They
+come on top of the limits inside `attempt()`, `TwoFactor` and `Passkeys`, which count failures per account: these limit the requests,
+before a session lock, a hash or a signature check costs anything.
+
+| Limiter | Route | Limit |
+| --- | --- | --- |
+| `auth.login` | `POST /login` | 30 a minute per client |
+| `auth.register` | `POST /register` | 10 a minute per client |
+| `auth.password-reset-link` | `POST /forgot-password` | 5 a minute per client |
+| `auth.password-reset` | `POST /reset-password` | 10 a minute per client |
+| `auth.two-factor-challenge` | `POST /two-factor-challenge` | 10 a minute per client |
+| `auth.passkey-sign-in-options` | `POST /passkeys/sign-in/options` | 30 a minute per client |
+| `auth.passkey-sign-in` | `POST /passkeys/sign-in` | 10 a minute per client |
+| `auth.passkey-challenge-options` | `POST /two-factor-challenge/passkey/options` | 10 a minute per client |
+| `auth.passkey-challenge` | `POST /two-factor-challenge/passkey` | 10 a minute per client |
+| `auth.passkey-confirm-options` | `POST /confirm-password/passkey/options` | 10 a minute per user |
+| `auth.passkey-step-up-options` | `POST /settings/two-factor/verify/passkey/options` | 10 a minute per user |
+| `auth.verification` | `POST /email/verification-notification` | 3 a minute and 10 a day per user |
+| `auth.email-change` | `PUT /settings/email` | 6 a minute per user |
+
+A client is its IPv4 address or its IPv6 /64 ([`clientKey()`](rate-limiting.md#keys-and-the-clients-address)); a limit never keys on
+what the form sends. To change one, define a limiter of the same name in a provider's `boot()` of your own; yours replaces the default,
+whichever boots first:
+
+```ts
+app.container.make(RateLimiter).for('auth.login', (ctx) => Limit.perMinute(60).by(clientKey(ctx.ip)));
+```
+
+The kit's controller also sends at most five verification mails an hour to one address. A route you add that changes something for guests needs
+its own `throttle()`; nothing adds one for you. Replacing `auth.login` removes the protection against one client that tries many addresses, which
+the limits inside `attempt()` do not give; keep a limit per client in your replacement.
 
 ## Signing out
 

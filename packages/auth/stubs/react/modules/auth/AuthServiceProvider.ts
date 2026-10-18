@@ -1,6 +1,5 @@
 import { PasskeyStore } from '@marmeon/auth/passkeys';
 import { Auth, combineFactors, TwoFactorState, TwoFactorStore, UserProvider } from '@marmeon/auth';
-import { clientKey, Limit, RateLimiter } from '@marmeon/cache';
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { LocalePreference } from '@marmeon/i18n';
 import { MiddlewarePriority, Router } from '@marmeon/router';
@@ -23,28 +22,7 @@ export class AuthServiceProvider implements ServiceProvider {
     // Every page of the `web` group gets `auth` and `flash` (with the framework's shared props).
     app.container.make(Router).middleware.append('web', ShareAuthProps, MiddlewarePriority.shareProps);
 
-    // Every limit that counts a client keys on clientKey(ctx.ip): an IPv6 address counts as its /64, the block one connection gets —
-    // rotating through the addresses of it opens no new budget.
-    // Reset links: a few requests per client (the broker also waits 60 s per e-mail). By client only — the e-mail is not
-    // validated yet when middleware runs, and a limit never keys on raw input.
-    const limiter = app.container.make(RateLimiter);
-    limiter.for('password-reset', (ctx) => Limit.perMinute(5).by(clientKey(ctx.ip)));
-    // Sign-ins: all password guesses of one client, whatever e-mail they name — the per-e-mail limit of LoginController
-    // does not stop a client that tries one password each on many addresses. The /login route applies it.
-    limiter.for('login-client', (ctx) => Limit.perMinute(30).by(clientKey(ctx.ip)));
-    // Registrations: ten a minute per client — scripted sign-ups (and the mails they queue) are slowed down.
-    limiter.for('register', (ctx) => Limit.perMinute(10).by(clientKey(ctx.ip)));
-    // The options of a passkey sign-in: cheap, asked on every visit of the login page — a loose limit against load only.
-    limiter.for('passkey-options', (ctx) => Limit.perMinute(30).by(clientKey(ctx.ip)));
-    // The options of the passkey step after a password: asked once per sign-in, so a tighter limit of its own.
-    limiter.for('passkey-challenge-options', (ctx) => Limit.perMinute(10).by(clientKey(ctx.ip)));
-    // The options of a passkey confirmation of sudo mode: per user (the route is behind authenticate()), asked once per confirmation.
-    limiter.for('passkey-confirm-options', (ctx) => Limit.perMinute(10).by(String(ctx.user?.id ?? clientKey(ctx.ip))));
-    // The options of a passkey step-up in a signed-in session: per user (the route is behind authenticate()), asked once per proof.
-    limiter.for('passkey-step-up-options', (ctx) => Limit.perMinute(10).by(String(ctx.user?.id ?? clientKey(ctx.ip))));
-    // Resending the verification mail: per signed-in user (the route is behind authenticate()).
-    limiter.for('verification', (ctx) => Limit.perMinute(3).by(String(ctx.user?.id ?? clientKey(ctx.ip))));
-    // Changing the address: every request sends a mail — to the new address or its owner (private registration). Per user.
-    limiter.for('email-change', (ctx) => Limit.perMinute(6).by(String(ctx.user?.id ?? clientKey(ctx.ip))));
+    // The limits of this module's routes (`throttle('auth.login')` …) are defined by @marmeon/auth. To change one, define the limiter of
+    // that name here with `app.container.make(RateLimiter).for('auth.login', …)`: yours replaces the default (docs/authentication.md#the-limits-of-the-auth-routes).
   }
 }
