@@ -22,7 +22,7 @@ What the starter kit has, and a little more — each part tested here:
   sign-out only. Its forms carry no `_token`: Fetch Metadata and `Origin` vouch for them.
 - **Sessions** in the `database` driver on a SQLite file of their own (`SESSION_CONNECTION=system`), under hashed keys and with
   `SESSION_ENCRYPT=true`; the password change and "sign out other devices" run one at a time per session (`block()`).
-- **Headers:** `middleware/SecurityHeaders.ts` (`nosniff`, a referrer policy, `X-Frame-Options`, an HSTS switch) and
+- **Headers:** `securityHeaders()` (`nosniff`, a referrer policy, `X-Frame-Options`, an HSTS option) and
   `contentSecurityPolicy({ styleSrc: ["'self'", NONCE], frameAncestors: ["'none'"] })` — a nonce per document, no inline
   style (`pnpm csp:probe` counts 0 violations) — in `bootstrap/app.ts`.
 - **More defaults:** development routes answer 404 outside development and 403 to a foreign host (`devOnly()`); `NODE_ENV` is

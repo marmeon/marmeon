@@ -1,13 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { findPackageJSON } from 'node:module';
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
-import { CheckAssetVersion, contentSecurityPolicy, type ContentSecurityPolicyOptions } from '@marmeon/http';
+import { CheckAssetVersion, contentSecurityPolicy, type ContentSecurityPolicyOptions, securityHeaders } from '@marmeon/http';
 import { GLOBAL, MiddlewarePriority, Router } from '@marmeon/router';
 import { SiteConfig } from '../../config/site.ts';
 import { CachePublicly } from './middleware/CachePublicly.ts';
 import { FATHOM_SCRIPT } from './fathom.ts';
 import { ShareAnalytics } from './middleware/ShareAnalytics.ts';
-import { SecurityHeaders } from './middleware/SecurityHeaders.ts';
 import { ShareSite } from './middleware/ShareSite.ts';
 import { SiteInfo } from './SiteInfo.ts';
 import { SiteSnippets } from './SiteSnippets.ts';
@@ -57,9 +56,10 @@ export class SiteServiceProvider implements ServiceProvider {
     await app.container.make(SiteSnippets).load();
     const config = app.container.make(SiteConfig);
     const router = app.container.make(Router);
-    // Global: the 404 page (no route, no group) gets the policy and the headers too.
+    // Global: the 404 page (no route, no group) gets the policy and the headers too. HSTS comes from the proxy in front
+    // (deploy/website/Caddyfile).
     router.middleware
-      .append(GLOBAL, SecurityHeaders)
+      .append(GLOBAL, securityHeaders())
       .append(GLOBAL, contentSecurityPolicy(config.development ? SITE_DEV_CSP : siteCsp(config.fathomSite !== undefined)))
       .append(GLOBAL, ShareAnalytics);
     router.middleware

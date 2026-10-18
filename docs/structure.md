@@ -12,7 +12,6 @@ my-app/
 ├── config/           the app's own settings
 ├── lang/             texts the whole app shares
 ├── layouts/          the app's own components, such as its confirm dialog
-├── middleware/       middleware for every request
 ├── modules/
 │   ├── auth/         sign-in, registration, password reset, API tokens
 │   ├── home/         the home page
@@ -55,19 +54,18 @@ and each test boots a fresh instance:
 ```ts title="bootstrap/app.ts"
 import { join } from 'node:path';
 import { defineApplication } from '@marmeon/core';
-import { contentSecurityPolicy } from '@marmeon/http';
+import { contentSecurityPolicy, securityHeaders } from '@marmeon/http';
 import auth from '#modules/auth';
 import home from '#modules/home';
 import system from '#modules/system';
 import { AppConfig } from '../config/app.ts';
-import { SecurityHeaders } from '../middleware/SecurityHeaders.ts';
 
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig],
   modules: [auth, home, system],
   middleware: {
-    global: [SecurityHeaders, contentSecurityPolicy()],
+    global: [securityHeaders(), contentSecurityPolicy()],
   },
 });
 ```
@@ -94,8 +92,9 @@ only.
 
 ### `middleware/`
 
-Middleware that is not part of a feature. `SecurityHeaders.ts` adds `nosniff`, a referrer policy and `X-Frame-Options` to every
-response, and holds the switch for HSTS. The [middleware](middleware.md) page shows how to write your own.
+Middleware that belongs to no feature. A new app does not have the
+folder yet: `securityHeaders()` from `@marmeon/http` already adds `nosniff`, a referrer policy and `X-Frame-Options` to every
+response. The [middleware](middleware.md) page shows how to write your own.
 
 ### `modules/`
 
@@ -218,12 +217,11 @@ The app loads a module only when `bootstrap/app.ts` lists it. `make:module` adds
 ```ts title="bootstrap/app.ts"
 import { join } from 'node:path';
 import { defineApplication } from '@marmeon/core';
-import { contentSecurityPolicy } from '@marmeon/http';
+import { contentSecurityPolicy, securityHeaders } from '@marmeon/http';
 import auth from '#modules/auth';
 import home from '#modules/home';
 import system from '#modules/system';
 import { AppConfig } from '../config/app.ts';
-import { SecurityHeaders } from '../middleware/SecurityHeaders.ts';
 import notes from '#modules/notes';
 
 export default defineApplication({
@@ -231,7 +229,7 @@ export default defineApplication({
   config: [AppConfig],
   modules: [auth, home, system, notes],
   middleware: {
-    global: [SecurityHeaders, contentSecurityPolicy()],
+    global: [securityHeaders(), contentSecurityPolicy()],
   },
 });
 ```

@@ -250,6 +250,12 @@ export declare const Flasher: import("@marmeon/core").Token<Flasher>;
 export type { FormOf } from '@marmeon/router';
 // HiddenReason
 export type HiddenReason = 'internal' | 'api' | 'except';
+// HstsOptions
+export interface HstsOptions {
+    maxAge: number;
+    includeSubDomains?: boolean;
+    preload?: boolean;
+}
 // HttpContext
 export type { HttpContext } from '@marmeon/router';
 // HttpError
@@ -546,6 +552,8 @@ export declare class RedirectResult {
 }
 // RedirectStatus
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
+// ReferrerPolicy
+export type ReferrerPolicy = 'no-referrer' | 'no-referrer-when-downgrade' | 'origin' | 'origin-when-cross-origin' | 'same-origin' | 'strict-origin' | 'strict-origin-when-cross-origin' | 'unsafe-url';
 // RegionKind
 export type RegionKind = 'island' | 'layer';
 // RegionObject
@@ -605,6 +613,12 @@ export { Router } from '@marmeon/router';
 export type { Routes } from '@marmeon/router';
 // SESSION_PATH
 export declare const SESSION_PATH = "/_marmeon/session";
+// SecurityHeadersOptions
+export interface SecurityHeadersOptions {
+    hsts?: false | HstsOptions;
+    frameOptions?: 'DENY' | 'SAMEORIGIN' | false;
+    referrerPolicy?: ReferrerPolicy | false;
+}
 // Serialize
 export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : SerializeKnown<T>;
 // ServerClosing
@@ -832,6 +846,8 @@ export declare function propKind(value: unknown): PropKind | undefined;
 export declare function regionOf(request: Request): RegionKind | undefined;
 // resolveProp
 export declare function resolveProp(value: unknown): Promise<unknown>;
+// securityHeaders
+export declare function securityHeaders(options?: SecurityHeadersOptions): MiddlewareClass<{}, {}>;
 // signed
 export declare function signed(): typeof ValidateSignature;
 // staticView

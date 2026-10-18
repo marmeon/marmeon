@@ -13,8 +13,7 @@ dependency, a first test (`modules/system/system.test.ts`, `GET /up`) and `pnpm 
 whose `.gitignore` files keep what the app writes out of git.
 
 Besides `system` it has what every new app should start with, both global middleware in `bootstrap/app.ts`:
-`middleware/SecurityHeaders.ts` on every response (`nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
-`X-Frame-Options: DENY`, and an HSTS switch — `HSTS`, off — to turn on once the site is HTTPS only; it sets the headers through
-`editableResponse()`) and a strict Content-Security-Policy with a nonce per response on every document
+`securityHeaders()` on every response (`nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
+`X-Frame-Options: DENY`, and `hsts` — off — to turn on once the site is HTTPS only; [the other security headers](../../docs/csp.md#the-other-security-headers)) and a strict Content-Security-Policy with a nonce per response on every document
 (`contentSecurityPolicy()` — [Content-Security-Policy](../../docs/csp.md#adding-directives)): add
 directives for what your pages load from elsewhere.
