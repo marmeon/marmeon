@@ -203,6 +203,8 @@ export interface ConfirmedPasswordOptions<N extends string = string> {
     readonly confirmRoute?: CheckRouteName<N>;
     readonly seconds?: number;
 }
+// CredentialWriter
+export type CredentialWriter = Pick<UserProvider, 'updatePasswordHash' | 'updateSessionKey' | 'updateEverySessionKey'>;
 // Credentials
 export interface Credentials<U = AuthUser> {
     readonly user: U;
@@ -1075,6 +1077,10 @@ export declare function clearPasswordCheck(limiter: RateLimiter, scope: Password
 export declare function combineFactors(...sources: readonly TwoFactorState[]): TwoFactorState;
 // confirmedPassword
 export declare function confirmedPassword<const N extends RouteNameInput = never>(options?: ConfirmedPasswordOptions<N>): MiddlewareClass<Authenticated, {}>;
+// credentialWriter
+export declare function credentialWriter(db: Connection<any>, options?: {
+    table?: string;
+}): CredentialWriter;
 // deny
 export declare function deny(message?: string): PolicyResponse;
 // denyAsNotFound

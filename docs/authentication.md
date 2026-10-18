@@ -67,8 +67,8 @@ Users come from a `UserProvider`. The starter kit's `UserRepository` is one, and
 `container.bind(UserProvider, (c) => c.make(UserRepository))`:
 
 ```ts title="modules/auth/UserRepository.ts"
-import type { Credentials, PasswordHash, UserProvider } from '@marmeon/auth';
-import { Repository, secret, sql } from '@marmeon/database';
+import { credentialWriter, type Credentials, type PasswordHash, type UserProvider } from '@marmeon/auth';
+import { Repository, secret } from '@marmeon/database';
 import type { User } from './users.ts';
 
 export class UserRepository extends Repository<'users'> implements UserProvider<User> {
@@ -82,30 +82,12 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.#credentials(this.query().where('email', '=', email));
   }
 
-  /**
-   * Writes `hash` and answers whether it wrote. With `expected`, only where the stored hash still equals it, in one statement: a
-   * rehash or "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes
-   * regardless. With `sessionKey`, the same statement stores that session key too, and with `expectedSessionKey` as well (`null`:
-   * none) only where the stored key still is that one.
-   */
-  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null } = {}): Promise<boolean> {
-    const { expected, sessionKey, expectedSessionKey } = options;
-    // An empty key would give the fingerprint of an account without one (NULL).
-    if (sessionKey !== undefined && sessionKey.length < 32) throw new Error('A session key is at least 32 characters: use a random value.');
-    // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
-    const result = await this.db
-      .updateTable('users')
-      .set({ password: hash, ...(sessionKey === undefined ? {} : { session_key: sessionKey }), updated_at: new Date() })
-      .where('id', '=', id)
-      .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
-      .$if(sessionKey !== undefined && expectedSessionKey !== undefined, (query) =>
-        query.where(expectedSessionKey === null ? sql<boolean>`session_key is null` : sql<boolean>`session_key = ${expectedSessionKey}`),
-      )
-      .executeTakeFirst();
-    return result.numUpdatedRows > 0n;
+  // Compare-and-set in one statement, with the optional session key: the statements live in the package, see below.
+  updatePasswordHash(id: number, hash: PasswordHash, options?: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null }): Promise<boolean> {
+    return credentialWriter(this.db).updatePasswordHash(id, hash, options);
   }
 
-  // updateSessionKey() and updateEverySessionKey() complete the provider, see below.
+  // updateSessionKey() and updateEverySessionKey() delegate the same way, see below.
 
   async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
     const row = await query.selectAll().select((eb) => [secret(eb, 'password'), secret(eb, 'session_key')]).executeTakeFirst();
@@ -592,8 +574,8 @@ only with `secret()`, as the starter kit's `UserRepository` reads the password h
 session key added:
 
 ```ts title="modules/auth/UserRepository.ts"
-import type { Credentials, PasswordHash, UserProvider } from '@marmeon/auth';
-import { Repository, secret, sql } from '@marmeon/database';
+import { credentialWriter, type Credentials, type PasswordHash, type UserProvider } from '@marmeon/auth';
+import { Repository, secret } from '@marmeon/database';
 import type { User } from './users.ts';
 
 export class UserRepository extends Repository<'users'> implements UserProvider<User> {
@@ -607,39 +589,12 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.#credentials(this.query().where('email', '=', email));
   }
 
-  /**
-   * Writes `hash` and answers whether it wrote. With `expected`, only where the stored hash still equals it, in one statement: a
-   * rehash or "sign out other devices" never puts an old password back over a reset that landed meanwhile. Without it, writes
-   * regardless. With `sessionKey`, the same statement stores that session key too, and with `expectedSessionKey` as well (`null`:
-   * none) only where the stored key still is that one.
-   */
-  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null } = {}): Promise<boolean> {
-    const { expected, sessionKey, expectedSessionKey } = options;
-    // An empty key would give the fingerprint of an account without one (NULL).
-    if (sessionKey !== undefined && sessionKey.length < 32) throw new Error('A session key is at least 32 characters: use a random value.');
-    // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
-    const result = await this.db
-      .updateTable('users')
-      .set({ password: hash, ...(sessionKey === undefined ? {} : { session_key: sessionKey }), updated_at: new Date() })
-      .where('id', '=', id)
-      .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
-      .$if(sessionKey !== undefined && expectedSessionKey !== undefined, (query) =>
-        query.where(expectedSessionKey === null ? sql<boolean>`session_key is null` : sql<boolean>`session_key = ${expectedSessionKey}`),
-      )
-      .executeTakeFirst();
-    return result.numUpdatedRows > 0n;
+  updatePasswordHash(id: number, hash: PasswordHash, options?: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null }): Promise<boolean> {
+    return credentialWriter(this.db).updatePasswordHash(id, hash, options);
   }
 
-  // Compare-and-set, in one statement: writes only while the stored key is still `expected` (null: none) and says whether it did.
-  // `undefined` writes regardless: only `AccountSessions.end()` passes it, to end every session of the account.
-  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
-    const result = await this.db
-      .updateTable('users')
-      .set({ session_key: key, updated_at: new Date() })
-      .where('id', '=', id)
-      .$if(expected !== undefined, (query) => query.where(expected === null ? sql<boolean>`session_key is null` : sql<boolean>`session_key = ${expected}`))
-      .executeTakeFirst();
-    return result.numUpdatedRows > 0n;
+  updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+    return credentialWriter(this.db).updateSessionKey(id, key, expected);
   }
 
   async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
@@ -878,8 +833,29 @@ replica. A cache would fail the read-back; a cache or replica that only some loo
 ### For your own user provider
 
 A `UserProvider` of your own implements every method: `findById()` and `findForLogin()` (both with `sessionKey`),
-`updatePasswordHash()` (answering with a boolean), `updateSessionKey()` and `updateEverySessionKey()`. The starter kit's
-`UserRepository` implements `updateEverySessionKey()` like this, and so does a provider of your own:
+`updatePasswordHash()` (answering with a boolean), `updateSessionKey()` and `updateEverySessionKey()`. The last three decide
+whether a session survives, so the package writes them for you: `credentialWriter(db, { table })` returns them for a table with the
+columns `id`, `password`, `session_key` and `updated_at` (`table` defaults to `'users'` and must be a plain lower-case name, or it
+throws a `TypeError`). Delegate to it, as the starter kit's `UserRepository` does. The kit keeps the default table; a repository of
+your own passes its table, which `Repository.table` gives (it is public):
+
+```ts
+import { credentialWriter } from '@marmeon/auth';
+
+updatePasswordHash(id: number, hash: PasswordHash, options?: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null }) {
+  return credentialWriter(this.db, { table: this.table }).updatePasswordHash(id, hash, options);
+}
+updateSessionKey(id: number, key: string, expected: string | null | undefined) {
+  return credentialWriter(this.db, { table: this.table }).updateSessionKey(id, key, expected);
+}
+updateEverySessionKey(key: string) {
+  return credentialWriter(this.db, { table: this.table }).updateEverySessionKey(key);
+}
+```
+
+Pass the repository's own connection (`this.db`): it follows an enclosing transaction, which keeps a new password, its session key and
+the revoked tokens in one unit. A fix to the statements reaches you with an update of `@marmeon/auth`; the copy in your repository does
+not. Write them yourself only when the columns differ; `updateEverySessionKey()` for comparison:
 
 ```ts
 async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number | undefined }> {

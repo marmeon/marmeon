@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { Credentials, PasswordHash, UserProvider } from '@marmeon/auth';
+import { credentialWriter, type Credentials, type PasswordHash, type UserProvider } from '@marmeon/auth';
 import { commitAnyway, err, ok, type Result } from '@marmeon/core';
 import { Repository, secret, sql } from '@marmeon/database';
 import type { User } from './users.ts';
@@ -165,21 +165,8 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
    * `expectedSessionKey` as well (`null`: none), only where the stored key still is that one — a session that was ended since it was
    * checked (`AccountSessions.end()` replaced the key) must not be brought back by a password change.
    */
-  async updatePasswordHash(id: number, hash: PasswordHash, options: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null } = {}): Promise<boolean> {
-    const { expected, sessionKey, expectedSessionKey } = options;
-    // An empty key would give the fingerprint of an account without one (NULL).
-    if (sessionKey !== undefined && sessionKey.length < 32) throw new Error('A session key is at least 32 characters: use a random value, as auth.updateSessionKey() does.');
-    // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
-    const result = await this.db
-      .updateTable('users')
-      .set({ password: hash, ...(sessionKey === undefined ? {} : { session_key: sessionKey }), updated_at: new Date() })
-      .where('id', '=', id)
-      .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
-      .$if(sessionKey !== undefined && expectedSessionKey !== undefined, (query) =>
-        query.where(expectedSessionKey === null ? sql<boolean>`session_key is null` : sql<boolean>`session_key = ${expectedSessionKey}`),
-      )
-      .executeTakeFirst();
-    return result.numUpdatedRows > 0n;
+  updatePasswordHash(id: number, hash: PasswordHash, options?: { expected?: PasswordHash; sessionKey?: string; expectedSessionKey?: string | null }): Promise<boolean> {
+    return this.#credentialWriter().updatePasswordHash(id, hash, options);
   }
 
   /**
@@ -188,17 +175,8 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
    * (`AccountSessions.end()` only). Call `auth.updateSessionKey()` or
    * `AccountSessions.end()` instead: they pass `expected`, and also drop the remember-me tokens.
    */
-  async updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
-    // An empty key would give the fingerprint of an account without one (NULL).
-    if (key.length < 32) throw new Error('A session key is at least 32 characters: use a random value, as auth.updateSessionKey() does.');
-    // The column is a secret: it cannot be compared in a typed `where`, and the comparison must stay in this one statement.
-    const result = await this.db
-      .updateTable('users')
-      .set({ session_key: key, updated_at: new Date() })
-      .where('id', '=', id)
-      .$if(expected !== undefined, (query) => query.where(expected === null ? sql<boolean>`session_key is null` : sql<boolean>`session_key = ${expected}`))
-      .executeTakeFirst();
-    return result.numUpdatedRows > 0n;
+  updateSessionKey(id: number, key: string, expected: string | null | undefined): Promise<boolean> {
+    return this.#credentialWriter().updateSessionKey(id, key, expected);
   }
 
   /**
@@ -206,20 +184,13 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
    * clause, and answers how many rows it wrote and one account it wrote (`sampleId`), which `AccountSessions` reads back. Call
    * `AccountSessions.endEveryone()` instead: it also drops the remember-me tokens and the sign-in rows.
    */
-  async updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number | undefined }> {
-    if (key.length < 32) throw new Error('A session key is at least 32 characters: use a random value, as AccountSessions.endEveryone() does.');
-    // No `updated_at`: the accounts themselves did not change, only the end of their sessions.
-    const result = await this.db.updateTable('users').set({ session_key: key }).executeTakeFirst();
-    const accounts = Number(result.numUpdatedRows);
-    if (accounts === 0) return { accounts, sampleId: undefined };
-    // Chosen by the new key, so an account created after the UPDATE cannot be the sample (it would not hold the key).
-    const sample = await this.db
-      .selectFrom('users')
-      .select('id')
-      .where(sql<boolean>`session_key = ${key}`)
-      .limit(1)
-      .executeTakeFirst();
-    return { accounts, sampleId: sample?.id };
+  updateEverySessionKey(key: string): Promise<{ accounts: number; sampleId: number | undefined }> {
+    return this.#credentialWriter().updateEverySessionKey(key);
+  }
+
+  /** The package's statements for the hash and the session key — on `this.db`, so they join an enclosing transaction. */
+  #credentialWriter() {
+    return credentialWriter(this.db);
   }
 
   async #credentials(query: ReturnType<UserRepository['query']>): Promise<Credentials<User> | undefined> {
