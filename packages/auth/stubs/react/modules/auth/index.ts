@@ -1,4 +1,4 @@
-import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, PasswordReset, RecoveryCodeUsed, Registered, RememberTokenReused, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '@marmeon/auth';
+import { Lockout, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, PasswordReset, RecoveryCodeUsed, Registered, RememberTokenReused, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '@marmeon/auth';
 import { PasskeyServiceProvider } from '@marmeon/auth/passkeys';
 import { defineModule, listen } from '@marmeon/core';
 import { NotifyAboutFailedPasskeySignIn } from './listeners/NotifyAboutFailedPasskeySignIn.ts';
@@ -8,6 +8,7 @@ import { NotifyAboutPasskeyRegistered } from './listeners/NotifyAboutPasskeyRegi
 import { NotifyAboutPasskeyRemoved } from './listeners/NotifyAboutPasskeyRemoved.ts';
 import { NotifyAboutPasskeysAfterReset } from './listeners/NotifyAboutPasskeysAfterReset.ts';
 import { NotifyAboutRecoveryCodeUsed } from './listeners/NotifyAboutRecoveryCodeUsed.ts';
+import { QueueLockoutMail } from './listeners/QueueLockoutMail.ts';
 import { NotifyAboutRememberTokenReused } from './listeners/NotifyAboutRememberTokenReused.ts';
 import { NotifyAboutTwoFactorDisabled } from './listeners/NotifyAboutTwoFactorDisabled.ts';
 import { NotifyAboutTwoFactorEnabled } from './listeners/NotifyAboutTwoFactorEnabled.ts';
@@ -40,7 +41,7 @@ export default defineModule({
   // Queued listeners (static queue): a worker sends the verification mail once the registration committed, and the owner's mails
   // about the second factor: turned on or off, a recovery code used, and (at most once an hour) a wrong code after the right password —
   // and about passkeys: added, removed, suspended as a possible clone, and (at most once an hour) a failed passkey sign-in —
-  // and about a copied "keep me signed in" cookie that was used.
+  // and about a copied "keep me signed in" cookie that was used — and an account past its daily ceiling of password sign-ins.
   listeners: [
     listen(Registered, SendEmailVerification),
     listen(TwoFactorEnabled, NotifyAboutTwoFactorEnabled),
@@ -52,6 +53,8 @@ export default defineModule({
     listen(PasskeyCloneSuspected, NotifyAboutPasskeyCloneSuspected),
     listen(PasskeySignInFailed, NotifyAboutFailedPasskeySignIn),
     listen(RememberTokenReused, NotifyAboutRememberTokenReused),
+    // Not queued (it wants the request's language): it queues the mail to the owner of an account that stopped taking passwords.
+    listen(Lockout, QueueLockoutMail),
     // Not queued (the event cannot be): it queues the mail that lists the passkeys a password reset left standing.
     listen(PasswordReset, NotifyAboutPasskeysAfterReset),
   ],

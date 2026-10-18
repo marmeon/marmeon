@@ -8,9 +8,10 @@ import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
 import { ANNOUNCE_ENDED, AccountSessions, missingSessionKeyMethod, notABoolean, passwordHashWritten, rotateSessionKey } from './account-sessions.ts';
 import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
 import { AuthConfig, rememberCookieName } from './config.ts';
-import { Failed, Login, MAX_USER_AGENT, Logout, PasswordChanged, RememberTokenReused, type LoginVia } from './events.ts';
+import { Failed, Lockout, Login, MAX_USER_AGENT, Logout, PasswordChanged, RememberTokenReused, type LoginVia } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { SessionFingerprints } from './fingerprint.ts';
+import { LoginThrottle, type DeviceCookie } from './login-throttle.ts';
 import { AccountClaimLost, NewPassword } from './new-password.ts';
 import { clearPasswordCheck, takePasswordCheck, type PasswordCheckError, type PasswordCheckScope } from './password-throttle.ts';
 import { describeDevice } from './device.ts';
@@ -113,8 +114,16 @@ export interface PendingView {
 /** The way into the sign-in after the second factor — a package-internal key, so only `TwoFactor` can finish a pending sign-in. */
 export const COMPLETE_PENDING = Symbol('marmeon.auth.completePending');
 
-/** Why `attempt()` did not sign anybody in. `two-factor-required` is no failure: the password was right, and the sign-in waits for a factor (`auth.pendingSecondFactor()`). */
-export type AttemptError = { readonly kind: 'invalid-credentials' } | { readonly kind: 'two-factor-required'; readonly factors: readonly SecondFactor[] };
+/**
+ * Why `attempt()` did not sign anybody in. `two-factor-required` is no failure: the password was right, and the sign-in waits for a
+ * factor (`auth.pendingSecondFactor()`). `throttled` checked nothing: `retryAfter` seconds until the minute of this client and identifier
+ * is free again, or, with `account: true`, the account's daily ceiling — then waiting does not help, the way out is a password reset or
+ * a passkey.
+ */
+export type AttemptError =
+  | { readonly kind: 'invalid-credentials' }
+  | { readonly kind: 'two-factor-required'; readonly factors: readonly SecondFactor[] }
+  | { readonly kind: 'throttled'; readonly retryAfter: number; readonly account?: true };
 
 declare module '@marmeon/session' {
   interface SessionData {
@@ -190,6 +199,7 @@ export class Auth {
   readonly #signIns: SignInStore;
   readonly #clock: Clock;
   readonly #limiter: RateLimiter;
+  readonly #loginThrottle: LoginThrottle;
   #user: Promise<AuthUser | undefined> | undefined;
   /**
    * The credentials this request checked its session against (`#resolve`) or signed in with (`#login`).
@@ -218,8 +228,10 @@ export class Auth {
     clock: Clock,
     fingerprints: SessionFingerprints,
     limiter: RateLimiter,
+    loginThrottle: LoginThrottle,
   ) {
     this.#limiter = limiter;
+    this.#loginThrottle = loginThrottle;
     this.#fingerprints = fingerprints;
     this.#session = session;
     this.#users = users;
@@ -249,7 +261,33 @@ export class Auth {
    * hand back `sessionKey` when the account has one; a provider that returns it from only one makes `attempt()` throw.
    */
   async attempt(identifier: string, password: string, options: LoginOptions = {}): Promise<Result<AuthUser, AttemptError>> {
-    const credentials = await this.#check(identifier, password);
+    // A hasher without failureFloorMs() (JavaScript, a cast) would let the response time tell which addresses have an account.
+    if (typeof this.#hasher.failureFloorMs !== 'function') {
+      throw new Error(withCode('A6', 'The Hasher needs failureFloorMs(): the time a failed sign-in is padded to, in milliseconds (0 gives up the padding). See docs/hashing.md#making-and-checking-hashes.'));
+    }
+    const ip = options.ip ?? this.#request.ip;
+    // Counted BEFORE anything is read or checked (see `LoginThrottle.takeClient()`).
+    const wait = await this.#loginThrottle.takeClient(identifier, ip);
+    if (wait !== undefined) {
+      await this.#events.dispatch(new Lockout(identifier, ip, 'client'));
+      return err({ kind: 'throttled', retryAfter: wait });
+    }
+    const started = performance.now();
+    const found = await this.#users.findForLogin(identifier);
+    // The account's own ceiling, whichever clients the guesses come from, counted before the password is checked. Past it nothing is
+    // checked — the right password included — and an unknown identifier gets the same answer and does the same work.
+    // The one exception is the owner's own browser: a valid device cookie for exactly this account counts on a limit of its own instead.
+    // A cookie that does not fit (none, forged, expired, of another account, from before a new key, or an unknown account) takes the
+    // same path as no cookie, and the answer does not tell which it was.
+    const device = found && this.#loginThrottle.deviceNonce(this.#cookies.get(this.#loginThrottle.deviceCookieName), found);
+    const held = device !== undefined && (await this.#loginThrottle.takeDevice(device)) ? undefined : await this.#loginThrottle.takeAccount(identifier, found === undefined ? undefined : idOf(found.user));
+    if (held !== undefined) {
+      if (held.first) await this.#events.dispatch(new Lockout(identifier, ip, 'account'));
+      // Padded like a wrong password: the refusal is no faster than a check, and an unknown account costs the same.
+      await this.#padFailure(started);
+      return err({ kind: 'throttled', retryAfter: held.retryAfter, account: true as const });
+    }
+    const credentials = await this.#check(identifier, password, found, started);
     if (!credentials) return err({ kind: 'invalid-credentials' });
     // The fingerprint from the account as findById() sees it — what every later request compares with (the session key included).
     const current = await this.#credentials(credentials.user);
@@ -259,12 +297,27 @@ export class Auth {
       await this.#events.dispatch(new Failed(identifier, credentials.user));
       return err({ kind: 'invalid-credentials' });
     }
+    // The password was right: the minute of this client starts over (the account's count is cleared by the sign-in, or below when a factor holds it).
+    await this.#loginThrottle.clearClient(identifier, ip);
     // The one fork for every password sign-in: an account with a factor is never signed in here, whatever the caller does with the err.
     const factors = await this.#passwordSignIn(current, options, 'attempt');
-    if (factors.length > 0) return err({ kind: 'two-factor-required', factors });
+    if (factors.length > 0) {
+      await this.#loginThrottle.clearAccount(idOf(current.user));
+      return err({ kind: 'two-factor-required', factors });
+    }
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now()); // the password was just typed
     this.#session.put(AUTH_SESSION_KEYS.typedPassword, true);
     return ok(credentials.user);
+  }
+
+  /**
+   * The device cookie for the signed-in user's browser, to set after `attempt()` signed it in with the password (`ctx.cookies.set(cookie.name,
+   * cookie.value, cookie.options)`): it keeps the owner's browser past the account's daily ceiling of password sign-ins, on a limit of its
+   * own. `undefined` when `AUTH_DEVICE_COOKIE_DAYS` is `0` or nobody is signed in. See `docs/authentication.md#limits-on-password-sign-ins`.
+   */
+  async deviceCookie(): Promise<DeviceCookie | undefined> {
+    const user = await this.user();
+    return user && this.#loginThrottle.issueDevice(await this.#credentials(user));
   }
 
   /**
@@ -705,13 +758,7 @@ export class Auth {
     return undefined;
   }
 
-  async #check(identifier: string, password: string): Promise<Credentials | undefined> {
-    // A hasher without failureFloorMs() (JavaScript, a cast) would let the response time tell which addresses have an account.
-    if (typeof this.#hasher.failureFloorMs !== 'function') {
-      throw new Error(withCode('A6', 'The Hasher needs failureFloorMs(): the time a failed sign-in is padded to, in milliseconds (0 gives up the padding). See docs/hashing.md#making-and-checking-hashes.'));
-    }
-    const started = performance.now();
-    const found = await this.#users.findForLogin(identifier);
+  async #check(identifier: string, password: string, found: Credentials | undefined, started: number): Promise<Credentials | undefined> {
     if (!found || found.passwordHash === null) {
       await this.#hasher.dummyVerify(password);
       await this.#events.dispatch(new Failed(identifier, found?.user));
@@ -824,6 +871,8 @@ export class Auth {
     // (A remember-me sign-in continues the same person's session — no reload for that.)
     if (!viaRemember) this.#history.clear();
     if (previous && previous.id !== signIn) await this.#endSignIn(previous); // a sign-in over a sign-in leaves no orphan
+    // The owner is in (their password, a passkey or a second factor): the account's count and notice start over. A remember-me cookie is not that proof.
+    if (!viaRemember) await this.#loginThrottle.clearAccount(idOf(user));
     const at = new Date(this.#clock.now());
     return { token, signIn, announce: () => this.#events.dispatch(new Login(user, token !== undefined || viaRemember, at, { via, ip, userAgent })) };
   }

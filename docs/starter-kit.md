@@ -244,21 +244,22 @@ again. The owner's password reset removes whatever an account with an unconfirme
 
 ## Guesses against one account
 
-Besides the limits per client, `LoginController` stops password sign-ins to one account after 100 a day, whichever clients they come from:
-a guess spread over many addresses still ends. The count is kept per address, normalised, under a hash of it, and is taken before the password
+Besides the limits per client, `Auth.attempt()` stops password sign-ins to one account after 100 a day (`AUTH_ACCOUNT_SIGN_INS_PER_DAY`), whichever
+clients they come from: a guess spread over many addresses still ends. The count is kept per account (an address without one: per address,
+normalised, under an HMAC of it), and is taken before the password
 is checked; a failed or a right password both count until a sign-in succeeds, and a successful sign-in and a completed password reset clear it.
 Past 100, nothing is checked, not even the right password, and the form says: "Too many failed sign-ins for this account. Reset your password
 or sign in with a passkey." Passkey sign-in and the password reset stay open (a passkey sign-in clears the count too), so the owner has two ways in. The answer is the same for an
-address that has no account (its failures are counted too), and so is the work: the request queues `SendLockoutMailJob`, once per day and
-address, and the job mails the owner only when an account exists. The `Lockout` event is dispatched at that moment too. The number is
-`ACCOUNT_SIGN_INS` in `account-failures.ts`.
+address that has no account (its failures are counted too), and so is the work: the `Lockout` event of that moment (`scope: 'account'`, once
+per day and account or address) makes `QueueLockoutMail` queue `SendLockoutMailJob`, and the job mails the owner only when an account exists.
 
-The cost is one cache entry per address tried, kept for a day, for addresses with and without an account (the entry has the full hash of the
+The cost is one cache entry per address tried, kept for a day, for addresses with and without an account (its key is an HMAC of the
 address, so it cannot be cut down). A public deployment should keep the counts in the `database` or `redis` cache store, not in
 `file`, and keep `cache:prune` scheduled (see [cache](cache.md)), so a flood of made-up addresses does not pile up.
 
 Anyone can lock out an address they know by sending 100 wrong passwords. That is the price of the limit: the owner resets the password or uses a
-passkey, and the mail says so.
+passkey, and the mail says so. A browser that signed in with the password or completed a reset carries a device cookie and keeps signing in
+past the limit (see [limits on password sign-ins](authentication.md#limits-on-password-sign-ins)).
 
 ## Signing an account out everywhere
 

@@ -6,6 +6,9 @@ const DAYS = 'a whole number of days (0 keeps unconfirmed accounts)';
 const REMEMBER = 'a whole number of days from 0 (off) to 30';
 const MINUTES = 'a whole number of minutes from 5 to 1440';
 const HOURS = 'a whole number of hours from 1 to 720';
+const PER_MINUTE = 'a whole number from 1 to 60';
+const DEVICE_DAYS = 'a whole number of days from 0 (off) to 365';
+const PER_DAY = 'a whole number from 10 to 100000';
 
 export const AuthConfig = defineConfig('auth', {
   env: env({
@@ -55,6 +58,22 @@ export const AuthConfig = defineConfig('auth', {
      * it expires or is revoked. Only `true` and `false` start; empty counts as unset.
      */
     AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE: env.in(['true', 'false']).default('false'),
+    /**
+     * Password sign-ins `Auth.attempt()` takes a minute for one identifier from one client (an IPv6 address counts as its /64);
+     * the next is refused as `throttled`. See `docs/authentication.md#signing-in`.
+     */
+    AUTH_LOGIN_ATTEMPTS_PER_MINUTE: env.integer(PER_MINUTE).min(1, PER_MINUTE).max(60, PER_MINUTE).default(5),
+    /**
+     * Password sign-ins one account takes a day from all clients together; past it nothing is checked, the right password included,
+     * until the owner signs in with a passkey or resets the password. See `docs/authentication.md#signing-in`.
+     */
+    AUTH_ACCOUNT_SIGN_INS_PER_DAY: env.integer(PER_DAY).min(10, PER_DAY).max(100_000, PER_DAY).default(100),
+    /**
+     * Days the device cookie lasts that a browser gets when it signs in with the password or completes a password reset: the browser
+     * of an account's owner then keeps signing in when strangers have used up the account's daily ceiling (`AUTH_ACCOUNT_SIGN_INS_PER_DAY`),
+     * on a limit of its own (ten an hour). `0` turns the cookie off. See `docs/authentication.md#limits-on-password-sign-ins`.
+     */
+    AUTH_DEVICE_COOKIE_DAYS: env.integer(DEVICE_DAYS).min(0, DEVICE_DAYS).max(365, DEVICE_DAYS).default(90),
     /** The app's name — the issuer authenticator apps show for the second factor (`TwoFactor.begin()`). */
     APP_NAME: env.string().optional(),
     NODE_ENV: env.string().optional(),
@@ -66,6 +85,9 @@ export const AuthConfig = defineConfig('auth', {
     sessionMaxSeconds: e.AUTH_SESSION_MAX_HOURS * 3600,
     rememberCookie: e.AUTH_REMEMBER_COOKIE,
     appName: e.APP_NAME,
+    loginAttemptsPerMinute: e.AUTH_LOGIN_ATTEMPTS_PER_MINUTE,
+    accountSignInsPerDay: e.AUTH_ACCOUNT_SIGN_INS_PER_DAY,
+    deviceCookieDays: e.AUTH_DEVICE_COOKIE_DAYS,
     passwordTimeout: e.AUTH_PASSWORD_TIMEOUT,
     resetExpire: e.AUTH_RESET_EXPIRE,
     resetThrottle: e.AUTH_RESET_THROTTLE,

@@ -1,3 +1,4 @@
+import { Connections } from '@marmeon/database';
 import { RedisConnections } from '@marmeon/redis';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -42,7 +43,13 @@ describe.each(drivers)('rate limits on the %s store', (driver, redisEnv) => {
     expect(messages.filter((message) => message.startsWith('Too many login attempts'))).toHaveLength(15);
     // Even the right password waits now.
     await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertGuest();
-    if (driver === 'database') await app.assertDatabaseHas('cache', { key: 'limiter:login:ada@example.com|unknown', value: '21' });
+    if (driver === 'database') {
+      // The key of the minute holds an HMAC of the address, never the address; this one counted all twenty (plus the right password).
+      const rows = await app.make(Connections).get<any>().selectFrom('cache').select(['key', 'value']).execute();
+      const minute = rows.filter((row: { key: string }) => row.key.startsWith('limiter:login:'));
+      expect(minute.map((row: { value: string }) => row.value)).toEqual(['21']);
+      expect(JSON.stringify(rows)).not.toContain('ada@example.com');
+    }
   });
 
   it('holds live validations to 30 a minute per address and route — 40 checks at once, 10 refused', async () => {

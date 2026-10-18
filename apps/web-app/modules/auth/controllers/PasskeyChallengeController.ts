@@ -1,3 +1,4 @@
+import { Auth } from '@marmeon/auth';
 import { TwoFactor } from '@marmeon/auth/two-factor';
 import type { AuthenticationResponseJSON } from '@marmeon/auth/passkeys';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
@@ -18,17 +19,26 @@ export class PasskeyChallengeController extends Controller {
   static request = PasskeyChallengeRequest;
 
   readonly #twoFactor: TwoFactor;
+  readonly #auth: Auth;
   readonly #translator: Translator;
 
-  constructor(twoFactor: TwoFactor, translator: Translator) {
+  constructor(twoFactor: TwoFactor, auth: Auth, translator: Translator) {
     super();
     this.#twoFactor = twoFactor;
+    this.#auth = auth;
     this.#translator = translator;
   }
 
   async handle(ctx: ContextOf<typeof PasskeyChallengeRequest>) {
     const done = await this.#twoFactor.challenge({ passkey: ctx.body.response });
-    if (done.ok) return this.redirect().intended().route('user-profile.me');
+    if (done.ok) {
+      // A sign-in that began with the typed password proved it: this browser gets its device cookie (see LoginController).
+      if (this.#auth.passwordCheckScope().typed) {
+        const device = await this.#auth.deviceCookie();
+        if (device) ctx.cookies.set(device.name, device.value, device.options);
+      }
+      return this.redirect().intended().route('user-profile.me');
+    }
     switch (done.error.kind) {
       case 'no-challenge':
       case 'expired':

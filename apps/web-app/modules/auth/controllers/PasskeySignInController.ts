@@ -1,9 +1,7 @@
 import { Passkeys, type AuthenticationResponseJSON } from '@marmeon/auth/passkeys';
-import { RateLimiter } from '@marmeon/cache';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
-import { clearAccountFailures } from '../account-failures.ts';
 
 export const PasskeySignInRequest = defineRequest({
   schema: r.object({
@@ -23,22 +21,16 @@ export class PasskeySignInController extends Controller {
 
   readonly #passkeys: Passkeys;
   readonly #translator: Translator;
-  readonly #limiter: RateLimiter;
 
-  constructor(passkeys: Passkeys, translator: Translator, limiter: RateLimiter) {
+  constructor(passkeys: Passkeys, translator: Translator) {
     super();
     this.#passkeys = passkeys;
     this.#translator = translator;
-    this.#limiter = limiter;
   }
 
   async handle(ctx: ContextOf<typeof PasskeySignInRequest>) {
     const done = await this.#passkeys.signIn(ctx.body.response, { remember: ctx.body.remember });
-    if (done.ok) {
-      // The owner is in without the password: the count of password failures starts over.
-      await clearAccountFailures(this.#limiter, done.value.email);
-      return this.redirect().intended().route('user-profile.me');
-    }
+    if (done.ok) return this.redirect().intended().route('user-profile.me');
     if (done.error.kind === 'throttled') return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter }) }, 429);
     return this.json({ error: this.#translator.get('auth.passkeys.failed') }, 422);
   }
