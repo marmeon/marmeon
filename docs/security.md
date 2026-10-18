@@ -274,6 +274,9 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
   [How long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists them all.
 - The `sign_ins` table (`marmeon make:sign-ins-table` for an app without the starter kit), and `auth:prune-tokens` scheduled
   ([sign-ins](authentication.md#sign-ins)). The starter kit does both.
+- A `UserProvider` that writes its hash and session key with `credentialWriter()` (the starter kit's does), and stores of your own
+  that extend the abstract classes and never a `Database…` store ([what your app implements](authentication.md#what-your-app-implements)).
+  A provider that writes the statements itself tests that a stale `expected` and a stale `expectedSessionKey` return `false`.
 - After an incident, `AccountSessions` ends every session and remember-me cookie of an account
   ([ending every session of a user](authentication.md#ending-every-session-of-a-user)).
   After a leak, `marmeon auth:end-all-sessions --force` ends every session of every account

@@ -96,8 +96,10 @@ An app needs TypeScript 7 and the options of the starter's `tsconfig.json`: `era
 The promise of a version covers the public API. These are part of it:
 
 - The exports of each package's entry points, `.` and the documented subpaths, types included.
-- `PasswordResetTokenStore`, `AccessTokenStore` and `TwoFactorState` of `@marmeon/auth`, and `SessionStore` of `@marmeon/session`, are abstract classes your store extends. A member added later has a default —
-  unless it is [security-relevant](authentication.md#security-relevant-members), which comes only as a security hardening or in a major
+- The contracts an app implements for authentication ([listed here](authentication.md#what-your-app-implements)): `SignInStore`,
+  `PasswordResetTokenStore`, `AccessTokenStore` and `TwoFactorState` of `@marmeon/auth`, and `SessionStore` of `@marmeon/session`, are
+  abstract classes your store extends. A member added later has a default, unless it is
+  [security-relevant](authentication.md#security-relevant-members): that comes only as a security hardening or in a major
   version and never has a default. `UserProvider` and `Hasher` are interfaces: a security-relevant member is added the same way; any
   other member is optional.
 - Other interfaces an app implements itself, such as the drivers of cache, queue and storage: a new required member is a break. An

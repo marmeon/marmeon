@@ -313,13 +313,13 @@ abstract class SessionStore {
 
 The class is also the key you bind your store under: `container.singleton(SessionStore, YourStore)`. A class that only `implements` the
 contract, and an object literal, do not compile: the class carries a private mark that only a subclass has, so a member added later
-cannot break a store silently. [Your own stores](authentication.md#your-own-stores) tells which members get a default. Extend only
+cannot break a store silently. [What your app implements](authentication.md#what-your-app-implements) lists the contracts, and [which members are security-relevant](authentication.md#security-relevant-members) tells which members get a default. Extend only
 `SessionStore` itself, never one of the stores the framework ships.
 
 `key` is the hash of the session's id and `data` is opaque text: keep both as they are. A write with `expectedVersion: undefined`
 creates the key at version 1, and answers `conflict` when something is stored under it already. A write with a number replaces
 exactly that version: `conflict` when the stored version differs, `gone` when there is none. Compare and write in one atomic step.
-`destroyUser` is optional, has no default and ends every session of a user; a store without it keeps sessions until their next request ends them (`UserSessions.canEnd()` says which). With `noImplicitOverride`, write `override` before it.
+`destroyUser` is optional (it is not security-relevant, since a session it leaves standing ends at its next request), has no default and ends every session of a user; a store without it keeps sessions until their next request ends them (`UserSessions.canEnd()` says which). With `noImplicitOverride`, write `override` before it.
 
 ## Testing
 

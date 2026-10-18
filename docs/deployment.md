@@ -470,7 +470,7 @@ The steps below are the order; the [upgrade guide](../UPGRADING.md) names the ve
      included. Look at `marmeon queue:failed`, and retry or give up what is in it.
    - Tell your users that they sign in again, and pick a quiet hour.
 2. **In development.** Run `marmeon make:upgrade-migrations`, `marmeon db:types` and `marmeon route:types`, and commit what they
-   write. [`make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables) writes the migration that clears the API tokens. A database with tables of its
+   write. [`make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables) writes the migration that clears the API tokens, one that fills the `NULL` session keys, one that drops the `remember_tokens` table and one that adds the remember-me columns to `sign_ins`. With a user table of your own, fill its `NULL` session keys with random values in a migration of your own. A database with tables of its
    own that never ran `marmeon migrate` keeps them: `migrate` writes its record of migrations and runs the migrations, and the
    tables it did not make stay unknown to Marmeon, unguarded ([how the app knows its schema](migrations.md#how-the-app-knows-its-schema)).
 3. **Stop every process of the old release**, on every machine: web, workers, the scheduler, cron jobs, and every CI or release job
@@ -480,13 +480,14 @@ The steps below are the order; the [upgrade guide](../UPGRADING.md) names the ve
    it.** `migrate` runs the migrations from step 2. The second command deletes the
    sign-ins (and with them the remember-me tokens), revokes the API tokens that are left and rotates the session keys, so nothing of the old
    release signs anyone in. It needs `UserProvider.updateEverySessionKey()`, which the starter kit's provider has; a provider of your
-   own implements it first. Without `--keep-reset-tokens` it deletes the reset links too. `/up/ready` turns green when the tables and
+   own implements it first ([for your own user provider](authentication.md#for-your-own-user-provider)). Without `--keep-reset-tokens` it deletes the reset links too. `/up/ready` turns green when the tables and
    their columns are as the code needs them, and says what is missing when they are not ([health checks](health.md#liveness-and-readiness)).
 5. **After the start.** Issue the API tokens again and hand them out.
 
 **What is lost.**
 
-- Every sign-in. Sessions of the old release carry no format and are dropped, and the cookies of the old release have other names
+- Every sign-in and every "keep me signed in" token. The tokens lived in a `remember_tokens` table, which the upgrade drops: they live
+  on the `sign_ins` rows now and are not copied. Sessions of the old release carry no format and are dropped, and the cookies of the old release have other names
   ([the `__Host-` prefix](session.md#the-__host--prefix)), so remember-me signs nobody in. Users sign in again, with their second
   factor where they have one.
 - Every API token. Their form is no longer valid, no code reads it, and the migration deletes the rows

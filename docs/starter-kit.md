@@ -22,7 +22,7 @@ framework bring them.
 | --- | --- |
 | `index.ts` | The module's definition: its provider, the listeners that send the confirmation mail and the notes about the second factor and about passkeys, the queued jobs, the migrations, the seeder, the routes, the schedule and the commands `auth:end-sessions`, `auth:prune-unverified` and `auth:reset-two-factor`. |
 | `AuthServiceProvider.ts` | Finds users through the `UserRepository`, binds the authenticator app and passkeys as the sources of second factors, shares `auth` with every page, and sets the rate limits of its forms. |
-| `users.ts`, `UserRepository.ts` | The `User` type and the only code that reads a password hash or a session key. The `session_key` column lets `auth.updateSessionKey()` end an account's other sessions with every session driver. |
+| `users.ts`, `UserRepository.ts` | The `User` type and the only code that reads a password hash or a session key. It is the app's `UserProvider`: the statements that write a hash or a session key are `credentialWriter()` of `@marmeon/auth`, so a fix to them reaches you with a package update. The `session_key` column lets `auth.updateSessionKey()` end an account's other sessions with every session driver. |
 | `routes.ts`, `api-routes.ts` | The pages and forms, and `GET /api/user` for API tokens. |
 | `controllers/` | 46 controllers, one per endpoint. A form's controller validates it with a request schema. |
 | `views/`, `layouts/` | The React pages and the app's layout, `AppLayout`, with a settings layout inside it. |
@@ -33,6 +33,11 @@ framework bring them.
 | `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`: never seed a server with it. |
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
 | `auth.test.ts` and twelve more | The module's own tests. |
+
+The module is wiring and pages: the repository, the routes, the controllers, the views, the mails and the migrations. The package holds
+the rest: the guard, the stores (`DatabaseSignIns`, `DatabasePasswordResetTokens`, `DatabaseAccessTokens`, `TwoFactorStore`), the
+hasher and the statements of `credentialWriter()`, so the module has no store of its own to keep up to date. What you could implement
+yourself, and which members are required, is listed under [what your app implements](authentication.md#what-your-app-implements).
 
 The module's routes each say who may call them, as the app's do. Its groups decide with `everyone`: the sign-in and registration
 pages are open to guests, and every action behind `authenticate()` concerns only the signed-in user's own account. A route you
