@@ -3,20 +3,20 @@ import type { CommandInput } from '../command.ts';
 import { escapeControl, exitCodeOf, reportJson, unrunReport, type CheckProblem, type CheckReport } from '../check/report.ts';
 import { checkRegistryOf, describeFailure, discoveredChecks, runAppChecks } from '../check/app.ts';
 import { BUILT_IN_CHECKS } from '../check/registry.ts';
-import { internalImportsCheck, lintCheck, TOOL_CHECKS, typesCheck, type CheckRun } from '../check/tools.ts';
+import { agentsCheck, internalImportsCheck, lintCheck, TOOL_CHECKS, typesCheck, type CheckRun } from '../check/tools.ts';
 import { loadApplication } from '../load.ts';
 
 /** The process exits with this when `marmeon check` is called wrongly (see docs/check.md#exit-codes). */
 const EXIT_USAGE = 2;
 
 /**
- * `marmeon check`: the type check, the lint, the scan for imports of framework internals and the checks that need the app —
+ * `marmeon check`: the type check, the lint, the scan for imports of framework internals, the block of `AGENTS.md` and the checks that need the app —
  * its route and database types, its modules, the boot and readiness, and the checks packages add — with named results, exit codes
  * and `--json`. Loads the app itself (twice: registered, then booted) only when one of those is selected. See docs/check.md#the-checks.
  */
 export class CheckCommand {
   static command = 'check';
-  static description = 'Check the app: types, lint, imports of framework internals, route and database types, boot and readiness';
+  static description = 'Check the app: types, lint, imports of framework internals, the block of AGENTS.md, route and database types, boot and readiness';
   static usage = '[--only=<names>] [--skip=<names>] [--json]';
   static options = { only: { type: 'string' }, skip: { type: 'string' }, json: { type: 'boolean' } } as const;
   static boots = false;
@@ -79,6 +79,7 @@ export class CheckCommand {
       types: () => typesCheck(root),
       lint: () => lintCheck(root),
       'internal-imports': () => internalImportsCheck(root),
+      agents: () => agentsCheck(root),
     };
     const toolRuns = Promise.all(selected.filter((name) => tools.includes(name)).map(async (name) => runners[name]!()));
     const appNames = selected.filter((name) => !tools.includes(name));

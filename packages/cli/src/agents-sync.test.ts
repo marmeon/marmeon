@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { marmeon, repo } from './__fixtures__/cli.js';
@@ -115,6 +115,31 @@ describe('marmeon agents:sync', () => {
           expect(code, name).toBe(1);
           expect(lines).toHaveLength(1);
           expect(lines[0]).toContain(`${name} is a link that leads nowhere`);
+          expect(existsSync(join(root, name === 'AGENTS.md' ? 'CLAUDE.md' : 'AGENTS.md'))).toBe(false);
+        }
+      }
+    });
+
+    it('refuses a directory as AGENTS.md or CLAUDE.md, with nothing written', () => {
+      for (const name of ['AGENTS.md', 'CLAUDE.md']) {
+        for (const options of [{}, { check: true }]) {
+          const { root, code, lines } = run((dir) => mkdirSync(join(dir, name)), options);
+          expect(code, name).toBe(1);
+          expect(lines).toEqual([`✗ ${name} is not a file. Nothing was written.`]);
+          expect(existsSync(join(root, name === 'AGENTS.md' ? 'CLAUDE.md' : 'AGENTS.md'))).toBe(false);
+        }
+      }
+    });
+
+    it.skipIf(process.getuid?.() === 0)('refuses an AGENTS.md or CLAUDE.md that cannot be read, with nothing written', () => {
+      for (const name of ['AGENTS.md', 'CLAUDE.md']) {
+        for (const options of [{}, { check: true }]) {
+          const { root, code, lines } = run((dir) => {
+            writeFileSync(join(dir, name), '# mine\n', { mode: 0 });
+            chmodSync(join(dir, name), 0);
+          }, options);
+          expect(code, name).toBe(1);
+          expect(lines).toEqual([`✗ ${name} cannot be read. Nothing was written.`]);
           expect(existsSync(join(root, name === 'AGENTS.md' ? 'CLAUDE.md' : 'AGENTS.md'))).toBe(false);
         }
       }

@@ -1,4 +1,8 @@
-import { relative, resolve } from 'node:path';
+import { readFileSync, realpathSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
+import { AGENTS_BLOCK } from '../agents/block.ts';
+import { exists, unsafe } from '../agents/files.ts';
+import { syncAgents } from '../agents/sync.ts';
 import { findBin, runNode, typecheckApp } from '../typecheck.ts';
 import { internalImports } from './internal-imports.ts';
 import { reportOf, unrunReport, type CheckProblem, type CheckReport } from './report.ts';
@@ -16,7 +20,7 @@ export function plainReason(error: unknown, root: string): string {
 }
 
 /** The checks that need no app, in the order they are reported. */
-export const TOOL_CHECKS = ['types', 'lint', 'internal-imports'] as const;
+export const TOOL_CHECKS = ['types', 'lint', 'internal-imports', 'agents'] as const;
 
 /** Type-checks the app with its own TypeScript (`tsc --noEmit`): `skipped` without a `tsconfig.json`, `error` without TypeScript. */
 export async function typesCheck(root: string): Promise<CheckRun> {
@@ -104,5 +108,35 @@ export function internalImportsCheck(root: string): CheckRun {
     return { report: reportOf('internal-imports', internalImports(root), Math.round(performance.now() - started)) };
   } catch (error) {
     return { report: unrunReport('internal-imports', 'error', `the scan failed: ${plainReason(error, root)}`, Math.round(performance.now() - started)) };
+  }
+}
+
+/**
+ * Whether the block of `AGENTS.md` is the one the installed `marmeon` writes. Only warns, and writes nothing: the file belongs to
+ * the app, so no `AGENTS.md` is `skipped`, and a block that is missing, out of date or marked wrongly is a warning with the command
+ * that fixes it. A link that leads nowhere or out of the app is not followed. See docs/check.md#the-agents-block.
+ */
+export function agentsCheck(root: string): CheckRun {
+  const started = performance.now();
+  const ms = () => Math.round(performance.now() - started);
+  const file = join(root, 'AGENTS.md');
+  const docs = 'docs/agents.md#keeping-the-block-current';
+  const warn = (message: string, fix?: string): CheckRun => ({
+    report: reportOf('agents', [{ severity: 'warning', message, file: 'AGENTS.md', ...(fix === undefined ? {} : { fix }), docs }], ms()),
+  });
+  try {
+    if (!exists(file)) return { report: unrunReport('agents', 'skipped', 'no AGENTS.md', ms()) };
+    const problem = unsafe(root, file);
+    if (problem !== undefined) return warn(problem.replace(/ Nothing was written\.$/, ' It was not read.'));
+    const result = syncAgents(readFileSync(realpathSync(file), 'utf8'), AGENTS_BLOCK);
+    if (!result.ok) return warn(`${result.error.message}`);
+    const { change } = result.value;
+    if (change === 'unchanged') return { report: reportOf('agents', [], ms()) };
+    return warn(
+      change === 'appended' ? 'AGENTS.md has no marmeon block — marmeon agents:sync' : "AGENTS.md's marmeon block is out of date — marmeon agents:sync",
+      'marmeon agents:sync',
+    );
+  } catch (error) {
+    return warn(`AGENTS.md could not be read: ${plainReason(error, root)}`);
   }
 }

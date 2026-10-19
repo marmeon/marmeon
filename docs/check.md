@@ -3,7 +3,7 @@
 ## Introduction
 
 `marmeon check` answers "am I done?" in one command: it runs the checks below, names each result and ends with an exit code a
-script or an agent can act on. The tools (`types`, `lint`, `internal-imports`) need no app. The other checks load it, once
+script or an agent can act on. The tools (`types`, `lint`, `internal-imports`, `agents`) need no app. The other checks load it, once
 registered and once booted, so they need the `.env` and, for [readiness](#the-app-checks), the services the app depends on.
 
 ```sh
@@ -35,6 +35,7 @@ A new app has the script: `pnpm check` runs `marmeon check`.
 | `types` | Type-checks the app with its own TypeScript (`tsc --noEmit`), as `marmeon build` does. | TypeScript and a `tsconfig.json` |
 | `lint` | Runs the app's own [oxlint](https://oxc.rs/docs/guide/usage/linter) with its `.oxlintrc.json`. | oxlint |
 | `internal-imports` | Finds [imports of framework internals](#imports-of-framework-internals). | nothing |
+| `agents` | Warns when the marmeon block of `AGENTS.md` is [missing or out of date](#the-agents-block). | nothing |
 
 The tools run side by side and are always listed in this order. `--only=types,lint` runs just those, `--skip=lint` runs all but
 that one. A check you leave out is not in the report at all; it is not reported as `skipped`. A name that no check has, or options that leave no check to run (`--only=lint --skip=lint`), is a wrong call: the command lists the valid names and exits with 2. The app is loaded only when a selected check needs it, so `--only=types,lint` runs without an app.
@@ -82,7 +83,7 @@ Each check ends in one status:
 | `passed` | It ran and found nothing. |
 | `warning` | It found problems of the level warning only. |
 | `failed` | It found at least one error. |
-| `skipped` | It was not run, said in `reason`: no `tsconfig.json`, oxlint is not installed (lint is the app's choice), or the app did not load ("the app did not load"). |
+| `skipped` | It was not run, said in `reason`: no `tsconfig.json`, no `AGENTS.md`, oxlint is not installed (lint is the app's choice), or the app did not load ("the app did not load"). |
 | `error` | It could not run, said in `reason`: TypeScript is not installed, a tool crashed, a check of a package threw or took longer than its time limit (a minute unless the check says `static timeout`), or the app did not load and `boot` was not selected. |
 
 ## Exit codes
@@ -168,3 +169,21 @@ The check guards against the honest mistake, not against code that hides what it
 
 `marmeon build` runs the same scan and only warns, one line per place, so that a build is not held up by it; the exit code of
 `marmeon build` does not change. `marmeon check` is what fails.
+
+## The agents block
+
+`agents` reads `AGENTS.md` and compares the block between the `marmeon:begin` and `marmeon:end` marks with the one the installed
+`marmeon` writes. It only warns and writes nothing, so it never changes the exit code: the file belongs to your app.
+
+| `AGENTS.md` | Result |
+| --- | --- |
+| Not there | `skipped`, with the reason "no AGENTS.md". |
+| Its block is current | `passed`. |
+| Its block is out of date, or it has none | `warning`, with the fix `marmeon agents:sync`. |
+| Its marks are broken (a mark without its partner, two blocks) | `warning` with the reason; fix the marks, then run `marmeon agents:sync`. |
+| Its marks are of a newer version than your `marmeon` | `warning` that says to update `marmeon`. |
+| A link that leads nowhere or out of the app, or something that is no file | `warning`; it is not read. |
+
+To keep the warning out of the report, run `marmeon agents:sync` and commit the result, or leave the check out with
+`--skip=agents`. To make CI fail on a block that is out of date, use `marmeon agents:sync --check`. See
+[coding agents](agents.md#keeping-the-block-current).
