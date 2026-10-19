@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -19,9 +19,25 @@ describe('make:sign-ins-table', () => {
     expect(lines).toContain(`✓ Created modules/system/migrations/${migration}`);
 
     lines.length = 0;
-    expect(await new MakeSignInsTableCommand().handle(run)).toBe(1);
-    expect(lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the sign_ins table has its migration.`]);
+    expect(await new MakeSignInsTableCommand().handle(run)).toBe(0);
+    expect(lines).toEqual([`modules/system/migrations/${migration} is there — skipped`, '✓ Nothing to publish — every migration of @marmeon/auth is in your app']);
     expect(readdirSync(join(root, 'modules/system/migrations'))).toEqual([migration]);
+  });
+
+  it('adds no copy when the kit has the table in its auth module, and refuses a module that leaves modules/', async () => {
+    const root = tempDir('marmeon-sign-ins-table');
+    mkdirSync(join(root, 'modules/auth/migrations'), { recursive: true });
+    writeFileSync(join(root, 'modules/auth/migrations/2026_01_01_000000_create_sign_ins_table.ts'), '');
+    const lines: string[] = [];
+    const output = { success: (line: string) => lines.push(`✓ ${line}`), error: (line: string) => lines.push(`✗ ${line}`), warn: (line: string) => lines.push(`! ${line}`), line: (line = '') => lines.push(line) };
+    const run = (options: Record<string, string>) => ({ root, args: [], options, output, spawn: async () => 0 }) as never;
+    expect(await new MakeSignInsTableCommand().handle(run({}))).toBe(0);
+    expect(readdirSync(join(root, 'modules'))).toEqual(['auth']);
+    expect(await new MakeSignInsTableCommand().handle(run({ module: '../x' }))).toBe(1);
+    expect(readdirSync(join(root, 'modules'))).toEqual(['auth']);
+    const other = tempDir('marmeon-sign-ins-table');
+    expect(await new MakeSignInsTableCommand().handle({ root: other, args: [], options: { module: 'billing' }, output } as never)).toBe(0);
+    expect(readdirSync(join(other, 'modules/billing/migrations'))).toHaveLength(1);
   });
 
   it('the stub is the test fixture, but for its header comment and the foreign key', () => {

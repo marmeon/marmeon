@@ -1,12 +1,12 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Application } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { PackageMigrationsCheck } from '../checks.ts';
-import { PublishCommand, packageStatus } from './publish.ts';
+import { PublishCommand, packageStatus, publishOwnMigrations } from './publish.ts';
 
 const STUB = (set: string) => `export default {}; // ${set}\n`;
 const ELSEWHERE = (file: string, pkg: string, where: string) =>
@@ -755,5 +755,155 @@ describe('the web app', () => {
     const used = packageStatus(fileURLToPath(new URL('../../../../apps/web-app', import.meta.url))).filter((status) => status.used);
     expect(used.length).toBeGreaterThan(0);
     expect(used.map((status) => status.state)).not.toContain('refused');
+  });
+});
+
+describe('publishOwnMigrations: the make:*-table command of a package', () => {
+  const ONE = { 'stubs/migrations/create_a_table.ts': STUB('a') };
+
+  /** The directory of a package that is installed nowhere near the app: what a command passes as its package root. */
+  function packageRoot(name: string, files: Record<string, string> = ONE): URL {
+    const home = tempDir('marmeon-own-package-');
+    writeFileSync(join(home, 'package.json'), JSON.stringify({ dependencies: {} }));
+    install(home, name, files, { module: 'system', dependency: false });
+    return pathToFileURL(`${join(home, 'node_modules', name)}/`);
+  }
+
+  async function own(root: string, source: URL, options: Record<string, unknown> = {}) {
+    const lines: string[] = [];
+    const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
+    const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
+    const code = await publishOwnMigrations({ root, args: [], options, output } as unknown as CommandInput, source);
+    return { code, lines };
+  }
+
+  it('writes what the package ships, though the app does not list it, and ends with 0 once it is all there', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    const source = packageRoot('@marmeon/a');
+    const first = await own(root, source);
+    expect(first.code).toBe(0);
+    expect(readdirSync(join(root, 'modules/system/migrations'))).toHaveLength(1);
+    expect(first.lines.at(-1)).toBe('Then: marmeon migrate');
+    const second = await own(root, source);
+    expect(second.code).toBe(0);
+    expect(second.lines.at(-1)).toBe('✓ Nothing to publish — every migration of @marmeon/a is in your app');
+    expect(readdirSync(join(root, 'modules/system/migrations'))).toHaveLength(1);
+  });
+
+  it('works in an app whose package.json is not there', async () => {
+    const root = tempDir('marmeon-own-app-');
+    expect((await own(root, packageRoot('@marmeon/a'))).code).toBe(0);
+    expect(readdirSync(join(root, 'modules/system/migrations'))).toHaveLength(1);
+  });
+
+  it('writes only what is missing, behind the migrations the app has', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    const source = packageRoot('@marmeon/a', { 'stubs/migrations/create_a_table.ts': STUB('a'), 'stubs/migrations/create_b_table.ts': STUB('b') });
+    mkdirSync(join(root, 'modules/system/migrations'), { recursive: true });
+    writeFileSync(join(root, 'modules/system/index.ts'), "import { defineModule } from '@marmeon/core';\n\nexport default defineModule({ name: 'system', migrations: new URL('./migrations/', import.meta.url) });\n");
+    writeFileSync(join(root, 'modules/system/migrations/2099_01_01_000000_create_a_table.ts'), 'export default {};\n');
+    expect((await own(root, source)).code).toBe(0);
+    expect(readdirSync(join(root, 'modules/system/migrations'))).toEqual(['2099_01_01_000000_create_a_table.ts', '2099_01_01_000001_create_b_table.ts']);
+  });
+
+  it('opens a system module of an app that lists the package from the registry, and one that does not list it', async () => {
+    for (const spec of ['^1.0.0', 'latest', undefined]) {
+      const root = makeApp({ name: '@acme/other' });
+      if (spec) writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@marmeon/a': spec } }));
+      mkdirSync(join(root, 'modules/system'), { recursive: true });
+      expect((await own(root, packageRoot('@marmeon/a'))).code).toBe(0);
+      expect(readdirSync(join(root, 'modules/system/migrations')), String(spec)).toHaveLength(1);
+    }
+  });
+
+  it('opens an existing system module of a workspace or tarball app, which publish opens only with --module=system', async () => {
+    for (const spec of ['workspace:*', 'file:../marmeon-a-1.0.0.tgz', 'link:../a']) {
+      const root = makeApp({ name: '@acme/other' });
+      writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@marmeon/a': spec } }));
+      mkdirSync(join(root, 'modules/system'), { recursive: true });
+      expect((await own(root, packageRoot('@marmeon/a'))).code, spec).toBe(0);
+      expect(readdirSync(join(root, 'modules/system/migrations'))).toHaveLength(1);
+    }
+  });
+
+  it('opens no existing module of the app but system, and system only for a package named @marmeon/…', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    mkdirSync(join(root, 'modules/system'), { recursive: true });
+    const refused = await own(root, packageRoot('@acme/a'));
+    expect(refused.code).toBe(1);
+    expect(refused.lines).toEqual(["✗ modules/system is your app's — pass --module=<name> to put the tables of @acme/a there, or another name."]);
+    expect(written(root)).toEqual([]);
+  });
+
+  it('stops for a package.json of the app that is there but cannot be read', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    writeFileSync(join(root, 'package.json'), '{ not json');
+    const { code, lines } = await own(root, packageRoot('@marmeon/a'));
+    expect(code).toBe(1);
+    expect(lines).toEqual(['✗ The package.json of your app cannot be read.']);
+    expect(written(root)).toEqual([]);
+  });
+
+  it('refuses a package.json without a valid package name, and a root that is no file: URL', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    for (const name of ['../x', '', 'a b', 5, undefined]) {
+      const home = tempDir('marmeon-own-package-');
+      writeFileSync(join(home, 'package.json'), JSON.stringify({ name }));
+      const { code, lines } = await own(root, pathToFileURL(`${home}/`));
+      expect(code, String(name)).toBe(1);
+      expect(lines).toEqual(['✗ The package.json of the package that runs this command has no valid package name.']);
+    }
+    const remote = await own(root, new URL('https://example.com/pkg/'));
+    expect(remote.code).toBe(1);
+    expect(written(root)).toEqual([]);
+  });
+
+  it('creates a system module in a workspace app, which needs no opening', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@marmeon/a': 'workspace:*' } }));
+    expect((await own(root, packageRoot('@marmeon/a'))).code).toBe(0);
+    expect(readdirSync(join(root, 'modules/system/migrations'))).toHaveLength(1);
+  });
+
+  it('refuses a module name that is no kebab-case name, and writes nothing', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    const { code } = await own(root, packageRoot('@marmeon/a'), { module: '../x' });
+    expect(code).toBe(1);
+    expect(written(root)).toEqual([]);
+    expect(existsSync(join(root, '..', 'x'))).toBe(false);
+  });
+
+  it('refuses a name another dependency of the app ships, and writes nothing', async () => {
+    const root = makeApp({ name: '@acme/one', module: 'one', files: ONE });
+    const { code, lines } = await own(root, packageRoot('@marmeon/a'));
+    expect(code).toBe(1);
+    expect(lines).toEqual(['✗ @marmeon/a and @acme/one both ship create_a_table — one name is one migration in an app, so they cannot both be published']);
+    expect(written(root)).toEqual([]);
+  });
+
+  it('refuses a file that is missing before one the app has, and writes nothing', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    mkdirSync(join(root, 'modules/billing/migrations'), { recursive: true });
+    writeFileSync(join(root, 'modules/billing/migrations/2026_01_01_000000_create_b_table.ts'), 'export default {};\n');
+    const source = packageRoot('@marmeon/a', { 'stubs/migrations/create_a_table.ts': STUB('a'), 'stubs/migrations/create_b_table.ts': STUB('b') });
+    expect((await own(root, source)).code).toBe(1);
+    expect(written(root)).toEqual(['billing/migrations/2026_01_01_000000_create_b_table.ts']);
+  });
+
+  it('keeps writing into the module it made for the package', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    const source = packageRoot('@marmeon/a', { 'stubs/migrations/create_a_table.ts': STUB('a') });
+    expect((await own(root, source, { module: 'billing' })).code).toBe(0);
+    expect(readFileSync(join(root, 'modules/billing/index.ts'), 'utf8')).toContain('`marmeon publish @marmeon/a`');
+    const again = await own(root, source);
+    expect(again.code).toBe(0);
+    expect(again.lines.at(-1)).toBe('✓ Nothing to publish — every migration of @marmeon/a is in your app');
+  });
+
+  it('says so when the package.json of the package is not there', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    const { code, lines } = await own(root, pathToFileURL(`${tempDir('marmeon-own-package-')}/`));
+    expect(code).toBe(1);
+    expect(lines).toEqual(['✗ The package.json of the package that runs this command cannot be read.']);
   });
 });

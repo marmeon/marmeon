@@ -329,7 +329,8 @@ pnpm marmeon make:queue-table
 pnpm marmeon migrate
 ```
 
-`make:queue-table` writes into the `system` module, or the module that `--module` names. The migration runs on
+`make:queue-table` writes into the `system` module, or the module that `--module` names. It is `marmeon publish @marmeon/queue`:
+when your app has the migration already, it writes nothing and ends with exit code 0. The migration runs on
 `DB_QUEUE_CONNECTION`, and the [migrations](migrations.md#the-frameworks-tables) page says what to do when `failed_jobs` goes
 elsewhere.
 

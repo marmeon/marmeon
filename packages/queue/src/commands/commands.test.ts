@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CliServiceProvider, DevProcesses } from 'marmeon';
 import { CommandRegistry } from 'marmeon/internal';
@@ -270,6 +270,20 @@ describe('the queue commands', () => {
     expect(contents).toContain("table.index(['reserved_at', 'available_at', 'id']);");
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8')).toContain('modules: [system]');
     expect(lines.at(-1)).toBe('Then: marmeon migrate');
+
+    // A second run has nothing to write, and ends well.
+    const second = input(root);
+    expect(await new MakeQueueTableCommand().handle(second.input)).toBe(0);
+    expect(second.lines.at(-1)).toBe('✓ Nothing to publish — every migration of @marmeon/queue is in your app');
+    expect(readdirSync(join(root, 'modules/system/migrations'))).toHaveLength(1);
+  });
+
+  it('make:queue-table takes --module=<name> to a module of its own, and refuses a name that leaves modules/', async () => {
+    const root = tempDir('marmeon-queue-table-');
+    expect(await new MakeQueueTableCommand().handle(input(root, [], { module: '../x' }).input)).toBe(1);
+    expect(existsSync(join(root, 'modules'))).toBe(false);
+    expect(await new MakeQueueTableCommand().handle(input(root, [], { module: 'jobs' }).input)).toBe(0);
+    expect(readdirSync(join(root, 'modules/jobs/migrations'))).toHaveLength(1);
   });
 
   it('make:queue-table adds `migrations` to an existing system module that lacks it', async () => {

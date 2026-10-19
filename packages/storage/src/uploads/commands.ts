@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import type { Resolver } from '@marmeon/core';
 import { Clock } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
@@ -21,8 +20,8 @@ export class MakeUploadsTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@marmeon/database/internal');
-    return publishMigration(input, { name: 'create_temporary_uploads_table', table: 'temporary_uploads', contents: readFileSync(UPLOADS_MIGRATION, 'utf8') });
+    const { publishOwnMigrations } = await import('@marmeon/database/internal');
+    return publishOwnMigrations(input, new URL('../../', import.meta.url));
   }
 }
 

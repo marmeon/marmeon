@@ -898,13 +898,20 @@ pnpm marmeon migrate
 | `make:queue-table` | `publish @marmeon/queue` | `jobs`, `failed_jobs`, on the queue's connection |
 | `make:notifications-table` | `publish @marmeon/notifications` | `notifications`, on the notifications' connection |
 | `make:uploads-table` | `publish @marmeon/storage` | `temporary_uploads`, on the uploads' connection |
+| `make:sign-ins-table` | `publish @marmeon/auth` | `sign_ins`, on the default connection |
 
-Both ways write the same file. `marmeon publish <package>` is the one that works for every package that [lists its
-migrations](package-development.md#declaring-the-migrations-a-package-ships); the `make:*-table` commands stay as they are.
+Both ways do the same: a `make:*-table` command is [`publish`](#publishing-the-migrations-of-a-package) for its own package. It
+writes every migration of the package that your app lacks, with the rules of `publish` (a name that another package ships, a gap
+and the choice of the module), and ends with exit code 0 and "Nothing to publish" when they are all there. The package need not be
+in the `dependencies` of your app: the command comes from it. `marmeon publish <package>` also works for every package that
+[lists its migrations](package-development.md#declaring-the-migrations-a-package-ships).
 
 Each writes into the `system` module, or the module that `--module` names. The command creates the `system` module and adds it
-to `bootstrap/app.ts` when it does not exist yet; it adds `migrations` to an existing module that lacks it. When `bootstrap/app.ts`
-or the module's `index.ts` has another shape (a list kept in a variable, say), it leaves the file as it is and says what to add. It refuses when any module already has a migration for the table. Each migration
+to `bootstrap/app.ts` when it does not exist yet; it adds `migrations` to an existing module that lacks it. A `make:*-table`
+command always opens an existing `system`, whichever way the app installs the package: its own command is running, so the package
+is not one the app did not ask for. (`publish <package>` is stricter, see below.) When `bootstrap/app.ts`
+or the module's `index.ts` has another shape (a list kept in a variable, say), it leaves the file as it is and says what to add. A migration that any module already has
+under the same name is not written again. Each migration
 reads its connection from the configuration when it runs: `CACHE_CONNECTION`, `SESSION_CONNECTION`, `DB_QUEUE_CONNECTION`,
 `NOTIFICATIONS_CONNECTION` and `UPLOADS_CONNECTION`. So its tables land on the
 [connection](database.md#infrastructure-connections) the driver reads and writes.
@@ -940,7 +947,8 @@ moved the files to or a package that ships a name your app already uses. Without
 stops the command the same way, unless all files are there and nothing is left to write. A proposed module that does not exist
 is created and added to `bootstrap/app.ts` like the one of a `make:*-table` command. One that exists is opened without
 `--module` only if it is `system` and the package is one of `@marmeon/…` that your `package.json` lists with a version range,
-a dist-tag or `catalog:` (not an alias, a path, a workspace or a repository). The tables of a package never land in one of your
+a dist-tag or `catalog:` (not an alias, a path, a workspace or a repository); in an app that installs the framework by
+`workspace:` or `file:`, pass `--module=system`. The `make:*-table` commands are not held to that list. The tables of a package never land in one of your
 modules unasked. `--module` is a kebab-case name, never a path, and needs a package.
 
 A migration is known by its name without the timestamp, across the whole app. `publish` refuses, and writes nothing:

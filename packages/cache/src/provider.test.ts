@@ -1,8 +1,7 @@
-import { mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createApplication, defineModule, env, type ConfigDefinition, type ServiceProviderClass } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, PublishCommand, sql } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { RedisServiceProvider } from '@marmeon/redis';
@@ -231,8 +230,37 @@ describe('make:cache-table', () => {
     ]);
 
     const { input: again, lines: refused } = input(root, { module: 'billing' });
-    expect(await new MakeCacheTableCommand().handle(again)).toBe(1);
-    expect(refused).toEqual([`✗ modules/system/migrations/${migration} already exists — the cache table has its migration.`]);
+    expect(await new MakeCacheTableCommand().handle(again)).toBe(0);
+    expect(refused).toEqual([`modules/system/migrations/${migration} is there — skipped`, '✓ Nothing to publish — every migration of @marmeon/cache is in your app']);
+    expect(existsSync(join(root, 'modules/billing'))).toBe(false);
+  });
+
+  it('writes into a module of its own with --module, which then holds the migration', async () => {
+    const root = app();
+    const { input: run } = input(root, { module: 'billing' });
+    expect(await new MakeCacheTableCommand().handle(run)).toBe(0);
+    expect(readdirSync(join(root, 'modules/billing/migrations'))).toHaveLength(1);
+    expect(readFileSync(join(root, 'modules/billing/index.ts'), 'utf8')).toContain('`marmeon publish @marmeon/cache`');
+    expect(existsSync(join(root, 'modules/system'))).toBe(false);
+  });
+
+  it('refuses a module name that is no plain kebab-case name, and writes nothing', async () => {
+    const root = app();
+    const { input: run, lines } = input(root, { module: '../x' });
+    expect(await new MakeCacheTableCommand().handle(run)).toBe(1);
+    expect(lines).toEqual(['✗ Pass the module as a kebab-case name: --module=<name>.']);
+    expect(existsSync(join(root, 'modules'))).toBe(false);
+    expect(existsSync(join(root, '..', 'x'))).toBe(false);
+  });
+
+  it('adds no copy when another module holds the migration already', async () => {
+    const root = app();
+    mkdirSync(join(root, 'modules/platform/migrations'), { recursive: true });
+    writeFileSync(join(root, 'modules/platform/migrations/2026_01_01_000000_create_cache_table.ts'), '');
+    const { input: run } = input(root);
+    expect(await new MakeCacheTableCommand().handle(run)).toBe(0);
+    expect(existsSync(join(root, 'modules/system'))).toBe(false);
+    expect(readdirSync(join(root, 'modules/platform/migrations'))).toHaveLength(1);
   });
 
   it('writes into another existing module with --module', async () => {
@@ -243,33 +271,5 @@ describe('make:cache-table', () => {
     expect(await new MakeCacheTableCommand().handle(run)).toBe(0);
     expect(readdirSync(join(root, 'modules/platform/migrations'))).toHaveLength(1);
     expect(lines.some((line) => line.includes('Registered'))).toBe(false); // it was registered already
-  });
-});
-
-describe('marmeon publish @marmeon/cache', () => {
-  it('writes the same bytes as make:cache-table, into the same module', async () => {
-    const lines: string[] = [];
-    const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line), warn: (line: string) => lines.push(line), line: (line = '') => lines.push(line) };
-    const app = (): string => {
-      const root = tempDir('marmeon-publish-cache-');
-      writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@marmeon/cache': 'workspace:*' } }));
-      mkdirSync(join(root, 'node_modules/@marmeon'), { recursive: true });
-      symlinkSync(fileURLToPath(new URL('../', import.meta.url)), join(root, 'node_modules/@marmeon/cache'));
-      return root;
-    };
-    const published = app();
-    const made = app();
-    expect(await new PublishCommand().handle({ root: published, args: ['@marmeon/cache'], options: {}, output } as never)).toBe(0);
-    expect(await new MakeCacheTableCommand().handle({ root: made, args: [], options: {}, output } as never)).toBe(0);
-
-    const migrations = (root: string) => readdirSync(join(root, 'modules/system/migrations'));
-    const migration = (root: string) => readFileSync(join(root, 'modules/system/migrations', migrations(root)[0]!), 'utf8');
-    expect(readFileSync(join(published, 'modules/system/index.ts'), 'utf8')).toBe(readFileSync(join(made, 'modules/system/index.ts'), 'utf8'));
-    expect(migrations(published)).toHaveLength(1);
-    expect(migration(published)).toBe(migration(made));
-    expect(migrations(published)[0]!.replace(/^[\d_]{17}/, '')).toBe(migrations(made)[0]!.replace(/^[\d_]{17}/, ''));
-
-    // make:cache-table is as strict as before: the migration is there, so it refuses
-    expect(await new MakeCacheTableCommand().handle({ root: published, args: [], options: {}, output } as never)).toBe(1);
   });
 });
