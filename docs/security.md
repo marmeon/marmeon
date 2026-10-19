@@ -281,6 +281,11 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
   ([ending every session of a user](authentication.md#ending-every-session-of-a-user)).
   After a leak, `marmeon auth:end-all-sessions --force` ends every session of every account
   ([ending every session of every account](authentication.md#ending-every-session-of-every-account)).
+- Your own controllers for sign-in, password reset, address change and passkey sign-in call the services of `@marmeon/auth` and keep none
+  of their checks themselves: `Auth.attempt()`, `checkPassword()`, `PasswordBroker`, `EmailChange`, `Passkeys`. The limits inside them come
+  with them. The `auth.*` limiters sit on the starter kit's routes; put the matching `throttle('auth.…')` on your own route
+  ([what the package decides](authentication.md#what-the-package-decides)). The registration is the app's: its answer for a taken address,
+  its mail limits and its pruning of unconfirmed accounts are the starter kit's code, or yours.
 - `verified()` after `authenticate()` on every route of your own that signed-in users reach.
 - Every route of your own has a decision that you chose: a policy for a record, `everyone` only when anyone the middleware lets
   through may call it. `marmeon route:list` shows the `ACCESS` of each route.

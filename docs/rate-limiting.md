@@ -218,8 +218,8 @@ at many accounts from one client share no count, and one account guessed from ma
 
 A second key can count the same sign-ins per account instead of per client: `login-account:` and a hash of the normalised address, 100
 attempts in 86,400 seconds, cleared by a sign-in and by a password reset. Hash the address when a key would otherwise hold it, and count
-an address without an account the same way, so the limit does not tell which exist. The starter kit does this, see
-[Guesses against one account](starter-kit.md#guesses-against-one-account). The cost is one cache entry per address tried, kept for a
+an address without an account the same way (an account by its id, an unknown address by an HMAC), so the limit does not tell which exist. `Auth.attempt()` counts this way, see
+[limits on password sign-ins](authentication.md#limits-on-password-sign-ins). The cost is one cache entry per address tried, kept for a
 day: on a public site use the `database` or `redis` cache store and keep `cache:prune` scheduled.
 
 > [!WARNING]

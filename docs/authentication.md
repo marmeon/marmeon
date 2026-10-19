@@ -41,6 +41,32 @@ export class ListNotesController extends Controller {
 `verified()` lets in only accounts whose address is confirmed. Put it on every route of your own that signed-in users reach: the
 [email verification](verification.md#requiring-a-confirmed-address) page explains why.
 
+## What the package decides
+
+The starter kit's controllers are thin. Every decision that matters for security sits in a service of `@marmeon/auth`, so an app with
+controllers of its own gets it too, and an update of the package brings a fix to both. A service is a class from the container;
+only the stores and the `UserProvider` are contracts you may implement ([what your app implements](#what-your-app-implements)).
+
+| Service or command | What it decides | Section |
+| --- | --- | --- |
+| `Auth.attempt()` | The limits of a password sign-in before the password is read: per client and identifier, per account and day, and the device cookie that keeps the owner in. | [Limits on password sign-ins](#limits-on-password-sign-ins) |
+| `Auth.checkPassword()` | A signed-in user's password check, counted before it is made, with a limit per day; it starts sudo mode. | [How password checks are counted](#how-password-checks-are-counted) |
+| `EmailVerification`, `verified()` | The signed link that confirms an address, and the middleware that lets in only confirmed accounts. | [Email verification](verification.md) |
+| `PasswordBroker`, `Auth.updatePassword()` | The single-use reset link, the same answer for every address, and the end of the other sessions. | [Password reset](passwords.md), [changing the password](#changing-the-password) |
+| `EmailChange` | A change of address with a fresh factor, a throttled password and a single-use link, the same answer for a free and a taken address. Your app writes the address. | [Changing the address](#changing-the-address) |
+| `TwoFactor`, `Passkeys` | The factors, their codes and challenges, the password every change asks for, and the sessions that end when a passkey is removed or looks copied. | [Two-factor authentication](two-factor-authentication.md) (`@marmeon/auth/two-factor`), [passkeys](passkeys.md) (`@marmeon/auth/passkeys`) |
+| `AccountSessions` | Ending the sessions of one account or of every account. | [Ending every session of a user](#ending-every-session-of-a-user) |
+| `auth:end-sessions`, `auth:end-all-sessions`, `auth:reset-two-factor`, `auth:prune-tokens` | The operator's commands. | [Ending every session of a user](#ending-every-session-of-a-user), [of every account](#ending-every-session-of-every-account), [operator reset](two-factor-authentication.md#operator-reset) |
+| `auth.*` limiters | The rate limits of the auth routes; an app's limiter of the same name replaces one. | [The limits of the auth routes](#the-limits-of-the-auth-routes) |
+
+The package needs `@marmeon/cache` for the limits: `Auth` stops at boot without it. The stores of sign-ins, reset tokens and API
+tokens come with a database default, and `TwoFactorState` defaults to none. Only `EmailChange` is opt-in: without a bound
+`EmailChangeStore` it fails with K1 when it is built. The `AUTH_*` settings are in the [configuration](#configuration) table.
+
+What stays with the app is what depends on its data: the `users` table and its `UserProvider`, the controllers and their fields,
+the views, the mails and the routes. The registration is the app's too, since its answers depend on its fields, and so is
+`auth:prune-unverified`, which deletes accounts. The [starter kit](starter-kit.md) page lists what it wires for you.
+
 ## The user type and where users come from
 
 The package does not know your users. Your app tells it twice: which type a user has, and where to find one.
@@ -303,10 +329,13 @@ sign-ins and validation failures included, so a CGNAT, a school or an office beh
 that of [the limits of the auth routes](#the-limits-of-the-auth-routes). The
 [rate limiting](rate-limiting.md#defining-limiters) page covers limiters.
 
-The starter kit counts one more thing: the password sign-ins to one account from every client together, 100 a day. The 101st gets
-"Too many failed sign-ins for this account. Reset your password or sign in with a passkey." even with the right password, for an address
-without an account as for one with. A sign-in that succeeds and a completed password reset start the count over; a passkey sign-in starts it
-over too. The owner's own browser keeps signing in past it with its [device cookie](#limits-on-password-sign-ins). The owner gets a mail once. See [the starter kit](starter-kit.md#guesses-against-one-account).
+The starter kit's login page says, when the account's ceiling is reached: "Too many failed sign-ins for this account. Reset your
+password or sign in with a passkey." Its `QueueLockoutMail` queues `SendLockoutMailJob` on the `Lockout` of that moment, and the job
+mails the owner only when an account exists, so the mail is no oracle either.
+
+A count is one cache entry per address tried, for addresses with and without an account, kept for a day (its key is an HMAC, so it
+cannot be cut down). A public deployment keeps the counts in the `database` or `redis` cache store, not in `file`, and `cache:prune`
+scheduled (see [cache](cache.md)), so a flood of made-up addresses does not pile up.
 
 `login(user)` signs a user in without a password, for example right after a registration. It returns `'signed-in'`, or
 `'two-factor-required'` for an account with a second factor: that account is not signed in, exactly as with `attempt()`. A
@@ -849,8 +878,9 @@ sign-ins are gone by then. The starter kit's accounts have a `session_key` colum
 A custom `SignInStore` needs `remembered(cookie)`, which says whether the token of a cookie is still stored and must see an `endAll()` at once (no cache, no lagging replica), or a session survives `end()`; a sign-in by a
 remember-me cookie asks it right before it starts. A store without `endAll()` (JavaScript, a cast) makes `end()` throw error A6 before it changes anything.
 
-`@marmeon/auth` brings this as a command, `marmeon auth:end-sessions <identifier> --force` (the identifier as your sign-in form normalizes it; the account is found by `UserProvider.findForLogin()`), for an operator who has no admin page
-([Starter kit](starter-kit.md#signing-an-account-out-everywhere)).
+`@marmeon/auth` brings this as a command, `marmeon auth:end-sessions <identifier> --force` (the identifier as your sign-in form normalizes it; the account is found by `UserProvider.findForLogin()`), for an operator who has no admin page.
+It prints how many stored sessions it deleted at once (the others end at their next request), requires `--force` in every environment,
+exits with 1 for an unknown identifier, and shows an error of the call instead of hiding it. The password still signs in, so change it first when it may be known.
 
 `UserSessions` of `@marmeon/session` is the low-level variant, and deleting an account needs it. The starter kit's
 `AccountDeletion` calls it after the account is gone. It does not touch remember-me cookies, which sign the user in again, so use
