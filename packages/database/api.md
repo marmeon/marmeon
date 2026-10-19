@@ -170,7 +170,7 @@ export declare class DatabaseServiceProvider implements ServiceProvider {
     static solutions: readonly import("@marmeon/core").SolutionDefinition<any>[];
     static health: (typeof DatabaseHealthCheck)[];
     static checks: readonly AppCheckClass[];
-    static commands: (typeof MakeUpgradeMigrationsCommand | typeof DbShowCommand | typeof DbSeedCommand | typeof DbTypesCommand | typeof MigrateCommand | typeof MigrateRollbackCommand | typeof MigrateResetCommand | typeof MigrateFreshCommand | typeof MigrateStatusCommand)[];
+    static commands: (typeof MakeUpgradeMigrationsCommand | typeof PublishCommand | typeof DbShowCommand | typeof DbSeedCommand | typeof DbTypesCommand | typeof MigrateCommand | typeof MigrateRollbackCommand | typeof MigrateResetCommand | typeof MigrateFreshCommand | typeof MigrateStatusCommand)[];
     register(container: Container): void;
     boot(app: Application): void;
     shutdown(app: Application): Promise<void>;
@@ -583,6 +583,21 @@ export interface ProjectedTable {
     readonly indexes: readonly ProjectedIndex[];
     readonly foreignKeys: readonly ProjectedForeignKey[];
     readonly markers: readonly TableMarker[];
+}
+// PublishCommand
+export declare class PublishCommand {
+    #private;
+    static command: string;
+    static description: string;
+    static usage: string;
+    static options: {
+        readonly module: {
+            readonly type: 'string';
+            readonly short: 'm';
+        };
+    };
+    constructor(app: Application);
+    handle(input: CommandInput): Promise<number>;
 }
 // QueryEvent
 export interface QueryEvent {
@@ -1165,4 +1180,7 @@ marmeon migrate:rollback [--step=<n>] [--force] [--wait=<seconds>]
 // migrate:status
 marmeon migrate:status [--json]
 --json (boolean)
+// publish
+marmeon publish <package> [--module=<name>]
+--module (string, short m)
 ```

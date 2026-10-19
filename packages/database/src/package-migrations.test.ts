@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -133,6 +134,13 @@ describe('readPackageMigrations', () => {
 
     it('a directory in place of a file', () => {
       expect(messageOf(read(valid, { 'stubs/migrations/create_things_table.ts/inner.ts': MARK }))).toContain('is no file');
+    });
+
+    it.skipIf(process.platform === 'win32')('a named pipe in place of a file, without waiting for a writer', () => {
+      const pkg = makePackage({ migrations: valid });
+      mkdirSync(join(pkg.dir, 'stubs/migrations'), { recursive: true });
+      execFileSync('mkfifo', [join(pkg.dir, 'stubs/migrations/create_things_table.ts')]);
+      expect(messageOf(readPackageMigrations(pkg))).toContain('is no file');
     });
 
     it('a symlink to a file outside the package', () => {

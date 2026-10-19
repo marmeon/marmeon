@@ -879,13 +879,16 @@ pnpm marmeon make:cache-table
 pnpm marmeon migrate
 ```
 
-| Command | Tables |
-| --- | --- |
-| `make:cache-table` | `cache`, `cache_locks`, on the cache's connection |
-| `make:session-table` | `sessions`, on the sessions' connection |
-| `make:queue-table` | `jobs`, `failed_jobs`, on the queue's connection |
-| `make:notifications-table` | `notifications`, on the notifications' connection |
-| `make:uploads-table` | `temporary_uploads`, on the uploads' connection |
+| Command | Or | Tables |
+| --- | --- | --- |
+| `make:cache-table` | `publish @marmeon/cache` | `cache`, `cache_locks`, on the cache's connection |
+| `make:session-table` | `publish @marmeon/session` | `sessions`, on the sessions' connection |
+| `make:queue-table` | `publish @marmeon/queue` | `jobs`, `failed_jobs`, on the queue's connection |
+| `make:notifications-table` | `publish @marmeon/notifications` | `notifications`, on the notifications' connection |
+| `make:uploads-table` | `publish @marmeon/storage` | `temporary_uploads`, on the uploads' connection |
+
+Both ways write the same file. `marmeon publish <package>` is the one that works for every package that [lists its
+migrations](package-development.md#declaring-the-migrations-a-package-ships); the `make:*-table` commands stay as they are.
 
 Each writes into the `system` module, or the module that `--module` names. The command creates the `system` module and adds it
 to `bootstrap/app.ts` when it does not exist yet; it adds `migrations` to an existing module that lacks it. When `bootstrap/app.ts`
@@ -898,6 +901,37 @@ The queue's migration creates `failed_jobs` next to `jobs`. With `QUEUE_FAILED_C
 with a message instead of creating the table where nothing looks. Split it then: the written migration keeps `jobs` with
 `connection: '<the jobs' connection>'` in place of `queueTablesConnection`, and a migration of its own creates `failed_jobs` with
 the other `connection`, as in [migrations on another connection](#migrations-on-another-connection).
+
+### Publishing the migrations of a package
+
+```sh
+pnpm marmeon publish @acme/permissions
+pnpm marmeon migrate
+```
+
+`marmeon publish <package> [--module=<name>]` copies the migrations a package lists into your app. The package must be in the
+`dependencies` or `devDependencies` of your app's `package.json` and installed in its `node_modules`: a package that only
+another package brought is not copied; the package is looked for in the `node_modules` of the app and, in a workspace, of the
+directories above it up to the first one with a lockfile. The module is `--module`, or else the one that already holds a migration
+the package lists, or else the one the package proposes. A proposed module that does not exist is created and added to
+`bootstrap/app.ts` like the one of a `make:*-table` command; one that exists is used only if it is `system`, so the command
+otherwise stops with exit code 1 and asks for `--module`: the tables of a package never land in one of your modules unasked.
+`--module` is a kebab-case name, never a path.
+
+The command writes what is missing and skips a migration your app already has under the same name (say, one that `make:auth`
+wrote), so you can run it again: when nothing is left it ends with exit code 0 and says so. The files carry a timestamp one
+second apart, in the order the package lists them. When the tables of the package have upgrades that your app lacks, it points
+to `make:upgrade-migrations`. It does not touch the database; run `marmeon migrate` after it. To move the tables to another
+module later, move the files with the same names and change their rows in `migrations.module`.
+
+A package cannot publish a migration into a set of tables that another installed package upgrades or creates, nor under a file name
+that one creates or upgrades, nor into a set your app already has in a file the package does not list: it could otherwise hide
+the upgrades of that set. A provider counts as the package's own only when it is the very class the package exports and no other
+package lists its name. A package that is not installed protects nothing. The command reads the
+package's files without following a symlink; a hard link to a file outside the package, which `realpath` does not reveal, is not
+detected. Read the files of a package you do not know before you run `migrate`: they are code.
+
+An app with a console command named `publish` of its own does not start (K8): rename it.
 
 ### Upgrading the framework's tables
 

@@ -15,10 +15,14 @@ export const SYSTEM_MODULE = 'system';
  * created (with its `migrations` directory) and registered in `bootstrap/app.ts` when it does not exist yet.
  *
  * Refuses when any module already has a migration with the same name (`*_create_cache_table.ts`): one table, one migration.
- * `module` takes the place of `--module` (an existing module, as it is named on disk); `at` is the timestamp of the file name.
- * Returns the exit code.
+ * `module` takes the place of `--module` (an existing module, as it is named on disk, or one `marmeon publish` has checked);
+ * `at` is the timestamp of the file name; `owner` names the package in the comment of a module that is created;
+ * `hint: false` leaves out the closing "Then: marmeon migrate" for a caller that writes several files. Returns the exit code.
  */
-export function publishMigration(input: CommandInput, migration: { name: string; contents: string; table: string; module?: string; at?: Date }): number {
+export function publishMigration(
+  input: CommandInput,
+  migration: { name: string; contents: string; table: string; module?: string; at?: Date; owner?: string; hint?: boolean },
+): number {
   const module = migration.module ?? (typeof input.options.module === 'string' ? input.options.module : SYSTEM_MODULE);
   if (migration.module === undefined && !KEBAB.test(module)) {
     input.output.error('Pass the module as a kebab-case name: --module=<name> (default: system).');
@@ -35,7 +39,7 @@ export function publishMigration(input: CommandInput, migration: { name: string;
   const created = !existsSync(directory);
   if (created) {
     mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, 'index.ts'), MODULE(module));
+    writeFileSync(join(directory, 'index.ts'), MODULE(module, migration.owner));
     input.output.success(`Created ${relative(input.root, join(directory, 'index.ts'))}`);
   } else {
     const edited = editDefinitionFile(join(directory, 'index.ts'), {
@@ -67,7 +71,7 @@ export function publishMigration(input: CommandInput, migration: { name: string;
       input.output.line(`  modules: [..., ${variable}]`);
     }
   }
-  input.output.line('Then: marmeon migrate');
+  if (migration.hint !== false) input.output.line('Then: marmeon migrate');
   return 0;
 }
 
@@ -102,12 +106,17 @@ function register(file: string, module: string): { status: 'added' | 'present' }
   return edited.status === 'manual' ? { status: 'manual', reason: edited.reason } : { status: edited.status };
 }
 
-const MODULE = (name: string) => `import { defineModule } from '@marmeon/core';
+const MODULE = (name: string, owner?: string) => {
+  const comment = owner
+    ? `// The tables of ${owner}: \`marmeon publish ${owner}\` writes their migrations here.`
+    : "// The tables of the framework's drivers (cache, sessions, queue, …): `marmeon make:*-table` writes their migrations here.";
+  return `import { defineModule } from '@marmeon/core';
 
-// The tables of the framework's drivers (cache, sessions, queue, …): \`marmeon make:*-table\` writes their migrations here.
+${comment}
 // They are the app's now — change them like any other migration.
 export default defineModule({
   name: '${name}',
   migrations: new URL('./migrations/', import.meta.url),
 });
 `;
+};

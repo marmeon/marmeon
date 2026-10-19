@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, sep } from 'node:path';
 import { err, ok, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
@@ -128,12 +128,18 @@ function readV1(pkg: PackageToRead, field: Record<string, unknown>): Outcome {
     const inside = relative(root, real);
     if (inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return invalid(pkg, `${show(path)} leads out of the package.`);
 
+    // Opened without following a symlink and without blocking (a FIFO would hang), then read through the descriptor: the file itself is not a symlink swapped in after `realpath`.
     let contents: string;
     try {
-      const stat = statSync(real);
-      if (!stat.isFile()) return invalid(pkg, `${show(path)} is no file.`);
-      if (stat.size > MAX_BYTES) return invalid(pkg, `${show(path)} is larger than ${MAX_BYTES} bytes.`);
-      contents = readFileSync(real, 'utf8');
+      const fd = openSync(real, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+      try {
+        const stat = fstatSync(fd);
+        if (!stat.isFile()) return invalid(pkg, `${show(path)} is no file.`);
+        if (stat.size > MAX_BYTES) return invalid(pkg, `${show(path)} is larger than ${MAX_BYTES} bytes.`);
+        contents = readFileSync(fd, 'utf8');
+      } finally {
+        closeSync(fd);
+      }
     } catch {
       return invalid(pkg, `${show(path)} cannot be read.`);
     }
