@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { CommandInput } from 'marmeon';
 
 /** The migration the command copies — a real file, so the store tests run exactly what apps get. */
-export const SESSIONS_MIGRATION = new URL('../../stubs/migrations/create_sessions_table.ts', import.meta.url);
+export const SESSIONS_MIGRATION = new URL('../../stubs/migrations/0001_01_01_000000_create_sessions_table.ts', import.meta.url);
 
 /**
  * `marmeon make:session-table [--module=system]`: writes the migration of the `database` session driver's table into an app

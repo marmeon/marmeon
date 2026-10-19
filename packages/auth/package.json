@@ -99,11 +99,9 @@
       "AuthServiceProvider"
     ],
     "migrations": {
-      "format": 1,
+      "format": 2,
       "module": "system",
-      "files": [
-        "stubs/migrations/create_sign_ins_table.ts"
-      ]
+      "from": "stubs/migrations"
     },
     "browser": [
       "src/passkeys/browser.ts"

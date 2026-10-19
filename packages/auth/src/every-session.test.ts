@@ -35,7 +35,7 @@ import { twoFactorState } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
-const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/create_sessions_table.ts', import.meta.url);
+const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/0001_01_01_000000_create_sessions_table.ts', import.meta.url);
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const bob: AuthUser = { id: 2, name: 'Bob', email: 'bob@example.com' };

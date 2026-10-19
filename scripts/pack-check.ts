@@ -54,11 +54,14 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
   }
   if (pkg.short === 'create-marmeon') problems.push(...checkScaffolder(packed, dir, manifest));
 
-  // The migrations the package declares are what `marmeon publish` copies: each must be in the tarball.
-  const declared = manifest.marmeon?.migrations?.files;
-  if (Array.isArray(declared)) {
-    for (const file of declared) {
-      if (typeof file === 'string' && !files.has(posix.normalize(file))) problems.push(`marmeon.migrations lists ${file}, which is not in the tarball`);
+  // The directory the package declares as its migrations is what `marmeon publish` copies: every migration in it must be in the tarball.
+  const from = manifest.marmeon?.migrations?.from;
+  if (typeof from === 'string') {
+    const directory = posix.normalize(from);
+    const shipped = packed.files.filter((file) => posix.dirname(file) === directory && file.endsWith('.ts'));
+    if (shipped.length === 0) problems.push(`marmeon.migrations.from is ${from}, which holds no migration in the tarball`);
+    for (const file of filesUnder(join(pkg.dir, directory)).filter((name) => !name.includes('/') && name.endsWith('.ts'))) {
+      if (!files.has(`${directory}/${file}`)) problems.push(`marmeon.migrations.from ${from} holds ${file}, which is not in the tarball`);
     }
   }
 

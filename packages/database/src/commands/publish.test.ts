@@ -10,16 +10,20 @@ const ELSEWHERE = (file: string, pkg: string, where: string) =>
   `✗ ${file} of ${pkg} is in modules/${where}, which publish did not create for ${pkg} — if you put it there, pass --module=${where}; otherwise ${pkg} ships a migration with a name your app already uses.`;
 const PERM_FILES = { 'stubs/migrations/create_permissions_table.ts': STUB('permissions'), 'stubs/migrations/create_roles_table.ts': STUB('permissions') };
 
+const shipped = (index: number) => `2026_01_01_${String(index).padStart(6, '0')}`;
+
 /** Writes a package into `<root>/node_modules`; `entry` is the source of its `index.js`, `providers` the names `marmeon.providers` lists. */
 function install(root: string, name: string, files: Record<string, string>, extra: { module?: string; providers?: string[]; entry?: string; dependency?: boolean; spec?: string } = {}): void {
   const pkg = join(root, 'node_modules', name);
   mkdirSync(pkg, { recursive: true });
-  const marmeon = { migrations: { format: 1, module: extra.module ?? 'permissions', files: Object.keys(files) }, ...(extra.providers ? { providers: extra.providers } : {}) };
+  const marmeon = { migrations: { format: 2, module: extra.module ?? 'permissions', from: 'stubs/migrations' }, ...(extra.providers ? { providers: extra.providers } : {}) };
   writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name, version: '1.0.0', exports: './index.js', marmeon }));
   writeFileSync(join(pkg, 'index.js'), extra.entry ?? '');
-  for (const [path, contents] of Object.entries(files)) {
-    mkdirSync(dirname(join(pkg, path)), { recursive: true });
-    writeFileSync(join(pkg, path), contents);
+  // The files are given by their name; the package ships them in the order given, each with its own timestamp.
+  for (const [index, [path, contents]] of Object.entries(files).entries()) {
+    const file = path.replace(/([^/]+)$/, `${shipped(index)}_$1`);
+    mkdirSync(dirname(join(pkg, file)), { recursive: true });
+    writeFileSync(join(pkg, file), contents);
   }
   if (extra.dependency !== false) {
     const file = join(root, 'package.json');
@@ -235,7 +239,7 @@ describe('marmeon publish', () => {
     it('a declaration that is wrong, writing nothing', async () => {
       const root = makeApp();
       const file = join(root, 'node_modules/@acme/perm/package.json');
-      writeFileSync(file, JSON.stringify({ name: '@acme/perm', marmeon: { migrations: { format: 1, module: 'permissions', files: ['stubs/migrations/missing.ts'] } } }));
+      writeFileSync(file, JSON.stringify({ name: '@acme/perm', marmeon: { migrations: { format: 2, module: 'permissions', from: 'stubs/missing' } } }));
       const { code, lines } = await publish(root);
       expect(code).toBe(1);
       expect(lines[0]).toContain('[marmeon:D21]');
@@ -358,7 +362,7 @@ describe('marmeon publish', () => {
       const root = makeApp();
       const target = join(tempDir('marmeon-publish-outside-'), 'secret.ts');
       writeFileSync(target, STUB('permissions'));
-      const link = join(root, 'node_modules/@acme/perm/stubs/migrations/create_roles_table.ts');
+      const link = join(root, 'node_modules/@acme/perm/stubs/migrations/2026_01_01_000001_create_roles_table.ts');
       rmSync(link);
       symlinkSync(target, link);
       const { code } = await publish(root);
