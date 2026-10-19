@@ -89,6 +89,32 @@ without running it. Put what depends on the data into a `schema.data()` step.
 
 A migration without `down` cannot be rolled back. A rollback that reaches it stops there with an error that names it.
 
+### Migrations from a package
+
+A module's `migrations` folder belongs to your app, so it has to be in your repository where a review sees every change. A folder
+or a file whose real path (after following symlinks) runs through a `node_modules` directory is refused with error D20: by
+`migrate`, the schema projection and `db:types`, and by every query of the running app (under `marmeon dev` there is also a warning at startup that the migrations are not watched, and every query still fails with D20).
+An update of the package could change a migration your database has already run, or add a `schema.data()` step, and nothing would
+show in your history. A migration file that only re-exports one from a package defeats the purpose, so put the content into the
+file. The same goes for a helper that a migration imports: it belongs to your app, and a symlink to one in `node_modules` is refused too.
+
+Move the migrations into a module of your app **with the same file names** and point `migrations` at them: `migrate` knows what
+has run by the file name, so files that are written again under new timestamps would be new migrations. If your module is named
+differently from the package's, change the rows of the migrations table once:
+`UPDATE migrations SET module = '<your module>' WHERE module = '<package module>'`.
+
+To keep using the package's module without its migrations, take them out of the definition:
+
+```ts
+const { migrations, ...rest } = packageModule;
+export default defineModule({ ...rest, name: 'permissions' });
+```
+
+`rest` is everything else the module brings (providers, routes, commands), so only the `migrations` folder is left behind.
+
+A package of your own monorepo lives outside `node_modules` and is not affected. Only the part of the path below the app's root
+is checked, so an app that is itself installed under a `node_modules` still runs.
+
 ### Changing the data
 
 A step added with `schema.data()` runs between the steps around it. The usual shape is a column that is added with a default and then
