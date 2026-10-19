@@ -1,4 +1,3 @@
-// @marmeon-stub auth 3
 import { defineMigration, sql } from '@marmeon/database';
 
 // Gives every account without a session key (`users.session_key` is NULL: accounts made before registrations and factories gave one)

@@ -1,4 +1,3 @@
-// @marmeon-stub auth 4
 import { defineMigration } from '@marmeon/database';
 
 // The remember-me token of a device lives on the row of its sign-in (`sign_ins`) now, and the table that held them goes. The tokens

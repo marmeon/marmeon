@@ -1,4 +1,3 @@
-// @marmeon-stub auth 2
 import { defineMigration } from '@marmeon/database';
 
 // API tokens without the row's id in them, found by the unique hash of their secret. Every token issued before is deleted here:

@@ -1,4 +1,3 @@
-// @marmeon-stub storage 1
 import { defineMigration } from '@marmeon/database';
 import { uploadsTableConnection } from '@marmeon/storage';
 

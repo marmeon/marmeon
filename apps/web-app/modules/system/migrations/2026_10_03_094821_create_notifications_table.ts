@@ -1,4 +1,3 @@
-// @marmeon-stub notifications 1
 import { defineMigration } from '@marmeon/database';
 import { notificationsTableConnection } from '@marmeon/notifications';
 

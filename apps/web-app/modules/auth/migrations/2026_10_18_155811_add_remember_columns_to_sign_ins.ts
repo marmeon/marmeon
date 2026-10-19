@@ -1,4 +1,3 @@
-// @marmeon-stub sign-ins 2
 import { defineMigration } from '@marmeon/database';
 
 // The remember-me token of a device moves into the row of its sign-in, so one row says both that the browser is signed in and what
