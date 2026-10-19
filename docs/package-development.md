@@ -240,6 +240,8 @@ on a connection with `managed: false`). A requirement with `whenPresent: true` i
 feature is unused): it is only checked once the table exists. See
 [upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables).
 
+A module's `migrations` must not point into the package's own folder in `node_modules`: the app refuses that with error D20, because a package update would change migrations the database has run. Ship the migrations as stubs the app copies.
+
 ## Middleware
 
 `router.middleware.append(group, Middleware, priority)` adds a middleware to the global stack, `GLOBAL`, or to a group such as
