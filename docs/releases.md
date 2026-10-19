@@ -107,8 +107,8 @@ The promise of a version covers the public API. These are part of it:
 - The names and defaults of environment variables.
 - The commands of `marmeon`, their flags and exit codes.
 - The documents `--json` prints, by their `format`.
-- The table schemas of the migrations the framework ships, the stubs and the `make:*` tables.
-- `defineMigration`, `up(schema)` and the schema builder, including which plans they accept and what they create: a migration that ran keeps its meaning, in your app and in the stubs a package ships ([tables](package-development.md#tables)).
+- The table schemas of the migrations the framework ships, the stubs and the `make:*` tables. The migrations the framework's packages ship, the starter kit's among them, are append-only: a released file never changes, and a change of a table is a new file ([tables](package-development.md#tables)).
+- `defineMigration`, `up(schema)` and the schema builder, including which plans they accept and what they create: a migration that ran keeps its meaning.
 - The protocol between client and server: headers and the page object.
 - Stored and wire formats: queue payloads, sessions, encrypted values, tokens, cookies, the record of migrations and the generated files, as
   [listed below](#stored-and-wire-formats).
