@@ -234,7 +234,7 @@ the `revision` it brings the tables to (2 or more), the `name` of the file witho
 that created the set, which tell the command where the app keeps it) and the `contents`, which start with
 `// @marmeon-stub <set> <revision>`. `marmeon make:upgrade-migrations` writes the missing ones into the app. An entry with a path
 in a name, or a revision listed twice for a set, stops the start. A table the package needs is registered with
-`SchemaRequirements` (from `@marmeon/database/internal`), with the `columns` it reads and writes and, as `secrets`, the columns that must
+`SchemaRequirements` (from `@marmeon/database`), with the `columns` it reads and writes and, as `secrets`, the columns that must
 be marked `.secret()`: readiness is red while the table is missing, lacks a column or has one unmarked, as in a table made by hand (not
 on a connection with `managed: false`). A requirement with `whenPresent: true` is for a table the app may never have made (the
 feature is unused): it is only checked once the table exists. See

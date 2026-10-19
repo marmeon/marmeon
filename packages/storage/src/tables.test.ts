@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { createApplication, HealthChecks, Logger } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
-import { runMigration, SchemaRequirements } from '@marmeon/database/internal';
+import { SchemaRequirements } from '@marmeon/database';
+import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { describe, expect, it } from 'vitest';

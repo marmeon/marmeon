@@ -5,7 +5,6 @@
 export { DatabaseConfig } from './config.ts';
 export { publishMigration } from './commands/publish-migration.ts';
 export { isSecretSelection } from './secret-guard.ts';
-export { SchemaRequirements } from './upgrades.ts';
 export { runMigration } from './migrations/run.ts';
 export { projectApp } from './schema/project-app.ts';
 export { watchMigrations } from './migrations/watch.ts';

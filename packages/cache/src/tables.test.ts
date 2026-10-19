@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { createApplication, Logger } from '@marmeon/core';
-import { SchemaRequirements } from '@marmeon/database/internal';
+import { SchemaRequirements } from '@marmeon/database';
 import { DatabaseServiceProvider } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
 import { silent } from './__fixtures__/stores.ts';
