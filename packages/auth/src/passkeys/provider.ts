@@ -24,7 +24,7 @@ export class PasskeyServiceProvider implements ServiceProvider {
   async boot(app: Application): Promise<void> {
     if (!app.container.has(Connections)) return;
     // /up/ready is red until the table has the new name and every column the store uses.
-    const { SchemaRequirements } = await import('@marmeon/database/internal');
+    const { SchemaRequirements } = await import('@marmeon/database');
     app.container.make(SchemaRequirements).require({ connection: 'default', table: PASSKEYS_TABLE, columns: PASSKEY_COLUMNS, secrets: [], set: 'auth' });
   }
 }

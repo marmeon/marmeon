@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { createApplication, Logger, type ModuleDefinition } from '@marmeon/core';
 import { DatabaseServiceProvider } from '@marmeon/database';
-import { SchemaRequirements } from '@marmeon/database/internal';
+import { SchemaRequirements } from '@marmeon/database';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { Members, silent, Welcome } from './__fixtures__/app.ts';

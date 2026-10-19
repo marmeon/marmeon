@@ -75,17 +75,23 @@ export function collectUpgrades(providers: readonly ServiceProviderClass[]): Map
 }
 
 /**
- * The tables the framework's packages need columns of, per connection. A package registers its requirement when its database
- * driver is the one in use; `DatabaseHealthCheck` compares them with the database.
- * @internal
+ * The tables the packages need columns of, per connection. A package registers its requirement when its database driver is the
+ * one in use; readiness compares them with the database. See `docs/package-development.md#tables`.
+ *
+ * A singleton of the `DatabaseServiceProvider`: take it with `container.make(SchemaRequirements)` once `container.has(Connections)`.
  */
 export class SchemaRequirements {
   readonly #requirements: TableRequirement[] = [];
 
+  /** @internal Packages take the instance from the container. */
+  constructor() {}
+
+  /** Registers a table the package reads or writes; readiness compares it with the database as {@link TableRequirement} describes. */
   require(requirement: TableRequirement): void {
     this.#requirements.push(requirement);
   }
 
+  /** Every requirement registered so far, in the order of registration. */
   all(): readonly TableRequirement[] {
     return this.#requirements;
   }

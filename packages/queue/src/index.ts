@@ -144,7 +144,7 @@ export class QueueServiceProvider implements ServiceProvider {
       // An unknown database connection name fails here, with the known ones.
       for (const connection of databases) app.container.make(database.Connections).options(connection);
       // /up/ready is red until the tables have the new names and every column the drivers write.
-      const { SchemaRequirements } = await import('@marmeon/database/internal');
+      const { SchemaRequirements } = await import('@marmeon/database');
       const requirements = app.container.make(SchemaRequirements);
       if (used.driver === 'database') requirements.require({ connection: used.connection, table: JOBS_TABLE, columns: JOBS_COLUMNS, set: 'queue' });
       // `sync` runs a job where it is dispatched: no worker, no failed-job table to wait for.

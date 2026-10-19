@@ -718,6 +718,12 @@ export interface SchemaProjection {
     }[];
     readonly tables: ReadonlyMap<string, ProjectedTable>;
 }
+// SchemaRequirements
+export declare class SchemaRequirements {
+    #private;
+    require(requirement: TableRequirement): void;
+    all(): readonly TableRequirement[];
+}
 // Secret
 export type Secret<T> = ColumnType<never, T, T>;
 // SecretReference

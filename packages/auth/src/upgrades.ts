@@ -87,7 +87,7 @@ export function authenticationIsSetUp(container: Container): boolean {
  */
 export async function requireAuthTables(container: Container): Promise<void> {
   if (!container.has(Connections) || !authenticationIsSetUp(container)) return;
-  const { SchemaRequirements } = await import('@marmeon/database/internal');
+  const { SchemaRequirements } = await import('@marmeon/database');
   const requirements = container.make(SchemaRequirements);
   const need = (table: string, columns: readonly string[], secrets: readonly string[], set: string) => requirements.require({ connection: 'default', table, columns, secrets, set });
   // A store that cannot be built here (it depends on something scoped, say) is the app's own, not ours.

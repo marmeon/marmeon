@@ -163,7 +163,7 @@ export class NotificationServiceProvider implements ServiceProvider {
     // Only a notification with `static database` is delivered to the table (and the Inbox reads only those rows): then /up/ready is red
     // until the table has the new name and every column the store uses.
     if (registry.all().some((notification) => notification.database !== undefined)) {
-      const { SchemaRequirements } = await import('@marmeon/database/internal');
+      const { SchemaRequirements } = await import('@marmeon/database');
       container.make(SchemaRequirements).require({ connection, table: NOTIFICATIONS_TABLE, columns: NOTIFICATIONS_COLUMNS, set: 'notifications' });
     }
 
