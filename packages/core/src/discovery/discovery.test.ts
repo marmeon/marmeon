@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { createApplication } from '../application.ts';
 import type { Key } from '../token.ts';
 import { DiscoveryError, generateManifest, loadDiscoveredPackages, manifestPath } from './discover.ts';
-import { resolveExports, runtimeConditions, splitSpecifier, type PackageInfo } from './resolve.ts';
+import { findPackage, resolveExports, runtimeConditions, splitSpecifier, type PackageInfo } from './resolve.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtures = join(here, '../../fixtures/discovery');
@@ -286,5 +287,35 @@ describe('exports resolution', () => {
       'a', 'b', 'c', 'node', 'import', 'module-sync', 'node-addons',
     ]);
     expect(splitSpecifier('@acme/mailer/testing')).toEqual({ name: '@acme/mailer', subpath: './testing' });
+  });
+});
+
+describe('findPackage', () => {
+  const root = tempDir('marmeon-find-package-');
+  mkdirSync(join(root, 'node_modules/@acme/ok'), { recursive: true });
+  writeFileSync(join(root, 'node_modules/@acme/ok/package.json'), '{"name":"@acme/ok"}');
+  mkdirSync(join(root, 'node_modules/broken'), { recursive: true });
+  writeFileSync(join(root, 'node_modules/broken/package.json'), '{ not json');
+  mkdirSync(join(root, 'elsewhere'), { recursive: true });
+  writeFileSync(join(root, 'elsewhere/package.json'), '{"name":"elsewhere"}');
+
+  it('finds a package by its name', () => {
+    expect(findPackage('@acme/ok', root)?.json.name).toBe('@acme/ok');
+  });
+
+  it('finds an older package name with capitals', () => {
+    mkdirSync(join(root, 'node_modules/JSONStream'), { recursive: true });
+    writeFileSync(join(root, 'node_modules/JSONStream/package.json'), '{"name":"JSONStream"}');
+    expect(findPackage('JSONStream', root)?.name).toBe('JSONStream');
+  });
+
+  it('stops with the package and the path when its package.json is no JSON', () => {
+    expect(() => findPackage('broken', root)).toThrow(/^\[marmeon:K7\] The package.json of broken \(.*broken[\\/]package.json\) cannot be read as JSON/);
+  });
+
+  it('finds nothing for a name that is a path', () => {
+    expect(findPackage('../elsewhere', join(root, 'node_modules/@acme'))).toBeUndefined();
+    expect(findPackage('@acme/../../elsewhere', root)).toBeUndefined();
+    expect(findPackage('/abs', root)).toBeUndefined();
   });
 });

@@ -40,7 +40,7 @@ export function stubMark(contents: string): { set: string; revision: number } | 
   return found ? { set: found[1]!, revision: Number(found[2]) } : undefined;
 }
 
-const SET = /^[a-z][a-z0-9-]*$/;
+export const SET = /^[a-z][a-z0-9-]*$/;
 const NAME = /^[a-z][a-z0-9_]*$/;
 
 /**

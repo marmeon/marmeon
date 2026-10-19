@@ -13,7 +13,7 @@ export { collectDrivers } from './drivers.ts';
 export { bindingNameOf } from './definition-edit.ts';
 export { loadDiscoveredPackages, writeManifest } from './discovery/discover.ts';
 export type { DiscoveredPackages, DiscoverOptions, DiscoverySummary, Manifest } from './discovery/discover.ts';
-export { runtimeConditions } from './discovery/resolve.ts';
+export { findPackage, runtimeConditions } from './discovery/resolve.ts';
 export { isQueuedListener } from './events.ts';
 export { withFileGuard } from './file-guard.ts';
 export type { FileGuardOptions } from './file-guard.ts';

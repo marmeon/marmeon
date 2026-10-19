@@ -39,6 +39,7 @@ builds that package: an audit log with its configuration, a middleware, a comman
 | --- | --- |
 | `providers` | The names of service provider classes that the package's entry exports. |
 | `browser` | Globs of the package's files that run only in the browser, relative to the package, such as `["src/client/**"]`. |
+| `migrations` | The migrations that create the package's tables, and the module they go to: `{ "format": 1, "module": "permissions", "files": ["stubs/migrations/create_permissions_table.ts"] }`. Details below. |
 
 The app finds the field when it walks its dependencies, the dev dependencies included, and the dependencies of those. A package's
 providers register after the providers of the packages it depends on, so list the framework packages you build on as dependencies.
@@ -47,6 +48,29 @@ A name in `providers` that the entry does not export stops the app with
 
 The app writes what it found to `.marmeon/manifest.json` and writes it again by itself when `package.json` or the lockfile
 change. The [modules](modules.md#discovery) page explains discovery from the app's side, and how an app turns it off.
+
+### Declaring the migrations a package ships
+
+`migrations` names the stubs that **create** the package's tables. Each file starts with `// @marmeon-stub <set> <revision>` (see
+[upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables)) and has a plain name such as
+`create_permissions_table.ts`, without a timestamp. Later revisions of a table stay `static migrationUpgrades` on the provider. The
+field only declares the files; it copies nothing.
+
+`module` is required. It is a suggestion: the module the tables go to when the files are copied into the app, which the app can
+change. Which module owns a table follows from the module its migration file is in, not from the package. The framework's own
+packages name `system`.
+
+A package's `package.json` is not trusted, so the field is read strictly, and a wrong one fails with
+[D21](errors.md#server-error-codes):
+
+- `format` is `1`; a higher number was written for a newer Marmeon.
+- Only `format`, `module` and `files` are allowed.
+- `module` is a kebab-case name such as `permissions`, so never a path.
+- Each path is relative and uses `/`: no leading `/`, no drive letter, no `\`, no `.`, `..` or empty segment. Its real path, after following symlinks, lies inside the package (a hard link to a file outside is not detected).
+- At most 100 files of at most 1 MiB each; `module` has at most 64 characters and is no Windows device name (`nul`, `com1`, …).
+- The names are unique, each file exists and begins with the stub mark; its set is a lowercase name and its revision a whole number from 1.
+
+List the directory in `files` of your `package.json`, so the stubs ship in the tarball.
 
 ## The service provider
 

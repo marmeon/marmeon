@@ -753,7 +753,7 @@ describe('pack:check — no references to the private record in the tarballs', (
 });
 
 describe('pack:check — the rules over an unpacked tarball', () => {
-  const manifest = { name: '@marmeon/sample', version: '0.1.0', license: 'MIT' };
+  const manifest: { name: string; version: string; license: string; marmeon?: object } = { name: '@marmeon/sample', version: '0.1.0', license: 'MIT' };
 
   /** Unpacks a tarball of `files` into a temporary directory and returns what `checkTarball` says about it. */
   const problemsOf = (files: Record<string, string>) => {
@@ -782,6 +782,17 @@ describe('pack:check — the rules over an unpacked tarball', () => {
   it('names a missing CHANGELOG', () => {
     expect(problemsOf({ LICENSE: 'The license.\n', 'README.md': '# Sample\n' })).toContain('CHANGELOG.md is missing — add it to "files"');
     expect(problemsOf({ 'CHANGELOG.md': '# Sample\n' })).not.toContain('CHANGELOG.md is missing — add it to "files"');
+  });
+
+  it('names a migration the package declares but does not ship', () => {
+    manifest.marmeon = { migrations: { format: 1, module: 'system', files: ['stubs/migrations/create_a_table.ts', 'stubs/migrations/create_b_table.ts'] } };
+    try {
+      const problems = problemsOf({ 'stubs/migrations/create_a_table.ts': '' });
+      expect(problems).toContain('marmeon.migrations lists stubs/migrations/create_b_table.ts, which is not in the tarball');
+      expect(problems.filter((problem) => problem.startsWith('marmeon.migrations'))).toHaveLength(1);
+    } finally {
+      delete manifest.marmeon;
+    }
   });
 
   it('finds nothing to name when LICENSE and README are there and no test ships', () => {
