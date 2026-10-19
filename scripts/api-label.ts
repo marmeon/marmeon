@@ -8,6 +8,10 @@
  * The same check holds the fixtures of stored and wire formats (the `formats` directories under a package's `src/__fixtures__`): a pull request that
  * changes, renames or deletes one needs `breaking` — `api-compatible` does not lift it; a new fixture is free.
  *
+ * And it holds the migrations a package ships (its stubs, the kit's among them): once a file is on `main` it never changes, moves
+ * or goes, a new file sorts after every file in its directory and does not repeat the name of one in its directory, and the
+ * directory a package names in `marmeon.migrations.from` stays. No label lifts that.
+ *
  * The check reminds, it does not protect: a pull request runs its own copy of this file, the review is the protection. It
  * therefore loads only `node:*` and `./api-snapshot.ts`, and the workflow installs nothing.
  *
@@ -17,6 +21,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { matchesGlob } from 'node:path';
 import { compareSnapshots, parseSnapshot, type ApiChanges, type ApiItem } from './api-snapshot.ts';
 
 /** How many names a message lists before it counts the rest. */
@@ -63,6 +68,71 @@ export function formatProblems(changes: readonly { status: string; path: string 
     .map((change) => `changes the fixture ${change.path} of a stored or wire format — this needs the label "breaking" (add a fixture for the new version instead, and keep the old one)`);
 }
 
+/** The files under `stubs/` that count as shipped migrations. */
+export const SHIPPED_MIGRATIONS = 'packages/*/stubs/**/migrations/*.ts';
+
+/** Whether `path` (from the repository root) is a shipped migration. */
+export const isShippedMigration = (path: string) => matchesGlob(path, SHIPPED_MIGRATIONS);
+
+/** A migration's name without its timestamp: what an app matches it by. */
+const identity = (name: string) => name.replace(/^\d{4}_\d{2}_\d{2}_\d{6}_/, '');
+
+/**
+ * The problems of the migrations a pull request touched: `changes` lists them as `git diff --raw` does (`mode` is the new mode),
+ * `shipped` the migrations a directory holds in the base. An app
+ * matches a migration by its name, so a shipped file whose content changes never reaches the apps that have its name, a new file
+ * that sorts before a shipped one runs in the wrong order, and one that repeats the name of a shipped file in its directory is taken for it (the kit and `stubs/migrations` may share names). No label applies.
+ */
+export function migrationProblems(changes: readonly { status: string; path: string; mode?: string }[], shipped: (directory: string) => readonly string[]): string[] {
+  const problems: string[] = [];
+  for (const { status, path, mode } of changes) {
+    if (!status.startsWith('A')) {
+      problems.push(`${path}: a migration a package ships never changes or goes — add a new file after it (CONTRIBUTING.md › Changing a stored or wire format)`);
+      continue;
+    }
+    if (mode === '120000' || mode === '160000') {
+      problems.push(`${path}: a migration is a regular file, not a symlink or a submodule`);
+      continue;
+    }
+    const slash = path.lastIndexOf('/');
+    const name = path.slice(slash + 1);
+    const inDirectory = shipped(path.slice(0, slash));
+    const later = inDirectory
+      .filter((other) => other > name)
+      .sort()[0];
+    if (later !== undefined) problems.push(`${path} sorts before ${later}, which is already shipped: name it after every file in its directory`);
+    const same = inDirectory.find((other) => identity(other) === identity(name));
+    if (same !== undefined) problems.push(`${path} repeats the name of ${same}, which its directory already ships: an app matches a migration by its name without the timestamp — choose another name`);
+  }
+  return problems;
+}
+
+/** The `marmeon.migrations.from` of a `package.json`, or `undefined` when it names none or is not JSON. */
+function migrationsFrom(text: string | undefined): unknown {
+  if (text === undefined) return undefined;
+  try {
+    const migrations = (JSON.parse(text) as { marmeon?: { migrations?: { from?: unknown } } } | null)?.marmeon?.migrations;
+    return typeof migrations === 'object' && migrations !== null ? migrations.from : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The problems of the `package.json` files a pull request changed: a package that named the directory of its migrations keeps it —
+ * pointing `from` somewhere else would make every file there a new one for the check above.
+ */
+export function migrationSourceProblems(files: readonly { path: string; before: string | undefined; after: string | undefined }[]): string[] {
+  const problems: string[] = [];
+  for (const { path, before, after } of files) {
+    const from = migrationsFrom(before);
+    if (from !== undefined && migrationsFrom(after) !== from) {
+      problems.push(`${path}: marmeon.migrations.from names the directory of the migrations the package ships and never changes or goes`);
+    }
+  }
+  return problems;
+}
+
 const stable = (items: readonly ApiItem[]) => items.filter((item) => item.section !== 'experimental' && item.section !== 'experimentalReferenced');
 
 function git(...args: string[]): string {
@@ -76,6 +146,17 @@ function firstParent(): string {
     throw new Error(`HEAD (${commit}) is not a merge commit with two parents (it has ${parents.length}): this check runs on the merge commit GitHub builds for a pull_request event`);
   }
   return parents[0]!;
+}
+
+/** The entries of `git diff --raw -z --no-renames`: `:<old mode> <new mode> <old id> <new id> <status>`, a NUL, the path, a NUL. */
+function rawChanges(output: string): { status: string; path: string; mode: string }[] {
+  const tokens = output.split('\0');
+  const changes: { status: string; path: string; mode: string }[] = [];
+  for (let at = 0; at + 1 < tokens.length; at += 2) {
+    const [, mode = '', , , status = ''] = tokens[at]!.slice(1).split(' ');
+    changes.push({ status, path: tokens[at + 1]!, mode });
+  }
+  return changes;
 }
 
 /** The problems of every `api.md` that differs between the first parent of `HEAD` and the working tree (a file missing on either side is empty). */
@@ -100,6 +181,23 @@ export function apiLabelProblems(labels: readonly string[]): { files: number; pr
       return { status, path };
     });
   problems.push(...formatProblems(fixtures, labels));
+  const migrations = rawChanges(git('diff', '--raw', '-z', '--no-renames', base, 'HEAD', '--', `:(glob)${SHIPPED_MIGRATIONS}`));
+  const blobs = (revision: string, directory: string) =>
+    git('ls-tree', '-z', revision, `${directory}/`)
+      .split('\0')
+      .map((entry) => /^(\d+) blob [0-9a-f]+\t(.+)$/.exec(entry))
+      .filter((match): match is RegExpExecArray => match !== null && match[1] !== '120000')
+      .map((match) => match[2]!);
+  problems.push(...migrationProblems(migrations, (directory) => blobs(base, directory).filter((path) => path.endsWith('.ts')).map((path) => path.slice(path.lastIndexOf('/') + 1))));
+  const manifests = git('diff', '--name-only', '-z', '--no-renames', base, 'HEAD', '--', ':(glob)packages/*/package.json')
+    .split('\0')
+    .filter((file) => file !== '')
+    .map((path) => ({
+      path,
+      before: git('ls-tree', '--name-only', base, '--', path).trim() === '' ? undefined : git('show', `${base}:${path}`),
+      after: existsSync(path) ? readFileSync(path, 'utf8') : undefined,
+    }));
+  problems.push(...migrationSourceProblems(manifests));
   return { files: files.length, problems };
 }
 

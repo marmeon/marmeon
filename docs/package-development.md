@@ -285,6 +285,10 @@ the app copies it. The contract has five parts:
    refuses that with error D20, because a package update would change migrations the database has run. Ship the migrations as stubs
    the app copies.
 
+Once a stub is on `main` it never changes and is never deleted: an app matches migrations by name, so an edit would reach new
+apps and never the old ones. A change to a table is a new file that sorts after every file in its directory and has a name its
+directory does not use yet. The repository's "api label" check refuses a pull request that does otherwise, whatever its labels.
+
 ## Middleware
 
 `router.middleware.append(group, Middleware, priority)` adds a middleware to the global stack, `GLOBAL`, or to a group such as

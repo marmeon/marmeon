@@ -784,8 +784,14 @@ mark. Seven rules:
    next. Without that step, a change of format belongs to a major release with an upgrade guide.
 5. **A fixture per version**, under `__fixtures__/formats/`, append-only, read by a test over the whole directory
    ([fixtures](#fixtures-of-stored-and-wire-formats)). A format that a pull request changes needs `breaking`.
-6. **Tables the framework creates have plain names** (`jobs`, `sessions`, …; only `migrations` and `migration_lock` are the migrator's) and a change to one is a new migration file in its package. An updated database is identical to a new one: tables, columns, and the names
-   of indexes and constraints. Readiness is red while a required column does not fit the code.
+6. **Tables the framework creates have plain names** (`jobs`, `sessions`, …; only `migrations` and `migration_lock` are the migrator's),
+   and the migrations a package ships (the files under a package's `stubs/`, the kit's among them) are append-only: once a file is
+   on `main` it never changes, moves or goes, and a change is a new file that sorts after every file in its directory and does
+   not repeat the name of one in its directory. The directory a package names in `marmeon.migrations.from` stays. The "api
+   label" check refuses a pull request that breaks this, whatever its labels. It judges each pull request against its own base:
+   two pull requests that each add a file to the same directory are green apart and can sort wrongly once both are merged.
+   An updated database is identical to a new one: tables, columns, and the names of indexes and constraints. Readiness is red
+   while a required column does not fit the code.
 7. **From 1.0 on, a change of format and a rename of a shared table is rolling**: rules 3 and 4, and for a table create anew,
    write twice, drop over two releases. In a release whose upgrade stops every process, nothing exists only so that an old process
    can run beside a new one: data of the old release is carried over by a migration or refused.
