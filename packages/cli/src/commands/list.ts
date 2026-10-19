@@ -15,7 +15,12 @@ export function printCommandList({ output }: Pick<CommandInput, 'output'>, comma
     }
     output.line(`  ${style('green', command.command.padEnd(width))}  ${command.description}${marker(command)}`);
   }
+  output.line();
+  output.line(style('yellow', 'Options for every command'));
+  output.line(`  ${style('green', '--no-interaction')}  ${NO_INTERACTION}`);
 }
+
+const NO_INTERACTION = 'Ask no questions, as in CI or without a terminal';
 
 const marker = (command: Pick<CommandClass, 'experimental'>) => (command.experimental === true ? ` ${style('dim', '(experimental)')}` : '');
 
@@ -71,7 +76,7 @@ export function printCommandHelp({ output }: Pick<CommandInput, 'output'>, comma
     const notes = [option.multiple ? 'repeatable' : '', option.default !== undefined ? `default: ${JSON.stringify(option.default)}` : ''].filter(Boolean);
     return [flag, notes.join(', ')] as const;
   });
-  rows.push(['-h, --help', 'Show this help']);
+  rows.push(['--no-interaction', NO_INTERACTION], ['-h, --help', 'Show this help']);
   const width = Math.max(...rows.map(([flag]) => flag.length));
   for (const [flag, note] of rows) output.line(`  ${note ? `${flag.padEnd(width)}  ${note}` : flag}`);
 }

@@ -1,5 +1,6 @@
 export { CommandArgumentsError, CommandSetupError } from './command.ts';
 export type { Command, CommandClass, CommandInput } from './command.ts';
+export type { Prompt } from './prompt.ts';
 export { DevProcesses } from './dev.ts';
 export type { DevProcess } from './dev.ts';
 export { Output } from './output.ts';

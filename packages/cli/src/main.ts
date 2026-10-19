@@ -6,10 +6,14 @@ import { BUILT_IN } from './built-in.ts';
 import { printCommandHelp, printCommandList, printCommandListJson } from './commands/list.ts';
 import { loadApplication } from './load.ts';
 import { Output, stdoutToStderr, style } from './output.ts';
+import { createPrompt, isPromptCancelled } from './prompt.ts';
 import { spawnMarmeon } from './spawn.ts';
 
 /** Exit code of a call that is wrong (unknown command, unknown option, missing option value), apart from a command that ran and failed (1). */
 const EXIT_USAGE = 2;
+
+/** Exit code of a command the person cancelled at a question (Ctrl-C), as shells report SIGINT. */
+const EXIT_CANCELLED = 130;
 
 const commands = channels.tracing('command.run');
 
@@ -20,6 +24,7 @@ const commands = channels.tracing('command.run');
  * @internal Only for the launcher (`bin/marmeon.js`); not part of the public API.
  */
 export function checkArgs(command: string, argv: readonly string[], name = command): void {
+  argv = withoutNoInteraction(argv, 0).argv;
   const builtIn = BUILT_IN.find((candidate) => candidate.command === command);
   if (builtIn && !wantsHelp(argv, builtIn)) parseCommandArgs(builtIn, argv, name);
 }
@@ -28,17 +33,28 @@ export function checkArgs(command: string, argv: readonly string[], name = comma
  * Runs one `marmeon` invocation in the app root (`cwd`) and returns the exit code. With `--json`, stdout holds the document only:
  * whatever app code writes to stdout meanwhile goes to stderr.
  */
-export async function run(argv: readonly string[], root = process.cwd()): Promise<number> {
+export async function run(args: readonly string[], root = process.cwd()): Promise<number> {
+  const { argv, noInteraction } = withoutNoInteraction(args, 1);
   const rest = argv.slice(1);
   const redirect = (rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest).includes('--json') ? stdoutToStderr() : undefined;
   try {
-    return await runCommandLine(argv, root, new Output(redirect?.write));
+    return await runCommandLine(argv, root, new Output(redirect?.write), noInteraction);
   } finally {
     redirect?.restore();
   }
 }
 
-async function runCommandLine(argv: readonly string[], root: string, output: Output): Promise<number> {
+/**
+ * `--no-interaction` is an option of every command: a command never sees it among its options. Only arguments from `from` on count
+ * (the command name comes first) and a `--` ends the options, as everywhere.
+ */
+function withoutNoInteraction(argv: readonly string[], from: number): { readonly argv: readonly string[]; readonly noInteraction: boolean } {
+  const end = argv.includes('--') ? argv.indexOf('--') : argv.length;
+  const kept = argv.filter((arg, index) => index < from || index >= end || arg !== '--no-interaction');
+  return { argv: kept, noInteraction: kept.length !== argv.length };
+}
+
+async function runCommandLine(argv: readonly string[], root: string, output: Output, noInteraction: boolean): Promise<number> {
   const [name = 'list', ...rest] = argv;
   const builtIn = BUILT_IN.find((command) => command.command === name);
   const listing = name === 'list' || name === 'help' || name === '--help' || name === '-h';
@@ -154,7 +170,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
     const scope = app?.container.createScope() ?? new Container();
     // An app without the CLI provider (or none at all) has no registry bound: a command that asks for it (`make:command`) gets this one, not an empty one.
     if (!scope.has(CommandRegistry)) scope.instance(CommandRegistry, registry);
-    const execute = () => runCommand(scope, Command, rest, { output, root, spawn: (...args) => spawnMarmeon(root, args) });
+    const execute = () => runCommand(scope, Command, rest, { output, root, spawn: (...args) => spawnMarmeon(root, args, noInteraction), prompt: createPrompt({ noInteraction }) });
     // On the `command.run` channel while something listens: the devtools keep what a command did as one batch.
     if (!app || !commands.hasSubscribers) return await execute();
     const message: CommandRunMessage = { ...messageBase(app), command: Command.command, args: rest };
@@ -162,6 +178,11 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
       ended.exitCode = code;
     });
   } catch (error) {
+    // Ctrl-C or the end of input while a command asked a question.
+    if (isPromptCancelled(error)) {
+      output.error('\nmarmeon: cancelled.');
+      return EXIT_CANCELLED;
+    }
     printError(output, error);
     return 1;
   } finally {

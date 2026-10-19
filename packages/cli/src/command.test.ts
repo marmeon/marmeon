@@ -10,6 +10,16 @@ function named(name: string, label: string): CommandClass {
 }
 
 describe('CommandRegistry.add', () => {
+  it('refuses an option named no-interaction, which marmeon takes for every command', () => {
+    const Ask = class {
+      static readonly command = 'ask';
+      static readonly description = 'Asks';
+      static readonly options = { 'no-interaction': { type: 'boolean' } } as const;
+      handle(): void {}
+    };
+    expect(() => new CommandRegistry().add([Ask], 'module notes')).toThrow(/^\[marmeon:K8\] .*\(module notes\) declares the option "no-interaction".*Rename the option/);
+  });
+
   it('begins the messages of its two refusals with K8', () => {
     const Seed = named('db:seed', 'seed');
     const Other = named('db:seed', 'other');

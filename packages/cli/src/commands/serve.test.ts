@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CommandInput } from '../command.ts';
 import type { DevProcesses } from '../dev.ts';
 import type { RouteTypes } from '../route-types.ts';
+import { noPrompt } from '../prompt.ts';
 import { ServeCommand } from './serve.ts';
 
 const migrations = vi.hoisted(() => ({ close: vi.fn(), watch: vi.fn() }));
@@ -39,7 +40,7 @@ async function serve(nodeEnv: string) {
   const devProcesses = { all: () => [] } as unknown as DevProcesses;
   const command = new ServeCommand(app, logger, {} as RouteTypes, devProcesses);
   const output = { error: () => {}, warn: () => {}, info: () => {} } as unknown as CommandInput['output'];
-  const running = command.handle({ args: [], options: {}, output, root: '/nowhere', spawn: async () => 0 });
+  const running = command.handle({ args: [], options: {}, output, root: '/nowhere', spawn: async () => 0, prompt: noPrompt });
   await vi.waitFor(() => expect(server.startServer).toHaveBeenCalled());
   await vi.waitFor(() => expect(process.listenerCount('SIGINT')).toBeGreaterThan(0));
   process.emit('SIGINT');

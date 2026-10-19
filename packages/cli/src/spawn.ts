@@ -1,12 +1,15 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { NO_INTERACTION_ENV } from './prompt.ts';
 
 /** The `marmeon` launcher of this package — `bin/marmeon.js`, next to `src/` and `dist/`. */
 const LAUNCHER = fileURLToPath(new URL('../bin/marmeon.js', import.meta.url));
 
 /** `marmeon <args>` in `root` as a new process (the launcher sets conditions and the injection hook itself). */
-export function spawnMarmeon(root: string, args: readonly string[]): Promise<number> {
-  const { MARMEON_CHILD: _child, MARMEON_LAUNCH: _launch, ...env } = process.env;
+export function spawnMarmeon(root: string, args: readonly string[], noInteraction = false): Promise<number> {
+  const { MARMEON_CHILD: _child, MARMEON_LAUNCH: _launch, ...inherited } = process.env;
+  // `--no-interaction` is not among the arguments the command passes on; the child learns it from the environment.
+  const env = noInteraction ? { ...inherited, [NO_INTERACTION_ENV]: '1' } : inherited;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [LAUNCHER, ...args], { cwd: root, env, stdio: 'inherit' });
     child.once('error', reject);

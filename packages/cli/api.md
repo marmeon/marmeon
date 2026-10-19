@@ -84,6 +84,7 @@ export interface CommandInput {
     readonly output: Output;
     readonly root: string;
     readonly spawn: (...args: string[]) => Promise<number>;
+    readonly prompt: Prompt;
 }
 // CommandSetupError
 export declare class CommandSetupError extends Error {
@@ -116,6 +117,13 @@ export declare class Output {
     json(document: JsonDocument): void;
     table(header: readonly string[], rows: readonly (readonly string[])[]): void;
 }
+// Prompt
+export interface Prompt {
+    readonly interactive: boolean;
+    choose(question: string, choices: readonly string[], options?: {
+        readonly multiple?: boolean;
+    }): Promise<readonly number[]>;
+}
 ```
 
 ### Augments
@@ -141,7 +149,7 @@ Types from other packages: none
 
 ```ts
 // run
-export declare function run(argv: readonly string[], root?: string): Promise<number>;
+export declare function run(args: readonly string[], root?: string): Promise<number>;
 ```
 
 ## Commands

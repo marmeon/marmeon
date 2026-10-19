@@ -2,6 +2,7 @@ import { parseArgs, type ParseArgsOptionsConfig } from 'node:util';
 import type { Container } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import type { Output } from './output.ts';
+import { noPrompt, type Prompt } from './prompt.ts';
 
 export interface CommandInput {
   /** Positional arguments after the command name. */
@@ -15,6 +16,11 @@ export interface CommandInput {
    * generator added a module. Its output goes to this console; resolves with its exit code.
    */
   readonly spawn: (...args: string[]) => Promise<number>;
+  /**
+   * Asks the person at the terminal, where there is one: `prompt.interactive` is false without a terminal, in CI and with
+   * `--no-interaction`, and a command then takes its answer from options or fails with what to pass. See docs/console.md#asking-a-question.
+   */
+  readonly prompt: Prompt;
 }
 
 /**
@@ -70,6 +76,9 @@ export class CommandRegistry {
     for (const command of commands) {
       if (RESERVED.has(command.command)) {
         throw new CommandSetupError(withCode('K8', `"${command.command}" is marmeon's own command — ${command.name} (${source}) cannot use it. Rename it.`));
+      }
+      if (command.options && 'no-interaction' in command.options) {
+        throw new CommandSetupError(withCode('K8', `${command.name} (${source}) declares the option "no-interaction", which every command has: marmeon takes it before the command sees it. Rename the option.`));
       }
       const taken = this.#commands.get(command.command);
       if (!taken) {
@@ -132,11 +141,11 @@ export function parseCommandArgs(Command: CommandClass, argv: readonly string[],
 
 /**
  * Runs `Command` with `argv` — built through `container` (constructor injection), as `marmeon <command>` does: the
- * scheduler runs `s.command(…)` tasks this way, each in a scope of its own. Resolves with the exit code.
+ * scheduler runs `s.command(…)` tasks this way, each in a scope of its own. Without a `prompt` nothing is asked. Resolves with the exit code.
  */
-export async function runCommand(container: Container, Command: CommandClass, argv: readonly string[], context: Pick<CommandInput, 'output' | 'root' | 'spawn'>): Promise<number> {
+export async function runCommand(container: Container, Command: CommandClass, argv: readonly string[], context: Pick<CommandInput, 'output' | 'root' | 'spawn'> & { readonly prompt?: Prompt }): Promise<number> {
   const input = parseCommandArgs(Command, argv);
   const command = container.make(Command as never) as Command;
-  const code = await command.handle({ ...input, ...context });
+  const code = await command.handle({ prompt: noPrompt, ...input, ...context });
   return typeof code === 'number' ? code : 0;
 }

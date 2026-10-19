@@ -16,6 +16,7 @@ export const AGENTS_BLOCK = `${AGENTS_BEGIN}
 Managed by \`marmeon agents:sync\` — edits inside this block are replaced; write yours outside.
 
 Run \`marmeon\` through your package manager (\`pnpm exec marmeon\`, \`npx marmeon\`).
+Pass \`--no-interaction\` to \`marmeon\` when you run it in a terminal.
 
 ## Documentation
 

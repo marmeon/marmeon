@@ -232,7 +232,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(help.code).toBe(0);
     expect(help.stderr).toBe('');
     expect(help.stdout).toContain('Usage: marmeon make:controller <Name> --module=<module> [--view] [--request]');
-    expect(help.stdout).toMatch(/^Options:\n {2}-m, --module=<value>\n {2}--force\n {2}--view\n {2}--request\n {2}-h, --help +Show this help$/m);
+    expect(help.stdout).toMatch(/^Options:\n {2}-m, --module=<value>\n {2}--force\n {2}--view\n {2}--request\n {2}--no-interaction +Ask no questions.*\n {2}-h, --help +Show this help$/m);
     // An app command (the app boots to know it), with -h; after -- it is an argument, not the help.
     const short = marmeon(webApp, ['route:list', '-h']);
     expect(short.code).toBe(0);
