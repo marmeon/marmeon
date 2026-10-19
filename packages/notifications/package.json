@@ -68,7 +68,14 @@
   "marmeon": {
     "providers": [
       "NotificationServiceProvider"
-    ]
+    ],
+    "migrations": {
+      "format": 1,
+      "module": "system",
+      "files": [
+        "stubs/migrations/create_notifications_table.ts"
+      ]
+    }
   },
   "dependencies": {
     "@marmeon/core": "workspace:*",

@@ -148,6 +148,7 @@ A reader never guesses and never falls back to a default.
 | [Session and remember-me cookies](session.md#the-__host--prefix) | the name, with `__Host-` when cookies are `Secure` | n/a | a cookie under another name is never read |
 | [Record of migrations](migrations.md#how-the-migrator-keeps-track) | the columns of `migrations` (and of `migration_lock`) | `migrate` refuses; every query on the connection fails and `/up/ready` is red | read as they are: 0.3 wrote the same columns |
 | [The framework's tables](migrations.md#upgrading-the-frameworks-tables) | `// @marmeon-stub <set> <revision>` in the app's migration | `make:upgrade-migrations` stops and writes nothing | written by `make:upgrade-migrations` |
+| [Migrations a package ships](package-development.md#declaring-the-migrations-a-package-ships) | `format` in `"marmeon": { "migrations": … }` of its `package.json` | refused with D21; nothing is read or copied | n/a: the field starts at `format: 1` |
 | [Encrypted values](encryption.md#what-the-key-protects) | a version byte, and a context per use (`cookie:<name>`, `session:<key>`, `queue:v1:<job>`) | `DecryptError` | `DecryptError` |
 | [API tokens](api-tokens.md#the-token-format) | the prefix, and a hash under its own domain | not a token: 401, like an unknown one | no longer valid: 401, like an unknown one |
 | [Generated types](queries.md#table-types) (`bootstrap/routes.ts`, `bootstrap/database.d.ts`) | `// @marmeon-format 1` on the third line | `--check` fails with "update `@marmeon/*`"; no command overwrites it | `--check` says another version wrote it; regenerate |
@@ -170,7 +171,7 @@ Some formats have no version of their own and are kept stable another way:
   does so with the same care as a renamed column.
 
 Fixtures sit under `__fixtures__/formats/`, one per version: the page and region object, the job record, the Redis member, queued
-listeners, mails and notifications, the session payload, the record of migrations, API tokens, the manifest of copied files and the `--json` documents. A test reads each
+listeners, mails and notifications, the session payload, the record of migrations, the migrations a package declares, API tokens, the manifest of copied files and the `--json` documents. A test reads each
 directory with the current code. A pull request that changes or deletes a fixture is a `breaking` one. [Changing a stored or wire format](../CONTRIBUTING.md#changing-a-stored-or-wire-format)
 says how a format moves on.
 

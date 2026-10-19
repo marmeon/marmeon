@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { withCode } from '../error-codes.ts';
 
 export interface PackageInfo {
   readonly name: string;
@@ -17,7 +18,7 @@ export interface PackageJson {
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
-  marmeon?: { providers?: string[] };
+  marmeon?: { providers?: string[]; migrations?: unknown };
 }
 
 /**
@@ -48,13 +49,21 @@ export function splitSpecifier(specifier: string): { name: string; subpath: stri
   return { name: parts.slice(0, length).join('/'), subpath: rest ? `./${rest}` : '.' };
 }
 
+/** A valid npm package name (older ones have capitals) — never a path, so a name from a manifest cannot walk out of `node_modules`. */
+const PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i;
+
 /** Finds a package the way Node does: `node_modules/<name>` in `fromDir` and every parent. */
 export function findPackage(name: string, fromDir: string): PackageInfo | undefined {
+  if (!PACKAGE_NAME.test(name)) return undefined;
   for (let dir = fromDir; ; dir = dirname(dir)) {
     const candidate = join(dir, 'node_modules', name, 'package.json');
     if (existsSync(candidate)) {
-      const realDir = realpathSync(dirname(candidate));
-      return { name, dir: realDir, json: JSON.parse(readFileSync(join(realDir, 'package.json'), 'utf8')) };
+      try {
+        const realDir = realpathSync(dirname(candidate));
+        return { name, dir: realDir, json: JSON.parse(readFileSync(join(realDir, 'package.json'), 'utf8')) };
+      } catch (cause) {
+        throw new Error(withCode('K7', `The package.json of ${name} (${candidate}) cannot be read as JSON: ${cause instanceof Error ? cause.message : String(cause)}`), { cause });
+      }
     }
     if (dirname(dir) === dir) return undefined;
   }
