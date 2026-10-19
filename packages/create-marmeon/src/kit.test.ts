@@ -52,6 +52,17 @@ it(
     // As the scaffolder runs them after the install: NODE_ENV from the app's .env (development).
     const marmeon = (...args: string[]) => run(process.execPath, [join(repo, 'packages/cli/bin/marmeon.js'), ...args], {}, sqliteEnv);
 
+    // The first generator the scaffolder runs: the guide for coding agents, in the first commit.
+    const guide = marmeon('agents:sync');
+    expect(guide.code).toBe(0);
+    const agents = readFileSync(join(root, 'AGENTS.md'), 'utf8');
+    expect(agents.match(/^<!-- marmeon:begin v1 -->$/gm)).toHaveLength(1);
+    expect(agents.match(/^<!-- marmeon:end -->$/gm)).toHaveLength(1);
+    expect(readFileSync(join(root, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n');
+    expect(marmeon('agents:sync', '--check').code).toBe(0);
+    // Neither file is in the stub manifest: the block changes with every release and the rest is the app's.
+    expect(readFileSync(join(root, 'marmeon-stubs.json'), 'utf8')).not.toMatch(/AGENTS\.md|CLAUDE\.md/);
+
     const generated = marmeon('make:auth');
     expect(generated.out).toContain('Created modules/auth');
     expect(generated.out).toContain('Wrote bootstrap/routes.ts');

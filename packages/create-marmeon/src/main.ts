@@ -1,7 +1,7 @@
 /**
  * `create-marmeon <dir>` — a thin shell: the template (the blank app) into a new directory, its
  * `package.json` at this package's version, `.env` with a fresh `APP_KEY`, the install — then the app's own generators: the
- * starter kit is `marmeon make:auth` plus the home module, `--docker` is `marmeon make:docker`; `marmeon migrate`, a first
+ * guide for coding agents is `marmeon agents:sync`, the starter kit `marmeon make:auth` plus the home module, `--docker` is `marmeon make:docker`; `marmeon migrate`, a first
  * commit. No dependencies: prompts over `node:readline`, only when a terminal asks — without one nothing is asked, and a
  * missing directory ends with exit 2.
  *
@@ -198,7 +198,9 @@ export async function main(io: Io = processIo()): Promise<number> {
   step(`the files${choices.kit ? ' (with the home module)' : ''}, package.json${'version' in source ? ` (@marmeon/* and marmeon ${source.version})` : ' (the framework from MARMEON_CREATE_TARBALLS)'}, .env with a new APP_KEY`);
 
   // 2 · Install, then the app's own generators (they come with marmeon).
+  // agents:sync comes first: when make:auth fails, the app still has its guide for coding agents.
   const generators: string[][] = [
+    ['agents:sync'],
     ...(choices.kit ? [['make:auth']] : []),
     // .env says NODE_ENV=development: no --force, and it writes bootstrap/database.d.ts (the tables' types the build checks).
     ['migrate'],

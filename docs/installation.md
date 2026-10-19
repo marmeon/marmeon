@@ -82,6 +82,10 @@ fills in for your app or that commands rewrite, namely `package.json`, `.env.exa
 `bootstrap/app.ts`, `bootstrap/client.tsx`, `bootstrap/head.ts` and the generated types `bootstrap/routes.ts` and
 `bootstrap/database.d.ts`, and the migrations are not in it. [The starter kit](starter-kit.md#what-the-auth-module-holds) says what the file is for.
 
+The creator also runs `marmeon agents:sync`, so an installed app has an `AGENTS.md` and a `CLAUDE.md` for coding agents, both in the
+first commit. With `--no-install` the command is one of the next steps. They are not in `marmeon-stubs.json`: the block in `AGENTS.md`
+changes with every release and the rest is yours. See [coding agents](agents.md).
+
 ### The starter kit
 
 By default you get the starter kit. It is a complete app with accounts:

@@ -99,7 +99,7 @@ describe('create-marmeon — the call', () => {
     expect(existsSync(join(app, 'modules/home'))).toBe(false);
     expect(existsSync(join(app, '.git'))).toBe(false);
     // Without the install the generators are the next steps — make:docker among them (the Docker answer).
-    expect(run.out).toContain('npm install\n  npx marmeon migrate\n  npx marmeon make:docker');
+    expect(run.out).toContain('npm install\n  npx marmeon agents:sync\n  npx marmeon migrate\n  npx marmeon make:docker');
     expect(readFileSync(join(app, '.env'), 'utf8')).toMatch(/^APP_NAME="Asked App"$/m);
   });
 });
@@ -199,7 +199,7 @@ describe('create-marmeon — the app', () => {
     const app = readFileSync(join(cwd, 'kit/bootstrap/app.ts'), 'utf8');
     expect(app).toContain("import home from '#modules/home';\nimport system from '#modules/system';");
     expect(app).toContain('modules: [home, system]');
-    expect(run.out).toContain('pnpm install\n  pnpm exec marmeon make:auth\n  pnpm exec marmeon migrate\n  pnpm exec marmeon make:docker');
+    expect(run.out).toContain('pnpm install\n  pnpm exec marmeon agents:sync\n  pnpm exec marmeon make:auth\n  pnpm exec marmeon migrate\n  pnpm exec marmeon make:docker');
     expect(readFileSync(join(cwd, 'kit/README.md'), 'utf8')).toContain('private: one answer for new and known addresses');
   });
 

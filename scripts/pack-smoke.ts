@@ -623,7 +623,7 @@ async function main(): Promise<number> {
       const output = scaffold(bin, work, ['app', '--yes'], { tarballs: tarballDir, env: { ...installEnv, ...THROWAWAY_GIT } });
       if (!output.includes('marmeon make:auth') || !output.includes('git: a repository with the first commit')) throw new SmokeError(`create-marmeon skipped a step:\n${output}`);
       checkManifest(app, 'pnpm');
-      for (const file of ['modules/auth/routes.ts', 'modules/auth/controllers/ConfirmEmailChangeController.ts', 'modules/home/routes.ts', 'pnpm-lock.yaml', 'storage/database.sqlite']) {
+      for (const file of ['modules/auth/routes.ts', 'modules/auth/controllers/ConfirmEmailChangeController.ts', 'modules/home/routes.ts', 'pnpm-lock.yaml', 'storage/database.sqlite', 'AGENTS.md', 'CLAUDE.md']) {
         if (!existsSync(join(app, file))) throw new SmokeError(`the starter kit has no ${file}.`);
       }
       // One commit, nothing left over — and none of what the app writes or keeps secret in it (.gitignore of the template).
@@ -730,6 +730,7 @@ async function main(): Promise<number> {
       checkManifest(npmApp.app, 'npm');
       if (existsSync(join(npmApp.app, 'modules/auth')) || existsSync(join(npmApp.app, 'modules/home'))) throw new SmokeError('--minimal wrote the starter kit\'s modules.');
       if (!existsSync(join(npmApp.app, 'package-lock.json'))) throw new SmokeError('the npm app has no package-lock.json.');
+      if (!existsSync(join(npmApp.app, 'AGENTS.md'))) throw new SmokeError('the npm app has no AGENTS.md.');
     });
     await npmApp.step('marmeon build without .env, the framework\'s stylesheet linked', () => {
       npmApp.buildWithoutEnv();

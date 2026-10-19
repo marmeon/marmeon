@@ -375,6 +375,7 @@ export function readme({ title, packageManager, kit, docker }: ReadmeOptions): s
     '## Where things are',
     '',
     '```text',
+    'AGENTS.md, CLAUDE.md    the guide for coding agents: `marmeon agents:sync` keeps its marmeon block current, the rest is yours',
     'bootstrap/app.ts        the application: its modules, config and global middleware (CSP with a nonce per response)',
     'modules/<name>/         a feature: routes, controllers, views, migrations, tests — `marmeon make:module <name>`',
     ...(kit

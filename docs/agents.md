@@ -16,6 +16,9 @@ pnpm marmeon agents:sync
 ✓ Wrote CLAUDE.md.
 ```
 
+Every app that `create-marmeon` makes, the starter kit and the blank app alike, has both files once the creator has installed it. With
+`--no-install` the command is among the next steps it prints. Run the command yourself in an app that is older.
+
 ## What the command writes
 
 `AGENTS.md` is the guide for every agent, whatever tool it runs in. The command makes it when it is missing: a title (the `name`
