@@ -47,5 +47,8 @@
   ],
   "scripts": {
     "build": "tsc -b"
+  },
+  "devDependencies": {
+    "@marmeon/core": "workspace:*"
   }
 }

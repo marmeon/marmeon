@@ -5,6 +5,7 @@ import { PassThrough } from 'node:stream';
 import { stripVTControlCharacters } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
+import { stubHash } from '@marmeon/core/internal';
 import { main } from './main.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -79,6 +80,11 @@ it(
     expect(client.indexOf('../styles/app.css')).toBeLessThan(client.indexOf('modules/auth/auth.css'));
 
     const migrated = marmeon('migrate');
+    // make:auth and migrate rewrote generated files: every hash create-marmeon recorded still matches its file.
+    const recordedSets = (JSON.parse(readFileSync(join(root, 'marmeon-stubs.json'), 'utf8')) as { sets: Record<string, { files: Record<string, { sha256: string }> }> }).sets;
+    for (const [key, set] of Object.entries(recordedSets).filter(([name]) => name.startsWith('create-marmeon:'))) {
+      for (const [path, { sha256 }] of Object.entries(set.files)) expect(sha256, `${key} ${path}`).toBe(stubHash(readFileSync(join(root, path))));
+    }
     expect(migrated.out).toContain('Environment: development (APP_ENV=local, NODE_ENV from .env)');
     expect(migrated.out).toContain('create_personal_access_tokens_table');
     expect(migrated.out).toContain('create_users_table');
