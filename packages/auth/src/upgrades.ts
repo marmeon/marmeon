@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import type { Container, Key } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { DatabaseEmailChanges, EMAIL_CHANGE_COLUMNS, EMAIL_CHANGES_TABLE, EmailChangeStore } from './email-changes.ts';
@@ -8,62 +7,6 @@ import { ACCESS_TOKEN_COLUMNS, ACCESS_TOKEN_TABLE, AccessTokenStore, DatabaseAcc
 import { factorSources, TwoFactorState } from './two-factor/state.ts';
 import { RECOVERY_CODE_COLUMNS, RECOVERY_CODES_TABLE, TWO_FACTOR_COLUMNS, TWO_FACTOR_TABLE, TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
-
-/** The migration `make:upgrade-migrations` writes for apps whose API tokens still have the first release's form. */
-export const TOKENS_REISSUE_MIGRATION = new URL('../stubs/migrations/reissue_personal_access_tokens.ts', import.meta.url);
-
-/** The migration `make:upgrade-migrations` writes for apps whose `sign_ins` table has no columns for the remember-me token. */
-export const SIGN_INS_REMEMBER_MIGRATION = new URL('../stubs/migrations/add_remember_columns_to_sign_ins.ts', import.meta.url);
-
-/** The migration that gives accounts without a session key a random one. */
-export const SESSION_KEYS_MIGRATION = new URL('../stubs/migrations/fill_empty_session_keys.ts', import.meta.url);
-
-/** The migration that drops the `remember_tokens` table, whose tokens live on the rows of `sign_ins` now. */
-export const REMEMBER_TOKENS_DROP_MIGRATION = new URL('../stubs/migrations/drop_remember_tokens_table.ts', import.meta.url);
-
-/** The migration that moves the pending changes of address from three columns of `users` into their own table, `email_changes`. */
-export const EMAIL_CHANGES_MOVE_MIGRATION = new URL('../stubs/migrations/move_email_changes_to_their_own_table.ts', import.meta.url);
-
-/** The upgrades of the auth tables: the reissue of the API tokens, random session keys for accounts that have none, the end of `remember_tokens`, the table of the changes of address, and the remember-me columns of `sign_ins`. */
-export function authMigrationUpgrades() {
-  return [
-    {
-      set: 'auth',
-      revision: 2,
-      name: 'reissue_personal_access_tokens',
-      createdBy: ['create_personal_access_tokens_table'],
-      contents: readFileSync(TOKENS_REISSUE_MIGRATION, 'utf8'),
-    },
-    {
-      set: 'auth',
-      revision: 3,
-      name: 'fill_empty_session_keys',
-      createdBy: ['create_personal_access_tokens_table', 'create_users_table'],
-      contents: readFileSync(SESSION_KEYS_MIGRATION, 'utf8'),
-    },
-    {
-      set: 'auth',
-      revision: 4,
-      name: 'drop_remember_tokens_table',
-      createdBy: ['create_remember_tokens_table'],
-      contents: readFileSync(REMEMBER_TOKENS_DROP_MIGRATION, 'utf8'),
-    },
-    {
-      set: 'auth',
-      revision: 5,
-      name: 'move_email_changes_to_their_own_table',
-      createdBy: ['create_users_table'],
-      contents: readFileSync(EMAIL_CHANGES_MOVE_MIGRATION, 'utf8'),
-    },
-    {
-      set: 'sign-ins',
-      revision: 2,
-      name: 'add_remember_columns_to_sign_ins',
-      createdBy: ['create_sign_ins_table'],
-      contents: readFileSync(SIGN_INS_REMEMBER_MIGRATION, 'utf8'),
-    },
-  ];
-}
 
 /** Thrown by the `UserProvider` nothing replaced: authentication is not set up. */
 export class UserProviderNotBound extends Error {
@@ -89,7 +32,7 @@ export async function requireAuthTables(container: Container): Promise<void> {
   if (!container.has(Connections) || !authenticationIsSetUp(container)) return;
   const { SchemaRequirements } = await import('@marmeon/database');
   const requirements = container.make(SchemaRequirements);
-  const need = (table: string, columns: readonly string[], secrets: readonly string[], set: string) => requirements.require({ connection: 'default', table, columns, secrets, set });
+  const need = (table: string, columns: readonly string[], secrets: readonly string[]) => requirements.require({ connection: 'default', table, columns, secrets });
   // A store that cannot be built here (it depends on something scoped, say) is the app's own, not ours.
   const bound = <T>(key: Key<T>): T | undefined => {
     try {
@@ -99,14 +42,14 @@ export async function requireAuthTables(container: Container): Promise<void> {
     }
   };
 
-  if (bound(PasswordResetTokenStore) instanceof DatabasePasswordResetTokens) need(PASSWORD_RESET_TABLE, PASSWORD_RESET_COLUMNS, ['token_hash'], 'auth');
-  if (bound(EmailChangeStore) instanceof DatabaseEmailChanges) need(EMAIL_CHANGES_TABLE, EMAIL_CHANGE_COLUMNS, ['session_key', 'token_hash'], 'auth');
-  if (bound(AccessTokenStore) instanceof DatabaseAccessTokens) need(ACCESS_TOKEN_TABLE, ACCESS_TOKEN_COLUMNS, ['token_hash'], 'auth');
-  if (bound(SignInStore) instanceof DatabaseSignIns) need(SIGN_INS_TABLE, SIGN_INS_COLUMNS, ['remember_selector', 'remember_validator_hash', 'remember_previous_validator_hash'], 'sign-ins');
+  if (bound(PasswordResetTokenStore) instanceof DatabasePasswordResetTokens) need(PASSWORD_RESET_TABLE, PASSWORD_RESET_COLUMNS, ['token_hash']);
+  if (bound(EmailChangeStore) instanceof DatabaseEmailChanges) need(EMAIL_CHANGES_TABLE, EMAIL_CHANGE_COLUMNS, ['session_key', 'token_hash']);
+  if (bound(AccessTokenStore) instanceof DatabaseAccessTokens) need(ACCESS_TOKEN_TABLE, ACCESS_TOKEN_COLUMNS, ['token_hash']);
+  if (bound(SignInStore) instanceof DatabaseSignIns) need(SIGN_INS_TABLE, SIGN_INS_COLUMNS, ['remember_selector', 'remember_validator_hash', 'remember_previous_validator_hash']);
   // The authenticator app is a source of the state the app bound, alone or joined with the passkeys.
   const state = bound(TwoFactorState);
   if (state && factorSources(state).some((source) => source instanceof TwoFactorStore)) {
-    need(TWO_FACTOR_TABLE, TWO_FACTOR_COLUMNS, ['secret'], 'auth');
-    need(RECOVERY_CODES_TABLE, RECOVERY_CODE_COLUMNS, ['code_hash'], 'auth');
+    need(TWO_FACTOR_TABLE, TWO_FACTOR_COLUMNS, ['secret']);
+    need(RECOVERY_CODES_TABLE, RECOVERY_CODE_COLUMNS, ['code_hash']);
   }
 }

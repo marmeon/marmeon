@@ -164,7 +164,7 @@ export class NotificationServiceProvider implements ServiceProvider {
     // until the table has the new name and every column the store uses.
     if (registry.all().some((notification) => notification.database !== undefined)) {
       const { SchemaRequirements } = await import('@marmeon/database');
-      container.make(SchemaRequirements).require({ connection, table: NOTIFICATIONS_TABLE, columns: NOTIFICATIONS_COLUMNS, set: 'notifications' });
+      container.make(SchemaRequirements).require({ connection, table: NOTIFICATIONS_TABLE, columns: NOTIFICATIONS_COLUMNS });
     }
 
     const mail: MailModule | undefined = await importOptional(() => import('@marmeon/mail'), '@marmeon/mail');

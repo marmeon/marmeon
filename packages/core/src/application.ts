@@ -182,11 +182,11 @@ export const CLUSTER_WORKER = 'MARMEON_CLUSTER_WORKER';
 
 /**
  * The statics a package's provider lists drivers in — each service package adds its own through declaration merging — and
- * `migrationUpgrades`, the revisions of its tables, and `checks`, what `marmeon check` runs.
+ * `checks`, what `marmeon check` runs.
  */
-const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers', 'diskDrivers', 'cacheDrivers', 'migrationUpgrades', 'checks'] as const;
+const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers', 'diskDrivers', 'cacheDrivers', 'checks'] as const;
 
-/** Whether `Provider` brings drivers of any service or revisions of its tables: a non-empty record or list in one of the {@link DRIVER_STATICS}. */
+/** Whether `Provider` brings drivers of any service or checks: a non-empty record or list in one of the {@link DRIVER_STATICS}. */
 function declaredDrivers(Provider: ServiceProviderClass): boolean {
   return DRIVER_STATICS.some((key) => {
     const record = (Provider as unknown as Record<string, unknown>)[key];

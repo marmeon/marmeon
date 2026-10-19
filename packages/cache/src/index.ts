@@ -142,8 +142,8 @@ export class CacheServiceProvider implements ServiceProvider {
       // /up/ready is red until the tables have the new names and every column the store writes.
       const { SchemaRequirements } = await import('@marmeon/database');
       const requirements = app.container.make(SchemaRequirements);
-      requirements.require({ connection, table: CACHE_TABLE, columns: CACHE_COLUMNS, set: 'cache' });
-      requirements.require({ connection, table: CACHE_LOCKS_TABLE, columns: CACHE_LOCKS_COLUMNS, set: 'cache' });
+      requirements.require({ connection, table: CACHE_TABLE, columns: CACHE_COLUMNS });
+      requirements.require({ connection, table: CACHE_LOCKS_TABLE, columns: CACHE_LOCKS_COLUMNS });
     }
   }
 }

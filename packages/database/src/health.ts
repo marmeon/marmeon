@@ -3,7 +3,7 @@ import { withCode, withoutCode } from '@marmeon/core/internal';
 import { sql } from 'kysely';
 import { Connections } from './connections.ts';
 import { MigrationStateError } from './migration-state.ts';
-import { SchemaRequirements, type TableRequirement } from './upgrades.ts';
+import { SchemaRequirements, type TableRequirement } from './schema-requirements.ts';
 
 /**
  * Readiness: every connection the app uses answers `select 1` — the app's pool, as requests use it (`Connections.used()`:
@@ -56,7 +56,7 @@ export class DatabaseHealthCheck implements HealthCheck {
       unmarked = this.#unmarked(required);
     }
     const problems = [
-      ...(lacking.length > 0 ? [`${lacking.join('; ')} — run marmeon make:upgrade-migrations, then marmeon migrate`] : []),
+      ...(lacking.length > 0 ? [`${lacking.join('; ')} — a migration is missing: marmeon publish writes the ones of your packages, then marmeon migrate`] : []),
       ...(unmarked.length > 0 ? [`${unmarked.join('; ')} — a migration marks the column with .secret() (schema.alter), see docs/migrations.md#how-the-migrator-keeps-track`] : []),
     ];
     if (problems.length > 0) {

@@ -1,8 +1,7 @@
 import { Application, Logger, type Container, type ServiceProvider } from '@marmeon/core';
 import type { AppCheckClass } from 'marmeon';
-import { MakeUpgradeMigrationsCommand } from './commands/make-upgrade-migrations.ts';
 import { PublishCommand } from './commands/publish.ts';
-import { DbTypesCheck, UpgradeMigrationsCheck } from './checks.ts';
+import { DbTypesCheck } from './checks.ts';
 import { DbShowCommand } from './commands/db-show.ts';
 import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
 import { DbSeedCommand } from './commands/db-seed.ts';
@@ -12,7 +11,7 @@ import { Seeding } from './seeders.ts';
 import { Migrator } from './migrations/migrator.ts';
 import { databaseSolutions } from './solutions.ts';
 import { DatabaseHealthCheck } from './health.ts';
-import { collectUpgrades, SchemaRequirements, type MigrationUpgrade } from './upgrades.ts';
+import { SchemaRequirements } from './schema-requirements.ts';
 import { TypeGenerator } from './types-gen/generator.ts';
 
 declare module '@marmeon/core' {
@@ -22,15 +21,6 @@ declare module '@marmeon/core' {
      * relative to the app root). Files are named `2026_10_01_120000_create_users_table.ts`.
      */
     readonly migrations?: URL | string;
-  }
-
-  interface ServiceProviderClass {
-    /**
-     * The migrations that bring the tables this package keeps in the app's database to a newer revision.
-     * `marmeon make:upgrade-migrations` writes the missing ones into the app. A set listed twice for one revision stops the
-     * start. See `docs/package-development.md#tables`.
-     */
-    readonly migrationUpgrades?: readonly MigrationUpgrade[];
   }
 }
 import { DatabaseConfig, isConnectionDefinition, type ConnectionOptions } from './config.ts';
@@ -47,12 +37,10 @@ export class DatabaseServiceProvider implements ServiceProvider {
   /** Every connection answers `select 1`, for `/up/ready`. */
   static health = [DatabaseHealthCheck];
   /** `bootstrap/database.d.ts` matches the migrations, for `marmeon check`. */
-  static checks: readonly AppCheckClass[] = [UpgradeMigrationsCheck, DbTypesCheck];
-  static commands = [DbShowCommand, DbTypesCommand, DbSeedCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand, MakeUpgradeMigrationsCommand, PublishCommand];
+  static checks: readonly AppCheckClass[] = [DbTypesCheck];
+  static commands = [DbShowCommand, DbTypesCommand, DbSeedCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand, PublishCommand];
 
   register(container: Container): void {
-    // Stops the start on an upgrade that would write a wrong file, as `marmeon build` does for a command name taken twice.
-    collectUpgrades(container.make(Application).providers);
     container.singleton(SchemaRequirements);
     container.singleton(Connections, (c) => {
       const app = c.make(Application);

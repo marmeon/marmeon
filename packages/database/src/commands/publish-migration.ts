@@ -75,10 +75,10 @@ export function publishMigration(
   return 0;
 }
 
-/** The path of the migration named `name` (without timestamp) in any module under `modules`. */
-export function findMigration(modules: string, name: string): string | undefined {
+/** The path of the migration named `name` (without timestamp) in any module under `modules`, or only in `only` when it is given. */
+export function findMigration(modules: string, name: string, only?: string): string | undefined {
   if (!existsSync(modules)) return undefined;
-  for (const module of readdirSync(modules)) {
+  for (const module of only === undefined ? readdirSync(modules) : [only]) {
     const directory = join(modules, module, 'migrations');
     if (!existsSync(directory)) continue;
     const pattern = new RegExp(`^\\d{4}_\\d{2}_\\d{2}_\\d{6}_${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.ts$`);

@@ -2,7 +2,15 @@ import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync }
 import { basename, isAbsolute, join, relative, sep } from 'node:path';
 import { err, ok, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
-import { SET, stubMark } from './upgrades.ts';
+
+const MARK = /^\/\/ @marmeon-stub (\S+) (\d+)\r?\n/;
+const SET = /^[a-z][a-z0-9-]*$/;
+
+/** @internal The set and revision a migration file of a package declares in its first line. */
+function stubMark(contents: string): { set: string; revision: number } | undefined {
+  const found = MARK.exec(contents);
+  return found ? { set: found[1]!, revision: Number(found[2]) } : undefined;
+}
 
 /** One migration a package ships: `name` is the file name without `.ts`, `set` and `revision` come from its `// @marmeon-stub` line. */
 export interface PackageMigrationFile {

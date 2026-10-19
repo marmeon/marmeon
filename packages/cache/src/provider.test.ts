@@ -259,7 +259,7 @@ describe('marmeon publish @marmeon/cache', () => {
     };
     const published = app();
     const made = app();
-    expect(await new PublishCommand({ providers: [CacheServiceProvider], packages: [] } as never).handle({ root: published, args: ['@marmeon/cache'], options: {}, output } as never)).toBe(0);
+    expect(await new PublishCommand().handle({ root: published, args: ['@marmeon/cache'], options: {}, output } as never)).toBe(0);
     expect(await new MakeCacheTableCommand().handle({ root: made, args: [], options: {}, output } as never)).toBe(0);
 
     const migrations = (root: string) => readdirSync(join(root, 'modules/system/migrations'));

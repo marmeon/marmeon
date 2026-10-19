@@ -37,10 +37,10 @@ export const databaseSolutions = defineSolutions([
     for: Error,
     code: 'D6',
     solve: () => ({
-      title: "Write the migrations that bring the framework's tables up to date",
-      text: "A framework table lacks what the installed release needs. The command writes the missing migrations into your app from the packages' revisions; then migrate. It needs no database.",
-      command: 'marmeon make:upgrade-migrations',
-      docs: 'docs/migrations.md#upgrading-the-frameworks-tables',
+      title: "Copy the migrations of your packages into the app",
+      text: "A table of a package lacks what the installed release needs. The command copies the migrations your app does not have yet; then migrate. It needs no database.",
+      command: 'marmeon publish',
+      docs: 'docs/migrations.md#publishing-the-migrations-of-a-package',
     }),
   },
   {

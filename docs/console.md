@@ -162,7 +162,6 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 | `make:seeder <Name> --module=<m> [--no-register]` | A seeder in `seeders/`, added last to the module's `seeders`. See [seeding](seeding.md#generating-a-seeder). |
 | `make:middleware <Name> --module=<m>` | A middleware class in `middleware/`. |
 | `make:migration <snake_case_name> --module=<m> [--no-register]` | A timestamped migration in `migrations/`; adds the folder to the module once. See [migrations](migrations.md#generating-migrations). |
-| `make:upgrade-migrations [--check]` | The migrations that bring the framework's tables in your app to the installed revision, into the module of the migration that created them. `--check` writes nothing and exits with 1 when one is missing. See [migrations](migrations.md#upgrading-the-frameworks-tables). |
 | `publish <package> [--module=<m>]` | The migrations a direct dependency of your app lists, into a module of the app; writes what is missing and skips what is there. See [migrations](migrations.md#publishing-the-migrations-of-a-package). |
 | `make:sign-ins-table [--module=<m>]` | The migration of the `sign_ins` table that `DatabaseSignIns` uses. See [sign-ins](authentication.md#sign-ins). |
 
@@ -176,7 +175,7 @@ The installed packages add their commands when the app boots:
 
 | Package | Commands |
 | --- | --- |
-| `@marmeon/database` | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh`, `migrate:status`, `make:upgrade-migrations`, `publish`, `db:seed`, `db:show`, `db:types`. The four that change the schema take `--wait=<seconds>` (default 60) for another migration to end, see [one migration at a time](migrations.md#one-migration-at-a-time). See [migrations](migrations.md#running-migrations), [upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables) and [seeding](seeding.md#running-seeders). |
+| `@marmeon/database` | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh`, `migrate:status`, `publish`, `db:seed`, `db:show`, `db:types`. The four that change the schema take `--wait=<seconds>` (default 60) for another migration to end, see [one migration at a time](migrations.md#one-migration-at-a-time). See [migrations](migrations.md#running-migrations) and [seeding](seeding.md#running-seeders). |
 | `@marmeon/queue` | `queue:work`, `queue:size`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:flush`, `queue:prune-failed`, `make:queue-table`. See [queues](queues.md). |
 | `@marmeon/scheduler` | `schedule:work`, `schedule:run`, `schedule:list`, `schedule:test`. See [task scheduling](scheduling.md#running-the-scheduler). |
 | `@marmeon/cache` | `cache:prune`, `cache:clear`, `make:cache-table`. See [cache](cache.md#expired-entries-and-clearing). |

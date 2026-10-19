@@ -51,12 +51,11 @@ change. The [modules](modules.md#discovery) page explains discovery from the app
 
 ### Declaring the migrations a package ships
 
-`migrations` names the stubs that **create** the package's tables. Each file starts with `// @marmeon-stub <set> <revision>` (see
-[upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables)) and has a plain name such as
-`create_permissions_table.ts`, without a timestamp. Later revisions of a table stay `static migrationUpgrades` on the provider. The
-field only declares the files; it copies nothing. An app copies them with `marmeon publish <package>` ([publishing the migrations of a
-package](migrations.md#publishing-the-migrations-of-a-package)), which accepts only a direct dependency of the app and refuses a `set`
-or a file name that another installed package upgrades or creates.
+`migrations` names the stubs that **create** the package's tables. Each file starts with `// @marmeon-stub <set> <revision>` and has a plain name such as
+`create_permissions_table.ts`, without a timestamp. The field only declares the files; it copies nothing. An app copies them with
+`marmeon publish <package>` ([publishing the migrations of a
+package](migrations.md#publishing-the-migrations-of-a-package)), which accepts only a direct dependency of the app and never runs code
+of the package.
 
 `module` is required. It is a suggestion: the module the tables go to when the files are copied into the app, which the app can
 change. Which module owns a table follows from the module its migration file is in, not from the package. The framework's own
@@ -264,15 +263,11 @@ the app copies it. The contract has five parts:
 3. **The list.** `"marmeon": { "migrations": … }` in `package.json` names the stubs
    ([declaring the migrations a package ships](#declaring-the-migrations-a-package-ships)). `marmeon publish <package>` copies
    them into the app ([publishing the migrations of a package](migrations.md#publishing-the-migrations-of-a-package)), and a
-   `make:*-table` command of your own can copy the same file. When a release changes the tables, the package lists the change as
-   `static migrationUpgrades` on its provider: each entry has the `set`, the `revision` it brings the tables to (2 or more), the
-   `name` of the file without timestamp, `createdBy` (the names of the stubs that created the set, which tell the command where
-   the app keeps it) and the `contents`, which start with `// @marmeon-stub <set> <revision>`. `marmeon make:upgrade-migrations`
-   writes the missing ones into the app. An entry with a path in a name, or a revision listed twice for a set, stops the start
-   (D17). See [upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables).
+   `make:*-table` command of your own can copy the same file. When a release changes the tables, the package adds a new
+   file: a change is a new file, never an edit of one that shipped.
 4. **The requirements.** A table the package needs is registered with `SchemaRequirements` (from `@marmeon/database`). In `boot()`,
    take it with `app.container.make(SchemaRequirements)` once `app.container.has(Connections)`, and call
-   `require({ connection, table, set, columns, secrets?, whenPresent? })`; a new instance checks nothing. `columns` are the columns
+   `require({ connection, table, columns, secrets?, whenPresent? })`; a new instance checks nothing. `columns` are the columns
    the package reads and writes and `secrets` the ones that must be marked `.secret()`: readiness is red while the table
    is missing, lacks a column or has one unmarked, as in a table made by hand (not on a connection with `managed: false`). A
    requirement with `whenPresent: true` is for a table the app may never have made (the feature is unused): it is only checked once
