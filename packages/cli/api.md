@@ -147,6 +147,9 @@ export declare function run(argv: readonly string[], root?: string): Promise<num
 ## Commands
 
 ```ts
+// agents:sync
+marmeon agents:sync [--check]
+--check (boolean)
 // build
 marmeon build [--no-typecheck]
 --no-typecheck (boolean)

@@ -161,6 +161,7 @@ export default defineDocs({
         { slug: 'devtools', label: 'Devtools' },
         { slug: 'observability', label: 'Observability' },
         { slug: 'health', label: 'Health Checks' },
+        { slug: 'agents', label: 'Coding Agents' },
       ],
     },
   ],

@@ -153,6 +153,7 @@ A reader never guesses and never falls back to a default.
 | [Generated types](queries.md#table-types) (`bootstrap/routes.ts`, `bootstrap/database.d.ts`) | `// @marmeon-format 1` on the third line | `--check` fails with "update `@marmeon/*`"; no command overwrites it | `--check` says another version wrote it; regenerate |
 | [Copied files](starter-kit.md#what-the-auth-module-holds) (`marmeon-stubs.json`) | `format` in the file | `make:auth` stops and writes nothing | `make:auth` stops and writes nothing: there is no older version |
 | [Schema projection](migrations.md#what-the-migrations-describe) (`.marmeon/schema.json`) | `format` in the file, and the version of `@marmeon/database` | computed again and written over: the file is a cache | computed again and written over |
+| [The block of `AGENTS.md`](agents.md#the-marks) | `<!-- marmeon:begin v1 -->` and `<!-- marmeon:end -->`, each on a line of its own | `agents:sync` refuses and writes nothing | the text between the marks is replaced; without marks the block is appended |
 | [`--json` of a command](console.md) | `format`, the first key | n/a: the command prints its newest | n/a |
 
 Some formats have no version of their own and are kept stable another way:
