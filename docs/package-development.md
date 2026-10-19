@@ -253,22 +253,33 @@ check but a [health check](health.md#writing-a-health-check): `marmeon check` ru
 
 ## Tables
 
-A package that keeps tables in the app's database ships the migration as a stub that `marmeon publish <package>` copies (list it
-under `migrations`, see [declaring the migrations a package ships](#declaring-the-migrations-a-package-ships)); a `make:*-table`
-command of your own can copy the same file. The stub starts
-with the line `// @marmeon-stub <set> 1` — `<set>` names the tables (`audit`), the number is the revision of the stub. When a
-release changes the tables, the package lists the change as `static migrationUpgrades` on its provider: each entry has the `set`,
-the `revision` it brings the tables to (2 or more), the `name` of the file without timestamp, `createdBy` (the names of the stubs
-that created the set, which tell the command where the app keeps it) and the `contents`, which start with
-`// @marmeon-stub <set> <revision>`. `marmeon make:upgrade-migrations` writes the missing ones into the app. An entry with a path
-in a name, or a revision listed twice for a set, stops the start. A table the package needs is registered with
-`SchemaRequirements` (from `@marmeon/database`), with the `columns` it reads and writes and, as `secrets`, the columns that must
-be marked `.secret()`: readiness is red while the table is missing, lacks a column or has one unmarked, as in a table made by hand (not
-on a connection with `managed: false`). A requirement with `whenPresent: true` is for a table the app may never have made (the
-feature is unused): it is only checked once the table exists. See
-[upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables).
+A package that keeps tables in the app's database does not write them into the app itself. It ships the migration as a stub, and
+the app copies it. The contract has five parts:
 
-A module's `migrations` must not point into the package's own folder in `node_modules`: the app refuses that with error D20, because a package update would change migrations the database has run. Ship the migrations as stubs the app copies.
+1. **The stub.** The file starts with the line `// @marmeon-stub <set> 1`: `<set>` names the tables (`audit`), the number is the
+   revision of the stub.
+2. **The plan.** `up(schema)` is synchronous and only describes the change; the app computes what it did without running it. Data
+   changes go through `schema.data()` and nowhere else. A column that holds a secret, such as a token's hash, is marked
+   `.secret()`. See [migration structure](migrations.md#migration-structure).
+3. **The list.** `"marmeon": { "migrations": … }` in `package.json` names the stubs
+   ([declaring the migrations a package ships](#declaring-the-migrations-a-package-ships)). `marmeon publish <package>` copies
+   them into the app ([publishing the migrations of a package](migrations.md#publishing-the-migrations-of-a-package)), and a
+   `make:*-table` command of your own can copy the same file. When a release changes the tables, the package lists the change as
+   `static migrationUpgrades` on its provider: each entry has the `set`, the `revision` it brings the tables to (2 or more), the
+   `name` of the file without timestamp, `createdBy` (the names of the stubs that created the set, which tell the command where
+   the app keeps it) and the `contents`, which start with `// @marmeon-stub <set> <revision>`. `marmeon make:upgrade-migrations`
+   writes the missing ones into the app. An entry with a path in a name, or a revision listed twice for a set, stops the start
+   (D17). See [upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables).
+4. **The requirements.** A table the package needs is registered with `SchemaRequirements` (from `@marmeon/database`). In `boot()`,
+   take it with `app.container.make(SchemaRequirements)` once `app.container.has(Connections)`, and call
+   `require({ connection, table, set, columns, secrets?, whenPresent? })`; a new instance checks nothing. `columns` are the columns
+   the package reads and writes and `secrets` the ones that must be marked `.secret()`: readiness is red while the table
+   is missing, lacks a column or has one unmarked, as in a table made by hand (not on a connection with `managed: false`). A
+   requirement with `whenPresent: true` is for a table the app may never have made (the feature is unused): it is only checked once
+   the table exists.
+5. **No module with migrations.** A module's `migrations` must not point into the package's own folder in `node_modules`: the app
+   refuses that with error D20, because a package update would change migrations the database has run. Ship the migrations as stubs
+   the app copies.
 
 ## Middleware
 
