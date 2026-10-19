@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "sets": {
+    "@marmeon/auth:react/modules/auth": {
+      "files": {
+        "modules/auth/auth.css": {
+          "sha256": "sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+          "stub": "stubs/react/modules/auth/auth.css"
+        },
+        "modules/auth/index.ts": {
+          "sha256": "sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+          "stub": "stubs/react/modules/auth/index.ts"
+        }
+      },
+      "package": "@marmeon/auth",
+      "version": "0.3.0"
+    }
+  }
+}

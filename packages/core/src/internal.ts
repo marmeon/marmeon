@@ -33,3 +33,5 @@ export { errOfRollback, leftTransactionOf, openTransactionOf, transactionOf } fr
 export { fillPlaceholders } from './translator.ts';
 export { marmeonInjection } from './vite.ts';
 export type { InjectionPlugin } from './vite.ts';
+export { recordStubSet, readStubManifest, STUB_MANIFEST, stubHash } from './stubs/manifest.ts';
+export type { StubFile, StubManifest, StubManifestProblem, StubSet } from './stubs/manifest.ts';
