@@ -18,7 +18,7 @@ import { openRoutes } from './test-helpers/open-routes.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
-const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/create_sessions_table.ts', import.meta.url);
+const SESSIONS_MIGRATION = new URL('../../session/stubs/migrations/0001_01_01_000000_create_sessions_table.ts', import.meta.url);
 
 /** Accounts in memory, with a session key each — what an app's repository keeps in a `session_key` column. */
 class KeyedUsers extends MemoryUsers<AuthUser> {

@@ -6,7 +6,7 @@ import type { FailedJob } from '../driver.ts';
 import { parseRecord } from '../runner.ts';
 
 /** The migration `make:queue-table` copies — a real file, so the driver tests run exactly what apps get. */
-export const QUEUE_MIGRATION = new URL('../../stubs/migrations/create_jobs_table.ts', import.meta.url);
+export const QUEUE_MIGRATION = new URL('../../stubs/migrations/0001_01_01_000000_create_jobs_table.ts', import.meta.url);
 
 /** `marmeon make:queue-table [--module=system]`: the migration of `jobs` and `failed_jobs` into an app module. */
 export class MakeQueueTableCommand {

@@ -499,7 +499,7 @@ describe('check:source — the docs speak to their readers (rule 5)', () => {
     expect(textRuleWhere('UPGRADING.md')).toBe('in the docs');
     expect(textRuleWhere('packages/auth/stubs/react/modules/auth/routes.ts')).toBe('in what every new app copies');
     expect(textRuleWhere('packages/create-marmeon/template/base/.env.example')).toBe('in what every new app copies');
-    expect(textRuleWhere('packages/session/stubs/migrations/create_sessions_table.ts')).toBe('in what every new app copies');
+    expect(textRuleWhere('packages/session/stubs/migrations/0001_01_01_000000_create_sessions_table.ts')).toBe('in what every new app copies');
   });
 });
 
@@ -756,14 +756,14 @@ describe('pack:check — the rules over an unpacked tarball', () => {
   const manifest: { name: string; version: string; license: string; marmeon?: object } = { name: '@marmeon/sample', version: '0.1.0', license: 'MIT' };
 
   /** Unpacks a tarball of `files` into a temporary directory and returns what `checkTarball` says about it. */
-  const problemsOf = (files: Record<string, string>) => {
+  const problemsOf = (files: Record<string, string>, source = join(tmpdir(), 'no-such-package')) => {
     const dir = tempDir('marmeon-ci-test-');
     for (const [path, text] of Object.entries({ 'package.json': JSON.stringify(manifest), ...files })) {
       mkdirSync(dirname(join(dir, path)), { recursive: true });
       writeFileSync(join(dir, path), text);
     }
     const packed = { name: manifest.name, version: manifest.version, tarball: join(dir, 'sample.tgz'), files: Object.keys({ 'package.json': '', ...files }) };
-    const pkg = { name: manifest.name, short: 'sample', dir: join(dir, 'no-such-package'), manifest };
+    const pkg = { name: manifest.name, short: 'sample', dir: source, manifest };
     return checkTarball(packed, dir, pkg, 'The license.\n');
   };
 
@@ -784,12 +784,17 @@ describe('pack:check — the rules over an unpacked tarball', () => {
     expect(problemsOf({ 'CHANGELOG.md': '# Sample\n' })).not.toContain('CHANGELOG.md is missing — add it to "files"');
   });
 
-  it('names a migration the package declares but does not ship', () => {
-    manifest.marmeon = { migrations: { format: 1, module: 'system', files: ['stubs/migrations/create_a_table.ts', 'stubs/migrations/create_b_table.ts'] } };
+  it('names a migration in the declared directory that the tarball does not ship', () => {
+    const source = tempDir('marmeon-ci-test-');
+    mkdirSync(join(source, 'stubs/migrations'), { recursive: true });
+    writeFileSync(join(source, 'stubs/migrations/0001_01_01_000000_create_a_table.ts'), '');
+    writeFileSync(join(source, 'stubs/migrations/0001_01_01_000001_create_b_table.ts'), '');
+    manifest.marmeon = { migrations: { format: 2, module: 'system', from: 'stubs/migrations' } };
     try {
-      const problems = problemsOf({ 'stubs/migrations/create_a_table.ts': '' });
-      expect(problems).toContain('marmeon.migrations lists stubs/migrations/create_b_table.ts, which is not in the tarball');
+      const problems = problemsOf({ 'stubs/migrations/0001_01_01_000000_create_a_table.ts': '' }, source);
+      expect(problems).toContain('marmeon.migrations.from stubs/migrations holds 0001_01_01_000001_create_b_table.ts, which is not in the tarball');
       expect(problems.filter((problem) => problem.startsWith('marmeon.migrations'))).toHaveLength(1);
+      expect(problemsOf({}, source)).toContain('marmeon.migrations.from is stubs/migrations, which holds no migration in the tarball');
     } finally {
       delete manifest.marmeon;
     }

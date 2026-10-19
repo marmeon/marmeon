@@ -70,11 +70,9 @@
       "SessionServiceProvider"
     ],
     "migrations": {
-      "format": 1,
+      "format": 2,
       "module": "system",
-      "files": [
-        "stubs/migrations/create_sessions_table.ts"
-      ]
+      "from": "stubs/migrations"
     }
   },
   "dependencies": {

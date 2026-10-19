@@ -939,7 +939,7 @@ too is refused: two migrations would create the same table.
 
 The command writes what is missing and skips a migration your app already has under the same name (say, one that `make:auth`
 wrote), so you can run it again: when nothing is left it ends with exit code 0 and says so. The files carry a timestamp one
-second apart, in the order the package lists them. It does not touch the database; run `marmeon migrate` after it. To move the
+second apart, in the order of their file names in the package. It does not touch the database; run `marmeon migrate` after it. To move the
 tables to another module later, move the files with the same names and change their rows in `migrations.module`.
 
 `publish` only copies files: it runs no code of the package and reads the package's files without following a symlink (a hard
