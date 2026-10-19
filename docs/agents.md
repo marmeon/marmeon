@@ -67,6 +67,9 @@ pnpm marmeon agents:sync --check
 It exits with 1 when `AGENTS.md` has no block or the block differs from the one your `marmeon` carries. An app that does not boot
 still gets its guide: the command does not start the app.
 
+`marmeon check` also looks at the block, as the [`agents` check](check.md#the-agents-block): a block that is missing or out of date is a
+warning there, never an error, and the check writes nothing. An app without `AGENTS.md` is skipped.
+
 ## The marks
 
 The marks name a version, `v1` today. The version is the shape of the marks, not the age of the text between them: the text may
@@ -79,3 +82,6 @@ writes leaves the file as it is and asks you to update. See [stored and wire for
 no longer starts: every command that boots the app, `marmeon list` included, ends with the error `[marmeon:K8]` ("Two commands are
 named …"). Rename your command. `agents:sync` itself does not boot the app and still runs. See
 [writing commands](console.md#writing-commands).
+
+`agents` is also the name of a check of `marmeon check`. A check of a package or a module with this name no longer registers: every command that
+boots the app ends with the error `[marmeon:K11]`. Rename your check. See [package development](package-development.md#checks).

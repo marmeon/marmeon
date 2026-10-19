@@ -1,7 +1,8 @@
-import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { join, sep } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { CommandInput } from '../command.ts';
 import { AGENTS_BLOCK } from '../agents/block.ts';
+import { exists, unsafe } from '../agents/files.ts';
 import { syncAgents } from '../agents/sync.ts';
 
 /**
@@ -56,30 +57,6 @@ export class AgentsSyncCommand {
     }
     return 0;
   }
-}
-
-function exists(file: string): boolean {
-  try {
-    lstatSync(file);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Why `file` may not be read or written: a link that leads nowhere, or out of the app. A file that is not there is fine. */
-function unsafe(root: string, file: string): string | undefined {
-  if (!exists(file)) return undefined;
-  const name = file.slice(root.length + 1);
-  let real: string;
-  try {
-    real = realpathSync(file);
-  } catch {
-    return `${name} is a link that leads nowhere. Remove it or fix it, then run marmeon agents:sync again. Nothing was written.`;
-  }
-  const inside = realpathSync(root);
-  if (real !== inside && !real.startsWith(inside + sep)) return `${name} is a link to ${real}, outside the app. Nothing was written.`;
-  return undefined;
 }
 
 /** The `name` of the app's `package.json`, for the title of a new `AGENTS.md`. */

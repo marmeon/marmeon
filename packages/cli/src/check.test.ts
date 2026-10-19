@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { marmeon, repo } from './__fixtures__/cli.js';
+import { AGENTS_BLOCK } from './agents/block.ts';
 
 const blank = join(repo, 'apps/blank-app');
 const TSCONFIG = JSON.stringify({
@@ -42,13 +43,14 @@ describe('marmeon check', { timeout: 90_000 }, () => {
       ['types', 'passed'],
       ['lint', 'passed'],
       ['internal-imports', 'passed'],
+      ['agents', 'skipped'],
     ]);
   });
 
   it('prints one line per check without --json', () => {
     const { code, stdout } = check(app({}));
     expect(code).toBe(0);
-    expect(stdout).toMatch(/✓ types\n✓ lint\n✓ internal-imports\n/);
+    expect(stdout).toMatch(/✓ types\n✓ lint\n✓ internal-imports\n- agents skipped: no AGENTS.md\n/);
     expect(stdout).toContain('Passed (exit 0).');
   });
 
@@ -147,7 +149,7 @@ describe('marmeon check', { timeout: 90_000 }, () => {
   it('runs only the checks --only names, and not the ones --skip names', () => {
     const root = app({});
     expect(JSON.parse(check(root, ['--only=types', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types']);
-    expect(JSON.parse(check(root, ['--skip=types,lint', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['internal-imports']);
+    expect(JSON.parse(check(root, ['--skip=types,lint', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['internal-imports', 'agents']);
   });
 
   it('exits 2 for empty name lists, and fails on the boot, with a warning, for a name nobody knows when the app did not load', () => {
@@ -192,7 +194,8 @@ describe('marmeon check', { timeout: 90_000 }, () => {
     const document = JSON.parse(stdout);
     expect(Object.keys(document)[0]).toBe('format');
     const fixture = JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-check/v1.json', import.meta.url), 'utf8'));
-    expect(document).toMatchObject(fixture);
+    // The stored document lists the checks of its time; one added since follows them.
+    expect({ ...document, checks: document.checks.slice(0, fixture.checks.length) }).toMatchObject(fixture);
     for (const report of document.checks) {
       expect(report.ms).toEqual(expect.any(Number));
       expect(Object.keys(report)).toEqual(['name', 'status', 'ms', 'reason', 'problems']);
@@ -222,5 +225,100 @@ describe('marmeon build and framework internals', { timeout: 90_000 }, () => {
     expect(withImport.stderr).toContain('src/b.ts:1:19');
     expect(withImport.stderr).toContain('marmeon check fails on these imports.');
     expect(without.stderr).not.toContain('marmeon check fails');
+  });
+});
+
+describe('marmeon check: the block of AGENTS.md', { timeout: 90_000 }, () => {
+  /** Only the `agents` check, as the document `--json` prints, and whether the call left `AGENTS.md` as it was. */
+  function agents(files: Record<string, string>) {
+    const root = app(files, []);
+    const before = files['AGENTS.md'];
+    const { code, stdout } = check(root, ['--only=agents', '--json']);
+    const after = (() => {
+      try {
+        return readFileSync(join(root, 'AGENTS.md'), 'utf8');
+      } catch {
+        return undefined;
+      }
+    })();
+    return { code, report: JSON.parse(stdout).checks[0], untouched: after === before, root };
+  }
+
+  it('passes a current block', () => {
+    const { code, report, untouched } = agents({ 'AGENTS.md': `# Shop\n\n${AGENTS_BLOCK}\n\nMine.\n` });
+    expect(code).toBe(0);
+    expect(report).toMatchObject({ name: 'agents', status: 'passed', problems: [] });
+    expect(untouched).toBe(true);
+  });
+
+  it('warns about an out-of-date block with the command that fixes it, exit 0, and writes nothing', () => {
+    const { code, report, untouched } = agents({ 'AGENTS.md': `# Shop\n\n${AGENTS_BLOCK.replace('Managed', 'Old')}\n` });
+    expect(code).toBe(0);
+    expect(report.status).toBe('warning');
+    expect(report.problems).toEqual([
+      expect.objectContaining({ severity: 'warning', file: 'AGENTS.md', fix: 'marmeon agents:sync', message: "AGENTS.md's marmeon block is out of date — marmeon agents:sync" }),
+    ]);
+    expect(untouched).toBe(true);
+  });
+
+  it('warns about a file without a block', () => {
+    const { code, report, untouched } = agents({ 'AGENTS.md': '# Shop\n\nMine.\n' });
+    expect(code).toBe(0);
+    expect(report.status).toBe('warning');
+    expect(report.problems[0]).toMatchObject({ severity: 'warning', fix: 'marmeon agents:sync' });
+    expect(untouched).toBe(true);
+  });
+
+  it('warns about marks it cannot read, naming the reason, exit 0', () => {
+    for (const text of ['<!-- marmeon:begin v1 -->\nx\n', `${AGENTS_BLOCK}\n${AGENTS_BLOCK}\n`, '<!-- marmeon:begin v999 -->\nx\n<!-- marmeon:end -->\n']) {
+      const { code, report, untouched } = agents({ 'AGENTS.md': text });
+      expect(code).toBe(0);
+      expect(report.status).toBe('warning');
+      expect(report.problems[0].message).toContain('AGENTS.md was left as it is');
+      expect(untouched).toBe(true);
+    }
+  });
+
+  it('skips an app without AGENTS.md: the file is the app\'s', () => {
+    const { code, report } = agents({});
+    expect(code).toBe(0);
+    expect(report).toMatchObject({ name: 'agents', status: 'skipped', reason: 'no AGENTS.md', problems: [] });
+  });
+
+  it('follows a link that stays inside the app', () => {
+    const root = app({ 'docs/guide.md': `${AGENTS_BLOCK}\n` }, []);
+    symlinkSync(join(root, 'docs/guide.md'), join(root, 'AGENTS.md'));
+    expect(JSON.parse(check(root, ['--only=agents', '--json']).stdout).checks[0].status).toBe('passed');
+  });
+
+  it('does not read a link that leads out of the app, or nowhere', () => {
+    const outside = realpathSync(tempDir('marmeon-check-outside-'));
+    writeFileSync(join(outside, 'secret.md'), 'SECRET-TEXT\n');
+    for (const target of [join(outside, 'secret.md'), join(outside, 'missing.md')]) {
+      const root = app({}, []);
+      symlinkSync(target, join(root, 'AGENTS.md'));
+      const { code, stdout } = check(root, ['--only=agents', '--json']);
+      expect(code).toBe(0);
+      const report = JSON.parse(stdout).checks[0];
+      expect(report.status).toBe('warning');
+      expect(report.problems[0].message).toMatch(/outside the app|leads nowhere/);
+      expect(stdout).not.toContain('SECRET-TEXT');
+    }
+  });
+
+  it('warns about a directory as AGENTS.md instead of failing, exit 0', () => {
+    const root = app({}, []);
+    mkdirSync(join(root, 'AGENTS.md'));
+    const { code, stdout } = check(root, ['--only=agents', '--json']);
+    expect(code).toBe(0);
+    const report = JSON.parse(stdout).checks[0];
+    expect(report.status).toBe('warning');
+    expect(report.problems[0].message).toBe('AGENTS.md is not a file. It was not read.');
+  });
+
+  it('is listed after internal-imports, and --skip=agents leaves it out', () => {
+    const root = app({ 'AGENTS.md': '# Shop\n' });
+    expect(JSON.parse(check(root, ['--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'agents']);
+    expect(JSON.parse(check(root, ['--skip=agents', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports']);
   });
 });

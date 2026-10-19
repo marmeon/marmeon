@@ -32,7 +32,7 @@ describe('CheckRegistry', () => {
     );
   });
 
-  it.each(['types', 'lint', 'internal-imports', 'boot', 'readiness'])('refuses %s, a name marmeon uses itself', (name) => {
+  it.each(['types', 'lint', 'internal-imports', 'agents', 'boot', 'readiness'])('refuses %s, a name marmeon uses itself', (name) => {
     expect(() => new CheckRegistry().add([check(name)], 'AProvider')).toThrow(CheckSetupError);
   });
 
