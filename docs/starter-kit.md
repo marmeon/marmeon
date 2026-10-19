@@ -12,6 +12,8 @@ pnpm create marmeon my-app          # the starter kit
 pnpm create marmeon my-app --minimal  # a blank app, without both modules
 ```
 
+Either way, the app also has an `AGENTS.md` and a `CLAUDE.md` ([coding agents](agents.md)).
+
 The auth module comes from the generator `marmeon make:auth`. It writes the module once, and from then on it belongs to your app.
 The mechanics behind it, such as hashing, sessions, tokens and policies, stay in the `@marmeon/auth` package, and updates of the
 framework bring them.

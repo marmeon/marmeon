@@ -28,6 +28,8 @@ Run \`marmeon\` through your package manager (\`pnpm exec marmeon\`, \`npx marme
 - \`marmeon migrate\` after a migration; it writes \`bootstrap/database.d.ts\`.
 - \`marmeon route:types\` after a route changed; it writes \`bootstrap/routes.ts\`.
 - Use a generator (\`marmeon make:controller\`, \`marmeon make:migration\`, …) before writing by hand; \`marmeon list\` shows every command.
+- \`marmeon publish <package>\` copies the migrations a package ships into the app; never point a module's \`migrations\` at \`node_modules\`.
+- \`marmeon-stubs.json\` records where the files of \`create-marmeon\` and \`make:auth\` come from — do not edit it.
 
 ## Rules
 

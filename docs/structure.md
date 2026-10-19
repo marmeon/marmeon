@@ -21,6 +21,7 @@ my-app/
 ├── .env              this machine's settings, never committed
 ├── .env.example
 ├── .env.test
+├── AGENTS.md         the guide for coding agents; CLAUDE.md imports it
 ├── package.json
 ├── tsconfig.json
 ├── vite.config.ts
@@ -132,6 +133,7 @@ own:
 | `vite.config.ts` | Vite with the `marmeon()` plugin and the React plugin. |
 | `vitest.config.ts` | The tests: `modules/**/*.test.ts`. |
 | `.oxlintrc.json` | The lint preset. It keeps views from importing server code by value. |
+| `AGENTS.md`, `CLAUDE.md` | The guide a coding agent reads at the start of a session. `marmeon agents:sync` keeps a block of `AGENTS.md` current; the rest is yours. `CLAUDE.md` imports `AGENTS.md`. See [coding agents](agents.md). |
 | `marmeon-stubs.json` | Where the files that `create-marmeon` and `marmeon make:auth` copied came from: the package, its version and a hash per file. Written by the framework, committed with the app. See [the auth module](starter-kit.md#what-the-auth-module-holds). |
 
 ### Generated folders
