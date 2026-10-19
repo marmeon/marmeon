@@ -132,6 +132,7 @@ own:
 | `vite.config.ts` | Vite with the `marmeon()` plugin and the React plugin. |
 | `vitest.config.ts` | The tests: `modules/**/*.test.ts`. |
 | `.oxlintrc.json` | The lint preset. It keeps views from importing server code by value. |
+| `marmeon-stubs.json` | Where the files that `marmeon make:auth` copied came from: the package, its version and a hash per file. Written by the framework, committed with the app. See [the auth module](starter-kit.md#what-the-auth-module-holds). |
 
 ### Generated folders
 

@@ -1,6 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readStubManifest, recordStubSet, stubHash } from '@marmeon/core/internal';
 import { Router } from '@marmeon/router';
 import { formatAccessProblems } from '@marmeon/router/internal';
 import { describe, expect, it } from 'vitest';
@@ -174,6 +175,63 @@ describe('make:auth', { timeout: 30_000 }, () => {
     expect(await new MakeAuthCommand().handle(fakeInput(root, { force: true }).input)).toBe(0);
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8').match(/#modules\/auth/g)).toHaveLength(1); // registered once
     expect(readFileSync(join(root, 'bootstrap/client.tsx'), 'utf8').match(/modules\/auth\/auth\.css/g)).toHaveLength(1); // its styles too
+  });
+
+  it('records every copied file but the migrations in marmeon-stubs.json, with the package version and the hash of what was written', async () => {
+    const root = blankApp();
+    const { input, lines } = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(input)).toBe(0);
+    const version = (JSON.parse(readFileSync(join(import.meta.dirname, '../package.json'), 'utf8')) as { version: string }).version;
+    expect(lines).toContain(`✓ Recorded the module's files in marmeon-stubs.json (version ${version})`);
+    const manifest = readStubManifest(root);
+    if (!manifest.ok) throw new Error(manifest.error.message);
+    const set = manifest.value?.sets['@marmeon/auth:react/modules/auth'];
+    expect(set).toMatchObject({ package: '@marmeon/auth', version });
+    const templates = join(STUBS, 'react', 'modules', 'auth');
+    const expected = (readdirSync(templates, { recursive: true, withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => relative(templates, join(entry.parentPath, entry.name)).split(sep).join('/'))
+      .filter((file) => !file.startsWith('migrations/'))
+      .sort();
+    expect(expected.length).toBeGreaterThan(100);
+    expect(Object.keys(set!.files).sort()).toEqual(expected.map((file) => `modules/auth/${file}`));
+    for (const [path, entry] of Object.entries(set!.files)) {
+      expect(entry.sha256, path).toBe(stubHash(readFileSync(join(root, path))));
+      expect(entry.stub).toBe(`stubs/react/${path}`);
+    }
+    // Migrations carry their own mark and are not recorded.
+    expect(Object.keys(set!.files).filter((path) => path.includes('/migrations/'))).toEqual([]);
+  });
+
+  it('records the module again with --force — the set holds the templates and the package version again, the sets of other packages stay', async () => {
+    const root = blankApp();
+    await new MakeAuthCommand().handle(fakeInput(root).input);
+    const key = '@marmeon/auth:react/modules/auth';
+    const version = (JSON.parse(readFileSync(join(import.meta.dirname, '../package.json'), 'utf8')) as { version: string }).version;
+    const recorded = readStubManifest(root);
+    recordStubSet(root, 'other:stubs', { package: 'other', version: '1.0.0', files: [{ path: 'modules/auth/routes.ts', stub: 'x/routes.ts' }] });
+    // The set as an old run or a hand edit left it: another version, one file.
+    recordStubSet(root, key, { package: '@marmeon/auth', version: '0.0.1', files: [{ path: 'modules/auth/routes.ts', stub: 'stubs/react/modules/auth/routes.ts' }] });
+    writeFileSync(join(root, 'modules/auth/routes.ts'), '// changed by the app\n');
+    expect(await new MakeAuthCommand().handle(fakeInput(root, { force: true }).input)).toBe(0);
+    const after = readStubManifest(root);
+    if (!recorded.ok || !after.ok) throw new Error('unreadable');
+    expect(after.value!.sets[key]).toEqual(recorded.value!.sets[key]);
+    expect(after.value!.sets[key]!.version).toBe(version);
+    expect(Object.keys(after.value!.sets[key]!.files).length).toBeGreaterThan(100);
+    expect(after.value!.sets['other:stubs']?.version).toBe('1.0.0');
+  });
+
+  it('writes no module when marmeon-stubs.json is of a newer Marmeon', async () => {
+    const root = blankApp();
+    const newer = '{"format":2,"sets":{}}\n';
+    writeFileSync(join(root, 'marmeon-stubs.json'), newer);
+    const { input, lines, spawned } = fakeInput(root);
+    expect(await new MakeAuthCommand().handle(input)).toBe(1);
+    expect(lines).toEqual(['✗ marmeon-stubs.json was written by a newer Marmeon — update the packages.']);
+    expect(existsSync(join(root, 'modules/auth'))).toBe(false);
+    expect(spawned).toEqual([]);
+    expect(readFileSync(join(root, 'marmeon-stubs.json'), 'utf8')).toBe(newer);
   });
 
   it('names every package its templates import — the module\'s in NEEDED, its tests\' in NEEDED_FOR_TESTS', () => {

@@ -151,6 +151,7 @@ A reader never guesses and never falls back to a default.
 | [Encrypted values](encryption.md#what-the-key-protects) | a version byte, and a context per use (`cookie:<name>`, `session:<key>`, `queue:v1:<job>`) | `DecryptError` | `DecryptError` |
 | [API tokens](api-tokens.md#the-token-format) | the prefix, and a hash under its own domain | not a token: 401, like an unknown one | no longer valid: 401, like an unknown one |
 | [Generated types](queries.md#table-types) (`bootstrap/routes.ts`, `bootstrap/database.d.ts`) | `// @marmeon-format 1` on the third line | `--check` fails with "update `@marmeon/*`"; no command overwrites it | `--check` says another version wrote it; regenerate |
+| [Copied files](starter-kit.md#what-the-auth-module-holds) (`marmeon-stubs.json`) | `format` in the file | `make:auth` stops and writes nothing | `make:auth` stops and writes nothing: there is no older version |
 | [Schema projection](migrations.md#what-the-migrations-describe) (`.marmeon/schema.json`) | `format` in the file, and the version of `@marmeon/database` | computed again and written over: the file is a cache | computed again and written over |
 | [`--json` of a command](console.md) | `format`, the first key | n/a: the command prints its newest | n/a |
 
@@ -168,7 +169,7 @@ Some formats have no version of their own and are kept stable another way:
   does so with the same care as a renamed column.
 
 Fixtures sit under `__fixtures__/formats/`, one per version: the page and region object, the job record, the Redis member, queued
-listeners, mails and notifications, the session payload, the record of migrations, API tokens and the `--json` documents. A test reads each
+listeners, mails and notifications, the session payload, the record of migrations, API tokens, the manifest of copied files and the `--json` documents. A test reads each
 directory with the current code. A pull request that changes or deletes a fixture is a `breaking` one. [Changing a stored or wire format](../CONTRIBUTING.md#changing-a-stored-or-wire-format)
 says how a format moves on.
 

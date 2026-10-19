@@ -1,7 +1,8 @@
 import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { editDefinitionFile, importedBindings } from '@marmeon/core';
+import { readStubManifest, recordStubSet, STUB_MANIFEST } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 
 /**
@@ -67,9 +68,31 @@ export class MakeAuthCommand {
       return 1;
     }
 
+    // Read before anything is written: a manifest of a newer Marmeon is not ours to overwrite, and then the module is not either.
+    const manifest = readStubManifest(input.root);
+    if (!manifest.ok) {
+      input.output.error(manifest.error.message);
+      return 1;
+    }
+
     cpSync(source, target, { recursive: true, force: true });
     const files = (readdirSync(target, { recursive: true }) as string[]).filter((file) => /\.\w+$/.test(file));
     input.output.success(`Created modules/auth (${files.length} files)`);
+    // The migrations have their own marks (`@marmeon-stub`) and are never replaced once they ran, so they are not recorded.
+    // Listed from the templates, not from the target: with --force the app may hold files of its own next to them.
+    const version = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
+    const copied = (readdirSync(source, { recursive: true, withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => relative(source, join(entry.parentPath, entry.name)).split(sep).join('/'))
+      .filter((file) => !file.startsWith('migrations/'))
+      .sort();
+    const recorded = recordStubSet(input.root, `@marmeon/auth:${adapter}/modules/auth`, {
+      package: '@marmeon/auth',
+      version,
+      files: copied.map((file) => ({ path: `modules/auth/${file}`, stub: `stubs/${adapter}/modules/auth/${file}` })),
+    });
+    if (recorded.ok) input.output.success(`Recorded the module's files in ${STUB_MANIFEST} (version ${version})`);
+    else input.output.warn(recorded.error.message);
 
     const registered = register(join(input.root, 'bootstrap', 'app.ts'));
     if (registered.status === 'added') input.output.success('Registered the module in bootstrap/app.ts');

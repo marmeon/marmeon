@@ -55,6 +55,11 @@ it(
     expect(generated.out).toContain('Created modules/auth');
     expect(generated.out).toContain('Wrote bootstrap/routes.ts');
     expect(generated.code).toBe(0);
+    // … and recorded the copied files, where they came from and their hashes (the migrations carry their own mark).
+    const stubs = JSON.parse(readFileSync(join(root, 'marmeon-stubs.json'), 'utf8')) as { format: number; sets: Record<string, { package: string; files: Record<string, unknown> }> };
+    expect(stubs.format).toBe(1);
+    expect(stubs.sets['@marmeon/auth:react/modules/auth']?.package).toBe('@marmeon/auth');
+    expect(stubs.sets['@marmeon/auth:react/modules/auth']?.files).toHaveProperty(['modules/auth/routes.ts']);
     // make:auth ran `marmeon route:types`: the module's routes, controllers and views are typed.
     const routeTypes = readFileSync(join(root, 'bootstrap/routes.ts'), 'utf8');
     expect(routeTypes).toContain("'home': { method: 'get'; path: '/'; controller: typeof ShowHomeController };");
