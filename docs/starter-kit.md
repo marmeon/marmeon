@@ -38,7 +38,8 @@ framework bring them.
 template it came from in `@marmeon/auth`, the version of the package and the hash of what it wrote (line endings do not count). Commit it with the
 module. The file belongs to the framework, so do not edit it by hand; without it, where a file came from is unknown. The migrations are not
 in it, they carry their own mark, `// @marmeon-stub`. After a merge conflict in it, take one side: the hashes then match that side. A file from a
-newer Marmeon makes `make:auth` stop before it writes anything.
+newer Marmeon makes `make:auth` stop before it writes anything. `create-marmeon` writes the file first, with the sets
+`create-marmeon:base` (and `create-marmeon:kit` for the starter kit); `make:auth` adds its own set to it.
 
 The module is wiring and pages: the repository, the routes, the controllers, the views, the mails and the migrations. About
 sign-ins, passwords, factors and sessions it decides nothing: the limits, the checks, the single-use links and the ending of sessions are

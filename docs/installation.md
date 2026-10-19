@@ -77,6 +77,11 @@ ends the run with exit code 130.
 The creator copies the app's template, writes its `package.json` and `.env`, installs the dependencies and runs the app's own
 generators. It then creates a git repository with one commit, unless the directory is already inside a repository.
 
+The creator also writes `marmeon-stubs.json`, which records the version and the hash of every file it copied unchanged. Files it
+fills in for your app or that commands rewrite, namely `package.json`, `.env.example`, `.env.test`, `README.md`, `index.html`,
+`bootstrap/app.ts`, `bootstrap/client.tsx`, `bootstrap/head.ts` and the generated types `bootstrap/routes.ts` and
+`bootstrap/database.d.ts`, and the migrations are not in it. [The starter kit](starter-kit.md#what-the-auth-module-holds) says what the file is for.
+
 ### The starter kit
 
 By default you get the starter kit. It is a complete app with accounts:

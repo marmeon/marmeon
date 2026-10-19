@@ -1,0 +1,87 @@
+{
+  "format": 1,
+  "sets": {
+    "create-marmeon:base": {
+      "files": {
+        ".gitignore": {
+          "sha256": "sha256:fc277ea69949460fee66391280a769f88c0db613b88a5754ddf438fe0491f2c9",
+          "stub": "template/base/_gitignore"
+        },
+        ".oxlintrc.json": {
+          "sha256": "sha256:48fa99ab5c602ef3c94af60d4ab152a9ec690172c370c65ba7cca95de375350c",
+          "stub": "template/base/.oxlintrc.json"
+        },
+        "bootstrap/i18n.ts": {
+          "sha256": "sha256:150768d6c962ecf49214b05636c90c15c62a1a259c03d57db4922c614f4b388b",
+          "stub": "template/base/bootstrap/i18n.ts"
+        },
+        "bootstrap/pages.ts": {
+          "sha256": "sha256:1e36638e8b83d9fd5a1b610bf3d479ad0736eff6fd9b8c117bd5469d8045fed1",
+          "stub": "template/base/bootstrap/pages.ts"
+        },
+        "bootstrap/ssr.tsx": {
+          "sha256": "sha256:a2a660c35a8996d5a9b66b34752fd2fa215389a35d81e9160417a12d8212f3da",
+          "stub": "template/base/bootstrap/ssr.tsx"
+        },
+        "config/app.ts": {
+          "sha256": "sha256:1e30315c8b3a0d33552015b76c03c157cf2f6f684b911a3f85fa3c9bc5cd257c",
+          "stub": "template/base/config/app.ts"
+        },
+        "modules/.gitkeep": {
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stub": "template/base/modules/.gitkeep"
+        },
+        "modules/system/index.ts": {
+          "sha256": "sha256:e82d9334c5632bad9f6ed14a323dc144ce306eb857932c6ed2bc83bc18ce367f",
+          "stub": "template/base/modules/system/index.ts"
+        },
+        "modules/system/system.test.ts": {
+          "sha256": "sha256:d4aaa2ee7704abf14840cbfd82ebe9f4e0031e76bcb2d5279e75b12d41a60d2f",
+          "stub": "template/base/modules/system/system.test.ts"
+        },
+        "storage/.gitignore": {
+          "sha256": "sha256:dffe7753c3a67e72904de53fc47df8d605c0366a66d8c0948a4cf00ad96594f9",
+          "stub": "template/base/storage/_gitignore"
+        },
+        "storage/app/.gitignore": {
+          "sha256": "sha256:e24cf56b5c1474eb64aded7a4124dd6bddbaed7277bc344e019b4b847129e10e",
+          "stub": "template/base/storage/app/_gitignore"
+        },
+        "storage/app/private/.gitignore": {
+          "sha256": "sha256:240a3e0d37d2e86b614063f5347eb02d4f99ca6c254de6b82871ff8d95532a7d",
+          "stub": "template/base/storage/app/private/_gitignore"
+        },
+        "storage/app/public/.gitignore": {
+          "sha256": "sha256:240a3e0d37d2e86b614063f5347eb02d4f99ca6c254de6b82871ff8d95532a7d",
+          "stub": "template/base/storage/app/public/_gitignore"
+        },
+        "storage/framework/.gitignore": {
+          "sha256": "sha256:6a560b2b231596effd71fb9e208fd914ba449b951eaa27507d7ce82593d360f2",
+          "stub": "template/base/storage/framework/_gitignore"
+        },
+        "storage/framework/cache/.gitignore": {
+          "sha256": "sha256:240a3e0d37d2e86b614063f5347eb02d4f99ca6c254de6b82871ff8d95532a7d",
+          "stub": "template/base/storage/framework/cache/_gitignore"
+        },
+        "storage/framework/sessions/.gitignore": {
+          "sha256": "sha256:240a3e0d37d2e86b614063f5347eb02d4f99ca6c254de6b82871ff8d95532a7d",
+          "stub": "template/base/storage/framework/sessions/_gitignore"
+        },
+        "tsconfig.json": {
+          "sha256": "sha256:4d30f7b08a083e1e77d03bdda5b3550499585e2f1102841a573e0e888b4d65d2",
+          "stub": "template/base/tsconfig.json"
+        },
+        "vite.config.ts": {
+          "sha256": "sha256:6423bb4a33db28605d36aa489d19d8272e09813579e288d30b982c7f7ed87de1",
+          "stub": "template/base/vite.config.ts"
+        },
+        "vitest.config.ts": {
+          "sha256": "sha256:25a3932acce95a0271a0fd0b2eb9667348c4f77c2c7881a75c541892c394d513",
+          "stub": "template/base/vitest.config.ts"
+        }
+      },
+      "package": "create-marmeon",
+      "version": "0.3.0"
+    }
+  }
+}

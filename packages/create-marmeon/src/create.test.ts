@@ -1,11 +1,12 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { main, NO_DIRECTORY, USAGE, type Io } from './main.ts';
-import { appManifest, filesUnder, KIT_DEV_DEPENDENCIES, nameTitles, PNPM_VERSION, readTarEntry, TEMPLATE, TEMPLATE_APP_CONSTANT, TEMPLATE_TITLE, writeTitle } from './template.ts';
+import { appManifest, appPath, filesUnder, KIT_DEV_DEPENDENCIES, nameTitles, PERSONALIZED, PNPM_VERSION, readTarEntry, stubSets, TEMPLATE, TEMPLATE_APP_CONSTANT, TEMPLATE_TITLE, writeStubManifest, writeTitle } from './template.ts';
+import { readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
@@ -109,7 +110,7 @@ describe('create-marmeon — the app', () => {
     expect((await create(cwd, ['blank', '--minimal', '--no-install', '--no-git'])).code).toBe(0);
     const app = join(cwd, 'blank');
     const own = new Set(['package.json', 'tsconfig.json', 'README.md', 'index.html', 'bootstrap/head.ts', '.env', '.env.test']);
-    expect(filesUnder(app).filter((file) => file !== '.env')).toEqual([...new Set([...blankAppFiles(), 'README.md'])].sort());
+    expect(filesUnder(app).filter((file) => file !== '.env')).toEqual([...new Set([...blankAppFiles(), 'README.md', 'marmeon-stubs.json'])].sort());
     for (const file of blankAppFiles().filter((name) => !own.has(name))) {
       expect(readFileSync(join(app, file), 'utf8'), file).toBe(readFileSync(join(blank, file), 'utf8'));
     }
@@ -312,6 +313,104 @@ describe('create-marmeon — the framework from tarballs (MARMEON_CREATE_TARBALL
       source: { version: '1.2.3' },
     });
     expect(manifest).toEqual({ name: 'mine', version: '0.0.0', packageManager: `pnpm@${PNPM_VERSION}`, dependencies: { '@marmeon/core': '1.2.3', react: '^19' } });
+  });
+});
+
+describe('create-marmeon — marmeon-stubs.json', () => {
+  type Written = { format: number; sets: Record<string, { package: string; version: string; files: Record<string, { stub: string; sha256: string }> }> };
+  const manifestOf = (app: string) => JSON.parse(readFileSync(join(app, 'marmeon-stubs.json'), 'utf8')) as Written;
+  const templateFiles = (part: 'base' | 'kit') => filesUnder(join(TEMPLATE, part)).map((file) => ({ file, path: appPath(file) }));
+
+  it('records two sets for a kit app and only the base for --minimal, at this package\'s version', async () => {
+    const cwd = workspace();
+    expect((await create(cwd, ['kit', '--no-install', '--no-git'])).code).toBe(0);
+    expect((await create(cwd, ['bare', '--minimal', '--no-install', '--no-git'])).code).toBe(0);
+    const kit = manifestOf(join(cwd, 'kit'));
+    expect(kit.format).toBe(1);
+    expect(Object.keys(kit.sets)).toEqual(['create-marmeon:base', 'create-marmeon:kit']);
+    expect(Object.keys(manifestOf(join(cwd, 'bare')).sets)).toEqual(['create-marmeon:base']);
+    for (const set of Object.values(kit.sets)) expect(set).toMatchObject({ package: 'create-marmeon', version: ownVersion });
+    expect(kit.sets['create-marmeon:kit']!.files['styles/app.css']).toMatchObject({ stub: 'template/kit/styles/app.css' });
+    expect(kit.sets['create-marmeon:base']!.files['.gitignore']).toMatchObject({ stub: 'template/base/_gitignore' });
+  });
+
+  it('leaves out the files that are personalized and the migrations; every other file of the template is in it', async () => {
+    const cwd = workspace();
+    expect((await create(cwd, ['kit', '--no-install', '--no-git'])).code).toBe(0);
+    const recorded = new Set(Object.values(manifestOf(join(cwd, 'kit')).sets).flatMap((set) => Object.keys(set.files)));
+    for (const path of PERSONALIZED) expect(recorded.has(path), path).toBe(false);
+    expect([...recorded].filter((path) => /^modules\/[^/]+\/migrations\//.test(path))).toEqual([]);
+    // A new file in the template is recorded, or someone says here why it is not.
+    for (const { file, path } of [...templateFiles('base'), ...templateFiles('kit')]) {
+      const skipped = PERSONALIZED.includes(path) || /^modules\/[^/]+\/migrations\//.test(path);
+      expect(recorded.has(path) || skipped, file).toBe(true);
+    }
+    // A file the kit overwrites is in the kit's set alone.
+    const sets = Object.values(manifestOf(join(cwd, 'kit')).sets);
+    const all = sets.flatMap((set) => Object.keys(set.files));
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it('a file both parts hold belongs to the kit only', () => {
+    const template = tempDir('marmeon-create-template-');
+    for (const [part, file] of [['base', 'a.txt'], ['base', 'shared.txt'], ['kit', 'shared.txt'], ['kit', 'b.txt']] as const) {
+      mkdirSync(join(template, part), { recursive: true });
+      writeFileSync(join(template, part, file), `${part}\n`);
+    }
+    const [base, kit] = stubSets(true, template);
+    expect(base!.files).toEqual([{ path: 'a.txt', stub: 'template/base/a.txt' }]);
+    expect(kit!.files.map((file) => file.path)).toEqual(['b.txt', 'shared.txt']);
+  });
+
+  it('holds the hash of every file as it lies in the app, line endings aside', async () => {
+    const cwd = workspace();
+    expect((await create(cwd, ['kit', '--no-install', '--no-git'])).code).toBe(0);
+    const app = join(cwd, 'kit');
+    const sets = manifestOf(app).sets;
+    for (const set of Object.values(sets)) {
+      for (const [path, { stub, sha256 }] of Object.entries(set.files)) {
+        expect(sha256, path).toBe(stubHash(readFileSync(join(app, path))));
+        // … and the template has those very bytes: nothing was changed on the way (the stub is relative to this package).
+        expect(sha256, stub).toBe(stubHash(readFileSync(new URL(`../${stub}`, import.meta.url))));
+      }
+    }
+  });
+
+  it('hashes, sorts and writes like core for a CRLF file, files out of order and an empty set', () => {
+    const dir = tempDir('marmeon-create-crlf-');
+    writeFileSync(join(dir, 'z.txt'), 'a\r\nb\r\n');
+    mkdirSync(join(dir, 'sub'));
+    writeFileSync(join(dir, 'sub/a.txt'), 'a\nb\n');
+    writeFileSync(join(dir, 'b.bin'), Buffer.from([0, 255, 13, 10, 128]));
+    const files = [{ path: 'z.txt', stub: 'template/base/z.txt' }, { path: 'sub/a.txt', stub: 'template/base/sub/a.txt' }, { path: 'b.bin', stub: 'template/base/b.bin' }];
+    writeStubManifest(dir, [{ key: 'create-marmeon:kit', files: [] }, { key: 'create-marmeon:base', files }], '0.0.0');
+    const mine = readFileSync(join(dir, STUB_MANIFEST), 'utf8');
+    rmSync(join(dir, STUB_MANIFEST));
+    expect(recordStubSet(dir, 'create-marmeon:kit', { package: 'create-marmeon', version: '0.0.0', files: [] }).ok).toBe(true);
+    expect(recordStubSet(dir, 'create-marmeon:base', { package: 'create-marmeon', version: '0.0.0', files }).ok).toBe(true);
+    expect(readFileSync(join(dir, STUB_MANIFEST), 'utf8')).toBe(mine);
+    expect(stubHash(Buffer.from('a\r\nb\n'))).toBe(stubHash(Buffer.from('a\nb\n')));
+  });
+
+  it('writes the bytes recordStubSet of @marmeon/core writes, and the reader of core takes it', async () => {
+    const cwd = workspace();
+    for (const argv of [['kit'], ['bare', '--minimal']]) {
+      expect((await create(cwd, [...argv, '--no-install', '--no-git'])).code).toBe(0);
+      const app = join(cwd, argv[0]!);
+      const written = readFileSync(join(app, 'marmeon-stubs.json'), 'utf8');
+      const read = readStubManifest(app);
+      expect(read.ok, argv[0]).toBe(true);
+      const copy = tempDir('marmeon-create-copy-');
+      for (const set of Object.values(manifestOf(app).sets)) for (const path of Object.keys(set.files)) {
+        mkdirSync(join(copy, path, '..'), { recursive: true });
+        writeFileSync(join(copy, path), readFileSync(join(app, path)));
+      }
+      for (const [key, set] of Object.entries(manifestOf(app).sets)) {
+        const files = Object.entries(set.files).map(([path, { stub }]) => ({ path, stub }));
+        expect(recordStubSet(copy, key, { package: set.package, version: set.version, files }).ok).toBe(true);
+      }
+      expect(readFileSync(join(copy, STUB_MANIFEST), 'utf8')).toBe(written);
+    }
   });
 });
 
