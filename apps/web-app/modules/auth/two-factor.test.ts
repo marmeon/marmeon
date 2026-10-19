@@ -246,7 +246,7 @@ describe('two-factor authentication', () => {
       const { ada, as } = await passwordOnly();
       const done = await as().post('/settings/two-factor/verify', { form: { code: twoFactorCode(KEY) } }).assertRedirect();
       await app.withCookie(SESSION, done.cookie(SESSION)!).put('/settings/email', { form: { current_password: 'password', email: 'new@example.com' } }).assertRedirect();
-      await app.assertDatabaseHas('users', { id: ada.id, pending_email: 'new@example.com' });
+      await app.assertDatabaseHas('email_changes', { user_id: ada.id, email: 'new@example.com' });
     });
   });
 

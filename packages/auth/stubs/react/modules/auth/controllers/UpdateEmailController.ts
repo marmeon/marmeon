@@ -1,15 +1,11 @@
-import { Auth, AuthConfig, type Authenticated } from '@marmeon/auth';
-import { TwoFactor } from '@marmeon/auth/two-factor';
-import { Clock } from '@marmeon/core';
-import { Connections } from '@marmeon/database';
+import { createHash } from 'node:crypto';
+import { type Authenticated, EmailChange } from '@marmeon/auth';
+import { RateLimiter } from '@marmeon/cache';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
-import { Translator, Translators } from '@marmeon/i18n';
-import { Mailer } from '@marmeon/mail';
+import { Translator } from '@marmeon/i18n';
 import { Queue } from '@marmeon/queue';
 import { rules as r } from '@marmeon/validation';
-import { EMAIL_CHANGE_MINUTES, newEmailChangeToken } from '../email-change.ts';
 import { SendEmailChangeMailJob } from '../jobs/SendEmailChangeMailJob.ts';
-import { EmailChangedMail } from '../mail/EmailChangedMail.ts';
 import { passwordCheckMessage } from '../password-errors.ts';
 import { UserRepository } from '../UserRepository.ts';
 import { VerificationMailer } from '../verification.ts';
@@ -21,94 +17,55 @@ export const UpdateEmailRequest = defineRequest({
 });
 
 /**
- * A new address — on the security page, behind confirmedPassword() and confirmedSecondFactor() (the controller asks for the
- * factor itself too), and with the current password in the same form: a passkey alone can confirm sudo mode, and a hijacked session must not take over the account by changing the address and then resetting the password. Private registration (the default): the change is pending — the
- * new address waits beside the old one, and a link goes to it; the account's address changes only once that link is clicked
- * (signed in). A free address and one another account has get the same answer in the same time: this request does the same
- * either way — one write, one job. The worker decides: the link to a free address, a note to the owner of a taken one.
- *
- * With `AUTH_PRIVATE_REGISTRATION=false` the address changes at once, unverified until confirmed, the old one is told —
- * and "taken" is a field error.
+ * A new address — on the security page, behind confirmedPassword() and confirmedSecondFactor(), with the current password in the same
+ * form. `EmailChange` decides everything that matters for security (the factor, the password under its throttle, the single-use link
+ * bound to this account); this controller wires it to the `users` table, the queue and the texts. Private registration (the default):
+ * the change waits and a worker mails the link, the same for a free address and a taken one. With `AUTH_PRIVATE_REGISTRATION=false`
+ * the address changes at once, unverified, and "taken" is a field error. The old address is told by the `EmailChanged` listener.
  */
 export class UpdateEmailController extends Controller {
   static request = UpdateEmailRequest;
 
-  readonly #connections: Connections;
+  readonly #emailChange: EmailChange;
   readonly #users: UserRepository;
-  readonly #twoFactor: TwoFactor;
   readonly #queue: Queue;
-  readonly #clock: Clock;
   readonly #translator: Translator;
-  readonly #translators: Translators;
   readonly #verification: VerificationMailer;
-  readonly #mailer: Mailer;
-  readonly #private: boolean;
-  readonly #auth: Auth;
+  readonly #limiter: RateLimiter;
 
-  constructor(
-    connections: Connections,
-    users: UserRepository,
-    twoFactor: TwoFactor,
-    queue: Queue,
-    clock: Clock,
-    translator: Translator,
-    translators: Translators,
-    verification: VerificationMailer,
-    mailer: Mailer,
-    config: AuthConfig,
-    auth: Auth,
-  ) {
+  constructor(emailChange: EmailChange, users: UserRepository, queue: Queue, translator: Translator, verification: VerificationMailer, limiter: RateLimiter) {
     super();
-    this.#connections = connections;
+    this.#emailChange = emailChange;
     this.#users = users;
-    this.#twoFactor = twoFactor;
     this.#queue = queue;
-    this.#clock = clock;
     this.#translator = translator;
-    this.#translators = translators;
     this.#verification = verification;
-    this.#mailer = mailer;
-    this.#private = config.privateRegistration;
-    this.#auth = auth;
+    this.#limiter = limiter;
   }
 
   async handle(ctx: ContextOf<typeof UpdateEmailRequest> & Authenticated) {
-    // Also without the route's confirmedSecondFactor(): a route added by hand to this controller must not skip the factor.
-    await this.#twoFactor.requireRecentProof('changeEmail');
-    // Typed now, whatever confirmed sudo mode: a session that got in by a passkey alone must not be able to move the account to another address.
-    const checked = await this.#auth.checkPassword(ctx.body.current_password);
-    if (!checked.ok) throw new ValidationError({ current_password: [passwordCheckMessage(this.#translator, checked.error)] });
-    const { email } = ctx.body;
-    if (!this.#private) return this.#changeNow(ctx.user, email);
+    const { email, current_password: password } = ctx.body;
     // The account's own address again: a pending change is dropped.
     if (email === ctx.user.email) {
-      await this.#users.cancelEmailChange(ctx.user.id);
+      await this.#emailChange.cancel();
       return this.back('/settings/security');
     }
-    const { token, hash } = newEmailChangeToken();
-    const expiresAt = new Date(this.#clock.now() + EMAIL_CHANGE_MINUTES * 60_000);
-    // One transaction: the pending change and its job, or neither. The job is composed by a worker, never here — a mail
-    // rendered for one kind of address only would show in the time.
-    await this.#connections.transaction(async () => {
-      await this.#users.requestEmailChange(ctx.user.id, { email, tokenHash: hash, expiresAt });
-      await this.#queue.dispatch(SendEmailChangeMailJob, { user: ctx.user.id, email, token, locale: this.#translator.locale }, { queue: 'mail' });
+    const requested = await this.#emailChange.request(email, password, {
+      // The job is composed by a worker, never here: a mail rendered for one kind of address only would show in the time.
+      deliver: async (change) => {
+        await this.#queue.dispatch(SendEmailChangeMailJob, { user: ctx.user.id, email: change.email, token: change.token, locale: this.#translator.locale }, { queue: 'mail' });
+      },
+      apply: (id, address, verifiedAt) => this.#users.applyEmailChange(id, address, verifiedAt),
     });
-    // The same answer for both — and no address in it.
-    return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.email_change_sent') });
-  }
-
-  /** `AUTH_PRIVATE_REGISTRATION=false`: the new address at once — "taken" tells a signed-in user (in sudo mode) that it has an account. */
-  async #changeNow(user: Authenticated['user'], email: string) {
-    if (email === user.email) return this.back('/settings/security');
-    const changed = await this.#users.changeEmail(user.id, email);
-    if (!changed.ok) {
-      if (changed.error.kind === 'duplicate') throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { email });
-      return this.redirect().route('auth.login');
+    if (!requested.ok) {
+      if (requested.error.kind === 'duplicate') throw new ValidationError({ email: [this.#translator.get('auth.validation.email_taken')] }, { email });
+      throw new ValidationError({ current_password: [passwordCheckMessage(this.#translator, requested.error)] });
     }
-    // Both queued (composed now, sent by a worker): the answer does not wait for the mail server.
-    await this.#verification.send(changed.value);
-    // To the old address, in the user's language (not necessarily this request's).
-    await this.#mailer.queue(new EmailChangedMail(user.name, user.email, email, this.#translators.for(user.locale)), { queue: 'mail' });
+    // The same answer for a free address and a taken one — and no address in it.
+    if (requested.value.pending) return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.email_change_sent') });
+    // Without private registration the address is written at once, so there is no pause between requests: at most one confirmation mail an
+    // hour goes to an address, or an account could alternate two requests and fill a stranger's inbox. The address is changed all the same.
+    if (await this.#limiter.attempt(`email-change-verification:${createHash('sha256').update(email).digest('hex')}`, 1, 3600)) await this.#verification.send(requested.value.value);
     return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.email_changed') });
   }
 }

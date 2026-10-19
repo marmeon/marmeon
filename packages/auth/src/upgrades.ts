@@ -21,7 +21,10 @@ export const SESSION_KEYS_MIGRATION = new URL('../stubs/migrations/fill_empty_se
 /** The migration that drops the `remember_tokens` table, whose tokens live on the rows of `sign_ins` now. */
 export const REMEMBER_TOKENS_DROP_MIGRATION = new URL('../stubs/migrations/drop_remember_tokens_table.ts', import.meta.url);
 
-/** The upgrades of the auth tables: the reissue of the API tokens, random session keys for accounts that have none, the end of `remember_tokens`, and the remember-me columns of `sign_ins`. */
+/** The migration that moves the pending changes of address from three columns of `users` into their own table, `email_changes`. */
+export const EMAIL_CHANGES_MOVE_MIGRATION = new URL('../stubs/migrations/move_email_changes_to_their_own_table.ts', import.meta.url);
+
+/** The upgrades of the auth tables: the reissue of the API tokens, random session keys for accounts that have none, the end of `remember_tokens`, the table of the changes of address, and the remember-me columns of `sign_ins`. */
 export function authMigrationUpgrades() {
   return [
     {
@@ -44,6 +47,13 @@ export function authMigrationUpgrades() {
       name: 'drop_remember_tokens_table',
       createdBy: ['create_remember_tokens_table'],
       contents: readFileSync(REMEMBER_TOKENS_DROP_MIGRATION, 'utf8'),
+    },
+    {
+      set: 'auth',
+      revision: 5,
+      name: 'move_email_changes_to_their_own_table',
+      createdBy: ['create_users_table'],
+      contents: readFileSync(EMAIL_CHANGES_MOVE_MIGRATION, 'utf8'),
     },
     {
       set: 'sign-ins',

@@ -25,6 +25,19 @@ declare module '@marmeon/database' {
       expiration: number;
     };
     /**
+     * Owned by `auth`.
+     * Primary key: user_id.
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
+    email_changes: {
+      user_id: number;
+      email: string;
+      token_hash: Secret<string>;
+      session_key: Secret<string | null>;
+      expires_at: Timestamp;
+      created_at: Timestamp;
+    };
+    /**
      * Owned by `system`.
      * Primary key: uuid.
      */
@@ -238,9 +251,6 @@ declare module '@marmeon/database' {
       session_key: Secret<string | null>;
       bio: Generated<string>;
       first_verified_at: Timestamp | null;
-      pending_email: string | null;
-      pending_email_token: Secret<string | null>;
-      pending_email_expires_at: Timestamp | null;
       created_at: Generated<Timestamp>;
       updated_at: Generated<Timestamp>;
       email_verified_at: Timestamp | null;
@@ -249,6 +259,9 @@ declare module '@marmeon/database' {
     };
   }
   interface Relations {
+    email_changes: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
     login_activity: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
@@ -271,6 +284,7 @@ declare module '@marmeon/database' {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
     users: {
+      email_changes: { kind: 'hasOne'; table: 'email_changes'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
       login_activity: { kind: 'hasOne'; table: 'login_activity'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
       passkeys: { kind: 'hasMany'; table: 'passkeys'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
@@ -283,6 +297,7 @@ declare module '@marmeon/database' {
   interface TableOwners {
     cache: 'system';
     cache_locks: 'system';
+    email_changes: 'auth';
     failed_jobs: 'system';
     jobs: 'system';
     login_activity: 'user-profile';

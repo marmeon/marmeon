@@ -28,7 +28,7 @@ export class RegenerateRecoveryCodesController extends Controller {
     if ((await this.#twoFactor.status()).factors.length === 0) return this.redirect().route('auth.two-factor');
     const made = await this.#twoFactor.regenerateRecoveryCodes(ctx.body.password);
     if (!made.ok) {
-      const message = made.error.kind === 'throttled' ? (made.error.account ? this.#translator.get('auth.validation.throttled_account') : this.#translator.get('auth.validation.throttled', { seconds: made.error.retryAfter })) : this.#translator.get('auth.validation.password_incorrect');
+      const message = made.error.kind === 'throttled' ? (made.error.account ? this.#translator.get('auth.validation.throttled_account', { seconds: made.error.retryAfter }) : this.#translator.get('auth.validation.throttled', { seconds: made.error.retryAfter })) : this.#translator.get('auth.validation.password_incorrect');
       throw new ValidationError({ password: [message] });
     }
     return this.view('auth/RecoveryCodes', { codes: [...made.value], tokens: null }).layer(CODES_LAYER);

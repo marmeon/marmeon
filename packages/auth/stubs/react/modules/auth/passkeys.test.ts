@@ -122,7 +122,7 @@ describe('passkeys', { timeout: 30_000 }, () => {
     for (let attempt = 0; attempt < 20; attempt++) await limiter.hit(`password-check-hour:account:${ada.id}`, 3600);
     const id = (await app.make(Connections).get<any>().selectFrom('passkeys').select('id').execute() as [{ id: number }])[0].id;
     const held = await app.withCookie(SESSION, otherCookie).expectingJson().post(`/settings/passkeys/${id}/remove`, { json: { password: 'password' } }).assertStatus(429);
-    expect(held.json()).toEqual({ field: 'password', error: 'Sign in again with your password to continue.' });
+    expect(held.json()).toEqual({ field: 'password', error: 'Too many password checks for this account. Please try again in 3,600 seconds, or sign in again with your password if you signed in without it.' });
     await app.withCookie(SESSION, otherCookie).get('/dashboard').assertAuthenticated(ada);
 
     // The owner typed the password to sign in: removing the passkey works, and the other device is out.

@@ -1,16 +1,16 @@
-import { Auth } from '@marmeon/auth';
-import { TwoFactor } from '@marmeon/auth/two-factor';
+import { Auth, EmailChange, TwoFactorState } from '@marmeon/auth';
 import { Limit, RateLimiter } from '@marmeon/cache';
 import { err, ok } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { UrlSigner } from '@marmeon/http';
 import type { Mailable } from '@marmeon/mail';
+import { Session as SessionService } from '@marmeon/session';
 import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import { UpdateEmailController } from './controllers/UpdateEmailController.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+import auth from './index.ts';
 import { SendEmailChangeMailJob } from './jobs/SendEmailChangeMailJob.ts';
 import { ConfirmNewEmailMail } from './mail/ConfirmNewEmailMail.ts';
 import { EmailChangedMail } from './mail/EmailChangedMail.ts';
@@ -27,13 +27,15 @@ beforeAll(warmUp, WARM_UP_TIMEOUT);
 let app: TestApp;
 let SESSION: string;
 beforeEach(async () => {
-  app = await createTestApp(application, { database: 'refresh' });
+  // No pause between two requests of an account: most tests ask more than once (the pause has a test of its own).
+  app = await createTestApp(application, { database: 'refresh', env: { AUTH_EMAIL_CHANGE_THROTTLE: '0' } });
   ({ session: SESSION } = cookieNames(app));
 });
 
 // The change of address with private registration (the default): pending until the link sent to the new address
 // is clicked; a free and a taken address get the same answer in the same time; the owner of a taken one gets a note. With
-// AUTH_PRIVATE_REGISTRATION=false it changes at once and says "taken".
+// AUTH_PRIVATE_REGISTRATION=false it changes at once and says "taken". The security decisions (the factor, the password's throttle, the single
+// use of the link) are @marmeon/auth's `EmailChange`, tested there; these tests show that this module is wired to it.
 
 type Session = ReturnType<TestApp['withCookie']>;
 /** Signed in with the password — which also confirms it: the security settings' sudo mode. */
@@ -57,6 +59,8 @@ const answer = (response: { status: number; headers: Headers; body: string }) =>
     .map(([name, value]) => [name, name === 'set-cookie' ? value.replace(/=[^;]*/, '=…') : value]),
   body: response.body,
 });
+/** The change waiting for `user`: the row of `email_changes` — `users` holds none. */
+const waiting = async (user: User) => app.make(Connections).get<any>().selectFrom('email_changes').select(['email', 'expires_at']).where('user_id', '=', user.id).executeTakeFirst();
 const pendingOn = async (session: Session) => ((await session.navigating().get('/settings/security').assertPage('auth/Security')).page()!.props as { pendingEmail: string | null }).pendingEmail;
 
 describe('changing the address (private registration)', () => {
@@ -68,7 +72,8 @@ describe('changing the address (private registration)', () => {
       .assertFlashed('toast', { message: 'We sent a link to the new address. Your address changes once you click it there — within 60 minutes, signed in.' });
     app.queue.assertDispatched(SendEmailChangeMailJob, { user: kj.id, email: 'katherine@nasa.example' });
     app.mail.assertNothingQueued(); // composed by a worker, never in the request (the time would show it)
-    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com', pending_email: 'katherine@nasa.example', email_verified_at: kj.email_verified_at });
+    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com', email_verified_at: kj.email_verified_at });
+    expect(await waiting(kj)).toMatchObject({ email: 'katherine@nasa.example' });
     expect(await pendingOn(session)).toBe('katherine@nasa.example');
 
     await app.queue.work();
@@ -79,7 +84,8 @@ describe('changing the address (private registration)', () => {
     app.travel({ minutes: 30 });
     await session.get(linkIn(ConfirmNewEmailMail)).assertRedirect('/users/me').assertFlashed('toast', { message: 'Your e-mail address is now katherine@nasa.example.' });
     const changed = await reload(kj);
-    expect(changed).toMatchObject({ email: 'katherine@nasa.example', pending_email: null, pending_email_expires_at: null });
+    expect(changed).toMatchObject({ email: 'katherine@nasa.example' });
+    expect(await waiting(kj)).toBeUndefined();
     expect(Math.abs(new Date(changed.email_verified_at!).getTime() - app.clock.now())).toBeLessThan(1000);
     app.mail.assertQueued(EmailChangedMail, (_mail, message) => message.to[0]!.address === 'kj@example.com' && message.text.includes('katherine@nasa.example'));
     await session.post('/logout');
@@ -165,8 +171,10 @@ describe('changing the address (private registration)', () => {
     tampered.pathname = tampered.pathname.replace(`/${kj.id}/`, `/${dv.id}/`);
     await asDv.expectingJson().get(tampered.pathname + tampered.search).assertForbidden();
     await app.get(link, { headers: { accept: 'text/html' } }).assertRedirect('/login');
-    expect(await reload(dv)).toMatchObject({ email: 'dv@example.com', pending_email: null });
-    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com', pending_email: 'new@example.com' });
+    expect(await reload(dv)).toMatchObject({ email: 'dv@example.com' });
+    expect(await waiting(dv)).toBeUndefined();
+    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com' });
+    expect(await waiting(kj)).toMatchObject({ email: 'new@example.com' });
     await asKj.get(link).assertRedirect('/users/me');
     expect((await reload(kj)).email).toBe('new@example.com');
   });
@@ -203,7 +211,7 @@ describe('changing the address (private registration)', () => {
     await app.queue.work();
     const link = linkIn(ConfirmNewEmailMail);
     app.travel({ minutes: 61 });
-    await app.make(Connections).get<any>().updateTable('users').set({ pending_email_expires_at: new Date(app.clock.now() + 3_600_000) }).where('id', '=', kj.id).execute();
+    await app.make(Connections).get<any>().updateTable('email_changes').set({ expires_at: new Date(app.clock.now() + 3_600_000) }).where('user_id', '=', kj.id).execute();
     await session.expectingJson().get(link).assertForbidden().assertExactJson({ message: 'Invalid signature.' });
     expect((await reload(kj)).email).toBe('kj@example.com');
   });
@@ -213,7 +221,7 @@ describe('changing the address (private registration)', () => {
     const session = await signIn(kj);
     await change(session, 'new@example.com');
     await app.queue.work();
-    await app.make(Connections).get<any>().updateTable('users').set({ pending_email_expires_at: new Date(app.clock.now() - 1000) }).where('id', '=', kj.id).execute();
+    await app.make(Connections).get<any>().updateTable('email_changes').set({ expires_at: new Date(app.clock.now() - 1000) }).where('user_id', '=', kj.id).execute();
     await session.expectingJson().get(linkIn(ConfirmNewEmailMail)).assertForbidden().assertExactJson({
       message: 'This link no longer works — it was used, a newer one replaced it, or it expired. Change your address again on the security page.',
     });
@@ -229,7 +237,8 @@ describe('changing the address (private registration)', () => {
     const link = linkIn(ConfirmNewEmailMail);
     await app.factory(UserFactory).create({ email: 'grace@example.com' }); // registered after the link went out
     await session.expectingJson().get(link).assertStatus(409).assertExactJson({ message: 'Another account uses this address by now. Your address stays as it was.' });
-    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com', pending_email: null });
+    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com' });
+    expect(await waiting(kj)).toBeUndefined();
     app.mail.assertNotQueued(EmailChangedMail);
   });
 
@@ -245,7 +254,8 @@ describe('changing the address (private registration)', () => {
     await session.expectingJson().get(link).assertForbidden().assertExactJson({
       message: 'This link no longer works — it was used, a newer one replaced it, or it expired. Change your address again on the security page.',
     });
-    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com', pending_email: null });
+    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com' });
+    expect(await waiting(kj)).toBeUndefined();
     expect(await pendingOn(session)).toBeNull();
   });
 
@@ -269,10 +279,89 @@ describe('changing the address (private registration)', () => {
     await session.expectingJson().get(link).assertForbidden();
   });
 
+  it('keeps no pending address in users — no other module reads one, and the token hash is a secret column', async () => {
+    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
+    await change(await signIn(kj), 'new@example.com');
+    expect(JSON.stringify(await reload(kj))).not.toContain('new@example.com');
+    expect(JSON.stringify(await app.make(Connections).get<any>().selectFrom('users').selectAll().execute())).not.toContain('new@example.com');
+    expect(auth.exposes, 'other modules read users, never email_changes').toEqual(['users']);
+    expect(Object.keys((await app.make(Connections).get<any>().selectFrom('email_changes').selectAll().executeTakeFirstOrThrow()) as object)).not.toContain('token_hash');
+  });
+
+  it('sends two mails an hour to an address for an account and three to it in all — a stranger cannot shut its owner out, nor fill its inbox', async () => {
+    const accounts = await Promise.all(['a', 'b', 'c', 'd'].map((name) => app.factory(UserFactory).create({ email: `${name}@example.com` })));
+    const toTarget = () => app.mail.queued(ConfirmNewEmailMail, (_mail, message) => message.to[0]!.address === 'target@example.com');
+    const [a, b, c, d] = accounts as [User, User, User, User];
+    const asA = await signIn(a);
+    // X, Y, X again: the first link of X is replaced, so the second must arrive.
+    for (const address of ['target@example.com', 'elsewhere@example.com', 'target@example.com']) {
+      await change(asA, address);
+      await app.queue.work();
+    }
+    expect(toTarget(), 'the second link of X arrives').toHaveLength(2);
+    for (const address of ['elsewhere@example.com', 'target@example.com']) {
+      await change(asA, address);
+      await app.queue.work();
+    }
+    expect(toTarget(), 'two an hour for an account').toHaveLength(2);
+    // Other accounts: each gets its own mail, up to three to the address in all.
+    for (const other of [b, c]) {
+      await change(await signIn(other), 'target@example.com');
+      await app.queue.work();
+    }
+    expect(toTarget(), 'three an hour to an address').toHaveLength(3);
+    app.travel({ minutes: 61 });
+    await change(await signIn(d), 'target@example.com');
+    await app.queue.work();
+    expect(toTarget(), 'an hour later the next one goes out').toHaveLength(4);
+  });
+
+  it('keeps the link when the same address is asked for again: one mail, and the first link still works', async () => {
+    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
+    const session = await signIn(kj);
+    await change(session, 'target@example.com');
+    await app.queue.work();
+    const link = linkIn(ConfirmNewEmailMail);
+    await change(session, 'target@example.com').assertRedirect('/settings/security');
+    await app.queue.work();
+    expect(app.mail.queued(ConfirmNewEmailMail)).toHaveLength(1);
+    await session.get(link).assertRedirect();
+    expect((await reload(kj)).email).toBe('target@example.com');
+  });
+
+  it('waits a minute after a request that sent a link — a second one inside the pause is answered alike and does nothing', async () => {
+    await app.close();
+    app = await createTestApp(application, { database: 'refresh' });
+    ({ session: SESSION } = cookieNames(app));
+    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
+    const session = await signIn(kj);
+    await change(session, 'first@example.com').assertRedirect('/settings/security');
+    await change(session, 'second@example.com').assertRedirect('/settings/security');
+    await app.queue.work();
+    expect(await waiting(kj)).toMatchObject({ email: 'first@example.com' });
+    app.mail.assertNotQueued(ConfirmNewEmailMail, (_mail, message) => message.to[0]!.address === 'second@example.com');
+    app.travel({ seconds: 61 });
+    await change(session, 'second@example.com').assertRedirect('/settings/security');
+    expect(await waiting(kj)).toMatchObject({ email: 'second@example.com' });
+  });
+
   it('throttles changes: the seventh a minute from one account gets 429', async () => {
     const session = await signIn(await app.factory(UserFactory).create({ email: 'kj@example.com' }));
     for (let i = 1; i <= 6; i++) await change(session, `new${i}@example.com`).assertRedirect('/settings/security');
     await change(session, 'new7@example.com').assertStatus(429);
+  });
+
+  it('does not use up the pause when the same address is asked for again — another address right after goes through', async () => {
+    await app.close();
+    app = await createTestApp(application, { database: 'refresh' });
+    ({ session: SESSION } = cookieNames(app));
+    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
+    const session = await signIn(kj);
+    await change(session, 'first@example.com');
+    app.travel({ seconds: 61 });
+    await change(session, 'first@example.com'); // still waiting: nothing is sent, and the pause stays free
+    await change(session, 'second@example.com');
+    expect(await waiting(kj)).toMatchObject({ email: 'second@example.com' });
   });
 
   it('the nightly prune clears the changes nobody confirmed in time — waiting ones stay', async () => {
@@ -282,18 +371,18 @@ describe('changing the address (private registration)', () => {
     await change(await signIn(kj), 'old-request@example.com');
     app.travelTo(Date.parse('2026-10-06T00:40:00Z'));
     await change(await signIn(dv), 'fresh-request@example.com');
-    expect(app.schedule.due('2026-10-06T03:10:00+02:00')).toContain('auth.prune-email-changes');
+    expect(app.schedule.due('2026-10-06T03:10:00+02:00')).toContain('auth:prune-tokens');
     const results = await app.schedule.run('2026-10-06T03:10:00+02:00');
-    expect(results.find((result) => result.task === 'auth.prune-email-changes')?.outcome).toBe('ran');
-    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com', pending_email: null, pending_email_expires_at: null });
-    expect(await reload(dv)).toMatchObject({ pending_email: 'fresh-request@example.com' });
+    expect(results.find((result) => result.task === 'auth:prune-tokens')?.outcome).toBe('ran');
+    expect(await waiting(kj)).toBeUndefined();
+    expect(await waiting(dv)).toMatchObject({ email: 'fresh-request@example.com' });
   });
 });
 
 describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', () => {
   beforeEach(async () => {
     await app.close();
-    app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
+    app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false', AUTH_EMAIL_CHANGE_THROTTLE: '0' } });
     ({ session: SESSION } = cookieNames(app));
   });
 
@@ -301,13 +390,26 @@ describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', () => {
     const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
     const session = await signIn(kj);
     await change(session, 'katherine@nasa.example').assertRedirect('/settings/security').assertFlashed('toast', { message: 'E-mail address changed. Please confirm the new one — we sent you a link.' });
-    expect(await reload(kj)).toMatchObject({ email: 'katherine@nasa.example', email_verified_at: null, pending_email: null });
+    expect(await reload(kj)).toMatchObject({ email: 'katherine@nasa.example', email_verified_at: null });
+    expect(await waiting(kj)).toBeUndefined();
     app.queue.assertNotDispatched(SendEmailChangeMailJob);
     app.mail.assertQueued(VerifyEmailMail, (_mail, message) => message.to[0]!.address === 'katherine@nasa.example');
     app.mail.assertQueued(EmailChangedMail, (_mail, message) => message.to[0]!.address === 'kj@example.com');
     expect(await pendingOn(session)).toBeNull();
     await change(session, 'katherine@nasa.example.com').assertRedirect('/settings/security');
     expect((await reload(kj)).email).toBe('katherine@nasa.example.com');
+  });
+
+  it('mails an address a confirmation link and the old address a note only once an hour — swapping between two addresses fills no inbox', async () => {
+    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
+    const session = await signIn(kj);
+    for (const address of ['one@example.com', 'two@example.com', 'one@example.com', 'two@example.com']) await change(session, address).assertRedirect('/settings/security');
+    const to = (address: string, Mail: abstract new (...args: any[]) => Mailable) => app.mail.queued(Mail, (_mail, message) => message.to[0]!.address === address);
+    expect(to('one@example.com', VerifyEmailMail), 'one confirmation mail an hour to an address').toHaveLength(1);
+    expect(to('two@example.com', VerifyEmailMail)).toHaveLength(1);
+    expect(to('one@example.com', EmailChangedMail), 'one note an hour to an address').toHaveLength(1);
+    expect(to('two@example.com', EmailChangedMail)).toHaveLength(1);
+    expect((await reload(kj)).email, 'the address is changed all the same').toBe('two@example.com');
   });
 
   it('says that an address is taken — and has no change links', async () => {
@@ -322,31 +424,20 @@ describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', () => {
 });
 
 describe('the change of address asks for a recent factor itself', () => {
-  /** The controller built from the container, with the check of the second factor answering `check`: no route, no middleware in front of it. */
-  const controllerAsking = (check: () => Promise<void>) => {
+  /** `EmailChange` built from the container for an account with an authenticator and a session that proved no factor: no route, no middleware in front of it. */
+  const serviceWithoutProof = (user: User) => {
     const scope = app.container.createScope();
-    scope.instance(TwoFactor, { requireRecentProof: check } as unknown as TwoFactor);
-    scope.instance(Auth, { checkPassword: async (password: string) => (password === 'password' ? ok() : err({ kind: 'invalid-password' })) } as unknown as Auth);
-    return scope.make(UpdateEmailController);
+    scope.instance(Auth, { user: async () => user, checkPassword: async (password: string) => (password === 'password' ? ok() : err({ kind: 'invalid-password' })) } as unknown as Auth);
+    scope.instance(SessionService, { started: false } as unknown as SessionService);
+    scope.instance(TwoFactorState, { factors: async () => ['totp'] } as unknown as TwoFactorState);
+    return scope.make(EmailChange);
   };
-  const handle = (controller: UpdateEmailController, user: User, email: string) => controller.handle({ body: { email, current_password: 'password' }, user } as never);
 
   it('throws before anything is stored when the session has no recent factor — even on a route without confirmedSecondFactor()', async () => {
     const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
-    const asked: string[] = [];
-    const stale = controllerAsking(async () => {
-      asked.push('changeEmail');
-      throw new Error('twoFactor.requireRecentProof(\'changeEmail\') needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().');
-    });
-    await expect(handle(stale, kj, 'katherine@nasa.example')).rejects.toThrow('second factor proven within 15 minutes');
-    expect(asked).toEqual(['changeEmail']);
-    expect(await reload(kj)).toMatchObject({ email: 'kj@example.com', pending_email: null });
+    const handlers = { deliver: async () => {}, apply: (id: number, email: string, at: Date | null) => app.make(UserRepository).applyEmailChange(id, email, at) };
+    await expect(serviceWithoutProof(kj).request('katherine@nasa.example', 'password', handlers)).rejects.toThrow('second factor proven within 15 minutes');
+    expect(await waiting(kj)).toBeUndefined();
     app.queue.assertNothingDispatched();
-  });
-
-  it('goes on when the check passes', async () => {
-    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
-    await handle(controllerAsking(async () => {}), kj, 'katherine@nasa.example');
-    expect((await reload(kj)).pending_email).toBe('katherine@nasa.example');
   });
 });

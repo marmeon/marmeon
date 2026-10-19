@@ -52,6 +52,12 @@ export abstract class EmailChangeStore {
   /** When the change expires, as long as `token` is the token of exactly this change of `userId` to `email` and has not expired; otherwise `undefined`. */
   abstract pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined>;
   /**
+   * The address and expiry of the change `userId` has waiting, as long as it has not expired and the account still holds the session key it
+   * was asked under (the same bindings as {@link pending}); otherwise `undefined`. It names no token: it tells what is waiting, not whether a
+   * link is right. For a page that shows it and for a repeated request for the same address.
+   */
+  abstract waiting(userId: AuthUserId): Promise<{ readonly email: string; readonly expiresAt: Date } | undefined>;
+  /**
    * Uses the change up and returns its address: only if `token` belongs to the change of `userId` and `now` is before its expiry. One
    * atomic step — of two requests with the same link at once, one gets the address and the other `undefined` — and `undefined` for a
    * malformed, unknown, foreign, used and expired token alike.
@@ -111,6 +117,17 @@ export class DatabaseEmailChanges extends EmailChangeStore {
       .where('expires_at', '>', new Date(this.#clock.now()))
       .executeTakeFirst();
     return row ? new Date(row.expires_at) : undefined;
+  }
+
+  async waiting(userId: AuthUserId): Promise<{ readonly email: string; readonly expiresAt: Date } | undefined> {
+    const row = await this.#db()
+      .selectFrom(EMAIL_CHANGES_TABLE)
+      .select(['email', 'expires_at'])
+      .where('user_id', '=', userId as string | number)
+      .where(this.#keyHolds(userId as string | number))
+      .where('expires_at', '>', new Date(this.#clock.now()))
+      .executeTakeFirst();
+    return row ? { email: row.email, expiresAt: new Date(row.expires_at) } : undefined;
   }
 
   async claim(userId: AuthUserId, value: string, now: Date): Promise<string | undefined> {

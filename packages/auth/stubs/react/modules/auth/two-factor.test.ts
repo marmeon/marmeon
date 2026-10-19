@@ -428,7 +428,7 @@ describe('changing the factors of an account that has one', { timeout: 30_000 },
       const done = await as().post('/settings/two-factor/verify', { form: { code: twoFactorCode(secret) } }).assertRedirect();
       await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).navigating().get('/settings/two-factor').assertPage('auth/TwoFactor');
       await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).put('/settings/email', { form: { current_password: 'password', email: 'new@example.com' } }).assertRedirect();
-      await app.assertDatabaseHas('users', { pending_email: 'new@example.com' });
+      await app.assertDatabaseHas('email_changes', { email: 'new@example.com' });
     });
   });
 });

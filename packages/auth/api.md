@@ -276,6 +276,10 @@ export declare class DatabaseEmailChanges extends EmailChangeStore {
     });
     create(userId: AuthUserId, email: string, expiresAt: Date, sessionKey: string | null): Promise<string | undefined>;
     pending(userId: AuthUserId, email: string, value: string): Promise<Date | undefined>;
+    waiting(userId: AuthUserId): Promise<{
+        readonly email: string;
+        readonly expiresAt: Date;
+    } | undefined>;
     claim(userId: AuthUserId, value: string, now: Date): Promise<string | undefined>;
     forget(userId: AuthUserId): Promise<void>;
     prune(now: Date): Promise<number>;
@@ -344,7 +348,10 @@ export declare class EmailChange {
     constructor(auth: Auth, session: Session, state: TwoFactorState, store: EmailChangeStore, config: AuthConfig, clock: Clock, connections: Connections, limiter: RateLimiter, events: EventDispatcher);
     request<U>(email: string, currentPassword: string, handlers: EmailChangeHandlers<U>): Promise<Result<EmailChangeRequested<U>, RequestEmailChangeError>>;
     cancel(): Promise<void>;
-    pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined>;
+    waiting(): Promise<{
+        readonly email: string;
+        readonly expiresAt: Date;
+    } | undefined>;
     confirm<U>(linkUserId: string, token: string, apply: ApplyEmail<U>): Promise<Result<U, ConfirmEmailChangeError>>;
 }
 // EmailChangeHandlers
@@ -365,6 +372,10 @@ export declare abstract class EmailChangeStore {
     constructor();
     abstract create(userId: AuthUserId, email: string, expiresAt: Date, sessionKey: string | null): Promise<string | undefined>;
     abstract pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined>;
+    abstract waiting(userId: AuthUserId): Promise<{
+        readonly email: string;
+        readonly expiresAt: Date;
+    } | undefined>;
     abstract claim(userId: AuthUserId, token: string, now: Date): Promise<string | undefined>;
     abstract forget(userId: AuthUserId): Promise<void>;
     abstract prune(now: Date): Promise<number>;
@@ -1786,6 +1797,10 @@ export declare abstract class EmailChangeStore {
     constructor();
     abstract create(userId: AuthUserId, email: string, expiresAt: Date, sessionKey: string | null): Promise<string | undefined>;
     abstract pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined>;
+    abstract waiting(userId: AuthUserId): Promise<{
+        readonly email: string;
+        readonly expiresAt: Date;
+    } | undefined>;
     abstract claim(userId: AuthUserId, token: string, now: Date): Promise<string | undefined>;
     abstract forget(userId: AuthUserId): Promise<void>;
     abstract prune(now: Date): Promise<number>;
@@ -2518,6 +2533,10 @@ export declare abstract class EmailChangeStore {
     constructor();
     abstract create(userId: AuthUserId, email: string, expiresAt: Date, sessionKey: string | null): Promise<string | undefined>;
     abstract pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined>;
+    abstract waiting(userId: AuthUserId): Promise<{
+        readonly email: string;
+        readonly expiresAt: Date;
+    } | undefined>;
     abstract claim(userId: AuthUserId, token: string, now: Date): Promise<string | undefined>;
     abstract forget(userId: AuthUserId): Promise<void>;
     abstract prune(now: Date): Promise<number>;

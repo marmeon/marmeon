@@ -1,5 +1,5 @@
 import { PasskeyStore } from '@marmeon/auth/passkeys';
-import { Auth, combineFactors, TwoFactorState, TwoFactorStore, UserProvider } from '@marmeon/auth';
+import { Auth, combineFactors, DatabaseEmailChanges, EmailChangeStore, TwoFactorState, TwoFactorStore, UserProvider } from '@marmeon/auth';
 import type { Container, ServiceProvider } from '@marmeon/core';
 import { LocalePreference } from '@marmeon/i18n';
 import { UserRepository } from './UserRepository.ts';
@@ -15,6 +15,9 @@ export class AuthServiceProvider implements ServiceProvider {
     // Accounts may set up a second factor: the authenticator app and passkeys (their tables are in this module's migrations). Removing this
     // binding switches two-factor authentication off for every account.
     container.bind(TwoFactorState, (c) => combineFactors(c.make(TwoFactorStore), c.make(PasskeyStore)));
+    // A change of address waits in the table `email_changes` (this module's migrations) until its link is used; `EmailChange` decides
+    // the rest. Removing this binding switches the change of address off.
+    container.singleton(EmailChangeStore, DatabaseEmailChanges);
     // The signed-in user's language — after the session's choice, before the browser's (SetLocale of @marmeon/i18n).
     container.scoped(LocalePreference, (c) => ({ preferredLocale: async () => (await c.make(Auth).user())?.locale }));
   }

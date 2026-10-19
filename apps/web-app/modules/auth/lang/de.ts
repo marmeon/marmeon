@@ -269,7 +269,7 @@ export default {
     token_name: 'Gib dem Token einen Namen.',
     token_abilities: 'Wähle, was das Token darf.',
     throttled: 'Zu viele Versuche. Bitte in {seconds, plural, one {# Sekunde} other {# Sekunden}} noch einmal versuchen.',
-    throttled_account: 'Melde dich noch einmal mit deinem Passwort an, um fortzufahren.',
+    throttled_account: 'Zu viele Passwortprüfungen für dieses Konto. Bitte in {seconds, plural, one {# Sekunde} other {# Sekunden}} noch einmal versuchen, oder melde dich noch einmal mit deinem Passwort an, falls du dich ohne es angemeldet hast.',
   },
   mail: {
     hello: 'Hallo {name},',

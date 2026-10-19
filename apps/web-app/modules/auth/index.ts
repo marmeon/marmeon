@@ -1,6 +1,7 @@
-import { Lockout, Login, Registered, RememberTokenReused } from '@marmeon/auth';
+import { EmailChanged, Lockout, Login, Registered, RememberTokenReused } from '@marmeon/auth';
 import { PasskeyServiceProvider } from '@marmeon/auth/passkeys';
 import { defineModule, listen } from '@marmeon/core';
+import { NotifyAboutEmailChange } from './listeners/NotifyAboutEmailChange.ts';
 import { NotifyAboutNewSignIn } from './listeners/NotifyAboutNewSignIn.ts';
 import { NotifyAboutRememberTokenReused } from './listeners/NotifyAboutRememberTokenReused.ts';
 import { SendEmailVerification } from './listeners/SendEmailVerification.ts';
@@ -31,9 +32,10 @@ export default defineModule({
   // PasskeyServiceProvider switches passkeys on. To switch them off, remove it, `PasskeyStore` from `combineFactors` in AuthServiceProvider, and
   // both imports of '@marmeon/auth/passkeys': the WebAuthn library is loaded only by code that imports that subpath.
   providers: [AuthServiceProvider, PasskeyServiceProvider],
+  // NotifyAboutEmailChange (not queued) queues the note to the old address once an address changed.
   // SendEmailVerification is a queued listener (static queue): a worker runs it after the registration committed.
   // NotifyAboutNewSignIn is queued too: a sign-in with a password becomes a notification (bell + mail) in a worker.
-  listeners: [listen(Registered, SendEmailVerification), listen(Registered, QueueWelcomeMail), listen(Login, NotifyAboutNewSignIn), listen(RememberTokenReused, NotifyAboutRememberTokenReused), listen(Lockout, QueueLockoutMail)],
+  listeners: [listen(Registered, SendEmailVerification), listen(Registered, QueueWelcomeMail), listen(Login, NotifyAboutNewSignIn), listen(RememberTokenReused, NotifyAboutRememberTokenReused), listen(Lockout, QueueLockoutMail), listen(EmailChanged, NotifyAboutEmailChange)],
   // The module's notifications (a worker finds them by name) — and how a notification finds a user again.
   notifications: [NewSignInNotification],
   recipients: { user: UserRecipients },

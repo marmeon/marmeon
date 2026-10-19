@@ -470,7 +470,7 @@ The steps below are the order; the [upgrade guide](../UPGRADING.md) names the ve
      included. Look at `marmeon queue:failed`, and retry or give up what is in it.
    - Tell your users that they sign in again, and pick a quiet hour.
 2. **In development.** Run `marmeon make:upgrade-migrations`, `marmeon db:types` and `marmeon route:types`, and commit what they
-   write. [`make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables) writes the migration that clears the API tokens, one that fills the `NULL` session keys, one that drops the `remember_tokens` table and one that adds the remember-me columns to `sign_ins`. With a user table of your own, fill its `NULL` session keys with random values in a migration of your own. A database with tables of its
+   write. [`make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables) writes the migration that clears the API tokens, one that fills the `NULL` session keys, one that drops the `remember_tokens` table, one that creates the table `email_changes` and drops the pending-address columns of `users` (a change of address that is open is lost; whoever has one asks again) and one that adds the remember-me columns to `sign_ins`. With a user table of your own, fill its `NULL` session keys with random values in a migration of your own. A database with tables of its
    own that never ran `marmeon migrate` keeps them: `migrate` writes its record of migrations and runs the migrations, and the
    tables it did not make stay unknown to Marmeon, unguarded ([how the app knows its schema](migrations.md#how-the-app-knows-its-schema)).
 3. **Stop every process of the old release**, on every machine: web, workers, the scheduler, cron jobs, and every CI or release job

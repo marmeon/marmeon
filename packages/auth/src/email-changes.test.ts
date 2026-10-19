@@ -105,6 +105,24 @@ describe.each(drivers)('changes of address on %s', (driver) => {
       expect(await changes.claim(1, keyed, new Date(clock.now()))).toBeUndefined();
     });
 
+    it('shows what waits for an account (waiting) under the same bindings as pending: key, expiry, account', async () => {
+      expect(await changes.waiting(1)).toBeUndefined();
+      await make(1, 'new@example.com', expiry());
+      expect(await changes.waiting(1)).toMatchObject({ email: 'new@example.com' });
+      expect(await changes.waiting(2), 'another account').toBeUndefined();
+      clock.travel({ hours: 2 });
+      expect(await changes.waiting(1), 'expired').toBeUndefined();
+    });
+
+    it('does not show a change as waiting once the key was replaced or the account is gone', async () => {
+      await make(1, 'new@example.com', expiry());
+      await rotate(1, 'a-newer-key-of-the-first-account-0123456789');
+      expect(await changes.waiting(1)).toBeUndefined();
+      await make(3, 'other@example.com', expiry());
+      await connections.get<any>().deleteFrom('users').where('id', '=', 3).execute();
+      expect(await changes.waiting(3)).toBeUndefined();
+    });
+
     it('does not claim the change of an account that was deleted, with a key or without one', async () => {
       const keyed = await make(1, 'new@example.com', expiry());
       const keyless = await make(3, 'other@example.com', expiry());
@@ -218,7 +236,8 @@ describe.each(drivers)('changes of address on %s', (driver) => {
       new NewPassword(() => ({}) as never, () => connections, { revokeTokensOnPasswordChange: false } as never, { info() {}, warn() {}, error() {} } as never, () => signInStore({ endAll: async () => 0, dropToken: async () => {} }), undefined, undefined, store && (() => store));
     const accounts = (store: EmailChangeStore | undefined, memory = users()) =>
       new AccountSessions(memory, signInStore({ endAll: async () => 0, endEveryone: async () => 0 }), undefined, undefined, clock, undefined, undefined, undefined, undefined, store && (() => store));
-    const pendingOf = async () => (await rows()).map((row) => Number(row.user_id));
+    // Postgres returns rows in no fixed order after an upsert.
+    const pendingOf = async () => (await rows()).map((row) => Number(row.user_id)).sort((a, b) => a - b);
     beforeEach(async () => {
       await make(1, 'ada-new@example.com', expiry());
       await make(2, 'grace-new@example.com', expiry());

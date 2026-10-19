@@ -103,7 +103,8 @@ describe('pruning accounts whose address was never confirmed — the default', {
     const session = await signIn(kj);
     await session.put('/settings/email', { form: { current_password: 'password', email: 'new@example.com' }, headers: { referer: 'http://localhost/settings/security' } }).assertRedirect();
     await pruneIn(1);
-    expect(await app.make(UserRepository).find(kj.id)).toMatchObject({ email: 'kj@example.com', pending_email: 'new@example.com' });
+    expect(await app.make(UserRepository).find(kj.id)).toMatchObject({ email: 'kj@example.com' });
+    await app.assertDatabaseHas('email_changes', { user_id: kj.id, email: 'new@example.com' });
   });
 
   it('deletes in batches and says how many — one confirmed between the look-up and the delete stays', async () => {
@@ -184,7 +185,7 @@ describe('pruning accounts whose address was never confirmed with AUTH_PRIVATE_R
 
   it('an account confirmed by email_verified_at alone (an import, a seeder, an admin) keeps that through a change of address', async () => {
     const legacy = (await app.factory(UserFactory).create({ email: 'legacy@example.com', email_verified_at: new Date(app.clock.now()).toISOString(), first_verified_at: null })) as User;
-    expect(await app.make(UserRepository).changeEmail(legacy.id, 'legacy@new.example')).toMatchObject({ ok: true, value: { email_verified_at: null } });
+    expect(await app.make(UserRepository).applyEmailChange(legacy.id, 'legacy@new.example', null)).toMatchObject({ ok: true, value: { email_verified_at: null } });
     expect((await app.make(UserRepository).find(legacy.id))?.first_verified_at, 'the change dropped the only confirmation').not.toBeNull();
     await pruneIn(30);
     expect(await exists(legacy), 'a confirmed account was deleted after its address changed').toBe(true);
