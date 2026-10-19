@@ -36,6 +36,7 @@ export { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollba
 export { DbTypesCommand } from './commands/db-types.ts';
 export { MakeUpgradeMigrationsCommand } from './commands/make-upgrade-migrations.ts';
 export { SchemaRequirements } from './upgrades.ts';
+export { PublishCommand } from './commands/publish.ts';
 export type { MigrationUpgrade, TableRequirement } from './upgrades.ts';
 export { DbSeedCommand } from './commands/db-seed.ts';
 export { defineFactory, Factories, PendingFactory } from './factories.ts';

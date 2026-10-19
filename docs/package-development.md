@@ -54,7 +54,9 @@ change. The [modules](modules.md#discovery) page explains discovery from the app
 `migrations` names the stubs that **create** the package's tables. Each file starts with `// @marmeon-stub <set> <revision>` (see
 [upgrading the framework's tables](migrations.md#upgrading-the-frameworks-tables)) and has a plain name such as
 `create_permissions_table.ts`, without a timestamp. Later revisions of a table stay `static migrationUpgrades` on the provider. The
-field only declares the files; it copies nothing.
+field only declares the files; it copies nothing. An app copies them with `marmeon publish <package>` ([publishing the migrations of a
+package](migrations.md#publishing-the-migrations-of-a-package)), which accepts only a direct dependency of the app and refuses a `set`
+or a file name that another installed package upgrades or creates.
 
 `module` is required. It is a suggestion: the module the tables go to when the files are copied into the app, which the app can
 change. Which module owns a table follows from the module its migration file is in, not from the package. The framework's own
@@ -251,8 +253,10 @@ check but a [health check](health.md#writing-a-health-check): `marmeon check` ru
 
 ## Tables
 
-A package that keeps tables in the app's database ships the migration as a stub that a `make:*-table` command copies, and starts
-it with the line `// @marmeon-stub <set> 1` — `<set>` names the tables (`audit`), the number is the revision of the stub. When a
+A package that keeps tables in the app's database ships the migration as a stub that `marmeon publish <package>` copies (list it
+under `migrations`, see [declaring the migrations a package ships](#declaring-the-migrations-a-package-ships)); a `make:*-table`
+command of your own can copy the same file. The stub starts
+with the line `// @marmeon-stub <set> 1` — `<set>` names the tables (`audit`), the number is the revision of the stub. When a
 release changes the tables, the package lists the change as `static migrationUpgrades` on its provider: each entry has the `set`,
 the `revision` it brings the tables to (2 or more), the `name` of the file without timestamp, `createdBy` (the names of the stubs
 that created the set, which tell the command where the app keeps it) and the `contents`, which start with

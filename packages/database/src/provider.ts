@@ -1,6 +1,7 @@
 import { Application, Logger, type Container, type ServiceProvider } from '@marmeon/core';
 import type { AppCheckClass } from 'marmeon';
 import { MakeUpgradeMigrationsCommand } from './commands/make-upgrade-migrations.ts';
+import { PublishCommand } from './commands/publish.ts';
 import { DbTypesCheck, UpgradeMigrationsCheck } from './checks.ts';
 import { DbShowCommand } from './commands/db-show.ts';
 import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
@@ -47,7 +48,7 @@ export class DatabaseServiceProvider implements ServiceProvider {
   static health = [DatabaseHealthCheck];
   /** `bootstrap/database.d.ts` matches the migrations, for `marmeon check`. */
   static checks: readonly AppCheckClass[] = [UpgradeMigrationsCheck, DbTypesCheck];
-  static commands = [DbShowCommand, DbTypesCommand, DbSeedCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand, MakeUpgradeMigrationsCommand];
+  static commands = [DbShowCommand, DbTypesCommand, DbSeedCommand, MigrateCommand, MigrateRollbackCommand, MigrateResetCommand, MigrateFreshCommand, MigrateStatusCommand, MakeUpgradeMigrationsCommand, PublishCommand];
 
   register(container: Container): void {
     // Stops the start on an upgrade that would write a wrong file, as `marmeon build` does for a command name taken twice.
