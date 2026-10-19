@@ -49,6 +49,17 @@ export function splitSpecifier(specifier: string): { name: string; subpath: stri
   return { name: parts.slice(0, length).join('/'), subpath: rest ? `./${rest}` : '.' };
 }
 
+/**
+ * `text` with every control, format, line- and paragraph-separator character written as `\uXXXX`, so text from a file
+ * of someone else cannot redraw a terminal, hide a link (OSC 8) or reorder what is shown (U+202E).
+ */
+export function printable(text: string): string {
+  return text.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, (char) => {
+    const code = char.codePointAt(0)!;
+    return code > 0xffff ? `\\u{${code.toString(16)}}` : `\\u${code.toString(16).padStart(4, '0')}`;
+  });
+}
+
 /** A valid npm package name (older ones have capitals) — never a path, so a name from a manifest cannot walk out of `node_modules`. */
 const PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i;
 
@@ -62,7 +73,7 @@ export function findPackage(name: string, fromDir: string): PackageInfo | undefi
         const realDir = realpathSync(dirname(candidate));
         return { name, dir: realDir, json: JSON.parse(readFileSync(join(realDir, 'package.json'), 'utf8')) };
       } catch (cause) {
-        throw new Error(withCode('K7', `The package.json of ${name} (${candidate}) cannot be read as JSON: ${cause instanceof Error ? cause.message : String(cause)}`), { cause });
+        throw new Error(withCode('K7', `The package.json of ${name} (${candidate}) cannot be read as JSON: ${printable(cause instanceof Error ? cause.message : String(cause))}`), { cause });
       }
     }
     if (dirname(dir) === dir) return undefined;

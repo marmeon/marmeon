@@ -168,7 +168,7 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 | `make:seeder <Name> --module=<m> [--no-register]` | A seeder in `seeders/`, added last to the module's `seeders`. See [seeding](seeding.md#generating-a-seeder). |
 | `make:middleware <Name> --module=<m>` | A middleware class in `middleware/`. |
 | `make:migration <snake_case_name> --module=<m> [--no-register]` | A timestamped migration in `migrations/`; adds the folder to the module once. See [migrations](migrations.md#generating-migrations). |
-| `publish <package> [--module=<m>]` | The migrations a direct dependency of your app lists, into a module of the app; writes what is missing and skips what is there. See [migrations](migrations.md#publishing-the-migrations-of-a-package). |
+| `publish [<package>] [--module=<m>] [--check]` | The migrations a direct dependency of your app lists, into a module of the app; writes what is missing and skips what is there. Without a package it lists them and, at a terminal, asks which to publish. `--check` writes nothing and ends with exit code 1 when something is missing. See [migrations](migrations.md#publishing-the-migrations-of-a-package). |
 | `make:sign-ins-table [--module=<m>]` | The migration of the `sign_ins` table that `DatabaseSignIns` uses. See [sign-ins](authentication.md#sign-ins). |
 
 `--module` names a module that exists: `make:module` comes first. `-m` is short for it.

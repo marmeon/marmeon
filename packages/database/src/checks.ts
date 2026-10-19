@@ -1,6 +1,8 @@
 import { relative } from 'node:path';
 import { Application, Redactor } from '@marmeon/core';
-import type { AppCheck, AppCheckContext, AppCheckResult } from 'marmeon';
+import { printable } from '@marmeon/core/internal';
+import type { AppCheck, AppCheckContext, AppCheckResult, CheckProblem } from 'marmeon';
+import { packageStatus } from './commands/publish.ts';
 import { TypeGenerator } from './types-gen/generator.ts';
 
 /**
@@ -32,5 +34,40 @@ export class DbTypesCheck implements AppCheck {
       const redactor = this.#app.container.has(Redactor) ? this.#app.container.make(Redactor) : new Redactor();
       throw new Error(`the migrations could not be read: ${redactor.text(error instanceof Error ? error.message : String(error))}`);
     }
+  }
+}
+
+/**
+ * Every package the app publishes from has all its migrations in the app: the answer of `marmeon publish --check`. A missing
+ * one is `D6` with the command that writes it; a refusal of `publish` is an error with its reason. Reads files only.
+ * See docs/check.md#the-app-checks.
+ */
+export class PackageMigrationsCheck implements AppCheck {
+  static check = 'package-migrations';
+  static phase = 'build' as const;
+
+  readonly #app: Application;
+
+  constructor(app: Application) {
+    this.#app = app;
+  }
+
+  handle(): AppCheckResult {
+    const problems: CheckProblem[] = [];
+    for (const status of packageStatus(this.#app.root)) {
+      if (!status.used) continue;
+      if (status.state === 'lacks') {
+        problems.push({
+          severity: 'error',
+          code: 'D6',
+          message: `${status.package} lacks ${status.missing.join(', ')}`,
+          fix: `marmeon publish ${status.package}`,
+          docs: 'docs/migrations.md#publishing-the-migrations-of-a-package',
+        });
+      } else if (status.state === 'refused') {
+        problems.push({ severity: 'error', message: printable(status.reason), docs: 'docs/migrations.md#publishing-the-migrations-of-a-package' });
+      }
+    }
+    return problems;
   }
 }

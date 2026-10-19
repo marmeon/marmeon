@@ -38,7 +38,7 @@ export const databaseSolutions = defineSolutions([
     code: 'D6',
     solve: () => ({
       title: "Copy the migrations of your packages into the app",
-      text: "A table of a package lacks what the installed release needs. The command copies the migrations your app does not have yet; then migrate. It needs no database.",
+      text: "A table of a package lacks what the installed release needs. The command lists the packages whose migrations your app does not have yet and, at a terminal, asks which to copy; name one (marmeon publish <package>) to copy without asking. Then migrate. It needs no database.",
       command: 'marmeon publish',
       docs: 'docs/migrations.md#publishing-the-migrations-of-a-package',
     }),

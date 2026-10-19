@@ -9,7 +9,7 @@ import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { createApplication } from '../application.ts';
 import type { Key } from '../token.ts';
 import { DiscoveryError, generateManifest, loadDiscoveredPackages, manifestPath } from './discover.ts';
-import { findPackage, resolveExports, runtimeConditions, splitSpecifier, type PackageInfo } from './resolve.ts';
+import { findPackage, printable, resolveExports, runtimeConditions, splitSpecifier, type PackageInfo } from './resolve.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtures = join(here, '../../fixtures/discovery');
@@ -311,6 +311,20 @@ describe('findPackage', () => {
 
   it('stops with the package and the path when its package.json is no JSON', () => {
     expect(() => findPackage('broken', root)).toThrow(/^\[marmeon:K7\] The package.json of broken \(.*broken[\\/]package.json\) cannot be read as JSON/);
+  });
+
+  it('writes control characters of a broken package.json as escapes in the message', () => {
+    mkdirSync(join(root, 'node_modules/hostile'), { recursive: true });
+    writeFileSync(join(root, 'node_modules/hostile/package.json'), 'x\u001b]8;;https://evil.test\u0007\u202e');
+    let message = '';
+    try {
+      findPackage('hostile', root);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('[marmeon:K7]');
+    expect(message).not.toMatch(/[\p{Cc}\p{Cf}]/u);
+    expect(printable('a\u001b[2Jb‮c ')).toBe('a\\u001b[2Jb\\u202ec\\u2028');
   });
 
   it('finds nothing for a name that is a path', () => {

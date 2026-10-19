@@ -564,6 +564,7 @@ export interface ProjectedTable {
 }
 // PublishCommand
 export declare class PublishCommand {
+    #private;
     static command: string;
     static description: string;
     static usage: string;
@@ -572,8 +573,11 @@ export declare class PublishCommand {
             readonly type: 'string';
             readonly short: 'm';
         };
+        readonly check: {
+            readonly type: 'boolean';
+        };
     };
-    handle(input: CommandInput): Promise<number>;
+    handle(raw: CommandInput): Promise<number>;
 }
 // QueryEvent
 export interface QueryEvent {
@@ -1149,6 +1153,7 @@ marmeon migrate:rollback [--step=<n>] [--force] [--wait=<seconds>]
 marmeon migrate:status [--json]
 --json (boolean)
 // publish
-marmeon publish <package> [--module=<name>]
+marmeon publish [<package>] [--module=<name>] [--check]
+--check (boolean)
 --module (string, short m)
 ```
