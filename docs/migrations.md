@@ -922,6 +922,7 @@ with a message instead of creating the table where nothing looks. Split it then:
 the other `connection`, as in [migrations on another connection](#migrations-on-another-connection).
 
 `/up/ready` is red while a table of a driver you use lacks a column the code needs, and says which table and which command to run.
+After an update of the packages, run `marmeon publish` at a terminal, or the table's `make:*-table` command: the framework's migrations are append-only, so a change of one of these tables arrives as a new file, never as a changed one.
 
 ### Publishing the migrations of a package
 

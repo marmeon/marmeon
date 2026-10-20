@@ -29,7 +29,7 @@ Pass \`--no-interaction\` to \`marmeon\` when you run it in a terminal.
 - \`marmeon migrate\` after a migration; it writes \`bootstrap/database.d.ts\`.
 - \`marmeon route:types\` after a route changed; it writes \`bootstrap/routes.ts\`.
 - Use a generator (\`marmeon make:controller\`, \`marmeon make:migration\`, …) before writing by hand; \`marmeon list\` shows every command.
-- \`marmeon publish <package>\` copies the migrations a package ships into the app; never point a module's \`migrations\` at \`node_modules\`.
+- \`marmeon publish\` lists what each package lacks (without a terminal it only lists, and ends with 1 when something is missing); \`marmeon publish <package>\` copies them, then \`marmeon migrate\`; \`marmeon publish --check\` belongs in CI. Never point a module's \`migrations\` at \`node_modules\`.
 - \`marmeon-stubs.json\` records where the files of \`create-marmeon\` and \`make:auth\` come from — do not edit it.
 
 ## Rules

@@ -261,27 +261,29 @@ check but a [health check](health.md#writing-a-health-check): `marmeon check` ru
 
 ## Tables
 
-A package that keeps tables in the app's database does not write them into the app itself. It ships the migration as a stub, and
-the app copies it. The contract has five parts:
+A package that keeps tables in the app's database does not write them into the app itself. It ships the migrations as stubs, and
+the app copies them. The contract has six parts:
 
-1. **The stub.** The file lies in the directory `from` names and is called `<timestamp>_<name>.ts`, such as
-   `2026_01_01_000000_create_audit_table.ts`. Name it after its table, as an app does.
-2. **The plan.** `up(schema)` is synchronous and only describes the change; the app computes what it did without running it. Data
+1. **The directory.** The files lie in the directory `from` names and are called `<timestamp>_<name>.ts`, such as
+   `2026_01_01_000000_create_audit_table.ts`. Name a file after its table, as an app does. They run in the order of their names,
+   and a name without its timestamp is unique in the directory.
+2. **Append-only.** A file that has shipped is never edited, renamed or deleted, because an app has copied it and its database has
+   run it. A release that changes a table adds a file that sorts after every other in the directory. In the framework's repository, the "api label" check refuses a pull request that does otherwise.
+3. **The plan.** `up(schema)` is synchronous and only describes the change; the app computes what it did without running it. Data
    changes go through `schema.data()` and nowhere else. A column that holds a secret, such as a token's hash, is marked
    `.secret()`. See [migration structure](migrations.md#migration-structure).
-3. **The list.** `"marmeon": { "migrations": … }` in `package.json` names the directory of
-   the stubs ([declaring the migrations a package ships](#declaring-the-migrations-a-package-ships)). `marmeon publish <package>` copies
-   them into the app ([publishing the migrations of a package](migrations.md#publishing-the-migrations-of-a-package)), and a
-   `make:*-table` command of your own can copy the same file. When a release changes the tables, the package adds a new
-   file: a change is a new file, never an edit of one that shipped.
-4. **The requirements.** A table the package needs is registered with `SchemaRequirements` (from `@marmeon/database`). In `boot()`,
+4. **The list and `publish`.** `"marmeon": { "migrations": … }` in `package.json` names the directory of
+   the stubs ([declaring the migrations a package ships](#declaring-the-migrations-a-package-ships)). `marmeon publish <package>`
+   copies the files the app lacks ([publishing the migrations of a package](migrations.md#publishing-the-migrations-of-a-package)),
+   also after an update, and a command of your own can point the app to `marmeon publish <package>`.
+5. **The requirements.** A table the package needs is registered with `SchemaRequirements` (from `@marmeon/database`). In `boot()`,
    take it with `app.container.make(SchemaRequirements)` once `app.container.has(Connections)`, and call
    `require({ connection, table, columns, secrets?, whenPresent? })`; a new instance checks nothing. `columns` are the columns
    the package reads and writes and `secrets` the ones that must be marked `.secret()`: readiness is red while the table
    is missing, lacks a column or has one unmarked, as in a table made by hand (not on a connection with `managed: false`). A
    requirement with `whenPresent: true` is for a table the app may never have made (the feature is unused): it is only checked once
    the table exists.
-5. **No module with migrations.** A module's `migrations` must not point into the package's own folder in `node_modules`: the app
+6. **No module with migrations.** A module's `migrations` must not point into the package's own folder in `node_modules`: the app
    refuses that with error D20, because a package update would change migrations the database has run. Ship the migrations as stubs
    the app copies.
 
