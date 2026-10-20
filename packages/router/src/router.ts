@@ -152,6 +152,16 @@ export class Router {
     return [...this.#routes.filter((route) => route.reserved), ...this.#routes.filter((route) => !route.reserved)];
   }
 
+  /**
+   * Whether a request path lies under `/_marmeon/` — in any case, with a doubled leading slash counted as one. The server
+   * answers such a path no framework route took with a 404 before any route of an app is tried.
+   *
+   * @internal
+   */
+  isReservedPath(path: string): boolean {
+    return isReserved(path.replace(/^\/+/, '/'));
+  }
+
   /** Whether the route was loaded by the framework itself (`load({ framework: FRAMEWORK_ROUTES }, …)`); nothing an app sets can make it so. @internal */
   isFrameworkRoute(route: RouteDefinition): boolean {
     return this.#framework.has(route);
