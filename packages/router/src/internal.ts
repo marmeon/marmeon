@@ -4,6 +4,7 @@
  * @internal
  */
 export { accessLabel, formatAccessProblems, isEveryone, routeAccess } from './access.ts';
+export { ensuresOf } from './ensures.ts';
 export { defaultToResponse, FRAMEWORK_ROUTES, isControllerClass } from './router.ts';
 export { localLocation } from './local-location.ts';
 export { isMiddlewareClass, runPipeline } from './middleware.ts';

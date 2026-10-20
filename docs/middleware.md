@@ -83,6 +83,34 @@ An answer that depends on `ctx.expectsJson()` names the headers it reads in `Var
 route responses get a `Cache-Control`, and a shared cache must not hand one variant to the other client. `addVary()` appends to
 a `Vary` that is already there, and leaves `*` as it is.
 
+### Declaring what a middleware ensures
+
+`marmeon check` asks [which routes anyone may POST to and nothing limits](check.md#routes-without-a-limit). It cannot read what a
+middleware does, so a middleware class says it in `static ensures`:
+
+```ts title="modules/notes/middleware/LimitImports.ts"
+export class LimitImports {
+  static ensures = ['rate-limited'] as const;
+
+  async handle(ctx: HttpContext, next: Next<{}>) {
+    // answers 429 when too many requests come
+    return next();
+  }
+}
+```
+
+- `'rate-limited'` — the middleware answers 429 when too many requests come. `throttle()` declares it.
+- `'authenticated'` — only a known user, or the holder of a link the app signed, gets past. `authenticate()`, `authenticate('api')`
+  and `signed()` declare it.
+
+It is the middleware's word, which the check does not test, and nothing reads it while the app runs; a class that extends one of
+these inherits the word, so one that changes `handle()` must change `ensures` too. Only an array counts, and only the two names
+above: `static ensures = 'rate-limited'` (a string) or `['trusted']` declares nothing. The type is `MiddlewareEnsures`.
+A middleware object can carry it too:
+`Object.assign(defineMiddleware('limit-imports', handle), { ensures: ['rate-limited'] as const })`.
+`guest()`, `verified()` and `confirmedPassword()` declare
+nothing: none of them limits anything, and `verified()` and `confirmedPassword()` need `authenticate()` before them.
+
 ## Adding to the context
 
 What a middleware passes to `next()` becomes part of the context of everything after it: later middleware and the controller.

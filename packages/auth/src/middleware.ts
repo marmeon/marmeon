@@ -29,6 +29,9 @@ export function authenticate(options: AuthenticateOptions | 'api' = {}): Middlew
   if (options === 'api') return tokenGuard();
   const loginRoute: string = options.loginRoute ?? 'auth.login';
   const Authenticate = class {
+    /** Read by `marmeon check`: a guest never gets past. See docs/middleware.md#declaring-what-a-middleware-ensures. */
+    static readonly ensures = ['authenticated'] as const;
+
     readonly #auth: Auth;
     readonly #session: Session;
     readonly #router: Router;
@@ -117,6 +120,8 @@ export function confirmedPassword<const N extends RouteNameInput = never>(option
 
 function tokenGuard(): MiddlewareClass<{}, Authenticated & WithToken> {
   const AuthenticateToken = class {
+    static readonly ensures = ['authenticated'] as const;
+
     readonly #tokens: AccessTokenStore;
     readonly #users: UserProvider;
     readonly #gate: Gate;

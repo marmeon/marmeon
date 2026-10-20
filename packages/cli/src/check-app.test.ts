@@ -67,13 +67,78 @@ describe('marmeon check (the app)', { timeout: 120_000 }, () => {
   it('runs the checks of a provider and of a module, in the order build, run, readiness', () => {
     const { code, stdout } = check(migrated({ probe: PROBE }), ['--skip=types,lint,internal-imports,raw-sql,inner-html,agents', '--json']);
     expect(code).toBe(0);
-    expect(names(stdout)).toEqual(['boot', 'route-types', 'modules', 'package-migrations', 'bar', 'db-types', 'foo', 'readiness']);
+    expect(names(stdout)).toEqual(['boot', 'route-types', 'modules', 'throttle', 'package-migrations', 'bar', 'db-types', 'foo', 'readiness']);
     expect(reportOf(stdout, 'foo')).toMatchObject({
       status: 'warning',
       problems: [{ severity: 'warning', message: 'foo found something', file: 'src/foo.ts', line: 3, column: null, code: null, fix: 'do-the-thing' }],
     });
     expect(reportOf(stdout, 'bar')).toMatchObject({ status: 'passed', problems: [] });
     expect(reportOf(stdout, 'boot')).toMatchObject({ status: 'passed' });
+  });
+
+  it('keeps what a check silenced in its report, with the reason, and does not hide a silenced finding that has none', () => {
+    const probe = `
+export class QuietCheck {
+  static check = 'quiet';
+  static phase = 'build' as const;
+  handle() {
+    return {
+      problems: [],
+      silenced: [
+        { severity: 'warning' as const, message: 'a postgres://u:geheim@h/db one', file: 'src/a.ts', line: 2, reason: 'checked by hand' },
+        { severity: 'error' as const, message: 'no reason', file: 'src/b.ts', line: 3 },
+        'not a finding',
+      ],
+    };
+  }
+}
+export class ProbeProvider { static checks = [QuietCheck]; }
+export const probeModule = { name: 'probe' };
+`;
+    const { code, stdout } = check(app({ probe }), ['--only=quiet', '--json']);
+    expect(code).toBe(1);
+    const report = reportOf(stdout, 'quiet');
+    expect(report).toMatchObject({ status: 'failed', silenced: [{ file: 'src/a.ts', line: 2, reason: 'checked by hand' }] });
+    expect(report.silenced).toHaveLength(1);
+    expect(report.silenced[0].message).not.toContain('geheim');
+    expect(report.problems.map((problem: { severity: string; message: string }) => problem.severity)).toEqual(['error', 'error']);
+    expect(report.problems[0].message).toContain('without a reason');
+    expect(report.problems[1].message).toContain('no CheckProblem');
+  });
+
+  it('cuts the reason of a silenced finding to 200 characters and writes its control characters out', () => {
+    const probe = `
+export class LongCheck {
+  static check = 'long';
+  static phase = 'build' as const;
+  handle() {
+    return { problems: [], silenced: [{ severity: 'warning' as const, message: 'm', file: 'src/a.ts', line: 1, reason: '\\u001b[31mab\\ncd' + 'x'.repeat(300) }] };
+  }
+}
+export class ProbeProvider { static checks = [LongCheck]; }
+export const probeModule = { name: 'probe' };
+`;
+    const root = app({ probe });
+    const reason: string = reportOf(check(root, ['--only=long', '--json']).stdout, 'long').silenced[0].reason;
+    expect(reason).toBe(`\\x1b[31mab\\x0acd${'x'.repeat(190)}`);
+    const text = check(root, ['--only=long']);
+    expect(text.stdout).toContain(reason);
+    expect(text.stdout).not.toContain('\u001b[31m');
+  });
+
+  it('says a check must return findings or { problems, silenced } when it returns something else', () => {
+    const probe = `
+export class OddCheck {
+  static check = 'odd';
+  static phase = 'build' as const;
+  handle() { return 'nonsense' as never; }
+}
+export class ProbeProvider { static checks = [OddCheck]; }
+export const probeModule = { name: 'probe' };
+`;
+    const { code, stdout } = check(app({ probe }), ['--only=odd', '--json']);
+    expect(code).toBe(3);
+    expect(reportOf(stdout, 'odd')).toMatchObject({ status: 'error', reason: 'handle() must return a list of findings, or { problems, silenced }' });
   });
 
   it('shows the checks of a package in the text', () => {

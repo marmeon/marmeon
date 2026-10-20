@@ -8,6 +8,7 @@ export type { DispatchInput, DispatchOptions, LoadOptions, PageQuery, ResponseCo
 export { GLOBAL, MiddlewareGroups, MiddlewarePriority } from './middleware-groups.ts';
 export { defineMiddleware } from './middleware.ts';
 export type { PipelineOptions } from './middleware.ts';
+export type { MiddlewareEnsures } from './ensures.ts';
 export type * from './types.ts';
 export type * from './routes.ts';
 export { fillPath, matchesPath, toSearchParams, urlFor } from './url.ts';

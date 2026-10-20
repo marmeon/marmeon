@@ -3,7 +3,7 @@ import { Application, ErrorSolutions, errorCodeOf, HealthChecks, Redactor, type 
 import { coreSolutions, loadDiscoveredPackages } from '@marmeon/core/internal';
 import { loadApplication } from '../load.ts';
 import { CheckRegistry, type AppCheckClass } from './registry.ts';
-import { reportOf, unrunReport, type CheckProblem, type CheckReport } from './report.ts';
+import { escapeControl, reportOf, unrunReport, type CheckProblem, type CheckReport, type SilencedProblem } from './report.ts';
 
 /** How long one check of a package may take before it counts as one that could not run (ms). Readiness checks have their own limits. */
 export const CHECK_TIMEOUT = 60_000;
@@ -133,6 +133,17 @@ function sanitize(problem: unknown, redactor: Redactor, source: string): CheckPr
   };
 }
 
+/** A silenced finding a package returned, masked; one that is no finding, or has no reason, is not silenced but a finding of its own. */
+function silencedOf(problem: unknown, redactor: Redactor, source: string): { silenced: SilencedProblem } | { problem: CheckProblem } {
+  const found = sanitize(problem, redactor, source);
+  const reason = (problem as { reason?: unknown } | null)?.reason;
+  const given = problem as Partial<CheckProblem> | null;
+  const valid = typeof given === 'object' && given !== null && typeof given.message === 'string' && (given.severity === 'error' || given.severity === 'warning');
+  if (!valid) return { problem: found };
+  if (typeof reason !== 'string' || reason === '') return { problem: { ...found, message: `${found.message} (returned as silenced without a reason)` } };
+  return { silenced: { ...found, reason: escapeControl(redactor.text(reason).slice(0, 200)) } };
+}
+
 /** Runs one check of a package in a scope of its own; whatever it throws, or when it takes too long, is that check being `error` — never another's result. */
 async function runCheck(Check: AppCheckClass, app: Application, root: string): Promise<CheckReport> {
   const started = performance.now();
@@ -157,10 +168,22 @@ async function runCheck(Check: AppCheckClass, app: Application, root: string): P
       clearTimeout(grace);
       return unrunReport(Check.check, 'error', `took longer than ${limit} ms`, ms());
     }
+    const withSilenced = (outcome as { problems?: unknown } | null)?.problems;
+    if (!Array.isArray(outcome) && Array.isArray(withSilenced)) {
+      const given = (outcome as { silenced?: unknown }).silenced;
+      const problems = withSilenced.map((problem) => sanitize(problem, redactor, Check.name));
+      const silenced: SilencedProblem[] = [];
+      for (const one of Array.isArray(given) ? given : []) {
+        const result = silencedOf(one, redactor, Check.name);
+        if ('silenced' in result) silenced.push(result.silenced);
+        else problems.push(result.problem);
+      }
+      return { ...reportOf(Check.check, problems, ms()), ...(silenced.length > 0 ? { silenced } : {}) };
+    }
     if (!Array.isArray(outcome)) {
       const skipped = (outcome as { skipped?: unknown } | null)?.skipped;
       if (typeof skipped === 'string') return unrunReport(Check.check, 'skipped', redactor.text(skipped), ms());
-      return unrunReport(Check.check, 'error', 'handle() must return a list of findings', ms());
+      return unrunReport(Check.check, 'error', 'handle() must return a list of findings, or { problems, silenced }', ms());
     }
     return reportOf(Check.check, outcome.map((problem) => sanitize(problem, redactor, Check.name)), ms());
   } catch (error) {

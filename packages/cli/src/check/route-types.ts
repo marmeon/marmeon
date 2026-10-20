@@ -6,7 +6,7 @@ import type { AppCheck } from './registry.ts';
 import type { CheckProblem } from './report.ts';
 
 /** `file` and `line` of a route's `site` (`modules/blog/routes.ts:12`), when it is inside the app. */
-function placeOf(site: string | undefined, root: string): { file?: string; line?: number } {
+export function placeOf(site: string | undefined, root: string): { file?: string; line?: number } {
   const match = site === undefined ? null : /^(.*):(\d+)$/.exec(site);
   if (!match) return {};
   const file = relative(resolve(root), resolve(root, match[1]!)).split('\\').join('/');

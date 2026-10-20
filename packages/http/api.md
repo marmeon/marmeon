@@ -732,6 +732,7 @@ export declare class UrlSigner {
 // ValidateSignature
 export declare class ValidateSignature {
     #private;
+    static readonly ensures: readonly ['authenticated'];
     constructor(signer: UrlSigner);
     handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }

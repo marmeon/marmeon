@@ -170,6 +170,9 @@ export class RateLimiter {
  */
 export function throttle(name: string): MiddlewareClass<{}, {}> {
   const Throttle = class {
+    /** Read by `marmeon check`: a route with this middleware has a limit. See docs/middleware.md#declaring-what-a-middleware-ensures. */
+    static readonly ensures = ['rate-limited'] as const;
+
     /** Asked once when the server starts (the kernel's start check, an internal symbol): the limiter must be defined by then. */
     static [START_CHECK](container: Resolver, route: string): void {
       if (container.make(RateLimiter).limiter(name)) return;
