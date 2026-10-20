@@ -3,7 +3,7 @@ import { relative } from 'node:path';
 import { parseSync } from '@marmeon/core/internal';
 import { sourceFiles } from './files.ts';
 import { reportOf, unrunReport, type CheckProblem } from './report.ts';
-import { silence } from './silence.ts';
+import { silence, type SilenceableCheck } from './silence.ts';
 import type { CheckRun } from './tools.ts';
 import { plainReason } from './tools.ts';
 
@@ -254,17 +254,178 @@ export function rawSqlProblems(root: string): CheckProblem[] {
       problems.push({ severity: 'warning', message: RAW_SQL_MESSAGE, file, line, column, rule: 'marmeon(raw-sql)', docs: 'docs/check.md#raw-sql' });
     }
   });
+  return sorted(problems);
+}
+
+/** A rule's findings in the order of the files, then of the lines. */
+function sorted(problems: CheckProblem[]): CheckProblem[] {
   return problems.sort((a, b) => (a.file! < b.file! ? -1 : a.file! > b.file! ? 1 : a.line! - b.line! || a.column! - b.column!));
+}
+
+/** A source rule as a check: the findings, less those a comment with a reason silences. */
+function sourceCheck(name: SilenceableCheck, root: string, find: (root: string) => CheckProblem[]): CheckRun {
+  const started = performance.now();
+  const ms = () => Math.round(performance.now() - started);
+  try {
+    const { problems, silenced } = silence(name, root, find(root));
+    return { report: { ...reportOf(name, problems, ms()), ...(silenced.length > 0 ? { silenced } : {}) } };
+  } catch (error) {
+    return { report: unrunReport(name, 'error', `the scan failed: ${plainReason(error, root)}`, ms()) };
+  }
 }
 
 /** `raw-sql` as a check: the findings, less those a comment with a reason silences. */
 export function rawSqlCheck(root: string): CheckRun {
-  const started = performance.now();
-  const ms = () => Math.round(performance.now() - started);
-  try {
-    const { problems, silenced } = silence('raw-sql', root, rawSqlProblems(root));
-    return { report: { ...reportOf('raw-sql', problems, ms()), ...(silenced.length > 0 ? { silenced } : {}) } };
-  } catch (error) {
-    return { report: unrunReport('raw-sql', 'error', `the scan failed: ${plainReason(error, root)}`, ms()) };
+  return sourceCheck('raw-sql', root, rawSqlProblems);
+}
+
+/** The name a property is keyed by: `a`, `'a'`, `['a']` or a template without an expression. */
+function keyName(property: Node): string | undefined {
+  const key = property.key as Node;
+  if (!property.computed) return key.type === 'Identifier' ? key.name : key.type === 'Literal' ? String(key.value) : undefined;
+  if (key.type === 'Literal' && typeof key.value === 'string') return key.value;
+  if (key.type === 'TemplateLiteral' && key.expressions.length === 0) return key.quasis[0]?.value.cooked ?? undefined;
+  return undefined;
+}
+
+/** Whether `node` is `{ __html: <literal> }` — itself, in parentheses or with a cast, or a `const` set to it — with nothing that could replace the markup. */
+function fixedHtml(node: Node, declarations: Declarations, seen: ReadonlySet<string> = new Set()): boolean {
+  const target = unwrap(node);
+  if (target.type === 'Identifier') {
+    const declared = declarations.get(target.name);
+    return declared?.count === 1 && declared.kind === 'const' && declared.init !== undefined && !seen.has(target.name) && fixedHtml(declared.init, declarations, new Set(seen).add(target.name));
   }
+  if (target.type !== 'ObjectExpression') return false;
+  let found = false;
+  for (const property of target.properties as Node[]) {
+    if (property.type !== 'Property') return false;
+    const name = keyName(property);
+    if (name === '__html') {
+      if (!isLiteral(property.value, declarations)) return false;
+      found = true;
+    } else if (name === undefined) return false;
+  }
+  return found;
+}
+
+/** Whether `node` is the `document` — by name, as `window.document`, or a `const` set to one. */
+function isDocument(node: Node, declarations: Declarations, seen: ReadonlySet<string> = new Set()): boolean {
+  const target = unwrap(node);
+  if (target.type === 'MemberExpression') return ['document', 'contentDocument', 'ownerDocument'].includes(memberName(target) ?? '');
+  if (target.type !== 'Identifier') return false;
+  if (target.name === 'document') return true;
+  const declared = declarations.get(target.name);
+  return declared?.count === 1 && declared.kind === 'const' && declared.init !== undefined && !seen.has(target.name) && isDocument(declared.init, declarations, new Set(seen).add(target.name));
+}
+
+/** The methods that parse their argument as HTML, and the position of that argument. `write` and `writeln` of the document are checked on every argument. */
+const HTML_METHODS: ReadonlyMap<string, number> = new Map([
+  ['insertAdjacentHTML', 1],
+  ['createContextualFragment', 0],
+  ['setHTMLUnsafe', 0],
+]);
+
+/** `unwrap`, and the `?.` chain around an optional member: `(el?.insertAdjacentHTML)` is `el.insertAdjacentHTML`. */
+function unchain(node: Node): Node {
+  let current = unwrap(node);
+  while (current.type === 'ChainExpression') current = unwrap(current.expression);
+  return current;
+}
+
+/**
+ * The method `node` is, when it sets HTML — `el.insertAdjacentHTML`, `document.write`, a `const` set to one, or one of them
+ * `.bind()`-ed — and the arguments `.bind()` already gave it.
+ */
+function htmlMethod(node: Node, declarations: Declarations, seen: ReadonlySet<string> = new Set()): { name: string; preset: Node[] } | undefined {
+  const target = unchain(node);
+  if (target.type === 'Identifier') {
+    const declared = declarations.get(target.name);
+    if (declared?.count !== 1 || declared.kind !== 'const' || declared.init === undefined || seen.has(target.name)) return undefined;
+    return htmlMethod(declared.init, declarations, new Set(seen).add(target.name));
+  }
+  if (target.type === 'CallExpression') {
+    const callee = unchain(target.callee);
+    if (callee.type !== 'MemberExpression' || memberName(callee) !== 'bind') return undefined;
+    const bound = htmlMethod(callee.object, declarations, seen);
+    const given = target.arguments as Node[];
+    return bound && { name: bound.name, preset: [...bound.preset, ...(given[0]?.type === 'SpreadElement' ? [given[0]] : given.slice(1))] };
+  }
+  if (target.type !== 'MemberExpression') return undefined;
+  const name = memberName(target);
+  if (name === undefined) return undefined;
+  if (name === 'write' || name === 'writeln') return isDocument(target.object, declarations) ? { name, preset: [] } : undefined;
+  return HTML_METHODS.has(name) ? { name, preset: [] } : undefined;
+}
+
+const INNER_HTML_MESSAGE =
+  'This HTML is set from a value the code does not fix, so a value from a request can become script. Show the value as text (`{value}` in JSX, `textContent` in the DOM). If the HTML is safe, say why: `// marmeon-check-ignore inner-html: <why>`.';
+
+/**
+ * The scan for HTML that code sets from a value it does not fix: the `dangerouslySetInnerHTML` attribute or property unless its
+ * value is `{ __html: <literal> }`, an assignment to `.innerHTML`, `.outerHTML`, `.srcdoc` or `.__html`, the `srcDoc` attribute, and
+ * `insertAdjacentHTML`, `document.write`, `createContextualFragment` and `setHTMLUnsafe` with a non-literal argument. Parentheses,
+ * `as`, `!`, `?.`, a `const` that holds the object or the method, `['innerHTML']`, `.call()`, `.apply()` and `.bind()` do not hide a sink. A name such as `sanitize` is no proof.
+ * Tests are not read. See docs/check.md#html-from-code.
+ */
+export function innerHtmlProblems(root: string): CheckProblem[] {
+  const problems: CheckProblem[] = [];
+  scan(root, false, (file, { nodes, declarations, position }) => {
+    const report = (at: Node) => {
+      const { line, column } = position(at.start);
+      problems.push({ severity: 'warning', message: INNER_HTML_MESSAGE, file, line, column, rule: 'marmeon(inner-html)', docs: 'docs/check.md#html-from-code' });
+    };
+    for (const node of nodes) {
+      switch (node.type) {
+        case 'JSXAttribute':
+          if (node.name.type === 'JSXIdentifier' && node.value?.type === 'JSXExpressionContainer') {
+            const value = node.value.expression as Node;
+            if (value.type === 'JSXEmptyExpression') break;
+            if (node.name.name === 'dangerouslySetInnerHTML' && !fixedHtml(value, declarations)) report(value);
+            else if ((node.name.name === 'srcDoc' || node.name.name === 'srcdoc') && !isLiteral(value, declarations)) report(value);
+          }
+          break;
+        case 'ObjectExpression':
+          for (const property of node.properties as Node[]) {
+            if (property.type !== 'Property') continue;
+            const key = keyName(property);
+            if (key === 'dangerouslySetInnerHTML' && !fixedHtml(property.value, declarations)) report(property.value);
+            else if (key === 'srcDoc' && !isLiteral(property.value, declarations)) report(property.value);
+          }
+          break;
+        case 'AssignmentExpression': {
+          const target = unwrap(node.left);
+          const name = target.type === 'MemberExpression' ? memberName(target) : undefined;
+          if (name !== undefined && ['innerHTML', 'outerHTML', 'srcdoc', '__html'].includes(name) && !isLiteral(node.right, declarations)) report(node.right);
+          break;
+        }
+        case 'CallExpression': {
+          const callee = unchain(node.callee);
+          let args = node.arguments as Node[];
+          let method = htmlMethod(callee, declarations);
+          if (!method && callee.type === 'MemberExpression') {
+            const via = memberName(callee);
+            if (via === 'call' || via === 'apply') {
+              method = htmlMethod(callee.object, declarations);
+              if (via === 'call') args = args[0]?.type === 'SpreadElement' ? [args[0]] : args.slice(1);
+              else args = args[1] === undefined ? [] : args[1].type === 'ArrayExpression' ? (args[1].elements as (Node | null)[]).map((element) => element ?? { type: 'Literal', value: '', start: 0, end: 0 }) : [{ ...args[1], type: 'SpreadElement' }];
+            }
+          }
+          if (!method) break;
+          args = [...method.preset, ...args];
+          const index = HTML_METHODS.get(method.name);
+          // A spread before the argument moves it: whatever is spread could be the HTML.
+          const spread = args.slice(0, index === undefined ? args.length : index + 1).find((argument) => argument.type === 'SpreadElement');
+          const argument = spread ?? (index === undefined ? args.find((each) => !isLiteral(each, declarations)) : args[index]);
+          if (argument && !isLiteral(argument, declarations)) report(argument);
+          break;
+        }
+      }
+    }
+  });
+  return sorted(problems);
+}
+
+/** `inner-html` as a check: the findings, less those a comment with a reason silences. */
+export function innerHtmlCheck(root: string): CheckRun {
+  return sourceCheck('inner-html', root, innerHtmlProblems);
 }
