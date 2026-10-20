@@ -39,7 +39,7 @@ framework bring them.
 `marmeon make:auth` also writes `marmeon-stubs.json` into the root of the app: for every file it copied, except the migrations, the
 template it came from in `@marmeon/auth`, the version of the package and the hash of what it wrote (line endings do not count). Commit it with the
 module. The file belongs to the framework, so do not edit it by hand; without it, where a file came from is unknown. The migrations are not
-in it: they belong to your app, and only `make:auth --force` writes over them. They are append-only: a file the framework shipped never changes, so a later change of a kit table comes as a new migration. After a merge conflict in `marmeon-stubs.json`, take one side: the hashes then match that side. A file from a
+in it: they belong to your app, and `make:auth --force` keeps the ones the app has and adds only those it lacks. They are append-only: a file the framework shipped never changes, so a later change of a kit table comes as a new migration. After a merge conflict in `marmeon-stubs.json`, take one side: the hashes then match that side. A file from a
 newer Marmeon makes `make:auth` stop before it writes anything. `create-marmeon` writes the file first, with the sets
 `create-marmeon:base` (and `create-marmeon:kit` for the starter kit); `make:auth` adds its own set to it.
 
@@ -328,7 +328,7 @@ any that is only a dev dependency: the module runs in production, so those belon
 writes the route types. It needs `config/app.ts` with `AppConfig`, which every new app has.
 
 After it, run `pnpm marmeon migrate`, and set the `MAIL_*` variables before anyone else uses the app. An existing
-`modules/auth/` stays as it is unless you pass `--force`, which overwrites it with the templates. `--adapter=react` names the UI
+`modules/auth/` stays as it is unless you pass `--force`, which overwrites it with the templates, except `migrations/`: a migration that ran never changes, so `--force` keeps every migration of that name (whatever its timestamp) and writes only the ones the app lacks. It names a kept file that differs from the template, and stops without writing when `modules/auth/migrations` is a link or a file. `--adapter=react` names the UI
 adapter, and React is the only one with templates.
 
 ## Testing
