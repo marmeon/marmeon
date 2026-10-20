@@ -139,10 +139,11 @@ interface IslandParent {
 
 /**
  * What an island's request takes over from its page's request — as the browser would send them with its own
- * request: the cookies (the session's id, a remember-me token), the languages, the client and proxy headers. Nothing
+ * request: the `Host` the page was asked for (so host checks see the outer request's, not one a proxy header made of its URL), the cookies
+ * (the session's id, a remember-me token), the languages, the client and proxy headers. Nothing
  * that is about the page's own request (its body, `Purpose`, partial reloads).
  */
-const ISLAND_HEADERS = ['cookie', 'accept-language', 'user-agent', 'forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port'];
+const ISLAND_HEADERS = ['host', 'cookie', 'accept-language', 'user-agent', 'forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port'];
 
 type OnTerminable = NonNullable<DispatchOptions['onTerminable']>;
 
@@ -336,7 +337,7 @@ export function createHttpKernel(
     if (exceptions.hasSubscribers) {
       const status = error instanceof HttpError ? error.status : error instanceof ValidationError ? 422 : 500;
       const routePath = matched.get(failed)?.path;
-      exceptions.publish({ ...messageBase(application), error, status, method: failed.method, path: new URL(failed.url).pathname, ...(routePath === undefined ? {} : { routePath }), ...fetchSite(failed) });
+      exceptions.publish({ ...messageBase(application), error, status, method: failed.method, path: new URL(failed.url).pathname, host: failed.headers.get('host') ?? new URL(failed.url).host, ...(routePath === undefined ? {} : { routePath }), ...fetchSite(failed) });
     }
     const handler = container.make(ExceptionHandler);
     if (isLiveValidation(failed)) return renderLiveValidationError(handler, error, failed, scope);

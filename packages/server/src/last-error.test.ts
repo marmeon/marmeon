@@ -85,7 +85,7 @@ afterEach(() => {
 
 /** An error as the kernel publishes it, for the cases a request cannot produce. */
 function publish(application: Application, error: unknown, extra: Record<string, unknown> = {}) {
-  channel('marmeon:exception').publish({ ...messageBase(application), error, status: 500, method: 'GET', path: '/direct', ...extra });
+  channel('marmeon:exception').publish({ ...messageBase(application), error, status: 500, method: 'GET', path: '/direct', host: 'localhost', ...extra });
 }
 
 const reportOf = (root: string) => join(root, '.marmeon', 'last-error.md');
@@ -196,6 +196,32 @@ describe('the last-error file', () => {
     await writer.idle();
     expect(existsSync(join(root, '.marmeon'))).toBe(false);
     await kernel.request('/reset/same', { headers: { 'sec-fetch-site': 'same-origin' } });
+    await writer.idle();
+    expect(read(root)).toContain('reset failed');
+  });
+
+  it('is written only for a host the development routes answer, whatever Sec-Fetch-Site says', async () => {
+    const root = tempDir('marmeon-last-error-');
+    const { application, writer } = await serve(root, { NODE_ENV: 'development', APP_URL: 'https://app.test:8443' });
+    const fetchSite = 'same-origin';
+    for (const host of ['evil.example', 'localhost.evil.example', 'localhost@evil.example', 'evil.example@localhost', '']) publish(application, new Error(`from ${host}`), { host, fetchSite });
+    publish(application, new Error('no host'), { host: undefined, fetchSite });
+    await writer.idle();
+    expect(existsSync(join(root, '.marmeon'))).toBe(false);
+    for (const host of ['localhost:3000', '127.0.0.1', '[::1]:5173', 'app.test:8443']) {
+      publish(application, new Error(`from ${host}`), { host, fetchSite });
+      await writer.idle();
+      expect(read(root), host).toContain(`from ${host}`);
+    }
+  });
+
+  it('is not written for a request to a foreign Host header, though its URL says localhost', async () => {
+    const root = tempDir('marmeon-last-error-');
+    const { kernel, writer } = await serve(root);
+    await kernel.request('/boom', { headers: { host: 'evil.example', 'sec-fetch-site': 'same-origin' } });
+    await writer.idle();
+    expect(existsSync(join(root, '.marmeon'))).toBe(false);
+    await kernel.request('/reset/ok', { headers: { host: 'localhost:3000', 'sec-fetch-site': 'same-origin' } });
     await writer.idle();
     expect(read(root)).toContain('reset failed');
   });

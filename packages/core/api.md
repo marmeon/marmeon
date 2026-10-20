@@ -803,6 +803,8 @@ export declare function devSecured(response: Response): Response;
 export declare function forbiddenDevHost(): Response;
 // hostAllowed
 export declare function hostAllowed(request: Request, hosts: ReadonlySet<string>): boolean;
+// hostNameAllowed
+export declare function hostNameAllowed(host: string, hosts: ReadonlySet<string>): boolean;
 // notInDevelopment
 export declare function notInDevelopment(): Response;
 ```
@@ -868,6 +870,7 @@ export interface ExceptionMessage extends MessageBase {
     readonly method: string;
     readonly path: string;
     readonly routePath?: string;
+    readonly host?: string;
     readonly fetchSite?: string;
 }
 // HttpRequestMessage

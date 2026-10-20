@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { lstat, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ErrorSolutions, Logger, Redactor, type Application } from '@marmeon/core';
+import { hostNameAllowed, devHosts } from '@marmeon/core/dev';
 import { channels, type ExceptionMessage } from '@marmeon/core/diagnostics';
 import { ServerConfig } from './provider.ts';
 
@@ -21,10 +22,13 @@ export interface LastErrorWriter {
  * and with the error's own text fenced as data. Called where the development server starts, not at every boot: a command like
  * `tinker` must not remove the report. Does nothing unless the app is in development. The file is replaced atomically (a symlink
  * at its place is replaced, not followed), readable by its owner alone; a failure to write is a log warning, never the request's.
- * A report left by an earlier run is removed once, first; only requests that are `same-origin`, typed in (`none`) or without `Sec-Fetch-Site` are written.
+ * A report left by an earlier run is removed once, first; only requests that are `same-origin`, typed in (`none`) or without `Sec-Fetch-Site`
+ * are written, and only those for a host the development routes answer (the loopback names and `APP_URL`'s): a page re-pointed at this
+ * machine by DNS rebinding could otherwise put text of its choice into a file an agent reads.
  */
 export function writeLastError(app: Application): LastErrorWriter {
   if (!app.container.has(ServerConfig) || !app.container.make(ServerConfig).debug) return { close: () => {}, idle: () => Promise.resolve() };
+  const hosts = devHosts(app.container.make(ServerConfig).appUrl);
   const logger = app.container.make(Logger).child({ channel: 'http' });
   const redactor = app.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
   const dir = join(app.root, '.marmeon');
@@ -109,6 +113,8 @@ export function writeLastError(app: Application): LastErrorWriter {
   draining = drain();
 
   const off = channels.subscribe(app, 'exception', (message) => {
+    // No host counts as a foreign one.
+    if (message.host === undefined || !hostNameAllowed(message.host, hosts)) return;
     // Listed, not excluded: `same-site` is another local port, a page of another app on this machine.
     if (message.status < 500 || !(message.fetchSite === undefined || message.fetchSite === 'same-origin' || message.fetchSite === 'none')) return;
     latest = message;
