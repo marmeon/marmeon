@@ -4,3 +4,9 @@
  * (`scripts/test/temp-hygiene.ts`) names whatever is left behind. Import it statically (its file hook is registered on import).
  */
 export declare function tempDir(prefix: `marmeon-${string}`): string;
+
+/**
+ * Like `tempDir`, inside the checkout (`<repo>/.tmp/`), where the repository's lockfile and workspace declaration make it part of the
+ * workspace: the root of an app whose modules come from the repository. Throws without `MARMEON_WORKSPACE_TMPDIR` (set by the run).
+ */
+export declare function workspaceTempDir(prefix: `marmeon-${string}`): string;

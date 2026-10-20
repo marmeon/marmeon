@@ -91,12 +91,22 @@ A migration without `down` cannot be rolled back. A rollback that reaches it sto
 
 ### Migrations from a package
 
-A module's `migrations` folder belongs to your app, so it has to be in your repository where a review sees every change. A folder
-or a file whose real path (after following symlinks) runs through a `node_modules` directory is refused with error D20: by
-`migrate`, the schema projection and `db:types`, and by every query of the running app (under `marmeon dev` there is also a warning at startup that the migrations are not watched, and every query still fails with D20).
-An update of the package could change a migration your database has already run, or add a `schema.data()` step, and nothing would
+A module's `migrations` folder belongs to your app, so it has to be in your repository where a review sees every change. It has to
+lie, by its real path (after following symlinks), in your app or in its workspace, and no `node_modules` directory may be on the
+way below that. Anything else is refused with error D20: by `migrate`, the schema projection and `db:types`, and by every query of
+the running app (under `marmeon dev` there is also a warning at startup that the migrations are not watched, and every query still fails with D20).
+This covers the folder, each file in it and every entry below it, so a symlink in a subfolder is checked like one at the top.
+What is checked is the directory, the files and the entries with their symlinks, not the imports: a migration has to hold its content itself.
+An update of a package could change a migration your database has already run, or add a `schema.data()` step, and nothing would
 show in your history. A migration file that only re-exports one from a package defeats the purpose, so put the content into the
-file. The same goes for a helper that a migration imports: it belongs to your app, and a symlink to one in `node_modules` is refused too.
+file. The same goes for a helper that a migration imports: it belongs to your app, and a symlink to one in `node_modules` or outside
+the workspace is refused too.
+
+The workspace of an app is the directory of its lockfile when that declares one (`pnpm-workspace.yaml`, or `workspaces` in its
+`package.json`). A package of your own monorepo is fine, with the lockfile in the root of the monorepo. Without a declaration, or with
+the workspace of a tool Marmeon does not read (Deno, Rush, Nx, Lerna), only the app's own directory counts. A package manager that
+keeps packages outside the repository (a cache, a global store, `link:` to another repository) puts them out of reach.
+A package cache inside the app, such as `DENO_DIR` or Bun's cache directory, is not recognised: keep it outside the app.
 
 Move the migrations into a module of your app **with the same file names** and point `migrations` at them: `migrate` knows what
 has run by the file name, so files that are written again under new timestamps would be new migrations. If your module is named

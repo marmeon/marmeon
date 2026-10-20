@@ -12,12 +12,12 @@ import { Connections, DatabaseHealthCheck, MigrationStateError, Migrator, Reposi
 import { dropAllTables } from './migrations/drop-all.ts';
 import { databaseSolutions } from './solutions.ts';
 import { SchemaRequirements } from './schema-requirements.ts';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const auth: ModuleDefinition = { name: 'auth', migrations: fixtures('auth') };
 const accounts: ModuleDefinition = { name: 'accounts', migrations: fixtures('accounts') };
-const root = tempDir('marmeon-migration-state-');
+const root = workspaceTempDir('marmeon-migration-state-');
 const appOf = (modules: ModuleDefinition[]) => fakeApp(modules, root);
 
 const ACCOUNTS = ['2026_01_05_000000_create_accounts_table', '2026_01_06_000000_add_recovery_code_to_accounts_table'];
@@ -137,7 +137,7 @@ describe.each(drivers)('what the app does when the database lacks migrations, on
   });
 
   it('keeps the schema in memory when the connections have no app, and when a migrator hands it over: nothing is written under the root', async () => {
-    const alone = tempDir('marmeon-migration-state-root-');
+    const alone = workspaceTempDir('marmeon-migration-state-root-');
     const connections = new Connections({ connections: { default: options }, root: alone, logger });
     opened.push(connections);
     await new Migrator(fakeApp([auth, accounts], alone), connections).migrate();

@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Application } from '@marmeon/core';
 import { describe, expect, it, vi } from 'vitest';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { typeGenerator } from './__fixtures__/databases.ts';
 import { DbTypesCheck } from './checks.ts';
 
@@ -14,7 +14,7 @@ describe('DbTypesCheck', { timeout: 30_000 }, () => {
   });
 
   it('fails a missing file, passes a current one, and fails a stale one with the command that fixes it', async () => {
-    const root = tempDir('marmeon-db-types-check-');
+    const root = workspaceTempDir('marmeon-db-types-check-');
     const app = { root, modules, container: { has: () => false } } as unknown as Application;
     const generator = typeGenerator(app);
     const check = new DbTypesCheck(generator, app);
@@ -37,7 +37,7 @@ describe('DbTypesCheck', { timeout: 30_000 }, () => {
   });
 
   it('needs no database and runs in production too', async () => {
-    const root = tempDir('marmeon-db-types-prod-');
+    const root = workspaceTempDir('marmeon-db-types-prod-');
     const app = { root, modules, container: { has: () => false } } as unknown as Application;
     const generator = typeGenerator(app, 'pgsql');
     await generator.write();
@@ -50,7 +50,7 @@ describe('DbTypesCheck', { timeout: 30_000 }, () => {
   });
 
   it('rejects with the reason of an aborted signal', async () => {
-    const root = tempDir('marmeon-db-types-abort-');
+    const root = workspaceTempDir('marmeon-db-types-abort-');
     const app = { root, modules, container: { has: () => false } } as unknown as Application;
     const generator = typeGenerator(app);
     await generator.write();

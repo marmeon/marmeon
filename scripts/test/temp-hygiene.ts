@@ -10,9 +10,16 @@
  * `packages/react/src/__fixtures__/bundle.ts`). The worker databases of `createTestApp` live in the app's `storage/`: a
  * `marmeon-test-*.sqlite` file here is a leftover. CONTRIBUTING.md, "The test suites against real services".
  */
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+/**
+ * A second directory per run inside the checkout (`<repo>/.tmp/marmeon-run-<pid>-…`, ignored by git), for the roots of tests whose
+ * modules come from the repository: their real path has to lie in the repository's workspace (`workspaceTempDir` in `temp-dir.js`).
+ * `MARMEON_WORKSPACE_TMPDIR` names it. It is checked and removed like the run's directory in `os.tmpdir()`.
+ */
+const WORKSPACE_TMP = join(import.meta.dirname, '..', '..', '.tmp');
 
 /** What a run keeps until its end on purpose (see above). */
 export const RUN_SCOPED = [/^marmeon-bundle-[0-9a-f]{12}$/];
@@ -43,25 +50,48 @@ export function abandonedRuns(entries: readonly string[], isAlive = alive): stri
   });
 }
 
+/** Removes `run`; what it held that is not run-scoped is what a test left behind. */
+function sweep(run: string): string[] {
+  try {
+    return leftovers(readdirSync(run));
+  } finally {
+    rmSync(run, { recursive: true, force: true, maxRetries: 3 });
+  }
+}
+
 export function setup(): () => void {
+  return start(tmpdir(), WORKSPACE_TMP);
+}
+
+/** `setup` with the two directories the run's own go into (the tests of this file pass their own). */
+export function start(base: string, workspaceBase: string): () => void {
   const before = process.env.TMPDIR;
-  const base = tmpdir();
+  const beforeWorkspace = process.env.MARMEON_WORKSPACE_TMPDIR;
   for (const name of abandonedRuns(readdirSync(base))) rmSync(join(base, name), { recursive: true, force: true, maxRetries: 3 });
+  if (existsSync(workspaceBase)) {
+    for (const name of abandonedRuns(readdirSync(workspaceBase))) rmSync(join(workspaceBase, name), { recursive: true, force: true, maxRetries: 3 });
+  }
   const run = mkdtempSync(join(base, `marmeon-run-${process.pid}-`));
+  mkdirSync(workspaceBase, { recursive: true });
+  const workspaceRun = mkdtempSync(join(workspaceBase, `marmeon-run-${process.pid}-`));
   process.env.TMPDIR = run;
+  process.env.MARMEON_WORKSPACE_TMPDIR = workspaceRun;
   return () => {
     if (before === undefined) delete process.env.TMPDIR;
     else process.env.TMPDIR = before;
-    let left: string[];
+    if (beforeWorkspace === undefined) delete process.env.MARMEON_WORKSPACE_TMPDIR;
+    else process.env.MARMEON_WORKSPACE_TMPDIR = beforeWorkspace;
+    const left: string[] = [];
     try {
-      left = leftovers(readdirSync(run));
+      left.push(...sweep(run));
     } finally {
-      rmSync(run, { recursive: true, force: true, maxRetries: 3 });
+      // The second sweep runs when the first throws. `workspaceBase` itself stays (another run may keep a directory in it); it is empty or ignored by git.
+      left.push(...sweep(workspaceRun).map((name) => `.tmp/${name}`));
     }
     if (left.length > 0) {
       throw new Error(
         `The tests left ${left.length} temporary entr${left.length === 1 ? 'y' : 'ies'} behind (removed now, with the run's directory) — ` +
-          'a test that makes one removes it (tempDir() from scripts/test/temp-dir.js, or rmSync in afterAll/finally):\n  ' +
+          'a test that makes one removes it (tempDir() or workspaceTempDir() from scripts/test/temp-dir.js, or rmSync in afterAll/finally):\n  ' +
           left.join('\n  '),
       );
     }

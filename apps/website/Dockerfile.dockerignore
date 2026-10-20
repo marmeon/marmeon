@@ -20,6 +20,7 @@ apps/blank-app/**
 .git
 .github
 .claude
+.tmp
 .idea
 deploy
 coverage

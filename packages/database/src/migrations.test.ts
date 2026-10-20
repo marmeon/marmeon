@@ -7,7 +7,7 @@ import { drivers, freshConnections, freshDatabase, silent } from './__fixtures__
 import { Connections, Migrator } from './index.ts';
 import { projectMigrations } from './schema/projection.ts';
 import { LOCK_TABLE } from './migrations/lock.ts';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const auth: ModuleDefinition = { name: 'auth', migrations: fixtures('auth') };
@@ -230,7 +230,7 @@ describe.each(drivers)('migrations on another connection (%s)', (driver) => {
 });
 
 describe('migration files', () => {
-  const root = tempDir('marmeon-migrations-');
+  const root = workspaceTempDir('marmeon-migrations-');
   const app = (modules: ModuleDefinition[]) => new Migrator({ modules, root } as unknown as Application, undefined as never);
 
   it('rejects badly named files, duplicate names and missing directories — with the module', () => {

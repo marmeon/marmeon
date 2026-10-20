@@ -290,6 +290,49 @@ describe('marmeon publish', () => {
     expect(written(inner)).toEqual([]);
   });
 
+  it('looks for a package from the real path of an app root that is a symlink', async () => {
+    const repo = tempDir('marmeon-publish-');
+    writeFileSync(join(repo, 'pnpm-lock.yaml'), '');
+    const app = join(repo, 'apps/web');
+    mkdirSync(join(app, 'bootstrap'), { recursive: true });
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ dependencies: { '@acme/perm': '1.0.0' } }));
+    writeFileSync(join(app, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\n\nexport default defineApplication({ root: '', modules: [] });\n");
+    // A directory that is not the app's, with the package in its node_modules, holds the link.
+    const elsewhere = makeApp();
+    const link = join(elsewhere, 'link');
+    symlinkSync(app, link);
+    const refused = await publish(link);
+    expect(refused.code).toBe(1);
+    expect(refused.lines[0]).toBe('✗ @acme/perm is not installed in your app — install your dependencies first.');
+    expect(written(app)).toEqual([]);
+  });
+
+  it('finds a package hoisted to the workspace root when the app is addressed through a symlink', async () => {
+    const repo = makeApp();
+    writeFileSync(join(repo, 'pnpm-lock.yaml'), '');
+    const app = join(repo, 'apps/web');
+    mkdirSync(join(app, 'bootstrap'), { recursive: true });
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ dependencies: { '@acme/perm': '1.0.0' } }));
+    writeFileSync(join(app, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\n\nexport default defineApplication({ root: '', modules: [] });\n");
+    const link = join(tempDir('marmeon-publish-'), 'link');
+    symlinkSync(app, link);
+    const result = await publish(link);
+    // Found: whatever comes after (the provider is resolved from the link, not from the repository) is not "not installed".
+    expect(result.lines[0]).not.toMatch(/not installed/);
+  });
+
+  it.skipIf(process.platform === 'win32')('does not look above the app when the lockfile lies in a directory writable by everyone', async () => {
+    const parent = makeApp();
+    writeFileSync(join(parent, 'pnpm-lock.yaml'), '');
+    chmodSync(parent, 0o777);
+    const root = join(parent, 'apps/web');
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@acme/perm': '1.0.0' } }));
+    const { code, lines } = await publish(root);
+    expect(code).toBe(1);
+    expect(lines[0]).toBe('✗ @acme/perm is not installed in your app — install your dependencies first.');
+  });
+
   describe('refuses', () => {
     it('a package that is installed but not a dependency of the app', async () => {
       const root = makeApp({ dependency: false });

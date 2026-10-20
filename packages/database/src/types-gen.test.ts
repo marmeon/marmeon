@@ -6,7 +6,7 @@ import { typeGenerator } from './__fixtures__/databases.ts';
 import { emptyProjection, type ProjectedColumn, type ProjectedTable } from './schema/projection.ts';
 import { columnType, renderTypes } from './types-gen/render.ts';
 
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 /** The generator reads migration files and the driver of the config, never a database: both drivers always run. */
 const drivers = ['sqlite', 'pgsql'] as const;
@@ -82,7 +82,7 @@ declare module '@marmeon/database' {
 `;
 
 describe.each(drivers)('TypeGenerator on %s', { timeout: 30_000 }, (driver) => {
-  const root = tempDir('marmeon-types-');
+  const root = workspaceTempDir('marmeon-types-');
 
   it('generates the same file from the migrations on every driver — without a database', async () => {
     const generator = typeGenerator({ root, modules } as unknown as Application, driver);
@@ -112,7 +112,7 @@ describe.each(drivers)('TypeGenerator on %s', { timeout: 30_000 }, (driver) => {
 });
 
 describe('the format mark of bootstrap/database.d.ts', () => {
-  const root = tempDir('marmeon-types-');
+  const root = workspaceTempDir('marmeon-types-');
   const generator = typeGenerator({ root, modules } as unknown as Application);
   const file = join(root, 'bootstrap/database.d.ts');
   const write = (text: string) => {
@@ -147,7 +147,7 @@ describe('the format mark of bootstrap/database.d.ts', () => {
 });
 
 describe.each(drivers)('Relations from db:types on %s', (driver) => {
-  const root = tempDir('marmeon-types-');
+  const root = workspaceTempDir('marmeon-types-');
   const generator = (blog: string) =>
     typeGenerator({ root, modules: [{ name: 'auth', migrations: fixtures('auth') }, { name: 'blog', migrations: fixtures(blog) }] } as unknown as Application, driver);
 
@@ -203,7 +203,7 @@ describe.each(drivers)('Relations from db:types on %s', (driver) => {
 
 describe.each(drivers)('UUIDv7 columns in db:types on %s', (driver) => {
   it('are Generated<string>: a row is inserted without them', async () => {
-    const { source } = await typeGenerator({ root: tempDir('marmeon-types-'), modules: [{ name: 'uuids', migrations: fixtures('uuids') }] } as unknown as Application, driver).render();
+    const { source } = await typeGenerator({ root: workspaceTempDir('marmeon-types-'), modules: [{ name: 'uuids', migrations: fixtures('uuids') }] } as unknown as Application, driver).render();
     expect(source).toContain(`    members: {
       id: Generated<string>;
       team_id: string;

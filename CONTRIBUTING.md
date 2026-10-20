@@ -74,7 +74,9 @@ package store, the registry and Docker — without them they are reported as ski
   its growth is worth it; say in the description what the bytes buy ([The bundle sizes](#the-bundle-sizes)).
 - **Tests leave nothing behind:** every run gets its own temporary directory (`TMPDIR`), and `pnpm test` fails with a list when a
   test leaves a `marmeon-*` entry in it. Make temporary directories with `tempDir('marmeon-…')` (`scripts/test/temp-dir.js`): it
-  removes them when the test, or the file, is done.
+  removes them when the test, or the file, is done. The root of an app whose modules come from the repository's fixtures is made with
+  `workspaceTempDir('marmeon-…')` instead: it lies in `.tmp/` of the checkout (ignored by git), because migrations have to lie in the
+  app or its workspace.
 - **`pnpm check:source` holds** — the rules over the repository's own files ([next section](#rules-over-the-source-pnpm-checksource)).
 - **A pull request** is one change; its title is its line in the release notes, and a maintainer gives it one release label
   ([Pull requests and releases](#pull-requests-and-releases)). You write no changelog entry. A breaking change gets its entry in
@@ -95,7 +97,7 @@ apps/website      the documentation as a Marmeon app: docs/*.md and the policies
 docs              the documentation's pages, in the order apps/website/docs.config.ts lists them
 scripts/ci.ts     pnpm run ci — its 16 parts, from the build to the release rules (below)
 scripts/bench     pnpm bench — the start and the request path, measured (never a gate)
-scripts/test      the test suite's temporary directory per run and tempDir() — the repository's own, not exported by a package
+scripts/test      the test suite's temporary directory per run, tempDir() and workspaceTempDir() — the repository's own, not exported by a package
                   (pnpm test fails when a test leaves an entry behind)
 deploy/website    the docs' Compose file and Caddyfile (one server)
 UPGRADING.md      what changes for apps from one version to the next

@@ -5,12 +5,12 @@ import { Application, type ServiceProviderClass } from '@marmeon/core';
 import { findPackage, printable } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { assignMigrations, migrationDeclarations, type PackageMigrationFile, type PackageMigrations, show } from '../package-migrations.ts';
+import { installRoot } from '../workspace.ts';
 import { appMigrations, findMigration, publishMigration, SYSTEM_MODULE, timestamp } from './publish-migration.ts';
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 /** A valid npm package name: never a path. */
 const PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i;
-const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'];
 
 type Package = NonNullable<ReturnType<typeof findPackage>>;
 
@@ -20,16 +20,12 @@ type Package = NonNullable<ReturnType<typeof findPackage>>;
  * not the app's.
  */
 function locate(name: string, root: string): Package | undefined {
-  const hasLockfile = (dir: string) => LOCKFILES.some((lockfile) => existsSync(join(dir, lockfile)));
+  const top = installRoot(root);
+  // From the real path: the way up from a symlinked app root would pass `top` without ever meeting it.
   const directories: string[] = [];
-  for (let dir = root; ; dir = dirname(dir)) {
+  for (let dir = realpathSync(root); ; dir = dirname(dir)) {
     directories.push(dir);
-    if (hasLockfile(dir)) break;
-    if (dirname(dir) === dir) {
-      // no lockfile anywhere above: the app stands alone
-      directories.length = 1;
-      break;
-    }
+    if (dir === top || dirname(dir) === dir) break;
   }
   for (const dir of directories) {
     if (existsSync(join(dir, 'node_modules', name, 'package.json'))) return findPackage(name, dir);

@@ -2,6 +2,7 @@
 // `marmeon make:lint-config` writes — which oxlint takes for their files instead of this one.
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": [".tmp/"],
   "categories": { "correctness": "error" },
   "rules": {
     // With verbatimModuleSyntax, `import { type X }` stays as `import {} from …` and loads the module.
