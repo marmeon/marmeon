@@ -504,6 +504,36 @@ export class MakePolicyCommand {
   }
 }
 
+/** A URL path that goes into a string literal of the template: no quote, backslash, space or `?`/`#`. */
+const TEST_PATH = /^\/[A-Za-z0-9._~/:-]*$/;
+
+export class MakeTestCommand {
+  static command = 'make:test';
+  static description = 'Create a test of a module against the booted app';
+  static usage = '<name> --module=<module> [--path=/…]';
+  static options = { ...moduleOption, path: { type: 'string' } } as const;
+  static boots = false;
+
+  handle(input: CommandInput): number {
+    const [name] = input.args;
+    if (!name || !KEBAB.test(name)) {
+      input.output.error('Pass a kebab-case name, e.g. marmeon make:test checkout --module=shop');
+      return 1;
+    }
+    const dir = moduleDir(input);
+    if (!dir) return 1;
+    const path = input.options.path ?? `/${input.options.module}`;
+    if (typeof path !== 'string' || !TEST_PATH.test(path)) {
+      input.output.error('Pass --path as a URL path that starts with /, e.g. --path=/shop (letters, digits and . _ ~ / : - only).');
+      return 1;
+    }
+    if (!write(input, join(dir, `${name}.test.ts`), TEST(name.replaceAll('-', ' '), path))) return 1;
+    input.output.line(style('dim', `The test fails until ${path} answers 200 — change it to what you test.`));
+    input.output.line(style('dim', 'See docs/http-tests.md#making-requests'));
+    return 0;
+  }
+}
+
 /** Whether the app's package.json lists `name` in its dependencies or devDependencies. */
 function dependsOn(root: string, name: string): boolean {
   try {
@@ -798,6 +828,25 @@ export class ${name} {
     return record.user_id === user.id || denyAsNotFound();
   }
 }
+`;
+
+/** Red until the route answers: an `it.todo` would read as green. Needs `@marmeon/testing` and `vitest` in the app. */
+const TEST = (words: string, path: string) => `import { createTestApp, type TestApp } from '@marmeon/testing';
+import { beforeEach, describe, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+
+let app: TestApp;
+// Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
+beforeEach(async () => {
+  app = await createTestApp(application, { database: 'refresh' });
+}, 30_000);
+
+describe('${words}', { timeout: 30_000 }, () => {
+  it('answers ${path}', async () => {
+    // Fails until the route answers 200. Sign in with app.actingAs(user), check a page with assertPage('…'): docs/http-tests.md#making-requests.
+    await app.get('${path}').assertOk();
+  });
+});
 `;
 
 const MIDDLEWARE = (name: string) => `import type { HttpContext, Next } from '@marmeon/http';

@@ -19,6 +19,7 @@ import {
   MakeNotificationCommand,
   MakePolicyCommand,
   MakeSeederCommand,
+  MakeTestCommand,
 } from './commands/make.ts';
 import { ModulesCheckCommand } from './commands/modules-check.ts';
 import { PackageBuildCommand } from './commands/package-build.ts';
@@ -53,6 +54,7 @@ export const BUILT_IN: readonly CommandClass[] = [
   MakeSeederCommand,
   MakeMiddlewareCommand,
   MakePolicyCommand,
+  MakeTestCommand,
   MakeMigrationCommand,
   MakeLintConfigCommand,
   MakeDockerCommand,
