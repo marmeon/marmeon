@@ -64,6 +64,8 @@ export const ServerConfig = defineConfig('server', {
       .min(1, 'Expected at least 1 second')
       .max(3600, 'Expected at most 3600 seconds')
       .default(65),
+    /** The app's own address: its host is one the development server writes `last-error.md` for (besides the loopback names). */
+    APP_URL: env.string().optional(),
     NODE_ENV: env.string().optional(),
   }),
   resolve: (e) => ({
@@ -72,6 +74,7 @@ export const ServerConfig = defineConfig('server', {
     host: e.HOST,
     maxBodySize: bytes(e.MAX_BODY_SIZE),
     assetVersion: e.ASSET_VERSION,
+    appUrl: e.APP_URL,
     trustedProxies: e.TRUSTED_PROXIES,
     ssr: e.SSR_ENABLED === 'true',
     /** The liveness path of the health endpoints (readiness: `<path>/ready`), or `false` without them. */

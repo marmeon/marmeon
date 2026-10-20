@@ -83,6 +83,7 @@ export declare const ServerConfig: import("@marmeon/core").ConfigDefinition<{
     host: string;
     maxBodySize: number;
     assetVersion: string | undefined;
+    appUrl: string | undefined;
     trustedProxies: string[];
     ssr: boolean;
     health: string | false;
@@ -100,6 +101,7 @@ export declare class ServerServiceProvider implements ServiceProvider {
         host: string;
         maxBodySize: number;
         assetVersion: string | undefined;
+        appUrl: string | undefined;
         trustedProxies: string[];
         ssr: boolean;
         health: string | false;
@@ -125,6 +127,8 @@ export declare function startServer({ app, ssrEntry, port, host, mode: chosenMod
 ## Environment
 
 ```ts
+// APP_URL
+`APP_URL` — optional
 // ASSET_VERSION
 `ASSET_VERSION` — optional
 // HEALTH_PATH

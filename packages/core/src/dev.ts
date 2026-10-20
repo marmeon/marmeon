@@ -24,12 +24,10 @@ export function devHosts(appUrl: string | undefined): ReadonlySet<string> {
 }
 
 /**
- * Whether a request is for one of `hosts` — its `Host` header (or, without one, its URL's host), port aside. A name that only
- * starts or ends like an allowed one (`localhost.evil.example`), userinfo (`localhost@evil.example`), a path smuggled into
- * `Host` and an empty `Host` never match.
+ * Whether a `Host` value (`localhost:3000`) names one of `hosts`, port aside. A name that only starts or ends like an allowed
+ * one (`localhost.evil.example`), userinfo (`localhost@evil.example`), a path smuggled into the value and an empty value never match.
  */
-export function hostAllowed(request: Request, hosts: ReadonlySet<string>): boolean {
-  const host = request.headers.get('host') ?? new URL(request.url).host;
+export function hostNameAllowed(host: string, hosts: ReadonlySet<string>): boolean {
   let hostname: string;
   try {
     hostname = new URL(`http://${host}`).hostname.toLowerCase();
@@ -38,6 +36,11 @@ export function hostAllowed(request: Request, hosts: ReadonlySet<string>): boole
   }
   // `http://a@evil.example` parses as evil.example; a path or query smuggled into Host never matches a bare name.
   return host.length <= 255 && !/[/?#@\\]/.test(host) && hosts.has(hostname);
+}
+
+/** Whether a request is for one of `hosts` — its `Host` header (or, without one, its URL's host); see {@link hostNameAllowed}. */
+export function hostAllowed(request: Request, hosts: ReadonlySet<string>): boolean {
+  return hostNameAllowed(request.headers.get('host') ?? new URL(request.url).host, hosts);
 }
 
 /** What every answer of a development route carries — pages, JSON, streams, error pages and the 403 alike. */

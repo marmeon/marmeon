@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { devHosts, devOnly, devSecured, hostAllowed, LOOPBACK_HOSTS } from './dev.ts';
+import { devHosts, devOnly, devSecured, hostAllowed, hostNameAllowed, LOOPBACK_HOSTS } from './dev.ts';
 
 const request = (host: string | undefined, url = 'http://localhost/_marmeon/mail') => new Request(url, host === undefined ? {} : { headers: { host } });
 
@@ -22,6 +22,12 @@ describe('the guard of every development route', () => {
     // Without a Host header (an in-process request): the URL's host.
     expect(hostAllowed(request(undefined, 'http://evil.example/_marmeon/mail'), hosts)).toBe(false);
     expect(hostAllowed(request(undefined, 'http://localhost:3960/_marmeon/mail'), hosts)).toBe(true);
+  });
+
+  it('hostNameAllowed: the same rule for a bare Host value', () => {
+    const hosts = devHosts('http://app.test');
+    for (const host of ['localhost:3000', '[::1]:5173', 'APP.test']) expect(hostNameAllowed(host, hosts), host).toBe(true);
+    for (const host of ['evil.example', 'localhost.evil.example', 'localhost@evil.example', 'evil.example@localhost', '']) expect(hostNameAllowed(host, hosts), host).toBe(false);
   });
 
   it('devOnly: another host gets 403 and the handler never runs; every answer leaves with the dev headers and without CORS', async () => {
