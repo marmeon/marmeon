@@ -724,7 +724,19 @@ export function createHttpKernel(
     return final;
   };
 
-  for (const route of router.registrationOrder) {
+  // Unknown paths still pass the global middleware, then end in the exception handler's 404.
+  const notFound = (c: Context) =>
+    handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
+      router.dispatchNotFound(c.req.raw, {
+        resolve: (Class) => scope.make(Class),
+        state,
+        onTerminable,
+        onError: (error) => renderError(error, c.req.raw, scope),
+      }),
+      islandParent(c.env),
+    );
+
+  const register = (route: RouteDefinition) => {
     const handler = (c: Context) => {
       matched.set(c.req.raw, route);
       if (debug) parameters.set(c.req.raw, c.req.param());
@@ -745,20 +757,17 @@ export function createHttpKernel(
     };
     routeHandlers.set(handler, route);
     app.on([...route.methods], route.path, handler);
-  }
+  };
 
-  // Unknown paths still pass the global middleware, then end in the exception handler's 404.
-  app.notFound((c) =>
-    handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
-      router.dispatchNotFound(c.req.raw, {
-        resolve: (Class) => scope.make(Class),
-        state,
-        onTerminable,
-        onError: (error) => renderError(error, c.req.raw, scope),
-      }),
-      islandParent(c.env),
-    ),
-  );
+  // The framework's routes first, then a guard, then the app's: a path under `/_marmeon/` that no framework route answered
+  // is a 404 here, so no wildcard of the app (`/:page{.+}`) can take it. Hono matches in registration order and decodes
+  // `%5F`, so the guard sees the path as the router does; it compares by `isReservedPath` (any case, doubled slash).
+  const ordered = router.registrationOrder;
+  for (const route of ordered) if (router.isFrameworkRoute(route)) register(route);
+  app.all('*', (c, next) => (router.isReservedPath(c.req.path) ? notFound(c) : next()));
+  for (const route of ordered) if (!router.isFrameworkRoute(route)) register(route);
+
+  app.notFound(notFound);
   app.onError((error, c) => renderError(error, c.req.raw));
 
   // Behind a trusted proxy, the URL the client asked for (`X-Forwarded-Proto`/`-Host`). A plain HTML form's PUT, PATCH or

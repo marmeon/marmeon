@@ -657,7 +657,8 @@ There is no fallback route. A controller answers 404 itself with `abort(404)`, a
 Every path under `/_marmeon/` belongs to the framework. `/_marmeon/session` (how open tabs learn that the session changed)
 is always there. The packages add theirs: `/_marmeon/live` with `@marmeon/live`, `/_marmeon/uploads` and `/_marmeon/storage`
 with `@marmeon/storage` (uploads only once configured); in development there are also `/_marmeon/devtools` and
-`/_marmeon/mail`. These paths take precedence over a wildcard or parameter route of your app, such as `/:page{.+}`. A route of your app or of a package that lies under that prefix, whether you write
+`/_marmeon/mail`. These paths take precedence over a wildcard or parameter route of your app, such as `/:page{.+}`, and a path under the prefix that no framework route answers ends in a 404 before any route, controller or
+middleware group of your app runs (only the global middleware does), whatever the case of its letters and with its letters percent-encoded (`%5F`). A wildcard of your app that answered such a path before now gets a 404 there. A route of your app or of a package that lies under that prefix, whether you write
 the path out or build it with a `prefix`, would inherit the framework's special treatment or take a path the framework may need. So the app does not
 start: the error names the method and the path. Give your routes a prefix of your own, such as `/_playground` below.
 
