@@ -8,7 +8,7 @@
     "node": ">=26.10"
   },
   "scripts": {
-    "build": "marmeon package:build packages/*",
+    "build": "marmeon package:build packages/* && node scripts/docs-ship.ts",
     "typecheck": "marmeon package:build packages/* && pnpm -r --parallel typecheck && tsc -p scripts",
     "test": "NODE_OPTIONS=--conditions=@marmeon/source vitest run --configLoader native",
     "dev": "pnpm --filter @marmeon/web-app dev",

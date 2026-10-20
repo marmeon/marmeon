@@ -26,6 +26,8 @@ Every command runs with `NODE_ENV` `development`, `test` or `production` and sto
 
 ## Documentation
 
+The package carries the documentation of its own version under `node_modules/marmeon/docs/`.
+
 - [Console](https://marmeon.com/docs/console)
 - [Console: the development server](https://marmeon.com/docs/console#the-development-server)
 - [Console: writing commands](https://marmeon.com/docs/console#writing-commands)

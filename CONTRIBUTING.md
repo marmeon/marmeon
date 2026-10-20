@@ -2,7 +2,7 @@
 
 Thank you for helping. This page covers the rules for a contribution: the sign-off, the checks, pull requests and their labels. It says how a
 release is made, and what the repository holds that the documentation does not: its layout, its own test suites and
-benchmarks, and the inside of the framework's client. The principles the framework is built on are in the [README](README.md#principles); the
+benchmarks, and the inside of the framework's client. The principles the framework is built on are in the [README](https://github.com/marmeon/marmeon/blob/main/README.md#principles); the
 documentation is under `docs/` ([Writing documentation](#writing-documentation)).
 
 ## Sign your commits off (DCO)
@@ -617,6 +617,9 @@ candidate (below `latest`) until a maintainer moves or removes it (`npm dist-tag
   reference to the private record. Then publint (warnings count) and attw with the `esm-only` profile (the packages are ESM
   only, so the CommonJS resolutions are not checked). `create-marmeon` has no dependencies at all — it is the first thing a
   stranger runs — and its template has no `.env` and no `APP_KEY` with a value. The root `tsconfig.json` references every package.
+- The `marmeon` tarball carries the docs of its version: `pnpm build` copies `docs/*.md`, `UPGRADING.md`, `SECURITY.md` and
+  `CONTRIBUTING.md` into `packages/cli/` (`scripts/docs-ship.ts`, gitignored, never checked in) and writes `docs/index.json` and
+  `docs/llms.txt`. `pnpm pack:check` demands every copy byte for byte and nothing else under `docs/`.
 - `pnpm pack:smoke` makes a starter-kit app (pnpm) and a minimal one (npm) from the tarballs outside the repository and runs
   install, tests, lint, build without `.env`, and `marmeon start` as exactly one Node process, loading neither oxc-parser nor
   pino-pretty; the Redis step needs the Redis of `compose.yaml`. The apps live under `$TMPDIR`, with no `node_modules/@marmeon`
