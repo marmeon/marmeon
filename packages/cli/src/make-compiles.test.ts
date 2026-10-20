@@ -16,7 +16,7 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
       mkdirSync(dirname(join(app, 'node_modules', name)), { recursive: true });
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
-    for (const pkg of ['core', 'auth', 'http','router', 'database', 'queue', 'notifications', 'validation', 'testing']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
+    for (const pkg of ['core', 'auth', 'http','router', 'database', 'queue', 'notifications', 'validation', 'testing', 'react']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
     link('vitest', realpathSync(join(repo, 'node_modules/vitest'))); // the generated test imports it
     link('marmeon', join(repo, 'packages', 'cli')); // the generated command imports its input type from it
     for (const pkg of ['react', '@types/react']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
@@ -185,6 +185,67 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     rmSync(join(app, '.gitignore'));
     rmSync(file);
   }, 30_000);
+
+  it('generates a complete resource that compiles, and a policy that lets the owner in and nobody else', async () => {
+    const manifest = readFileSync(join(app, 'package.json'), 'utf8');
+    const tsconfig = readFileSync(join(app, 'tsconfig.json'), 'utf8');
+    try {
+      // What the starter kit gives a resource: the auth module's exports and layout, the user's shape, and the tables (the web app's).
+      mkdirSync(join(app, 'modules/auth/layouts'), { recursive: true });
+      writeFileSync(
+        join(app, 'modules/auth/index.ts'),
+        [
+          "import { defineFactory, Repository } from '@marmeon/database';",
+          "export const UserFactory = defineFactory('users', ({ sequence }) => ({ name: `User ${sequence}`, email: `user${sequence}@example.com`, password: 'x', session_key: 'x' }));",
+          "export class UserRepository extends Repository<'users'> {",
+          "  static table = 'users' as const;",
+          '  async deleteAccounts(ids: readonly number[]) { return ids; }',
+          '}',
+          '',
+        ].join('\n'),
+      );
+      writeFileSync(join(app, 'modules/auth/layouts/AppLayout.tsx'), "import type { LayoutProps } from '@marmeon/react';\nexport const AppLayout = ({ children }: LayoutProps) => children;\n");
+      // The verified() middleware reads the address of the user.
+      writeFileSync(
+        join(app, 'modules/billing/auth-types.ts'),
+        "declare module '@marmeon/auth' { interface AuthTypes { user: { readonly id: number; readonly email: string; readonly email_verified_at: string | null } } }\nexport {};\n",
+      );
+      writeFileSync(join(app, 'modules/tables.d.ts'), readFileSync(join(webApp, 'bootstrap/database.d.ts'), 'utf8'));
+      mkdirSync(join(app, 'bootstrap'));
+      writeFileSync(join(app, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\nexport default defineApplication({ root: import.meta.dirname + '/..' });\n");
+      const made = marmeon(app, ['make:resource', 'Bookmark']);
+      expect([made.code, made.stderr]).toEqual([0, '']);
+      expect(readFileSync(join(app, 'bootstrap/app.ts'), 'utf8')).toContain('modules: [bookmarks]');
+
+      // The typed routes of the new module (`<Link route>`, `FormFieldsOf`) come from the route types of an app that has it.
+      writeFileSync(join(app, 'package.json'), JSON.stringify({ ...JSON.parse(manifest), imports: { '#modules/*': './modules/*/index.ts' } }));
+      const routeTypes = marmeon(app, ['route:types']);
+      expect([routeTypes.code, routeTypes.stderr]).toEqual([0, '']);
+      writeFileSync(join(app, 'tsconfig.json'), JSON.stringify({ ...JSON.parse(tsconfig), include: ['modules', 'bootstrap'] }));
+
+      const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
+      expect(typecheck.stdout + typecheck.stderr).toBe('');
+      expect(typecheck.status).toBe(0);
+
+      // The policy through the Gate: the owner passes, anyone else gets a 404.
+      writeFileSync(join(app, 'modules/billing/gate.ts'), "export { Gate } from '@marmeon/auth';\n");
+      const { Gate } = (await import(join(app, 'modules/billing/gate.ts'))) as { Gate: new (auth: never, resolve: (policy: new () => object) => object) => { inspect(policy: never, ability: never, record: never): Promise<{ allowed: boolean; status: number }> } };
+      const { BookmarkPolicy } = (await import(join(app, 'modules/bookmarks/policies/BookmarkPolicy.ts'))) as { BookmarkPolicy: new () => object };
+      const ask = (userId: number, ability: string, record: object) =>
+        new Gate({ user: async () => ({ id: userId }) } as never, (policy) => new policy()).inspect(BookmarkPolicy as never, ability as never, record as never);
+      for (const ability of ['view', 'update', 'delete']) {
+        expect((await ask(7, ability, { user_id: 7 })).allowed).toBe(true);
+        const other = await ask(8, ability, { user_id: 7 });
+        expect([other.allowed, other.status]).toEqual([false, 404]);
+      }
+    } finally {
+      writeFileSync(join(app, 'package.json'), manifest);
+      writeFileSync(join(app, 'tsconfig.json'), tsconfig);
+      for (const path of ['bootstrap', 'modules/auth', 'modules/bookmarks', 'modules/tables.d.ts', 'modules/billing/gate.ts', 'modules/billing/auth-types.ts']) {
+        rmSync(join(app, path), { recursive: true, force: true });
+      }
+    }
+  }, 60_000);
 
   it('refuses to overwrite and explains missing modules', () => {
     marmeon(app, ['make:module', 'shop']);

@@ -103,7 +103,8 @@ record type is structural (`{ readonly user_id: … }`); give it your table's `R
 authorize: can(NotePolicy, 'update', 'note')
 ```
 
-An existing file is kept unless you pass `--force`.
+An existing file is kept unless you pass `--force`. [`marmeon make:resource`](starter-kit.md#adding-a-resource) writes this policy with the
+table's `Row<'…'>`, together with the routes and requests that use it.
 
 ### Deciding before the ability
 

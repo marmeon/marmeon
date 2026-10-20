@@ -7,6 +7,7 @@ import { DocsCommand } from './commands/docs.ts';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
 import { MakeDockerCommand } from './commands/make-docker.ts';
 import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
+import { MakeResourceCommand } from './commands/make-resource.ts';
 import {
   MakeCommandCommand,
   MakeControllerCommand,
@@ -55,6 +56,7 @@ export const BUILT_IN: readonly CommandClass[] = [
   MakeMiddlewareCommand,
   MakePolicyCommand,
   MakeTestCommand,
+  MakeResourceCommand,
   MakeMigrationCommand,
   MakeLintConfigCommand,
   MakeDockerCommand,
