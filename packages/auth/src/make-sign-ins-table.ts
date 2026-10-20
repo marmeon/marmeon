@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { CommandInput } from 'marmeon';
 
 /** The file the command copies. */
-export const SIGN_INS_MIGRATION = new URL('../stubs/migrations/create_sign_ins_table.ts', import.meta.url);
+export const SIGN_INS_MIGRATION = new URL('../stubs/migrations/0001_01_01_000000_create_sign_ins_table.ts', import.meta.url);
 
 /**
  * `marmeon make:sign-ins-table [--module=system]`: writes the migration of the `sign_ins` table that `DatabaseSignIns` uses

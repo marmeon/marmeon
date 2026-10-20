@@ -331,6 +331,6 @@ describe('make:session-table', () => {
     expect(Object.keys(MakeSessionTableCommand.options)).toEqual(['module']);
     expect(MakeSessionTableCommand.options.module).toEqual({ type: 'string', short: 'm' });
     expect(MakeSessionTableCommand.usage).toBe('[--module=system]');
-    expect(readdirSync(new URL('../stubs/migrations/', import.meta.url))).toEqual(['create_sessions_table.ts']);
+    expect(readdirSync(new URL('../stubs/migrations/', import.meta.url))).toEqual(['0001_01_01_000000_create_sessions_table.ts']);
   });
 });

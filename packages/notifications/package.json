@@ -70,11 +70,9 @@
       "NotificationServiceProvider"
     ],
     "migrations": {
-      "format": 1,
+      "format": 2,
       "module": "system",
-      "files": [
-        "stubs/migrations/create_notifications_table.ts"
-      ]
+      "from": "stubs/migrations"
     }
   },
   "dependencies": {

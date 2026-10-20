@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { CommandInput } from 'marmeon';
 
 /** The migration the command copies — a real file, so the store tests run exactly what apps get. */
-export const CACHE_MIGRATION = new URL('../../stubs/migrations/create_cache_table.ts', import.meta.url);
+export const CACHE_MIGRATION = new URL('../../stubs/migrations/0001_01_01_000000_create_cache_table.ts', import.meta.url);
 
 /**
  * `marmeon make:cache-table [--module=system]`: writes the migration of the `database` cache driver's tables into an app

@@ -6,7 +6,7 @@ import { UploadsConfig } from './config.ts';
 import { TemporaryUploads } from './service.ts';
 
 /** The migration `make:uploads-table` copies — a real file, so the tests run exactly what apps get. */
-export const UPLOADS_MIGRATION = new URL('../../stubs/migrations/create_temporary_uploads_table.ts', import.meta.url);
+export const UPLOADS_MIGRATION = new URL('../../stubs/migrations/0001_01_01_000000_create_temporary_uploads_table.ts', import.meta.url);
 
 /** The connection `temporary_uploads` belongs on — for the migration `make:uploads-table` writes: `UPLOADS_CONNECTION`. */
 export function uploadsTableConnection(container: Resolver): string {

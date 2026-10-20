@@ -1,0 +1,7 @@
+{
+  "migrations": {
+    "format": 2,
+    "from": "database/migrations",
+    "module": "system"
+  }
+}
