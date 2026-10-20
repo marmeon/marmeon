@@ -64,6 +64,8 @@ before it runs. The [configuration](configuration.md#where-node_env-comes-from) 
 
 [`marmeon check`](check.md#exit-codes) adds a `3` for a check that could not run.
 
+When the reader of a pipe stops early, as in `marmeon docs | head -5`, the command stops writing and ends with its own exit code, without an error. Any other failure to write stdout still fails the command.
+
 A script can tell a typo from a failure this way. A built-in's options are checked before the app boots; an app's own command is looked
 up once the app has booted, so a failed boot (1) comes first. A few commands have codes of their own: [`docs`](#reading-the-documentation) ends with 2 for an unknown page or options that do not go together, [`tinker`](#running-code-from-a-script) ends with
 130 on a signal, and [`queue:work`](queues.md#timeouts-and-retryafter) with 70 when a job does not stop in time. A command that checks its own arguments, such as `schedule:test` without a name, still exits with 1.
