@@ -919,11 +919,18 @@ the other `connection`, as in [migrations on another connection](#migrations-on-
 ### Publishing the migrations of a package
 
 ```sh
-pnpm marmeon publish @acme/permissions
+pnpm marmeon publish
 pnpm marmeon migrate
 ```
 
-`marmeon publish <package> [--module=<name>]` copies the migrations a package lists into your app. The package must be in the
+`marmeon publish` lists the installed direct dependencies that list migrations and, at a terminal, asks which of those that lack some to publish (numbers
+separated by commas, `a` for all, empty for none). Without a terminal (no TTY, `CI` set, or `--no-interaction`) it asks nothing: it
+prints the list and ends with exit code 1 when something is missing, with the hint to run `marmeon publish <package>` for each;
+when nothing is missing it says "Nothing to publish" and ends with 0. The list holds the installed direct dependencies that list
+migrations, with what each lacks: `@acme/permissions — lacks 1: add_grants_table`, `— not published (2)`, `— complete`, or
+`— refused` with the reason on the next line.
+
+`marmeon publish <package> [--module=<name>]` copies the migrations of one package without asking. The package must be in the
 `dependencies` or `devDependencies` of your app's `package.json` and installed in its `node_modules`: a package that only
 another package brought is not copied; the package is looked for in the `node_modules` of the app and, in a workspace, of the
 directories above it up to the first one with a lockfile. The module is `--module`; else the module whose `index.ts` carries the line `publish` writes when it creates a module for the
@@ -934,13 +941,36 @@ stops the command the same way, unless all files are there and nothing is left t
 is created and added to `bootstrap/app.ts` like the one of a `make:*-table` command. One that exists is opened without
 `--module` only if it is `system` and the package is one of `@marmeon/…` that your `package.json` lists with a version range,
 a dist-tag or `catalog:` (not an alias, a path, a workspace or a repository). The tables of a package never land in one of your
-modules unasked. `--module` is a kebab-case name, never a path. A file name that another direct dependency of your app lists
-too is refused: two migrations would create the same table.
+modules unasked. `--module` is a kebab-case name, never a path, and needs a package.
+
+A migration is known by its name without the timestamp, across the whole app. `publish` refuses, and writes nothing:
+
+- **A name two packages ship.** When two installed direct dependencies ship the same name, both are refused: two migrations
+  would create the same table.
+- **A gap.** When your app lacks a file of the package that sorts before one it has, the new file would run out of order. The
+  message names both; copy the missing file from `node_modules/<package>` into that module by hand, with a timestamp before the
+  one it follows (with an empty `up()` if your app does not want it).
+
+Everything is planned before anything is written: `publish` writes nothing when it refuses, and one refusal for any chosen
+package ends the command with exit code 1 and all the messages. If a write fails after the plan (a full disk, a directory
+without permission), the command names the files it had written by then. A new file is put behind the newest migration of
+your app, whatever its extension (`.ts`, `.js`, `.mts`, `.mjs`); a newest migration whose timestamp is no date, or that leaves no
+room behind it, stops the command with exit code 1 and names the file.
 
 The command writes what is missing and skips a migration your app already has under the same name (say, one that `make:auth`
 wrote), so you can run it again: when nothing is left it ends with exit code 0 and says so. The files carry a timestamp one
-second apart, in the order of their file names in the package. It does not touch the database; run `marmeon migrate` after it. To move the
-tables to another module later, move the files with the same names and change their rows in `migrations.module`.
+second apart, in the order of their file names in the package, and behind the newest migration of your app, so a copy never runs
+before one that has run. A package that adds a migration in a later release needs `marmeon publish <package>` again. It does not
+touch the database; run `marmeon migrate` after it. To move the tables to another module later, move the files with the same
+names and change their rows in `migrations.module`.
+
+`marmeon publish --check` writes nothing and ends with exit code 1 when a package your app publishes from (see below) lacks
+a migration, or when `publish` would refuse it. A package counts as published from when `publish` made a module for it, or when it
+is a package of the framework with a migration in `system`; a migration of your own that has the name of a file of a package
+does not make it one, so packages you have not published from are left out. A package taken into an existing module with
+`--module` has no line of its own there, so `marmeon check` does not check it; run `marmeon publish --check <package>` for it. With a package
+(`marmeon publish --check <package>`) it checks that package. [`marmeon check`](check.md#the-app-checks) runs the same test
+as `package-migrations`. Put one of them in CI after you update the packages.
 
 `publish` only copies files: it runs no code of the package and reads the package's files without following a symlink (a hard
 link to a file outside the package, which `realpath` does not reveal, is not detected). Like every command of your app, though,

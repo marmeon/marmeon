@@ -90,6 +90,8 @@ it(
     expect(client.indexOf('../styles/app.css')).toBeGreaterThan(client.indexOf('@marmeon/react/styles.css'));
     expect(client.indexOf('../styles/app.css')).toBeLessThan(client.indexOf('modules/auth/auth.css'));
 
+    // The kit has the migrations of the packages it uses: nothing is left for publish.
+    expect(marmeon('publish', '--check').code).toBe(0);
     const migrated = marmeon('migrate');
     // make:auth and migrate rewrote generated files: every hash create-marmeon recorded still matches its file.
     const recordedSets = (JSON.parse(readFileSync(join(root, 'marmeon-stubs.json'), 'utf8')) as { sets: Record<string, { files: Record<string, { sha256: string }> }> }).sets;

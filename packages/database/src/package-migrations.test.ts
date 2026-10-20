@@ -166,6 +166,12 @@ describe('readPackageMigrations', () => {
       expect(text.length).toBeLessThan(400);
     });
 
+    it('escapes format and separator characters that reorder or hide text', () => {
+      const text = messageOf(read({ ...valid, from: 'stubs/\u202e\u2028\u200b' }));
+      expect(text).not.toMatch(/[\u202e\u2028\u200b]/);
+      expect(text).toContain('\\u202e\\u2028\\u200b');
+    });
+
     it('a file larger than a megabyte', () => {
       expect(messageOf(read(valid, { [FIRST]: `${STUB}${' '.repeat(1 << 20)}` }))).toContain('larger than');
     });

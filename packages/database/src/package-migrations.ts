@@ -1,7 +1,7 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { err, ok, type Result } from '@marmeon/core';
-import { withCode } from '@marmeon/core/internal';
+import { printable, withCode } from '@marmeon/core/internal';
 
 /** One migration a package ships: `name` is the file name without its timestamp and `.ts`, `file` its POSIX path in the package. */
 export interface PackageMigrationFile {
@@ -49,9 +49,9 @@ function invalid(pkg: { name: string }, why: string): Result<never, PackageMigra
   return err({ kind: 'invalid-package-migrations', message: withCode('D21', `${pkg.name} lists its migrations in package.json wrongly: ${why}`) });
 }
 
-/** A string from a foreign package for a message: quoted, cut at 200 characters, control characters (C0 by JSON, C1 here) escaped. */
+/** A string from a foreign package for a message: quoted, cut at 200 characters, control, format and separator characters escaped. */
 function show(value: string): string {
-  return JSON.stringify(value.slice(0, 200)).replace(/[\u007f-\u009f]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return printable(JSON.stringify(value.slice(0, 200)));
 }
 
 /**

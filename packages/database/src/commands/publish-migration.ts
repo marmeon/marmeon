@@ -81,15 +81,41 @@ export function findMigration(modules: string, name: string, only?: string): str
   for (const module of only === undefined ? readdirSync(modules) : [only]) {
     const directory = join(modules, module, 'migrations');
     if (!existsSync(directory)) continue;
-    const pattern = new RegExp(`^\\d{4}_\\d{2}_\\d{2}_\\d{6}_${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.ts$`);
+    const pattern = new RegExp(`^\\d{4}_\\d{2}_\\d{2}_\\d{6}_${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.(ts|js|mts|mjs)$`);
     const file = readdirSync(directory).find((candidate) => pattern.test(candidate));
     if (file) return join(directory, file);
   }
   return undefined;
 }
 
+/**
+ * Every migration of the app's modules (the extensions the migrator reads) by its name without timestamp (`create_cache_table`) — where it lies, the first by
+ * module name when two modules hold one — and the newest timestamp among them (`2026_10_02_213000`), which a file written next
+ * has to sort behind.
+ */
+export function appMigrations(modules: string): { byName: Map<string, { module: string; path: string }>; newest: string | undefined; newestPath: string | undefined } {
+  const byName = new Map<string, { module: string; path: string }>();
+  let newest: string | undefined;
+  let newestPath: string | undefined;
+  if (!existsSync(modules)) return { byName, newest, newestPath };
+  for (const module of readdirSync(modules).sort()) {
+    const directory = join(modules, module, 'migrations');
+    if (!existsSync(directory)) continue;
+    for (const file of readdirSync(directory).sort()) {
+      const match = /^(\d{4}_\d{2}_\d{2}_\d{6})_([a-z0-9_]+)\.(?:ts|js|mts|mjs)$/.exec(file);
+      if (!match) continue;
+      if (!byName.has(match[2]!)) byName.set(match[2]!, { module, path: join(directory, file) });
+      if (newest === undefined || match[1]! > newest) {
+        newest = match[1];
+        newestPath = join(directory, file);
+      }
+    }
+  }
+  return { byName, newest, newestPath };
+}
+
 /** `2026_10_02_213000` — the order migrations run in. */
-function timestamp(date: Date): string {
+export function timestamp(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getUTCFullYear()}_${pad(date.getUTCMonth() + 1)}_${pad(date.getUTCDate())}_${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}`;
 }

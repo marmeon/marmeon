@@ -67,7 +67,7 @@ describe('marmeon check (the app)', { timeout: 120_000 }, () => {
   it('runs the checks of a provider and of a module, in the order build, run, readiness', () => {
     const { code, stdout } = check(migrated({ probe: PROBE }), ['--skip=types,lint,internal-imports,agents', '--json']);
     expect(code).toBe(0);
-    expect(names(stdout)).toEqual(['boot', 'route-types', 'modules', 'bar', 'db-types', 'foo', 'readiness']);
+    expect(names(stdout)).toEqual(['boot', 'route-types', 'modules', 'package-migrations', 'bar', 'db-types', 'foo', 'readiness']);
     expect(reportOf(stdout, 'foo')).toMatchObject({
       status: 'warning',
       problems: [{ severity: 'warning', message: 'foo found something', file: 'src/foo.ts', line: 3, column: null, code: null, fix: 'do-the-thing' }],
