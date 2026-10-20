@@ -260,6 +260,15 @@ describe('the block', () => {
     expect(named.filter((name) => !known.has(name))).toEqual([]);
   });
 
+  it('points at the documentation of the installed version, then at the website', () => {
+    expect(AGENTS_BLOCK).toContain('`node_modules/marmeon/docs/`');
+    expect(AGENTS_BLOCK).toContain('`marmeon docs <page>`');
+    expect(AGENTS_BLOCK).toContain('`marmeon docs errors` (section "Server error codes")');
+    expect(AGENTS_BLOCK).toContain('https://marmeon.com/docs');
+    expect(AGENTS_BLOCK).toContain('`marmeon make:resource <Name>`');
+    expect(AGENTS_BLOCK).toContain('// marmeon-check-ignore <check>: <why it is safe>` (docs/check.md#silencing-a-finding), and tell the user');
+  });
+
   it('is fenced by its own marks, with \\n line ends, and is short', () => {
     const lines = AGENTS_BLOCK.split('\n');
     expect(lines[0]).toBe(AGENTS_BEGIN);
