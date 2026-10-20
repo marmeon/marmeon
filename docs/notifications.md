@@ -303,7 +303,8 @@ cursor, or one of another recipient's list, answers 400.
 
 ## The notifications table
 
-`make:notifications-table` writes the migration into the `system` module, or the module `--module` names. The migration runs on
+`make:notifications-table` writes the migration into the `system` module, or the module `--module` names. It is `marmeon publish
+@marmeon/notifications`: when your app has the migration already, it writes nothing and ends with exit code 0. The migration runs on
 `NOTIFICATIONS_CONNECTION`. The table is `notifications` and holds `id`, `recipient_type`, `recipient_id`, `type`, `data`, `read_at` and `created_at`.
 
 | Variable | Default | Effect |

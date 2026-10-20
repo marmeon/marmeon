@@ -7,7 +7,7 @@ import { ScratchCacheServiceProvider } from './ScratchCacheServiceProvider.ts';
 import { ScratchDiskServiceProvider } from './ScratchDiskServiceProvider.ts';
 import { ScratchQueueServiceProvider } from './ScratchQueueServiceProvider.ts';
 
-// The tables of the framework's drivers (cache, sessions, queue, …): `marmeon make:*-table` writes their migrations here.
+// The tables of the framework's drivers (cache, sessions, queue, …): `marmeon publish` and `marmeon make:*-table` write their migrations here.
 // They are the app's now — change them like any other migration.
 export default defineModule({
   name: 'system',

@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MakeUploadsTableCommand, UPLOADS_MIGRATION } from './uploads/commands.ts';
@@ -28,7 +28,15 @@ describe('make:uploads-table', () => {
     expect(first.lines).toEqual([`✓ Created modules/system/migrations/${migration}`, 'Then: marmeon migrate']);
 
     const again = run(root);
-    expect(await new MakeUploadsTableCommand().handle(again.input)).toBe(1);
-    expect(again.lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the temporary_uploads table has its migration.`]);
+    expect(await new MakeUploadsTableCommand().handle(again.input)).toBe(0);
+    expect(again.lines).toEqual([`modules/system/migrations/${migration} is there — skipped`, '✓ Nothing to publish — every migration of @marmeon/storage is in your app']);
+  });
+
+  it('takes --module=<name> to a module of its own, and refuses a name that leaves modules/', async () => {
+    const root = tempDir('marmeon-uploads-table-');
+    expect(await new MakeUploadsTableCommand().handle(run(root, { module: '../x' }).input)).toBe(1);
+    expect(existsSync(join(root, 'modules'))).toBe(false);
+    expect(await new MakeUploadsTableCommand().handle(run(root, { module: 'files' }).input)).toBe(0);
+    expect(readdirSync(join(root, 'modules/files/migrations'))).toHaveLength(1);
   });
 });

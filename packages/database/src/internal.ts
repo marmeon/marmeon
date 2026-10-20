@@ -3,7 +3,7 @@
  * @internal
  */
 export { DatabaseConfig } from './config.ts';
-export { publishMigration } from './commands/publish-migration.ts';
+export { publishOwnMigrations } from './commands/publish.ts';
 export { PACKAGE_MIGRATIONS_READERS, readMigrationDirectory, readPackageMigrations } from './package-migrations.ts';
 export type { PackageMigrationFile, PackageMigrations, PackageMigrationsError } from './package-migrations.ts';
 export { isSecretSelection } from './secret-guard.ts';

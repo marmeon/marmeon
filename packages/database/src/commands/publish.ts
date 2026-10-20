@@ -1,11 +1,14 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { findPackage, printable } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { type PackageMigrationFile, type PackageMigrations, readPackageMigrations } from '../package-migrations.ts';
 import { appMigrations, findMigration, publishMigration, SYSTEM_MODULE, timestamp } from './publish-migration.ts';
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+/** A valid npm package name: never a path. */
+const PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i;
 const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'];
 
 type Package = NonNullable<ReturnType<typeof findPackage>>;
@@ -61,12 +64,14 @@ function fromRegistry(spec: unknown): boolean {
 
 /**
  * Whether the existing module `module` may be opened for `name` without `--module`: `system` for a package of the framework
- * itself — named `@marmeon/…` by its own `package.json` and listed by the app with a registry specification.
+ * itself — named `@marmeon/…` by its own `package.json`, and either listed by the app with a registry specification or the
+ * package whose own command runs.
  */
-function opensSystem(module: string, name: string, pkg: Package, dependencies: Record<string, unknown>): boolean {
+function opensSystem(module: string, name: string, pkg: Package, dependencies: Record<string, unknown>, own = false): boolean {
   if (module !== SYSTEM_MODULE || !name.startsWith('@marmeon/') || pkg.json.name !== name) return false;
-  const spec = dependencies[name];
-  return fromRegistry(spec);
+  // The command of a package that is running cannot be a package the app did not ask for, so its own command opens `system`
+  // whatever the specification; the allowlist protects `publish`, which names the package.
+  return own || fromRegistry(dependencies[name]);
 }
 
 /** What `publish` would do for one package: the files the app lacks, and the ones it has. */
@@ -107,14 +112,18 @@ interface Context {
   readonly shippers: Map<string, string[]>;
 }
 
-/** Reads the direct dependencies of the app and the migrations each lists; undefined when the `package.json` cannot be read. */
-function inspect(root: string): Context | undefined {
+/**
+ * Reads the direct dependencies of the app and the migrations each lists; undefined when the `package.json` cannot be read —
+ * unless `lenient`, where an app without one (not there at all) has no dependencies (a command of a package does not need to list it).
+ */
+function inspect(root: string, lenient = false): Context | undefined {
   let dependencies: Record<string, unknown> = Object.create(null);
   try {
     const json = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies?: object; devDependencies?: object };
     dependencies = Object.assign(Object.create(null), json.dependencies, json.devDependencies);
-  } catch {
-    return undefined;
+  } catch (error) {
+    // Only a package.json that is not there is no reason to stop: one that exists and cannot be read is the app's problem.
+    if (!lenient || (error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined;
   }
   const entries = new Map<string, Entry>();
   const shippers = new Map<string, string[]>();
@@ -150,7 +159,7 @@ const presentOf = (context: Context, manifest: PackageMigrations) =>
  * The plan for one package whose migrations are read, or why it is refused: a name another installed dependency ships too
  * (both are refused), a file missing before one the app has, or no module to put the files in.
  */
-function planOne(context: Context, name: string, pkg: Package, manifest: PackageMigrations, explicit: string | undefined): { plan: Plan } | { refusal: string } {
+function planOne(context: Context, name: string, pkg: Package, manifest: PackageMigrations, explicit: string | undefined, own = false): { plan: Plan } | { refusal: string } {
   if (explicit !== undefined && !KEBAB.test(explicit)) return { refusal: 'Pass the module as a kebab-case name: --module=<name>.' };
 
   // A migration is named after its table: two packages that ship one name would create the table twice.
@@ -196,12 +205,12 @@ function planOne(context: Context, name: string, pkg: Package, manifest: Package
       for (const file of manifest.files) {
         const found = findMigration(modules, file.name);
         const where = found && basename(dirname(dirname(found)));
-        if (where !== undefined && !(where === manifest.module && opensSystem(manifest.module, name, pkg, dependencies))) {
+        if (where !== undefined && !(where === manifest.module && opensSystem(manifest.module, name, pkg, dependencies, own))) {
           return { refusal: elsewhere(file.name, where) };
         }
       }
       module = manifest.module;
-      if (existsSync(join(modules, module)) && !opensSystem(module, name, pkg, dependencies)) {
+      if (existsSync(join(modules, module)) && !opensSystem(module, name, pkg, dependencies, own)) {
         return { refusal: `modules/${module} is your app's — pass --module=<name> to put the tables of ${name} there, or another name.` };
       }
     }
@@ -212,27 +221,50 @@ function planOne(context: Context, name: string, pkg: Package, manifest: Package
   return { plan: { package: name, module, owner: module === SYSTEM_MODULE ? undefined : name, missing, present } };
 }
 
+/** The package whose own command plans: its name and directory, read from there and not from the app's dependencies. */
+interface Own {
+  readonly name: string;
+  readonly dir: string;
+}
+
+/** The migrations of the package `own`, read from its directory; its files count as shipped by it for the collision check. */
+function ownEntry(context: Context, own: Own): Entry {
+  try {
+    const dir = realpathSync(own.dir);
+    const pkg: Package = { name: own.name, dir, json: JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) };
+    const read = readPackageMigrations(pkg);
+    if (!read.ok) return { kind: 'error', message: read.error.message, pkg };
+    if (!read.value) return { kind: 'none' };
+    for (const file of read.value.files) context.shippers.set(file.name, [...(context.shippers.get(file.name) ?? []), own.name]);
+    return { kind: 'ok', pkg, manifest: read.value };
+  } catch (error) {
+    return { kind: 'error', message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 /**
  * Plans `publish` for `packages` without writing anything: a plan for each, and the reasons any was refused (when there is
- * one, nothing is to be written for any package). `module` is `--module`, for a single package.
+ * one, nothing is to be written for any package). `module` is `--module`, for a single package. `own` is the package whose
+ * command asks: it need not be a dependency of the app, for the app loaded it to run the command.
  */
-export function planPublish(root: string, packages: readonly string[], module?: string): { plans: Plan[]; refusals: string[] } {
+export function planPublish(root: string, packages: readonly string[], module?: string, source: { readonly own?: Own } = {}): { plans: Plan[]; refusals: string[] } {
   const plans: Plan[] = [];
   const refusals: string[] = [];
-  const context = inspect(root);
+  const context = inspect(root, source.own !== undefined);
   if (!context) return { plans, refusals: ['The package.json of your app cannot be read.'] };
   const chosen: { name: string; pkg: Package }[] = [];
   for (const name of new Set(packages)) {
-    if (!(name in context.dependencies)) {
+    const isOwn = source.own !== undefined && source.own.name === name;
+    if (!isOwn && !(name in context.dependencies)) {
       refusals.push(`${name} is not a dependency of your app — add it first.`);
       continue;
     }
-    const entry = context.entries.get(name)!;
+    const entry = isOwn ? ownEntry(context, source.own!) : context.entries.get(name)!;
     if (entry.kind === 'error') refusals.push(entry.message);
     else if (entry.kind === 'absent') refusals.push(`${name} is not installed in your app — install your dependencies first.`);
     else if (entry.kind === 'none') refusals.push(`${name} ships no migrations.`);
     else {
-      const planned = planOne(context, name, entry.pkg, entry.manifest, module);
+      const planned = planOne(context, name, entry.pkg, entry.manifest, module, isOwn);
       if ('plan' in planned) {
         plans.push(planned.plan);
         chosen.push({ name, pkg: entry.pkg });
@@ -251,7 +283,7 @@ export function planPublish(root: string, packages: readonly string[], module?: 
     }
     const framework = (name: string) => {
       const pkg = chosen.find((entry) => entry.name === name)!.pkg;
-      return opensSystem(SYSTEM_MODULE, name, pkg, context.dependencies);
+      return opensSystem(SYSTEM_MODULE, name, pkg, context.dependencies, source.own?.name === name);
     };
     if (plan.module === SYSTEM_MODULE && framework(first) && framework(plan.package)) continue;
     refusals.push(`${first} and ${plan.package} would both create modules/${plan.module} — publish them one at a time, or pass --module=<name> for each.`);
@@ -429,60 +461,91 @@ export class PublishCommand {
 
   /** Plans every package, then writes: one refusal and nothing is written. */
   #publish(input: CommandInput, packages: readonly string[], module: string | undefined): number {
-    const { output } = input;
     const { plans, refusals } = planPublish(input.root, packages, module);
-    if (refusals.length > 0) {
-      for (const refusal of refusals) output.error(refusal);
-      return 1;
-    }
+    return write(input, packages, plans, refusals);
+  }
+}
 
-    const modules = join(input.root, 'modules');
-    const before = appMigrations(modules);
-    const count = plans.reduce((sum, plan) => sum + plan.missing.length, 0);
-    // One clock for the run, a second apart, behind every migration the app has: a copy can never sort before one that ran.
-    const timed = stamps(count, before.newest, before.newestPath, input.root);
-    if ('error' in timed) {
-      output.error(timed.error);
-      return 1;
-    }
+/**
+ * What the `make:*-table` command of a package does: `publish` for that package alone, with its module from `--module`. The
+ * package is read from `packageRoot` (a `file:` URL), so the app need not list it, and its name must be a valid package name. For
+ * the commands of the framework's packages only: it opens an existing `system` module whatever the app's specification of the
+ * package, which `publish` would not. Returns the exit code; with nothing to write it is 0.
+ */
+export async function publishOwnMigrations(raw: CommandInput, packageRoot: URL): Promise<number> {
+  const input: CommandInput = { ...raw, output: safe(raw.output) };
+  let dir: string;
+  let name: unknown;
+  try {
+    dir = fileURLToPath(packageRoot);
+    name = (JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name?: unknown }).name;
+  } catch {
+    input.output.error('The package.json of the package that runs this command cannot be read.');
+    return 1;
+  }
+  if (typeof name !== 'string' || !PACKAGE_NAME.test(name)) {
+    input.output.error('The package.json of the package that runs this command has no valid package name.');
+    return 1;
+  }
+  const module = typeof input.options.module === 'string' ? input.options.module : undefined;
+  const { plans, refusals } = planPublish(input.root, [name], module, { own: { name, dir } });
+  return write(input, [name], plans, refusals);
+}
 
-    // A write that fails after the plan leaves the files before it: say which, so the person can run publish again or remove them.
-    const known = new Set([...before.byName.values()].map((found) => found.path));
-    const indexes = () => (existsSync(modules) ? readdirSync(modules).map((module) => join(modules, module, 'index.ts')).filter((file) => existsSync(file)) : []);
-    const knownIndexes = new Set(indexes());
-    const bootstrap = join(input.root, 'bootstrap', 'app.ts');
-    const bootstrapBefore = existsSync(bootstrap) ? readFileSync(bootstrap, 'utf8') : undefined;
-    const reportWritten = () => {
-      const created = [...appMigrations(modules).byName.values()].map((found) => found.path).filter((path) => !known.has(path));
-      const files = [...indexes().filter((file) => !knownIndexes.has(file)), ...created].map((path) => relative(input.root, path));
-      if (existsSync(bootstrap) && readFileSync(bootstrap, 'utf8') !== bootstrapBefore) files.push(relative(input.root, bootstrap));
-      if (files.length > 0) output.error(`Written before it failed: ${files.join(', ')}`);
-    };
-    let written = 0;
-    try {
-      for (const plan of plans) {
-        if (packages.length === 1) {
-          for (const present of plan.present) output.line(`${present.path} is there — skipped`);
-        }
-        for (const file of plan.missing) {
-          const code = publishMigration(input, { name: file.name, contents: file.contents, table: file.name, module: plan.module!, at: timed.stamps[written]!, owner: plan.owner, hint: false });
-          if (code !== 0) {
-            reportWritten();
-            return code;
-          }
-          written += 1;
-        }
+/** Writes the plans, in one run: a refusal and nothing is written. */
+function write(input: CommandInput, packages: readonly string[], plans: readonly Plan[], refusals: readonly string[]): number {
+  const { output } = input;
+  if (refusals.length > 0) {
+    for (const refusal of refusals) output.error(refusal);
+    return 1;
+  }
+
+  const modules = join(input.root, 'modules');
+  const before = appMigrations(modules);
+  const count = plans.reduce((sum, plan) => sum + plan.missing.length, 0);
+  // One clock for the run, a second apart, behind every migration the app has: a copy can never sort before one that ran.
+  const timed = stamps(count, before.newest, before.newestPath, input.root);
+  if ('error' in timed) {
+    output.error(timed.error);
+    return 1;
+  }
+
+  // A write that fails after the plan leaves the files before it: say which, so the person can run publish again or remove them.
+  const known = new Set([...before.byName.values()].map((found) => found.path));
+  const indexes = () => (existsSync(modules) ? readdirSync(modules).map((module) => join(modules, module, 'index.ts')).filter((file) => existsSync(file)) : []);
+  const knownIndexes = new Set(indexes());
+  const bootstrap = join(input.root, 'bootstrap', 'app.ts');
+  const bootstrapBefore = existsSync(bootstrap) ? readFileSync(bootstrap, 'utf8') : undefined;
+  const reportWritten = () => {
+    const created = [...appMigrations(modules).byName.values()].map((found) => found.path).filter((path) => !known.has(path));
+    const files = [...indexes().filter((file) => !knownIndexes.has(file)), ...created].map((path) => relative(input.root, path));
+    if (existsSync(bootstrap) && readFileSync(bootstrap, 'utf8') !== bootstrapBefore) files.push(relative(input.root, bootstrap));
+    if (files.length > 0) output.error(`Written before it failed: ${files.join(', ')}`);
+  };
+  let written = 0;
+  try {
+    for (const plan of plans) {
+      if (packages.length === 1) {
+        for (const present of plan.present) output.line(`${present.path} is there — skipped`);
       }
-    } catch (error) {
-      reportWritten();
-      throw error;
+      for (const file of plan.missing) {
+        const code = publishMigration(input, { name: file.name, contents: file.contents, module: plan.module!, at: timed.stamps[written]!, owner: plan.owner, hint: false });
+        if (code !== 0) {
+          reportWritten();
+          return code;
+        }
+        written += 1;
+      }
     }
-    if (written === 0) {
-      output.success(packages.length === 1 ? `Nothing to publish — every migration of ${packages[0]} is in your app` : 'Nothing to publish — every migration of these packages is in your app');
-      return 0;
-    }
-
-    output.line('Then: marmeon migrate');
+  } catch (error) {
+    reportWritten();
+    throw error;
+  }
+  if (written === 0) {
+    output.success(packages.length === 1 ? `Nothing to publish — every migration of ${packages[0]} is in your app` : 'Nothing to publish — every migration of these packages is in your app');
     return 0;
   }
+
+  output.line('Then: marmeon migrate');
+  return 0;
 }

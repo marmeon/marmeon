@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { Clock } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { NotificationStore } from './store.ts';
@@ -14,8 +13,8 @@ export class MakeNotificationsTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@marmeon/database/internal');
-    return publishMigration(input, { name: 'create_notifications_table', table: 'notifications', contents: readFileSync(NOTIFICATIONS_MIGRATION, 'utf8') });
+    const { publishOwnMigrations } = await import('@marmeon/database/internal');
+    return publishOwnMigrations(input, new URL('../', import.meta.url));
   }
 }
 

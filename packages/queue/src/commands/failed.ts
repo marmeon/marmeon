@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { Clock } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { QueueConnections } from '../connections.ts';
@@ -16,8 +15,8 @@ export class MakeQueueTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@marmeon/database/internal');
-    return publishMigration(input, { name: 'create_jobs_table', table: 'jobs', contents: readFileSync(QUEUE_MIGRATION, 'utf8') });
+    const { publishOwnMigrations } = await import('@marmeon/database/internal');
+    return publishOwnMigrations(input, new URL('../../', import.meta.url));
   }
 }
 

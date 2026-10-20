@@ -4,34 +4,27 @@ import { editDefinitionFile } from '@marmeon/core';
 import { bindingNameOf } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 
-const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
-
-/** The module a driver's tables go to unless `--module` names another. */
+/** The module a framework package's tables go to unless `--module` names another. */
 export const SYSTEM_MODULE = 'system';
 
 /**
- * Writes a framework driver's migration into an app module (the tables belong to the app, like `make:auth`'s) —
- * `make:cache-table`, `make:session-table`, `make:queue-table`, …. The module is `--module`, by default `system`, which is
- * created (with its `migrations` directory) and registered in `bootstrap/app.ts` when it does not exist yet.
+ * Writes one migration into an app module (the tables belong to the app, like `make:auth`'s). `marmeon publish` calls it
+ * for each file of a plan, which includes the `make:*-table` commands. The module, which `publish` has checked, is created (with its
+ * `migrations` directory) and registered in `bootstrap/app.ts` when it does not exist yet.
  *
  * Refuses when any module already has a migration with the same name (`*_create_cache_table.ts`): one table, one migration.
- * `module` takes the place of `--module` (an existing module, as it is named on disk, or one `marmeon publish` has checked);
  * `at` is the timestamp of the file name; `owner` names the package in the comment of a module that is created;
  * `hint: false` leaves out the closing "Then: marmeon migrate" for a caller that writes several files. Returns the exit code.
  */
 export function publishMigration(
   input: CommandInput,
-  migration: { name: string; contents: string; table: string; module?: string; at?: Date; owner?: string; hint?: boolean },
+  migration: { name: string; contents: string; module: string; at?: Date; owner?: string; hint?: boolean },
 ): number {
-  const module = migration.module ?? (typeof input.options.module === 'string' ? input.options.module : SYSTEM_MODULE);
-  if (migration.module === undefined && !KEBAB.test(module)) {
-    input.output.error('Pass the module as a kebab-case name: --module=<name> (default: system).');
-    return 1;
-  }
+  const { module } = migration;
   const modules = join(input.root, 'modules');
   const existing = findMigration(modules, migration.name);
   if (existing) {
-    input.output.error(`${relative(input.root, existing)} already exists — the ${migration.table} table has its migration.`);
+    input.output.error(`${relative(input.root, existing)} already exists — ${migration.name} has its migration.`);
     return 1;
   }
 
@@ -135,7 +128,7 @@ function register(file: string, module: string): { status: 'added' | 'present' }
 const MODULE = (name: string, owner?: string) => {
   const comment = owner
     ? `// The tables of ${owner}: \`marmeon publish ${owner}\` writes their migrations here.`
-    : "// The tables of the framework's drivers (cache, sessions, queue, …): `marmeon make:*-table` writes their migrations here.";
+    : "// The tables of the framework's drivers (cache, sessions, queue, …): `marmeon publish` and `marmeon make:*-table` write their migrations here.";
   return `import { defineModule } from '@marmeon/core';
 
 ${comment}

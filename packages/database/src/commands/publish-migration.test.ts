@@ -8,7 +8,7 @@ function run(root: string) {
   const lines: string[] = [];
   const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
   const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
-  const code = publishMigration({ root, args: [], options: {}, output } as never, { name: 'create_things_table', contents: '// migration\n', table: 'things' });
+  const code = publishMigration({ root, args: [], options: {}, output } as never, { name: 'create_things_table', contents: '// migration\n', module: 'system' });
   return { code, lines };
 }
 

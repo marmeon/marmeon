@@ -63,8 +63,9 @@ pnpm marmeon make:cache-table
 pnpm marmeon migrate
 ```
 
-`make:cache-table` writes the migration into the `system` module, or the module that `--module` names. The migration creates the
-tables on the cache's connection, `CACHE_CONNECTION`.
+`make:cache-table` writes the migration into the `system` module, or the module that `--module` names. It is `marmeon publish
+@marmeon/cache`: when your app has the migration already, it writes nothing and ends with exit code 0. The migration creates the
+tables on the cache's connection, `CACHE_CONNECTION`. See [the framework's tables](migrations.md#the-frameworks-tables).
 
 ### Cache drivers
 

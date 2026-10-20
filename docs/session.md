@@ -166,7 +166,8 @@ pnpm marmeon migrate
 ```
 
 The migration goes into the `system` module, or the module that `--module=<name>` names. It creates the table on the connection
-`SESSION_CONNECTION` names.
+`SESSION_CONNECTION` names. The command is `marmeon publish @marmeon/session`: when your app has the migration already, it writes
+nothing and ends with exit code 0 ([the framework's tables](migrations.md#the-frameworks-tables)).
 
 The store writes through a connection of its own, never inside your app's transactions, so a session written while a transaction
 is open survives its rollback. On Postgres it opens a small pool of its own. On SQLite, give the sessions a file of their own: the

@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import type { CommandInput } from 'marmeon';
 
 /** The migration the command copies — a real file, so the store tests run exactly what apps get. */
@@ -15,7 +14,7 @@ export class MakeSessionTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@marmeon/database/internal');
-    return publishMigration(input, { name: 'create_sessions_table', table: 'sessions', contents: readFileSync(SESSIONS_MIGRATION, 'utf8') });
+    const { publishOwnMigrations } = await import('@marmeon/database/internal');
+    return publishOwnMigrations(input, new URL('../../', import.meta.url));
   }
 }

@@ -169,7 +169,8 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 | `make:middleware <Name> --module=<m>` | A middleware class in `middleware/`. |
 | `make:migration <snake_case_name> --module=<m> [--no-register]` | A timestamped migration in `migrations/`; adds the folder to the module once. See [migrations](migrations.md#generating-migrations). |
 | `publish [<package>] [--module=<m>] [--check]` | The migrations a direct dependency of your app lists, into a module of the app; writes what is missing and skips what is there. Without a package it lists them and, at a terminal, asks which to publish. `--check` writes nothing and ends with exit code 1 when something is missing. See [migrations](migrations.md#publishing-the-migrations-of-a-package). |
-| `make:sign-ins-table [--module=<m>]` | The migration of the `sign_ins` table that `DatabaseSignIns` uses. See [sign-ins](authentication.md#sign-ins). |
+| `make:sign-ins-table [--module=<m>]` | The migration of the `sign_ins` table that `DatabaseSignIns` uses: `publish` for `@marmeon/auth`. See [sign-ins](authentication.md#sign-ins). |
+| `make:cache-table`, `make:session-table`, `make:queue-table`, `make:notifications-table`, `make:uploads-table` `[--module=<m>]` | The migrations of the database drivers' tables, each `publish` for its own package: writes what your app lacks, and ends with exit code 0 and "Nothing to publish" when it has it all. See [the framework's tables](migrations.md#the-frameworks-tables). |
 
 `--module` names a module that exists: `make:module` comes first. `-m` is short for it.
 

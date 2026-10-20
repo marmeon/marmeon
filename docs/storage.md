@@ -236,7 +236,8 @@ pnpm marmeon migrate
 loaded. An app that never made the table, because it uses storage for its disks alone, stays ready; an upload then says which
 command makes the table.
 
-`make:uploads-table` writes the migration into the `system` module, or the module `--module` names. Like the cache, the table is
+`make:uploads-table` writes the migration into the `system` module, or the module `--module` names. It is `marmeon publish
+@marmeon/storage`: when your app has the migration already, it writes nothing and ends with exit code 0. Like the cache, the table is
 written on a connection of its own and never inside the app's transactions: a rollback after `store()` must not make a used token
 usable again. On SQLite give it the cache's own file with `UPLOADS_CONNECTION`, as the
 [cache](cache.md#the-database-driver-and-transactions) page explains. Postgres needs nothing.

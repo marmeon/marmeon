@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { chmodSync, linkSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { PACKAGE_MIGRATIONS_READERS, readPackageMigrations } from './package-migrations.ts';
@@ -304,8 +304,12 @@ describe('the migrations the framework packages declare', () => {
       const copied = [...source.matchAll(/stubs\/migrations\/(0001_01_01_000000_[a-z_]+\.ts)/g)].map((match) => `stubs/migrations/${match[1]}`);
       expect(result.value.from).toBe('stubs/migrations');
       expect(result.value.files.map((file) => file.file)).toEqual(copied);
-      const named = [...source.matchAll(/name: '([a-z_]+)'/g)].map((match) => match[1]);
+      const named = copied.map((file) => /_000000_([a-z_]+)\.ts$/.exec(file)![1]);
       expect(result.value.files.map((file) => file.name)).toEqual(named);
+      // The command hands the root of its own package to publish: the URL leads from the command's file to the package directory.
+      const root = /publishOwnMigrations\(input, new URL\('([./]+)', import\.meta\.url\)\)/.exec(source)?.[1];
+      expect(root, 'the command publishes the migrations of its own package').toBeDefined();
+      expect(fileURLToPath(new URL(root!, pathToFileURL(join(PACKAGES, commands[pkg.name]!))))).toBe(`${pkg.dir}/`);
     });
   }
 });

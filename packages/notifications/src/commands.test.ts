@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveConfig, type Resolver } from '@marmeon/core';
 import type { Migration } from '@marmeon/database';
@@ -54,7 +54,16 @@ describe('make:notifications-table', () => {
     ]);
 
     const again = run(root, { module: 'inbox' });
-    expect(await new MakeNotificationsTableCommand().handle(again.input)).toBe(1);
-    expect(again.lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the notifications table has its migration.`]);
+    expect(await new MakeNotificationsTableCommand().handle(again.input)).toBe(0);
+    expect(again.lines).toEqual([`modules/system/migrations/${migration} is there — skipped`, '✓ Nothing to publish — every migration of @marmeon/notifications is in your app']);
+    expect(existsSync(join(root, 'modules/inbox'))).toBe(false);
+  });
+
+  it('takes --module=<name> to a module of its own, and refuses a name that leaves modules/', async () => {
+    const root = app();
+    expect(await new MakeNotificationsTableCommand().handle(run(root, { module: '../x' }).input)).toBe(1);
+    expect(existsSync(join(root, 'modules'))).toBe(false);
+    expect(await new MakeNotificationsTableCommand().handle(run(root, { module: 'inbox' }).input)).toBe(0);
+    expect(readdirSync(join(root, 'modules/inbox/migrations'))).toHaveLength(1);
   });
 });

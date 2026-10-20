@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import type { CommandInput } from 'marmeon';
 
 /** The file the command copies. */
@@ -15,7 +14,7 @@ export class MakeSignInsTableCommand {
   static options = { module: { type: 'string', short: 'm' } } as const;
 
   async handle(input: CommandInput): Promise<number> {
-    const { publishMigration } = await import('@marmeon/database/internal');
-    return publishMigration(input, { name: 'create_sign_ins_table', table: 'sign_ins', contents: readFileSync(SIGN_INS_MIGRATION, 'utf8') });
+    const { publishOwnMigrations } = await import('@marmeon/database/internal');
+    return publishOwnMigrations(input, new URL('../', import.meta.url));
   }
 }

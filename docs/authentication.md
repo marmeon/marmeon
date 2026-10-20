@@ -1013,6 +1013,9 @@ pnpm marmeon make:sign-ins-table
 pnpm marmeon migrate
 ```
 
+`make:sign-ins-table` is `marmeon publish @marmeon/auth`: it writes into the `system` module, or the module `--module` names, and
+nothing when your app has the migration already (the starter kit keeps it in its `auth` module). It ends with exit code 0 then.
+
 `/up/ready` is red until the table has every column below, and the selector and validators carry the `secret()` mark.
 
 A row is the authority over its sign-in. The session carries only the row's random id (128 bits), and every request checks that the row

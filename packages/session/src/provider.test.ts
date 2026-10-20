@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createApplication, defineModule, env, type ConfigDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@marmeon/database';
@@ -323,8 +323,19 @@ describe('make:session-table', () => {
     expect(readFileSync(join(root, 'modules/system/migrations', migration), 'utf8')).toContain("schema.create('sessions'");
     expect(lines).toEqual([`✓ Created modules/system/migrations/${migration}`, 'Then: marmeon migrate']);
     lines.length = 0;
-    expect(await new MakeSessionTableCommand().handle(run)).toBe(1);
-    expect(lines).toEqual([`✗ modules/system/migrations/${migration} already exists — the sessions table has its migration.`]);
+    expect(await new MakeSessionTableCommand().handle(run)).toBe(0);
+    expect(lines).toEqual([`modules/system/migrations/${migration} is there — skipped`, '✓ Nothing to publish — every migration of @marmeon/session is in your app']);
+  });
+
+  it('takes --module=<name> to a module of its own, and refuses a name that leaves modules/', async () => {
+    const root = app();
+    const lines: string[] = [];
+    const output = { success: (line: string) => lines.push(`✓ ${line}`), error: (line: string) => lines.push(`✗ ${line}`), warn: (line: string) => lines.push(`! ${line}`), line: (line = '') => lines.push(line) };
+    const run = (options: Record<string, string>) => ({ root, args: [], options, output, spawn: async () => 0 }) as never;
+    expect(await new MakeSessionTableCommand().handle(run({ module: '../x' }))).toBe(1);
+    expect(existsSync(join(root, 'modules'))).toBe(false);
+    expect(await new MakeSessionTableCommand().handle(run({ module: 'billing' }))).toBe(0);
+    expect(readdirSync(join(root, 'modules/billing/migrations'))).toHaveLength(1);
   });
 
   it('writes one migration: the table as the store writes it — no other to choose', () => {
