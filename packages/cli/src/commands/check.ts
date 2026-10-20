@@ -3,7 +3,7 @@ import type { CommandInput } from '../command.ts';
 import { escapeControl, exitCodeOf, reportJson, unrunReport, type CheckProblem, type CheckReport, type SilencedProblem } from '../check/report.ts';
 import { checkRegistryOf, describeFailure, discoveredChecks, runAppChecks } from '../check/app.ts';
 import { BUILT_IN_CHECKS } from '../check/registry.ts';
-import { rawSqlCheck } from '../check/source-rules.ts';
+import { innerHtmlCheck, rawSqlCheck } from '../check/source-rules.ts';
 import { agentsCheck, internalImportsCheck, lintCheck, TOOL_CHECKS, typesCheck, type CheckRun } from '../check/tools.ts';
 import { loadApplication } from '../load.ts';
 
@@ -81,6 +81,7 @@ export class CheckCommand {
       lint: () => lintCheck(root),
       'internal-imports': () => internalImportsCheck(root),
       'raw-sql': () => rawSqlCheck(root),
+      'inner-html': () => innerHtmlCheck(root),
       agents: () => agentsCheck(root),
     };
     const toolRuns = Promise.all(selected.filter((name) => tools.includes(name)).map(async (name) => runners[name]!()));

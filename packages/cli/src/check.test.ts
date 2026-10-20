@@ -44,6 +44,7 @@ describe('marmeon check', { timeout: 90_000 }, () => {
       ['lint', 'passed'],
       ['internal-imports', 'passed'],
       ['raw-sql', 'passed'],
+      ['inner-html', 'passed'],
       ['agents', 'skipped'],
     ]);
   });
@@ -51,7 +52,7 @@ describe('marmeon check', { timeout: 90_000 }, () => {
   it('prints one line per check without --json', () => {
     const { code, stdout } = check(app({}));
     expect(code).toBe(0);
-    expect(stdout).toMatch(/✓ types\n✓ lint\n✓ internal-imports\n✓ raw-sql\n- agents skipped: no AGENTS.md\n/);
+    expect(stdout).toMatch(/✓ types\n✓ lint\n✓ internal-imports\n✓ raw-sql\n✓ inner-html\n- agents skipped: no AGENTS.md\n/);
     expect(stdout).toContain('Passed (exit 0).');
   });
 
@@ -150,7 +151,7 @@ describe('marmeon check', { timeout: 90_000 }, () => {
   it('runs only the checks --only names, and not the ones --skip names', () => {
     const root = app({});
     expect(JSON.parse(check(root, ['--only=types', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types']);
-    expect(JSON.parse(check(root, ['--skip=types,lint', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['internal-imports', 'raw-sql', 'agents']);
+    expect(JSON.parse(check(root, ['--skip=types,lint', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['internal-imports', 'raw-sql', 'inner-html', 'agents']);
   });
 
   it('exits 2 for empty name lists, and fails on the boot, with a warning, for a name nobody knows when the app did not load', () => {
@@ -271,6 +272,46 @@ describe('marmeon check raw-sql', { timeout: 90_000 }, () => {
   });
 });
 
+describe('marmeon check inner-html', { timeout: 90_000 }, () => {
+  it('warns about HTML set from a value and still exits 0', () => {
+    const { code, stdout, stderr } = check(app({ 'src/show.ts': 'export const show = (el: HTMLElement, html: string) => { el.innerHTML = html; };\n' }, []), ['--only=inner-html']);
+    expect(code).toBe(0);
+    expect(stderr).toContain('inner-html — 1 warning');
+    expect(stdout).toContain('src/show.ts:1:');
+    expect(stdout).toContain('(marmeon(inner-html))');
+    expect(stdout).toContain('docs: docs/check.md#html-from-code');
+    expect(stdout).toContain('Passed (exit 0).');
+  });
+
+  it('is silenced in JSX by a comment above the attribute: passed, listed as silenced', () => {
+    const files = {
+      'src/Block.tsx': ['export const Block = ({ html }: { html: string }) => (', '  <div>', '    {/* marmeon-check-ignore inner-html: the markup is the highlighter output */}', '    <p dangerouslySetInnerHTML={{ __html: html }} />', '  </div>', ');', ''].join('\n'),
+    };
+    const { code, stdout } = check(app(files, []), ['--only=inner-html', '--json']);
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout).checks[0]).toMatchObject({
+      name: 'inner-html',
+      status: 'passed',
+      problems: [],
+      silenced: [{ file: 'src/Block.tsx', line: 4, rule: 'marmeon(inner-html)', reason: 'the markup is the highlighter output' }],
+    });
+  });
+
+  it.each(['blank-app', 'web-app'])('finds nothing in apps/%s', (name) => {
+    const { code, stdout } = check(join(repo, 'apps', name), ['--only=inner-html', '--json']);
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout).checks[0]).toMatchObject({ name: 'inner-html', status: 'passed', problems: [], silenced: [] });
+  });
+
+  it('finds one silenced place in apps/website', () => {
+    const { code, stdout } = check(join(repo, 'apps', 'website'), ['--only=inner-html', '--json']);
+    expect(code).toBe(0);
+    const report = JSON.parse(stdout).checks[0];
+    expect(report).toMatchObject({ name: 'inner-html', status: 'passed', problems: [] });
+    expect(report.silenced).toMatchObject([{ file: 'modules/site/components/CodeBlock.tsx', rule: 'marmeon(inner-html)' }]);
+  });
+});
+
 describe('marmeon build and framework internals', { timeout: 90_000 }, () => {
   /** The last line a build prints: where it stopped. */
   const lastLine = (stderr: string) => stderr.trim().split('\n').filter((line) => !line.includes('src/') && !line.includes('marmeon check fails')).at(-1);
@@ -377,9 +418,9 @@ describe('marmeon check: the block of AGENTS.md', { timeout: 90_000 }, () => {
     expect(report.problems[0].message).toBe('AGENTS.md is not a file. It was not read.');
   });
 
-  it('is listed after raw-sql, and --skip=agents leaves it out', () => {
+  it('is listed after inner-html, and --skip=agents leaves it out', () => {
     const root = app({ 'AGENTS.md': '# Shop\n' });
-    expect(JSON.parse(check(root, ['--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'raw-sql', 'agents']);
-    expect(JSON.parse(check(root, ['--skip=agents', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'raw-sql']);
+    expect(JSON.parse(check(root, ['--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'raw-sql', 'inner-html', 'agents']);
+    expect(JSON.parse(check(root, ['--skip=agents', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'raw-sql', 'inner-html']);
   });
 });

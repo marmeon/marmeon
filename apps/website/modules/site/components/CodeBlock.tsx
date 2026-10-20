@@ -9,6 +9,7 @@ export function CodeBlock({ html, caption, copy = true }: { html: string; captio
   const source = useRef<HTMLDivElement>(null);
   const block = (
     <div className="code-block">
+      {/* marmeon-check-ignore inner-html: `html` is the Shiki output of the server (modules/docs/highlight.ts), which escapes the code it highlights */}
       <div ref={copy ? source : undefined} className="code-source" dangerouslySetInnerHTML={{ __html: html }} />
       {copy && !caption && <CopyButton source={source} label="Copy code" />}
     </div>

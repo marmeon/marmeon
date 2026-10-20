@@ -3,7 +3,7 @@
 ## Introduction
 
 `marmeon check` answers "am I done?" in one command: it runs the checks below, names each result and ends with an exit code a
-script or an agent can act on. The tools (`types`, `lint`, `internal-imports`, `raw-sql`, `agents`) need no app. The other checks load it, once
+script or an agent can act on. The tools (`types`, `lint`, `internal-imports`, `raw-sql`, `inner-html`, `agents`) need no app. The other checks load it, once
 registered and once booted, so they need the `.env` and, for [readiness](#the-app-checks), the services the app depends on.
 
 ```sh
@@ -17,6 +17,7 @@ pnpm marmeon check
   modules/notes/Notes.ts:3:19  `@marmeon/*/internal` is the framework's own code, not API — …  (marmeon(no-internal-imports))
   docs: docs/check.md#imports-of-framework-internals
 ✓ raw-sql
+✓ inner-html
 ✓ boot
 ✗ route-types — 1 error
   bootstrap/routes.ts  bootstrap/routes.ts is out of date
@@ -37,6 +38,7 @@ A new app has the script: `pnpm check` runs `marmeon check`.
 | `lint` | Runs the app's own [oxlint](https://oxc.rs/docs/guide/usage/linter) with its `.oxlintrc.json`. | oxlint |
 | `internal-imports` | Finds [imports of framework internals](#imports-of-framework-internals). | nothing |
 | `raw-sql` | Warns about [`sql.raw()` and `sql.lit()` with an argument that is not a literal](#raw-sql). | nothing |
+| `inner-html` | Warns about [HTML that code sets from a value that is not a literal](#html-from-code). | nothing |
 | `agents` | Warns when the marmeon block of `AGENTS.md` is [missing or out of date](#the-agents-block). | nothing |
 
 The tools run side by side and are always listed in this order. `--only=types,lint` runs just those, `--skip=lint` runs all but
@@ -194,9 +196,38 @@ does, but not the tests (`*.test.*`, `*.spec.*`, `*.type-test.*`): what a test p
 code stays `0`. It does not find `sql.ref()` and `sql.table()` (names, which the database quotes), a `sql` that your own module re-exports under
 another name, a `sql` passed through a function or an object, a call through a variable that is not a plain `const` (`let raw = sql.raw`), or a file it cannot parse (the `types` check reports it).
 
+## HTML from code
+
+HTML that code sets from a value is a cross-site scripting hole when the value comes from a request: the page runs what the
+value holds. The [content security policy](security.md) limits what that script can do; it does not replace escaping. `inner-html`
+warns, at the value, about:
+
+- the JSX attribute `dangerouslySetInnerHTML` and a property of that name (`createElement(…, { dangerouslySetInnerHTML })`),
+  unless the value is `{ __html: <literal> }`,
+- an assignment to `.innerHTML` or `.outerHTML`, with `=` or `+=`, and one to `.__html`,
+- the JSX attribute `srcDoc` and an assignment to `.srcdoc`, which make a document of the HTML an iframe shows,
+- `insertAdjacentHTML(position, html)`, `createContextualFragment(html)` and `setHTMLUnsafe(html)`,
+- `write(…)` and `writeln(…)` of a document: `document`, `window.document`, `iframe.contentDocument` and `el.ownerDocument`.
+
+The fix is to show the value as text: `{value}` in JSX, `textContent` in the DOM. If the HTML is safe, say why in a
+[comment](#silencing-a-finding); in JSX the comment goes in a `{/* … */}` on the line above the attribute.
+
+A literal is the same as for [`raw-sql`](#raw-sql). A function call is none, whatever it is called: `sanitize(html)` is no proof,
+because the check cannot know what the function does. Parentheses, `as`, `!` and `?.` around a value or an element, a `const` that
+holds the `{ __html }` object or the method (`const p = { __html: html }`, `const add = el.insertAdjacentHTML`), `el['innerHTML']`,
+`.call()`, `.apply()` and `.bind()` do not hide a sink. It reads the sources like `raw-sql`, so the tests are not read.
+
+It is a warning, so the exit code stays `0`. It does not find:
+
+- an object that reaches the attribute from elsewhere (`{...props}` where `props` holds `dangerouslySetInnerHTML`, a function that
+  returns the object, or one from another file),
+- a property whose key is a variable (`{ [key]: … }`),
+- a method taken out of its object (`const { insertAdjacentHTML } = el`), or one called through `Reflect` or `Object.assign(el, { innerHTML })`,
+- a setter of another name that parses HTML (`DOMParser`, `setAttribute('srcdoc', …)`, a library's `html()`), or a file it cannot parse.
+
 ## Silencing a finding
 
-A finding of `raw-sql` can be silenced by a comment with a reason, on the line of the finding or the line above it:
+A finding of `raw-sql` or `inner-html` can be silenced by a comment with a reason, on the line of the finding or the line above it:
 
 ```ts
 // marmeon-check-ignore raw-sql: the column is one of SORTABLE, checked above
@@ -212,7 +243,8 @@ The syntax is `marmeon-check-ignore <check>[, <check>]: <reason>`, as a `//` com
   reviewer sees the reason in the diff and in the report.
 - A comment that silences nothing is a warning too: remove it. A name that is no check silences nothing and is not reported.
 - `internal-imports` cannot be silenced. A framework internal is never an exception.
-- Only `raw-sql` can be silenced this way.
+- Only `raw-sql` and `inner-html` can be silenced this way.
+- A comment at the end of a line covers that line only. A comment on its own line (in JSX, `{/* … */}`) covers its last line and the next.
 
 ## The agents block
 
