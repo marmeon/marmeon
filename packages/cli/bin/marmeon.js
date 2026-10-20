@@ -113,6 +113,16 @@ async function runHere(args, launch) {
     }
   }
   delete process.env.MARMEON_LAUNCH;
+  // `marmeon docs | head`: a reader that closes the pipe early is no failure of the command. It stops writing (Node drops later
+  // writes to the closed stream) and ends with its own exit code. Any other write error stays one. The server (`serve`) is left
+  // out: one whose log pipe breaks must crash, so its supervisor restarts it, instead of running on without logs.
+  if (args[0] !== 'serve') {
+    for (const stream of [process.stdout, process.stderr]) {
+      stream.on('error', (error) => {
+        if (error?.code !== 'EPIPE') throw error;
+      });
+    }
+  }
   await import('@marmeon/core/register');
   const { run } = await import('marmeon/main');
   process.exitCode = await run(args);
