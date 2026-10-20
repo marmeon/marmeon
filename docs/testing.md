@@ -127,6 +127,8 @@ does not pass `devtools: true`, also in one that runs as development. The
 | `debug` | `false` | `true` turns on the development error handling for this test app. |
 | `devtools` | `false` | `true` records what the app does into memory, readable as `app.devtools`. |
 
+`marmeon make:test checkout --module=shop --path=/shop` writes `modules/shop/checkout.test.ts`: a test with this setup that expects `/shop` to answer 200. It fails until the route does, so change it to what you test. It needs `@marmeon/testing` and `vitest` in the app.
+
 A fake is put in place only when the app has its package. `seed: true` without `database: 'refresh'` stops the test:
 
 ```text

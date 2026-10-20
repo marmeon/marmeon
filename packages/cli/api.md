@@ -248,6 +248,11 @@ marmeon make:seeder <Name> --module=<module> [--no-register]
 --force (boolean)
 --module (string, short m)
 --no-register (boolean)
+// make:test
+marmeon make:test <name> --module=<module> [--path=/…]
+--force (boolean)
+--module (string, short m)
+--path (string)
 // modules:check
 marmeon modules:check
 // package:build

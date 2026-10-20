@@ -16,7 +16,8 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
       mkdirSync(dirname(join(app, 'node_modules', name)), { recursive: true });
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
-    for (const pkg of ['core', 'auth', 'http','router', 'database', 'queue', 'notifications', 'validation']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
+    for (const pkg of ['core', 'auth', 'http','router', 'database', 'queue', 'notifications', 'validation', 'testing']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
+    link('vitest', realpathSync(join(repo, 'node_modules/vitest'))); // the generated test imports it
     link('marmeon', join(repo, 'packages', 'cli')); // the generated command imports its input type from it
     for (const pkg of ['react', '@types/react']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
     link('@types/node', realpathSync(join(repo, 'node_modules/@types/node'))); // the framework sources need them
@@ -166,6 +167,24 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
       expect([orphan.allowed, orphan.status]).toEqual([false, 404]);
     }
   });
+
+  it('generates a test that compiles against the app and passes the lint preset', () => {
+    mkdirSync(join(app, 'bootstrap'));
+    writeFileSync(join(app, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\nexport default defineApplication({ root: import.meta.dirname + '/..' });\n");
+    writeFileSync(join(app, '.gitignore'), 'node_modules\n'); // oxlint would walk pnpm's links without it
+    expect(marmeon(app, ['make:test', 'send-invoice', '--module=billing', '--path=/billing/invoices/:id']).code).toBe(0);
+    expect(marmeon(app, ['make:lint-config']).code).toBe(0);
+    const file = join(app, 'modules/billing/send-invoice.test.ts');
+    const oxlint = spawnSync(join(repo, 'node_modules/.bin/oxlint'), ['--deny-warnings', '-f', 'unix', file], { cwd: app, encoding: 'utf8' });
+    expect([oxlint.status, oxlint.stdout]).toEqual([0, expect.not.stringContaining('[Error/')]);
+    const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
+    expect(typecheck.stdout + typecheck.stderr).toBe('');
+    expect(typecheck.status).toBe(0);
+    rmSync(join(app, 'bootstrap'), { recursive: true });
+    rmSync(join(app, '.oxlintrc.json'));
+    rmSync(join(app, '.gitignore'));
+    rmSync(file);
+  }, 30_000);
 
   it('refuses to overwrite and explains missing modules', () => {
     marmeon(app, ['make:module', 'shop']);
