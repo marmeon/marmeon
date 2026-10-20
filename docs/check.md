@@ -57,6 +57,7 @@ After the tools come the checks that need the app, in this order: `boot`, the ch
 | `modules` | Job and notification classes under `modules/` that no module lists, as warnings. | build |
 | `throttle` | Warns at [routes that anyone may call to change something and nothing limits](#routes-without-a-limit). Reads the routes, no database. | build |
 | `package-migrations` | Every package your app publishes from has all its migrations in the app, the answer of `marmeon publish --check`: one that is missing is `D6` with the fix `marmeon publish <package>`, one `publish` refuses is an error with the reason. Packages you have not published from are left out. A package whose declaration cannot be read is listed by `marmeon publish`, but checked only when `publish` made a module for it. A `static migrations` that cannot be read (it is no object, or `from` is no `file:` URL) belongs to the package that exports its provider (found among the packages that list providers in `marmeon.providers`) and is treated like any refusal of it; one no direct dependency exports, and a declaration a package does not claim, are warnings. A package taken into an existing module with `--module` is not checked here; use `marmeon publish --check <package>`. Reads files and imports the main entry of the direct dependencies a declaration points into; no database. | build |
+| `hsts` | Warns when production on an `https` `APP_URL` sends [no `Strict-Transport-Security`](#hsts). Asks the booted app once. | run |
 | `db-types` | `bootstrap/database.d.ts` matches the migrations (a file of another Marmeon version is `D7`); a missing file is an error. Reads the migration files, no database. | run |
 | `readiness` | Runs the [readiness checks](health.md#liveness-and-readiness) of the packages, the modules and the app, the same as `/up/ready`: a failing one is an error named after it, one that takes longer than its time limit says so. | |
 
@@ -266,6 +267,40 @@ What counts as a limit or a sign-in is what a middleware says about itself in `s
   such line has no file and cannot be silenced by a comment.
 
 It is a warning, so the exit code stays `0`.
+
+## HSTS
+
+Without [`Strict-Transport-Security`](security.md#strict-transport-security) a browser's first visit over plain `http://` can be kept
+on HTTP by an attacker on the path. `hsts` warns when none is sent. It is only checked when the app runs as production
+(`NODE_ENV=production`) and `APP_URL` starts with `https://`; in development and test, and with an `http://` `APP_URL`, it is
+`skipped`. So run it with your production environment, before going live:
+
+```sh
+NODE_ENV=production pnpm marmeon check --only=boot,hsts
+```
+
+It starts the app and runs its code once: a single `GET` of `https://<APP_URL host>/_marmeon/hsts-probe`, handed to the app
+from the loopback address, with `accept: application/json`, no cookies and no body. The answer is thrown away. That path is
+under `/_marmeon/`, which belongs to the framework, and the app's global middleware sees it like any request, which is where
+`securityHeaders()` adds the header. A failing probe makes the check `error`.
+
+```txt
+! hsts — 1 warning
+  Responses over HTTPS carry no Strict-Transport-Security header. Turn it on with securityHeaders({ hsts: … }) in bootstrap/app.ts once the site answers over HTTPS only. If your proxy sets it, leave this check out there: --skip=hsts.  (marmeon(hsts))
+  docs: docs/security.md#strict-transport-security
+```
+
+It warns when the response has no header, a header without a valid `max-age` or with two of them (a browser ignores it), or `max-age=0`, which
+turns HSTS off. It reads the header as a browser does: any letter case, and when several come, the first.
+
+- The app is asked, not the proxy in front of it. Where the proxy sets the header, the check warns although visitors get it: run
+  it with `--skip=hsts` there.
+- A header that the middleware of a group or of a route, or a controller, sets is not seen: the probe passes through the global
+  middleware only. That is a false alarm like the proxy's; `--skip=hsts` there too.
+- The probe looks like a real request: the log has a line `GET /_marmeon/hsts-probe 404`, a trace records it, and a global
+  middleware with a side effect runs once.
+- `includeSubDomains` and `preload` are not looked at; `securityHeaders()` already refuses `preload` without `includeSubDomains` and a `maxAge` of a year.
+- It is a warning, so the exit code stays `0`, and it cannot be silenced by a comment.
 
 ## Silencing a finding
 

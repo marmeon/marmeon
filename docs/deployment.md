@@ -551,7 +551,9 @@ A single server with Docker Compose is enough for many apps. A few things matter
 - A worker takes every queue the app uses: one without `--queue` does, and a `--queue` list names every queue or holds a `*`.
 - The drivers the settings name are installed as `dependencies`.
 - Staging is not public and holds no real data, because it shows server errors.
-- HSTS once the site answers over HTTPS only: the `hsts` option of `securityHeaders()` in `bootstrap/app.ts`.
+- HSTS once the site answers over HTTPS only: the `hsts` option of `securityHeaders()` in `bootstrap/app.ts`. Before going live,
+  `marmeon check --only=boot,hsts` with the production environment tells you whether the app sends it
+  ([the check](check.md#hsts); `--skip=hsts` where your proxy sets the header).
 - `SHUTDOWN_DELAY` of about 5 behind a probing load balancer or in Kubernetes.
 - More than one instance or `--workers`: shared drivers for sessions, cache, queue, live updates and files, and Postgres instead
   of SQLite.

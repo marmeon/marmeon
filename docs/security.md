@@ -125,6 +125,20 @@ until they expire. The [encryption](encryption.md#rotating-the-key) page explain
   by byte. The framework compresses assets at build time and never pages; leave pages uncompressed at the proxy too, as the
   [deployment](deployment.md#compression) page says.
 
+## Strict-Transport-Security
+
+The first visit to `http://your-site` is open to an attacker on the path, who can keep the browser on plain HTTP (SSL stripping).
+`Strict-Transport-Security` tells a browser that has seen it to use HTTPS alone for the next `max-age` seconds. It is off until you
+turn it on, because browsers hold on to it: switch it on once the site answers over HTTPS only, with a short `max-age` first.
+
+```ts
+securityHeaders({ hsts: { maxAge: 31_536_000, includeSubDomains: true } })
+```
+
+`maxAge: 0` withdraws it from the browsers that have seen it. The header is sent on HTTPS responses only; behind a proxy that
+means `TRUSTED_PROXIES` and its `X-Forwarded-Proto`. A proxy may set the header instead of the app.
+[`marmeon check`](check.md#hsts) warns when it finds none, before you go live.
+
 ## Accounts
 
 - **Passwords** are hashed with Argon2id, within bounds that a planted hash cannot exceed. The [hashing](hashing.md) page explains
@@ -304,7 +318,8 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
 - `abilities()` on every API route that acts: without it, every token of a user acts with all of the user's rights.
 - `OTEL_TRUST_TRACEPARENT` only behind an edge that owns the header, and `OTEL_RECORD_QUERY_VALUES` only when your URLs carry no
   personal data.
-- HSTS once the site answers over HTTPS only: the `hsts` option of `securityHeaders()`, or the proxy.
+- [HSTS](#strict-transport-security) once the site answers over HTTPS only: the `hsts` option of `securityHeaders()`, or the proxy.
+  `marmeon check --only=boot,hsts` with the production environment tells you whether the app sends it.
 - `TRUSTED_PROXIES` set to exactly your proxy, or `*` for the direct peer when nothing else can reach the app. The proxy sets
   `X-Forwarded-*` itself and does not compress pages.
 - `SESSION_ENCRYPT=true` when the session store is shared.
