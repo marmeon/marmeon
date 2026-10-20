@@ -45,6 +45,11 @@ export interface HttpRequestMessage extends MessageBase, Ended {
   readonly url: string;
   /** The request's headers — raw (cookies, `authorization`): redact before recording or showing. */
   readonly headers: Headers;
+  /**
+   * The route pattern of the `Referer`, when it is a URL of this app that a route matches (`/invite/:code`) — set only while
+   * something listens. Lets a subscriber mask the route's sensitive parameters in the header.
+   */
+  refererRoutePath?: string;
   /** `island` or `layer`: a region's request (`x-marmeon-region`). */
   readonly region?: string;
   /** Resolved in-process for another request — an island while its page renders, a layer's base for its deep link. */
@@ -62,6 +67,8 @@ export interface HttpRequestMessage extends MessageBase, Ended {
    * reload: a new build, or crossing the sign-in boundary) — raw: redact before recording.
    */
   location?: string;
+  /** The route pattern of `location`, when it is a URL of this app that a route matches — as {@link refererRoutePath}. */
+  locationRoutePath?: string;
   /** With a 409 and a location: why the browser reloads (`x-marmeon-reload`: `version`, `history`). */
   reload?: string;
   /** The page or island it answered with — set only while something listens (the devtools). */

@@ -280,11 +280,11 @@ export class Recorder {
       ...(message.controller === undefined ? {} : { controller: message.controller }),
       ...(message.status === undefined ? {} : { status: message.status }),
       ...(message.durationMs === undefined ? {} : { durationMs: message.durationMs }),
-      ...(message.location === undefined ? {} : { location: redactor.url(message.location) }),
+      ...(message.location === undefined ? {} : { location: redactor.url(message.location, message.locationRoutePath) }),
       ...(message.reload === undefined ? {} : { reload: message.reload }),
       ...(message.region === undefined ? {} : { region: message.region }),
       inProcess: message.inProcess,
-      headers: redactor.headers(message.headers),
+      headers: redactor.headers(message.headers, { referer: message.refererRoutePath }),
       query,
       ...(message.input === undefined ? {} : { input: redactor.value(message.input) }),
       ...(page

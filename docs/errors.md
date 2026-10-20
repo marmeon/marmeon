@@ -262,6 +262,7 @@ With `NODE_ENV=development`, a page request that fails with a 5xx gets the devel
 Everything on it passes the app's redaction first: cookies, `Authorization`, passwords, tokens, password hashes and the
 parameters of queries on secret columns never show. A route parameter with a sensitive name (`/invite/:code`) is masked in
 the request's URL by the route's pattern, on the page, in `last-error.md` and in the devtools, however short its value is.
+The same goes for a `Referer` or a redirect's `Location` that points to a route of the app; one to another site is masked as text only.
 
 The page is one self-contained document, without React, Vite or your views, so it renders when they are what broke. It goes out
 with `Cache-Control: no-store` and a Content-Security-Policy of its own. A visit inside the app shows it in a dialog over the page.

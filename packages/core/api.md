@@ -425,7 +425,7 @@ export declare class Redactor {
     log(context: Readonly<Record<string, unknown>>): Record<string, unknown>;
     text(text: string): string;
     value(value: unknown, depth?: number): unknown;
-    headers(headers: Headers | Iterable<readonly [string, string]> | Readonly<Record<string, string | readonly string[] | undefined>>): Record<string, string>;
+    headers(headers: Headers | Iterable<readonly [string, string]> | Readonly<Record<string, string | readonly string[] | undefined>>, urlPatterns?: Readonly<Record<string, string | undefined>>): Record<string, string>;
     query(query: RedactableQuery): {
         sql: string;
         parameters: unknown[];
@@ -880,6 +880,7 @@ export interface HttpRequestMessage extends MessageBase, Ended {
     readonly path: string;
     readonly url: string;
     readonly headers: Headers;
+    refererRoutePath?: string;
     readonly region?: string;
     readonly inProcess: boolean;
     route?: string;
@@ -887,6 +888,7 @@ export interface HttpRequestMessage extends MessageBase, Ended {
     controller?: string;
     status?: number;
     location?: string;
+    locationRoutePath?: string;
     reload?: string;
     page?: PageSummary;
     input?: Readonly<Record<string, unknown>>;

@@ -154,6 +154,10 @@ const routes = openRoutes((Route) => {
     throw new Error('The invite failed');
   });
   Route.get('/ignored', () => ({ ok: true }));
+  Route.get('/to-invite', () => new Response(null, { status: 302, headers: { location: '/invite/483920' } }));
+  Route.get('/to-code', () => new Response(null, { status: 302, headers: { location: '/invite/1?code=SECRETCODE#/b/c' } }));
+  Route.get('/to-fragment', () => new Response(null, { status: 302, headers: { location: '/invite/plum#/b/c' } }));
+  Route.get('/to-unknown', () => new Response(null, { status: 302, headers: { location: '/unrouted/483920' } }));
 });
 
 interface Booted {
@@ -376,6 +380,34 @@ describe('what the recorder keeps', () => {
       await tester!.settled();
       expect(tester!.assertRecorded('exception').content).toMatchObject({ status: 500, path: '/invite/[redacted]' });
       expect(JSON.stringify(tester!.entries())).not.toContain('483920');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('masks a short sensitive route parameter in the location of a redirect and in the referer', async () => {
+    const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      await kernel.request('/to-invite', { headers: { referer: 'http://localhost/invite/483920?x=1' } });
+      await kernel.request('/to-unknown', { headers: { referer: 'http://localhost/unrouted/483920' } });
+      await kernel.request('/ignored', { headers: { referer: 'https://elsewhere.example/invite/483920' } });
+      await tester!.settled();
+      const first = tester!.assertRecorded('request', (request) => request.path === '/to-invite').content;
+      expect(first.location).toBe('/invite/[redacted]');
+      expect(first.headers.referer).toBe('http://localhost/invite/[redacted]?x=1');
+      const unknown = tester!.assertRecorded('request', (request) => request.path === '/to-unknown').content;
+      expect(unknown.location).toBe('/unrouted/483920');
+      expect(unknown.headers.referer).toBe('http://localhost/unrouted/483920');
+      const foreign = tester!.assertRecorded('request', (request) => request.path === '/ignored').content;
+      expect(foreign.headers.referer).toBe('https://elsewhere.example/invite/483920');
+      expect(JSON.stringify(first)).not.toContain('483920');
+      await kernel.request('/to-code', { headers: { referer: 'http://localhost/invite/1?code=SECRETCODE' } });
+      await kernel.request('/to-fragment');
+      await tester!.settled();
+      const coded = tester!.assertRecorded('request', (request) => request.path === '/to-code').content;
+      expect(JSON.stringify(coded)).not.toContain('SECRETCODE');
+      const fragment = tester!.assertRecorded('request', (request) => request.path === '/to-fragment').content;
+      expect(fragment.location).toBe('/invite/[redacted]');
     } finally {
       await app.shutdown();
     }
