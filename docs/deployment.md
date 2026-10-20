@@ -469,15 +469,14 @@ The steps below are the order; the [upgrade guide](../UPGRADING.md) names the ve
    - Let the queue run empty: `marmeon queue:work --stop-when-empty`, then `marmeon queue:size` shows 0 for every queue, delayed jobs
      included. Look at `marmeon queue:failed`, and retry or give up what is in it.
    - Tell your users that they sign in again, and pick a quiet hour.
-2. **In development.** Run `marmeon make:upgrade-migrations`, `marmeon db:types` and `marmeon route:types`, and commit what they
-   write. [`make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables) writes the migration that clears the API tokens, one that fills the `NULL` session keys, one that drops the `remember_tokens` table, one that creates the table `email_changes` and drops the pending-address columns of `users` (a change of address that is open is lost; whoever has one asks again) and one that adds the remember-me columns to `sign_ins`. With a user table of your own, fill its `NULL` session keys with random values in a migration of your own. A database with tables of its
+2. **In development.** Run `marmeon db:types` and `marmeon route:types`, and commit what they write. An app from 0.3 has no automatic way to the tables of the starter kit and to `sign_ins`; see the [upgrade guide](../UPGRADING.md). With a user table of your own, fill its `NULL` session keys with random values in a migration of your own. A database with tables of its
    own that never ran `marmeon migrate` keeps them: `migrate` writes its record of migrations and runs the migrations, and the
    tables it did not make stay unknown to Marmeon, unguarded ([how the app knows its schema](migrations.md#how-the-app-knows-its-schema)).
 3. **Stop every process of the old release**, on every machine: web, workers, the scheduler, cron jobs, and every CI or release job
    that runs `marmeon`. None of them may run after step 4 begins.
 4. **Deploy the new release, run `marmeon migrate --force`, then
    [`marmeon auth:end-all-sessions --force --keep-reset-tokens`](authentication.md#ending-every-session-of-every-account), then start
-   it.** `migrate` runs the migrations from step 2. The second command deletes the
+   it.** `migrate` runs the migrations of your app. The second command deletes the
    sign-ins (and with them the remember-me tokens), revokes the API tokens that are left and rotates the session keys, so nothing of the old
    release signs anyone in. It needs `UserProvider.updateEverySessionKey()`, which the starter kit's provider has; a provider of your
    own implements it first ([for your own user provider](authentication.md#for-your-own-user-provider)). Without `--keep-reset-tokens` it deletes the reset links too. `/up/ready` turns green when the tables and
@@ -486,11 +485,11 @@ The steps below are the order; the [upgrade guide](../UPGRADING.md) names the ve
 
 **What is lost.**
 
-- Every sign-in and every "keep me signed in" token. The tokens lived in a `remember_tokens` table, which the upgrade drops: they live
-  on the `sign_ins` rows now and are not copied. Sessions of the old release carry no format and are dropped, and the cookies of the old release have other names
+- Every sign-in and every "keep me signed in" token: `auth:end-all-sessions` deletes the sign-ins, and the remember-me tokens live on
+  those rows. Sessions of the old release carry no format and are dropped, and the cookies of the old release have other names
   ([the `__Host-` prefix](session.md#the-__host--prefix)), so remember-me signs nobody in. Users sign in again, with their second
   factor where they have one.
-- Every API token. Their form is no longer valid, no code reads it, and the migration deletes the rows
+- Every API token. Their form is no longer valid, no code reads it, and `auth:end-all-sessions` revokes them
   ([API tokens](api-tokens.md#the-token-format)).
 - What an open tab had typed and not sent. A tab of the old release gets the `409` on its next request and loads the page anew.
 - Jobs of the old release that did not run, queued listeners included. Delayed ones fail as soon as they are due. Each fails with

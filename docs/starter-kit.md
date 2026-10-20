@@ -31,7 +31,7 @@ framework bring them.
 | `mail/` | Ten mails: the confirmation of an address, the reset link, the notes about a change of address and about a known address, the notes about the second factor and about passkeys, the note about a copied "keep me signed in" cookie, and the note that an account stopped taking passwords. |
 | `jobs/`, `listeners/`, `tasks/` | The work that runs on the queue or on a schedule. |
 | `middleware/` | `ShareAuthProps` and `ConfirmedAddress`. |
-| `migrations/` | The tables `users`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, `passkeys`, `sign_ins`, which also holds the remember-me tokens, and `email_changes`, where a change of address waits for its link. An app generated before the tokens moved onto the sign-ins or the changes of address onto their own table runs [`marmeon make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables). |
+| `migrations/` | The tables `users`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, `passkeys`, `sign_ins`, which also holds the remember-me tokens, and `email_changes`, where a change of address waits for its link. |
 | `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`: never seed a server with it. |
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
 | `auth.test.ts` and twelve more | The module's own tests. |

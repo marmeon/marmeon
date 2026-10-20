@@ -146,10 +146,10 @@ export class QueueServiceProvider implements ServiceProvider {
       // /up/ready is red until the tables have the new names and every column the drivers write.
       const { SchemaRequirements } = await import('@marmeon/database');
       const requirements = app.container.make(SchemaRequirements);
-      if (used.driver === 'database') requirements.require({ connection: used.connection, table: JOBS_TABLE, columns: JOBS_COLUMNS, set: 'queue' });
+      if (used.driver === 'database') requirements.require({ connection: used.connection, table: JOBS_TABLE, columns: JOBS_COLUMNS });
       // `sync` runs a job where it is dispatched: no worker, no failed-job table to wait for.
       if (config.failed.driver === 'database' && used.driver !== 'sync') {
-        requirements.require({ connection: config.failed.connection, table: FAILED_JOBS_TABLE, columns: FAILED_JOBS_COLUMNS, set: 'queue' });
+        requirements.require({ connection: config.failed.connection, table: FAILED_JOBS_TABLE, columns: FAILED_JOBS_COLUMNS });
       }
     }
     if (used.driver === 'redis') {

@@ -3,7 +3,7 @@ import type { SchemaRequirements, TableRequirement } from './index.ts';
 
 declare const requirements: SchemaRequirements;
 
-const requirement: TableRequirement = { connection: 'default', table: 'audit_entries', columns: ['id'], secrets: ['payload'], set: 'audit' };
+const requirement: TableRequirement = { connection: 'default', table: 'audit_entries', columns: ['id'], secrets: ['payload'] };
 requirements.require(requirement);
 requirements.require({ ...requirement, whenPresent: true });
 
@@ -14,10 +14,10 @@ void all;
 requirements.all().push(requirement);
 
 // @ts-expect-error — a requirement names the columns the code reads and writes
-requirements.require({ connection: 'default', table: 'audit_entries', set: 'audit' });
+requirements.require({ connection: 'default', table: 'audit_entries' });
 
-// @ts-expect-error — and the set its tables belong to
-requirements.require({ connection: 'default', table: 'audit_entries', columns: ['id'] });
+// @ts-expect-error — and no set: the migrations of a package are not told apart by set
+requirements.require({ ...requirement, set: 'audit' });
 
 // @ts-expect-error — `whenPresent` is either true or left out
 requirements.require({ ...requirement, whenPresent: false });

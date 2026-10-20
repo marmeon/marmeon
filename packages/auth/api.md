@@ -184,13 +184,6 @@ export declare class AuthServiceProvider implements ServiceProvider {
             parallelism: number;
         };
     }>)[];
-    static migrationUpgrades: {
-        set: string;
-        revision: number;
-        name: string;
-        createdBy: string[];
-        contents: string;
-    }[];
     static commands: (typeof MakeAuthCommand | typeof EndAllSessionsCommand | typeof EndSessionsCommand | typeof ResetTwoFactorCommand | typeof PruneTokensCommand | typeof MakeSignInsTableCommand)[];
     register(container: Container): void;
     boot(app: Application): Promise<void>;

@@ -148,7 +148,6 @@ A reader never guesses and never falls back to a default.
 | [Session](session.md#what-a-session-stores) | `_v` in the payload | the request is a guest's; the stored session stays as it is | dropped, a new session starts |
 | [Session and remember-me cookies](session.md#the-__host--prefix) | the name, with `__Host-` when cookies are `Secure` | n/a | a cookie under another name is never read |
 | [Record of migrations](migrations.md#how-the-migrator-keeps-track) | the columns of `migrations` (and of `migration_lock`) | `migrate` refuses; every query on the connection fails and `/up/ready` is red | read as they are: 0.3 wrote the same columns |
-| [The framework's tables](migrations.md#upgrading-the-frameworks-tables) | `// @marmeon-stub <set> <revision>` in the app's migration | `make:upgrade-migrations` stops and writes nothing | written by `make:upgrade-migrations` |
 | [Migrations a package ships](package-development.md#declaring-the-migrations-a-package-ships) | `format` in `"marmeon": { "migrations": … }` of its `package.json` | refused with D21; nothing is read or copied | n/a: the field starts at `format: 1` |
 | [Encrypted values](encryption.md#what-the-key-protects) | a version byte, and a context per use (`cookie:<name>`, `session:<key>`, `queue:v1:<job>`) | `DecryptError` | `DecryptError` |
 | [API tokens](api-tokens.md#the-token-format) | the prefix, and a hash under its own domain | not a token: 401, like an unknown one | no longer valid: 401, like an unknown one |

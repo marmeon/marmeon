@@ -1308,10 +1308,7 @@ readiness waits for none of ours: an app that wants no reset links or no API tok
 (`container.singleton(AccessTokenStore, MyTokens)`), because with a `UserProvider` the default stores count as used. Readiness is also red
 while a column that holds a secret (`token_hash`, `validator_hash`, `secret`, `code_hash`) lacks its `secret()` mark, as in a table made by hand.
 
-An app that created the tables with the first stubs brings them up to date with
-[`marmeon make:upgrade-migrations`](migrations.md#upgrading-the-frameworks-tables) and [stops every process of the old
-release](deployment.md#the-upgrade-that-stops-every-process) for the `marmeon migrate` that follows. Passwords, authenticators,
-recovery codes, passkeys and reset links keep working; every sign-in ends.
+From 0.3 there is no automatic way to the tables of the starter kit and to `sign_ins`; see the [upgrade guide](../UPGRADING.md).
 
 ## Signed-in pages are never cached
 

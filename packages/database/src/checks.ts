@@ -1,7 +1,6 @@
 import { relative } from 'node:path';
 import { Application, Redactor } from '@marmeon/core';
 import type { AppCheck, AppCheckContext, AppCheckResult } from 'marmeon';
-import { missingUpgrades } from './commands/make-upgrade-migrations.ts';
 import { TypeGenerator } from './types-gen/generator.ts';
 
 /**
@@ -33,35 +32,5 @@ export class DbTypesCheck implements AppCheck {
       const redactor = this.#app.container.has(Redactor) ? this.#app.container.make(Redactor) : new Redactor();
       throw new Error(`the migrations could not be read: ${redactor.text(error instanceof Error ? error.message : String(error))}`);
     }
-  }
-}
-
-/**
- * The app has every migration that brings the framework's tables to the revision of the installed packages. Reads the migration
- * files only, with the app registered — no database, no secrets; the same answer as `marmeon make:upgrade-migrations --check`.
- * See docs/check.md#the-checks.
- */
-export class UpgradeMigrationsCheck implements AppCheck {
-  static check = 'upgrade-migrations';
-  static phase = 'build' as const;
-
-  readonly #app: Application;
-
-  constructor(app: Application) {
-    this.#app = app;
-  }
-
-  handle(): AppCheckResult {
-    const { missing, problems } = missingUpgrades(this.#app.root, this.#app.providers);
-    return [
-      ...missing.map(({ upgrade }) => ({
-        severity: 'error' as const,
-        message: `the ${upgrade.set} tables lack revision ${upgrade.revision} (${upgrade.name})`,
-        code: 'D6' as const,
-        fix: 'marmeon make:upgrade-migrations',
-        docs: 'docs/migrations.md#upgrading-the-frameworks-tables',
-      })),
-      ...problems.map((message) => ({ severity: 'error' as const, message, docs: 'docs/migrations.md#upgrading-the-frameworks-tables' })),
-    ];
   }
 }

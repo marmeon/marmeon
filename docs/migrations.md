@@ -691,6 +691,18 @@ renamed columns, new columns, NOT NULL and nullable changes, new indexes, retire
 two `alter()` calls. Two rules come from SQLite as well: a new `NOT NULL` column needs a default, and a column with an index
 cannot be dropped before its index.
 
+### Renaming a table
+
+A migration that renames a table keeps the names of its indexes and constraints in step with it by passing `indexes`:
+
+```ts
+schema.rename('invoices', 'bills', { indexes: true });
+```
+
+Every index and constraint whose name begins with `invoices_` is renamed to begin with `bills_`, and on Postgres the
+sequences of its identity columns too. A new name over 63 bytes is refused on Postgres, which would cut it: rename that index
+yourself first, to a name of your choice. Without the option, `rename` changes the table's name only.
+
 ## Secret columns
 
 `.secret()` marks a column that must never be read by accident: a password hash, a token's hash, a two-factor secret. The
@@ -902,6 +914,8 @@ with a message instead of creating the table where nothing looks. Split it then:
 `connection: '<the jobs' connection>'` in place of `queueTablesConnection`, and a migration of its own creates `failed_jobs` with
 the other `connection`, as in [migrations on another connection](#migrations-on-another-connection).
 
+`/up/ready` is red while a table of a driver you use lacks a column the code needs, and says which table and which command to run.
+
 ### Publishing the migrations of a package
 
 ```sh
@@ -912,74 +926,24 @@ pnpm marmeon migrate
 `marmeon publish <package> [--module=<name>]` copies the migrations a package lists into your app. The package must be in the
 `dependencies` or `devDependencies` of your app's `package.json` and installed in its `node_modules`: a package that only
 another package brought is not copied; the package is looked for in the `node_modules` of the app and, in a workspace, of the
-directories above it up to the first one with a lockfile. The module is `--module`, or else the one that already holds a migration
-the package lists, or else the one the package proposes. A proposed module that does not exist is created and added to
-`bootstrap/app.ts` like the one of a `make:*-table` command; one that exists is used only if it is `system`, so the command
-otherwise stops with exit code 1 and asks for `--module`: the tables of a package never land in one of your modules unasked.
-`--module` is a kebab-case name, never a path.
+directories above it up to the first one with a lockfile. The module is `--module`; else the module whose `index.ts` carries the line `publish` writes when it creates a module for the
+package; else the one the package proposes. With such a module, every file of the package that your app has must lie in it:
+a file in another module stops the command with exit code 1, also when nothing is missing, because it is either a module you
+moved the files to or a package that ships a name your app already uses. Without one, a file of the package in another module
+stops the command the same way, unless all files are there and nothing is left to write. A proposed module that does not exist
+is created and added to `bootstrap/app.ts` like the one of a `make:*-table` command. One that exists is opened without
+`--module` only if it is `system` and the package is one of `@marmeon/…` that your `package.json` lists with a version range,
+a dist-tag or `catalog:` (not an alias, a path, a workspace or a repository). The tables of a package never land in one of your
+modules unasked. `--module` is a kebab-case name, never a path. A file name that another direct dependency of your app lists
+too is refused: two migrations would create the same table.
 
 The command writes what is missing and skips a migration your app already has under the same name (say, one that `make:auth`
 wrote), so you can run it again: when nothing is left it ends with exit code 0 and says so. The files carry a timestamp one
-second apart, in the order the package lists them. When the tables of the package have upgrades that your app lacks, it points
-to `make:upgrade-migrations`. It does not touch the database; run `marmeon migrate` after it. To move the tables to another
-module later, move the files with the same names and change their rows in `migrations.module`.
+second apart, in the order the package lists them. It does not touch the database; run `marmeon migrate` after it. To move the
+tables to another module later, move the files with the same names and change their rows in `migrations.module`.
 
-A package cannot publish a migration into a set of tables that another installed package upgrades or creates, nor under a file name
-that one creates or upgrades, nor into a set your app already has in a file the package does not list: it could otherwise hide
-the upgrades of that set. A provider counts as the package's own only when it is the very class the package exports and no other
-package lists its name. A package that is not installed protects nothing. The command reads the
-package's files without following a symlink; a hard link to a file outside the package, which `realpath` does not reveal, is not
-detected. Read the files of a package you do not know before you run `migrate`: they are code.
+`publish` only copies files: it runs no code of the package and reads the package's files without following a symlink (a hard
+link to a file outside the package, which `realpath` does not reveal, is not detected). Like every command of your app, though,
+`marmeon` boots your app first. Read the files of a package you do not know before you run `migrate`: they are code.
 
 An app with a console command named `publish` of its own does not start (K8): rename it.
-
-### Upgrading the framework's tables
-
-The migrations of the framework's tables are yours, so an update of the framework cannot change them. When a release changes
-a table (a new column, a new name), its package brings a migration for the change and `make:upgrade-migrations` writes it
-into your app:
-
-```sh
-pnpm marmeon make:upgrade-migrations
-pnpm marmeon migrate
-```
-
-Each migration a `make:*-table` command wrote has a first line like `// @marmeon-stub queue 1`: the set of tables and the
-revision it brings them to. The command reads that line from the migration that created the tables (a file without it is
-revision 1), and writes every later revision that is not in your app yet, into the module of that migration, in the order of
-the revisions. It does not touch the database, and it writes nothing for tables your app does not use. Run it again after
-every update; `--check` writes nothing and exits with 1 when a migration is missing, for CI.
-
-The command stops with exit code 1, and writes nothing, when your app is ahead of the installed packages (a revision they do
-not know), when a first line names another set, or when a later revision is in your app and an earlier one is not: restore
-the missing one by hand, in front of it.
-
-The tables of the starter kit's auth module (`password_reset_tokens`, `personal_access_tokens`,
-`two_factor_authentications`, `two_factor_recovery_codes`, `passkeys`, `sign_ins` and `email_changes`) keep their names. The `auth` set has
-later revisions. The first, `reissue_personal_access_tokens`, deletes every row of `personal_access_tokens` and adds a unique index on
-`token_hash`, because API tokens with a `|`, the form issued before, are no longer valid. See
-[API tokens](api-tokens.md#a-store-of-your-own). It touches no other table. The second, `fill_empty_session_keys`, gives every
-account whose `users.session_key` is `NULL` a random value from the database's own cryptographic generator, one for each row. The new
-key changes the account's fingerprint, so an account that had none is signed out once, on every device; accounts that had a key keep
-their sessions. It does not touch the password or any other column. The third, `drop_remember_tokens_table`, drops the
-`remember_tokens` table: the tokens live on the rows of `sign_ins` now. Its tokens are not copied, so every "keep me signed in" cookie
-of the first release stops working. The fourth, `move_email_changes_to_their_own_table`, creates `email_changes` and drops the three `pending_email` columns of `users`. A change of address that is open when it runs is not carried over (the first kit did not drop one when the password changed or was reset, so a carried-over change would outlive such a change of password), and its link finds nothing: whoever has one open asks for it again after the upgrade. Code of yours that read the columns reads nothing now. Its `down` puts the columns back empty. The `sign-ins` set (`sign_ins`, written by `marmeon make:sign-ins-table` or by the starter kit) has
-one later revision, `add_remember_columns_to_sign_ins`: five nullable columns that hold the remember-me token on the row of its
-sign-in, and the selector column made again as a `secret()` column (a column cannot be marked later), which loses the selectors it
-held. It deletes every sign-in, since the sessions end with the upgrade anyway and a row that kept a remember time without a token would be listed as kept signed in. Run both with the [upgrade that stops every process](deployment.md#the-upgrade-that-stops-every-process).
-
-A migration it wrote is yours like the first one. Keep the first line: without it, the command takes a changed file for
-revision 1.
-
-An updated database ends up the same as a new one: the same tables, columns, and names of indexes and constraints.
-`/up/ready` is red while a table of a driver you use lacks a column the code needs, and says which table and which command to run.
-
-A migration that renames a table keeps the names of its indexes and constraints in step with it by passing `indexes`:
-
-```ts
-schema.rename('invoices', 'bills', { indexes: true });
-```
-
-Every index and constraint whose name begins with `invoices_` is renamed to begin with `bills_`, and on Postgres the
-sequences of its identity columns too. A new name over 63 bytes is refused on Postgres, which would cut it: rename that index
-yourself first, to a name of your choice. Without the option, `rename` changes the table's name only.

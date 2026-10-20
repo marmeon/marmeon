@@ -31,7 +31,7 @@ import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
-import { authenticationIsSetUp, authMigrationUpgrades, requireAuthTables, UserProviderNotBound } from './upgrades.ts';
+import { authenticationIsSetUp, requireAuthTables, UserProviderNotBound } from './upgrades.ts';
 
 export { AccountSessions } from './account-sessions.ts';
 export type { EveryoneEnded } from './account-sessions.ts';
@@ -114,8 +114,6 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
  */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
-  /** `marmeon make:upgrade-migrations` writes the reissue of the API tokens into an app whose token table has the first release's form. */
-  static migrationUpgrades = authMigrationUpgrades();
   static commands = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand, EndAllSessionsCommand, EndSessionsCommand, ResetTwoFactorCommand];
 
   register(container: Container): void {

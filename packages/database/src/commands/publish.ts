@@ -1,17 +1,12 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { Application, type ServiceProviderClass } from '@marmeon/core';
-import { findPackage, resolveExports, runtimeConditions } from '@marmeon/core/internal';
+import { findPackage } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { readPackageMigrations } from '../package-migrations.ts';
-import { stubMark } from '../upgrades.ts';
-import { missingUpgrades } from './make-upgrade-migrations.ts';
 import { findMigration, publishMigration, SYSTEM_MODULE } from './publish-migration.ts';
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'];
-const TIMESTAMP = /^\d{4}_\d{2}_\d{2}_\d{6}_/;
 
 type Package = NonNullable<ReturnType<typeof findPackage>>;
 
@@ -38,86 +33,55 @@ function locate(name: string, root: string): Package | undefined {
   return undefined;
 }
 
-/** The provider classes a package exports under the names it lists in `marmeon.providers` — the classes it brings itself. */
-async function providersOf(pkg: Package): Promise<Set<unknown>> {
-  const own = new Set<unknown>();
-  const listed = pkg.json.marmeon?.providers;
-  if (!Array.isArray(listed)) return own;
-  try {
-    const entry = resolveExports(pkg, '.', runtimeConditions());
-    if (!entry) return own;
-    const exports = (await import(pathToFileURL(entry).href)) as Record<string, unknown>;
-    for (const name of listed) if (typeof name === 'string' && typeof exports[name] === 'function') own.add(exports[name]);
-  } catch {
-    // A package that does not load owns nothing.
+/** The module whose `index.ts` carries the line `publish` writes when it creates a module for `name`. */
+function ownedModule(modules: string, name: string): string | undefined {
+  if (!existsSync(modules)) return undefined;
+  const line = `// The tables of ${name}: \`marmeon publish ${name}\` writes their migrations here.`;
+  for (const module of readdirSync(modules)) {
+    if (!KEBAB.test(module)) continue;
+    try {
+      if (readFileSync(join(modules, module, 'index.ts'), 'utf8').split(/\r?\n/).includes(line)) return module;
+    } catch {
+      // no index.ts: not a module `publish` made
+    }
   }
-  return own;
+  return undefined;
 }
 
 /**
- * The sets and migration names the app's providers upgrade or create, each marked with whether the package brings them itself (every provider that names one must be the package's).
- * A package that is not the owner of a set the framework upgrades must not publish into it: the app would stop getting
- * that set's upgrades. Ownership is the class: a provider counts as the package's when it is the very class the package exports
- * under a name in `marmeon.providers` and no other discovered package lists that name.
+ * Whether the app's specification of a dependency installs it from the registry: a semver range, a dist-tag or `catalog:`.
+ * Anything with a `/` or another `:` is an alias, a path, a repository or a tarball; `.tgz` ends a tarball name.
  */
-function known(providers: readonly ServiceProviderClass[], own: ReadonlySet<unknown>, ambiguous: ReadonlySet<string>): { sets: Map<string, boolean>; names: Map<string, boolean> } {
-  const sets = new Map<string, boolean>();
-  const names = new Map<string, boolean>();
-  for (const Provider of providers) {
-    const mine = own.has(Provider) && !ambiguous.has(Provider.name);
-    for (const upgrade of Provider.migrationUpgrades ?? []) {
-      sets.set(upgrade.set, (sets.get(upgrade.set) ?? true) && mine);
-      for (const name of [upgrade.name, ...upgrade.createdBy]) names.set(name, (names.get(name) ?? true) && mine);
-    }
-  }
-  return { sets, names };
+function fromRegistry(spec: unknown): boolean {
+  if (typeof spec !== 'string') return false;
+  const text = spec.trim();
+  if (text.startsWith('catalog:')) return !text.includes('/');
+  return !text.includes('/') && !text.includes(':') && !text.endsWith('.tgz');
 }
 
-/** The migrations in `modules/*\/migrations` that carry a stub mark: file name without timestamp, set and module. */
-function markedMigrations(modules: string): { name: string; set: string; module: string }[] {
-  const found: { name: string; set: string; module: string }[] = [];
-  if (!existsSync(modules)) return found;
-  for (const module of readdirSync(modules)) {
-    const directory = join(modules, module, 'migrations');
-    if (!existsSync(directory)) continue;
-    for (const file of readdirSync(directory)) {
-      if (!TIMESTAMP.test(file) || !file.endsWith('.ts')) continue;
-      try {
-        const mark = stubMark(readFileSync(join(directory, file), 'utf8'));
-        if (mark) found.push({ name: file.replace(TIMESTAMP, '').slice(0, -'.ts'.length), set: mark.set, module });
-      } catch {
-        // unreadable: not one we can tell
-      }
-    }
-  }
-  return found;
-}
-
-function markOf(file: string): ReturnType<typeof stubMark> {
-  try {
-    return stubMark(readFileSync(file, 'utf8'));
-  } catch {
-    return undefined;
-  }
+/**
+ * Whether the existing module `module` may be opened for `name` without `--module`: `system` for a package of the framework
+ * itself — named `@marmeon/…` by its own `package.json` and listed by the app with a registry specification.
+ */
+function opensSystem(module: string, name: string, pkg: Package, dependencies: Record<string, unknown>): boolean {
+  if (module !== SYSTEM_MODULE || !name.startsWith('@marmeon/') || pkg.json.name !== name) return false;
+  const spec = dependencies[name];
+  return fromRegistry(spec);
 }
 
 /**
  * `marmeon publish <package> [--module=<name>]`: copies the migrations a direct dependency of your app lists under
- * `"marmeon": { "migrations": … }` into a module — `--module`, else the module that already holds one of them, else the module
- * the package proposes. The files are the app's afterwards. It writes what is missing and skips what is there, so it can run
- * again; it never touches the database. Then `marmeon migrate`. See `docs/migrations.md#publishing-the-migrations-of-a-package`.
+ * `"marmeon": { "migrations": … }` into a module: `--module`; else the module whose `index.ts` says `publish` made it for the
+ * package (every file of the package the app has must lie there, or the command refuses); else, refusing when a file of the
+ * package lies in another module or the proposed module is the app's, the module the package proposes. The files are the app's
+ * afterwards. It writes what is missing and skips what is there, so it can run again; it never touches the database. It only
+ * copies files and runs no code of the package (the CLI boots the app as for any command of the app). Then `marmeon migrate`. See `docs/migrations.md#publishing-the-migrations-of-a-package`.
  */
 export class PublishCommand {
   static command = 'publish';
   static description = 'Copy the migrations of a package into your app';
   static usage = '<package> [--module=<name>]';
   static options = { module: { type: 'string', short: 'm' } } as const;
-
-  readonly #app: Application;
-
-  constructor(app: Application) {
-    this.#app = app;
-  }
 
   async handle(input: CommandInput): Promise<number> {
     const { output } = input;
@@ -162,8 +126,6 @@ export class PublishCommand {
       return 1;
     }
     const manifest = read.value;
-    const sets = new Set(manifest.files.map((file) => file.set));
-    const fileNames = new Set(manifest.files.map((file) => file.name));
 
     const explicit = typeof input.options.module === 'string' ? input.options.module : undefined;
     if (explicit !== undefined && !KEBAB.test(explicit)) {
@@ -171,76 +133,64 @@ export class PublishCommand {
       return 1;
     }
 
-    // The providers another discovered package lists under the same name are not told apart from this package's by name.
-    const ambiguous = new Set<string>();
-    for (const other of this.#app.packages) {
-      if (other === name) continue;
-      try {
-        const listed = locate(other, input.root)?.json.marmeon?.providers;
-        if (Array.isArray(listed)) for (const provider of listed) if (typeof provider === 'string') ambiguous.add(provider);
-      } catch {
-        // a package.json that cannot be read lists nothing
-      }
-    }
-    const taken = known(this.#app.providers, await providersOf(pkg), ambiguous);
-
-    // The stubs of the other dependencies of the app are as protected as the upgrades of the providers.
+    // A migration another direct dependency lists under the same name would create the same table twice.
     for (const dependency of Object.keys(dependencies)) {
       if (dependency === name) continue;
       try {
         const other = locate(dependency, input.root);
         const listed = other ? readPackageMigrations(other) : undefined;
         if (!listed?.ok || !listed.value) continue;
-        for (const file of listed.value.files) {
-          taken.sets.set(file.set, false);
-          taken.names.set(file.name, false);
+        const names = new Set(listed.value.files.map((file) => file.name));
+        const shared = manifest.files.find((file) => names.has(file.name));
+        if (shared) {
+          output.error(`${name} lists ${shared.name}, the name of a migration ${dependency} lists too — it cannot publish it.`);
+          return 1;
         }
       } catch {
         // a package that cannot be read protects nothing
       }
     }
 
-    for (const file of manifest.files) {
-      if (taken.sets.get(file.set) === false) {
-        output.error(`${name} lists a migration of the "${file.set}" tables, which another package upgrades or creates — it cannot publish them.`);
-        return 1;
-      }
-      if (taken.names.get(file.name) === false) {
-        output.error(`${name} lists ${file.name}, the name of a migration another package creates or upgrades — it cannot publish it.`);
-        return 1;
-      }
-    }
-
-    // A set the app already has in a file the package does not list is the app's (or another package's): not the package's to extend.
     const modules = join(input.root, 'modules');
-    for (const present of markedMigrations(modules)) {
-      if (sets.has(present.set) && !fileNames.has(present.name) && taken.names.get(present.name) !== true) {
-        output.error(`modules/${present.module} already has ${present.name}, a migration of the "${present.set}" tables that ${name} does not list — it cannot publish into that set.`);
-        return 1;
-      }
-    }
+    const pending = manifest.files.filter((file) => !findMigration(modules, file.name));
 
-    // The module: --module; else the one that holds a file of the package already; else the proposal, which must be new unless it is `system`.
+    // The module: --module; else the one `publish` made for this package (its index.ts says so), in which every file of the package
+    // that the app has must lie; else the proposal. A module of the app that exists is opened only by --module, by that line, or
+    // — `system` — for a package of the framework itself: a package from outside must not put tables into a module of the app,
+    // and a file of the package in some module is no reason to.
+    const elsewhere = (file: string, where: string) =>
+      `${file} of ${name} is in modules/${where}, which publish did not create for ${name} — if you put it there, pass --module=${where}; otherwise ${name} ships a migration with a name your app already uses.`;
     let module = explicit;
     if (module === undefined) {
-      for (const file of manifest.files) {
-        const present = findMigration(modules, file.name);
-        // Only a file marked for the package's own set says the module is the package's: an unmarked one is the app's.
-        if (present && markOf(present)?.set === file.set) {
-          module = basename(dirname(dirname(present)));
-          break;
+      const owned = ownedModule(modules, name);
+      if (owned !== undefined) {
+        for (const file of manifest.files) {
+          if (findMigration(modules, file.name, owned) !== undefined) continue;
+          const present = findMigration(modules, file.name);
+          if (present) {
+            output.error(elsewhere(file.name, basename(dirname(dirname(present)))));
+            return 1;
+          }
+        }
+        module = owned;
+      } else if (pending.length > 0) {
+        for (const file of manifest.files) {
+          const present = findMigration(modules, file.name);
+          const where = present && basename(dirname(dirname(present)));
+          if (where !== undefined && !(where === manifest.module && opensSystem(manifest.module, name, pkg, dependencies))) {
+            output.error(elsewhere(file.name, where));
+            return 1;
+          }
+        }
+        module = manifest.module;
+        if (existsSync(join(modules, module)) && !opensSystem(module, name, pkg, dependencies)) {
+          output.error(`modules/${module} is your app's — pass --module=<name> to put the tables of ${name} there, or another name.`);
+          return 1;
         }
       }
     }
-    if (module === undefined) {
-      module = manifest.module;
-      if (module !== SYSTEM_MODULE && existsSync(join(modules, module))) {
-        output.error(`modules/${module} is your app's — pass --module=<name> to put the tables of ${name} there, or another name.`);
-        return 1;
-      }
-    }
     // `publishMigration` does not check a module it is given.
-    if (!KEBAB.test(module)) {
+    if (module !== undefined && !KEBAB.test(module)) {
       output.error('Pass the module as a kebab-case name: --module=<name>.');
       return 1;
     }
@@ -254,7 +204,7 @@ export class PublishCommand {
         continue;
       }
       const owner = module === SYSTEM_MODULE ? undefined : name;
-      const code = publishMigration(input, { name: file.name, contents: file.contents, table: file.set, module, at: new Date(start + index * 1000), owner, hint: false });
+      const code = publishMigration(input, { name: file.name, contents: file.contents, table: file.name, module: module!, at: new Date(start + index * 1000), owner, hint: false });
       if (code !== 0) return code;
       written += 1;
     }
@@ -263,7 +213,6 @@ export class PublishCommand {
       return 0;
     }
 
-    if (missingUpgrades(input.root, this.#app.providers).missing.some(({ upgrade }) => sets.has(upgrade.set))) output.line('Then: marmeon make:upgrade-migrations');
     output.line('Then: marmeon migrate');
     return 0;
   }

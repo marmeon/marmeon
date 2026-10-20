@@ -225,7 +225,7 @@ export class StorageServiceProvider implements ServiceProvider {
       };
       // /up/ready is red when the table lacks a column the service writes; an app that made no table has no uploads to keep.
       const { SchemaRequirements } = await import('@marmeon/database');
-      container.make(SchemaRequirements).require({ connection: uploads.connection, table: UPLOADS_TABLE, columns: UPLOADS_COLUMNS, set: 'storage', whenPresent: true });
+      container.make(SchemaRequirements).require({ connection: uploads.connection, table: UPLOADS_TABLE, columns: UPLOADS_COLUMNS, whenPresent: true });
       registerUploads(http, page.UPLOAD_HEADER, container, () => container.make(TemporaryUploads));
     }
   }

@@ -242,9 +242,8 @@ A `personal_access_tokens` table of your own needs what the starter kit's migrat
 `cascadeOnDelete()`, so a deleted user's tokens go with the account. The primary key may be a number or a UUID: `AccessToken.id` is
 `number | string`.
 
-Tokens with a `|`, the form issued before, are no longer valid, and no code reads them. The starter kit's migration
-`marmeon make:upgrade-migrations` writes deletes every row of `personal_access_tokens` and adds the unique index. A table
-of your own that has no such migration gets the same by hand: delete the old rows (they were hashed another way and match no new
+Tokens with a `|`, the form issued before, are no longer valid, and no code reads them. The starter kit's migration creates the
+unique index. A table of your own gets the same by hand: delete the old rows (they were hashed another way and match no new
 token, but they are only dead weight and show up in lists) and add `unique(token_hash)`. Then issue every token again and hand it
 to the integration, script or client that used the old one.
 

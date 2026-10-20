@@ -11,7 +11,7 @@ import type { ConnectionOptions } from './config.ts';
 import { Connections, DatabaseHealthCheck, MigrationStateError, Migrator, Repository } from './index.ts';
 import { dropAllTables } from './migrations/drop-all.ts';
 import { databaseSolutions } from './solutions.ts';
-import { SchemaRequirements } from './upgrades.ts';
+import { SchemaRequirements } from './schema-requirements.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);

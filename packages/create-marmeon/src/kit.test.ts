@@ -104,10 +104,7 @@ it(
     expect(migrated.out).toContain('create_sign_ins_table');
     expect(migrated.out).toContain('create_email_changes_table');
     expect(migrated.code).toBe(0);
-    // The kit is written at the current revision of its tables: nothing is left to upgrade, and nothing renames a table.
-    const upgrades = marmeon('make:upgrade-migrations', '--check');
-    expect(upgrades.out).toContain("The framework's tables have every migration of the installed packages.");
-    expect(upgrades.code).toBe(0);
+    // The kit creates its tables in their current form: nothing renames a table.
     expect(readdirSync(join(root, 'modules/auth/migrations')).filter((file) => /rename/.test(file))).toEqual([]);
     const tables = readFileSync(join(root, 'bootstrap/database.d.ts'), 'utf8');
     expect(tables).toContain('password: Secret<string>;');

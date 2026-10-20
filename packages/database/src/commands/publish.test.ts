@@ -1,19 +1,17 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import type { Application, ServiceProviderClass } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
-import { AuthServiceProvider, NameGrabbingProvider, PermissionsProvider, QueueServiceProvider, SetGrabbingProvider } from '../__fixtures__/publish-providers.ts';
 import { PublishCommand } from './publish.ts';
 
 const STUB = (set: string) => `// @marmeon-stub ${set} 1\nexport default {};\n`;
-const FIXTURE_PROVIDERS = pathToFileURL(join(import.meta.dirname, '..', '__fixtures__', 'publish-providers.ts')).href;
+const ELSEWHERE = (file: string, pkg: string, where: string) =>
+  `✗ ${file} of ${pkg} is in modules/${where}, which publish did not create for ${pkg} — if you put it there, pass --module=${where}; otherwise ${pkg} ships a migration with a name your app already uses.`;
 const PERM_FILES = { 'stubs/migrations/create_permissions_table.ts': STUB('permissions'), 'stubs/migrations/create_roles_table.ts': STUB('permissions') };
 
 /** Writes a package into `<root>/node_modules`; `entry` is the source of its `index.js`, `providers` the names `marmeon.providers` lists. */
-function install(root: string, name: string, files: Record<string, string>, extra: { module?: string; providers?: string[]; entry?: string; dependency?: boolean } = {}): void {
+function install(root: string, name: string, files: Record<string, string>, extra: { module?: string; providers?: string[]; entry?: string; dependency?: boolean; spec?: string } = {}): void {
   const pkg = join(root, 'node_modules', name);
   mkdirSync(pkg, { recursive: true });
   const marmeon = { migrations: { format: 1, module: extra.module ?? 'permissions', files: Object.keys(files) }, ...(extra.providers ? { providers: extra.providers } : {}) };
@@ -26,7 +24,7 @@ function install(root: string, name: string, files: Record<string, string>, extr
   if (extra.dependency !== false) {
     const file = join(root, 'package.json');
     const json = JSON.parse(readFileSync(file, 'utf8'));
-    json.dependencies[name] = '1.0.0';
+    json.dependencies[name] = extra.spec ?? '1.0.0';
     writeFileSync(file, JSON.stringify(json));
   }
 }
@@ -38,24 +36,27 @@ interface Setup {
   module?: string;
   providers?: string[];
   entry?: string;
+  /** What the app's package.json says for the package. */
+  spec?: string;
+  /** The package name; `@acme/perm` by default. */
+  name?: string;
 }
 
 /** An app with `@acme/perm` in node_modules (and, by default, in its dependencies). */
 function makeApp(setup: Setup = {}): string {
   const root = tempDir('marmeon-publish-');
   writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', dependencies: {} }));
-  install(root, '@acme/perm', setup.files ?? PERM_FILES, { module: setup.module, providers: setup.providers, entry: setup.entry, dependency: setup.dependency });
+  install(root, setup.name ?? '@acme/perm', setup.files ?? PERM_FILES, { module: setup.module, providers: setup.providers, entry: setup.entry, dependency: setup.dependency, spec: setup.spec });
   mkdirSync(join(root, 'bootstrap'));
   writeFileSync(join(root, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\n\nexport default defineApplication({ root: '', modules: [] });\n");
   return root;
 }
 
-async function publish(root: string, args: string[] = ['@acme/perm'], options: Record<string, unknown> = {}, providers: readonly unknown[] = [], packages: string[] = []) {
+async function publish(root: string, args: string[] = ['@acme/perm'], options: Record<string, unknown> = {}) {
   const lines: string[] = [];
   const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
   const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
-  const app = { providers: providers as readonly ServiceProviderClass[], packages } as unknown as Application;
-  const code = await new PublishCommand(app).handle({ root, args, options, output } as unknown as CommandInput);
+  const code = await new PublishCommand().handle({ root, args, options, output } as unknown as CommandInput);
   return { code, lines };
 }
 
@@ -93,12 +94,12 @@ describe('marmeon publish', () => {
     expect(written(root)).toEqual(before);
   });
 
-  it('skips a migration the app has already, such as one make:auth wrote, and writes the rest next to it', async () => {
+  it('skips a migration the app has already, such as one make:auth wrote, and writes the rest where --module says', async () => {
     const root = makeApp();
     mkdirSync(join(root, 'modules/auth/migrations'), { recursive: true });
     writeFileSync(join(root, 'modules/auth/index.ts'), "import { defineModule } from '@marmeon/core';\n\nexport default defineModule({ name: 'auth', migrations: new URL('./migrations/', import.meta.url) });\n");
     writeFileSync(join(root, 'modules/auth/migrations/2026_01_01_000000_create_roles_table.ts'), STUB('permissions'));
-    const { code, lines } = await publish(root);
+    const { code, lines } = await publish(root, ['@acme/perm'], { module: 'auth' });
     expect(code).toBe(0);
     expect(lines).toContain('modules/auth/migrations/2026_01_01_000000_create_roles_table.ts is there — skipped');
     expect(readdirSync(join(root, 'modules/auth/migrations'))).toHaveLength(2);
@@ -111,7 +112,7 @@ describe('marmeon publish', () => {
     expect(readdirSync(join(root, 'modules'))).toEqual(['billing']);
   });
 
-  it('puts a file that appears later into the module that holds the others, not the proposed one', async () => {
+  it('puts a file that appears later into the module it made for the package, not the proposed one', async () => {
     const root = makeApp();
     expect((await publish(root, ['@acme/perm'], { module: 'billing' })).code).toBe(0);
     install(root, '@acme/perm', { ...PERM_FILES, 'stubs/migrations/create_grants_table.ts': STUB('permissions') });
@@ -120,18 +121,65 @@ describe('marmeon publish', () => {
     expect(readdirSync(join(root, 'modules'))).toEqual(['billing']);
   });
 
-  it('uses an existing system module, whose comment does not name the package', async () => {
-    const root = makeApp({ module: 'system', files: { 'stubs/migrations/create_permissions_table.ts': STUB('permissions') } });
-    expect((await publish(root)).code).toBe(0);
+  it('uses an existing system module for a package of the framework, whose comment does not name the package', async () => {
+    const root = makeApp({ name: '@marmeon/perm', module: 'system', files: { 'stubs/migrations/create_permissions_table.ts': STUB('permissions') } });
+    mkdirSync(join(root, 'modules/system'), { recursive: true });
+    expect((await publish(root, ['@marmeon/perm'])).code).toBe(0);
     expect(readdirSync(join(root, 'modules/system/migrations'))).toHaveLength(1);
-    expect(readFileSync(join(root, 'modules/system/index.ts'), 'utf8')).toContain("The tables of the framework's drivers");
   });
 
-  it('says to run make:upgrade-migrations when the sets of the package have upgrades missing', async () => {
-    const root = makeApp({ providers: ['PermissionsProvider'], entry: `export { PermissionsProvider } from '${FIXTURE_PROVIDERS}';\n` });
-    const { code, lines } = await publish(root, ['@acme/perm'], {}, [PermissionsProvider]);
+  it('never runs the entry of the package, whatever providers it lists', async () => {
+    const marker = join(tempDir('marmeon-publish-marker-'), 'ran');
+    const root = makeApp({ providers: ['PermProvider'], entry: `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(marker)}, 'ran');\nexport class PermProvider {}\n` });
+    expect((await publish(root)).code).toBe(0);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it('refuses a framework package under an npm alias, a path or a repository, which could be anything', async () => {
+    for (const spec of ['npm:@acme/evil@1.0.0', 'NPM:@acme/evil@1.0.0', 'file:../evil', 'link:../evil', 'portal:../evil', 'workspace:*', 'github:acme/evil', 'evil/repo', 'https://example.com/evil.tgz', 'x.tgz', '../evil']) {
+      const root = makeApp({ name: '@marmeon/perm', spec, module: 'system', files: { 'stubs/migrations/create_permissions_table.ts': STUB('permissions') } });
+      mkdirSync(join(root, 'modules/system'), { recursive: true });
+      const { code, lines } = await publish(root, ['@marmeon/perm']);
+      expect(code, spec).toBe(1);
+      expect(lines[0], spec).toContain("modules/system is your app's");
+    }
+  });
+
+  it('accepts a framework package with a semver range, a dist-tag or catalog: for system', async () => {
+    for (const spec of ['^1.2.0', '>=1.0.0 <2', 'latest', 'catalog:']) {
+      const root = makeApp({ name: '@marmeon/perm', spec, module: 'system', files: { 'stubs/migrations/create_permissions_table.ts': STUB('permissions') } });
+      mkdirSync(join(root, 'modules/system'), { recursive: true });
+      expect((await publish(root, ['@marmeon/perm'])).code, spec).toBe(0);
+    }
+  });
+
+  it('writes only the appended migration of a framework package into the system module that has the others', async () => {
+    const root = makeApp({ name: '@marmeon/perm', module: 'system', files: { 'stubs/migrations/create_a_table.ts': STUB('a') } });
+    mkdirSync(join(root, 'modules/system'), { recursive: true });
+    expect((await publish(root, ['@marmeon/perm'])).code).toBe(0);
+    install(root, '@marmeon/perm', { 'stubs/migrations/create_a_table.ts': STUB('a'), 'stubs/migrations/create_b_table.ts': STUB('a') }, { module: 'system', dependency: false });
+    expect((await publish(root, ['@marmeon/perm'])).code).toBe(0);
+    expect(readdirSync(join(root, 'modules/system/migrations')).map((file) => file.replace(/^\d{4}_\d{2}_\d{2}_\d{6}_/, ''))).toEqual(['create_a_table.ts', 'create_b_table.ts']);
+  });
+
+  it('ends green with nothing written for a kit app that has its only file in auth, with no owner line', async () => {
+    const root = makeApp({ name: '@marmeon/auth', module: 'auth', files: { 'stubs/migrations/create_sign_ins_table.ts': STUB('sign-ins') } });
+    mkdirSync(join(root, 'modules/auth/migrations'), { recursive: true });
+    writeFileSync(join(root, 'modules/auth/migrations/0001_01_01_000006_create_sign_ins_table.ts'), 'export default {};\n');
+    const { code, lines } = await publish(root, ['@marmeon/auth']);
     expect(code).toBe(0);
-    expect(lines.filter((line) => line.startsWith('Then:'))).toEqual(['Then: marmeon make:upgrade-migrations', 'Then: marmeon migrate']);
+    expect(lines.at(-1)).toBe('✓ Nothing to publish — every migration of @marmeon/auth is in your app');
+    expect(written(root)).toEqual(['auth/migrations/0001_01_01_000006_create_sign_ins_table.ts']);
+  });
+
+  it('refuses a framework package whose package.json in node_modules says another name', async () => {
+    const root = makeApp({ name: '@marmeon/perm', module: 'system', files: { 'stubs/migrations/create_permissions_table.ts': STUB('permissions') } });
+    mkdirSync(join(root, 'modules/system'), { recursive: true });
+    const file = join(root, 'node_modules/@marmeon/perm/package.json');
+    writeFileSync(file, readFileSync(file, 'utf8').replace('"name":"@marmeon/perm"', '"name":"@acme/evil"'));
+    const { code, lines } = await publish(root, ['@marmeon/perm']);
+    expect(code).toBe(1);
+    expect(lines[0]).toContain("modules/system is your app's");
   });
 
   it('finds a package in the node_modules of a workspace root with a lockfile, and no further up', async () => {
@@ -216,110 +264,87 @@ describe('marmeon publish', () => {
       expect((await publish(root, ['@acme/perm'], { module: 'permissions' })).code).toBe(0);
     });
 
-    it('a module of the app that holds a set of the package in a file the package does not list', async () => {
-      const root = makeApp({ module: 'jobs', files: { 'stubs/migrations/create_tasks_table.ts': STUB('queue') } });
-      mkdirSync(join(root, 'modules/jobs/migrations'), { recursive: true });
-      writeFileSync(join(root, 'modules/jobs/migrations/2026_01_01_000000_create_jobs_table.ts'), STUB('queue'));
+    it('an existing system module for a package from outside, unless --module names it', async () => {
+      const root = makeApp({ module: 'system', files: { 'stubs/migrations/create_permissions_table.ts': STUB('permissions') } });
+      mkdirSync(join(root, 'modules/system/migrations'), { recursive: true });
+      writeFileSync(join(root, 'modules/system/migrations/2026_01_01_000000_create_users_table.ts'), 'export default {};\n');
       const { code, lines } = await publish(root);
       expect(code).toBe(1);
-      expect(lines[0]).toContain('a migration of the "queue" tables that @acme/perm does not list');
-      expect(readdirSync(join(root, 'modules/jobs/migrations'))).toHaveLength(1);
+      expect(lines).toEqual(["✗ modules/system is your app's — pass --module=<name> to put the tables of @acme/perm there, or another name."]);
+      expect(readdirSync(join(root, 'modules/system/migrations'))).toHaveLength(1);
+      expect((await publish(root, ['@acme/perm'], { module: 'system' })).code).toBe(0);
     });
 
-    it('a set that another package upgrades, so that it cannot hide the upgrades of that set', async () => {
-      const root = makeApp({ files: { 'stubs/migrations/create_permissions_table.ts': STUB('queue') } });
-      const { code, lines } = await publish(root, ['@acme/perm'], {}, [QueueServiceProvider]);
-      expect(code).toBe(1);
-      expect(lines[0]).toContain('"queue" tables, which another package upgrades');
-      expect(written(root)).toEqual([]);
-    });
-
-    it('a package with a provider class of its own under the name of the framework\'s', async () => {
-      const root = makeApp({
-        files: { 'stubs/migrations/create_permissions_table.ts': STUB('auth') },
-        providers: ['AuthServiceProvider'],
-        entry: 'export class AuthServiceProvider {}\n',
-      });
-      const { code, lines } = await publish(root, ['@acme/perm'], {}, [AuthServiceProvider]);
-      expect(code).toBe(1);
-      expect(lines[0]).toContain('"auth" tables, which another package upgrades');
-      expect(written(root)).toEqual([]);
-    });
-
-    it('a package that re-exports the provider of another discovered package', async () => {
-      const root = makeApp({
-        files: { 'stubs/migrations/create_permissions_table.ts': STUB('queue') },
-        providers: ['QueueServiceProvider'],
-        entry: `export { QueueServiceProvider } from '${FIXTURE_PROVIDERS}';\n`,
-      });
-      install(root, '@acme/queue', { 'stubs/migrations/create_queue_tables.ts': STUB('other') }, { module: 'system', providers: ['QueueServiceProvider'], dependency: false });
-      const { code, lines } = await publish(root, ['@acme/perm'], {}, [QueueServiceProvider], ['@acme/queue']);
-      expect(code).toBe(1);
-      expect(lines[0]).toContain('"queue" tables');
-      expect(written(root)).toEqual([]);
-      // without the other package the class is this package's own, and the set is its to publish
-      expect((await publish(root, ['@acme/perm'], {}, [QueueServiceProvider], [])).code).toBe(0);
-    });
-
-    it('a set that the package takes over through an upgrade of its own provider', async () => {
-      const root = makeApp({
-        files: { 'stubs/migrations/create_permissions_table.ts': STUB('auth') },
-        providers: ['SetGrabbingProvider'],
-        entry: `export { SetGrabbingProvider } from '${FIXTURE_PROVIDERS}';\n`,
-      });
-      const { code, lines } = await publish(root, ['@acme/perm'], {}, [AuthServiceProvider, SetGrabbingProvider]);
-      expect(code).toBe(1);
-      expect(lines[0]).toContain('"auth" tables');
-      expect(written(root)).toEqual([]);
-    });
-
-    it('a file name that the package takes over through an upgrade of its own provider', async () => {
-      const root = makeApp({
-        files: { 'stubs/migrations/create_jobs_table.ts': STUB('permissions') },
-        providers: ['NameGrabbingProvider'],
-        entry: `export { NameGrabbingProvider } from '${FIXTURE_PROVIDERS}';\n`,
-      });
-      install(root, '@marmeon/queue', { 'stubs/migrations/create_jobs_table.ts': STUB('queue') }, { module: 'system' });
-      const { code, lines } = await publish(root, ['@acme/perm'], {}, [NameGrabbingProvider]);
-      expect(code).toBe(1);
-      expect(lines[0]).toContain('create_jobs_table, the name of a migration another package');
-      expect(written(root)).toEqual([]);
-    });
-
-    it('a migration of the app without a stub mark that has the name of a listed file, and does not take its module', async () => {
+    it('a migration of the app without a stub mark that has the name of a listed file: the module that holds it is named, not taken', async () => {
       const root = makeApp({ files: { 'stubs/migrations/create_invoices_table.ts': STUB('permissions'), 'stubs/migrations/create_spy_table.ts': STUB('permissions') }, module: 'spy' });
       mkdirSync(join(root, 'modules/billing/migrations'), { recursive: true });
       writeFileSync(join(root, 'modules/billing/migrations/2026_01_01_000000_create_invoices_table.ts'), 'export default {};\n');
       mkdirSync(join(root, 'modules/spy'));
       const { code, lines } = await publish(root);
       expect(code).toBe(1);
-      expect(lines[0]).toContain("modules/spy is your app's");
+      expect(lines[0]).toBe(ELSEWHERE('create_invoices_table', '@acme/perm', 'billing'));
       expect(readdirSync(join(root, 'modules/billing/migrations'))).toHaveLength(1);
     });
 
-    it('a file name that another package creates or upgrades', async () => {
-      const root = makeApp({ files: { 'stubs/migrations/rename_queue_tables.ts': STUB('permissions') } });
-      const { code, lines } = await publish(root, ['@acme/perm'], {}, [QueueServiceProvider]);
-      expect(code).toBe(1);
-      expect(lines[0]).toContain('rename_queue_tables, the name of a migration another package');
-      expect(written(root)).toEqual([]);
+    it('a module of the app that holds a file of the package by name', async () => {
+      const auth = makeApp({ module: 'auth', files: { 'stubs/migrations/create_users_table.ts': STUB('auth'), 'stubs/migrations/create_backdoor_table.ts': STUB('auth') } });
+      mkdirSync(join(auth, 'modules/auth/migrations'), { recursive: true });
+      writeFileSync(join(auth, 'modules/auth/migrations/2026_01_01_000000_create_users_table.ts'), 'export default {};\n');
+      const refusedAuth = await publish(auth);
+      expect(refusedAuth.code).toBe(1);
+      expect(refusedAuth.lines[0]).toBe(ELSEWHERE('create_users_table', '@acme/perm', 'auth'));
+      expect(readdirSync(join(auth, 'modules/auth/migrations'))).toHaveLength(1);
+
+      const system = makeApp({ module: 'system', files: { 'stubs/migrations/create_cache_table.ts': STUB('cache'), 'stubs/migrations/create_backdoor_table.ts': STUB('cache') } });
+      mkdirSync(join(system, 'modules/system/migrations'), { recursive: true });
+      writeFileSync(join(system, 'modules/system/migrations/2026_01_01_000000_create_cache_table.ts'), 'export default {};\n');
+      const refusedSystem = await publish(system);
+      expect(refusedSystem.code).toBe(1);
+      expect(refusedSystem.lines[0]).toBe(ELSEWHERE('create_cache_table', '@acme/perm', 'system'));
+      expect(readdirSync(join(system, 'modules/system/migrations'))).toHaveLength(1);
     });
 
-    it('the stub of another dependency of the app, installed or not as a provider', async () => {
+    it('a new migration of a framework package whose siblings sit in the starter kit\'s auth module, unless --module names it', async () => {
+      const root = makeApp({ name: '@marmeon/auth', module: 'auth', files: { 'stubs/migrations/create_sign_ins_table.ts': STUB('sign-ins'), 'stubs/migrations/add_devices_table.ts': STUB('sign-ins') } });
+      mkdirSync(join(root, 'modules/auth/migrations'), { recursive: true });
+      writeFileSync(join(root, 'modules/auth/migrations/0001_01_01_000006_create_sign_ins_table.ts'), 'export default {};\n');
+      const refused = await publish(root, ['@marmeon/auth']);
+      expect(refused.code).toBe(1);
+      expect(refused.lines[0]).toBe(ELSEWHERE('create_sign_ins_table', '@marmeon/auth', 'auth'));
+      expect((await publish(root, ['@marmeon/auth'], { module: 'auth' })).code).toBe(0);
+      expect(readdirSync(join(root, 'modules/auth/migrations'))).toHaveLength(2);
+    });
+
+    it('a file of the package in another module while it has a module of its own, even when nothing is missing', async () => {
+      // @acme/b once shipped create_b2_table; it lies in modules/evil, whose package is no dependency any more.
+      const root = makeApp({ name: '@acme/b', files: { 'stubs/migrations/create_b1_table.ts': STUB('b'), 'stubs/migrations/create_b2_table.ts': STUB('b') }, module: 'b' });
+      expect((await publish(root, ['@acme/b'])).code).toBe(0);
+      const [first, second] = readdirSync(join(root, 'modules/b/migrations'));
+      rmSync(join(root, 'modules/b/migrations', second!));
+      mkdirSync(join(root, 'modules/evil/migrations'), { recursive: true });
+      writeFileSync(join(root, 'modules/evil/migrations/2026_01_01_000000_create_b2_table.ts'), 'export default {};\n');
+      const refused = await publish(root, ['@acme/b']);
+      expect(refused.code).toBe(1);
+      expect(refused.lines).toEqual([ELSEWHERE('create_b2_table', '@acme/b', 'evil')]);
+      expect(readdirSync(join(root, 'modules/b/migrations'))).toEqual([first]);
+
+      // the files moved on, the index.ts with the line stayed: nothing missing, still refused
+      const moved = makeApp();
+      expect((await publish(moved)).code).toBe(0);
+      mkdirSync(join(moved, 'modules/elsewhere/migrations'), { recursive: true });
+      for (const file of readdirSync(join(moved, 'modules/permissions/migrations'))) renameSync(join(moved, 'modules/permissions/migrations', file), join(moved, 'modules/elsewhere/migrations', file));
+      const stuck = await publish(moved);
+      expect(stuck.code).toBe(1);
+      expect(stuck.lines[0]).toContain('is in modules/elsewhere, which publish did not create for @acme/perm');
+    });
+
+    it('a file name that another dependency of the app lists too, writing nothing', async () => {
       const root = makeApp({ files: { 'stubs/migrations/create_sessions_table.ts': STUB('permissions') } });
       install(root, '@marmeon/session', { 'stubs/migrations/create_sessions_table.ts': STUB('sessions') }, { module: 'system' });
       const { code, lines } = await publish(root);
       expect(code).toBe(1);
-      expect(lines[0]).toContain('create_sessions_table, the name of a migration another package');
+      expect(lines).toEqual(['✗ @acme/perm lists create_sessions_table, the name of a migration @marmeon/session lists too — it cannot publish it.']);
       expect(written(root)).toEqual([]);
-    });
-
-    it('a set that another dependency of the app brings', async () => {
-      const root = makeApp({ files: { 'stubs/migrations/create_other_table.ts': STUB('sessions') } });
-      install(root, '@marmeon/session', { 'stubs/migrations/create_sessions_table.ts': STUB('sessions') }, { module: 'system' });
-      const { code, lines } = await publish(root);
-      expect(code).toBe(1);
-      expect(lines[0]).toContain('"sessions" tables');
     });
 
     it('a name such as __proto__ or constructor as the package', async () => {

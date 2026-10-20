@@ -42,7 +42,7 @@ describe('the temporary_uploads table', () => {
           }),
       }),
     );
-    expect(messages).toContainEqual(expect.stringMatching(/temporary_uploads lacks session, .*consumed_at — run marmeon make:upgrade-migrations/));
+    expect(messages).toContainEqual(expect.stringMatching(/temporary_uploads lacks session, .*consumed_at — a migration is missing: marmeon publish/));
   });
 
   it('is a table readiness waits for once uploads are set up', async () => {

@@ -773,8 +773,7 @@ table the framework creates, a file it generates. [The public list](docs/release
 mark. Seven rules:
 
 1. **One mark per format, in a fixed place, with a frozen meaning**: a header value (`x-marmeon: 1`), a field (`v` in a job record,
-   `_v` in a session), a version byte, a prefix, the columns of a table (`migrations`), a first line (`// @marmeon-format 1`,
-   `// @marmeon-stub <set> <revision>`). The envelope fields never change name or meaning.
+   `_v` in a session), a version byte, a prefix, the columns of a table (`migrations`), a first line (`// @marmeon-format 1`). The envelope fields never change name or meaning.
 2. **Additive changes need no new version, only when a reader that ignores the addition permits nothing more and misreads
    nothing.** A field that is ignored may cost comfort, never protection. Every change that restricts is a new version.
 3. **A reader knows a set of versions**, one table `readers[version]` per format, and a test registers a synthetic next version to
@@ -785,8 +784,7 @@ mark. Seven rules:
    next. Without that step, a change of format belongs to a major release with an upgrade guide.
 5. **A fixture per version**, under `__fixtures__/formats/`, append-only, read by a test over the whole directory
    ([fixtures](#fixtures-of-stored-and-wire-formats)). A format that a pull request changes needs `breaking`.
-6. **Tables the framework creates have plain names** (`jobs`, `sessions`, …; only `migrations` and `migration_lock` are the migrator's) and the stubs carry their revision. A change to one is a revision that
-   `make:upgrade-migrations` writes into the app, and an updated database is identical to a new one: tables, columns, and the names
+6. **Tables the framework creates have plain names** (`jobs`, `sessions`, …; only `migrations` and `migration_lock` are the migrator's) and a change to one is a new migration file in its package. An updated database is identical to a new one: tables, columns, and the names
    of indexes and constraints. Readiness is red while a required column does not fit the code.
 7. **From 1.0 on, a change of format and a rename of a shared table is rolling**: rules 3 and 4, and for a table create anew,
    write twice, drop over two releases. In a release whose upgrade stops every process, nothing exists only so that an old process

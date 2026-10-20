@@ -10,7 +10,7 @@ import { Migrator } from './migrations/migrator.ts';
 import { runMigration } from './migrations/run.ts';
 import { DatabaseServiceProvider } from './provider.ts';
 import { sql } from 'kysely';
-import { SchemaRequirements } from './upgrades.ts';
+import { SchemaRequirements } from './schema-requirements.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const root = tempDir('marmeon-db-health-');
@@ -51,7 +51,7 @@ describe('the database health check', () => {
 });
 
 describe('the secret columns a table is required to have', () => {
-  const requirement = (connection: string, table: string) => ({ connection, table, columns: ['id', 'token'], secrets: ['token'], set: 'keys' });
+  const requirement = (connection: string, table: string) => ({ connection, table, columns: ['id', 'token'], secrets: ['token'] });
   const messageOf = async (app: Awaited<ReturnType<typeof boot>>) => {
     const report = await app.container.make(HealthChecks).run(app.container);
     return { report, message: report.checks[0]!.error instanceof Error ? report.checks[0]!.error.message : '' };
