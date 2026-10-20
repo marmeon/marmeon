@@ -101,6 +101,7 @@ An update of a package could change a migration your database has already run, o
 show in your history. A migration file that only re-exports one from a package defeats the purpose, so put the content into the
 file. The same goes for a helper that a migration imports: it belongs to your app, and a symlink to one in `node_modules` or outside
 the workspace is refused too.
+`migrate` also names a migration whose file changed after it ran ([see below](#a-migration-that-changed-after-it-ran)), but it sees only the file, not what the file imports.
 
 The workspace of an app is the directory of its lockfile when that declares one (`pnpm-workspace.yaml`, or `workspaces` in its
 `package.json`). A package of your own monorepo is fine, with the lockfile in the root of the monorepo. Without a declaration, or with
@@ -431,6 +432,23 @@ invisible to them. That makes a migration safe for them when it only adds:
 - **A new secret column** is hidden from old instances, since they select only the columns they know. A query of theirs that names the
   column, or raw SQL, still reads it.
 
+### A migration that changed after it ran
+
+A migration that ran never runs again, so editing its file changes nothing in the database. `migrate` compares the checksum of each
+migration that ran with the one of its file now, and says so before it runs the first pending migration (also when none is pending):
+
+```text
+2026_01_05_000000_create_accounts_table (accounts) changed since it ran in batch 1.
+```
+
+`migrate:rollback` and `migrate:reset` do the same for the migrations they are about to roll back, because the `down()` that runs is the
+one of the file as it is now. `migrate:status` prints the warning for every such migration and lists it in `warnings` of its [JSON](#status).
+It is a warning only: nothing stops and the exit code stays 0. A migration without a recorded checksum is unknown and never warned of. A
+change to a helper that the migration imports is not seen, since the checksum covers the file alone.
+
+To undo it, put the file back as it was and write the change as a new migration. An app can ask for the same answer in code with
+`Migrator.changed()`.
+
 ### Retiring a column
 
 ```ts title="modules/notes/migrations/2026_10_20_100000_retire_legacy_slug_of_notes_table.ts"
@@ -510,7 +528,7 @@ A deployment runs `marmeon migrate --force` once, before the new version takes r
 }
 ```
 
-`module` is the name of the module the migration belongs to. `status` is `"ran"` or `"pending"`; `batch` is a number for a migration that ran and `null` for a pending one; `migrations` is `[]` when no module has any. `warnings` is always there: it names each migration the record says ran but no module has a file for (`<name> ran in batch <n> but no module has its file`), which the text output prints as a warning too. A record this
+`module` is the name of the module the migration belongs to. `status` is `"ran"` or `"pending"`; `batch` is a number for a migration that ran and `null` for a pending one; `migrations` is `[]` when no module has any. `warnings` is always there: it names each migration the record says ran but no module has a file for (`<name> ran in batch <n> but no module has its file`), which the text output prints as a warning too, and each migration whose file [changed after it ran](#a-migration-that-changed-after-it-ran) (`<name> changed since it ran in batch <n>`). A record this
 release cannot read (other columns, see [how the migrator keeps track](#how-the-migrator-keeps-track)) fails the command: stdout stays empty, the
 message with its code is on stderr, the exit code is 1.
 

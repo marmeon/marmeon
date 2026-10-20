@@ -52,7 +52,7 @@ export type { LockHolder } from './migrations/lock.ts';
 export { Migrator } from './migrations/migrator.ts';
 export { secret } from './secrets.ts';
 export type { Secret, SecretReference } from './secrets.ts';
-export type { MigrateOptions, MigrationFile, MigrationRun, MigrationStatus, UnknownSchema } from './migrations/migrator.ts';
+export type { ChangedMigration, MigrateOptions, MigrationFile, MigrationRun, MigrationStatus, UnknownSchema } from './migrations/migrator.ts';
 export type { SchemaMarker } from './introspection.ts';
 export type { ProjectedColumn, ProjectedForeignKey, ProjectedIndex, ProjectedTable, SchemaProjection } from './schema/projection.ts';
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn, UuidColumn } from './schema/blueprint.ts';
