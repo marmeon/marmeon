@@ -1,8 +1,8 @@
-import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { editDefinitionFile, importedBindings } from '@marmeon/core';
-import { readStubManifest, recordStubSet, STUB_MANIFEST } from '@marmeon/core/internal';
+import { readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 
 /**
@@ -75,9 +75,27 @@ export class MakeAuthCommand {
       return 1;
     }
 
-    cpSync(source, target, { recursive: true, force: true });
+    // A migration that ran never changes: --force writes the rest of the module again and only adds the migrations the app lacks.
+    // Checked before the first write, so a refusal leaves the module as it was.
+    const migrations = join(target, 'migrations');
+    const entry = lstatSync(migrations, { throwIfNoEntry: false });
+    if (entry !== undefined && !entry.isDirectory()) {
+      input.output.error('modules/auth/migrations is a link or a file, not a directory of the app. Replace it with the directory, then run marmeon make:auth --force again. Nothing was written.');
+      return 1;
+    }
+    const templates = join(source, 'migrations');
+    cpSync(source, target, { recursive: true, force: true, filter: (path) => path !== templates && !path.startsWith(templates + sep) });
+    const kept = copyMigrations(templates, migrations);
+    if (kept.raced.length > 0) {
+      for (const file of kept.raced) input.output.error(`modules/auth/migrations/${file} appeared while the migrations were written and was not overwritten.`);
+      input.output.error('The rest of modules/auth was written again; marmeon-stubs.json was not updated. Run marmeon make:auth --force again.');
+      return 1;
+    }
     const files = (readdirSync(target, { recursive: true }) as string[]).filter((file) => /\.\w+$/.test(file));
     input.output.success(`Created modules/auth (${files.length} files)`);
+    for (const file of kept.odd) input.output.warn(`modules/auth/migrations/${file} is no regular file; it counts as the migration and was kept.`);
+    for (const file of kept.differs) input.output.info(`modules/auth/migrations/${file} differs from the template and was kept.`);
+    if (kept.kept > 0) input.output.line(`Kept ${kept.kept} migrations in modules/auth/migrations: a migration that ran never changes; a change of a kit table comes as a new migration.`);
     // The migrations are append-only: a file of the framework never changes, a change comes as a new migration, so they are not recorded.
     // Listed from the templates, not from the target: with --force the app may hold files of its own next to them.
     const version = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
@@ -141,6 +159,46 @@ export class MakeAuthCommand {
     }
     return 0;
   }
+}
+
+/** The name of a migration without its timestamp and extension, so that the same name under a second timestamp
+ * (a new migration to the migrator, which would run again) counts as present — the rule of package-migrations. */
+const MIGRATION_FILE = /^\d{4}_\d{2}_\d{2}_\d{6}_([a-z][a-z0-9_]*)\.(?:ts|js|mts|mjs)$/;
+
+/**
+ * Writes the migrations of the templates the app lacks and leaves every other file as it is. A migration counts as present when
+ * the app has a file of the same name apart from timestamp and extension; `differs` lists the kept files whose content is not the template's.
+ */
+function copyMigrations(templates: string, target: string): { kept: number; differs: string[]; odd: string[]; raced: string[] } {
+  const present = new Map<string, string>();
+  for (const file of existsSync(target) ? readdirSync(target) : []) {
+    const identity = MIGRATION_FILE.exec(file)?.[1];
+    if (identity !== undefined) present.set(identity, file);
+  }
+  mkdirSync(target, { recursive: true });
+  let kept = 0;
+  const differs: string[] = [];
+  const odd: string[] = [];
+  const raced: string[] = [];
+  for (const file of readdirSync(templates).sort()) {
+    const identity = MIGRATION_FILE.exec(file)?.[1];
+    const bytes = readFileSync(join(templates, file));
+    const existing = identity === undefined ? undefined : present.get(identity);
+    if (existing === undefined) {
+      try {
+        writeFileSync(join(target, file), bytes, { flag: 'wx' });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        raced.push(file);
+      }
+      continue;
+    }
+    kept++;
+    // A link or a directory is never read: it stands for the migration, and the app looks at it.
+    if (!lstatSync(join(target, existing)).isFile()) odd.push(existing);
+    else if (stubHash(readFileSync(join(target, existing))) !== stubHash(bytes)) differs.push(existing);
+  }
+  return { kept, differs, odd, raced };
 }
 
 /** The client entry's import of the module's stylesheet. */

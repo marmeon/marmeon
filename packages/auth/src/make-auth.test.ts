@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readStubManifest, recordStubSet, stubHash } from '@marmeon/core/internal';
@@ -34,6 +34,7 @@ function fakeInput(root: string, options: Record<string, unknown> = {}) {
   const spawned: string[][] = [];
   const output = {
     success: (line: string) => lines.push(`✓ ${line}`),
+    info: (line: string) => lines.push(`i ${line}`),
     warn: (line: string) => lines.push(`! ${line}`),
     error: (line: string) => lines.push(`✗ ${line}`),
     line: (line = '') => lines.push(line),
@@ -175,6 +176,122 @@ describe('make:auth', { timeout: 30_000 }, () => {
     expect(await new MakeAuthCommand().handle(fakeInput(root, { force: true }).input)).toBe(0);
     expect(readFileSync(join(root, 'bootstrap/app.ts'), 'utf8').match(/#modules\/auth/g)).toHaveLength(1); // registered once
     expect(readFileSync(join(root, 'bootstrap/client.tsx'), 'utf8').match(/modules\/auth\/auth\.css/g)).toHaveLength(1); // its styles too
+  });
+
+  describe('--force and the migrations', () => {
+    const users = 'modules/auth/migrations/0001_01_01_000000_create_users_table.ts';
+    const REFUSED = '✗ modules/auth/migrations is a link or a file, not a directory of the app. Replace it with the directory, then run marmeon make:auth --force again. Nothing was written.';
+    const advice = 'a migration that ran never changes; a change of a kit table comes as a new migration.';
+
+    /** Every file below `directory`, as relative path and content. */
+    function snapshot(directory: string): Record<string, string> {
+      return Object.fromEntries(
+        readdirSync(directory, { recursive: true, withFileTypes: true })
+          .filter((entry) => entry.isFile())
+          .map((entry) => {
+            const path = join(entry.parentPath, entry.name);
+            return [relative(directory, path), readFileSync(path, 'utf8')];
+          }),
+      );
+    }
+
+    it('leaves a migration of the app byte for byte and says so when it differs from the template', async () => {
+      const root = blankApp();
+      await new MakeAuthCommand().handle(fakeInput(root).input);
+      writeFileSync(join(root, users), '// changed by the app\n');
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      expect(readFileSync(join(root, users), 'utf8')).toBe('// changed by the app\n');
+      expect(lines).toContain('i modules/auth/migrations/0001_01_01_000000_create_users_table.ts differs from the template and was kept.');
+      expect(lines).toContain(`Kept 7 migrations in modules/auth/migrations: ${advice}`);
+    });
+
+    it('writes a migration of the kit the app lacks', async () => {
+      const root = blankApp();
+      await new MakeAuthCommand().handle(fakeInput(root).input);
+      const missing = 'modules/auth/migrations/0001_01_01_000007_create_email_changes_table.ts';
+      rmSync(join(root, missing));
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      expect(readFileSync(join(root, missing), 'utf8')).toBe(readFileSync(join(STUBS, 'react', missing), 'utf8'));
+      expect(lines).toContain(`Kept 6 migrations in modules/auth/migrations: ${advice}`);
+    });
+
+    it('keeps a migration under another timestamp or extension and writes no duplicate of it', async () => {
+      const root = blankApp();
+      await new MakeAuthCommand().handle(fakeInput(root).input);
+      const dir = join(root, 'modules/auth/migrations');
+      renameSync(join(dir, '0001_01_01_000000_create_users_table.ts'), join(dir, '2026_02_03_040506_create_users_table.ts'));
+      renameSync(join(dir, '0001_01_01_000002_create_password_reset_tokens_table.ts'), join(dir, '0001_01_01_000002_create_password_reset_tokens_table.js'));
+      await new MakeAuthCommand().handle(fakeInput(root, { force: true }).input);
+      expect(readdirSync(dir).filter((file) => file.includes('create_users_table'))).toEqual(['2026_02_03_040506_create_users_table.ts']);
+      expect(readdirSync(dir).filter((file) => file.includes('create_password_reset_tokens_table'))).toEqual(['0001_01_01_000002_create_password_reset_tokens_table.js']);
+    });
+
+    it('does not touch a migration of its own that the app added', async () => {
+      const root = blankApp();
+      await new MakeAuthCommand().handle(fakeInput(root).input);
+      const own = join(root, 'modules/auth/migrations/2026_03_01_000000_add_nickname_to_users.ts');
+      writeFileSync(own, "// the app's own\n");
+      await new MakeAuthCommand().handle(fakeInput(root, { force: true }).input);
+      expect(readFileSync(own, 'utf8')).toBe("// the app's own\n");
+    });
+
+    it('still overwrites the other files of the module', async () => {
+      const root = blankApp();
+      await new MakeAuthCommand().handle(fakeInput(root).input);
+      writeFileSync(join(root, 'modules/auth/routes.ts'), '// changed by the app\n');
+      await new MakeAuthCommand().handle(fakeInput(root, { force: true }).input);
+      expect(readFileSync(join(root, 'modules/auth/routes.ts'), 'utf8')).toBe(readFileSync(join(STUBS, 'react/modules/auth/routes.ts'), 'utf8'));
+    });
+
+    it('refuses a dangling link or a plain file as modules/auth/migrations and writes nothing', async () => {
+      for (const make of [(dir: string) => symlinkSync(join(dir, 'gone'), dir + '.link'), (dir: string) => writeFileSync(dir + '.link', 'x')]) {
+        const root = blankApp();
+        await new MakeAuthCommand().handle(fakeInput(root).input);
+        const dir = join(root, 'modules/auth/migrations');
+        rmSync(dir, { recursive: true });
+        make(dir);
+        renameSync(dir + '.link', dir);
+        writeFileSync(join(root, 'modules/auth/routes.ts'), '// changed by the app\n');
+        const before = snapshot(join(root, 'modules/auth'));
+        const { input, lines } = fakeInput(root, { force: true });
+        expect(await new MakeAuthCommand().handle(input)).toBe(1);
+        expect(lines).toEqual([REFUSED]);
+        expect(snapshot(join(root, 'modules/auth'))).toEqual(before);
+      }
+    });
+
+    it('keeps a dead link or a directory that has the identity of a kit migration, without reading it', async () => {
+      const root = blankApp();
+      await new MakeAuthCommand().handle(fakeInput(root).input);
+      const dir = join(root, 'modules/auth/migrations');
+      rmSync(join(dir, '0001_01_01_000000_create_users_table.ts'));
+      symlinkSync(join(dir, 'gone'), join(dir, '0001_01_01_000000_create_users_table.ts'));
+      rmSync(join(dir, '0001_01_01_000002_create_password_reset_tokens_table.ts'));
+      mkdirSync(join(dir, '0001_01_01_000002_create_password_reset_tokens_table.ts'));
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(0);
+      expect(lines).toContain('! modules/auth/migrations/0001_01_01_000000_create_users_table.ts is no regular file; it counts as the migration and was kept.');
+      expect(lines).toContain('! modules/auth/migrations/0001_01_01_000002_create_password_reset_tokens_table.ts is no regular file; it counts as the migration and was kept.');
+      expect(readdirSync(dir)).toHaveLength(7);
+    });
+
+    it('writes nothing when modules/auth/migrations is no real directory', async () => {
+      const root = blankApp();
+      await new MakeAuthCommand().handle(fakeInput(root).input);
+      const outside = tempDir('marmeon-make-auth-outside-');
+      const dir = join(root, 'modules/auth/migrations');
+      rmSync(dir, { recursive: true });
+      symlinkSync(outside, dir, 'dir');
+      writeFileSync(join(root, 'modules/auth/routes.ts'), '// changed by the app\n');
+      const before = snapshot(join(root, 'modules/auth'));
+      const { input, lines } = fakeInput(root, { force: true });
+      expect(await new MakeAuthCommand().handle(input)).toBe(1);
+      expect(lines).toEqual([REFUSED]);
+      expect(snapshot(join(root, 'modules/auth'))).toEqual(before);
+      expect(readdirSync(outside)).toEqual([]);
+    });
   });
 
   it('records every copied file but the migrations in marmeon-stubs.json, with the package version and the hash of what was written', async () => {
