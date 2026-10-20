@@ -13,6 +13,7 @@ import { AppConfig } from '../config/app.ts';
 import { SystemDatabase } from '../config/database.ts';
 import { AppStorage } from '../config/storage.ts';
 import { ShareAppProps } from '../middleware/ShareAppProps.ts';
+import bookmarks from '#modules/bookmarks';
 
 /**
  * The composition root. It only describes the app: `marmeon` boots it, and tests
@@ -22,7 +23,7 @@ import { ShareAppProps } from '../middleware/ShareAppProps.ts';
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig, SystemDatabase, AppStorage],
-  modules: [auth, userProfile, dashboard, members, notifications, locale, lab, system],
+  modules: [auth, userProfile, dashboard, members, notifications, locale, lab, system, bookmarks],
   // Added after the framework's own middleware. Module routes run in the `web` group
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
   middleware: {

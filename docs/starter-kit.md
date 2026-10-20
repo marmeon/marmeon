@@ -304,6 +304,22 @@ patterns work, and [UUID keys](migrations.md#uuid-keys) weighs them:
 `apps/web-app` in the framework's repository shows both: `users` has a `public_id`, and `profile_links` has a UUID as its
 primary key.
 
+## Adding a resource
+
+`marmeon make:resource Bookmark` writes a whole module for a record that belongs to the signed-in user, in the kit's layout and
+with the kit's classes: `modules/bookmarks/` with the table (a UUIDv7 key, `user_id`, a title), a repository, a policy,
+the controllers to list, create, store, edit, update and delete, two pages, and a test. It adds the module to `bootstrap/app.ts`
+and then tells you to run `marmeon migrate`, `marmeon db:types` and `marmeon route:types`. `apps/web-app` in the framework's
+repository shows the module as the command writes it.
+
+The module is safe to start from. The policy lets the owner in and answers everyone else with a 404
+([generating a policy](authorization.md#generating-a-policy)), and every route that takes a record from the path checks it in its
+request. The list asks for `ctx.user.id` only, a new record gets its owner from the session and not from the form, and the
+test tries somebody else's record on every such route. Name the singular record in PascalCase; the module is its plural in kebab
+case (`Category` → `categories`), or pass `--module=<name>`. The command stops before it writes anything when the module exists,
+when `@marmeon/auth` is not in the app's `package.json`, or when the auth module and its layout are missing. Add the fields you
+need to the migration, the two schemas and the form. See [`make:*` generators](console.md#generators).
+
 ## Configuration
 
 | Variable | Default | Effect |

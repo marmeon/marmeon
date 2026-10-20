@@ -5,8 +5,8 @@ import { bindingNameOf } from '@marmeon/core/internal';
 import { CommandRegistry, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 
-const PASCAL = /^[A-Z][A-Za-z0-9]*$/;
-const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+export const PASCAL = /^[A-Z][A-Za-z0-9]*$/;
+export const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 /** Shared checks and file writing for the `make:*` generators. */
 function write(input: CommandInput, file: string, contents: string): boolean {
@@ -64,7 +64,7 @@ interface RegisterMessages {
 const indexOf = (module: string) => `modules/${module}/index.ts`;
 
 /** Adds what a generator wrote to its module's index.ts (or to `messages.target`, such as bootstrap/app.ts) — or prints the lines to add (see docs/console.md#generators). */
-function registerInModule(
+export function registerInModule(
   input: CommandInput,
   module: string,
   dir: string,
@@ -106,6 +106,29 @@ function registerInModule(
   return outcome.status === 'manual' ? 'manual' : outcome.status;
 }
 
+/** Adds the module to `modules` in bootstrap/app.ts — or prints the lines to add. */
+export function registerModule(input: CommandInput, name: string, dir: string): void {
+  const variable = bindingNameOf(name);
+  registerInModule(
+    input,
+    name,
+    dir,
+    {
+      define: { name: 'defineApplication', from: '@marmeon/core' },
+      key: 'modules',
+      add: { element: (names) => names[variable]!, position: 'last' },
+      imports: [{ name: variable, from: `#modules/${name}`, kind: 'default' }],
+    },
+    {
+      added: 'Registered the module in bootstrap/app.ts',
+      present: `${name} is already registered in bootstrap/app.ts`,
+      heading: 'Register it in bootstrap/app.ts:',
+      manual: [`import ${variable} from '#modules/${name}';`, `modules: [..., ${variable}]`],
+      target: { file: join(input.root, 'bootstrap', 'app.ts'), shown: 'bootstrap/app.ts' },
+    },
+  );
+}
+
 export class MakeModuleCommand {
   static command = 'make:module';
   static description = 'Create a feature module';
@@ -120,29 +143,11 @@ export class MakeModuleCommand {
       return 1;
     }
     const dir = join(input.root, 'modules', name);
-    const variable = bindingNameOf(name);
     const ok =
       write(input, join(dir, 'index.ts'), MODULE(name)) && write(input, join(dir, 'routes.ts'), ROUTES);
     if (!ok) return 1;
 
-    registerInModule(
-      input,
-      name,
-      dir,
-      {
-        define: { name: 'defineApplication', from: '@marmeon/core' },
-        key: 'modules',
-        add: { element: (names) => names[variable]!, position: 'last' },
-        imports: [{ name: variable, from: `#modules/${name}`, kind: 'default' }],
-      },
-      {
-        added: 'Registered the module in bootstrap/app.ts',
-        present: `${name} is already registered in bootstrap/app.ts`,
-        heading: 'Register it in bootstrap/app.ts:',
-        manual: [`import ${variable} from '#modules/${name}';`, `modules: [..., ${variable}]`],
-        target: { file: join(input.root, 'bootstrap', 'app.ts'), shown: 'bootstrap/app.ts' },
-      },
-    );
+    registerModule(input, name, dir);
     return 0;
   }
 }
@@ -535,7 +540,7 @@ export class MakeTestCommand {
 }
 
 /** Whether the app's package.json lists `name` in its dependencies or devDependencies. */
-function dependsOn(root: string, name: string): boolean {
+export function dependsOn(root: string, name: string): boolean {
   try {
     const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as Record<string, unknown>;
     return ['dependencies', 'devDependencies'].some((field) => {
@@ -807,7 +812,7 @@ type Owned = { readonly user_id: AuthUser['id'] };
  * Fail-closed: only the owner passes, everyone else gets the answer for a record that does not exist
  * (a 403 would confirm the id exists). `declaration` brings `recordType` into the file, with its import if it needs one.
  */
-const POLICY = (name: string, recordType: string, declaration: string) => `import { denyAsNotFound, type AuthUser } from '@marmeon/auth';
+export const POLICY = (name: string, recordType: string, declaration: string) => `import { denyAsNotFound, type AuthUser } from '@marmeon/auth';
 
 ${declaration}
 
@@ -830,17 +835,20 @@ export class ${name} {
 }
 `;
 
+/** The app of a test, booted on a refreshed database for each test — shared by `make:test` and `make:resource`. */
+export const TEST_SETUP = `let app: TestApp;
+// Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
+beforeEach(async () => {
+  app = await createTestApp(application, { database: 'refresh' });
+}, 30_000);
+`;
+
 /** Red until the route answers: an `it.todo` would read as green. Needs `@marmeon/testing` and `vitest` in the app. */
 const TEST = (words: string, path: string) => `import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
-let app: TestApp;
-// Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
-beforeEach(async () => {
-  app = await createTestApp(application, { database: 'refresh' });
-}, 30_000);
-
+${TEST_SETUP}
 describe('${words}', { timeout: 30_000 }, () => {
   it('answers ${path}', async () => {
     // Fails until the route answers 200. Sign in with app.actingAs(user), check a page with assertPage('…'): docs/http-tests.md#making-requests.
@@ -863,7 +871,7 @@ export class ${name} {
  * `YYYY_MM_DD_HHMMSS` now — but always after the module's latest migration: two generated in the
  * same second would otherwise sort by name, and `add_…_to_invoices` could run before `create_invoices`.
  */
-function migrationStamp(directory: string): string {
+export function migrationStamp(directory: string): string {
   const format = (date: Date) => date.toISOString().replace(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d).*$/, '$1_$2_$3_$4$5$6');
   const latest = existsSync(directory)
     ? readdirSync(directory)

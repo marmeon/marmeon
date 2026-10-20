@@ -7,6 +7,19 @@ import type { Generated, JsonColumn, Secret, Timestamp } from '@marmeon/database
 declare module '@marmeon/database' {
   interface Tables {
     /**
+     * Owned by `bookmarks`.
+     * Timestamps.
+     * Primary key: id.
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
+    bookmarks: {
+      id: Generated<string>;
+      user_id: number;
+      title: string;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /**
      * Owned by `system`.
      * Primary key: key.
      */
@@ -259,6 +272,9 @@ declare module '@marmeon/database' {
     };
   }
   interface Relations {
+    bookmarks: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
     email_changes: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
@@ -284,6 +300,7 @@ declare module '@marmeon/database' {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
     users: {
+      bookmarks: { kind: 'hasMany'; table: 'bookmarks'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       email_changes: { kind: 'hasOne'; table: 'email_changes'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
       login_activity: { kind: 'hasOne'; table: 'login_activity'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
       passkeys: { kind: 'hasMany'; table: 'passkeys'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
@@ -295,6 +312,7 @@ declare module '@marmeon/database' {
     };
   }
   interface TableOwners {
+    bookmarks: 'bookmarks';
     cache: 'system';
     cache_locks: 'system';
     email_changes: 'auth';
@@ -318,6 +336,7 @@ declare module '@marmeon/database' {
   }
   interface Modules {
     auth: true;
+    bookmarks: true;
     dashboard: true;
     lab: true;
     locale: true;
