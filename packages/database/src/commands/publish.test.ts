@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { PublishCommand } from './publish.ts';
 
-const STUB = (set: string) => `// @marmeon-stub ${set} 1\nexport default {};\n`;
+const STUB = (set: string) => `export default {}; // ${set}\n`;
 const ELSEWHERE = (file: string, pkg: string, where: string) =>
   `✗ ${file} of ${pkg} is in modules/${where}, which publish did not create for ${pkg} — if you put it there, pass --module=${where}; otherwise ${pkg} ships a migration with a name your app already uses.`;
 const PERM_FILES = { 'stubs/migrations/create_permissions_table.ts': STUB('permissions'), 'stubs/migrations/create_roles_table.ts': STUB('permissions') };
@@ -279,7 +279,7 @@ describe('marmeon publish', () => {
       expect((await publish(root, ['@acme/perm'], { module: 'system' })).code).toBe(0);
     });
 
-    it('a migration of the app without a stub mark that has the name of a listed file: the module that holds it is named, not taken', async () => {
+    it('a migration of the app that has the name of a listed file: the module that holds it is named, not taken', async () => {
       const root = makeApp({ files: { 'stubs/migrations/create_invoices_table.ts': STUB('permissions'), 'stubs/migrations/create_spy_table.ts': STUB('permissions') }, module: 'spy' });
       mkdirSync(join(root, 'modules/billing/migrations'), { recursive: true });
       writeFileSync(join(root, 'modules/billing/migrations/2026_01_01_000000_create_invoices_table.ts'), 'export default {};\n');

@@ -68,7 +68,7 @@ export function copyTemplate(part: 'base' | 'kit', target: string, template = TE
 
 /**
  * The template's files a new app changes, or that other commands change later, by the app's path: a hash recorded in
- * `marmeon-stubs.json` would be wrong at once. The migrations (`modules/*\/migrations/`) stay out too: they carry their own mark.
+ * `marmeon-stubs.json` would be wrong at once. The migrations (`modules/*\/migrations/`) stay out too: they are append-only: a file of the framework never changes, a change comes as a new migration.
  */
 export const PERSONALIZED: readonly string[] = [
   'package.json', // the app's name, the framework's version, the package manager (appManifest)

@@ -1,4 +1,3 @@
-// @marmeon-stub queue 1
 import { defineMigration } from '@marmeon/database';
 import { queueTablesConnection } from '@marmeon/queue';
 

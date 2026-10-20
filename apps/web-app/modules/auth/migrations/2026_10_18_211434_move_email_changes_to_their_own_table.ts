@@ -1,4 +1,3 @@
-// @marmeon-stub auth 5
 import { defineMigration } from '@marmeon/database';
 
 // A pending change of address lives in the table `email_changes` now, not in three columns of `users` that every module reads. A change

@@ -318,3 +318,28 @@ describe('the readers of the format', () => {
     expect(read(valid).ok).toBe(true);
   });
 });
+
+describe('the migrations in the repository', () => {
+  const ROOT = join(PACKAGES, '..');
+
+  function listTs(directory: string): string[] {
+    try {
+      return (readdirSync(directory, { recursive: true }) as string[]).filter((file) => file.endsWith('.ts')).map((file) => join(directory, file));
+    } catch {
+      return [];
+    }
+  }
+
+  const files = [
+    ...readdirSync(PACKAGES).flatMap((name) => listTs(join(PACKAGES, name, 'stubs'))),
+    ...readdirSync(join(ROOT, 'apps')).flatMap((name) => listTs(join(ROOT, 'apps', name, 'modules'))),
+    ...listTs(join(PACKAGES, 'create-marmeon', 'template')),
+  ].filter((file) => /[\\/]migrations[\\/]/.test(file));
+
+  it('begin with no mark that tells a stub from a migration of the app', () => {
+    expect(files.length).toBeGreaterThan(20);
+    // Written in two parts so that a search for the mark finds no file at all.
+    const mark = `// @marmeon${'-stub'}`;
+    expect(files.filter((file) => readFileSync(file, 'utf8').startsWith(mark))).toEqual([]);
+  });
+});

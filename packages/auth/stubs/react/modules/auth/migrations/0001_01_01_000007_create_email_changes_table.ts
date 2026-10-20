@@ -1,4 +1,3 @@
-// @marmeon-stub auth 5
 import { defineMigration } from '@marmeon/database';
 
 // A change of address that waits for its link: one row per account, apart from `users` so that no other module reads an address its

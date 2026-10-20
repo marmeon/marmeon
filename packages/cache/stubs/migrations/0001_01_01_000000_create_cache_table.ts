@@ -1,4 +1,3 @@
-// @marmeon-stub cache 1
 import { cacheTablesConnection } from '@marmeon/cache';
 import { defineMigration } from '@marmeon/database';
 

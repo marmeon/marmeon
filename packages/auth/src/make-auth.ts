@@ -78,7 +78,7 @@ export class MakeAuthCommand {
     cpSync(source, target, { recursive: true, force: true });
     const files = (readdirSync(target, { recursive: true }) as string[]).filter((file) => /\.\w+$/.test(file));
     input.output.success(`Created modules/auth (${files.length} files)`);
-    // The migrations have their own marks (`@marmeon-stub`) and are never replaced once they ran, so they are not recorded.
+    // The migrations are append-only: a file of the framework never changes, a change comes as a new migration, so they are not recorded.
     // Listed from the templates, not from the target: with --force the app may hold files of its own next to them.
     const version = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
     const copied = (readdirSync(source, { recursive: true, withFileTypes: true }))

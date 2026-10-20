@@ -199,7 +199,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
       expect(entry.sha256, path).toBe(stubHash(readFileSync(join(root, path))));
       expect(entry.stub).toBe(`stubs/react/${path}`);
     }
-    // Migrations carry their own mark and are not recorded.
+    // The migrations are append-only: a file of the framework never changes, a change comes as a new migration — so they are not recorded.
     expect(Object.keys(set!.files).filter((path) => path.includes('/migrations/'))).toEqual([]);
   });
 
