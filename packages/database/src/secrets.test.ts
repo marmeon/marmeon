@@ -6,7 +6,7 @@ import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Migrator, Repository, secret, sql, type Connections, type Generated, type Secret, type RowOf, type Timestamp } from './index.ts';
 import { projectMigrations } from './schema/projection.ts';
 import { renderTypes } from './types-gen/render.ts';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 /** What `db:types` generates for the accounts fixture (checked below), next to the other fixture tables. */
 interface AccountTables extends FixtureTables {
@@ -78,7 +78,7 @@ describe.each(drivers)('secret columns on %s', (driver) => {
   it('generates Secret<…> for them — the type above is what db:types writes', async () => {
     const { source } = renderTypes({
       driver,
-      projection: await new Migrator({ modules: [modules[1]!], root: tempDir('marmeon-secrets-') } as unknown as Application, connections).projection(),
+      projection: await new Migrator({ modules: [modules[1]!], root: workspaceTempDir('marmeon-secrets-') } as unknown as Application, connections).projection(),
       modules: ['accounts'],
       exposes: new Map(),
     });

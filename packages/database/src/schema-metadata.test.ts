@@ -14,7 +14,7 @@ import { MarmeonDriver } from './driver.ts';
 import { changesSchema, isRawSchemaChange, SchemaMetadata } from './metadata.ts';
 import { softDelete, softDeleteFilter } from './schema-resolver.ts';
 import { Connections, cursorPaginate, Migrator, Repository } from './index.ts';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const modules: ModuleDefinition[] = [
@@ -22,7 +22,7 @@ const modules: ModuleDefinition[] = [
   { name: 'blog', migrations: fixtures('relations') },
 ];
 // A cold `Connections` is a process that starts: it learns the schema from these modules' migrations, cached under `root`.
-const root = tempDir('marmeon-metadata-app-');
+const root = workspaceTempDir('marmeon-metadata-app-');
 const app = appOf(modules, root);
 
 class CommentRepository extends Repository<'comments', FixtureTables> {

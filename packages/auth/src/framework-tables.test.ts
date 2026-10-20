@@ -5,7 +5,7 @@ import type { Application, ModuleDefinition } from '@marmeon/core';
 import { Migrator, TypeGenerator, type Connections, type ProjectedTable } from '@marmeon/database';
 import { projectApp } from '@marmeon/database/internal';
 import { describe, expect, it } from 'vitest';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { describeTable, kinds, open } from './__fixtures__/schema-compare.ts';
 
 // The framework's tables as a new app gets them (the starter's auth migrations, and the migration of each `make:*-table` command) against
@@ -38,7 +38,7 @@ const appOf = (root: string, directories: { auth: string; system: string }): App
 
 /** The web app, read from where it lies in the repository. Its projection is written to a directory of its own. */
 function webApp(): Application {
-  return appOf(tempDir('marmeon-framework-tables-'), { auth: fileURLToPath(new URL('apps/web-app/modules/auth/migrations', repo)), system: fileURLToPath(new URL('apps/web-app/modules/system/migrations', repo)) });
+  return appOf(workspaceTempDir('marmeon-framework-tables-'), { auth: fileURLToPath(new URL('apps/web-app/modules/auth/migrations', repo)), system: fileURLToPath(new URL('apps/web-app/modules/system/migrations', repo)) });
 }
 
 /** A new app: the migrations of the kit in `modules/auth`, one file per command in `modules/system`, each with a timestamp as `publish` names it. */

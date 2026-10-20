@@ -9,7 +9,7 @@ import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { installChain, installOn } from './chain.ts';
 import { Connections, cursorPaginate, Migrator, paginate, Repository, secret, sql, type ConnectionOptions, type Json, type QueryEvent } from './index.ts';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const modules: ModuleDefinition[] = [
@@ -19,7 +19,7 @@ const modules: ModuleDefinition[] = [
   { name: 'readers', migrations: fixtures('relations-readers') },
 ];
 // The app a process of the tests is: a cold `Connections` takes its schema from these modules' migrations, cached under `root`.
-const root = tempDir('marmeon-chain-app-');
+const root = workspaceTempDir('marmeon-chain-app-');
 const app = appOf(modules, root);
 const ISO_UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
 

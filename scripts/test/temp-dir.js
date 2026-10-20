@@ -41,3 +41,24 @@ export function tempDir(prefix) {
   }
   return dir;
 }
+
+/**
+ * Like `tempDir`, but inside the checkout (`<repo>/.tmp/marmeon-run-…`, `MARMEON_WORKSPACE_TMPDIR`), where the repository's lockfile and
+ * workspace declaration make it part of the workspace. For the root of an app whose modules come from the repository: their migrations
+ * have to lie in the app or its workspace.
+ *
+ * @param {string} prefix e.g. `marmeon-env-`
+ * @returns {string} the directory's path
+ */
+export function workspaceTempDir(prefix) {
+  if (!prefix.startsWith('marmeon-')) throw new Error(`workspaceTempDir("${prefix}"): the prefix starts with "marmeon-", so the hygiene check sees what is left.`);
+  const base = process.env.MARMEON_WORKSPACE_TMPDIR;
+  if (!base) throw new Error('workspaceTempDir: MARMEON_WORKSPACE_TMPDIR is not set; run the tests through vitest (scripts/test/temp-hygiene.ts sets it).');
+  const dir = mkdtempSync(join(base, prefix));
+  try {
+    onTestFinished(() => remove(dir));
+  } catch {
+    pending.add(dir);
+  }
+  return dir;
+}

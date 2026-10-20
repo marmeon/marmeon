@@ -1,6 +1,6 @@
 import { existsSync, rmSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { tempDir } from './temp-dir.js';
+import { tempDir, workspaceTempDir } from './temp-dir.js';
 
 const fake = vi.hoisted(() => ({ skip: 0 }));
 
@@ -45,5 +45,28 @@ describe('tempDir', () => {
     expect(existsSync(stuck)).toBe(true);
     rmSync(stuck, { recursive: true, force: true });
     expect(existsSync(stuck)).toBe(false);
+  });
+});
+
+describe('workspaceTempDir', () => {
+  it('makes a directory below MARMEON_WORKSPACE_TMPDIR, inside the checkout', () => {
+    const dir = workspaceTempDir('marmeon-workspace-temp-');
+    expect(dir.startsWith(`${process.env.MARMEON_WORKSPACE_TMPDIR}/`)).toBe(true);
+    expect(existsSync(dir)).toBe(true);
+  });
+
+  it('refuses a prefix that the hygiene check would not see', () => {
+    // @ts-expect-error the prefix starts with marmeon-
+    expect(() => workspaceTempDir('other-')).toThrow(/marmeon-/);
+  });
+
+  it('throws without the variable', () => {
+    const before = process.env.MARMEON_WORKSPACE_TMPDIR;
+    delete process.env.MARMEON_WORKSPACE_TMPDIR;
+    try {
+      expect(() => workspaceTempDir('marmeon-workspace-temp-')).toThrow(/MARMEON_WORKSPACE_TMPDIR/);
+    } finally {
+      process.env.MARMEON_WORKSPACE_TMPDIR = before;
+    }
   });
 });

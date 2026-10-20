@@ -72,7 +72,8 @@ export async function freshConnections(
 
 /**
  * An app that is only its modules and its root: where a process of it finds the migrations its connections take their schema from.
- * `root` is where the projection is cached (`.marmeon/schema.json`) — a temporary directory, never `/`.
+ * `root` is where the projection is cached (`.marmeon/schema.json`) — a temporary directory, never `/`. When the modules are the
+ * repository's fixtures it comes from `workspaceTempDir()`: their migrations have to lie in the app or its workspace.
  */
 export function appOf(modules: ModuleDefinition[], root: string): Application {
   return { modules, root, container: { has: () => false } } as unknown as Application;

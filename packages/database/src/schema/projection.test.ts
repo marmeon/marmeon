@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
-import { tempDir } from '../../../../scripts/test/temp-dir.js';
+import { workspaceTempDir } from '../../../../scripts/test/temp-dir.js';
 import { drivers, freshConnections, type TestDriver } from '../__fixtures__/databases.ts';
 import { introspect, tableColumns, type CatalogQuery } from '../introspection.ts';
 import { Migrator, type Connections } from '../index.ts';
@@ -420,7 +420,7 @@ async function generatedColumns(run: CatalogQuery, driver: TestDriver): Promise<
 async function expectParity(driver: TestDriver, modules: ModuleDefinition[]): Promise<void> {
   const { connections, close } = await freshConnections(driver);
   try {
-    const migrator = new Migrator({ modules, root: tempDir('marmeon-projection-') } as unknown as Application, connections);
+    const migrator = new Migrator({ modules, root: workspaceTempDir('marmeon-projection-') } as unknown as Application, connections);
     // One scratch database of every table: the plans run on `default`, as the types are generated for all connections at once.
     for (const file of migrator.files()) await runMigration(connections, await loadMigration(file));
     const projection = await migrator.projection();
@@ -507,7 +507,7 @@ describe.each(drivers)('the projection against the catalog on %s', (driver) => {
   it('does not know a column that raw SQL added', async () => {
     const { connections, close } = await freshConnections(driver);
     try {
-      const migrator = new Migrator({ modules: [fixtures('accounts')], root: tempDir('marmeon-projection-') } as unknown as Application, connections);
+      const migrator = new Migrator({ modules: [fixtures('accounts')], root: workspaceTempDir('marmeon-projection-') } as unknown as Application, connections);
       await migrator.migrate();
       await sql`alter table accounts add column by_hand text`.execute(connections.get());
       const projection = await migrator.projection();
@@ -535,7 +535,7 @@ describe('the fixtures', () => {
   });
 
   it('are kept in .marmeon/schema.json of the app by the migrator, and read from it while the files fit', async () => {
-    const root = tempDir('marmeon-projection-');
+    const root = workspaceTempDir('marmeon-projection-');
     const migrator = new Migrator({ modules: [fixtures('auth'), fixtures('blog')], root } as unknown as Application, undefined as never);
     const first = await migrator.projection();
     const written = readFileSync(join(root, PROJECTION_FILE), 'utf8');

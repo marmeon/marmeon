@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import type { ModuleDefinition } from '@marmeon/core';
 import { sql, type Kysely } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { appOf as fakeApp, drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import type { ConnectionOptions } from './config.ts';
 import { Connections, Migrator } from './index.ts';
@@ -13,7 +13,7 @@ const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`,
 const previous: ModuleDefinition[] = [{ name: 'roster-create', migrations: fixtures('retired-old') }];
 const retiring: ModuleDefinition[] = [...previous, { name: 'roster-retire', migrations: fixtures('retired') }];
 const dropping: ModuleDefinition[] = [...retiring, { name: 'roster-drop', migrations: fixtures('retired-drop') }];
-const root = tempDir('marmeon-retire-');
+const root = workspaceTempDir('marmeon-retire-');
 
 // A release retires columns and runs `migrate`; the process of the release before keeps serving, and still reads and writes them.
 describe.each(drivers)('a retired column on %s', (driver) => {

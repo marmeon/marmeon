@@ -7,12 +7,12 @@ import { inspectionConnection } from './migrator-connection.ts';
 import type { ConnectionOptions } from './config.ts';
 import { Connections, Migrator, Repository } from './index.ts';
 import { dropAllTables } from './migrations/drop-all.ts';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const older: ModuleDefinition[] = [{ name: 'lockers', migrations: fixtures('known-columns-old') }];
 const newer: ModuleDefinition[] = [{ name: 'lockers', migrations: fixtures('known-columns') }];
-const root = tempDir('marmeon-known-columns-');
+const root = workspaceTempDir('marmeon-known-columns-');
 
 class Lockers extends Repository<'lockers', any> {
   static table = 'lockers' as const;

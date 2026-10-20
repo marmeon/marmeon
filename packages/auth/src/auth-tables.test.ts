@@ -7,6 +7,7 @@ import { HttpServiceProvider } from '@marmeon/http';
 import { ServerServiceProvider } from '@marmeon/server';
 import { SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { PASSKEY_COLUMNS, PASSKEYS_TABLE } from './passkeys/store.ts';
 import { PasskeyServiceProvider } from './passkeys/provider.ts';
 import { AuthServiceProvider, AccessTokenStore, combineFactors, DatabaseEmailChanges, EmailChangeStore, SignInStore, TwoFactorState, TwoFactorStore, UserProvider } from './index.ts';
@@ -24,7 +25,7 @@ describe('a database that lacks the auth tables', () => {
   const providers = [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider];
   const open = (more: Record<string, string> = {}, wire: (container: Container) => void = () => {}, extra: (typeof AuthServiceProvider | typeof PasskeyServiceProvider)[] = [], modules: ModuleDefinition[] = []) =>
     createApplication(
-      { root: '/tmp', discover: false, providers: [...providers, ...extra], modules },
+      { root: workspaceTempDir('marmeon-auth-tables-'), discover: false, providers: [...providers, ...extra], modules },
       {
         env: { ...env, ...more },
         override: (container) => {
