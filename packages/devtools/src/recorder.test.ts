@@ -20,7 +20,7 @@ import { Recorder } from './recorder.ts';
 import { enableDevtoolsForTests } from './test-opt-in.ts';
 import type { DevtoolsTester } from './tester.ts';
 import { DevtoolsServiceProvider } from './provider.ts';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
@@ -161,7 +161,7 @@ interface Booted {
 }
 
 async function boot(env: Record<string, string> = {}, options: { test?: boolean; config?: string; providers?: ServiceProviderClass[] } = {}): Promise<Booted> {
-  const root = tempDir('marmeon-devtools-');
+  const root = workspaceTempDir('marmeon-devtools-');
   if (options.config) {
     mkdirSync(join(root, 'config'));
     writeFileSync(join(root, 'config', 'devtools.ts'), options.config);

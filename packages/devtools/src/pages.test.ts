@@ -18,7 +18,7 @@ import { DevtoolsServiceProvider, DevtoolsStore, type AnyEntry } from './index.t
 import { BASE, MAIL_CSP } from './pages/index.ts';
 import { enableDevtoolsForTests } from './test-opt-in.ts';
 import type { DevtoolsTester } from './tester.ts';
-import { tempDir } from '../../../scripts/test/temp-dir.js';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 const roots: string[] = [];
@@ -70,7 +70,7 @@ interface Booted {
 }
 
 async function boot(env: Record<string, string> = {}, { test = true }: { test?: boolean } = {}): Promise<Booted> {
-  const root = tempDir('marmeon-devtools-pages-');
+  const root = workspaceTempDir('marmeon-devtools-pages-');
   roots.push(root);
   let tester: DevtoolsTester | undefined;
   const app = await createApplication({
