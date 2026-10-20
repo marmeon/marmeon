@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { publint } from 'publint';
 import { formatMessage } from 'publint/utils';
+import { expectedDocs, shipDocs, SHIPPED } from './docs-ship.ts';
 import { privateRecordHits, privateRecordWhy, type SourceFile } from './check-source.ts';
 import { checkDriverRule, checkExactPins, frameworkPackages, packAll, type FrameworkPackage, type PackageManifest, type PackedPackage } from './packages.ts';
 import { licenseDrift } from './sync-license.ts';
@@ -116,6 +117,24 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
   if (source.publishConfig?.access !== 'public' || source.publishConfig?.provenance !== true) {
     problems.push('publishConfig needs "access": "public" and "provenance": true');
   }
+  return problems;
+}
+
+/**
+ * The documentation in the `marmeon` tarball is the repository's (`expected` = `expectedDocs`): every page and policy byte for
+ * byte, `docs/index.json` and `docs/llms.txt` as generated, and nothing else under `docs/`.
+ */
+export function checkDocsInTarball(packed: Pick<PackedPackage, 'files'>, dir: string, expected: ReadonlyMap<string, Buffer>): string[] {
+  const problems: string[] = [];
+  const files = new Set(packed.files);
+  for (const [path, bytes] of expected) {
+    if (!files.has(path)) problems.push(`${path} is missing`);
+    else if (!readFileSync(join(dir, path)).equals(bytes)) problems.push(`${path} is not the repository's`);
+  }
+  for (const file of packed.files) {
+    if (file.startsWith('docs/') && !expected.has(file)) problems.push(`${file} is no page of the repository's docs`);
+  }
+  if (problems.length > 0) problems.push("the docs in the tarball are not the repository's — is every path named in \"files\" of packages/cli/package.json?");
   return problems;
 }
 
@@ -218,6 +237,10 @@ async function main(): Promise<number> {
     }
   }
 
+  // The documentation of this version goes into the `marmeon` package after its build (`pnpm build` does the same).
+  await shipDocs(root, join(root, 'packages/cli'));
+  const docs = await expectedDocs(root);
+
   const tsconfig = JSON.parse(readFileSync(join(root, 'tsconfig.json'), 'utf8')) as { references?: { path: string }[] };
   const referenced = new Set((tsconfig.references ?? []).map((reference) => posix.normalize(reference.path)));
   for (const pkg of packages) {
@@ -246,6 +269,8 @@ async function main(): Promise<number> {
         const tar = spawnSync('tar', ['-xzf', tarball.tarball, '-C', unpacked]);
         if (tar.status !== 0) return report(pkg.name, [`could not unpack ${tarball.tarball}: ${tar.stderr}`]);
         report(pkg.name, checkTarball(tarball, join(unpacked, 'package'), pkg, license));
+        if (pkg.short === 'cli') report(pkg.name, checkDocsInTarball(tarball, join(unpacked, 'package'), docs));
+        if (pkg.short === 'cli') console.log(`pack:check: ${pkg.name} tarball ${(readFileSync(tarball.tarball).byteLength / 1024).toFixed(0)} KB, ${tarball.files.filter((file) => SHIPPED.some((name) => file === name || file.startsWith(`${name}/`))).length} of its files are the docs`);
         report(pkg.name, await lint(tarball));
         // attw checks what importing the package resolves to — a package that only has a bin (create-marmeon) has nothing to import.
         const packedManifest = JSON.parse(readFileSync(join(unpacked, 'package', 'package.json'), 'utf8')) as Record<string, unknown>;

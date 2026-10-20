@@ -193,6 +193,20 @@ browser. The [testing](testing.md#creating-the-test-app) page explains how a tes
 With npm, the scripts are `npm run dev`, `npm test` and `npm run lint`. The `marmeon` command itself runs as
 `pnpm marmeon <command>` or `npx marmeon <command>`.
 
+## The documentation of your version
+
+`marmeon` ships the documentation of its own version: every page of this site, the [upgrade guide](../UPGRADING.md), the
+[security policy](../SECURITY.md) and the [contribution guide](../CONTRIBUTING.md) as Markdown files under
+`node_modules/marmeon/docs/` (the three policies sit one level up, so a link such as `../UPGRADING.md` works there too). A person
+or a coding agent reads what matches the installed version, offline, without guessing which release a web page describes.
+
+- `docs/<page>.md` is the page `/docs/<page>` of this site, for example `docs/routing.md`.
+- `docs/index.json` lists the sections and pages in reading order, `docs/llms.txt` does the same as links for a reader without a parser.
+- A `docs/<page>.md` named in the output of a `marmeon` command is a file in that directory.
+
+Under pnpm the path is stable, because `marmeon` is a direct dependency of the app. The files take about 1.6 MB on disk (0.5 MB to download),
+once per app.
+
 ## The first day after a release
 
 pnpm installs no package version younger than its `minimumReleaseAge`, one day by default. This protects you from a package that

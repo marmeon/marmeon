@@ -17,3 +17,8 @@ storage/
 .claude/*
 !.claude/launch.json
 CLAUDE.local.md
+# The documentation of a version, copied into the marmeon package by `pnpm build` (scripts/docs-ship.ts).
+/packages/cli/docs/
+/packages/cli/UPGRADING.md
+/packages/cli/SECURITY.md
+/packages/cli/CONTRIBUTING.md
