@@ -271,11 +271,11 @@ The database holds two tables for the migrator, and nothing else of what the mig
 
 | Table | Holds |
 | --- | --- |
-| `migrations` | The migrations that ran, with their batch: `id`, `name`, `module`, `batch`. On the `default` connection only. |
+| `migrations` | The migrations that ran, with their batch and the checksum of their file: `id`, `name`, `module`, `batch`, `checksum`. On the `default` connection only. |
 | `migration_lock` | SQLite only: the row that [lets one migration run at a time](#one-migration-at-a-time). |
 
-The first `migrate` on a database creates `migrations`. The columns `batch, id, module, name` are its format: a table with any other
-columns was written by a newer Marmeon (or is another tool's), and every command refuses it rather than guess what the columns mean. The
+The first `migrate` on a database creates `migrations`. The columns `batch, checksum, id, module, name` are its format: a table with any other
+columns (but see below for the form of 0.3) was written by a newer Marmeon (or is another tool's), and every command refuses it rather than guess what the columns mean. The
 same holds for the columns of `migration_lock`. A migration that creates, alters, drops or renames `migrations` or `migration_lock`
 stops with a `SchemaError` (D4) before anything runs, and so does a `schema.data()` step writing to them. Every other name is the app's,
 the framework's own tables (`jobs`, `cache`, `sessions`, …) included. A connection with `managed: false` has neither table, and
@@ -293,7 +293,7 @@ What the app does with the answer, per connection (`default` decides; the other 
 | --- | --- | --- |
 | ready | The database has every migration the code has. | Queries run. |
 | ahead | The database also has migrations the code does not know: a process of an older release during a deploy. | Queries run, with the schema the code knows: its secret columns, soft deletes and relations. Logged once. See [migrating a running app](#migrating-a-running-app). |
-| pending | The database lacks a migration the code has: the app started before `migrate`, or after a rollback. | **Every** query fails with a `MigrationStateError` (D2) that names the missing migrations, `/up/ready` is red. The database is asked again at most once a second, so the app answers a second after `marmeon migrate` ran, with no restart. A process that was ready before a rollback keeps its schema until it restarts. |
+| pending | The database lacks a migration the code has: the app started before `migrate`, or after a rollback. The record in the form Marmeon 0.3 wrote, without `checksum`, counts as lacking too (see below). | **Every** query fails with a `MigrationStateError` (D2) that names the missing migrations, `/up/ready` is red. The database is asked again at most once a second, so the app answers a second after `marmeon migrate` ran, with no restart. A process that was ready before a rollback keeps its schema until it restarts. |
 | newer | `migrations` has other columns than this release reads: a newer Marmeon migrated the database. | Every query fails (D1); `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:status` and `migrate:fresh` refuse as well and change nothing. Update `@marmeon/*`. |
 | unmigrated | The database has tables and no `migrations`: a database that lost it, or another tool's. | Every query fails (D1). For your own database, run `marmeon migrate`: it writes `migrations` and runs every migration, and tables it did not make stay as they are, unknown (see below). For a database another tool manages, set [`managed: false`](database.md#a-database-another-tool-manages). |
 
@@ -308,7 +308,17 @@ so `migrate`, `migrate:status` and `migrate:rollback` work on a database the app
 tables are listed from the catalog whatever the role may do with them, so a role without privileges on `migrations` gets "permission
 denied" on its queries instead of an app that believes no migration is missing.
 
-A database from Marmeon 0.3 has `migrations` in this form and three tables more, `table_owners`, `secret_columns` and `schema_markers`.
+`checksum` is `sha256:<hex>` of the migration file as it was when it ran, with `\r\n` read as `\n`, so a checkout with converted line
+endings gives the same value. It is a record of what ran, to find out later whether a file that ran has changed; whoever can write to
+`migrations` can write a checksum as well, so it detects a change and does not authenticate one. A migration whose `checksum` is `NULL`
+is unknown, never changed.
+
+A database from Marmeon 0.3 has `migrations` without `checksum`. The next `migrate`, `migrate:rollback` or `migrate:reset` carries it
+over, under the migration lock and in one transaction: it adds the column and writes the checksum of the file as it is now to every
+migration that has one (a migration without a file stays `NULL`), and says so. That is the one time a file becomes the reference
+without having been checked, and the checksum of a row is never filled in afterwards. A migration that a process of 0.3 runs after that is recorded without a checksum and stays unknown for good. Until then every query of the app fails (D2) as
+with a migration that is missing, `/up/ready` is red, and `migrate:status` and `migrate:fresh` read the old form without writing.
+A database from Marmeon 0.3 has three tables more, `table_owners`, `secret_columns` and `schema_markers`.
 Nothing of this release reads or writes them, and `migrate` leaves them where they are, naming them once per run: a process of 0.3 that
 is still running reads them, and 0.3 reads a table that is gone as "no column is secret". Drop them by hand once no process of 0.3 runs.
 `migrate:fresh` drops them with everything else.

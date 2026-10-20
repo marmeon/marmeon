@@ -351,6 +351,10 @@ export declare class MigrateFreshCommand {
 export interface MigrateOptions {
     readonly onUnknown?: (connection: string, found: UnknownSchema) => void;
     readonly onLegacy?: (connection: string, tables: readonly string[]) => void;
+    readonly onCarriedOver?: (carried: {
+        readonly recorded: number;
+        readonly unknown: readonly string[];
+    }) => void;
 }
 // MigrateResetCommand
 export declare class MigrateResetCommand {
@@ -456,8 +460,8 @@ export declare class Migrator {
     migrate(onRun?: (run: MigrationRun) => void, options?: MigrateOptions): Promise<MigrationRun[]>;
     rollback(options?: {
         steps?: number;
-    }, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
-    reset(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
+    } & Pick<MigrateOptions, 'onCarriedOver'>, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
+    reset(onRun?: (run: MigrationRun) => void, options?: Pick<MigrateOptions, 'onCarriedOver'>): Promise<MigrationRun[]>;
     fresh(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
     dropAllTables(): Promise<string[]>;
     connections(): Promise<string[]>;

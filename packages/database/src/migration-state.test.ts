@@ -120,9 +120,9 @@ describe.each(drivers)('what the app does when the database lacks migrations, on
   it('refuses a record of migrations with other columns — and so do migrate, rollback, status and migrate:fresh', async () => {
     await migrate([auth]);
     const newer = processOf([auth]);
-    await sql`alter table migrations add column checksum varchar(64)`.execute(migratorConnection(newer));
+    await sql`alter table migrations add column note varchar(64)`.execute(migratorConnection(newer));
     newer.metadata().reload();
-    await expect(select(newer, 'users')).rejects.toMatchObject({ reason: 'newer', message: expect.stringMatching(/^\[marmeon:D1\] .*checksum/s) });
+    await expect(select(newer, 'users')).rejects.toMatchObject({ reason: 'newer', message: expect.stringMatching(/^\[marmeon:D1\] .*note/s) });
     for (const run of [(m: Migrator) => m.migrate(), (m: Migrator) => m.rollback(), (m: Migrator) => m.status(), (m: Migrator) => m.fresh()]) {
       await expect(run(new Migrator(appOf([auth]), newer))).rejects.toMatchObject({ reason: 'newer' });
     }

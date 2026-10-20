@@ -8,8 +8,16 @@ import type { Driver } from './schema/blueprint.ts';
 
 /** The table of the migrations that ran (on `default` only). Its columns are its format: there is no version beside them. */
 export const MIGRATIONS_TABLE = 'migrations';
-/** The columns of {@link MIGRATIONS_TABLE}, sorted. A table with any other columns was written by a Marmeon this release does not know. */
-export const MIGRATIONS_COLUMNS: readonly string[] = ['batch', 'id', 'module', 'name'];
+/**
+ * The columns of {@link MIGRATIONS_TABLE} per format, sorted. 1 is the form Marmeon 0.3 wrote; 2 adds the checksum of the file that ran.
+ * A table with any other columns was written by a Marmeon this release does not know.
+ */
+export const RECORD_COLUMNS: Readonly<Record<1 | 2, readonly string[]>> = {
+  1: ['batch', 'id', 'module', 'name'],
+  2: ['batch', 'checksum', 'id', 'module', 'name'],
+};
+/** The columns of {@link MIGRATIONS_TABLE} in the format this release writes. */
+export const MIGRATIONS_COLUMNS: readonly string[] = RECORD_COLUMNS[2];
 /** SQLite: the table whose one row is the migration lock. Postgres needs none — it holds an advisory lock on a connection. */
 export const LOCK_TABLE = 'migration_lock';
 /** The columns of {@link LOCK_TABLE}, sorted. */
@@ -90,7 +98,8 @@ export function appTables(columns: ReadonlyMap<string, readonly string[]>, ignor
  * (secret columns, soft deletes). A table `migrations` of any other form belongs to another tool and is left alone.
  */
 export function assertNotMigrated(columns: ReadonlyMap<string, readonly string[]>, connection: string): void {
-  if (!sameColumns(columns.get(MIGRATIONS_TABLE), MIGRATIONS_COLUMNS)) return;
+  const recorded = columns.get(MIGRATIONS_TABLE);
+  if (!sameColumns(recorded, RECORD_COLUMNS[1]) && !sameColumns(recorded, RECORD_COLUMNS[2])) return;
   throw new MigrationStateError(
     'unmanaged',
     connection,
@@ -150,25 +159,33 @@ export async function createMigrationsTable(db: Kysely<any>, driver: Driver): Pr
     .addColumn('name', 'varchar(255)', (c) => c.notNull().unique())
     .addColumn('module', 'varchar(255)', (c) => c.notNull())
     .addColumn('batch', 'integer', (c) => c.notNull())
+    .addColumn('checksum', 'varchar(80)')
     .execute();
 }
 
 /**
- * Refuses a record of migrations with other columns than this release reads — it was written by a newer Marmeon, and what its
- * columns mean is not known. Nothing happens for a database without one.
+ * The format of the record of migrations (see {@link RECORD_COLUMNS}), or undefined for a database without one. Refuses a record with
+ * other columns than this release reads — it was written by a newer Marmeon, and what its columns mean is not known.
  */
-export function assertRecordReadable(columns: ReadonlyMap<string, readonly string[]>, connection: string): void {
+export function recordVersion(columns: ReadonlyMap<string, readonly string[]>, connection: string): 1 | 2 | undefined {
   const recorded = columns.get(MIGRATIONS_TABLE);
-  if (recorded === undefined || sameColumns(recorded, MIGRATIONS_COLUMNS)) return;
+  if (recorded === undefined) return undefined;
+  if (sameColumns(recorded, RECORD_COLUMNS[2])) return 2;
+  if (sameColumns(recorded, RECORD_COLUMNS[1])) return 1;
   throw new MigrationStateError(
     'newer',
     connection,
     withCode(
       'D1',
       `The record of migrations (${MIGRATIONS_TABLE}) of the database connection "${connection}" has the columns ${recorded.toSorted().join(', ')}, not the ones this release of Marmeon reads ` +
-        `(${MIGRATIONS_COLUMNS.join(', ')}): a newer Marmeon migrated this database, or another tool keeps a table of that name. Update @marmeon/*. ${REFUSED}. See docs/migrations.md#how-the-migrator-keeps-track.`,
+        `(${RECORD_COLUMNS[2].join(', ')}, or ${RECORD_COLUMNS[1].join(', ')} as Marmeon 0.3 wrote them): a newer Marmeon migrated this database, or another tool keeps a table of that name. Update @marmeon/*. ${REFUSED}. See docs/migrations.md#how-the-migrator-keeps-track.`,
     ),
   );
+}
+
+/** Refuses a record of migrations with other columns than this release reads. Nothing happens for a database without one. */
+export function assertRecordReadable(columns: ReadonlyMap<string, readonly string[]>, connection: string): void {
+  recordVersion(columns, connection);
 }
 
 /**
@@ -198,7 +215,19 @@ export async function checkMigrationState(run: CatalogQuery, driver: Driver, con
     }
     ran = new Set();
   } else {
-    assertRecordReadable(columns, connection);
+    // The form of 0.3 has no checksum per migration: `migrate` carries it over, and until it did the process treats it like a migration that is missing.
+    if (recordVersion(columns, connection) === 1) {
+      throw new MigrationStateError(
+        'pending',
+        connection,
+        withCode(
+          'D2',
+          `The record of migrations (${MIGRATIONS_TABLE}) of the database connection "${connection}" is in the form Marmeon 0.3 wrote, without a checksum per migration. ` +
+            `Run "marmeon migrate": it carries the record over. ${REFUSED}. See docs/migrations.md#how-the-migrator-keeps-track.`,
+        ),
+        [],
+      );
+    }
     ran = new Set((await run<{ name: string }>(`select name from ${MIGRATIONS_TABLE}`)).map((row) => row.name));
   }
   const missing = expected.filter((name) => !ran.has(name));

@@ -107,14 +107,24 @@ export const databaseSolutions = defineSolutions([
   {
     for: MigrationStateError,
     code: 'D2',
-    solve: (e) => ({
-      title: `Run the ${e.missing.length} pending migration${e.missing.length === 1 ? '' : 's'}`,
-      text:
-        `The database lacks ${e.missing.slice(0, 5).join(', ')}${e.missing.length > 5 ? `, and ${e.missing.length - 5} more` : ''}, which the code has, so every query on the connection "${e.connection}" is refused. ` +
-        'Run the command; the app answers again within a second, without a restart. After a rollback, the same: migrate again, or deploy the code that matches the database.',
-      command: 'marmeon migrate',
-      docs: 'docs/migrations.md#migrating-a-running-app',
-    }),
+    solve: (e) =>
+      e.missing.length === 0
+        ? {
+            title: 'Carry the record of migrations over',
+            text:
+              `The record of migrations of the connection "${e.connection}" is in the form Marmeon 0.3 wrote, without a checksum per migration, so every query on it is refused. ` +
+              'Run the command: it carries the record over, and the app answers again within a second, without a restart.',
+            command: 'marmeon migrate',
+            docs: 'docs/migrations.md#how-the-migrator-keeps-track',
+          }
+        : {
+            title: `Run the ${e.missing.length} pending migration${e.missing.length === 1 ? '' : 's'}`,
+            text:
+              `The database lacks ${e.missing.slice(0, 5).join(', ')}${e.missing.length > 5 ? `, and ${e.missing.length - 5} more` : ''}, which the code has, so every query on the connection "${e.connection}" is refused. ` +
+              'Run the command; the app answers again within a second, without a restart. After a rollback, the same: migrate again, or deploy the code that matches the database.',
+            command: 'marmeon migrate',
+            docs: 'docs/migrations.md#migrating-a-running-app',
+          },
   },
   {
     for: MigrationStateError,

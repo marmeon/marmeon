@@ -36,9 +36,16 @@ async function underLock(migrator: Migrator, { options, output }: CommandInput, 
   }
 }
 
+/** What a command says when it carried the record of migrations over from the form Marmeon 0.3 wrote. */
+function carriedOver(output: CommandInput['output']): NonNullable<MigrateOptions['onCarriedOver']> {
+  return ({ recorded, unknown }) =>
+    output.info(`The record of migrations keeps a checksum per migration now: ${recorded} recorded as their files are now${unknown.length > 0 ? `, ${unknown.length} without a file stay unknown` : ''}.`);
+}
+
 /** What `migrate` says after a run: the tables 0.3 left, and what the database has that no migration made. */
 function notices(output: CommandInput['output']): MigrateOptions {
   return {
+    onCarriedOver: carriedOver(output),
     onLegacy: (connection, tables) =>
       output.info(`${tables.join(', ')} on the connection "${connection}" are left in place for processes of Marmeon 0.3; drop them once none runs.`),
     onUnknown: (connection, { tables, columns }) => {
@@ -126,7 +133,7 @@ export class MigrateRollbackCommand {
     }
     if (!confirmed(input, 'roll back')) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.rollback({ steps: step }, report(input.output, 'Rolled back'));
+      const runs = await this.#migrator.rollback({ steps: step, onCarriedOver: carriedOver(input.output) }, report(input.output, 'Rolled back'));
       if (runs.length === 0) input.output.info('Nothing to roll back.');
       return 0;
     });
@@ -148,7 +155,7 @@ export class MigrateResetCommand {
   async handle(input: CommandInput): Promise<number> {
     if (!confirmed(input, 'roll back every migration')) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.reset(report(input.output, 'Rolled back'));
+      const runs = await this.#migrator.reset(report(input.output, 'Rolled back'), { onCarriedOver: carriedOver(input.output) });
       if (runs.length === 0) input.output.info('Nothing to roll back.');
       return 0;
     });

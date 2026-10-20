@@ -282,7 +282,7 @@ columns, no soft deletes, no timestamps; the query builder treats every column a
 tables is known to the connection after the schema change it made itself, or after a restart. `marmeon migrate`,
 `migrate:fresh` and the other migration commands refuse to touch it, and a migration cannot run on it. A connection that Marmeon
 migrates and reads through a role with privileges on the record of migrations stays the default. A connection that has the record of migrations
-Marmeon writes (a table `migrations` with the columns `batch, id, module, name`) is refused with `managed: false` as well (D1): Marmeon
+Marmeon writes (a table `migrations` with the columns `batch, checksum, id, module, name`, or `batch, id, module, name` as 0.3 wrote them) is refused with `managed: false` as well (D1): Marmeon
 migrates it, so the option would hide its secret columns. A `migrations` table of another shape is another tool's.
 
 ## Readiness
