@@ -65,7 +65,7 @@ before it runs. The [configuration](configuration.md#where-node_env-comes-from) 
 [`marmeon check`](check.md#exit-codes) adds a `3` for a check that could not run.
 
 A script can tell a typo from a failure this way. A built-in's options are checked before the app boots; an app's own command is looked
-up once the app has booted, so a failed boot (1) comes first. A few commands have codes of their own: [`tinker`](#running-code-from-a-script) ends with
+up once the app has booted, so a failed boot (1) comes first. A few commands have codes of their own: [`docs`](#reading-the-documentation) ends with 2 for an unknown page or options that do not go together, [`tinker`](#running-code-from-a-script) ends with
 130 on a signal, and [`queue:work`](queues.md#timeouts-and-retryafter) with 70 when a job does not stop in time. A command that checks its own arguments, such as `schedule:test` without a name, still exits with 1.
 
 ## Machine-readable output
@@ -91,6 +91,7 @@ pnpm marmeon route:list --json
 | `schedule:list --json` | [Running the scheduler](scheduling.md#running-the-scheduler) |
 | `db:show --json` | [Inspecting a connection](database.md#inspecting-a-connection) |
 | `migrate:status --json` | [Status](migrations.md#status) |
+| `docs --json` | [Reading the documentation](#reading-the-documentation) |
 | `list --json` | The commands `marmeon list` shows. `complete` is `false` when the app did not load and only the built-in commands are known. Each command has `name`, `description`, `usage`, `options` (`name`, `type`, `short`, `multiple`, `default`), `experimental` and `launcher` (`dev` and `start`, which the launcher runs). |
 
 A command of your own, or of a package, prints its document with `output.json({ format: 1, … })` and declares
@@ -139,6 +140,7 @@ start`, and `marmeon dev` refuses it.
 | `discover` | Finds the installed packages and their providers. See [discovery](modules.md#marmeon-discover). |
 | `key:generate [--show] [--force]` | Sets `APP_KEY` in `.env`. |
 | `agents:sync [--check]` | Writes `AGENTS.md` and `CLAUDE.md`, or brings the block of marmeon in `AGENTS.md` up to the installed version. `--check` writes nothing and fails when the block is missing or out of date, for CI. See [coding agents](agents.md). |
+| `docs [<page>] [--path] [--json]` | Lists the pages of the documentation that came with the installed `marmeon`, or prints one. See [reading the documentation](#reading-the-documentation). |
 | `tinker [--sandbox] [--execute "<code>"] [--no-history]` | A REPL with the booted app. See [tinker](#tinker). |
 | `make:lint-config [--boundaries] [--force]` | Writes the lint preset. See [lint](#lint). |
 | `make:docker [--caddy \| --nginx] [--systemd] [--force]` | Writes the files for a production image. See [deployment](deployment.md#the-docker-image). |
@@ -148,6 +150,25 @@ start`, and `marmeon dev` refuses it.
 app that has a key keeps it unless you pass `--force`, which moves the old key to the front of `APP_PREVIOUS_KEYS`: sessions,
 encrypted cookies and signed links made with it stay valid. The [deployment](deployment.md#rotating-app_key) page explains the
 rotation on a server.
+
+### Reading the documentation
+
+`marmeon docs` reads the documentation of the installed version, the files [`marmeon` ships](installation.md#the-documentation-of-your-version),
+and runs without booting the app, so it works in an app that does not start. It needs nothing from the network.
+
+```sh
+pnpm marmeon docs                    # every section and page: slug, title, file
+pnpm marmeon docs routing            # the page on stdout, unchanged
+pnpm marmeon docs routing --path     # only the absolute path of the file
+pnpm marmeon docs --json             # the list for a program
+```
+
+- `<page>` is a slug from the list. `routing`, `routing.md` and `routing#anchor` name the same page; the anchor is ignored and the whole file printed.
+- The command prints only pages that `docs/index.json` lists. What you type is looked up there and never used as a path, so `../package`, an absolute path or a symlink is not a page: an unknown page ends with exit code 2 and up to five similar slugs.
+- `--path` needs a page, and `--json` takes none (exit code 2). There is no search; `grep` over the paths in the list does it.
+- A `marmeon` without the documentation, as in the repository before `pnpm build`, or with an `index.json` of another format ends with exit code 1 and says so.
+
+`docs --json` prints format 1: `format`, `version` (of `marmeon`), `root` (the absolute path of the package; `root` and a page's `file` make its path), `sections` (each with `title` and `pages`, whose entries have `slug`, `title` and `file`) and `warnings`. The pages are in reading order.
 
 ### Generators
 

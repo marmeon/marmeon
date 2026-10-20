@@ -639,6 +639,14 @@ async function main(): Promise<number> {
       const output = pnpmApp.marmeon('migrate');
       if (!output.includes('Environment: development (APP_ENV=local, NODE_ENV from .env)')) throw new SmokeError(`marmeon migrate did not take NODE_ENV=development from .env:\n${output}`);
     });
+    await pnpmApp.step('marmeon docs routing → the page of the installed version, node_modules/marmeon/docs/index.json', () => {
+      if (!existsSync(join(app, 'node_modules/marmeon/docs/index.json'))) throw new SmokeError('the installed marmeon has no docs/index.json — the tarball must carry the documentation.');
+      // The path is the app's own (node_modules/marmeon/…), not the version-bound one under .pnpm.
+      const where = pnpmApp.marmeon('docs', 'routing', '--path').trim();
+      if (where !== join(app, 'node_modules/marmeon/docs/routing.md')) throw new SmokeError(`marmeon docs routing --path should end on node_modules/marmeon/docs/routing.md in the app, it printed:\n${where}`);
+      const page = pnpmApp.marmeon('docs', 'routing');
+      if (!page.startsWith('# Routing')) throw new SmokeError(`marmeon docs routing should print the page and begin with "# Routing":\n${page.slice(0, 300)}`);
+    });
     const tests = await pnpmApp.step('vitest run (auth, home, system)', () => {
       const output = pnpmApp.run(join(app, 'node_modules/.bin/vitest'), ['run', '--reporter=verbose']);
       if (!/modules\/home\/home\.test\.ts/.test(output)) throw new SmokeError(`vitest did not run the home module's tests:\n${output}`);

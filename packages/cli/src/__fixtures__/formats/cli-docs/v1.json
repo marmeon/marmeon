@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "version": "0.3.0",
+  "root": "<root>",
+  "sections": [
+    { "title": "Prologue", "pages": [{ "slug": "upgrading", "title": "Upgrading", "file": "UPGRADING.md" }] },
+    {
+      "title": "The Basics",
+      "pages": [
+        { "slug": "routing", "title": "Routing", "file": "docs/routing.md" },
+        { "slug": "validation", "title": "Validation", "file": "docs/validation.md" }
+      ]
+    }
+  ],
+  "warnings": []
+}

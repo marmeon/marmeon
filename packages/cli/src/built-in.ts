@@ -3,6 +3,7 @@ import { AgentsSyncCommand } from './commands/agents-sync.ts';
 import { BuildCommand } from './commands/build.ts';
 import { CheckCommand } from './commands/check.ts';
 import { DiscoverCommand } from './commands/discover.ts';
+import { DocsCommand } from './commands/docs.ts';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
 import { MakeDockerCommand } from './commands/make-docker.ts';
 import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
@@ -39,6 +40,7 @@ export const BUILT_IN: readonly CommandClass[] = [
   PackageBuildCommand,
   KeyGenerateCommand,
   AgentsSyncCommand,
+  DocsCommand,
   TinkerCommand,
   MakeModuleCommand,
   MakeControllerCommand,
