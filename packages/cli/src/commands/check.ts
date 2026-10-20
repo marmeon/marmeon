@@ -1,8 +1,9 @@
 import { Application, Redactor } from '@marmeon/core';
 import type { CommandInput } from '../command.ts';
-import { escapeControl, exitCodeOf, reportJson, unrunReport, type CheckProblem, type CheckReport } from '../check/report.ts';
+import { escapeControl, exitCodeOf, reportJson, unrunReport, type CheckProblem, type CheckReport, type SilencedProblem } from '../check/report.ts';
 import { checkRegistryOf, describeFailure, discoveredChecks, runAppChecks } from '../check/app.ts';
 import { BUILT_IN_CHECKS } from '../check/registry.ts';
+import { rawSqlCheck } from '../check/source-rules.ts';
 import { agentsCheck, internalImportsCheck, lintCheck, TOOL_CHECKS, typesCheck, type CheckRun } from '../check/tools.ts';
 import { loadApplication } from '../load.ts';
 
@@ -10,13 +11,13 @@ import { loadApplication } from '../load.ts';
 const EXIT_USAGE = 2;
 
 /**
- * `marmeon check`: the type check, the lint, the scan for imports of framework internals, the block of `AGENTS.md` and the checks that need the app —
+ * `marmeon check`: the type check, the lint, the scans of the source for imports of framework internals and for raw SQL built from values, the block of `AGENTS.md` and the checks that need the app —
  * its route and database types, its modules, the boot and readiness, and the checks packages add — with named results, exit codes
  * and `--json`. Loads the app itself (twice: registered, then booted) only when one of those is selected. See docs/check.md#the-checks.
  */
 export class CheckCommand {
   static command = 'check';
-  static description = 'Check the app: types, lint, imports of framework internals, the block of AGENTS.md, route and database types, boot and readiness';
+  static description = 'Check the app: types, lint, imports of framework internals, raw SQL, the block of AGENTS.md, route and database types, boot and readiness';
   static usage = '[--only=<names>] [--skip=<names>] [--json]';
   static options = { only: { type: 'string' }, skip: { type: 'string' }, json: { type: 'boolean' } } as const;
   static boots = false;
@@ -79,6 +80,7 @@ export class CheckCommand {
       types: () => typesCheck(root),
       lint: () => lintCheck(root),
       'internal-imports': () => internalImportsCheck(root),
+      'raw-sql': () => rawSqlCheck(root),
       agents: () => agentsCheck(root),
     };
     const toolRuns = Promise.all(selected.filter((name) => tools.includes(name)).map(async (name) => runners[name]!()));
@@ -106,12 +108,15 @@ export class CheckCommand {
       const errors = report.problems.filter((problem) => problem.severity === 'error').length;
       const warnings = report.problems.length - errors;
       const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
-      if (report.status === 'passed') output.success(`${report.name}`);
+      const silenced = report.silenced ?? [];
+      const tally = silenced.length > 0 ? ` (${silenced.length} silenced)` : '';
+      if (report.status === 'passed') output.success(`${report.name}${tally}`);
       else if (report.status === 'skipped') output.line(`- ${report.name} skipped: ${indented(report.reason ?? '', '  ')}`);
       else if (report.status === 'error') output.error(`${report.name} — could not run: ${indented(report.reason ?? '', '  ')}`);
-      else if (report.status === 'warning') output.warn(`${report.name} — ${count(warnings, 'warning')}`);
-      else output.error(`${report.name} — ${[errors > 0 ? count(errors, 'error') : '', warnings > 0 ? count(warnings, 'warning') : ''].filter(Boolean).join(', ')}`);
+      else if (report.status === 'warning') output.warn(`${report.name} — ${count(warnings, 'warning')}${tally}`);
+      else output.error(`${report.name} — ${[errors > 0 ? count(errors, 'error') : '', warnings > 0 ? count(warnings, 'warning') : ''].filter(Boolean).join(', ')}${tally}`);
       for (const problem of report.problems) output.line(describe(problem));
+      for (const problem of silenced) output.line(describeSilenced(problem));
       if (raw && report.status === 'failed') process.stdout.write(escapeControl((raw.endsWith('\n') ? raw : `${raw}\n`).replaceAll('\r\n', '\n'), true));
     }
     output.line();
@@ -134,6 +139,12 @@ function list(value: unknown): string[] | undefined {
 /** `text` with control characters written out; the lines after the first are indented, so a message cannot pass for a line of the report. */
 function indented(text: string, indent: string): string {
   return escapeControl(text, true).split('\n').join(`\n${indent}`);
+}
+
+/** `silenced  file:line  reason`: a finding a comment silenced, kept in sight. */
+function describeSilenced(problem: SilencedProblem): string {
+  const place = problem.file ? `${escapeControl(problem.file)}${problem.line === undefined ? '' : `:${problem.line}`}` : '';
+  return `  silenced  ${place}  ${escapeControl(problem.reason)}`;
 }
 
 /** `file:line:column  message  (code/rule)` and the command that fixes it. */

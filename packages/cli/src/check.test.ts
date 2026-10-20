@@ -43,6 +43,7 @@ describe('marmeon check', { timeout: 90_000 }, () => {
       ['types', 'passed'],
       ['lint', 'passed'],
       ['internal-imports', 'passed'],
+      ['raw-sql', 'passed'],
       ['agents', 'skipped'],
     ]);
   });
@@ -50,7 +51,7 @@ describe('marmeon check', { timeout: 90_000 }, () => {
   it('prints one line per check without --json', () => {
     const { code, stdout } = check(app({}));
     expect(code).toBe(0);
-    expect(stdout).toMatch(/✓ types\n✓ lint\n✓ internal-imports\n- agents skipped: no AGENTS.md\n/);
+    expect(stdout).toMatch(/✓ types\n✓ lint\n✓ internal-imports\n✓ raw-sql\n- agents skipped: no AGENTS.md\n/);
     expect(stdout).toContain('Passed (exit 0).');
   });
 
@@ -149,7 +150,7 @@ describe('marmeon check', { timeout: 90_000 }, () => {
   it('runs only the checks --only names, and not the ones --skip names', () => {
     const root = app({});
     expect(JSON.parse(check(root, ['--only=types', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types']);
-    expect(JSON.parse(check(root, ['--skip=types,lint', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['internal-imports', 'agents']);
+    expect(JSON.parse(check(root, ['--skip=types,lint', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['internal-imports', 'raw-sql', 'agents']);
   });
 
   it('exits 2 for empty name lists, and fails on the boot, with a warning, for a name nobody knows when the app did not load', () => {
@@ -198,7 +199,7 @@ describe('marmeon check', { timeout: 90_000 }, () => {
     expect({ ...document, checks: document.checks.slice(0, fixture.checks.length) }).toMatchObject(fixture);
     for (const report of document.checks) {
       expect(report.ms).toEqual(expect.any(Number));
-      expect(Object.keys(report)).toEqual(['name', 'status', 'ms', 'reason', 'problems']);
+      expect(Object.keys(report)).toEqual(['name', 'status', 'ms', 'reason', 'problems', 'silenced']);
       for (const problem of report.problems) {
         expect(Object.keys(problem)).toEqual(['severity', 'message', 'file', 'line', 'column', 'code', 'rule', 'fix', 'docs']);
       }
@@ -207,6 +208,66 @@ describe('marmeon check', { timeout: 90_000 }, () => {
 
   it.each(['blank-app', 'web-app'])('finds no fault in apps/%s', (name) => {
     expect(check(join(repo, 'apps', name), ['--only=internal-imports']).code).toBe(0);
+  });
+});
+
+describe('marmeon check raw-sql', { timeout: 90_000 }, () => {
+  const SQL = "import { sql } from '@marmeon/database';\n";
+
+  it('warns about a non-literal argument and still exits 0', () => {
+    const { code, stdout, stderr } = check(app({ 'src/order.ts': `${SQL}export const by = (column: string) => sql.raw(column);\n` }, []), ['--only=raw-sql']);
+    expect(code).toBe(0);
+    expect(stderr).toContain('raw-sql — 1 warning');
+    expect(stdout).toContain('src/order.ts:2:47');
+    expect(stdout).toContain('(marmeon(raw-sql))');
+    expect(stdout).toContain('docs: docs/check.md#raw-sql');
+    expect(stdout).toContain('Passed (exit 0).');
+  });
+
+  it('passes a literal argument and an interpolation in a sql template', () => {
+    const { code, stdout } = check(app({ 'src/order.ts': `${SQL}export const a = sql.raw('now()');\nexport const b = (x: string) => sql\`select ${'${x}'}\`;\n` }, []), ['--only=raw-sql']);
+    expect(code).toBe(0);
+    expect(stdout).toMatch(/^✓ raw-sql\n/);
+  });
+
+  it('is silenced by a comment with a reason: passed, listed as silenced in the text and in the document', () => {
+    const files = { 'src/order.ts': `${SQL}// marmeon-check-ignore raw-sql: the column comes from a list in this file\nexport const by = (column: string) => sql.raw(column);\n` };
+    const text = check(app(files, []), ['--only=raw-sql']);
+    expect(text.code).toBe(0);
+    expect(text.stdout).toContain('✓ raw-sql (1 silenced)\n  silenced  src/order.ts:3  the column comes from a list in this file\n');
+    const json = check(app(files, []), ['--only=raw-sql', '--json']);
+    expect(json.code).toBe(0);
+    const document = JSON.parse(json.stdout);
+    expect(document).toMatchObject(JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-check/v1-silenced.json', import.meta.url), 'utf8')));
+    expect(document.checks[0].problems).toEqual([]);
+    for (const item of document.checks[0].silenced) {
+      expect(Object.keys(item)).toEqual(['severity', 'message', 'file', 'line', 'column', 'code', 'rule', 'fix', 'docs', 'reason']);
+    }
+  });
+
+  it('keeps the finding of a comment without a reason, and warns about the comment', () => {
+    const { code, stdout } = check(app({ 'src/order.ts': `${SQL}// marmeon-check-ignore raw-sql\nexport const by = (column: string) => sql.raw(column);\n` }, []), ['--only=raw-sql', '--json']);
+    expect(code).toBe(0);
+    const report = JSON.parse(stdout).checks[0];
+    expect(report).toMatchObject({ status: 'warning', silenced: [] });
+    expect(report.problems.map((problem: { rule: string }) => problem.rule)).toEqual(['marmeon(raw-sql)', 'marmeon(check-ignore)']);
+  });
+
+  it('never silences internal-imports: the import stays an error, exit 1', () => {
+    const { code, stdout } = check(app({ 'src/b.ts': "// marmeon-check-ignore internal-imports: needed here\nimport { x } from '@marmeon/core/internal';\nexport { x };\n" }, []), ['--only=internal-imports,raw-sql', '--json']);
+    expect(code).toBe(1);
+    const reports = JSON.parse(stdout).checks;
+    expect(reports.map((report: { name: string; status: string }) => [report.name, report.status])).toEqual([
+      ['internal-imports', 'failed'],
+      ['raw-sql', 'passed'],
+    ]);
+    expect(reports[0].silenced).toEqual([]);
+  });
+
+  it.each(['blank-app', 'web-app'])('finds nothing in apps/%s', (name) => {
+    const { code, stdout } = check(join(repo, 'apps', name), ['--only=raw-sql', '--json']);
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout).checks[0]).toMatchObject({ name: 'raw-sql', status: 'passed', problems: [] });
   });
 });
 
@@ -316,9 +377,9 @@ describe('marmeon check: the block of AGENTS.md', { timeout: 90_000 }, () => {
     expect(report.problems[0].message).toBe('AGENTS.md is not a file. It was not read.');
   });
 
-  it('is listed after internal-imports, and --skip=agents leaves it out', () => {
+  it('is listed after raw-sql, and --skip=agents leaves it out', () => {
     const root = app({ 'AGENTS.md': '# Shop\n' });
-    expect(JSON.parse(check(root, ['--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'agents']);
-    expect(JSON.parse(check(root, ['--skip=agents', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports']);
+    expect(JSON.parse(check(root, ['--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'raw-sql', 'agents']);
+    expect(JSON.parse(check(root, ['--skip=agents', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'raw-sql']);
   });
 });

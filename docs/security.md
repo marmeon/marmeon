@@ -286,6 +286,8 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
   with them. The `auth.*` limiters sit on the starter kit's routes; put the matching `throttle('auth.…')` on your own route
   ([what the package decides](authentication.md#what-the-package-decides)). The registration is the app's: its answer for a taken address,
   its mail limits and its pruning of unconfirmed accounts are the starter kit's code, or yours.
+- No `sql.raw()` or `sql.lit()` with a value from a request: `marmeon check` reports each one that is not a literal
+  ([raw SQL](check.md#raw-sql)).
 - `verified()` after `authenticate()` on every route of your own that signed-in users reach.
 - Every route of your own has a decision that you chose: a policy for a record, `everyone` only when anyone the middleware lets
   through may call it. `marmeon route:list` shows the `ACCESS` of each route.

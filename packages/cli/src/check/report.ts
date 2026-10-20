@@ -19,6 +19,9 @@ export interface CheckProblem {
   readonly docs?: string;
 }
 
+/** A finding that a `marmeon-check-ignore` comment silenced: it stays in the report, with the reason the comment gives. See docs/check.md#silencing-a-finding. */
+export type SilencedProblem = CheckProblem & { readonly reason: string };
+
 /** `passed`, `warning` (findings of the level warning only) and `failed` follow from the findings; `skipped` and `error` (the check could not run) are set by the run, with a `reason`. */
 export type CheckStatus = 'passed' | 'warning' | 'failed' | 'skipped' | 'error';
 
@@ -30,6 +33,8 @@ export interface CheckReport {
   readonly ms: number;
   readonly reason?: string;
   readonly problems: readonly CheckProblem[];
+  /** The findings a comment silenced; they do not count towards `status`. */
+  readonly silenced?: readonly SilencedProblem[];
 }
 
 /** The report of a check that ran: its status is the worst of `problems`. */
@@ -75,7 +80,19 @@ export function problemJson(problem: CheckProblem) {
   };
 }
 
-/** The JSON form of a report: every key present, `reason` is `null` when the check ran. */
+/** The JSON form of a silenced finding: a problem with its `reason`. */
+export function silencedJson(problem: SilencedProblem) {
+  return { ...problemJson(problem), reason: problem.reason };
+}
+
+/** The JSON form of a report: every key present, `reason` is `null` when the check ran, `silenced` is empty when no comment silenced a finding. */
 export function reportJson(report: CheckReport) {
-  return { name: report.name, status: report.status, ms: report.ms, reason: report.reason ?? null, problems: report.problems.map(problemJson) };
+  return {
+    name: report.name,
+    status: report.status,
+    ms: report.ms,
+    reason: report.reason ?? null,
+    problems: report.problems.map(problemJson),
+    silenced: (report.silenced ?? []).map(silencedJson),
+  };
 }
