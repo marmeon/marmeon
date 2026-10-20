@@ -1,8 +1,13 @@
+import { createApplication } from '@marmeon/core';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { MakeSignInsTableCommand, SIGN_INS_MIGRATION } from './make-sign-ins-table.ts';
+
+// The console builds the command through the container, which injects the application.
+const application = await createApplication({ root: import.meta.dirname, modules: [], discover: false }, { phase: 'build' });
+const command = () => application.container.make(MakeSignInsTableCommand);
 
 describe('make:sign-ins-table', () => {
   it('writes the migration into the system module and refuses to write a second one', async () => {
@@ -12,14 +17,14 @@ describe('make:sign-ins-table', () => {
     const output = { success: (line: string) => lines.push(`✓ ${line}`), error: (line: string) => lines.push(`✗ ${line}`), warn: (line: string) => lines.push(`! ${line}`), line: (line = '') => lines.push(line) };
     const run = { root, args: [], options: {}, output, spawn: async () => 0 } as never;
 
-    expect(await new MakeSignInsTableCommand().handle(run)).toBe(0);
+    expect(await command().handle(run)).toBe(0);
     const migration = readdirSync(join(root, 'modules/system/migrations')).find((file) => file.endsWith('_create_sign_ins_table.ts'))!;
     expect(migration).toMatch(/^\d{4}_\d{2}_\d{2}_\d{6}_create_sign_ins_table\.ts$/);
     expect(readFileSync(join(root, 'modules/system/migrations', migration), 'utf8')).toBe(readFileSync(SIGN_INS_MIGRATION, 'utf8'));
     expect(lines).toContain(`✓ Created modules/system/migrations/${migration}`);
 
     lines.length = 0;
-    expect(await new MakeSignInsTableCommand().handle(run)).toBe(0);
+    expect(await command().handle(run)).toBe(0);
     expect(lines).toEqual([`modules/system/migrations/${migration} is there — skipped`, '✓ Nothing to publish — every migration of @marmeon/auth is in your app']);
     expect(readdirSync(join(root, 'modules/system/migrations'))).toEqual([migration]);
   });
@@ -31,12 +36,12 @@ describe('make:sign-ins-table', () => {
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(`✓ ${line}`), error: (line: string) => lines.push(`✗ ${line}`), warn: (line: string) => lines.push(`! ${line}`), line: (line = '') => lines.push(line) };
     const run = (options: Record<string, string>) => ({ root, args: [], options, output, spawn: async () => 0 }) as never;
-    expect(await new MakeSignInsTableCommand().handle(run({}))).toBe(0);
+    expect(await command().handle(run({}))).toBe(0);
     expect(readdirSync(join(root, 'modules'))).toEqual(['auth']);
-    expect(await new MakeSignInsTableCommand().handle(run({ module: '../x' }))).toBe(1);
+    expect(await command().handle(run({ module: '../x' }))).toBe(1);
     expect(readdirSync(join(root, 'modules'))).toEqual(['auth']);
     const other = tempDir('marmeon-sign-ins-table');
-    expect(await new MakeSignInsTableCommand().handle({ root: other, args: [], options: { module: 'billing' }, output } as never)).toBe(0);
+    expect(await command().handle({ root: other, args: [], options: { module: 'billing' }, output } as never)).toBe(0);
     expect(readdirSync(join(other, 'modules/billing/migrations'))).toHaveLength(1);
   });
 

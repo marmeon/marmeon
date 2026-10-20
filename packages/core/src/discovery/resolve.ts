@@ -18,7 +18,7 @@ export interface PackageJson {
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
-  marmeon?: { providers?: string[]; migrations?: unknown };
+  marmeon?: { providers?: string[] };
 }
 
 /**

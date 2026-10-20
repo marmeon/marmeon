@@ -39,7 +39,6 @@ builds that package: an audit log with its configuration, a middleware, a comman
 | --- | --- |
 | `providers` | The names of service provider classes that the package's entry exports. |
 | `browser` | Globs of the package's files that run only in the browser, relative to the package, such as `["src/client/**"]`. |
-| `migrations` | The migrations that create the package's tables, and the module they go to: `{ "format": 2, "module": "permissions", "from": "stubs/migrations" }`. Details below. |
 
 The app finds the field when it walks its dependencies, the dev dependencies included, and the dependencies of those. A package's
 providers register after the providers of the packages it depends on, so list the framework packages you build on as dependencies.
@@ -49,48 +48,8 @@ A name in `providers` that the entry does not export stops the app with
 The app writes what it found to `.marmeon/manifest.json` and writes it again by itself when `package.json` or the lockfile
 change. The [modules](modules.md#discovery) page explains discovery from the app's side, and how an app turns it off.
 
-### Declaring the migrations a package ships
-
-`migrations` names the directory of the package that holds the stubs that **create** its tables:
-`{ "format": 2, "module": "permissions", "from": "stubs/migrations" }`. The field only declares the directory; it copies nothing. An app
-copies the files with `marmeon publish <package>` ([publishing the migrations of a
-package](migrations.md#publishing-the-migrations-of-a-package)), which accepts only a direct dependency of the app and never runs code
-of the package.
-
-Each file in the directory is named like a migration of an app, `<timestamp>_<name>.ts`, such as
-`2026_01_01_000000_create_permissions_table.ts`. The migrations are read in the order of their file names. The timestamp only orders
-the files within the package: `publish` gives a copy a new one in the app. The name without the timestamp (`create_permissions_table`)
-is what identifies a migration, so it is unique in the directory. The framework's packages start with
-`0001_01_01_000000_<name>.ts`; a file added later carries the date it was written. A file that has shipped is never edited or deleted:
-a change of a table is a new file behind the others. Anything in the directory that does not end in `.ts`, such as a `README.md`, and
-every sub-directory is passed over.
-
-`module` is required. It is a suggestion: the module the tables go to when the files are copied into the app, which the app can
-change. Which module owns a table follows from the module its migration file is in, not from the package. The framework's own
-packages name `system`.
-
-A package's `package.json` is not trusted, so the field is read strictly, and a wrong one fails with
-[D21](errors.md#server-error-codes):
-
-- `format` is `2`. `1` named every file (`"files": [...]`) and is no longer read; a higher number was written for a newer Marmeon.
-- Only `format`, `module` and `from` are allowed.
-- `module` is a kebab-case name such as `permissions`, so never a path; it has at most 64 characters and is no Windows device name (`nul`, `com1`, …).
-- `from` is a relative path that uses `/`: no leading `/`, no drive letter, no `\`, no `.`, `..` or empty segment. Its real path, after following symlinks, lies inside the package and is a directory.
-- Every entry is checked by its own real path: a file that is a symlink leading out of the package, or is no regular file, is refused (so is a symlink to a directory whose name ends in `.ts`: it is no file, not passed over). A file whose contents are not valid UTF-8 or have no `export default` is refused too: it cannot be a migration. A hard link to a file outside the package is not detected.
-- A `.ts` file is named `<timestamp>_<name>.ts` (so `create_things.ts` and `things.d.ts` are refused), at most 1 MiB, at most 100 in the directory, and the names without timestamp differ. The directory holds at least one.
-
-A service provider can declare the directory instead:
-`static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'permissions' }`, with `from` a `file:` URL
-that lies in your package. From the next release on, `publish` reads only that.
-The type is `ProviderMigrations` from `@marmeon/database`. A package that has `@marmeon/database` only as an optional peer writes
-`satisfies ProviderMigrations` with an `import type`, so the type is checked while the package's `.d.ts` does not mention the
-database.
-
-The provider must be exported from the package's main entry (`.`). `publish` imports the main entries of the packages whose directory
-a declaration names, which the app loads at boot anyway; a provider the entry does not export is not counted for the package.
-
-List the directory in `files` of your `package.json`, so the stubs ship in the tarball; `pnpm pack:check` of this repository does
-that for the framework's packages.
+A package's migrations are not part of this field: the package declares them on its service provider
+([declaring the migrations a package ships](#declaring-the-migrations-a-package-ships)).
 
 ## The service provider
 
@@ -274,7 +233,7 @@ check but a [health check](health.md#writing-a-health-check): `marmeon check` ru
 A package that keeps tables in the app's database does not write them into the app itself. It ships the migrations as stubs, and
 the app copies them. The contract has six parts:
 
-1. **The directory.** The files lie in the directory `from` names and are called `<timestamp>_<name>.ts`, such as
+1. **The directory.** The files lie in the directory `static migrations` names and are called `<timestamp>_<name>.ts`, such as
    `2026_01_01_000000_create_audit_table.ts`. Name a file after its table, as an app does. They run in the order of their names,
    and a name without its timestamp is unique in the directory.
 2. **Append-only.** A file that has shipped is never edited, renamed or deleted, because an app has copied it and its database has
@@ -282,7 +241,7 @@ the app copies them. The contract has six parts:
 3. **The plan.** `up(schema)` is synchronous and only describes the change; the app computes what it did without running it. Data
    changes go through `schema.data()` and nowhere else. A column that holds a secret, such as a token's hash, is marked
    `.secret()`. See [migration structure](migrations.md#migration-structure).
-4. **The list and `publish`.** `"marmeon": { "migrations": … }` in `package.json` names the directory of
+4. **The declaration and `publish`.** `static migrations` of your service provider names the directory of
    the stubs ([declaring the migrations a package ships](#declaring-the-migrations-a-package-ships)). `marmeon publish <package>`
    copies the files the app lacks ([publishing the migrations of a package](migrations.md#publishing-the-migrations-of-a-package)),
    also after an update, and a command of your own can point the app to `marmeon publish <package>`.
@@ -300,6 +259,61 @@ the app copies them. The contract has six parts:
 Once a stub is on `main` it never changes and is never deleted: an app matches migrations by name, so an edit would reach new
 apps and never the old ones. A change to a table is a new file that sorts after every file in its directory and has a name its
 directory does not use yet. The repository's "api label" check refuses a pull request that does otherwise, whatever its labels.
+
+### Declaring the migrations a package ships
+
+The service provider of the package names the directory that holds the stubs that **create** its tables, and the module they go to:
+
+```ts
+import type { ServiceProvider } from '@marmeon/core';
+
+export class AuditServiceProvider implements ServiceProvider {
+  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'audit' };
+  // …
+}
+```
+
+`from` is a `file:` URL, built from `import.meta.url` so it names the same directory in `src/` and in the build: the path leads from
+the file that holds the provider, so a provider in `src/provider.ts` writes `../stubs/migrations` and one in `src/audit/provider.ts`
+writes `../../stubs/migrations`. The static only declares the directory; it copies nothing. An app copies the files with
+`marmeon publish <package>` ([publishing the migrations of a package](migrations.md#publishing-the-migrations-of-a-package)), which
+accepts only a direct dependency of the app. It reads `static migrations` of the providers the app boots, and imports the main
+entry of each direct dependency a declaration points into (usually one the app has booted already).
+
+The type is `ProviderMigrations` from `@marmeon/database`. A package that has `@marmeon/database` only as an optional peer writes
+`satisfies ProviderMigrations` with an `import type`, or no annotation, so the type is checked while the package's `.d.ts` does
+not mention the database.
+
+Each file in the directory is named like a migration of an app, `<timestamp>_<name>.ts`, such as
+`2026_01_01_000000_create_audit_table.ts`. The migrations are read in the order of their file names. The timestamp only orders
+the files within the package: `publish` gives a copy a new one in the app. The name without the timestamp (`create_audit_table`)
+is what identifies a migration, so it is unique in the directory. The framework's packages start with
+`0001_01_01_000000_<name>.ts`; a file added later carries the date it was written. A file that has shipped is never edited or deleted:
+a change of a table is a new file behind the others. Anything in the directory that does not end in `.ts`, such as a `README.md`, and
+every sub-directory is passed over.
+
+`module` is required. It is a suggestion: the module the tables go to when the files are copied into the app, which the app can
+change. Which module owns a table follows from the module its migration file is in, not from the package. The framework's own
+packages name `system`.
+
+The directory must lie in your package: in the directory the app installed, not in a `node_modules` inside it, and not through a
+symlink that leads out. A provider re-exported from another package declares that package's migrations, which the app publishes from
+that package. The provider must be exported from the main entry (`.`) of the package the directory lies in: a provider that entry
+does not export is not counted for the package, and `publish` says so with a warning. A declaration that lies in no package the app
+depends on, such as one in the app's own provider, is passed over. To see what `publish` makes of yours, run
+`marmeon publish --check <package>` in an app that depends on it.
+
+A package's code is not trusted, so the static is read strictly, once, and a wrong one fails with
+[D21](errors.md#server-error-codes):
+
+- `static migrations` is an object with only `from` and `module`, and two providers do not declare a directory for one package.
+- `from` is a `file:` URL without host, query or fragment. Its real path, after following symlinks, lies inside the package, is not the package itself and is a directory.
+- `module` is a kebab-case name such as `permissions`, so never a path; it has at most 64 characters and is no Windows device name (`nul`, `com1`, …).
+- Every entry is checked by its own real path: a file that is a symlink leading out of the package, or is no regular file, is refused (so is a symlink to a directory whose name ends in `.ts`: it is no file, not passed over). A file whose contents are not valid UTF-8 or have no `export default` is refused too: it cannot be a migration. A hard link to a file outside the package is not detected.
+- A `.ts` file is named `<timestamp>_<name>.ts` (so `create_things.ts` and `things.d.ts` are refused), at most 1 MiB, at most 100 in the directory, and the names without timestamp differ. The directory holds at least one.
+
+List the directory in `files` of your `package.json`, so the stubs ship in the tarball; `pnpm pack:check` of this repository does
+that for the framework's packages.
 
 ## Middleware
 

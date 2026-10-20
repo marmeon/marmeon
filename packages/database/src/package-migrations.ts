@@ -34,19 +34,6 @@ export interface PackageMigrationsError {
   readonly message: string;
 }
 
-/** The package as the reader sees it: its name, its real directory and the parsed `package.json`. */
-export interface PackageToRead {
-  name: string;
-  dir: string;
-  json: { marmeon?: { migrations?: unknown } };
-}
-
-type Outcome = Result<PackageMigrations | undefined, PackageMigrationsError>;
-
-/** The format this release writes. */
-export const PACKAGE_MIGRATIONS_FORMAT = 2;
-
-const KEYS = new Set(['format', 'module', 'from']);
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 const DEVICE_NAME = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 const FILE_NAME = /^(\d{4}_\d{2}_\d{2}_\d{6})_([a-z][a-z0-9_]*)\.ts$/;
@@ -54,87 +41,13 @@ const MAX_MODULE = 64;
 const MAX_FILES = 100;
 const MAX_BYTES = 1 << 20;
 
-/** How a message names the declaration: the field of a `package.json`, or the static of a service provider. */
-type Declared = 'lists its migrations in package.json wrongly' | 'declares the migrations it ships wrongly';
-const FIELD: Declared = 'lists its migrations in package.json wrongly';
-const STATIC: Declared = 'declares the migrations it ships wrongly';
-
-function invalid(pkg: { name: string }, why: string, declared: Declared = FIELD): Result<never, PackageMigrationsError> {
-  return err({ kind: 'invalid-package-migrations', message: withCode('D21', `${pkg.name} ${declared}: ${why}`) });
+function invalid(pkg: { name: string }, why: string): Result<never, PackageMigrationsError> {
+  return err({ kind: 'invalid-package-migrations', message: withCode('D21', `${pkg.name} declares the migrations it ships wrongly: ${why}`) });
 }
 
-/** A string from a foreign package for a message: quoted, cut at 200 characters, control, format and separator characters escaped. */
-function show(value: string): string {
+/** A string from a foreign package for a message: quoted, cut at 200 characters, control, format and separator characters escaped. @internal */
+export function show(value: string): string {
   return printable(JSON.stringify(value.slice(0, 200)));
-}
-
-/**
- * The formats this release reads, each with the function that reads the field of it. Registering a reader is how a later
- * release keeps reading the format before it.
- * @internal
- */
-export const PACKAGE_MIGRATIONS_READERS = new Map<number, (pkg: PackageToRead, field: Record<string, unknown>) => Outcome>([[2, readV2]]);
-
-/**
- * Reads the migrations a package declares under `"marmeon": { "migrations": { "format": 2, "module": "<kebab>", "from": "<directory>" } }`.
- * The field comes from a package the app did not write, so it is read strictly: unknown keys, a newer format, a module name that
- * is no plain kebab-case identifier, and a directory that leaves the package (absolute, `..`, `\`, a symlink to outside, for the directory and for each file) are refused.
- * Without the field the result is `undefined`. Nothing is copied here.
- * See `docs/package-development.md#declaring-the-migrations-a-package-ships`.
- */
-export function readPackageMigrations(pkg: PackageToRead): Outcome {
-  const declared = pkg.json.marmeon?.migrations;
-  if (declared === undefined) return ok(undefined);
-  if (typeof declared !== 'object' || declared === null || Array.isArray(declared)) return invalid(pkg, '"migrations" must be an object.');
-  const field = declared as Record<string, unknown>;
-
-  const { format } = field;
-  if (typeof format !== 'number' || !Number.isInteger(format) || format < 1) return invalid(pkg, `it needs format: ${PACKAGE_MIGRATIONS_FORMAT}.`);
-  const reader = PACKAGE_MIGRATIONS_READERS.get(format);
-  if (reader) return reader(pkg, field);
-  if (format > Math.max(...PACKAGE_MIGRATIONS_READERS.keys())) return invalid(pkg, `format ${format} was written for a newer Marmeon — update marmeon.`);
-  return invalid(pkg, `format ${format} is no longer read: name the directory — { "format": 2, "module": "…", "from": "stubs/migrations" }.`);
-}
-
-function readV2(pkg: PackageToRead, field: Record<string, unknown>): Outcome {
-  for (const key of Object.keys(field)) if (!KEYS.has(key)) return invalid(pkg, `unknown key ${show(key)} (known: format, module, from).`);
-
-  const module = field.module;
-  if (typeof module !== 'string' || module.length > MAX_MODULE || !KEBAB.test(module) || DEVICE_NAME.test(module)) {
-    return invalid(pkg, 'it needs "module", a kebab-case name of at most 64 characters such as "permissions" (the module the tables go to).');
-  }
-  const from = field.from;
-  if (typeof from !== 'string') return invalid(pkg, 'it needs "from", the directory of the package that holds the migrations, such as "stubs/migrations".');
-
-  if (from === '' || from.startsWith('/') || /^[A-Za-z]:/.test(from) || from.includes('\\') || from.includes('\0')) {
-    return invalid(pkg, `${show(from)} must be a relative path with forward slashes.`);
-  }
-  if (from.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) {
-    return invalid(pkg, `${show(from)} must not contain "..", "." or empty segments.`);
-  }
-
-  let root: string;
-  let directory: string;
-  try {
-    root = realpathSync(pkg.dir);
-  } catch {
-    return invalid(pkg, 'the package directory cannot be read.');
-  }
-  try {
-    directory = realpathSync(join(root, from));
-  } catch {
-    return invalid(pkg, `${show(from)} does not exist in the package.`);
-  }
-  if (!isInside(root, directory)) return invalid(pkg, `${show(from)} leads out of the package.`);
-  try {
-    if (!statSync(directory).isDirectory()) return invalid(pkg, `${show(from)} is no directory.`);
-  } catch {
-    return invalid(pkg, `${show(from)} cannot be read.`);
-  }
-
-  const files = readMigrationDirectory(pkg, directory, from);
-  if (!files.ok) return files;
-  return ok({ module, from, files: files.value });
 }
 
 /** Whether `real` lies inside `root` (both real paths) and is not `root` itself. */
@@ -149,13 +62,8 @@ function isInside(root: string, real: string): boolean {
  * a symlink that leads out of the package, a sub-directory or a file that is no regular file never gets read. Files that do not
  * end in `.ts` and sub-directories are passed over; a `.ts` file must be named `<timestamp>_<name>.ts`.
  */
-export function readMigrationDirectory(
-  pkg: { name: string; dir: string },
-  directory: string,
-  from: string,
-  declared: Declared = FIELD,
-): Result<readonly PackageMigrationFile[], PackageMigrationsError> {
-  const fail = (why: string) => invalid(pkg, why, declared);
+export function readMigrationDirectory(pkg: { name: string; dir: string }, directory: string, from: string): Result<readonly PackageMigrationFile[], PackageMigrationsError> {
+  const fail = (why: string) => invalid(pkg, why);
   let root: string;
   try {
     root = realpathSync(pkg.dir);
@@ -226,12 +134,12 @@ export type MigrationDeclaration =
       readonly module: unknown;
       readonly classes: ServiceProviderClass[];
     }
-  | { readonly provider: string; readonly ok: false; readonly message: string };
+  | { readonly provider: string; readonly ok: false; readonly message: string; readonly classes: ServiceProviderClass[] };
 
 type Parsed = Extract<MigrationDeclaration, { ok: true }>;
 
-function wrongly(provider: string, why: string): MigrationDeclaration {
-  return { provider, ok: false, message: withCode('D21', `${provider} declares the migrations of its package wrongly: ${why}`) };
+function wrongly(Provider: ServiceProviderClass, provider: string, why: string): MigrationDeclaration {
+  return { provider, ok: false, message: withCode('D21', `${provider} declares the migrations of its package wrongly: ${why}`), classes: [Provider] };
 }
 
 /**
@@ -255,7 +163,7 @@ export function migrationDeclarations(providers: readonly ServiceProviderClass[]
       const value: unknown = (Provider as { migrations?: unknown }).migrations;
       if (value === undefined) continue;
       if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-        declarations.push(wrongly(provider, 'static migrations must be an object: { from: new URL(…), module: "…" }.'));
+        declarations.push(wrongly(Provider, provider, 'static migrations must be an object: { from: new URL(…), module: "…" }.'));
         continue;
       }
       const same = byValue.get(value);
@@ -266,12 +174,12 @@ export function migrationDeclarations(providers: readonly ServiceProviderClass[]
       const keys = Object.keys(value);
       const { from, module } = value as { from?: unknown; module?: unknown };
       if (!(from instanceof URL)) {
-        declarations.push(wrongly(provider, "from must be a file: URL, such as new URL('../stubs/migrations', import.meta.url)."));
+        declarations.push(wrongly(Provider, provider, "from must be a file: URL, such as new URL('../stubs/migrations', import.meta.url)."));
         continue;
       }
       const url = new URL(String(from.href));
       if (url.protocol !== 'file:' || url.host !== '' || url.search !== '' || url.hash !== '') {
-        declarations.push(wrongly(provider, 'from must be a file: URL without a host, a query or a fragment.'));
+        declarations.push(wrongly(Provider, provider, 'from must be a file: URL without a host, a query or a fragment.'));
         continue;
       }
       const path = resolve(fileURLToPath(url));
@@ -288,7 +196,7 @@ export function migrationDeclarations(providers: readonly ServiceProviderClass[]
       if (key !== undefined) byPath.set(key, declaration);
       declarations.push(declaration);
     } catch {
-      declarations.push(wrongly(provider, 'static migrations cannot be read.'));
+      declarations.push(wrongly(Provider, provider, 'static migrations cannot be read.'));
     }
   }
   return declarations;
@@ -310,15 +218,22 @@ function belongsTo(root: string, path: string): boolean {
 export interface ProviderPackage {
   readonly name: string;
   readonly dir: string;
-  readonly json: { readonly main?: string; readonly exports?: unknown };
+  readonly json: { readonly main?: string; readonly exports?: unknown; readonly marmeon?: { providers?: string[] } };
 }
 
 /**
  * The classes a package exports at its main entry, or why they are unknown. The entry is imported only when it lies in the package (no
  * `..` or `node_modules` segment, and its real path inside the real directory): a package cannot make the reader run another one's code.
+ * The callers ask only for a package a declaration points into, or one that lists providers, whose entry the app's boot loads anyway.
  */
 async function exportedClasses(pkg: ProviderPackage, root: string): Promise<{ classes: Set<unknown> } | { reason: string }> {
-  const entry = resolveExports(pkg, '.', runtimeConditions());
+  let entry: string | undefined;
+  try {
+    entry = resolveExports(pkg, '.', runtimeConditions());
+  } catch {
+    // a foreign package.json can nest `exports` deep enough to overflow the resolver, or hold a `main` that is no string
+    return { reason: 'its package.json names no usable entry' };
+  }
   if (entry === undefined) return { reason: 'the package has no entry' };
   let inside = false;
   try {
@@ -334,6 +249,12 @@ async function exportedClasses(pkg: ProviderPackage, root: string): Promise<{ cl
   } catch {
     return { reason: 'its entry could not be imported' };
   }
+}
+
+/** Whether the app's boot loads the main entry of the package for its providers: `marmeon.providers` lists some. */
+function discoverable(pkg: ProviderPackage): boolean {
+  const providers = pkg.json.marmeon?.providers;
+  return Array.isArray(providers) && providers.length > 0;
 }
 
 /** `path` for a message: relative to the package when it lies in it, so a long install path does not cut the useful part. */
@@ -353,27 +274,28 @@ function shown(pkg: { dir: string }, root: string, path: string): string {
  *
  * Per package: no declaration is `undefined`; two are D21; a directory that leaves the package and every entry that
  * {@link readMigrationDirectory} refuses are D21. `unclaimed` are warnings (they never change a result) for declarations whose directory
- * lies in a package that does not claim them, with the reason. `passedOver` are the providers of valid declarations that lie in none of
+ * lies in a package that does not claim them, with the reason; `unattributed` are the messages of declarations that cannot be read and that no package exports. `passedOver` are the providers of valid declarations that lie in none of
  * `packages` (the app's own providers, transitive packages): nothing is said about them.
  * @internal
  */
 export async function assignMigrations(
   packages: readonly ProviderPackage[],
   declarations: readonly MigrationDeclaration[],
-): Promise<{ results: Map<ProviderPackage, Result<PackageMigrations | undefined, PackageMigrationsError>>; unclaimed: string[]; passedOver: string[] }> {
+): Promise<{ results: Map<ProviderPackage, Result<PackageMigrations | undefined, PackageMigrationsError>>; unclaimed: string[]; unattributed: string[]; passedOver: string[] }> {
   const results = new Map<ProviderPackage, Result<PackageMigrations | undefined, PackageMigrationsError>>();
   const roots = new Map<ProviderPackage, string>();
   for (const pkg of packages) {
     try {
       roots.set(pkg, realpathSync(pkg.dir));
     } catch {
-      results.set(pkg, invalid(pkg, 'the package directory cannot be read.', STATIC));
+      results.set(pkg, invalid(pkg, 'the package directory cannot be read.'));
     }
   }
 
   const located = new Map<ProviderPackage, Parsed[]>();
   const unclaimed: string[] = [];
   const passedOver: string[] = [];
+  const unattributed: string[] = [];
   for (const declaration of declarations) {
     if (!declaration.ok) continue;
     let real: string | undefined;
@@ -391,18 +313,33 @@ export async function assignMigrations(
     else located.set(best, [...(located.get(best) ?? []), declaration]);
   }
 
+  const unreadable = declarations.filter((declaration) => !declaration.ok);
+  const placed = new Set<MigrationDeclaration>();
   for (const [pkg, root] of roots) {
-    const here = located.get(pkg) ?? [];
-    const exported = here.length > 0 ? await exportedClasses(pkg, root) : undefined;
-    const mine = here.filter((declaration) => {
-      if (exported && 'classes' in exported && declaration.classes.some((Provider) => exported.classes.has(Provider))) return true;
-      const reason = exported && 'reason' in exported ? exported.reason : 'the package does not export that provider at its main entry';
-      unclaimed.push(`${declaration.provider} declares migrations in ${shown(pkg, root, declaration.path)} of ${pkg.name}, which does not claim them: ${reason}.`);
-      return false;
-    });
-    results.set(pkg, readDeclaration(pkg, root, mine));
+    // One package that cannot be read does not stop the others.
+    try {
+      const here = located.get(pkg) ?? [];
+      const exported = here.length > 0 || (unreadable.length > 0 && discoverable(pkg)) ? await exportedClasses(pkg, root) : undefined;
+      const exports = (declaration: MigrationDeclaration) => exported !== undefined && 'classes' in exported && declaration.classes.some((Provider) => exported.classes.has(Provider));
+      const mine = here.filter((declaration) => {
+        if (exports(declaration)) return true;
+        const reason = exported && 'reason' in exported ? exported.reason : 'the package does not export that provider at its main entry';
+        unclaimed.push(`${declaration.provider} declares migrations in ${shown(pkg, root, declaration.path)} of ${pkg.name}, which does not claim them: ${reason}.`);
+        return false;
+      });
+      // A declaration that cannot be read has no directory to place it by: the package that exports the provider owns it.
+      const broken = unreadable.filter((declaration) => exports(declaration));
+      for (const declaration of broken) placed.add(declaration);
+      if (broken.length > 0) results.set(pkg, err({ kind: 'invalid-package-migrations', message: (broken[0] as { message: string }).message }));
+      else results.set(pkg, readDeclaration(pkg, root, mine));
+    } catch {
+      results.set(pkg, invalid(pkg, 'the package cannot be read.'));
+    }
   }
-  return { results, unclaimed, passedOver };
+  for (const declaration of unreadable) {
+    if (!placed.has(declaration)) unattributed.push((declaration as { message: string }).message);
+  }
+  return { results, unclaimed, unattributed, passedOver };
 }
 
 /**
@@ -414,7 +351,7 @@ export async function readProviderMigrations(pkg: ProviderPackage, declarations:
 }
 
 function readDeclaration(pkg: ProviderPackage, root: string, mine: readonly Parsed[]): Result<PackageMigrations | undefined, PackageMigrationsError> {
-  const fail = (why: string) => invalid(pkg, why, STATIC);
+  const fail = (why: string) => invalid(pkg, why);
   if (mine.length === 0) return ok(undefined);
   if (mine.length > 1) {
     return fail(`declared by two service providers: ${mine.map((declaration) => declaration.provider).join(' and ')} — a package declares one directory.`);
@@ -443,7 +380,7 @@ function readDeclaration(pkg: ProviderPackage, root: string, mine: readonly Pars
   }
 
   const from = relative(root, real).split(sep).join('/');
-  const files = readMigrationDirectory(pkg, real, from, STATIC);
+  const files = readMigrationDirectory(pkg, real, from);
   if (!files.ok) return files;
   return ok({ module, from, files: files.value });
 }

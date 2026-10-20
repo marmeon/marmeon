@@ -21,6 +21,10 @@ import { freshTarget, migrate, PGSQL_URL, REDIS_URL } from './__fixtures__/store
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
+// The console builds the command through the container, which injects the application.
+const application = await createApplication({ root: import.meta.dirname, modules: [], discover: false }, { phase: 'build' });
+const command = () => application.container.make(MakeSessionTableCommand);
+
 class CountController extends Controller {
   readonly #session: Session;
   constructor(session: Session) {
@@ -317,13 +321,13 @@ describe('make:session-table', () => {
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(`✓ ${line}`), error: (line: string) => lines.push(`✗ ${line}`), warn: (line: string) => lines.push(`! ${line}`), line: (line = '') => lines.push(line) };
     const run = { root, args: [], options: {}, output, spawn: async () => 0 } as never;
-    expect(await new MakeSessionTableCommand().handle(run)).toBe(0);
+    expect(await command().handle(run)).toBe(0);
     const migration = readdirSync(join(root, 'modules/system/migrations')).find((file) => file.endsWith('_create_sessions_table.ts'))!;
     expect(migration).toMatch(/^\d{4}_\d{2}_\d{2}_\d{6}_create_sessions_table\.ts$/);
     expect(readFileSync(join(root, 'modules/system/migrations', migration), 'utf8')).toContain("schema.create('sessions'");
     expect(lines).toEqual([`✓ Created modules/system/migrations/${migration}`, 'Then: marmeon migrate']);
     lines.length = 0;
-    expect(await new MakeSessionTableCommand().handle(run)).toBe(0);
+    expect(await command().handle(run)).toBe(0);
     expect(lines).toEqual([`modules/system/migrations/${migration} is there — skipped`, '✓ Nothing to publish — every migration of @marmeon/session is in your app']);
   });
 
@@ -332,9 +336,9 @@ describe('make:session-table', () => {
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(`✓ ${line}`), error: (line: string) => lines.push(`✗ ${line}`), warn: (line: string) => lines.push(`! ${line}`), line: (line = '') => lines.push(line) };
     const run = (options: Record<string, string>) => ({ root, args: [], options, output, spawn: async () => 0 }) as never;
-    expect(await new MakeSessionTableCommand().handle(run({ module: '../x' }))).toBe(1);
+    expect(await command().handle(run({ module: '../x' }))).toBe(1);
     expect(existsSync(join(root, 'modules'))).toBe(false);
-    expect(await new MakeSessionTableCommand().handle(run({ module: 'billing' }))).toBe(0);
+    expect(await command().handle(run({ module: 'billing' }))).toBe(0);
     expect(readdirSync(join(root, 'modules/billing/migrations'))).toHaveLength(1);
   });
 

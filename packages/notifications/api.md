@@ -90,6 +90,7 @@ export declare class Inbox {
 }
 // MakeNotificationsTableCommand
 export declare class MakeNotificationsTableCommand {
+    #private;
     static command: string;
     static description: string;
     static usage: string;
@@ -99,6 +100,7 @@ export declare class MakeNotificationsTableCommand {
             readonly short: 'm';
         };
     };
+    constructor(app: Application);
     handle(input: CommandInput): Promise<number>;
 }
 // Notification

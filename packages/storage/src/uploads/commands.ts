@@ -1,5 +1,5 @@
 import type { Resolver } from '@marmeon/core';
-import { Clock } from '@marmeon/core';
+import { Application, Clock } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { UploadsConfig } from './config.ts';
 import { TemporaryUploads } from './service.ts';
@@ -19,9 +19,15 @@ export class MakeUploadsTableCommand {
   static usage = '[--module=system]';
   static options = { module: { type: 'string', short: 'm' } } as const;
 
+  readonly #app: Application;
+
+  constructor(app: Application) {
+    this.#app = app;
+  }
+
   async handle(input: CommandInput): Promise<number> {
-    const { publishOwnMigrations } = await import('@marmeon/database/internal');
-    return publishOwnMigrations(input, new URL('../../', import.meta.url));
+    const [{ publishOwnMigrations }, { StorageServiceProvider }] = await Promise.all([import('@marmeon/database/internal'), import('../index.ts')]);
+    return publishOwnMigrations(input, new URL('../../', import.meta.url), StorageServiceProvider, this.#app.providers);
   }
 }
 

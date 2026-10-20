@@ -68,12 +68,7 @@
   "marmeon": {
     "providers": [
       "NotificationServiceProvider"
-    ],
-    "migrations": {
-      "format": 2,
-      "module": "system",
-      "from": "stubs/migrations"
-    }
+    ]
   },
   "dependencies": {
     "@marmeon/core": "workspace:*",

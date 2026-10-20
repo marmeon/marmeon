@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -178,31 +178,6 @@ describe('migrationDirectoryProblems', () => {
 
   it('names every file it refuses', () => {
     expect(problems('packages/cache/stubs/v2/migrations/a.ts', 'packages/cache/stubs/migrations/b.ts', 'packages/acme/stubs/db/migrations/c.ts')).toHaveLength(2);
-  });
-});
-
-// Until publish stops reading `marmeon.migrations` from package.json, this field is what keeps a package's directory in place; the
-// test goes with the field.
-describe('the directories packages ship migrations from', () => {
-  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-  it('are stubs/migrations, which lies under the files the check holds', () => {
-    for (const name of readdirSync(join(root, 'packages'))) {
-      let manifest: { marmeon?: { migrations?: { from?: unknown } } };
-      try {
-        manifest = JSON.parse(readFileSync(join(root, 'packages', name, 'package.json'), 'utf8'));
-      } catch {
-        continue;
-      }
-      const from = manifest.marmeon?.migrations?.from;
-      if (from === undefined) continue;
-      expect(typeof from, name).toBe('string');
-      const directory = join(root, 'packages', name);
-      const stubs = join(realpathSync(directory), 'stubs/migrations');
-      expect(realpathSync(join(directory, 'stubs/migrations')), name).toBe(stubs);
-      expect(realpathSync(join(directory, String(from))), name).toBe(stubs);
-      expect(isShippedMigration(`packages/${name}/stubs/migrations/2026_01_01_000000_x.ts`), name).toBe(true);
-    }
   });
 });
 
@@ -444,7 +419,7 @@ describe('the script', () => {
       expect(run(['fix']).status).toBe(0);
     });
 
-    it('does not read a package.json: changing or dropping marmeon.migrations is no problem', () => {
+    it('does not read a package.json: whatever a manifest says about migrations is no problem', () => {
       const moved = withMigrations((directory) => writeFileSync(join(directory, 'packages/queue/package.json'), manifest('stubs/elsewhere')));
       const dropped = withMigrations((directory) => writeFileSync(join(directory, 'packages/queue/package.json'), manifest()));
       for (const run of [moved, dropped]) expect(run(['internal']).status).toBe(0);

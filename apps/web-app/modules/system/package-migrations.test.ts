@@ -14,14 +14,33 @@ import { expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import definition from '../../bootstrap/app.ts';
 
+// `publish` reads the migrations from the service providers the app boots.
+const booted = () => createApplication(definition, { phase: 'build' });
+
 // The app shows what `marmeon check` asks of every app: the migrations of the packages it publishes from are in it.
 it('has every migration of the packages it uses', async () => {
   const lines: string[] = [];
   const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
   const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
   const root = fileURLToPath(new URL('../..', import.meta.url));
-  const code = await new PublishCommand().handle({ root, args: [], options: { check: true }, output } as unknown as CommandInput);
+  const code = await new PublishCommand(await booted()).handle({ root, args: [], options: { check: true }, output } as unknown as CommandInput);
   expect(lines).toEqual(['✓ Every package you publish from has its migrations in your app']);
+  expect(code).toBe(0);
+});
+
+// The console builds the command through the container, which hands it the application whose providers it reads.
+it('builds PublishCommand through the container', async () => {
+  expect((await booted()).container.make(PublishCommand)).toBeInstanceOf(PublishCommand);
+});
+
+// Each of the six packages that ship tables is found by its provider and has every migration in the app.
+it.each(['@marmeon/auth', '@marmeon/cache', '@marmeon/notifications', '@marmeon/queue', '@marmeon/session', '@marmeon/storage'])('has every migration of %s', async (name) => {
+  const lines: string[] = [];
+  const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
+  const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
+  const root = fileURLToPath(new URL('../..', import.meta.url));
+  const code = await new PublishCommand(await booted()).handle({ root, args: [name], options: { check: true }, output } as unknown as CommandInput);
+  expect(lines).toEqual([`✓ Every migration of ${name} is in your app`]);
   expect(code).toBe(0);
 });
 
@@ -47,8 +66,8 @@ it.each(MAKE_COMMANDS)('%s: its make command writes the same bytes as publish, t
   };
   const published = app();
   const made = app();
-  expect(await new PublishCommand().handle({ root: published, args: [name], options: {}, output } as unknown as CommandInput)).toBe(0);
-  expect(await new Command().handle({ root: made, args: [], options: {}, output } as unknown as CommandInput)).toBe(0);
+  expect(await new PublishCommand(await booted()).handle({ root: published, args: [name], options: {}, output } as unknown as CommandInput)).toBe(0);
+  expect(await (await booted()).container.make(Command).handle({ root: made, args: [], options: {}, output } as unknown as CommandInput)).toBe(0);
   const files = (root: string) => readdirSync(join(root, 'modules'), { recursive: true, encoding: 'utf8' }).filter((path) => path.endsWith('.ts')).sort();
   const stripped = (path: string) => path.replace(/\/\d{4}_\d{2}_\d{2}_\d{6}_/, '/');
   expect(files(made).map(stripped)).toEqual(files(published).map(stripped));
@@ -57,7 +76,7 @@ it.each(MAKE_COMMANDS)('%s: its make command writes the same bytes as publish, t
     expect(readFileSync(join(made, 'modules', files(made)[index]!), 'utf8')).toBe(readFileSync(join(published, 'modules', path), 'utf8'));
   }
   // A second run writes nothing, and ends well.
-  expect(await new Command().handle({ root: made, args: [], options: {}, output } as unknown as CommandInput)).toBe(0);
+  expect(await (await booted()).container.make(Command).handle({ root: made, args: [], options: {}, output } as unknown as CommandInput)).toBe(0);
   expect(files(made)).toHaveLength(files(published).length);
 });
 
@@ -70,22 +89,22 @@ it.each(MAKE_COMMANDS.map(([name, , Command]) => [name, Command] as const))('has
   const lines: string[] = [];
   const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
   const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
-  const code = await new Command().handle({ root: app, args: [], options: {}, output } as unknown as CommandInput);
+  const code = await (await booted()).container.make(Command).handle({ root: app, args: [], options: {}, output } as unknown as CommandInput);
   expect(lines.filter((line) => !line.endsWith('is there — skipped'))).toEqual([`✓ Nothing to publish — every migration of ${name} is in your app`]);
   expect(code).toBe(0);
 });
 
-// The six packages declare the directory on their provider. `publish` reads the package.json for now, so the two agree. The reader that
-// assigns a declaration to a package is tested in the database package; this app shows what the framework's providers declare.
+// The six packages declare their directory on their provider. The reader that assigns a declaration to a package is tested in the
+// database package; this app shows what the framework's providers declare: always `stubs/migrations`, into `system`.
 it('has every provider that declares migrations be one of the framework\'s, from stubs/migrations into system', async () => {
   const root = fileURLToPath(new URL('../..', import.meta.url));
-  const app = await createApplication(definition, { phase: 'build' });
+  const app = await booted();
   const declared = app.providers.flatMap((Provider) => (Provider.migrations !== undefined ? [{ provider: Provider.name, ...Provider.migrations }] : []));
   expect(declared.map((entry) => entry.provider).sort()).toEqual(
     ['AuthServiceProvider', 'CacheServiceProvider', 'NotificationServiceProvider', 'QueueServiceProvider', 'SessionServiceProvider', 'StorageServiceProvider'],
   );
   const claimed: string[] = [];
-  for (const [name, directory] of MAKE_COMMANDS) {
+  for (const [name] of MAKE_COMMANDS) {
     const packageDirectory = realpathSync(join(root, 'node_modules', name));
     const entry = declared.find((candidate) => fileURLToPath(candidate.from).startsWith(`${packageDirectory}${sep}`));
     expect(entry, name).toBeDefined();
@@ -94,8 +113,6 @@ it('has every provider that declares migrations be one of the framework\'s, from
     expect(entry!.from.protocol).toBe('file:');
     expect(fileURLToPath(entry!.from), name).toBe(join(packageDirectory, 'stubs/migrations'));
     expect(readdirSync(entry!.from).filter((file) => file.endsWith('.ts')).length, name).toBeGreaterThan(0);
-    const manifest = JSON.parse(readFileSync(join(packageDirectory, 'package.json'), 'utf8')) as { marmeon: { migrations: { from: string; module: string } } };
-    expect(manifest.marmeon.migrations, directory).toMatchObject({ from: 'stubs/migrations', module: entry!.module });
   }
   expect(claimed.sort()).toEqual(declared.map((entry) => entry.provider).sort());
 });

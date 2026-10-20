@@ -1,3 +1,4 @@
+import { createApplication } from '@marmeon/core';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveConfig, type Resolver } from '@marmeon/core';
@@ -6,6 +7,10 @@ import { describe, expect, it } from 'vitest';
 import { MakeNotificationsTableCommand, NOTIFICATIONS_MIGRATION } from './commands.ts';
 import { NotificationConfig } from './config.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+
+// The console builds the command through the container, which injects the application.
+const application = await createApplication({ root: import.meta.dirname, modules: [], discover: false }, { phase: 'build' });
+const command = () => application.container.make(MakeNotificationsTableCommand);
 
 function app(): string {
   const root = tempDir('marmeon-notifications-table-');
@@ -38,7 +43,7 @@ describe('make:notifications-table', () => {
   it('writes the migration into a new system module, registers the module, and refuses a second one', async () => {
     const root = app();
     const first = run(root);
-    expect(await new MakeNotificationsTableCommand().handle(first.input)).toBe(0);
+    expect(await command().handle(first.input)).toBe(0);
     const migration = readdirSync(join(root, 'modules/system/migrations')).find((file) => file.endsWith('_create_notifications_table.ts'))!;
     expect(migration).toMatch(/^\d{4}_\d{2}_\d{2}_\d{6}_create_notifications_table\.ts$/);
     // Exactly the file the package's own tests migrate with — what apps get is what is tested.
@@ -54,16 +59,16 @@ describe('make:notifications-table', () => {
     ]);
 
     const again = run(root, { module: 'inbox' });
-    expect(await new MakeNotificationsTableCommand().handle(again.input)).toBe(0);
+    expect(await command().handle(again.input)).toBe(0);
     expect(again.lines).toEqual([`modules/system/migrations/${migration} is there — skipped`, '✓ Nothing to publish — every migration of @marmeon/notifications is in your app']);
     expect(existsSync(join(root, 'modules/inbox'))).toBe(false);
   });
 
   it('takes --module=<name> to a module of its own, and refuses a name that leaves modules/', async () => {
     const root = app();
-    expect(await new MakeNotificationsTableCommand().handle(run(root, { module: '../x' }).input)).toBe(1);
+    expect(await command().handle(run(root, { module: '../x' }).input)).toBe(1);
     expect(existsSync(join(root, 'modules'))).toBe(false);
-    expect(await new MakeNotificationsTableCommand().handle(run(root, { module: 'inbox' }).input)).toBe(0);
+    expect(await command().handle(run(root, { module: 'inbox' }).input)).toBe(0);
     expect(readdirSync(join(root, 'modules/inbox/migrations'))).toHaveLength(1);
   });
 });

@@ -1,8 +1,0 @@
-{
-  "migrations": {
-    "format": 2,
-    "from": "stubs/migrations",
-    "module": "permissions"
-  },
-  "providers": ["PermissionsServiceProvider"]
-}

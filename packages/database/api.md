@@ -582,6 +582,7 @@ export declare class PublishCommand {
             readonly type: 'boolean';
         };
     };
+    constructor(app: Application);
     handle(raw: CommandInput): Promise<number>;
 }
 // QueryEvent

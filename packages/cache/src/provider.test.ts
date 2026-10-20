@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { createApplication, defineModule, env, type ConfigDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineConnection, InfrastructureTransactionError, sql } from '@marmeon/database';
@@ -16,6 +17,10 @@ import { RedisStore } from './stores/redis.ts';
 import { freshTarget, migrate, PGSQL_URL, REDIS_URL } from './__fixtures__/stores.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { openRoutes } from './test-helpers/open-routes.ts';
+
+// The console builds the command through the container, which injects the application.
+const application = await createApplication({ root: import.meta.dirname, modules: [], discover: false }, { phase: 'build' });
+const command = () => application.container.make(MakeCacheTableCommand);
 
 class Limits {
   boot(app: { container: { make(key: typeof RateLimiter): RateLimiter } }) {
@@ -214,7 +219,7 @@ describe('make:cache-table', () => {
   it('writes the migration into the system module, creating and registering the module', async () => {
     const root = app();
     const { input: first, lines } = input(root);
-    expect(await new MakeCacheTableCommand().handle(first)).toBe(0);
+    expect(await command().handle(first)).toBe(0);
     const [migration] = readdirSync(join(root, 'modules/system/migrations'));
     expect(migration).toMatch(/^\d{4}_\d{2}_\d{2}_\d{6}_create_cache_table\.ts$/);
     expect(readFileSync(join(root, 'modules/system/migrations', migration!), 'utf8')).toContain("schema.create('cache_locks'");
@@ -230,7 +235,7 @@ describe('make:cache-table', () => {
     ]);
 
     const { input: again, lines: refused } = input(root, { module: 'billing' });
-    expect(await new MakeCacheTableCommand().handle(again)).toBe(0);
+    expect(await command().handle(again)).toBe(0);
     expect(refused).toEqual([`modules/system/migrations/${migration} is there — skipped`, '✓ Nothing to publish — every migration of @marmeon/cache is in your app']);
     expect(existsSync(join(root, 'modules/billing'))).toBe(false);
   });
@@ -238,7 +243,7 @@ describe('make:cache-table', () => {
   it('writes into a module of its own with --module, which then holds the migration', async () => {
     const root = app();
     const { input: run } = input(root, { module: 'billing' });
-    expect(await new MakeCacheTableCommand().handle(run)).toBe(0);
+    expect(await command().handle(run)).toBe(0);
     expect(readdirSync(join(root, 'modules/billing/migrations'))).toHaveLength(1);
     expect(readFileSync(join(root, 'modules/billing/index.ts'), 'utf8')).toContain('`marmeon publish @marmeon/cache`');
     expect(existsSync(join(root, 'modules/system'))).toBe(false);
@@ -247,10 +252,30 @@ describe('make:cache-table', () => {
   it('refuses a module name that is no plain kebab-case name, and writes nothing', async () => {
     const root = app();
     const { input: run, lines } = input(root, { module: '../x' });
-    expect(await new MakeCacheTableCommand().handle(run)).toBe(1);
+    expect(await command().handle(run)).toBe(1);
     expect(lines).toEqual(['✗ Pass the module as a kebab-case name: --module=<name>.']);
     expect(existsSync(join(root, 'modules'))).toBe(false);
     expect(existsSync(join(root, '..', 'x'))).toBe(false);
+  });
+
+  it('refuses a name that another package of the app ships too, and writes nothing', async () => {
+    const root = app();
+    const other = join(root, 'node_modules/@acme/other');
+    mkdirSync(join(other, 'stubs/migrations'), { recursive: true });
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@acme/other': '1.0.0' } }));
+    writeFileSync(join(other, 'package.json'), JSON.stringify({ name: '@acme/other', exports: './index.js' }));
+    writeFileSync(join(other, 'stubs/migrations/2026_01_01_000000_create_cache_table.ts'), 'export default {};\n');
+    class OtherServiceProvider {
+      static migrations = { from: pathToFileURL(join(realpathSync(other), 'stubs/migrations')), module: 'other' };
+    }
+    (globalThis as { __otherProvider?: unknown }).__otherProvider = OtherServiceProvider;
+    writeFileSync(join(other, 'index.js'), 'export const provider = globalThis.__otherProvider;\n');
+    // The container hands the command the application, whose providers tell what the other packages ship.
+    const withOther = await createApplication({ root, modules: [], providers: [OtherServiceProvider], discover: false }, { phase: 'build' });
+    const { input: run, lines } = input(root);
+    expect(await withOther.container.make(MakeCacheTableCommand).handle(run)).toBe(1);
+    expect(lines).toEqual(['✗ @marmeon/cache and @acme/other both ship create_cache_table — one name is one migration in an app, so they cannot both be published']);
+    expect(existsSync(join(root, 'modules'))).toBe(false);
   });
 
   it('adds no copy when another module holds the migration already', async () => {
@@ -258,7 +283,7 @@ describe('make:cache-table', () => {
     mkdirSync(join(root, 'modules/platform/migrations'), { recursive: true });
     writeFileSync(join(root, 'modules/platform/migrations/2026_01_01_000000_create_cache_table.ts'), '');
     const { input: run } = input(root);
-    expect(await new MakeCacheTableCommand().handle(run)).toBe(0);
+    expect(await command().handle(run)).toBe(0);
     expect(existsSync(join(root, 'modules/system'))).toBe(false);
     expect(readdirSync(join(root, 'modules/platform/migrations'))).toHaveLength(1);
   });
@@ -268,7 +293,7 @@ describe('make:cache-table', () => {
     mkdirSync(join(root, 'modules/platform'), { recursive: true });
     writeFileSync(join(root, 'modules/platform/index.ts'), "export default defineModule({ name: 'platform', migrations: new URL('./migrations/', import.meta.url) });");
     const { input: run, lines } = input(root, { module: 'platform' });
-    expect(await new MakeCacheTableCommand().handle(run)).toBe(0);
+    expect(await command().handle(run)).toBe(0);
     expect(readdirSync(join(root, 'modules/platform/migrations'))).toHaveLength(1);
     expect(lines.some((line) => line.includes('Registered'))).toBe(false); // it was registered already
   });

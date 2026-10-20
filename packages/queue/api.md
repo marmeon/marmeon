@@ -242,6 +242,7 @@ export declare class JobTimeoutError extends Error {
 }
 // MakeQueueTableCommand
 export declare class MakeQueueTableCommand {
+    #private;
     static command: string;
     static description: string;
     static usage: string;
@@ -251,6 +252,7 @@ export declare class MakeQueueTableCommand {
             readonly short: 'm';
         };
     };
+    constructor(app: Application);
     handle(input: CommandInput): Promise<number>;
 }
 // PayloadCipher
@@ -435,7 +437,7 @@ export declare class QueueServiceProvider implements ServiceProvider {
         };
     }>[];
     static health: (typeof QueueHealthCheck)[];
-    static commands: (typeof MakeQueueTableCommand | typeof QueueFailedCommand | typeof QueueRetryCommand | typeof QueueForgetCommand | typeof QueueFlushCommand | typeof QueuePruneFailedCommand | typeof QueueSizeCommand | typeof QueueWorkCommand)[];
+    static commands: (typeof QueueWorkCommand | typeof MakeQueueTableCommand | typeof QueueFailedCommand | typeof QueueRetryCommand | typeof QueueForgetCommand | typeof QueueFlushCommand | typeof QueuePruneFailedCommand | typeof QueueSizeCommand)[];
     static migrations: {
         from: import("node:url").URL;
         module: string;
