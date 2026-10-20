@@ -54,17 +54,6 @@ export function checkTarball(packed: PackedPackage, dir: string, pkg: FrameworkP
   }
   if (pkg.short === 'create-marmeon') problems.push(...checkScaffolder(packed, dir, manifest));
 
-  // The directory the package declares as its migrations is what `marmeon publish` copies: every migration in it must be in the tarball.
-  const from = manifest.marmeon?.migrations?.from;
-  if (typeof from === 'string') {
-    const directory = posix.normalize(from);
-    const shipped = packed.files.filter((file) => posix.dirname(file) === directory && file.endsWith('.ts'));
-    if (shipped.length === 0) problems.push(`marmeon.migrations.from is ${from}, which holds no migration in the tarball`);
-    for (const file of filesUnder(join(pkg.dir, directory)).filter((name) => !name.includes('/') && name.endsWith('.ts'))) {
-      if (!files.has(`${directory}/${file}`)) problems.push(`marmeon.migrations.from ${from} holds ${file}, which is not in the tarball`);
-    }
-  }
-
   // Leftovers: a compiled file needs its source next to it (a renamed or deleted source leaves its output behind).
   for (const file of packed.files) {
     const compiled = /^dist\/(.+?)(\.d\.ts\.map|\.d\.ts|\.js\.map|\.js)$/.exec(file);

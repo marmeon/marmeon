@@ -1,9 +1,9 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { formatProblems, isShippedMigration, labelProblems, migrationProblems, migrationSourceProblems } from './api-label.ts';
+import { formatProblems, isShippedMigration, labelProblems, migrationDirectoryProblems, migrationProblems } from './api-label.ts';
 import { compareSnapshots, renderSnapshot, type ApiItem, type ApiSection } from './api-snapshot.ts';
 import { tempDir } from './test/temp-dir.js';
 
@@ -137,6 +137,12 @@ describe('migrationProblems', () => {
     expect(migrationProblems([{ status: 'A', path: 'packages/audit/stubs/migrations/2020_01_01_000000_create_audit_table.ts' }], shipped)).toEqual([]);
   });
 
+  it('judges a name per directory: the same name in another shipped directory of the package is free', () => {
+    const other = 'packages/queue/stubs/other/migrations';
+    const both = (dir: string) => (dir === directory ? ['2026_01_01_000000_create_jobs_table.ts'] : dir === other ? ['2026_01_01_000000_create_other_table.ts'] : []);
+    expect(migrationProblems([{ status: 'A', path: `${other}/2026_05_01_000000_create_jobs_table.ts` }], both)).toEqual([]);
+  });
+
   it('refuses a new file that sorts before a shipped one and names the first it precedes', () => {
     const [message, ...rest] = migrationProblems(at('A', '2026_01_15_000000_add_priority.ts'), shipped);
     expect(rest).toEqual([]);
@@ -144,24 +150,43 @@ describe('migrationProblems', () => {
   });
 });
 
-describe('migrationSourceProblems', () => {
-  const manifest = (from?: string) => JSON.stringify({ name: 'x', ...(from === undefined ? {} : { marmeon: { migrations: { format: 2, module: 'x', from } } }) });
-  const change = (before: string | undefined, after: string | undefined) => [{ path: 'packages/x/package.json', before, after }];
+describe('migrationDirectoryProblems', () => {
+  const base: Record<string, string[]> = {
+    cache: ['packages/cache/stubs/migrations'],
+    auth: ['packages/auth/stubs/migrations', 'packages/auth/stubs/react/modules/auth/migrations'],
+  };
+  const shipped = (pkg: string) => base[pkg] ?? [];
+  const problems = (...paths: string[]) => migrationDirectoryProblems(paths, shipped);
 
-  it('refuses a changed or removed from, and nothing else', () => {
-    expect(migrationSourceProblems(change(manifest('stubs/migrations'), manifest('stubs/other')))).toHaveLength(1);
-    expect(migrationSourceProblems(change(manifest('stubs/migrations'), manifest()))).toHaveLength(1);
-    expect(migrationSourceProblems(change(manifest('stubs/migrations'), undefined))).toHaveLength(1);
-    expect(migrationSourceProblems(change(manifest('stubs/migrations'), manifest('stubs/migrations')))).toEqual([]);
-    expect(migrationSourceProblems(change(manifest(), manifest('stubs/migrations')))).toEqual([]);
-    expect(migrationSourceProblems(change(undefined, manifest('stubs/migrations')))).toEqual([]);
+  it('lets a file into a directory the package already ships from, the kit among them', () => {
+    expect(problems('packages/cache/stubs/migrations/2026_03_01_000000_a.ts')).toEqual([]);
+    expect(problems('packages/auth/stubs/react/modules/auth/migrations/2026_03_01_000000_a.ts')).toEqual([]);
+  });
+
+  it('refuses a file in a new directory of a package that ships migrations and names where they are', () => {
+    const [message, ...rest] = problems('packages/cache/stubs/v2/migrations/2026_03_01_000000_a.ts');
+    expect(rest).toEqual([]);
+    expect(message).toContain('cache ships its migrations from packages/cache/stubs/migrations, and a package never moves them or adds a directory');
+    expect(problems('packages/auth/stubs/other/migrations/2026_03_01_000000_a.ts')).toHaveLength(1);
+  });
+
+  it('lets the first stubs/migrations of a package without migrations through, and no other directory', () => {
+    expect(problems('packages/acme/stubs/migrations/2026_03_01_000000_a.ts')).toEqual([]);
+    const [message] = problems('packages/acme/stubs/db/migrations/2026_03_01_000000_a.ts');
+    expect(message).toContain('acme ships its migrations from packages/acme/stubs/migrations');
+  });
+
+  it('names every file it refuses', () => {
+    expect(problems('packages/cache/stubs/v2/migrations/a.ts', 'packages/cache/stubs/migrations/b.ts', 'packages/acme/stubs/db/migrations/c.ts')).toHaveLength(2);
   });
 });
 
+// Until publish stops reading `marmeon.migrations` from package.json, this field is what keeps a package's directory in place; the
+// test goes with the field.
 describe('the directories packages ship migrations from', () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-  it('lie under the files the check holds', () => {
+  it('are stubs/migrations, which lies under the files the check holds', () => {
     for (const name of readdirSync(join(root, 'packages'))) {
       let manifest: { marmeon?: { migrations?: { from?: unknown } } };
       try {
@@ -172,10 +197,16 @@ describe('the directories packages ship migrations from', () => {
       const from = manifest.marmeon?.migrations?.from;
       if (from === undefined) continue;
       expect(typeof from, name).toBe('string');
-      expect(isShippedMigration(`packages/${name}/${String(from).replace(/^\.\//, '').replace(/\/$/, '')}/2026_01_01_000000_x.ts`), `${name}: ${String(from)}`).toBe(true);
+      const directory = join(root, 'packages', name);
+      const stubs = join(realpathSync(directory), 'stubs/migrations');
+      expect(realpathSync(join(directory, 'stubs/migrations')), name).toBe(stubs);
+      expect(realpathSync(join(directory, String(from))), name).toBe(stubs);
+      expect(isShippedMigration(`packages/${name}/stubs/migrations/2026_01_01_000000_x.ts`), name).toBe(true);
     }
   });
+});
 
+describe('where a stub may sit', () => {
   it('recognises where a stub may sit', () => {
     expect(isShippedMigration('packages/queue/stubs/migrations/a.ts')).toBe(true);
     expect(isShippedMigration('packages/auth/stubs/react/modules/auth/migrations/a.ts')).toBe(true);
@@ -413,28 +444,44 @@ describe('the script', () => {
       expect(run(['fix']).status).toBe(0);
     });
 
-    it('fails a package.json that changes or drops the directory a package ships from', () => {
+    it('does not read a package.json: changing or dropping marmeon.migrations is no problem', () => {
       const moved = withMigrations((directory) => writeFileSync(join(directory, 'packages/queue/package.json'), manifest('stubs/elsewhere')));
       const dropped = withMigrations((directory) => writeFileSync(join(directory, 'packages/queue/package.json'), manifest()));
-      for (const run of [moved, dropped]) {
-        const result = run(['breaking', 'api-compatible']);
-        expect(result.status).toBe(1);
-        expect(result.out).toContain('::error title=API label::packages/queue/package.json: marmeon.migrations.from');
-      }
+      for (const run of [moved, dropped]) expect(run(['internal']).status).toBe(0);
     });
 
-    it('fails a new file that repeats a name of its own directory, and lets one through that another directory of the package has', () => {
+    it('fails a new file in a new directory of a package that ships migrations, whatever the labels say', () => {
+      const moved = 'packages/queue/stubs/other/migrations/2026_05_01_000000_create_things_table.ts';
+      const run = withMigrations((directory) => {
+        mkdirSync(dirname(join(directory, moved)), { recursive: true });
+        writeFileSync(join(directory, moved), 'x\n');
+      });
+      const result = run(['breaking', 'api-compatible']);
+      expect(result.status).toBe(1);
+      expect(result.out).toContain(`::error title=API label::${moved}: queue ships its migrations from packages/queue/stubs/migrations, and a package never moves them`);
+    });
+
+    it('lets the first stubs/migrations of a package through, and fails another directory of it', () => {
+      const first = withMigrations((directory) => {
+        mkdirSync(join(directory, 'packages/acme/stubs/migrations'), { recursive: true });
+        writeFileSync(join(directory, 'packages/acme/stubs/migrations/2026_05_01_000000_create_acme_table.ts'), 'x\n');
+      });
+      expect(first(['internal']).status).toBe(0);
+      const other = withMigrations((directory) => {
+        mkdirSync(join(directory, 'packages/acme/stubs/db/migrations'), { recursive: true });
+        writeFileSync(join(directory, 'packages/acme/stubs/db/migrations/2026_05_01_000000_create_acme_table.ts'), 'x\n');
+      });
+      const result = other(['breaking']);
+      expect(result.status).toBe(1);
+      expect(result.out).toContain('acme ships its migrations from packages/acme/stubs/migrations');
+    });
+
+    it('fails a new file that repeats a name of its own directory', () => {
       const same = 'packages/queue/stubs/migrations/2026_05_01_000000_create_things_table.ts';
-      const elsewhere = 'packages/queue/stubs/other/migrations/2026_05_01_000000_create_things_table.ts';
       const repeated = withMigrations((directory) => writeFileSync(join(directory, same), 'x\n'));
       const result = repeated(['breaking']);
       expect(result.status).toBe(1);
       expect(result.out).toContain(`${same} repeats the name of 2026_01_01_000000_create_things_table.ts`);
-      const shared = withMigrations((directory) => {
-        mkdirSync(dirname(join(directory, elsewhere)), { recursive: true });
-        writeFileSync(join(directory, elsewhere), 'x\n');
-      });
-      expect(shared(['fix']).status).toBe(0);
     });
 
     it('fails a new symlink among the migrations', () => {

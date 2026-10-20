@@ -787,7 +787,7 @@ mark. Seven rules:
 6. **Tables the framework creates have plain names** (`jobs`, `sessions`, …; only `migrations` and `migration_lock` are the migrator's),
    and the migrations a package ships (the files under a package's `stubs/`, the kit's among them) are append-only: once a file is
    on `main` it never changes, moves or goes, and a change is a new file that sorts after every file in its directory and does
-   not repeat the name of one in its directory. The directory a package names in `marmeon.migrations.from` stays. The "api
+   not repeat the name of one in its directory. A package ships its migrations from one directory, `stubs/migrations` (the kit's directory aside), and never moves them or adds a second. The "api
    label" check refuses a pull request that breaks this, whatever its labels. It judges each pull request against its own base:
    two pull requests that each add a file to the same directory are green apart and can sort wrongly once both are merged.
    An updated database is identical to a new one: tables, columns, and the names of indexes and constraints. Readiness is red
