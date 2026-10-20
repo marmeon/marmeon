@@ -59,10 +59,10 @@ reading it throws an error that names the variables. Read configuration in `boot
 [configuration](configuration.md#configuration-and-the-build) page explains why.
 
 The app builds each provider through the container, and every method is optional. A class listed as a provider without any of
-them, and without `static config`, `static health`, `static solutions`, `static commands`, `static queueDrivers`, `static failedJobDrivers`, `static diskDrivers`, `static cacheDrivers` or `static checks` from the list below, stops the start:
+them, and without `static config`, `static health`, `static solutions`, `static commands`, `static queueDrivers`, `static failedJobDrivers`, `static diskDrivers`, `static cacheDrivers`, `static checks` or `static migrations` from the list below, stops the start:
 
 ```text
-[marmeon:K9] NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers or static checks.
+[marmeon:K9] NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static checks or static migrations.
 ```
 
 ## The order
@@ -109,7 +109,7 @@ An app in the build phase never booted, so no provider's `shutdown()` runs there
 
 ## What a provider brings besides code
 
-A provider class can carry four static lists. The app reads the first three before any provider registers; the CLI reads `static commands` while it registers:
+A provider class can carry these statics. The app reads the first three before any provider registers; the CLI reads `static commands` while it registers, and `marmeon publish` reads `static migrations`:
 
 | Static | What it is |
 | --- | --- |
@@ -117,6 +117,7 @@ A provider class can carry four static lists. The app reads the first three befo
 | `static health = [SearchIndexReady]` | Checks for `/up/ready`. See [health checks](health.md). |
 | `static solutions = defineSolutions([…])` | Solutions for the provider's errors, shown on the development error page. See [error handling](errors.md#solutions). |
 | `static commands = [PruneNotesCommand]` | Console commands for `marmeon`. Collected while the app registers, so `marmeon build` sees them. See [package development](package-development.md#commands). |
+| `static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'notes' }` | The directory of the migrations the package ships, for `marmeon publish`. See [declaring the migrations a package ships](package-development.md#declaring-the-migrations-a-package-ships). |
 
 A package uses these lists, because it has no module definition of its own. In an app, a module lists its configuration and its
 health checks in its definition instead.

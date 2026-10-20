@@ -1,4 +1,5 @@
 import { Application, Clock, Translator, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import type { ProviderMigrations } from '@marmeon/database';
 import { fillPlaceholders } from '@marmeon/core/internal';
 import { Connections } from '@marmeon/database';
 import { DatabaseChannel, MailChannel, NotificationChannels } from './channels.ts';
@@ -93,6 +94,8 @@ async function importOptional<T>(load: () => Promise<T>, name: string): Promise<
 export class NotificationServiceProvider implements ServiceProvider {
   static config = [NotificationConfig];
   static commands = [PruneNotificationsCommand, MakeNotificationsTableCommand];
+  /** The migrations for the notifications table, which `marmeon publish` and the `make:*-table` command copy into the app. */
+  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 
   #queue: QueueModule | undefined;
   #i18n: I18nModule | undefined;

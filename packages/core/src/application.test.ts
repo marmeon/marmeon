@@ -70,7 +70,7 @@ describe('Application.shutdown', () => {
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlySolutions] }, { env: {} })).resolves.toBeDefined();
     const Empty = class Empty {};
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [Empty] }, { env: {} })).rejects.toThrow(
-      '[marmeon:K9] Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers or static checks.',
+      '[marmeon:K9] Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static checks or static migrations.',
     );
     // A list named migrationUpgrades brings nothing.
     const Revisions = class Revisions {
@@ -81,6 +81,15 @@ describe('Application.shutdown', () => {
       static commands = [class {}];
     };
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlyCommands] }, { env: {} })).resolves.toBeDefined();
+    // A package that only ships tables declares nothing else; an empty record brings nothing.
+    const OnlyMigrations = class OnlyMigrations {
+      static migrations = { from: new URL('./stubs/migrations', import.meta.url), module: 'things' };
+    };
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlyMigrations] }, { env: {} })).resolves.toBeDefined();
+    const NoMigrations = class NoMigrations {
+      static migrations = {};
+    };
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [NoMigrations] }, { env: {} })).rejects.toThrow('[marmeon:K9] NoMigrations is listed as a service provider');
   });
 });
 

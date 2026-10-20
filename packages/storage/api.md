@@ -206,6 +206,10 @@ export declare class StorageServiceProvider implements ServiceProvider {
         maxOpenTotalBytes: number;
     }>[];
     static commands: (typeof MakeUploadsTableCommand | typeof PruneUploadsCommand)[];
+    static migrations: {
+        from: import("node:url").URL;
+        module: string;
+    };
     register(container: Container): void;
     boot(app: Application): Promise<void>;
     shutdown(): Promise<void>;

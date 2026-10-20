@@ -80,6 +80,10 @@ export declare class CacheServiceProvider implements ServiceProvider {
     }>[];
     static health: (typeof CacheHealthCheck)[];
     static commands: (typeof MakeCacheTableCommand | typeof CachePruneCommand | typeof CacheClearCommand)[];
+    static migrations: {
+        from: import("node:url").URL;
+        module: string;
+    };
     register(container: Container): void;
     boot(app: Application): Promise<void>;
 }
