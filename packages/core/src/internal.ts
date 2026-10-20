@@ -8,7 +8,7 @@ export { messageBase, publishEnded, trace } from './channels.ts';
 export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
 export { coreSolutions } from './core-solutions.ts';
 export { withCode, withoutCode } from './error-codes.ts';
-export { describeError } from './redact.ts';
+export { describeError, maskUrlPasswords } from './redact.ts';
 export { collectDrivers } from './drivers.ts';
 export { bindingNameOf } from './definition-edit.ts';
 export { loadDiscoveredPackages, writeManifest } from './discovery/discover.ts';

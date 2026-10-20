@@ -1,10 +1,78 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { describeError, ENCRYPTED, MAX_ENTRY_BYTES, redact, REDACTED, Redactor, redactText } from './redact.ts';
+import { describeError, ENCRYPTED, maskUrlPasswords, MAX_ENTRY_BYTES, redact, REDACTED, Redactor, redactText } from './redact.ts';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaA';
 const SCRYPT = '$scrypt$ln=15,r=8,p=1$c2FsdA$aGFzaA';
 const TOKEN = 'marmeon_q8Fz0kZb3T5wYvLp9nR2xCj7mHs4dGa1eKoU6iQt0f3c7a9e';
+
+describe('redactText: the password of a URL', () => {
+  it.each([
+    ['postgres://app:p@ss@db/app', 'postgres://app:***@db/app'],
+    ['postgres://app:p@ss/w0rd@db/app', 'postgres://app:***@db/app'],
+    ['postgres://app:pa/ss@db/app', 'postgres://app:***@db/app'],
+    ['postgres://app:a@b@c/d@db:5432/app', 'postgres://app:***@db:5432/app'],
+    ['postgres://app:p%40ss%2Fw0rd@db/app', 'postgres://app:***@db/app'],
+    ['postgres://app:pa:ss:word@db/app', 'postgres://app:***@db/app'],
+    ['redis://:p@ss/w0rd@[::1]:6379/0', 'redis://:***@[::1]:6379/0'],
+    ['smtp://:p@ss@smtp.example.com:587', 'smtp://:***@smtp.example.com:587'],
+    ['postgres://app:p@ss@db/app?password=x9&sslmode=require', 'postgres://app:***@db/app?password=[redacted]&sslmode=require'],
+  ])('masks %s whole', (input, expected) => {
+    expect(redactText(input)).toBe(expected);
+  });
+
+  it.each(['"', '?', '#', "'", '<'])('masks a password with a %s in it, which ends the first form', (char) => {
+    expect(redactText(`postgres://app:pa${char}ss@db/app`)).toBe('postgres://app:***@db/app');
+  });
+
+  it('keeps a rest of a password that has a raw / and a raw ? in it: the ? ends the URL for any parser', () => {
+    expect(redactText('postgres://app:7/K?x@db/app')).toBe('postgres://app:7/K?x@db/app');
+  });
+
+  it('masks two URLs in a line, each on its own', () => {
+    expect(redactText('db postgres://a:p@ss/w0rd@h1/x and cache redis://:q/r@h2:6379')).toBe('db postgres://a:***@h1/x and cache redis://:***@h2:6379');
+  });
+
+  it('stops at the query string: an address behind the host stays', () => {
+    expect(redactText('postgres://app:secret@db/app?email=a@b.c')).toBe('postgres://app:***@db/app?email=a@b.c');
+    expect(redactText('https://example.com/cb?email=a@b.c')).toBe('https://example.com/cb?email=a@b.c');
+  });
+
+  it('leaves a URL without a password as it is', () => {
+    for (const text of ['postgres://host:5432/db', 'postgres://user@host/db', 'postgres://host', 'mailto:user@host', 'user@host', 'ssh://git@example.com/org/repo']) {
+      expect(redactText(text)).toBe(text);
+    }
+  });
+
+  it('takes a path after host:port with an @ in it for a password: too much is better than a rest of a password', () => {
+    expect(redactText('https://example.com:8080/users/@ada')).toBe('https://example.com:***@ada');
+  });
+
+  it('ends at quotes and angle brackets', () => {
+    expect(redactText('"postgres://a:p@ss/w0rd@h/db" and <redis://:x/y@h>')).toBe('"postgres://a:***@h/db" and <redis://:***@h>');
+  });
+
+  it('takes linear time for a long text without an @', () => {
+    for (const text of [`postgres://u:${'x'.repeat(100_000)}`, 'a://b:'.repeat(16_000), `http://h:80/${'/a:b'.repeat(25_000)}`]) {
+      const started = performance.now();
+      redactText(text);
+      expect(performance.now() - started).toBeLessThan(50);
+    }
+  });
+
+  it('is applied by Redactor.log under any key and in errors', () => {
+    const shown = JSON.stringify(new Redactor().log({ target: 'postgres://app:p@ss/w0rd@db/app', error: new Error('connect postgres://app:p@ss/w0rd@db/app failed') }));
+    expect(shown).not.toMatch(/p@ss|w0rd/);
+    expect(shown).toContain('app:***@db/app');
+  });
+});
+
+describe('maskUrlPasswords', () => {
+  it('masks the password only: a user or host with token or pass in its name keeps its address', () => {
+    expect(maskUrlPasswords('postgres://token_svc:pw@db:5432/shop')).toBe('postgres://token_svc:***@db:5432/shop');
+    expect(maskUrlPasswords('redis://:p@ss/w0rd@password-cache.internal:6379')).toBe('redis://:***@password-cache.internal:6379');
+  });
+});
 
 describe('redactText', () => {
   it('masks password hashes and API tokens wherever they appear', () => {

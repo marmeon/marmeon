@@ -1,6 +1,6 @@
 import { createApplication, env, type Logger } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
-import { defineRedisScript, RedisConnections } from './connections.ts';
+import { defineRedisScript, describeRedisUrl, RedisConnections } from './connections.ts';
 import { defineRedisConnection, RedisConfig, RedisServiceProvider } from './index.ts';
 
 /** Redis runs when `MARMEON_TEST_REDIS_URL` is set (`docker compose up -d`, then `pnpm test:redis`). */
@@ -11,6 +11,19 @@ const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: ()
 function connections(prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`, url = REDIS_URL ?? 'redis://127.0.0.1:1') {
   return new RedisConnections({ connections: { default: { url, prefix } }, logger: silent });
 }
+
+describe('describeRedisUrl', () => {
+  it.each([
+    ['redis://:p4ss@cache:6379/0', 'redis://:***@cache:6379/0'],
+    ['redis://user:p%40ss%2Fw0rd@cache:6379', 'redis://user:***@cache:6379'],
+    ['redis://:p@ss/w0rd@cache:6379/1', 'redis://:***@cache:6379/1'],
+    ['redis://:pa/ss@[::1]:6379', '(invalid URL)'],
+    ['redis://token_svc:pw@pass-cache:6379', 'redis://token_svc:***@pass-cache:6379'],
+    ['redis://cache:6379/0', 'redis://cache:6379/0'],
+  ])('masks the password of %s whole', (url, expected) => {
+    expect(describeRedisUrl(url)).toBe(expected);
+  });
+});
 
 describe('RedisConnections without a server', () => {
   it('loads its client at the start without connecting — node-redis comes with this package, the app installs nothing else', async () => {

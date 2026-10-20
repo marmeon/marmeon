@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Redactor, type Logger } from '@marmeon/core';
+import { maskUrlPasswords } from '@marmeon/core/internal';
 
 /** Where a connection points: `redis://[[user]:password@]host[:port][/db]` (`rediss://` for TLS), and the prefix of its keys. */
 export interface RedisConnectionOptions {
@@ -183,7 +184,8 @@ export function describeRedisUrl(url: string): string {
   try {
     const parsed = new URL(url);
     if (parsed.password) parsed.password = '***';
-    return parsed.href;
+    // A password with a raw `/` or `@` ends the userinfo early: what the parser took for the path still holds a rest of it.
+    return maskUrlPasswords(parsed.href);
   } catch {
     return '(invalid URL)';
   }

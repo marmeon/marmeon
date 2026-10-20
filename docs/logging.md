@@ -117,7 +117,9 @@ logger.info('Login failed', { email, password, headers: { authorization: 'Bearer
   the errors of an `AggregateError` go to `aggregateErrors`.
 - A `URL` or `URLSearchParams` is written as text, masked: neither a `?token=` nor a token in the path survives. So is a string
   under any key that starts like a URL (`postgres://user:password@host/db?password=…`): the password of the URL and the values of
-  sensitive query parameters go.
+  sensitive query parameters go. The password goes to the last `@` before the query string, so one with a raw `@` or `/`
+  (`app:p@ss/w0rd@db`) is masked whole, and so is it in the addresses `db:show` and the connection errors print. A raw `?` or
+  `#` still ends it, as it ends the URL for every parser: percent-encode it.
 - The console logger, which is used without `@marmeon/log`, writes every control and format character of a line as an escape: a line
   break in a message or a value (a decoded `%0A` in a route parameter) comes out as `\n`, so it cannot forge a line of its own.
   The pretty format of `@marmeon/log` does the same for the message and the stacks of errors. JSON lines escape it by themselves.
