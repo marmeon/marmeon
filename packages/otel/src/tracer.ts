@@ -388,7 +388,10 @@ export function redactedPath(path: string, pattern: string | undefined, redactor
 
 function capturedHeaders(request: HttpRequestMessage, names: readonly string[], redactor: Redactor): Attributes {
   if (names.length === 0) return {};
-  const shown = redactor.headers(names.flatMap((name) => (request.headers.has(name) ? [[name, request.headers.get(name)!] as const] : [])));
+  const shown = redactor.headers(
+    names.flatMap((name) => (request.headers.has(name) ? [[name, request.headers.get(name)!] as const] : [])),
+    { referer: request.refererRoutePath },
+  );
   return Object.fromEntries(Object.entries(shown).map(([name, value]) => [`http.request.header.${name}`, [value]]));
 }
 

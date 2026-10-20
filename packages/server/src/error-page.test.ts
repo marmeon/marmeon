@@ -246,6 +246,23 @@ describe('the development error page', () => {
     }
   });
 
+  it('masks a route parameter in the Referer by its route\'s pattern; a foreign or unrouted Referer stays text-masked', async () => {
+    const { application, kernel } = await boot();
+    try {
+      const fail = (referer: string) => kernel.request('/invite/1', { headers: { accept: 'text/html', referer } }).then((response) => response.text());
+      const own = await fail('http://localhost/invite/483920?token=abc123');
+      expect(own).toContain('http://localhost/invite/[redacted]');
+      expect(own).not.toContain('483920');
+      expect(own).not.toContain('abc123');
+      expect(markdownOf(own)).not.toContain('483920');
+      expect(await fail('http://localhost/invite/1?code=SECRETCODE')).not.toContain('SECRETCODE');
+      expect(await fail('https://elsewhere.example/invite/483920')).toContain('https://elsewhere.example/invite/483920');
+      expect(await fail('http://localhost/unrouted/483920')).toContain('http://localhost/unrouted/483920');
+    } finally {
+      await application.shutdown();
+    }
+  });
+
   it('shows the URL of a request no route matched, masked as text as before', async () => {
     const { application, kernel } = await boot();
     try {

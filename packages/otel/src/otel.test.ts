@@ -275,6 +275,15 @@ describe('@marmeon/otel', () => {
     expect(dump(span)).not.toMatch(/secret-api-token|a-reset-token-value|session=abc/);
   });
 
+  it('masks a sensitive route parameter in the recorded referer by the pattern of its route', async () => {
+    const { app: booting } = boot({ OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: 'referer' });
+    await using app = await booting;
+    await spans();
+    await createHttpKernel(app).request('/people/1', { headers: { referer: 'http://localhost/reset/a-reset-token-value' } });
+    const [span] = (await spans()).filter((candidate) => candidate.kind === SpanKind.SERVER);
+    expect(span!.attributes['http.request.header.referer']).toEqual(['http://localhost/reset/[redacted]']);
+  });
+
   it('records the keys of the query only — its values with OTEL_RECORD_QUERY_VALUES=true, masked like any text', async () => {
     const query = (attributes: Record<string, unknown> | undefined) => String(attributes?.['url.query']);
     // A part without `=` may be a flag or a value (`?ada@example.com`): it is never written as it is.

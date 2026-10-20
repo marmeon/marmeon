@@ -67,7 +67,8 @@ import {
   VALIDATED_HEADER,
   withQueuedCookies,
 } from '@marmeon/router/internal';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { getPath } from 'hono/utils/url';
 import { overrideMethod } from './method-override.ts';
 import { protocolGate } from './protocol-gate.ts';
 import { createProductionRenderer } from './production.ts';
@@ -239,6 +240,28 @@ export function createHttpKernel(
   const app = new Hono();
   /** The route each request in flight matched — its name for the log line and the request channel. */
   const matched = new WeakMap<Request, RouteDefinition>();
+  const routeHandlers = new Map<unknown, RouteDefinition>();
+
+  /**
+   * The pattern of the route a URL of this app points to — for masking a `Location` or `Referer` by it (`/invite/:code`). Asks
+   * Hono's router what a GET for the path would reach: nothing runs, no middleware. A URL of another host, or a path no route
+   * answers, has none.
+   */
+  const routePatternOf = (value: string, request: Request): string | undefined => {
+    try {
+      const own = new URL(request.url);
+      const target = new URL(value, own);
+      if (target.host !== (request.headers.get('host') ?? own.host)) return undefined;
+      const [handlers] = app.router.match('GET', getPath({ url: target.origin + target.pathname } as Request));
+      for (const [[handler]] of handlers) {
+        const route = routeHandlers.get(handler);
+        if (route) return route.path;
+      }
+    } catch {
+      // An unparsable value has no route.
+    }
+    return undefined;
+  };
   /** The client address of each request in flight — what an island resolved for it is from, too. */
   const addresses = new WeakMap<Request, string | undefined>();
   /** Development only: each request's state (its parsed body) and route parameters, for the error page — and, while
@@ -395,6 +418,7 @@ export function createHttpKernel(
           status: result.status,
           request: failed,
           requestId: info?.requestId,
+          refererRoutePath: failed.headers.has('referer') ? routePatternOf(failed.headers.get('referer')!, failed) : undefined,
           app: application,
           redactor,
           solutions,
@@ -522,6 +546,9 @@ export function createHttpKernel(
       ...(region ? { region } : {}),
       inProcess: islandParent(env) !== undefined,
     };
+    const referer = request.headers.get('referer');
+    const refererRoutePath = referer ? routePatternOf(referer, request) : undefined;
+    if (refererRoutePath !== undefined) message.refererRoutePath = refererRoutePath;
     return trace(requests, message, next, (ended) => {
       const route = matched.get(request);
       if (route) {
@@ -535,7 +562,11 @@ export function createHttpKernel(
       ended.status = answer.status;
       // Where it sends the browser: a redirect, or the protocol's full reload (409 + x-marmeon-location) — not a failure.
       const location = answer.status === 409 ? answer.headers.get(LOCATION_HEADER) : answer.status >= 300 && answer.status < 400 ? answer.headers.get('location') : null;
-      if (location) ended.location = location;
+      if (location) {
+        ended.location = location;
+        const locationRoutePath = routePatternOf(location, request);
+        if (locationRoutePath !== undefined) ended.locationRoutePath = locationRoutePath;
+      }
       const reload = answer.status === 409 && location ? answer.headers.get(RELOAD_HEADER) : null;
       if (reload) ended.reload = reload;
       const page = pages.get(request);
@@ -694,7 +725,7 @@ export function createHttpKernel(
   };
 
   for (const route of router.registrationOrder) {
-    app.on([...route.methods], route.path, (c) => {
+    const handler = (c: Context) => {
       matched.set(c.req.raw, route);
       if (debug) parameters.set(c.req.raw, c.req.param());
       return handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
@@ -711,7 +742,9 @@ export function createHttpKernel(
         ),
         islandParent(c.env),
       );
-    });
+    };
+    routeHandlers.set(handler, route);
+    app.on([...route.methods], route.path, handler);
   }
 
   // Unknown paths still pass the global middleware, then end in the exception handler's 404.

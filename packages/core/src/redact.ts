@@ -241,15 +241,24 @@ export class Redactor {
   /**
    * Headers that may be shown: the values of sensitive ones (`cookie`, `authorization`, `set-cookie`, `x-xsrf-token`) replaced.
    * A header given more than once (Node's `IncomingHttpHeaders`: `set-cookie` as a list) is shown as one, its values joined.
+   * `urlPatterns` names, by lower-case header name, the route pattern of a header that holds a URL of this app (`referer`:
+   * `/invite/:code`): its value is masked as {@link url} does it, so a sensitive parameter in the path goes too.
    */
   headers(
     headers: Headers | Iterable<readonly [string, string]> | Readonly<Record<string, string | readonly string[] | undefined>>,
+    urlPatterns?: Readonly<Record<string, string | undefined>>,
   ): Record<string, string> {
     const entries = headers instanceof Headers || Symbol.iterator in headers ? [...(headers as Iterable<readonly [string, string]>)] : Object.entries(headers);
     const out: Record<string, string> = {};
     for (const [name, value] of entries) {
       if (value === undefined) continue;
-      out[name] = this.isSensitive(name) ? REDACTED : this.text(typeof value === 'string' ? value : value.join(', '));
+      if (this.isSensitive(name)) {
+        out[name] = REDACTED;
+        continue;
+      }
+      const joined = typeof value === 'string' ? value : value.join(', ');
+      const pattern = urlPatterns?.[name.toLowerCase()];
+      out[name] = pattern === undefined ? this.text(joined) : this.url(joined, pattern);
     }
     return out;
   }
@@ -297,7 +306,7 @@ export class Redactor {
       return this.text(url);
     }
     const origin = /^[a-z][\w+.-]*:\/\//i.test(url) ? parsed.origin : '';
-    return `${origin}${this.path(parsed.pathname, pattern)}${parsed.search.length > 1 ? `?${this.text(parsed.search.slice(1))}` : ''}`;
+    return `${origin}${this.path(parsed.pathname, pattern)}${parsed.search.length > 1 ? this.text(parsed.search) : ''}`;
   }
 
   /**

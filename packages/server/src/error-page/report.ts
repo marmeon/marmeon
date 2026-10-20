@@ -158,13 +158,15 @@ export interface ReportInput {
   readonly body?: () => Promise<unknown>;
   /** The matched route's pattern, when `route` is not given (the last-error report has only the path). */
   readonly routePath?: string | undefined;
+  /** The pattern of the route the `Referer` points to (same origin), so its sensitive parameters are masked. */
+  readonly refererRoutePath?: string | undefined;
   readonly recording?: RequestRecording | undefined;
   /** Whether frames get the code around their line (default true). The Markdown does not print it. */
   readonly snippets?: boolean;
 }
 
 /** Builds the report of an error — every value that leaves the server passes the app's {@link Redactor}. */
-export async function buildReport({ error, status, request, requestId, app, redactor, solutions, route, routePath, body, recording, snippets = true }: ReportInput): Promise<ErrorReport> {
+export async function buildReport({ error, status, request, requestId, app, redactor, solutions, route, routePath, refererRoutePath, body, recording, snippets = true }: ReportInput): Promise<ErrorReport> {
   const { root } = app;
   const failure = error instanceof Error ? error : new Error(String(error));
   const causes: { name: string; message: string }[] = [];
@@ -210,7 +212,7 @@ export async function buildReport({ error, status, request, requestId, app, reda
     request: {
       method: request.method,
       url: redactor.url(url.href, routePath ?? route?.path),
-      headers: redactor.headers(request.headers),
+      headers: redactor.headers(request.headers, { referer: refererRoutePath }),
       query: redactor.value(query),
       body: redactor.value(parsedBody),
     },

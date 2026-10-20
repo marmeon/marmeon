@@ -241,6 +241,23 @@ describe('Redactor.headers — a header given more than once', () => {
   });
 });
 
+describe('Redactor.headers — URL headers by a route pattern', () => {
+  it('masks the listed header by its pattern, others as text, and the code in a query', () => {
+    const redactor = new Redactor();
+    const shown = redactor.headers({ referer: 'http://localhost/invite/483920?code=abc', 'x-other': 'http://localhost/invite/483920?code=abc' }, { referer: '/invite/:code' });
+    expect(shown.referer).toBe('http://localhost/invite/[redacted]?code=[redacted]');
+    expect(shown['x-other']).not.toContain('abc');
+    expect(shown['x-other']).toContain('483920');
+    expect(redactor.headers({ referer: 'http://localhost/x' }, { referer: undefined }).referer).toBe('http://localhost/x');
+  });
+
+  it('url() masks code= in the query, with or without a pattern', () => {
+    const redactor = new Redactor();
+    expect(redactor.url('/cb?code=abc')).not.toContain('abc');
+    expect(redactor.url('/cb?code=abc', '/cb')).not.toContain('abc');
+  });
+});
+
 describe('URL objects', () => {
   const RESET = 'Q7mZ2xLk9TcV4bN8rW1yH6sD3fG5jA0pE2uI7oK9qMz';
 
