@@ -753,7 +753,7 @@ describe('pack:check — no references to the private record in the tarballs', (
 });
 
 describe('pack:check — the rules over an unpacked tarball', () => {
-  const manifest: { name: string; version: string; license: string; marmeon?: object } = { name: '@marmeon/sample', version: '0.1.0', license: 'MIT' };
+  const manifest: { name: string; version: string; license: string } = { name: '@marmeon/sample', version: '0.1.0', license: 'MIT' };
 
   /** Unpacks a tarball of `files` into a temporary directory and returns what `checkTarball` says about it. */
   const problemsOf = (files: Record<string, string>, source = join(tmpdir(), 'no-such-package')) => {
@@ -784,20 +784,14 @@ describe('pack:check — the rules over an unpacked tarball', () => {
     expect(problemsOf({ 'CHANGELOG.md': '# Sample\n' })).not.toContain('CHANGELOG.md is missing — add it to "files"');
   });
 
-  it('names a migration in the declared directory that the tarball does not ship', () => {
+  it('names a migration under stubs/ that the tarball does not ship', () => {
     const source = tempDir('marmeon-ci-test-');
     mkdirSync(join(source, 'stubs/migrations'), { recursive: true });
     writeFileSync(join(source, 'stubs/migrations/0001_01_01_000000_create_a_table.ts'), '');
     writeFileSync(join(source, 'stubs/migrations/0001_01_01_000001_create_b_table.ts'), '');
-    manifest.marmeon = { migrations: { format: 2, module: 'system', from: 'stubs/migrations' } };
-    try {
-      const problems = problemsOf({ 'stubs/migrations/0001_01_01_000000_create_a_table.ts': '' }, source);
-      expect(problems).toContain('marmeon.migrations.from stubs/migrations holds 0001_01_01_000001_create_b_table.ts, which is not in the tarball');
-      expect(problems.filter((problem) => problem.startsWith('marmeon.migrations'))).toHaveLength(1);
-      expect(problemsOf({}, source)).toContain('marmeon.migrations.from is stubs/migrations, which holds no migration in the tarball');
-    } finally {
-      delete manifest.marmeon;
-    }
+    const problems = problemsOf({ 'stubs/migrations/0001_01_01_000000_create_a_table.ts': '' }, source);
+    expect(problems).toContain('stubs/migrations/0001_01_01_000001_create_b_table.ts is missing — stubs/ ships whole (it is copied into apps)');
+    expect(problems.filter((problem) => problem.startsWith('stubs/'))).toHaveLength(1);
   });
 
   it('finds nothing to name when LICENSE and README are there and no test ships', () => {

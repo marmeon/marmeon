@@ -9,8 +9,9 @@
  * changes, renames or deletes one needs `breaking` — `api-compatible` does not lift it; a new fixture is free.
  *
  * And it holds the migrations a package ships (its stubs, the kit's among them): once a file is on `main` it never changes, moves
- * or goes, a new file sorts after every file in its directory and does not repeat the name of one in its directory, and the
- * directory a package names in `marmeon.migrations.from` stays. No label lifts that.
+ * or goes, a new file sorts after every file in its directory and does not repeat the name of one in its directory, and a package
+ * ships its migrations from the directories it already does (a package without any starts with `stubs/migrations`), never from a
+ * new one. No label lifts that.
  *
  * The check reminds, it does not protect: a pull request runs its own copy of this file, the review is the protection. It
  * therefore loads only `node:*` and `./api-snapshot.ts`, and the workflow installs nothing.
@@ -107,28 +108,24 @@ export function migrationProblems(changes: readonly { status: string; path: stri
   return problems;
 }
 
-/** The `marmeon.migrations.from` of a `package.json`, or `undefined` when it names none or is not JSON. */
-function migrationsFrom(text: string | undefined): unknown {
-  if (text === undefined) return undefined;
-  try {
-    const migrations = (JSON.parse(text) as { marmeon?: { migrations?: { from?: unknown } } } | null)?.marmeon?.migrations;
-    return typeof migrations === 'object' && migrations !== null ? migrations.from : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
- * The problems of the `package.json` files a pull request changed: a package that named the directory of its migrations keeps it —
- * pointing `from` somewhere else would make every file there a new one for the check above.
+ * The problems of the migrations a pull request added to a directory that no migration of its package ships from: moving the
+ * directory would make every file there a new one for the check above. `added` are the paths with status `A`, `shippedDirectories`
+ * the directories of a package in the base that hold a shipped migration. The first `stubs/migrations` of a package that ships
+ * none is free.
  */
-export function migrationSourceProblems(files: readonly { path: string; before: string | undefined; after: string | undefined }[]): string[] {
+export function migrationDirectoryProblems(added: readonly string[], shippedDirectories: (pkg: string) => readonly string[]): string[] {
   const problems: string[] = [];
-  for (const { path, before, after } of files) {
-    const from = migrationsFrom(before);
-    if (from !== undefined && migrationsFrom(after) !== from) {
-      problems.push(`${path}: marmeon.migrations.from names the directory of the migrations the package ships and never changes or goes`);
-    }
+  for (const path of added) {
+    const pkg = path.split('/')[1] ?? '';
+    const directory = path.slice(0, path.lastIndexOf('/'));
+    const shipped = shippedDirectories(pkg);
+    if (shipped.includes(directory)) continue;
+    const first = `packages/${pkg}/stubs/migrations`;
+    if (shipped.length === 0 && directory === first) continue;
+    problems.push(
+      `${path}: ${pkg} ships its migrations from ${shipped.length === 0 ? first : shipped.join(', ')}, and a package never moves them or adds a directory — add the file there (CONTRIBUTING.md › Changing a stored or wire format)`,
+    );
   }
   return problems;
 }
@@ -189,15 +186,16 @@ export function apiLabelProblems(labels: readonly string[]): { files: number; pr
       .filter((match): match is RegExpExecArray => match !== null && match[1] !== '120000')
       .map((match) => match[2]!);
   problems.push(...migrationProblems(migrations, (directory) => blobs(base, directory).filter((path) => path.endsWith('.ts')).map((path) => path.slice(path.lastIndexOf('/') + 1))));
-  const manifests = git('diff', '--name-only', '-z', '--no-renames', base, 'HEAD', '--', ':(glob)packages/*/package.json')
-    .split('\0')
-    .filter((file) => file !== '')
-    .map((path) => ({
-      path,
-      before: git('ls-tree', '--name-only', base, '--', path).trim() === '' ? undefined : git('show', `${base}:${path}`),
-      after: existsSync(path) ? readFileSync(path, 'utf8') : undefined,
-    }));
-  problems.push(...migrationSourceProblems(manifests));
+  const shippedDirectories = (pkg: string) => [
+    ...new Set(
+      git('ls-tree', '-r', '-z', base, `packages/${pkg}/stubs/`)
+        .split('\0')
+        .map((entry) => /^(\d+) blob [0-9a-f]+\t(.+)$/.exec(entry))
+        .filter((match): match is RegExpExecArray => match !== null && match[1] !== '120000' && isShippedMigration(match[2]!))
+        .map((match) => match[2]!.slice(0, match[2]!.lastIndexOf('/'))),
+    ),
+  ];
+  problems.push(...migrationDirectoryProblems(migrations.filter((change) => change.status.startsWith('A')).map((change) => change.path), shippedDirectories));
   return { files: files.length, problems };
 }
 
