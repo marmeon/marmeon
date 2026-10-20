@@ -1,4 +1,5 @@
 import { isAbsolute, join } from 'node:path';
+import type { ProviderMigrations } from '@marmeon/database';
 import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { collectDrivers } from '@marmeon/core/internal';
 import { GLOBAL, MiddlewarePriority, Router } from '@marmeon/router';
@@ -79,6 +80,8 @@ export class CacheServiceProvider implements ServiceProvider {
   /** The cache takes and frees a key, for `/up/ready`. */
   static health = [CacheHealthCheck];
   static commands = [MakeCacheTableCommand, CachePruneCommand, CacheClearCommand];
+  /** The migrations for the cache table, which `marmeon publish` and the `make:*-table` command copy into the app. */
+  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 
   /** The driver a provider brought under `CACHE_DRIVER`, built once; a factory that failed is not run again. */
   #custom: CacheDriver | undefined;

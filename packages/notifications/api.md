@@ -198,6 +198,10 @@ export declare class NotificationServiceProvider implements ServiceProvider {
         connection: string;
     }>[];
     static commands: (typeof MakeNotificationsTableCommand | typeof PruneNotificationsCommand)[];
+    static migrations: {
+        from: import("node:url").URL;
+        module: string;
+    };
     register(container: Container): void;
     boot(app: Application): Promise<void>;
 }

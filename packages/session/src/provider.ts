@@ -1,4 +1,5 @@
 import { isAbsolute, join } from 'node:path';
+import type { ProviderMigrations } from '@marmeon/database';
 import { Application, Clock, Logger, Redactor, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { Encrypter } from '@marmeon/encryption';
 import { CookieDefaults, CookieEncryption, Flasher, PageSession } from '@marmeon/http';
@@ -34,6 +35,8 @@ declare module '@marmeon/core' {
 export class SessionServiceProvider implements ServiceProvider {
   static config = [SessionConfig, CsrfConfig];
   static commands = [MakeSessionTableCommand, PruneSessionsCommand];
+  /** The migrations for the sessions table, which `marmeon publish` and the `make:*-table` command copy into the app. */
+  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 
   register(container: Container): void {
     container.singleton(CsrfProtection);

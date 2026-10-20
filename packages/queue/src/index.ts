@@ -1,4 +1,5 @@
 import { Application, Clock, EventRegistry, ListenerQueue, Logger, Redactor, type Container, type ServiceProvider } from '@marmeon/core';
+import type { ProviderMigrations } from '@marmeon/database';
 import { isQueuedListener } from '@marmeon/core/internal';
 import { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 import { QueueWorkCommand } from './commands/work.ts';
@@ -88,6 +89,8 @@ export class QueueServiceProvider implements ServiceProvider {
   /** The default connection's driver answers, for `/up/ready`. */
   static health = [QueueHealthCheck];
   static commands = [QueueWorkCommand, QueueFailedCommand, QueueRetryCommand, QueueForgetCommand, QueueFlushCommand, QueuePruneFailedCommand, QueueSizeCommand, MakeQueueTableCommand];
+  /** The migrations for the jobs tables, which `marmeon publish` and the `make:*-table` command copy into the app. */
+  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 
   register(container: Container): void {
     container.singleton(JobRegistry, (c) => {

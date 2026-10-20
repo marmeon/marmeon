@@ -79,6 +79,16 @@ A package's `package.json` is not trusted, so the field is read strictly, and a 
 - Every entry is checked by its own real path: a file that is a symlink leading out of the package, or is no regular file, is refused (so is a symlink to a directory whose name ends in `.ts`: it is no file, not passed over). A file whose contents are not valid UTF-8 or have no `export default` is refused too: it cannot be a migration. A hard link to a file outside the package is not detected.
 - A `.ts` file is named `<timestamp>_<name>.ts` (so `create_things.ts` and `things.d.ts` are refused), at most 1 MiB, at most 100 in the directory, and the names without timestamp differ. The directory holds at least one.
 
+A service provider can declare the directory instead:
+`static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'permissions' }`, with `from` a `file:` URL
+that lies in your package. From the next release on, `publish` reads only that.
+The type is `ProviderMigrations` from `@marmeon/database`. A package that has `@marmeon/database` only as an optional peer writes
+`satisfies ProviderMigrations` with an `import type`, so the type is checked while the package's `.d.ts` does not mention the
+database.
+
+The provider must be exported from the package's main entry (`.`). `publish` imports the main entries of the packages whose directory
+a declaration names, which the app loads at boot anyway; a provider the entry does not export is not counted for the package.
+
 List the directory in `files` of your `package.json`, so the stubs ship in the tarball; `pnpm pack:check` of this repository does
 that for the framework's packages.
 

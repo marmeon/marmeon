@@ -1,4 +1,5 @@
 import { Clock, defineConfig, env, EventDispatcher, Logger, Redactor, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import type { ProviderMigrations } from '@marmeon/database';
 import { RateLimiter } from '@marmeon/cache';
 import { withCode } from '@marmeon/core/internal';
 import { Connections } from '@marmeon/database';
@@ -115,6 +116,8 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
   static commands = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand, EndAllSessionsCommand, EndSessionsCommand, ResetTwoFactorCommand];
+  /** The migrations for the sign-ins table, which `marmeon publish` and the `make:*-table` command copy into the app. */
+  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 
   register(container: Container): void {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.

@@ -6,6 +6,7 @@ import { DbShowCommand } from './commands/db-show.ts';
 import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
 import { DbSeedCommand } from './commands/db-seed.ts';
 import { DbTypesCommand } from './commands/db-types.ts';
+import type { ProviderMigrations } from './package-migrations.ts';
 import { Factories } from './factories.ts';
 import { Seeding } from './seeders.ts';
 import { Migrator } from './migrations/migrator.ts';
@@ -21,6 +22,15 @@ declare module '@marmeon/core' {
      * relative to the app root). Files are named `2026_10_01_120000_create_users_table.ts`.
      */
     readonly migrations?: URL | string;
+  }
+
+  interface ServiceProviderClass {
+    /**
+     * The directory of the migrations the provider's package ships, and the module they go to:
+     * `{ from: new URL('../stubs/migrations', import.meta.url), module: 'permissions' }`. `marmeon publish` copies them into an app.
+     * See `docs/package-development.md#declaring-the-migrations-a-package-ships`.
+     */
+    readonly migrations?: ProviderMigrations;
   }
 }
 import { DatabaseConfig, isConnectionDefinition, type ConnectionOptions } from './config.ts';

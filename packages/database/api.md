@@ -562,6 +562,11 @@ export interface ProjectedTable {
     readonly foreignKeys: readonly ProjectedForeignKey[];
     readonly markers: readonly TableMarker[];
 }
+// ProviderMigrations
+export interface ProviderMigrations {
+    readonly from: URL;
+    readonly module: string;
+}
 // PublishCommand
 export declare class PublishCommand {
     #private;
@@ -1044,6 +1049,10 @@ interface ModuleDefinition {
 // @marmeon/core.ModuleDefinition (3)
 interface ModuleDefinition {
     readonly exposes?: readonly string[];
+}
+// @marmeon/core.ServiceProviderClass
+interface ServiceProviderClass {
+    readonly migrations?: ProviderMigrations;
 }
 // kysely.SelectQueryBuilder
 interface SelectQueryBuilder<DB, TB extends keyof DB, O> {

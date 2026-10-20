@@ -1,7 +1,8 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute, join, relative, sep } from 'node:path';
-import { err, ok, type Result } from '@marmeon/core';
-import { printable, withCode } from '@marmeon/core/internal';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { err, ok, type Result, type ServiceProviderClass } from '@marmeon/core';
+import { printable, resolveExports, runtimeConditions, withCode } from '@marmeon/core/internal';
 
 /** One migration a package ships: `name` is the file name without its timestamp and `.ts`, `file` its POSIX path in the package. */
 export interface PackageMigrationFile {
@@ -10,7 +11,15 @@ export interface PackageMigrationFile {
   readonly contents: string;
 }
 
-/** What `"marmeon": { "migrations": … }` of a package declares, read and checked; `files` are sorted by file name. */
+/** What a service provider declares in `static migrations`: the directory of its package's migrations and the module they go to. */
+export interface ProviderMigrations {
+  /** The directory in the package, as a `file:` URL: `new URL('../stubs/migrations', import.meta.url)`. */
+  readonly from: URL;
+  /** The module the package proposes for its tables, kebab-case, such as `permissions`; an app can name another with `--module`. */
+  readonly module: string;
+}
+
+/** The migrations a package declares, read and checked; `files` are sorted by file name. */
 export interface PackageMigrations {
   /** The module the package proposes for its tables; an app can name another. */
   readonly module: string;
@@ -45,8 +54,13 @@ const MAX_MODULE = 64;
 const MAX_FILES = 100;
 const MAX_BYTES = 1 << 20;
 
-function invalid(pkg: { name: string }, why: string): Result<never, PackageMigrationsError> {
-  return err({ kind: 'invalid-package-migrations', message: withCode('D21', `${pkg.name} lists its migrations in package.json wrongly: ${why}`) });
+/** How a message names the declaration: the field of a `package.json`, or the static of a service provider. */
+type Declared = 'lists its migrations in package.json wrongly' | 'declares the migrations it ships wrongly';
+const FIELD: Declared = 'lists its migrations in package.json wrongly';
+const STATIC: Declared = 'declares the migrations it ships wrongly';
+
+function invalid(pkg: { name: string }, why: string, declared: Declared = FIELD): Result<never, PackageMigrationsError> {
+  return err({ kind: 'invalid-package-migrations', message: withCode('D21', `${pkg.name} ${declared}: ${why}`) });
 }
 
 /** A string from a foreign package for a message: quoted, cut at 200 characters, control, format and separator characters escaped. */
@@ -92,23 +106,6 @@ function readV2(pkg: PackageToRead, field: Record<string, unknown>): Outcome {
   const from = field.from;
   if (typeof from !== 'string') return invalid(pkg, 'it needs "from", the directory of the package that holds the migrations, such as "stubs/migrations".');
 
-  const files = readMigrationDirectory(pkg, from);
-  if (!files.ok) return files;
-  return ok({ module, from, files: files.value });
-}
-
-/** Whether `real` lies inside `root` (both real paths) and is not `root` itself. */
-function isInside(root: string, real: string): boolean {
-  const inside = relative(root, real);
-  return !(inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside));
-}
-
-/**
- * The migrations in the directory `from` of a package, sorted by file name. Entries are checked one by one by their real path:
- * a symlink that leads out of the package, a sub-directory or a file that is no regular file never gets read. Files that do not
- * end in `.ts` and sub-directories are passed over; a `.ts` file must be named `<timestamp>_<name>.ts`.
- */
-export function readMigrationDirectory(pkg: { name: string; dir: string }, from: string): Result<readonly PackageMigrationFile[], PackageMigrationsError> {
   if (from === '' || from.startsWith('/') || /^[A-Za-z]:/.test(from) || from.includes('\\') || from.includes('\0')) {
     return invalid(pkg, `${show(from)} must be a relative path with forward slashes.`);
   }
@@ -135,6 +132,37 @@ export function readMigrationDirectory(pkg: { name: string; dir: string }, from:
     return invalid(pkg, `${show(from)} cannot be read.`);
   }
 
+  const files = readMigrationDirectory(pkg, directory, from);
+  if (!files.ok) return files;
+  return ok({ module, from, files: files.value });
+}
+
+/** Whether `real` lies inside `root` (both real paths) and is not `root` itself. */
+function isInside(root: string, real: string): boolean {
+  const inside = relative(root, real);
+  return !(inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside));
+}
+
+/**
+ * The migrations in `directory`, the real path of a directory inside the package, sorted by file name; `from` is its POSIX path in
+ * the package, for messages and `file`. Entries are checked one by one by their real path:
+ * a symlink that leads out of the package, a sub-directory or a file that is no regular file never gets read. Files that do not
+ * end in `.ts` and sub-directories are passed over; a `.ts` file must be named `<timestamp>_<name>.ts`.
+ */
+export function readMigrationDirectory(
+  pkg: { name: string; dir: string },
+  directory: string,
+  from: string,
+  declared: Declared = FIELD,
+): Result<readonly PackageMigrationFile[], PackageMigrationsError> {
+  const fail = (why: string) => invalid(pkg, why, declared);
+  let root: string;
+  try {
+    root = realpathSync(pkg.dir);
+  } catch {
+    return fail('the package directory cannot be read.');
+  }
+
   let entries: string[];
   try {
     entries = readdirSync(directory, { withFileTypes: true })
@@ -142,19 +170,19 @@ export function readMigrationDirectory(pkg: { name: string; dir: string }, from:
       .map((entry) => entry.name)
       .sort();
   } catch {
-    return invalid(pkg, `${show(from)} cannot be read.`);
+    return fail(`${show(from)} cannot be read.`);
   }
-  if (entries.length > MAX_FILES) return invalid(pkg, `${show(from)} holds more than ${MAX_FILES} migrations.`);
+  if (entries.length > MAX_FILES) return fail(`${show(from)} holds more than ${MAX_FILES} migrations.`);
 
   const files: PackageMigrationFile[] = [];
   const names = new Set<string>();
   for (const entry of entries) {
     const match = FILE_NAME.exec(entry);
     if (!match) {
-      return invalid(pkg, `${show(entry)} must be named like a migration: <timestamp>_<name>.ts, such as 2026_01_01_000000_create_things_table.ts.`);
+      return fail(`${show(entry)} must be named like a migration: <timestamp>_<name>.ts, such as 2026_01_01_000000_create_things_table.ts.`);
     }
     const name = match[2]!;
-    if (names.has(name)) return invalid(pkg, `${show(name)} is in the directory twice, under two timestamps.`);
+    if (names.has(name)) return fail(`${show(name)} is in the directory twice, under two timestamps.`);
     names.add(name);
 
     const path = `${from}/${entry}`;
@@ -162,24 +190,262 @@ export function readMigrationDirectory(pkg: { name: string; dir: string }, from:
     try {
       real = realpathSync(join(directory, entry));
     } catch {
-      return invalid(pkg, `${show(path)} cannot be read.`);
+      return fail(`${show(path)} cannot be read.`);
     }
     // `realpath` follows symlinks, not hard links: a hard link inside the package to a file outside it passes.
-    if (!isInside(root, real)) return invalid(pkg, `${show(path)} leads out of the package.`);
+    if (!isInside(root, real)) return fail(`${show(path)} leads out of the package.`);
 
     const read = readRegularFile(real, root);
     if (!read.ok) {
-      if (read.why === 'not-a-file') return invalid(pkg, `${show(path)} is no file.`);
-      if (read.why === 'too-large') return invalid(pkg, `${show(path)} is larger than ${MAX_BYTES} bytes.`);
-      if (read.why === 'not-utf8') return invalid(pkg, `${show(path)} is not valid UTF-8.`);
-      if (read.why === 'no-migration') return invalid(pkg, `${show(path)} is no migration: it has no default export.`);
-      return invalid(pkg, `${show(path)} cannot be read.`);
+      if (read.why === 'not-a-file') return fail(`${show(path)} is no file.`);
+      if (read.why === 'too-large') return fail(`${show(path)} is larger than ${MAX_BYTES} bytes.`);
+      if (read.why === 'not-utf8') return fail(`${show(path)} is not valid UTF-8.`);
+      if (read.why === 'no-migration') return fail(`${show(path)} is no migration: it has no default export.`);
+      return fail(`${show(path)} cannot be read.`);
     }
     const contents = read.contents;
     files.push({ name, file: path, contents });
   }
-  if (files.length === 0) return invalid(pkg, `${show(from)} holds no migration.`);
+  if (files.length === 0) return fail(`${show(from)} holds no migration.`);
   return ok(files);
+}
+
+/**
+ * One `static migrations` as read from a provider: parsed once, or why it cannot be. `keys` and `module` are checked only for
+ * the package the declaration is assigned to; `value` only stands for the identity of the object and is never read again.
+ * `classes` are the provider classes that carry it (the same object on a subclass, or the same directory and module twice).
+ * @internal
+ */
+export type MigrationDeclaration =
+  | {
+      readonly provider: string;
+      readonly ok: true;
+      readonly value: object;
+      readonly path: string;
+      readonly keys: readonly string[];
+      readonly module: unknown;
+      readonly classes: ServiceProviderClass[];
+    }
+  | { readonly provider: string; readonly ok: false; readonly message: string };
+
+type Parsed = Extract<MigrationDeclaration, { ok: true }>;
+
+function wrongly(provider: string, why: string): MigrationDeclaration {
+  return { provider, ok: false, message: withCode('D21', `${provider} declares the migrations of its package wrongly: ${why}`) };
+}
+
+/**
+ * The `static migrations` of `providers`, each read once; the same object twice (a subclass inherits it), or the same directory and
+ * module twice, counts once. The static comes from code the app did not write: every property is read a single time and the URL is
+ * copied, so a getter or a proxy cannot show another value after the check.
+ * @internal
+ */
+export function migrationDeclarations(providers: readonly ServiceProviderClass[]): MigrationDeclaration[] {
+  const byValue = new Map<object, Parsed>();
+  const byPath = new Map<string, Parsed>();
+  const declarations: MigrationDeclaration[] = [];
+  for (const Provider of providers) {
+    let provider: string;
+    try {
+      provider = show(String(Provider.name));
+    } catch {
+      provider = '"(unnamed provider)"';
+    }
+    try {
+      const value: unknown = (Provider as { migrations?: unknown }).migrations;
+      if (value === undefined) continue;
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        declarations.push(wrongly(provider, 'static migrations must be an object: { from: new URL(…), module: "…" }.'));
+        continue;
+      }
+      const same = byValue.get(value);
+      if (same) {
+        same.classes.push(Provider);
+        continue;
+      }
+      const keys = Object.keys(value);
+      const { from, module } = value as { from?: unknown; module?: unknown };
+      if (!(from instanceof URL)) {
+        declarations.push(wrongly(provider, "from must be a file: URL, such as new URL('../stubs/migrations', import.meta.url)."));
+        continue;
+      }
+      const url = new URL(String(from.href));
+      if (url.protocol !== 'file:' || url.host !== '' || url.search !== '' || url.hash !== '') {
+        declarations.push(wrongly(provider, 'from must be a file: URL without a host, a query or a fragment.'));
+        continue;
+      }
+      const path = resolve(fileURLToPath(url));
+      // Only a plain string module is compared: a foreign object is never asked for its text, and a declaration with other keys is another one.
+      const key = typeof module === 'string' ? JSON.stringify([module, [...keys].sort(), path]) : undefined;
+      const twin = key === undefined ? undefined : byPath.get(key);
+      if (twin) {
+        twin.classes.push(Provider);
+        byValue.set(value, twin);
+        continue;
+      }
+      const declaration: Parsed = { provider, ok: true, value, path, keys, module, classes: [Provider] };
+      byValue.set(value, declaration);
+      if (key !== undefined) byPath.set(key, declaration);
+      declarations.push(declaration);
+    } catch {
+      declarations.push(wrongly(provider, 'static migrations cannot be read.'));
+    }
+  }
+  return declarations;
+}
+
+/** The D21 messages of declarations that cannot be parsed at all (no object, no `file:` URL, …). @internal */
+export function unattributedDeclarations(declarations: readonly MigrationDeclaration[]): string[] {
+  return declarations.flatMap((declaration) => (declaration.ok ? [] : [declaration.message]));
+}
+
+/** Whether `path` lies in `root` or is `root`, without a `node_modules` below `root`: a package nested there is another package. */
+function belongsTo(root: string, path: string): boolean {
+  const inside = relative(root, path);
+  if (inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return false;
+  return !inside.split(sep).some((segment) => segment.toLowerCase() === 'node_modules');
+}
+
+/** A package as the reader needs it: where it lies, and the `package.json` fields that name its entry. */
+export interface ProviderPackage {
+  readonly name: string;
+  readonly dir: string;
+  readonly json: { readonly main?: string; readonly exports?: unknown };
+}
+
+/**
+ * The classes a package exports at its main entry, or why they are unknown. The entry is imported only when it lies in the package (no
+ * `..` or `node_modules` segment, and its real path inside the real directory): a package cannot make the reader run another one's code.
+ */
+async function exportedClasses(pkg: ProviderPackage, root: string): Promise<{ classes: Set<unknown> } | { reason: string }> {
+  const entry = resolveExports(pkg, '.', runtimeConditions());
+  if (entry === undefined) return { reason: 'the package has no entry' };
+  let inside = false;
+  try {
+    inside = belongsTo(resolve(pkg.dir), resolve(entry)) && isInside(root, realpathSync(entry));
+  } catch {
+    // an entry that does not exist is not in the package
+  }
+  if (!inside) return { reason: 'its entry leads out of the package' };
+  try {
+    // The URL the discovery imports, so the classes are the ones the app booted.
+    const exported = (await import(pathToFileURL(entry).href)) as Record<string, unknown>;
+    return { classes: new Set(Object.values(exported).filter((candidate) => typeof candidate === 'function')) };
+  } catch {
+    return { reason: 'its entry could not be imported' };
+  }
+}
+
+/** `path` for a message: relative to the package when it lies in it, so a long install path does not cut the useful part. */
+function shown(pkg: { dir: string }, root: string, path: string): string {
+  for (const base of [resolve(pkg.dir), root]) {
+    const inside = relative(base, path);
+    if (!(inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) && inside !== '') return show(inside.split(sep).join('/'));
+  }
+  return show(path);
+}
+
+/**
+ * Gives each valid declaration to one package: the one with the longest real directory that holds the declaration's directory, by
+ * where it really lies and not by the provider that carries the static. It counts for that package only when one of the classes
+ * carrying it is exported by the package's main entry: another package's provider cannot claim the directory
+ * of a package by naming its path. A provider re-exported from another package carries that package's declaration.
+ *
+ * Per package: no declaration is `undefined`; two are D21; a directory that leaves the package and every entry that
+ * {@link readMigrationDirectory} refuses are D21. `unclaimed` are warnings (they never change a result) for declarations whose directory
+ * lies in a package that does not claim them, with the reason. `passedOver` are the providers of valid declarations that lie in none of
+ * `packages` (the app's own providers, transitive packages): nothing is said about them.
+ * @internal
+ */
+export async function assignMigrations(
+  packages: readonly ProviderPackage[],
+  declarations: readonly MigrationDeclaration[],
+): Promise<{ results: Map<ProviderPackage, Result<PackageMigrations | undefined, PackageMigrationsError>>; unclaimed: string[]; passedOver: string[] }> {
+  const results = new Map<ProviderPackage, Result<PackageMigrations | undefined, PackageMigrationsError>>();
+  const roots = new Map<ProviderPackage, string>();
+  for (const pkg of packages) {
+    try {
+      roots.set(pkg, realpathSync(pkg.dir));
+    } catch {
+      results.set(pkg, invalid(pkg, 'the package directory cannot be read.', STATIC));
+    }
+  }
+
+  const located = new Map<ProviderPackage, Parsed[]>();
+  const unclaimed: string[] = [];
+  const passedOver: string[] = [];
+  for (const declaration of declarations) {
+    if (!declaration.ok) continue;
+    let real: string | undefined;
+    try {
+      real = realpathSync(declaration.path);
+    } catch {
+      // checked below, for the package whose path it is
+    }
+    let best: ProviderPackage | undefined;
+    for (const [pkg, root] of roots) {
+      const here = belongsTo(root, declaration.path) || belongsTo(resolve(pkg.dir), declaration.path) || (real !== undefined && belongsTo(root, real));
+      if (here && (best === undefined || root.length > roots.get(best)!.length)) best = pkg;
+    }
+    if (best === undefined) passedOver.push(declaration.provider);
+    else located.set(best, [...(located.get(best) ?? []), declaration]);
+  }
+
+  for (const [pkg, root] of roots) {
+    const here = located.get(pkg) ?? [];
+    const exported = here.length > 0 ? await exportedClasses(pkg, root) : undefined;
+    const mine = here.filter((declaration) => {
+      if (exported && 'classes' in exported && declaration.classes.some((Provider) => exported.classes.has(Provider))) return true;
+      const reason = exported && 'reason' in exported ? exported.reason : 'the package does not export that provider at its main entry';
+      unclaimed.push(`${declaration.provider} declares migrations in ${shown(pkg, root, declaration.path)} of ${pkg.name}, which does not claim them: ${reason}.`);
+      return false;
+    });
+    results.set(pkg, readDeclaration(pkg, root, mine));
+  }
+  return { results, unclaimed, passedOver };
+}
+
+/**
+ * The migrations that belong to `pkg`: {@link assignMigrations} for one package. `undefined` when none does.
+ * @internal
+ */
+export async function readProviderMigrations(pkg: ProviderPackage, declarations: readonly MigrationDeclaration[]): Promise<Result<PackageMigrations | undefined, PackageMigrationsError>> {
+  return (await assignMigrations([pkg], declarations)).results.get(pkg)!;
+}
+
+function readDeclaration(pkg: ProviderPackage, root: string, mine: readonly Parsed[]): Result<PackageMigrations | undefined, PackageMigrationsError> {
+  const fail = (why: string) => invalid(pkg, why, STATIC);
+  if (mine.length === 0) return ok(undefined);
+  if (mine.length > 1) {
+    return fail(`declared by two service providers: ${mine.map((declaration) => declaration.provider).join(' and ')} — a package declares one directory.`);
+  }
+  const declaration = mine[0]!;
+  const where = shown(pkg, root, declaration.path);
+
+  for (const key of declaration.keys) if (key !== 'module' && key !== 'from') return fail(`unknown key ${show(key)} (known: module, from).`);
+  const module = declaration.module;
+  if (typeof module !== 'string' || module.length > MAX_MODULE || !KEBAB.test(module) || DEVICE_NAME.test(module)) {
+    return fail('it needs "module", a kebab-case name of at most 64 characters such as "permissions" (the module the tables go to).');
+  }
+
+  let real: string;
+  try {
+    real = realpathSync(declaration.path);
+  } catch {
+    return fail(`${where} does not exist in the package.`);
+  }
+  if (real === root) return fail(`${where} leads out of the package: it is the package itself.`);
+  if (!belongsTo(root, real)) return fail(`${where} leads out of the package.`);
+  try {
+    if (!statSync(real).isDirectory()) return fail(`${where} is no directory.`);
+  } catch {
+    return fail(`${where} cannot be read.`);
+  }
+
+  const from = relative(root, real).split(sep).join('/');
+  const files = readMigrationDirectory(pkg, real, from, STATIC);
+  if (!files.ok) return files;
+  return ok({ module, from, files: files.value });
 }
 
 type FileRead = { ok: true; contents: string } | { ok: false; why: 'not-a-file' | 'too-large' | 'no-migration' | 'not-utf8' | 'unreadable' };

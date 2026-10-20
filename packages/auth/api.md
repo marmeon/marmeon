@@ -185,6 +185,10 @@ export declare class AuthServiceProvider implements ServiceProvider {
         };
     }>)[];
     static commands: (typeof MakeAuthCommand | typeof EndAllSessionsCommand | typeof EndSessionsCommand | typeof ResetTwoFactorCommand | typeof PruneTokensCommand | typeof MakeSignInsTableCommand)[];
+    static migrations: {
+        from: URL;
+        module: string;
+    };
     register(container: Container): void;
     boot(app: Application): Promise<void>;
 }

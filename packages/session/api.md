@@ -138,6 +138,10 @@ export declare class SessionServiceProvider implements ServiceProvider {
         appOrigin: string | undefined;
     }>)[];
     static commands: (typeof MakeSessionTableCommand | typeof PruneSessionsCommand)[];
+    static migrations: {
+        from: import("node:url").URL;
+        module: string;
+    };
     register(container: Container): void;
     boot(app: Application): Promise<void>;
 }
