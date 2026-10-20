@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "migrations": [
+    { "name": "2026_01_05_000000_create_accounts_table", "module": "accounts", "batch": 1, "status": "ran" },
+    { "name": "2026_01_06_000000_add_recovery_code_to_accounts_table", "module": "accounts", "batch": 1, "status": "ran" }
+  ],
+  "warnings": ["2026_01_05_000000_create_accounts_table changed since it ran in batch 1"]
+}

@@ -58,6 +58,14 @@ export declare class Blueprint {
     seal(): void;
     allIndexes(): IndexSpec[];
 }
+// ChangedMigration
+export interface ChangedMigration {
+    readonly name: string;
+    readonly module: string;
+    readonly batch: number;
+    readonly recorded: string;
+    readonly current: string;
+}
 // CheckPageRequest
 export type CheckPageRequest<Q> = [keyof Q & keyof PageRequest] extends [never] ? 'this query has no page — spread pageQuery() into the route\'s query schema: r.query({ ...pageQuery({ perPage: [25, 50] }), … }), or pass { page, perPage }' : Q extends PageRequest ? Q : PageRequest;
 // Column
@@ -355,6 +363,7 @@ export interface MigrateOptions {
         readonly recorded: number;
         readonly unknown: readonly string[];
     }) => void;
+    readonly onChanged?: (changed: readonly ChangedMigration[]) => void;
 }
 // MigrateResetCommand
 export declare class MigrateResetCommand {
@@ -457,11 +466,12 @@ export declare class Migrator {
         module: string;
         batch: number;
     }[]>;
+    changed(): Promise<ChangedMigration[]>;
     migrate(onRun?: (run: MigrationRun) => void, options?: MigrateOptions): Promise<MigrationRun[]>;
     rollback(options?: {
         steps?: number;
-    } & Pick<MigrateOptions, 'onCarriedOver'>, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
-    reset(onRun?: (run: MigrationRun) => void, options?: Pick<MigrateOptions, 'onCarriedOver'>): Promise<MigrationRun[]>;
+    } & Pick<MigrateOptions, 'onCarriedOver' | 'onChanged'>, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
+    reset(onRun?: (run: MigrationRun) => void, options?: Pick<MigrateOptions, 'onCarriedOver' | 'onChanged'>): Promise<MigrationRun[]>;
     fresh(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
     dropAllTables(): Promise<string[]>;
     connections(): Promise<string[]>;

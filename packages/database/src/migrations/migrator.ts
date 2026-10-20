@@ -46,6 +46,22 @@ export interface MigrateOptions {
    * checksum of their file as it is now, `unknown` have no file and keep no checksum. See `docs/migrations.md#how-the-migrator-keeps-track`.
    */
   readonly onCarriedOver?: (carried: { readonly recorded: number; readonly unknown: readonly string[] }) => void;
+  /**
+   * Called once, before the first pending migration (also when none is), with the migrations that ran and whose file differs from what
+   * it was when they ran. Never stops the run. `rollback` and `reset` call it before the first `down()`, with the migrations they roll back only. See `docs/migrations.md#a-migration-that-changed-after-it-ran`.
+   */
+  readonly onChanged?: (changed: readonly ChangedMigration[]) => void;
+}
+
+/** A migration that ran and whose file has another checksum now than when it ran. */
+export interface ChangedMigration {
+  readonly name: string;
+  readonly module: string;
+  readonly batch: number;
+  /** The checksum recorded when the migration ran. */
+  readonly recorded: string;
+  /** The checksum of the file now. */
+  readonly current: string;
 }
 
 export interface MigrationRun {
@@ -56,6 +72,16 @@ export interface MigrationRun {
 
 interface MigrationRecord {
   migrations: { id: Generated<number>; name: string; module: string; batch: number; checksum: string | null };
+}
+
+/** The recorded migrations whose checksum is not the one `current` gives for their file, by name. A row without a checksum or a file is left out. */
+function changedOf(rows: readonly { name: string; module: string; batch: number; checksum: string | null }[], current: (name: string) => string | undefined): ChangedMigration[] {
+  return rows
+    .flatMap(({ name, module, batch, checksum }) => {
+      const now = checksum === null ? undefined : current(name);
+      return checksum !== null && now !== undefined && now !== checksum ? [{ name, module, batch, recorded: checksum, current: now }] : [];
+    })
+    .toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
 /** A migration with the plan of its `up()` and the connection it runs on. */
@@ -196,6 +222,18 @@ export class Migrator {
     return (await this.#ran()).filter((row) => !names.has(row.name)).map(({ name, module, batch }) => ({ name, module, batch }));
   }
 
+  /**
+   * The migrations that ran with a checksum and whose file differs from it now, by name. A row without a checksum is unknown, never
+   * changed; a file without a row is pending. Reads only.
+   */
+  async changed(): Promise<ChangedMigration[]> {
+    const files = new Map(this.files().map((file) => [file.name, file]));
+    return changedOf(await this.#ran(), (name) => {
+      const file = files.get(name);
+      return file === undefined ? undefined : migrationChecksum(readFileSync(file.path));
+    });
+  }
+
   /** Runs every pending migration, in one new batch. */
   async migrate(onRun?: (run: MigrationRun) => void, options: MigrateOptions = {}): Promise<MigrationRun[]> {
     return this.locked(() => this.#withdrawnOnFailure(() => this.#migrate(onRun, options)));
@@ -225,9 +263,11 @@ export class Migrator {
     const files = this.files();
     const planned = await this.#plans(files);
     const pending = planned.filter(({ file }) => !ran.has(file.name));
+    const byName = new Map(planned.map((entry) => [entry.file.name, entry]));
+    const changed = changedOf(rows, (name) => byName.get(name)?.checksum);
+    if (changed.length > 0) options.onChanged?.(changed);
     // The schema of the database as it is, handed to this process's connections before anything is asked of them: they would otherwise
     // compare the migration files with a database this run is about to bring up to date, and refuse every query meanwhile.
-    const byName = new Map(planned.map((entry) => [entry.file.name, entry]));
     const done = rows.flatMap((row) => byName.get(row.name) ?? []);
     let state = fold(done);
     this.#connections.publish(state.projection);
@@ -290,22 +330,22 @@ export class Migrator {
   }
 
   /** Rolls back the last batch — or the last `steps` migrations. */
-  async rollback(options: { steps?: number } & Pick<MigrateOptions, 'onCarriedOver'> = {}, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
+  async rollback(options: { steps?: number } & Pick<MigrateOptions, 'onCarriedOver' | 'onChanged'> = {}, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
     return this.locked(async () => {
       await this.#withdrawnOnFailure(() => this.#carryOver(options));
       const rows = (await this.#ran()).toReversed();
       const last = rows[0]?.batch;
       const targets = options.steps ? rows.slice(0, options.steps) : rows.filter((row) => row.batch === last);
-      return this.#withdrawnOnFailure(() => this.#down(targets, onRun));
+      return this.#withdrawnOnFailure(() => this.#down(targets, onRun, options));
     });
   }
 
   /** Rolls back every migration. */
-  async reset(onRun?: (run: MigrationRun) => void, options: Pick<MigrateOptions, 'onCarriedOver'> = {}): Promise<MigrationRun[]> {
+  async reset(onRun?: (run: MigrationRun) => void, options: Pick<MigrateOptions, 'onCarriedOver' | 'onChanged'> = {}): Promise<MigrationRun[]> {
     return this.locked(async () =>
       this.#withdrawnOnFailure(async () => {
         await this.#carryOver(options);
-        return this.#down((await this.#ran()).toReversed(), onRun);
+        return this.#down((await this.#ran()).toReversed(), onRun, options);
       }),
     );
   }
@@ -359,10 +399,14 @@ export class Migrator {
     return loadProjection(this.#app.root, this.files());
   }
 
-  async #down(rows: readonly { name: string; module: string }[], onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
+  async #down(rows: readonly { name: string; module: string; batch: number; checksum: string | null }[], onRun: ((run: MigrationRun) => void) | undefined, options: Pick<MigrateOptions, 'onChanged'>): Promise<MigrationRun[]> {
     const known = this.files();
     const files = new Map(known.map((file) => [file.name, file]));
     const planned = await this.#plans(known);
+    // The `down()` that runs is the one of the file as it is now, so a target whose file changed is named first.
+    const byName = new Map(planned.map((entry) => [entry.file.name, entry]));
+    const changed = changedOf(rows, (name) => byName.get(name)?.checksum);
+    if (changed.length > 0) options.onChanged?.(changed);
     // What the database has before the first rollback, and after each: this process's connections must not refuse queries meanwhile.
     const remaining = new Set((await this.#ran()).map((row) => row.name));
     const left = () => fold(planned.filter(({ file }) => remaining.has(file.name)));

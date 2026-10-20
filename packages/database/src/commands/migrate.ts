@@ -4,7 +4,7 @@ import { environment } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { confirmed } from './confirm.ts';
 import { MigrationLockLostError, MigrationLockTimeoutError } from '../migrations/lock.ts';
-import { Migrator, type MigrateOptions, type MigrationRun } from '../migrations/migrator.ts';
+import { Migrator, type ChangedMigration, type MigrateOptions, type MigrationRun } from '../migrations/migrator.ts';
 import { TypeGenerator } from '../types-gen/generator.ts';
 import { Seeding } from '../seeders.ts';
 import { seed } from './db-seed.ts';
@@ -42,10 +42,22 @@ function carriedOver(output: CommandInput['output']): NonNullable<MigrateOptions
     output.info(`The record of migrations keeps a checksum per migration now: ${recorded} recorded as their files are now${unknown.length > 0 ? `, ${unknown.length} without a file stay unknown` : ''}.`);
 }
 
+const CHANGED_ADVICE =
+  'The database has what the file said when it ran, and a migration that ran never runs again. Put the file back and write the change as a new migration — see docs/migrations.md#a-migration-that-changed-after-it-ran.';
+
+/** What a command says before it runs or rolls back with migrations whose file changed after they ran: a warning each, then the advice once. */
+function changedMigrations(output: CommandInput['output']): (changed: readonly ChangedMigration[]) => void {
+  return (changed) => {
+    for (const { name, module, batch } of changed) output.warn(`${name} (${module}) changed since it ran in batch ${batch}.`);
+    output.line(CHANGED_ADVICE);
+  };
+}
+
 /** What `migrate` says after a run: the tables 0.3 left, and what the database has that no migration made. */
 function notices(output: CommandInput['output']): MigrateOptions {
   return {
     onCarriedOver: carriedOver(output),
+    onChanged: changedMigrations(output),
     onLegacy: (connection, tables) =>
       output.info(`${tables.join(', ')} on the connection "${connection}" are left in place for processes of Marmeon 0.3; drop them once none runs.`),
     onUnknown: (connection, { tables, columns }) => {
@@ -133,7 +145,7 @@ export class MigrateRollbackCommand {
     }
     if (!confirmed(input, 'roll back')) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.rollback({ steps: step, onCarriedOver: carriedOver(input.output) }, report(input.output, 'Rolled back'));
+      const runs = await this.#migrator.rollback({ steps: step, onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output) }, report(input.output, 'Rolled back'));
       if (runs.length === 0) input.output.info('Nothing to roll back.');
       return 0;
     });
@@ -155,7 +167,7 @@ export class MigrateResetCommand {
   async handle(input: CommandInput): Promise<number> {
     if (!confirmed(input, 'roll back every migration')) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.reset(report(input.output, 'Rolled back'), { onCarriedOver: carriedOver(input.output) });
+      const runs = await this.#migrator.reset(report(input.output, 'Rolled back'), { onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output) });
       if (runs.length === 0) input.output.info('Nothing to roll back.');
       return 0;
     });
@@ -211,12 +223,17 @@ export class MigrateStatusCommand {
       batch: m.batch ?? null,
       status: m.batch === undefined ? ('pending' as const) : ('ran' as const),
     }));
-    const warnings = (await this.#migrator.missing()).map((m) => `${m.name} ran in batch ${m.batch} but no module has its file`);
+    const changed = await this.#migrator.changed();
+    const warnings = [
+      ...(await this.#migrator.missing()).map((m) => `${m.name} ran in batch ${m.batch} but no module has its file`),
+      ...changed.map((m) => `${m.name} changed since it ran in batch ${m.batch}`),
+    ];
     if (options.json === true) {
       output.json({ format: 1, migrations, warnings });
       return 0;
     }
     for (const warning of warnings) output.warn(warning);
+    if (changed.length > 0) output.line(CHANGED_ADVICE);
     if (migrations.length === 0) {
       output.info('No migrations. Add a directory to a module: defineModule({ migrations: new URL(\'./migrations/\', import.meta.url) }).');
       return 0;
