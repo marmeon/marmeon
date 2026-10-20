@@ -525,18 +525,18 @@ export class Recorder {
   }
 
   #exception(message: ExceptionMessage): void {
-    this.#failure(message, message.error, 'request', undefined, { status: message.status, method: message.method, path: message.path });
+    this.#failure(message, message.error, 'request', undefined, { status: message.status, method: message.method, path: message.path, routePath: message.routePath });
   }
 
   /** An `exception` entry: the error, where it ended, and the solutions the error page would show — looked up before the batch is written. */
-  #failure(message: MessageBase, error: unknown, where: ExceptionContent['in'], batch?: Batch, request?: { status: number; method: string; path: string }): void {
+  #failure(message: MessageBase, error: unknown, where: ExceptionContent['in'], batch?: Batch, request?: { status: number; method: string; path: string; routePath?: string | undefined }): void {
     if (!this.#options.record.has('exceptions')) return;
     const shown = this.#error(error)!;
     const solutions: ExceptionContent['solutions'][number][] = [];
     const entry = this.#add(
       'exception',
       message,
-      { ...shown, in: where, ...(request ? { status: request.status, method: request.method, path: this.#redactor.path(request.path) } : {}), solutions },
+      { ...shown, in: where, ...(request ? { status: request.status, method: request.method, path: this.#redactor.path(request.path, request.routePath) } : {}), solutions },
       [shown.class, request ? `status:${request.status}` : ''],
       batch,
     );

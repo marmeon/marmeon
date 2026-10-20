@@ -29,6 +29,12 @@ const routes = openRoutes((Route) => {
   Route.get('/reset/:token', () => {
     throw new Error('reset failed');
   });
+  Route.get('/invite/:code', () => {
+    throw new Error('invite failed');
+  });
+  Route.get('/users/:user', () => {
+    throw new Error('user failed');
+  });
   Route.get('/missing', () => abort(404, 'Nothing here.'));
   Route.post('/invalid', () => abort(422, 'Not valid.'));
   Route.get('/api/boom', () => {
@@ -131,6 +137,19 @@ describe('the last-error file', () => {
     const text = read(root);
     expect(text).toContain('reset failed');
     expect(text).not.toContain(TOKEN);
+  });
+
+  it('masks a short sensitive route parameter by the route\'s pattern — the other parameters stay as they are', async () => {
+    const root = tempDir('marmeon-last-error-');
+    const { kernel, writer } = await serve(root);
+    await kernel.request('/invite/483920');
+    await writer.idle();
+    const invite = read(root);
+    expect(invite).toContain('/invite/[redacted]');
+    expect(invite).not.toContain('483920');
+    await kernel.request('/users/ada');
+    await writer.idle();
+    expect(read(root)).toContain('/users/ada');
   });
 
   it('fences the request line, whose path is the attacker\'s', async () => {

@@ -5,7 +5,7 @@ import { createApplication, defineModule, Logger, token, type Application } from
 import { channels } from '@marmeon/core/diagnostics';
 import { messageBase, publishEnded } from '@marmeon/core/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { abort, Controller, HttpServiceProvider, view, type PageObject } from '@marmeon/http';
+import { abort, Controller, HttpServiceProvider, view, type HttpContext, type Next, type PageObject } from '@marmeon/http';
 import { defineMiddleware } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
@@ -50,9 +50,20 @@ class SendWelcomeController {
   }
 }
 
+/** A global middleware that fails before any route matched, on one path. */
+class FailsBeforeRouting {
+  handle(ctx: HttpContext, next: Next<{}>) {
+    if (new URL(ctx.request.url).pathname.startsWith('/unrouted/')) throw new Error('The middleware failed');
+    return next();
+  }
+}
+
 let release: (() => void) | undefined;
 const routes = openRoutes((Route) => {
   Route.middleware(defineMiddleware('AuditTrail', (_ctx, next) => next())).get('/explode/:user', ExplodingController).name('lab.explode');
+  Route.get('/invite/:code', () => {
+    throw new Error('The invite failed');
+  });
   Route.post('/login', async (ctx) => {
     await ctx.input();
     throw new Error('Signing in failed');
@@ -91,6 +102,7 @@ async function boot({ env = { NODE_ENV: 'development' } as Record<string, string
     root: fileURLToPath(new URL('../../../', import.meta.url)),
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
+    middleware: { global: [FailsBeforeRouting] },
     modules: [defineModule({ name: 'lab', routes })],
   }, { env: { APP_KEY: generateKey(), ...env }, override: (container) => container.instance(Logger, new Quiet()) });
   current = application;
@@ -214,6 +226,33 @@ describe('the development error page', () => {
       const response = await kernel.request('/forbidden', visit);
       expect(response.status).toBe(403);
       expect(((await response.json()) as PageObject).component).toBe('errors/Error');
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('masks a short sensitive route parameter by the route\'s pattern — on the page and in the Markdown', async () => {
+    const { application, kernel } = await boot();
+    try {
+      const html = await (await kernel.request('/invite/483920?token=abc123', { headers: { accept: 'text/html' } })).text();
+      expect(html).toContain('/invite/[redacted]');
+      expect(html).not.toContain('483920');
+      expect(html).not.toContain('abc123');
+      expect(markdownOf(html)).not.toContain('483920');
+      const explode = await (await kernel.request('/explode/7', { headers: { accept: 'text/html' } })).text();
+      expect(explode).toContain('/explode/7');
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('shows the URL of a request no route matched, masked as text as before', async () => {
+    const { application, kernel } = await boot();
+    try {
+      const html = await (await kernel.request('/unrouted/483920?token=abc123', { headers: { accept: 'text/html' } })).text();
+      expect(html).toContain('The middleware failed');
+      expect(html).toContain('/unrouted/483920');
+      expect(html).not.toContain('abc123');
     } finally {
       await application.shutdown();
     }

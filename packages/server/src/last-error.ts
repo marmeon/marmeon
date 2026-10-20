@@ -57,6 +57,7 @@ export function writeLastError(app: Application): LastErrorWriter {
         // a path like `//example.com/x` stays a path.
         request: new Request(new URL(`http://localhost${message.path}`), { method: message.method }),
         requestId: message.requestId,
+        routePath: message.routePath,
         app,
         redactor,
         solutions: app.container.has(ErrorSolutions) ? app.container.make(ErrorSolutions) : undefined,
