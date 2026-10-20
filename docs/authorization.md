@@ -199,6 +199,9 @@ would hand out every note to whoever guesses an id. The route fails to start unl
 - the records are public by design, on a route that only reads: `bind('user', ProfileDirectory, { public: true })`. A route that
   changes data always needs a real check.
 
+`marmeon route:list` shows each route that binds a record as public, as `everyone (public: user)` in the `ACCESS` column and
+as `publicBindings` in `--json` — review that list, not each file.
+
 ### The report
 
 The report names every route with where it was registered, so a long list is easy to work through:

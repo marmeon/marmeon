@@ -725,12 +725,13 @@ It shows each route's method, path, name, group, the middleware in the order it 
 `Closure`. The `ACCESS` column lists the checks a request passes, joined by `+`: `everyone`, `can ProfilePolicy.update(user)`
 for a policy (the parameter it asks about in brackets, `(…)` for a function, none for an ability without a resource), and
 `check` for a function of your own. `none` marks a route that does not say who may call it; `framework` marks the framework's
-own routes, which guard themselves. The last line counts the routes. The list includes the
+own routes, which guard themselves. A route that binds a record with `{ public: true }` names the parameter after its checks:
+`everyone (public: user)`. The last line counts the routes. The list includes the
 framework's own routes, so it also answers which middleware a request really passes.
 
 `--json` prints the same as a [machine-readable document](console.md#machine-readable-output): `format`, `routes` (each with
-`methods`, `path`, `name`, `group`, `middleware`, `access` and `action`; `access` is a list of checks, or `"framework"` or
-`"none"`) and `warnings`.
+`methods`, `path`, `name`, `group`, `middleware`, `access`, `publicBindings` and `action`; `access` is a list of checks, or
+`"framework"` or `"none"`; `publicBindings` lists the parameters bound with `{ public: true }`, `[]` for none) and `warnings`.
 
 ## Testing
 

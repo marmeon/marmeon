@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "routes": [
+    { "methods": ["GET"], "path": "/users/:user", "name": null, "group": null, "middleware": [], "access": ["everyone"], "publicBindings": ["user"], "action": "Closure" },
+    { "methods": ["GET"], "path": "/about", "name": null, "group": null, "middleware": [], "access": ["everyone"], "publicBindings": [], "action": "Closure" },
+    { "methods": ["GET"], "path": "/teams/:team/notes/:note", "name": null, "group": null, "middleware": [], "access": ["can Team.view(team)"], "publicBindings": ["note"], "action": "Closure" }
+  ],
+  "warnings": []
+}
