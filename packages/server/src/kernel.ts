@@ -335,7 +335,8 @@ export function createHttpKernel(
   const renderError = async (error: unknown, failed: Request, scope?: Container): Promise<Response> => {
     if (exceptions.hasSubscribers) {
       const status = error instanceof HttpError ? error.status : error instanceof ValidationError ? 422 : 500;
-      exceptions.publish({ ...messageBase(application), error, status, method: failed.method, path: new URL(failed.url).pathname, ...fetchSite(failed) });
+      const routePath = matched.get(failed)?.path;
+      exceptions.publish({ ...messageBase(application), error, status, method: failed.method, path: new URL(failed.url).pathname, ...(routePath === undefined ? {} : { routePath }), ...fetchSite(failed) });
     }
     const handler = container.make(ExceptionHandler);
     if (isLiveValidation(failed)) return renderLiveValidationError(handler, error, failed, scope);

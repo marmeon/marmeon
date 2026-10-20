@@ -150,6 +150,9 @@ const routes = openRoutes((Route) => {
   Route.get('/fail', () => {
     throw new Error(`The report failed, password=hunter2 with ${API_TOKEN}`);
   });
+  Route.get('/invite/:code', () => {
+    throw new Error('The invite failed');
+  });
   Route.get('/ignored', () => ({ ok: true }));
 });
 
@@ -361,6 +364,18 @@ describe('what the recorder keeps', () => {
       expect(exception.content.message).toBe(`The report failed, password=[redacted] with marmeon_[redacted]`);
       expect(Array.isArray(exception.content.solutions)).toBe(true);
       expect(tester!.assertRecorded('request', (request) => request.path === '/fail').batch).toBe(exception.batch);
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('an exception masks a short sensitive route parameter by the route\'s pattern', async () => {
+    const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      await kernel.request('/invite/483920');
+      await tester!.settled();
+      expect(tester!.assertRecorded('exception').content).toMatchObject({ status: 500, path: '/invite/[redacted]' });
+      expect(JSON.stringify(tester!.entries())).not.toContain('483920');
     } finally {
       await app.shutdown();
     }

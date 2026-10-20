@@ -867,6 +867,7 @@ export interface ExceptionMessage extends MessageBase {
     readonly status: number;
     readonly method: string;
     readonly path: string;
+    readonly routePath?: string;
     readonly fetchSite?: string;
 }
 // HttpRequestMessage

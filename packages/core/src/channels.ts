@@ -270,6 +270,8 @@ export interface ExceptionMessage extends MessageBase {
   readonly status: number;
   readonly method: string;
   readonly path: string;
+  /** The matched route's pattern (`/invite/:code`); none for an unknown path. Lets a subscriber mask the route's sensitive parameters in `path`. */
+  readonly routePath?: string;
   /** The request's `Sec-Fetch-Site` (`same-origin`, `cross-site`, …), when the browser sent it. */
   readonly fetchSite?: string;
 }
