@@ -92,6 +92,19 @@ another tenant's: the client cannot tell a hidden record from a missing one.
 A guest is refused before any policy runs, so an ability never sees a missing user. A request that reaches a policy without
 `authenticate()` in front of it answers 403, not a redirect to the login.
 
+### Generating a policy
+
+`marmeon make:policy Note --module=notes` writes `modules/notes/policies/NotePolicy.ts` with the abilities `view`, `update` and
+`delete`. Each allows the record's owner (`record.user_id === user.id`) and answers everyone else with `denyAsNotFound()`, so
+a foreign id looks like a missing one. It starts closed on purpose: widen an ability by hand, never the other way round. The
+record type is structural (`{ readonly user_id: … }`); give it your table's `Row<'…'>` once there is one. The command ends by printing the line for the request:
+
+```ts
+authorize: can(NotePolicy, 'update', 'note')
+```
+
+An existing file is kept unless you pass `--force`.
+
 ### Deciding before the ability
 
 A method named `before(user, ability)` runs ahead of every ability of its policy. It returns `true` to allow, `false` to refuse,

@@ -482,6 +482,41 @@ export class MakeMiddlewareCommand {
   }
 }
 
+export class MakePolicyCommand {
+  static command = 'make:policy';
+  static description = 'Create a policy that allows the owner of a record only';
+  static usage = '<Name> --module=<module>';
+  static options = moduleOption;
+  static boots = false;
+
+  handle(input: CommandInput): number {
+    const dir = moduleDir(input);
+    const name = className(input, 'Policy');
+    if (!dir || !name) return 1;
+    if (!dependsOn(input.root, '@marmeon/auth')) {
+      input.output.error('A policy answers with `deny…` of @marmeon/auth: pnpm add @marmeon/auth');
+      return 1;
+    }
+    if (!write(input, join(dir, 'policies', `${name}.ts`), POLICY(name, 'Owned', OWNED))) return 1;
+    input.output.line(style('dim', `Use it in a request: authorize: can(${name}, 'update', '<param>')`));
+    input.output.line(style('dim', 'See docs/authorization.md#writing-policies'));
+    return 0;
+  }
+}
+
+/** Whether the app's package.json lists `name` in its dependencies or devDependencies. */
+function dependsOn(root: string, name: string): boolean {
+  try {
+    const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as Record<string, unknown>;
+    return ['dependencies', 'devDependencies'].some((field) => {
+      const group = manifest[field];
+      return typeof group === 'object' && group !== null && name in group;
+    });
+  } catch {
+    return false;
+  }
+}
+
 // --- Templates ---------------------------------------------------------------
 
 /** Whether a module's source sets `migrations` (the test `marmeon publish:migration` uses too). */
@@ -729,6 +764,38 @@ export class ${name} {
   async handle({ db, factory }: SeedContext): Promise<void> {
     void db;
     void factory; // await factory(UserFactory).count(10).create()
+  }
+}
+`;
+
+/** The record type of a policy without a table: the structure the policy reads, so the file compiles on its own. */
+const OWNED = `// With a table, use its \`Row<'…'>\` instead.
+type Owned = { readonly user_id: AuthUser['id'] };
+`;
+
+/**
+ * Fail-closed: only the owner passes, everyone else gets the answer for a record that does not exist
+ * (a 403 would confirm the id exists). `declaration` brings `recordType` into the file, with its import if it needs one.
+ */
+const POLICY = (name: string, recordType: string, declaration: string) => `import { denyAsNotFound, type AuthUser } from '@marmeon/auth';
+
+${declaration}
+
+/**
+ * Only the owner of a record may act on it; everyone else gets a 404, so nobody can probe which ids exist.
+ * Use it in a request: \`authorize: can(${name}, 'update', '<param>')\`. See docs/authorization.md#writing-policies.
+ */
+export class ${name} {
+  view(user: AuthUser, record: ${recordType}) {
+    return record.user_id === user.id || denyAsNotFound();
+  }
+
+  update(user: AuthUser, record: ${recordType}) {
+    return record.user_id === user.id || denyAsNotFound();
+  }
+
+  delete(user: AuthUser, record: ${recordType}) {
+    return record.user_id === user.id || denyAsNotFound();
   }
 }
 `;

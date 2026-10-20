@@ -10,13 +10,13 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
 
   beforeAll(() => {
     app = realpathSync(mkdtempSync(join(tmpdir(), 'marmeon-make-')));
-    writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module' }));
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module', dependencies: { '@marmeon/auth': 'workspace:*' } }));
     // Resolve the framework and React like an installed app would.
     const link = (name: string, target: string) => {
       mkdirSync(dirname(join(app, 'node_modules', name)), { recursive: true });
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
-    for (const pkg of ['core', 'http', 'router', 'database', 'queue', 'notifications', 'validation']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
+    for (const pkg of ['core', 'auth', 'http','router', 'database', 'queue', 'notifications', 'validation']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
     link('marmeon', join(repo, 'packages', 'cli')); // the generated command imports its input type from it
     for (const pkg of ['react', '@types/react']) link(pkg, realpathSync(join(webApp, 'node_modules', pkg)));
     link('@types/node', realpathSync(join(repo, 'node_modules/@types/node'))); // the framework sources need them
@@ -39,6 +39,9 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
       '✓ Registered SendReceipt in modules/billing/index.ts (listeners)',
     );
     expect(marmeon(app, ['make:middleware', 'EnsureCustomer', '--module=billing']).code).toBe(0);
+    // A policy names AuthUser, which an app declares once.
+    writeFileSync(join(app, 'modules/billing/auth-types.ts'), "declare module '@marmeon/auth' { interface AuthTypes { user: { readonly id: number } } }\nexport {};\n");
+    expect(marmeon(app, ['make:policy', 'Invoice', '--module=billing']).code).toBe(0);
     expect(marmeon(app, ['make:job', 'SendInvoiceReminder', '--module=billing']).stdout).toContain(
       '✓ Registered SendInvoiceReminderJob in modules/billing/index.ts (jobs)',
     );
@@ -147,6 +150,22 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     expect(typecheck.stdout + typecheck.stderr).toBe('');
     expect(typecheck.status).toBe(0);
   }, 30_000); // fifteen CLI processes — seconds under a full parallel run
+
+  it('generates a policy that lets the owner in and answers everyone else with a 404', async () => {
+    // The Gate comes through the app's own resolution, so it is the module instance the policy's answers belong to.
+    writeFileSync(join(app, 'modules/billing/gate.ts'), "export { Gate } from '@marmeon/auth';\n");
+    const { Gate } = (await import(join(app, 'modules/billing/gate.ts'))) as { Gate: new (auth: never, resolve: (policy: new () => object) => object) => { inspect(policy: never, ability: never, record: never): Promise<{ allowed: boolean; status: number }> } };
+    const { InvoicePolicy } = (await import(join(app, 'modules/billing/policies/InvoicePolicy.ts'))) as { InvoicePolicy: new () => object };
+    const ask = (userId: number, ability: string, record: object) =>
+      new Gate({ user: async () => ({ id: userId }) } as never, (policy) => new policy()).inspect(InvoicePolicy as never, ability as never, record as never);
+    for (const ability of ['view', 'update', 'delete']) {
+      expect((await ask(7, ability, { user_id: 7 })).allowed).toBe(true);
+      const other = await ask(8, ability, { user_id: 7 });
+      expect([other.allowed, other.status]).toEqual([false, 404]);
+      const orphan = await ask(7, ability, {});
+      expect([orphan.allowed, orphan.status]).toEqual([false, 404]);
+    }
+  });
 
   it('refuses to overwrite and explains missing modules', () => {
     marmeon(app, ['make:module', 'shop']);
