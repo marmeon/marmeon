@@ -139,6 +139,9 @@ function canonical(path: string, query: URLSearchParams): string {
 
 /** Middleware that lets only signed links through: a missing, wrong or expired signature answers 403. */
 export class ValidateSignature {
+  /** Read by `marmeon check`: only the holder of a link this app signed gets past. See docs/middleware.md#declaring-what-a-middleware-ensures. */
+  static readonly ensures = ['authenticated'] as const;
+
   readonly #signer: UrlSigner;
 
   constructor(signer: UrlSigner) {

@@ -1,3 +1,4 @@
+import { throttle } from '@marmeon/cache';
 import { defineRoutes, everyone } from '@marmeon/http';
 import {
   ShowBrowserOnlyLabController,
@@ -26,7 +27,7 @@ export default defineRoutes((Route) => {
   lab.get('/errors/:kind', TriggerErrorLabController);
   // The devtools' bar: the client hook API, and a hydration mismatch on purpose (`?mismatch=1`).
   lab.get('/devtools', ShowDevtoolsLabController);
-  lab.post('/devtools', SendDevtoolsLabController);
+  lab.middleware(throttle('lab.devtools')).post('/devtools', SendDevtoolsLabController);
   // The rules of @marmeon/validation: messages in the request's language, a taken address on submit only —
   // and the same form without `unique`, where the unique index answers (`failOnDuplicate`, as after a race).
   lab.get('/validation', ShowValidationLabController);

@@ -23,6 +23,7 @@ pnpm marmeon check
   bootstrap/routes.ts  bootstrap/routes.ts is out of date
   $ marmeon route:types
 ✓ modules
+✓ throttle
 ✓ readiness
 
 Failed: a check found errors (exit 1).
@@ -54,6 +55,7 @@ After the tools come the checks that need the app, in this order: `boot`, the ch
 | `boot` | Starts the app. When it cannot start, the finding holds the message, its [error code](errors.md#server-error-codes) and the fix the solutions of the core and of the packages know (`APP_KEY` missing: `marmeon key:generate`). | |
 | `route-types` | `bootstrap/routes.ts` matches the routes and views (a file of another Marmeon version is `H2`), and every route [says who may call it](authorization.md#every-route-decides) (`H3`). A missing file is an error: commit it. | build |
 | `modules` | Job and notification classes under `modules/` that no module lists, as warnings. | build |
+| `throttle` | Warns at [routes that anyone may call to change something and nothing limits](#routes-without-a-limit). Reads the routes, no database. | build |
 | `package-migrations` | Every package your app publishes from has all its migrations in the app, the answer of `marmeon publish --check`: one that is missing is `D6` with the fix `marmeon publish <package>`, one `publish` refuses is an error with the reason. Packages you have not published from are left out. A package whose declaration cannot be read is listed by `marmeon publish`, but checked only when `publish` made a module for it. A `static migrations` that cannot be read (it is no object, or `from` is no `file:` URL) belongs to the package that exports its provider (found among the packages that list providers in `marmeon.providers`) and is treated like any refusal of it; one no direct dependency exports, and a declaration a package does not claim, are warnings. A package taken into an existing module with `--module` is not checked here; use `marmeon publish --check <package>`. Reads files and imports the main entry of the direct dependencies a declaration points into; no database. | build |
 | `db-types` | `bootstrap/database.d.ts` matches the migrations (a file of another Marmeon version is `D7`); a missing file is an error. Reads the migration files, no database. | run |
 | `readiness` | Runs the [readiness checks](health.md#liveness-and-readiness) of the packages, the modules and the app, the same as `/up/ready`: a failing one is an error named after it, one that takes longer than its time limit says so. | |
@@ -225,9 +227,49 @@ It is a warning, so the exit code stays `0`. It does not find:
 - a method taken out of its object (`const { insertAdjacentHTML } = el`), or one called through `Reflect` or `Object.assign(el, { innerHTML })`,
 - a setter of another name that parses HTML (`DOMParser`, `setAttribute('srcdoc', …)`, a library's `html()`), or a file it cannot parse.
 
+## Routes without a limit
+
+A route that anyone may call without signing in and that changes something is open to spam, to guessing (a password, a code) and to
+cost (every request may send a mail or start a job). `throttle` warns, in the registered routes and without booting the app, at
+every route that
+
+- is the app's own (a route the framework itself registers is left out),
+- allows `everyone` and nothing else: every [access check](authorization.md#every-route-decides) of the route is `everyone`,
+- answers a method other than `GET`, `HEAD` and `OPTIONS` (`POST`, `PUT`, `PATCH` or `DELETE`, also through `Route.match()` and `Route.any()`), and
+- has no middleware that [declares](middleware.md#declaring-what-a-middleware-ensures) that it limits or authenticates: of the app,
+  of the route's group, of a prefix group around it, or of the route itself.
+
+```txt
+! throttle — 1 warning
+  modules/contact/routes.ts:6  POST /contact (contact.send) can be called by anyone and nothing limits it — add `throttle('<name>')` (or `authenticate()`), or silence this with `// marmeon-check-ignore throttle: <why it needs no limit>`  (marmeon(throttle))
+  docs: docs/rate-limiting.md#applying-limits-to-routes
+```
+
+The fix is `throttle('<name>')` on the route or its group ([rate limiting](rate-limiting.md#applying-limits-to-routes)), or
+`authenticate()` when only signed-in users should call it. Where a limit is wrong, say why in a [comment](#silencing-a-finding) on the
+line of the `.post(` call, or on the line above it; for a route whose chain runs over several lines, that is the line of the call
+that names the method. A comment above a group covers nothing inside it, so each route of the group needs its own.
+
+What counts as a limit or a sign-in is what a middleware says about itself in `static ensures`, not what it does. `throttle()` says
+`'rate-limited'`; `authenticate()`, `authenticate('api')` and `signed()` say `'authenticated'`. The check does not run the middleware:
+
+- A middleware that declares it counts even if it does nothing, and so does a `throttle()` whose limiter has no limits. A
+  `static ensures` that is not an array of those names (`'rate-limited'`, `['trusted']`) counts for nothing.
+- A route whose access check is more than `everyone` is not reported, though the check may let guests through: a policy through
+  `can()` or a request's own `authorize`. The check cannot tell. A route that says nothing about who may call it is `route-types`' error, not this finding.
+- It looks at who may call and how, not at what the action does: a `POST` that only reads is reported, and so is a route that touches no record.
+  `{ public: true }` on a binding is no finding either way: it concerns the records a route may read.
+- Middleware that a package appends to a group only in its `boot()` is not seen: the check reads the routes as registered, and the
+  `global`, `web` and `api` lists of `defineApplication({ middleware })`.
+- A middleware that limits by other means than a named limiter, such as a proxy's limit in front of the app, is invisible to it.
+- A route that a package registers on behalf of the app is placed on the line in the app's own file that registered it; one with no
+  such line has no file and cannot be silenced by a comment.
+
+It is a warning, so the exit code stays `0`.
+
 ## Silencing a finding
 
-A finding of `raw-sql` or `inner-html` can be silenced by a comment with a reason, on the line of the finding or the line above it:
+A finding of `raw-sql`, `inner-html` or `throttle` can be silenced by a comment with a reason, on the line of the finding or the line above it:
 
 ```ts
 // marmeon-check-ignore raw-sql: the column is one of SORTABLE, checked above
@@ -243,7 +285,7 @@ The syntax is `marmeon-check-ignore <check>[, <check>]: <reason>`, as a `//` com
   reviewer sees the reason in the diff and in the report.
 - A comment that silences nothing is a warning too: remove it. A name that is no check silences nothing and is not reported.
 - `internal-imports` cannot be silenced. A framework internal is never an exception.
-- Only `raw-sql` and `inner-html` can be silenced this way.
+- Only `raw-sql`, `inner-html` and `throttle` can be silenced this way.
 - A comment at the end of a line covers that line only. A comment on its own line (in JSX, `{/* … */}`) covers its last line and the next.
 
 ## The agents block

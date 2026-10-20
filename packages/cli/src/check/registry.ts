@@ -1,6 +1,6 @@
 import { withCode } from '@marmeon/core/internal';
 import { CommandSetupError } from '../command.ts';
-import type { CheckProblem } from './report.ts';
+import type { CheckProblem, SilencedProblem } from './report.ts';
 
 /** One check of `marmeon check`: `handle()` returns what it found (nothing: it passed); throwing makes the check `error`. See docs/check.md#checks-from-packages. */
 export interface AppCheck {
@@ -13,8 +13,14 @@ export interface AppCheckContext {
   readonly signal: AbortSignal;
 }
 
-/** What `handle()` returns: the findings (none: it passed), or `{ skipped }` with why it did not run (a status `skipped`, no fault of the app). */
-export type AppCheckResult = readonly CheckProblem[] | { readonly skipped: string };
+/**
+ * What `handle()` returns: the findings (none: it passed), `{ skipped }` with why it did not run (a status `skipped`, no fault of the
+ * app), or `{ problems, silenced }` when a `marmeon-check-ignore` comment silenced findings that stay in the report.
+ */
+export type AppCheckResult =
+  | readonly CheckProblem[]
+  | { readonly skipped: string }
+  | { readonly problems: readonly CheckProblem[]; readonly silenced?: readonly SilencedProblem[] };
 
 /**
  * A check's class. `static check` names it (kebab-case, unique among all checks); `static phase` says what of the app it needs:

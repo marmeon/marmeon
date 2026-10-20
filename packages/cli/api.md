@@ -26,6 +26,9 @@ export interface AppCheckContext {
 // AppCheckResult
 export type AppCheckResult = readonly CheckProblem[] | {
     readonly skipped: string;
+} | {
+    readonly problems: readonly CheckProblem[];
+    readonly silenced?: readonly SilencedProblem[];
 };
 // CheckProblem
 export interface CheckProblem {

@@ -155,6 +155,10 @@ until they expire. The [encryption](encryption.md#rotating-the-key) page explain
   [authorization](authorization.md#policies-and-api-tokens) page shows both on one route.
 - **Every route says who may call it.** The app does not start with a route that does not, and `abilities()` is not that decision.
   The [authorization](authorization.md#every-route-decides) page shows the check and its limits.
+- **Open routes that change something have a limit.** `marmeon check` warns at a `POST`, `PUT`, `PATCH` or `DELETE` route that
+  anyone may call, that is not behind a sign-in and that no `throttle()` limits: a contact form or an invitation to accept is
+  free spam, brute force and cost (mails, jobs) otherwise. The [check](check.md#routes-without-a-limit) page says what it
+  finds, and what it cannot.
 
 ### Private registration
 

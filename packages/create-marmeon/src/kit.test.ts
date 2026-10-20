@@ -84,6 +84,10 @@ it(
     expect(routeTypes).toContain("'auth.passkeys': { method: 'get'; path: '/settings/passkeys'; controller: typeof ShowPasskeysController };");
     expect(routeTypes).toContain("'auth.two-factor.challenge': { method: 'get'; path: '/two-factor-challenge'; controller: typeof ShowTwoFactorChallengeController };");
     expect(marmeon('route:types', '--check').code).toBe(0);
+    // Every route the kit has that anyone may POST to is limited: the guest routes by `throttle`, the others sign in first.
+    const throttled = marmeon('check', '--only=throttle', '--json');
+    expect(throttled.code, throttled.out).toBe(0);
+    expect(JSON.parse(throttled.out)).toMatchObject({ checks: [{ name: 'throttle', status: 'passed', problems: [], silenced: [] }] });
     // The order counts: at equal specificity the module's class rules must come after the kit's base rules.
     const client = readFileSync(join(root, 'bootstrap/client.tsx'), 'utf8');
     expect(client.match(/styles\/app\.css/g)).toHaveLength(1);

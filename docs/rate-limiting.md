@@ -120,6 +120,10 @@ export default defineRoutes((Route) => {
 - **A limiter that is not defined** stops the server when it starts, once every provider has booted: `Rate limiter [members-table] is not defined,
   but POST /members/_tables/members/actions/:tableAction uses throttle('members-table'). Define it in a provider's boot(): app.container.make(RateLimiter).for('members-table', …).`
 
+- **`marmeon check` finds the routes without one.** A route that anyone may call, that changes something (`POST`, `PUT`, `PATCH`
+  or `DELETE`) and has neither `throttle()` nor `authenticate()` in front of it, in the route, its group or the app, is a
+  [warning](check.md#routes-without-a-limit). `authenticate()` and `signed()` count as the same: such a route is not reported.
+
 The window opens with the first attempt and does not move with later ones. Once it has passed, the count starts again at zero.
 
 ## The answer

@@ -4,6 +4,7 @@ import { CommandRegistry, type CommandClass } from './command.ts';
 import { DevProcesses } from './dev.ts';
 import { ModulesCheck } from './check/modules.ts';
 import { RouteTypesCheck } from './check/route-types.ts';
+import { ThrottleCheck } from './check/throttle.ts';
 import { CheckRegistry, type AppCheckClass } from './check/registry.ts';
 
 declare module '@marmeon/core' {
@@ -27,8 +28,8 @@ declare module '@marmeon/core' {
  * modules' `commands` and `checks` — so `marmeon build` sees them all and a name used twice stops the app before it boots.
  */
 export class CliServiceProvider implements ServiceProvider {
-  /** The checks of the app's own files: route types and unlisted classes. */
-  static checks: readonly AppCheckClass[] = [RouteTypesCheck, ModulesCheck];
+  /** The checks of the app's own files: route types, unlisted classes and routes without a limit. */
+  static checks: readonly AppCheckClass[] = [RouteTypesCheck, ModulesCheck, ThrottleCheck];
 
   register(container: Container): void {
     // `Application` is bound before any provider registers, so resolving it here depends on no other provider.

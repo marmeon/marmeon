@@ -218,6 +218,8 @@ export interface Middleware<TRequires extends object = EmptyObject, TAdds extend
 }
 // MiddlewareClass
 export type MiddlewareClass<TRequires extends object = any, TAdds extends object = any> = new (...args: any[]) => MiddlewareHandler<TRequires, TAdds>;
+// MiddlewareEnsures
+export type MiddlewareEnsures = 'authenticated' | 'rate-limited';
 // MiddlewareGroups
 export declare class MiddlewareGroups {
     #private;
