@@ -29,8 +29,12 @@ const MAX_CAUSES = 5;
 const KEY_VALUE = /(?<![\w-])((?:[\w-]{0,64}(?:pass(?:word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?key|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code)[\w-]{0,64}|[\w-]{0,64}[-_]t?otp[\w-]{0,64}|[\w-]{0,64}(?-i:[a-z](?:Otp|Totp))[\w-]{0,64}|t?otp[\w-]{0,64}))("?\s*[:=]\s*"?)(?!\[redacted\]|\?|\$\d)((?:Bearer|Basic)\s+)?([^\s"'&,;}]+)/gi;
 // `Authorization: Bearer …` without the key in front (a header value on its own).
 const BEARER = /\b(Bearer|Basic)\s+(?!\[redacted\])[\w.~+/=-]+/g;
-// `postgres://user:secret@host`, `redis://:secret@host` — the password of a URL.
-const URL_PASSWORD = /(?<![\w+.-])([a-z][\w+.-]*:\/\/[^:\s/@]*:)[^@\s/]+@/gi;
+// `postgres://user:secret@host`, `redis://:secret@host` — the password of a URL, to the last `@` before the first space, `?`, `#`,
+// quote or angle bracket: a password with a raw `@` or `/` (`app:p@ss/w0rd@db`) goes whole, and so does a path after `host:port` that
+// has an `@` in it (`https://host:8080/@x` — better too much than a rest of a password). It stops at the next `scheme://`, so a
+// text of many URLs without an `@` costs linear time. The second alternative is the plain form, for a password with a quote, `?` or
+// `#` in it that the first one cannot reach.
+const URL_PASSWORD = /(?<![\w+.-])([a-z][\w+.-]*:\/\/[^:\s/@]*:)(?:(?:(?!:\/\/)[^\s?#"'<>])*@|[^@\s/]+@)/gi;
 // A password hash as a PHC string — `$argon2id$v=19$m=…$salt$hash`, `$scrypt$…`: never shown, wherever it appears.
 const PHC_HASH = /\$(?:argon2(?:id|i|d)|scrypt|pbkdf2(?:-sha\d+)?|bcrypt|2[abxy])\$[\w+/=,.$-]*[\w+/=$-]/g;
 // The form with a `|` (`marmeon_12|<secret>`): kept for one release so tokens of the old form do not show in clear while apps roll
@@ -73,6 +77,11 @@ function looksLikeToken(segment: string): boolean {
   if (segment.length >= LONG_SEGMENT) return mixedCase;
   const separators = segment.length - segment.replaceAll(/[-_]/g, '').length;
   return mixedCase && /\d/.test(segment) && separators * 8 <= segment.length;
+}
+
+/** `text` with the passwords of the URLs in it replaced by `***` — nothing else, so an address stays readable (`db:show`, connection errors). */
+export function maskUrlPasswords(text: string): string {
+  return text.replace(URL_PASSWORD, '$1***@');
 }
 
 /**
