@@ -154,6 +154,7 @@ describe('create-marmeon — the app', () => {
     expect(pinned.filter(([, range]) => range !== ownVersion)).toEqual([]);
     expect(manifest.dependencies.marmeon, 'the CLI (the unscoped marmeon) at this version').toBe(ownVersion);
     expect(readFileSync(join(cwd, 'with-npm/README.md'), 'utf8')).toContain('npm run dev');
+    expect(readFileSync(join(cwd, 'with-npm/README.md'), 'utf8')).toContain('The guides of your version: node_modules/marmeon/docs (`marmeon docs`); the newest online: https://marmeon.com/docs');
   });
 
   it('writes APP_KEY into .env only (owner-readable) — never the template, never .env.example; each app its own keys', async () => {
