@@ -167,6 +167,7 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 | `make:command <Name> --module=<m> [--no-register]` | A console command in `commands/` named `<m>:<name>`, added to the module's `commands`. See [writing commands](#writing-commands). |
 | `make:seeder <Name> --module=<m> [--no-register]` | A seeder in `seeders/`, added last to the module's `seeders`. See [seeding](seeding.md#generating-a-seeder). |
 | `make:middleware <Name> --module=<m>` | A middleware class in `middleware/`. |
+| `make:policy <Name> --module=<m>` | A policy in `policies/` that allows the owner of a record (`user_id`) and answers everyone else with a 404. Needs `@marmeon/auth` in the app's dependencies. See [generating a policy](authorization.md#generating-a-policy). |
 | `make:migration <snake_case_name> --module=<m> [--no-register]` | A timestamped migration in `migrations/`; adds the folder to the module once. See [migrations](migrations.md#generating-migrations). |
 | `publish [<package>] [--module=<m>] [--check]` | The migrations a direct dependency of your app lists, into a module of the app; writes what is missing and skips what is there. Without a package it lists them and, at a terminal, asks which to publish. `--check` writes nothing and ends with exit code 1 when something is missing. See [migrations](migrations.md#publishing-the-migrations-of-a-package). |
 | `make:sign-ins-table [--module=<m>]` | The migration of the `sign_ins` table that `DatabaseSignIns` uses: `publish` for `@marmeon/auth`. See [sign-ins](authentication.md#sign-ins). |

@@ -227,6 +227,10 @@ marmeon make:notification <Name> --module=<module> [--no-register]
 --force (boolean)
 --module (string, short m)
 --no-register (boolean)
+// make:policy
+marmeon make:policy <Name> --module=<module>
+--force (boolean)
+--module (string, short m)
 // make:seeder
 marmeon make:seeder <Name> --module=<module> [--no-register]
 --force (boolean)
