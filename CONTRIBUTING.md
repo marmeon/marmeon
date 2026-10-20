@@ -2,7 +2,7 @@
 
 Thank you for helping. This page covers the rules for a contribution: the sign-off, the checks, pull requests and their labels. It says how a
 release is made, and what the repository holds that the documentation does not: its layout, its own test suites and
-benchmarks, and the inside of the framework's client. The principles the framework is built on are in the [README](https://github.com/marmeon/marmeon/blob/main/README.md#principles); the
+benchmarks, and the inside of the framework's client. The principles the framework is built on are in the [README](README.md#principles); the
 documentation is under `docs/` ([Writing documentation](#writing-documentation)).
 
 ## Sign your commits off (DCO)
