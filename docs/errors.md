@@ -353,7 +353,7 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | K5 | `core` | The injection transform cannot derive a list from a constructor, or cannot embed it into compiled output. [Constructor injection](container.md#constructor-injection) |
 | K6 | `core` | The configuration or `NODE_ENV` is invalid, so the app cannot start. [When a value is wrong](configuration.md#when-a-value-is-wrong) |
 | K7 | `core` | Discovery of a package's providers or injections failed. [Discovery](modules.md#discovery) |
-| K8 | `cli` | A command name is taken twice, or is one marmeon answers itself (`list`, `help`). [Writing commands](console.md#writing-commands) |
+| K8 | `cli` | A command name is taken twice or is one marmeon answers itself (`list`, `help`), or a command declares the option `--no-interaction`. [Writing commands](console.md#writing-commands), [Asking a question](console.md#asking-a-question) |
 | K9 | `core` | A class is listed as a service provider but has no hook and no static. [Register and boot](providers.md#register-and-boot) |
 | K10 | `core` | A definition carries a boot option (`env`, `phase`, `container`, `override`); they belong to `createApplication(definition, options)` and `createTestApp()`. [Creating the test app](testing.md#creating-the-test-app) |
 | K11 | `marmeon` | A check cannot be registered: its `static check` is not kebab-case, it has no `static phase`, or its name is one of `marmeon`'s own or taken by another class. [Checks](package-development.md#checks) |

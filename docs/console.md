@@ -43,6 +43,11 @@ the command's usage line and exits with 2.
 `--`, `--help` is an argument like any other. `marmeon list` shows each command with its description. An unknown command says so
 and exits with 2.
 
+`--no-interaction` is an option of every command: it takes no value and is not among the command's `options`, and a command cannot
+declare an option of that name. It stops a command from asking a question, as [asking a question](#asking-a-question) explains. Place
+it after the command name and before a `--`; after a `--` it is an argument. A command run with `spawn()` inherits it through the
+environment variable `MARMEON_NO_INTERACTION=1`, which `marmeon` sets for the child; setting it yourself has the same effect as the option.
+
 The environment comes from `NODE_ENV` in the shell, then from the app's `.env`. `marmeon dev` is development without one and
 `marmeon start` and `marmeon build` production. Every other command takes what it finds, and without a `NODE_ENV` it behaves like
 production: `migrate` then asks for `--force`. A `NODE_ENV` other than `development`, `test` or `production` stops every command
@@ -55,6 +60,7 @@ before it runs. The [configuration](configuration.md#where-node_env-comes-from) 
 | `0` | The command succeeded. |
 | `1` | The command ran and failed: the app could not start, or the command reported an error or threw. |
 | `2` | `marmeon` was called wrongly: an unknown command, an unknown option, an option without its value, or a value an option does not take. |
+| `130` | The person cancelled a question the command asked (Ctrl-C). |
 
 [`marmeon check`](check.md#exit-codes) adds a `3` for a check that could not run.
 
@@ -247,7 +253,7 @@ export default defineModule({
 - **`static experimental = true`** marks a command that may change in any minor version. `marmeon list` and `--help` add
   "(experimental)". See [experimental](releases.md#experimental).
 - **`handle(input)`** gets the positional arguments as `args`, the options as `options`, the console as `output` and the app's
-  directory as `root`, and `spawn(...args)` runs another `marmeon` command in a fresh process. It returns the exit code, and
+  directory as `root`, `prompt` for [asking a question](#asking-a-question), and `spawn(...args)` runs another `marmeon` command in a fresh process. It returns the exit code, and
   nothing means 0.
 
 `output` writes `line()`, `info()`, `success()` and `table(header, rows)` to stdout, and `warn()` and `error()` to stderr. Colours
@@ -259,6 +265,34 @@ throws prints its message and the first lines of its stack, and the exit code is
 
 The scheduler runs a command as a task: `s.command('notes:prune-archived', ['--days=60']).daily()`. Each run again gets a scope of
 its own. The [task scheduling](scheduling.md#commands) page covers the schedule.
+
+### Asking a question
+
+A command that has to know which of several things to do can ask through `prompt`. Ask only when `prompt.interactive` is true, and
+take the answer from an option otherwise. `prompt.choose(question, choices, { multiple })` numbers the choices from 1 and resolves with
+the indexes of those picked:
+
+```ts
+async handle({ prompt, options, output }: CommandInput): Promise<number> {
+  const packages = ['@marmeon/auth', '@marmeon/queue', '@marmeon/storage'];
+  if (!prompt.interactive && options.package === undefined) {
+    output.error('Say which package with --package=<name>; nothing is asked here.');
+    return 2;
+  }
+  const picked = prompt.interactive ? await prompt.choose('Which packages?', packages, { multiple: true }) : [];
+  // …
+  return 0;
+}
+```
+
+The answer is one number, or with `multiple` several, separated by commas or spaces, or `a` for all. An empty answer picks none. An
+answer that is no choice is asked again, up to three times, then counts as none. Control characters in the question and the choices
+are dropped, so a name taken from a package cannot redraw the terminal. Ctrl-C or the end of the input ends the command with
+"cancelled" and exit code 130; a command that wraps `choose()` in a `try` should let that error pass.
+
+`prompt.interactive` is true only when stdin and stdout are both a terminal, the environment variable `CI` is unset (or empty, `0` or
+`false`) and `--no-interaction` is not given. Without a terminal, in CI or with `--no-interaction`, nothing is asked: `choose()` throws
+instead of waiting. An agent without a terminal is never asked. The scheduler runs commands without a terminal.
 
 ## Tinker
 

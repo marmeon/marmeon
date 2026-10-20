@@ -3,6 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { PackageBuildCommand } from './commands/package-build.ts';
+import { noPrompt } from './prompt.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -24,7 +25,7 @@ function fixture(outDir = 'dist'): string {
 }
 
 function build(dir: string, options: Record<string, boolean> = {}) {
-  return new PackageBuildCommand().handle({ args: [dir], options, output: silent as never, root: dir, spawn: async () => 0 });
+  return new PackageBuildCommand().handle({ args: [dir], options, output: silent as never, root: dir, spawn: async () => 0, prompt: noPrompt });
 }
 
 describe('marmeon package:build --clean', () => {
@@ -63,7 +64,7 @@ describe('marmeon package:build --clean', () => {
     try {
       const errors: string[] = [];
       const output = { ...silent, error: (text: string) => void errors.push(text) };
-      const code = new PackageBuildCommand().handle({ args: [dir, empty], options: {}, output: output as never, root: dir, spawn: async () => 0 });
+      const code = new PackageBuildCommand().handle({ args: [dir, empty], options: {}, output: output as never, root: dir, spawn: async () => 0, prompt: noPrompt });
       expect([code, errors]).toEqual([1, [`${relative(dir, empty)} has no tsconfig.json — nothing to build there. Name the directories of your packages.`]]);
       expect(existsSync(join(dir, 'dist/kept.js')), 'a package was built before the error').toBe(false);
     } finally {
