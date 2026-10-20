@@ -125,7 +125,8 @@ describe('the framework tables of a new app and of the web app', () => {
     for (const [name, text] of fresh.relations) expect(web.relations.get(name), `relations of ${name}`).toBe(text);
   });
 
-  describe.each(kinds)('in the database on %s', (kind) => {
+  // Two apps are migrated, one after the other, each with dozens of statements; on a busy machine that is well over the default 5 s.
+  describe.each(kinds)('in the database on %s', { timeout: 30_000 }, (kind) => {
     it('are the same tables, with the same columns, indexes and constraints', async () => {
       const [webApplication, freshApplication] = [webApp(), newApp()];
       const [web, fresh] = [await open(kind, true), await open(kind, true)];
