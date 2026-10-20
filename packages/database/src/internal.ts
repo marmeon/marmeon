@@ -4,7 +4,7 @@
  */
 export { DatabaseConfig } from './config.ts';
 export { publishOwnMigrations } from './commands/publish.ts';
-export { assignMigrations, migrationDeclarations, PACKAGE_MIGRATIONS_READERS, readMigrationDirectory, readPackageMigrations, readProviderMigrations, unattributedDeclarations } from './package-migrations.ts';
+export { assignMigrations, migrationDeclarations, readMigrationDirectory, readProviderMigrations, unattributedDeclarations } from './package-migrations.ts';
 export type { MigrationDeclaration, ProviderPackage, PackageMigrationFile, PackageMigrations, PackageMigrationsError } from './package-migrations.ts';
 export { isSecretSelection } from './secret-guard.ts';
 export { runMigration } from './migrations/run.ts';

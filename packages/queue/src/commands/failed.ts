@@ -1,4 +1,4 @@
-import { Clock } from '@marmeon/core';
+import { Application, Clock } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { QueueConnections } from '../connections.ts';
 import type { FailedJob } from '../driver.ts';
@@ -14,9 +14,15 @@ export class MakeQueueTableCommand {
   static usage = '[--module=system]';
   static options = { module: { type: 'string', short: 'm' } } as const;
 
+  readonly #app: Application;
+
+  constructor(app: Application) {
+    this.#app = app;
+  }
+
   async handle(input: CommandInput): Promise<number> {
-    const { publishOwnMigrations } = await import('@marmeon/database/internal');
-    return publishOwnMigrations(input, new URL('../../', import.meta.url));
+    const [{ publishOwnMigrations }, { QueueServiceProvider }] = await Promise.all([import('@marmeon/database/internal'), import('../index.ts')]);
+    return publishOwnMigrations(input, new URL('../../', import.meta.url), QueueServiceProvider, this.#app.providers);
   }
 }
 

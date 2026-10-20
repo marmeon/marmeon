@@ -904,7 +904,7 @@ Both ways do the same: a `make:*-table` command is [`publish`](#publishing-the-m
 writes every migration of the package that your app lacks, with the rules of `publish` (a name that another package ships, a gap
 and the choice of the module), and ends with exit code 0 and "Nothing to publish" when they are all there. The package need not be
 in the `dependencies` of your app: the command comes from it. `marmeon publish <package>` also works for every package that
-[lists its migrations](package-development.md#declaring-the-migrations-a-package-ships).
+[declares its migrations](package-development.md#declaring-the-migrations-a-package-ships).
 
 Each writes into the `system` module, or the module that `--module` names. The command creates the `system` module and adds it
 to `bootstrap/app.ts` when it does not exist yet; it adds `migrations` to an existing module that lacks it. A `make:*-table`
@@ -931,10 +931,10 @@ pnpm marmeon publish
 pnpm marmeon migrate
 ```
 
-`marmeon publish` lists the installed direct dependencies that list migrations and, at a terminal, asks which of those that lack some to publish (numbers
+`marmeon publish` lists the installed direct dependencies that declare migrations and, at a terminal, asks which of those that lack some to publish (numbers
 separated by commas, `a` for all, empty for none). Without a terminal (no TTY, `CI` set, or `--no-interaction`) it asks nothing: it
 prints the list and ends with exit code 1 when something is missing, with the hint to run `marmeon publish <package>` for each;
-when nothing is missing it says "Nothing to publish" and ends with 0. The list holds the installed direct dependencies that list
+when nothing is missing it says "Nothing to publish" and ends with 0. The list holds the installed direct dependencies that declare
 migrations, with what each lacks: `@acme/permissions — lacks 1: add_grants_table`, `— not published (2)`, `— complete`, or
 `— refused` with the reason on the next line.
 
@@ -955,7 +955,8 @@ modules unasked. `--module` is a kebab-case name, never a path, and needs a pack
 A migration is known by its name without the timestamp, across the whole app. `publish` refuses, and writes nothing:
 
 - **A name two packages ship.** When two installed direct dependencies ship the same name, both are refused: two migrations
-  would create the same table.
+  would create the same table. Only packages whose service provider your app has registered are seen: a package that declares
+  migrations but is not registered (discovery turned off, say) ships nothing `publish` knows.
 - **A gap.** When your app lacks a file of the package that sorts before one it has, the new file would run out of order. The
   message names both; copy the missing file from `node_modules/<package>` into that module by hand, with a timestamp before the
   one it follows (with an empty `up()` if your app does not want it).
@@ -981,8 +982,12 @@ does not make it one, so packages you have not published from are left out. A pa
 (`marmeon publish --check <package>`) it checks that package. [`marmeon check`](check.md#the-app-checks) runs the same test
 as `package-migrations`. Put one of them in CI after you update the packages.
 
-`publish` only copies files: it runs no code of the package and reads the package's files without following a symlink (a hard
-link to a file outside the package, which `realpath` does not reveal, is not detected). Like every command of your app, though,
-`marmeon` boots your app first. Read the files of a package you do not know before you run `migrate`: they are code.
+`publish` only copies files. It reads `static migrations` of the service providers your app boots, and imports the main entry of
+each direct dependency a declaration points into (usually one the app has booted already; a declaration that cannot be read at all
+makes it look at the entry of each direct dependency that lists providers in its `marmeon` field, to find the package that exports the provider). It reads the package's files
+without following a symlink (a hard link to a file outside the package, which `realpath` does not reveal, is not detected). A
+declaration that a package does not claim, because its provider is not exported from the package's main entry, or that cannot be
+read and no direct dependency exports, is printed as a warning and changes nothing else. One that cannot be read and that a direct
+dependency exports is that package's: `publish` refuses it, and the check fails when the app publishes from the package. Like every command of your app, `marmeon` boots your app first. Read the files of a package you do not know before you run `migrate`: they are code.
 
 An app with a console command named `publish` of its own does not start (K8): rename it.

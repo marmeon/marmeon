@@ -25,6 +25,7 @@ export declare class CsrfProtection {
 }
 // MakeSessionTableCommand
 export declare class MakeSessionTableCommand {
+    #private;
     static command: string;
     static description: string;
     static usage: string;
@@ -34,6 +35,7 @@ export declare class MakeSessionTableCommand {
             readonly short: 'm';
         };
     };
+    constructor(app: Application);
     handle(input: CommandInput): Promise<number>;
 }
 // PruneSessionsCommand

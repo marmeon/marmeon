@@ -98,6 +98,7 @@ export interface LocalDiskOptions extends DiskBase {
 }
 // MakeUploadsTableCommand
 export declare class MakeUploadsTableCommand {
+    #private;
     static command: string;
     static description: string;
     static usage: string;
@@ -107,6 +108,7 @@ export declare class MakeUploadsTableCommand {
             readonly short: 'm';
         };
     };
+    constructor(app: Application);
     handle(input: CommandInput): Promise<number>;
 }
 // MemoryDiskOptions

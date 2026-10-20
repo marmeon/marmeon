@@ -1,8 +1,0 @@
-{
-  "migrations": {
-    "files": ["stubs/migrations/create_permissions_table.ts", "stubs/migrations/create_roles_table.ts"],
-    "format": 1,
-    "module": "permissions"
-  },
-  "providers": ["PermissionsServiceProvider"]
-}

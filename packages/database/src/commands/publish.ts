@@ -1,9 +1,10 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Application, type ServiceProviderClass } from '@marmeon/core';
 import { findPackage, printable } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
-import { type PackageMigrationFile, type PackageMigrations, readPackageMigrations } from '../package-migrations.ts';
+import { assignMigrations, migrationDeclarations, type PackageMigrationFile, type PackageMigrations, show } from '../package-migrations.ts';
 import { appMigrations, findMigration, publishMigration, SYSTEM_MODULE, timestamp } from './publish-migration.ts';
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
@@ -86,7 +87,7 @@ export interface Plan {
 }
 
 /**
- * Where an installed direct dependency that lists migrations stands in the app. `used` is whether the app has at least one of
+ * Where an installed direct dependency that declares migrations stands in the app. `used` is whether the app has at least one of
  * its migrations — `publish --check` and the check `package-migrations` look only at those.
  */
 export type Status = { readonly package: string; readonly used: boolean } & (
@@ -110,13 +111,18 @@ interface Context {
   readonly app: ReturnType<typeof appMigrations>;
   /** The valid packages that ship a migration of that name. */
   readonly shippers: Map<string, string[]>;
+  /** Warnings: declarations in a direct dependency that does not claim them, and unreadable ones no direct dependency exports. */
+  readonly warnings: string[];
+  /** Set when reading the declarations failed for every package: nothing can be planned from what is known. */
+  readonly failed?: string;
 }
 
 /**
- * Reads the direct dependencies of the app and the migrations each lists; undefined when the `package.json` cannot be read —
- * unless `lenient`, where an app without one (not there at all) has no dependencies (a command of a package does not need to list it).
+ * Reads the direct dependencies of the app and the migrations the service providers `providers` declare for them, assigned in one
+ * pass over all of them; undefined when the `package.json` cannot be read — unless `lenient`, where an app without one (not there
+ * at all) has no dependencies (a command of a package does not need to list it).
  */
-function inspect(root: string, lenient = false): Context | undefined {
+async function inspect(root: string, providers: readonly ServiceProviderClass[], lenient = false): Promise<Context | undefined> {
   let dependencies: Record<string, unknown> = Object.create(null);
   try {
     const json = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies?: object; devDependencies?: object };
@@ -127,26 +133,46 @@ function inspect(root: string, lenient = false): Context | undefined {
   }
   const entries = new Map<string, Entry>();
   const shippers = new Map<string, string[]>();
+  // A name goes into messages only after PACKAGE_NAME has passed it; `locate` and `findPackage` look nothing else up.
+  const installed = new Map<string, Package>();
   for (const name of Object.keys(dependencies).sort()) {
     try {
-      const pkg = locate(name, root);
-      if (!pkg) {
-        entries.set(name, { kind: 'absent' });
-        continue;
-      }
-      const read = readPackageMigrations(pkg);
+      const pkg = PACKAGE_NAME.test(name) ? locate(name, root) : undefined;
+      if (!pkg) entries.set(name, { kind: 'absent' });
+      else installed.set(name, pkg);
+    } catch (error) {
+      entries.set(name, { kind: 'error', message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  const declarations = migrationDeclarations(providers);
+  let warnings: string[] = [];
+  let failed: string | undefined;
+  let results: Awaited<ReturnType<typeof assignMigrations>>['results'] | undefined;
+  try {
+    const assigned = await assignMigrations([...installed.values()], declarations);
+    ({ results } = assigned);
+    warnings = [...assigned.unclaimed, ...assigned.unattributed];
+  } catch (error) {
+    // Every package has its own guard inside, so this is a safety net only.
+    failed = error instanceof Error ? error.message : String(error);
+    for (const [name, pkg] of installed) entries.set(name, { kind: 'error', message: error instanceof Error ? error.message : String(error), pkg });
+  }
+  if (results) {
+    for (const [name, pkg] of installed) {
+      const read = results.get(pkg)!;
       if (!read.ok) entries.set(name, { kind: 'error', message: read.error.message, pkg });
       else if (!read.value) entries.set(name, { kind: 'none' });
       else {
         entries.set(name, { kind: 'ok', pkg, manifest: read.value });
         for (const file of read.value.files) shippers.set(file.name, [...(shippers.get(file.name) ?? []), name]);
       }
-    } catch (error) {
-      entries.set(name, { kind: 'error', message: error instanceof Error ? error.message : String(error) });
     }
   }
+  // Entries are shown and checked in the order of the app's dependencies.
+  const ordered = new Map([...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
   const modules = join(root, 'modules');
-  return { root, modules, dependencies, entries, app: appMigrations(modules), shippers };
+  return { root, modules, dependencies, entries: ordered, app: appMigrations(modules), shippers, warnings, failed };
 }
 
 const presentOf = (context: Context, manifest: PackageMigrations) =>
@@ -225,16 +251,23 @@ function planOne(context: Context, name: string, pkg: Package, manifest: Package
 interface Own {
   readonly name: string;
   readonly dir: string;
+  readonly Provider: ServiceProviderClass;
 }
 
-/** The migrations of the package `own`, read from its directory; its files count as shipped by it for the collision check. */
-function ownEntry(context: Context, own: Own): Entry {
+/** The migrations the service provider of the package `own` declares for it; its files count as shipped by it for the collision check. */
+async function ownEntry(context: Context, own: Own): Promise<Entry> {
   try {
     const dir = realpathSync(own.dir);
     const pkg: Package = { name: own.name, dir, json: JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) };
-    const read = readPackageMigrations(pkg);
+    const assigned = await assignMigrations([pkg], migrationDeclarations([own.Provider]));
+    const read = assigned.results.get(pkg)!;
     if (!read.ok) return { kind: 'error', message: read.error.message, pkg };
-    if (!read.value) return { kind: 'none' };
+    if (!read.value) {
+      // The reason the package does not have it: a static that cannot be read, a provider the entry does not export, or none.
+      const why = assigned.unattributed[0] ?? assigned.unclaimed[0] ?? `the static migrations of ${show(String(own.Provider.name))} is missing or leads out of the package`;
+      return { kind: 'error', message: `${own.name} declares no migrations in its package: ${why.replace(/\.$/, '')}.`, pkg };
+    }
+    context.warnings.push(...assigned.unclaimed, ...assigned.unattributed);
     for (const file of read.value.files) context.shippers.set(file.name, [...(context.shippers.get(file.name) ?? []), own.name]);
     return { kind: 'ok', pkg, manifest: read.value };
   } catch (error) {
@@ -244,14 +277,23 @@ function ownEntry(context: Context, own: Own): Entry {
 
 /**
  * Plans `publish` for `packages` without writing anything: a plan for each, and the reasons any was refused (when there is
- * one, nothing is to be written for any package). `module` is `--module`, for a single package. `own` is the package whose
- * command asks: it need not be a dependency of the app, for the app loaded it to run the command.
+ * one, nothing is to be written for any package). `warnings` are declarations a direct dependency does not claim: they never
+ * change a plan. `module` is `--module`, for a single package. `own` is the package whose command asks: it need not be a
+ * dependency of the app, for the app loaded it to run the command.
  */
-export function planPublish(root: string, packages: readonly string[], module?: string, source: { readonly own?: Own } = {}): { plans: Plan[]; refusals: string[] } {
+export async function planPublish(
+  root: string,
+  providers: readonly ServiceProviderClass[],
+  packages: readonly string[],
+  module?: string,
+  source: { readonly own?: Own } = {},
+): Promise<{ plans: Plan[]; refusals: string[]; warnings: string[] }> {
   const plans: Plan[] = [];
   const refusals: string[] = [];
-  const context = inspect(root, source.own !== undefined);
-  if (!context) return { plans, refusals: ['The package.json of your app cannot be read.'] };
+  const context = await inspect(root, providers, source.own !== undefined);
+  if (!context) return { plans, refusals: ['The package.json of your app cannot be read.'], warnings: [] };
+  // Without the other packages' declarations the collision check would be blind: the own command refuses rather than plan on.
+  if (source.own !== undefined && context.failed !== undefined) return { plans, refusals: [`The migrations of your packages cannot be read: ${context.failed}`], warnings: context.warnings };
   const chosen: { name: string; pkg: Package }[] = [];
   for (const name of new Set(packages)) {
     const isOwn = source.own !== undefined && source.own.name === name;
@@ -259,7 +301,7 @@ export function planPublish(root: string, packages: readonly string[], module?: 
       refusals.push(`${name} is not a dependency of your app — add it first.`);
       continue;
     }
-    const entry = isOwn ? ownEntry(context, source.own!) : context.entries.get(name)!;
+    const entry = isOwn ? await ownEntry(context, source.own!) : context.entries.get(name)!;
     if (entry.kind === 'error') refusals.push(entry.message);
     else if (entry.kind === 'absent') refusals.push(`${name} is not installed in your app — install your dependencies first.`);
     else if (entry.kind === 'none') refusals.push(`${name} ships no migrations.`);
@@ -288,7 +330,7 @@ export function planPublish(root: string, packages: readonly string[], module?: 
     if (plan.module === SYSTEM_MODULE && framework(first) && framework(plan.package)) continue;
     refusals.push(`${first} and ${plan.package} would both create modules/${plan.module} — publish them one at a time, or pass --module=<name> for each.`);
   }
-  return { plans, refusals };
+  return { plans, refusals, warnings: context.warnings };
 }
 
 /**
@@ -302,10 +344,13 @@ function used(context: Context, name: string, entry: Entry): boolean {
   return entry.manifest.files.some((file) => findMigration(context.modules, file.name, SYSTEM_MODULE) !== undefined);
 }
 
-/** Where every installed direct dependency that lists migrations stands in the app, by package name. */
-export function packageStatus(root: string): Status[] {
-  const context = inspect(root);
-  if (!context) return [];
+/**
+ * Where every installed direct dependency that declares migrations stands in the app, by package name. `warnings` are declarations
+ * that no direct dependency claims, and unreadable ones none exports: they change no status.
+ */
+export async function packageStatus(root: string, providers: readonly ServiceProviderClass[]): Promise<{ statuses: Status[]; warnings: string[] }> {
+  const context = await inspect(root, providers);
+  if (!context) return { statuses: [], warnings: [] };
   const statuses: Status[] = [];
   for (const [name, entry] of context.entries) {
     if (entry.kind === 'error') {
@@ -319,7 +364,7 @@ export function packageStatus(root: string): Status[] {
     else if (planned.plan.missing.length === 0) statuses.push({ package: name, used: isUsed, state: 'complete' });
     else statuses.push({ package: name, used: isUsed, state: isUsed ? 'lacks' : 'unpublished', missing: planned.plan.missing.map((file) => file.name) });
   }
-  return statuses;
+  return { statuses, warnings: context.warnings };
 }
 
 /** The lines the list shows for a package. A reason names the package itself, so it is not prefixed again. */
@@ -381,6 +426,12 @@ export class PublishCommand {
   static usage = '[<package>] [--module=<name>] [--check]';
   static options = { module: { type: 'string', short: 'm' }, check: { type: 'boolean' } } as const;
 
+  readonly #app: Application;
+
+  constructor(app: Application) {
+    this.#app = app;
+  }
+
   async handle(raw: CommandInput): Promise<number> {
     const input: CommandInput = { ...raw, output: safe(raw.output) };
     const { output } = input;
@@ -395,14 +446,15 @@ export class PublishCommand {
       return 1;
     }
 
-    if (input.options.check === true) return name === undefined ? this.#checkUsed(input) : this.#check(input, name, module);
-    if (name !== undefined) return this.#publish(input, [name], module);
+    if (input.options.check === true) return name === undefined ? await this.#checkUsed(input) : await this.#check(input, name, module);
+    if (name !== undefined) return await this.#publish(input, [name], module);
     return this.#choose(input);
   }
 
   /** `--check <package>`: that package, used or not. */
-  #check(input: CommandInput, name: string, module: string | undefined): number {
-    const { plans, refusals } = planPublish(input.root, [name], module);
+  async #check(input: CommandInput, name: string, module: string | undefined): Promise<number> {
+    const { plans, refusals, warnings } = await planPublish(input.root, this.#app.providers, [name], module);
+    for (const warning of warnings) input.output.warn(warning);
     for (const refusal of refusals) input.output.error(refusal);
     if (refusals.length > 0) return 1;
     const lacking = plans[0]!.missing;
@@ -415,9 +467,11 @@ export class PublishCommand {
   }
 
   /** `--check` alone: the packages the app publishes from. */
-  #checkUsed(input: CommandInput): number {
+  async #checkUsed(input: CommandInput): Promise<number> {
     let failed = false;
-    for (const status of packageStatus(input.root)) {
+    const { statuses, warnings } = await packageStatus(input.root, this.#app.providers);
+    for (const warning of warnings) input.output.warn(warning);
+    for (const status of statuses) {
       if (!status.used || (status.state !== 'lacks' && status.state !== 'refused')) continue;
       failed = true;
       if (status.state === 'lacks') input.output.error(`${status.package} lacks ${status.missing.length}: ${status.missing.join(', ')} — marmeon publish ${status.package}`);
@@ -431,7 +485,8 @@ export class PublishCommand {
   /** No package: list, and at a terminal let the person choose. */
   async #choose(input: CommandInput): Promise<number> {
     const { output, prompt } = input;
-    const statuses = packageStatus(input.root);
+    const { statuses, warnings } = await packageStatus(input.root, this.#app.providers);
+    for (const warning of warnings) output.warn(warning);
     const selectable = statuses.filter((status) => status.state === 'lacks' || status.state === 'unpublished');
     if (statuses.length === 0 || (selectable.length === 0 && !statuses.some((status) => status.state === 'refused'))) {
       output.success('Nothing to publish');
@@ -456,23 +511,26 @@ export class PublishCommand {
       output.line('Nothing published');
       return 0;
     }
-    return this.#publish(input, picked.map((index) => selectable[index]!.package), undefined);
+    return await this.#publish(input, picked.map((index) => selectable[index]!.package), undefined);
   }
 
   /** Plans every package, then writes: one refusal and nothing is written. */
-  #publish(input: CommandInput, packages: readonly string[], module: string | undefined): number {
-    const { plans, refusals } = planPublish(input.root, packages, module);
+  async #publish(input: CommandInput, packages: readonly string[], module: string | undefined): Promise<number> {
+    const { plans, refusals, warnings } = await planPublish(input.root, this.#app.providers, packages, module);
+    for (const warning of warnings) input.output.warn(warning);
     return write(input, packages, plans, refusals);
   }
 }
 
 /**
  * What the `make:*-table` command of a package does: `publish` for that package alone, with its module from `--module`. The
- * package is read from `packageRoot` (a `file:` URL), so the app need not list it, and its name must be a valid package name. For
- * the commands of the framework's packages only: it opens an existing `system` module whatever the app's specification of the
- * package, which `publish` would not. Returns the exit code; with nothing to write it is 0.
+ * package is read from `packageRoot` (a `file:` URL), so the app need not list it, and its name must be a valid package name;
+ * its migrations are the `static migrations` of `Provider`, its own service provider. `providers` are the providers of the app
+ * (`app.providers`), which tell what its other packages ship. For the commands of the framework's packages only: it opens an existing
+ * `system` module whatever the app's specification of the package, which `publish` would not. Returns the exit code; with
+ * nothing to write it is 0.
  */
-export async function publishOwnMigrations(raw: CommandInput, packageRoot: URL): Promise<number> {
+export async function publishOwnMigrations(raw: CommandInput, packageRoot: URL, Provider: ServiceProviderClass, providers: readonly ServiceProviderClass[]): Promise<number> {
   const input: CommandInput = { ...raw, output: safe(raw.output) };
   let dir: string;
   let name: unknown;
@@ -488,7 +546,8 @@ export async function publishOwnMigrations(raw: CommandInput, packageRoot: URL):
     return 1;
   }
   const module = typeof input.options.module === 'string' ? input.options.module : undefined;
-  const { plans, refusals } = planPublish(input.root, [name], module, { own: { name, dir } });
+  const { plans, refusals, warnings } = await planPublish(input.root, [Provider, ...providers], [name], module, { own: { name, dir, Provider } });
+  for (const warning of warnings) input.output.warn(warning);
   return write(input, [name], plans, refusals);
 }
 

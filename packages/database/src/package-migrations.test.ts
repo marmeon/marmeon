@@ -2,25 +2,24 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { ServiceProviderClass } from '@marmeon/core';
-import { afterEach, describe, expect, it } from 'vitest';
+import type { Result, ServiceProviderClass } from '@marmeon/core';
+import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
-import { assignMigrations, migrationDeclarations, PACKAGE_MIGRATIONS_READERS, readPackageMigrations, readProviderMigrations, unattributedDeclarations } from './package-migrations.ts';
-import type { MigrationDeclaration } from './package-migrations.ts';
+import { assignMigrations, migrationDeclarations, readProviderMigrations, unattributedDeclarations } from './package-migrations.ts';
+import type { MigrationDeclaration, PackageMigrationsError } from './package-migrations.ts';
 
 const PACKAGES = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
-const FIXTURES = join(fileURLToPath(new URL('.', import.meta.url)), '__fixtures__', 'formats', 'package-migrations');
 const STUB = 'export default {};\n';
 const FIRST = 'stubs/migrations/2026_01_01_000000_create_things_table.ts';
 
-/** A package directory with the given files and the `marmeon` object of its package.json. */
-function makePackage(marmeon: object, files: Record<string, string> = {}) {
+/** A package directory with the given files; its entry is `index.js`. */
+function makePackage(files: Record<string, string> = {}) {
   const dir = tempDir('marmeon-package-migrations-');
   for (const [path, contents] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     writeFileSync(join(dir, path), contents);
   }
-  return { name: '@acme/things', dir, json: { marmeon, exports: './index.js' } };
+  return { name: '@acme/things', dir, json: { exports: './index.js' } };
 }
 
 /** The providers a test package exports at its entry: the entry file hands out the very classes the test made. */
@@ -35,140 +34,10 @@ function entryOf(pkg: { dir: string }, ...providers: ServiceProviderClass[]): vo
   writeFileSync(join(pkg.dir, 'index.js'), `${lines.join('\n')}\nexport {};\n`);
 }
 
-function read(migrations: unknown, files: Record<string, string> = { [FIRST]: STUB }) {
-  return readPackageMigrations(makePackage({ migrations }, files));
-}
-
-const valid = { format: 2, module: 'things', from: 'stubs/migrations' };
-
-function messageOf(result: ReturnType<typeof read>): string {
+function messageOf(result: Result<unknown, PackageMigrationsError>): string {
   if (result.ok) throw new Error('expected an error');
   return result.error.message;
 }
-
-describe('readPackageMigrations', () => {
-  // The files each fixture's package holds: the fixtures are JSON, so the test lays the directory out.
-  const DIRECTORY: Record<string, string[]> = {
-    'v2.json': ['2026_01_01_000100_create_roles_table.ts', '2026_01_01_000000_create_permissions_table.ts'],
-    'v2-system.json': ['0001_01_01_000000_create_audit_table.ts'],
-  };
-
-  it('reads the format of every fixture that is current, and refuses the others', () => {
-    const fixtures = readdirSync(FIXTURES);
-    expect(fixtures.length).toBeGreaterThan(0);
-    for (const fixture of fixtures) {
-      const marmeon = JSON.parse(readFileSync(join(FIXTURES, fixture), 'utf8')) as { migrations: { format: number; from?: string; module: string } };
-      const names = DIRECTORY[fixture] ?? ['2026_01_01_000000_create_things_table.ts'];
-      const from = marmeon.migrations.from ?? 'stubs/migrations';
-      const result = readPackageMigrations(makePackage(marmeon, Object.fromEntries(names.map((name) => [`${from}/${name}`, STUB]))));
-      if (marmeon.migrations.format === 1) {
-        expect(messageOf(result), fixture).toContain('format 1 is no longer read: name the directory');
-        continue;
-      }
-      expect(result.ok, fixture).toBe(true);
-      if (!result.ok || !result.value) continue;
-      expect(result.value.module, fixture).toBe(marmeon.migrations.module);
-      expect(result.value.from, fixture).toBe(from);
-      expect(result.value.files.map((file) => file.file), fixture).toEqual(names.map((name) => `${from}/${name}`).sort());
-    }
-  });
-
-  it('refuses a format that is written for a newer Marmeon', () => {
-    expect(messageOf(read({ ...valid, format: 3 }))).toContain('newer Marmeon — update marmeon');
-  });
-
-  it('returns the name without timestamp, the path and the contents of each file, sorted by file name', () => {
-    const result = read(valid, {
-      'stubs/migrations/2026_03_01_000000_create_c_table.ts': 'export default "c";',
-      'stubs/migrations/2026_01_01_000000_create_a_table.ts': 'export default "a";',
-      'stubs/migrations/2026_02_01_000000_create_b_table.ts': 'export default "b";',
-    });
-    expect(result).toEqual({
-      ok: true,
-      value: {
-        module: 'things',
-        from: 'stubs/migrations',
-        files: [
-          { name: 'create_a_table', file: 'stubs/migrations/2026_01_01_000000_create_a_table.ts', contents: 'export default "a";' },
-          { name: 'create_b_table', file: 'stubs/migrations/2026_02_01_000000_create_b_table.ts', contents: 'export default "b";' },
-          { name: 'create_c_table', file: 'stubs/migrations/2026_03_01_000000_create_c_table.ts', contents: 'export default "c";' },
-        ],
-      },
-    });
-  });
-
-  it('reads a migration with CRLF, a byte order mark and a comment block before the export, byte for byte', () => {
-    const text = '\uFEFF/** Creates the things table.\r\n * Second line. */\r\nimport { defineMigration } from \'marmeon\';\r\n\r\nexport default defineMigration({ up() {}, down() {} });\r\n';
-    const result = read(valid, { [FIRST]: text });
-    expect(result.ok && result.value?.files[0]?.contents).toBe(text);
-  });
-
-  it('passes over a README and a sub-directory', () => {
-    const result = read(valid, { [FIRST]: STUB, 'stubs/migrations/README.md': '# Notes', 'stubs/migrations/old/2020_01_01_000000_create_x_table.ts': STUB, 'stubs/migrations/notes.txt': '' });
-    expect(result.ok && result.value?.files.map((file) => file.name)).toEqual(['create_things_table']);
-  });
-
-  it('has nothing to read without the field', () => {
-    expect(readPackageMigrations(makePackage({ providers: ['X'] }))).toEqual({ ok: true, value: undefined });
-    expect(readPackageMigrations({ name: '@acme/things', dir: tempDir('marmeon-package-migrations-'), json: {} })).toEqual({ ok: true, value: undefined });
-  });
-
-  describe('refuses', () => {
-    const cases: [string, unknown, string, Record<string, string>?][] = [
-      ['a field that is no object', ['x'], '"migrations" must be an object'],
-      ['a missing format', { module: 'things', from: valid.from }, 'it needs format: 2'],
-      ['a format that is no number', { ...valid, format: '2' }, 'it needs format: 2'],
-      ['format 1', { format: 1, module: 'things', files: ['stubs/migrations/create_things_table.ts'] }, 'format 1 is no longer read: name the directory'],
-      ['a newer format', { ...valid, format: 3 }, 'newer Marmeon — update marmeon'],
-      ['an unknown key', { ...valid, extra: true }, 'unknown key "extra"'],
-      ['the key files of format 1', { ...valid, files: [FIRST] }, 'unknown key "files"'],
-      ['a missing module', { format: 2, from: valid.from }, 'it needs "module"'],
-      ['a module that is no string', { ...valid, module: 7 }, 'it needs "module"'],
-      ['a module with a parent segment', { ...valid, module: '../x' }, 'it needs "module"'],
-      ['a module with a slash', { ...valid, module: 'a/b' }, 'it needs "module"'],
-      ['a module in capitals', { ...valid, module: 'Things' }, 'it needs "module"'],
-      ['a module of 65 characters', { ...valid, module: 'a'.repeat(65) }, 'at most 64 characters'],
-      ['a module that is a device name', { ...valid, module: 'nul' }, 'it needs "module"'],
-      ['a module that is a numbered device name', { ...valid, module: 'com1' }, 'it needs "module"'],
-      ['a missing from', { format: 2, module: 'things' }, 'it needs "from"'],
-      ['a from that is no string', { ...valid, from: ['stubs'] }, 'it needs "from"'],
-      ['an empty from', { ...valid, from: '' }, 'relative path'],
-      ['an absolute from', { ...valid, from: '/etc' }, 'relative path'],
-      ['a drive path as from', { ...valid, from: 'C:x' }, 'relative path'],
-      ['a backslash in from', { ...valid, from: 'stubs\\migrations' }, 'relative path'],
-      ['a NUL in from', { ...valid, from: 'stubs\0/migrations' }, 'relative path'],
-      ['a parent segment in from', { ...valid, from: 'stubs/../stubs/migrations' }, 'must not contain ".."'],
-      ['a from out of the package', { ...valid, from: '..' }, 'must not contain ".."'],
-      ['a current-directory segment in from', { ...valid, from: 'stubs/./migrations' }, 'must not contain ".."'],
-      ['a trailing slash in from', { ...valid, from: 'stubs/migrations/' }, 'must not contain ".."'],
-    ];
-    for (const [name, migrations, message, files] of cases) {
-      it(name, () => {
-        const text = messageOf(read(migrations, files ?? { [FIRST]: STUB }));
-        expect(text.startsWith('[marmeon:D21] @acme/things lists its migrations in package.json wrongly: ')).toBe(true);
-        expect(text).toContain(message);
-      });
-    }
-
-    it('quotes a foreign string, cuts it and escapes control characters', () => {
-      const text = messageOf(read({ ...valid, from: `stubs/\x1b[31m\u0085${'x'.repeat(300)}/..` }));
-      expect(text).not.toContain('\x1b');
-      expect(text).not.toContain('\u0085');
-      expect(text).toContain('\\u001b[31m\\u0085');
-      expect(text.length).toBeLessThan(400);
-    });
-
-    it('escapes format and separator characters that reorder or hide text', () => {
-      const text = messageOf(read({ ...valid, from: 'stubs/\u202e\u2028\u200b' }));
-      expect(text).not.toMatch(/[\u202e\u2028\u200b]/);
-      expect(text).toContain('\\u202e\\u2028\\u200b');
-    });
-  });
-  it('accepts a directory whose name only begins with two dots', () => {
-    const pkg = makePackage({ migrations: { ...valid, from: '..shared' } }, { '..shared/2026_01_01_000000_create_things_table.ts': STUB });
-    expect(readPackageMigrations(pkg).ok).toBe(true);
-  });
-});
 
 /** A service provider class that declares `migrations` as its static. */
 function providerOf(migrations: unknown, name = 'ThingsServiceProvider'): ServiceProviderClass {
@@ -181,30 +50,20 @@ function providerOf(migrations: unknown, name = 'ThingsServiceProvider'): Servic
 
 const declare = (...providers: ServiceProviderClass[]): MigrationDeclaration[] => migrationDeclarations(providers);
 
-/** Reads the package through its `package.json` field. */
-const FIELD = {
-  name: 'the package.json field',
-  prefix: '[marmeon:D21] @acme/things lists its migrations in package.json wrongly: ',
-  build(files: Record<string, string>) {
-    const pkg = makePackage({ migrations: valid }, files);
-    return { dir: pkg.dir, read: () => readPackageMigrations(pkg) };
-  },
-};
-
 /** Reads the package through the `static migrations` of its service provider. */
 const PROVIDER = {
   name: 'static migrations',
   prefix: '[marmeon:D21] @acme/things declares the migrations it ships wrongly: ',
   build(files: Record<string, string>) {
-    const pkg = makePackage({}, files);
+    const pkg = makePackage(files);
     const Provider = providerOf({ from: pathToFileURL(join(pkg.dir, 'stubs/migrations')), module: 'things' });
     entryOf(pkg, Provider);
     return { dir: pkg.dir, read: () => readProviderMigrations(pkg, declare(Provider)) };
   },
 };
 
-// Both readers hand the directory to the same code, so every check of an entry runs through each of them.
-describe.each([FIELD, PROVIDER])('the entries of the directory, read through $name', (reader) => {
+describe('the entries of the directory', () => {
+  const reader = PROVIDER;
   const refused = async (files: Record<string, string>, message: string) => {
     const text = messageOf(await reader.build(files).read());
     expect(text.startsWith(reader.prefix)).toBe(true);
@@ -320,6 +179,20 @@ describe.each([FIELD, PROVIDER])('the entries of the directory, read through $na
     expect(messageOf(await read())).toContain('is no directory');
   });
 
+  it('reads a migration with CRLF, a byte order mark and a comment block before the export, byte for byte', async () => {
+    const text = '\uFEFF/** Creates the things table.\r\n * Second line. */\r\nimport { defineMigration } from \'marmeon\';\r\n\r\nexport default defineMigration({ up() {}, down() {} });\r\n';
+    const result = await reader.build({ [FIRST]: text }).read();
+    expect(result.ok && result.value?.files[0]?.contents).toBe(text);
+  });
+
+  it('cuts a foreign file name at 200 characters in a message', async () => {
+    const name = `2026_01_01_000000_${'X'.repeat(230)}.ts`;
+    const text = messageOf(await reader.build({ [`stubs/migrations/${name}`]: STUB }).read());
+    expect(text).not.toContain(name);
+    expect(text).toContain('must be named like a migration');
+    expect(text.length).toBeLessThan(500);
+  });
+
   it('passes over a README and a sub-directory', async () => {
     const result = await reader.build({ [FIRST]: STUB, 'stubs/migrations/README.md': '# Notes', 'stubs/migrations/old/2020_01_01_000000_create_x_table.ts': STUB, 'stubs/migrations/notes.txt': '' }).read();
     expect(result.ok && result.value?.files.map((file) => file.name)).toEqual(['create_things_table']);
@@ -342,7 +215,7 @@ describe.each([FIELD, PROVIDER])('the entries of the directory, read through $na
 describe('readProviderMigrations', () => {
   /** A package in a temp directory that ships one migration. */
   function shipping(name = '@acme/things', files: Record<string, string> = { [FIRST]: STUB }) {
-    const pkg = makePackage({}, files);
+    const pkg = makePackage(files);
     return { ...pkg, name };
   }
   const urlIn = (dir: string, path = 'stubs/migrations') => pathToFileURL(join(dir, path));
@@ -686,66 +559,6 @@ describe('readProviderMigrations', () => {
     const read = await readFor(pkg, [Provider as unknown as ServiceProviderClass]);
     expect(reads).toEqual({ migrations: 1, from: 1, href: 1 });
     expect(read.ok && read.value?.from).toBe('stubs/migrations');
-  });
-});
-
-describe('the migrations the framework packages declare', () => {
-  // The command of each package copies the stub named in its source, so the declaration must name the same file.
-  const commands: Record<string, string> = {
-    '@marmeon/cache': 'cache/src/commands/make-cache-table.ts',
-    '@marmeon/session': 'session/src/commands/make-session-table.ts',
-    '@marmeon/queue': 'queue/src/commands/failed.ts',
-    '@marmeon/notifications': 'notifications/src/commands.ts',
-    '@marmeon/storage': 'storage/src/uploads/commands.ts',
-    '@marmeon/auth': 'auth/src/make-sign-ins-table.ts',
-  };
-  const packages = readdirSync(PACKAGES)
-    .map((directory) => ({ directory, manifest: join(PACKAGES, directory, 'package.json') }))
-    .flatMap(({ directory, manifest }) => {
-      try {
-        const json = JSON.parse(readFileSync(manifest, 'utf8')) as { name: string; marmeon?: { migrations?: unknown } };
-        return json.marmeon?.migrations === undefined ? [] : [{ name: json.name, dir: join(PACKAGES, directory), json }];
-      } catch {
-        return [];
-      }
-    });
-
-  it('are exactly those of the packages that have a make command', () => {
-    expect(packages.map((pkg) => pkg.name).sort()).toEqual(Object.keys(commands).sort());
-  });
-
-  for (const pkg of packages) {
-    it(`${pkg.name} lists the stub its make command copies, in the system module`, () => {
-      const result = readPackageMigrations(pkg);
-      expect(result.ok).toBe(true);
-      if (!result.ok || !result.value) return;
-      expect(result.value.module).toBe('system');
-      const source = readFileSync(join(PACKAGES, commands[pkg.name]!), 'utf8');
-      const copied = [...source.matchAll(/stubs\/migrations\/(0001_01_01_000000_[a-z_]+\.ts)/g)].map((match) => `stubs/migrations/${match[1]}`);
-      expect(result.value.from).toBe('stubs/migrations');
-      expect(result.value.files.map((file) => file.file)).toEqual(copied);
-      const named = copied.map((file) => /_000000_([a-z_]+)\.ts$/.exec(file)![1]);
-      expect(result.value.files.map((file) => file.name)).toEqual(named);
-      // The command hands the root of its own package to publish: the URL leads from the command's file to the package directory.
-      const root = /publishOwnMigrations\(input, new URL\('([./]+)', import\.meta\.url\)\)/.exec(source)?.[1];
-      expect(root, 'the command publishes the migrations of its own package').toBeDefined();
-      expect(fileURLToPath(new URL(root!, pathToFileURL(join(PACKAGES, commands[pkg.name]!))))).toBe(`${pkg.dir}/`);
-    });
-  }
-});
-
-describe('the readers of the format', () => {
-  afterEach(() => {
-    PACKAGE_MIGRATIONS_READERS.delete(3);
-  });
-
-  it('refuses a version after the newest it reads, and reads one that is registered', () => {
-    const future = { ...valid, format: 3 };
-    expect(messageOf(read(future))).toContain('newer Marmeon — update marmeon');
-    PACKAGE_MIGRATIONS_READERS.set(3, (_pkg, field) => ({ ok: true, value: { module: String(field.module), from: String(field.from), files: [] } }));
-    expect(read(future)).toEqual({ ok: true, value: { module: 'things', from: 'stubs/migrations', files: [] } });
-    expect(messageOf(read({ ...valid, format: 4 }))).toContain('newer Marmeon');
-    expect(read(valid).ok).toBe(true);
   });
 });
 

@@ -1,12 +1,12 @@
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { Application } from '@marmeon/core';
+import type { Application, ServiceProviderClass } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { PackageMigrationsCheck } from '../checks.ts';
-import { PublishCommand, packageStatus, publishOwnMigrations } from './publish.ts';
+import { PublishCommand, publishOwnMigrations } from './publish.ts';
 
 const STUB = (set: string) => `export default {}; // ${set}\n`;
 const ELSEWHERE = (file: string, pkg: string, where: string) =>
@@ -15,13 +15,56 @@ const PERM_FILES = { 'stubs/migrations/create_permissions_table.ts': STUB('permi
 
 const shipped = (index: number) => `2026_01_01_${String(index).padStart(6, '0')}`;
 
-/** Writes a package into `<root>/node_modules`; `entry` is the source of its `index.js`, `providers` the names `marmeon.providers` lists. */
-function install(root: string, name: string, files: Record<string, string>, extra: { module?: string; providers?: string[]; entry?: string; dependency?: boolean; spec?: string } = {}): void {
+/** The service provider each installed test package declares its migrations on, by the package's directory. */
+const providerClasses = new Map<string, ServiceProviderClass>();
+const registry = ((globalThis as { __providersOfTest?: Map<string, unknown> }).__providersOfTest ??= new Map<string, unknown>());
+
+/** A service provider class that declares `migrations` as its static. */
+function providerClass(name: string, migrations: unknown): ServiceProviderClass {
+  const Provider = class {
+    static migrations = migrations;
+  };
+  Object.defineProperty(Provider, 'name', { value: name });
+  return Provider as unknown as ServiceProviderClass;
+}
+
+/** The providers the app boots: those of the packages installed in `root`, plus `more`. */
+function providersOf(root: string, more: readonly ServiceProviderClass[] = []): ServiceProviderClass[] {
+  // The packages of the app's own node_modules, and of the one of a workspace above it.
+  const installed = ([dir]: [string, unknown]) => dir.startsWith(`${root}/`) || root.startsWith(`${dir.slice(0, dir.indexOf('/node_modules/'))}/`);
+  return [...[...providerClasses].filter(installed).map(([, Provider]) => Provider), ...more];
+}
+
+const commandOf = (root: string, more: readonly ServiceProviderClass[] = []) => new PublishCommand({ root, providers: providersOf(root, more) } as unknown as Application);
+
+/**
+ * Writes a package into `<root>/node_modules`; `entry` is the source added to its `index.js`, `providers` the names `marmeon.providers`
+ * lists. The entry exports a service provider that declares `stubs/migrations` (`from` names another directory) and `module`,
+ * unless `declare` is false.
+ */
+function install(
+  root: string,
+  name: string,
+  files: Record<string, string>,
+  extra: { module?: string; providers?: string[]; entry?: string; dependency?: boolean; spec?: string; from?: string; declare?: boolean } = {},
+): void {
   const pkg = join(root, 'node_modules', name);
   mkdirSync(pkg, { recursive: true });
-  const marmeon = { migrations: { format: 2, module: extra.module ?? 'permissions', from: 'stubs/migrations' }, ...(extra.providers ? { providers: extra.providers } : {}) };
-  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name, version: '1.0.0', exports: './index.js', marmeon }));
-  writeFileSync(join(pkg, 'index.js'), extra.entry ?? '');
+  const marmeon = extra.providers ? { providers: extra.providers } : undefined;
+  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name, version: '1.0.0', exports: './index.js', ...(marmeon ? { marmeon } : {}) }));
+  if (extra.declare === false) {
+    providerClasses.delete(pkg);
+    writeFileSync(join(pkg, 'index.js'), extra.entry ?? '');
+  } else {
+    // A package that is installed again keeps its class: the entry is imported once and hands out the class it first found.
+    // The real path, as `import.meta.url` is: a directory that does not exist is placed by where the URL says it lies.
+    const migrations = { from: pathToFileURL(join(realpathSync(pkg), extra.from ?? 'stubs/migrations')), module: extra.module ?? 'permissions' };
+    const Provider = providerClasses.get(pkg) ?? providerClass(`${name.replace(/\W+/g, '_')}ServiceProvider`, migrations);
+    (Provider as unknown as { migrations: unknown }).migrations = migrations;
+    providerClasses.set(pkg, Provider);
+    registry.set(pkg, Provider);
+    writeFileSync(join(pkg, 'index.js'), `export const provider = globalThis.__providersOfTest.get(${JSON.stringify(pkg)});\n${extra.entry ?? ''}`);
+  }
   // The files are given by their name; the package ships them in the order given, each with its own timestamp.
   for (const [index, [path, contents]] of Object.entries(files).entries()) {
     const file = path.replace(/([^/]+)$/, `${shipped(index)}_$1`);
@@ -47,13 +90,17 @@ interface Setup {
   spec?: string;
   /** The package name; `@acme/perm` by default. */
   name?: string;
+  /** The directory the provider declares, in the package. */
+  from?: string;
+  /** Whether the package declares its migrations at all; true by default. */
+  declare?: boolean;
 }
 
 /** An app with `@acme/perm` in node_modules (and, by default, in its dependencies). */
 function makeApp(setup: Setup = {}): string {
   const root = tempDir('marmeon-publish-');
   writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'app', dependencies: {} }));
-  install(root, setup.name ?? '@acme/perm', setup.files ?? PERM_FILES, { module: setup.module, providers: setup.providers, entry: setup.entry, dependency: setup.dependency, spec: setup.spec });
+  install(root, setup.name ?? '@acme/perm', setup.files ?? PERM_FILES, { module: setup.module, providers: setup.providers, entry: setup.entry, dependency: setup.dependency, spec: setup.spec, from: setup.from, declare: setup.declare });
   mkdirSync(join(root, 'bootstrap'));
   writeFileSync(join(root, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\n\nexport default defineApplication({ root: '', modules: [] });\n");
   return root;
@@ -73,11 +120,17 @@ function fakePrompt(interactive: boolean, pick: (choices: readonly string[]) => 
   };
 }
 
-async function publish(root: string, args: string[] = ['@acme/perm'], options: Record<string, unknown> = {}, prompt: ReturnType<typeof fakePrompt> = fakePrompt(false)) {
+async function publish(
+  root: string,
+  args: string[] = ['@acme/perm'],
+  options: Record<string, unknown> = {},
+  prompt: ReturnType<typeof fakePrompt> = fakePrompt(false),
+  more: readonly ServiceProviderClass[] = [],
+) {
   const lines: string[] = [];
   const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
   const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
-  const code = await new PublishCommand().handle({ root, args, options, output, prompt } as unknown as CommandInput);
+  const code = await commandOf(root, more).handle({ root, args, options, output, prompt } as unknown as CommandInput);
   return { code, lines };
 }
 
@@ -149,11 +202,23 @@ describe('marmeon publish', () => {
     expect(readdirSync(join(root, 'modules/system/migrations'))).toHaveLength(1);
   });
 
-  it('never runs the entry of the package, whatever providers it lists', async () => {
+  it('never runs the entry of a package that declares no migrations, whatever providers it lists', async () => {
     const marker = join(tempDir('marmeon-publish-marker-'), 'ran');
-    const root = makeApp({ providers: ['PermProvider'], entry: `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(marker)}, 'ran');\nexport class PermProvider {}\n` });
+    const root = makeApp();
+    install(root, '@acme/other', {}, { declare: false, providers: ['OtherProvider'], entry: `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(marker)}, 'ran');\nexport class OtherProvider {}\n` });
+    expect((await publish(root, [], { check: true })).code).toBe(0);
     expect((await publish(root)).code).toBe(0);
     expect(existsSync(marker)).toBe(false);
+  });
+
+  it('reads the migrations of a package from its service provider and not from its package.json', async () => {
+    const root = makeApp({ declare: false });
+    const file = join(root, 'node_modules/@acme/perm/package.json');
+    writeFileSync(file, JSON.stringify({ name: '@acme/perm', exports: './index.js', marmeon: { migrations: { format: 2, module: 'permissions', from: 'stubs/migrations' } } }));
+    const { code, lines } = await publish(root);
+    expect(code).toBe(1);
+    expect(lines).toEqual(['✗ @acme/perm ships no migrations.']);
+    expect(written(root)).toEqual([]);
   });
 
   it('refuses a framework package under an npm alias, a path or a repository, which could be anything', async () => {
@@ -246,17 +311,14 @@ describe('marmeon publish', () => {
     });
 
     it('a package without migrations', async () => {
-      const root = makeApp();
-      writeFileSync(join(root, 'node_modules/@acme/perm/package.json'), JSON.stringify({ name: '@acme/perm', marmeon: { providers: ['X'] } }));
+      const root = makeApp({ declare: false, providers: ['X'] });
       const { code, lines } = await publish(root);
       expect(code).toBe(1);
       expect(lines).toEqual(['✗ @acme/perm ships no migrations.']);
     });
 
     it('a declaration that is wrong, writing nothing', async () => {
-      const root = makeApp();
-      const file = join(root, 'node_modules/@acme/perm/package.json');
-      writeFileSync(file, JSON.stringify({ name: '@acme/perm', marmeon: { migrations: { format: 2, module: 'permissions', from: 'stubs/missing' } } }));
+      const root = makeApp({ from: 'stubs/missing' });
       const { code, lines } = await publish(root);
       expect(code).toBe(1);
       expect(lines[0]).toContain('[marmeon:D21]');
@@ -389,7 +451,7 @@ describe('marmeon publish', () => {
   });
 });
 
-const run = (root: string) => new PackageMigrationsCheck({ root } as unknown as Application).handle();
+const run = (root: string) => new PackageMigrationsCheck({ root, providers: providersOf(root) } as unknown as Application).handle();
 const FIRST = { 'stubs/migrations/create_one_table.ts': STUB('one') };
 const SECOND = { 'stubs/migrations/create_two_table.ts': STUB('two') };
 
@@ -591,22 +653,22 @@ describe('the check package-migrations', () => {
 
   it('passes while nothing is published, names what a package lacks and passes again once it is published', async () => {
     const root = makeApp({ name: '@acme/one', module: 'one', files: FIRST });
-    expect(run(root)).toEqual([]);
+    expect(await run(root)).toEqual([]);
     expect((await publish(root, ['@acme/one'])).code).toBe(0);
-    expect(run(root)).toEqual([]);
+    expect(await run(root)).toEqual([]);
     install(root, '@acme/one', { ...FIRST, 'stubs/migrations/create_b_table.ts': STUB('one') }, { module: 'one', dependency: false });
-    expect(run(root)).toEqual([
+    expect(await run(root)).toEqual([
       { severity: 'error', code: 'D6', message: '@acme/one lacks create_b_table', fix: 'marmeon publish @acme/one', docs: 'docs/migrations.md#publishing-the-migrations-of-a-package' },
     ]);
     expect((await publish(root, ['@acme/one'])).code).toBe(0);
-    expect(run(root)).toEqual([]);
+    expect(await run(root)).toEqual([]);
   });
 
   it('reports the reason when publish refuses a package the app publishes from', async () => {
     const root = makeApp({ name: '@acme/one', module: 'one', files: { ...FIRST, 'stubs/migrations/create_b_table.ts': STUB('one') } });
     expect((await publish(root, ['@acme/one'])).code).toBe(0);
     rmSync(join(root, 'modules/one/migrations', readdirSync(join(root, 'modules/one/migrations'))[0]!));
-    expect(run(root)).toMatchObject([{ severity: 'error', message: expect.stringMatching(/^create_one_table of @acme\/one is not in your app/) }]);
+    expect(await run(root)).toMatchObject([{ severity: 'error', message: expect.stringMatching(/^create_one_table of @acme\/one is not in your app/) }]);
   });
 });
 
@@ -629,29 +691,28 @@ describe('marmeon publish: what counts as the app\'s, what counts as used, what 
     mkdirSync(join(root, 'modules/accounts/migrations'), { recursive: true });
     writeFileSync(join(root, 'modules/accounts/migrations/2026_01_01_000000_create_users_table.ts'), 'export default {};\n');
     expect((await publish(root, [], { check: true })).code).toBe(0);
-    expect(run(root)).toEqual([]);
+    expect(await run(root)).toEqual([]);
     expect(written(root)).toEqual(['accounts/migrations/2026_01_01_000000_create_users_table.ts']);
   });
 
   it('fails a package that publish made a module for when an update breaks its declaration', async () => {
     const root = makeApp({ name: '@acme/one', module: 'one', files: FIRST });
     expect((await publish(root, ['@acme/one'])).code).toBe(0);
-    writeFileSync(join(root, 'node_modules/@acme/one/package.json'), JSON.stringify({ name: '@acme/one', marmeon: { migrations: { format: 2, module: 'one', from: 'stubs/missing' } } }));
+    install(root, '@acme/one', FIRST, { module: 'one', from: 'stubs/missing', dependency: false });
     const { code, lines } = await publish(root, [], { check: true });
     expect(code).toBe(1);
     expect(lines[0]).toContain('[marmeon:D21]');
-    expect(run(root)).toMatchObject([{ severity: 'error', message: expect.stringContaining('D21') }]);
+    expect(await run(root)).toMatchObject([{ severity: 'error', message: expect.stringContaining('D21') }]);
   });
 
   it('lists a package whose declaration cannot be read as refused, and does not check it unless publish made a module for it', async () => {
-    const root = makeApp({ name: '@acme/one', module: 'one', files: FIRST });
-    writeFileSync(join(root, 'node_modules/@acme/one/package.json'), JSON.stringify({ name: '@acme/one', marmeon: { migrations: { format: 2, module: 'one', from: 'stubs/missing' } } }));
+    const root = makeApp({ name: '@acme/one', module: 'one', files: FIRST, from: 'stubs/missing' });
     const { code, lines } = await publish(root, [], {});
     expect(code).toBe(0);
     expect(lines[0]).toBe('@acme/one — refused');
     expect(lines[1]).toContain('[marmeon:D21]');
     expect((await publish(root, [], { check: true })).code).toBe(0);
-    expect(run(root)).toEqual([]);
+    expect(await run(root)).toEqual([]);
   });
 
   it('counts a package of the framework as used once one of its files is in system', async () => {
@@ -674,7 +735,7 @@ describe('marmeon publish: what counts as the app\'s, what counts as used, what 
     expect(code).toBe(1);
     // publish cannot open system for a workspace package without --module, so the answer is its refusal: red all the same
     expect(lines[0]).toContain('create_a_table in modules/system');
-    expect(run(root)).toMatchObject([{ severity: 'error' }]);
+    expect(await run(root)).toMatchObject([{ severity: 'error' }]);
   });
 
   it('prints escapes in place of the control characters of a package.json that is no JSON', async () => {
@@ -730,7 +791,7 @@ describe('marmeon publish: what counts as the app\'s, what counts as used, what 
       line: (line = '') => lines.push(line),
     };
     try {
-      await expect(new PublishCommand().handle({ root, args: ['@acme/perm'], options: { module: 'perm' }, output, prompt: fakePrompt(false) } as unknown as CommandInput)).rejects.toThrow();
+      await expect(commandOf(root).handle({ root, args: ['@acme/perm'], options: { module: 'perm' }, output, prompt: fakePrompt(false) } as unknown as CommandInput)).rejects.toThrow();
     } finally {
       chmodSync(directory, 0o755);
     }
@@ -750,11 +811,169 @@ describe('marmeon publish: file names of the app on the terminal', () => {
   });
 });
 
-describe('the web app', () => {
-  it('publishes from at least one package and has all of its migrations', () => {
-    const used = packageStatus(fileURLToPath(new URL('../../../../apps/web-app', import.meta.url))).filter((status) => status.used);
-    expect(used.length).toBeGreaterThan(0);
-    expect(used.map((status) => status.state)).not.toContain('refused');
+describe('marmeon publish: the declarations of service providers', () => {
+  /** A provider that declares the directory `from` of the package installed at `dir`, whichever package exports it. */
+  const declaring = (name: string, dir: string, module = 'system', from = 'stubs/migrations') => providerClass(name, { from: pathToFileURL(join(realpathSync(dir), from)), module });
+  const permDir = (root: string) => join(root, 'node_modules/@acme/perm');
+
+  it('only warns about a declaration in a package that does not claim it: the outcome, the exit and the files stay the same', async () => {
+    for (const [args, options] of [[['@acme/perm'], {}], [['@acme/perm'], { check: true }], [[], { check: true }], [[], {}]] as const) {
+      const clean = makeApp();
+      const without = await publish(clean, [...args], options, fakePrompt(false));
+      const root = makeApp();
+      const Stranger = declaring('StrangerServiceProvider', permDir(root));
+      const warned = await publish(root, [...args], options, fakePrompt(false), [Stranger]);
+      expect(warned.code, JSON.stringify([args, options])).toBe(without.code);
+      expect(written(root).length).toBe(written(clean).length);
+      expect(warned.lines.filter((line) => !line.startsWith('! '))).toEqual(without.lines);
+      expect(warned.lines.filter((line) => line.startsWith('! '))).toEqual([
+        '! "StrangerServiceProvider" declares migrations in "stubs/migrations" of @acme/perm, which does not claim them: the package does not export that provider at its main entry.',
+      ]);
+    }
+  });
+
+  it('prints the class name of a provider that does not claim a declaration without its control characters', async () => {
+    const root = makeApp();
+    const { lines } = await publish(root, ['@acme/perm'], {}, fakePrompt(false), [declaring('Evil\u001b]8;;x\u0007\u202eServiceProvider', permDir(root))]);
+    expect(lines.join('')).not.toMatch(/[\p{Cc}\p{Cf}]/u);
+    expect(lines.join('')).toContain('\\u001b]8;;x\\u0007\\u202e');
+  });
+
+  it('says nothing about a declaration that lies in no package the app depends on, and publishes nothing for it', async () => {
+    const root = makeApp({ declare: false });
+    install(root, '@acme/deep', { 'stubs/migrations/create_deep_table.ts': STUB('deep') }, { dependency: false, declare: false });
+    const Deep = declaring('DeepServiceProvider', join(root, 'node_modules/@acme/deep'));
+    mkdirSync(join(root, 'modules/billing/migrations'), { recursive: true });
+    const Mine = providerClass('AppServiceProvider', { from: pathToFileURL(join(realpathSync(root), 'modules/billing/migrations')), module: 'billing' });
+    const { code, lines } = await publish(root, [], {}, fakePrompt(false), [Deep, Mine]);
+    expect(code).toBe(0);
+    expect(lines).toEqual(['✓ Nothing to publish']);
+    expect(written(root)).toEqual([]);
+  });
+
+  it('gives a package that a dependency\'s provider points into no migrations to that dependency', async () => {
+    const root = makeApp({ declare: false, name: '@acme/a' });
+    install(root, '@acme/b', { 'stubs/migrations/create_b_table.ts': STUB('b') }, { dependency: false, declare: false });
+    const Reexported = declaring('BServiceProvider', join(root, 'node_modules/@acme/b'), 'b');
+    registry.set('a-exports', Reexported);
+    writeFileSync(join(root, 'node_modules/@acme/a/index.js'), "export const provider = globalThis.__providersOfTest.get('a-exports');\n");
+    const { code, lines } = await publish(root, ['@acme/a'], {}, fakePrompt(false), [Reexported]);
+    expect(code).toBe(1);
+    expect(lines).toEqual(['✗ @acme/a ships no migrations.']);
+    expect(written(root)).toEqual([]);
+  });
+
+  it('only warns about a declaration that cannot be read when no direct dependency exports its provider', async () => {
+    const Broken = providerClass('BrokenServiceProvider', { from: 'stubs/migrations', module: 'x' });
+    const root = makeApp();
+    const listed = await publish(root, [], {}, fakePrompt(false), [Broken]);
+    expect(listed.lines.filter((line) => line.startsWith('! '))).toEqual([expect.stringMatching(/^! \[marmeon:D21\] "BrokenServiceProvider" declares the migrations of its package wrongly/)]);
+    expect((await publish(root, [], { check: true }, fakePrompt(false), [Broken])).code).toBe(0);
+    expect((await publish(root, ['@acme/perm'], {}, fakePrompt(false), [Broken])).code).toBe(0);
+    expect(written(root).length).toBeGreaterThan(0);
+    const check = await new PackageMigrationsCheck({ root, providers: providersOf(root, [Broken]) } as unknown as Application).handle();
+    expect(check).toEqual([{ severity: 'warning', message: expect.stringContaining('"BrokenServiceProvider"'), docs: 'docs/migrations.md#publishing-the-migrations-of-a-package' }]);
+  });
+
+  it('gives a declaration that cannot be read to the package that exports the provider: listed as refused, and failed only when the app publishes from it', async () => {
+    const root = makeApp({ providers: ['PermServiceProvider'] });
+    const permClass = () => providerClasses.get(permDir(root)) as unknown as { migrations: unknown };
+    const good = permClass().migrations;
+    permClass().migrations = { from: 'stubs/migrations', module: 'perm' };
+    const listed = await publish(root, [], {});
+    expect(listed.lines[0]).toBe('@acme/perm — refused');
+    expect(listed.lines[1]).toContain('declares the migrations of its package wrongly');
+    expect(listed.lines.filter((line) => line.startsWith('! '))).toEqual([]);
+    // not published from: left out
+    expect((await publish(root, [], { check: true })).code).toBe(0);
+    expect(await run(root)).toEqual([]);
+
+    // published from, and an update breaks the static: red
+    permClass().migrations = good;
+    expect((await publish(root, ['@acme/perm'])).code).toBe(0);
+    permClass().migrations = { from: 'stubs/migrations', module: 'perm' };
+    const check = await publish(root, [], { check: true });
+    expect(check.code).toBe(1);
+    expect(check.lines[0]).toContain('[marmeon:D21]');
+    expect(await run(root)).toMatchObject([{ severity: 'error', message: expect.stringContaining('D21') }]);
+  });
+
+  it('warns, at the check, about a declaration no package claims', async () => {
+    const root = makeApp();
+    const Stranger = declaring('StrangerServiceProvider', permDir(root));
+    const check = await new PackageMigrationsCheck({ root, providers: providersOf(root, [Stranger]) } as unknown as Application).handle();
+    expect(check).toMatchObject([{ severity: 'warning', message: expect.stringContaining('does not claim them') }]);
+  });
+
+  it('imports the main entry of a package exactly when a declaration points into it', async () => {
+    const dir = tempDir('marmeon-publish-marker-');
+    const marker = (name: string) => `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(join(dir, name))}, 'ran');\n`;
+    const root = makeApp({ entry: marker('perm') });
+    install(root, '@acme/quiet', {}, { declare: false, entry: marker('quiet') });
+    expect((await publish(root, [], { check: true })).code).toBe(0);
+    expect(existsSync(join(dir, 'perm'))).toBe(true);
+    expect(existsSync(join(dir, 'quiet'))).toBe(false);
+  });
+
+  it('does not import a dependency that lists no providers to find the owner of a static that cannot be read', async () => {
+    const dir = tempDir('marmeon-publish-marker-');
+    const root = makeApp();
+    install(root, '@acme/dev', {}, { declare: false, entry: `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(join(dir, 'dev'))}, 'ran');\n` });
+    const Broken = providerClass('BrokenServiceProvider', { from: 'stubs/migrations', module: 'x' });
+    const { lines } = await publish(root, [], { check: true }, fakePrompt(false), [Broken]);
+    expect(lines.filter((line) => line.startsWith('! '))).toHaveLength(1);
+    expect(existsSync(join(dir, 'dev'))).toBe(false);
+  });
+
+  it('keeps reading the other packages when one cannot be read', async () => {
+    const root = makeApp();
+    install(root, '@acme/oddmain', { 'stubs/migrations/create_odd_table.ts': STUB('odd') });
+    writeFileSync(join(root, 'node_modules/@acme/oddmain/package.json'), JSON.stringify({ name: '@acme/oddmain', main: 1 }));
+    install(root, '@acme/deep', { 'stubs/migrations/create_deep_table.ts': STUB('deep') });
+    const nested = '{"a":'.repeat(5000) + '1' + '}'.repeat(5000);
+    writeFileSync(join(root, 'node_modules/@acme/deep/package.json'), `{"name":"@acme/deep","exports":${nested}}`);
+    const listed = await publish(root, [], {});
+    expect(listed.lines.filter((line) => line.startsWith('! '))).toHaveLength(2);
+    expect((await publish(root, ['@acme/perm'])).code).toBe(0);
+    expect(readdirSync(join(root, 'modules/permissions/migrations'))).toHaveLength(2);
+  });
+
+  it('refuses a package for which two providers declare, and writes nothing, not even for a choice of everything', async () => {
+    const root = makeApp();
+    const Second = declaring('SecondServiceProvider', permDir(root), 'other');
+    registry.set('perm-second', Second);
+    const first = join(root, 'node_modules/@acme/perm/index.js');
+    writeFileSync(first, `${readFileSync(first, 'utf8')}export const second = globalThis.__providersOfTest.get('perm-second');\n`);
+    const named = await publish(root, ['@acme/perm'], {}, fakePrompt(false), [Second]);
+    expect(named.code).toBe(1);
+    expect(named.lines[0]).toContain('declared by two service providers');
+    const chosen = await publish(root, [], {}, fakePrompt(true, (choices) => choices.map((_, index) => index)), [Second]);
+    expect(chosen.lines.join('\n')).toContain('declared by two service providers');
+    expect(written(root)).toEqual([]);
+  });
+
+  it('gives a declaration to the package it lies in when another package of the app holds that directory too', async () => {
+    const root = makeApp({ name: '@acme/outer', declare: false });
+    const outer = join(root, 'node_modules/@acme/outer');
+    const inner = join(outer, 'vendor/inner');
+    mkdirSync(join(inner, 'stubs/migrations'), { recursive: true });
+    writeFileSync(join(inner, 'package.json'), JSON.stringify({ name: '@acme/inner', exports: './index.js' }));
+    writeFileSync(join(inner, 'stubs/migrations/2026_01_01_000000_create_inner_table.ts'), STUB('inner'));
+    mkdirSync(join(root, 'node_modules/@acme'), { recursive: true });
+    symlinkSync(inner, join(root, 'node_modules/@acme/inner'));
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@acme/outer': '1.0.0', '@acme/inner': '1.0.0' } }));
+    const Provider = providerClass('InnerServiceProvider', { from: pathToFileURL(join(realpathSync(inner), 'stubs/migrations')), module: 'inner' });
+    registry.set('shared-provider', Provider);
+    const exported = "export const provider = globalThis.__providersOfTest.get('shared-provider');\n";
+    writeFileSync(join(outer, 'index.js'), exported);
+    writeFileSync(join(inner, 'index.js'), exported);
+
+    // one pass over all dependencies: the directory belongs to the package that lies closest around it, though both export the provider
+    const listed = await publish(root, [], {}, fakePrompt(false), [Provider]);
+    expect(listed.lines).toEqual(['@acme/inner — not published (1)', '✗ Choose on a terminal, or run marmeon publish <package> for each of them']);
+    const outerOnly = await publish(root, ['@acme/outer'], {}, fakePrompt(false), [Provider]);
+    expect(outerOnly.lines).toEqual(['✗ @acme/outer ships no migrations.']);
+    expect((await publish(root, ['@acme/inner'], {}, fakePrompt(false), [Provider])).code).toBe(0);
   });
 });
 
@@ -769,11 +988,15 @@ describe('publishOwnMigrations: the make:*-table command of a package', () => {
     return pathToFileURL(`${join(home, 'node_modules', name)}/`);
   }
 
-  async function own(root: string, source: URL, options: Record<string, unknown> = {}) {
+  /** The service provider the package at `source` declares its migrations on: what its command hands to `publishOwnMigrations`. */
+  const providerAt = (source: URL): ServiceProviderClass =>
+    (source.protocol === 'file:' ? providerClasses.get(fileURLToPath(source).replace(/\/$/, '')) : undefined) ?? providerClass('NoServiceProvider', undefined);
+
+  async function own(root: string, source: URL, options: Record<string, unknown> = {}, Provider: ServiceProviderClass = providerAt(source), others: readonly ServiceProviderClass[] = []) {
     const lines: string[] = [];
     const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
     const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
-    const code = await publishOwnMigrations({ root, args: [], options, output } as unknown as CommandInput, source);
+    const code = await publishOwnMigrations({ root, args: [], options, output } as unknown as CommandInput, source, Provider, others);
     return { code, lines };
   }
 
@@ -875,9 +1098,20 @@ describe('publishOwnMigrations: the make:*-table command of a package', () => {
 
   it('refuses a name another dependency of the app ships, and writes nothing', async () => {
     const root = makeApp({ name: '@acme/one', module: 'one', files: ONE });
-    const { code, lines } = await own(root, packageRoot('@marmeon/a'));
+    const { code, lines } = await own(root, packageRoot('@marmeon/a'), {}, undefined, providersOf(root));
     expect(code).toBe(1);
     expect(lines).toEqual(['✗ @marmeon/a and @acme/one both ship create_a_table — one name is one migration in an app, so they cannot both be published']);
+    expect(written(root)).toEqual([]);
+  });
+
+  it('still sees the collision with another dependency when a third package cannot be read, and prints what it could not read', async () => {
+    const root = makeApp({ name: '@acme/one', module: 'one', files: ONE });
+    install(root, '@acme/oddmain', { 'stubs/migrations/create_odd_table.ts': STUB('odd') });
+    writeFileSync(join(root, 'node_modules/@acme/oddmain/package.json'), JSON.stringify({ name: '@acme/oddmain', main: 1 }));
+    const { code, lines } = await own(root, packageRoot('@marmeon/a'), {}, undefined, providersOf(root));
+    expect(code).toBe(1);
+    expect(lines.filter((line) => line.startsWith('✗'))).toEqual(['✗ @marmeon/a and @acme/one both ship create_a_table — one name is one migration in an app, so they cannot both be published']);
+    expect(lines.filter((line) => line.startsWith('! '))).toHaveLength(1);
     expect(written(root)).toEqual([]);
   });
 
@@ -898,6 +1132,23 @@ describe('publishOwnMigrations: the make:*-table command of a package', () => {
     const again = await own(root, source);
     expect(again.code).toBe(0);
     expect(again.lines.at(-1)).toBe('✓ Nothing to publish — every migration of @marmeon/a is in your app');
+  });
+
+  it('refuses a provider whose directory lies outside the package whose command runs, and writes nothing', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    const mine = packageRoot('@marmeon/a');
+    const theirs = packageRoot('@marmeon/b', { 'stubs/migrations/create_b_table.ts': STUB('b') });
+    const { code, lines } = await own(root, mine, {}, providerAt(theirs));
+    expect(code).toBe(1);
+    expect(lines).toEqual([`✗ @marmeon/a declares no migrations in its package: the static migrations of "${providerAt(theirs).name}" is missing or leads out of the package.`]);
+    expect(written(root)).toEqual([]);
+  });
+
+  it('says so when the provider declares nothing', async () => {
+    const root = makeApp({ name: '@acme/other' });
+    const { code, lines } = await own(root, packageRoot('@marmeon/a'), {}, providerClass('EmptyServiceProvider', undefined));
+    expect(code).toBe(1);
+    expect(lines).toEqual(['✗ @marmeon/a declares no migrations in its package: the static migrations of "EmptyServiceProvider" is missing or leads out of the package.']);
   });
 
   it('says so when the package.json of the package is not there', async () => {

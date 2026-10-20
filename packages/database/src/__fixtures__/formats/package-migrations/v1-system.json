@@ -1,7 +1,0 @@
-{
-  "migrations": {
-    "files": ["stubs/migrations/create_audit_table.ts"],
-    "format": 1,
-    "module": "system"
-  }
-}

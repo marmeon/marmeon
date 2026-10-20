@@ -39,7 +39,8 @@ export class DbTypesCheck implements AppCheck {
 
 /**
  * Every package the app publishes from has all its migrations in the app: the answer of `marmeon publish --check`. A missing
- * one is `D6` with the command that writes it; a refusal of `publish` is an error with its reason. Reads files only.
+ * one is `D6` with the command that writes it; a refusal of `publish` is an error with its reason. A declaration no package claims is a
+ * warning. Reads files and imports the main entry of each direct dependency a declaration points into.
  * See docs/check.md#the-app-checks.
  */
 export class PackageMigrationsCheck implements AppCheck {
@@ -52,9 +53,11 @@ export class PackageMigrationsCheck implements AppCheck {
     this.#app = app;
   }
 
-  handle(): AppCheckResult {
+  async handle(): Promise<AppCheckResult> {
     const problems: CheckProblem[] = [];
-    for (const status of packageStatus(this.#app.root)) {
+    const { statuses, warnings } = await packageStatus(this.#app.root, this.#app.providers);
+    for (const warning of warnings) problems.push({ severity: 'warning', message: printable(warning), docs: 'docs/migrations.md#publishing-the-migrations-of-a-package' });
+    for (const status of statuses) {
       if (!status.used) continue;
       if (status.state === 'lacks') {
         problems.push({

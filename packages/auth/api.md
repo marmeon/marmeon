@@ -611,6 +611,7 @@ export declare class MakeAuthCommand {
 }
 // MakeSignInsTableCommand
 export declare class MakeSignInsTableCommand {
+    #private;
     static command: string;
     static description: string;
     static usage: string;
@@ -620,6 +621,7 @@ export declare class MakeSignInsTableCommand {
             readonly short: 'm';
         };
     };
+    constructor(app: Application);
     handle(input: CommandInput): Promise<number>;
 }
 // NO_STORE

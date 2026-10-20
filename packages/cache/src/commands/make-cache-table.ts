@@ -1,3 +1,4 @@
+import { Application } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 
 /** The migration the command copies — a real file, so the store tests run exactly what apps get. */
@@ -13,8 +14,14 @@ export class MakeCacheTableCommand {
   static usage = '[--module=system]';
   static options = { module: { type: 'string', short: 'm' } } as const;
 
+  readonly #app: Application;
+
+  constructor(app: Application) {
+    this.#app = app;
+  }
+
   async handle(input: CommandInput): Promise<number> {
-    const { publishOwnMigrations } = await import('@marmeon/database/internal');
-    return publishOwnMigrations(input, new URL('../../', import.meta.url));
+    const [{ publishOwnMigrations }, { CacheServiceProvider }] = await Promise.all([import('@marmeon/database/internal'), import('../index.ts')]);
+    return publishOwnMigrations(input, new URL('../../', import.meta.url), CacheServiceProvider, this.#app.providers);
   }
 }

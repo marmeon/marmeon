@@ -98,11 +98,6 @@
     "providers": [
       "AuthServiceProvider"
     ],
-    "migrations": {
-      "format": 2,
-      "module": "system",
-      "from": "stubs/migrations"
-    },
     "browser": [
       "src/passkeys/browser.ts"
     ]

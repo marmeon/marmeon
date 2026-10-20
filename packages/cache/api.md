@@ -79,7 +79,7 @@ export declare class CacheServiceProvider implements ServiceProvider {
         prefix: string;
     }>[];
     static health: (typeof CacheHealthCheck)[];
-    static commands: (typeof MakeCacheTableCommand | typeof CachePruneCommand | typeof CacheClearCommand)[];
+    static commands: (typeof CachePruneCommand | typeof CacheClearCommand | typeof MakeCacheTableCommand)[];
     static migrations: {
         from: import("node:url").URL;
         module: string;
@@ -167,6 +167,7 @@ export declare class LockTimeoutError extends Error {
 }
 // MakeCacheTableCommand
 export declare class MakeCacheTableCommand {
+    #private;
     static command: string;
     static description: string;
     static usage: string;
@@ -176,6 +177,7 @@ export declare class MakeCacheTableCommand {
             readonly short: 'm';
         };
     };
+    constructor(app: Application);
     handle(input: CommandInput): Promise<number>;
 }
 // RateLimiter

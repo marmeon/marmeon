@@ -15,6 +15,10 @@ import { MakeQueueTableCommand, QUEUE_MIGRATION, QueueFailedCommand, QueueFlushC
 import { QueueWorkCommand } from './work.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 
+// The console builds the command through the container, which injects the application.
+const application = await createApplication({ root: import.meta.dirname, modules: [], discover: false }, { phase: 'build' });
+const command = () => application.container.make(MakeQueueTableCommand);
+
 class PingJob {
   static readonly job = 'test.ping';
   static readonly schema = v.object({ n: v.number() });
@@ -260,7 +264,7 @@ describe('the queue commands', () => {
     mkdirSync(join(root, 'bootstrap'));
     writeFileSync(join(root, 'bootstrap/app.ts'), "import { defineApplication } from '@marmeon/core';\n\nexport default defineApplication({ root: '', modules: [] });\n");
     const { input: run, lines } = input(root);
-    expect(await new MakeQueueTableCommand().handle(run)).toBe(0);
+    expect(await command().handle(run)).toBe(0);
     const [migration] = readdirSync(join(root, 'modules/system/migrations'));
     expect(migration).toMatch(/^\d{4}_\d{2}_\d{2}_\d{6}_create_jobs_table\.ts$/);
     const contents = readFileSync(join(root, 'modules/system/migrations', migration!), 'utf8');
@@ -273,16 +277,16 @@ describe('the queue commands', () => {
 
     // A second run has nothing to write, and ends well.
     const second = input(root);
-    expect(await new MakeQueueTableCommand().handle(second.input)).toBe(0);
+    expect(await command().handle(second.input)).toBe(0);
     expect(second.lines.at(-1)).toBe('✓ Nothing to publish — every migration of @marmeon/queue is in your app');
     expect(readdirSync(join(root, 'modules/system/migrations'))).toHaveLength(1);
   });
 
   it('make:queue-table takes --module=<name> to a module of its own, and refuses a name that leaves modules/', async () => {
     const root = tempDir('marmeon-queue-table-');
-    expect(await new MakeQueueTableCommand().handle(input(root, [], { module: '../x' }).input)).toBe(1);
+    expect(await command().handle(input(root, [], { module: '../x' }).input)).toBe(1);
     expect(existsSync(join(root, 'modules'))).toBe(false);
-    expect(await new MakeQueueTableCommand().handle(input(root, [], { module: 'jobs' }).input)).toBe(0);
+    expect(await command().handle(input(root, [], { module: 'jobs' }).input)).toBe(0);
     expect(readdirSync(join(root, 'modules/jobs/migrations'))).toHaveLength(1);
   });
 
@@ -291,7 +295,7 @@ describe('the queue commands', () => {
     mkdirSync(join(root, 'modules/system'), { recursive: true });
     writeFileSync(join(root, 'modules/system/index.ts'), "import { defineModule } from '@marmeon/core';\n\nexport default defineModule({ name: 'system' });\n");
     const { input: run, lines } = input(root);
-    expect(await new MakeQueueTableCommand().handle(run)).toBe(0);
+    expect(await command().handle(run)).toBe(0);
     expect(readFileSync(join(root, 'modules/system/index.ts'), 'utf8')).toContain("migrations: new URL('./migrations/', import.meta.url)");
     expect(lines).toContain('✓ Registered the migrations folder in modules/system/index.ts');
     expect(lines.some((line) => line.includes('has no `migrations` yet'))).toBe(false);
