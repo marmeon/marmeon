@@ -3,7 +3,7 @@
 ## Introduction
 
 `marmeon check` answers "am I done?" in one command: it runs the checks below, names each result and ends with an exit code a
-script or an agent can act on. The tools (`types`, `lint`, `internal-imports`, `agents`) need no app. The other checks load it, once
+script or an agent can act on. The tools (`types`, `lint`, `internal-imports`, `raw-sql`, `agents`) need no app. The other checks load it, once
 registered and once booted, so they need the `.env` and, for [readiness](#the-app-checks), the services the app depends on.
 
 ```sh
@@ -16,6 +16,7 @@ pnpm marmeon check
 ✗ internal-imports — 1 error
   modules/notes/Notes.ts:3:19  `@marmeon/*/internal` is the framework's own code, not API — …  (marmeon(no-internal-imports))
   docs: docs/check.md#imports-of-framework-internals
+✓ raw-sql
 ✓ boot
 ✗ route-types — 1 error
   bootstrap/routes.ts  bootstrap/routes.ts is out of date
@@ -35,6 +36,7 @@ A new app has the script: `pnpm check` runs `marmeon check`.
 | `types` | Type-checks the app with its own TypeScript (`tsc --noEmit`), as `marmeon build` does. | TypeScript and a `tsconfig.json` |
 | `lint` | Runs the app's own [oxlint](https://oxc.rs/docs/guide/usage/linter) with its `.oxlintrc.json`. | oxlint |
 | `internal-imports` | Finds [imports of framework internals](#imports-of-framework-internals). | nothing |
+| `raw-sql` | Warns about [`sql.raw()` and `sql.lit()` with an argument that is not a literal](#raw-sql). | nothing |
 | `agents` | Warns when the marmeon block of `AGENTS.md` is [missing or out of date](#the-agents-block). | nothing |
 
 The tools run side by side and are always listed in this order. `--only=types,lint` runs just those, `--skip=lint` runs all but
@@ -115,10 +117,11 @@ wrong (exit `2`), stdout stays empty and the message is on stderr. The format fo
       "reason": null,
       "problems": [
         { "severity": "error", "message": "Type 'string' is not assignable to type 'number'.", "file": "modules/notes/Notes.ts", "line": 4, "column": 7, "code": null, "rule": "TS2322", "fix": null, "docs": null }
-      ]
+      ],
+      "silenced": []
     },
-    { "name": "lint", "status": "skipped", "ms": 0, "reason": "oxlint is not installed — pnpm add -D oxlint", "problems": [] },
-    { "name": "internal-imports", "status": "passed", "ms": 14, "reason": null, "problems": [] }
+    { "name": "lint", "status": "skipped", "ms": 0, "reason": "oxlint is not installed — pnpm add -D oxlint", "problems": [], "silenced": [] },
+    { "name": "internal-imports", "status": "passed", "ms": 14, "reason": null, "problems": [], "silenced": [] }
   ],
   "warnings": []
 }
@@ -128,6 +131,7 @@ wrong (exit `2`), stdout stays empty and the message is on stderr. The format fo
 - Every key is always there; what is not known is `null`. A problem has `severity` (`error` or `warning`) and `message`, and
   `file` (relative to the app, with `/`), `line` and `column` (from 1), `code` (a [Marmeon error code](errors.md#server-error-codes)),
   `rule` (the tool's name for it; for `readiness`, the name of the health check), `fix` (a command to run, never run by `check`) and `docs`.
+- `silenced` lists the findings a [comment silenced](#silencing-a-finding), each a problem with the `reason` the comment gives; it is `[]` for a check with none. They do not count towards `status`.
 - `warnings` is a list of texts: the app did not load so its own checks are not in the report, a name `--only`/`--skip` gave that nobody knows (only then, otherwise it is exit `2`), or an unhandled failure outside any check.
 - `reason` says why a check was `skipped` or ended in `error`; it is `null` otherwise. The app's own directory is written as `.`.
 - A new field is no new format. In CI, run `marmeon check` and read the exit code; use the document when a tool needs the findings.
@@ -169,6 +173,46 @@ The check guards against the honest mistake, not against code that hides what it
 
 `marmeon build` runs the same scan and only warns, one line per place, so that a build is not held up by it; the exit code of
 `marmeon build` does not change. `marmeon check` is what fails.
+
+## Raw SQL
+
+`sql.raw(text)` and `sql.lit(value)` put their argument into the SQL as written, so a value from a request becomes SQL: an
+injection. `raw-sql` warns about every call whose argument is not a literal, at the argument. The fix is to put the value in a
+`sql` template with `${value}`, which sends it as a parameter ([queries](queries.md#writing-queries)); a column or table
+name comes from a list in the code, and `sql.ref()` and `sql.table()` take it as a name. If the argument is safe, say why in a
+[comment](#silencing-a-finding).
+
+A literal is a string, a template without an expression, a `+` of literals, any of them in parentheses or with `as const` or
+`satisfies`, and a name that the file declares exactly once as `const NAME = <literal>`. A constant from another file is not a
+literal (move it into the file, or silence the call), and neither is a function call, whatever it is called: `sanitize(name)`
+is no proof.
+
+`sql` is the name `sql`, an import of it from `@marmeon/database` or `kysely` under another name (`import { sql as q }`),
+`sql` of a namespace import (`db.sql.raw(…)`), or a `const` set to one of them (`const s = sql`). Parentheses, `as` and `!` around
+it, `sql['raw']`, `const { raw } = sql` and `sql.raw.call(…)` or `.apply(…)` do not hide a call. The check reads the sources below the app the way [`internal-imports`](#imports-of-framework-internals)
+does, but not the tests (`*.test.*`, `*.spec.*`, `*.type-test.*`): what a test passes is no input. It is a warning, so the exit
+code stays `0`. It does not find `sql.ref()` and `sql.table()` (names, which the database quotes), a `sql` that your own module re-exports under
+another name, a `sql` passed through a function or an object, a call through a variable that is not a plain `const` (`let raw = sql.raw`), or a file it cannot parse (the `types` check reports it).
+
+## Silencing a finding
+
+A finding of `raw-sql` can be silenced by a comment with a reason, on the line of the finding or the line above it:
+
+```ts
+// marmeon-check-ignore raw-sql: the column is one of SORTABLE, checked above
+const order = sql.raw(column);
+```
+
+The syntax is `marmeon-check-ignore <check>[, <check>]: <reason>`, as a `//` comment, a `/* … */` comment or, in JSX,
+`{/* … */}`. Only a real comment counts; the same text in a string does nothing.
+
+- The reason is required. A comment without one silences nothing, and `check` warns about the comment.
+- A silenced finding is not gone. It leaves `problems` and `status`, and shows in the report: `✓ raw-sql (1 silenced)` and a line
+  `silenced  file:line  reason` under it, and in `--json` as an entry of `silenced` with its `reason` (cut to 200 characters). A
+  reviewer sees the reason in the diff and in the report.
+- A comment that silences nothing is a warning too: remove it. A name that is no check silences nothing and is not reported.
+- `internal-imports` cannot be silenced. A framework internal is never an exception.
+- Only `raw-sql` can be silenced this way.
 
 ## The agents block
 

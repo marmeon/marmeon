@@ -55,3 +55,29 @@ export function stringLiterals(source: string, filename: string): StringLiteral[
   }
   return found.sort((a, b) => a.line - b.line || a.column - b.column);
 }
+
+/** A comment of a source file: its text without the comment marks, and the 1-based lines it starts and ends on. */
+export interface SourceComment {
+  readonly text: string;
+  readonly line: number;
+  readonly endLine: number;
+  /** Whether only white space (or the `{` of a JSX comment) comes before it on its line. */
+  readonly ownLine: boolean;
+}
+
+/** Every comment in `source`, found by parsing — so the text of a string or template is none. `undefined` when the file does not parse. */
+export function sourceComments(source: string, filename: string): SourceComment[] | undefined {
+  const { errors, comments } = parseSync(filename, source);
+  if (errors.length > 0) return undefined;
+  const lineOf = (offset: number) => {
+    let line = 1;
+    for (let index = source.indexOf('\n'); index !== -1 && index < offset; index = source.indexOf('\n', index + 1)) line++;
+    return line;
+  };
+  return ((comments ?? []) as (Node & { value: string })[]).map((comment) => ({
+    text: comment.value,
+    line: lineOf(comment.start),
+    endLine: lineOf(Math.max(comment.start, comment.end - 1)),
+    ownLine: ['', '{'].includes(source.slice(source.lastIndexOf('\n', comment.start - 1) + 1, comment.start).trim()),
+  }));
+}

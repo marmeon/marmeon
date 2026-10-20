@@ -1,12 +1,9 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { relative } from 'node:path';
 import { stringLiterals } from '@marmeon/core/internal';
 import { INTERNAL_MESSAGE } from '../commands/make-lint-config.ts';
+import { isSource, sourceFiles } from './files.ts';
 import type { CheckProblem } from './report.ts';
-
-const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
-/** Left out below the app root only (`modules/storage/` is an app's own code); `node_modules` is left out everywhere. */
-const SKIPPED_AT_ROOT = new Set(['dist', 'storage', 'coverage']);
 
 /** What names a package's `./internal` subpath, its `dist` or its `src`: the module specifiers the framework does not offer. */
 const FORBIDDEN: readonly RegExp[] = [
@@ -48,7 +45,7 @@ function forbidden(value: string): string | undefined {
  */
 export function internalImports(root: string): CheckProblem[] {
   const problems: CheckProblem[] = [];
-  for (const path of filesUnder(root, root)) {
+  for (const path of sourceFiles(root, { tests: true, configs: true })) {
     const name = path.slice(path.lastIndexOf('/') + 1);
     let text: string;
     try {
@@ -60,7 +57,7 @@ export function internalImports(root: string): CheckProblem[] {
     if (!/marmeon|\\/i.test(text)) continue;
     const file = relative(root, path).split('\\').join('/');
     let literals: { value: string; line: number; column: number }[] | undefined;
-    if (SOURCE.test(name)) {
+    if (isSource(name)) {
       literals = stringLiterals(text, name);
     } else if (/^tsconfig.*\.json$/.test(name)) {
       literals = jsonLiterals(text, name);
@@ -83,30 +80,6 @@ export function internalImports(root: string): CheckProblem[] {
     }
   }
   return problems;
-}
-
-/**
- * The files to read, depth first in name order: no `node_modules`, no dot directory, no symlink, and `dist`, `storage` and
- * `coverage` only at the app root. A directory that cannot be read is skipped.
- */
-function filesUnder(root: string, directory: string): string[] {
-  const files: string[] = [];
-  let entries;
-  try {
-    entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1));
-  } catch {
-    return files;
-  }
-  for (const entry of entries) {
-    const path = join(directory, entry.name).split('\\').join('/');
-    if (entry.isDirectory()) {
-      const skipped = entry.name === 'node_modules' || entry.name.startsWith('.') || (directory === root && SKIPPED_AT_ROOT.has(entry.name));
-      if (!skipped) for (const file of filesUnder(root, path)) files.push(file);
-    } else if (entry.isFile() && (SOURCE.test(entry.name) || /^tsconfig.*\.json$/.test(entry.name) || entry.name === 'package.json')) {
-      files.push(path);
-    }
-  }
-  return files;
 }
 
 /** The strings of a JSON file with comments and trailing commas (tsconfig), read as the object literal it is. */

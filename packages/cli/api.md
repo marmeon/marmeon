@@ -46,6 +46,7 @@ export interface CheckReport {
     readonly ms: number;
     readonly reason?: string;
     readonly problems: readonly CheckProblem[];
+    readonly silenced?: readonly SilencedProblem[];
 }
 // CheckSetupError
 export declare class CheckSetupError extends CommandSetupError {
@@ -124,6 +125,10 @@ export interface Prompt {
         readonly multiple?: boolean;
     }): Promise<readonly number[]>;
 }
+// SilencedProblem
+export type SilencedProblem = CheckProblem & {
+    readonly reason: string;
+};
 ```
 
 ### Augments

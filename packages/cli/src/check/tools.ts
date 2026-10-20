@@ -20,7 +20,7 @@ export function plainReason(error: unknown, root: string): string {
 }
 
 /** The checks that need no app, in the order they are reported. */
-export const TOOL_CHECKS = ['types', 'lint', 'internal-imports', 'agents'] as const;
+export const TOOL_CHECKS = ['types', 'lint', 'internal-imports', 'raw-sql', 'agents'] as const;
 
 /** Type-checks the app with its own TypeScript (`tsc --noEmit`): `skipped` without a `tsconfig.json`, `error` without TypeScript. */
 export async function typesCheck(root: string): Promise<CheckRun> {

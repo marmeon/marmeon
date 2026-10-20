@@ -104,7 +104,7 @@ export class NoteSearch {
 
 `sql` is Kysely's template, so your app needs no import of Kysely itself. A value in the template, such as `${pattern}`, is sent
 as a parameter and never becomes part of the SQL text. `sql.raw()` is the exception: it puts a string into the SQL as it is, so
-never give it input.
+never give it input. `marmeon check` warns about `sql.raw()` and `sql.lit()` with an argument that is not a literal ([raw SQL](check.md#raw-sql)).
 
 The builder's types are exported under Marmeon's names: `Connection<DB>` is a connection's builder, `Transaction<DB>` the builder inside a
 transaction and `SelectQuery<DB, TB, O>` a select that you go on with. A table's row is `Row<'notes'>`, `NewRow<'notes'>` and

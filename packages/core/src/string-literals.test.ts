@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { stringLiterals } from './string-literals.ts';
+import { sourceComments, stringLiterals } from './string-literals.ts';
 
 describe('stringLiterals', () => {
   it('finds import sources, import(), require, re-exports and type positions with 1-based line and column', () => {
@@ -31,5 +31,20 @@ describe('stringLiterals', () => {
     expect(stringLiterals("// 'in a comment'\n/* \"also\" */", 'x.ts')).toEqual([]);
     expect(stringLiterals('/// <reference types="@marmeon/core/internal" />\nexport {};', 'x.ts')).toEqual([{ value: '@marmeon/core/internal', line: 1, column: 23 }]);
     expect(stringLiterals("const = 'x'", 'x.ts')).toBeUndefined();
+  });
+});
+
+describe('sourceComments', () => {
+  it('reads line and block comments with the lines they start and end on, and none from a string', () => {
+    const source = ["const a = '// not one'; // first", '/* second', ' * more */', 'const b = `/* not one */`;', '{/* jsx */}'].join('\n');
+    expect(sourceComments(source, 'x.tsx')).toEqual([
+      { text: ' first', line: 1, endLine: 1, ownLine: false },
+      { text: ' second\n * more ', line: 2, endLine: 3, ownLine: true },
+      { text: ' jsx ', line: 5, endLine: 5, ownLine: true },
+    ]);
+  });
+
+  it('yields undefined for a file that does not parse', () => {
+    expect(sourceComments("const = 'x' // c", 'x.ts')).toBeUndefined();
   });
 });

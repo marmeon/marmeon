@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "ok": true,
+  "exitCode": 0,
+  "checks": [
+    {
+      "name": "raw-sql",
+      "status": "passed",
+      "reason": null,
+      "problems": [],
+      "silenced": [
+        {
+          "severity": "warning",
+          "file": "src/order.ts",
+          "line": 3,
+          "column": 47,
+          "code": null,
+          "rule": "marmeon(raw-sql)",
+          "fix": null,
+          "docs": "docs/check.md#raw-sql",
+          "reason": "the column comes from a list in this file"
+        }
+      ]
+    }
+  ],
+  "warnings": []
+}

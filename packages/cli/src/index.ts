@@ -6,6 +6,6 @@ export type { DevProcess } from './dev.ts';
 export { Output } from './output.ts';
 export type { JsonDocument } from './output.ts';
 export { CliServiceProvider } from './provider.ts';
-export type { CheckProblem, CheckReport, CheckStatus } from './check/report.ts';
+export type { CheckProblem, CheckReport, CheckStatus, SilencedProblem } from './check/report.ts';
 export { CheckSetupError } from './check/registry.ts';
 export type { AppCheck, AppCheckClass, AppCheckContext, AppCheckResult } from './check/registry.ts';
