@@ -23,7 +23,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(code).toBe(0);
     // Execution order: global first, then the web group (cookies before the session), the route's own last.
     expect(stdout).toMatch(
-      /GET\s+\/users\/:user\s+user-profile\.show\s+web\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, EncryptCookies, ClearClientHistory, StartSession, NoStoreWhenSignedIn, .*ShareAppProps, authenticate, verified\s+everyone\s+ShowUserProfileController/,
+      /GET\s+\/users\/:user\s+user-profile\.show\s+web\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, EncryptCookies, ClearClientHistory, StartSession, NoStoreWhenSignedIn, .*ShareAppProps, authenticate, verified\s+everyone \(public: user\)\s+ShowUserProfileController/,
     );
     expect(stdout).toMatch(/GET\s+\/api\/users\s+api\.users\.index\s+api\s+SecurityHeaders, ContentSecurityPolicy, LimitLiveValidation, authenticate:api, abilities:users:read\s+everyone\s+ListUsersController/);
     expect(stdout).toMatch(/\n\d+ routes\n$/); // the count grows with the app
@@ -33,8 +33,14 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     const { stdout } = marmeon(webApp, ['route:list']);
     expect(stdout).toMatch(/^METHOD\s+PATH\s+NAME\s+GROUP\s+MIDDLEWARE\s+ACCESS\s+ACTION$/m);
     expect(stdout).toMatch(/PUT\s+\/users\/:user\s+user-profile\.update\s.*\scan ProfilePolicy\.update\(user\)\s+UpdateUserProfileController/);
-    expect(stdout).toMatch(/GET\s+\/users\/:user\s+user-profile\.show\s.*\severyone\s+ShowUserProfileController/);
+    expect(stdout).toMatch(/GET\s+\/users\/:user\s+user-profile\.show\s.*\severyone \(public: user\)\s+ShowUserProfileController/);
     expect(stdout).toMatch(/GET\s+\/_marmeon\/live\s.*\sframework\s+LiveStreamController/);
+  });
+
+  it('names the bindings that make records public, in the table and in the JSON', () => {
+    const routes = JSON.parse(marmeon(webApp, ['route:list', '--json']).stdout) as { routes: { path: string; methods: string[]; publicBindings: string[] }[] };
+    expect(routes.routes.find((route) => route.path === '/users/:user' && route.methods.includes('GET'))?.publicBindings).toEqual(['user']);
+    expect(routes.routes.find((route) => route.path === '/users/:user' && route.methods.includes('PUT'))?.publicBindings).toEqual([]);
   });
 
   it('prints route:list and list as one JSON document with the format first', () => {

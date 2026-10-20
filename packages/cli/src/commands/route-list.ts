@@ -25,6 +25,7 @@ export class RouteListCommand {
           group: route.group ?? null,
           middleware: this.#router.middlewareFor(route).map(middlewareName),
           access: this.#accessList(route),
+          publicBindings: publicBindings(route),
           action: actionName(route.action),
         })),
         warnings: [],
@@ -54,11 +55,18 @@ export class RouteListCommand {
     return checks.length === 0 ? 'none' : checks.map(accessLabel);
   }
 
-  // The table joins the labels with `+`.
+  // The table joins the labels with `+` and names the parameters whose records are public.
   #access(route: RouteDefinition): string {
     const list = this.#accessList(route);
-    return typeof list === 'string' ? list : list.join(' + ');
+    const checks = typeof list === 'string' ? list : list.join(' + ');
+    const open = publicBindings(route);
+    return open.length === 0 ? checks : `${checks} (public: ${open.join(', ')})`;
   }
+}
+
+/** The parameters whose records `bind(…, { public: true })` makes findable by anyone who may call the route. */
+function publicBindings(route: RouteDefinition): string[] {
+  return route.bindings.filter((binding) => binding.public === true).map((binding) => binding.param);
 }
 
 function middlewareName(middleware: AnyMiddleware): string {
