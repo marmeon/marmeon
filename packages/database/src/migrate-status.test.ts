@@ -96,11 +96,11 @@ describe.each(drivers)('migrate:status --json (%s)', (driver) => {
     const { connections, close, command } = await setup([auth, accounts]);
     try {
       await migrator(connections, [auth]).migrate();
-      await sql`alter table migrations add column checksum varchar(64)`.execute(migratorConnection(connections));
+      await sql`alter table migrations add column note varchar(64)`.execute(migratorConnection(connections));
       const stdout: string[] = [];
       vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
       await expect(command.handle({ args: [], options: { json: true }, output: new Output(), root: '/' } as unknown as CommandInput)).rejects.toThrow(MigrationStateError);
-      await expect(command.handle({ args: [], options: {}, output: new Output(), root: '/' } as unknown as CommandInput)).rejects.toThrow(/\[marmeon:D1\].*checksum/s);
+      await expect(command.handle({ args: [], options: {}, output: new Output(), root: '/' } as unknown as CommandInput)).rejects.toThrow(/\[marmeon:D1\].*note/s);
       expect(stdout).toEqual([]);
     } finally {
       await close();

@@ -1,17 +1,20 @@
+import { hash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { Application } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { Connections } from '../connections.ts';
 import { tableColumns, type CatalogQuery } from '../introspection.ts';
-import { assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE } from '../migration-state.ts';
+import { assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, recordVersion } from '../migration-state.ts';
 import { migratorConnection } from '../migrator-connection.ts';
 import { executePlan, planOf, type PlanStep } from '../schema/plan.ts';
 import { loadProjection } from '../schema/projection-file.ts';
 import { applyPlan, differingTables, emptyProjection, type SchemaProjection } from '../schema/projection.ts';
 import { SchemaError } from '../schema/schema.ts';
+import { migrationChecksum } from './checksum.ts';
 import { dropAllTables } from './drop-all.ts';
 import { migrationFiles, type MigrationFile } from './files.ts';
-import { loadMigration } from './load.ts';
+import { loadMigration, spendImport } from './load.ts';
 import { MigrationLock, type HeldLock, type LockOptions } from './lock.ts';
 import type { Migration } from './migration.ts';
 
@@ -38,6 +41,11 @@ export interface MigrateOptions {
   readonly onUnknown?: (connection: string, found: UnknownSchema) => void;
   /** Called with the tables of Marmeon 0.3 that `migrate` found on `default` and left where they are. */
   readonly onLegacy?: (connection: string, tables: readonly string[]) => void;
+  /**
+   * Called once when this run carried the record of migrations over from the form Marmeon 0.3 wrote: `recorded` migrations got the
+   * checksum of their file as it is now, `unknown` have no file and keep no checksum. See `docs/migrations.md#how-the-migrator-keeps-track`.
+   */
+  readonly onCarriedOver?: (carried: { readonly recorded: number; readonly unknown: readonly string[] }) => void;
 }
 
 export interface MigrationRun {
@@ -47,7 +55,7 @@ export interface MigrationRun {
 }
 
 interface MigrationRecord {
-  migrations: { id: Generated<number>; name: string; module: string; batch: number };
+  migrations: { id: Generated<number>; name: string; module: string; batch: number; checksum: string | null };
 }
 
 /** A migration with the plan of its `up()` and the connection it runs on. */
@@ -55,6 +63,8 @@ interface Planned {
   readonly file: MigrationFile;
   readonly connection: string;
   readonly plan: readonly PlanStep[];
+  /** The checksum of the bytes of the file the plan was made from. */
+  readonly checksum: string;
 }
 
 /** The schema a sequence of plans leaves, and the connection each of its tables is on. */
@@ -113,7 +123,8 @@ function assertManaged(connections: Connections, connection: string): void {
  * A migration may run on another connection (`connection` in `defineMigration`, e.g. the cache's own SQLite
  * file): its record stays on `default` (one order, one batch number for all).
  *
- * `migrations` has exactly the columns `batch, id, module, name`; any other set was written by a Marmeon this release does not know and is
+ * `migrations` has exactly the columns `batch, checksum, id, module, name` (or `batch, id, module, name` as Marmeon 0.3 wrote them, which the
+ * migrating methods carry over); any other set was written by a Marmeon this release does not know and is
  * refused ({@link MigrationStateError}). It reads the record on a connection of its own, so it works on a database whose migrations
  * are not all there, which the app's connections refuse; in a process that migrates it hands the schema it leaves to that process's
  * connections. See `docs/migrations.md#how-the-migrator-keeps-track`.
@@ -205,6 +216,7 @@ export class Migrator {
 
   async #migrate(onRun: ((run: MigrationRun) => void) | undefined, options: MigrateOptions): Promise<MigrationRun[]> {
     let hasRecord = await this.#prepare();
+    await this.#carryOver(options);
     // Every connection a migration runs on, not only those with a migration pending.
     for (const connection of await this.connections()) assertManaged(this.#connections, connection);
     const db = this.#db();
@@ -242,7 +254,7 @@ export class Migrator {
             if (!hasRecord) await createMigrationsTable(trx, this.#driver());
             await this.#execute(trx, entry, state.projection, after);
             await this.#held?.heartbeat(trx);
-            await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
+            await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch, checksum: entry.checksum }).execute();
           });
           hasRecord = true;
         } else {
@@ -257,7 +269,7 @@ export class Migrator {
           await db.transaction().execute(async (trx) => {
             if (!hasRecord) await createMigrationsTable(trx, this.#driver());
             await this.#held?.heartbeat(trx);
-            await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch }).execute();
+            await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch, checksum: entry.checksum }).execute();
           });
           hasRecord = true;
         }
@@ -278,8 +290,9 @@ export class Migrator {
   }
 
   /** Rolls back the last batch — or the last `steps` migrations. */
-  async rollback(options: { steps?: number } = {}, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
+  async rollback(options: { steps?: number } & Pick<MigrateOptions, 'onCarriedOver'> = {}, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
     return this.locked(async () => {
+      await this.#withdrawnOnFailure(() => this.#carryOver(options));
       const rows = (await this.#ran()).toReversed();
       const last = rows[0]?.batch;
       const targets = options.steps ? rows.slice(0, options.steps) : rows.filter((row) => row.batch === last);
@@ -288,8 +301,13 @@ export class Migrator {
   }
 
   /** Rolls back every migration. */
-  async reset(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
-    return this.locked(async () => this.#withdrawnOnFailure(async () => this.#down((await this.#ran()).toReversed(), onRun)));
+  async reset(onRun?: (run: MigrationRun) => void, options: Pick<MigrateOptions, 'onCarriedOver'> = {}): Promise<MigrationRun[]> {
+    return this.locked(async () =>
+      this.#withdrawnOnFailure(async () => {
+        await this.#carryOver(options);
+        return this.#down((await this.#ran()).toReversed(), onRun);
+      }),
+    );
   }
 
   /** Drops every table (not only the migrated ones) and migrates from scratch. */
@@ -407,8 +425,22 @@ export class Migrator {
   async #plans(files: readonly MigrationFile[]): Promise<Planned[]> {
     const planned: Planned[] = [];
     for (const file of files) {
-      const migration = await loadMigration(file);
-      planned.push({ file, connection: this.#connectionOf(migration, file), plan: planOf(migration, 'up', `Migration ${file.name} (module "${file.module}")`) });
+      // One read for both: the checksum is of exactly the bytes the plan is made from.
+      const bytes = readFileSync(file.path);
+      const sha256 = hash('sha256', bytes, 'hex');
+      const migration = await loadMigration({ ...file, sha256 });
+      // The import reads the file itself: one edited between the read and the import gives a plan that is not the one of `bytes`, and a
+      // checksum that would be of the other version. The import under this hash is not trusted again, and the run stops.
+      if (hash('sha256', readFileSync(file.path), 'hex') !== sha256) {
+        spendImport(file.path, sha256);
+        throw new Error(withCode('D14', `Migration ${file.name} (module "${file.module}") changed while it was read. Nothing was run; run the command again.`));
+      }
+      planned.push({
+        file,
+        connection: this.#connectionOf(migration, file),
+        plan: planOf(migration, 'up', `Migration ${file.name} (module "${file.module}")`),
+        checksum: migrationChecksum(bytes),
+      });
     }
     return planned;
   }
@@ -418,7 +450,7 @@ export class Migrator {
    * the migrations before it left: the `data` steps of the plan see it with what the plan has changed up to them — and no other
    * connection does.
    */
-  async #execute(trx: Kysely<any>, { file, connection, plan }: Planned, before: SchemaProjection | undefined, after: Folded): Promise<void> {
+  async #execute(trx: Kysely<any>, { file, connection, plan }: Omit<Planned, 'checksum'>, before: SchemaProjection | undefined, after: Folded): Promise<void> {
     const metadata = this.#connections.metadata(connection);
     const aroundData = before
       ? async (index: number, run: () => Promise<void>) => {
@@ -556,12 +588,47 @@ export class Migrator {
    * is found out, so the app's connection, which refuses every query then, cannot be the one to ask. A record this release cannot read
    * is refused here as it is everywhere else.
    */
-  async #ran(): Promise<{ id: number; name: string; module: string; batch: number }[]> {
+  async #ran(): Promise<{ id: number; name: string; module: string; batch: number; checksum: string | null }[]> {
     const books = this.#books();
     const columns = await columnsOf(books, this.#driver());
-    if (!columns.has(MIGRATIONS_TABLE)) return [];
-    assertRecordReadable(columns, 'default');
-    return (await books.selectFrom(MIGRATIONS_TABLE).selectAll().orderBy('batch').orderBy('id').execute()) as { id: number; name: string; module: string; batch: number }[];
+    const version = recordVersion(columns, 'default');
+    if (version === undefined) return [];
+    const rows = (await books.selectFrom(MIGRATIONS_TABLE).selectAll().orderBy('batch').orderBy('id').execute()) as {
+      id: number;
+      name: string;
+      module: string;
+      batch: number;
+      checksum?: string | null;
+    }[];
+    // The form of 0.3 has no checksum: every migration is unknown, never changed.
+    return rows.map((row) => ({ ...row, checksum: row.checksum ?? null }));
+  }
+
+  /**
+   * Carries a record in the form Marmeon 0.3 wrote over to the one with a checksum, in one transaction: the column is added and each
+   * row whose file is there gets the checksum of the file as it is now. A row without a file stays `null`, which means unknown — and is
+   * never filled in later: this is the one moment a file becomes the reference without having been checked. A record in the current form is left alone.
+   */
+  async #carryOver(options: Pick<MigrateOptions, 'onCarriedOver'>): Promise<void> {
+    const books = this.#books();
+    if (recordVersion(await columnsOf(books, this.#driver()), 'default') !== 1) return;
+    const files = new Map(this.files().map((file) => [file.name, file]));
+    const unknown: string[] = [];
+    let recorded = 0;
+    await books.transaction().execute(async (trx) => {
+      await trx.schema.alterTable(MIGRATIONS_TABLE).addColumn('checksum', 'varchar(80)').execute();
+      for (const row of await trx.selectFrom(MIGRATIONS_TABLE).select('name').orderBy('batch').orderBy('id').execute()) {
+        const file = files.get(row.name);
+        if (file === undefined) {
+          unknown.push(row.name);
+          continue;
+        }
+        await trx.updateTable(MIGRATIONS_TABLE).set({ checksum: migrationChecksum(readFileSync(file.path)) }).where('name', '=', row.name).execute();
+        recorded++;
+      }
+      await this.#held?.heartbeat(trx);
+    });
+    options.onCarriedOver?.({ recorded, unknown });
   }
 
   async #lastBatch(): Promise<number> {

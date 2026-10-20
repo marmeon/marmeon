@@ -147,7 +147,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(after.migrations.every((m) => m.batch === 1 && m.status === 'ran')).toBe(true);
 
     const connection = new DatabaseSync(database);
-    connection.exec('alter table migrations add column checksum varchar(64)');
+    connection.exec('alter table migrations add column note varchar(64)');
     connection.close();
     const newer = marmeon(webApp, ['migrate:status', '--json'], env);
     expect(newer.code).toBe(1);
