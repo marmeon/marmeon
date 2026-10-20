@@ -202,6 +202,7 @@ or a coding agent reads what matches the installed version, offline, without gue
 
 - `docs/<page>.md` is the page `/docs/<page>` of this site, for example `docs/routing.md`.
 - `docs/index.json` lists the sections and pages in reading order, `docs/llms.txt` does the same as links for a reader without a parser.
+- `marmeon docs` lists the pages and prints one, see [reading the documentation](console.md#reading-the-documentation).
 - A `docs/<page>.md` named in the output of a `marmeon` command is a file in that directory.
 
 Under pnpm the path is stable, because `marmeon` is a direct dependency of the app. The files take about 1.6 MB on disk (0.5 MB to download),

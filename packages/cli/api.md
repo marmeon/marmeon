@@ -176,6 +176,10 @@ marmeon check [--only=<names>] [--skip=<names>] [--json]
 --skip (string)
 // discover
 marmeon discover
+// docs
+marmeon docs [<page>] [--path] [--json]
+--json (boolean)
+--path (boolean)
 // key:generate
 marmeon key:generate
 --force (boolean)
