@@ -10,6 +10,10 @@
 # The same script holds the fixtures of stored and wire formats (`packages/*/src/__fixtures__/formats/**`): changing, renaming or
 # deleting one needs `breaking`, and `api-compatible` does not lift that.
 #
+# It also refuses a pull request that changes, renames or deletes a migration under a package's `stubs/` (the kit's among them) or
+# the `marmeon.migrations.from` of a `package.json`, or that adds a migration which sorts before a shipped file or repeats the
+# name of one in its directory. No label lifts that.
+#
 # Mark the check "api label" as required in the ruleset of `main`.
 name: API label
 

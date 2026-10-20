@@ -1,9 +1,9 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { formatProblems, labelProblems } from './api-label.ts';
+import { formatProblems, isShippedMigration, labelProblems, migrationProblems, migrationSourceProblems } from './api-label.ts';
 import { compareSnapshots, renderSnapshot, type ApiItem, type ApiSection } from './api-snapshot.ts';
 import { tempDir } from './test/temp-dir.js';
 
@@ -116,6 +116,71 @@ describe('formatProblems', () => {
 
   it('names every fixture it refuses', () => {
     expect(formatProblems([...change('M'), ...change('D', 'packages/http/src/__fixtures__/formats/page/v1.json'), ...change('A', 'x')], ['feature'])).toHaveLength(2);
+  });
+});
+
+describe('migrationProblems', () => {
+  const directory = 'packages/queue/stubs/migrations';
+  const shipped = (dir: string) => (dir === directory ? ['2026_01_01_000000_create_jobs_table.ts', '2026_02_01_000000_add_queue_column.ts'] : []);
+  const at = (status: string, name: string) => [{ status, path: `${directory}/${name}` }];
+
+  it('refuses a changed, deleted or renamed migration', () => {
+    for (const status of ['M', 'D', 'T', 'R100', 'C090']) {
+      const [message, ...rest] = migrationProblems(at(status, '2026_01_01_000000_create_jobs_table.ts'), shipped);
+      expect(rest, status).toEqual([]);
+      expect(message, status).toContain(`${directory}/2026_01_01_000000_create_jobs_table.ts: a migration a package ships never changes or goes`);
+    }
+  });
+
+  it('lets a file through that sorts after every shipped one, and one in a new directory', () => {
+    expect(migrationProblems(at('A', '2026_03_01_000000_add_priority.ts'), shipped)).toEqual([]);
+    expect(migrationProblems([{ status: 'A', path: 'packages/audit/stubs/migrations/2020_01_01_000000_create_audit_table.ts' }], shipped)).toEqual([]);
+  });
+
+  it('refuses a new file that sorts before a shipped one and names the first it precedes', () => {
+    const [message, ...rest] = migrationProblems(at('A', '2026_01_15_000000_add_priority.ts'), shipped);
+    expect(rest).toEqual([]);
+    expect(message).toBe(`${directory}/2026_01_15_000000_add_priority.ts sorts before 2026_02_01_000000_add_queue_column.ts, which is already shipped: name it after every file in its directory`);
+  });
+});
+
+describe('migrationSourceProblems', () => {
+  const manifest = (from?: string) => JSON.stringify({ name: 'x', ...(from === undefined ? {} : { marmeon: { migrations: { format: 2, module: 'x', from } } }) });
+  const change = (before: string | undefined, after: string | undefined) => [{ path: 'packages/x/package.json', before, after }];
+
+  it('refuses a changed or removed from, and nothing else', () => {
+    expect(migrationSourceProblems(change(manifest('stubs/migrations'), manifest('stubs/other')))).toHaveLength(1);
+    expect(migrationSourceProblems(change(manifest('stubs/migrations'), manifest()))).toHaveLength(1);
+    expect(migrationSourceProblems(change(manifest('stubs/migrations'), undefined))).toHaveLength(1);
+    expect(migrationSourceProblems(change(manifest('stubs/migrations'), manifest('stubs/migrations')))).toEqual([]);
+    expect(migrationSourceProblems(change(manifest(), manifest('stubs/migrations')))).toEqual([]);
+    expect(migrationSourceProblems(change(undefined, manifest('stubs/migrations')))).toEqual([]);
+  });
+});
+
+describe('the directories packages ship migrations from', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+  it('lie under the files the check holds', () => {
+    for (const name of readdirSync(join(root, 'packages'))) {
+      let manifest: { marmeon?: { migrations?: { from?: unknown } } };
+      try {
+        manifest = JSON.parse(readFileSync(join(root, 'packages', name, 'package.json'), 'utf8'));
+      } catch {
+        continue;
+      }
+      const from = manifest.marmeon?.migrations?.from;
+      if (from === undefined) continue;
+      expect(typeof from, name).toBe('string');
+      expect(isShippedMigration(`packages/${name}/${String(from).replace(/^\.\//, '').replace(/\/$/, '')}/2026_01_01_000000_x.ts`), `${name}: ${String(from)}`).toBe(true);
+    }
+  });
+
+  it('recognises where a stub may sit', () => {
+    expect(isShippedMigration('packages/queue/stubs/migrations/a.ts')).toBe(true);
+    expect(isShippedMigration('packages/auth/stubs/react/modules/auth/migrations/a.ts')).toBe(true);
+    expect(isShippedMigration('packages/queue/src/migrations/a.ts')).toBe(false);
+    expect(isShippedMigration('packages/queue/migrations/a.ts')).toBe(false);
   });
 });
 
@@ -289,6 +354,116 @@ describe('the script', () => {
         expect(result.out).toContain(`::error title=API label::changes the fixture ${fixture} of a stored or wire format`);
         expect(run(['breaking']).status).toBe(0);
       }
+    });
+  });
+
+  describe('shipped migrations', () => {
+    const stubs = ['packages/queue/stubs/migrations', 'packages/auth/stubs/react/modules/auth/migrations'];
+    const first = (directory: string) => `${directory}/2026_01_01_000000_create_things_table.ts`;
+    const manifest = (from?: string) => JSON.stringify({ name: 'x', ...(from === undefined ? {} : { marmeon: { migrations: { format: 2, module: 'x', from } } }) });
+
+    /** A merge commit whose base ships a migration in each of `stubs` and one in `src/`, and whose pull request applies `change`. */
+    function withMigrations(change: (directory: string, git: (...args: string[]) => string) => void) {
+      const directory = tempDir('marmeon-api-label-');
+      const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: directory, encoding: 'utf8' }).trim();
+      git('init', '-q', '-b', 'main');
+      for (const file of [...stubs.map(first), 'packages/queue/src/migrations/2026_01_01_000000_inside.ts']) {
+        mkdirSync(dirname(join(directory, file)), { recursive: true });
+        writeFileSync(join(directory, file), 'export const up = () => 1;\n'.repeat(5));
+      }
+      // Files in the stub directory that are not migrations: a README and a folder.
+      writeFileSync(join(directory, 'packages/queue/stubs/migrations/README.md'), 'x\n');
+      mkdirSync(join(directory, 'packages/queue/stubs/migrations/zz'), { recursive: true });
+      writeFileSync(join(directory, 'packages/queue/stubs/migrations/zz/a.ts'), 'x\n');
+      writeFileSync(join(directory, 'packages/queue/package.json'), manifest('stubs/migrations'));
+      mkdirSync(join(directory, 'packages/cache'), { recursive: true });
+      writeFileSync(join(directory, 'packages/cache/package.json'), manifest());
+      git('add', '-A');
+      git('commit', '-q', '-m', 'base');
+      git('checkout', '-q', '-b', 'pr');
+      change(directory, git);
+      git('add', '-A');
+      git('commit', '-q', '--allow-empty', '-m', 'change');
+      git('checkout', '-q', 'main');
+      writeFileSync(join(directory, 'README.md'), 'x');
+      git('add', '-A');
+      git('commit', '-q', '-m', 'merged meanwhile');
+      git('merge', '-q', '--no-ff', '-m', 'merge', 'pr');
+      return (labels: string[]) => {
+        const result = spawnSync('node', [script], { cwd: directory, env: { PATH: process.env.PATH, LABELS: JSON.stringify(labels) }, encoding: 'utf8' });
+        return { status: result.status, out: result.stdout + result.stderr };
+      };
+    }
+
+    it('lets a later file, a file in a new directory and a change outside the stubs through', () => {
+      const run = withMigrations((directory) => {
+        for (const stub of stubs) writeFileSync(join(directory, stub, '2026_02_01_000000_add_column.ts'), 'x\n');
+        mkdirSync(join(directory, 'packages/audit/stubs/migrations'), { recursive: true });
+        writeFileSync(join(directory, 'packages/audit/stubs/migrations/2020_01_01_000000_create_audit_table.ts'), 'x\n');
+        writeFileSync(join(directory, 'packages/queue/src/migrations/2026_01_01_000000_inside.ts'), 'changed\n');
+        writeFileSync(join(directory, 'packages/queue/package.json'), JSON.stringify({ name: 'x', version: '2', marmeon: { migrations: { format: 2, module: 'x', from: 'stubs/migrations' } } }));
+        writeFileSync(join(directory, 'packages/cache/package.json'), manifest('stubs/migrations'));
+      });
+      expect(run(['internal']).status).toBe(0);
+    });
+
+    it('counts only the .ts files of a directory as shipped', () => {
+      // The README and the folder in the base sort after the new file; neither is a migration.
+      const run = withMigrations((directory) => writeFileSync(join(directory, 'packages/queue/stubs/migrations/2026_02_01_000000_add_column.ts'), 'x\n'));
+      expect(run(['fix']).status).toBe(0);
+    });
+
+    it('fails a package.json that changes or drops the directory a package ships from', () => {
+      const moved = withMigrations((directory) => writeFileSync(join(directory, 'packages/queue/package.json'), manifest('stubs/elsewhere')));
+      const dropped = withMigrations((directory) => writeFileSync(join(directory, 'packages/queue/package.json'), manifest()));
+      for (const run of [moved, dropped]) {
+        const result = run(['breaking', 'api-compatible']);
+        expect(result.status).toBe(1);
+        expect(result.out).toContain('::error title=API label::packages/queue/package.json: marmeon.migrations.from');
+      }
+    });
+
+    it('fails a new file that repeats a name of its own directory, and lets one through that another directory of the package has', () => {
+      const same = 'packages/queue/stubs/migrations/2026_05_01_000000_create_things_table.ts';
+      const elsewhere = 'packages/queue/stubs/other/migrations/2026_05_01_000000_create_things_table.ts';
+      const repeated = withMigrations((directory) => writeFileSync(join(directory, same), 'x\n'));
+      const result = repeated(['breaking']);
+      expect(result.status).toBe(1);
+      expect(result.out).toContain(`${same} repeats the name of 2026_01_01_000000_create_things_table.ts`);
+      const shared = withMigrations((directory) => {
+        mkdirSync(dirname(join(directory, elsewhere)), { recursive: true });
+        writeFileSync(join(directory, elsewhere), 'x\n');
+      });
+      expect(shared(['fix']).status).toBe(0);
+    });
+
+    it('fails a new symlink among the migrations', () => {
+      const link = 'packages/queue/stubs/migrations/2026_02_01_000000_link.ts';
+      const run = withMigrations((directory) => symlinkSync('2026_01_01_000000_create_things_table.ts', join(directory, link)));
+      const result = run(['breaking']);
+      expect(result.status).toBe(1);
+      expect(result.out).toContain(`${link}: a migration is a regular file`);
+    });
+
+    it('fails a changed, deleted or renamed migration whatever the labels say', () => {
+      for (const stub of stubs) {
+        const changed = withMigrations((directory) => writeFileSync(join(directory, first(stub)), 'changed\n'));
+        const deleted = withMigrations((_directory, git) => git('rm', '-q', first(stub)));
+        const renamed = withMigrations((_directory, git) => git('mv', first(stub), `${stub}/2026_01_01_000000_make_things_table.ts`));
+        for (const run of [changed, deleted, renamed]) {
+          const result = run(['breaking', 'api-compatible']);
+          expect(result.status).toBe(1);
+          expect(result.out).toContain(`::error title=API label::${first(stub)}: a migration a package ships never changes or goes`);
+        }
+      }
+    }, 30_000);
+
+    it('fails a new file that sorts before a shipped one', () => {
+      const early = 'packages/queue/stubs/migrations/2025_12_01_000000_early.ts';
+      const run = withMigrations((directory) => writeFileSync(join(directory, early), 'x\n'));
+      const result = run(['breaking']);
+      expect(result.status).toBe(1);
+      expect(result.out).toContain(`${early} sorts before 2026_01_01_000000_create_things_table.ts, which is already shipped`);
     });
   });
 
