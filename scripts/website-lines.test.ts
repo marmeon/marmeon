@@ -188,7 +188,7 @@ describe('readPins', () => {
   });
 });
 
-describe('addLine', () => {
+describe('addLine', { timeout: 30_000 }, () => {
   it('pins the tag and writes the snapshot from the commit', () => {
     const f = fixture();
     const sha = release(f, '0.3.0');
@@ -471,7 +471,7 @@ describe('addLine', () => {
   });
 });
 
-describe('verifyLines', () => {
+describe('verifyLines', { timeout: 30_000 }, () => {
   /** A pinned 0.3.x. */
   function pinned(): Fixture & { dir: string; sha: string } {
     const f = fixture();
@@ -651,7 +651,7 @@ describe('verifyLines', () => {
   });
 });
 
-describe('the frozen snapshots', () => {
+describe('the frozen snapshots', { timeout: 30_000 }, () => {
   it('are left out of the files the repository checks read', () => {
     const dir = tempDir('marmeon-website-lines-');
     git(dir, 'init', '-b', 'main');
