@@ -22,6 +22,8 @@ Pass \`--no-interaction\` to \`marmeon\` when you run it in a terminal.
 
 - \`node_modules/marmeon/docs/\` holds the guides of the version you installed: \`marmeon docs\` lists them, \`marmeon docs <page>\`
   prints one. A \`docs/<page>.md\` in what \`marmeon\` prints is a file there.
+- For a task — a resource, a public page or form, a background job — start with its
+  recipe: \`marmeon docs\` lists them under "Recipes"; each names the generators, the files and the test.
 - https://marmeon.com/docs is the newest version — read it to update; for your code, use the guides above.
   Add \`.md\` to a page's path for Markdown (https://marmeon.com/llms.txt is the index).
 

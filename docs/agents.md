@@ -4,7 +4,7 @@
 
 A coding agent that works in your app reads a file at the start of every session: `AGENTS.md`, or `CLAUDE.md` for Claude Code.
 `marmeon agents:sync` writes both. It keeps a block in `AGENTS.md` that tells the agent how to work with Marmeon: where the
-documentation of the installed version lies (`node_modules/marmeon/docs/`, which `marmeon docs` reads), which commands to run after a change and which rules the framework holds you to. The block comes with the
+documentation of the installed version lies (`node_modules/marmeon/docs/`, which `marmeon docs` reads), which recipe to start a task from (a resource, a public form, a background job), which commands to run after a change and which rules the framework holds you to. The block comes with the
 installed `marmeon`, so it changes when you update.
 
 ```sh
