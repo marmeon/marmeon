@@ -36,16 +36,16 @@ export class RegisterPasskeyController extends Controller {
     if (done.ok) return this.json({ recoveryCodes: done.value.recoveryCodes });
     switch (done.error.kind) {
       case 'invalid-password':
-        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, 422);
+        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, { status: 422 });
       case 'throttled':
-        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, 429);
+        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, { status: 429 });
       case 'signed-out':
         // The session ended meanwhile and nothing was stored: the page's next request lands on the sign-in.
-        return this.json({ error: this.#translator.get('auth.passkeys.register_failed') }, 401);
+        return this.json({ error: this.#translator.get('auth.passkeys.register_failed') }, { status: 401 });
       case 'limit':
-        return this.json({ error: this.#translator.get('auth.passkeys.limit') }, 422);
+        return this.json({ error: this.#translator.get('auth.passkeys.limit') }, { status: 422 });
       default:
-        return this.json({ error: this.#translator.get('auth.passkeys.register_failed') }, 422);
+        return this.json({ error: this.#translator.get('auth.passkeys.register_failed') }, { status: 422 });
     }
   }
 }

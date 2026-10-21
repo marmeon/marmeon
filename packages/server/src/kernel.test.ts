@@ -141,8 +141,8 @@ describe('createHttpKernel — errors & logging', async () => {
       throw new Error('database password is hunter2 (postgres://app:hunter3@db/app)');
     });
     Route.get('/forbidden', () => abort(403, 'Only admins.'));
-    Route.get('/vary-own', () => view('errors/Error', { status: 200, title: 'a', message: 'b', exception: null }, 200, { Vary: 'Accept, X-Marmeon, Origin' }));
-    Route.get('/vary-star', () => view('errors/Error', { status: 200, title: 'a', message: 'b', exception: null }, 200, { vary: '*' }));
+    Route.get('/vary-own', () => view('errors/Error', { status: 200, title: 'a', message: 'b', exception: null }, { headers: { Vary: 'Accept, X-Marmeon, Origin' } }));
+    Route.get('/vary-star', () => view('errors/Error', { status: 200, title: 'a', message: 'b', exception: null }, { headers: { vary: '*' } }));
     Route.get('/cookie-boom', () => {
       throw new Error(`the upstream refused the request with ${LEAKY_COOKIE}`);
     });
@@ -341,7 +341,8 @@ describe('createHttpKernel — requests & responses', async () => {
       handle(ctx: HttpContext) {
         const params = new URL(ctx.request.url).searchParams;
         if (!ctx.request.headers.has(UPLOAD_HEADER)) ctx.cookies.set('seen', '1'); // an upload request is read-only
-        return this.redirect(params.get('to') ?? '/', params.has('status') ? (Number(params.get('status')) as 307) : undefined);
+        const target = this.redirect(params.get('to') ?? '/');
+        return params.has('status') ? target.status(Number(params.get('status')) as 307) : target;
       }
     }
     const leaving = openRoutes((Route) => {

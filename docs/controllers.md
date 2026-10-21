@@ -212,7 +212,7 @@ no server code reaches the browser.
 | --- | --- |
 | `this.view(name, props)` | A page: server-rendered HTML for a first visit, the page as JSON for a visit in the app. |
 | `this.redirect(url)`, `this.redirect().route(name, params)`, `this.back()` | A redirect. |
-| `this.json(data, status)` | JSON, typed for the action that calls it. |
+| `this.json(data)` | JSON, typed for the action that calls it. |
 | `this.island(name, props)` | A part of a page that loads by itself. `GET` routes only. |
 | `this.closeLayer()` | Closes the dialog the request came from. |
 | A `Response` | Goes out as it is. |

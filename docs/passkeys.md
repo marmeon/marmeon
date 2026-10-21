@@ -179,8 +179,8 @@ challenge bound to the signed-in account and to this purpose, and allows only th
 ```ts title="modules/auth/controllers/PasskeyConfirmController.ts"
 const done = await this.#passkeys.confirm(ctx.body.response);
 if (done.ok) return this.redirect().intended().route('auth.security');
-if (done.error.kind === 'throttled') return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter }) }, 429);
-return this.json({ error: this.#translator.get('auth.passkeys.failed') }, 422);
+if (done.error.kind === 'throttled') return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter }) }, { status: 429 });
+return this.json({ error: this.#translator.get('auth.passkeys.failed') }, { status: 422 });
 ```
 
 The challenge has its own purpose, `confirm`: one issued for a sign-in or a step-up does not serve here, and the reverse. It leaves the

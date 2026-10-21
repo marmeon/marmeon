@@ -62,9 +62,8 @@ export class RedirectResult {
   readonly #flash = new Map<string, unknown>();
   readonly #messages: FlashEntry[] = [];
 
-  constructor(url?: string, status?: RedirectStatus) {
+  constructor(url?: string) {
     if (url !== undefined) this.#target = { kind: 'url', url };
-    this.#status = status;
   }
 
   /**

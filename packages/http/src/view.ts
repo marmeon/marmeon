@@ -8,6 +8,18 @@ const VIEW_RESULT = Symbol.for('marmeon.view-result');
 
 export type ViewProps = Record<string, unknown>;
 
+/** What `view()` and `json()` take besides the data: the response's `status` (default 200) and extra `headers`. */
+export interface ResultOptions {
+  readonly status?: number;
+  /** Extra response headers, e.g. `Retry-After` on an error page. */
+  readonly headers?: Readonly<Record<string, string>>;
+}
+
+/** A number where the options belong is the old positional status — refused with the way out. */
+export function assertResultOptions(name: string, options: unknown): void {
+  if (typeof options !== 'object' || options === null) throw new TypeError(`${name}(): pass the status as { status: 422 }`);
+}
+
 /** What a controller returns to render a page. The server decides how (SSR HTML or JSON). */
 export interface ViewResult<TProps extends ViewProps = ViewProps, TComponent extends string = string> {
   readonly [VIEW_RESULT]: true;
@@ -54,9 +66,10 @@ export interface PageResult<TProps extends ViewProps = ViewProps, TComponent ext
 export function view<const V extends string, const TProps extends ViewProps>(
   component: CheckViewName<V>,
   props: TProps,
-  status = 200,
-  headers?: Readonly<Record<string, string>>,
+  options: ResultOptions = {},
 ): PageResult<TProps, V> {
+  assertResultOptions('view', options);
+  const { status = 200, headers } = options;
   const result: PageResult<TProps, V> = {
     [VIEW_RESULT]: true,
     component: component as V,

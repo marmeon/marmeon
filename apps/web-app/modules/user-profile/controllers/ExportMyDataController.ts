@@ -40,6 +40,6 @@ export class ExportMyDataController extends Controller {
     const disk = this.#storage.disk('local');
     const key = dataExportKey(user.id);
     await disk.put(key, JSON.stringify(data, null, 2), { contentType: 'application/json' });
-    return this.redirect(await disk.temporaryUrl(key, { expiresIn: { minutes: 5 }, filename: `my-data-${user.id}.json` }), 303);
+    return this.redirect(await disk.temporaryUrl(key, { expiresIn: { minutes: 5 }, filename: `my-data-${user.id}.json` })).status(303);
   }
 }

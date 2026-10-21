@@ -42,13 +42,13 @@ export class PasskeyChallengeController extends Controller {
     switch (done.error.kind) {
       case 'no-challenge':
       case 'expired':
-        return this.json({ error: this.#translator.get('auth.two_factor.expired'), login: true }, 422);
+        return this.json({ error: this.#translator.get('auth.two_factor.expired'), login: true }, { status: 422 });
       case 'throttled':
-        return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter }) }, 429);
+        return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter }) }, { status: 429 });
       case 'invalid-code':
         // The last wrong try ended the wait: the password is typed again.
-        if (done.error.attemptsLeft === 0) return this.json({ error: this.#translator.get('auth.two_factor.locked'), login: true }, 422);
-        return this.json({ error: this.#translator.get('auth.passkeys.failed') }, 422);
+        if (done.error.attemptsLeft === 0) return this.json({ error: this.#translator.get('auth.two_factor.locked'), login: true }, { status: 422 });
+        return this.json({ error: this.#translator.get('auth.passkeys.failed') }, { status: 422 });
     }
   }
 }

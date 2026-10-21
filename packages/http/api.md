@@ -108,11 +108,11 @@ export interface ContentSecurityPolicyOptions extends CspDirectives {
 export type { ContextOf } from '@marmeon/router';
 // Controller
 export declare abstract class Controller {
-    protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, status?: number): PageResult<TProps, V>;
+    protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, options?: ResultOptions): PageResult<TProps, V>;
     protected closeLayer(options?: CloseLayerOptions): CloseLayerResult;
     protected island<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps): IslandResult<TProps, V>;
-    protected json<T>(data: T, status?: number): JsonResult<T>;
-    protected redirect(url?: string, status?: RedirectStatus): RedirectResult;
+    protected json<T>(data: T, options?: ResultOptions): JsonResult<T>;
+    protected redirect(url?: string): RedirectResult;
     protected back(fallback?: string): RedirectResult;
 }
 // CookieDefaults
@@ -537,7 +537,7 @@ export declare class ReadOnlyViolation extends Error {
 export declare class RedirectResult {
     #private;
     readonly [REDIRECT_RESULT] = true;
-    constructor(url?: string, status?: RedirectStatus);
+    constructor(url?: string);
     route<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): this;
     back(fallback?: string): this;
     intended(): this;
@@ -593,6 +593,11 @@ export type ResolvedProp<V> = V extends PageProp<infer K, infer T> ? (K extends 
 export type ResolvedProps<P> = {
     [K in keyof P]: ResolvedProp<P[K]>;
 };
+// ResultOptions
+export interface ResultOptions {
+    readonly status?: number;
+    readonly headers?: Readonly<Record<string, string>>;
+}
 // RouteBinder
 export type { RouteBinder } from '@marmeon/router';
 // RouteBindingContext
@@ -823,7 +828,7 @@ export declare function isPrefetch(request: Request): boolean;
 // island
 export declare function island<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps): IslandResult<TProps, V>;
 // json
-export declare function json<T>(data: T, status?: number, headers?: Readonly<Record<string, string>>): JsonResult<T>;
+export declare function json<T>(data: T, options?: ResultOptions): JsonResult<T>;
 // jsonResponse
 export declare function jsonResponse(result: JsonResult): Response;
 // liveValidationFields
@@ -863,7 +868,7 @@ export declare function toLayer<TProps extends ViewProps, V extends string>(view
 // translatable
 export { translatable } from '@marmeon/router';
 // view
-export declare function view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, status?: number, headers?: Readonly<Record<string, string>>): PageResult<TProps, V>;
+export declare function view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, options?: ResultOptions): PageResult<TProps, V>;
 // withLiveMethod
 export declare function withLiveMethod<R extends object>(result: R): R;
 ```
@@ -3497,7 +3502,7 @@ declare const REDIRECT_RESULT: unique symbol;
 export declare class RedirectResult {
     #private;
     readonly [REDIRECT_RESULT] = true;
-    constructor(url?: string, status?: RedirectStatus);
+    constructor(url?: string);
     route<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): this;
     back(fallback?: string): this;
     intended(): this;
