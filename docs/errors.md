@@ -2,8 +2,8 @@
 
 ## Introduction
 
-An error thrown anywhere in a request, in a middleware, a binding or a controller, ends in the app's exception handler. It logs
-the error when it is a bug, and turns it into the right answer: an error page for a browser, JSON for every other client. To stop a
+An error thrown anywhere in a request, in a middleware, a binding or a controller, ends in the app's exception handler. The kernel logs
+the error when it is a bug, and the handler turns it into the right answer: an error page for a browser, JSON for every other client. To stop a
 request with a status of your choice, call `abort()`:
 
 ```ts title="modules/notes/controllers/ShowNoteController.ts"
@@ -207,46 +207,82 @@ and `auth.check()`, stay `boolean`.
 
 ## Reporting
 
-The exception handler's `report()` logs every server error at the `error` level: its message and its stack, masked as text by the
-app's `Redactor`, so a token, a password in a connection string or the value of the session cookie does not reach the log. An `HttpError` with a status below 500 is not
-reported: a 404 or a 403 is an answer, not a bug.
+Every server error is logged at the `error` level: its message and its stack, masked as text by the app's `Redactor`, so a token, a
+password in a connection string or the value of the session cookie does not reach the log. An `HttpError` with a status below 500 is
+not reported: a 404 or a 403 is an answer, not a bug.
 
-To send errors elsewhere as well, such as to an error tracker, extend the default handler and bind yours in a service provider:
+To send errors elsewhere as well, such as to an error tracker, write an error reporter. A provider brings it with
+`static errorReporters`, next to its other statics, and the container builds it once:
 
-```ts title="modules/system/ReportingExceptionHandler.ts"
-import { Logger, Redactor } from '@marmeon/core';
-import { DefaultExceptionHandler, HttpError } from '@marmeon/http';
+```ts title="modules/system/TrackerReporter.ts"
+import type { ErrorReport, ErrorReporter } from '@marmeon/core';
 import { ErrorTracker } from './ErrorTracker.ts';
 
-export class ReportingExceptionHandler extends DefaultExceptionHandler {
+export class TrackerReporter implements ErrorReporter {
   readonly #tracker: ErrorTracker;
 
-  constructor(logger: Logger, redactor: Redactor, tracker: ErrorTracker) {
-    super(logger, redactor);
+  constructor(tracker: ErrorTracker) {
     this.#tracker = tracker;
   }
 
-  override report(error: unknown): void {
-    super.report(error);
-    if (!(error instanceof HttpError && error.status < 500)) this.#tracker.capture(error);
+  async report({ error, source, context }: ErrorReport): Promise<void> {
+    // The report is frozen: a SDK that wants to change what it gets, or keep it, takes a copy.
+    const copy = Object.assign(new Error(error.message), { ...error });
+    await this.#tracker.capture(copy, { source, ...context });
+  }
+
+  // Optional: called when the app shuts down, to send what is still buffered.
+  flush(): Promise<void> {
+    return this.#tracker.flush();
   }
 }
 ```
 
 ```ts title="modules/system/SystemServiceProvider.ts"
-import type { Container, ServiceProvider } from '@marmeon/core';
-import { ExceptionHandler } from '@marmeon/http';
-import { ReportingExceptionHandler } from './ReportingExceptionHandler.ts';
+import type { ServiceProvider } from '@marmeon/core';
+import { TrackerReporter } from './TrackerReporter.ts';
 
 export class SystemServiceProvider implements ServiceProvider {
-  register(container: Container): void {
-    container.singleton(ExceptionHandler, ReportingExceptionHandler);
-  }
+  static errorReporters = [TrackerReporter];
 }
 ```
 
-`ExceptionHandler` is a token with two methods: `report(error)` and `render(error, request, { debug, translator })`. A handler of
-your own may answer differently too. `render()` returns what a controller returns: a view, a redirect, a `Response`.
+A reporter never sees the error itself. It gets an `ErrorReport` with the **masked view** only:
+
+- `error.name` (the class name when it is an identifier, else `Error`), `error.message` and `error.stack`, each passed through the
+  app's `Redactor`, so a connection URL, a token or the session cookie an error quotes is gone;
+- `error.code` and `error.status`, when the error has them, and `error.cause`, masked the same way, at most five levels deep. A cause
+  that leads back to an error already shown ends the chain;
+- `source` (`request`), and `context` for a request: `method`, `route` (the route's name, empty when it has none) and `path` (the
+  path without its query, with the segments of sensitive route parameters masked).
+
+Every process that boots the app builds its reporters: each `marmeon` command and each worker too. A timer or a socket that the constructor opens needs `unref()` or a stop in `flush()`, or the process never ends; a heavy connection is better opened lazily, on the first `report()`.
+
+The original error object, its own fields and the request are not part of it. The report is frozen, down to each cause, so one reporter
+cannot change what the next one sees.
+
+A reporter is built once, when the app boots, and runs outside any database transaction. If it cannot be built, the app does not start (`K12`): a wrong DSN must not turn reporting off unnoticed. A reporter cannot hold a request up or take the app down, as long as it does its work in the promise it returns; work it keeps running in the background itself (its memory, its concurrency, rejections nobody handles) is its own business:
+
+- A request never waits for a reporter. The report is handed over after the log line, and what the reporter does with it happens on its own. A call that takes longer than 10 seconds counts as failed (a warning) but keeps its place until it really ends. A reporter whose calls never end gets no further reports until the app restarts.
+- One that throws or rejects costs a warning in the log, once per report, and the other reporters still run. What a reporter throws is
+  not reported again, and neither is an error that a reporter reports itself: that would be a loop.
+- Each reporter has at most 100 reports open at a time. One that hangs fills its own limit and does not slow the others; its
+  further reports are dropped (they are still logged), with one warning, and a line with the number of dropped reports follows in the log, at most once a minute,
+  also while a flood goes on.
+- When the app shuts down, `flush()` of each reporter is called before the providers shut down, while the open reports finish, and the
+  shutdown waits at most 2 seconds for all of it. A reporter that is still busy then loses its reports and the shutdown goes on, with a warning.
+
+Only the errors of requests reach the reporters so far. These are logged but not reported yet: errors of server rendering, of
+deferred groups and of work after the response (`afterResponse.defer()`), and errors at shutdown. Jobs, scheduled tasks and commands
+follow. To report an error you caught yourself, for example when a `catch` still answers 200, ask the app for the service:
+
+```ts
+app.container.make(ErrorReports).report(error, { source: 'request' });
+```
+
+`ExceptionHandler` does not report. It is a token with one method, `render(error, request, { debug, translator })`, which returns what
+a controller returns: a view, a redirect, a `Response`. To change how errors look, extend `DefaultExceptionHandler` (it has no
+constructor parameters) and bind your class to the token.
 
 ## The development error page
 
@@ -360,6 +396,7 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | K9 | `core` | A class is listed as a service provider but has no hook and no static. [Register and boot](providers.md#register-and-boot) |
 | K10 | `core` | A definition carries a boot option (`env`, `phase`, `container`, `override`); they belong to `createApplication(definition, options)` and `createTestApp()`. [Creating the test app](testing.md#creating-the-test-app) |
 | K11 | `marmeon` | A check cannot be registered: its `static check` is not kebab-case, it has no `static phase`, or its name is one of `marmeon`'s own or taken by another class. [Checks](package-development.md#checks) |
+| K12 | `core` | An error reporter of a provider's `static errorReporters` could not be built, so the app does not start. [What a provider brings](providers.md#what-a-provider-brings-besides-code) |
 | H1 | `server` | A request of the page protocol named another version, or none, and was answered with `409` before any route ran. [A tab of another protocol version](navigation.md#a-tab-of-another-protocol-version) |
 | H2 | `marmeon` | `bootstrap/routes.ts` was generated by another version of Marmeon: `marmeon route:types --check` and `marmeon check` name it, and `marmeon route:types` writes it again; a file of a newer version needs `@marmeon/*` updated. [Typed route names](routing.md#typed-route-names) |
 | H3 | `router` | Routes that do not say who may call them, so the app cannot start. [Every route decides](authorization.md#every-route-decides) |

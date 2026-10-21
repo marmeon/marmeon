@@ -217,6 +217,29 @@ export interface Err<E> {
 export type ErrorCode = `${ErrorCodeArea | 'C' | 'R'}${number}`;
 // ErrorCodeArea
 export type ErrorCodeArea = 'K' | 'H' | 'D' | 'A' | 'Q' | 'S';
+// ErrorReport
+export interface ErrorReport {
+    readonly error: ReportedError;
+    readonly source: 'request' | 'job' | 'schedule' | 'command';
+    readonly context: Readonly<Record<string, string>>;
+}
+// ErrorReporter
+export interface ErrorReporter {
+    report(report: ErrorReport): void | Promise<void>;
+    flush?(): Promise<void>;
+}
+// ErrorReporterClass
+export type ErrorReporterClass = new (...args: any[]) => ErrorReporter;
+// ErrorReports
+export declare class ErrorReports {
+    #private;
+    constructor(logger: Logger, redactor: Redactor, container: Container, reporters?: readonly ErrorReporterClass[], owners?: ReadonlyMap<ErrorReporterClass, string>);
+    report(error: unknown, { source, context }: {
+        source: ErrorReport['source'];
+        context?: Readonly<Record<string, string>>;
+    }): void;
+    flush(): Promise<void>;
+}
 // ErrorSolutions
 export declare class ErrorSolutions {
     #private;
@@ -436,6 +459,15 @@ export declare class Redactor {
     url(url: string, pattern?: string): string;
     fit(value: unknown, maxBytes?: number): unknown;
 }
+// ReportedError
+export interface ReportedError {
+    readonly name: string;
+    readonly message: string;
+    readonly stack: string;
+    readonly code: string | undefined;
+    readonly status: number | undefined;
+    readonly cause: ReportedError | undefined;
+}
 // RequestInfo
 export interface RequestInfo {
     readonly requestId: string;
@@ -470,6 +502,7 @@ export interface ServiceProviderClass {
     readonly config?: readonly ConfigDefinition<any>[];
     readonly solutions?: readonly SolutionDefinition<any>[];
     readonly health?: readonly HealthCheckClass[];
+    readonly errorReporters?: readonly ErrorReporterClass[];
 }
 // Solution
 export interface Solution {
@@ -1095,6 +1128,19 @@ type ErrorClass<E> = abstract new (...args: any[]) => E;
 export type ErrorCode = `${ErrorCodeArea | 'C' | 'R'}${number}`;
 // ErrorCodeArea
 export type ErrorCodeArea = 'K' | 'H' | 'D' | 'A' | 'Q' | 'S';
+// ErrorReport
+export interface ErrorReport {
+    readonly error: ReportedError;
+    readonly source: 'request' | 'job' | 'schedule' | 'command';
+    readonly context: Readonly<Record<string, string>>;
+}
+// ErrorReporter
+export interface ErrorReporter {
+    report(report: ErrorReport): void | Promise<void>;
+    flush?(): Promise<void>;
+}
+// ErrorReporterClass
+export type ErrorReporterClass = new (...args: any[]) => ErrorReporter;
 // EventClass
 export type EventClass<TEvent extends object = object> = abstract new (...args: any[]) => TEvent;
 // Factory
@@ -1158,6 +1204,15 @@ export interface QueuedListenerOptions {
     readonly tries?: number;
     readonly backoff?: number | readonly number[];
 }
+// ReportedError
+export interface ReportedError {
+    readonly name: string;
+    readonly message: string;
+    readonly stack: string;
+    readonly code: string | undefined;
+    readonly status: number | undefined;
+    readonly cause: ReportedError | undefined;
+}
 // Resolve
 export type Resolve<K> = K extends Token<infer T> ? T : K extends Constructor<infer T> ? T : never;
 // ResolveAll
@@ -1180,6 +1235,7 @@ export interface ServiceProviderClass {
     readonly config?: readonly ConfigDefinition<any>[];
     readonly solutions?: readonly SolutionDefinition<any>[];
     readonly health?: readonly HealthCheckClass[];
+    readonly errorReporters?: readonly ErrorReporterClass[];
 }
 // Solution
 export interface Solution {

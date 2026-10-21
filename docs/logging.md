@@ -143,7 +143,7 @@ without a known prefix, and standard base64 with `+` or `/` is masked only in pi
 counts as a name only in a query parameter (`?code=…`) or a JSON key (`"code":…`), and a private key in
 PEM form is removed whole. `redactText()` of `@marmeon/core` does the same with the core's key list alone, for code that runs without an app.
 
-Every error entry of the framework passes the app's `Redactor` as text: the exception handler's report, server rendering,
+Every error entry of the framework passes the app's `Redactor` as text: the log line of a server error, server rendering,
 islands, work after the response, scheduled tasks, live updates, session clean-up, the listeners of job events, failed jobs, and lost
 database and Redis connections.
 A failed job's text in `failed_jobs` is cut at 64 KB.

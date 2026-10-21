@@ -11,6 +11,7 @@ import { environment, resolveEnvironment } from './environment.ts';
 import { EventDispatcher, EventRegistry, isQueuedListener, ListenerQueue, missingListenerQueue, type ListenerBinding } from './events.ts';
 import { EventFake } from './events-fake.ts';
 import { Clock, SystemClock } from './clock.ts';
+import { ErrorReports } from './error-reports.ts';
 import { HealthChecks, type HealthCheckClass } from './health.ts';
 import { takeInjectionWarning } from './injection/artifacts.ts';
 import { ConsoleLogger, LogContextSources, Logger } from './logger.ts';
@@ -134,8 +135,8 @@ export class Application {
     for (const Provider of providers) {
       const provider = this.container.make(Provider);
       const hooks = [provider.register, provider.boot, provider.shutdown].some((hook) => typeof hook === 'function');
-      if (!hooks && !Provider.config?.length && !Provider.health?.length && !Provider.solutions?.length && !declaredCommands(Provider) && !declaredDrivers(Provider)) {
-        throw new TypeError(withCode('K9', `${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, ${DRIVER_STATICS.map((key) => `static ${key}`).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`));
+      if (!hooks && !Provider.config?.length && !Provider.health?.length && !Provider.errorReporters?.length && !Provider.solutions?.length && !declaredCommands(Provider) && !declaredDrivers(Provider)) {
+        throw new TypeError(withCode('K9', `${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, ${DRIVER_STATICS.map((key) => `static ${key}`).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`));
       }
       provider.register?.(this.container);
       this.#providers.push(provider);
@@ -159,6 +160,8 @@ export class Application {
   shutdown(): Promise<void> {
     this.#shutdown ??= (async () => {
       const errors: unknown[] = [];
+      // Reporters send what they buffer while the providers they may depend on are still up; waits at most 2 s, never throws.
+      if (this.phase !== 'build') await this.container.make(ErrorReports).flush();
       for (const provider of this.phase === 'build' ? [] : this.#providers.toReversed()) {
         try {
           await provider.shutdown?.(this);
@@ -285,6 +288,18 @@ export async function createApplication(definition: ApplicationDefinition, optio
     HealthChecks,
     new HealthChecks([...providers.flatMap((Provider) => Provider.health ?? []), ...(definition.health ?? []), ...modules.flatMap((module) => module.health ?? [])]),
   );
+  // Where the errors of requests go: the log line, then every provider's `static errorReporters`, masked.
+  container.singleton(
+    ErrorReports,
+    () =>
+      new ErrorReports(
+        container.make(Logger),
+        container.make(Redactor),
+        container,
+        providers.flatMap((Provider) => Provider.errorReporters ?? []),
+        new Map(providers.flatMap((Provider) => (Provider.errorReporters ?? []).map((Reporter) => [Reporter, Provider.name] as const))),
+      ),
+  );
   // A defaulted or optional constructor parameter of an injectable type is never injected: said once per class, in
   // development — `container.warnings` keeps them for the error page.
   if (environment.isDevelopment(env)) {
@@ -316,6 +331,8 @@ export async function createApplication(definition: ApplicationDefinition, optio
   const quiet = process.env[CLUSTER_WORKER] === '1' && cluster.isWorker ? quietWhileBooting(container) : undefined;
   try {
     await app.boot();
+    // The error reporters are built now, outside any request: what their constructors start is the app's, not a request's.
+    if (providers.some((Provider) => Provider.errorReporters?.length)) container.make(ErrorReports);
     // An out-of-date manifest in a read-only .marmeon/: discovered in memory — said once per process, in the app's log.
     if (discovered?.warning) container.make(Logger).warn(discovered.warning);
     for (const warning of resolved?.warnings ?? []) container.make(Logger).warn(warning);

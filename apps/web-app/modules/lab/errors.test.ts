@@ -4,6 +4,7 @@ import { Router } from '@marmeon/router';
 import { createTestApp } from '@marmeon/testing';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { RecentErrors } from './RecentErrors.ts';
 import { ERROR_KINDS, type ErrorKind } from './controllers/ShowLabPageController.ts';
 
 const page = { headers: { accept: 'text/html' } };
@@ -90,5 +91,26 @@ describe('solutions are text, never actions (CVE-2021-3129)', () => {
     expect(internal.length).toBeGreaterThan(0);
     expect(internal.filter((route) => route.methods.includes('POST'))).toEqual([]);
     expect(internal.filter((route) => /solution/i.test(route.path))).toEqual([]);
+  });
+});
+
+describe('the lab lists the errors its reporter got', () => {
+  it('a 500 appears on /lab/errors; a 404 does not', async () => {
+    const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh' });
+    await app.get('/lab/errors/container-unbound', page).assertStatus(500);
+    await app.get('/lab/nowhere', page).assertStatus(404);
+    const response = await app.get('/lab/errors', page).assertStatus(200);
+    // Without server rendering the page's props show in its JSON.
+    expect(response.body).toContain('"recent":[{"name":"ContainerError"');
+    expect(response.body).toContain('"method":"GET","path":"/lab/errors/container-unbound"');
+    expect(response.body).not.toContain('/lab/nowhere');
+  });
+
+  it('the reporter does not get what the redactor masks', async () => {
+    const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh' });
+    await app.get('/lab/errors/container-unbound?token=0123456789abcdef0123456789abcdef', page).assertStatus(500);
+    const recent = app.container.make(RecentErrors).recent();
+    expect(recent).toHaveLength(1);
+    expect(JSON.stringify(recent)).not.toContain('0123456789abcdef');
   });
 });

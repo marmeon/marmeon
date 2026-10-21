@@ -59,10 +59,10 @@ reading it throws an error that names the variables. Read configuration in `boot
 [configuration](configuration.md#configuration-and-the-build) page explains why.
 
 The app builds each provider through the container, and every method is optional. A class listed as a provider without any of
-them, and without `static config`, `static health`, `static solutions`, `static commands`, `static queueDrivers`, `static failedJobDrivers`, `static diskDrivers`, `static cacheDrivers`, `static checks` or `static migrations` from the list below, stops the start:
+them, and without `static config`, `static health`, `static errorReporters`, `static solutions`, `static commands`, `static queueDrivers`, `static failedJobDrivers`, `static diskDrivers`, `static cacheDrivers`, `static checks` or `static migrations` from the list below, stops the start:
 
 ```text
-[marmeon:K9] NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static checks or static migrations.
+[marmeon:K9] NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static checks or static migrations.
 ```
 
 ## The order
@@ -116,6 +116,7 @@ A provider class can carry these statics. The app reads the first three before a
 | `static config = [NotesConfig]` | The [config definitions](configuration.md#defining-configuration) the provider needs. They are checked with the app's own. |
 | `static health = [SearchIndexReady]` | Checks for `/up/ready`. See [health checks](health.md). |
 | `static solutions = defineSolutions([…])` | Solutions for the provider's errors, shown on the development error page. See [error handling](errors.md#solutions). |
+| `static errorReporters = [SentryReporter]` | Classes that receive the app's server errors, masked, to send them to a service. Built when the app boots. See [reporting](errors.md#reporting). |
 | `static commands = [PruneNotesCommand]` | Console commands for `marmeon`. Collected while the app registers, so `marmeon build` sees them. See [package development](package-development.md#commands). |
 | `static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'notes' }` | The directory of the migrations the package ships, for `marmeon publish`. See [declaring the migrations a package ships](package-development.md#declaring-the-migrations-a-package-ships). |
 

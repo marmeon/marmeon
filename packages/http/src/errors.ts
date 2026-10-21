@@ -1,4 +1,4 @@
-import { Logger, Redactor, token, type Translator } from '@marmeon/core';
+import { token, type Translator } from '@marmeon/core';
 import { addVary, expectsJson, EXPECTS_JSON_VARY, HttpError, statusText, ValidationError } from '@marmeon/router';
 import { ERROR_PAGE, type ErrorPageProps } from './page-support.ts';
 import { PAGE_HEADER } from './protocol.ts';
@@ -10,12 +10,10 @@ import { view } from './view.ts';
 export { abort, HttpError } from '@marmeon/router';
 
 /**
- * Decides what happens with errors: reports and renders them. Bound as a
- * token, so apps replace it by binding their own class.
+ * Decides how an error looks to the client. Bound as a token, so apps replace it by binding their own class. Reporting an
+ * error is not its business: reporters come with providers (`static errorReporters`, docs/errors.md#reporting).
  */
 export interface ExceptionHandler {
-  /** Records the error (logs it). Client errors (4xx) are not reported. */
-  report(error: unknown): void;
   /**
    * Turns the error into a result: a view for pages and navigations, JSON for APIs — in the request's language when
    * a `translator` is given (the kernel passes the request's, when @marmeon/i18n binds one).
@@ -30,23 +28,8 @@ export interface ExceptionRenderOptions {
 }
 export const ExceptionHandler = token<ExceptionHandler>('ExceptionHandler');
 
+/** Renders pages and JSON for errors; extend it and call `super.render()` to change what it shows. */
 export class DefaultExceptionHandler implements ExceptionHandler {
-  readonly #logger: Logger;
-  readonly #redactor: Redactor;
-
-  constructor(logger: Logger, redactor: Redactor) {
-    this.#logger = logger;
-    this.#redactor = redactor;
-  }
-
-  report(error: unknown): void {
-    if (error instanceof HttpError && error.status < 500) return;
-    const { name, message, stack } = asError(error);
-    // The message is the log line's own text, the stack a string: masked like text by the app's Redactor — keys alone would
-    // not catch a connection URL or a token an error quotes, and the core's list alone not the names packages add (the session cookie).
-    this.#logger.error(this.#redactor.text(message), { exception: name, stack: this.#redactor.text(stack) });
-  }
-
   render(error: unknown, request: Request, { debug, translator }: ExceptionRenderOptions): unknown {
     if (error instanceof ValidationError) return renderInvalid(translator ? error.translate(translator) : error, request);
     const status = error instanceof HttpError ? error.status : 500;

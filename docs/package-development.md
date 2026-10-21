@@ -89,7 +89,8 @@ export class AuditServiceProvider implements ServiceProvider {
 - **`boot()`** runs once every provider of the app has registered, and may resolve anything.
 - **`shutdown()`** runs when the app stops, in reverse order, while the services the provider depends on still exist.
 - **`static health`** lists checks for `/up/ready`, which the [health](health.md#writing-a-health-check) page covers, and
-  `static solutions` lists solutions for the package's errors, shown on the [development error page](errors.md#solutions).
+  `static solutions` lists solutions for the package's errors, shown on the [development error page](errors.md#solutions). `static errorReporters` lists error reporters that receive the
+  app's server errors in a masked form; [reporting](errors.md#reporting) shows how to write one.
 
 ### Configuration
 

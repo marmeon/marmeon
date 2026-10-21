@@ -164,9 +164,6 @@ export declare const DEFAULT_CSP: Readonly<CspDirectives>;
 export declare const DOCUMENT_HEADER = "x-marmeon-document";
 // DefaultExceptionHandler
 export declare class DefaultExceptionHandler implements ExceptionHandler {
-    #private;
-    constructor(logger: Logger, redactor: Redactor);
-    report(error: unknown): void;
     render(error: unknown, request: Request, { debug, translator }: ExceptionRenderOptions): unknown;
 }
 // DeferredProp
@@ -205,7 +202,6 @@ export interface ErrorPageProps {
 }
 // ExceptionHandler
 export interface ExceptionHandler {
-    report(error: unknown): void;
     render(error: unknown, request: Request, options: ExceptionRenderOptions): unknown;
 }
 export declare const ExceptionHandler: import("@marmeon/core").Token<ExceptionHandler>;

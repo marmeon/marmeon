@@ -1,11 +1,10 @@
-import { ConsoleLogger, Redactor } from '@marmeon/core';
 import { defineRoutes, HttpError, Router, ValidationError } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { DefaultExceptionHandler } from './errors.ts';
 import { RedirectResult } from './redirect.ts';
 import type { ViewResult } from './view.ts';
 
-const handler = new DefaultExceptionHandler(new ConsoleLogger(), new Redactor());
+const handler = new DefaultExceptionHandler();
 const router = new Router().load(defineRoutes(() => {}));
 const options = { debug: false };
 const flasher = { flash: () => {}, pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
