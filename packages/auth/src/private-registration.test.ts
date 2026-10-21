@@ -27,14 +27,21 @@ async function boot(env: Record<string, string>): Promise<{ app: Application; wa
 }
 
 describe('AUTH_PRIVATE_REGISTRATION', () => {
-  it('is on unless set to false — and only "true" or "false" boot', async () => {
+  it('is on unless switched off — and only a boolean boots', async () => {
     expect((await boot({ NODE_ENV: 'test' })).app.container.make(AuthConfig).privateRegistration, 'unset, private registration must be on').toBe(true);
     expect((await boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: 'true' })).app.container.make(AuthConfig).privateRegistration).toBe(true);
     expect((await boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: 'false' })).app.container.make(AuthConfig).privateRegistration).toBe(false);
     // An empty variable is a missing one: on.
     expect((await boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: '' })).app.container.make(AuthConfig).privateRegistration, 'empty, private registration must be on').toBe(true);
+    // Any spelling of a boolean counts: 0 and FALSE switch it off, 1 and TRUE on.
+    for (const value of ['0', 'FALSE', 'False']) {
+      expect((await boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: value })).app.container.make(AuthConfig).privateRegistration, value).toBe(false);
+    }
+    for (const value of ['1', 'TRUE']) {
+      expect((await boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: value })).app.container.make(AuthConfig).privateRegistration, value).toBe(true);
+    }
     // Fail-closed: a typo never turns it off quietly — the boot names the variable.
-    for (const value of ['no', '0', 'FALSE', 'off']) {
+    for (const value of ['no', 'off', 'yes', 'disabled', '2']) {
       await expect(boot({ NODE_ENV: 'test', AUTH_PRIVATE_REGISTRATION: value })).rejects.toThrow(/auth: AUTH_PRIVATE_REGISTRATION/);
     }
   });
@@ -42,6 +49,9 @@ describe('AUTH_PRIVATE_REGISTRATION', () => {
   it('turned off outside development and tests, the boot warns once: registration tells whether an address has an account', async () => {
     expect((await boot({ NODE_ENV: 'production', AUTH_PRIVATE_REGISTRATION: 'false' })).warnings, 'production: the boot must warn once').toEqual([PRIVATE_REGISTRATION_OFF_WARNING]);
     expect(PRIVATE_REGISTRATION_OFF_WARNING).toContain('tell whether an address has an account');
+    expect((await boot({ NODE_ENV: 'production', AUTH_PRIVATE_REGISTRATION: '0' })).warnings, '0 is off: the boot must warn').toEqual([PRIVATE_REGISTRATION_OFF_WARNING]);
+    // A misspelt value stops the boot instead of leaving registration open or warning too late.
+    await expect(boot({ NODE_ENV: 'production', AUTH_PRIVATE_REGISTRATION: 'off' })).rejects.toThrow(/auth: AUTH_PRIVATE_REGISTRATION/);
     // Fail-closed: a missing NODE_ENV is protected like production — and APP_ENV changes nothing.
     expect((await boot({ NODE_ENV: 'production', APP_ENV: 'local', AUTH_PRIVATE_REGISTRATION: 'false' })).warnings, 'APP_ENV=local on production (protected): the boot must warn').toEqual([PRIVATE_REGISTRATION_OFF_WARNING]);
     expect((await boot({ NODE_ENV: '', AUTH_PRIVATE_REGISTRATION: 'false' })).warnings, 'no NODE_ENV (protected): the boot must warn').toEqual([PRIVATE_REGISTRATION_OFF_WARNING]);
@@ -72,7 +82,7 @@ describe('AUTH_UNVERIFIED_DAYS', () => {
   });
 });
 
-describe('AUTH_EMAIL_CHANGE_MINUTES and AUTH_EMAIL_CHANGE_THROTTLE', () => {
+describe('AUTH_EMAIL_CHANGE_MINUTES and AUTH_EMAIL_CHANGE_THROTTLE_SECONDS', () => {
   const config = async (env: Record<string, string>) => (await boot({ NODE_ENV: 'test', ...env })).app.container.make(AuthConfig);
 
   it('keep the link between 5 and 1440 minutes, 60 unless set; a value outside stops the boot', async () => {
@@ -86,7 +96,7 @@ describe('AUTH_EMAIL_CHANGE_MINUTES and AUTH_EMAIL_CHANGE_THROTTLE', () => {
 
   it('pauses between two links of an account for 60 seconds unless set, 0 turns the pause off', async () => {
     expect((await config({})).emailChangeThrottle).toBe(60);
-    expect((await config({ AUTH_EMAIL_CHANGE_THROTTLE: '0' })).emailChangeThrottle).toBe(0);
-    await expect(boot({ NODE_ENV: 'test', AUTH_EMAIL_CHANGE_THROTTLE: '-1' })).rejects.toThrow(/auth: AUTH_EMAIL_CHANGE_THROTTLE/);
+    expect((await config({ AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: '0' })).emailChangeThrottle).toBe(0);
+    await expect(boot({ NODE_ENV: 'test', AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: '-1' })).rejects.toThrow(/auth: AUTH_EMAIL_CHANGE_THROTTLE_SECONDS/);
   });
 });

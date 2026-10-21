@@ -110,7 +110,7 @@ interface Options {
   readonly store?: boolean;
   /** The session key both accounts hold (`null`: none). */
   readonly key?: string | null;
-  /** `AUTH_EMAIL_CHANGE_THROTTLE`; 0 unless a test is about the pause. */
+  /** `AUTH_EMAIL_CHANGE_THROTTLE_SECONDS`; 0 unless a test is about the pause. */
   readonly throttle?: number;
 }
 
@@ -131,7 +131,7 @@ async function boot(options: Options = {}) {
     env: {
       APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', CACHE_DRIVER: 'memory',
       AUTH_PRIVATE_REGISTRATION: options.privateRegistration === false ? 'false' : 'true',
-      AUTH_EMAIL_CHANGE_THROTTLE: String(options.throttle ?? 0),
+      AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: String(options.throttle ?? 0),
     },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
@@ -326,6 +326,18 @@ describe('EmailChange.request()', () => {
     const other = await browser(2);
     await other.request('three@example.com');
     expect(world.delivered).toHaveLength(2);
+  });
+
+  it('counts AUTH_EMAIL_CHANGE_THROTTLE_SECONDS in seconds on the app clock', async () => {
+    const { browser, clock } = await boot({ throttle: 60 });
+    const first = await browser(1);
+    await first.request('one@example.com');
+    clock.travel({ seconds: 59 });
+    await first.request('two@example.com');
+    expect(world.delivered, '59 s: still inside the pause').toHaveLength(1);
+    clock.travel({ seconds: 2 });
+    await first.request('three@example.com');
+    expect(world.delivered.map((change) => change.email), '61 s: the pause is over').toEqual(['one@example.com', 'three@example.com']);
   });
 
   it('gives the pause back when the mail cannot be handed over, so that the retry sends it', async () => {

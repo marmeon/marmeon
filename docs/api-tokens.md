@@ -217,7 +217,7 @@ pnpm marmeon auth:prune-tokens
 pnpm marmeon auth:prune-tokens --hours=48
 ```
 
-The command deletes the password reset tokens older than `AUTH_RESET_EXPIRE`, takes the remember-me tokens that expired or are older
+The command deletes the password reset tokens older than `AUTH_RESET_MINUTES`, takes the remember-me tokens that expired or are older
 than `AUTH_REMEMBER_DAYS` (every one with `0`, see [remember me](authentication.md#remember-me)) off their sign-ins, deletes the sign-ins that are over, and deletes the API tokens that expired
 more than `--hours` hours ago, `0` by default. Valid reset and API tokens stay. It reports how many of each it deleted. The starter
 kit runs it every night at 03:10 on one server:
@@ -255,7 +255,7 @@ release issues tokens that the migration then deletes with the old ones.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `AUTH_TOKEN_PREFIX` | `marmeon_` | The prefix of every token. Empty, or lower-case letters and digits ending in `_`, at most 16 characters; anything else stops the start. Changing it invalidates every token made before. |
-| `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password and a password reset revoke every token of the user. Only `true` and `false` start; an empty one counts as unset. |
+| `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password and a password reset revoke every token of the user. A boolean (`true`, `false`, `1`, `0`); anything else stops the start, an empty one counts as unset. |
 
 ## Testing
 

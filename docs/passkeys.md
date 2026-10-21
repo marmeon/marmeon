@@ -185,8 +185,8 @@ return this.json({ error: this.#translator.get('auth.passkeys.failed') }, { stat
 
 The challenge has its own purpose, `confirm`: one issued for a sign-in or a step-up does not serve here, and the reverse. It leaves the
 session before the response is looked at, so a response works once. The passkey must belong to the signed-in account and not be suspended, and
-user verification is required. On success the session gets a new id, `confirmedPassword()` lets it through for `AUTH_PASSWORD_TIMEOUT`
-seconds, and it counts as having proven a second factor. `confirm()` returns `err` for a response that fails, with the kinds of
+user verification is required. On success the session gets a new id, `confirmedPassword()` lets it through for `AUTH_PASSWORD_TIMEOUT_SECONDS`,
+15 minutes by default, and it counts as having proven a second factor. `confirm()` returns `err` for a response that fails, with the kinds of
 [a sign-in](#passwordless-sign-in) and `throttled` (ten a minute for the account, a success clears the count); a wrong answer to the open challenge fires `TwoFactorChallengeFailed` with `during: 'confirm'`. A challenge that is
 missing, used, expired or opened for another purpose does not, and neither does an answer signed for a challenge that a newer `confirmOptions()` replaced (a second tab, a double click): that is `expired`, and it uses the newer challenge up too, so the user starts again with new options. `confirmOptions()` answers `no-challenge` when the account has no usable passkey; it only opens a challenge and has no throttle of its own: give its route a limit.
 

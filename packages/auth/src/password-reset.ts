@@ -153,7 +153,7 @@ export class PasswordBroker {
 
   /**
    * A token for `email` (normalized like the login), or an `err` of kind `unavailable`. There is one kind for an unknown e-mail and for
-   * one within `AUTH_RESET_THROTTLE` of the last token, so the answer never tells whether an account exists.
+   * one within `AUTH_RESET_THROTTLE_SECONDS` of the last token, so the answer never tells whether an account exists.
    */
   async createToken(email: string): Promise<Result<{ user: AuthUser; token: string }, { readonly kind: 'unavailable' }>> {
     const found = await this.#users.findForLogin(email);

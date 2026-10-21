@@ -86,7 +86,7 @@ export class SendPasswordResetLinkJob {
 ```
 
 `createToken(email)` returns a [`Result`](errors.md#results): `ok` with the user and a new token, or an `err` of kind `unavailable`
-for an address without an account and while the last token for that address is younger than `AUTH_RESET_THROTTLE` seconds, 60 by
+for an address without an account and while the last token for that address is younger than `AUTH_RESET_THROTTLE_SECONDS`, 60 seconds by
 default. So one address gets at most one mail a minute, however often someone asks. It is one kind on purpose: a kind such as
 `unknown-email` would invite an answer that says "no account".
 
@@ -177,7 +177,7 @@ export class ResetPasswordController extends Controller {
 ```
 
 `reset()` returns a `Result`: `ok` with the user, or an `err` of the one kind `invalid-token` for every failure alike: an unknown address, a wrong token, one used before, or one
-older than `AUTH_RESET_EXPIRE` minutes, 60 by default. A token works once. Two requests with the same token cannot both succeed:
+older than `AUTH_RESET_MINUTES`, 60 minutes by default. A token works once. Two requests with the same token cannot both succeed:
 the token is deleted with a condition on its hash, and only one delete finds it.
 
 A successful reset:
@@ -208,7 +208,7 @@ tokens stay valid after a reset. Set `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true
 ## Old tokens
 
 A token that is never used stays in the table until it is replaced or pruned. `marmeon auth:prune-tokens` deletes the reset
-tokens older than `AUTH_RESET_EXPIRE`, together with expired remember-me and API tokens, and the starter kit runs it every night.
+tokens older than `AUTH_RESET_MINUTES`, together with expired remember-me and API tokens, and the starter kit runs it every night.
 The [API tokens](api-tokens.md#pruning-tokens) page describes the command.
 
 ## A store of your own
@@ -240,8 +240,8 @@ address never has two rows, and `token_hash` as a 64-character `secret()` column
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `AUTH_RESET_EXPIRE` | `60` | Minutes a reset link works. At least 1. |
-| `AUTH_RESET_THROTTLE` | `60` | Seconds before another link goes to the same address. `0` sends one for every request. |
+| `AUTH_RESET_MINUTES` | `60` | Minutes a reset link works. At least 1. |
+| `AUTH_RESET_THROTTLE_SECONDS` | `60` | Seconds before another link goes to the same address. `0` sends one for every request. |
 | `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a reset, and every other new password, revokes every API token of the user. |
 
 ## Testing
