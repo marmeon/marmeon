@@ -186,6 +186,9 @@ Route.get('/notes/:note{[0-9]+}', ShowNoteController).name('notes.show');
 `/notes/42` reaches the controller. `/notes/latest` does not match this route, so another route can take it, or the request
 ends in a 404.
 
+A constraint with alternatives, such as `/notes/:note{new|edit}`, matches as a whole: `/notes/edit` reaches the route,
+`/notes/editor` and `/notes/xedit` do not.
+
 ### Route order
 
 When two routes match the same path, the one registered first answers. Register fixed paths before the parameters that would

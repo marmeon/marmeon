@@ -2,6 +2,7 @@ import cluster from 'node:cluster';
 import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
 import { heldOnLoopback, shadowedLocalhost } from './loopback.ts';
+import { honoPath } from './route-pattern.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
 import { currentRequest, environment, EnvironmentConfig, ErrorSolutions, Logger, outsideTransaction, Redactor, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
@@ -756,7 +757,7 @@ export function createHttpKernel(
       );
     };
     routeHandlers.set(handler, route);
-    app.on([...route.methods], route.path, handler);
+    app.on([...route.methods], honoPath(route.path), handler);
   };
 
   // The framework's routes first, then a guard, then the app's: a path under `/_marmeon/` that no framework route answered
