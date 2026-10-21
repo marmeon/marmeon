@@ -61,6 +61,7 @@ export default defineDocs({
       pages: [
         { slug: 'recipe-resource', label: 'A Resource With Its Policy' },
         { slug: 'recipe-public-form', label: 'A Public Page and Form' },
+        { slug: 'recipe-background-job', label: 'A Job That Retries' },
       ],
     },
     {

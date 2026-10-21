@@ -1,0 +1,12 @@
+{
+  "beforeCopy": [
+    "marmeon make:module account-export",
+    "marmeon make:controller ShowAccountExport --module=account-export --view",
+    "marmeon make:controller RequestAccountExport --module=account-export",
+    "marmeon make:job SendAccountExport --module=account-export",
+    "marmeon make:test account-export --module=account-export --path=/account/export"
+  ],
+  "afterCopy": [
+    "marmeon route:types"
+  ]
+}
