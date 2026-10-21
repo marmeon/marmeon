@@ -266,6 +266,15 @@ describe('the block', () => {
     expect(AGENTS_BLOCK).toContain('`marmeon docs errors` (section "Server error codes")');
     expect(AGENTS_BLOCK).toContain('https://marmeon.com/docs');
     expect(AGENTS_BLOCK).toContain('`marmeon make:resource <Name>`');
+  });
+
+  it('sends an agent with a whole task to its recipe', () => {
+    expect(AGENTS_BLOCK).toContain('start with its\n  recipe: `marmeon docs` lists them under "Recipes"; each names the generators, the files and the test.');
+    expect(AGENTS_BLOCK.indexOf('start with its')).toBeGreaterThan(AGENTS_BLOCK.indexOf('## Documentation'));
+    expect(AGENTS_BLOCK.indexOf('start with its')).toBeLessThan(AGENTS_BLOCK.indexOf('## After a change'));
+  });
+
+  it('keeps the rule about silencing a finding', () => {
     expect(AGENTS_BLOCK).toContain('// marmeon-check-ignore <check>: <why it is safe>` (docs/check.md#silencing-a-finding), and tell the user');
   });
 
