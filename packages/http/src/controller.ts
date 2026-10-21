@@ -8,7 +8,8 @@ import { json, type JsonResult } from './json.ts';
 /**
  * Base class for invokable controllers: one class per endpoint, whose `handle(ctx)` returns a page, a redirect, a `Response`
  * or plain data. `handle` is not declared abstract here, so implementations need no `override`; the router requires it when
- * the route is registered. See docs/controllers.md#writing-controllers.
+ * the route is registered. The helpers are fixed; a method of your own with any other name never collides. See
+ * docs/controllers.md#writing-controllers.
  */
 export abstract class Controller {
   /**

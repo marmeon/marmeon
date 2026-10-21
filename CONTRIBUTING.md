@@ -681,6 +681,10 @@ has three entry points that only the framework imports:
 
 `pnpm api:usage @marmeon/core` shows who imports each export and suggests where it belongs.
 
+### The helpers of `Controller`
+
+`Controller` has six helpers (`view`, `island`, `json`, `redirect`, `back`, `closeLayer`) and gets no more: a new `protected` name would collide with a method of the same name in an app's controller. A new helper is a free function exported from `@marmeon/http`; a test in `controller.test.ts` holds the list.
+
 ### The source condition and the manifests
 
 Inside this repository the packages resolve to their TypeScript sources through the `@marmeon/source` condition; a published

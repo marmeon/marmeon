@@ -220,6 +220,13 @@ no server code reaches the browser.
 
 The [responses](responses.md) page covers each of them, with headers, cookies, flash messages and downloads.
 
+### The helpers
+
+The base class has these six helpers and no others: `view`, `island`, `json`, `redirect`, `back` and `closeLayer`. The list is fixed.
+A method of your own on your controller, under any other name, never collides with a helper of a later version. What the framework
+adds later comes as a function imported from `@marmeon/http`, as `view`, `json` and `island` already are, not as a method of
+`Controller`.
+
 ## Work after the response
 
 Some work does not need to hold up the response, such as a mail that is sent anyway. `AfterResponse` runs it once the response is
