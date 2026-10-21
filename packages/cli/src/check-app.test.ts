@@ -250,6 +250,23 @@ export default defineModule({ name: 'open', routes: defineRoutes((Route) => { Ro
     expect(problem.message).toContain('GET /open (open) does not say who may call it');
   });
 
+  it('reports a route with two middleware that add the same key, with H8, the key and both layers', () => {
+    const routes = `
+import { defineModule } from '@marmeon/core';
+import { defineMiddleware, defineRoutes, everyone } from '@marmeon/router';
+const first = defineMiddleware('first', (_ctx, next) => next({ team: 1 }), { adds: ['team'] });
+const second = defineMiddleware('second', (_ctx, next) => next({ team: 2 }), { adds: ['team'] });
+export default defineModule({ name: 'twice', routes: defineRoutes((Route) => { Route.authorize(everyone).middleware(first).middleware(second).get('/twice', () => 'x').name('twice'); }) });
+`;
+    const root = app({ files: { 'modules/twice/index.ts': routes } });
+    writeFileSync(join(root, 'bootstrap/app.ts'), readFileSync(join(root, 'bootstrap/app.ts'), 'utf8').replace("import { AppConfig }", "import twice from '#modules/twice';\nimport { AppConfig }").replace('modules: [system]', 'modules: [system, twice]'));
+    const { code, stdout } = check(root, ['--only=route-types', '--json']);
+    expect(code).toBe(1);
+    const problem = reportOf(stdout, 'route-types').problems.find((found: { code: string | null }) => found.code === 'H8');
+    expect(problem).toMatchObject({ severity: 'error', code: 'H8', file: 'modules/twice/index.ts' });
+    expect(problem.message).toContain('GET /twice: "first" and "second" both add "team" to the context');
+  });
+
   it('reports out-of-date generated types with the command that fixes them, and nothing once they are current', () => {
     const root = migrated({ files: { 'modules/system/jobs/Send.ts': "export class SendJob {\n  static readonly job = 'system.send';\n}\n" } });
     rmSync(join(root, 'bootstrap/routes.ts'));

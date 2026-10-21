@@ -56,7 +56,7 @@ describe('unknown paths under /_marmeon/', () => {
       return next();
     }
   }
-  const greedy = async (spy: () => void, mark?: (route: RouteDefinition) => void) => {
+  const greedy = async (spy: () => void, mark?: (route: RouteDefinition) => void, forge = false) => {
     seen.global = seen.group = seen.route = 0;
     const app = await createApplication({
       root: import.meta.dirname,
@@ -66,10 +66,11 @@ describe('unknown paths under /_marmeon/', () => {
         defineModule({
           name: 'greedy',
           routes: openRoutes((Route) => {
-            Route.middleware(RouteSpy).any('/:page{.+}', () => {
+            const forged = Route.middleware(RouteSpy).any('/:page{.+}', () => {
               spy();
               return 'app';
             });
+            if (forge) forged.reserved = true;
           }),
         }),
       ],
@@ -100,11 +101,13 @@ describe('unknown paths under /_marmeon/', () => {
     expect(seen).toEqual({ global: 5, group: 0, route: 0 });
   });
 
-  it('do not trust a route that says it is reserved', async () => {
+  it('do not trust a route that says it is reserved (it cannot be set after loading)', async () => {
     let runs = 0;
     const kernel = await greedy(() => runs++, (route) => {
-      route.reserved = true;
-    });
+      expect(() => {
+        route.reserved = false; // a loaded route is frozen
+      }).toThrow(TypeError);
+    }, true);
     expect((await kernel.request('/_marmeon/x')).status).toBe(404);
     expect(runs).toBe(0);
   });

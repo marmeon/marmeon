@@ -1,4 +1,5 @@
 import { isScoped, registrationSite, siteOf, type AccessCheck } from './access.ts';
+import type { NoReservedKeys, ReservedContextKey } from './middleware.ts';
 import { RouteDefinition } from './route-definition.ts';
 import type { StandardSchemaV1 } from './request-definition.ts';
 import type {
@@ -148,7 +149,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
    * Appends middleware. It must accept the context built so far, and whatever it
    * passes to `next()` becomes available to everything registered after it.
    */
-  middleware<TAdds extends object>(middleware: MiddlewareLike<TState, TAdds>): Route<Merge<TState, TAdds>, TParams, TBindings> {
+  middleware<TAdds extends object & NoReservedKeys = EmptyObject>(middleware: MiddlewareLike<TState, TAdds>): Route<Merge<TState, Omit<TAdds, ReservedContextKey>>, TParams, TBindings> {
     return this.#with({ middleware: [...this.#attributes.middleware, middleware] });
   }
 

@@ -31,6 +31,8 @@ export function authenticate(options: AuthenticateOptions | 'api' = {}): Middlew
   const Authenticate = class {
     /** Read by `marmeon check`: a guest never gets past. See docs/middleware.md#declaring-what-a-middleware-ensures. */
     static readonly ensures = ['authenticated'] as const;
+    /** The keys it adds to the context: the router refuses a route with two middleware that add `user`. */
+    static readonly adds = ['user'] as const;
 
     readonly #auth: Auth;
     readonly #session: Session;
@@ -121,6 +123,7 @@ export function confirmedPassword<const N extends RouteNameInput = never>(option
 function tokenGuard(): MiddlewareClass<{}, Authenticated & WithToken> {
   const AuthenticateToken = class {
     static readonly ensures = ['authenticated'] as const;
+    static readonly adds = ['user', 'token'] as const;
 
     readonly #tokens: AccessTokenStore;
     readonly #users: UserProvider;

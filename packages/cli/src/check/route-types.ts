@@ -1,6 +1,7 @@
 import { relative, resolve } from 'node:path';
 import { Application, Redactor } from '@marmeon/core';
 import { Router } from '@marmeon/router';
+import { describeMiddlewareProblem } from '@marmeon/router/internal';
 import { RouteTypes } from '../route-types.ts';
 import type { AppCheck } from './registry.ts';
 import type { CheckProblem } from './report.ts';
@@ -50,6 +51,16 @@ export class RouteTypesCheck implements AppCheck {
       }
     }
     for (const problem of this.#router.accessProblems()) problems.push(accessFinding(problem, redactor, this.#app.root));
+    for (const problem of this.#router.middlewareProblems()) {
+      const { route } = problem;
+      problems.push({
+        severity: 'error',
+        message: describeMiddlewareProblem(problem, (r) => redactor.path(r.path, r.path)),
+        ...placeOf(route.site, this.#app.root),
+        code: 'H8',
+        docs: 'docs/middleware.md#listed-twice',
+      });
+    }
     return problems;
   }
 }

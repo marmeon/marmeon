@@ -1,7 +1,7 @@
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { createApplication, defineModule } from '@marmeon/core';
 import { HttpServiceProvider } from '@marmeon/http';
-import { defineRoutes, everyone, RouteAccessError, type RouteBinder, type RouteDefinitions } from '@marmeon/router';
+import { defineMiddleware, defineRoutes, everyone, RouteAccessError, type RouteBinder, type RouteDefinitions } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 
@@ -40,6 +40,18 @@ describe('createHttpKernel — routes that do not say who may call them', () => 
     const application = await boot(defineRoutes((Route) => Route.authorize(everyone).bind('note', NoteRepository).get('/notes/:note', ShowNoteController)));
     try {
       expect(() => createHttpKernel(application)).toThrow(/binds `note` with NoteRepository/);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('refuses a route whose middleware add the same key, naming the route, the key and both layers', async () => {
+    const first = defineMiddleware('first', (_ctx, next) => next({ team: 1 }), { adds: ['team'] });
+    const second = defineMiddleware('second', (_ctx, next) => next({ team: 2 }), { adds: ['team'] });
+    const application = await boot(defineRoutes((Route) => Route.authorize(everyone).middleware(first).middleware(second).get('/twice', ShowNoteController)));
+    try {
+      expect(() => createHttpKernel(application)).toThrow(RouteAccessError);
+      expect(() => createHttpKernel(application)).toThrow(/\[marmeon:H8\].*GET \/twice: "first" and "second" both add "team"/s);
     } finally {
       await application.shutdown();
     }

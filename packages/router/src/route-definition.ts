@@ -3,7 +3,7 @@ import type { AnyAction, AnyMiddleware, HttpMethod, RouteBinding } from './types
 
 /**
  * A single registered route.
- * Created by the `Route` registrar; only its name remains mutable after registration.
+ * Created by the `Route` registrar; its name, `internal()` and `block()` can be set until the router loads it.
  */
 export class RouteDefinition {
   readonly methods: readonly HttpMethod[];
@@ -25,6 +25,7 @@ export class RouteDefinition {
   reserved = false;
   #internal: boolean;
   #blocking: RouteBlocking | undefined;
+  #sealed = false;
 
   constructor(options: {
     methods: readonly HttpMethod[];
@@ -38,10 +39,11 @@ export class RouteDefinition {
     site?: string | undefined;
     internal?: boolean;
   }) {
-    this.methods = options.methods;
+    // Frozen copies: a middleware reaching `ctx.route` cannot add a method or take a middleware out for every later request.
+    this.methods = Object.freeze([...options.methods]);
     this.path = options.path;
     this.action = options.action;
-    this.middleware = options.middleware;
+    this.middleware = Object.freeze([...options.middleware]);
     this.group = options.group;
     // Frozen like the checks: a binding cannot be unscoped or made public once the route is registered.
     Object.defineProperty(this, 'bindings', {
@@ -58,6 +60,7 @@ export class RouteDefinition {
 
   /** Names the route, prepending any group name prefix: `name('show')` in `name('profile.')` -> `profile.show`. */
   name(name: string): this {
+    this.#assertOpen('name');
     this.#name = this.#namePrefix + name;
     return this;
   }
@@ -77,6 +80,7 @@ export class RouteDefinition {
    * ```
    */
   internal(): this {
+    this.#assertOpen('internal');
     this.#internal = true;
     return this;
   }
@@ -97,11 +101,27 @@ export class RouteDefinition {
    * ```
    */
   block(lockSeconds = 10, waitSeconds: number = lockSeconds): this {
+    this.#assertOpen('block');
     for (const [what, value] of [['lockSeconds', lockSeconds], ['waitSeconds', waitSeconds]] as const) {
       if (!Number.isFinite(value) || value <= 0) throw new TypeError(`block(): ${what} must be a positive number of seconds (got ${value}) — ${this.path}.`);
     }
     this.#blocking = { lockSeconds, waitSeconds };
     return this;
+  }
+
+  /**
+   * Called by `Router.load` once the route passed its checks: the route and what it holds can no longer change, so nothing a
+   * request runs (`ctx.route`) alters it for the requests after.
+   *
+   * @internal
+   */
+  seal(): void {
+    this.#sealed = true;
+    Object.freeze(this);
+  }
+
+  #assertOpen(method: string): void {
+    if (this.#sealed) throw new TypeError(`${method}() cannot change a route after its routes were loaded: ${this.path}.`);
   }
 
   /** The session lock {@link block} asks for — undefined for a route that does not block. */

@@ -44,7 +44,7 @@ export const acting = defineMiddleware<Authenticated & { team: number }>('acting
   const team = Number((ctx.params as { team?: string }).team);
   if (team !== user.team) return new Response('Not Found', { status: 404 });
   return next({ user: user as never, team });
-});
+}, { adds: ['user', 'team'] });
 
 /** What the actions did — one per app (the container's singleton). */
 export class Recorder {
