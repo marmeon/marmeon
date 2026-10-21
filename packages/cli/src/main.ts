@@ -1,7 +1,7 @@
-import { Application, ConfigError, Container, ErrorSolutions, type ServiceProviderClass } from '@marmeon/core';
+import { Application, ConfigError, Container, ErrorReports, ErrorSolutions, type ServiceProviderClass } from '@marmeon/core';
 import { coreSolutions, loadDiscoveredPackages, messageBase, sendConsoleLogsToStderr, trace } from '@marmeon/core/internal';
 import { channels, type CommandRunMessage } from '@marmeon/core/diagnostics';
-import { CommandArgumentsError, CommandRegistry, CommandSetupError, parseCommandArgs, runCommand, wantsHelp } from './command.ts';
+import { CommandArgumentsError, CommandRegistry, type CommandClass, CommandSetupError, parseCommandArgs, runCommand, wantsHelp } from './command.ts';
 import { BUILT_IN } from './built-in.ts';
 import { printCommandHelp, printCommandList, printCommandListJson } from './commands/list.ts';
 import { loadApplication } from './load.ts';
@@ -155,6 +155,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
   } catch (error) {
     if (!(error instanceof CommandArgumentsError)) {
       printError(output, error);
+      reportFailure(app, Command, error);
       await app?.shutdown();
       return 1;
     }
@@ -184,10 +185,19 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
       return EXIT_CANCELLED;
     }
     printError(output, error);
+    reportFailure(app, Command, error);
     return 1;
   } finally {
     await app?.shutdown();
   }
+}
+
+/**
+ * Tells the error reporters of the app that a command ended with an error, by its name only: the arguments may carry secrets. The user
+ * has the error on the screen already, so it is not logged again. A wrong call (exit 2) and a cancelled prompt are not errors.
+ */
+function reportFailure(app: Application | undefined, Command: CommandClass, error: unknown): void {
+  if (app?.container.has(ErrorReports)) app.container.make(ErrorReports).report(error, { source: 'command', context: { command: Command.command }, log: false });
 }
 
 /** A failed command: its error and where it came from — not Node's dump of every property of every cause. */

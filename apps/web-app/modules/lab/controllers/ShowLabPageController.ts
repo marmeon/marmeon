@@ -80,7 +80,13 @@ export class ShowErrorsLabController extends LabController {
   handle() {
     this.enabled();
     // What the lab's error reporter got: masked, as any reporter would see it.
-    const recent = this.#recent.recent().map(({ error, context }) => ({ name: error.name, message: error.message, method: context.method ?? '', path: context.path ?? '' }));
+    const recent = this.#recent.recent().map(({ error, source, context }) => ({
+      name: error.name,
+      message: error.message,
+      source,
+      // Where it happened: a request's method and path, else the job, task or command that failed.
+      where: source === 'request' ? `${context.method ?? ''} ${context.path ?? ''}` : (context.job ?? context.task ?? context.command ?? ''),
+    }));
     return this.view('lab/Errors', { kinds: Object.entries(ERROR_KINDS).map(([kind, label]) => ({ kind, label })), recent });
   }
 }

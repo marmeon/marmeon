@@ -1,7 +1,7 @@
 import { hostname } from 'node:os';
 import { Cache, CacheConfig, type Lock } from '@marmeon/cache';
 import type { CommandClass } from 'marmeon';
-import { Application, Clock, EventDispatcher, Logger, outsideTransaction, Redactor, type Container } from '@marmeon/core';
+import { Application, Clock, ErrorReports, EventDispatcher, Logger, outsideTransaction, Redactor, type Container } from '@marmeon/core';
 import { messageBase, runWithTask, trace } from '@marmeon/core/internal';
 import { channels, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
 import type { JobClass } from '@marmeon/queue';
@@ -428,7 +428,12 @@ export class Scheduler {
             }
           }
         } catch (error) {
-          logger.error(`Failed: ${task.name}`, { exception: this.#redactor.text(error instanceof Error ? `${error.name}: ${error.message}` : String(error)) });
+          const exception = this.#redactor.text(error instanceof Error ? `${error.name}: ${error.message}` : String(error));
+          if (this.#container.has(ErrorReports)) {
+            this.#container.make(ErrorReports).report(error, { source: 'schedule', context: { task: task.name }, log: { message: `Failed: ${task.name}`, fields: { channel: 'schedule', task: task.name, exception } } });
+          } else {
+            logger.error(`Failed: ${task.name}`, { exception });
+          }
           const failed = result('failed', { error });
           await emit(new ScheduledTaskFailed({ ...about, error, ms: failed.ms }));
           return failed;

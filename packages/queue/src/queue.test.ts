@@ -711,19 +711,21 @@ describe('the version of the job record', () => {
     const files = fixtures('job-record');
     expect(files.map(({ name }) => name)).toContain('v1.json');
     for (const { name, text } of files) expect(parseRecord(text), name).toMatchObject({ kind: 'record', record: { v: 1 } });
-    const parsed = (name: string) => (parseRecord(files.find((file) => file.name === name)!.text) as { record: { chain?: unknown[]; unique?: unknown; encrypted?: true } }).record;
+    const parsed = (name: string) => (parseRecord(files.find((file) => file.name === name)!.text) as { record: { chain?: unknown[]; unique?: unknown; encrypted?: true; fromReporter?: true } }).record;
     expect(parsed('v1-chain.json').chain).toHaveLength(2);
     expect(parsed('v1-unique.json').unique).toMatchObject({ until: 'processing' });
     expect(parsed('v1-encrypted.json').encrypted).toBe(true);
+    expect(parsed('v1-from-reporter.json')).toMatchObject({ fromReporter: true });
+    expect(parsed('v1.json')).not.toHaveProperty('fromReporter');
 
     await using application = await app();
     const { driver, failed, worker: w } = worker(application);
     for (const { text } of files) await driver.push('default', text, 0);
-    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 6, failed: 0, released: 0 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 7, failed: 0, released: 0 });
     expect(await failed.all()).toEqual([]);
     expect(driver.entries()).toEqual([]);
     expect(application.seen.entries.map(({ payload }) => payload)).toEqual(
-      expect.arrayContaining([{ userId: 7 }, { userId: 1 }, { userId: 2 }, { userId: 3 }, { email: 'ada@example.com', token: 'reset-token' }]),
+      expect.arrayContaining([{ userId: 7 }, { userId: 1 }, { userId: 2 }, { userId: 3 }, { userId: 4 }, { email: 'ada@example.com', token: 'reset-token' }]),
     );
   });
 

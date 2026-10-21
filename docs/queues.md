@@ -344,7 +344,10 @@ without its optional members.
 ## Retries and failures
 
 A job that throws is attempted again after its `backoff`, until it has used its `tries`. Then it **fails**: it goes to the failed
-jobs, with its id, connection, queue, name, payload, the redacted error and the time.
+jobs, with its id, connection, queue, name, payload, the redacted error and the time. A job that fails for good is also handed to
+the [error reporters](errors.md#reporting) of the app (`source` `job`), with its name, id, queue, connection and attempt, never
+its payload. An attempt that will run again is only logged. A job that a reporter queued is logged but not reported when it fails,
+so a reporter that queues an alert cannot start a loop.
 
 A job can also end an attempt on its own:
 

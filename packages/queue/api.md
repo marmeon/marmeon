@@ -176,6 +176,7 @@ export interface JobRecord {
     readonly chain?: readonly JobRecord[];
     readonly requestId?: string;
     readonly traceparent?: string;
+    readonly fromReporter?: true;
 }
 // JobRegistry
 export declare class JobRegistry {
@@ -282,6 +283,7 @@ export type Prepared = {
     readonly reason: string;
     readonly envelope: RecordEnvelope;
     readonly record: JobRecord | undefined;
+    readonly issues?: readonly StandardIssue[];
 };
 // Queue
 export interface Queue {
@@ -573,6 +575,7 @@ export interface WorkerDependencies {
     readonly retryAfter?: number;
     readonly events?: JobEvents;
     readonly redactor?: Redactor;
+    readonly errors?: ErrorReports;
 }
 // queueTablesConnection
 export declare function queueTablesConnection(container: Resolver): string;

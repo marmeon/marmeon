@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "uuid": "a41c9e60-2d57-4f0b-8b3e-70c5d2e9f418",
+  "job": "test.welcome",
+  "data": {
+    "userId": 4
+  },
+  "tries": 1,
+  "backoff": [],
+  "dispatchedAt": 1790000000000,
+  "fromReporter": true
+}

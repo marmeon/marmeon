@@ -45,6 +45,17 @@ export function describeIssues(issues: readonly StandardIssue[]): string {
     .join('; ');
 }
 
+/**
+ * What an error reporter may be told about a payload that does not match a schema: the fields, never the values. The issues' text
+ * quotes what was received (`Expected number but received "x"`), which for an encrypted job is the decrypted payload.
+ */
+export function schemaMismatch(job: string, issues: readonly StandardIssue[]): Error {
+  // A key of a record is data (an email address): only what looks like a declared field name stays, else `*`.
+  const segment = (key: unknown) => (typeof key === 'number' ? String(key) : /^[A-Za-z_$][\w$]{0,31}$/.test(String(key)) ? String(key) : '*');
+  const paths = [...new Set(issues.map((issue) => (issue.path ?? []).map((part) => segment(typeof part === 'object' ? part.key : part)).join('.') || '(root)'))];
+  return new Error(`The data of ${job} does not match its schema (fields: ${paths.join(', ')}).`);
+}
+
 /** Validates a payload against a job's schema; the schema's output, or a {@link JobPayloadError}. */
 export async function validatePayload(job: JobClass, payload: unknown, when: 'dispatch' | 'run'): Promise<unknown> {
   const result = await job.schema['~standard'].validate(payload);
@@ -90,7 +101,7 @@ export type Prepared =
    * Not runnable by this worker, perhaps by another: a newer record version, no class for this name in this app, a payload the
    * schema rejects (a rolling deploy). Put back untouched until a worker can read it — see {@link FOREIGN_LIMIT_SECONDS}.
    */
-  | { readonly kind: 'foreign'; readonly reason: string; readonly envelope: RecordEnvelope; readonly record: JobRecord | undefined };
+  | { readonly kind: 'foreign'; readonly reason: string; readonly envelope: RecordEnvelope; readonly record: JobRecord | undefined; readonly issues?: readonly StandardIssue[] };
 
 /** What every version of the record keeps in place: the fields a worker may read of a record it does not understand. */
 export interface RecordEnvelope {
@@ -171,7 +182,7 @@ export class JobRunner {
       return { kind: 'ready', record, job, payload };
     } catch (error) {
       // A newer release may have widened the schema (a new enum member): another worker may accept what this one rejects.
-      return { kind: 'foreign', reason: (error as Error).message, envelope: envelopeOf(record), record };
+      return { kind: 'foreign', reason: (error as Error).message, envelope: envelopeOf(record), record, ...(error instanceof JobPayloadError && error.issues.length > 0 ? { issues: error.issues } : {}) };
     }
   }
 
@@ -209,7 +220,7 @@ export class JobRunner {
    * on the `queue.job` channel that ends with `error` — so the devtools show it like any failed attempt, not only `failed_jobs`.
    */
   async unrunnable<T>(record: JobRecord, attempt: { readonly attempt: number; readonly queue: string; readonly connection: string }, error: Error, then: () => Promise<T>): Promise<T> {
-    const info = { job: record.job, jobId: record.uuid, attempt: attempt.attempt, ...(record.requestId === undefined ? {} : { requestId: record.requestId }) };
+    const info = { job: record.job, jobId: record.uuid, attempt: attempt.attempt, ...(record.requestId === undefined ? {} : { requestId: record.requestId }), ...(record.fromReporter ? { fromReporter: true as const } : {}) };
     if (!attempts.hasSubscribers || !this.#container.has(Application)) return runWithJob(info, then);
     const message: QueueJobMessage = {
       ...messageBase(this.#container.make(Application)),
@@ -265,7 +276,7 @@ export class JobRunner {
     };
     const middleware: readonly JobMiddleware[] = job.middleware ?? [];
     // A job is a boundary: it never runs inside a transaction that was open where it was dispatched or worked on.
-    await outsideTransaction(() => runWithJob({ job: record.job, jobId: record.uuid, attempt: attempt.attempt, ...(record.requestId === undefined ? {} : { requestId: record.requestId }) }, async () => {
+    await outsideTransaction(() => runWithJob({ job: record.job, jobId: record.uuid, attempt: attempt.attempt, ...(record.requestId === undefined ? {} : { requestId: record.requestId }), ...(record.fromReporter ? { fromReporter: true as const } : {}) }, async () => {
       // One scope per attempt, like a request: scoped services (a Translator, a unit of work) start fresh each time.
       const scope = this.#container.createScope();
       const instance = scope.make(job as never) as { handle(payload: unknown, job: JobContext): unknown };
@@ -428,6 +439,7 @@ function readV1(record: Record<string, unknown>, depth = 0): ReadResult {
       ...(chain ? { chain } : {}),
       ...(typeof record.requestId === 'string' ? { requestId: record.requestId } : {}),
       ...(typeof record.traceparent === 'string' ? { traceparent: record.traceparent } : {}),
+      ...(record.fromReporter === true ? { fromReporter: true as const } : {}),
     },
   };
 }

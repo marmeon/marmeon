@@ -24,11 +24,11 @@ export default function Errors({ kinds, recent }: PageProps<ShowErrorsLabControl
         ))}
       </ul>
       <h2>Reported errors</h2>
-      <p>The last server errors as an error reporter gets them: masked, newest first.</p>
+      <p>The last server errors, failed jobs, failed scheduled tasks and failed commands as an error reporter gets them: masked, newest first.</p>
       <ul data-recent-errors>
         {recent.map((report, index) => (
           <li key={index}>
-            <code>{report.name}</code> {report.message} · {report.method} {report.path}
+            <code>{report.name}</code> {report.message} · {report.source} {report.where}
           </li>
         ))}
       </ul>

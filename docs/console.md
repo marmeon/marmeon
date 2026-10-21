@@ -64,6 +64,10 @@ before it runs. The [configuration](configuration.md#where-node_env-comes-from) 
 
 [`marmeon check`](check.md#exit-codes) adds a `3` for a check that could not run.
 
+A command that ends with an error (exit code 1 because it threw) is also handed to the app's [error reporters](errors.md#reporting)
+(`source` `command`), with the command's name and never its arguments, which can carry secrets. A wrong call (2), a cancelled question
+(130) and a command that returns an exit code without an error are not reported.
+
 When the reader of a pipe stops early, as in `marmeon docs | head -5`, the command stops writing and ends with its own exit code, without an error. Any other failure to write stdout still fails the command.
 
 A script can tell a typo from a failure this way. A built-in's options are checked before the app boots; an app's own command is looked

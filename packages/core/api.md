@@ -234,9 +234,13 @@ export type ErrorReporterClass = new (...args: any[]) => ErrorReporter;
 export declare class ErrorReports {
     #private;
     constructor(logger: Logger, redactor: Redactor, container: Container, reporters?: readonly ErrorReporterClass[], owners?: ReadonlyMap<ErrorReporterClass, string>);
-    report(error: unknown, { source, context }: {
+    report(error: unknown, { source, context, log }: {
         source: ErrorReport['source'];
         context?: Readonly<Record<string, string>>;
+        log?: false | {
+            readonly message: string;
+            readonly fields?: LogContext;
+        };
     }): void;
     flush(): Promise<void>;
 }
@@ -348,6 +352,7 @@ export interface JobInfo {
     readonly jobId: string;
     readonly attempt: number;
     readonly requestId?: string;
+    readonly fromReporter?: true;
 }
 // Key
 export type Key<T = unknown> = Token<T> | Constructor<T>;
