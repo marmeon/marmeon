@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Application, createApplication, type ApplicationDefinition } from './application.ts';
-import type { Container } from './container.ts';
+import { Application, createApplication, PROVIDER_STATICS, type ApplicationDefinition } from './application.ts';
+import { Container } from './container.ts';
 import { Clock, SystemClock, TestClock } from './clock.ts';
 import { ConfigError, defineConfig } from './config/config.ts';
 import { env } from './config/env.ts';
@@ -286,5 +286,22 @@ describe('createApplication(definition, options)', () => {
     const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: {}, override: () => {} });
     expect(app.definition).not.toHaveProperty('env');
     expect(app.definition).not.toHaveProperty('override');
+  });
+
+  describe.each(PROVIDER_STATICS)('a provider with only static %s', (key) => {
+    const register = (value: unknown) => {
+      const Provider = class Only {};
+      Object.defineProperty(Provider, key, { value });
+      new Application({ root: import.meta.dirname, container: new Container(), modules: [], packages: [] }).register([Provider]);
+    };
+
+    it('is accepted when the static lists something', () => {
+      expect(() => register(['config', 'health', 'errorReporters', 'solutions', 'commands', 'checks'].includes(key) ? [class {}] : { entry: class {} })).not.toThrow();
+    });
+
+    it('is refused when the static is empty', () => {
+      expect(() => register([])).toThrow('[marmeon:K9]');
+      expect(() => register({})).toThrow('[marmeon:K9]');
+    });
   });
 });

@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { chmodSync, cpSync, mkdirSync, statSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, statSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { createApplication } from '../application.ts';
 import type { Key } from '../token.ts';
-import { DiscoveryError, generateManifest, loadDiscoveredPackages, manifestPath } from './discover.ts';
+import { DiscoveryError, generateManifest, loadDiscoveredPackages, manifestPath, marmeonField, writeManifest } from './discover.ts';
 import { findPackage, printable, resolveExports, runtimeConditions, splitSpecifier, type PackageInfo } from './resolve.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -290,6 +290,128 @@ describe('exports resolution', () => {
   });
 });
 
+describe('the "marmeon" field of a package', () => {
+  const field = (marmeon: unknown, raw?: string): PackageInfo => ({
+    name: '@acme/marmeon-audit',
+    dir: '/x',
+    json: (raw === undefined ? { name: '@acme/marmeon-audit', marmeon } : JSON.parse(raw)) as PackageInfo['json'],
+  });
+  const messageOf = (pkg: PackageInfo) => {
+    try {
+      marmeonField(pkg);
+    } catch (error) {
+      expect(error).toBeInstanceOf(DiscoveryError);
+      return (error as Error).message;
+    }
+    return undefined;
+  };
+
+  it('accepts what the protocol lists, and a package without the field', () => {
+    expect(marmeonField(field({ providers: ['AuditServiceProvider'], browser: ['src/client/**'], experimental: true }))?.providers).toEqual(['AuditServiceProvider']);
+    expect(marmeonField(field({ experimental: ['./table'] }))?.providers).toEqual([]);
+    expect(marmeonField(field({}))?.providers).toEqual([]);
+    expect(marmeonField(field(undefined, '{"name":"x"}'))).toBeUndefined();
+  });
+
+  it('refuses a key it does not know, naming the package, the key and the known keys — a misspelt "provider" is not ignored', () => {
+    expect(messageOf(field({ provider: ['AuditServiceProvider'] }))).toBe(
+      '[marmeon:K7] @acme/marmeon-audit has an unknown key "provider" in its "marmeon" field (known: providers, browser, experimental) — a misspelt key would leave its providers out.',
+    );
+    expect(messageOf(field({ providers: ['A'], migrations: 'stubs' }))).toContain('unknown key "migrations"');
+  });
+
+  it('refuses a field that is no object', () => {
+    for (const [value, kind] of [[['A'], 'an array'], ['AuditServiceProvider', 'a string'], [null, 'null'], [true, 'a boolean'], [0, 'a number'], [false, 'a boolean']] as const) {
+      expect(messageOf(field(value)), JSON.stringify(value)).toContain(`but it is ${kind}, not an object`);
+    }
+  });
+
+  it('refuses providers that are no list of class names, and browser that is no list of strings', () => {
+    for (const providers of ['AuditServiceProvider', ['a-b'], [1], [null], ['A', ''], { 0: 'A' }, ['A.B'], ['A\nB']]) {
+      expect(messageOf(field({ providers })), JSON.stringify(providers)).toContain('"providers" is not a list of class names');
+    }
+    for (const browser of ['src/**', [1], [['src/**']], null, {}]) {
+      expect(messageOf(field({ browser })), JSON.stringify(browser)).toContain('"browser" is not a list of globs');
+    }
+  });
+
+  it('reads __proto__ and constructor as keys of the field, not as members of an object: unknown', () => {
+    expect(messageOf(field(undefined, '{"marmeon":{"__proto__":{"providers":["Evil"]}}}'))).toContain('unknown key "__proto__"');
+    expect(messageOf(field(undefined, '{"marmeon":{"constructor":{"prototype":{}}}}'))).toContain('unknown key "constructor"');
+    expect(messageOf(field(undefined, '{"marmeon":{"providers":["A"],"__proto__":null}}'))).toContain('unknown key "__proto__"');
+    expect(messageOf(field(undefined, '{"marmeon":{"__proto__":{}}}'))).toContain('unknown key "__proto__"');
+    // nothing of the field reached Object.prototype
+    expect(({} as { providers?: unknown }).providers).toBeUndefined();
+  });
+
+  it('never repeats a value, and a key only when it looks like an identifier', () => {
+    const secret = 'TOKEN=hunter2';
+    expect(messageOf(field({ [secret]: secret }))).not.toContain('hunter2');
+    expect(messageOf(field({ [secret]: secret }))).toContain('a key that is not an identifier (not shown)');
+    expect(messageOf(field({ 'x\u001b]8;;https://evil.test\u0007': 1 }))).not.toMatch(/[\p{Cc}\p{Cf}]|evil/u);
+    expect(messageOf(field({ [`a${'b'.repeat(200)}`]: 1 }))).not.toContain('bbbb');
+    expect(messageOf(field({ providers: ['https://evil.test/hunter2'] }))).not.toContain('hunter2');
+    expect(messageOf(field({ browser: [{ token: 'hunter2' }] }))).not.toContain('hunter2');
+    expect(messageOf(field({ extra: { token: 'hunter2' } }))).not.toContain('hunter2');
+  });
+
+  it('refuses an experimental that is neither true nor a list of strings', () => {
+    for (const experimental of [42, 'yes', false, null, [1], {}]) {
+      expect(messageOf(field({ experimental })), JSON.stringify(experimental)).toContain('"experimental" is neither true nor a list');
+    }
+  });
+
+  it('reads only own properties of the field and of the dependency lists — a polluted Object.prototype supplies nothing', () => {
+    const root = tempDir('marmeon-polluted-');
+    const write = (dir: string, json: object) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'package.json'), JSON.stringify(json));
+    };
+    write(root, { name: 'app', type: 'module' });
+    write(join(root, 'node_modules/@acme/loaded'), { name: '@acme/loaded', version: '1.0.0', marmeon: {} });
+    const prototype = Object.prototype as Record<string, unknown>;
+    prototype.providers = ['Evil'];
+    prototype.browser = 'x';
+    prototype.experimental = 42;
+    prototype.dependencies = { '@acme/loaded': '*' };
+    try {
+      expect(marmeonField(field({}))?.providers).toEqual([]);
+      expect(generateManifest({ root, conditions: DEV }).summary.packages).toEqual([]);
+    } finally {
+      delete prototype.providers;
+      delete prototype.browser;
+      delete prototype.experimental;
+      delete prototype.dependencies;
+    }
+  });
+
+  it('stays linear on a large or deep field and does not recurse into it', () => {
+    const many = Object.fromEntries(Array.from({ length: 200_000 }, (_, index) => [`key${index}`, index]));
+    const started = performance.now();
+    expect(messageOf(field(many))).toContain('unknown key "key0"');
+    let deep: unknown = 'leaf';
+    for (let level = 0; level < 5_000; level++) deep = { next: deep };
+    expect(messageOf(field({ providers: ['A'], extra: deep }))).toContain('unknown key "extra"');
+    expect(messageOf(field({ providers: deep }))).toContain('"providers" is not a list');
+    expect(messageOf(field({ experimental: deep }))).toContain('"experimental" is neither');
+    expect(marmeonField(field({ providers: Array.from({ length: 100_000 }, () => 'A') }))?.providers).toHaveLength(100_000);
+    expect(performance.now() - started).toBeLessThan(2_000);
+  });
+
+  it('stops discovery of the app, with the package named, before anything is written', () => {
+    const root = tempDir('marmeon-field-');
+    const write = (dir: string, json: object) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'package.json'), JSON.stringify(json));
+    };
+    write(root, { name: 'app', type: 'module', dependencies: { '@acme/marmeon-audit': '1.0.0' } });
+    write(join(root, 'node_modules/@acme/marmeon-audit'), { name: '@acme/marmeon-audit', version: '1.0.0', marmeon: { provider: ['AuditServiceProvider'] } });
+    expect(() => generateManifest({ root, conditions: DEV })).toThrow(/^\[marmeon:K7\] @acme\/marmeon-audit has an unknown key "provider"/);
+    expect(() => writeManifest({ root, conditions: DEV })).toThrow(DiscoveryError);
+    expect(existsSync(join(root, '.marmeon'))).toBe(false);
+  });
+});
+
 describe('findPackage', () => {
   const root = tempDir('marmeon-find-package-');
   mkdirSync(join(root, 'node_modules/@acme/ok'), { recursive: true });
@@ -325,6 +447,14 @@ describe('findPackage', () => {
     expect(message).toContain('[marmeon:K7]');
     expect(message).not.toMatch(/[\p{Cc}\p{Cf}]/u);
     expect(printable('a\u001b[2Jb‮c ')).toBe('a\\u001b[2Jb\\u202ec\\u2028');
+  });
+
+  it('stops with the package when its package.json is JSON but no object', () => {
+    for (const [name, text] of [['json-null', 'null'], ['json-array', '[]'], ['json-string', '"x"'], ['json-number', '1']] as const) {
+      mkdirSync(join(root, 'node_modules', name), { recursive: true });
+      writeFileSync(join(root, 'node_modules', name, 'package.json'), text);
+      expect(() => findPackage(name, root), text).toThrow(new RegExp(`^\\[marmeon:K7\\] The package.json of ${name} \\(.*\\) is not a JSON object\\.$`));
+    }
   });
 
   it('finds nothing for a name that is a path', () => {

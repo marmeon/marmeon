@@ -93,7 +93,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
     // hook derives the injection lists there, so only the providers are recorded. The
     // module URL is the one the runtime resolves too, so nothing is loaded twice.
     if (rootEntry && /\.[cm]?tsx?$/.test(rootEntry)) {
-      for (const provider of pkg.json.marmeon?.providers ?? []) {
+      for (const provider of marmeonField(pkg)?.providers ?? []) {
         providers.push([moduleIndex(pathToFileURL(rootEntry).href), provider]);
       }
       continue;
@@ -135,7 +135,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
       }
     }
 
-    for (const provider of pkg.json.marmeon?.providers ?? []) {
+    for (const provider of marmeonField(pkg)?.providers ?? []) {
       const typesEntry = rootEntry && resolveTypes(pkg, '.', rootEntry);
       if (!rootEntry || !typesEntry || !reader.read(typesEntry).exports.has(provider)) {
         throw new DiscoveryError(`${pkg.name} lists provider "${provider}" in package.json, but its entry does not export it.`);
@@ -159,6 +159,51 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   };
 }
 
+/** The keys of the `"marmeon"` field (docs/package-development.md#the-package-protocol); a new key is a minor release, so an older core refuses it. */
+const MARMEON_KEYS = ['providers', 'browser', 'experimental'] as const;
+const CLASS_NAME = /^[A-Za-z_$][\w$]*$/;
+/** A key the message may repeat: short and identifier-shaped, so a hostile `package.json` cannot put text of its own into it. */
+const SHOWN_KEY = /^[A-Za-z_$][\w$]{0,63}$/;
+
+/**
+ * The `"marmeon"` field of a package, checked — `undefined` when it has none. `package.json` of a dependency is someone else's input:
+ * a key this core does not know stops discovery rather than being ignored, because a misspelt `provider` would leave the package's
+ * providers out without a word. The messages name the package (from the dependency list) and, when it looks like an identifier,
+ * the key — never a value of the field.
+ */
+export function marmeonField(pkg: PackageInfo): { readonly providers: readonly string[] } | undefined {
+  const json = pkg.json as { marmeon?: unknown };
+  if (!Object.hasOwn(json, 'marmeon')) return undefined;
+  const field = json.marmeon;
+  const known = MARMEON_KEYS.join(', ');
+  if (typeof field !== 'object' || field === null || Array.isArray(field)) {
+    const kind = field === null ? 'null' : Array.isArray(field) ? 'an array' : `a ${typeof field}`;
+    throw new DiscoveryError(`${pkg.name} has "marmeon" in its package.json, but it is ${kind}, not an object (keys: ${known}).`);
+  }
+
+  for (const key of Object.keys(field)) {
+    if ((MARMEON_KEYS as readonly string[]).includes(key)) continue;
+    const named = SHOWN_KEY.test(key) ? `an unknown key "${key}"` : 'a key that is not an identifier (not shown)';
+    throw new DiscoveryError(`${pkg.name} has ${named} in its "marmeon" field (known: ${known}) — a misspelt key would leave its providers out.`);
+  }
+
+  // Own properties only: a polluted Object.prototype must not supply a `providers` the file does not have.
+  const own = (key: string): unknown => (Object.hasOwn(field, key) ? (field as Record<string, unknown>)[key] : undefined);
+  const providers = own('providers');
+  const browser = own('browser');
+  const experimental = own('experimental');
+  if (providers !== undefined && (!Array.isArray(providers) || !providers.every((name) => typeof name === 'string' && CLASS_NAME.test(name)))) {
+    throw new DiscoveryError(`${pkg.name} has a "marmeon" field whose "providers" is not a list of class names — each entry is the name of an exported service provider class.`);
+  }
+  if (browser !== undefined && (!Array.isArray(browser) || !browser.every((glob) => typeof glob === 'string'))) {
+    throw new DiscoveryError(`${pkg.name} has a "marmeon" field whose "browser" is not a list of globs — each entry is a string such as "src/client/**".`);
+  }
+  if (experimental !== undefined && experimental !== true && (!Array.isArray(experimental) || !experimental.every((subpath) => typeof subpath === 'string'))) {
+    throw new DiscoveryError(`${pkg.name} has a "marmeon" field whose "experimental" is neither true nor a list of subpaths of its exports.`);
+  }
+  return { providers: (providers as string[] | undefined) ?? [] };
+}
+
 /** Post-order walk over installed dependencies: a package's dependencies come before it. */
 function walkDependencies(root: string): PackageInfo[] {
   const rootJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
@@ -171,30 +216,35 @@ function walkDependencies(root: string): PackageInfo[] {
   const visit = (pkg: PackageInfo, dependentDir: string) => {
     if (seen.has(pkg.dir)) return;
     seen.add(pkg.dir);
-    for (const dep of [...Object.keys(pkg.json.dependencies ?? {}), ...Object.keys(pkg.json.optionalDependencies ?? {})]) {
+    for (const dep of [...Object.keys(ownRecord(pkg.json, 'dependencies')), ...Object.keys(ownRecord(pkg.json, 'optionalDependencies'))]) {
       const found = findPackage(dep, pkg.dir);
       if (found) visit(found, pkg.dir);
     }
-    for (const dep of Object.keys(pkg.json.peerDependencies ?? {})) {
+    for (const dep of Object.keys(ownRecord(pkg.json, 'peerDependencies'))) {
       const found = findPackage(dep, dependentDir);
       if (found) visit(found, dependentDir);
     }
-    if (pkg.json.marmeon) ordered.push(pkg);
+    if (marmeonField(pkg)) ordered.push(pkg);
   };
 
   // The app's dev dependencies count too — they are simply absent in production installs.
-  for (const dep of [...dependencyNames(rootJson), ...Object.keys(rootJson.devDependencies ?? {})]) {
+  for (const dep of [...dependencyNames(rootJson), ...Object.keys(ownRecord(rootJson, 'devDependencies'))]) {
     const found = findPackage(dep, root);
     if (found) visit(found, root);
   }
   return ordered;
 }
 
+/** A dependency list of a `package.json`, from its own properties only — never one an altered Object.prototype supplies. */
+function ownRecord(json: object, key: string): Record<string, unknown> {
+  return (Object.hasOwn(json, key) ? (json as Record<string, Record<string, unknown> | undefined>)[key] : undefined) ?? {};
+}
+
 function dependencyNames(json: PackageInfo['json']): string[] {
   return [
-    ...Object.keys(json.dependencies ?? {}),
-    ...Object.keys(json.optionalDependencies ?? {}),
-    ...Object.keys(json.peerDependencies ?? {}),
+    ...Object.keys(ownRecord(json, 'dependencies')),
+    ...Object.keys(ownRecord(json, 'optionalDependencies')),
+    ...Object.keys(ownRecord(json, 'peerDependencies')),
   ];
 }
 

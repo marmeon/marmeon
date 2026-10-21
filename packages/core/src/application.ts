@@ -135,8 +135,8 @@ export class Application {
     for (const Provider of providers) {
       const provider = this.container.make(Provider);
       const hooks = [provider.register, provider.boot, provider.shutdown].some((hook) => typeof hook === 'function');
-      if (!hooks && !Provider.config?.length && !Provider.health?.length && !Provider.errorReporters?.length && !Provider.solutions?.length && !declaredCommands(Provider) && !declaredDrivers(Provider)) {
-        throw new TypeError(withCode('K9', `${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, ${DRIVER_STATICS.map((key) => `static ${key}`).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`));
+      if (!hooks && !declaresStatics(Provider)) {
+        throw new TypeError(withCode('K9', `${Provider.name} is listed as a service provider but has no register(), boot(), shutdown(), ${PROVIDER_STATICS.map((key) => `static ${key}`).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`));
       }
       provider.register?.(this.container);
       this.#providers.push(provider);
@@ -189,17 +189,15 @@ export const CLUSTER_WORKER = 'MARMEON_CLUSTER_WORKER';
  */
 const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers', 'diskDrivers', 'cacheDrivers', 'checks', 'migrations'] as const;
 
-/** Whether `Provider` brings drivers of any service, checks or migrations: a non-empty record or list in one of the {@link DRIVER_STATICS}. */
-function declaredDrivers(Provider: ServiceProviderClass): boolean {
-  return DRIVER_STATICS.some((key) => {
-    const record = (Provider as unknown as Record<string, unknown>)[key];
-    return typeof record === 'object' && record !== null && Object.keys(record).length > 0;
-  });
-}
+/** Every static of a provider class (docs/package-development.md#provider-statics): the table of the page and the K9 message list exactly these. @internal */
+export const PROVIDER_STATICS = ['config', 'health', 'errorReporters', 'solutions', 'commands', ...DRIVER_STATICS] as const;
 
-/** Whether `Provider` lists commands — a static list the marmeon CLI declares on `ServiceProviderClass`. */
-function declaredCommands(Provider: ServiceProviderClass): boolean {
-  return ((Provider as { commands?: readonly unknown[] }).commands?.length ?? 0) > 0;
+/** Whether `Provider` lists anything in a static of the {@link PROVIDER_STATICS}: a non-empty list, or a record with an entry. */
+function declaresStatics(Provider: ServiceProviderClass): boolean {
+  return PROVIDER_STATICS.some((key) => {
+    const value = (Provider as unknown as Record<string, unknown>)[key];
+    return typeof value === 'object' && value !== null && Object.keys(value).length > 0;
+  });
 }
 
 /**

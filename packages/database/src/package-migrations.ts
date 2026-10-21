@@ -218,7 +218,7 @@ function belongsTo(root: string, path: string): boolean {
 export interface ProviderPackage {
   readonly name: string;
   readonly dir: string;
-  readonly json: { readonly main?: string; readonly exports?: unknown; readonly marmeon?: { providers?: string[] } };
+  readonly json: { readonly main?: string; readonly exports?: unknown; readonly marmeon?: unknown };
 }
 
 /**
@@ -253,7 +253,8 @@ async function exportedClasses(pkg: ProviderPackage, root: string): Promise<{ cl
 
 /** Whether the app's boot loads the main entry of the package for its providers: `marmeon.providers` lists some. */
 function discoverable(pkg: ProviderPackage): boolean {
-  const providers = pkg.json.marmeon?.providers;
+  const field = pkg.json.marmeon;
+  const providers = typeof field === 'object' && field !== null ? (field as { providers?: unknown }).providers : undefined;
   return Array.isArray(providers) && providers.length > 0;
 }
 

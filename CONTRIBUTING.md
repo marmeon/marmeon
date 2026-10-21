@@ -726,6 +726,13 @@ Discovery writes one manifest per set of resolution conditions: `.marmeon/manife
 `.marmeon/manifest.source.json` inside this repository, so switching between `marmeon dev` and `marmeon start` here rewrites
 neither. Any other set gets its own file — Vitest adds `development`: `manifest.development+source.json`.
 
+### The package protocol
+
+What a community package may rely on is the tables of [`docs/package-development.md`](docs/package-development.md#the-package-protocol):
+the keys of the `"marmeon"` field, the statics of a provider and of the classes a package brings. A new static or key is additive
+and comes into its table in the same change (`scripts/package-protocol.test.ts` fails for a provider static that the table lacks);
+a new key of the field is also added to `MARMEON_KEYS` in `packages/core/src/discovery/discover.ts`, which refuses every other.
+
 ### The starter's template
 
 `packages/create-marmeon/template/base` is `apps/blank-app`: change the blank app, then run `pnpm template:sync` — a test fails

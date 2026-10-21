@@ -33,23 +33,84 @@ in its `package.json` that names its service provider:
 After `pnpm add @acme/marmeon-audit`, the app registers `AuditServiceProvider` at its next start, with no extra step. This page
 builds that package: an audit log with its configuration, a middleware, a command and a route.
 
-## The `"marmeon"` field
+## The package protocol
+
+Everything on this page that an app or the framework reads from a package is the *package protocol*. A package may rely on what
+this section lists, and on nothing else: not on the order in which the framework reads a list, and not on a static it does not name here.
+
+**The version of the protocol is the major version of `@marmeon/core`**, the one your package's range for `@marmeon/core` (or for
+`marmeon`, which has the same version) accepts. There is no second version field in `package.json`, since it could only contradict
+the range. While the major version is 0, the minor version takes its place, as [the release policy](releases.md#before-10) says
+for the whole framework.
+
+The rule for change is the one of the public API:
+
+- Removing a part of the protocol or changing what it means happens only in a major version, after a [deprecation](releases.md#deprecations).
+- A new key of the `"marmeon"` field, a new static or a new kind of class is added in a minor version and never changes what a
+  package without it does. A package must therefore not read a static it does not know to be its own, and the framework never
+  needs a package to declare one.
+
+The tables below list every part.
+
+### The `"marmeon"` field
 
 | Key | What it holds |
 | --- | --- |
-| `providers` | The names of service provider classes that the package's entry exports. |
+| `providers` | The names of service provider classes that the package's entry exports, each a JavaScript identifier. |
 | `browser` | Globs of the package's files that run only in the browser, relative to the package, such as `["src/client/**"]`. |
+| `experimental` | `true`, or a list of the package's `exports` subpaths: marks the package, or those entries, as [experimental](releases.md#experimental). |
 
-The app finds the field when it walks its dependencies, the dev dependencies included, and the dependencies of those. A package's
-providers register after the providers of the packages it depends on, so list the framework packages you build on as dependencies.
-A name in `providers` that the entry does not export stops the app with
+The field is an object with these keys and no others. The app finds it when it walks its dependencies, the dev dependencies
+included, and the dependencies of those, and a field that does not hold to this stops the app, because the package's `package.json`
+is someone else's file and a key that is silently skipped hides a mistake:
+
+- A key that is not listed, such as `provider` for `providers`, ends discovery with `K7`: `@acme/marmeon-audit has an unknown key
+  "provider" in its "marmeon" field (known: providers, browser, experimental) — a misspelt key would leave its providers out.`
+  The message names the package and the key, and the key only if it is a plain identifier; it never repeats a value of the field.
+  The same holds for a `migrations` key, since migrations are a static of the provider (below).
+- A field that is not an object (an array, a string, `null`), a `providers` that is not a list of class names, or a `browser` that
+  is not a list of strings also ends discovery with `K7`.
+
+A package's providers register after the providers of the packages it depends on, so list the framework packages you build on as
+dependencies. A name in `providers` that the entry does not export stops the app with
 `@acme/marmeon-audit lists provider "AuditServiceProvider" in package.json, but its entry does not export it.`
 
 The app writes what it found to `.marmeon/manifest.json` and writes it again by itself when `package.json` or the lockfile
 change. The [modules](modules.md#discovery) page explains discovery from the app's side, and how an app turns it off.
 
-A package's migrations are not part of this field: the package declares them on its service provider
-([declaring the migrations a package ships](#declaring-the-migrations-a-package-ships)).
+### Provider statics
+
+A provider class lists what it brings in these statics. All are optional, and a provider with none of them, no `register()`,
+`boot()` or `shutdown()` is refused (`K9`). The first four are read by `@marmeon/core`; the others are added by the package that
+reads them, and are known once that package is installed.
+
+| Static | Type | Read by | More |
+| --- | --- | --- | --- |
+| `config` | `readonly ConfigDefinition[]` | the application, before any provider registers | [Configuration](#configuration) |
+| `solutions` | `readonly SolutionDefinition[]` | the development error page | [Solutions](errors.md#solutions) |
+| `health` | `readonly HealthCheckClass[]` | `/up/ready` | [Health checks](health.md#writing-a-health-check) |
+| `errorReporters` | `readonly ErrorReporterClass[]` | the application, for every server error | [Reporting](errors.md#reporting) |
+| `commands` | `readonly CommandClass[]` | `marmeon` | [Commands](#commands) |
+| `checks` | `readonly AppCheckClass[]` | `marmeon check` | [Checks](#checks) |
+| `migrations` | `{ from: URL, module: string }` | `marmeon publish` | [Declaring the migrations a package ships](#declaring-the-migrations-a-package-ships) |
+| `queueDrivers` | `Record<string, QueueDriverFactory>` | `@marmeon/queue` | [Drivers](drivers.md#bringing-a-driver) |
+| `failedJobDrivers` | `Record<string, FailedJobStoreFactory>` | `@marmeon/queue` | [Drivers](drivers.md#bringing-a-driver) |
+| `diskDrivers` | `Record<string, DiskDriverFactory>` | `@marmeon/storage` | [Drivers](drivers.md#bringing-a-driver) |
+| `cacheDrivers` | `Record<string, CacheDriverFactory>` | `@marmeon/cache` | [Drivers](drivers.md#bringing-a-driver) |
+
+### Statics of other classes
+
+| Class | Static | Meaning |
+| --- | --- | --- |
+| any class the container builds | `inject` | The list of what the constructor needs, in the order of its parameters. Without it, the build or the app's start derives it from the `.d.ts` files ([injected classes](#injected-classes)). |
+| a health check | `check`, `timeout` | The check's name, unique among the checks, and how long it may take in milliseconds ([health](health.md#writing-a-health-check)). |
+| a check of `marmeon check` | `check`, `phase`, `timeout` | The check's name in kebab-case, `'build'` or `'run'`, and how long it may take ([checks](#checks)). |
+| a command | `command`, `description`, `usage`, `options`, `hidden`, `experimental` | The name one types and what `marmeon list` shows ([writing commands](console.md#writing-commands)). |
+| a controller | `request` | The request schema that validates the route's input and types its context ([controllers](controllers.md)). |
+| a repository | `table`, `connection`, `routeKey`, `routeKeyPattern` | The table, the default connection, and the column and pattern a route parameter is bound by ([repositories](queries.md#defining-a-repository)). |
+| an event that queued listeners listen to | `event`, `schema` | Its stable name and the schema of what is queued ([queued listeners](events.md#queued-listeners)). |
+
+The statics of jobs, notifications and queued listeners (`job`, `schema`, `tries`, `backoff`, `timeout`, `encrypted`, `middleware`, `notification`, `database`, `queue`, `listener`) and the `preview` of a mail are not part of the protocol: only a module registers those classes, and a package's provider does not list them.
 
 ## The service provider
 
