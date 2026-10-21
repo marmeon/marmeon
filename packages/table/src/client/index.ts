@@ -20,7 +20,10 @@ export interface TableColumn<C extends string = string> {
   readonly sort: SortDirection | null;
 }
 
-/** A filter the user may use. */
+/**
+ * A filter the user may use. The kinds are open: a new `type` arrives in a minor release, so a renderer that branches on `type`
+ * needs a `default` branch (see `docs/tables.md#what-the-browser-gets`).
+ */
 export type TableFilter<F extends string = string> =
   | {
       readonly name: F;
@@ -89,6 +92,7 @@ export interface TableBulkEntry<B extends string = string> {
 /** An export the user may use — `url` carries the table's state (sort, filters, search); a download, no JavaScript needed. */
 export interface TableExportEntry<E extends string = string> {
   readonly name: E;
+  /** Open like the filters: more formats arrive in a minor release, so branch on it with a `default`. */
   readonly format: 'csv';
   readonly url: string;
   /** The most rows it takes — an export over more is refused (422): narrow the filter first. */
@@ -120,6 +124,7 @@ export interface TableData<
   /** The search, when a visible column is searchable — null otherwise. */
   readonly search: { readonly value: string } | null;
   readonly filters: readonly TableFilter<F>[];
+  /** Open like the filters: a new `type` arrives in a minor release, so branch on `page.type` with a `default`. */
   readonly page: OffsetPage | CursorPage;
   readonly query: TableQueryKeys;
   /**

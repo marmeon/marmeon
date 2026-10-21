@@ -254,6 +254,24 @@ describe('useTable — accessible markup from the props', () => {
     expect(markup).toContain('aria-label="Grace Hopper auswählen"');
     expect(markup).not.toMatch(/checked=""/);
   });
+
+  it('survives a filter, page and export kind it does not know — the kinds are open', async () => {
+    const render = createSsrRenderer(resolve);
+    const page = pageOf('/members');
+    const data = page.props.members as Members;
+    const unknown = {
+      ...data,
+      filters: [{ name: 'age', type: 'numberRange', key: 'filter[age]', value: null }] as never,
+      page: { type: 'keyset', perPage: 10, perPageOptions: [10], nextCursor: null } as never,
+      exports: [{ name: 'csv', format: 'xlsx', url: '/members/_tables/members/export/csv', max: 10 }] as never,
+    };
+    const { html } = await render({ ...page, props: { members: unknown } });
+    const markup = typeof html === 'string' ? html : await new Response(html).text();
+    expect(markup).toContain('Ada Lovelace');
+    const tanstack = await render({ ...page, component: 'app/TanStack', props: { members: unknown } });
+    const tanstackMarkup = typeof tanstack.html === 'string' ? tanstack.html : await new Response(tanstack.html).text();
+    expect(tanstackMarkup).toContain('data-testid="row-1"');
+  });
 });
 
 describe('useTable — in the browser', () => {
