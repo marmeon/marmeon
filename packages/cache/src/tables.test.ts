@@ -10,7 +10,7 @@ import { CacheServiceProvider } from './index.ts';
 async function appWith(env: Record<string, string>) {
   return createApplication(
     { root: '/tmp', discover: false, providers: [DatabaseServiceProvider, CacheServiceProvider] },
-    { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', NODE_ENV: 'test', ...env }, override: (container) => container.instance(Logger, silent) },
+    { env: { DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', NODE_ENV: 'test', ...env }, override: (container) => container.instance(Logger, silent) },
   );
 }
 

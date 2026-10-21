@@ -2,7 +2,7 @@ import { PostgresDialect } from 'kysely';
 
 export interface PostgresOptions {
   url: string;
-  /** The connection's name, for the message when `pg` is missing (default `default`, which `DB_CONNECTION` configures). */
+  /** The connection's name, for the message when `pg` is missing (default `default`, which `DB_DRIVER` configures). */
   name?: string;
   /** Largest number of pooled connections (default 10). */
   poolMax?: number;
@@ -54,7 +54,7 @@ export function createPostgresDialect(options: PostgresOptions): PostgresDialect
 export const PG_INSTALL = 'pnpm add pg@^8';
 
 /**
- * Imports `pg`, or says how to install it — for `connection`: `DB_CONNECTION=pgsql` for `default`, the connection's name for any
+ * Imports `pg`, or says how to install it — for `connection`: `DB_DRIVER=pgsql` for `default`, the connection's name for any
  * other. Other failures (a broken install) pass through. `load` is replaced in tests.
  */
 export async function importPg(load: () => Promise<{ default: unknown }> = () => import('pg'), connection = 'default'): Promise<(typeof import('pg'))['default']> {
@@ -63,7 +63,7 @@ export async function importPg(load: () => Promise<{ default: unknown }> = () =>
   } catch (error) {
     const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
     if ((code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') && typeof message === 'string' && /['"]pg['"]/.test(message)) {
-      const who = connection === 'default' ? 'DB_CONNECTION=pgsql' : `The Postgres connection "${connection}"`;
+      const who = connection === 'default' ? 'DB_DRIVER=pgsql' : `The Postgres connection "${connection}"`;
       throw new Error(`${who} needs the "pg" package, which is not installed in this app: ${PG_INSTALL}`, { cause: error });
     }
     throw error;

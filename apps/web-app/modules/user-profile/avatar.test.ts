@@ -303,7 +303,7 @@ describe('a used token stays used when the transaction around it rolls back', ()
   it('on SQLite with a file of its own (the app’s .env.example: UPLOADS_CONNECTION=system) — after the rollback the token is still used', async () => {
     directory = mkdtempSync(join(tmpdir(), 'marmeon-web-uploads-'));
     app = await createTestApp(application, {
-      env: { DB_CONNECTION: 'sqlite', DB_DATABASE: join(directory, 'database.sqlite'), SYSTEM_DB_DATABASE: join(directory, 'system.sqlite'), UPLOADS_CONNECTION: 'system' },
+      env: { DB_DRIVER: 'sqlite', DB_DATABASE: join(directory, 'database.sqlite'), SYSTEM_DB_DATABASE: join(directory, 'system.sqlite'), UPLOADS_CONNECTION: 'system' },
     });
     await app.make(Migrator).migrate();
     const { id, uploads, inside } = await consumeAndRollBack();

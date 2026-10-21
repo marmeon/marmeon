@@ -76,7 +76,7 @@ class ScratchQueueDriver implements QueueDriver {
 
 const scratch: QueueDriverFactory = ({ clock }) => ({ driver: new ScratchQueueDriver(() => clock.now(), 90), queue: 'default', retryAfter: 90 });
 
-/** A queue driver of the app's own, `QUEUE_CONNECTION=scratch` — a package brings its drivers the same way (docs/drivers.md#bringing-a-driver). */
+/** A queue driver of the app's own, `QUEUE_DRIVER=scratch` — a package brings its drivers the same way (docs/drivers.md#bringing-a-driver). */
 export class ScratchQueueServiceProvider {
   static queueDrivers = { scratch };
 }

@@ -191,7 +191,7 @@ describe('readiness with a requirement', () => {
     const root = tempDir('marmeon-upgrades-');
     await using app = await createApplication(
       { root, discover: false, providers: [DatabaseServiceProvider] },
-      { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:' }, override: (container) => container.instance(Logger, silent) },
+      { env: { DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:' }, override: (container) => container.instance(Logger, silent) },
     );
     app.container.make(SchemaRequirements).require({ connection: 'default', table: 'missing_things', columns: ['id'] });
     const report = await app.container.make(HealthChecks).run(app.container);

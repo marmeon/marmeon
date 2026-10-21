@@ -69,15 +69,15 @@ const failedX: FailedJobStoreFactory = () => failedStore;
 function boot(providers: ServiceProviderClass[], env: Record<string, string> = {}, modules: ModuleDefinition[] = [{ name: 'test', jobs: [NoteJob, SecretJob] }]): Promise<Application> {
   return createApplication(
     { root: '/tmp', discover: false, providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider, ...providers], modules },
-    { env: { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', ...env }, override: (container) => container.instance(Logger, silent) },
+    { env: { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', ...env }, override: (container) => container.instance(Logger, silent) },
   );
 }
 
 describe('a queue driver of a provider', () => {
-  it('runs the jobs of QUEUE_CONNECTION=<its name>, and keeps their failures in the store of QUEUE_FAILED_DRIVER', async () => {
+  it('runs the jobs of QUEUE_DRIVER=<its name>, and keeps their failures in the store of QUEUE_FAILED_DRIVER', async () => {
     handled.length = 0;
     await using app = await boot([pluginProvider('MemoryPackage', { queueDrivers: { 'memory-x': memoryX }, failedJobDrivers: { 'failed-x': failedX } })], {
-      QUEUE_CONNECTION: 'memory-x',
+      QUEUE_DRIVER: 'memory-x',
       QUEUE_FAILED_DRIVER: 'failed-x',
     });
     const queue = app.container.make(Queue);
@@ -101,7 +101,7 @@ describe('a queue driver of a provider', () => {
   it('gets the payload of an encrypted job as ciphertext — never the plaintext', async () => {
     handled.length = 0;
     spy.pushed.length = 0;
-    await using app = await boot([pluginProvider('SpyPackage', { queueDrivers: { 'spy-x': spyX } })], { QUEUE_CONNECTION: 'spy-x' });
+    await using app = await boot([pluginProvider('SpyPackage', { queueDrivers: { 'spy-x': spyX } })], { QUEUE_DRIVER: 'spy-x' });
     await app.container.make(Queue).dispatch(SecretJob, { secret: 'plaintext-marker-1234' });
     expect(spy.pushed).toHaveLength(1);
     expect(spy.pushed[0]).not.toContain('plaintext-marker-1234');
@@ -112,7 +112,7 @@ describe('a queue driver of a provider', () => {
 
   it('holds a dispatch inside a transaction until the commit — it cannot join one, and queue.using(trx) refuses', async () => {
     const driver = new SpyDriver();
-    await using app = await boot([pluginProvider('SpyPackage', { queueDrivers: { 'spy-x': () => ({ driver, queue: 'default', retryAfter: 90 }) } })], { QUEUE_CONNECTION: 'spy-x' });
+    await using app = await boot([pluginProvider('SpyPackage', { queueDrivers: { 'spy-x': () => ({ driver, queue: 'default', retryAfter: 90 }) } })], { QUEUE_DRIVER: 'spy-x' });
     const queue = app.container.make(Queue);
     const connections = app.container.make(Connections);
     class Rollback extends Error {}
@@ -134,7 +134,7 @@ describe('a queue driver of a provider', () => {
   });
 
   it('is checked for retryAfter like a built-in one: a job that may outlast it keeps the worker from starting', async () => {
-    await using app = await boot([pluginProvider('MemoryPackage', { queueDrivers: { 'memory-x': memoryX } })], { QUEUE_CONNECTION: 'memory-x' }, [{ name: 'test', jobs: [SlowJob] }]);
+    await using app = await boot([pluginProvider('MemoryPackage', { queueDrivers: { 'memory-x': memoryX } })], { QUEUE_DRIVER: 'memory-x' }, [{ name: 'test', jobs: [SlowJob] }]);
     expect(() => app.container.make(QueueConnections).worker('memory-x', 10)).toThrow(/test\.slow \(timeout 120s\)/);
   });
 });
@@ -142,17 +142,17 @@ describe('a queue driver of a provider', () => {
 describe('fail closed', () => {
   it.each([0, -5, Number.NaN])('stops the start for a driver whose retryAfter is %s', async (retryAfter) => {
     const bad: QueueDriverFactory = () => ({ driver: new MemoryQueueDriver(), queue: 'default', retryAfter });
-    await expect(boot([pluginProvider('BadPackage', { queueDrivers: { 'bad-x': bad } })], { QUEUE_CONNECTION: 'bad-x' })).rejects.toThrow(/retryAfter .* positive number of seconds/);
+    await expect(boot([pluginProvider('BadPackage', { queueDrivers: { 'bad-x': bad } })], { QUEUE_DRIVER: 'bad-x' })).rejects.toThrow(/retryAfter .* positive number of seconds/);
   });
 
   it.each(['release', 'fail', 'size', 'queues'])('stops the start for a driver without %s()', async (member) => {
     const incomplete: QueueDriverFactory = () => ({ driver: Object.assign(new MemoryQueueDriver(), { [member]: undefined }), queue: 'default', retryAfter: 90 });
-    await expect(boot([pluginProvider('BadPackage', { queueDrivers: { 'bad-x': incomplete } })], { QUEUE_CONNECTION: 'bad-x' })).rejects.toThrow(/must return \{ driver, queue, retryAfter \}/);
+    await expect(boot([pluginProvider('BadPackage', { queueDrivers: { 'bad-x': incomplete } })], { QUEUE_DRIVER: 'bad-x' })).rejects.toThrow(/must return \{ driver, queue, retryAfter \}/);
   });
 
   it('stops the start for a driver that joins a transaction without being able to write through one', async () => {
     const joins: QueueDriverFactory = () => ({ driver: Object.assign(new MemoryQueueDriver(), { joinsTransaction: async () => true }), queue: 'default', retryAfter: 90 });
-    await expect(boot([pluginProvider('BadPackage', { queueDrivers: { 'bad-x': joins } })], { QUEUE_CONNECTION: 'bad-x' })).rejects.toThrow(/joinsTransaction\(\) but no using/);
+    await expect(boot([pluginProvider('BadPackage', { queueDrivers: { 'bad-x': joins } })], { QUEUE_DRIVER: 'bad-x' })).rejects.toThrow(/joinsTransaction\(\) but no using/);
   });
 
   it('runs a factory that throws once — later lookups get the same error', async () => {
@@ -172,13 +172,13 @@ describe('fail closed', () => {
     const throwing: FailedJobStoreFactory = () => {
       throw new Error('no table');
     };
-    await expect(boot([pluginProvider('P', { failedJobDrivers: { 'failed-x': throwing } })], { QUEUE_FAILED_DRIVER: 'failed-x', QUEUE_CONNECTION: 'sync' })).rejects.toThrow('no table');
+    await expect(boot([pluginProvider('P', { failedJobDrivers: { 'failed-x': throwing } })], { QUEUE_FAILED_DRIVER: 'failed-x', QUEUE_DRIVER: 'sync' })).rejects.toThrow('no table');
     const half = (() => ({ record: async () => {}, all: async () => [], prune: async () => 0 })) as unknown as FailedJobStoreFactory;
-    await expect(boot([pluginProvider('P', { failedJobDrivers: { 'failed-x': half } })], { QUEUE_FAILED_DRIVER: 'failed-x', QUEUE_CONNECTION: 'sync' })).rejects.toThrow(/must return a FailedJobStore \(record, all, find, forget, flush, prune\)/);
+    await expect(boot([pluginProvider('P', { failedJobDrivers: { 'failed-x': half } })], { QUEUE_FAILED_DRIVER: 'failed-x', QUEUE_DRIVER: 'sync' })).rejects.toThrow(/must return a FailedJobStore \(record, all, find, forget, flush, prune\)/);
   });
 
   it('knows no custom connection from an overridden config that names no driver', async () => {
-    await using app = await boot([], { QUEUE_CONNECTION: 'sync' });
+    await using app = await boot([], { QUEUE_DRIVER: 'sync' });
     const config = app.container.make(QueueConfig);
     const connections = new QueueConnections(app.container, { ...config, connections: { ...config.connections, ghost: { driver: 'custom', queue: 'default', retryAfter: 90 } } });
     expect(() => connections.options('ghost')).toThrow(/"ghost" is not configured/);
@@ -188,7 +188,7 @@ describe('fail closed', () => {
     const store = new MemoryFailedJobStore();
     await store.record({ uuid: 'lost', connection: 'gone', queue: 'default', job: 'test.note', payload: '{}', exception: 'x', failedAt: 1 });
     await using app = await boot([pluginProvider('MemoryPackage', { queueDrivers: { 'memory-x': memoryX }, failedJobDrivers: { 'failed-x': () => store } })], {
-      QUEUE_CONNECTION: 'memory-x',
+      QUEUE_DRIVER: 'memory-x',
       QUEUE_FAILED_DRIVER: 'failed-x',
     });
     const lines: string[] = [];
@@ -201,22 +201,22 @@ describe('fail closed', () => {
 
   it('stops the start for a driver that returns no driver', async () => {
     const bad = (() => ({ queue: 'default', retryAfter: 90 })) as unknown as QueueDriverFactory;
-    await expect(boot([pluginProvider('BadPackage', { queueDrivers: { 'bad-x': bad } })], { QUEUE_CONNECTION: 'bad-x' })).rejects.toThrow(/must return \{ driver, queue, retryAfter \}/);
+    await expect(boot([pluginProvider('BadPackage', { queueDrivers: { 'bad-x': bad } })], { QUEUE_DRIVER: 'bad-x' })).rejects.toThrow(/must return \{ driver, queue, retryAfter \}/);
   });
 
-  it('stops the start when QUEUE_CONNECTION names no driver, listing the known ones', async () => {
-    const error = await boot([pluginProvider('MemoryPackage', { queueDrivers: { 'memory-x': memoryX } })], { QUEUE_CONNECTION: 'memry-x' }).catch((caught: unknown) => caught);
+  it('stops the start when QUEUE_DRIVER names no driver, listing the known ones', async () => {
+    const error = await boot([pluginProvider('MemoryPackage', { queueDrivers: { 'memory-x': memoryX } })], { QUEUE_DRIVER: 'memry-x' }).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toMatch(/"memry-x" is not configured\. Known: sync, database, redis, memory-x/);
   });
 
   it('stops the start when QUEUE_FAILED_DRIVER names no store, listing the known ones', async () => {
-    const error = await boot([pluginProvider('MemoryPackage', { failedJobDrivers: { 'failed-x': failedX } })], { QUEUE_FAILED_DRIVER: 'faild-x', QUEUE_CONNECTION: 'sync' }).catch((caught: unknown) => caught);
+    const error = await boot([pluginProvider('MemoryPackage', { failedJobDrivers: { 'failed-x': failedX } })], { QUEUE_FAILED_DRIVER: 'faild-x', QUEUE_DRIVER: 'sync' }).catch((caught: unknown) => caught);
     expect((error as Error).message).toMatch(/QUEUE_FAILED_DRIVER=faild-x is not a failed-job store\. Known: database, null, failed-x/);
   });
 
   it('stops the start for a name that is no driver name', async () => {
-    await expect(boot([], { QUEUE_CONNECTION: '../x' })).rejects.toThrow(/QUEUE_CONNECTION/);
+    await expect(boot([], { QUEUE_DRIVER: '../x' })).rejects.toThrow(/QUEUE_DRIVER/);
     await expect(boot([], { QUEUE_FAILED_DRIVER: 'Null' })).rejects.toThrow(/QUEUE_FAILED_DRIVER/);
   });
 

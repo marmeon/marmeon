@@ -254,7 +254,7 @@ describe('SESSION_DRIVER=database never joins the app’s transactions', () => {
   it.runIf(PGSQL_URL)('Postgres: a session written inside a transaction survives its rollback — a pool of its own', async () => {
     const fresh = await freshTarget('pgsql');
     try {
-      const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_CONNECTION: 'pgsql', DB_URL: (fresh.target as { url: string }).url }, [DatabaseServiceProvider]);
+      const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DRIVER: 'pgsql', DB_URL: (fresh.target as { url: string }).url }, [DatabaseServiceProvider]);
       const connections = app.container.make(Connections);
       const store = app.container.make(SessionStore);
       await expect(

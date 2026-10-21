@@ -11,7 +11,7 @@ const page = { headers: { accept: 'text/html' } };
  * Under `pnpm test:pgsql` a test runs in one transaction, which Postgres aborts with the failed statement — so the
  * missing-table solution cannot ask for the pending migrations there (a request outside a test can).
  */
-const postgres = process.env.DB_CONNECTION === 'pgsql';
+const postgres = process.env.DB_DRIVER === 'pgsql';
 
 /** What the development error page says for each kind of `/lab/errors/:kind` — its solution's title. */
 const SOLUTIONS: Record<Exclude<ErrorKind, 'view' | 'optional-parameter'>, string> = {

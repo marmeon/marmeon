@@ -40,7 +40,7 @@ export class NoteReminderMail implements Mailable {
 await this.#mailer.queue(new NoteReminderMail(user.email, note.title, url));
 ```
 
-`MAIL_MAILER=log`, the default, writes every mail into the log; production sends with `smtp`.
+`MAIL_DRIVER=log`, the default, writes every mail into the log; production sends with `smtp`.
 
 ## Documentation
 

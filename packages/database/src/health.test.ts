@@ -22,7 +22,7 @@ const boot = (extra: ReturnType<typeof defineConnection>[] = []) =>
     discover: false,
     providers: [DatabaseServiceProvider],
     config: extra,
-  }, { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: join(root, 'app.sqlite') }, override: (container) => container.instance(Logger, silent) });
+  }, { env: { DB_DRIVER: 'sqlite', DB_DATABASE: join(root, 'app.sqlite') }, override: (container) => container.instance(Logger, silent) });
 
 describe('the database health check', () => {
   it('is registered by the provider and answers `select 1` on every connection the app uses — never opens one it does not', async () => {

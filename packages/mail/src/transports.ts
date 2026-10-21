@@ -7,7 +7,7 @@ export interface MailTransport {
 }
 export const MailTransport = token<MailTransport>('MailTransport');
 
-/** Writes every message to the log instead of sending it (`MAIL_MAILER=log`, the default). */
+/** Writes every message to the log instead of sending it (`MAIL_DRIVER=log`, the default). */
 export class LogTransport implements MailTransport {
   readonly #logger: Logger;
 
@@ -22,7 +22,7 @@ export class LogTransport implements MailTransport {
   }
 }
 
-/** Keeps messages in memory (`MAIL_MAILER=array`) — for tests and tools that inspect what would have been sent. */
+/** Keeps messages in memory (`MAIL_DRIVER=array`) — for tests and tools that inspect what would have been sent. */
 export class ArrayTransport implements MailTransport {
   readonly messages: MailMessage[] = [];
 
@@ -56,7 +56,7 @@ interface NodemailerTransporter {
   close(): void;
 }
 
-/** SMTP through nodemailer, imported on first use (`MAIL_MAILER=smtp`). Nothing of nodemailer is visible outside this class. */
+/** SMTP through nodemailer, imported on first use (`MAIL_DRIVER=smtp`). Nothing of nodemailer is visible outside this class. */
 export class SmtpTransport implements MailTransport {
   readonly #options: SmtpOptions;
   #transporter: Promise<NodemailerTransporter> | undefined;

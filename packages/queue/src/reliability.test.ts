@@ -518,7 +518,7 @@ describe('the queue beyond one driver', () => {
         expect(await app.queue.dispatch(NoteJob, { n: 5 }, { unique: 'report' })).toEqual(expect.any(String));
         expect(await app.queue.dispatch(NoteJob, { n: 6 }, { unique: 'report' })).toEqual(expect.any(String));
       },
-      { QUEUE_CONNECTION: 'sync' },
+      { QUEUE_DRIVER: 'sync' },
     );
   });
 });

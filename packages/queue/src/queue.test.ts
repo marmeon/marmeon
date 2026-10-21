@@ -143,7 +143,7 @@ async function app(options: { env?: Record<string, string>; modules?: ModuleDefi
     providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider],
     modules: options.modules ?? [{ name: 'test', jobs: allJobs }],
   }, {
-    env: { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', ...options.env },
+    env: { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', ...options.env },
     override: (container) => {
       container.instance(Clock, clock);
       container.instance(Seen, seen);
@@ -282,7 +282,7 @@ describe('dispatching', () => {
   });
 
   it('runs a job at once with the sync connection — in its own scope; its error reaches the caller', async () => {
-    await using application = await app({ env: { QUEUE_CONNECTION: 'sync' } });
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' } });
     const queue = application.container.make(Queue);
     await queue.dispatch(WelcomeJob, { userId: 3 });
     expect(application.seen.entries).toMatchObject([{ payload: { userId: 3 }, attempt: 1 }]);
@@ -607,7 +607,7 @@ describe('the worker', () => {
     expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow(QueueSetupError);
     expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow('[marmeon:Q4] The queue connection "database"');
     expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow(
-      'The queue connection "database" gives a claimed job 70s (retryAfter) before another worker may take it, but test.welcome (timeout 60s) may hold it for its timeout plus the worker\'s --stop-timeout of 10s — a second worker would run it while the first still does. Raise retryAfter (e.g. DB_QUEUE_RETRY_AFTER) above timeout + stop timeout, or lower the job\'s static timeout.',
+      'The queue connection "database" gives a claimed job 70s (retryAfter) before another worker may take it, but test.welcome (timeout 60s) may hold it for its timeout plus the worker\'s --stop-timeout of 10s — a second worker would run it while the first still does. Raise retryAfter (e.g. QUEUE_DATABASE_RETRY_AFTER_SECONDS) above timeout + stop timeout, or lower the job\'s static timeout.',
     );
     expect(() => checkTimeouts(registry, 'database', 71, 10)).not.toThrow();
   });

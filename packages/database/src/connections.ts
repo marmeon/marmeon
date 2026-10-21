@@ -80,7 +80,7 @@ export class Connections {
     this.#redactor = options.app?.container.has(Redactor) ? options.app.container.make(Redactor) : new Redactor();
   }
 
-  /** The connection by name (default: `default`, from `DB_CONNECTION`). Typed by `Tables` unless given its own. */
+  /** The connection by name (default: `default`, from `DB_DRIVER`). Typed by `Tables` unless given its own. */
   get<DB = Tables>(name = 'default'): Connection<DB> {
     return this.#instance(name).db as Connection<DB>;
   }

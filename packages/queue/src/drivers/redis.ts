@@ -108,7 +108,7 @@ return 1`,
 export type RedisQueueConnection = RedisConnection | (() => Promise<RedisConnection>);
 
 /**
- * Jobs in Redis (`QUEUE_CONNECTION=redis`): a list of waiting jobs per queue (`<prefix>queues:<queue>`),
+ * Jobs in Redis (`QUEUE_DRIVER=redis`): a list of waiting jobs per queue (`<prefix>queues:<queue>`),
  * sorted sets of delayed (`:delayed`) and claimed jobs (`:reserved`, scored by when the claim expires), and the names of
  * the queues (`<prefix>queues`).
  *

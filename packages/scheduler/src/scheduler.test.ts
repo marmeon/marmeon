@@ -554,7 +554,7 @@ describe('s.job()', () => {
     const dir = tempDir('marmeon-schedule-queue-');
     const booted = await boot(schedule, {
       providers: [EncryptionServiceProvider, DatabaseServiceProvider, QueueServiceProvider],
-      env: { APP_KEY: generateKey(), DB_MANAGED: 'false', DB_DATABASE: join(dir, 'app.sqlite'), QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database' },
+      env: { APP_KEY: generateKey(), DB_MANAGED: 'false', DB_DATABASE: join(dir, 'app.sqlite'), QUEUE_DRIVER: 'database', CACHE_DRIVER: 'database' },
       modules: [defineModule({ name: 'jobs', jobs: [StatsJob] })],
     });
     for (const file of [QUEUE_MIGRATION, CACHE_MIGRATION]) await runMigration(booted.app.container.make(Connections), ((await import(file.href)) as { default: Migration }).default);

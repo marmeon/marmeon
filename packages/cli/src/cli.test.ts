@@ -90,7 +90,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
   });
 
   it('does not print the password of DB_URL when db:show is called with a Postgres address that cannot be reached', () => {
-    const { stdout, stderr } = marmeon(webApp, ['db:show', '--json'], { DB_CONNECTION: 'pgsql', DB_URL: 'postgres://u:geheim@127.0.0.1:1/db?sslkey=/marmeon-secret-key.pem&password=geheim2' }, 20_000);
+    const { stdout, stderr } = marmeon(webApp, ['db:show', '--json'], { DB_DRIVER: 'pgsql', DB_URL: 'postgres://u:geheim@127.0.0.1:1/db?sslkey=/marmeon-secret-key.pem&password=geheim2' }, 20_000);
     expect(stdout).toBe('');
     expect(stdout + stderr).not.toMatch(/geheim|marmeon-secret-key/);
     expect(stderr).toContain('a certificate or key file named in the URL');
@@ -226,7 +226,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
   });
 
   it('prints a failing command’s error without Node’s dump and exits with 1', () => {
-    const { code, stdout, stderr } = marmeon(webApp, ['db:show'], { DB_CONNECTION: 'pgsql', DB_URL: 'postgres://app:hunter2@127.0.0.1:1/app' });
+    const { code, stdout, stderr } = marmeon(webApp, ['db:show'], { DB_DRIVER: 'pgsql', DB_URL: 'postgres://app:hunter2@127.0.0.1:1/app' });
     expect(code).toBe(1);
     expect(stderr).toMatch(/^✗ DatabaseConnectionError: \[marmeon:D11\] Could not connect to the database connection "default" \(pgsql postgres:\/\/app:\*\*\*@127\.0\.0\.1:1\/app\): .*ECONNREFUSED.*\n {2}at /);
     expect(stderr).not.toMatch(/\[cause\]|hunter2|Node\.js v/);

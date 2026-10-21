@@ -146,7 +146,7 @@ async function main(): Promise<number> {
     }
   };
   const logs = (name: string) => () => docker.run(['logs', name], { expect: 'any' }).output;
-  const common = ['-e', `APP_KEY=${key}`, '-e', 'APP_NAME=Smoke', '-e', 'APP_URL=http://localhost', '-e', 'MAIL_MAILER=array', '-v', `${volume}:/app/storage`];
+  const common = ['-e', `APP_KEY=${key}`, '-e', 'APP_NAME=Smoke', '-e', 'APP_URL=http://localhost', '-e', 'MAIL_DRIVER=array', '-v', `${volume}:/app/storage`];
 
   try {
     assertIsolated(app);

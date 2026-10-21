@@ -71,7 +71,7 @@ declare module '@marmeon/core' {
 
   interface ServiceProviderClass {
     /**
-     * Queue drivers this provider brings, by name — `QUEUE_CONNECTION=<name>` selects one. A built-in name (`sync`, `database`,
+     * Queue drivers this provider brings, by name — `QUEUE_DRIVER=<name>` selects one. A built-in name (`sync`, `database`,
      * `redis`) or a name another provider brings stops the start. See `docs/drivers.md#queue-drivers-and-failed-job-stores`.
      */
     readonly queueDrivers?: Readonly<Record<string, QueueDriverFactory>>;
@@ -81,7 +81,7 @@ declare module '@marmeon/core' {
 }
 
 /**
- * Registers the `Queue` (`QUEUE_CONNECTION`), the modules' jobs and the `queue:*` commands; `marmeon dev` starts a worker
+ * Registers the `Queue` (`QUEUE_DRIVER`), the modules' jobs and the `queue:*` commands; `marmeon dev` starts a worker
  * alongside the server. Found by `marmeon discover`.
  */
 export class QueueServiceProvider implements ServiceProvider {
@@ -140,7 +140,7 @@ export class QueueServiceProvider implements ServiceProvider {
     const used = connections.options(config.default);
     const databases = [...(used.driver === 'database' ? [used.connection] : []), ...(config.failed.driver === 'database' ? [config.failed.connection] : [])];
     if (databases.length > 0) {
-      const database = await importDatabase(used.driver === 'database' ? 'QUEUE_CONNECTION=database' : 'QUEUE_FAILED_DRIVER=database (set it to null without a database)');
+      const database = await importDatabase(used.driver === 'database' ? 'QUEUE_DRIVER=database' : 'QUEUE_FAILED_DRIVER=database (set it to null without a database)');
       if (!app.container.has(database.Connections)) {
         throw new QueueSetupError(withCode('Q4', 'The database queue needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).'));
       }
@@ -158,7 +158,7 @@ export class QueueServiceProvider implements ServiceProvider {
     if (used.driver === 'redis') {
       const redis = await importRedis();
       if (!app.container.has(redis.RedisConnections)) {
-        throw new QueueSetupError(withCode('Q4', 'QUEUE_CONNECTION=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).'));
+        throw new QueueSetupError(withCode('Q4', 'QUEUE_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).'));
       }
       // An unknown Redis connection name fails here, with the known ones; a missing client with what to install.
       const redisConnections = app.container.make(redis.RedisConnections);

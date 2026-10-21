@@ -34,12 +34,12 @@ export async function workerDatabase(root: string, env: Env): Promise<WorkerData
     const file = join(root, 'storage', 'framework', 'testing', `database-${worker}.sqlite`);
     // Before the app boots: the connection check wants the folder to exist.
     mkdirSync(dirname(file), { recursive: true });
-    return { key: file, env: { DB_CONNECTION: 'sqlite', DB_DATABASE: file } };
+    return { key: file, env: { DB_DRIVER: 'sqlite', DB_DATABASE: file } };
   }
   const url = new URL(options.url);
   // Per app too (like the SQLite file): two apps' tests in one worker must not share a schema.
   url.pathname = `/${url.pathname.slice(1) || 'marmeon'}_test_${hash(root)}_${worker}`;
-  return { key: url.href, env: { DB_CONNECTION: 'pgsql', DB_URL: url.href }, adminUrl: options.url };
+  return { key: url.href, env: { DB_DRIVER: 'pgsql', DB_URL: url.href }, adminUrl: options.url };
 }
 
 /**

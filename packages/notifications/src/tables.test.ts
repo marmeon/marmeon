@@ -23,7 +23,7 @@ class MailOnly {
 }
 
 describe('the notifications table', () => {
-  const env = { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', NODE_ENV: 'test' };
+  const env = { DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', NODE_ENV: 'test' };
   const open = (modules: ModuleDefinition[]) =>
     createApplication({ root: '/tmp', discover: false, providers: [DatabaseServiceProvider, NotificationServiceProvider], modules }, { env, override: (container) => container.instance(Logger, silent) });
   const shop = [{ name: 'shop', notifications: [Welcome], recipients: { member: Members } }];

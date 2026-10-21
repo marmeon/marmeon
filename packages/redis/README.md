@@ -17,7 +17,7 @@ the start and names this command.
 REDIS_URL=redis://127.0.0.1:6379
 CACHE_DRIVER=redis
 SESSION_DRIVER=redis
-QUEUE_CONNECTION=redis
+QUEUE_DRIVER=redis
 LIVE_DRIVER=redis
 ```
 

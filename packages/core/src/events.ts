@@ -34,7 +34,7 @@ export type ListenerLike<TEvent> = (new (...args: any[]) => Listener<TEvent>) | 
 export interface QueuedListenerOptions {
   /** The queue (default: the connection's default queue). */
   readonly queue?: string;
-  /** The queue connection (default: `QUEUE_CONNECTION`). */
+  /** The queue connection (default: `QUEUE_DRIVER`). */
   readonly connection?: string;
   /** Run no earlier than this — seconds, or a duration. */
   readonly delay?: number | Duration;

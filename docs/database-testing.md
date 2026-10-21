@@ -166,11 +166,11 @@ explains infrastructure connections.
 
 ## Running the tests on Postgres
 
-With `DB_CONNECTION=pgsql` and the server in the environment, refreshed test apps use Postgres instead of SQLite. Name the
+With `DB_DRIVER=pgsql` and the server in the environment, refreshed test apps use Postgres instead of SQLite. Name the
 database in the shell too, since otherwise the `DB_DATABASE=:memory:` of `.env.test` names it:
 
 ```sh
-DB_CONNECTION=pgsql DB_HOST=localhost DB_DATABASE=notes DB_USERNAME=notes DB_PASSWORD=secret pnpm test
+DB_DRIVER=pgsql DB_HOST=localhost DB_DATABASE=notes DB_USERNAME=notes DB_PASSWORD=secret pnpm test
 ```
 
 `DB_URL=postgres://notes:secret@localhost:5432/notes` instead of the four does the same, and then `DB_DATABASE` is not read.

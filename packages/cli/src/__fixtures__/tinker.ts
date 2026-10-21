@@ -14,7 +14,7 @@ export interface Run {
 
 /** The parent's environment for a `marmeon` child: the launcher must re-exec, and the database is the one a test names. */
 export function environment(env: Record<string, string>): NodeJS.ProcessEnv {
-  const { MARMEON_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...parent } = process.env;
+  const { MARMEON_CHILD: _child, DB_DRIVER: _connection, DB_URL: _url, ...parent } = process.env;
   return { ...parent, NO_COLOR: '1', ...env };
 }
 

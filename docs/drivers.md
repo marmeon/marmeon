@@ -22,7 +22,7 @@ export class SqsServiceProvider {
 ```
 
 ```sh title=".env"
-QUEUE_CONNECTION=sqs
+QUEUE_DRIVER=sqs
 ```
 
 A package whose provider is found by `marmeon discover` brings its driver without any code in the app. An app lists the provider
@@ -34,7 +34,7 @@ A provider lists drivers in a static record, by name. The record's key tells whi
 
 | Static | Service | Selected by |
 | --- | --- | --- |
-| `queueDrivers` | [Queues](queues.md#queue-drivers-and-failed-job-stores) | `QUEUE_CONNECTION` |
+| `queueDrivers` | [Queues](queues.md#queue-drivers-and-failed-job-stores) | `QUEUE_DRIVER` |
 | `failedJobDrivers` | [Queues](queues.md#queue-drivers-and-failed-job-stores) | `QUEUE_FAILED_DRIVER` |
 | `diskDrivers` | [File storage](storage.md#disk-drivers) | `driver` of a disk in `defineStorage()` |
 | `cacheDrivers` | [Cache](cache.md#cache-drivers) | `CACHE_DRIVER` |
@@ -83,7 +83,7 @@ export class DynamoServiceProvider {
 }
 ```
 
-The driver is built once, at the start when `QUEUE_CONNECTION` selects it, and on first use otherwise. A factory that returns
+The driver is built once, at the start when `QUEUE_DRIVER` selects it, and on first use otherwise. A factory that returns
 no driver, no queue name, or a `retryAfter` that is not a positive number stops the start. A custom connection is named like its
 driver: dispatch to it with `{ connection: 'sqs' }`, work it with `queue:work --connection=sqs`.
 

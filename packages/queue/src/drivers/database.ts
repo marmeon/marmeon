@@ -59,7 +59,7 @@ export function claimAnyStatement(sql: Sql, driver: DatabaseQueueConnection['dri
 }
 
 /**
- * Jobs in the app's database (`QUEUE_CONNECTION=database`) — the table `jobs`.
+ * Jobs in the app's database (`QUEUE_DRIVER=database`) — the table `jobs`.
  *
  * **The claim is one atomic statement across any number of workers:** `UPDATE jobs … WHERE id = (SELECT id … LIMIT 1)` —
  * on Postgres with `FOR UPDATE SKIP LOCKED` (a row another worker claims is skipped, never taken twice); on SQLite the write

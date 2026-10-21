@@ -94,11 +94,11 @@ function usesDatabase(directory: string, cache: Map<string, boolean>): boolean {
  *
  * Postgres:
  * 1. A file in the import closure reads the Postgres URL variable — its cases run when it is set.
- * 2. A test or helper file in the closure builds a refreshed test app — with `DB_CONNECTION=pgsql` in the environment such an
+ * 2. A test or helper file in the closure builds a refreshed test app — with `DB_DRIVER=pgsql` in the environment such an
  *    app uses Postgres, whatever the file says about it.
- * 3. The test sits in an app that depends on `@marmeon/database` — `loadEnv` lets `DB_CONNECTION` from the environment win over
+ * 3. The test sits in an app that depends on `@marmeon/database` — `loadEnv` lets `DB_DRIVER` from the environment win over
  *    the app's `.env`, so the app's own database is Postgres.
- * 4. A test or helper file starts a nested Vitest — its refresh tests inherit `DB_CONNECTION`.
+ * 4. A test or helper file starts a nested Vitest — its refresh tests inherit `DB_DRIVER`.
  *
  * Redis and S3: rule 1 with their variables.
  *
@@ -184,7 +184,7 @@ export function tripwireEnv(services: ReadonlySet<Service>): Record<string, stri
   const env: Record<string, string> = {};
   if (!services.has('pgsql')) {
     const url = 'postgres://tripwire@not-selected-for-test-pgsql.invalid/marmeon';
-    Object.assign(env, { DB_CONNECTION: 'pgsql', DB_URL: url, [SERVICE_VARIABLES.pgsql]: url });
+    Object.assign(env, { DB_DRIVER: 'pgsql', DB_URL: url, [SERVICE_VARIABLES.pgsql]: url });
   }
   if (!services.has('redis')) env[SERVICE_VARIABLES.redis] = 'redis://not-selected-for-test-redis.invalid:6379';
   if (!services.has('s3')) env[SERVICE_VARIABLES.s3] = 'http://not-selected-for-test-s3.invalid';

@@ -1,6 +1,6 @@
 # Databases for the framework's own tests: `docker compose up -d`, then `pnpm test:pgsql`, `pnpm test:redis` and `pnpm test:s3`.
 # Own ports on purpose — 5432/3306 may belong to other projects on the same machine.
-# An app reaches the Postgres here with DB_CONNECTION=pgsql, DB_HOST=127.0.0.1, DB_PORT=55432, DB_DATABASE=marmeon,
+# An app reaches the Postgres here with DB_DRIVER=pgsql, DB_HOST=127.0.0.1, DB_PORT=55432, DB_DATABASE=marmeon,
 # DB_USERNAME=marmeon and DB_PASSWORD=secret (or DB_URL=postgres://marmeon:secret@localhost:55432/marmeon).
 name: marmeon
 

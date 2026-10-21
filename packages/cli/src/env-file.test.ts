@@ -7,7 +7,7 @@ import { marmeon, repo } from './__fixtures__/cli.js';
 describe('NODE_ENV from the app’s .env', { timeout: 30_000 }, () => {
   let app: string;
   const blank = join(repo, 'apps/blank-app');
-  const config = (dir: string) => `APP_NAME=Blank\nAPP_URL=http://localhost\nAPP_KEY=base64:${Buffer.alloc(32, 5).toString('base64')}\nDB_DATABASE=${join(dir, 'db.sqlite')}\nMAIL_MAILER=array\n`;
+  const config = (dir: string) => `APP_NAME=Blank\nAPP_URL=http://localhost\nAPP_KEY=base64:${Buffer.alloc(32, 5).toString('base64')}\nDB_DATABASE=${join(dir, 'db.sqlite')}\nMAIL_DRIVER=array\n`;
   const inApp = (args: string[], env: Record<string, string> = {}) => marmeon(app, args, { NODE_ENV: '', ...env });
 
   beforeAll(() => {

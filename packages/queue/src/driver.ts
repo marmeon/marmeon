@@ -120,7 +120,7 @@ export interface QueueDriver {
 
 /** What a {@link QueueDriverFactory} is given. */
 export interface QueueDriverContext {
-  /** The connection's name — the name the driver was registered under (`QUEUE_CONNECTION=sqs`). */
+  /** The connection's name — the name the driver was registered under (`QUEUE_DRIVER=sqs`). */
   readonly name: string;
   readonly container: Resolver;
   readonly clock: Clock;

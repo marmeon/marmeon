@@ -62,7 +62,7 @@ async function show(vars: Record<string, string>, options: Record<string, string
 
 afterEach(() => vi.restoreAllMocks());
 
-const POSTGRES = { DB_CONNECTION: 'pgsql' };
+const POSTGRES = { DB_DRIVER: 'pgsql' };
 
 describe('db:show --json', () => {
   it('prints one document for a SQLite database, matching the stored format', async () => {

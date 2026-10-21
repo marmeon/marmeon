@@ -950,7 +950,7 @@ command always opens an existing `system`, whichever way the app installs the pa
 is not one the app did not ask for. (`publish <package>` is stricter, see below.) When `bootstrap/app.ts`
 or the module's `index.ts` has another shape (a list kept in a variable, say), it leaves the file as it is and says what to add. A migration that any module already has
 under the same name is not written again. Each migration
-reads its connection from the configuration when it runs: `CACHE_CONNECTION`, `SESSION_CONNECTION`, `DB_QUEUE_CONNECTION`,
+reads its connection from the configuration when it runs: `CACHE_CONNECTION`, `SESSION_CONNECTION`, `QUEUE_DATABASE_CONNECTION`,
 `NOTIFICATIONS_CONNECTION` and `UPLOADS_CONNECTION`. So its tables land on the
 [connection](database.md#infrastructure-connections) the driver reads and writes.
 

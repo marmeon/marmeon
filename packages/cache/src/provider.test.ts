@@ -167,7 +167,7 @@ describe('CACHE_DRIVER=database never joins the app’s transactions', () => {
       drop = fresh.drop;
     });
     afterAll(() => drop());
-    const pgsql = () => boot({ CACHE_DRIVER: 'database', DB_MANAGED: 'false', DB_CONNECTION: 'pgsql', DB_URL: url }, [DatabaseServiceProvider]);
+    const pgsql = () => boot({ CACHE_DRIVER: 'database', DB_MANAGED: 'false', DB_DRIVER: 'pgsql', DB_URL: url }, [DatabaseServiceProvider]);
 
     it('a rate-limit hit inside a transaction that rolls back is kept', async () => {
       const app = await pgsql();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { describeConnection } from './config.ts';
+import { ConfigError, resolveConfig } from '@marmeon/core';
+import { DatabaseConfig, describeConnection } from './config.ts';
 
 describe('describeConnection: a password with @ or /', () => {
   it.each([
@@ -36,5 +37,20 @@ describe('describeConnection', () => {
   it('describes a URL without a password and a SQLite file as they are', () => {
     expect(describeConnection({ driver: 'pgsql', url: 'postgres://app@db/shop' })).toBe('pgsql postgres://app@db/shop');
     expect(describeConnection({ driver: 'sqlite', database: 'storage/app.db' })).toBe('sqlite storage/app.db');
+  });
+});
+
+describe('DatabaseConfig: DB_DRIVER', () => {
+  const resolve = (env: Record<string, string>) => resolveConfig([DatabaseConfig], env);
+
+  it('selects the driver by its name', async () => {
+    const resolved = await resolve({ DB_DRIVER: 'pgsql', DB_URL: 'postgres://app:pw@db/shop' });
+    expect(resolved.get(DatabaseConfig)).toMatchObject({ default: { driver: 'pgsql' } });
+  });
+
+  it('stops the start when DB_CONNECTION is set, instead of starting on SQLite', async () => {
+    const error = await resolve({ DB_CONNECTION: 'pgsql' }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ConfigError);
+    expect((error as ConfigError).message).toContain('DB_CONNECTION was renamed DB_DRIVER');
   });
 });

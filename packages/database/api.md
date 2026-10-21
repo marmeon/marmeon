@@ -1117,9 +1117,11 @@ interface SelectQueryBuilder<DB, TB extends keyof DB, O> {
 
 ```ts
 // DB_CONNECTION
-`DB_CONNECTION` = `"sqlite"`
+`DB_CONNECTION` → `DB_DRIVER` (renamed)
 // DB_DATABASE
 `DB_DATABASE` — optional
+// DB_DRIVER
+`DB_DRIVER` = `"sqlite"`
 // DB_HOST
 `DB_HOST` = `"127.0.0.1"`
 // DB_INFRA_POOL_MAX

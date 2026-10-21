@@ -148,7 +148,7 @@ const drivers: Driver[] = [
           sessionsTable: true,
           env: async () => {
             const fresh = await freshPgsqlDatabase();
-            return { env: { SESSION_DRIVER: 'database', DB_CONNECTION: 'pgsql', DB_URL: fresh.url }, cleanup: fresh.drop };
+            return { env: { SESSION_DRIVER: 'database', DB_DRIVER: 'pgsql', DB_URL: fresh.url }, cleanup: fresh.drop };
           },
         },
       ]

@@ -11,7 +11,7 @@ describe('the table readiness waits for', () => {
   const required = async (env: Record<string, string>) => {
     await using application = await createApplication(
       { root: '/tmp', discover: false, providers: [DatabaseServiceProvider, SessionServiceProvider] },
-      { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', NODE_ENV: 'test', ...env }, override: (container) => container.instance(Logger, silent) },
+      { env: { DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', NODE_ENV: 'test', ...env }, override: (container) => container.instance(Logger, silent) },
     );
     return application.container.make(SchemaRequirements).all().map((requirement) => requirement.table);
   };

@@ -303,6 +303,8 @@ export interface QueueMailOptions {
 ```ts
 // APP_URL
 `APP_URL` — optional
+// MAIL_DRIVER
+`MAIL_DRIVER` = `"log"`
 // MAIL_FROM_ADDRESS
 `MAIL_FROM_ADDRESS` = `"hello@example.com"`
 // MAIL_FROM_NAME
@@ -310,15 +312,15 @@ export interface QueueMailOptions {
 // MAIL_HOST
 `MAIL_HOST` = `"127.0.0.1"`
 // MAIL_MAILER
-`MAIL_MAILER` = `"log"`
+`MAIL_MAILER` → `MAIL_DRIVER` (renamed)
 // MAIL_PASSWORD
 `MAIL_PASSWORD` = `""`
 // MAIL_PORT
 `MAIL_PORT` = `587`
 // MAIL_REQUIRE_TLS
-`MAIL_REQUIRE_TLS` = `"true"`
+`MAIL_REQUIRE_TLS` = `true`
 // MAIL_SECURE
-`MAIL_SECURE` = `"false"`
+`MAIL_SECURE` = `false`
 // MAIL_USERNAME
 `MAIL_USERNAME` = `""`
 // NODE_ENV

@@ -75,7 +75,7 @@ DB_DATABASE=:memory:
 LOG_LEVEL=silent
 HASH_ARGON_MEMORY=1024
 HASH_ARGON_TIME=1
-MAIL_MAILER=array
+MAIL_DRIVER=array
 ```
 
 `create-marmeon` writes a key of its own into this file, for tests only. Sessions and the cache live in memory, and nothing is

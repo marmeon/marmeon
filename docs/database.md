@@ -43,7 +43,7 @@ The default connection reads these variables, checked when the app starts like a
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `DB_CONNECTION` | `sqlite` | The driver: `sqlite` or `pgsql`. |
+| `DB_DRIVER` | `sqlite` | The driver: `sqlite` or `pgsql`. |
 | `DB_DATABASE` | `storage/database.sqlite` for SQLite, `marmeon` for Postgres | SQLite: the file, relative to the app's root, or `:memory:`. Postgres: the database's name. |
 | `DB_HOST` | `127.0.0.1` | Postgres: the server. |
 | `DB_PORT` | `5432` | Postgres: its port. |
@@ -59,7 +59,7 @@ whole address in `DB_URL`. When `DB_URL` is set, it wins: the five are not read.
 `postgresql://`, and the start fails with every wrong value named at once.
 
 ```sh title=".env"
-DB_CONNECTION=pgsql
+DB_DRIVER=pgsql
 DB_HOST=db.internal
 DB_PORT=5432
 DB_DATABASE=notes
@@ -95,7 +95,7 @@ Install it as a dependency, not a dev dependency. Without it, the first query fa
 `DB_URL=postgres://app:secret@db:5432/app`, the message reads:
 
 ```text
-[marmeon:D11] Could not connect to the database connection "default" (pgsql postgres://app:***@db:5432/app): DB_CONNECTION=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@^8
+[marmeon:D11] Could not connect to the database connection "default" (pgsql postgres://app:***@db:5432/app): DB_DRIVER=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@^8
 ```
 
 A connection of your own names itself instead: `The Postgres connection "reporting" needs the "pg" package, …`.
@@ -163,7 +163,7 @@ export const ReportingDatabase = defineConnection('reporting', {
 });
 ```
 
-`default` is the name of the connection of `DB_CONNECTION`, and `defineConnection('default', …)` throws. Ask `Connections` for any
+`default` is the name of the connection of `DB_DRIVER`, and `defineConnection('default', …)` throws. Ask `Connections` for any
 connection by its name:
 
 ```ts title="modules/reports/MonthlyReport.ts"

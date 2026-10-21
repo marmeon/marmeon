@@ -48,7 +48,7 @@ it(
     };
     // The CLI steps stay on the app's SQLite file; under `pnpm test:pgsql` only the generated tests use Postgres
     // (their own worker databases) — never the shared one.
-    const { DB_CONNECTION: _connection, DB_URL: _url, ...sqliteEnv } = env;
+    const { DB_DRIVER: _connection, DB_URL: _url, ...sqliteEnv } = env;
     // As the scaffolder runs them after the install: NODE_ENV from the app's .env (development).
     const marmeon = (...args: string[]) => run(process.execPath, [join(repo, 'packages/cli/bin/marmeon.js'), ...args], {}, sqliteEnv);
 

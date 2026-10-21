@@ -28,7 +28,7 @@ describe('the system connection', () => {
       queue: 'real',
       env: {
         // The SQLite setup of .env.example — also under `pnpm test:pgsql` (on Postgres the stores need no system file).
-        DB_CONNECTION: 'sqlite',
+        DB_DRIVER: 'sqlite',
         DB_DATABASE: join(directory, 'database.sqlite'),
         SYSTEM_DB_DATABASE: join(directory, 'system.sqlite'),
         CACHE_DRIVER: 'database',
