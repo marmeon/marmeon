@@ -157,6 +157,7 @@ const routes = openRoutes((Route) => {
   Route.get('/to-invite', () => new Response(null, { status: 302, headers: { location: '/invite/483920' } }));
   Route.get('/to-code', () => new Response(null, { status: 302, headers: { location: '/invite/1?code=SECRETCODE#/b/c' } }));
   Route.get('/to-fragment', () => new Response(null, { status: 302, headers: { location: '/invite/plum#/b/c' } }));
+  Route.get('/to-elsewhere', () => new Response(null, { status: 302, headers: { location: '//evil.example/x?token=abc' } }));
   Route.get('/to-unknown', () => new Response(null, { status: 302, headers: { location: '/unrouted/483920' } }));
 });
 
@@ -408,6 +409,18 @@ describe('what the recorder keeps', () => {
       expect(JSON.stringify(coded)).not.toContain('SECRETCODE');
       const fragment = tester!.assertRecorded('request', (request) => request.path === '/to-fragment').content;
       expect(fragment.location).toBe('/invite/[redacted]');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('shows the host of a redirect to another site, with its path and query still masked', async () => {
+    const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      await kernel.request('/to-elsewhere');
+      await tester!.settled();
+      const entry = tester!.assertRecorded('request', (request) => request.path === '/to-elsewhere').content;
+      expect(entry.location).toBe('//evil.example/x?token=[redacted]');
     } finally {
       await app.shutdown();
     }

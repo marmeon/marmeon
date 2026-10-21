@@ -324,6 +324,27 @@ describe('Redactor.headers — URL headers by a route pattern', () => {
     expect(redactor.url('/cb?code=abc')).not.toContain('abc');
     expect(redactor.url('/cb?code=abc', '/cb')).not.toContain('abc');
   });
+
+  it('url() keeps the host of a URL that leaves the app, however it is written, and never the userinfo', () => {
+    const redactor = new Redactor();
+    expect(redactor.url('//evil.example/a')).toBe('//evil.example/a');
+    for (const written of ['/\\evil.example/a', '\\\\evil.example\\a', '\\/evil.example/a', ' //evil.example/a', '\t//evil.example/a', '/\t/evil.example/a']) {
+      expect(redactor.url(written), written).toBe('//evil.example/a');
+    }
+    const shown = redactor.url('https://user:pw@evil.example:8443/a?code=1&page=2#frag');
+    expect(shown).toBe('https://evil.example:8443/a?code=[redacted]&page=2');
+    expect(shown).not.toMatch(/user|pw|frag/);
+    expect(redactor.url('//user:pw@evil.example/a')).toBe('//evil.example/a');
+    expect(redactor.url('javascript:alert(1)')).toMatch(/^javascript:/);
+    expect(redactor.url('/local/path?token=x')).toBe('/local/path?token=[redacted]');
+    expect(redactor.url('/reset/abc', '/reset/:token')).toBe('/reset/[redacted]');
+    expect(redactor.url('http://localhost/x')).toBe('http://localhost/x');
+    expect(redactor.url('http:evil.example/x')).toBe('http://evil.example/x');
+    expect(redactor.url('com.example.app:/cb#code=SECRET')).toBe('com.example.app:/cb');
+    expect(redactor.url('javascript:x#access_token=abc')).toBe('javascript:x');
+    expect(redactor.url('a_b:foo')).toBe('/a_b:foo');
+    expect(redactor.url('http://')).not.toContain('localhost');
+  });
 });
 
 describe('URL objects', () => {

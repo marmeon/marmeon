@@ -306,15 +306,32 @@ export class Redactor {
     return this.text(path);
   }
 
-  /** A URL that may be shown: its path as {@link path} does it, its query string as text (`?token=…` masked); the origin as it is. */
+  /**
+   * A URL that may be shown: its path as {@link path} does it, its query string as text (`?token=…` masked), no fragment. The host
+   * of a URL that leaves this app stays visible — absolute (`https://other.example/…`) or protocol-relative (`//other.example/…`,
+   * also written with backslashes), so an open redirect does not read as a local path; userinfo never does. A URL
+   * without a host (`javascript:…`) keeps its scheme and shows the rest as text.
+   */
   url(url: string, pattern?: string): string {
+    // What the URL parser ignores: leading C0 controls and spaces, tabs and line breaks anywhere.
+    let start = 0;
+    while (start < url.length && url.charCodeAt(start) <= 0x20) start++;
+    const cleaned = url.slice(start).replace(/[\t\n\r]/g, '');
+    const scheme = /^[a-z][a-z\d+.-]*:/i.test(cleaned);
     let parsed: URL;
     try {
-      parsed = new URL(url, 'http://localhost');
+      // Without a base, `http:evil.example/x` is the other site's, as a browser reads it — not a path on this one.
+      parsed = scheme && pattern === undefined ? new URL(cleaned) : new URL(cleaned, 'http://localhost');
     } catch {
       return this.text(url);
     }
-    const origin = /^[a-z][\w+.-]*:\/\//i.test(url) ? parsed.origin : '';
+    let origin = '';
+    if (scheme) {
+      if (parsed.host === '') return `${parsed.protocol}${this.text(parsed.pathname + parsed.search)}`;
+      origin = `${parsed.protocol}//${parsed.host}`;
+    } else if (/^[\\/]{2}/.test(cleaned)) {
+      origin = `//${parsed.host}`;
+    }
     return `${origin}${this.path(parsed.pathname, pattern)}${parsed.search.length > 1 ? this.text(parsed.search) : ''}`;
   }
 
