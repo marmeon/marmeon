@@ -79,7 +79,7 @@ const routes = openRoutes((Route) => {
   Route.post('/sign-out', SignOutController);
 });
 
-const env = { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', LIVE_HEARTBEAT: '1' };
+const env = { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', LIVE_HEARTBEAT_SECONDS: '1' };
 
 const definition: ApplicationDefinition = {
   root: tempDir('marmeon-testing-'),
@@ -121,6 +121,23 @@ describe('live props through the app — the page declares, the stream hints', (
     expect(tabA.hints).toEqual([{ channel: 'board.7', only: [], seq: 1 }]);
     app.broadcast.assertRefreshed('board.7', { only: ['cards'], times: 1 }).assertNotRefreshed('board.8');
     expect(app.broadcast.refreshed('board.7')[0]?.connection).toBe('tab-a-0001');
+  });
+
+  it('LIVE_RETRY_MILLISECONDS is the retry: the stream asks the browser for, in milliseconds.', async () => {
+    const app = await createTestApp(definition, { env: { ...env, LIVE_RETRY_MILLISECONDS: '4321' } });
+    const stream = await app.withSession({ who: 'ada' }).live('/boards/7');
+    await stream.hello();
+    expect(stream.retry).toBe(4321);
+    await stream.close();
+  });
+
+  it('LIVE_HEARTBEAT_SECONDS=1 sends the first heartbeat about one second after the stream opened.', async () => {
+    const app = await createTestApp(definition, { env });
+    const opened = performance.now();
+    const stream = await app.withSession({ who: 'ada' }).live('/boards/7');
+    await stream.waitFor(() => stream.heartbeats >= 1, 3_000, 'a heartbeat');
+    expect(performance.now() - opened).toBeGreaterThanOrEqual(900); // a load only makes it later
+    await stream.close();
   });
 
   it('the stream is read-only: no cookie, the session not written — with the stream headers', async () => {

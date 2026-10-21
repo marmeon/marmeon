@@ -1,8 +1,5 @@
 import { defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
 
-/** Exactly `true` or `false`. */
-const BOOLEAN = env.in(['true', 'false']);
-
 export const SessionConfig = defineConfig('session', {
   env: env({
     /**
@@ -17,15 +14,15 @@ export const SessionConfig = defineConfig('session', {
      */
     SESSION_CONNECTION: env.string().default('default'),
     /** Minutes of inactivity until the session expires. */
-    SESSION_LIFETIME: env.integer().min(1).default(120),
+    SESSION_LIFETIME_MINUTES: env.integer().min(1).default(120),
     SESSION_COOKIE: env.string().regex(/^(?!__(host|secure)-)[\w-]+$/i, 'Expected letters, digits, _ and -, without a __Host- or __Secure- prefix: the framework adds __Host- itself').default('marmeon_session'),
     /** Where the `file` driver keeps sessions, relative to the app root. */
     SESSION_FILES: env.string().default('storage/framework/sessions'),
     /**
      * Send the session's cookies — and every other cookie the app sets without saying — over HTTPS only. Unset (or
-     * empty): follows `APP_URL` — `https://…` → on, `http://…` → off. `true`/`false` decide it themselves.
+     * empty): follows `APP_URL` — `https://…` → on, `http://…` → off. `true`/`false` (or `1`/`0`) decide it themselves.
      */
-    SESSION_SECURE_COOKIE: BOOLEAN.optional(),
+    SESSION_SECURE_COOKIE: env.boolean().optional(),
     /** The app's address — `https:` turns `SESSION_SECURE_COOKIE` on unless it is set. */
     APP_URL: env.string().optional(),
     NODE_ENV: env.string().optional(),
@@ -35,13 +32,14 @@ export const SessionConfig = defineConfig('session', {
      * (`APP_KEY`; `APP_PREVIOUS_KEYS` still decrypt), bound to the session. Off by default; the store's keys are
      * hashes of the session ids either way. Turning it on or off signs everybody out once.
      */
-    SESSION_ENCRYPT: BOOLEAN.default('false'),
+    SESSION_ENCRYPT: env.boolean().default(false),
     /**
      * Chance that a request also cleans up expired sessions, after the response. `0/1` turns it off —
      * for apps that run `marmeon session:prune` from a scheduler or cron instead.
      */
     SESSION_LOTTERY: env.string().regex(/^\d+\/[1-9]\d*$/, 'Expected a chance like 2/100').default('2/100'),
-  }),
+  })
+    .renamed('SESSION_LIFETIME', 'SESSION_LIFETIME_MINUTES'),
   resolve: (e) => ({
     driver: e.SESSION_DRIVER,
     /** Where `secure` comes from: `SESSION_SECURE_COOKIE`, or `APP_URL`'s protocol. */
@@ -49,12 +47,12 @@ export const SessionConfig = defineConfig('session', {
     /** Protected environment (not development, not test) — cookies without `Secure` there are warned about at boot. */
     protected: environment.isProtected(e),
     connection: e.SESSION_CONNECTION,
-    lifetime: e.SESSION_LIFETIME,
+    lifetime: e.SESSION_LIFETIME_MINUTES,
     cookie: e.SESSION_COOKIE,
     files: e.SESSION_FILES,
-    secure: e.SESSION_SECURE_COOKIE === undefined ? isHttps(e.APP_URL) : e.SESSION_SECURE_COOKIE === 'true',
+    secure: e.SESSION_SECURE_COOKIE === undefined ? isHttps(e.APP_URL) : e.SESSION_SECURE_COOKIE,
     sameSite: e.SESSION_SAME_SITE,
-    encrypt: e.SESSION_ENCRYPT === 'true',
+    encrypt: e.SESSION_ENCRYPT,
     lottery: chance(e.SESSION_LOTTERY),
   }),
 });

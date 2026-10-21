@@ -34,9 +34,9 @@ export class MakeUploadsTableCommand {
 const HOUR = 3_600_000;
 
 /**
- * `marmeon uploads:prune [--hours=24] [--force]`: deletes unused uploads at once when they expire (after `UPLOADS_LIFETIME`: the open
+ * `marmeon uploads:prune [--hours=24] [--force]`: deletes unused uploads at once when they expire (after `UPLOADS_LIFETIME_MINUTES`: the open
  * ones count against the limits of `UPLOADS_MAX_OPEN`), and every other upload — used ones — once it was made more than `--hours`
- * ago; the rows first (one statement), then their files. `--hours` below `UPLOADS_LIFETIME` would delete
+ * ago; the rows first (one statement), then their files. `--hours` below `UPLOADS_LIFETIME_MINUTES` would delete
  * uploads whose token still works (a form still open): refused unless `--force`. For the scheduler:
  * `s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()` (with a local uploads disk on several servers: without
  * `onOneServer`, on each).
@@ -66,7 +66,7 @@ export class PruneUploadsCommand {
     const lifetime = this.#config.lifetime; // minutes
     if (hours * 60 < lifetime && options.force !== true) {
       output.error(
-        `--hours=${String(options.hours)} would delete uploads whose token still works: a token works for ${lifetime} minutes (UPLOADS_LIFETIME), ` +
+        `--hours=${String(options.hours)} would delete uploads whose token still works: a token works for ${lifetime} minutes (UPLOADS_LIFETIME_MINUTES), ` +
           `so --hours must be at least ${formatHours(lifetime / 60)} — or pass --force to delete them anyway (a form still open loses its files).`,
       );
       return 1;

@@ -287,7 +287,7 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
 - `contentSecurityPolicy()` in `bootstrap/app.ts`, which a new app has. New inline scripts take `ctx.nonce()`. With a `styleSrc`,
   classes instead of `style` props, and `@marmeon/react/styles.css` imported in the client entry.
 - The lifetimes of a sign-in: `AUTH_SESSION_MAX_HOURS` as long as you accept a stolen session to work (24 hours by default),
-  `AUTH_REMEMBER_DAYS` for "Keep me signed in" (a convenience at AAL1; 30 at most, 0 turns it off), and `SESSION_LIFETIME=60`
+  `AUTH_REMEMBER_DAYS` for "Keep me signed in" (a convenience at AAL1; 30 at most, 0 turns it off), and `SESSION_LIFETIME_MINUTES=60`
   where AAL2 is needed, which holds only behind `twoFactor()`.
   [How long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists them all.
 - The `sign_ins` table (`marmeon make:sign-ins-table` for an app without the starter kit), and `auth:prune-tokens` scheduled

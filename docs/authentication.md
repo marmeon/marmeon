@@ -431,14 +431,14 @@ Every lifetime of a sign-in is listed here. The list of [sign-ins](#sign-ins) le
 | What | Default | What it ends | Assurance |
 | --- | --- | --- | --- |
 | The session cookie | Until the browser closes | The cookie in the browser, which has no `Max-Age`; the session on the server lives by the two rows below. | A browser that restores its session keeps it. |
-| `SESSION_LIFETIME` | 120 minutes | A session that makes no request: the time since the last one. | `SESSION_LIFETIME=60` (at most an hour idle) is recommended for an app that needs AAL2 (ASVS 7.3.1). |
+| `SESSION_LIFETIME_MINUTES` | 120 minutes | A session that makes no request: the time since the last one. | `SESSION_LIFETIME_MINUTES=60` (at most an hour idle) is recommended for an app that needs AAL2 (ASVS 7.3.1). |
 | `AUTH_SESSION_MAX_HOURS` | 24 hours | A sign-in, however active the user is. A valid remember-me cookie signs in again. | 24 hours is the limit NIST SP 800-63B-4 sets at AAL2. |
 | `AUTH_REMEMBER_DAYS` | 30 days (0 to 30) | The [remember-me](#remember-me) cookie, counted from the sign-in that made it. | AAL1: a convenience, not a proof. |
 | `twoFactor()` `maxAge` | 24 hours | The proof of a [second factor](two-factor-authentication.md#requiring-it); then the user is asked for it again. | AAL2 holds only on routes behind `twoFactor()`. |
 | `FACTOR_CHANGE_MAX_AGE` | 15 minutes, no setting | The proof that [changing the factors](two-factor-authentication.md#changing-the-factors), the e-mail address or an API token asks for. | A factor proven within this time. |
 | `AUTH_PASSWORD_TIMEOUT_SECONDS` | 15 minutes | The password or passkey confirmation of [sudo mode](#sudo-mode). | The password or a passkey; only a passkey also counts as a second factor. |
 
-`SESSION_LIFETIME` is renewed by every request, so on its own an active session would never end. `AUTH_SESSION_MAX_HOURS` (1 to 720)
+`SESSION_LIFETIME_MINUTES` is renewed by every request, so on its own an active session would never end. `AUTH_SESSION_MAX_HOURS` (1 to 720)
 is the longest a sign-in lasts, however active the user is: a session signed in by password or passkey ends that many hours
 after the sign-in, and the user types the password again. It matches the absolute lifetime of ASVS 7.3.2.
 Sessions guests use are not affected.
@@ -1046,7 +1046,7 @@ Each entry has `id`, `current`, `remembered`, `signedInAt`, `lastSeenAt`, `creat
 `describeDevice()` makes of the `User-Agent`: `{ browser, system }`, each `undefined` when it is not a known one, so the page words it
 in its own language. It is a guess and a client can write what it likes in the header.
 
-The list leaves out a sign-in whose session is over: one that has been idle longer than `SESSION_LIFETIME` or began longer ago than
+The list leaves out a sign-in whose session is over: one that has been idle longer than `SESSION_LIFETIME_MINUTES` or began longer ago than
 `AUTH_SESSION_MAX_HOURS`, unless a valid remember-me cookie keeps it (`remembered`). Those rows stay in the table until
 [pruned](#pruning-sign-ins).
 
@@ -1102,7 +1102,7 @@ been signed out already:
 ### Pruning sign-ins
 
 A row of a browser that never came back stays in the table. `marmeon auth:prune-tokens` deletes exactly the rows the list does not
-show, for every user, and takes expired tokens off their rows; its output counts the rows. It uses `SESSION_LIFETIME`
+show, for every user, and takes expired tokens off their rows; its output counts the rows. It uses `SESSION_LIFETIME_MINUTES`
 and `AUTH_SESSION_MAX_HOURS`, so it is the one command to schedule.
 
 ### Testing

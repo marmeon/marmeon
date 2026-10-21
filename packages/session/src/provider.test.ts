@@ -189,7 +189,7 @@ describe('SESSION_DRIVER', () => {
 
   it.runIf(REDIS_URL)('redis: sessions live in Redis with its own expiry', async () => {
     const prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`;
-    const app = await boot({ SESSION_DRIVER: 'redis', REDIS_URL: REDIS_URL!, REDIS_PREFIX: prefix, SESSION_LIFETIME: '30' }, [RedisServiceProvider]);
+    const app = await boot({ SESSION_DRIVER: 'redis', REDIS_URL: REDIS_URL!, REDIS_PREFIX: prefix, SESSION_LIFETIME_MINUTES: '30' }, [RedisServiceProvider]);
     expect(app.container.make(SessionStore)).toBeInstanceOf(RedisSessionStore);
     const kernel = createHttpKernel(app);
     const redis = app.container.make(RedisConnections).get();
@@ -281,7 +281,7 @@ describe('session:prune', () => {
   }
 
   it('removes expired sessions of the database driver — what the lottery does now and then', async () => {
-    const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:', SESSION_LIFETIME: '1' }, [DatabaseServiceProvider]);
+    const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:', SESSION_LIFETIME_MINUTES: '1' }, [DatabaseServiceProvider]);
     await migrate(app.container.make(Connections));
     const store = app.container.make(SessionStore);
     await store.write('a'.repeat(64), '{"x":1}', { expectedVersion: undefined, lifetimeSeconds: 60 });
@@ -291,6 +291,20 @@ describe('session:prune', () => {
     expect(await app.container.make(PruneSessionsCommand).handle(run)).toBe(0);
     expect(lines).toEqual(['✓ Pruned 1 expired session (database).']);
     expect(await store.read('b'.repeat(64))).toEqual({ data: '{"x":1}', version: 1 });
+    await app.shutdown();
+  });
+
+  it('SESSION_LIFETIME_MINUTES=1: the database store still reads a session idle for 59 seconds and no longer one idle for 61', async () => {
+    const app = await boot({ SESSION_DRIVER: 'database', DB_MANAGED: 'false', DB_DATABASE: ':memory:', SESSION_LIFETIME_MINUTES: '1' }, [DatabaseServiceProvider]);
+    await migrate(app.container.make(Connections));
+    const store = app.container.make(SessionStore);
+    const idle = async (id: string, seconds: number) => {
+      await store.write(id, '{"x":1}', { expectedVersion: undefined, lifetimeSeconds: 60 });
+      await sql`update sessions set last_activity = last_activity - ${seconds * 1000} where id = ${id}`.execute(app.container.make(Connections).get());
+      return store.read(id);
+    };
+    expect(await idle('a'.repeat(64), 59)).toEqual({ data: '{"x":1}', version: 1 });
+    expect(await idle('b'.repeat(64), 61)).toBeUndefined();
     await app.shutdown();
   });
 

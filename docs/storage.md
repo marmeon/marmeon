@@ -267,8 +267,8 @@ export default defineMigration({
 | --- | --- | --- |
 | `UPLOADS_DISK` | `uploads` | The private disk where uploads wait. A public disk fails the start. |
 | `UPLOADS_CONNECTION` | `default` | The database connection of the uploads table. |
-| `UPLOADS_LIFETIME` | `120` | Minutes a token works after its target was handed out, at most 1440. |
-| `UPLOADS_SEND_WITHIN` | `15` | Minutes the browser has to send the file to its target. |
+| `UPLOADS_LIFETIME_MINUTES` | `120` | Minutes a token works after its target was handed out, at most 1440. |
+| `UPLOADS_SEND_WITHIN_MINUTES` | `15` | Minutes the browser has to send the file to its target. |
 | `UPLOADS_MAX_OPEN` | `20` | Open uploads one session may hold. |
 | `UPLOADS_MAX_OPEN_MB` | `1024` | Megabytes the open uploads of one session may announce together. |
 | `UPLOADS_MAX_OPEN_TOTAL_MB` | `10240` | Megabytes the open uploads of all sessions together may announce. `0` turns the limit off. |
@@ -281,8 +281,8 @@ each file's size with its target, and the bytes are cut off there (a 413 above i
 or large files in one session raise the first two. Every open upload counts for at least 64 KiB in the sums, so even empty files
 run into the limits. A file larger than a limit could ever take gets a 422 with the real maximum, never a 429.
 
-`uploads:prune` deletes every unused upload whose token has expired (`UPLOADS_LIFETIME`) and every upload made more than a day
-ago, used or not: the rows first, then their files. `--hours` changes the age, and a value below `UPLOADS_LIFETIME` would delete uploads
+`uploads:prune` deletes every unused upload whose token has expired (`UPLOADS_LIFETIME_MINUTES`) and every upload made more than a day
+ago, used or not: the rows first, then their files. `--hours` changes the age, and a value below `UPLOADS_LIFETIME_MINUTES` would delete uploads
 whose form is still open, so it needs `--force`. Unsent files stay on the disk until it runs, so schedule it every hour:
 
 ```ts title="modules/system/schedule.ts"

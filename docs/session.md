@@ -101,12 +101,12 @@ token it hands out must still be valid when it comes back.
 | --- | --- | --- |
 | `SESSION_DRIVER` | `file` | Where sessions live: `file`, `database`, `redis` or `memory`. |
 | `SESSION_CONNECTION` | `default` | The database or Redis connection of the `database` and `redis` drivers. |
-| `SESSION_LIFETIME` | `120` | Minutes without a request until the session expires on the server. The cookie itself has no expiry. |
+| `SESSION_LIFETIME_MINUTES` | `120` | Minutes without a request until the session expires on the server. The cookie itself has no expiry. |
 | `SESSION_COOKIE` | `marmeon_session` | The name of the session cookie. Over HTTPS the browser sees it with the [`__Host-` prefix](#the-__host--prefix). |
 | `SESSION_FILES` | `storage/framework/sessions` | Where the `file` driver keeps sessions, relative to the app. |
-| `SESSION_SECURE_COOKIE` | follows `APP_URL` | `true` or `false` decides `Secure` yourself. Unset, every cookie gets it when `APP_URL` starts with `https://`. |
+| `SESSION_SECURE_COOKIE` | follows `APP_URL` | A boolean (`true`, `false`, `1`, `0`, any case) decides `Secure` yourself; anything else stops the start. Unset or empty, every cookie gets it when `APP_URL` starts with `https://`. |
 | `SESSION_SAME_SITE` | `lax` | The `SameSite` attribute of the session cookie: `lax`, `strict` or `none`. |
-| `SESSION_ENCRYPT` | `false` | `true` encrypts the session data in its store with `APP_KEY`. |
+| `SESSION_ENCRYPT` | `false` | `true` encrypts the session data in its store with `APP_KEY`. A boolean (`true`, `false`, `1`, `0`); anything else stops the start. |
 | `SESSION_LOTTERY` | `2/100` | The chance that a request also deletes expired sessions, after its response. `0/1` turns it off. |
 
 ### Secure cookies
@@ -180,7 +180,7 @@ when it closes, and a guest's session data, such as a chosen language, goes with
 may keep them; then the server's lifetimes below decide. A user who wants to stay signed in across a restart ticks "Keep me
 signed in" ([remember me](authentication.md#remember-me)).
 
-A session expires `SESSION_LIFETIME` minutes after its last request, whatever the cookie says. A sign-in also ends `AUTH_SESSION_MAX_HOURS` hours after it began, however active the user is; [how long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists every lifetime, and [sign-ins](authentication.md#sign-ins) lists the browsers a user is signed in on, with any session driver. Expired sessions of the `file` and `database` drivers are
+A session expires `SESSION_LIFETIME_MINUTES` minutes after its last request, whatever the cookie says. A sign-in also ends `AUTH_SESSION_MAX_HOURS` hours after it began, however active the user is; [how long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists every lifetime, and [sign-ins](authentication.md#sign-ins) lists the browsers a user is signed in on, with any session driver. Expired sessions of the `file` and `database` drivers are
 deleted after the response of 2 in 100 requests, as `SESSION_LOTTERY` says. The `redis` driver needs no clean-up.
 
 On a busy app, run the clean-up on a schedule instead. When the app's scheduler runs `session:prune`, requests stop drawing the

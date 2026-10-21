@@ -551,6 +551,32 @@ describe('sign-ins tracked by Auth', () => {
   });
 
   describe('listing and ending sign-ins', () => {
+    it('SESSION_LIFETIME_MINUTES=1 lists a browser idle within the limit plus the write granularity (360 seconds) and leaves out one beyond it', async () => {
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+      try {
+        const idleFor = async (seconds: number) => {
+          const { browser } = await boot({ env: { SESSION_LIFETIME_MINUTES: '1', AUTH_SESSION_MAX_HOURS: '720' } });
+          const idle = browser();
+          const active = browser();
+          const start = Date.now();
+          await login(idle);
+          await login(active);
+          for (let at = 30; at < seconds; at += 30) {
+            vi.setSystemTime(start + at * 1000); // the asking browser stays active, so its session lives on
+            await active.who();
+          }
+          vi.setSystemTime(start + seconds * 1000);
+          return (await active.list()).length;
+        };
+        const start = Date.now();
+        expect(await idleFor(359)).toBe(2);
+        vi.setSystemTime(start);
+        expect(await idleFor(361)).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('lists every browser of the user, the asking one first and marked, with what the user agent says', async () => {
       const { browser } = await boot();
       const laptop = browser();
