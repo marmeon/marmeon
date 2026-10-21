@@ -87,6 +87,88 @@ describe('redactText', () => {
   });
 });
 
+describe('redactText: tokens without a key in front', () => {
+  const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+  // Token-shaped test values are joined at run time, so no literal in the source looks like a real key to a secret scanner.
+  const github = ['ghp', 'aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD1fH3jL5'].join('_');
+  const stripe = ['sk', 'live', '4eC39HqLyjWDarjtT1zdp7dc'].join('_');
+  const slack = ['xoxb', '1234567890', 'abcdefghijklmnop'].join('-');
+  const aws = ['AKIA', 'IOSFODNN7EXAMPLE'].join('');
+  const word = 'Xq3v9Lr2pK8sT1uW4yZ6bN0cM5dF7gH2';
+
+  it('masks a JWT, and keeps a dotted name that only starts alike', () => {
+    expect(redactText(`bad token ${jwt}.`)).toBe('bad token [redacted].');
+    expect(redactText('eyJ.short.parts and eyJhbGciOiJIUzI1NiJ9 without dots')).toBe('eyJ.short.parts and eyJhbGciOiJIUzI1NiJ9 without dots');
+  });
+
+  it.each([
+    ['GitHub', github],
+    ['Stripe', stripe],
+    ['Slack', slack],
+    ['AWS', aws],
+    ['GitLab', ['glpat', 'aB3dE5gH7jK9mN1pQ3sT'].join('-')],
+    ['Stripe restricted', ['rk', 'live', '4eC39HqLyjWDarjtT1zdp7dc'].join('_')],
+    ['Stripe webhook', ['whsec', 'aB3dE5gH7jK9mN1pQ3sT5vW7yZ9b'].join('_')],
+    ['npm', ['npm', 'aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD1fH3jL5'].join('_')],
+    ['Google', ['AIza', 'SyA-aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD'].join('')],
+    ['APP_KEY', 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY='],
+  ])('masks the %s key by its prefix, and keeps a word that merely starts like it', (_, key) => {
+    expect(redactText(`failed with ${key}!`)).toBe('failed with [redacted]!');
+    expect(redactText(`${key.slice(0, 6)} is fine`)).toBe(`${key.slice(0, 6)} is fine`);
+  });
+
+  it('masks a free word of 32 or more characters that reads like random base64, and keeps names, slugs and digests', () => {
+    expect(redactText(`value "${word}" rejected`)).toBe('value "[redacted]" rejected');
+    expect(redactText(`value "${word}_-${word}" rejected`)).toBe('value "[redacted]" rejected');
+    const kept = [
+      'a-b-c-d-e-f-g-h-i-j-k-l-m-n-o-p-q-r-s-t-u-v-w',
+      'MY_LONG_CONSTANT_NAME_FOR_THE_THING_AAAA',
+      '550e8400-e29b-41d4-a716-446655440000',
+      'ab12'.repeat(16),
+      'abcdefghijklmnopqrstuvwxyzabcdef',
+      'Xq3v9Lr2pK8sT1uW4yZ6bN0cM5dF7g',
+      'recursivelyTraverseReconnectPassiveEffects',
+      'AuthenticationExtensionsClientInputsJSON',
+      'optimizeDepsDisabledBackwardCompatibility',
+      'warnAboutUpdateOnNotYetMountedFiberInDEV',
+    ];
+    for (const text of kept) expect(redactText(`got ${text} here`), text).toBe(`got ${text} here`);
+    // Stack frames and module names stay readable.
+    const react = '    at recursivelyTraverseReconnectPassiveEffects (file:///app/node_modules/react-dom/cjs/react-dom-client.development.js:1:1)';
+    expect(redactText(react)).toBe(react);
+    const frame = '    at handler (file:///app/node_modules/.pnpm/some-package@1.2.3/node_modules/some-package/dist/index.js:12:3)';
+    expect(redactText(frame)).toBe(frame);
+  });
+
+  it('masks the values of APP_KEY and APP_PREVIOUS_KEYS by their names', () => {
+    const key = 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=';
+    expect(redactText(`APP_PREVIOUS_KEYS=${key},${key}`)).toBe('APP_PREVIOUS_KEYS=[redacted],[redacted]');
+    expect(new Redactor().isSensitive('APP_PREVIOUS_KEYS')).toBe(true);
+  });
+
+  it('runs in linear time on hostile input', () => {
+    for (const input of ['a-'.repeat(50_000), `eyJ${'a'.repeat(100_000)}`, `eyJ${'a.'.repeat(50_000)}`, 'ghp_'.repeat(25_000), 'eyJ'.repeat(30_000), `${'a'.repeat(100_000)}!`, `${'Ab1-'.repeat(25_000)}`]) {
+      const start = performance.now();
+      redactText(input);
+      expect(performance.now() - start, input.slice(0, 20)).toBeLessThan(200);
+    }
+  });
+
+  it('masks the secrets that foreign error messages quote', () => {
+    const redactor = new Redactor();
+    for (const [message, expected] of [
+      [`Headers.append: "${stripe}" is an invalid header value.`, 'Headers.append: "[redacted]" is an invalid header value.'],
+      [`Unexpected token 'e', "${jwt}" is not valid JSON`, `Unexpected token 'e', "[redacted]" is not valid JSON`],
+      [`invalid input syntax for type uuid: "${word}"`, 'invalid input syntax for type uuid: "[redacted]"'],
+      [`Bad credentials for ${github}`, 'Bad credentials for [redacted]'],
+      [`"${jwt}" is not valid JSON`, '"[redacted]" is not valid JSON'],
+    ] as const) {
+      expect(redactor.text(message)).toBe(expected);
+      expect(describeError(new Error(message), redactor)).toContain(expected);
+    }
+  });
+});
+
 describe('Redactor', () => {
   it('replaces sensitive keys at any depth — cookies, set-cookie, x-xsrf-token, _token, password, authorization — and the names added', () => {
     const redactor = new Redactor().addKeys('marmeon_session');
