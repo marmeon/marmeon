@@ -110,7 +110,7 @@ export class NoteRepository extends Repository<'notes'> {
   },
   form: {
     lang: 'tsx',
-    code: `const form = useForm('notes.update', { note: note.id }, { title: note.title, body: note.body });
+    code: `const form = useForm('notes.update', { title: note.title, body: note.body }, { params: { note: note.id } });
 form.errors.title
 `,
   },

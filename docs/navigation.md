@@ -366,7 +366,7 @@ A navigation guard asks before the user leaves unsaved changes. A form turns it 
 for anything else:
 
 ```tsx
-const form = useForm('notes.update', { note: note.id }, { title: note.title, body: note.body }, { guard: 'Discard your changes?' });
+const form = useForm('notes.update', { title: note.title, body: note.body }, { params: { note: note.id }, guard: 'Discard your changes?' });
 useBlocker({ when: drawing.length > 0, message: 'Discard your drawing?' });
 ```
 

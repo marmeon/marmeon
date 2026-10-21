@@ -9,7 +9,7 @@ import { expectTypeOf } from 'vitest';
 import type { RegisterRequest } from './controllers/RegisterController.ts';
 
 export function Registration() {
-  const form = useForm('auth.register.store', {}, { name: '', email: '', password: '', password_confirmation: '' }, { validate: { on: 'blur', fields: ['name', 'email'] } });
+  const form = useForm('auth.register.store', { name: '', email: '', password: '', password_confirmation: '' }, { validate: { on: 'blur', fields: ['name', 'email'] } });
   form.validate('email');
   expectTypeOf(form.validating('name')).toEqualTypeOf<boolean>();
 
@@ -24,19 +24,19 @@ export function Registration() {
   // No overload matches this call. The last overload gave the following error. Type '"password_confirmation"' is not assignable
   // to type '"email" | "name" | "password fields are never validated live — they are checked when the form is sent"'.
   // @ts-expect-error
-  useForm('auth.register.store', {}, { name: '', email: '', password: '', password_confirmation: '' }, { validate: { fields: ['name', 'password_confirmation'] } });
+  useForm('auth.register.store', { name: '', email: '', password: '', password_confirmation: '' }, { validate: { fields: ['name', 'password_confirmation'] } });
 
   // No overload matches this call. The last overload gave the following error. Type '"keypress"' is not assignable to type
   // '"blur" | "change" | undefined'.
   // @ts-expect-error
-  useForm('auth.register.store', {}, { name: '', email: '', password: '', password_confirmation: '' }, { validate: { on: 'keypress' } });
+  useForm('auth.register.store', { name: '', email: '', password: '', password_confirmation: '' }, { validate: { on: 'keypress' } });
 
   // A route without a request schema has nothing to validate — the form's own message:
   // No overload matches this call. The last overload gave the following error. Argument of type '"auth.logout"' is not assignable
   // to parameter of type '"'auth.logout' has no request schema to type a form with — give its controller `static request =
   // defineRequest(…)`"'.
   // @ts-expect-error
-  useForm('auth.logout', {}, {}, { validate: true });
+  useForm('auth.logout', {}, { validate: true });
 
   // A form by controller (`useForm<C>(initial)`) has no URL until it is sent — live validation needs its route:
   // Object literal may only specify known properties, and 'validate' does not exist in type 'FormOptions'.

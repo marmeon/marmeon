@@ -26,10 +26,10 @@ export function serverTypes(ctx: ContextOf<typeof UpdateAvatarRequest>) {
 
 /** In the browser: the field holds an Upload (or nothing yet); `form.field()` only for upload fields. */
 export function ClientTypes() {
-  const avatar = useForm('user-profile.avatar.update', { user: 1 }, { avatar: null });
+  const avatar = useForm('user-profile.avatar.update', { avatar: null }, { params: { user: 1 } });
   const value: Upload | null = avatar.data.avatar;
   void value?.progress;
-  const profile = useForm('user-profile.update', { user: 1 }, { name: '', bio: '' });
+  const profile = useForm('user-profile.update', { name: '', bio: '' }, { params: { user: 1 } });
   // @ts-expect-error — `bio` has no upload() rule (and this form has no upload field)
   profile.field('bio');
   // @ts-expect-error — not a field of this form

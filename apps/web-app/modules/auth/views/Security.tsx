@@ -11,8 +11,8 @@ export default function Security({ signIns, viaRemember, email, emailChangeWaits
   const route = useRoute();
   // Leaving with a changed address or typed passwords asks first (the navigation guard); the address — never a password —
   // is still there after Back/Forward (remembered in memory).
-  const emailForm = useForm('auth.email.update', {}, { email, current_password: '' }, { guard: t('security.unsaved'), remember: true });
-  const passwordForm = useForm('auth.password.update', {}, { current_password: '', password: '', password_confirmation: '' }, { guard: t('security.unsaved') });
+  const emailForm = useForm('auth.email.update', { email, current_password: '' }, { guard: t('security.unsaved'), remember: true });
+  const passwordForm = useForm('auth.password.update', { current_password: '', password: '', password_confirmation: '' }, { guard: t('security.unsaved') });
   const devicesForm = useForm('auth.devices.logout', { password: '' });
 
   return (

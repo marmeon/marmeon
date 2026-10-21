@@ -20,7 +20,7 @@ const HISTORY = [await loadHistoryFallback()];
 
 function Avatar() {
   // A route form (the route manifest below; untyped here — the web app's type tests check the typed one).
-  const form = useForm('avatar', {}, { avatar: null, name: 'Ada' });
+  const form = useForm('avatar', { avatar: null, name: 'Ada' });
   const avatar = form.data.avatar as Upload | null;
   return (
     <form

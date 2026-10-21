@@ -11,7 +11,7 @@ export default function TwoFactor({ enabled, secured, passkey, setup, recoveryCo
   const t = useTranslation('auth');
   const confirmForm = useForm('auth.two-factor.confirm', { code: '', password: '' });
   const disableForm = useForm('auth.two-factor.disable', { password: '' });
-  const codesForm = useForm('auth.two-factor.codes', {}, { password: '' });
+  const codesForm = useForm('auth.two-factor.codes', { password: '' });
 
   return (
     <main className="stack stack-loose">

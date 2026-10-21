@@ -11,7 +11,7 @@ import { Head, useForm } from '@marmeon/react';
 import type { EditNoteController } from '../controllers/EditNoteController.ts';
 
 export default function Edit({ note }: PageProps<EditNoteController>) {
-  const form = useForm('notes.update', { note: note.id }, { title: note.title, body: note.body });
+  const form = useForm('notes.update', { title: note.title, body: note.body }, { params: { note: note.id } });
   return (
     <form
       onSubmit={(event) => {
@@ -37,8 +37,9 @@ state, and `<Form>` reads them from the inputs, which also works without JavaScr
 
 ### Fields and errors
 
-`useForm(name, params, initial)` takes the route's name, its parameters and the fields' first values. A route without required
-parameters takes `useForm(name, initial)`. The fields are typed by the route's request schema, as `FormOf<UpdateNoteController>`
+`useForm(name, initial, options)` takes the route's name, the fields' first values and the options. The route's parameters are the
+option `params`, and the compiler asks for it when the route has required parameters; a route without them takes
+`useForm(name, initial)`. The fields are typed by the route's request schema, as `FormOf<UpdateNoteController>`
 would type them, so a field the schema does not have is a compile error:
 
 ```ts title="modules/notes/controllers/UpdateNoteController.ts"
@@ -192,7 +193,7 @@ fallback, because its fields live in React.
 A route form can check its fields against the server's schema while the user fills them in:
 
 ```tsx
-const form = useForm('notes.update', { note: note.id }, { title: note.title, body: note.body }, { validate: true });
+const form = useForm('notes.update', { title: note.title, body: note.body }, { params: { note: note.id }, validate: true });
 
 <input
   value={form.data.title}
@@ -219,7 +220,7 @@ form's first change, so an app that never validates live never downloads it.
 `guard` asks before the user leaves a form with unsaved changes, through the app's dialog:
 
 ```tsx
-const form = useForm('notes.update', { note: note.id }, { title: note.title, body: note.body }, { guard: 'Discard your changes?' });
+const form = useForm('notes.update', { title: note.title, body: note.body }, { params: { note: note.id }, guard: 'Discard your changes?' });
 ```
 
 `true` asks with the default question. `<Form guard>` works the same way. The form's own submit passes its guard. The
@@ -230,7 +231,7 @@ const form = useForm('notes.update', { note: note.id }, { title: note.title, bod
 `remember` keeps what was typed across Back and Forward. Leave the page, come back, and the input and its errors are still there:
 
 ```tsx
-const form = useForm('notes.update', { note: note.id }, { title: note.title, body: note.body }, { remember: true });
+const form = useForm('notes.update', { title: note.title, body: note.body }, { params: { note: note.id }, remember: true });
 ```
 
 The input stays in the tab's memory with the history entry, under the key `form:<route name>`. A string sets another key. A
@@ -299,7 +300,7 @@ import { FileInput, useForm } from '@marmeon/react';
 import type { ShowCoverController } from '../controllers/ShowCoverController.ts';
 
 export default function Cover({ note }: PageProps<ShowCoverController>) {
-  const form = useForm('notes.cover.update', { note: note.id }, { cover: null });
+  const form = useForm('notes.cover.update', { cover: null }, { params: { note: note.id } });
   const cover = form.data.cover;
   return (
     <form

@@ -85,6 +85,12 @@ export interface RouteFormOptions<F> extends Omit<FormOptions<F>, 'remember'> {
   remember?: true | string | RememberFormOptions<F>;
 }
 
+/** The keys of a route form's options (and `params`), to tell options from fields at run time. */
+const routeFormOptionKeys = ['params', 'guard', 'remember', 'validate'] as const satisfies readonly (keyof RouteFormOptions<never> | 'params')[];
+// A new option that is missing in `routeFormOptionKeys` is a compile error here.
+const optionKeysComplete: Exclude<keyof RouteFormOptions<never> | 'params', (typeof routeFormOptionKeys)[number]> extends never ? true : never = true;
+void optionKeysComplete;
+
 /**
  * How a form is sent — the visit's callbacks: `onError` gets the *validation* errors
  * (here the first message per field), `onException` a request that failed (offline, 5xx — the app also shows it over
@@ -181,15 +187,15 @@ type CheckFormRoute<N extends string> =
     : CheckBrowserRouteName<N>;
 
 /** What a route form with required parameters says when they are left out — `useForm(name, initial)`. */
-type ParamsFirst<N extends string> = `'${N}' takes route parameters — pass them before the initial data: useForm('${N}', params, initial)`;
+type ParamsMissing<N extends string> = `'${N}' takes route parameters — pass them as useForm('${N}', initial, { params })`;
 
 /**
- * `(params, initial)`, or just `(initial)` when the route takes no required parameters. Without the parameters a route needs,
- * the one argument is the message (else TypeScript would report the controller overload: "'string' is not assignable to 'object'").
+ * The options of a route form, with its route parameters: `{ params }` is required when the route has required parameters,
+ * else optional.
  */
-type RouteFormArgs<N extends string> = {} extends ParamsOf<N>
-  ? [initial: RouteFormFields<N>] | [params: ParamsOf<N>, initial: RouteFormFields<N>]
-  : [params: ParamsOf<N>, initial: RouteFormFields<N>] | [initial: ParamsFirst<N>];
+type RouteFormRest<N extends string> = {} extends ParamsOf<N>
+  ? [options?: RouteFormOptions<RouteFormFields<N>> & { params?: ParamsOf<N> }]
+  : [options: RouteFormOptions<RouteFormFields<N>> & { params: ParamsOf<N> }];
 
 /**
  * Form state typed by a controller's request schema, sent to a URL you pass to `form.post(url)`.
@@ -198,29 +204,32 @@ type RouteFormArgs<N extends string> = {} extends ParamsOf<N>
  */
 export function useForm<T extends object>(initial: FormFields<T> & object, options?: FormOptions<FormFields<T>>): Form<T>;
 /**
- * Form state for a named route, with method, URL and fields taken from `bootstrap/routes.ts`.
- * `form.submit()` sends it. See docs/forms.md#forms-by-route-name.
+ * Form state for a named route, with method, URL and fields taken from `bootstrap/routes.ts`; the route's parameters go in
+ * `options.params`. `form.submit()` sends it. See docs/forms.md#forms-by-route-name.
  */
-export function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, ...args: RouteFormArgs<N>): RouteForm<RouteFormFields<N>>;
-// Last: TS reports a mistake against the last overload whose arity fits — this one for four arguments (a wrong option, a
-// password field in `validate.fields`), the one above for two or three (the route's message).
-/**
- * Form state for a named route with parameters, initial data and options such as live `validate`.
- * See docs/forms.md#validating-while-typing.
- */
+export function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: RouteFormFields<N>, ...rest: RouteFormRest<N>): RouteForm<RouteFormFields<N>>;
+// Last: TS reports a mistake against the last overload whose arity fits — for a call without options this one, where a route
+// with required parameters says how to pass them (else the error would be an argument count).
+/** A route form without options: the route takes no required parameters. */
 export function useForm<const N extends BrowserRouteNameInput>(
   name: CheckFormRoute<N>,
-  params: ParamsOf<N>,
-  initial: RouteFormFields<N>,
-  options: RouteFormOptions<RouteFormFields<N>>,
+  initial: {} extends ParamsOf<N> ? RouteFormFields<N> : ParamsMissing<N>,
 ): RouteForm<RouteFormFields<N>>;
 export function useForm(...args: unknown[]): unknown {
   const named = typeof args[0] === 'string';
   const name = named ? (args[0] as string) : undefined;
-  // (name, initial) · (name, params, initial) · (name, params, initial, options) · (initial) · (initial, options)
-  const options = ((named ? args.length === 4 && args[3] : args.length === 2 && args[1]) || {}) as RouteFormOptions<Record<string, unknown>>;
-  const params = named && args.length >= 3 ? (args[1] as Record<string, string | number>) : undefined;
-  const initial = (named ? args[args.length === 4 ? 2 : args.length - 1] : args[0]) as Record<string, unknown>;
+  // `(name, params, initial[, options])` would read `params` as the data and the data as the options, silently: the third
+  // argument is options only if its keys are options.
+  if (named) {
+    const unknown = typeof args[2] === 'object' && args[2] !== null ? Object.keys(args[2]).find((key) => !(routeFormOptionKeys as readonly string[]).includes(key)) : undefined;
+    const hint = `the route parameters go in options.params: useForm('${name}', initial, { params })`;
+    if (unknown !== undefined) throw new TypeError(`'${unknown}' is no option of useForm (${routeFormOptionKeys.join(', ')}) — ${hint}`);
+    if (args.length > 3) throw new TypeError(`useForm('${name}', …) takes (name, initial, options) — ${hint}`);
+  }
+  // (name, initial) · (name, initial, options) · (initial) · (initial, options)
+  const options = ((named ? args[2] : args[1]) || {}) as RouteFormOptions<Record<string, unknown>> & { params?: Record<string, string | number> };
+  const params = named ? options.params : undefined;
+  const initial = (named ? args[1] : args[0]) as Record<string, unknown>;
 
   const { visit } = useRouterContext();
   const manifest = useContext(RoutesContext);
