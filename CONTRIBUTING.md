@@ -485,6 +485,7 @@ These are the maintainer's gates:
 3. Run `pnpm release:verify <commit>` — it rebuilds the release commit and compares its tarballs with the staged ones (below).
 4. Approve the staged versions on npmjs.com with two-factor authentication.
 5. Publish the draft GitHub Release.
+6. From 1.0 on, after a release (not a candidate), pin the release line's docs for the website (below).
 
 The run releases the **release commit** — the last commit of the branch that changed a package's `CHANGELOG.md` or
 `.github/release-base` — not the branch head, so whatever merged after it goes into the next release. The first job (`build`,
@@ -538,6 +539,32 @@ A package's very first version has to be published by hand, before
 trusted publishing can be set up for it. The policies stay in place: the `LICENSE` holder, private reporting in `SECURITY.md`
 and the deprecation policy in the README.
 
+### Pinning the docs of a release line
+
+Each release line from 1.0 on (`1.x`, `2.x`) has its docs on the website under `/docs/<line>/`, with its own `llms.txt`. A line is
+pinned to the commit of its release tag, and its docs are checked into `apps/website/content/lines/<line>/`; before 1.0 there are
+no lines, and `/docs` shows `main`. The website's image is built without a network and without `.git`, so it holds only what is
+checked in. After the draft GitHub Release is published (the tag `v<version>` stands on the release commit, on `main` or on the
+line's branch):
+
+```sh
+git fetch --no-tags origin main '+refs/heads/*.x:refs/remotes/origin/*.x' && git fetch origin refs/tags/v<version>:refs/tags/v<version>
+pnpm website:lines add v<version>
+```
+
+The command writes the pin (`apps/website/docs-lines.json`) and the snapshot, and refuses a tag that is not an annotated
+`v<x.y.z>`, that origin has elsewhere, or whose commit is on neither `origin/main` nor `origin/<line>`. Open a pull request against `main`
+with the label `internal`; its diff is the text agents will read — review the snapshot before merging, since ancestry and the tag
+are checked only when the line is added. Then deploy the website (`deploy/website/compose.yaml`). Never edit a snapshot by hand: `pnpm
+website:check` (the `check` job) compares each one, byte for byte, with the tagged commit and the tag on origin with the pin, so a
+moved tag turns CI red while the website keeps showing the pinned commit. The `image` job builds the website's image, checks that the
+pins and snapshots are in it and, in a second container, a fixture line
+(`apps/website/modules/docs/__fixtures__/lines`) mounted in place of the pins, so no real line is needed in the repository for that.
+
+A maintainer sets up once, in the repository's settings: a ruleset on the tags `v*` that restricts updates and deletions and
+blocks force pushes (not creations: the release job creates the tag), and the protection of `*.x` branches — restricted creation
+and the rules of `main` — so that no branch from an unreviewed commit satisfies the ancestry check of a pin. Check with `gh api repos/marmeon/marmeon/rulesets`.
+
 ### A fix that comes late
 
 - **The release pull request is still open:** merge the fix, run `pnpm release:prepare` again on `main` and update the release
@@ -579,7 +606,8 @@ and the deprecation policy in the README.
 A **line** is `0.<minor>` before 1.0 and `<major>` from 1.0 on. Its branch is the line plus `.x` (`0.1.x`, `1.x`), cut from the
 line's last tag; it releases versions of its line only. Each fix is cherry-picked from `main` as its own pull request into that
 branch, with the same title and its own label so the notes find it. Then `pnpm release:prepare`, the release pull request and
-the workflow run on that branch exactly as on `main`. The branch needs the same ruleset as `main`: the `release label` check,
+the workflow run on that branch exactly as on `main`. A patch of a pinned line moves that line's pin: after the release, `pnpm
+website:lines add v<version>` as in "Pinning the docs of a release line" (older versions are refused). The branch needs the same ruleset as `main`: the `release label` check,
 squash merges only. Delete the branch when the line is done.
 
 The dist-tag follows from the version: above npm's `latest` (or none yet) it is `latest`, and the draft is marked latest; below

@@ -2,7 +2,7 @@
  * `pnpm website:image` — the docs as the image they are deployed with (the `image` part of `pnpm run ci`, after the starter kit's
  * image): `apps/website/Dockerfile` built from this checkout, then checked as an image (non-root, no `.env*`, tests or dev
  * dependencies, tini is PID 1), as a container (read-only root, `/up` 200, every page 200 without Set-Cookie, healthy, SIGTERM →
- * exit 0) and behind Caddy (`deploy/website/compose.yaml`: HTTP/2, HSTS, forwarded headers trusted, 304 on a revalidation, a redirect host answering 301).
+ * exit 0; the pinned release lines and their snapshots are in it and served, and a fixture line mounted over the pins too) and behind Caddy (`deploy/website/compose.yaml`: HTTP/2, HSTS, forwarded headers trusted, 304 on a revalidation, a redirect host answering 301).
  *
  * Image `marmeon-website:smoke-…`, Compose project `marmeon-website-smoke-…`: both and the volumes are removed afterwards. Without
  * Docker, or when the build cannot reach the registry: exit 75 — skipped, never green.
@@ -11,15 +11,20 @@
  *   pnpm website:image --keep    # leaves the image (printed)
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import docsConfig from '../apps/website/docs.config.ts';
 import { cleanEnvironment, freePort, Offline, OFFLINE, SKIPPED, SmokeError } from './pack-smoke.ts';
+import { firstPageOf, lineProblems } from './website-line-checks.ts';
+import { LINES_DIR, PINS_FILE, readPins } from './website-lines.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+/** A line that exists only for this check: the website's tests use it, no pin of the repository names it. */
+const FIXTURE_LINES = join(root, 'apps/website/modules/docs/__fixtures__/lines');
+const FIXTURE_LINE = '0.9.x';
 const DOCKER_OFFLINE = /failed to resolve source metadata|failed to do request|dial tcp|i\/o timeout|TLS handshake timeout|no such host|ERR_PNPM_META_FETCH_FAIL|EAI_AGAIN|ENOTFOUND/;
 /** The docs' policy in production (apps/website SiteServiceProvider, SITE_CSP). */
 const POLICY = "script-src 'self'; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'";
@@ -115,6 +120,10 @@ export async function assertReapsOrphans(run: (args: string[]) => { output: stri
 export function inspectionProblems(found: Inspection, repository = root): string[] {
   const problems: string[] = [];
   const expected = ['.marmeon', 'README.md', 'bootstrap', 'config', 'content', 'dist', 'docs.config.ts', 'index.html', 'layouts', 'modules', 'node_modules', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'storage', 'styles'];
+  // The release lines come with the app's own files ("files" in package.json): the pin file, and a snapshot per pin.
+  const pinFile = PINS_FILE.replace('apps/website/', '');
+  const pinned = Object.keys(readPins(repository));
+  if (existsSync(join(repository, PINS_FILE))) expected.push(pinFile);
   const extra = found.top.filter((name) => !expected.includes(name));
   const missing = expected.filter((name) => !found.top.includes(name));
   if (extra.length > 0) problems.push(`/app has what the docs do not run on: ${extra.join(', ')} (apps/website "files", the Dockerfile's copies)`);
@@ -126,10 +135,16 @@ export function inspectionProblems(found: Inspection, repository = root): string
   const pages = entries().map((entry) => `content/${entry.file ?? `docs/${entry.slug}.md`}`);
   // The imprint and the privacy policy come with the app's own files (`content/legal/`, "files" in package.json).
   const legal = ['imprint', 'privacy'].map((name) => `content/legal/${name}.md`);
-  const absent = [...pages, ...legal].filter((file) => !found.content.includes(file));
+  // Exactly the files of each pinned snapshot — the image has the lines the pins name, byte for byte what `website:lines verify` checks in the repository.
+  const lines = pinned.flatMap((line) =>
+    readdirSync(join(repository, LINES_DIR, line), { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => `content/lines/${line}/${relative(join(repository, LINES_DIR, line), join(entry.parentPath, entry.name))}`),
+  );
+  const absent = [...pages, ...legal, ...lines].filter((file) => !found.content.includes(file));
   if (absent.length > 0) problems.push(`/app/content lacks ${absent.slice(0, 8).join(', ')}`);
   // Only the pages: docs/*.md, the policies at the root and the two legal texts — no package's README or manifest (they are no pages).
-  const others = found.content.filter((file) => !pages.includes(file) && !legal.includes(file) && !/^content\/docs\/[^/]+\.md$/.test(file));
+  const others = found.content.filter((file) => !pages.includes(file) && !legal.includes(file) && !lines.includes(file) && !/^content\/docs\/[^/]+\.md$/.test(file));
   if (others.length > 0) problems.push(`/app/content has what is no page: ${others.slice(0, 8).join(', ')}${others.length > 8 ? ` … (${others.length})` : ''}`);
   const docs = readdirSync(join(repository, 'docs')).filter((name) => name.endsWith('.md')).map((name) => `content/docs/${name}`);
   const unshipped = docs.filter((file) => !found.content.includes(file));
@@ -232,6 +247,8 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
         if (response.headers.get('x-content-type-options') !== 'nosniff') problems.push(`${path}: no X-Content-Type-Options: nosniff`);
         if (!body.includes('</h1>')) problems.push(`${path}: not rendered on the server`);
       }
+      // The pinned lines (none while nothing is pinned): the image serves what the pins name.
+      for (const line of Object.keys(readPins(root))) problems.push(...(await lineProblems(base, line, firstPageOf(join(root, LINES_DIR, line)))));
       if (problems.length > 0) throw new SmokeError(`the docs in the container:\n${problems.map((problem) => `  - ${problem}`).join('\n')}`);
       await until('the health check turning healthy', () => (docker(['inspect', '-f', '{{.State.Health.Status}}', name]).output.trim() === 'healthy' ? true : undefined), 30_000, logs(name));
       await assertReapsOrphans(docker, name);
@@ -242,6 +259,23 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
       // pino levels: 40 warn, 50 error — a read-only start that wanted to write (a stale manifest) warns.
       const loud = output.split('\n').filter((line) => /"level":(4|5|6)0/.test(line) || /EROFS|EACCES/.test(line));
       if (loud.length > 0) throw new SmokeError(`the docs container warned:\n${loud.join('\n')}`);
+      docker(['rm', '-f', '-v', name]);
+      containers.delete(name);
+    });
+    await step(`a fixture line (${FIXTURE_LINE}) mounted over the pins: the image starts with lines and serves them`, async () => {
+      const port = await freePort();
+      const name = `marmeon-website-smoke-${id}-lines`;
+      containers.add(name);
+      docker([
+        'run', '-d', '--name', name, '--read-only', '--tmpfs', '/tmp', '-p', `127.0.0.1:${port}:3000`, '-e', `APP_KEY=${key}`, '-e', `APP_URL=http://127.0.0.1:${port}`,
+        '-e', 'DOCS_LINES=/fixture/snapshots', '-e', 'DOCS_LINE_PINS=/fixture/docs-lines.json', '-v', `${FIXTURE_LINES}:/fixture:ro`, '-v', `${volume}:/app/storage`, image,
+      ]);
+      const base = `http://127.0.0.1:${port}`;
+      await until('GET /up 200', async () => ((await fetch(`${base}/up`, { signal: AbortSignal.timeout(2_000) })).status === 200 ? true : undefined), 60_000, logs(name));
+      const problems = await lineProblems(base, FIXTURE_LINE, firstPageOf(join(FIXTURE_LINES, 'snapshots', FIXTURE_LINE)));
+      const start = await (await fetch(`${base}/llms.txt`, { signal: AbortSignal.timeout(10_000) })).text();
+      if (!start.includes(`/docs/${FIXTURE_LINE}/`)) problems.push(`/llms.txt does not name the line ${FIXTURE_LINE}`);
+      if (problems.length > 0) throw new SmokeError(`the fixture line in the container:\n${problems.map((problem) => `  - ${problem}`).join('\n')}\n${logs(name)()}`);
       docker(['rm', '-f', '-v', name]);
       containers.delete(name);
     });
