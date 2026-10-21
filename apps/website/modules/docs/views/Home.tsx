@@ -64,7 +64,7 @@ function roman(value: number): string {
 }
 
 /** `/docs`: what Marmeon is, where to start, then every section of the docs with its pages. */
-export default function Home({ sections }: PageProps<ShowHomeController>) {
+export default function Home({ sections, lines }: PageProps<ShowHomeController>) {
   const version = usePage().props.site?.version;
   return (
     <div className="docs-home">
@@ -131,6 +131,23 @@ export default function Home({ sections }: PageProps<ShowHomeController>) {
             ))}
           </div>
         </section>
+        {lines.length > 0 && (
+          <section className="docs-home-block" aria-labelledby="release-lines">
+            <h2 id="release-lines" className="docs-home-heading">
+              Release lines
+            </h2>
+            <p>The documentation of older versions, for an app that has not upgraded yet.</p>
+            <ul>
+              {lines.map((line) => (
+                <li key={line.name}>
+                  <Link href={line.path}>
+                    Marmeon {line.version} ({line.name})
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </div>
   );

@@ -130,8 +130,23 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   once, when the line is added; after that the pull request that carries the pin is what a maintainer reviews. There are no lines
   before 1.0: the first one is made with `pnpm website:lines add v1.0.0` on the branch `1.x`. `scripts/website-lines.test.ts`
   covers each refusal.
+- **Release line routes:** `DocsLines` (`modules/docs/DocsLines.ts`) reads the pins and the snapshots when the app boots; without
+  `docs-lines.json` and `content/lines/` there are no lines and nothing under `/docs/` changes. The website does not start (a
+  `DocsError` listing every problem) when a folder has no pin, a pin no folder, a name is no line, a line's `docs/index.json` is not
+  format 1 or not the pin's version, or it names a file that is not `docs/<slug>.md` or a policy at the root, or a file that is not
+  a regular file. A line has the routes `/docs/<line>` (with `Accept: text/markdown`: its `llms.txt`), `/docs/<line>/<page>`,
+  `/docs/<line>/<page>.md`, `/docs/<line>/llms.txt` and `/docs/<line>/llms-full.txt`, registered before `/docs/:page`. The line and
+  the page are looked up by name in what the boot read (`LineBinding`, `LinePageBinding`); nothing of the URL is joined into a
+  path, and a name that is not there is a 404. A line has no search and shares no once-prop: its navigation is a prop of its own
+  pages (`lineNav`), as it differs per line. Its Markdown starts with a line naming the version, the line and the newest page (agents
+  read the body only); the snapshot files themselves stay byte for byte. Every answer under a line carries `X-Robots-Tag: noindex`; its HTML pages `<meta name="robots" content="noindex">`
+  and a canonical link to the newest version of the page (`/docs` when the page is gone). Its Markdown, `llms.txt` and `llms-full.txt`
+  name the newest counterpart in `Link: …; rel="canonical"`. A link in a line's Markdown to a file that is no page points at GitHub at
+  the pinned commit, not at `main`. `/llms.txt` ends with a "Release lines" section and `/docs` lists the lines; the sitemap
+  does not. `modules/docs/__fixtures__/lines/` is the fixture line (0.9.x) the tests use through `DOCS_LINES` and `DOCS_LINE_PINS`.
 
-Settings: `config/docs.ts` has `DOCS_SOURCE` (the repository, default `../..`; `/app/content` in the image) and
+Settings: `config/docs.ts` has `DOCS_SOURCE` (the repository, default `../..`; `/app/content` in the image),
+`DOCS_LINES` (the snapshots, default `content/lines`), `DOCS_LINE_PINS` (default `docs-lines.json`) and
 `DOCS_SEARCH_PER_MINUTE` (120); `config/site.ts` has `SITE_CACHE_MAX_AGE` (300 s) and `SITE_FATHOM_SITE` (empty: no analytics).
 
 ## Deployment

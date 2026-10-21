@@ -19,16 +19,17 @@ import { fileURLToPath } from 'node:url';
 import type { DocsDefinition } from '../apps/website/docs.config.ts';
 import { docsIndex, ROOT_FILES } from './docs-ship.ts';
 import { oxc } from './source-files.ts';
+import { compareVersions, LINE_PATTERN, lineOf } from '../apps/website/modules/docs/release-line.ts';
 
 /** The pins, relative to the repository. */
 export const PINS_FILE = 'apps/website/docs-lines.json';
 /** The snapshots, one directory per line, relative to the repository. */
 export const LINES_DIR = 'apps/website/content/lines';
 
-const TAG = /^v\d+\.\d+\.\d+$/;
+const TAG = /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 const COMMIT = /^[0-9a-f]{40}$/;
-const VERSION = /^\d+\.\d+\.\d+$/;
-const LINE = /^(?:0\.(?:0|[1-9]\d*)\.x|[1-9]\d*\.x)$/;
+const VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
+const LINE = new RegExp(`^${LINE_PATTERN}$`);
 /** The files a snapshot may hold; every path written is checked against it. */
 const SNAPSHOT_PATH = /^(?:docs\/[a-z0-9-]+\.(?:md|json)|UPGRADING\.md|SECURITY\.md|CONTRIBUTING\.md)$/;
 const NAVIGATION = 'apps/website/docs.config.ts';
@@ -85,13 +86,7 @@ export function gitIn(cwd: string): Git {
   };
 }
 
-/** The line a version belongs to: `0.<minor>.x` before 1.0, `<major>.x` after; none for a pre-release or anything else. */
-export function lineOf(version: string): string | undefined {
-  const zero = /^0\.(\d+)\.\d+$/.exec(version);
-  if (zero) return `0.${zero[1]}.x`;
-  const major = /^([1-9]\d*)\.\d+\.\d+$/.exec(version);
-  return major ? `${major[1]}.x` : undefined;
-}
+export { lineOf };
 
 export interface LinePin {
   readonly version: string;
@@ -132,16 +127,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function sameKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
   const own = Object.keys(value).sort();
   return own.length === keys.length && [...keys].sort().every((key, index) => key === own[index]);
-}
-
-function compareVersions(a: string, b: string): number {
-  const parts = (version: string) => version.split('.').map(Number);
-  const [x, y] = [parts(a), parts(b)];
-  for (let index = 0; index < 3; index++) {
-    const difference = (x?.[index] ?? 0) - (y?.[index] ?? 0);
-    if (difference !== 0) return difference;
-  }
-  return 0;
 }
 
 /** The pins as the file holds them: lines by version, keys in a fixed order, `\n` at the end. */

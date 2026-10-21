@@ -76,6 +76,10 @@ export type LinkStyle = { readonly kind: 'sibling' } | { readonly kind: 'absolut
 export interface ServedHrefOptions extends Pick<RenderOptions, 'file' | 'pageOf'> {
   /** The page's own path: `/docs/routing`. */
   readonly self: string;
+  /** Where the pages are served (`/docs`, or `/docs/<line>`); defaults to `/docs`. */
+  readonly base?: string;
+  /** The Git ref a link to a file that is no page points at; defaults to `main`. */
+  readonly githubRef?: string;
   readonly style: LinkStyle;
 }
 
@@ -90,18 +94,19 @@ export function servedHref(link: SourceLink, options: ServedHrefOptions): string
   const target = linkTarget(value, options);
   const hash = value.includes('#') ? value.slice(value.indexOf('#')) : '';
   const { style } = options;
+  const base = options.base ?? '/docs';
   switch (target.kind) {
     case 'external':
       return link.href;
     case 'file':
-      return `${GITHUB_URL}/blob/main/${target.path}${hash}`;
+      return `${GITHUB_URL}/blob/${options.githubRef ?? 'main'}/${target.path}${hash}`;
     case 'page': {
       const path = target.path === '' ? options.self : target.path;
-      if (!path.startsWith('/docs/')) return link.href;
+      if (!path.startsWith(`${base}/`)) return link.href;
       if (style.kind === 'absolute') return style.url(`${path}.md`) + target.hash;
       // A bare anchor stays; a link to the page by its file name becomes its sibling form.
       if (target.path === '' && value.startsWith('#')) return link.href;
-      return `${path.slice('/docs/'.length)}.md${target.hash}`;
+      return `${path.slice(base.length + 1)}.md${target.hash}`;
     }
   }
 }

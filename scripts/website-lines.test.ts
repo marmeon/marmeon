@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import docsConfig from '../apps/website/docs.config.ts';
+import { isLine, lineOf as websiteLineOf } from '../apps/website/modules/docs/release-line.ts';
 import { repositoryFiles } from './check-source.ts';
 import { docsIndex } from './docs-ship.ts';
 import { tempDir } from './test/temp-dir.js';
@@ -101,6 +102,26 @@ describe('lineOf', () => {
     expect(lineOf('1.0.0')).toBe('1.x');
     expect(lineOf('12.4.1')).toBe('12.x');
     for (const version of ['1.0.0-rc.1', '0.3', '00.3.0', '01.0.0', 'v0.3.0', '', '0.3.0 ', '0.3.x']) expect(lineOf(version), version).toBeUndefined();
+  });
+});
+
+describe('the rule for a line, here and in the website', () => {
+  const versions = ['0.3.0', '0.0.1', '10.0.0', '1.02.3', '0.3.00', '1.0.0-rc.1'];
+
+  it('is the website\'s own: what the script pins is a line the website starts with, and nothing else', () => {
+    for (const version of versions) {
+      const line = websiteLineOf(version);
+      expect(lineOf(version), version).toBe(line);
+      const dir = tempDir('marmeon-website-lines-');
+      mkdirSync(join(dir, 'apps/website'), { recursive: true });
+      writeFileSync(join(dir, PINS_FILE), JSON.stringify({ format: 1, lines: { [line ?? '0.0.x']: { version, tag: `v${version}`, commit: 'a'.repeat(40) } } }));
+      if (line === undefined) expect(() => readPins(dir), version).toThrow();
+      else {
+        expect(isLine(line), version).toBe(true);
+        expect(Object.keys(readPins(dir)), version).toEqual([line]);
+      }
+    }
+    expect(versions.filter((version) => websiteLineOf(version) !== undefined)).toEqual(['0.3.0', '0.0.1', '10.0.0']);
   });
 });
 

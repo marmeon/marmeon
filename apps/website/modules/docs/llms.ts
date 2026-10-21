@@ -7,8 +7,10 @@ export const LLMS_SUMMARY =
   'Marmeon is a full-stack framework for TypeScript on Node.js: an app is a set of modules whose routes, controllers and React pages are typed from end to end, and the server renders each page before the browser takes over.';
 
 /** The head of `/llms.txt` and `/llms-full.txt`: the title, the summary and where to go. */
-export function llmsHeader(input: { version: string; docsUrl: string; fullUrl: string }): string {
-  return `# ${LLMS_TITLE}\n\n> ${LLMS_SUMMARY}\n\nThe documentation of Marmeon ${input.version}, each page as Markdown in the order of ${input.docsUrl}. Every page in one file: ${input.fullUrl}\n`;
+export function llmsHeader(input: { version: string; docsUrl: string; fullUrl: string; line?: { name: string; newestUrl: string } }): string {
+  const which = input.line ? `${input.version}, the ${input.line.name} line,` : `${input.version},`;
+  const older = input.line ? `This is not the newest documentation, which is at ${input.line.newestUrl}\n` : '';
+  return `# ${LLMS_TITLE}\n\n> ${LLMS_SUMMARY}\n\nThe documentation of Marmeon ${which} each page as Markdown in the order of ${input.docsUrl}. Every page in one file: ${input.fullUrl}\n${older}`;
 }
 
 const escapeTitle = (title: string): string => title.replace(/[[\]]/g, '\\$&');
@@ -36,4 +38,10 @@ export function llmsSections(docs: Pick<DocsRepository, 'sections' | 'doc'>, url
       return page && !page.pending ? [{ title: page.title, url: url(`${page.path}.md`) }] : [];
     }),
   }));
+}
+
+/** The section of `/llms.txt` that names the older release lines (newest first), each linked to the line's own `llms.txt`; none without lines. */
+export function releaseLinesSection(lines: readonly { name: string; version: string }[], url: (path: string) => string): { title: string; pages: { title: string; url: string }[] }[] {
+  if (lines.length === 0) return [];
+  return [{ title: 'Release lines', pages: lines.map((line) => ({ title: `Marmeon ${line.version} (${line.name})`, url: url(`/docs/${line.name}/llms.txt`) })) }];
 }

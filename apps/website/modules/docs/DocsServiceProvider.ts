@@ -4,6 +4,7 @@ import { Application, Logger, type Container, type ServiceProvider } from '@marm
 import { Router } from '@marmeon/router';
 import { DocsConfig } from '../../config/docs.ts';
 import { PUBLIC_GROUP } from '../site/SiteServiceProvider.ts';
+import { DocsLines } from './DocsLines.ts';
 import { DocsRepository } from './DocsRepository.ts';
 import routes from './routes.ts';
 
@@ -24,10 +25,17 @@ export class DocsServiceProvider implements ServiceProvider {
         onReloadError: (error) => c.make(Logger).error(`The pages could not be read again — they stay as they were. ${error instanceof Error ? error.message : String(error)}`),
       });
     });
+    // The release lines (no watching: a snapshot is frozen); none without pins.
+    container.singleton(DocsLines, (c) => {
+      const config = c.make(DocsConfig);
+      const root = c.make(Application).root;
+      return new DocsLines({ dir: resolve(root, config.lines), pins: resolve(root, config.linePins) });
+    });
   }
 
   async boot(app: Application): Promise<void> {
     await app.container.make(DocsRepository).load();
+    await app.container.make(DocsLines).load();
 
     const config = app.container.make(DocsConfig);
     app.container.make(RateLimiter).for('docs.search', (ctx) => Limit.perMinute(config.searchPerMinute).by(clientKey(ctx.ip)));
@@ -35,5 +43,6 @@ export class DocsServiceProvider implements ServiceProvider {
 
   shutdown(app: Application): void {
     app.container.make(DocsRepository).close();
+    app.container.make(DocsLines).close();
   }
 }

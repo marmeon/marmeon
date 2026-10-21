@@ -67,6 +67,12 @@ export interface DocsRepositoryOptions {
   /** Re-read when a page changes (development). */
   readonly watch?: boolean;
   readonly docs?: DocsDefinition;
+  /** Where the pages are served: `/docs` for the newest docs, `/docs/<line>` for a release line. */
+  readonly base?: string;
+  /** The Git ref a link to a file that is no page points at on GitHub: `main`, or the commit a release line is pinned to. */
+  readonly githubRef?: string;
+  /** Shared by the repositories of one app (building one takes a moment). */
+  readonly highlighter?: CodeHighlighter;
   /** Told when a re-read after a change fails (the pages stay as they were). */
   readonly onReloadError?: (error: unknown) => void;
 }
@@ -99,7 +105,7 @@ export class DocsRepository {
 
   /** Reads and renders every page; throws {@link DocsError} when the repository and `docs.config.ts` disagree. */
   async load(): Promise<this> {
-    this.#highlighter ??= await createCodeHighlighter();
+    this.#highlighter ??= this.#options.highlighter ?? (await createCodeHighlighter());
     this.#loaded = this.#read(this.#highlighter);
     if (this.#options.watch && this.#watchers.length === 0) this.#watch();
     return this;
@@ -133,7 +139,7 @@ export class DocsRepository {
     const pageOf = (file: string) => pathOf.get(file);
     const pages = [...loaded.docs.values()].map((page) => {
       const { source, links } = loaded.sources.get(page.name)!;
-      const markdown = replaceLinks(source, links, (link) => servedHref(link, { file: page.file, pageOf, self: page.path, style: { kind: 'absolute', url } }));
+      const markdown = replaceLinks(source, links, (link) => servedHref(link, { file: page.file, pageOf, self: page.path, base: this.#options.base ?? '/docs', githubRef: this.#options.githubRef ?? 'main', style: { kind: 'absolute', url } }));
       return { page, markdown };
     });
     this.#absolute = { loaded, key, pages };
@@ -169,17 +175,19 @@ export class DocsRepository {
   #read(highlighter: CodeHighlighter): Loaded {
     const { source } = this.#options;
     const docs = this.#options.docs ?? docsConfig;
+    const base = this.#options.base ?? '/docs';
+    const githubRef = this.#options.githubRef ?? 'main';
     const problems = checkPages(source, docs.sections);
     if (problems.length > 0) throw new DocsError(problems);
 
     const entries = docs.sections.flatMap((section) => section.pages.map((entry) => ({ entry, section: section.title })));
-    const docOf = new Map(entries.map(({ entry }) => [fileOf(entry), `/docs/${entry.slug}`]));
+    const docOf = new Map(entries.map(({ entry }) => [fileOf(entry), `${base}/${entry.slug}`]));
     // Only the docs' files are pages: a link to the root README stays code text (the start page is the app's own).
     const pageOf = (file: string) => docOf.get(file);
     const problemList: string[] = [];
     const serve = (file: string, text: string, links: readonly SourceLink[], pageOf: (path: string) => string | undefined): string => {
       try {
-        return replaceLinks(text, links, (link) => servedHref(link, { file, pageOf, self: pageOf(file)!, style: { kind: 'sibling' } }));
+        return replaceLinks(text, links, (link) => servedHref(link, { file, pageOf, self: pageOf(file)!, base, githubRef, style: { kind: 'sibling' } }));
       } catch (error) {
         problemList.push(`${file}: a link cannot be resolved (${error instanceof Error ? error.message : String(error)})`);
         return text;
@@ -221,8 +229,8 @@ export class DocsRepository {
       all.push(rendered);
     }
     if (problemList.length > 0) throw new DocsError(problemList);
-    const late = new Set(entries.filter(({ entry }) => entry.changes).map(({ entry }) => `/docs/${entry.slug}`));
-    const sectionOf = new Map(entries.map(({ entry, section }) => [`/docs/${entry.slug}`, section]));
+    const late = new Set(entries.filter(({ entry }) => entry.changes).map(({ entry }) => `${base}/${entry.slug}`));
+    const sectionOf = new Map(entries.map(({ entry, section }) => [`${base}/${entry.slug}`, section]));
     const index = new SearchIndex(
       all.flatMap(({ page: { path, title }, rendered }) =>
         rendered.sections.map((hit) => ({ path, page: title, section: sectionOf.get(path)!, heading: hit.heading, anchor: hit.anchor, text: hit.text, code: hit.code, late: late.has(path) })),
@@ -233,7 +241,7 @@ export class DocsRepository {
       pages: section.pages.map((entry) => ({
         name: entry.slug,
         label: entry.label,
-        path: `/docs/${entry.slug}`,
+        path: `${base}/${entry.slug}`,
         ...(docPages.get(entry.slug)!.pending ? { pending: true as const } : {}),
       })),
     }));
