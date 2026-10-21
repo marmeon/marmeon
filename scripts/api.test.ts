@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -22,7 +22,9 @@ function demo(files: Record<string, string>, exports: Record<string, string> = {
   };
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest));
-  for (const [name, text] of Object.entries(files)) {
+  // Every entry point is built: a module of its own, empty unless the test gives it code.
+  const built: Record<string, string> = Object.fromEntries(Object.values(exports).map((file) => [file.replace(/\.d\.ts$/, '.js'), '']));
+  for (const [name, text] of Object.entries({ ...built, ...files })) {
     mkdirSync(dirname(join(dir, 'dist', name)), { recursive: true });
     writeFileSync(join(dir, 'dist', name), text);
   }
@@ -497,6 +499,66 @@ describe('environment variables and commands', () => {
     expect(compareSnapshots(before.items, after.items).removed.map((item) => item.name)).toEqual(['OLD']);
   });
 
+  const locking = (name: string, variables: string, locks: string) =>
+    `{ name: '${name}', env: { [Symbol.for('marmeon.env.fields')]: { ${variables} }, [Symbol.for('marmeon.env.renamed')]: { ${locks} } } }`;
+
+  it('reports one retired name that two configs lock to different targets', async () => {
+    const { items, problems } = await read(`${locking('first', 'A: optional', "OLD: 'A'")}, ${locking('second', 'B: optional', "OLD: 'B'")}`);
+    expect(problems).toEqual(['@marmeon/demo: OLD is retired for A by one config and for B by the config second — one name cannot lead to two']);
+    expect(items.filter((item) => item.name === 'OLD')).toHaveLength(1);
+    expect((await read(`${locking('first', 'A: optional', "OLD: 'A'")}, ${locking('second', 'A: optional', "OLD: 'A'")}`)).problems).toEqual([]);
+  });
+
+  it('reports a retired name that another config reads as a variable', async () => {
+    const { problems } = await read(`${locking('first', 'NEW: optional', "OLD: 'NEW'")}, ${locking('second', 'OLD: optional', '')}`);
+    expect(problems).toEqual(['@marmeon/demo: OLD is retired for NEW, but a config reads OLD as a variable — a retired name is never given out again']);
+  });
+
+  it('marks a switch without a default, since its type shows nowhere else', async () => {
+    const { items } = await read(
+      "fields({ ON: { '~env': (raw) => ({ value: raw === 'true' ? true : raw === 'false' ? false : undefined, problem: raw === 'maybe' ? 'no' : undefined }) }, PLAIN: optional, MUST: { '~env': (raw) => ({ value: raw === 'true' ? true : raw === 'false' ? false : undefined, problem: raw === undefined || raw === 'maybe' ? 'no' : undefined }) } })",
+    );
+    expect(items.map((item) => item.text)).toEqual(['`ON` — optional (boolean)', '`PLAIN` — optional', '`MUST` — required (boolean)']);
+  });
+
+  it('reports a switch that is read as text', async () => {
+    const asText = "{ '~env': (raw) => (raw === 'true' || raw === 'false' ? { value: raw } : raw === undefined ? { value: undefined } : { problem: 'no' }) }";
+    const { problems } = await read(`fields({ FLAG: ${asText} })`);
+    expect(problems).toEqual(['@marmeon/demo: FLAG (config demo) is a switch read as text — read it with env.boolean()']);
+    expect((await read("fields({ FREE: { '~env': (raw) => ({ value: raw }) } })")).problems).toEqual([]);
+  });
+
+  it('reports an entry point of the package that is not built', async () => {
+    const { dir, manifest } = demo({ 'index.d.ts': 'export declare const a: 1;\n', 'extra.d.ts': 'export declare const b: 1;\n' }, { '.': 'index.d.ts', './extra': 'extra.d.ts' });
+    rmSync(join(dir, 'dist/extra.js'));
+    const { problems } = await runtimeItems({ name: '@marmeon/demo', dir, manifest });
+    expect(problems.join('\n')).toMatch(/cannot import \.\/dist\/extra\.js .* run pnpm build first/);
+  });
+
+  it('lists the configs a public entry point exports, apart from the listed providers', async () => {
+    const { dir, manifest } = demo(
+      {
+        'index.d.ts': 'export declare const a: 1;\n',
+        'index.js': "export class P { static config = []; }",
+        'extra.d.ts': 'export declare const b: 1;\n',
+        'extra.js': `
+          const config = (name, variable) => ({ name, env: { [Symbol.for('marmeon.env.fields')]: { [variable]: { '~env': () => ({ value: 1 }) } } } });
+          export const BareConfig = config('bare', 'BARE_ONE');
+          export class OptInProvider { static config = [config('optin', 'OPTIN_ONE')]; }
+          export const NotAConfig = { name: 'x', env: {} };
+          export class Plain { static config = 5; }
+        `,
+        'internal.d.ts': 'export declare const c: 1;\n',
+        'internal.js': "export const Hidden = { name: 'h', env: { [Symbol.for('marmeon.env.fields')]: { HIDDEN: { '~env': () => ({ value: 1 }) } } } };",
+      },
+      { '.': 'index.d.ts', './extra': 'extra.d.ts', './internal': 'internal.d.ts' },
+      { marmeon: { providers: ['P'] } },
+    );
+    const { items, problems } = await runtimeItems({ name: '@marmeon/demo', dir, manifest });
+    expect(problems).toEqual([]);
+    expect(items.map((item) => item.name).sort()).toEqual(['BARE_ONE', 'OPTIN_ONE']);
+  });
+
   it('shows a changed default as changed and a removed variable as removed', async () => {
     const [before, after] = await pair('fields({ PORT: given(3000), GONE: given(1) })', 'fields({ PORT: given(3001) })');
     const changes = compareSnapshots(before.items, after.items);
@@ -530,6 +592,7 @@ describe('environment variables and commands', () => {
 
   it('asks for a build only when the entry point cannot be imported', async () => {
     const { dir, manifest } = demo({ 'index.d.ts': 'export declare const a: 1;\n' }, { '.': 'index.d.ts' }, { marmeon: { providers: ['P'] } });
+    rmSync(join(dir, 'dist/index.js'));
     expect((await runtimeItems({ name: '@marmeon/demo', dir, manifest })).problems.join('\n')).toContain('run pnpm build first');
   });
 

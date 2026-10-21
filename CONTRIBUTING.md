@@ -282,6 +282,25 @@ checked over every file of the repository — tracked, or new and not ignored. E
 
 A new rule joins the same script, with its test.
 
+### Environment variables
+
+The names of the variables are frozen, and `scripts/env-names.test.ts` holds them to these rules; the
+list is `docs/configuration.md` › "Every variable", compared with the `Environment` sections of every `api.md`:
+
+- A variable starts with the prefix of its area; only `NODE_ENV`, `PORT`, `HOST` and the names of the OpenTelemetry specification have none.
+- `<AREA>_DRIVER` picks a driver, `<AREA>_CONNECTION` names a connection of the database or Redis, never anything else.
+- A duration ends with its unit (`_MILLISECONDS`, `_SECONDS`, `_MINUTES`, `_HOURS`, `_DAYS`); a name with one of the words
+  `LIFETIME`, `TIMEOUT`, `DELAY`, `EXPIRE`, `EXPIRES`, `EXPIRY`, `EXPIRATION`, `THROTTLE`, `RETRY`, `HEARTBEAT`, `WITHIN`, `AFTER`, `INTERVAL`, `TTL`, `AGE`,
+  `DURATION`, `WINDOW`, `PERIOD`, `GRACE`, `IDLE`, `BACKOFF`, `WAIT` or `STALE` is read as one (whole words: `USER_AGENT` is none). An abbreviated unit (`_MS`, `_SEC`,
+  `_MIN`, `_HRS`) is refused.
+- A switch is read with `env.boolean()`: no `env.in(['true', 'false'])`, no `true|false` pattern and no compare with `'true'` in a package's
+  source, and no variable that reads `true` and `false` as text.
+- One variable has one meaning: two configs of a package do not read it differently.
+- A retired name is never given out again.
+
+A rename is a `breaking` pull request with `.renamed()`; its `UPGRADING.md` entry is written when the release is prepared, and the description says what an app renames.
+A new variable adds its row to the table.
+
 ## Dependencies of drivers
 
 A driver of another package, such as a queue driver for SQS, comes through the static record of its provider

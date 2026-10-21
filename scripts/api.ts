@@ -631,11 +631,27 @@ interface CommandShape {
   readonly options?: Readonly<Record<string, { readonly type?: string; readonly short?: string; readonly multiple?: boolean }>>;
 }
 
-/** What a missing variable is: its default as JSON, `required` or `optional`. */
+/** Whether the variable reads `true` and `false` as a switch (`env.boolean()`) and nothing else. */
+function readsSwitch(name: string, field: EnvField): boolean {
+  const reads = (raw: string) => field['~env'](raw, name);
+  return reads('true').value === true && reads('false').value === false && reads('maybe').problem !== undefined;
+}
+
+/** Whether `true` and `false` come out as those words and anything else is refused (`env.in(['true', 'false'])`): a switch read as text. */
+function readsSwitchAsText(name: string, field: EnvField): boolean {
+  const reads = (raw: string) => field['~env'](raw, name);
+  return reads('true').value === 'true' && reads('false').value === 'false' && reads('maybe').problem !== undefined;
+}
+
+/**
+ * What a missing variable is: its default as JSON, `required` or `optional`. A switch with no default says so (`optional (boolean)`),
+ * since its type is not visible otherwise.
+ */
 function defaultOf(name: string, field: EnvField): string {
   const read = field['~env'](undefined, name);
-  if (read.problem !== undefined) return '— required';
-  return read.value === undefined ? '— optional' : `= \`${JSON.stringify(read.value)}\``;
+  if (read.problem !== undefined) return readsSwitch(name, field) ? '— required (boolean)' : '— required';
+  if (read.value !== undefined) return `= \`${JSON.stringify(read.value)}\``;
+  return readsSwitch(name, field) ? '— optional (boolean)' : '— optional';
 }
 
 /** One `--option (type)` line per option, sorted. The description is no part of it: its wording is no API. */
@@ -652,7 +668,8 @@ function commandItem(Command: CommandShape): ApiItem {
 
 /**
  * The environment variables and commands of a package, read from its built code: the providers its manifest lists
- * (`marmeon.providers`) with their `static config` and `static commands`, and the CLI's built-in commands. Nothing boots —
+ * (`marmeon.providers`) with their `static config` and `static commands`, every other config or provider a public entry point
+ * exports, and the CLI's built-in commands. Nothing boots —
  * the modules are only imported, with `NODE_ENV=test`.
  */
 export async function runtimeItems(pkg: PackageToSnapshot): Promise<{ items: ApiItem[]; problems: string[] }> {
@@ -660,9 +677,8 @@ export async function runtimeItems(pkg: PackageToSnapshot): Promise<{ items: Api
   const problems: string[] = [];
   const names = ((pkg.manifest.marmeon as { providers?: string[] } | undefined)?.providers ?? []) as string[];
   const isCli = pkg.name === 'marmeon';
-  if (names.length === 0 && !isCli) return { items, problems };
-
-  const main = ((pkg.manifest.exports as Record<string, { default?: string }> | undefined)?.['.']?.default ?? './dist/index.js');
+  const exportsField = (pkg.manifest.exports ?? {}) as Record<string, { default?: unknown } | string | undefined>;
+  const main = ((exportsField['.'] as { default?: string } | undefined)?.default ?? './dist/index.js');
   const before = process.env.NODE_ENV;
   process.env.NODE_ENV = 'test';
   try {
@@ -680,29 +696,66 @@ export async function runtimeItems(pkg: PackageToSnapshot): Promise<{ items: Api
     const commands: CommandShape[] = [];
     const variables = new Map<string, { config: string; value: string }[]>();
     const renamed = new Map<string, string>();
+    const seen = new Set<object>();
+    interface ConfigShape {
+      readonly name: string;
+      readonly env: Record<symbol, Record<string, EnvField> | undefined>;
+    }
+    const readConfig = (config: ConfigShape, via: string): void => {
+      if (seen.has(config)) return;
+      seen.add(config);
+      const fields = typeof config.env === 'object' && config.env !== null ? config.env[ENV_FIELDS] : undefined;
+      if (fields === undefined) {
+        problems.push(`${pkg.name}: the env of the config ${config.name} is not made by env({ … }) — the snapshot cannot read its variables`);
+        return;
+      }
+      try {
+        const locks = (config.env as unknown as Record<symbol, Record<string, string> | undefined>)[ENV_RENAMED] ?? {};
+        for (const [from, to] of Object.entries(locks)) {
+          const other = renamed.get(from);
+          if (other !== undefined && other !== to) problems.push(`${pkg.name}: ${from} is retired for ${other} by one config and for ${to} by the config ${config.name} — one name cannot lead to two`);
+          renamed.set(from, other ?? to);
+        }
+        for (const [variable, field] of Object.entries(fields)) {
+          if (readsSwitchAsText(variable, field)) problems.push(`${pkg.name}: ${variable} (config ${config.name}) is a switch read as text — read it with env.boolean()`);
+          variables.set(variable, [...(variables.get(variable) ?? []), { config: config.name, value: defaultOf(variable, field) }]);
+        }
+      } catch (error) {
+        problems.push(`${pkg.name}: reading the variables of the config ${config.name} (${via}) failed: ${(error as Error).message}`);
+      }
+    };
     for (const name of names) {
-      const Provider = module[name] as { config?: readonly { name: string; env: Record<symbol, Record<string, EnvField> | undefined> }[]; commands?: readonly CommandShape[] } | undefined;
+      const Provider = module[name] as { config?: readonly ConfigShape[]; commands?: readonly CommandShape[] } | undefined;
       if (Provider === undefined) {
         problems.push(`${pkg.name} lists the provider ${name}, but its entry point does not export it`);
         continue;
       }
-      for (const config of Provider.config ?? []) {
-        const fields = typeof config.env === 'object' && config.env !== null ? config.env[ENV_FIELDS] : undefined;
-        if (fields === undefined) {
-          problems.push(`${pkg.name}: the env of the config ${config.name} is not made by env({ … }) — the snapshot cannot read its variables`);
-          continue;
-        }
-        try {
-          const locks = (config.env as unknown as Record<symbol, Record<string, string> | undefined>)[ENV_RENAMED] ?? {};
-          for (const [from, to] of Object.entries(locks)) renamed.set(from, to);
-          for (const [variable, field] of Object.entries(fields)) {
-            variables.set(variable, [...(variables.get(variable) ?? []), { config: config.name, value: defaultOf(variable, field) }]);
+      for (const config of Provider.config ?? []) readConfig(config, `provider ${name}`);
+      commands.push(...(Provider.commands ?? []));
+    }
+    // A config no listed provider brings (an opt-in provider's, or one the app reads itself) is part of the surface too: every
+    // config and every provider's `static config` that a public entry point exports.
+    const entries = new Set<string>([main]);
+    for (const [subpath, target] of Object.entries(exportsField)) {
+      const file = typeof target === 'object' && target !== null ? target.default : undefined;
+      if (subpath !== './internal' && typeof file === 'string') entries.add(file);
+    }
+    for (const file of entries) {
+      // The main entry of a package with no provider may be types only (or none): nothing to read there, so not a missing build.
+      if (file === main && names.length === 0 && !existsSync(join(pkg.dir, file))) continue;
+      const exported = file === main && names.length > 0 ? module : await load(file);
+      for (const [exportName, value] of Object.entries(exported ?? {})) {
+        if (typeof value === 'function' && Array.isArray((value as { config?: unknown }).config)) {
+          for (const config of (value as { config: ConfigShape[] }).config) {
+            if (typeof config === 'object' && config !== null && typeof config.env === 'object' && config.env !== null) readConfig(config, `provider ${exportName}`);
           }
-        } catch (error) {
-          problems.push(`${pkg.name}: reading the variables of the config ${config.name} (provider ${name}) failed: ${(error as Error).message}`);
+        } else if (typeof value === 'object' && value !== null && typeof (value as ConfigShape).env === 'object' && (value as ConfigShape).env !== null && (value as ConfigShape).env[ENV_FIELDS] !== undefined) {
+          readConfig(value as ConfigShape, `export ${exportName}`);
         }
       }
-      commands.push(...(Provider.commands ?? []));
+    }
+    for (const [from, to] of renamed) {
+      if (variables.has(from)) problems.push(`${pkg.name}: ${from} is retired for ${to}, but a config reads ${from} as a variable — a retired name is never given out again`);
     }
     if (isCli) commands.push(...(((await load('dist/built-in.js'))?.BUILT_IN ?? []) as CommandShape[]));
 

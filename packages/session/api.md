@@ -256,7 +256,7 @@ interface SharedProps {
 // SESSION_SAME_SITE
 `SESSION_SAME_SITE` = `"lax"`
 // SESSION_SECURE_COOKIE
-`SESSION_SECURE_COOKIE` — optional
+`SESSION_SECURE_COOKIE` — optional (boolean)
 ```
 
 ## Commands

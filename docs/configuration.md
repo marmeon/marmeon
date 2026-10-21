@@ -424,6 +424,138 @@ These are the settings a new app starts with. Each feature's page lists its own 
 | `QUEUE_DRIVER` | `database` | Where queued jobs wait: `database`, `redis`, `sync` or a driver a package brings. |
 | `MAIL_DRIVER` | `log` | `log` writes every mail to the log, `smtp` sends it, `array` keeps it in memory. |
 
+## Every variable
+
+Every variable the framework's packages read, from the `Environment` sections of their API snapshots. The list is frozen: a
+variable is renamed with `.renamed()` ([Renamed variables](#renamed-variables)) and never given a retired name again, and a test
+holds this table to the code. A feature's page explains its variables; the last column links it.
+
+The names follow a few rules:
+
+- A variable starts with the prefix of its area (`APP_`, `AUTH_`, `HASH_`, `CACHE_`, `CSRF_`, `DB_`, `DEVTOOLS_`, `LIVE_`, `LOG_`,
+  `MAIL_`, `NOTIFICATIONS_`, `QUEUE_`, `REDIS_`, `SCHEDULE_`, `SERVER_`, `SESSION_`, `UPLOADS_`, `MARMEON_OTEL_`). Only `NODE_ENV`,
+  `PORT` and `HOST` have none, because platforms set them, and the names of the OpenTelemetry specification stay as it writes them.
+- `<AREA>_DRIVER` picks the driver. `<AREA>_CONNECTION` names a connection of the database or of Redis, and nothing else.
+- A duration says its unit: `_MILLISECONDS`, `_SECONDS`, `_MINUTES`, `_HOURS` or `_DAYS`. A rate ends in `_PER_MINUTE` or
+  `_PER_DAY`, a size in `_MB`.
+- A switch is read as a boolean: `true`, `false`, `1` or `0`, in any case, and anything else stops the start.
+- A rename keeps the unit, the default and the limits, so an app renames a key and never converts a value.
+
+The Kind column says which rule a variable falls under: `driver`, `connection`, `switch`, `duration` or `value` for the rest.
+
+| Variable | Package | Kind | Default | Page |
+| --- | --- | --- | --- | --- |
+| `APP_ENV` | core, devtools, log, scheduler | value | optional | [Configuration](configuration.md#the-environment-node_env) |
+| `APP_FALLBACK_LOCALE` | i18n | value | `"en"` | [Localization](localization.md#configuration) |
+| `APP_KEY` | encryption | value | required | [Encryption](encryption.md#the-application-key) |
+| `APP_LOCALE` | i18n | value | `"en"` | [Localization](localization.md#configuration) |
+| `APP_LOCALES` | i18n | value | `[]` | [Localization](localization.md#configuration) |
+| `APP_NAME` | auth, redis | value | optional / `"marmeon"` | [Configuration](configuration.md#the-variables-of-a-new-app) |
+| `APP_PREVIOUS_KEYS` | encryption | value | `[]` | [Encryption](encryption.md#the-application-key) |
+| `APP_URL` | auth, devtools, mail, server, session | value | optional | [Configuration](configuration.md#the-variables-of-a-new-app) |
+| `AUTH_ACCOUNT_SIGN_INS_PER_DAY` | auth | value | `100` | [Authentication](authentication.md#configuration) |
+| `AUTH_DEVICE_COOKIE_DAYS` | auth | duration | `90` | [Authentication](authentication.md#configuration) |
+| `AUTH_EMAIL_CHANGE_MINUTES` | auth | duration | `60` | [Authentication](authentication.md#configuration) |
+| `AUTH_EMAIL_CHANGE_THROTTLE_SECONDS` | auth | duration | `60` | [Authentication](authentication.md#configuration) |
+| `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` | auth | value | `5` | [Authentication](authentication.md#configuration) |
+| `AUTH_PASSKEY_ORIGINS` | auth | value | optional | [Passkeys](passkeys.md#requirements) |
+| `AUTH_PASSKEY_RP_ID` | auth | value | optional | [Passkeys](passkeys.md#requirements) |
+| `AUTH_PASSWORD_TIMEOUT_SECONDS` | auth | duration | `900` | [Authentication](authentication.md#configuration) |
+| `AUTH_PRIVATE_REGISTRATION` | auth | switch | `true` | [Authentication](authentication.md#configuration) |
+| `AUTH_REMEMBER_COOKIE` | auth | value | `"marmeon_remember"` | [Authentication](authentication.md#configuration) |
+| `AUTH_REMEMBER_DAYS` | auth | duration | `30` | [Authentication](authentication.md#configuration) |
+| `AUTH_RESET_MINUTES` | auth | duration | `60` | [Authentication](authentication.md#configuration) |
+| `AUTH_RESET_THROTTLE_SECONDS` | auth | duration | `60` | [Authentication](authentication.md#configuration) |
+| `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | auth | switch | `false` | [Authentication](authentication.md#configuration) |
+| `AUTH_SESSION_MAX_HOURS` | auth | duration | `24` | [Authentication](authentication.md#configuration) |
+| `AUTH_TOKEN_PREFIX` | auth | value | `"marmeon_"` | [API Tokens](api-tokens.md#the-token-format) |
+| `AUTH_UNVERIFIED_DAYS` | auth | duration | `7` | [Authentication](authentication.md#configuration) |
+| `CACHE_CONNECTION` | cache | connection | `"default"` | [Cache](cache.md#configuration) |
+| `CACHE_DRIVER` | cache | driver | `"file"` | [Cache](cache.md#configuration) |
+| `CACHE_PATH` | cache | value | `"storage/framework/cache"` | [Cache](cache.md#configuration) |
+| `CACHE_PREFIX` | cache | value | `""` | [Cache](cache.md#configuration) |
+| `CSRF_TRUSTED_ORIGINS` | session | value | `[]` | [CSRF Protection](csrf.md#configuration) |
+| `DB_DATABASE` | database | value | optional | [Database: Getting Started](database.md#configuration) |
+| `DB_DRIVER` | database | driver | `"sqlite"` | [Database: Getting Started](database.md#configuration) |
+| `DB_HOST` | database | value | `"127.0.0.1"` | [Database: Getting Started](database.md#configuration) |
+| `DB_INFRA_POOL_MAX` | database | value | `4` | [Database: Getting Started](database.md#configuration) |
+| `DB_MANAGED` | database | switch | `true` | [Database: Getting Started](database.md#configuration) |
+| `DB_PASSWORD` | database | value | `""` | [Database: Getting Started](database.md#configuration) |
+| `DB_POOL_MAX` | database | value | `10` | [Database: Getting Started](database.md#configuration) |
+| `DB_PORT` | database | value | `5432` | [Database: Getting Started](database.md#configuration) |
+| `DB_URL` | database | value | optional | [Database: Getting Started](database.md#configuration) |
+| `DB_USERNAME` | database | value | `"postgres"` | [Database: Getting Started](database.md#configuration) |
+| `DEVTOOLS_ENABLED` | devtools | switch | optional | [Devtools](devtools.md#only-in-development) |
+| `HASH_ARGON_MEMORY` | auth | value | `19456` | [Hashing](hashing.md#configuration) |
+| `HASH_ARGON_PARALLELISM` | auth | value | `1` | [Hashing](hashing.md#configuration) |
+| `HASH_ARGON_TIME` | auth | value | `2` | [Hashing](hashing.md#configuration) |
+| `HASH_DRIVER` | auth | driver | `"argon2id"` | [Hashing](hashing.md#configuration) |
+| `HASH_SCRYPT_BLOCK_SIZE` | auth | value | `8` | [Hashing](hashing.md#configuration) |
+| `HASH_SCRYPT_COST` | auth | value | `17` | [Hashing](hashing.md#configuration) |
+| `HASH_SCRYPT_PARALLELISM` | auth | value | `1` | [Hashing](hashing.md#configuration) |
+| `HOST` | server | value | `"127.0.0.1"` | [Configuration](configuration.md#the-variables-of-a-new-app) |
+| `LIVE_CONNECTION` | live | connection | `"default"` | [Real-time Updates](realtime.md#configuration) |
+| `LIVE_DRIVER` | live | driver | `"memory"` | [Real-time Updates](realtime.md#configuration) |
+| `LIVE_HEARTBEAT_SECONDS` | live | duration | `20` | [Real-time Updates](realtime.md#configuration) |
+| `LIVE_MAX_CHANNELS` | live | value | `20` | [Real-time Updates](realtime.md#configuration) |
+| `LIVE_MAX_STREAMS` | live | value | `1000` | [Real-time Updates](realtime.md#configuration) |
+| `LIVE_MAX_STREAMS_PER_SESSION` | live | value | `16` | [Real-time Updates](realtime.md#configuration) |
+| `LIVE_MAX_STREAM_SECONDS` | live | duration | `900` | [Real-time Updates](realtime.md#configuration) |
+| `LIVE_RETRY_MILLISECONDS` | live | duration | `3000` | [Real-time Updates](realtime.md#configuration) |
+| `LOG_FORMAT` | log | value | optional | [Logging](logging.md#configuration) |
+| `LOG_LEVEL` | log | value | `"info"` | [Logging](logging.md#configuration) |
+| `MAIL_DRIVER` | mail | driver | `"log"` | [Mail](mail.md#configuration) |
+| `MAIL_FROM_ADDRESS` | mail | value | optional | [Mail](mail.md#configuration) |
+| `MAIL_FROM_NAME` | mail | value | `""` | [Mail](mail.md#configuration) |
+| `MAIL_HOST` | mail | value | `"127.0.0.1"` | [Mail](mail.md#configuration) |
+| `MAIL_PASSWORD` | mail | value | `""` | [Mail](mail.md#configuration) |
+| `MAIL_PORT` | mail | value | `587` | [Mail](mail.md#configuration) |
+| `MAIL_REQUIRE_TLS` | mail | switch | `true` | [Mail](mail.md#configuration) |
+| `MAIL_SECURE` | mail | switch | `false` | [Mail](mail.md#configuration) |
+| `MAIL_USERNAME` | mail | value | `""` | [Mail](mail.md#configuration) |
+| `MARMEON_OTEL_RECORD_QUERY_VALUES` | otel | switch | `false` | [Observability](observability.md#configuration) |
+| `MARMEON_OTEL_TRUST_TRACEPARENT` | otel | switch | `false` | [Observability](observability.md#configuration) |
+| `NODE_ENV` | auth, core, devtools, encryption, log, mail, scheduler, server, session | value | optional | [Configuration](configuration.md#the-environment-node_env) |
+| `NOTIFICATIONS_CONNECTION` | notifications | connection | `"default"` | [Notifications](notifications.md#the-notifications-table) |
+| `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` | otel | value | `[]` | [Observability](observability.md#redaction) |
+| `OTEL_SDK_DISABLED` | otel | switch | `"false"` | [Observability](observability.md#configuration) |
+| `PORT` | server | value | `3000` | [Configuration](configuration.md#the-variables-of-a-new-app) |
+| `QUEUE_DATABASE_CONNECTION` | queue | connection | `"default"` | [Queues](queues.md#configuration) |
+| `QUEUE_DATABASE_QUEUE` | queue | value | `"default"` | [Queues](queues.md#configuration) |
+| `QUEUE_DATABASE_RETRY_AFTER_SECONDS` | queue | duration | `90` | [Queues](queues.md#configuration) |
+| `QUEUE_DRIVER` | queue | driver | `"database"` | [Queues](queues.md#configuration) |
+| `QUEUE_FAILED_CONNECTION` | queue | connection | optional | [Queues](queues.md#configuration) |
+| `QUEUE_FAILED_DRIVER` | queue | driver | `"database"` | [Queues](queues.md#configuration) |
+| `QUEUE_REDIS_CONNECTION` | queue | connection | `"default"` | [Queues](queues.md#configuration) |
+| `QUEUE_REDIS_QUEUE` | queue | value | `"default"` | [Queues](queues.md#configuration) |
+| `QUEUE_REDIS_RETRY_AFTER_SECONDS` | queue | duration | `90` | [Queues](queues.md#configuration) |
+| `REDIS_PREFIX` | redis | value | optional | [Redis](redis.md#configuration) |
+| `REDIS_URL` | redis | value | `"redis://127.0.0.1:6379"` | [Redis](redis.md#configuration) |
+| `SCHEDULE_TIMEZONE` | scheduler | value | `"UTC"` | [Task Scheduling](scheduling.md#configuration) |
+| `SERVER_ASSET_VERSION` | server | value | optional | [Deployment](deployment.md#configuration) |
+| `SERVER_HEALTH_PATH` | server | value | `"/up"` | [Deployment](deployment.md#health-checks) |
+| `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` | server | duration | `65` | [Deployment](deployment.md#configuration) |
+| `SERVER_MAX_BODY_SIZE` | server | value | `"8m"` | [Requests](requests.md#configuration) |
+| `SERVER_SHUTDOWN_DELAY_SECONDS` | server | duration | `0` | [Deployment](deployment.md#configuration) |
+| `SERVER_SSR_ENABLED` | server | switch | `true` | [Pages & Layouts](pages.md#server-rendering) |
+| `SERVER_TRUSTED_PROXIES` | server | value | `[]` | [Deployment](deployment.md#configuration) |
+| `SESSION_CONNECTION` | session | connection | `"default"` | [Session](session.md#configuration) |
+| `SESSION_COOKIE` | session | value | `"marmeon_session"` | [Session](session.md#configuration) |
+| `SESSION_DRIVER` | session | driver | `"file"` | [Session](session.md#configuration) |
+| `SESSION_ENCRYPT` | session | switch | `false` | [Session](session.md#configuration) |
+| `SESSION_FILES` | session | value | `"storage/framework/sessions"` | [Session](session.md#configuration) |
+| `SESSION_LIFETIME_MINUTES` | session | duration | `120` | [Session](session.md#configuration) |
+| `SESSION_LOTTERY` | session | value | `"2/100"` | [Session](session.md#configuration) |
+| `SESSION_SAME_SITE` | session | value | `"lax"` | [Session](session.md#configuration) |
+| `SESSION_SECURE_COOKIE` | session | switch | optional | [Session](session.md#configuration) |
+| `UPLOADS_CONNECTION` | storage | connection | `"default"` | [File Storage](storage.md#configuration) |
+| `UPLOADS_DISK` | storage | value | `"uploads"` | [File Storage](storage.md#configuration) |
+| `UPLOADS_LIFETIME_MINUTES` | storage | duration | `120` | [File Storage](storage.md#configuration) |
+| `UPLOADS_MAX_OPEN` | storage | value | `20` | [File Storage](storage.md#configuration) |
+| `UPLOADS_MAX_OPEN_MB` | storage | value | `1024` | [File Storage](storage.md#configuration) |
+| `UPLOADS_MAX_OPEN_TOTAL_MB` | storage | value | `10240` | [File Storage](storage.md#configuration) |
+| `UPLOADS_SEND_WITHIN_MINUTES` | storage | duration | `15` | [File Storage](storage.md#configuration) |
+
 ## Testing
 
 Under Vitest, `NODE_ENV` is `test`, so `.env.test` applies on top of `.env`. A test changes single variables for its own app
