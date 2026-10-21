@@ -58,7 +58,10 @@ export default defineDocs({
     },
     {
       title: 'Recipes',
-      pages: [{ slug: 'recipe-resource', label: 'A Resource With Its Policy' }],
+      pages: [
+        { slug: 'recipe-resource', label: 'A Resource With Its Policy' },
+        { slug: 'recipe-public-form', label: 'A Public Page and Form' },
+      ],
     },
     {
       title: 'Architecture Concepts',
