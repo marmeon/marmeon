@@ -164,7 +164,7 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   };
   await search('onOneServer', '/docs/scheduling');
   await search('afterRollback', '/docs/transactions');
-  await search('SHUTDOWN_DELAY', '/docs/deployment');
+  await search('SERVER_SHUTDOWN_DELAY_SECONDS', '/docs/deployment');
 
   // The favicon is a built asset (Vite rewrites the link), the stylesheet one too: both come from /assets/ (the stylesheet is what `style-src 'self'` allows).
   const landing = await get('/');

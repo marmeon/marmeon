@@ -90,7 +90,7 @@ export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX
  * what anybody wrote further left never counts.
  *
  * `trusted`: the proxies' addresses (`'*'` for all), or a check — the server's, which also knows CIDR ranges
- * (`TRUSTED_PROXIES=10.0.0.0/8`). Addresses reach it without the IPv4-mapped `::ffff:` prefix.
+ * (`SERVER_TRUSTED_PROXIES=10.0.0.0/8`). Addresses reach it without the IPv4-mapped `::ffff:` prefix.
  */
 export function clientIp(remote: string | undefined, forwardedFor: string | null, trusted: readonly string[] | ((address: string) => boolean)): string | undefined {
   const normalize = (address: string) => address.trim().replace(/^::ffff:/, '');

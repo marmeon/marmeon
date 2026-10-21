@@ -245,9 +245,9 @@ describe('user-profile module', () => {
     });
   });
 
-  it('sends open tabs of an older build a 409 with the URL to reload (ASSET_VERSION)', async () => {
+  it('sends open tabs of an older build a 409 with the URL to reload (SERVER_ASSET_VERSION)', async () => {
     await app.close(); // one database app per test
-    const deployed = await createTestApp(application, { database: 'refresh', env: { ASSET_VERSION: 'build-2' } });
+    const deployed = await createTestApp(application, { database: 'refresh', env: { SERVER_ASSET_VERSION: 'build-2' } });
     const user = await deployed.factory(UserFactory).create();
     await deployed
       .actingAs(user)

@@ -86,7 +86,7 @@ export default defineRoutes((Route) => {
 
 The limiter is defined in the module's service provider, as [rate limiting](rate-limiting.md#defining-limiters) describes. The
 limits are counted per client address, with `clientKey()`. A limit without `.by()` would be one counter for every client, and one
-script would lock all other guests out. Behind a proxy the address is the client's only when the proxy is in `TRUSTED_PROXIES`;
+script would lock all other guests out. Behind a proxy the address is the client's only when the proxy is in `SERVER_TRUSTED_PROXIES`;
 otherwise every guest shares one budget. See [the client's address](requests.md#the-clients-address).
 
 ```ts title="modules/guestbook/GuestbookServiceProvider.ts"

@@ -1,7 +1,7 @@
 /**
  * `pnpm image:smoke` — the app as an image: `create-marmeon app --docker` from the tarballs (as in `pack:smoke`, outside the
  * monorepo) is built with Docker, then the container's life: non-root, no .env* in the image, migrate, `/up` and `/login` 200,
- * healthy, SIGTERM with SHUTDOWN_DELAY=1 → `/up/ready` 503 at once and exit 0 (tini is PID 1, no `docker run --init`, and reaps
+ * healthy, SIGTERM with SERVER_SHUTDOWN_DELAY_SECONDS=1 → `/up/ready` 503 at once and exit 0 (tini is PID 1, no `docker run --init`, and reaps
  * orphans), a read-only root, `--workers=2`, a stuck job ends the container with 70. Then the docs' image (`website-image.ts`).
  *
  * Containers, volume and image: `marmeon-image-smoke-…`, removed afterwards. No Docker or registry: exit 75, skipped, never green.
@@ -192,9 +192,9 @@ async function main(): Promise<number> {
       if (dev.length > 0) throw new SmokeError(`the image carries dev dependencies: ${dev.join(', ')}`);
     });
     await step('marmeon migrate --force (into the storage volume)', () => docker.run(['run', '--rm', ...common, image, 'migrate', '--force']));
-    await step('start → /up 200, /login 200, healthy; SIGTERM (SHUTDOWN_DELAY=1) → /up/ready 503, exit 0', async () => {
+    await step('start → /up 200, /login 200, healthy; SIGTERM (SERVER_SHUTDOWN_DELAY_SECONDS=1) → /up/ready 503, exit 0', async () => {
       const port = await freePort();
-      const name = docker.detached(`marmeon-image-smoke-${id}-web`, ['-p', `127.0.0.1:${port}:3000`, '-e', 'SHUTDOWN_DELAY=1', '--health-interval=1s', '--health-start-period=1s', ...common, image]);
+      const name = docker.detached(`marmeon-image-smoke-${id}-web`, ['-p', `127.0.0.1:${port}:3000`, '-e', 'SERVER_SHUTDOWN_DELAY_SECONDS=1', '--health-interval=1s', '--health-start-period=1s', ...common, image]);
       const base = `http://127.0.0.1:${port}`;
       await until('GET /up 200', async () => ((await status(`${base}/up`)) === 200 ? true : undefined), 30_000, logs(name));
       if ((await status(`${base}/login`)) !== 200) throw new SmokeError(`GET /login did not answer 200:\n${logs(name)()}`);
@@ -205,12 +205,12 @@ async function main(): Promise<number> {
       docker.run(['kill', '--signal', 'SIGTERM', name]);
       await new Promise((resolve) => setTimeout(resolve, 150));
       const ready = await status(`${base}/up/ready`);
-      if (ready !== 503) throw new SmokeError(`GET /up/ready answered ${ready} right after SIGTERM — SHUTDOWN_DELAY should take it out of readiness at once.`);
-      if ((await status(`${base}/login`)) !== 200) throw new SmokeError('GET /login was not answered during SHUTDOWN_DELAY.');
+      if (ready !== 503) throw new SmokeError(`GET /up/ready answered ${ready} right after SIGTERM — SERVER_SHUTDOWN_DELAY_SECONDS should take it out of readiness at once.`);
+      if ((await status(`${base}/login`)) !== 200) throw new SmokeError('GET /login was not answered during SERVER_SHUTDOWN_DELAY_SECONDS.');
       const code = docker.run(['wait', name]).output.trim();
       const seconds = (performance.now() - signalled) / 1000;
       if (code !== '0') throw new SmokeError(`the web container ended with ${code} after SIGTERM:\n${logs(name)()}`);
-      if (seconds < 1) throw new SmokeError(`the web container ended ${seconds.toFixed(2)} s after SIGTERM — before SHUTDOWN_DELAY=1.`);
+      if (seconds < 1) throw new SmokeError(`the web container ended ${seconds.toFixed(2)} s after SIGTERM — before SERVER_SHUTDOWN_DELAY_SECONDS=1.`);
       if (!logs(name)().includes('SIGTERM received, shutting down')) throw new SmokeError(`no drain in the log:\n${logs(name)()}`);
       docker.remove(name);
     });
@@ -256,7 +256,7 @@ async function main(): Promise<number> {
     const modules = docker.run(['run', '--rm', '--entrypoint', 'du', image, '-sm', 'node_modules']).output.trim().split(/\s+/)[0];
     const total = ((performance.now() - started) / 1000).toFixed(1);
     console.log(
-      `image: ${image} — ${(size / 1024 / 1024).toFixed(0)} MB (node_modules ${modules} MB), built in ${buildSeconds.toFixed(1)}s; non-root, no .env, /up, /login, healthy, SHUTDOWN_DELAY, tini reaps, read-only, --workers=2, exit 70: green (${total}s).`,
+      `image: ${image} — ${(size / 1024 / 1024).toFixed(0)} MB (node_modules ${modules} MB), built in ${buildSeconds.toFixed(1)}s; non-root, no .env, /up, /login, healthy, SERVER_SHUTDOWN_DELAY_SECONDS, tini reaps, read-only, --workers=2, exit 70: green (${total}s).`,
     );
     return 0;
   } catch (error) {

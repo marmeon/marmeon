@@ -168,7 +168,7 @@ docker build -f apps/website/Dockerfile -t marmeon-website .    # from the repos
 
 `deploy/website/compose.yaml` runs it behind Caddy on one server: Caddy gets the certificate for `WEBSITE_DOMAIN`, speaks HTTP/1.1, 2
 and 3, sets `Strict-Transport-Security` and compresses the pages (they carry no secret — an app's pages would, BREACH); it sets
-`X-Forwarded-*` itself and drops a client's. The docs trust them from the Compose network's two subnets only (`TRUSTED_PROXIES`,
+`X-Forwarded-*` itself and drops a client's. The docs trust them from the Compose network's two subnets only (`SERVER_TRUSTED_PROXIES`,
 IPv4 and IPv6 — with IPv6 on the network every visitor keeps their address for the search's rate limit), run read-only with a
 `tmpfs` for `/tmp` and a `storage` volume, and Caddy waits for them to be healthy. Next to the file, a `.env` holds `WEBSITE_DOMAIN`
 (`marmeon.com`, the apex; the docs are under `/docs`), `WEBSITE_REDIRECT_DOMAINS` and `APP_KEY` (never committed); then `docker compose up -d --build` — `WEBSITE_TAG=$(git rev-parse --short HEAD)` names the build,

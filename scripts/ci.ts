@@ -54,7 +54,7 @@ export const parts: readonly Part[] = [
   // lint, build, start; the kit's Redis drivers talk to marmeon-redis. Without a store/cache and the registry it is skipped
   // (exit 75) — reported as such, never as green.
   { name: 'pack:smoke', command: pnpm('pack:smoke'), services: ['redis'], after: ['build', 'pack:check'] },
-  // create-marmeon --docker as an image (marmeon make:docker): non-root, no .env, /up, health check, SHUTDOWN_DELAY, read-only root,
+  // create-marmeon --docker as an image (marmeon make:docker): non-root, no .env, /up, health check, SERVER_SHUTDOWN_DELAY_SECONDS, read-only root,
   // --workers, a worker's exit 70, the image's size; then the docs' image (apps/website/Dockerfile) — its contents, read-only, behind
   // Caddy over HTTP/2 (deploy/website). Without Docker (or the registry) it is skipped (exit 75), never green.
   { name: 'image', command: pnpm('image:smoke'), after: ['build', 'pack:check'] },

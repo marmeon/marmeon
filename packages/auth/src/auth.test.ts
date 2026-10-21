@@ -357,8 +357,8 @@ describe('Auth (session guard)', () => {
     expect(JSON.parse(current!.data)).toMatchObject({ [AUTH_SESSION_KEYS.id]: 1 });
   });
 
-  it('the Login event carries the request\'s address (through TRUSTED_PROXIES) and browser — passed by nobody (RequestInfo)', async () => {
-    const { add, kernel } = await boot({ env: { TRUSTED_PROXIES: '127.0.0.1' } });
+  it('the Login event carries the request\'s address (through SERVER_TRUSTED_PROXIES) and browser — passed by nobody (RequestInfo)', async () => {
+    const { add, kernel } = await boot({ env: { SERVER_TRUSTED_PROXIES: '127.0.0.1' } });
     await add(ada);
     events.length = 0;
     const post = (remoteAddress: string) =>

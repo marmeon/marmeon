@@ -242,12 +242,13 @@ describe('the gate (fail closed, development only)', () => {
   });
 
   it('fails the start with DEVTOOLS_ENABLED=true where the app is protected — and a test opt-in there (no NODE_ENV too; APP_ENV opens nothing)', async () => {
-    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(APP_ENV=production\)[\s\S]*never run in production or without NODE_ENV, whatever APP_ENV says/);
-    await expect(boot({ NODE_ENV: 'production', APP_ENV: 'local', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(APP_ENV=local\)/);
-    await expect(boot({ NODE_ENV: '', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(APP_ENV=production, NODE_ENV unset\)/);
-    // In any case — and only true or false: 1 is no way round the check.
-    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'TRUE' })).rejects.toThrow(/DEVTOOLS_ENABLED=true with production \(APP_ENV=production\)/);
-    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: '1' })).rejects.toThrow(/devtools: DEVTOOLS_ENABLED — DEVTOOLS_ENABLED must be true or false\./);
+    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED is on with production \(APP_ENV=production\)[\s\S]*never run in production or without NODE_ENV, whatever APP_ENV says/);
+    await expect(boot({ NODE_ENV: 'production', APP_ENV: 'local', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED is on with production \(APP_ENV=local\)/);
+    await expect(boot({ NODE_ENV: '', DEVTOOLS_ENABLED: 'true' })).rejects.toThrow(/DEVTOOLS_ENABLED is on with production \(APP_ENV=production, NODE_ENV unset\)/);
+    // In any case, and 1 counts as on too (env.boolean()): no spelling is a way round the check; the message does not quote the raw value.
+    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'TRUE' })).rejects.toThrow(/DEVTOOLS_ENABLED is on with production \(APP_ENV=production\)/);
+    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: '1' })).rejects.toThrow(/DEVTOOLS_ENABLED is on with production \(APP_ENV=production\)/);
+    await expect(boot({ NODE_ENV: 'production', DEVTOOLS_ENABLED: 'yes' })).rejects.toThrow(/devtools: DEVTOOLS_ENABLED — DEVTOOLS_ENABLED must be true or false/);
     await expect(boot({ NODE_ENV: 'production' }, { test: true })).rejects.toThrow(/NODE_ENV=production — they never run in production/);
     await expect(boot({ NODE_ENV: 'production', APP_ENV: 'local' }, { test: true })).rejects.toThrow(/NODE_ENV=production — they never run/);
     // What `marmeon` prints with it: the devtools' own solution — not "set the variables in .env".

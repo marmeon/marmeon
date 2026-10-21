@@ -24,7 +24,7 @@ import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const peer = (remoteAddress: string) => ({ remoteAddress });
 
-describe('TRUSTED_PROXIES', async () => {
+describe('SERVER_TRUSTED_PROXIES', async () => {
   it('knows addresses and ranges — IPv4, IPv6, an IPv4-mapped peer — and refuses anything else at boot', async () => {
     const trusts = proxyMatcher(['10.0.0.0/8', '192.168.1.7', 'fd00::/8', '::1']);
     expect(['10.200.3.4', '::ffff:10.0.0.1', '192.168.1.7', 'fd12::1', '::1'].map(trusts)).toEqual([true, true, true, true, true]);
@@ -33,8 +33,8 @@ describe('TRUSTED_PROXIES', async () => {
     expect(proxyMatcher(['*'])('203.0.113.9')).toBe(true);
     expect(['10.0.0.0/33', '10.0.0.1/', 'fd00::/129', 'proxy.internal', '10.0.0.0/8/1'].some(isProxyEntry)).toBe(false);
     await expect(
-      createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { TRUSTED_PROXIES: '10.0.0.0/8, proxy.internal' } }),
-    ).rejects.toThrow('server: TRUSTED_PROXIES — Expected addresses or ranges like 10.0.0.0/8, or *: proxy.internal is not one');
+      createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { SERVER_TRUSTED_PROXIES: '10.0.0.0/8, proxy.internal' } }),
+    ).rejects.toThrow('server: SERVER_TRUSTED_PROXIES — Expected addresses or ranges like 10.0.0.0/8, or *: proxy.internal is not one');
   });
 
   it('rewrites the URL only from a trusted peer: X-Forwarded-Proto and -Host — the nearest proxy\'s value, a valid one', () => {
@@ -65,7 +65,7 @@ describe('TRUSTED_PROXIES', async () => {
         apiRoutes: openRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip, url: ctx.request.url }))),
       }),
     ],
-  }, { env: { APP_KEY: generateKey(), TRUSTED_PROXIES: '10.0.0.0/8' } });
+  }, { env: { APP_KEY: generateKey(), SERVER_TRUSTED_PROXIES: '10.0.0.0/8' } });
   const app = createHttpKernel(application);
   const whoami = async (remote: string, headers: Record<string, string>, path = '/whoami') =>
     (await (await app.request(path, { headers: { accept: 'application/json', ...headers } }, peer(remote))).json()) as { ip: string; url: string };
@@ -90,14 +90,14 @@ describe('TRUSTED_PROXIES', async () => {
     expect(alone.url).toBe('http://localhost/whoami');
   });
 
-  it("TRUSTED_PROXIES='*' trusts the direct peer only: a client's own X-Forwarded-For through the proxy chooses no address", async () => {
+  it("SERVER_TRUSTED_PROXIES='*' trusts the direct peer only: a client's own X-Forwarded-For through the proxy chooses no address", async () => {
     const behindAny = createHttpKernel(
       await createApplication({
         root: import.meta.dirname,
         discover: false,
         providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
         modules: [defineModule({ name: 'whoami', routes: openRoutes((Route) => Route.get('/whoami', (ctx) => ({ ip: ctx.ip, url: ctx.request.url }))) })],
-      }, { env: { APP_KEY: generateKey(), TRUSTED_PROXIES: '*' } }),
+      }, { env: { APP_KEY: generateKey(), SERVER_TRUSTED_PROXIES: '*' } }),
     );
     const ask = async (remote: string, headers: Record<string, string>) =>
       (await (await behindAny.request('/whoami', { headers: { accept: 'application/json', ...headers } }, peer(remote))).json()) as { ip: string; url: string };
@@ -332,13 +332,13 @@ describe('keep-alive behind a proxy', () => {
       }).once('error', reject);
     });
 
-  it('keeps idle connections 65 s (longer than nginx keeps its own to the app, 60 s) — KEEP_ALIVE_TIMEOUT sets it; headers may take a second more', async () => {
+  it('keeps idle connections 65 s (longer than nginx keeps its own to the app, 60 s) — SERVER_KEEP_ALIVE_TIMEOUT_SECONDS sets it; headers may take a second more', async () => {
     const root = tempDir('marmeon-keepalive-');
     mkdirSync(join(root, 'dist/client'), { recursive: true });
     mkdirSync(join(root, 'dist/server'), { recursive: true });
     writeFileSync(join(root, 'dist/client/index.html'), '<html><head><!--app-head--></head><body><!--app-html--></body></html>');
     writeFileSync(join(root, 'dist/server/ssr.js'), 'export const render = async () => ({ html: "" });');
-    for (const [env, seconds] of [[{}, 65], [{ KEEP_ALIVE_TIMEOUT: '620' }, 620]] as const) {
+    for (const [env, seconds] of [[{}, 65], [{ SERVER_KEEP_ALIVE_TIMEOUT_SECONDS: '620' }, 620]] as const) {
       const app = await createApplication({ root, discover: false, providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider] }, { env: { APP_KEY: generateKey(), HOST: '127.0.0.1', NODE_ENV: 'test', LOG_LEVEL: 'silent', ...env } });
       const running = await startServer({ app, port: 0, mode: 'production' });
       try {
@@ -349,8 +349,8 @@ describe('keep-alive behind a proxy', () => {
         await app.shutdown();
       }
     }
-    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { KEEP_ALIVE_TIMEOUT: '0' } })).rejects.toThrow(
-      'server: KEEP_ALIVE_TIMEOUT — Expected at least 1 second',
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { SERVER_KEEP_ALIVE_TIMEOUT_SECONDS: '0' } })).rejects.toThrow(
+      'server: SERVER_KEEP_ALIVE_TIMEOUT_SECONDS — Expected at least 1 second',
     );
   });
 });

@@ -159,7 +159,7 @@ describe('client fallback: server rendering never breaks a page', () => {
     expect(markup(html)).toBe('<h1>Server Error</h1>');
   });
 
-  it('renders nothing on the server with SSR_ENABLED=false (ssr: false) — every page goes out for the browser to render', async () => {
+  it('renders nothing on the server with SERVER_SSR_ENABLED=false (ssr: false) — every page goes out for the browser to render', async () => {
     let calls = 0;
     const app = await appWith(
       async () => {

@@ -1,6 +1,6 @@
 # The docs behind Caddy (deploy/website/compose.yaml). Caddy fetches the certificate for {$WEBSITE_DOMAIN} from Let's Encrypt (ports 80
 # and 443 must reach the server, the DNS record must point at it), renews it, redirects HTTP to HTTPS and speaks HTTP/1.1, HTTP/2
-# and HTTP/3. It sets X-Forwarded-For/-Proto/-Host itself (a client's own are dropped), which the docs trust from TRUSTED_PROXIES.
+# and HTTP/3. It sets X-Forwarded-For/-Proto/-Host itself (a client's own are dropped), which the docs trust from SERVER_TRUSTED_PROXIES.
 # Trying it locally: WEBSITE_DOMAIN=localhost — Caddy then signs with its own local CA instead.
 #
 # {$WEBSITE_REDIRECT_DOMAINS} (comma-separated site addresses: the www host and the other domains) answer a permanent redirect (301) to

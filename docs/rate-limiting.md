@@ -75,7 +75,7 @@ is `undefined`, so the type says it may be missing. Without `@marmeon/auth` the 
 > A limit without `.by()` is one counter for every client. Ten registrations a minute then means ten for the whole app, and one
 > script locks everyone else out.
 
-`ctx.ip` is the client's address. Behind a proxy it is the client's only when the proxy is in `TRUSTED_PROXIES`; otherwise every
+`ctx.ip` is the client's address. Behind a proxy it is the client's only when the proxy is in `SERVER_TRUSTED_PROXIES`; otherwise every
 visitor has the proxy's address and shares its limit. The [requests](requests.md#the-clients-address) page explains how the
 address is found.
 
@@ -90,7 +90,7 @@ address has the key `unknown`. Text that is not an address at all keeps a key of
 everyone's budget, and logs a warning once: check what your proxy sends in `X-Forwarded-For`. `ctx.ip` itself stays the full address, for logs and the
 sign-in list.
 
-A client can not choose its own key: `X-Forwarded-For` only counts when the peer is in `TRUSTED_PROXIES`, and the key is made from the
+A client can not choose its own key: `X-Forwarded-For` only counts when the peer is in `SERVER_TRUSTED_PROXIES`, and the key is made from the
 address the server found. Keying on the /64 means that everyone behind one IPv6 connection share a limit, like everyone behind one IPv4
 address does.
 

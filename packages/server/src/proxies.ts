@@ -1,7 +1,7 @@
 import { BlockList, isIP } from 'node:net';
 
 /**
- * Whether an entry of `TRUSTED_PROXIES` is one: `*`, an address (`127.0.0.1`, `::1`) or a range (`10.0.0.0/8`, `fd00::/8`).
+ * Whether an entry of `SERVER_TRUSTED_PROXIES` is one: `*`, an address (`127.0.0.1`, `::1`) or a range (`10.0.0.0/8`, `fd00::/8`).
  * The config refuses anything else at boot — a typo must not silently trust nobody (or everybody).
  */
 export function isProxyEntry(entry: string): boolean {
@@ -15,7 +15,7 @@ export function isProxyEntry(entry: string): boolean {
 }
 
 /**
- * The check behind `TRUSTED_PROXIES`: whether a peer is one of the app's proxies — by address or range (CIDR), IPv4
+ * The check behind `SERVER_TRUSTED_PROXIES`: whether a peer is one of the app's proxies — by address or range (CIDR), IPv4
  * and IPv6, an IPv4-mapped IPv6 peer (`::ffff:10.0.0.1`) as its IPv4 address. Empty: nobody (the default — `X-Forwarded-*`
  * are ignored); `*`: whoever connects — the direct peer is the proxy; the client's address is then the entry it added
  * (`clientIp` with `['*']`), never one before it.

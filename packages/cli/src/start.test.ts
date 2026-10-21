@@ -282,8 +282,8 @@ describe('marmeon start', { timeout: 30_000 }, () => {
     expect(wrong.stderr).toContain('--workers expects a number of processes from 1, like --workers=4 (got 0).');
   }, 30_000);
 
-  it('SHUTDOWN_DELAY=1: after SIGTERM /up/ready 503 and requests answered for a second, then the drain; SIGINT skips it', async () => {
-    const server = await start({ NODE_ENV: 'production', SHUTDOWN_DELAY: '1' });
+  it('SERVER_SHUTDOWN_DELAY_SECONDS=1: after SIGTERM /up/ready 503 and requests answered for a second, then the drain; SIGINT skips it', async () => {
+    const server = await start({ NODE_ENV: 'production', SERVER_SHUTDOWN_DELAY_SECONDS: '1' });
     const base = server.base;
     const signalled = performance.now();
     server.child.kill('SIGTERM');
@@ -293,9 +293,9 @@ describe('marmeon start', { timeout: 30_000 }, () => {
     expect((await fetch(`${base}/api/slow`)).status).toBe(200);
     expect(await server.exited).toBe(0);
     expect(performance.now() - signalled).toBeGreaterThanOrEqual(1000);
-    expect(server.output()).toContain('SIGTERM received, shutting down — not ready any more, still answering for 1 s (SHUTDOWN_DELAY)');
+    expect(server.output()).toContain('SIGTERM received, shutting down — not ready any more, still answering for 1 s (SERVER_SHUTDOWN_DELAY_SECONDS)');
 
-    const interrupted = await start({ NODE_ENV: 'production', SHUTDOWN_DELAY: '5' });
+    const interrupted = await start({ NODE_ENV: 'production', SERVER_SHUTDOWN_DELAY_SECONDS: '5' });
     const stopped = performance.now();
     interrupted.child.kill('SIGINT');
     expect(await interrupted.exited).toBe(0);

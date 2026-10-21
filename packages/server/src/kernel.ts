@@ -96,11 +96,11 @@ export interface KernelOptions {
    * `ServerConfig.debug` (`NODE_ENV=development`, never "not production"); off without a `ServerConfig`.
    */
   debug?: boolean;
-  /** Largest accepted request body in bytes. Defaults to `ServerConfig.maxBodySize` (env `MAX_BODY_SIZE`), else 8 MiB. */
+  /** Largest accepted request body in bytes. Defaults to `ServerConfig.maxBodySize` (env `SERVER_MAX_BODY_SIZE`), else 8 MiB. */
   maxBodySize?: number;
-  /** Asset version for 409 reloads. Defaults to `ASSET_VERSION`, else the renderer's (the build's), else none. */
+  /** Asset version for 409 reloads. Defaults to `SERVER_ASSET_VERSION`, else the renderer's (the build's), else none. */
   version?: string | null;
-  /** Server rendering (default: `ServerConfig.ssr`, env `SSR_ENABLED`, on). Off: every page goes out without markup, the browser renders it. */
+  /** Server rendering (default: `ServerConfig.ssr`, env `SERVER_SSR_ENABLED`, on). Off: every page goes out without markup, the browser renders it. */
   ssr?: boolean;
   /**
    * What a write in a read-only request (an island's) does: throw (`true`, the default with `NODE_ENV=development` and
@@ -112,7 +112,7 @@ export interface KernelOptions {
   islandTimeout?: number;
   /**
    * The health endpoints' path: `/up` (liveness) and `/up/ready` (readiness), answered before any middleware. Default:
-   * `ServerConfig.health` (env `HEALTH_PATH`, `/up`); `false`: none.
+   * `ServerConfig.health` (env `SERVER_HEALTH_PATH`, `/up`); `false`: none.
    */
   health?: string | false;
 }
@@ -162,7 +162,7 @@ export interface HttpKernel {
 
 /**
  * The connection a request arrived on, for adapters of other runtimes and for tests. `remoteAddress` is the socket's peer —
- * it must come from the socket, never from a header — and goes through TRUSTED_PROXIES and `X-Forwarded-*` like the server's own. See docs/deployment.md#trusted-proxies.
+ * it must come from the socket, never from a header — and goes through SERVER_TRUSTED_PROXIES and `X-Forwarded-*` like the server's own. See docs/deployment.md#trusted-proxies.
  */
 export interface KernelConnection {
   readonly remoteAddress?: string | undefined;
@@ -237,7 +237,7 @@ export function createHttpKernel(
   // Every error line of the kernel masks its text with it too: the names the app's packages add (the session cookie) count.
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
   container.instance(AssetVersion, { value: version });
-  // TRUSTED_PROXIES: only from these peers `X-Forwarded-For` sets the client's address and `X-Forwarded-Proto`/`-Host` the URL.
+  // SERVER_TRUSTED_PROXIES: only from these peers `X-Forwarded-For` sets the client's address and `X-Forwarded-Proto`/`-Host` the URL.
   const proxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
   const trusts = proxyMatcher(proxies);
   // `*` trusts the direct peer only: the client's address is the entry that peer added, never one a client wrote before it.
@@ -891,25 +891,25 @@ export interface ServeOptions {
   drainTimeoutMs?: number;
   /**
    * How long an idle keep-alive connection stays open (ms) — above the keep-alive of the proxy in front. Defaults to
-   * `ServerConfig.keepAliveTimeoutMs` (env `KEEP_ALIVE_TIMEOUT`, seconds; default 65). The time to receive a request's headers
+   * `ServerConfig.keepAliveTimeoutMs` (env `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS`, default 65). The time to receive a request's headers
    * (`headersTimeout`) is a second longer — between 60 s and the 300 s of `requestTimeout`.
    */
   keepAliveTimeoutMs?: number;
   /**
    * How long `close()` keeps taking requests first, with `/up/ready` at 503 — so a load balancer that learns from its
    * probes sends the next requests elsewhere before this server stops listening. Defaults to `ServerConfig.shutdownDelayMs`
-   * (env `SHUTDOWN_DELAY`, seconds; default 0).
+   * (env `SERVER_SHUTDOWN_DELAY_SECONDS`, default 0).
    */
   shutdownDelayMs?: number;
 }
 
 export interface CloseOptions {
-  /** Skip the shutdown delay (`SHUTDOWN_DELAY`) — `marmeon serve` on Ctrl+C (SIGINT): nobody routes to a terminal. */
+  /** Skip the shutdown delay (`SERVER_SHUTDOWN_DELAY_SECONDS`) — `marmeon serve` on Ctrl+C (SIGINT): nobody routes to a terminal. */
   readonly immediately?: boolean;
 }
 
 /**
- * A listening server. `close()` stops it gracefully: readiness (`/up/ready`) answers 503 at once and, for `SHUTDOWN_DELAY`
+ * A listening server. `close()` stops it gracefully: readiness (`/up/ready`) answers 503 at once and, for `SERVER_SHUTDOWN_DELAY_SECONDS`
  * seconds, requests are still answered; then no new connections, requests in flight finish, and then the work
  * they deferred until after their response (a reset mail sent by `afterResponse.defer`) finishes too — before the app
  * shuts down and closes its pools.
@@ -941,7 +941,7 @@ export async function startServer({
   // connection longer).
   const server = createServer({ keepAliveTimeout: keepAliveTimeoutMs, headersTimeout: Math.min(300_000, Math.max(60_000, keepAliveTimeoutMs + 1000)) });
   const closing = app.container.has(ServerClosing) ? app.container.make(ServerClosing) : undefined;
-  // While the server drains (SHUTDOWN_DELAY) a keep-alive connection ends after its response: the client's next
+  // While the server drains (SERVER_SHUTDOWN_DELAY_SECONDS) a keep-alive connection ends after its response: the client's next
   // request opens a new one — which the load balancer, told by the failing readiness, gives to another instance.
   server.prependListener('request', (_req, res) => {
     if (closing?.draining.aborted) res.setHeader('connection', 'close');
@@ -979,7 +979,7 @@ export async function startServer({
   let closed: Promise<void> | undefined;
   const close = ({ immediately = false }: CloseOptions = {}) => (closed ??= shutdown(immediately));
   const shutdown = async (immediately: boolean) => {
-    // Not ready from now on — and, for SHUTDOWN_DELAY, still answering what the load balancer sends until it notices.
+    // Not ready from now on — and, for SERVER_SHUTDOWN_DELAY_SECONDS, still answering what the load balancer sends until it notices.
     closing?.drain();
     if (shutdownDelayMs > 0 && !immediately) await new Promise((resolve) => setTimeout(resolve, shutdownDelayMs));
     // Responses that stay open (live streams) end first: `server.close()` waits for every connection, and a tab never

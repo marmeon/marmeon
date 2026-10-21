@@ -14,7 +14,7 @@ export interface InstrumentOptions {
   /** The tracer's name (default `@marmeon/otel`). */
   readonly tracerName?: string;
   /**
-   * Continue the trace of an incoming request's `traceparent` (and take its baggage) — `OTEL_TRUST_TRACEPARENT=true`. Off by
+   * Continue the trace of an incoming request's `traceparent` (and take its baggage) — `MARMEON_OTEL_TRUST_TRACEPARENT=true`. Off by
    * default: anyone can send the header, so every request starts a trace of its own and the caller's context is only a **link**
    * of its server span — findable, but its trace id and its sampling decision are not taken. Turn it on only where the edge in
    * front of the app (a gateway, an ingress) sets or strips the header itself, or for an internal service whose callers are your
@@ -22,7 +22,7 @@ export interface InstrumentOptions {
    */
   readonly trustTraceparent?: boolean;
   /**
-   * `url.query` with its values — `OTEL_RECORD_QUERY_VALUES=true`, masked as text by the redactor. Off by default: a span records
+   * `url.query` with its values — `MARMEON_OTEL_RECORD_QUERY_VALUES=true`, masked as text by the redactor. Off by default: a span records
    * only the keys (`q=&page=`; a part without `=` as `[redacted]`), since a query carries e-mail addresses, search terms or a token
    * under a harmless name.
    */

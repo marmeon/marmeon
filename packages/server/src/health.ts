@@ -9,7 +9,7 @@ import type { RouteDefinition } from '@marmeon/router';
  * its details only with `NODE_ENV=development`. See docs/health.md#liveness-and-readiness.
  */
 export interface HealthEndpoints {
-  /** `/up` — or what `HEALTH_PATH` says. */
+  /** `/up` — or what `SERVER_HEALTH_PATH` says. */
   readonly path: string;
   readonly readyPath: string;
   live(): Response;
@@ -26,7 +26,7 @@ export function createHealthEndpoints(application: Application, container: Conta
   const closing = container.has(ServerClosing) ? container.make(ServerClosing) : undefined;
   const checks = application.container.has(HealthChecks) ? application.container.make(HealthChecks) : new HealthChecks();
   const clock = application.container.has(Clock) ? application.container.make(Clock) : { now: () => Date.now() };
-  // Readiness ends when the server stops taking new work — at the signal, before SHUTDOWN_DELAY; liveness only when it closes.
+  // Readiness ends when the server stops taking new work — at the signal, before SERVER_SHUTDOWN_DELAY_SECONDS; liveness only when it closes.
   const draining = () => closing?.draining.aborted === true;
   const closed = () => closing?.signal.aborted === true;
   // Probes arrive from several places at once (load balancer, orchestrator): one run serves every request that comes while it
@@ -87,7 +87,7 @@ export function checkHealthPaths(health: HealthEndpoints, routes: readonly Route
     const name = route.routeName === undefined ? '' : ` "${route.routeName}"`;
     throw new Error(
       `The route${name} (${route.methods.join('|')} ${route.path}) is where the health check answers — it would never be reached. ` +
-        `Give the route another path, or move the health check: HEALTH_PATH=/healthz (or HEALTH_PATH=off).`,
+        `Give the route another path, or move the health check: SERVER_HEALTH_PATH=/healthz (or SERVER_HEALTH_PATH=off).`,
     );
   }
 }

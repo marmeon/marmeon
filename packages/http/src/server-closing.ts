@@ -6,7 +6,7 @@ import { token } from '@marmeon/core';
  * application; `drain()` and `close()` are the server's.
  *
  * Two steps: {@link draining} from the moment the server is told to stop — readiness answers 503 while it still takes
- * requests for `SHUTDOWN_DELAY` seconds — and {@link signal} when it closes (streams end, liveness answers 503).
+ * requests for the seconds in `SERVER_SHUTDOWN_DELAY_SECONDS` — and {@link signal} when it closes (streams end, liveness answers 503).
  */
 export class ServerClosing {
   readonly #draining = new AbortController();
@@ -17,7 +17,7 @@ export class ServerClosing {
     return this.#closing.signal;
   }
 
-  /** Aborted once the server is told to stop — before `SHUTDOWN_DELAY`, and at the latest when it closes. */
+  /** Aborted once the server is told to stop — before `SERVER_SHUTDOWN_DELAY_SECONDS`, and at the latest when it closes. */
   get draining(): AbortSignal {
     return this.#draining.signal;
   }

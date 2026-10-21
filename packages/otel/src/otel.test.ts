@@ -160,7 +160,7 @@ describe('@marmeon/otel', () => {
       'marmeon.route.name': 'people.show',
       'marmeon.controller': 'ShowPersonController',
     });
-    // Only the keys of the query leave the process by default (OTEL_RECORD_QUERY_VALUES=true records the values).
+    // Only the keys of the query leave the process by default (MARMEON_OTEL_RECORD_QUERY_VALUES=true records the values).
     expect(request.attributes['url.query']).toBe('page=&token=');
     expect(request.attributes['marmeon.request.id']).toBe(response.headers.get('x-request-id'));
     expect(request.status.code).toBe(SpanStatusCode.UNSET);
@@ -255,8 +255,8 @@ describe('@marmeon/otel', () => {
     expect(parentOf(plain)).toBeUndefined();
   });
 
-  it('continues an incoming trace with OTEL_TRUST_TRACEPARENT=true (behind an edge that sets the header); redacts sensitive route parameters and recorded headers', async () => {
-    const { app: booting } = boot({ OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: 'authorization, x-tenant, cookie', OTEL_TRUST_TRACEPARENT: 'true' });
+  it('continues an incoming trace with MARMEON_OTEL_TRUST_TRACEPARENT=true (behind an edge that sets the header); redacts sensitive route parameters and recorded headers', async () => {
+    const { app: booting } = boot({ OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: 'authorization, x-tenant, cookie', MARMEON_OTEL_TRUST_TRACEPARENT: 'true' });
     await using app = await booting;
     await spans();
     const kernel = createHttpKernel(app);
@@ -284,7 +284,7 @@ describe('@marmeon/otel', () => {
     expect(span!.attributes['http.request.header.referer']).toEqual(['http://localhost/reset/[redacted]']);
   });
 
-  it('records the keys of the query only — its values with OTEL_RECORD_QUERY_VALUES=true, masked like any text', async () => {
+  it('records the keys of the query only — its values with MARMEON_OTEL_RECORD_QUERY_VALUES=true, masked like any text', async () => {
     const query = (attributes: Record<string, unknown> | undefined) => String(attributes?.['url.query']);
     // A part without `=` may be a flag or a value (`?ada@example.com`): it is never written as it is.
     const url = 'http://shop.test/people/7?q=ada%40example.com&page=2&bare-ada%40example.com&token=secret-in-the-url&q=second';
@@ -296,7 +296,7 @@ describe('@marmeon/otel', () => {
     expect(query(plain?.attributes), dump(plain)).toBe('q=&page=&[redacted]&token=&q=');
     expect(dump(plain)).not.toMatch(/ada%40example|ada@example|bare|second|secret-in-the-url/);
 
-    const { app: recording } = boot({ OTEL_RECORD_QUERY_VALUES: 'true' });
+    const { app: recording } = boot({ MARMEON_OTEL_RECORD_QUERY_VALUES: 'true' });
     await using withValues = await recording;
     await spans();
     await createHttpKernel(withValues).request(url);

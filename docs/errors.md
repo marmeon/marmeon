@@ -48,7 +48,7 @@ Some errors come with the framework:
 | `AuthorizationError` | 403, or 404 | A policy that says no, through `can()` or the gate. `denyAsNotFound()` makes it a 404. |
 | `HttpError(404)` | 404 | A route that matches nothing, a binding that finds no record. |
 | `HttpError(419)` | 419 | A form that fails the [CSRF](csrf.md) check by its token. |
-| `HttpError(413)` | 413 | A body over `MAX_BODY_SIZE`. |
+| `HttpError(413)` | 413 | A body over `SERVER_MAX_BODY_SIZE`. |
 
 A `ValidationError` thrown by your controller answers like a failed schema: the form goes back with the errors, and a JSON client
 gets a 422.
