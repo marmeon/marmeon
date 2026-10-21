@@ -54,8 +54,11 @@ describe('the notes', { timeout: 30_000 }, () => {
   it('keeps a note for the signed-in user whatever the form says', async () => {
     const ada = await app.factory(UserFactory).create();
     const bob = await app.factory(UserFactory).create();
-    await app.actingAs(ada).post('/notes', { form: { title: 'Mine', body: '', user_id: String(bob.id) } }).assertRedirect('/notes');
-    expect(await notes().findBy('title', 'Mine')).toMatchObject({ user_id: ada.id });
+    await app.actingAs(ada).post('/notes', { form: { title: 'Mine', body: '', user_id: String(bob.id), pinned: 'true' } }).assertRedirect('/notes');
+    const mine = await notes().findBy('title', 'Mine');
+    expect(mine).toMatchObject({ user_id: ada.id, pinned: false });
+    await app.actingAs(ada).put(`/notes/${mine!.id}`, { form: { title: 'Still mine', body: '', user_id: String(bob.id), pinned: 'true' } }).assertRedirect('/notes');
+    expect(await notes().find(mine!.id)).toMatchObject({ title: 'Still mine', user_id: ada.id, pinned: false });
   });
 
   it('refuses a note without a title, with a title that is too long or with a body that is', async () => {
@@ -102,7 +105,7 @@ describe('the notes', { timeout: 30_000 }, () => {
     await ada404.put(`/notes/${note.id}/pin`).assertNotFound();
     await ada404.delete(`/notes/${note.id}/pin`).assertNotFound();
     await ada404.delete(`/notes/${note.id}`).assertNotFound();
-    await ada404.get('/notes/999999/edit').assertNotFound();
+    await ada404.get('/notes/no-such-id/edit').assertNotFound();
     expect(await notes().find(note.id)).toMatchObject({ title: 'Secret', pinned: false });
   });
 

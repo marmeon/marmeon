@@ -7,7 +7,14 @@ import { tempDir } from './test/temp-dir.js';
 
 describe('the first-app guide', () => {
   it('shows exactly the files, the edits and the commands of the notes demo', () => {
-    expect(guideProblems(readFileSync(GUIDE, 'utf8'), { page: 'docs/first-app.md', overlay: OVERLAY })).toEqual([]);
+    expect(guideProblems(readFileSync(GUIDE, 'utf8'), { page: 'docs/first-app.md', overlay: OVERLAY, requireTitles: true })).toEqual([]);
+  });
+
+  it('names a block of the guide that has no title', () => {
+    const markdown = `${readFileSync(GUIDE, 'utf8')}\n\`\`\`ts\nconst a = 1;\n\`\`\`\n`;
+    expect(guideProblems(markdown, { page: 'docs/first-app.md', overlay: OVERLAY, requireTitles: true })).toEqual([
+      expect.stringMatching(/^docs\/first-app\.md:\d+: the ts block has no title/),
+    ]);
   });
 });
 
@@ -65,6 +72,37 @@ describe('guideProblems', () => {
     expect(guideProblems(typo.join('\n'), { page, overlay: overlay(), known }).filter((problem) => problem.includes('not a command'))).toEqual([
       'docs/first-app.md:14: "marmeon migrat" is not a command of the framework.',
     ]);
+  });
+
+  describe('an edit of a file with a "*" in its name', () => {
+    const file = 'modules/notes/migrations/*_create_notes_table.ts';
+    function stamped() {
+      const dir = tempDir('marmeon-guide-');
+      writeFileSync(join(dir, 'edits.json'), JSON.stringify([{ file, find: 'a', replace: 'a\nb' }]));
+      writeFileSync(join(dir, 'commands.json'), JSON.stringify({ beforeCopy: [], afterCopy: [] }));
+      return dir;
+    }
+
+    it('belongs to the block with exactly that title', () => {
+      expect(guideProblems(['```ts title="' + file + '"', 'a', 'b', '```'].join('\n'), { page, overlay: stamped(), known })).toEqual([]);
+    });
+
+    it('names a block with that title whose text is not the edit', () => {
+      const problems = guideProblems(['```ts title="' + file + '"', 'a', 'c', '```'].join('\n'), { page, overlay: stamped(), known });
+      expect(problems).toHaveLength(2);
+      expect(problems[0]).toMatch(/first-app\.md:1 \(modules\/notes\/migrations\/\*_create_notes_table\.ts\): the block is neither/);
+      expect(problems[1]).toBe('docs/first-app.md: the edit of modules/notes/migrations/*_create_notes_table.ts that adds "b" is not shown.');
+    });
+
+    it('names a block with a "*" title when no edit has that title', () => {
+      const problems = guideProblems(['```ts title="modules/notes/migrations/*_other.ts"', 'a', 'b', '```'].join('\n'), { page, overlay: stamped(), known });
+      expect(problems[0]).toMatch(/first-app\.md:1 \(modules\/notes\/migrations\/\*_other\.ts\): the block is neither/);
+    });
+
+    it('does not take a stamped name for the pattern', () => {
+      const problems = guideProblems(['```ts title="modules/notes/migrations/2026_10_21_101010_create_notes_table.ts"', 'a', 'b', '```'].join('\n'), { page, overlay: stamped(), known });
+      expect(problems[0]).toMatch(/the block is neither/);
+    });
   });
 
   it('names a missing edit and a missing or misplaced command', () => {
