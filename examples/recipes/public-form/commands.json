@@ -1,0 +1,14 @@
+{
+  "beforeCopy": [
+    "marmeon make:module guestbook",
+    "marmeon make:controller ListGuestbookEntries --module=guestbook --request --view",
+    "marmeon make:controller StoreGuestbookEntry --module=guestbook --request",
+    "marmeon make:controller ShowGuestbookEntry --module=guestbook --view",
+    "marmeon make:test guestbook --module=guestbook --path=/guestbook"
+  ],
+  "afterCopy": [
+    "marmeon migrate",
+    "marmeon db:types",
+    "marmeon route:types"
+  ]
+}

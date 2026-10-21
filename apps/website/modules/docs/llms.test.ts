@@ -29,6 +29,7 @@ describe('/llms.txt', () => {
     expect([...text.matchAll(/^- \[.*\]\((.+)\)$/gm)].map((match) => match[1])).toEqual(SLUGS.map((slug) => `http://localhost/docs/${slug}.md`));
     expect(text).toContain('- [Database: Getting Started]');
     expect(text).toContain('- [A Resource With Its Policy](http://localhost/docs/recipe-resource.md)');
+    expect(text).toContain('- [A Public Page and Form](http://localhost/docs/recipe-public-form.md)');
     expect(text).toContain('http://localhost/llms-full.txt');
     expect(text).toContain(app.make(SiteInfo).version);
   });
