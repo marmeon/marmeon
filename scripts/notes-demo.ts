@@ -2,12 +2,13 @@
  * The notes demo (`examples/notes`) as `pnpm pack:smoke` checks it: the overlay applied to a starter kit made from the packed
  * framework, then that app's own tests, type check, lint, build and start. Functions for pack-smoke.ts, no command of their own.
  *
- * The overlay is `files/` (copied as they are), `edits.json` (`[{ file, find, replace }]`, every `find` exactly once) and
+ * The overlay is `files/` (copied as they are), `edits.json` (`[{ file, find, replace }]`, every `find` exactly once; the last
+ * segment of `file` may hold one `*`, for a file whose name carries a timestamp the generator chose) and
  * `commands.json` (`{ beforeCopy, afterCopy }`, each a list of `marmeon <command> …` lines).
  */
 import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SmokeError } from './pack-smoke.ts';
 
@@ -62,7 +63,7 @@ export function readCommands(overlay: string): Commands {
   return commands as unknown as Commands;
 }
 
-/** `edits.json` of an overlay, checked: objects with a relative `file` and a `find` and `replace` text. */
+/** `edits.json` of an overlay, checked: objects with a relative `file` (one `*` at most, in its last segment) and a `find` and `replace` text. */
 export function readEdits(overlay: string): Edit[] {
   const path = join(overlay, 'edits.json');
   const edits = read(path);
@@ -75,8 +76,29 @@ export function readEdits(overlay: string): Edit[] {
     if (isAbsolute(edit.file) || edit.file.split('/').includes('..') || clean === '.' || clean.endsWith(sep) || clean.split(sep)[0] === 'node_modules') {
       throw new SmokeError(`${path}: "${edit.file}" must be a file of the app itself — not empty, not absolute, not outside it, not in node_modules.`);
     }
+    const stars = edit.file.split('*').length - 1;
+    if (stars > 0 && (stars > 1 || !/[^*/]/.test(basename(edit.file)) || dirname(edit.file).includes('*'))) {
+      throw new SmokeError(`${path}: "${edit.file}" may hold a single "*", in the last segment and next to other characters of the name.`);
+    }
   }
   return edits as Edit[];
+}
+
+/**
+ * The file of the app an edit names. A `*` in the name stands for any characters of one file in that directory and must find
+ * exactly one — `*_create_notes_table.ts` is the migration a generator stamped with the time of its run.
+ */
+function editTarget(app: string, file: string): string {
+  if (!file.includes('*')) return resolve(app, file);
+  const directory = resolve(app, dirname(file));
+  const [prefix, suffix] = basename(file).split('*') as [string, string];
+  const names = existsSync(directory)
+    ? readdirSync(directory, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.length >= prefix.length + suffix.length && entry.name.startsWith(prefix) && entry.name.endsWith(suffix))
+        .map((entry) => entry.name)
+    : [];
+  if (names.length !== 1) throw new SmokeError(`${file}: the name must match exactly one file of the app, it matches ${names.length}${names.length > 0 ? ` (${names.join(', ')})` : ''}.`);
+  return join(directory, names[0]!);
 }
 
 /** Every file below `dir`; none when it does not exist (an overlay may have no `files/`). */
@@ -101,7 +123,7 @@ export function applyOverlay(app: string, run: (args: string[]) => void, overlay
     cpSync(join(overlay, 'files', file), join(app, file), { recursive: true });
   }
   for (const edit of edits) {
-    const target = resolve(app, edit.file);
+    const target = editTarget(app, edit.file);
     if (!existsSync(target)) throw new SmokeError(`${edit.file}: the overlay edits a file the starter kit does not have.`);
     const text = readFileSync(target, 'utf8');
     const found = text.split(edit.find).length - 1;

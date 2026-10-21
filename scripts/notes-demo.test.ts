@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { applyOverlay, checkDemo, marmeonArguments, OVERLAY, readCommands, readEdits, sampleNotes, type DemoTarget } from './notes-demo.ts';
+import { resourceFiles } from '../packages/cli/src/commands/make-resource-templates.ts';
 import { leave, SmokeError } from './pack-smoke.ts';
 import { tempDir } from './test/temp-dir.js';
 
@@ -49,6 +50,47 @@ describe('the notes demo overlay', () => {
     expect(() => applyOverlay(twice.app, () => undefined, twice.overlay)).toThrow(/layout\.tsx: the text to replace occurs 2 times/);
     const absent = setup({ edits: [{ file: 'nowhere.tsx', find: 'x', replace: 'y' }] });
     expect(() => applyOverlay(absent.app, () => undefined, absent.overlay)).toThrow(/nowhere\.tsx: the overlay edits a file the starter kit does not have/);
+  });
+
+  describe('an edit of a file whose name has a "*"', () => {
+    const edit = { file: 'modules/notes/migrations/*_create_notes_table.ts', find: 'title', replace: 'title\nbody' };
+    const migration = (stamp: string, name = 'create_notes_table') => [`modules/notes/migrations/${stamp}_${name}.ts`, 'title'] as const;
+
+    it('edits the one file the "*" stands for', () => {
+      const { overlay, app } = setup({ edits: [edit], app: Object.fromEntries([migration('2026_10_21_101010'), migration('2026_10_21_101011', 'create_users_table')]) });
+      applyOverlay(app, () => undefined, overlay);
+      expect(readFileSync(join(app, migration('2026_10_21_101010')[0]), 'utf8')).toBe('title\nbody');
+      expect(readFileSync(join(app, migration('2026_10_21_101011', 'create_users_table')[0]), 'utf8')).toBe('title');
+    });
+
+    it('names the count when it matches no file or several', () => {
+      const none = setup({ edits: [edit], app: Object.fromEntries([migration('2026_10_21_101010', 'create_users_table')]) });
+      expect(() => applyOverlay(none.app, () => undefined, none.overlay)).toThrow(/must match exactly one file of the app, it matches 0\./);
+      const absent = setup({ edits: [edit] });
+      expect(() => applyOverlay(absent.app, () => undefined, absent.overlay)).toThrow(/it matches 0\./);
+      const two = setup({ edits: [edit], app: Object.fromEntries([migration('2026_10_21_101010'), migration('2026_10_21_101011')]) });
+      expect(() => applyOverlay(two.app, () => undefined, two.overlay)).toThrow(/it matches 2 \(2026_10_21_101010_create_notes_table\.ts, 2026_10_21_101011_create_notes_table\.ts\)/);
+    });
+
+    it('does not take a directory for the file', () => {
+      const { overlay, app } = setup({ edits: [edit], app: Object.fromEntries([['modules/notes/migrations/x_create_notes_table.ts/inner.ts', 'title']]) });
+      expect(() => applyOverlay(app, () => undefined, overlay)).toThrow(/it matches 0\./);
+    });
+
+    it.each(['modules/*/routes.ts', 'modules/notes/**/routes.ts', 'modules/notes/*', 'modules/notes/*_*.ts', 'modules/notes/**', '*', 'modules/notes/a*/*.ts', '../*', '*/routes.ts', '/etc/*'])(
+      'refuses "%s"',
+      (file) => {
+        const refused = setup({ edits: [{ ...edit, file }] });
+        expect(() => readEdits(refused.overlay), file).toThrow(SmokeError);
+      },
+    );
+
+    it('accepts one "*" in the name of the file', () => {
+      for (const file of ['modules/notes/migrations/*_create_notes_table.ts', 'modules/notes/migrations/x_*.ts', 'modules/notes/a*b']) {
+        const accepted = setup({ edits: [{ ...edit, file }] });
+        expect(readEdits(accepted.overlay)[0]!.file, file).toBe(file);
+      }
+    });
   });
 
   it('refuses a command that is not a marmeon line — before it touches the app', () => {
@@ -187,11 +229,39 @@ describe('the end of a smoke run', () => {
 
 describe('examples/notes', () => {
   it('has commands and edits the demo can run, and edits that fit the starter kit it is applied to', () => {
-    expect(readCommands(OVERLAY).beforeCopy[0]).toBe('marmeon make:module notes');
+    expect(readCommands(OVERLAY).beforeCopy[0]).toBe('marmeon make:resource Note');
     const layout = readFileSync(fileURLToPath(new URL('../packages/auth/stubs/react/modules/auth/layouts/AppLayout.tsx', import.meta.url)), 'utf8');
-    for (const edit of readEdits(OVERLAY)) {
-      expect(edit.file).toBe('modules/auth/layouts/AppLayout.tsx');
-      expect(layout.split(edit.find).length - 1, edit.find).toBe(1);
+    const layoutEdits = readEdits(OVERLAY).filter((edit) => edit.file === 'modules/auth/layouts/AppLayout.tsx');
+    expect(layoutEdits).toHaveLength(2);
+    for (const edit of layoutEdits) expect(layout.split(edit.find).length - 1, edit.find).toBe(1);
+  });
+
+  it('is described by docs/first-app.md as make:resource writes it', () => {
+    const names = { name: 'Note', plural: 'Notes', module: 'notes', table: 'notes', param: 'note', list: 'notes', words: 'note', pluralWords: 'notes', layout: '../../auth/layouts/AppLayout.tsx' };
+    const generated = resourceFiles(names, '2026_01_01_000000');
+    const page = readFileSync(fileURLToPath(new URL('../docs/first-app.md', import.meta.url)), 'utf8');
+    const controllers = [...generated.keys()].filter((path) => path.startsWith('controllers/'));
+    expect(controllers.sort()).toEqual(['List', 'Create', 'Store', 'Edit', 'Update', 'Delete'].map((verb) => `controllers/${verb}Note${verb === 'List' ? 's' : ''}Controller.ts`).sort());
+    const withRequest = controllers.filter((path) => generated.get(path)!.includes('static request'));
+    expect(withRequest.sort()).toEqual(controllers.filter((path) => !path.includes('/Create')).sort());
+    expect(page).toContain('`ListNotes`, `StoreNote`, `EditNote`, `UpdateNote` and `DeleteNote` with their requests, and `CreateNote`, which needs none.');
+    expect(generated.get('NoteRepository.ts')).toContain(".select(['id', 'title'])");
+    expect(page).toContain("selects `id` and `title`");
+    for (const ability of ['view', 'update', 'delete']) expect(generated.get('policies/NotePolicy.ts'), ability).toContain(`  ${ability}(user`);
+    expect(page).toContain('`view`, `update` and `delete`');
+    expect([...generated.keys()].filter((path) => path.startsWith('views/') || path.endsWith('.test.ts')).sort()).toEqual(['notes.test.ts', 'views/Form.tsx', 'views/ListNotes.tsx']);
+  });
+
+  it('edits the files make:resource writes, where each find occurs once in what the generator writes', () => {
+    const names = { name: 'Note', plural: 'Notes', module: 'notes', table: 'notes', param: 'note', list: 'notes', words: 'note', pluralWords: 'notes', layout: '../../auth/layouts/AppLayout.tsx' };
+    const generated = [...resourceFiles(names, '2026_01_01_000000')].map(([path, text]) => [`modules/notes/${path}`, text] as const);
+    const edits = readEdits(OVERLAY).filter((edit) => edit.file !== 'modules/auth/layouts/AppLayout.tsx');
+    expect(edits.length).toBeGreaterThan(0);
+    for (const edit of edits) {
+      const [prefix, suffix] = edit.file.split('*') as [string, string | undefined];
+      const matching = generated.filter(([path]) => (suffix === undefined ? path === edit.file : path.startsWith(prefix) && path.endsWith(suffix)));
+      expect(matching.map(([path]) => path), edit.file).toHaveLength(1);
+      expect(matching[0]![1].split(edit.find).length - 1, edit.find).toBe(1);
     }
   });
 

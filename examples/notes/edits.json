@@ -1,5 +1,20 @@
 [
   {
+    "file": "modules/notes/migrations/*_create_notes_table.ts",
+    "find": "      table.string('title', 120);",
+    "replace": "      table.string('title', 120);\n      table.text('body');\n      table.boolean('pinned').default(false);"
+  },
+  {
+    "file": "modules/notes/routes.ts",
+    "find": "import { ListNotesController } from './controllers/ListNotesController.ts';\nimport { StoreNoteController } from './controllers/StoreNoteController.ts';\nimport { UpdateNoteController } from './controllers/UpdateNoteController.ts';",
+    "replace": "import { ListNotesController } from './controllers/ListNotesController.ts';\nimport { PinNoteController } from './controllers/PinNoteController.ts';\nimport { StoreNoteController } from './controllers/StoreNoteController.ts';\nimport { UnpinNoteController } from './controllers/UnpinNoteController.ts';\nimport { UpdateNoteController } from './controllers/UpdateNoteController.ts';"
+  },
+  {
+    "file": "modules/notes/routes.ts",
+    "find": "  note.put('/:note', UpdateNoteController).name('update');",
+    "replace": "  note.put('/:note', UpdateNoteController).name('update');\n  note.put('/:note/pin', PinNoteController).name('pin');\n  note.delete('/:note/pin', UnpinNoteController).name('unpin');"
+  },
+  {
     "file": "modules/auth/layouts/AppLayout.tsx",
     "find": "  const user = auth?.user ?? null;",
     "replace": "  const user = auth?.user ?? null;\n  const notes = useTranslation('notes');"
