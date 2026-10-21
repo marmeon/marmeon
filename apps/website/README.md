@@ -116,6 +116,20 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   `search.test.ts` checks the search's order. `modules/site/site.test.ts` checks the landing (server-rendered, public, no navigation, the
   version). The `modules/docs/docs-*.test.ts` files check the sections and their pages, previous and next, the start
   page, the search, caching, the policy and the headers, cookies, the 404 (also for `/packages/…`) and the boot checks (the reserved slug included).
+- **Release lines:** the docs of an older release are pinned to the commit of its tag. `docs-lines.json` holds one pin per line
+  (`0.4.x` before 1.0, `<major>.x` after: `version`, `tag`, `commit`); `content/lines/<line>/` holds that commit's `docs/*.md`,
+  `UPGRADING.md`, `SECURITY.md` and `CONTRIBUTING.md` byte for byte, plus `docs/index.json` (format 1, as in `node_modules/marmeon/docs/`).
+  The snapshot is frozen: `pnpm check:source` and the other repository scans skip it, and it is written by nothing but
+  `pnpm website:lines add v<x.y.z>`. That command reads Git objects only — it unpacks no archive and runs no code from the tag
+  (`docs.config.ts` is read as text, literals only) — and refuses a tag that is not annotated, one that differs from `origin`'s,
+  a commit that is neither on `main` nor on the line's branch, a package of another version, anything in `docs/` but regular
+  `[a-z0-9-]+.md` files, and a version older than the line's pin. Open a pull request with the pin and the snapshot; the diff is the
+  text agents will read. `pnpm website:lines verify` (the first step of `pnpm website:check`, so of the `check` job) holds every
+  snapshot byte for byte to its commit, fetching the commit when the checkout lacks it, and every pin to the tag on `origin`:
+  a tag moved afterwards turns the run red while the site keeps showing the pinned commit. `add` checks the ancestry of the commit
+  once, when the line is added; after that the pull request that carries the pin is what a maintainer reviews. There are no lines
+  before 1.0: the first one is made with `pnpm website:lines add v1.0.0` on the branch `1.x`. `scripts/website-lines.test.ts`
+  covers each refusal.
 
 Settings: `config/docs.ts` has `DOCS_SOURCE` (the repository, default `../..`; `/app/content` in the image) and
 `DOCS_SEARCH_PER_MINUTE` (120); `config/site.ts` has `SITE_CACHE_MAX_AGE` (300 s) and `SITE_FATHOM_SITE` (empty: no analytics).

@@ -24,3 +24,9 @@ export const oxc = (): OxcParser => createRequire(join(root, 'packages/core/pack
 
 /** A package's code as an app runs it: `packages/<name>/src/`, without tests, type tests and fixtures. */
 export const PACKAGE_CODE = /^packages\/([^/]+)\/src\/(?!.*__fixtures__\/).+(?<!\.test|\.type-test)\.tsx?$/;
+
+/**
+ * Paths the repository's checks leave alone: the snapshot of a release line is the text of an old release, frozen byte for byte
+ * (`pnpm website:lines verify` holds it to its commit), so a rule written today must not fail on it, and nobody edits it to satisfy one.
+ */
+export const FROZEN_PATHS = ['apps/website/content/lines/'] as const;

@@ -2,8 +2,8 @@
  * The website (`apps/website`, a normal Marmeon app, no static export):
  *
  *   pnpm website:dev    # marmeon dev on http://localhost:3970 (PORT wins); writes apps/website/.env with a fresh APP_KEY first
- *   pnpm website:check  # marmeon build, the production server on a free port, a smoke test, the server stopped — a part of
- *                       # `pnpm run ci` (it needs the packages built: `pnpm build`)
+ *   pnpm website:check  # the release lines against their tags (`pnpm website:lines verify`), marmeon build, the production server on a
+ *                       # free port, a smoke test, the server stopped — a part of `pnpm run ci` (it needs the packages built: `pnpm build`)
  *
  * The smoke test asks the production build for the landing, the docs' start page, every docs page (200, server-rendered, the static `'self'`
  * policy without a nonce), the search, `/up`, caching headers, no `Set-Cookie` on a public page, a 404 for an unknown page, a
@@ -16,6 +16,7 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import docsConfig from '../apps/website/docs.config.ts';
+import { verifyLines } from './website-lines.ts';
 
 const app = fileURLToPath(new URL('../apps/website/', import.meta.url));
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -42,6 +43,9 @@ async function dev(): Promise<void> {
 
 async function check(): Promise<number> {
   const started = performance.now();
+  console.log('website:check: the release lines against their tags');
+  const lines = verifyLines({ root, log: (line) => console.log(line) });
+  if (lines.length > 0) return fail(`the release lines do not hold:\n${lines.map((problem) => `  ✗ ${problem}`).join('\n')}`);
   // Everything the app needs comes with the command: CI has no .env (a key of its own for this run only).
   const env: NodeJS.ProcessEnv = {
     ...process.env,

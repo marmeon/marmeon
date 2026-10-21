@@ -1,0 +1,2 @@
+# The snapshots of the website's release lines: the text of old releases, written by `pnpm website:lines add`; kept byte for byte.
+apps/website/content/lines/** -text linguist-generated=true
