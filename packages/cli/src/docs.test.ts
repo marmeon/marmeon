@@ -99,6 +99,32 @@ describe('marmeon docs', () => {
     expect(docs(packageRoot, ['routing'], { path: true }, other).stdout).toBe(`${join(packageRoot, 'docs/routing.md')}\n`);
   });
 
+  it('finds node_modules/marmeon of the app from a folder below it, skipping another package of that name', () => {
+    const packageRoot = installation();
+    const app = tempDir('marmeon-docs-app-');
+    mkdirSync(join(app, 'node_modules'));
+    symlinkSync(packageRoot, join(app, 'node_modules/marmeon'), 'dir');
+    const shown = join(app, 'node_modules/marmeon');
+    const below = join(app, 'modules/x');
+    mkdirSync(below, { recursive: true });
+    expect(docs(packageRoot, ['routing'], { path: true }, below).stdout).toBe(`${join(shown, 'docs/routing.md')}\n`);
+    expect(JSON.parse(docs(packageRoot, [], { json: true }, below).stdout)).toMatchObject({ root: shown });
+
+    // A closer node_modules/marmeon that is another package is passed over, not shown.
+    mkdirSync(join(below, 'node_modules'));
+    symlinkSync(installation(), join(below, 'node_modules/marmeon'), 'dir');
+    expect(docs(packageRoot, ['routing'], { path: true }, below).stdout).toBe(`${join(shown, 'docs/routing.md')}\n`);
+
+    // Without any link to this package, the package's own path is shown.
+    const lone = tempDir('marmeon-docs-app-');
+    mkdirSync(join(lone, 'node_modules'));
+    symlinkSync(installation(), join(lone, 'node_modules/marmeon'), 'dir');
+    mkdirSync(join(lone, 'sub/node_modules'), { recursive: true });
+    symlinkSync(join(lone, 'missing'), join(lone, 'sub/node_modules/marmeon'), 'dir');
+    expect(docs(packageRoot, ['routing'], { path: true }, join(lone, 'sub')).stdout).toBe(`${join(packageRoot, 'docs/routing.md')}\n`);
+    expect(JSON.parse(docs(packageRoot, [], { json: true }, join(lone, 'sub')).stdout)).toMatchObject({ root: packageRoot });
+  });
+
   it('refuses --path without a page, --json with a page, and a second page, with exit 2', () => {
     const packageRoot = installation();
     expect(docs(packageRoot, [], { path: true })).toMatchObject({ code: 2, stdout: '' });

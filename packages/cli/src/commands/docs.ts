@@ -126,13 +126,26 @@ function readRegular(path: string): string | undefined {
   }
 }
 
-/** Where the package is shown to be: `<app>/node_modules/marmeon` when that is this package (pnpm resolves it to a path with the version in it), else its own path. */
+/**
+ * Where the package is shown to be: the nearest `node_modules/marmeon` from the working directory upwards that is this package
+ * (pnpm resolves it to a path with the version in it), else its own path. A `marmeon` of another installation is passed over;
+ * only real paths are compared and nothing is read through a link.
+ */
 function displayRoot(packageRoot: string, cwd: string): string {
-  const link = join(cwd, 'node_modules', 'marmeon');
+  let real: string;
   try {
-    return realpathSync(link) === realpathSync(packageRoot) ? link : packageRoot;
+    real = realpathSync(packageRoot);
   } catch {
     return packageRoot;
+  }
+  for (let directory = cwd; ; directory = dirname(directory)) {
+    const link = join(directory, 'node_modules', 'marmeon');
+    try {
+      if (realpathSync(link) === real) return link;
+    } catch {
+      // No such link here; keep climbing.
+    }
+    if (dirname(directory) === directory) return packageRoot;
   }
 }
 
