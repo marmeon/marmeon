@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { withCode } from '../error-codes.ts';
 
 export interface PackageInfo {
@@ -94,14 +94,15 @@ export function findPackage(name: string, fromDir: string): PackageInfo | undefi
 export function resolveExports(pkg: PackageInfo, subpath: string, conditions: readonly string[]): string | undefined {
   const { exports } = pkg.json;
   if (exports === undefined) {
-    return subpath === '.' && pkg.json.main ? join(pkg.dir, pkg.json.main) : undefined;
+    return subpath === '.' && typeof pkg.json.main === 'string' && pkg.json.main ? resolve(pkg.dir, pkg.json.main) : undefined;
   }
 
   const isSubpathMap =
     typeof exports === 'object' && exports !== null && !Array.isArray(exports) && Object.keys(exports).some((key) => key.startsWith('.'));
   const target = isSubpathMap ? (exports as Record<string, unknown>)[subpath] : subpath === '.' ? exports : undefined;
-  const resolved = pickTarget(target, conditions);
-  return resolved ? join(pkg.dir, resolved) : undefined;
+  const resolved = pickTarget(target, conditions, pkg.name, 0);
+  // `resolve`, not `join`: an absolute target stays absolute, so the containment check sees it instead of reading it as relative.
+  return resolved ? resolve(pkg.dir, resolved) : undefined;
 }
 
 /** All explicit subpaths a package exports (`.`, `./testing`, …). */
@@ -118,26 +119,32 @@ export function exportedSubpaths(pkg: PackageInfo): string[] {
 export function resolveTypes(pkg: PackageInfo, subpath: string, jsEntry: string): string | undefined {
   const viaCondition = resolveExports(pkg, subpath, ['types']);
   if (viaCondition?.endsWith('.d.ts') || viaCondition?.endsWith('.d.mts')) return viaCondition;
-  if (subpath === '.' && (pkg.json.types ?? pkg.json.typings)) return join(pkg.dir, (pkg.json.types ?? pkg.json.typings)!);
+  const declared = pkg.json.types ?? pkg.json.typings;
+  if (subpath === '.' && typeof declared === 'string' && declared) return resolve(pkg.dir, declared);
   const sibling = jsEntry.replace(/\.m?js$/, (ext) => (ext === '.mjs' ? '.d.mts' : '.d.ts'));
   return existsSync(sibling) ? sibling : undefined;
 }
 
-function pickTarget(target: unknown, conditions: readonly string[]): string | undefined {
+/** How deep `exports` may nest conditions and fallback lists: real packages use a handful of levels, a hostile one would overflow the stack. */
+const MAX_EXPORTS_DEPTH = 32;
+
+function pickTarget(target: unknown, conditions: readonly string[], packageName: string, depth: number): string | undefined {
   if (typeof target === 'string') return target;
+  if (typeof target !== 'object' || target === null) return undefined;
+  if (depth >= MAX_EXPORTS_DEPTH) {
+    throw new Error(withCode('K7', `The "exports" of ${packageName} nest deeper than ${MAX_EXPORTS_DEPTH} levels, so its entry cannot be resolved.`));
+  }
   if (Array.isArray(target)) {
     for (const entry of target) {
-      const picked = pickTarget(entry, conditions);
+      const picked = pickTarget(entry, conditions, packageName, depth + 1);
       if (picked) return picked;
     }
     return undefined;
   }
-  if (typeof target === 'object' && target !== null) {
-    for (const [condition, value] of Object.entries(target)) {
-      if (condition === 'default' || conditions.includes(condition)) {
-        const picked = pickTarget(value, conditions);
-        if (picked) return picked;
-      }
+  for (const [condition, value] of Object.entries(target)) {
+    if (condition === 'default' || conditions.includes(condition)) {
+      const picked = pickTarget(value, conditions, packageName, depth + 1);
+      if (picked) return picked;
     }
   }
   return undefined;

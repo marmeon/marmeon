@@ -2,7 +2,7 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, read
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { err, ok, type Result, type ServiceProviderClass } from '@marmeon/core';
-import { printable, resolveExports, runtimeConditions, withCode } from '@marmeon/core/internal';
+import { belongsTo, isInside, printable, resolveExports, runtimeConditions, withCode } from '@marmeon/core/internal';
 
 /** One migration a package ships: `name` is the file name without its timestamp and `.ts`, `file` its POSIX path in the package. */
 export interface PackageMigrationFile {
@@ -48,12 +48,6 @@ function invalid(pkg: { name: string }, why: string): Result<never, PackageMigra
 /** A string from a foreign package for a message: quoted, cut at 200 characters, control, format and separator characters escaped. @internal */
 export function show(value: string): string {
   return printable(JSON.stringify(value.slice(0, 200)));
-}
-
-/** Whether `real` lies inside `root` (both real paths) and is not `root` itself. */
-function isInside(root: string, real: string): boolean {
-  const inside = relative(root, real);
-  return !(inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside));
 }
 
 /**
@@ -205,13 +199,6 @@ export function migrationDeclarations(providers: readonly ServiceProviderClass[]
 /** The D21 messages of declarations that cannot be parsed at all (no object, no `file:` URL, …). @internal */
 export function unattributedDeclarations(declarations: readonly MigrationDeclaration[]): string[] {
   return declarations.flatMap((declaration) => (declaration.ok ? [] : [declaration.message]));
-}
-
-/** Whether `path` lies in `root` or is `root`, without a `node_modules` below `root`: a package nested there is another package. */
-function belongsTo(root: string, path: string): boolean {
-  const inside = relative(root, path);
-  if (inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return false;
-  return !inside.split(sep).some((segment) => segment.toLowerCase() === 'node_modules');
 }
 
 /** A package as the reader needs it: where it lies, and the `package.json` fields that name its entry. */
