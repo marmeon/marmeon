@@ -23,7 +23,8 @@ let withoutLines: TestApp;
 beforeAll(async () => {
   app = await createTestApp(application, { env: lines, ssr: true, ssrServer: server });
   withLines = await createTestApp(application, { env: lines });
-  withoutLines = await createTestApp(application);
+  // Whatever the repository pins: a missing directory and file are "no lines".
+  withoutLines = await createTestApp(application, { env: { DOCS_LINES: '/nonexistent/lines', DOCS_LINE_PINS: '/nonexistent/docs-lines.json' } });
 }, 60_000);
 afterAll(async () => {
   await Promise.all([app?.close(), withLines?.close(), withoutLines?.close()]);

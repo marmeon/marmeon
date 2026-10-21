@@ -117,7 +117,7 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   version). The `modules/docs/docs-*.test.ts` files check the sections and their pages, previous and next, the start
   page, the search, caching, the policy and the headers, cookies, the 404 (also for `/packages/…`) and the boot checks (the reserved slug included).
 - **Release lines:** the docs of an older release are pinned to the commit of its tag. `docs-lines.json` holds one pin per line
-  (`0.4.x` before 1.0, `<major>.x` after: `version`, `tag`, `commit`); `content/lines/<line>/` holds that commit's `docs/*.md`,
+  (`<major>.x` from 1.0 on: `version`, `tag`, `commit`); `content/lines/<line>/` holds that commit's `docs/*.md`,
   `UPGRADING.md`, `SECURITY.md` and `CONTRIBUTING.md` byte for byte, plus `docs/index.json` (format 1, as in `node_modules/marmeon/docs/`).
   The snapshot is frozen: `pnpm check:source` and the other repository scans skip it, and it is written by nothing but
   `pnpm website:lines add v<x.y.z>`. That command reads Git objects only — it unpacks no archive and runs no code from the tag
@@ -128,7 +128,8 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   snapshot byte for byte to its commit, fetching the commit when the checkout lacks it, and every pin to the tag on `origin`:
   a tag moved afterwards turns the run red while the site keeps showing the pinned commit. `add` checks the ancestry of the commit
   once, when the line is added; after that the pull request that carries the pin is what a maintainer reviews. There are no lines
-  before 1.0: the first one is made with `pnpm website:lines add v1.0.0` on the branch `1.x`. `scripts/website-lines.test.ts`
+  before 1.0: the first one is made with `pnpm website:lines add v1.0.0` after the release (tagged on `main`), in a pull request against
+  `main` ([Pinning the docs of a release line](../../CONTRIBUTING.md#pinning-the-docs-of-a-release-line)). `scripts/website-lines.test.ts`
   covers each refusal.
 - **Release line routes:** `DocsLines` (`modules/docs/DocsLines.ts`) reads the pins and the snapshots when the app boots; without
   `docs-lines.json` and `content/lines/` there are no lines and nothing under `/docs/` changes. The website does not start (a

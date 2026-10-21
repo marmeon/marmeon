@@ -10,7 +10,8 @@ import { markdownParser } from './markdown.ts';
 
 let app: TestApp;
 beforeAll(async () => {
-  app = await createTestApp(application);
+  // Without lines, whatever the repository pins: their /llms.txt section and files are checked in docs-lines*.test.ts.
+  app = await createTestApp(application, { env: { DOCS_LINES: '/nonexistent/lines', DOCS_LINE_PINS: '/nonexistent/docs-lines.json' } });
 });
 
 const SECTIONS = docsConfig.sections;

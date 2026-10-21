@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import docsConfig from '../../docs.config.ts';
 import { SITE_CSP } from '../site/SiteServiceProvider.ts';
+import { DocsLines } from './DocsLines.ts';
 import { DocsRepository } from './DocsRepository.ts';
 import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
@@ -59,7 +60,7 @@ function inlineStyles(body: string): string[] {
 }
 
 /** The links of the scanned pages that stay on the site and lead nowhere: no such page, or no such anchor on it. */
-function checkLinks(pages: Map<string, { hrefs: string[]; ids: Set<string> }>): { broken: string[]; internal: number } {
+function checkLinks(pages: Map<string, { hrefs: string[]; ids: Set<string> }>, lines: readonly string[] = []): { broken: string[]; internal: number } {
   const broken: string[] = [];
   let internal = 0;
   for (const [path, { hrefs }] of pages) {
@@ -68,6 +69,8 @@ function checkLinks(pages: Map<string, { hrefs: string[]; ids: Set<string> }>): 
       internal++;
       const [target = '', anchor] = href.split('#') as [string, string | undefined];
       const page = target === '' ? path : target.split('?')[0]!;
+      // A release line's own pages are no scanned pages: the pinned lines are served and checked by docs-lines-pinned.test.ts.
+      if (lines.some((line) => page === `/docs/${line}` || page.startsWith(`/docs/${line}/`))) continue;
       // The Markdown of a page — its own route, not a scanned page.
       const found = pages.get(page.replace(/^(\/docs\/[a-z0-9-]+)\.md$/, (md, html: string) => (pages.has(html) ? html : md)));
       if (!found) {
@@ -122,7 +125,7 @@ describe('every page', () => {
 
   it('links only to pages and anchors that exist (links as on GitHub)', () => {
     expect(rendered.size).toBe(PAGES.length);
-    const { broken, internal } = checkLinks(rendered);
+    const { broken, internal } = checkLinks(rendered, app.make(DocsLines).all().map((line) => line.name));
     // The broken links as the message too: Vitest shortens the list in its own ("[ Array(1) ]").
     expect(broken, broken.join('\n')).toEqual([]);
     // Measured 8 161 (the start page and the 73 pages of the docs; the header's and the navigation's 70-odd links on each page count

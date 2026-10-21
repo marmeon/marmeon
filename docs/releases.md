@@ -61,6 +61,9 @@ of the [upgrade guide](../UPGRADING.md).
 | Older 0.x minors | no | no |
 | 0.x, after 1.0.0 | no | no |
 
+The docs of every release line from 1.0 on stay at `https://marmeon.com/docs/<line>/` (`/docs/1.x/`), and the docs of the version you have installed
+are in `node_modules/marmeon/docs/`.
+
 The [security policy](../SECURITY.md) explains how to report a vulnerability.
 
 ## Supported platforms

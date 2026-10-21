@@ -16,7 +16,8 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import docsConfig from '../apps/website/docs.config.ts';
-import { verifyLines } from './website-lines.ts';
+import { firstPageOf, lineProblems } from './website-line-checks.ts';
+import { LINES_DIR, readPins, verifyLines } from './website-lines.ts';
 
 const app = fileURLToPath(new URL('../apps/website/', import.meta.url));
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -183,6 +184,12 @@ async function smoke(base: string, failures: string[]): Promise<number> {
   expect(oldSearch.response.status === 404, `/search: status ${oldSearch.response.status}, expected 404 (the search lives at /docs/search)`);
   const long = await get(`/docs/search?q=${'a'.repeat(10_000)}`);
   expect(long.response.status < 500, `/docs/search with 10 000 characters: status ${long.response.status}`);
+
+  // Every pinned line: its first page, that page as Markdown and its llms.txt (none while nothing is pinned).
+  for (const line of Object.keys(readPins(root))) {
+    const problems = await lineProblems(base, line, firstPageOf(join(root, LINES_DIR, line)));
+    expect(problems.length === 0, `the release line ${line}: ${problems.join('; ')}`);
+  }
 
   const up = await get('/up');
   expect(up.response.status === 200, `/up: status ${up.response.status}`);
