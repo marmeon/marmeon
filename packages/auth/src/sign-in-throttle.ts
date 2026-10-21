@@ -34,7 +34,7 @@ export interface DeviceCookie {
  * client address and nothing a word list could be checked against. The counters are short-lived, so a key of `APP_PREVIOUS_KEYS` is not
  * tried for them. See `docs/authentication.md#limits-on-password-sign-ins`.
  */
-export class LoginThrottle {
+export class SignInThrottle {
   readonly #limiter: RateLimiter;
   readonly #key: Uint8Array;
   readonly #deviceKeys: readonly Uint8Array[];
@@ -54,6 +54,7 @@ export class LoginThrottle {
     logger: Logger,
   ) {
     this.#limiter = limiter;
+    // A domain separator of stored counter keys, not a name: changing it resets every count at deploy.
     this.#key = derive(key, 'marmeon:auth-login-throttle');
     // A device cookie lives for months, so it is also accepted under the keys of APP_PREVIOUS_KEYS.
     this.#deviceKeys = [key, ...previousKeys].map((secret) => derive(secret, 'marmeon:auth-device'));

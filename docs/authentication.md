@@ -266,7 +266,7 @@ verified, so accounts with an older hash (after a change of driver or costs) are
 account.
 
 `two-factor-required` comes only after a correct password, for an account that set up a [second
-factor](two-factor-authentication.md). Nobody is signed in then: no `Login` event, no remember-me cookie, `auth.user()` is
+factor](two-factor-authentication.md). Nobody is signed in then: no `SignedIn` event, no remember-me cookie, `auth.user()` is
 `undefined`. The session keeps the right password for five minutes, `auth.pendingSecondFactor()` names the factors it waits for,
 and the error carries them as `factors`. Redirect to the page that asks for the code. An app that ignores the case still signs
 nobody in. Without a source of factors bound (see [Setting up](two-factor-authentication.md#setting-up)) the case never happens. When the stored hash was made with other costs than the
@@ -312,7 +312,7 @@ was. Set the cookie from your own login and reset controllers: `auth.deviceCooki
 device.options)`); the starter kit's controllers do. A stolen cookie gives its thief ten guesses an hour on that one account, no
 more than the thief of a session has.
 
-Each refused attempt of the first kind dispatches a [`Lockout`](#events) with `scope: 'client'`; the account's ceiling dispatches
+Each refused attempt of the first kind dispatches a [`SignInLockedOut`](#events) with `scope: 'client'`; the account's ceiling dispatches
 one with `scope: 'account'`, once per window. The starter kit's `QueueLockoutMail` listens for the second and queues the mail to
 the owner. The route's own limit per client (`auth.login`, 30 a minute whatever the identifier) stays middleware; it counts apart from the
 limits inside `attempt()`, so a failed sign-in is one attempt for each of them and none counts twice against the same limit.
@@ -330,14 +330,14 @@ that of [the limits of the auth routes](#the-limits-of-the-auth-routes). The
 [rate limiting](rate-limiting.md#defining-limiters) page covers limiters.
 
 The starter kit's login page says, when the account's ceiling is reached: "Too many failed sign-ins for this account. Reset your
-password or sign in with a passkey." Its `QueueLockoutMail` queues `SendLockoutMailJob` on the `Lockout` of that moment, and the job
+password or sign in with a passkey." Its `QueueLockoutMail` queues `SendLockoutMailJob` on the `SignInLockedOut` of that moment, and the job
 mails the owner only when an account exists, so the mail is no oracle either.
 
 A count is one cache entry per address tried, for addresses with and without an account, kept for a day (its key is an HMAC, so it
 cannot be cut down). A public deployment keeps the counts in the `database` or `redis` cache store, not in `file`, and `cache:prune`
 scheduled (see [cache](cache.md)), so a flood of made-up addresses does not pile up.
 
-`login(user)` signs a user in without a password, for example right after a registration. It returns `'signed-in'`, or
+`signIn(user)` signs a user in without a password, for example right after a registration. It returns `'signed-in'`, or
 `'two-factor-required'` for an account with a second factor: that account is not signed in, exactly as with `attempt()`. A
 registration signs in a new account, which has no second factor, so its result needs no handling there. Both methods do the same
 to the session:
@@ -390,7 +390,7 @@ the limits inside `attempt()` do not give; keep a limit per client in your repla
 
 ## Signing out
 
-`logout()` signs the user out on this device. The session's data, its id and its CSRF token are all replaced, and the remember-me
+`signOut()` signs the user out on this device. The session's data, its id and its CSRF token are all replaced, and the remember-me
 token of this device is deleted:
 
 ```ts title="modules/auth/controllers/LogoutController.ts"
@@ -410,7 +410,7 @@ export class LogoutController extends Controller {
 
   async handle() {
     const locale = this.#session.get('locale');
-    await this.#auth.logout();
+    await this.#auth.signOut();
     if (locale) this.#session.put('locale', locale);
     return this.redirect().route('auth.login');
   }
@@ -546,7 +546,7 @@ The confirmation page posts the password to `auth.checkPassword(password)`, whic
 `invalid-password`. A user with a passkey can confirm with it instead:
 [`passkeys.confirm()`](passkeys.md#confirming-sudo-mode) notes the time the same way, and a [passwordless sign-in](passkeys.md#passwordless-sign-in)
 counts as a fresh confirmation, since the passkey was proven just now. `attempt()` notes the time as well (for an account with a
-second factor, dated when the password was typed, not when the factor was proven); `login()` does not, since nobody proved anything, and it forgets a
+second factor, dated when the password was typed, not when the factor was proven); `signIn()` does not, since nobody proved anything, and it forgets a
 confirmation noted before: the new sign-in starts outside sudo mode, even over the session of the same account, and proving a
 second factor afterwards does not change that. A confirmation counts only inside the sign-in it was given for.
 
@@ -1036,7 +1036,7 @@ which hangs on the same row. That is the end of a single session ASVS 7.5.2 asks
 | `last_seen_at` | The last request, exact to 5 minutes: it is written at most that often, so most requests write nothing. |
 
 No IP address is stored. A list of places needs a lookup of the address, and a table of addresses is personal data that nothing else in
-the framework needs. An app that keeps an audit log takes the address from the [`Login` event](#events), which carries `ip` and
+the framework needs. An app that keeps an audit log takes the address from the [`SignedIn` event](#events), which carries `ip` and
 `userAgent`.
 
 ### Listing and ending sign-ins
@@ -1051,7 +1051,7 @@ The list leaves out a sign-in whose session is over: one that has been idle long
 [pruned](#pruning-sign-ins).
 
 `auth.endSignIn(id)` signs the user out of one of them. It returns a `Result`: `missing` for an id that is unknown, malformed or
-another user's (the same answer for all three), and `current` for the browser that asks, which signs out with `logout()`. The route
+another user's (the same answer for all three), and `current` for the browser that asks, which signs out with `signOut()`. The route
 must be behind [`confirmedPassword()`](#sudo-mode): without a recent confirmation (a password or a passkey) `endSignIn()` throws, because a stolen session
 cookie must not be able to sign its owner out everywhere else. An account with neither a password nor a passkey cannot end a
 sign-in yet.
@@ -1069,7 +1069,7 @@ export class EndSignInController extends Controller {
   }
 
   async handle(ctx: HttpContext<Authenticated, { signIn: string }>) {
-    // `missing` (unknown, malformed or another user's) and `current` (this browser: `logout()` is its way out) end nothing;
+    // `missing` (unknown, malformed or another user's) and `current` (this browser: `signOut()` is its way out) end nothing;
     // the page lists what is left either way.
     await this.#auth.endSignIn(ctx.params.signIn);
     return this.back('/settings/security');
@@ -1088,7 +1088,7 @@ A page shows `await auth.signIns()` with a button per entry that is not `current
 The rows of the other devices are deleted wherever the other devices are signed out, so the list never shows a browser that has
 been signed out already:
 
-- `logout()` ends the row of this browser, and a sign-in over another sign-in ends the row it replaces.
+- `signOut()` ends the row of this browser, and a sign-in over another sign-in ends the row it replaces.
 - A new password with `updatePassword()` and `updateSessionKey()` end the rows of every other device, tokens with them, and keep the
   current one (a new password takes its token off, since the user typed the password again). The rows go before the new key or hash is stored, in the same transaction for a password: if a store
   cannot end them, nothing is changed and the call throws, because a token that survives would sign the other device in again.
@@ -1321,7 +1321,7 @@ would show them again without asking the server. The middleware, `NoStoreWhenSig
 Every app with `@marmeon/auth` has it.
 
 A route that sets its own `Cache-Control` keeps it, such as one with `cacheControl('private, max-age=60')`. Then its answer may
-stay in the browser after a sign-out: set your own header only on answers that hold nothing of the user. An app that does keep such answers signs out with `history.clear({ siteData: ['cache', 'storage'] })` after `logout()`, which asks the browser to drop its cache too; the [client features](client-features.md#the-browsers-storage-on-sign-out) page has the cost.
+stay in the browser after a sign-out: set your own header only on answers that hold nothing of the user. An app that does keep such answers signs out with `history.clear({ siteData: ['cache', 'storage'] })` after `signOut()`, which asks the browser to drop its cache too; the [client features](client-features.md#the-browsers-storage-on-sign-out) page has the cost.
 
 ## Events
 
@@ -1329,10 +1329,10 @@ stay in the browser after a sign-out: set your own header only on answers that h
 
 | Event | When | Fields |
 | --- | --- | --- |
-| `Login` | `attempt()`, `login()`, a sign-in by the remember-me cookie | `user`, `remember`, `at`, `via` (`attempt`, `login`, `remember` or `passkey`), `ip`, `userAgent` |
-| `Logout` | `logout()` | `user` |
-| `Failed` | `attempt()` with an unknown identifier or a wrong password | `identifier`, and `user` when the identifier is known |
-| `Lockout` | `attempt()` turns an attempt away (`scope: 'client'`), or an account takes no more password sign-ins for the day (`scope: 'account'`, once per window) | `identifier`, `ip`, `scope` |
+| `SignedIn` | `attempt()`, `signIn()`, a sign-in by the remember-me cookie | `user`, `remember`, `at`, `via` (`attempt`, `app`, `remember` or `passkey`), `ip`, `userAgent` |
+| `SignedOut` | `signOut()` | `user` |
+| `SignInFailed` | `attempt()` with an unknown identifier or a wrong password | `identifier`, and `user` when the identifier is known |
+| `SignInLockedOut` | `attempt()` turns an attempt away (`scope: 'client'`), or an account takes no more password sign-ins for the day (`scope: 'account'`, once per window) | `identifier`, `ip`, `scope` |
 | `Registered` | Your registration, after it created the account | `user` |
 | `PasswordChanged` | `updatePassword()` | `user`, `revokedTokens` (the API tokens the new password revoked, `0` unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`) |
 | `EmailChanged` | `EmailChange.confirm()`, and `EmailChange.request()` without private registration, once the address is written | `userId`, `previousEmail` (`null` if the user had none), `email` |
@@ -1341,18 +1341,20 @@ stay in the browser after a sign-out: set your own header only on answers that h
 | `RememberTokenReused` | A [remember-me cookie](#remember-me) that a rotation had replaced came back, however many rotations ago, or a known cookie came with a validator that was never issued: it was copied | `user`, `at`, `ip`, `userAgent`, `sessionsEnded` |
 | `TwoFactorEnabled`, `TwoFactorDisabled`, `RecoveryCodesGenerated`, `RecoveryCodeUsed`, `TwoFactorChallengeFailed` | The second factor of an account changes or is used | See [two-factor authentication](two-factor-authentication.md#events) |
 
-`Failed` carries what was typed as the identifier, never the password. Use it for an audit log, and never show it to the client:
-it tells whether the address has an account. The `ip` and `userAgent` of `Login` are the request's, the address resolved through
-`SERVER_TRUSTED_PROXIES` like `ctx.ip`, unless the call to `attempt()` or `login()` passed others. Outside a request they are `null`.
+`SignInFailed` carries what was typed as the identifier, never the password. Use it for an audit log, and never show it to the client:
+it tells whether the address has an account. The `ip` and `userAgent` of `SignedIn` are the request's, the address resolved through
+`SERVER_TRUSTED_PROXIES` like `ctx.ip`, unless the call to `attempt()` or `signIn()` passed others. Outside a request they are `null`.
 `RememberTokenReused` is dispatched once for each copied cookie, after the user's sign-ins were deleted and their sessions ended (or could not be, see `sessionsEnded`), and only for an account that still exists. Its `ip` and `userAgent` belong to the request that presented the old or never-issued value: whoever holds the copy, possibly the thief, or, more rarely, the owner's browser that missed the response carrying a renewal (a cancelled load, a dropped connection), so a mail should say so. A cookie that is no longer the current or just-replaced one cannot come from a browser that kept up with the rotations, so the owner is told for every old copy. `ip` is `null` when it is not an address, `userAgent` has its control characters removed and is cut to 512 characters, and `sessionsEnded` is `false` when the `UserProvider` could not end the sessions (the tokens are gone either way). The event never carries the cookie or a token. The `userAgent` is text the client chose: show a parsed browser and system (`describeDevice()`) in a mail, not the raw header. A queued listener gets `{ userId, at, ip, userAgent, sessionsEnded }`, with `at` as an ISO 8601 string. The starter kit mails the owner.
-A queueable event's payload has a name — `RememberTokenReusedPayload`, `LoginPayload` and so on, each the same as `EventPayload<typeof …>` of its class.
+A queueable event's payload has a name — `RememberTokenReusedPayload`, `SignedInPayload` and so on, each the same as `EventPayload<typeof …>` of its class.
 
-`Registered` is dispatched by your app's code, the starter kit's controllers, not by the package; `Lockout` comes from `attempt()`.
+`Registered` is dispatched by your app's code, the starter kit's controllers, not by the package; `SignInLockedOut` comes from `attempt()`.
+
+The route `auth.login`, the URL `/login`, the limiters named `auth.login` and the `auth.login.*` translation keys keep their names: they name the page, not the event. A queued listener of `SignedIn` is stored under the event name `auth.signed-in`; a job that an earlier release queued under `auth.login` is held and, after six hours, fails with that name in its message (see `marmeon queue:failed`), so empty the queue with `marmeon queue:work --stop-when-empty` on the old release before deploying.
 
 A listener reacts to a sign-in without the auth module knowing about it:
 
 ```ts title="modules/user-profile/listeners/RecordLastLogin.ts"
-import type { Login } from '@marmeon/auth';
+import type { SignedIn } from '@marmeon/auth';
 import { LoginActivityRepository } from '../LoginActivityRepository.ts';
 
 export class RecordLastLogin {
@@ -1362,14 +1364,14 @@ export class RecordLastLogin {
     this.#activity = activity;
   }
 
-  async handle(event: Login): Promise<void> {
+  async handle(event: SignedIn): Promise<void> {
     await this.#activity.record(event.user.id, event.at);
   }
 }
 ```
 
-The module registers it with `listeners: [listen(Login, RecordLastLogin)]`. `Login` and `Registered` can also be queued. A queued
-listener of `Login` gets `{ userId, remember, via, at, ip, userAgent }`, with `at` as an ISO 8601 string, and one of `Registered`
+The module registers it with `listeners: [listen(SignedIn, RecordLastLogin)]`. `SignedIn` and `Registered` can also be queued. A queued
+listener of `SignedIn` gets `{ userId, remember, via, at, ip, userAgent }`, with `at` as an ISO 8601 string, and one of `Registered`
 gets `{ userId }`. It reads the account as it is when it runs. The [events](events.md#queued-listeners) page explains queued
 listeners.
 

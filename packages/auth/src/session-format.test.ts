@@ -33,7 +33,7 @@ class SignInController extends Controller {
     this.#auth = auth;
   }
   async handle() {
-    return { result: await this.#auth.login(ada) };
+    return { result: await this.#auth.signIn(ada) };
   }
 }
 

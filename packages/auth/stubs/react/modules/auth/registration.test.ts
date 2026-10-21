@@ -169,7 +169,7 @@ describe('registration with AUTH_PRIVATE_REGISTRATION=false', { timeout: 30_000 
     app.queue.assertNotDispatched(SendAccountExistsMailJob);
   });
 
-  it('signs the new account in: it has no second factor, so login() signs in and no code is asked', async () => {
+  it('signs the new account in: it has no second factor, so signIn() signs in and no code is asked', async () => {
     await register().assertRedirect('/dashboard').assertAuthenticated();
   });
 

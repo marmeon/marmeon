@@ -10,7 +10,7 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountSessions, authenticate, Auth, AuthServiceProvider, Hasher, Login, PasswordHasher, RecoveryCodesGenerated, RecoveryCodeUsed, SignInStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, type Credentials, type PasswordHash } from '../index.ts';
+import { AccountSessions, authenticate, Auth, AuthServiceProvider, Hasher, SignedIn, PasswordHasher, RecoveryCodesGenerated, RecoveryCodeUsed, SignInStore, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled, TwoFactorState, TwoFactorStore, UserProvider, type Credentials, type PasswordHash } from '../index.ts';
 import { authenticatedSession, twoFactorCode } from '../testing.ts';
 import { TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, type RecoveryCodeTable, type TwoFactorTable } from './store.ts';
 import { SessionFingerprints } from '../fingerprint.ts';
@@ -92,7 +92,7 @@ class LoginAsController extends Controller {
   }
   async handle(ctx: HttpContext) {
     const { id } = (await ctx.input()) as { id: number };
-    return { result: await this.#auth.login((await this.#users.findById(id as never))!.user) };
+    return { result: await this.#auth.signIn((await this.#users.findById(id as never))!.user) };
   }
 }
 
@@ -202,7 +202,7 @@ async function boot(env: Record<string, string> = {}, options: { state?: 'unboun
         name: 'two-factor-test',
         routes,
         migrations: new URL('../__fixtures__/migrations/', import.meta.url),
-        listeners: [Login, TwoFactorEnabled, TwoFactorDisabled, RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed].map((event) => listen(event as never, RecordEvent)),
+        listeners: [SignedIn, TwoFactorEnabled, TwoFactorDisabled, RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed].map((event) => listen(event as never, RecordEvent)),
       }),
     ],
   }, {
@@ -549,7 +549,7 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     const b = booted.browser();
     events.length = 0;
     expect(await b.login(ada.email, 'secret', true)).toMatchObject({ signedIn: false, error: { kind: 'two-factor-required', factors: ['totp'] } });
-    expect(events.filter((event) => event instanceof Login)).toEqual([]); // no listener sees a sign-in that is taken back
+    expect(events.filter((event) => event instanceof SignedIn)).toEqual([]); // no listener sees a sign-in that is taken back
     expect(await b.tf('who')).toEqual({ id: null });
     expect(b.jar.has('marmeon_remember')).toBe(false);
     expect(await booted.tokenRows()).toEqual([]);
@@ -658,14 +658,14 @@ describe('TwoFactor: setting up, when it goes wrong', () => {
     expect(await booted.store.factors(1)).toEqual(['totp']);
   });
 
-  it('login() takes a sign-in back the same way', async () => {
+  it('signIn() takes a sign-in back the same way', async () => {
     let reads = 0;
     const state = twoFactorState({ removeAll: async () => {}, factors: async () => (reads++ === 0 ? [] : ['totp']), enabledSince: async () => undefined });
     const booted = await boot({}, { state });
     const b = booted.browser();
     events.length = 0;
     expect(await b.send('/login-as', { id: 1 })).toEqual({ result: 'two-factor-required' });
-    expect(events.filter((event) => event instanceof Login)).toEqual([]);
+    expect(events.filter((event) => event instanceof SignedIn)).toEqual([]);
     expect(await b.tf('who')).toEqual({ id: null });
   });
 
@@ -714,7 +714,7 @@ describe('TwoFactor: the errors of confirm()', () => {
 });
 
 describe('TwoFactor: signing in', () => {
-  it('a correct password then a code signs in, in a new session, with one Login event', async () => {
+  it('a correct password then a code signs in, in a new session, with one SignedIn event', async () => {
     const booted = await boot();
     const { secret: key } = await enable(booted);
     const b = await waiting(booted);
@@ -722,7 +722,7 @@ describe('TwoFactor: signing in', () => {
     expect(await b.tf('who')).toEqual({ id: null });
     expect(await b.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toEqual({ ok: true, id: 1 });
     expect(await b.tf('who')).toEqual({ id: 1 });
-    expect(events.filter((event) => event instanceof Login)).toHaveLength(1);
+    expect(events.filter((event) => event instanceof SignedIn)).toHaveLength(1);
   });
 
   it('answers no-challenge without a waiting sign-in', async () => {

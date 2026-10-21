@@ -124,7 +124,7 @@ account's user handle. The user is the passkey's own account. It returns the use
 | `clone-suspected` | The passkey's sign count did not move forward ([below](#counter-and-cloned-keys)). |
 | `throttled` | Sixty failed tries a minute from one address. `retryAfter` is in seconds. Only failures count, so many people may sign in from behind one address, and garbage sent from an address cannot lock the owner out. |
 
-The `Login` event says `via: 'passkey'`. A listener that switches over `event.via` exhaustively must handle the new value. The new-sign-in notice of the example app (`apps/web-app`) covers passkeys too: with no password typed, it is the owner's only hint. The session counts as
+The `SignedIn` event says `via: 'passkey'`. A listener that switches over `event.via` exhaustively must handle the new value. The new-sign-in notice of the example app (`apps/web-app`) covers passkeys too: with no password typed, it is the owner's only hint. The session counts as
 having passed a second factor and as freshly [confirmed for sudo mode](authentication.md#sudo-mode): the passkey, proven with user verification just now, is what `confirmedPassword()` asks for.
 
 On the login page, show the passkey button after hydration and only where `PublicKeyCredential` exists, so that without JavaScript there is
@@ -327,7 +327,7 @@ removes the passkeys together with the authenticator and the recovery codes.
 | `PasskeyRemoved` | `remove()` removed one, or the password reset of an account with an unconfirmed address removed them | `user`, `via` (`user` or `reset`) |
 | `PasskeyCloneSuspected` | A sign-in was refused for its sign count, the passkey suspended and every session of the account ended | `user`, `passkeyId` |
 | `PasskeySignInFailed` | A passwordless sign-in failed against a passkey that exists: a wrong signature or user handle. Nothing for an unknown passkey | `user`, `at`, `ip`, `userAgent` |
-| `Login` | A passwordless sign-in | `via: 'passkey'` |
+| `SignedIn` | A passwordless sign-in | `via: 'passkey'` |
 | `TwoFactorChallengeFailed` | A wrong passkey after the password, at a step-up, or when confirming sudo mode | `user`, `at`, `ip`, `userAgent`, `during` (`sign-in`, `step-up` or `confirm`) |
 
 The first passkey also dispatches `TwoFactorEnabled` and `RecoveryCodesGenerated`, and removing the last factor `TwoFactorDisabled`. All of

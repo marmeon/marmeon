@@ -171,10 +171,10 @@ where it was made, and then queues one job per recipient. The job is encrypted, 
 transaction it is queued with the commit, and a rollback sends nothing.
 
 `sendNow()` is for code that already runs in a worker, such as a job or a queued listener: a second job would only add a hop.
-The sign-in notification above is sent by a queued listener of the `Login` event of `@marmeon/auth`:
+The sign-in notification above is sent by a queued listener of the `SignedIn` event of `@marmeon/auth`:
 
 ```ts title="modules/auth/listeners/NotifyAboutNewSignIn.ts"
-import type { Login } from '@marmeon/auth';
+import type { SignedIn } from '@marmeon/auth';
 import type { EventPayload } from '@marmeon/core';
 import { Notifications } from '@marmeon/notifications';
 import { NewSignInNotification } from '../notifications/NewSignInNotification.ts';
@@ -188,7 +188,7 @@ export class NotifyAboutNewSignIn {
     this.#notifications = notifications;
   }
 
-  async handle(payload: EventPayload<typeof Login>): Promise<void> {
+  async handle(payload: EventPayload<typeof SignedIn>): Promise<void> {
     if (payload.via !== 'attempt') return;
     await this.#notifications.sendNow({ type: 'user', id: payload.userId as number }, NewSignInNotification, { at: payload.at, ip: payload.ip, agent: payload.userAgent });
   }

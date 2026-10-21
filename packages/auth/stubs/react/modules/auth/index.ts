@@ -1,4 +1,4 @@
-import { EmailChanged, Lockout, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, PasswordReset, RecoveryCodeUsed, Registered, RememberTokenReused, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '@marmeon/auth';
+import { EmailChanged, SignInLockedOut, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, PasswordReset, RecoveryCodeUsed, Registered, RememberTokenReused, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '@marmeon/auth';
 import { PasskeyServiceProvider } from '@marmeon/auth/passkeys';
 import { defineModule, listen } from '@marmeon/core';
 import { NotifyAboutEmailChange } from './listeners/NotifyAboutEmailChange.ts';
@@ -53,7 +53,7 @@ export default defineModule({
     listen(PasskeySignInFailed, NotifyAboutFailedPasskeySignIn),
     listen(RememberTokenReused, NotifyAboutRememberTokenReused),
     // Not queued (it wants the request's language): it queues the mail to the owner of an account that stopped taking passwords.
-    listen(Lockout, QueueLockoutMail),
+    listen(SignInLockedOut, QueueLockoutMail),
     // Not queued (the event cannot be): it queues the mail that lists the passkeys a password reset left standing.
     listen(PasswordReset, NotifyAboutPasskeysAfterReset),
     // Not queued (the language is the account's, read when it runs): it queues the note to the old address once an address changed.

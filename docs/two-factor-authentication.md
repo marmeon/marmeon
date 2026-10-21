@@ -12,7 +12,7 @@ app: you bind a source of factors once ([Setting up](#setting-up)), and each use
 
 What it adds to a sign-in:
 
-- **One entry, no way around it.** `auth.attempt()` and `auth.login()` are the only ways to sign a user in by password or by code,
+- **One entry, no way around it.** `auth.attempt()` and `auth.signIn()` are the only ways to sign a user in by password or by code,
   and both stop at an account with a second factor. The user is signed in only after the code.
 - **Codes work once.** A code that was accepted, and every older one, is refused afterwards, also when two requests send it at the
   same moment.
@@ -92,7 +92,7 @@ if (!signedIn.ok) {
 ```
 
 An app that does not handle the case still never signs anybody in without the code; at worst its login page says that the
-sign-in failed. `auth.login(user)` has the same fork: it returns `'signed-in'` or `'two-factor-required'`, and also then the account
+sign-in failed. `auth.signIn(user)` has the same fork: it returns `'signed-in'` or `'two-factor-required'`, and also then the account
 is not signed in. Pages of the app need nothing else: `ctx.user`, `authenticate()` and the shared props see a guest until the code
 was accepted.
 
@@ -165,7 +165,7 @@ if (done.ok) return this.redirect().intended().route('user-profile.me');
 The fifth wrong code answers `invalid-code` with `attemptsLeft: 0` and drops the waiting sign-in at the same time; the next call
 answers `no-challenge`. So send the user back to the login page at `attemptsLeft: 0`, as the example app does with a hint. The
 checks run in this order: the waiting sign-in and its account, the throttle, the code. A sign-in that ended is refused before
-any code is used up. On success the user is signed in with a new session id, the `Login` event is dispatched, and the
+any code is used up. On success the user is signed in with a new session id, the `SignedIn` event is dispatched, and the
 [remember-me](authentication.md#remember-me) cookie is made if the user asked for it at the login: before the code, nothing is
 remembered.
 

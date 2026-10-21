@@ -209,12 +209,12 @@ So is `features` of `ResolvePage` in `@marmeon/react`, which names a type of `@m
 
 A new member of a union, such as a string value, a field of an event like `via`, or a message of a diagnostics channel, is a
 minor change. It ships as an ordinary `feature`, and the title of its pull request names the new member (for example "Add
-'magic-link' to LoginVia"), so the release notes show it.
+'magic-link' to SignInVia"), so the release notes show it.
 
 The exception is the `err` kinds of the [results the framework returns](errors.md#results-the-framework-returns). They are
 closed: a new kind comes only with a new method, so an exhaustive `switch` with `satisfies never` compiles across minor versions.
 
-Everywhere else, handle a value you do not know in a `default` branch. Here `event` is a `Login` event:
+Everywhere else, handle a value you do not know in a `default` branch. Here `event` is a `SignedIn` event:
 
 ```ts
 switch (event.via) {

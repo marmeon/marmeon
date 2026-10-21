@@ -46,7 +46,7 @@ class LoginController extends Controller {
   }
   async handle(ctx: HttpContext) {
     const { id } = (await ctx.input()) as { id: number };
-    await this.#auth.login(id === 1 ? ada : grace);
+    await this.#auth.signIn(id === 1 ? ada : grace);
     return { ok: true };
   }
 }

@@ -29,7 +29,7 @@ export class LoginController extends Controller {
 
   async handle(ctx: ContextOf<typeof LoginRequest>) {
     const { email, password, remember } = ctx.body;
-    // The Login event carries the request's address and browser by itself (RequestInfo) — the "new sign-in" notice shows them.
+    // The SignedIn event carries the request's address and browser by itself (RequestInfo) — the "new sign-in" notice shows them.
     // The limits sit in attempt(): a minute per client and e-mail, a day per account — counted before the password is checked. An
     // unknown e-mail and a wrong password answer alike — same message, same time.
     const signedIn = await this.#auth.attempt(email, password, { remember });

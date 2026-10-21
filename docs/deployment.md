@@ -434,7 +434,7 @@ is. After the upgrade from a release that did not mark sessions, every user is s
 no format and are dropped. That upgrade is [not a rolling one](#the-upgrade-that-stops-every-process).
 
 While traffic moves between old and new nodes during a rollout, every visit on an old node is a remember-me sign-in for a user who
-has the cookie: the token rotates and a `Login` event fires. Users without remember-me are guests there.
+has the cookie: the token rotates and a `SignedIn` event fires. Users without remember-me are guests there.
 
 ### What else a mixed fleet does
 

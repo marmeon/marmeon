@@ -72,7 +72,7 @@ class SignInController extends Controller {
   }
   async handle(ctx: { params: { id: string } }) {
     const found = await this.#users.findById(Number(ctx.params.id) as never);
-    return { result: await this.#auth.login(found!.user, { remember: true }) };
+    return { result: await this.#auth.signIn(found!.user, { remember: true }) };
   }
 }
 

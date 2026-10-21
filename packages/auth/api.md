@@ -87,10 +87,10 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, loginThrottle: LoginThrottle);
-    attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
+    attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
     deviceCookie(): Promise<DeviceCookie | undefined>;
-    login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
+    signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
         readonly factors: readonly SecondFactor[];
     } | undefined;
@@ -107,7 +107,7 @@ export declare class Auth {
     }, checkedAgainst?: Credentials): Promise<Result<AuthUser, {
         readonly kind: 'expired';
     }>>;
-    logout(): Promise<void>;
+    signOut(): Promise<void>;
     user(): Promise<AuthUser | undefined>;
     check(): Promise<boolean>;
     id(): Promise<AuthUserId | undefined>;
@@ -484,13 +484,6 @@ export interface EveryoneEnded {
     readonly accessTokens: number;
     readonly signIns: number;
 }
-// Failed
-export declare class Failed {
-    #private;
-    readonly identifier: string;
-    readonly user: AuthUser | undefined;
-    constructor(identifier: string, user: AuthUser | undefined);
-}
 // Gate
 export declare class Gate {
     #private;
@@ -538,59 +531,6 @@ export interface HasherOptions {
     readonly driver: HashDriver;
     readonly argon2: Argon2Options;
     readonly scrypt: ScryptOptions;
-}
-// Lockout
-export declare class Lockout {
-    #private;
-    readonly identifier: string;
-    readonly ip: string | undefined;
-    readonly scope: 'client' | 'account';
-    constructor(identifier: string, ip: string | undefined, scope: 'client' | 'account');
-}
-// Login
-export declare class Login {
-    #private;
-    static readonly event = "auth.login";
-    static readonly schema: StandardSchemaV1<LoginInput, LoginPayload>;
-    readonly user: AuthUser;
-    readonly remember: boolean;
-    readonly at: Date;
-    readonly via: LoginVia;
-    readonly ip: string | null;
-    readonly userAgent: string | null;
-    constructor(user: AuthUser, remember?: boolean, at?: Date, details?: {
-        readonly via?: LoginVia;
-        readonly ip?: string | undefined;
-        readonly userAgent?: string | undefined;
-    });
-    get userId(): AuthUserId;
-}
-// LoginInput
-export interface LoginInput extends Omit<LoginPayload, 'at'> {
-    at: Date | string;
-}
-// LoginOptions
-export interface LoginOptions {
-    readonly remember?: boolean;
-    readonly ip?: string | undefined;
-    readonly userAgent?: string | undefined;
-}
-// LoginPayload
-export interface LoginPayload {
-    userId: AuthUserId;
-    remember: boolean;
-    via: LoginVia;
-    at: string;
-    ip: string | null;
-    userAgent: string | null;
-}
-// LoginVia
-export type LoginVia = 'attempt' | 'login' | 'remember' | 'passkey';
-// Logout
-export declare class Logout {
-    #private;
-    readonly user: AuthUser;
-    constructor(user: AuthUser);
 }
 // MAX_PASSWORD_BYTES
 export declare const MAX_PASSWORD_BYTES = 4096;
@@ -712,7 +652,7 @@ export interface PasskeySignInFailedPayload {
 // PasswordBroker
 export declare class PasswordBroker {
     #private;
-    constructor(users: UserProvider, tokens: PasswordResetTokenStore, hasher: Hasher, events: EventDispatcher, config: AuthConfig, newPassword: NewPassword, loginThrottle: LoginThrottle);
+    constructor(users: UserProvider, tokens: PasswordResetTokenStore, hasher: Hasher, events: EventDispatcher, config: AuthConfig, newPassword: NewPassword, signInThrottle: SignInThrottle);
     createToken(email: string): Promise<Result<{
         user: AuthUser;
         token: string;
@@ -998,6 +938,27 @@ export interface SignIn {
     readonly userAgent: string | undefined;
     readonly device: DeviceDescription;
 }
+// SignInFailed
+export declare class SignInFailed {
+    #private;
+    readonly identifier: string;
+    readonly user: AuthUser | undefined;
+    constructor(identifier: string, user: AuthUser | undefined);
+}
+// SignInLockedOut
+export declare class SignInLockedOut {
+    #private;
+    readonly identifier: string;
+    readonly ip: string | undefined;
+    readonly scope: 'client' | 'account';
+    constructor(identifier: string, ip: string | undefined, scope: 'client' | 'account');
+}
+// SignInOptions
+export interface SignInOptions {
+    readonly remember?: boolean;
+    readonly ip?: string | undefined;
+    readonly userAgent?: string | undefined;
+}
 // SignInRecord
 export interface SignInRecord {
     readonly id: string;
@@ -1032,10 +993,49 @@ export declare abstract class SignInStore {
     abstract forgetToken(cookie: string): Promise<void>;
     abstract rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
 }
+// SignInVia
+export type SignInVia = 'attempt' | 'app' | 'remember' | 'passkey';
 // SignInWindow
 export interface SignInWindow {
     readonly idleSeconds: number;
     readonly maxSeconds: number;
+}
+// SignedIn
+export declare class SignedIn {
+    #private;
+    static readonly event = "auth.signed-in";
+    static readonly schema: StandardSchemaV1<SignedInInput, SignedInPayload>;
+    readonly user: AuthUser;
+    readonly remember: boolean;
+    readonly at: Date;
+    readonly via: SignInVia;
+    readonly ip: string | null;
+    readonly userAgent: string | null;
+    constructor(user: AuthUser, remember?: boolean, at?: Date, details?: {
+        readonly via?: SignInVia;
+        readonly ip?: string | undefined;
+        readonly userAgent?: string | undefined;
+    });
+    get userId(): AuthUserId;
+}
+// SignedInInput
+export interface SignedInInput extends Omit<SignedInPayload, 'at'> {
+    at: Date | string;
+}
+// SignedInPayload
+export interface SignedInPayload {
+    userId: AuthUserId;
+    remember: boolean;
+    via: SignInVia;
+    at: string;
+    ip: string | null;
+    userAgent: string | null;
+}
+// SignedOut
+export declare class SignedOut {
+    #private;
+    readonly user: AuthUser;
+    constructor(user: AuthUser);
 }
 // TwoFactorChallengeFailed
 export declare class TwoFactorChallengeFailed {
@@ -1252,19 +1252,6 @@ type Contravariant<T> = T extends unknown ? (resource: T) => void : never;
 declare const DROP_EXPIRED: unique symbol;
 // DROP_REMEMBER_TOKEN
 export declare const DROP_REMEMBER_TOKEN: unique symbol;
-// LoginThrottle
-export declare class LoginThrottle {
-    #private;
-    constructor(limiter: RateLimiter, { key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>, config: Pick<AuthConfig, 'loginAttemptsPerMinute' | 'accountSignInsPerDay' | 'deviceCookieDays'>, session: Pick<SessionConfig, 'secure' | 'sameSite'>, clock: Clock, logger: Logger);
-    takeClient(identifier: string, ip: string | undefined): Promise<number | undefined>;
-    takeAccount(identifier: string, userId: string | number | undefined): Promise<AccountHeld | undefined>;
-    takeDevice(nonce: string): Promise<boolean>;
-    clearClient(identifier: string, ip: string | undefined): Promise<void>;
-    clearAccount(userId: string | number): Promise<void>;
-    get deviceCookieName(): string;
-    issueDevice(credentials: Credentials): DeviceCookie | undefined;
-    deviceNonce(value: unknown, credentials: Credentials): string | undefined;
-}
 // NewPassword
 export declare class NewPassword {
     #private;
@@ -1289,7 +1276,7 @@ export interface PendingSecondFactor {
     readonly id: string | number;
     readonly fingerprint: string;
     readonly remember: boolean;
-    readonly via: LoginVia;
+    readonly via: SignInVia;
     readonly typedAt?: number;
     readonly until: number;
     readonly failures: number;
@@ -1316,6 +1303,19 @@ export declare class SessionFingerprints {
     constructor({ key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>);
     of(credentials: Credentials): string;
     matches(stored: unknown, credentials: Credentials): boolean;
+}
+// SignInThrottle
+export declare class SignInThrottle {
+    #private;
+    constructor(limiter: RateLimiter, { key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>, config: Pick<AuthConfig, 'loginAttemptsPerMinute' | 'accountSignInsPerDay' | 'deviceCookieDays'>, session: Pick<SessionConfig, 'secure' | 'sameSite'>, clock: Clock, logger: Logger);
+    takeClient(identifier: string, ip: string | undefined): Promise<number | undefined>;
+    takeAccount(identifier: string, userId: string | number | undefined): Promise<AccountHeld | undefined>;
+    takeDevice(nonce: string): Promise<boolean>;
+    clearClient(identifier: string, ip: string | undefined): Promise<void>;
+    clearAccount(userId: string | number): Promise<void>;
+    get deviceCookieName(): string;
+    issueDevice(credentials: Credentials): DeviceCookie | undefined;
+    deviceNonce(value: unknown, credentials: Credentials): string | undefined;
 }
 // VERIFIED_SESSION_KEY
 export declare const VERIFIED_SESSION_KEY: unique symbol;
@@ -1629,10 +1629,10 @@ export type AttestationConveyancePreference = 'none' | 'indirect' | 'direct' | '
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, loginThrottle: LoginThrottle);
-    attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
+    attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
     deviceCookie(): Promise<DeviceCookie | undefined>;
-    login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
+    signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
         readonly factors: readonly SecondFactor[];
     } | undefined;
@@ -1649,7 +1649,7 @@ export declare class Auth {
     }, checkedAgainst?: Credentials): Promise<Result<AuthUser, {
         readonly kind: 'expired';
     }>>;
-    logout(): Promise<void>;
+    signOut(): Promise<void>;
     user(): Promise<AuthUser | undefined>;
     check(): Promise<boolean>;
     id(): Promise<AuthUserId | undefined>;
@@ -1825,25 +1825,6 @@ export interface Hasher {
     failureFloorMs(): number | Promise<number>;
 }
 export declare const Hasher: import("@marmeon/core").Token<Hasher>;
-// LoginOptions
-export interface LoginOptions {
-    readonly remember?: boolean;
-    readonly ip?: string | undefined;
-    readonly userAgent?: string | undefined;
-}
-// LoginThrottle
-export declare class LoginThrottle {
-    #private;
-    constructor(limiter: RateLimiter, { key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>, config: Pick<AuthConfig, 'loginAttemptsPerMinute' | 'accountSignInsPerDay' | 'deviceCookieDays'>, session: Pick<SessionConfig, 'secure' | 'sameSite'>, clock: Clock, logger: Logger);
-    takeClient(identifier: string, ip: string | undefined): Promise<number | undefined>;
-    takeAccount(identifier: string, userId: string | number | undefined): Promise<AccountHeld | undefined>;
-    takeDevice(nonce: string): Promise<boolean>;
-    clearClient(identifier: string, ip: string | undefined): Promise<void>;
-    clearAccount(userId: string | number): Promise<void>;
-    get deviceCookieName(): string;
-    issueDevice(credentials: Credentials): DeviceCookie | undefined;
-    deviceNonce(value: unknown, credentials: Credentials): string | undefined;
-}
 // NewPasskey
 export interface NewPasskey {
     readonly userId: AuthUserId;
@@ -1996,6 +1977,12 @@ export interface SignIn {
     readonly userAgent: string | undefined;
     readonly device: DeviceDescription;
 }
+// SignInOptions
+export interface SignInOptions {
+    readonly remember?: boolean;
+    readonly ip?: string | undefined;
+    readonly userAgent?: string | undefined;
+}
 // SignInRecord
 export interface SignInRecord {
     readonly id: string;
@@ -2029,6 +2016,19 @@ export declare abstract class SignInStore {
     abstract remembered(cookie: string): Promise<boolean>;
     abstract forgetToken(cookie: string): Promise<void>;
     abstract rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
+}
+// SignInThrottle
+export declare class SignInThrottle {
+    #private;
+    constructor(limiter: RateLimiter, { key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>, config: Pick<AuthConfig, 'loginAttemptsPerMinute' | 'accountSignInsPerDay' | 'deviceCookieDays'>, session: Pick<SessionConfig, 'secure' | 'sameSite'>, clock: Clock, logger: Logger);
+    takeClient(identifier: string, ip: string | undefined): Promise<number | undefined>;
+    takeAccount(identifier: string, userId: string | number | undefined): Promise<AccountHeld | undefined>;
+    takeDevice(nonce: string): Promise<boolean>;
+    clearClient(identifier: string, ip: string | undefined): Promise<void>;
+    clearAccount(userId: string | number): Promise<void>;
+    get deviceCookieName(): string;
+    issueDevice(credentials: Credentials): DeviceCookie | undefined;
+    deviceNonce(value: unknown, credentials: Credentials): string | undefined;
 }
 // SignInWindow
 export interface SignInWindow {
@@ -2415,10 +2415,10 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, loginThrottle: LoginThrottle);
-    attempt(identifier: string, password: string, options?: LoginOptions): Promise<Result<AuthUser, AttemptError>>;
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
+    attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
     deviceCookie(): Promise<DeviceCookie | undefined>;
-    login(user: AuthUser, options?: LoginOptions): Promise<'signed-in' | 'two-factor-required'>;
+    signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
     pendingSecondFactor(): {
         readonly factors: readonly SecondFactor[];
     } | undefined;
@@ -2435,7 +2435,7 @@ export declare class Auth {
     }, checkedAgainst?: Credentials): Promise<Result<AuthUser, {
         readonly kind: 'expired';
     }>>;
-    logout(): Promise<void>;
+    signOut(): Promise<void>;
     user(): Promise<AuthUser | undefined>;
     check(): Promise<boolean>;
     id(): Promise<AuthUserId | undefined>;
@@ -2561,25 +2561,6 @@ export interface Hasher {
     failureFloorMs(): number | Promise<number>;
 }
 export declare const Hasher: import("@marmeon/core").Token<Hasher>;
-// LoginOptions
-export interface LoginOptions {
-    readonly remember?: boolean;
-    readonly ip?: string | undefined;
-    readonly userAgent?: string | undefined;
-}
-// LoginThrottle
-export declare class LoginThrottle {
-    #private;
-    constructor(limiter: RateLimiter, { key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>, config: Pick<AuthConfig, 'loginAttemptsPerMinute' | 'accountSignInsPerDay' | 'deviceCookieDays'>, session: Pick<SessionConfig, 'secure' | 'sameSite'>, clock: Clock, logger: Logger);
-    takeClient(identifier: string, ip: string | undefined): Promise<number | undefined>;
-    takeAccount(identifier: string, userId: string | number | undefined): Promise<AccountHeld | undefined>;
-    takeDevice(nonce: string): Promise<boolean>;
-    clearClient(identifier: string, ip: string | undefined): Promise<void>;
-    clearAccount(userId: string | number): Promise<void>;
-    get deviceCookieName(): string;
-    issueDevice(credentials: Credentials): DeviceCookie | undefined;
-    deviceNonce(value: unknown, credentials: Credentials): string | undefined;
-}
 // NewPassword
 export declare class NewPassword {
     #private;
@@ -2685,6 +2666,12 @@ export interface SignIn {
     readonly userAgent: string | undefined;
     readonly device: DeviceDescription;
 }
+// SignInOptions
+export interface SignInOptions {
+    readonly remember?: boolean;
+    readonly ip?: string | undefined;
+    readonly userAgent?: string | undefined;
+}
 // SignInRecord
 export interface SignInRecord {
     readonly id: string;
@@ -2718,6 +2705,19 @@ export declare abstract class SignInStore {
     abstract remembered(cookie: string): Promise<boolean>;
     abstract forgetToken(cookie: string): Promise<void>;
     abstract rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
+}
+// SignInThrottle
+export declare class SignInThrottle {
+    #private;
+    constructor(limiter: RateLimiter, { key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>, config: Pick<AuthConfig, 'loginAttemptsPerMinute' | 'accountSignInsPerDay' | 'deviceCookieDays'>, session: Pick<SessionConfig, 'secure' | 'sameSite'>, clock: Clock, logger: Logger);
+    takeClient(identifier: string, ip: string | undefined): Promise<number | undefined>;
+    takeAccount(identifier: string, userId: string | number | undefined): Promise<AccountHeld | undefined>;
+    takeDevice(nonce: string): Promise<boolean>;
+    clearClient(identifier: string, ip: string | undefined): Promise<void>;
+    clearAccount(userId: string | number): Promise<void>;
+    get deviceCookieName(): string;
+    issueDevice(credentials: Credentials): DeviceCookie | undefined;
+    deviceNonce(value: unknown, credentials: Credentials): string | undefined;
 }
 // SignInWindow
 export interface SignInWindow {

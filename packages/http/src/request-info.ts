@@ -1,7 +1,7 @@
 import { token } from '@marmeon/core';
 
 /**
- * Who sent the current request — injectable where `ctx` is not at hand: `Auth` puts it into the `Login` event, a
+ * Who sent the current request — injectable where `ctx` is not at hand: `Auth` puts it into the `SignedIn` event, a
  * service may log it. Bound per request by the server kernel; outside a request (a job, a command) both are undefined.
  */
 export interface RequestInfo {

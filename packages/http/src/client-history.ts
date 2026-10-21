@@ -8,7 +8,7 @@ import { isVisit } from './protocol-request.ts';
  * After `clear()`, no page the client keeps in memory may come back: a client-side visit is answered with `409` and
  * `x-marmeon-location`, so the browser loads the next page fully.
  *
- * `{ siteData: ['storage'] }` (what `Auth.logout()` asks for) also sends `Clear-Site-Data: "storage"`; `true` is `"cache", "storage"`,
+ * `{ siteData: ['storage'] }` (what `Auth.signOut()` asks for) also sends `Clear-Site-Data: "storage"`; `true` is `"cache", "storage"`,
  * `['cache']` the cache alone, `false` takes back an earlier call's. Naming `"cache"` makes Chrome scan its
  * whole disk cache, all sites, before it goes on: seconds on a busy profile. Browsers honour the header in secure contexts
  * (HTTPS, `http://localhost`). Never `"cookies"` (the response sets the session's own), nor `"executionContexts"` (no browser

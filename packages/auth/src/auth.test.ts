@@ -14,13 +14,13 @@ import {
   AuthConfig,
   AuthServiceProvider,
   confirmedPassword,
-  Failed,
+  SignInFailed,
   PasswordChanged,
   SignInStore,
   guest,
   Hasher,
-  Login,
-  Logout,
+  SignedIn,
+  SignedOut,
   RememberTokenReused,
   PasswordHasher,
   UserProvider,
@@ -87,7 +87,7 @@ class LogoutController extends Controller {
     this.#auth = auth;
   }
   async handle() {
-    await this.#auth.logout();
+    await this.#auth.signOut();
     return this.redirect('/login');
   }
 }
@@ -199,7 +199,7 @@ class LoginAsController extends Controller {
   }
   async handle(ctx: HttpContext) {
     const found = await this.#users.findById(Number((ctx.params as { id: string }).id) as never);
-    return { result: await this.#auth.login(found!.user as never, { remember: true }) };
+    return { result: await this.#auth.signIn(found!.user as never, { remember: true }) };
   }
 }
 
@@ -274,7 +274,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
         name: 'auth-test',
         routes,
         migrations: new URL('./__fixtures__/migrations/', import.meta.url),
-        listeners: [listen(Login, RecordEvent), listen(Logout, RecordEvent), listen(Failed, RecordEvent), listen(PasswordChanged, RecordEvent), listen(RememberTokenReused, RecordEvent)],
+        listeners: [listen(SignedIn, RecordEvent), listen(SignedOut, RecordEvent), listen(SignInFailed, RecordEvent), listen(PasswordChanged, RecordEvent), listen(RememberTokenReused, RecordEvent)],
       }),
     ],
   }, {
@@ -357,7 +357,7 @@ describe('Auth (session guard)', () => {
     expect(JSON.parse(current!.data)).toMatchObject({ [AUTH_SESSION_KEYS.id]: 1 });
   });
 
-  it('the Login event carries the request\'s address (through SERVER_TRUSTED_PROXIES) and browser — passed by nobody (RequestInfo)', async () => {
+  it('the SignedIn event carries the request\'s address (through SERVER_TRUSTED_PROXIES) and browser — passed by nobody (RequestInfo)', async () => {
     const { add, kernel } = await boot({ env: { SERVER_TRUSTED_PROXIES: '127.0.0.1' } });
     await add(ada);
     events.length = 0;
@@ -373,7 +373,7 @@ describe('Auth (session guard)', () => {
       );
     await post('127.0.0.1'); // the trusted proxy: the client is who it forwarded
     await post('198.51.100.7'); // no proxy of ours: its X-Forwarded-For is the client's own word
-    const logins = events.filter((event): event is Login => event instanceof Login);
+    const logins = events.filter((event): event is SignedIn => event instanceof SignedIn);
     expect(logins.map((event) => [event.ip, event.userAgent])).toEqual([
       ['203.0.113.9', 'Firefox/140.0'],
       ['198.51.100.7', 'Firefox/140.0'],
@@ -386,7 +386,7 @@ describe('Auth (session guard)', () => {
     const wrong = await login(browser().send, 'wrong');
     const unknown = await login(browser().send, 'secret', 'nobody@example.com');
     expect([wrong.status, await wrong.text()]).toEqual([unknown.status, await unknown.text()]);
-    expect(events.filter((event) => event instanceof Failed).slice(-2).map((event) => (event as Failed).identifier)).toEqual(['ada@example.com', 'nobody@example.com']);
+    expect(events.filter((event) => event instanceof SignInFailed).slice(-2).map((event) => (event as SignInFailed).identifier)).toEqual(['ada@example.com', 'nobody@example.com']);
   });
 
   // A timing test: a leak fails every attempt, a stall of a busy machine only some — so a failed attempt is tried again.
@@ -494,7 +494,7 @@ describe('Auth (session guard)', () => {
       expect(answer).toStrictEqual(err({ kind: 'invalid-credentials' }));
       expect(Object.keys((answer as { error: object }).error)).toEqual(['kind']); // no field says which case it was
     }
-    expect(dispatched.filter((event) => event instanceof Failed)).toHaveLength(3);
+    expect(dispatched.filter((event) => event instanceof SignInFailed)).toHaveLength(3);
     const outcome = answers[0]!;
     if (!outcome.ok) {
       const kind = outcome.error.kind;
@@ -545,7 +545,7 @@ describe('Auth (session guard)', () => {
     expect((await send('/me')).status).toBe(401);
   });
 
-  it('signs out: new session, no user, a Logout event', async () => {
+  it('signs out: new session, no user, a SignedOut event', async () => {
     const { add, browser } = await boot();
     await add(ada);
     const { send, cookie } = browser();
@@ -555,7 +555,7 @@ describe('Auth (session guard)', () => {
     await send('/logout', { method: 'POST' });
     expect(cookie()).not.toBe(signedIn);
     expect((await send('/me')).status).toBe(401);
-    expect(events.map((event) => event.constructor.name)).toEqual(['Logout']);
+    expect(events.map((event) => event.constructor.name)).toEqual(['SignedOut']);
   });
 
   it('signs out with Clear-Site-Data for the storage only: the HTTP cache scan would hold the sign-out for seconds', async () => {
@@ -569,13 +569,13 @@ describe('Auth (session guard)', () => {
     expect((await send('/logout', { method: 'POST' })).headers.get('clear-site-data')).toBe('"storage"');
   });
 
-  it('dispatches Login with the user', async () => {
+  it('dispatches SignedIn with the user', async () => {
     const { add, browser } = await boot();
     await add(ada);
     events.length = 0;
     await login(browser().send);
-    expect(events).toEqual([expect.any(Login)]);
-    expect((events[0] as Login).user).toEqual(ada);
+    expect(events).toEqual([expect.any(SignedIn)]);
+    expect((events[0] as SignedIn).user).toEqual(ada);
   });
 
   it('says how the user signed in — and is queueable: its payload is JSON, `at` an ISO string', async () => {
@@ -583,16 +583,17 @@ describe('Auth (session guard)', () => {
     await add(ada);
     events.length = 0;
     await login(browser().send);
-    const event = events[0] as Login;
+    const event = events[0] as SignedIn;
     expect(event).toMatchObject({ via: 'attempt', remember: false, ip: null, userAgent: null });
-    const queued = await Login.schema['~standard'].validate(event);
+    const queued = await SignedIn.schema['~standard'].validate(event);
     if ('issues' in queued && queued.issues) throw new Error('the schema rejects the event');
     const json = JSON.parse(JSON.stringify(queued.value)) as unknown;
     expect(json).toEqual({ userId: ada.id, remember: false, via: 'attempt', at: event.at.toISOString(), ip: null, userAgent: null });
     // What a worker validates again — the same payload.
-    expect(await Login.schema['~standard'].validate(json)).toMatchObject({ value: json });
-    expect(new Login(ada).via).toBe('login');
-    expect(new Login(ada, false, new Date(), { via: 'remember', ip: '203.0.113.9', userAgent: 'x'.repeat(600) })).toMatchObject({ via: 'remember', ip: '203.0.113.9', userAgent: 'x'.repeat(512) });
+    expect(await SignedIn.schema['~standard'].validate(json)).toMatchObject({ value: json });
+    expect(new SignedIn(ada).via).toBe('app');
+    expect(SignedIn.event).toBe('auth.signed-in'); // the id every queued listener job carries
+    expect(new SignedIn(ada, false, new Date(), { via: 'remember', ip: '203.0.113.9', userAgent: 'x'.repeat(600) })).toMatchObject({ via: 'remember', ip: '203.0.113.9', userAgent: 'x'.repeat(512) });
   });
 });
 
@@ -1219,7 +1220,7 @@ describe('password changes and confirmation', () => {
     expect((await later.send('/sensitive', { headers: html })).status).toBe(200);
   });
 
-  it("does not carry a confirmation over to the next sign-in — login() over another account's session, and over its own", async () => {
+  it("does not carry a confirmation over to the next sign-in — signIn() over another account's session, and over its own", async () => {
     const { add, browser } = await boot();
     const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
     await add(ada);
@@ -1302,7 +1303,7 @@ describe('Auth with a second factor (pending state)', () => {
     return JSON.parse((await booted.store.read(sessionKey(id)))!.data) as Record<string, unknown>;
   };
 
-  it('holds a correct password back: user(), authenticate() and the shared props see a guest, nobody is signed in, no Login event, no remember cookie, a new session id', async () => {
+  it('holds a correct password back: user(), authenticate() and the shared props see a guest, nobody is signed in, no SignedIn event, no remember cookie, a new session id', async () => {
     const booted = await boot({ factors: withFactor() });
     await booted.add(ada);
     const { send, cookie, jar } = booted.browser();
@@ -1311,7 +1312,7 @@ describe('Auth with a second factor (pending state)', () => {
     events.length = 0;
     const answer = await rememberLogin(send);
     expect(answer.status).toBe(422); // the test controller shows anything but ok as a failed sign-in
-    expect(events.filter((event) => event instanceof Login)).toEqual([]);
+    expect(events.filter((event) => event instanceof SignedIn)).toEqual([]);
     expect(jar.has('marmeon_remember')).toBe(false);
     expect(cookie()).not.toBe(planted);
     expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
@@ -1340,20 +1341,20 @@ describe('Auth with a second factor (pending state)', () => {
     expect(await (await send('/who')).json()).toEqual({ id: 2, viaRemember: false });
   });
 
-  it('login() holds the account back too and answers two-factor-required', async () => {
+  it('signIn() holds the account back too and answers two-factor-required', async () => {
     const booted = await boot({ factors: withFactor() });
     await booted.add(ada);
     await booted.add({ id: 2, name: 'Bob', email: 'bob@example.com' });
     const { send, jar } = booted.browser();
     events.length = 0;
     expect(await (await post(send, '/login-as/1')).json()).toEqual({ result: 'two-factor-required' });
-    expect(events.filter((event) => event instanceof Login)).toEqual([]);
+    expect(events.filter((event) => event instanceof SignedIn)).toEqual([]);
     expect(jar.has('marmeon_remember')).toBe(false);
     expect(await (await send('/pending')).json()).toEqual({ pending: { factors: ['totp'] }, user: null });
     expect(await (await post(booted.browser().send, '/login-as/2')).json()).toEqual({ result: 'signed-in' });
   });
 
-  it('the factor of a login() sign-in does not confirm the password — nobody typed one; the factor of an attempt() does', async () => {
+  it('the factor of a signIn() sign-in does not confirm the password — nobody typed one; the factor of an attempt() does', async () => {
     const booted = await boot({ factors: withFactor() });
     await booted.add(ada);
     const linked = booted.browser();
@@ -1422,7 +1423,7 @@ describe('Auth with a second factor (pending state)', () => {
     expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
   });
 
-  it('COMPLETE_PENDING signs in: new session id, one Login event, the remember cookie, the factor and password times', async () => {
+  it('COMPLETE_PENDING signs in: new session id, one SignedIn event, the remember cookie, the factor and password times', async () => {
     const booted = await boot({ factors: withFactor() });
     await booted.add(ada);
     const { send, cookie, jar } = booted.browser();
@@ -1431,7 +1432,7 @@ describe('Auth with a second factor (pending state)', () => {
     events.length = 0;
     expect(await (await post(send, '/complete-pending')).json()).toEqual({ ok: true, id: 1 });
     expect(cookie()).not.toBe(held);
-    expect(events.filter((event) => event instanceof Login)).toEqual([expect.objectContaining({ via: 'attempt', remember: true })]);
+    expect(events.filter((event) => event instanceof SignedIn)).toEqual([expect.objectContaining({ via: 'attempt', remember: true })]);
     expect(jar.has('marmeon_remember')).toBe(true);
     expect(await (await send('/who')).json()).toEqual({ id: 1, viaRemember: false });
     const stored = await sessionData(booted, cookie());
@@ -1444,6 +1445,24 @@ describe('Auth with a second factor (pending state)', () => {
     const booted = await boot({ factors: withFactor() });
     await booted.add(ada);
     expect(await (await post(booted.browser().send, '/complete-pending')).json()).toEqual({ ok: false, kind: 'no-challenge' });
+  });
+
+  it('does not read a pending state an earlier release began (via login): nobody waits, COMPLETE_PENDING says expired, drops the key, and no SignedIn follows', async () => {
+    const booted = await boot({ factors: withFactor() });
+    await booted.add(ada);
+    const { send, cookie } = booted.browser();
+    await login(send);
+    const id = await booted.application.container.make(Encrypter).decrypt(decodeURIComponent(cookie().split('=')[1]!), 'cookie:marmeon_session');
+    const read = (await booted.store.read(sessionKey(id)))!;
+    const data = JSON.parse(read.data) as Record<string, unknown>;
+    data[AUTH_SESSION_KEYS.pending] = { ...(data[AUTH_SESSION_KEYS.pending] as object), via: 'login' };
+    await booted.store.write(sessionKey(id), JSON.stringify(data), { expectedVersion: read.version, lifetimeSeconds: 7200 });
+    events.length = 0;
+    expect(await (await send('/pending')).json()).toEqual({ pending: null, user: null });
+    expect(await (await post(send, '/complete-pending')).json()).toEqual({ ok: false, kind: 'expired' });
+    expect(Object.keys(await sessionData(booted, cookie()))).not.toContain(AUTH_SESSION_KEYS.pending);
+    expect(await (await send('/who')).json()).toEqual({ id: null, viaRemember: false });
+    expect(events.filter((event) => event instanceof SignedIn)).toEqual([]);
   });
 
   it('invariant: a password changed between password and factor ends the pending state', async () => {

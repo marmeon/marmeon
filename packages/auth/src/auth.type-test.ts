@@ -1,8 +1,8 @@
-// Type guarantees of `Auth.attempt()` and `Auth.login()` — checked by `tsc` (typecheck), never run.
+// Type guarantees of `Auth.attempt()` and `Auth.signIn()` — checked by `tsc` (typecheck), never run.
 import { expectTypeOf } from 'vitest';
 import type { AccountSessions } from './account-sessions.ts';
 import type { Auth } from './auth.ts';
-import { Lockout } from './events.ts';
+import { SignInLockedOut } from './events.ts';
 import type { Hasher, PasswordHash } from './hashing.ts';
 import { PasswordResetTokenStore } from './password-reset.ts';
 import { SignInStore, type RememberedDevice, type RememberTokenError, type SignInRecord } from './sign-ins.ts';
@@ -47,9 +47,9 @@ export async function missingCase() {
 }
 
 export async function loginResult() {
-  const outcome: 'signed-in' | 'two-factor-required' = await auth.login({} as never);
-  // @ts-expect-error login() no longer returns nothing
-  const nothing: void = await auth.login({} as never);
+  const outcome: 'signed-in' | 'two-factor-required' = await auth.signIn({} as never);
+  // @ts-expect-error signIn() no longer returns nothing
+  const nothing: void = await auth.signIn({} as never);
   return [outcome, nothing];
 }
 
@@ -458,7 +458,7 @@ export async function disablingTwoFactorIsAResult() {
   return disabled;
 }
 
-// A Lockout says which limit it is: building one without `scope` is a type error.
+// A SignInLockedOut says which limit it is: building one without `scope` is a type error.
 // @ts-expect-error scope is required
-new Lockout('ada@example.com', '203.0.113.1');
-expectTypeOf(new Lockout('ada@example.com', undefined, 'client').scope).toEqualTypeOf<'client' | 'account'>();
+new SignInLockedOut('ada@example.com', '203.0.113.1');
+expectTypeOf(new SignInLockedOut('ada@example.com', undefined, 'client').scope).toEqualTypeOf<'client' | 'account'>();

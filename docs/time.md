@@ -5,7 +5,7 @@
 Tests often need time to pass: a rate limit to reset, a link to expire, a nightly task to come due. Every test app has a test
 clock as the app's `Clock`, and the test moves it instead of waiting:
 
-```ts title="modules/auth/login-throttle.test.ts"
+```ts title="modules/auth/sign-in-throttle.test.ts"
 import { createTestApp } from '@marmeon/testing';
 import { it } from 'vitest';
 import application from '../../bootstrap/app.ts';

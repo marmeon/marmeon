@@ -31,7 +31,7 @@ describe('the welcome mail', () => {
     app.mail.assertNotSent(WelcomeMail);
 
     // The welcome mail, the dashboard's member numbers (user-profile, a unique job) and the queued verification listener —
-    // nobody signs in with a registration (private registration): no Login listener.
+    // nobody signs in with a registration (private registration): no SignedIn listener.
     expect(await app.queue.work()).toMatchObject({ processed: 3, failed: 0 });
     const [sent] = app.mail.sent(WelcomeMail);
     expect(sent!.message).toMatchObject({ to: [{ address: 'kj@example.com', name: 'Katherine Johnson' }], subject: 'Willkommen bei Marmeon' });

@@ -1,4 +1,4 @@
-import { EmailChanged, Lockout, Login, Registered, RememberTokenReused } from '@marmeon/auth';
+import { EmailChanged, SignInLockedOut, SignedIn, Registered, RememberTokenReused } from '@marmeon/auth';
 import { PasskeyServiceProvider } from '@marmeon/auth/passkeys';
 import { defineModule, listen } from '@marmeon/core';
 import { NotifyAboutEmailChange } from './listeners/NotifyAboutEmailChange.ts';
@@ -35,7 +35,7 @@ export default defineModule({
   // NotifyAboutEmailChange (not queued) queues the note to the old address once an address changed.
   // SendEmailVerification is a queued listener (static queue): a worker runs it after the registration committed.
   // NotifyAboutNewSignIn is queued too: a sign-in with a password becomes a notification (bell + mail) in a worker.
-  listeners: [listen(Registered, SendEmailVerification), listen(Registered, QueueWelcomeMail), listen(Login, NotifyAboutNewSignIn), listen(RememberTokenReused, NotifyAboutRememberTokenReused), listen(Lockout, QueueLockoutMail), listen(EmailChanged, NotifyAboutEmailChange)],
+  listeners: [listen(Registered, SendEmailVerification), listen(Registered, QueueWelcomeMail), listen(SignedIn, NotifyAboutNewSignIn), listen(RememberTokenReused, NotifyAboutRememberTokenReused), listen(SignInLockedOut, QueueLockoutMail), listen(EmailChanged, NotifyAboutEmailChange)],
   // The module's notifications (a worker finds them by name) — and how a notification finds a user again.
   notifications: [NewSignInNotification],
   recipients: { user: UserRecipients },

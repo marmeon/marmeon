@@ -328,7 +328,7 @@ Route.middleware(authenticate()).middleware(cacheControl('private, max-age=60'))
 
 Never use `public` for anything that depends on the user: a shared cache would hand it to the next visitor.
 
-Since that answer stays in the browser's cache, the app signs out with `history.clear({ siteData: ['cache', 'storage'] })` after `logout()`; see [the browser's storage on sign-out](client-features.md#the-browsers-storage-on-sign-out).
+Since that answer stays in the browser's cache, the app signs out with `history.clear({ siteData: ['cache', 'storage'] })` after `signOut()`; see [the browser's storage on sign-out](client-features.md#the-browsers-storage-on-sign-out).
 
 #### Protocol headers
 

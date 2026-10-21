@@ -19,7 +19,7 @@ export class LogoutController extends Controller {
   async handle() {
     // The language chosen in this browser outlives the session it was stored in.
     const locale = this.#session.get('locale');
-    await this.#auth.logout(); // new session id, new CSRF token, nothing of the old session left
+    await this.#auth.signOut(); // new session id, new CSRF token, nothing of the old session left
     if (locale) this.#session.put('locale', locale);
     return this.redirect().route('auth.login').flash('toast', { kind: 'success', message: this.#translator.get('auth.status.signed_out') });
   }

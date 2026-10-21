@@ -283,7 +283,7 @@ export class Passkeys implements SecondFactorPasskeys {
   /**
    * Signs in with a passkey alone — the verified passkey with user verification is the whole sign-in, no second factor follows. The user is
    * the passkey's own account, and the response must carry that account's user handle. `remember` keeps the device signed in.
-   * The `Login` event says `via: 'passkey'`.
+   * The `SignedIn` event says `via: 'passkey'`.
    */
   async signIn(response: AuthenticationResponseJSON, options: { readonly remember?: boolean } = {}): Promise<Result<AuthUser, PasskeyError>> {
     const wait = await this.#waitForSignIn();
