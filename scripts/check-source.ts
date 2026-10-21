@@ -11,7 +11,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deprecationProblems, findDeprecations } from './deprecations.ts';
-import { oxc, type SourceFile } from './source-files.ts';
+import { FROZEN_PATHS, oxc, type SourceFile } from './source-files.ts';
 
 export type { SourceFile };
 
@@ -488,12 +488,13 @@ export function mutationCommentHits(files: Iterable<SourceFile>): string[] {
   return hits;
 }
 
-/** The repository's files as git sees them: tracked, and new ones that are not ignored — text only, as they are on disk. */
+/** The repository's files as git sees them: tracked, and new ones that are not ignored — text only, as they are on disk; the frozen paths are left out. */
 export function repositoryFiles(repository: string = root): SourceFile[] {
   const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: repository, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (listed.status !== 0) throw new Error(`git ls-files failed in ${repository}: ${listed.stderr}`);
   const files: SourceFile[] = [];
   for (const path of new Set(listed.stdout.split('\0').filter(Boolean))) {
+    if (FROZEN_PATHS.some((frozen) => path.startsWith(frozen))) continue;
     const file = join(repository, path);
     if (!existsSync(file) || !statSync(file).isFile()) continue; // deleted in the working tree, or a submodule
     const bytes = readFileSync(file);

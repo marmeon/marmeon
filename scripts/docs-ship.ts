@@ -38,17 +38,9 @@ export async function expectedDocs(root: string): Promise<Map<string, Buffer>> {
 
   const docs = ((await import(pathToFileURL(join(root, 'apps/website/docs.config.ts')).href)) as { default: DocsDefinition }).default;
   const version = (JSON.parse(readFileSync(join(root, 'packages/cli/package.json'), 'utf8')) as { version: string }).version;
-  const sections = docs.sections.map((section) => ({
-    title: section.title,
-    pages: section.pages.map((entry) => {
-      const file = entry.file ?? `docs/${entry.slug}.md`;
-      const bytes = files.get(file);
-      if (bytes === undefined) throw new Error(`docs.config.ts lists ${entry.slug}, but ${file} does not exist`);
-      return { slug: entry.slug, label: entry.label, title: titleOf(bytes.toString('utf8'), entry.label), file };
-    }),
-  }));
-  files.set('docs/index.json', Buffer.from(`${JSON.stringify({ format: 1, version, sections }, null, 2)}\n`));
-  files.set('docs/llms.txt', Buffer.from(llmsText(sections)));
+  const index = docsIndex(docs, files, version);
+  files.set('docs/index.json', Buffer.from(`${JSON.stringify(index, null, 2)}\n`));
+  files.set('docs/llms.txt', Buffer.from(llmsText(index.sections)));
   return files;
 }
 
@@ -63,8 +55,22 @@ export async function shipDocs(root: string, target: string): Promise<string[]> 
   return [...files.keys()];
 }
 
+/** `docs/index.json` (format 1) of `definition` over `files` (path relative to the package → bytes): every listed page has to be among them. */
+export function docsIndex(definition: DocsDefinition, files: ReadonlyMap<string, Buffer>, version: string): { format: 1; version: string; sections: Sections } {
+  const sections = definition.sections.map((section) => ({
+    title: section.title,
+    pages: section.pages.map((entry) => {
+      const file = entry.file ?? `docs/${entry.slug}.md`;
+      const bytes = files.get(file);
+      if (bytes === undefined) throw new Error(`docs.config.ts lists ${entry.slug}, but ${file} does not exist`);
+      return { slug: entry.slug, label: entry.label, title: titleOf(bytes.toString('utf8'), entry.label), file };
+    }),
+  }));
+  return { format: 1, version, sections };
+}
+
 /** The first `#` heading outside a code fence. */
-function titleOf(text: string, fallback: string): string {
+export function titleOf(text: string, fallback: string): string {
   let fenced = false;
   for (const line of text.split('\n')) {
     if (/^(```|~~~)/.test(line)) fenced = !fenced;
