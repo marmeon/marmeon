@@ -1,0 +1,10 @@
+{
+  "beforeCopy": [
+    "marmeon make:resource Bookmark"
+  ],
+  "afterCopy": [
+    "marmeon migrate",
+    "marmeon db:types",
+    "marmeon route:types"
+  ]
+}

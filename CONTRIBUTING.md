@@ -872,7 +872,8 @@ shortened, never deleted.
 
 The docs under `docs/` are the framework's documentation: one page per topic, in the order `apps/website/docs.config.ts` lists
 them. They are the only source, written in English for people who build apps. **A change to a public API, an environment
-default or a command changes its docs page in the same commit.** No check compiles the examples, so that commit is where they
+default or a command changes its docs page in the same commit.** No check compiles the examples, except those of the recipes and
+of "Your First App", which `pnpm test` and `pnpm pack:smoke` check against an app; for every other page that commit is where they
 stay true. Comments in the code follow [Comments](#comments).
 `pnpm website:dev` shows the pages on http://localhost:3970. `docs/installation.md` and `docs/routing.md` are the model for every
 other page.
@@ -903,6 +904,19 @@ other page.
   `docs/migrations.md#running-migrations`. A test of the website (`apps/website/modules/docs/links.test.ts`) follows every such path
   in the packages' code, the stubs, the starter's template, the apps, the package READMEs and the root README to its page and
   anchor, refuses a path to a package README, and refuses a page without its anchor outside the READMEs (which list pages).
+- **Recipes** are flat pages, `docs/recipe-<task>.md`, in the navigation section "Recipes". A recipe walks through one task with
+  the generators: `# Task`, `## Introduction` (the task, what it writes, the threat it guards against), `## Generate` (the `make:*`
+  commands in order, in one `sh` block), `## What it writes` (a table of file and purpose), `## The code`, `## The test`,
+  `## Check` and `## Where to go next`. A recipe shows only what exists: where there is no generator, it writes the file as the
+  topic's page shows it and does not say a generator exists. Its code is checked like "Your First App": the directory
+  `examples/recipes/<task>` holds an overlay in the format of `examples/notes` (`files/` optional, `edits.json`, `commands.json`)
+  and a `recipe.json` with the `page` and, for what a generator writes, a `reference` directory such as `apps/web-app`. `pnpm test`
+  (`scripts/recipes.test.ts`) requires every `ts`, `tsx` and `json` block to carry a `title`, every titled block to be part of an
+  overlay file, an edit or the reference file of that path, and every command of `commands.json` to stand in the `sh` blocks in order.
+  `pnpm pack:smoke` lays all overlays on the starter kit after the notes demo and requires each titled block to stand word for
+  word in the app's file, the tests, the type check and the lint to pass, `marmeon check` to pass without a finding in `raw-sql`,
+  `inner-html` or `throttle`, and `marmeon docs` to list every recipe. A recipe has a module of its own and changes no file of the
+  kit that another overlay changes.
 - **Length:** as long as the topic needs. A page past about 600 lines probably wants splitting — propose it rather than
   splitting on your own.
 - **Package READMEs are cards for npm**, not documentation: one sentence on what the package is, how to install it (or that a

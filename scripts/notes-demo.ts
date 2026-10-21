@@ -79,7 +79,9 @@ export function readEdits(overlay: string): Edit[] {
   return edits as Edit[];
 }
 
+/** Every file below `dir`; none when it does not exist (an overlay may have no `files/`). */
 function filesBelow(dir: string): string[] {
+  if (!existsSync(dir)) return [];
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? filesBelow(join(dir, entry.name)) : [join(dir, entry.name)]));
 }
 

@@ -1,7 +1,7 @@
 /**
  * `pnpm pack:smoke` — the framework as a stranger gets it: a new app (the starter kit with pnpm, `--minimal --npm`) made from the
  * tarballs by `create-marmeon` OUTSIDE the monorepo: install, test, build without .env, `marmeon start` (exactly one Node
- * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), `install --prod`, Redis and S3 steps.
+ * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), `install --prod`, Redis and S3 steps.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
@@ -19,6 +19,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { checkDemo, sampleNotes } from './notes-demo.ts';
 import { packAll, type PackedPackage } from './packages.ts';
+import { checkRecipes } from './recipes.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 /** `pnpm run ci` shows a part that exits with this as skipped (EX_TEMPFAIL): no store, no network. */
@@ -682,6 +683,8 @@ async function main(): Promise<number> {
         sampleUser = true;
       }
     });
+    // The recipes (examples/recipes) on the same app, after the demo: their overlays, and the blocks of their pages in the app's files.
+    await pnpmApp.step('recipes (examples/recipes/*): overlays, blocks in the app, test, typecheck, lint, check, docs', () => checkRecipes(pnpmApp, 'pnpm'));
     // Production installs without the dev dependencies: `marmeon` is a dependency, and the app starts without the rest.
     await pnpmApp.step('pnpm install --prod → node_modules/.bin/marmeon', () => {
       pnpmApp.run('pnpm', ['install', '--prod', ...pnpmFlags, '--reporter', 'append-only']);

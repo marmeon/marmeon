@@ -141,7 +141,7 @@ describe('the repository and docs.config.ts', () => {
 
   it('highlights every code block of every page with the stylesheet’s token classes (no inline colours left)', async () => {
     const docs = await new DocsRepository({ source: repo }).load();
-    expect(docs.pages().length).toBe(80);
+    expect(docs.pages().length).toBe(81);
     // Every colour of every page's code is one of TOKEN_CLASSES (styles/code.css has both themes for them).
     expect(JSON.stringify(docs.pages().map((page) => page.body))).not.toContain('style=');
   });

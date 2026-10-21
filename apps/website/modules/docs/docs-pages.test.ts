@@ -32,7 +32,7 @@ describe('pages', { timeout: 30_000 }, () => {
     expect(response.body).not.toContain('id="sidebar"');
   }, SSR_TEST_TIMEOUT);
 
-  it('shares the navigation — the ten sections with their pages, nothing else — once per tab', async () => {
+  it('shares the navigation — the eleven sections with their pages, nothing else — once per tab', async () => {
     const page = (await app.navigating().get('/docs/routing').assertOk()).page()!;
     const nav = page.props.nav as Navigation;
     expect(nav.groups.map((group) => group.title)).toEqual(SECTIONS);
