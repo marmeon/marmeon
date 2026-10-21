@@ -13,6 +13,7 @@ export const fileOf = (entry: DocsPageEntry) => entry.file ?? `docs/${entry.slug
 export const SECTIONS = [
   'Prologue',
   'Getting Started',
+  'Recipes',
   'Architecture Concepts',
   'The Basics',
   'Frontend',

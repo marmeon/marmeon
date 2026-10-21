@@ -21,9 +21,9 @@ beforeAll(async () => {
 afterAll(() => app?.close());
 
 describe('the docs: sections of pages under /docs', { timeout: 30_000 }, () => {
-  it('lists the 80 pages in ten sections, in this order', () => {
+  it('lists the 81 pages in eleven sections, in this order', () => {
     expect(docsConfig.sections.map((section) => section.title)).toEqual(SECTIONS);
-    expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 6, 5, 11, 9, 14, 11, 7, 7, 4]);
+    expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 6, 1, 5, 11, 9, 14, 11, 7, 7, 4]);
     expect(ENTRIES[0]).toEqual({ slug: 'why-marmeon', label: 'Why Marmeon' });
     expect(ENTRIES[1]).toEqual({ slug: 'upgrading', label: 'Upgrade Guide', file: 'UPGRADING.md', changes: true });
     expect(ENTRIES.filter((entry) => entry.file).map((entry) => [entry.slug, entry.file])).toEqual([
@@ -61,7 +61,8 @@ describe('the docs: sections of pages under /docs', { timeout: 30_000 }, () => {
       const name = (link: { path: string } | null) => link?.path.replace(/^\/docs\//, '') ?? 'none';
       return `${name(props.previous)} ← ${slug} → ${name(props.next)}`;
     };
-    expect(await neighbours('deployment')).toBe('first-app ← deployment → lifecycle');
+    expect(await neighbours('deployment')).toBe('first-app ← deployment → recipe-resource');
+    expect(await neighbours('recipe-resource')).toBe('deployment ← recipe-resource → lifecycle');
     expect(await neighbours('packages')).toBe('security-policy ← packages → installation');
     expect(await neighbours('why-marmeon')).toBe('none ← why-marmeon → upgrading');
     expect(await neighbours('upgrading')).toBe('why-marmeon ← upgrading → releases');

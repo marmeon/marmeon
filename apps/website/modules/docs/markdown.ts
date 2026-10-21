@@ -296,7 +296,7 @@ function squash(pieces: readonly string[]): string {
 }
 
 /** A fence's info string: its language (the first word) and the file it shows — ```` ```ts title="modules/notes/routes.ts" ````. */
-function codeInfo(info: string): { lang: string; title: string } {
+export function codeInfo(info: string): { lang: string; title: string } {
   const first = info.trim().split(/\s+/)[0] ?? '';
   const title = /(?:^|\s)title=(?:"([^"]*)"|'([^']*)')/.exec(info);
   return { lang: first.startsWith('title=') ? '' : first, title: (title?.[1] ?? title?.[2] ?? '').trim() };
