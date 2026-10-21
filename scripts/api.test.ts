@@ -485,6 +485,18 @@ describe('environment variables and commands', () => {
     ]);
   });
 
+  it('lists a retired name as a lock, once, and shows a removed lock as removed', async () => {
+    const lock = "{ name: 'demo', env: { [Symbol.for('marmeon.env.fields')]: { NEW: optional }, [Symbol.for('marmeon.env.renamed')]: { OLD: 'NEW' } } }";
+    const { items, problems } = await read(`${lock}, ${lock}`);
+    expect(problems).toEqual([]);
+    expect(items.map((item) => [item.section, item.name, item.text])).toEqual([
+      ['environment', 'NEW', '`NEW` — optional'],
+      ['environment', 'OLD', '`OLD` → `NEW` (renamed)'],
+    ]);
+    const [before, after] = await pair(lock, 'fields({ NEW: optional })');
+    expect(compareSnapshots(before.items, after.items).removed.map((item) => item.name)).toEqual(['OLD']);
+  });
+
   it('shows a changed default as changed and a removed variable as removed', async () => {
     const [before, after] = await pair('fields({ PORT: given(3000), GONE: given(1) })', 'fields({ PORT: given(3001) })');
     const changes = compareSnapshots(before.items, after.items);

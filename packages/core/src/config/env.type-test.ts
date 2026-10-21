@@ -91,3 +91,7 @@ defineConfig('p', {
     return text;
   },
 });
+
+// Argument of type '"MISSING"' is not assignable to parameter of type '"X"'.
+// @ts-expect-error — a retired name points at a declared variable.
+env({ X: env.string() }).renamed('OLD_X', 'MISSING');

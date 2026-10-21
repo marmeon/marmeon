@@ -618,6 +618,8 @@ function collectEntry(declarations: Declarations, entry: string, path: string, c
 
 /** Where `EnvSchema` hands out its variables (`packages/core/src/config/env.ts`). */
 const ENV_FIELDS = Symbol.for('marmeon.env.fields');
+/** Where it hands out its retired names (old to new). */
+const ENV_RENAMED = Symbol.for('marmeon.env.renamed');
 
 interface EnvField {
   readonly '~env': (raw: string | undefined, name: string) => { readonly value?: unknown; readonly problem?: string };
@@ -677,6 +679,7 @@ export async function runtimeItems(pkg: PackageToSnapshot): Promise<{ items: Api
     if (module === undefined) return { items, problems };
     const commands: CommandShape[] = [];
     const variables = new Map<string, { config: string; value: string }[]>();
+    const renamed = new Map<string, string>();
     for (const name of names) {
       const Provider = module[name] as { config?: readonly { name: string; env: Record<symbol, Record<string, EnvField> | undefined> }[]; commands?: readonly CommandShape[] } | undefined;
       if (Provider === undefined) {
@@ -690,6 +693,8 @@ export async function runtimeItems(pkg: PackageToSnapshot): Promise<{ items: Api
           continue;
         }
         try {
+          const locks = (config.env as unknown as Record<symbol, Record<string, string> | undefined>)[ENV_RENAMED] ?? {};
+          for (const [from, to] of Object.entries(locks)) renamed.set(from, to);
           for (const [variable, field] of Object.entries(fields)) {
             variables.set(variable, [...(variables.get(variable) ?? []), { config: config.name, value: defaultOf(variable, field) }]);
           }
@@ -707,6 +712,7 @@ export async function runtimeItems(pkg: PackageToSnapshot): Promise<{ items: Api
       const text = values.length === 1 ? values[0]! : definitions.map(({ config, value }) => `${value} (${config})`).join('; ');
       items.push({ entry: '', section: 'environment', name: variable, text: `\`${variable}\` ${text}` });
     }
+    for (const [from, to] of renamed) items.push({ entry: '', section: 'environment', name: from, text: `\`${from}\` → \`${to}\` (renamed)` });
     for (const Command of commands) items.push(commandItem(Command));
   } finally {
     if (before === undefined) delete process.env.NODE_ENV;
