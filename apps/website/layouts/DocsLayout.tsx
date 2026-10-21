@@ -16,7 +16,8 @@ const TYPING = 'input, textarea, select, [contenteditable]';
 export function DocsLayout({ children }: LayoutProps) {
   const { props, url, component } = usePage();
   // The start page and the search are wide and centred, without the section navigation.
-  const nav = component === 'docs/Home' || component === 'docs/Search' ? undefined : props.nav;
+  const onLine = component === 'docs/LinePage' || component === 'docs/LineHome';
+  const nav = component === 'docs/Home' || component === 'docs/Search' || component === 'docs/LineHome' ? undefined : onLine ? props.lineNav : props.nav;
   const route = useRoute();
   const searchUrl = route('docs.search');
   const onSearchPage = url.split(/[?#]/)[0] === searchUrl;
@@ -54,7 +55,7 @@ export function DocsLayout({ children }: LayoutProps) {
             <span className="wordmark-suffix">docs</span>
           </Link>
         </div>
-        {!onSearchPage && (
+        {!onSearchPage && !onLine && (
           <Link route="docs.search" layer className="docs-search-box" data-search-trigger aria-keyshortcuts="/">
             <SearchIcon size={16} />
             <span className="docs-search-placeholder">Search the docs</span>
@@ -62,11 +63,11 @@ export function DocsLayout({ children }: LayoutProps) {
           </Link>
         )}
         <div className="docs-top-end">
-          <VersionBadge />
+          {onLine && props.line ? <span className="badge">{props.line.version}</span> : <VersionBadge />}
           <a href={GITHUB_URL} rel="noopener" className="docs-github">
             GitHub
           </a>
-          {!onSearchPage && (
+          {!onSearchPage && !onLine && (
             <Link route="docs.search" layer className="docs-search-link" data-search-trigger aria-keyshortcuts="/" aria-label="Search the docs">
               <SearchIcon size={18} />
             </Link>

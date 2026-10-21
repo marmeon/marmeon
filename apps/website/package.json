@@ -15,11 +15,13 @@
     "modules",
     "styles",
     "docs.config.ts",
+    "docs-lines.json",
     "index.html",
     "!**/*.test.ts",
     "!**/*.test.tsx",
     "!**/*.type-test.ts",
-    "!**/*.test-support.ts"
+    "!**/*.test-support.ts",
+    "!**/__fixtures__"
   ],
   "scripts": {
     "dev": "marmeon dev",

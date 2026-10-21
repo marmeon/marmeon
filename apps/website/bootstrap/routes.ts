@@ -8,6 +8,11 @@ import type { ShowDocSourceController } from '../modules/docs/controllers/ShowDo
 import type { ShowHomeController } from '../modules/docs/controllers/ShowHomeController.ts';
 import type { ShowImprintController } from '../modules/site/controllers/ShowImprintController.ts';
 import type { ShowLandingController } from '../modules/site/controllers/ShowLandingController.ts';
+import type { ShowLineDocController } from '../modules/docs/controllers/ShowLineDocController.ts';
+import type { ShowLineDocSourceController } from '../modules/docs/controllers/ShowLineDocSourceController.ts';
+import type { ShowLineHomeController } from '../modules/docs/controllers/ShowLineHomeController.ts';
+import type { ShowLineLlmsController } from '../modules/docs/controllers/ShowLineLlmsController.ts';
+import type { ShowLineLlmsFullController } from '../modules/docs/controllers/ShowLineLlmsFullController.ts';
 import type { ShowLlmsController } from '../modules/docs/controllers/ShowLlmsController.ts';
 import type { ShowLlmsFullController } from '../modules/docs/controllers/ShowLlmsFullController.ts';
 import type { ShowPrivacyController } from '../modules/site/controllers/ShowPrivacyController.ts';
@@ -17,6 +22,11 @@ import type { ShowSitemapController } from '../modules/site/controllers/ShowSite
 declare module '@marmeon/router' {
   interface Routes {
     'docs.home': { method: 'get'; path: '/docs'; controller: typeof ShowHomeController };
+    'docs.line.home': { method: 'get'; path: '/docs/:line{(?:0\\.(?:0|[1-9]\\d*)|[1-9]\\d*)\\.x}'; controller: typeof ShowLineHomeController };
+    'docs.line.llms': { method: 'get'; path: '/docs/:line{(?:0\\.(?:0|[1-9]\\d*)|[1-9]\\d*)\\.x}/llms.txt'; controller: typeof ShowLineLlmsController };
+    'docs.line.llms-full': { method: 'get'; path: '/docs/:line{(?:0\\.(?:0|[1-9]\\d*)|[1-9]\\d*)\\.x}/llms-full.txt'; controller: typeof ShowLineLlmsFullController };
+    'docs.line.markdown': { method: 'get'; path: '/docs/:line{(?:0\\.(?:0|[1-9]\\d*)|[1-9]\\d*)\\.x}/:file{[a-z0-9-]+\\.md}'; controller: typeof ShowLineDocSourceController };
+    'docs.line.page': { method: 'get'; path: '/docs/:line{(?:0\\.(?:0|[1-9]\\d*)|[1-9]\\d*)\\.x}/:page'; controller: typeof ShowLineDocController };
     'docs.llms': { method: 'get'; path: '/llms.txt'; controller: typeof ShowLlmsController };
     'docs.llms-full': { method: 'get'; path: '/llms-full.txt'; controller: typeof ShowLlmsFullController };
     'docs.markdown': { method: 'get'; path: '/docs/:file{[a-z0-9-]+\\.md}'; controller: typeof ShowDocSourceController };
@@ -33,6 +43,8 @@ declare module '@marmeon/router' {
 declare module '@marmeon/http/page' {
   interface Views {
     'docs/Home': true;
+    'docs/LineHome': true;
+    'docs/LinePage': true;
     'docs/Page': true;
     'docs/Search': true;
     'errors/Error': true;

@@ -8,6 +8,10 @@ declare module '@marmeon/http/page' {
      * page has no shared props — the layout renders without the navigation then.
      */
     nav?: Navigation;
+    /** The navigation of a release line: passed by the line's own pages, never shared (the pages of the other lines and the newest docs differ). */
+    lineNav?: Navigation;
+    /** The release line a page belongs to, passed by the line's own pages. */
+    line?: { name: string; version: string };
   }
 }
 

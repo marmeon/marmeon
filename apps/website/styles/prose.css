@@ -302,3 +302,19 @@
     display: none;
   }
 }
+
+/* Above a page of a release line: which version it documents, and where the newest one is. */
+.line-banner {
+  margin: 0 0 24px;
+  padding: 10px 14px;
+  border: 1px solid var(--warning-line);
+  border-radius: 6px;
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+  font-size: var(--text-label);
+}
+
+.line-banner a {
+  color: inherit;
+  text-decoration: underline;
+}
