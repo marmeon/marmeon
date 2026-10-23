@@ -103,6 +103,7 @@ describe('mailer.queue()', () => {
     await application.container.make(Mailer).queue(new ResetMail('https://app.test/reset'));
     const queue = application.container.make(Queue) as QueueFake;
     const clock = application.container.make(Clock) as TestClock;
+    clock.freeze(); // 299 s must still be "not due yet": a running clock could pass the second in between
     // Five attempts, 10 s, 1 min, 5 min, 5 min apart (the last backoff repeats).
     for (const wait of [0, 10, 60, 300]) {
       clock.travel({ seconds: wait });

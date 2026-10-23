@@ -224,6 +224,8 @@ describe.each(processKinds)('unique jobs on %s', (kind) => {
 
   it('frees the key after uniqueFor even when the job never ran', async () => {
     await withApp(kind, async (app) => {
+      // A running clock can pass the one-second window between the two dispatches.
+      if (kind !== 'redis') app.clock.freeze();
       expect(await app.queue.dispatch(NoteJob, { n: 1 }, { unique: 'report', uniqueFor: 1 })).toEqual(expect.any(String));
       expect(await app.queue.dispatch(NoteJob, { n: 2 }, { unique: 'report', uniqueFor: 1 })).toBeUndefined();
       // Memory and database locks follow the app's clock; Redis keeps its own time.
