@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, resolveConfig } from '@marmeon/core';
-import { DatabaseConfig, describeConnection } from './config.ts';
+import { ConfigError, env, resolveConfig } from '@marmeon/core';
+import { DatabaseConfig, defineConnection, describeConnection } from './config.ts';
 
 describe('describeConnection: a password with @ or /', () => {
   it.each([
@@ -52,5 +52,45 @@ describe('DatabaseConfig: DB_DRIVER', () => {
     const error = await resolve({ DB_CONNECTION: 'pgsql' }).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ConfigError);
     expect((error as ConfigError).message).toContain('DB_CONNECTION was renamed DB_DRIVER');
+  });
+});
+
+describe('DatabaseConfig: the Postgres database has no default name', () => {
+  const resolve = (env: Record<string, string>) => resolveConfig([DatabaseConfig], { DB_DRIVER: 'pgsql', ...env });
+  const message = async (env: Record<string, string>) => {
+    const error = await resolve(env).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ConfigError);
+    return (error as ConfigError).message;
+  };
+
+  it('stops the start with neither DB_URL nor DB_DATABASE, and never picks "marmeon"', async () => {
+    expect(await message({})).toContain('DB_DATABASE — set DB_DATABASE, or DB_URL with the database\'s name in its path');
+    expect(await message({ DB_HOST: 'db.internal', DB_USERNAME: 'app' })).toContain('docs/database.md#configuration');
+    expect(await message({ DB_DATABASE: '' })).toContain('K6');
+  });
+
+  it('refuses a DB_URL without the database in its path, which pg would fill from PGDATABASE or the user name', async () => {
+    for (const DB_URL of ['postgres://app:pw@db:5432', 'postgres://app:pw@db/', 'postgres://app:pw@db:5432/?sslmode=require']) {
+      const text = await message({ DB_URL, DB_DATABASE: 'shop' });
+      expect(text).toContain('DB_URL with the database\'s name in its path');
+      expect(text).not.toContain('pw@');
+    }
+  });
+
+  it('refuses a named connection without a database name, as an empty one or a URL without a path', () => {
+    const connection = (e: { database?: string; url?: string }) => defineConnection('reporting', { env: env({}), resolve: () => ({ driver: 'pgsql', ...e }) }).resolve({});
+    expect(() => connection({ database: '' })).toThrow('The Postgres connection "reporting" needs a url or a database.');
+    expect(() => connection({ url: 'postgres://app:pw@db:5432' })).toThrow("needs a database: the name in its url's path, or database.");
+    expect(() => connection({ url: 'postgres://app:pw@db/' })).toThrow("needs a database: the name in its url's path, or database.");
+    expect(connection({ url: 'postgres://app@db/shop' })).toMatchObject({ url: 'postgres://app@db/shop' });
+  });
+
+  it('takes the name from DB_DATABASE alone or from DB_URL alone', async () => {
+    expect((await resolve({ DB_DATABASE: 'notes' })).get(DatabaseConfig)).toMatchObject({ default: { url: 'postgres://postgres@127.0.0.1:5432/notes' } });
+    expect((await resolve({ DB_URL: 'postgres://app:pw@db/shop' })).get(DatabaseConfig)).toMatchObject({ default: { url: 'postgres://app:pw@db/shop' } });
+  });
+
+  it('leaves SQLite its file, with no name asked for', async () => {
+    expect((await resolveConfig([DatabaseConfig], {})).get(DatabaseConfig)).toMatchObject({ default: { driver: 'sqlite', database: 'storage/database.sqlite' } });
   });
 });

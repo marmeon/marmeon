@@ -125,7 +125,7 @@ describe('db:show never prints a secret of the connection', () => {
     'the password parameter in other case, and a fragment': { vars: { DB_URL: 'postgres://u@h/db?PassWord=geheim2&SSLKey=/x#geheim3' } },
     'ssl parameters of every kind': { vars: { DB_URL: 'postgres://u:geheim@h/db?sslmode=require&sslrootcert=/keys/ca.pem&sslcert=/keys/c.pem&sslpassword=geheim2&options=-c%20x' } },
     'DB_PASSWORD in parts': { vars: { DB_HOST: 'h', DB_USERNAME: 'u', DB_PASSWORD: 'p@ss/word', DB_DATABASE: 'db' } },
-    'a password option of another connection': { vars: { REPORTING_PASSWORD: 'geheim' }, options: { database: 'reporting' } },
+    'a password option of another connection': { vars: { DB_DATABASE: 'app', REPORTING_PASSWORD: 'geheim' }, options: { database: 'reporting' } },
   };
 
   for (const [name, { vars, options }] of Object.entries(cases)) {

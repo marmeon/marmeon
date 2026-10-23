@@ -44,7 +44,7 @@ The default connection reads these variables, checked when the app starts like a
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `DB_DRIVER` | `sqlite` | The driver: `sqlite` or `pgsql`. |
-| `DB_DATABASE` | `storage/database.sqlite` for SQLite, `marmeon` for Postgres | SQLite: the file, relative to the app's root, or `:memory:`. Postgres: the database's name. |
+| `DB_DATABASE` | `storage/database.sqlite` for SQLite, none for Postgres | SQLite: the file, relative to the app's root, or `:memory:`. Postgres: the database's name, required unless `DB_URL` is set. |
 | `DB_HOST` | `127.0.0.1` | Postgres: the server. |
 | `DB_PORT` | `5432` | Postgres: its port. |
 | `DB_USERNAME` | `postgres` | Postgres: the user. |
@@ -57,6 +57,17 @@ The default connection reads these variables, checked when the app starts like a
 A Postgres server is either the five variables `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`, or its
 whole address in `DB_URL`. When `DB_URL` is set, it wins: the five are not read. `DB_URL` must start with `postgres://` or
 `postgresql://`, and the start fails with every wrong value named at once.
+
+Postgres has no default database name: without `DB_DATABASE`, or a `DB_URL` with the database's name in its path, the start fails with
+`K6`, because two apps on one server that fell back to the same name would share every table, from users and sessions to the cache.
+An empty `DB_DATABASE=` counts as not set.
+
+```text
+[marmeon:K6] Invalid configuration — the application cannot start:
+  • database: DB_DATABASE — set DB_DATABASE, or DB_URL with the database's name in its path — apps on one Postgres server share their tables otherwise (docs/database.md#configuration)
+```
+
+An app whose tables are in a database named `marmeon` sets `DB_DATABASE=marmeon`.
 
 ```sh title=".env"
 DB_DRIVER=pgsql

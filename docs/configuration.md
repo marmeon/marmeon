@@ -413,7 +413,7 @@ These are the settings a new app starts with. Each feature's page lists its own 
 | `HOST` | `127.0.0.1` | The interface the server listens on. `0.0.0.0` for other machines. |
 | `LOG_LEVEL` | `info` | The lowest level that is logged, or `silent`. |
 | `DB_DRIVER` | `sqlite` | `sqlite` or `pgsql`. |
-| `DB_DATABASE` | `storage/database.sqlite` | The SQLite file, or the name of the Postgres database (`marmeon` by default). |
+| `DB_DATABASE` | `storage/database.sqlite` | The SQLite file, or the name of the Postgres database, which has no default: set it or `DB_URL`, or the start fails. |
 | `DB_HOST` | `127.0.0.1` | Postgres: the server. |
 | `DB_PORT` | `5432` | Postgres: its port. |
 | `DB_USERNAME` | `postgres` | Postgres: the user. |
