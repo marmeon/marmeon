@@ -1,7 +1,8 @@
 import { globSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
 import { marmeon } from '@marmeon/vite';
 import { defineConfig } from 'vitest/config';
-import { groupByServices, serviceFiles, splitTiming, timingEnv, tripwireEnv } from './scripts/test/services.ts';
+import { groupByServices,processFiles, serviceFiles, splitTiming, timingEnv, tripwireEnv } from './scripts/test/services.ts';
 
 const include = ['packages/*/src/**/*.test.{ts,tsx}', 'apps/*/modules/**/*.test.{ts,tsx}', 'apps/*/build/**/*.test.ts', 'scripts/**/*.test.ts'];
 const root = import.meta.dirname;
@@ -14,7 +15,16 @@ const { timing: timingFiles, other: candidates } = splitTiming(found);
 // Every project gets tripwire values for the services it was not selected for: a test the derivation missed turns the plain
 // `pnpm test` red with a host name ending in `.invalid` (RFC 6761: never resolves, so no connection to a service is opened), where it would otherwise lose
 // its Postgres, Redis or S3 coverage without anyone noticing.
-const projects = [...groupByServices(serviceFiles(root, candidates))].map(([name, { services, files }]) => ({
+//
+// The tests that start processes or render through Vite (`processFiles`) get a project of their own per set of services, named
+// `<services>-process`. It runs after the others with bounded workers: such a test takes as long as its child's work, and that
+// grows with the load next to it. Half the cores: with a third of them the local run got noticeably slower, because this
+// phase runs alone at the end. `MARMEON_TEST_PROCESS_WORKERS` (a positive integer) overrides the limit.
+const override = process.env.MARMEON_TEST_PROCESS_WORKERS;
+if (override !== undefined && !/^[1-9]\d*$/.test(override)) throw new Error(`MARMEON_TEST_PROCESS_WORKERS must be a positive integer, got '${override}'`);
+const processWorkers = override === undefined ? Math.max(1, Math.floor(availableParallelism() / 2)) : Number(override);
+const starting = processFiles(root, candidates);
+const projects = [...groupByServices(serviceFiles(root, candidates), starting)].map(([name, { services, process: starts, files }]) => ({
   extends: true as const,
   test: {
     name,
@@ -22,6 +32,7 @@ const projects = [...groupByServices(serviceFiles(root, candidates))].map(([name
     env: tripwireEnv(services),
     // The root's global setup runs once per run, not once per project.
     globalSetup: [],
+    ...(starts ? { maxWorkers: processWorkers, sequence: { groupOrder: 1 }, testTimeout: 30_000, hookTimeout: 60_000 } : {}),
   },
 }));
 

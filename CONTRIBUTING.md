@@ -171,6 +171,13 @@ Tests that assert something about wall-clock time (a ratio, an upper bound) live
 in the `timing` project on SQLite, after all others and one at a time, so nothing competes with the measurement; they need no
 service, and `pnpm test:pgsql` and its siblings leave them out.
 
+Tests that start processes — a file that, or a relative import it reaches, imports `node:child_process`, starts a nested Vitest,
+imports `vite` as a value or builds a test app with the `ssr` option — run in their own projects, `<services>-process` (for
+example `plain-process`, `pgsql-process`; `--project '*pgsql*'` takes both). They run after the other projects with half as many
+workers as the machine has cores (`MARMEON_TEST_PROCESS_WORKERS` sets the number), a 30 s test timeout and a 60 s hook timeout,
+so what they take depends on their own work, not on the load next to them. The rule is in `scripts/test/services.ts`
+(`startsProcesses`); a new file lands in the right project without being marked.
+
 With `DB_DRIVER=pgsql` and `DB_URL` in the environment, refreshed test apps of any app use Postgres: the role needs the
 right to create databases (one per worker, next to the configured one). Run `test:pgsql` for every change to the database,
 sessions, auth, queues or locks — Postgres finds races SQLite hides. Never run two Postgres or Redis suites at once: they share
