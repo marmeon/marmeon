@@ -1,6 +1,6 @@
 import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, Redactor, token, type Application, type Clock, type Logger } from '@marmeon/core';
 import { channels, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
-import { messageBase, trace } from '@marmeon/core/internal';
+import { messageBase, startedByReporter, trace } from '@marmeon/core/internal';
 import type { Transaction } from '@marmeon/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type JobEvents } from './events.ts';
@@ -369,6 +369,8 @@ export async function prepareRecord(
   // Where it comes from: the request's id always — in a job, the request that job came from —, the trace context
   // when a tracer gave one at dispatch.
   const requestId = currentRequest()?.requestId ?? currentJob()?.requestId;
+  // Queued by a reporter, or by a job that a reporter queued: its failure is never reported (see JobRecord.fromReporter).
+  const fromReporter = startedByReporter() || currentJob()?.fromReporter === true;
   const data = job.encrypted ? await (await deps.cipher()).encrypt(JSON.stringify(json), cipherContext(job.job)) : json;
   const record: JobRecord = {
     v: RECORD_VERSION,
@@ -382,6 +384,7 @@ export async function prepareRecord(
     ...(extra.unique ? { unique: extra.unique } : {}),
     ...(requestId === undefined ? {} : { requestId }),
     ...(extra.traceparent === undefined ? {} : { traceparent: extra.traceparent }),
+    ...(fromReporter ? { fromReporter: true as const } : {}),
   };
   return { record, serialized: JSON.stringify(record) };
 }

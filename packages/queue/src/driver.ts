@@ -178,6 +178,11 @@ export interface JobRecord {
   readonly requestId?: string;
   /** The trace context it was dispatched in (W3C `traceparent`) — when a tracer (`@marmeon/otel`) gave one. */
   readonly traceparent?: string;
+  /**
+   * Queued by an error reporter, or by a job that was: if it fails for good it is logged and not reported again (a reporter that
+   * queues an alert would otherwise loop). Older workers do not know the field and report such a failure.
+   */
+  readonly fromReporter?: true;
 }
 
 /** The unique lock of a job, as its record carries it: the lock's name (the job's id is its owner), how long it holds, until when. */

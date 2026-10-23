@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { ErrorSolutions, Redactor } from '@marmeon/core';
+import { ErrorReports, ErrorSolutions, Redactor } from '@marmeon/core';
 import { Router } from '@marmeon/router';
 import { createTestApp } from '@marmeon/testing';
 import { describe, expect, it } from 'vitest';
@@ -102,8 +102,21 @@ describe('the lab lists the errors its reporter got', () => {
     const response = await app.get('/lab/errors', page).assertStatus(200);
     // Without server rendering the page's props show in its JSON.
     expect(response.body).toContain('"recent":[{"name":"ContainerError"');
-    expect(response.body).toContain('"method":"GET","path":"/lab/errors/container-unbound"');
+    expect(response.body).toContain('"source":"request","where":"GET /lab/errors/container-unbound"');
     expect(response.body).not.toContain('/lab/nowhere');
+  });
+
+  it('a failed job, task or command is listed with what failed, never its payload', async () => {
+    const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh' });
+    // What the worker, the scheduler and the command line hand to ErrorReports when a job, a task or a command fails.
+    const reports = app.container.make(ErrorReports);
+    reports.report(new Error('the mail server said no'), { source: 'job', context: { job: 'mail.send', queue: 'default', attempt: '3' } });
+    reports.report(new Error('the export is down'), { source: 'schedule', context: { task: 'reports:nightly' } });
+    reports.report(new Error('no disk'), { source: 'command', context: { command: 'backup' } });
+    const response = await app.get('/lab/errors', page).assertStatus(200);
+    expect(response.body).toContain('"source":"job","where":"mail.send"');
+    expect(response.body).toContain('"source":"schedule","where":"reports:nightly"');
+    expect(response.body).toContain('"source":"command","where":"backup"');
   });
 
   it('the reporter does not get what the redactor masks', async () => {

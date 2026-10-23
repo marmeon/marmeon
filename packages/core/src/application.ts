@@ -286,7 +286,7 @@ export async function createApplication(definition: ApplicationDefinition, optio
     HealthChecks,
     new HealthChecks([...providers.flatMap((Provider) => Provider.health ?? []), ...(definition.health ?? []), ...modules.flatMap((module) => module.health ?? [])]),
   );
-  // Where the errors of requests go: the log line, then every provider's `static errorReporters`, masked.
+  // Where the errors of requests, jobs, tasks and commands go: the log line, then every provider's `static errorReporters`, masked.
   container.singleton(
     ErrorReports,
     () =>

@@ -247,14 +247,23 @@ export class SystemServiceProvider implements ServiceProvider {
 }
 ```
 
+The Redactor masks secrets it recognises, not every value: an error whose message quotes data, such as a schema's `received "…"`,
+reaches the reporter with it. Only a job's payload mismatch is reduced to its field names.
+
 A reporter never sees the error itself. It gets an `ErrorReport` with the **masked view** only:
 
 - `error.name` (the class name when it is an identifier, else `Error`), `error.message` and `error.stack`, each passed through the
   app's `Redactor`, so a connection URL, a token or the session cookie an error quotes is gone;
 - `error.code` and `error.status`, when the error has them, and `error.cause`, masked the same way, at most five levels deep. A cause
   that leads back to an error already shown ends the chain;
-- `source` (`request`), and `context` for a request: `method`, `route` (the route's name, empty when it has none) and `path` (the
-  path without its query, with the segments of sensitive route parameters masked).
+- `source` and a `context` of masked texts, by what failed:
+
+  | `source` | When | `context` |
+  | --- | --- | --- |
+  | `request` | A request ends in a server error | `method`, `route` (the route's name, empty when it has none), `path` (without its query, the segments of sensitive route parameters masked) |
+  | `job` | A job has failed for good: its last attempt, or an attempt that cannot be repeated (`job.fail()`, a payload that cannot run). Attempts that run again are only logged. | `job` (its name), `jobId`, `queue`, `connection`, `attempt`. Never the payload; a payload that no longer matches its schema is reported by the names of its fields, not the values the schema quotes |
+  | `schedule` | A scheduled task throws | `task` (its name) |
+  | `command` | A `marmeon` command ends with an error | `command` (its name). Never the arguments: they can carry secrets |
 
 Every process that boots the app builds its reporters: each `marmeon` command and each worker too. A timer or a socket that the constructor opens needs `unref()` or a stop in `flush()`, or the process never ends; a heavy connection is better opened lazily, on the first `report()`.
 
@@ -272,13 +281,21 @@ A reporter is built once, when the app boots, and runs outside any database tran
 - When the app shuts down, `flush()` of each reporter is called before the providers shut down, while the open reports finish, and the
   shutdown waits at most 2 seconds for all of it. A reporter that is still busy then loses its reports and the shutdown goes on, with a warning.
 
-Only the errors of requests reach the reporters so far. These are logged but not reported yet: errors of server rendering, of
-deferred groups and of work after the response (`afterResponse.defer()`), and errors at shutdown. Jobs, scheduled tasks and commands
-follow. To report an error you caught yourself, for example when a `catch` still answers 200, ask the app for the service:
+Server errors of requests, jobs that failed for good, scheduled tasks and commands reach the reporters. These are logged but not
+reported: errors of server rendering, of deferred groups and of work after the response (`afterResponse.defer()`), errors at shutdown,
+a job that ignores its timeout and ends its worker (it runs again after `retryAfter`), a job that was queued by an error reporter (see below), a job on the `sync`
+connection (its error reaches whoever dispatched it, who reports it as their own), a command that is called wrong (exit code 2) or
+ends with an exit code but no error, and a prompt that was cancelled. To report an error you caught yourself, for example when a
+`catch` still answers 200, ask the app for the service:
 
 ```ts
 app.container.make(ErrorReports).report(error, { source: 'request' });
 ```
+
+A reporter that queues a job, say one that sends an alert, does not start a loop: if the alert fails for good it is logged, not
+reported again, and the jobs it queues in turn are marked the same way. The mark covers what `report()` and `flush()` of a reporter
+start, and the jobs those queue. A timer opened in the constructor or an `afterResponse` callback is not covered: a job queued from
+there is reported like any other. Look for the failures that are not reported in the log and in the failed jobs.
 
 `ExceptionHandler` does not report. It is a token with one method, `render(error, request, { debug, translator })`, which returns what
 a controller returns: a view, a redirect, a `Response`. To change how errors look, extend `DefaultExceptionHandler` (it has no

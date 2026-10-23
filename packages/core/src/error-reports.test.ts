@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'v
 import { createApplication } from './application.ts';
 import { currentTransaction, runTransaction } from './transaction-context.ts';
 import { Container } from './container.ts';
-import { ErrorReports, FLUSH_TIMEOUT, MAX_OPEN_REPORTS, REPORT_TIMEOUT, type ErrorReport, type ErrorReporter } from './error-reports.ts';
+import { ErrorReports, FLUSH_TIMEOUT, MAX_OPEN_REPORTS, REPORT_TIMEOUT, startedByReporter, type ErrorReport, type ErrorReporter } from './error-reports.ts';
 import { Logger, type LogContext } from './logger.ts';
 import { defineModule } from './module.ts';
 import { Redactor } from './redact.ts';
@@ -121,6 +121,30 @@ describe('ErrorReports — what a reporter sees', () => {
     errorReports.report(new Error(`connect failed: postgres://app:${PASSWORD}@db/shop`), request);
     expect(logger.errors).toHaveLength(1);
     expect(JSON.stringify(logger.errors)).not.toContain(PASSWORD);
+  });
+
+  it('writes the log line of the caller when it has one, masked, and none when told so', () => {
+    const { errorReports, logger } = setup(Collecting);
+    errorReports.report(new Error('x'), { source: 'job', log: { message: `Failed test.job: postgres://app:${PASSWORD}@db/shop`, fields: { job: 'test.job' } } });
+    expect(logger.errors).toEqual([{ message: 'Failed test.job: postgres://app:***@db/shop', context: { job: 'test.job' } }]);
+    errorReports.report(new Error('y'), { source: 'command', log: false });
+    expect(logger.errors).toHaveLength(1);
+  });
+
+  it('tells code a reporter started from code that was not', async () => {
+    const seen: boolean[] = [];
+    class Asking implements ErrorReporter {
+      async report(): Promise<void> {
+        seen.push(startedByReporter());
+        await Promise.resolve();
+        seen.push(startedByReporter());
+      }
+    }
+    const { errorReports } = setup(Asking);
+    errorReports.report(new Error('x'), request);
+    await settle();
+    expect(seen).toEqual([true, true]);
+    expect(startedByReporter()).toBe(false);
   });
 });
 

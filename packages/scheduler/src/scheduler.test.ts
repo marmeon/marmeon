@@ -3,7 +3,7 @@ import { Cache, CacheServiceProvider } from '@marmeon/cache';
 import { CACHE_MIGRATION, MemoryStore, StoreCache } from '@marmeon/cache/internal';
 import { CliServiceProvider, DevProcesses, type CommandInput } from 'marmeon';
 import { CommandRegistry } from 'marmeon/internal';
-import { Clock, createApplication, currentLogContext, defineModule, EventRegistry, inTransaction, listen, Logger, Redactor, type Application, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { Clock, createApplication, currentLogContext, defineModule, ErrorReports, EventRegistry, inTransaction, listen, Logger, Redactor, type Application, type ErrorReport, type ErrorReporter, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { channels, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, type Migration } from '@marmeon/database';
@@ -99,6 +99,16 @@ class SlowTask {
     await this.#gate.promise;
     this.#gate.running--;
   }
+}
+
+const reported: ErrorReport[] = [];
+class Collecting implements ErrorReporter {
+  report(report: ErrorReport): void {
+    reported.push(report);
+  }
+}
+class ReportingProvider {
+  static errorReporters = [Collecting];
 }
 
 class FailingTask {
@@ -450,6 +460,23 @@ describe('events', () => {
     expect(result).toMatchObject({ task: 'failing', outcome: 'failed' });
     expect((thrown[0] as Error).message).toBe('the report service is down');
     expect(log.entries.some((entry) => entry.level === 'warn' && entry.message === 'A listener of ScheduledTaskFailed failed: the pager is down')).toBe(true);
+    await app.shutdown();
+  });
+
+  it('reports a task that throws to the error reporters, by its name; one that works is not reported', async () => {
+    reported.length = 0;
+    const { scheduler, app, clock, log } = await boot(
+      defineSchedule((s) => {
+        s.call(FailingTask).everyMinute().name('failing');
+        s.call(CountRun).everyMinute().name('count');
+      }),
+      { providers: [ReportingProvider] },
+    );
+    await Promise.all((await scheduler.tick(clock.now())).map((run) => run.done));
+    await app.container.make(ErrorReports).flush();
+    expect(reported).toMatchObject([{ source: 'schedule', error: { message: 'the report service is down' }, context: { task: 'failing' } }]);
+    // The log line is the one it was before.
+    expect(log.entries).toContainEqual(expect.objectContaining({ level: 'error', message: 'Failed: failing', context: expect.objectContaining({ channel: 'schedule', exception: 'Error: the report service is down' }) }));
     await app.shutdown();
   });
 

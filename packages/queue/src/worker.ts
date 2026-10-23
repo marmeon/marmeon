@@ -1,11 +1,11 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { outsideTransaction, Redactor, type Clock, type Logger } from '@marmeon/core';
+import { outsideTransaction, Redactor, type Clock, type ErrorReports, type Logger } from '@marmeon/core';
 import { describeError, withCode, withoutCode } from '@marmeon/core/internal';
 import { backoffDelay, type FailedJobStore, type JobRecord, type QueueDriver, type ReservedJob } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, type JobEvent, type JobEvents } from './events.ts';
 import { JobOnceBusyError, ONCE_BUSY_DELAY, releaseUnique } from './locks.ts';
 import { timeoutOf } from './registry.ts';
-import { CLOCK_SKEW_MS, FOREIGN_LIMIT_SECONDS, nextInChain, parseRecord, type JobRunner, type Prepared, type RecordIdentity, type Requested } from './runner.ts';
+import { CLOCK_SKEW_MS, FOREIGN_LIMIT_SECONDS, nextInChain, parseRecord, schemaMismatch, type JobRunner, type Prepared, type RecordIdentity, type Requested } from './runner.ts';
 
 /** A job did not stop within its timeout plus the grace period: Node cannot cancel it, so its worker must end. */
 export class JobStuckError extends Error {
@@ -78,6 +78,11 @@ export interface WorkerDependencies {
   readonly events?: JobEvents;
   /** What masks a failure's text in the failed jobs and the log — the app's, with the names its packages add (default: the core's list). */
   readonly redactor?: Redactor;
+  /**
+   * Where a job that failed for good is reported to (its `source` is `job`). Without it the failure is only logged. A job queued by an
+   * error reporter is logged and not reported, whatever this is.
+   */
+  readonly errors?: ErrorReports;
 }
 
 type Outcome = 'processed' | 'released' | 'failed' | 'interrupted';
@@ -430,7 +435,7 @@ export class Worker {
     const name = envelope.job ?? '?';
     const error = new Error(reason);
     const failNow = async (cause: Error, how: string): Promise<Outcome> => {
-      const fail = () => this.#fail(reserved, record, cause, how, undefined, { ...(envelope.uuid === undefined ? {} : { uuid: envelope.uuid }), job: name });
+      const fail = () => this.#fail(reserved, record, cause, how, undefined, { ...(envelope.uuid === undefined ? {} : { uuid: envelope.uuid }), job: name }, prepared.issues ? schemaMismatch(name, prepared.issues) : undefined);
       await (record ? this.#deps.runner.unrunnable(record, attempt, cause, fail) : fail());
       return 'failed';
     };
@@ -481,7 +486,8 @@ export class Worker {
   }
 
   /** `identity`: what a payload that is no record says about itself — its id, name and unique lock label the failure. */
-  async #fail(reserved: ReservedJob, record: JobRecord | undefined, error: unknown, how: string, ms?: number, identity?: RecordIdentity): Promise<void> {
+  /** `reported`: what the error reporters are told instead of `error`, when its text quotes the payload. */
+  async #fail(reserved: ReservedJob, record: JobRecord | undefined, error: unknown, how: string, ms?: number, identity?: RecordIdentity, reported?: Error): Promise<void> {
     const name = record?.job ?? identity?.job ?? '?';
     const uuid = record?.uuid ?? identity?.uuid ?? crypto.randomUUID();
     // Recorded first, then removed: a crash in between runs the job once more (at-least-once), it never vanishes.
@@ -496,13 +502,21 @@ export class Worker {
     });
     const removed = await this.#deps.driver.fail(reserved);
     const dropped = record?.chain?.length ? ` — the ${record.chain.length} job(s) chained after it will not run` : '';
-    this.#deps.logger.error(`Failed ${name}${how}${dropped}: ${this.#message(error)}`, {
+    const fields = {
       job: name,
       ...(record || identity?.uuid ? { jobId: uuid } : {}),
       attempt: reserved.attempts,
       queue: reserved.queue,
       ...(ms === undefined ? {} : { ms }),
-    });
+    };
+    const line = `Failed ${name}${how}${dropped}: ${this.#message(error)}`;
+    if (this.#deps.errors && record?.fromReporter !== true) {
+      // The payload is not in the context: only who ran where.
+      const context = { job: name, jobId: uuid, queue: reserved.queue, connection: this.#deps.connection, attempt: String(reserved.attempts) };
+      this.#deps.errors.report(reported ?? withoutValues(name, error), { source: 'job', context, log: { message: line, fields: { channel: 'queue', ...fields } } });
+    } else {
+      this.#deps.logger.error(line, fields);
+    }
     // A unique job that failed for good is done: a new one with its key may be queued.
     const locked = record ?? (identity?.unique ? ({ uuid, job: name, unique: identity.unique } as JobRecord) : undefined);
     if (removed && locked) await this.#releaseUnique(locked, 'done');
@@ -513,6 +527,12 @@ export class Worker {
   #message(error: unknown): string {
     return this.#redactor.text(error instanceof Error ? error.message : String(error));
   }
+}
+
+/** An error that carries schema issues (a payload that no longer matches, a notification's data) is reported by its fields only: the issues quote the values. */
+function withoutValues(job: string, error: unknown): unknown {
+  const issues = typeof error === 'object' && error !== null ? (error as { issues?: unknown }).issues : undefined;
+  return Array.isArray(issues) && issues.length > 0 ? schemaMismatch(job, issues) : error;
 }
 
 /** Resolves true when `signal` aborts (now or later), false when `cancel` aborts first. */

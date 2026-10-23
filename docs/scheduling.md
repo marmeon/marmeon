@@ -256,7 +256,8 @@ the scheduler refuses to start, because it keeps its locks and its last tick the
 ### What a run is
 
 Every run is a unit of work of its own, like a request or a job: outside any transaction, in a container scope of its own, with
-`task` in its log entries. Runs never wait for each other. A run that fails is logged, and the others go on.
+`task` in its log entries. Runs never wait for each other. A run that fails is logged and handed to the app's
+[error reporters](errors.md#reporting) (`source` `schedule`, with the task's name), and the others go on.
 
 ## Configuration
 

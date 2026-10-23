@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Container } from './container.ts';
 import { withCode } from './error-codes.ts';
-import { Logger } from './logger.ts';
+import { Logger, type LogContext } from './logger.ts';
 import { Redactor } from './redact.ts';
 import { outsideTransaction } from './transaction-context.ts';
 
@@ -63,6 +63,11 @@ const UNPRINTABLE: ReportedError = Object.freeze({ name: 'Error', message: 'Unpr
 /** Set while a reporter runs, in everything it starts: an error it reports itself is not reported again. */
 const reporting = new AsyncLocalStorage<true>();
 
+/** Whether the code running now was started by an error reporter (or by something it started): what it queues is marked, see `fromReporter`. */
+export function startedByReporter(): boolean {
+  return reporting.getStore() === true;
+}
+
 /**
  * Hands the errors of an app to its reporters: writes the log line, then gives each reporter the masked {@link ErrorReport},
  * on its own, without anyone waiting. A reporter that throws, rejects or hangs costs a warning in the log, never a request;
@@ -107,12 +112,19 @@ export class ErrorReports {
     }
   }
 
-  /** Logs the error and passes the masked view to every reporter. Returns at once. */
-  report(error: unknown, { source, context = {} }: { source: ErrorReport['source']; context?: Readonly<Record<string, string>> }): void {
+  /**
+   * Logs the error and passes the masked view to every reporter. Returns at once. `log` is the log line when the caller has a better one
+   * than the error's message (`{ message, fields }`, masked here), or `false` when it said the error to the user already.
+   */
+  report(
+    error: unknown,
+    { source, context = {}, log }: { source: ErrorReport['source']; context?: Readonly<Record<string, string>>; log?: false | { readonly message: string; readonly fields?: LogContext } },
+  ): void {
     // The message is the log line's own text, the stack a string: masked like text by the app's Redactor — keys alone would
     // not catch a connection URL or a token an error quotes, and the core's list alone not the names packages add (the session cookie).
     const { name, message, stack } = asError(error);
-    this.#logger.error(this.#redactor.text(message), { exception: name, stack: this.#redactor.text(stack) });
+    if (log === undefined) this.#logger.error(this.#redactor.text(message), { exception: name, stack: this.#redactor.text(stack) });
+    else if (log !== false) this.#logger.error(this.#redactor.text(log.message), log.fields);
     if (this.#instances.size === 0 || reporting.getStore()) return;
     const report: ErrorReport = Object.freeze({
       error: this.#reported(error, new Set(), 0),
