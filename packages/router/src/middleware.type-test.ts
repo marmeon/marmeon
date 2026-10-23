@@ -29,3 +29,17 @@ export const untyped: AnyMiddleware = defineMiddleware('untyped', (_ctx, next) =
 
 // @ts-expect-error — a middleware that declares `user` still has to extend the context.
 defineMiddleware<{ user: { id: string } }>('user', (_ctx, next) => next());
+
+// A union is extended whenever one of its members adds keys, shared or not.
+defineMiddleware<{ a: string } | { b: string }>('either', (_ctx, next) => next({ a: 'x' }));
+defineMiddleware<{ a: string } | {}>('maybe', (_ctx, next) => next({ a: 'x' }));
+// @ts-expect-error — the extension is mandatory when a member of the union adds keys.
+defineMiddleware<{ a: string } | { b: string }>('either', (_ctx, next) => next());
+// @ts-expect-error — the extension is mandatory when a member of the union adds keys.
+defineMiddleware<{ a: string } | {}>('maybe', (_ctx, next) => next());
+
+// Nothing declared still lets `next()` through.
+defineMiddleware<{}>('empty', (_ctx, next) => next());
+defineMiddleware<object>('object', (_ctx, next) => next());
+defineMiddleware<EmptyObject>('empty-object', (_ctx, next) => next());
+defineMiddleware<any>('any', (_ctx, next) => next());

@@ -53,15 +53,20 @@ export interface RequestContext<TParams extends object = EmptyObject> extends Re
 export type HttpContext<TState extends object = EmptyObject, TParams extends object = EmptyObject> = RequestContext<TParams> & TState;
 
 /**
- * Middleware that adds nothing may call `next()`; otherwise the extension is mandatory. `any` (the only `object`
- * that `unknown` extends) counts as nothing declared, so a middleware without declared keys fits where a pipeline takes
- * any middleware.
+ * Middleware that adds nothing may call `next()`; otherwise the extension is mandatory, also when only some
+ * member of a union adds keys. `any` (the only `object` that `unknown` extends) counts as nothing declared, so a
+ * middleware without declared keys fits where a pipeline takes any middleware.
  */
 export type Next<TAdd extends object> = unknown extends TAdd
   ? (extension?: TAdd) => Promise<Response>
-  : Exclude<keyof TAdd, ReservedContextKey> extends never
-    ? (extension?: TAdd) => Promise<Response>
-    : (extension: TAdd) => Promise<Response>;
+  : [TAdd] extends [never]
+    ? (extension: TAdd) => Promise<Response>
+    : [AddedKeys<TAdd>] extends [never]
+      ? (extension?: TAdd) => Promise<Response>
+      : (extension: TAdd) => Promise<Response>;
+
+/** The keys any member of a union adds; `keyof` alone would keep only the keys every member shares. */
+type AddedKeys<T> = T extends unknown ? Exclude<keyof T, ReservedContextKey> : never;
 
 /**
  * A pipeline stage. `TRequires` is the context it needs from earlier middleware,
