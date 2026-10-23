@@ -23,7 +23,7 @@ does it know who asked: a browser's first visit gets a server-rendered document,
 
 ## Pages
 
-`this.view(name, props, status)` answers with a page. The name is the view's path inside its module's `views/` folder:
+`this.view(name, props)` answers with a page. The name is the view's path inside its module's `views/` folder:
 `notes/Show` is `modules/notes/views/Show.tsx`. A name without a view is a compile error, and so is a prop the view does not get,
 since the view takes its props from the controller's type:
 
@@ -47,8 +47,8 @@ Props travel as JSON, and the view's types say so: a `Date` prop arrives as a st
 is `undefined` not at all. Send only what the page shows. Every prop reaches the browser, so a column such as a password hash must
 never be in it.
 
-The status defaults to 200. `this.view('notes/Gone', { id }, 410)` sends another. The [pages](pages.md) page covers views, layouts
-and the head.
+The status defaults to 200. A last argument of options sets another, and headers:
+`this.view('notes/Gone', { id }, { status: 410 })`. The [pages](pages.md) page covers views, layouts and the head.
 
 ### Props that load later
 
@@ -237,7 +237,7 @@ names the route and says to put it in the `web` group, or to add `StartSession` 
 
 ## JSON
 
-`this.json(data, status)` answers with JSON. Its type travels to the browser: an action that calls the route gets
+`this.json(data)` answers with JSON. Its type travels to the browser: an action that calls the route gets
 `result.data` typed as the data the JSON carries:
 
 ```ts title="modules/notes/controllers/PinNoteController.ts"
@@ -261,8 +261,8 @@ export class PinNoteController extends Controller {
 }
 ```
 
-The status defaults to 200. `this.json(undefined)` answers 204 with no body. An API client gets the same JSON, and the
-[actions](actions.md) page shows how a page calls such a route without leaving.
+The status defaults to 200; `this.json(data, { status: 201 })` sends another. `this.json(undefined)` answers 204 with no body.
+An API client gets the same JSON, and the [actions](actions.md) page shows how a page calls such a route without leaving.
 
 ## Other results
 
@@ -300,18 +300,18 @@ tag in such HTML needs the response's nonce, `ctx.nonce()`, under a Content-Secu
 
 ### Headers
 
-A redirect takes headers with `.header(name, value)`. The base class's `this.view()` and `this.json()` take none. For a page or
-JSON with a header of its own, return the standalone functions of `@marmeon/http` instead, which take headers as their fourth and
-third argument: `view(name, props, status, headers)` and `json(data, status, headers)`:
+A redirect takes headers with `.header(name, value)`. A page or JSON takes them, and its status, in a last argument of
+options: `this.view(name, props, { status, headers })` and `this.json(data, { status, headers })`. The functions `view()` and
+`json()` of `@marmeon/http` take the same options:
 
 ```ts title="modules/notes/controllers/ShowDraftController.ts"
 import type { Authenticated } from '@marmeon/auth';
 import type { Row } from '@marmeon/database';
-import { Controller, view, type HttpContext } from '@marmeon/http';
+import { Controller, type HttpContext } from '@marmeon/http';
 
 export class ShowDraftController extends Controller {
   handle(ctx: HttpContext<Authenticated, { note: Row<'notes'> }>) {
-    return view('notes/Show', { note: ctx.params.note }, 200, { 'x-robots-tag': 'noindex' });
+    return this.view('notes/Show', { note: ctx.params.note }, { headers: { 'x-robots-tag': 'noindex' } });
   }
 }
 ```

@@ -33,9 +33,9 @@ export class RemovePasskeyController extends Controller {
       case 'not-found':
         return abort(404);
       case 'throttled':
-        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, 429);
+        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, { status: 429 });
       case 'invalid-password':
-        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, 422);
+        return this.json({ field: 'password', error: passwordCheckMessage(this.#translator, done.error) }, { status: 422 });
     }
   }
 }

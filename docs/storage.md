@@ -37,7 +37,7 @@ export class DownloadMyNotesController extends Controller {
     const disk = this.#storage.disk('local');
     const key = `exports/notes-${ctx.user.id}.json`;
     await disk.put(key, JSON.stringify(notes, null, 2));
-    return this.redirect(await disk.temporaryUrl(key, { expiresIn: { minutes: 5 }, filename: 'my-notes.json' }), 303);
+    return this.redirect(await disk.temporaryUrl(key, { expiresIn: { minutes: 5 }, filename: 'my-notes.json' })).status(303);
   }
 }
 ```

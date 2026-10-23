@@ -611,7 +611,7 @@ function answer(ctx: HttpContext, result: unknown, counts: Omit<TableActionResul
   if (!wantsJson) return new RedirectResult().back('/').header('vary', vary.vary);
   const payload: TableActionResult = result === undefined ? counts : { ...counts, data: result };
   // About this user's rows: never cached, also when it is no action request (an API client, a test).
-  return json(payload, 200, { 'cache-control': 'no-store', ...vary }) satisfies JsonResult<TableActionResult>;
+  return json(payload, { headers: { 'cache-control': 'no-store', ...vary } }) satisfies JsonResult<TableActionResult>;
 }
 
 /** The raw path parameters of a request: its route's pattern laid over its path (`/teams/:team` + `/teams/7` → `{ team: '7' }`). */

@@ -1,4 +1,5 @@
 import { ownResponse } from '@marmeon/router';
+import { assertResultOptions, type ResultOptions } from './view.ts';
 import { withFlashMethod, type FlashMethod } from './flash.ts';
 
 const JSON_RESULT = Symbol.for('marmeon.json-result');
@@ -22,8 +23,10 @@ export interface JsonResult<T = unknown> {
   readonly flash: FlashMethod<JsonResult<T>>;
 }
 
-/** `data` as JSON, with `status` (default 200). */
-export function json<T>(data: T, status = 200, headers?: Readonly<Record<string, string>>): JsonResult<T> {
+/** `data` as JSON, with the `status` (default 200) and `headers` of the options. */
+export function json<T>(data: T, options: ResultOptions = {}): JsonResult<T> {
+  assertResultOptions('json', options);
+  const { status = 200, headers } = options;
   return withFlashMethod({ [JSON_RESULT]: true, kind: 'json', data, status, ...(headers ? { headers } : {}) } as JsonResult<T>);
 }
 

@@ -1,7 +1,7 @@
-import { RedirectResult, type RedirectStatus } from './redirect.ts';
+import { RedirectResult } from './redirect.ts';
 import type { CheckViewName } from './page.ts';
 import { island, type IslandResult } from './island.ts';
-import { view, type PageResult, type ViewProps } from './view.ts';
+import { view, type PageResult, type ResultOptions, type ViewProps } from './view.ts';
 import { CloseLayerResult, type CloseLayerOptions } from './layer.ts';
 import { json, type JsonResult } from './json.ts';
 
@@ -15,8 +15,8 @@ export abstract class Controller {
    * A page: `this.view('user-profile/Show', { profile })` — the name is checked against `modules/*\/views/**`. Or a layer
    * over the page on screen: `this.view('user-profile/Edit', { profile }).layer({ base: 'user-profile.show', params: { user } })`.
    */
-  protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, status = 200): PageResult<TProps, V> {
-    return view<V, TProps>(component, props, status);
+  protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, options?: ResultOptions): PageResult<TProps, V> {
+    return view<V, TProps>(component, props, options);
   }
 
   /**
@@ -41,13 +41,13 @@ export abstract class Controller {
    * Data as JSON — typed: an action (`useAction('user-profile.links.destroy')`) gets `Serialize<T>` back as `result.data`,
    * an API client the same JSON. `return this.json({ deleted: link.id })`.
    */
-  protected json<T>(data: T, status = 200): JsonResult<T> {
-    return json(data, status);
+  protected json<T>(data: T, options?: ResultOptions): JsonResult<T> {
+    return json(data, options);
   }
 
   /** `redirect('/login')`, or `redirect().route('user-profile.show', { user: id })` for a named route. */
-  protected redirect(url?: string, status?: RedirectStatus): RedirectResult {
-    return new RedirectResult(url, status);
+  protected redirect(url?: string): RedirectResult {
+    return new RedirectResult(url);
   }
 
   /** Back to the previous page of this site (`Referer`), or to `fallback`. */

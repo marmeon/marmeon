@@ -36,9 +36,9 @@ export class PasskeyStepUpController extends Controller {
         // No factor to prove (it was turned off meanwhile): the settings page is where one is set up.
         return this.redirect().route('auth.two-factor');
       case 'throttled':
-        return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter }) }, 429);
+        return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter }) }, { status: 429 });
       case 'invalid-code':
-        return this.json({ error: this.#translator.get('auth.passkeys.failed') }, 422);
+        return this.json({ error: this.#translator.get('auth.passkeys.failed') }, { status: 422 });
     }
   }
 }

@@ -9,7 +9,7 @@ export { CloseLayerResult, toLayer } from './layer.ts';
 export type { CloseLayerOptions, LayerBaseRoute, LayerMethod, LayerOptions, LayerResult } from './layer.ts';
 export { ERRORS_KEY, flashableInput, Flasher, INTENDED_KEY, isLocalPath, OLD_INPUT_KEY, RedirectResult } from './redirect.ts';
 export type { RedirectStatus } from './redirect.ts';
-export type { PageProps, PageResult, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
+export type { PageProps, PageResult, ResultOptions, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
 export {
   isActionRequest,
   isPageObject,

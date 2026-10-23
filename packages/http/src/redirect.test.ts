@@ -27,7 +27,7 @@ describe('RedirectResult', () => {
     expect(new RedirectResult('/').toResponse(request('GET'), router).status).toBe(302);
     expect(new RedirectResult('/').toResponse(request('PUT'), router).status).toBe(303);
     expect(new RedirectResult('/').toResponse(request('POST'), router).status).toBe(303);
-    expect(new RedirectResult('/', 301).toResponse(request('POST'), router).status).toBe(301);
+    expect(new RedirectResult('/').status(301).toResponse(request('POST'), router).status).toBe(301);
     expect(new RedirectResult('/').status(307).toResponse(request('DELETE'), router).status).toBe(307);
   });
 
@@ -198,7 +198,7 @@ describe('types', () => {
       // @ts-expect-error -- route parameters are strings or numbers
       new RedirectResult().route('users.show', { id: { nested: true } });
       // @ts-expect-error -- 304 is not a redirect status
-      new RedirectResult('/', 304);
+      new RedirectResult('/').status(304);
     };
     expect(check).toBeTypeOf('function');
   });

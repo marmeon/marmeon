@@ -15,7 +15,7 @@ export class PasskeyChallengeOptionsController extends Controller {
 
   async handle() {
     const options = await this.#passkeys.challengeOptions();
-    if (!options.ok) return this.json({ error: this.#translator.get('auth.two_factor.expired') }, 422);
+    if (!options.ok) return this.json({ error: this.#translator.get('auth.two_factor.expired') }, { status: 422 });
     return this.json(options.value);
   }
 }

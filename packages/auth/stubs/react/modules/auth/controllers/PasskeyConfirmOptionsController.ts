@@ -15,7 +15,7 @@ export class PasskeyConfirmOptionsController extends Controller {
 
   async handle() {
     const options = await this.#passkeys.confirmOptions();
-    if (!options.ok) return this.json({ error: this.#translator.get('auth.passkeys.failed') }, 422);
+    if (!options.ok) return this.json({ error: this.#translator.get('auth.passkeys.failed') }, { status: 422 });
     return this.json(options.value);
   }
 }
