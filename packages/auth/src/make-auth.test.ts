@@ -72,6 +72,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
     const app = readFileSync(join(root, 'bootstrap/app.ts'), 'utf8');
     expect(app).toContain("import auth from '#modules/auth';");
     expect(app).toMatch(/modules: \[auth, system\]/);
+    expect(app).not.toContain('A new app: only');
     expect(lines[0]).toMatch(/^✓ Created modules\/auth \(\d+ files\)$/);
     expect(lines).toContain('✓ Registered the module in bootstrap/app.ts');
     // Its look: a stylesheet the client entry imports — once, after the framework's.

@@ -4,7 +4,7 @@ import { contentSecurityPolicy, securityHeaders } from '@marmeon/http';
 import system from '#modules/system';
 import { AppConfig } from '../config/app.ts';
 
-/** A new app: only `system` (the queue's tables, `marmeon make:queue-table`). `marmeon make:auth` adds the auth module here. */
+/** The modules the app runs: `system` holds the queue's tables (`marmeon make:queue-table`); `marmeon make:auth` adds `auth` to the list. */
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig],
