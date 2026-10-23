@@ -32,7 +32,7 @@ import { AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFactorState } from './two-factor/state.ts';
 import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
-import { authenticationIsSetUp, requireAuthTables, UserProviderNotBound } from './upgrades.ts';
+import { authenticationIsSetUp, requireAuthTables, requireSignInFinder, UserProviderNotBound } from './upgrades.ts';
 
 export { AccountSessions } from './account-sessions.ts';
 export type { EveryoneEnded } from './account-sessions.ts';
@@ -167,6 +167,7 @@ export class AuthServiceProvider implements ServiceProvider {
     if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
     // /up/ready is red until the tables of the stores in use have every column the stores need.
     await requireAuthTables(app.container);
+    requireSignInFinder(app.container);
     requireRateLimiter(app.container);
     // The limits of the auth routes (`throttle('auth.login')` …); an app's limiter of the same name replaces one. Without @marmeon/cache no route throttles.
     if (app.container.has(RateLimiter)) defineAuthRouteLimits(app.container.make(RateLimiter));

@@ -382,7 +382,7 @@ A user who lost both the phone and the recovery codes has to be let in by an ope
 marmeon auth:reset-two-factor ada@example.com --force
 ```
 
-The argument is the identifier as your sign-in form normalizes it (usually the lower-case e-mail); the account is found by `UserProvider.findForLogin()`.
+The argument is the identifier as your sign-in form normalizes it (usually the lower-case e-mail); the account is found by `UserProvider.findForSignIn()`.
 Without `--force` the command exits with 1 and changes nothing. It removes whatever the bound [`TwoFactorState`](authentication.md#your-own-stores) holds
 (the authenticator, every passkey, every recovery code) through `removeAll(userId)`, which dispatches nothing; the command dispatches `TwoFactorDisabled` with
 `via: 'operator'` itself, so that listeners (the mail to the owner, an audit log) hear of it.

@@ -1,7 +1,7 @@
 import { Logger, type Key } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { AccountSessions } from './account-sessions.ts';
-import { idOf, UserProvider } from './user.ts';
+import { assertSignInFinder, idOf, UserProvider } from './user.ts';
 
 /** Exact, trimmed lookup: an address typed in capitals finds nothing when the account stores it in lower case. */
 const noAccount = (identifier: string) => `No account has the identifier ${identifier}: the lookup is exact (only trimmed), so type it as it is stored, e.g. ${identifier.toLowerCase()}.`;
@@ -9,7 +9,7 @@ const noAccount = (identifier: string) => `No account has the identifier ${ident
 /**
  * `marmeon auth:end-sessions <identifier> --force`: signs an account out everywhere, every browser and every "keep me signed in" cookie, for
  * a lost device or a suspected theft. Whoever holds the password signs in again; change it first when it may be known. The account is
- * found by `UserProvider.findForLogin()` with the identifier as the sign-in form normalizes it (usually the e-mail, lower case). `--force`
+ * found by `UserProvider.findForSignIn()` with the identifier as the sign-in form normalizes it (usually the e-mail, lower case). `--force`
  * in every environment, since it cannot be undone. Through `AccountSessions.end()`, see `docs/authentication.md#ending-every-session-of-a-user`.
  */
 export class EndSessionsCommand {
@@ -36,7 +36,8 @@ export class EndSessionsCommand {
       output.error('Usage: marmeon auth:end-sessions <identifier> --force');
       return 1;
     }
-    const found = await this.#users.findForLogin(identifier);
+    assertSignInFinder(this.#users);
+    const found = await this.#users.findForSignIn(identifier);
     if (!found) {
       output.error(noAccount(identifier));
       return 1;
@@ -49,7 +50,7 @@ export class EndSessionsCommand {
     // A failure is not caught: the operator has to see that some sessions may still stand.
     const ended = await this.#accounts.end(id);
     if (!ended.ok) {
-      // Only a race: the account was deleted after findForLogin().
+      // Only a race: the account was deleted after findForSignIn().
       output.error(noAccount(identifier));
       return 1;
     }

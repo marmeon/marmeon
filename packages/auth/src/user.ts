@@ -1,4 +1,5 @@
 import { token, type Token } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 import type { PasswordHash } from './hashing.ts';
 
 /**
@@ -48,10 +49,10 @@ export interface Credentials<U = AuthUser> {
  * `container.bind(UserProvider, UserRepository)`. The hash travels next to the user, never inside it.
  */
 export interface UserProvider<U = AuthUser> {
-  /** The user and their current hash and session key (the session checks the key on every request). Returns `sessionKey` (`null` when the account has none) — `findForLogin()` must too, or `attempt()` throws. It must read after write (no cache, no lagging replica): every session and remember-me check compares what it returns with what was just written. */
+  /** The user and their current hash and session key (the session checks the key on every request). Returns `sessionKey` (`null` when the account has none) — `findForSignIn()` must too, or `attempt()` throws. It must read after write (no cache, no lagging replica): every session and remember-me check compares what it returns with what was just written. */
   findById(id: U extends { readonly id: infer Id } ? Id : never): Promise<Credentials<U> | undefined>;
   /** By what people type to sign in — usually the e-mail, already normalized by the request schema. Returns `sessionKey` (`null` when the account has none), as `findById()` does, or `attempt()` throws. */
-  findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
+  findForSignIn(identifier: string): Promise<Credentials<U> | undefined>;
   /**
    * Stores a new hash (rehash on login, password change, reset) and returns whether it wrote. With `expected` it is a compare-and-set:
    * write `hash` only when the stored hash equals `expected`, in **one** statement (`UPDATE … WHERE password = expected`) — a rehash
@@ -70,7 +71,7 @@ export interface UserProvider<U = AuthUser> {
     options?: { readonly expected?: PasswordHash; readonly sessionKey?: string; readonly expectedSessionKey?: string | null },
   ): Promise<boolean>;
   /**
-   * Stores a new session key (`auth.updateSessionKey()`, `AccountSessions`); `findById()` and `findForLogin()` hand it back as
+   * Stores a new session key (`auth.updateSessionKey()`, `AccountSessions`); `findById()` and `findForSignIn()` hand it back as
    * `sessionKey`. Compare-and-set: write `key` only when the stored key equals `expected` (`null`: none), in **one** statement
    * (`UPDATE … WHERE session_key = expected`), and return whether it wrote. Two callers that read the same key must not both win.
    * `expected === undefined` writes regardless of the stored key: `AccountSessions.end()` passes it, to end every session of an
@@ -103,4 +104,19 @@ export function idOf(user: unknown): AuthUserId {
   const id = (user as { id?: unknown }).id;
   if (typeof id !== 'string' && typeof id !== 'number') throw new TypeError('A user needs an `id` (string or number) to be signed in.');
   return id as AuthUserId;
+}
+
+/**
+ * Throws when a provider still has the old name of `findForSignIn()`. The interface is one that apps implement themselves, and a
+ * provider that kept `findForLogin()` would otherwise fail with a bare "is not a function".
+ */
+export function assertSignInFinder(users: UserProvider): void {
+  const provider = users as unknown as { findForSignIn?: unknown; findForLogin?: unknown };
+  if (typeof provider.findForSignIn === 'function' || typeof provider.findForLogin !== 'function') return;
+  throw new Error(
+    withCode(
+      'A5',
+      `auth: ${users.constructor.name}.findForLogin() was renamed findForSignIn() — rename the method of your UserProvider; the signature stays (see docs/authentication.md#for-your-own-user-provider).`,
+    ),
+  );
 }

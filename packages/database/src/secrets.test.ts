@@ -25,7 +25,7 @@ class AccountRepository extends Repository<'accounts', AccountTables> {
   static table = 'accounts' as const;
 
   /** The one place that reads the hash. */
-  findForLogin(email: string) {
+  findForSignIn(email: string) {
     return this.query().select((eb) => ['id', secret(eb, 'password')]).where('email', '=', email).executeTakeFirst();
   }
 }
@@ -149,7 +149,7 @@ describe.each(drivers)('secret columns on %s', (driver) => {
 
   it('reads one only with secret() — explicit wins over select-all in the same query', async () => {
     const ada = await insertAda();
-    expect(await accounts.findForLogin('ada@example.com')).toEqual({ id: ada.id, password: HASH });
+    expect(await accounts.findForSignIn('ada@example.com')).toEqual({ id: ada.id, password: HASH });
     // Explicit wins over select-all in the same query.
     const both = await db.selectFrom('accounts').selectAll().select((eb) => secret(eb, 'accounts.totp_secret')).executeTakeFirstOrThrow();
     expect(both).toMatchObject({ totp_secret: 'JBSWY3DP' });
@@ -489,7 +489,7 @@ export async function secretTypes() {
   await accountsDb.updateTable('accounts').set({ password: 'new hash' }).execute();
 
   // Reading it takes `secret()`, typed by the column…
-  const login = await repository.findForLogin('ada@example.com');
+  const login = await repository.findForSignIn('ada@example.com');
   expectTypeOf(login).toEqualTypeOf<{ id: number; password: string } | undefined>();
   // …and only for secret columns of tables in scope.
   // @ts-expect-error — `email` is not secret: select it as usual

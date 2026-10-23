@@ -34,7 +34,7 @@ export class MemoryUsers<U extends { readonly id: number; readonly email?: strin
     return found;
   }
 
-  async findForLogin(identifier: string): Promise<Credentials<U> | undefined> {
+  async findForSignIn(identifier: string): Promise<Credentials<U> | undefined> {
     for (const row of this.rows.values()) {
       if (row.user.email === identifier) return { user: row.user, passwordHash: row.hash, sessionKey: row.key };
     }

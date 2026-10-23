@@ -61,7 +61,7 @@ describe('the verification mail through the queue', () => {
     transport.down = true;
     const app = await realApp(transport);
     await app.post('/register', { form: form() }).assertRedirect('/register/sent');
-    expect(await app.make(UserRepository).findForLogin('kj@example.com')).toBeDefined();
+    expect(await app.make(UserRepository).findForSignIn('kj@example.com')).toBeDefined();
 
     // The listener composes the mail (marmeon.listener), the mail job hands it to the transport (marmeon.mail): 5 tries.
     await work(app);

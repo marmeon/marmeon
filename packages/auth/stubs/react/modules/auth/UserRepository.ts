@@ -17,7 +17,7 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
   }
 
   /** By e-mail — as the login request normalized it (trimmed, lower case). */
-  findForLogin(email: string): Promise<Credentials<User> | undefined> {
+  findForSignIn(email: string): Promise<Credentials<User> | undefined> {
     return this.#credentials(this.query().where('email', '=', email));
   }
 

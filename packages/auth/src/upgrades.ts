@@ -6,7 +6,7 @@ import { DatabaseSignIns, SIGN_INS_COLUMNS, SIGN_INS_TABLE, SignInStore } from '
 import { ACCESS_TOKEN_COLUMNS, ACCESS_TOKEN_TABLE, AccessTokenStore, DatabaseAccessTokens } from './tokens.ts';
 import { factorSources, TwoFactorState } from './two-factor/state.ts';
 import { RECOVERY_CODE_COLUMNS, RECOVERY_CODES_TABLE, TWO_FACTOR_COLUMNS, TWO_FACTOR_TABLE, TwoFactorStore } from './two-factor/store.ts';
-import { UserProvider } from './user.ts';
+import { assertSignInFinder, UserProvider } from './user.ts';
 
 /** Thrown by the `UserProvider` nothing replaced: authentication is not set up. */
 export class UserProviderNotBound extends Error {
@@ -21,6 +21,17 @@ export function authenticationIsSetUp(container: Container): boolean {
   } catch (error) {
     return !(error instanceof UserProviderNotBound);
   }
+}
+
+/** Stops the boot of an app whose `UserProvider` still has the old name of `findForSignIn()`, instead of the first sign-in or a queued job. */
+export function requireSignInFinder(container: Container): void {
+  let users: UserProvider;
+  try {
+    users = container.make(UserProvider);
+  } catch {
+    return;
+  }
+  assertSignInFinder(users);
 }
 
 /**
