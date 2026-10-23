@@ -1,4 +1,4 @@
-import type { Lockout } from '@marmeon/auth';
+import type { SignInLockedOut } from '@marmeon/auth';
 import { Translator } from '@marmeon/i18n';
 import { Queue } from '@marmeon/queue';
 import { SendLockoutMailJob } from '../jobs/SendLockoutMailJob.ts';
@@ -17,7 +17,7 @@ export class QueueLockoutMail {
     this.#translator = translator;
   }
 
-  async handle(event: Lockout): Promise<void> {
+  async handle(event: SignInLockedOut): Promise<void> {
     if (event.scope !== 'account') return; // the minute of one client is no reason to write to the owner
     await this.#queue.dispatch(SendLockoutMailJob, { email: event.identifier, locale: this.#translator.locale }, { queue: 'mail' });
   }

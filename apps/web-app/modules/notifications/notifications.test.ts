@@ -1,7 +1,8 @@
-import { Login } from '@marmeon/auth';
+import { SignedIn } from '@marmeon/auth';
 import { Connections, sql } from '@marmeon/database';
 import { notificationsChannel } from '@marmeon/live';
 import { Inbox, Notifications, SendQueuedNotification } from '@marmeon/notifications';
+import { JobRegistry } from '@marmeon/queue';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -28,7 +29,7 @@ async function rows(app: TestApp, user: User) {
 }
 
 describe('"New sign-in"', () => {
-  it('a sign-in with a password queues the Login listener, which notifies the user — bell and mail', async () => {
+  it('a sign-in with a password queues the SignedIn listener, which notifies the user — bell and mail', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     const ada = await app.factory(UserFactory).create({ name: 'Ada', locale: 'en' });
     await signIn(app, ada);
@@ -40,6 +41,22 @@ describe('"New sign-in"', () => {
     await app.notifications.deliver();
     expect(await rows(app, ada)).toEqual([expect.objectContaining({ type: 'auth.new-sign-in', data: { at: expect.any(String), ip: null, browser: 'Firefox · macOS' }, read_at: null })]);
     app.mail.assertQueued(NewSignInMail, (_mail, message, options) => message.to[0]!.address === ada.email && message.subject === 'A new sign-in to Marmeon' && options.queue === 'mail');
+  });
+
+  it('fails a listener job queued under the event name of the release before (auth.login) once no worker knows it — held for a deploy in progress, never dropped', async () => {
+    const app = await createTestApp(application, { database: 'refresh' });
+    const ada = await app.factory(UserFactory).create({ locale: 'en' });
+    const job = app.make(JobRegistry).get('marmeon.listener')!;
+    const payload = { userId: ada.id, remember: false, via: 'attempt', at: new Date().toISOString(), ip: null, userAgent: null };
+    await app.queue.dispatch(job as never, { event: 'auth.login', listener: NotifyAboutNewSignIn.listener, payload } as never);
+
+    expect(await app.queue.work()).toMatchObject({ processed: 1, released: 1, failed: 0 });
+    app.travel({ hours: 6, minutes: 10 });
+    expect(await app.queue.work()).toMatchObject({ failed: 1 });
+    const [failed] = await app.queue.failed();
+    expect(failed!.exception).toContain('No queued listener "auth.notify-about-new-sign-in" of the event "auth.login" is registered in this app');
+    expect(failed!.exception).toContain('No worker could run it within 6 hours');
+    app.notifications.assertNothingSent();
   });
 
   it('writes the mail in the user\'s language, not the language of the sign-in (a German user, an English request)', async () => {
@@ -66,7 +83,7 @@ describe('"New sign-in"', () => {
   it('is not sent for a registration — it signs nobody in (private registration)', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     await app.post('/register', { form: { name: 'Katherine Johnson', email: 'kj@example.com', password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } }).assertRedirect('/register/sent');
-    app.events.assertNotDispatched(Login);
+    app.events.assertNotDispatched(SignedIn);
     await app.queue.work();
     app.notifications.assertNothingSent();
   });

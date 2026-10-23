@@ -15,7 +15,7 @@ import {
   confirmedPassword,
   combineFactors,
   Hasher,
-  Login,
+  SignedIn,
   PasskeyCloneSuspected,
   PasskeyRegistered,
   PasskeyRemoved,
@@ -160,7 +160,7 @@ class PasskeyController extends Controller {
         case 'scope':
           return this.#auth.passwordCheckScope();
         case 'login-as':
-          await this.#auth.login(body.id === bob.id ? bob : ada);
+          await this.#auth.signIn(body.id === bob.id ? bob : ada);
           return { signedIn: true };
         case 'regenerate':
           return await this.#twoFactor.regenerateRecoveryCodes(body.password ?? '').then((done) => (done.ok ? { ok: true, codes: done.value } : { ok: false, ...done.error }));
@@ -242,7 +242,7 @@ async function boot(env: Record<string, string> = {}, options: { passkeys?: bool
         name: 'passkeys-test',
         routes,
         migrations: new URL('../__fixtures__/migrations/', import.meta.url),
-        listeners: [Login, TwoFactorEnabled, TwoFactorDisabled, RecoveryCodesGenerated, TwoFactorChallengeFailed, PasskeyRegistered, PasskeyRemoved, PasskeyCloneSuspected, PasskeySignInFailed].map((event) => listen(event as never, RecordEvent)),
+        listeners: [SignedIn, TwoFactorEnabled, TwoFactorDisabled, RecoveryCodesGenerated, TwoFactorChallengeFailed, PasskeyRegistered, PasskeyRemoved, PasskeyCloneSuspected, PasskeySignInFailed].map((event) => listen(event as never, RecordEvent)),
       }),
     ],
   }, {
@@ -616,7 +616,7 @@ describe('Passkeys: registering', () => {
 });
 
 describe('Passkeys: signing in without a password', () => {
-  it('signs in the passkey\'s own account: a new session, Login via passkey, no password window', async () => {
+  it('signs in the passkey\'s own account: a new session, SignedIn via passkey, no password window', async () => {
     const booted = await boot();
     const authenticator = device();
     await enrolled(booted, authenticator);
@@ -631,7 +631,7 @@ describe('Passkeys: signing in without a password', () => {
     expect(sessionCookie).toBeDefined();
     expect(b.jar.get(sessionCookie)).not.toBe(before.get(sessionCookie)); // a new session id: nothing handed out before the sign-in survives it
     expect(await b.pk('who')).toEqual({ id: 1 });
-    const login = events.find((event): event is Login => event instanceof Login);
+    const login = events.find((event): event is SignedIn => event instanceof SignedIn);
     expect(login?.via).toBe('passkey');
     // The passkey with user verification is the confirmation `confirmedPassword()` asks for.
     expect(await b.pk('rename', { id: 1, name: 'x' })).toEqual({ renamed: true });
@@ -947,7 +947,7 @@ describe('Passkeys: as the second factor', () => {
     expect(await b.pk('who')).toEqual({ id: null });
     expect(await b.pk('challenge', { passkey: authenticator.authenticate(options.value) })).toEqual({ ok: true, id: 1 });
     expect(await b.pk('who')).toEqual({ id: 1 });
-    const login = events.find((event): event is Login => event instanceof Login);
+    const login = events.find((event): event is SignedIn => event instanceof SignedIn);
     expect(login?.via).toBe('attempt');
   });
 
@@ -1347,7 +1347,7 @@ describe('Passkeys: password checks of a passkey-only session', () => {
     expect(await b.pk('remove', { id: 1, password: 'secret' })).toMatchObject({ ok: false, kind: 'throttled' });
   });
 
-  it('marks a sign-in as typed only when it began with the password: not a passkey, not login(), and a new sign-in has a new key', async () => {
+  it('marks a sign-in as typed only when it began with the password: not a passkey, not signIn(), and a new sign-in has a new key', async () => {
     const booted = await boot();
     const authenticator = device();
     const { b } = await enrolled(booted, authenticator);
@@ -1919,12 +1919,12 @@ describe('Passkeys: the events', () => {
     return result.issues ? undefined : result.value;
   };
 
-  it('a Login payload with via passkey validates for the queue, and one with another via does not', async () => {
+  it('a SignedIn payload with via passkey validates for the queue, and one with another via does not', async () => {
     const payload = { userId: 1, remember: false, via: 'passkey', at: new Date().toISOString(), ip: null, userAgent: null };
-    expect(await validate(Login, payload)).toEqual(payload);
-    expect(await validate(Login, { ...payload, via: 'telepathy' })).toBeUndefined();
-    const event = new Login(ada, false, new Date(), { via: 'passkey' });
-    expect(JSON.parse(JSON.stringify(await validate(Login, event)))).toMatchObject({ via: 'passkey' });
+    expect(await validate(SignedIn, payload)).toEqual(payload);
+    expect(await validate(SignedIn, { ...payload, via: 'telepathy' })).toBeUndefined();
+    const event = new SignedIn(ada, false, new Date(), { via: 'passkey' });
+    expect(JSON.parse(JSON.stringify(await validate(SignedIn, event)))).toMatchObject({ via: 'passkey' });
   });
 
   it('PasskeyRegistered, PasskeyRemoved and PasskeyCloneSuspected carry JSON payloads and refuse malformed ones', async () => {

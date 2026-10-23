@@ -62,7 +62,7 @@ class SignInController extends Controller {
   async handle(ctx: HttpContext<{}, { id: string }>) {
     // A passwordless sign-in — the app checked a link or an OAuth answer before.
     const found = await this.#users.findById(Number(ctx.params.id) as never);
-    await this.#auth.login(found!.user, { remember: ctx.request.headers.get('x-remember') === 'yes' });
+    await this.#auth.signIn(found!.user, { remember: ctx.request.headers.get('x-remember') === 'yes' });
     return { ok: true };
   }
 }

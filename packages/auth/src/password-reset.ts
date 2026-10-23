@@ -4,7 +4,7 @@ import { Connections, secret, sql, type Secret } from '@marmeon/database';
 import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
 import { Hasher } from './hashing.ts';
-import { LoginThrottle, type DeviceCookie } from './login-throttle.ts';
+import { SignInThrottle, type DeviceCookie } from './sign-in-throttle.ts';
 import { NewPassword } from './new-password.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
@@ -131,7 +131,7 @@ export class PasswordBroker {
   readonly #events: EventDispatcher;
   readonly #config: AuthConfig;
   readonly #newPassword: NewPassword;
-  readonly #loginThrottle: LoginThrottle;
+  readonly #signInThrottle: SignInThrottle;
 
   constructor(
     users: UserProvider,
@@ -140,9 +140,9 @@ export class PasswordBroker {
     events: EventDispatcher,
     config: AuthConfig,
     newPassword: NewPassword,
-    loginThrottle: LoginThrottle,
+    signInThrottle: SignInThrottle,
   ) {
-    this.#loginThrottle = loginThrottle;
+    this.#signInThrottle = signInThrottle;
     this.#users = users;
     this.#tokens = tokens;
     this.#hasher = hasher;
@@ -170,7 +170,7 @@ export class PasswordBroker {
    */
   async deviceCookie(user: AuthUser): Promise<DeviceCookie | undefined> {
     const credentials = await this.#users.findById(idOf(user) as never);
-    return credentials && this.#loginThrottle.issueDevice(credentials);
+    return credentials && this.#signInThrottle.issueDevice(credentials);
   }
 
   /**
@@ -186,7 +186,7 @@ export class PasswordBroker {
     if (!found) return commitAnyway(err({ kind: 'invalid-token' })); // the token is used up for good
     const { revoked } = await this.#newPassword.store(this.#users, idOf(found.user), await this.#hasher.make(password), 'reset', found.user);
     // The owner is back in: the account takes passwords again, if guesses had shut it (best effort: the reset already stands).
-    await this.#loginThrottle.clearAccount(idOf(found.user));
+    await this.#signInThrottle.clearAccount(idOf(found.user));
     await this.#events.dispatch(new PasswordReset(found.user, revoked));
     return ok(found.user);
   }

@@ -3,8 +3,8 @@ import type { StandardSchemaV1 } from '@marmeon/core';
 import * as v from 'valibot';
 import { idOf, type AuthUser, type AuthUserId } from './user.ts';
 
-/** How a user signed in: with a password (`auth.attempt`), by the app (`auth.login`, e.g. after registering), by the remember-me cookie, with a passkey alone (passwordless). */
-export type LoginVia = 'attempt' | 'login' | 'remember' | 'passkey';
+/** How a user signed in: with a password (`auth.attempt`), by the app (`auth.signIn`, e.g. after registering), by the remember-me cookie, with a passkey alone (passwordless). */
+export type SignInVia = 'attempt' | 'app' | 'remember' | 'passkey';
 
 /** A point in time: the event's `Date`, queued as an ISO-8601 string (and read back as one). */
 const instant = v.pipe(
@@ -18,26 +18,26 @@ const userId = v.custom<AuthUserId>((value) => typeof value === 'string' || type
 /** The longest user agent an event keeps — the header has no limit, a queued payload should. */
 export const MAX_USER_AGENT = 512;
 
-/** What a queued listener of `Login` gets (`EventPayload<typeof Login>`). */
-export interface LoginPayload {
+/** What a queued listener of `SignedIn` gets (`EventPayload<typeof SignedIn>`). */
+export interface SignedInPayload {
   userId: AuthUserId;
   remember: boolean;
-  via: LoginVia;
+  via: SignInVia;
   at: string;
   ip: string | null;
   userAgent: string | null;
 }
 
-/** What `Login.schema` accepts: `at` as a `Date` or an ISO-8601 string. */
-export interface LoginInput extends Omit<LoginPayload, 'at'> {
+/** What `SignedIn.schema` accepts: `at` as a `Date` or an ISO-8601 string. */
+export interface SignedInInput extends Omit<SignedInPayload, 'at'> {
   at: Date | string;
 }
 
-/** @internal The validation behind `Login.schema`; the type tests compare its output with `LoginPayload`. */
-export const loginSchema = v.object({
+/** @internal The validation behind `SignedIn.schema`; the type tests compare its output with `SignedInPayload`. */
+export const signedInSchema = v.object({
   userId,
   remember: v.boolean(),
-  via: v.picklist(['attempt', 'login', 'remember', 'passkey']),
+  via: v.picklist(['attempt', 'app', 'remember', 'passkey']),
   at: instant,
   ip: v.nullable(v.string()),
   userAgent: v.nullable(v.pipe(v.string(), v.maxLength(MAX_USER_AGENT))),
@@ -45,30 +45,30 @@ export const loginSchema = v.object({
 
 /**
  * A user signed in (password, remember-me cookie, registration). Queueable: a queued listener gets
- * `{ userId, remember, via, at, ip, userAgent }` (`EventPayload<typeof Login>`, `at` as an ISO-8601 string) and reads
+ * `{ userId, remember, via, at, ip, userAgent }` (`EventPayload<typeof SignedIn>`, `at` as an ISO-8601 string) and reads
  * the account as it is when it runs. `ip` and `userAgent` are the request's (`RequestInfo`: the address through
- * `SERVER_TRUSTED_PROXIES`) — or what the app passed to `attempt()`/`login()`; null outside a request.
+ * `SERVER_TRUSTED_PROXIES`) — or what the app passed to `attempt()`/`signIn()`; null outside a request.
  */
-export class Login {
-  static readonly event = 'auth.login';
-  static readonly schema: StandardSchemaV1<LoginInput, LoginPayload> = loginSchema;
+export class SignedIn {
+  static readonly event = 'auth.signed-in';
+  static readonly schema: StandardSchemaV1<SignedInInput, SignedInPayload> = signedInSchema;
   readonly #event = true;
   readonly user: AuthUser;
   /** Signed in with "remember me" — or by the remember-me cookie. */
   readonly remember: boolean;
   readonly at: Date;
-  /** How: a password (`attempt`), the app (`login` — right after registering, say) or the remember-me cookie. */
-  readonly via: LoginVia;
+  /** How: a password (`attempt`), the app (`app` — right after registering, say) or the remember-me cookie. */
+  readonly via: SignInVia;
   /** The client's address — the request's (`ctx.ip`), or what the app passed. */
   readonly ip: string | null;
   /** The browser's `User-Agent` — the request's, or what the app passed; cut to 512 characters. */
   readonly userAgent: string | null;
 
-  constructor(user: AuthUser, remember = false, at = new Date(), details: { readonly via?: LoginVia; readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {}) {
+  constructor(user: AuthUser, remember = false, at = new Date(), details: { readonly via?: SignInVia; readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {}) {
     this.user = user;
     this.remember = remember;
     this.at = at;
-    this.via = details.via ?? 'login';
+    this.via = details.via ?? 'app';
     this.ip = details.ip ?? null;
     this.userAgent = details.userAgent === undefined ? null : details.userAgent.slice(0, MAX_USER_AGENT);
   }
@@ -80,7 +80,7 @@ export class Login {
 }
 
 /** A user signed out. */
-export class Logout {
+export class SignedOut {
   readonly #event = true;
   readonly user: AuthUser;
 
@@ -93,7 +93,7 @@ export class Logout {
  * A sign-in failed. Carries what was typed as identifier (never the password) and the user if
  * the identifier was known — for audit logs; never show it to the client (enumeration).
  */
-export class Failed {
+export class SignInFailed {
   readonly #event = true;
   readonly identifier: string;
   readonly user: AuthUser | undefined;
@@ -109,7 +109,7 @@ export class Failed {
  * (every refused attempt); `account` is the account's daily ceiling (once per window), and then `ip` is only the request that tipped it
  * over, not the source of the guesses, so a listener that blocks addresses must not act on it. See `docs/authentication.md#events`.
  */
-export class Lockout {
+export class SignInLockedOut {
   readonly #event = true;
   readonly identifier: string;
   readonly ip: string | undefined;

@@ -1,4 +1,4 @@
-import { Login, Registered } from '@marmeon/auth';
+import { SignedIn, Registered } from '@marmeon/auth';
 import { EventDispatcher } from '@marmeon/core';
 import { Connections, sql } from '@marmeon/database';
 import { MailTransport, type MailMessage } from '@marmeon/mail';
@@ -136,8 +136,8 @@ describe('the verification mail through the queue', () => {
   });
 
   it('a faked event (EventFake) is recorded, its listeners neither run nor are queued', async () => {
-    // Login is faked too: its queued listener (the "new sign-in" notice) would be queued by the sign-in after registering.
-    const app = await createTestApp(application, { database: 'refresh', events: [Registered, Login] });
+    // SignedIn is faked too: its queued listener (the "new sign-in" notice) would be queued by the sign-in after registering.
+    const app = await createTestApp(application, { database: 'refresh', events: [Registered, SignedIn] });
     await app.post('/register', { form: form() }).assertRedirect('/register/sent');
     app.events.assertDispatchedTimes(Registered, 1);
     app.queue.assertNothingDispatched(); // no verification listener, no welcome mail, no member stats

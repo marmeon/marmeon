@@ -19,7 +19,7 @@ class LoginController extends Controller {
     this.#auth = auth;
   }
   async handle() {
-    await this.#auth.login(ada); // not a typed password: the account's cap applies to this sign-in
+    await this.#auth.signIn(ada); // not a typed password: the account's cap applies to this sign-in
     return { ok: true };
   }
 }
@@ -85,7 +85,7 @@ async function boot() {
   await application.container.make(Migrator).migrate();
   users.rows.get(ada.id)!.hash = await application.container.make(Hasher).make('secret');
   const kernel = createHttpKernel(application);
-  /** A browser with its own cookies: signed in by `login()` (no typed password), or not at all. */
+  /** A browser with its own cookies: signed in by `signIn()` (no typed password), or not at all. */
   const browser = async (signedIn: boolean | 'typed') => {
     const jar = new Map<string, string>();
     const send = async (path: string, body?: unknown) => {

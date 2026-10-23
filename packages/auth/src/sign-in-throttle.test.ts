@@ -7,8 +7,8 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { Auth, AuthConfig, AuthServiceProvider, authenticate, Hasher, Lockout, TwoFactorState, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
-import { LoginThrottle } from './login-throttle.ts';
+import { Auth, AuthConfig, AuthServiceProvider, authenticate, Hasher, SignInLockedOut, TwoFactorState, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
+import { SignInThrottle } from './sign-in-throttle.ts';
 import type { Clock, Logger } from '@marmeon/core';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { twoFactorState } from './test-helpers/stores.ts';
@@ -17,9 +17,9 @@ import { MemoryUsers } from './test-helpers/users.ts';
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const CEILING = 10; // the lowest AUTH_ACCOUNT_SIGN_INS_PER_DAY allows
 
-const lockouts: Lockout[] = [];
+const lockouts: SignInLockedOut[] = [];
 class RecordLockout {
-  handle(event: Lockout) {
+  handle(event: SignInLockedOut) {
     lockouts.push(event);
   }
 }
@@ -56,7 +56,7 @@ class LoginController extends Controller {
     this.#auth = auth;
   }
   async handle() {
-    await this.#auth.login(ada); // not a typed password: a sign-in by other means (a passkey takes the same path)
+    await this.#auth.signIn(ada); // not a typed password: a sign-in by other means (a passkey takes the same path)
     return { ok: true };
   }
 }
@@ -75,7 +75,7 @@ async function boot(env: Record<string, string> = {}, options: { factors?: boole
     root: import.meta.dirname,
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
-    modules: [defineModule({ name: 'login-throttle-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(Lockout, RecordLockout)] })],
+    modules: [defineModule({ name: 'sign-in-throttle-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(SignInLockedOut, RecordLockout)] })],
   }, {
     env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', CACHE_DRIVER: 'memory', ...env },
     override: (container: Container) => {
@@ -189,7 +189,7 @@ describe('the ceiling per account', () => {
     expect(lockouts.map((event) => [event.scope, event.identifier])).toEqual([['account', ada.email], ['account', 'nobody@example.com']]);
   });
 
-  it('dispatches Lockout once per window, however many attempts are refused', async () => {
+  it('dispatches SignInLockedOut once per window, however many attempts are refused', async () => {
     const { attempt, spread } = await boot(env);
     await spread(ada.email, CEILING);
     for (let i = 0; i < 4; i++) await attempt(ada.email, 'wrong', 200 + i);
@@ -204,7 +204,7 @@ describe('the ceiling per account', () => {
     expect(await attempt(ada.email, 'wrong', 500)).toMatchObject({ error: { kind: 'throttled', account: true } });
   });
 
-  it('starts over after a sign-in by other means (login(), as a passkey does)', async () => {
+  it('starts over after a sign-in by other means (signIn(), as a passkey does)', async () => {
     const { attempt, spread, post } = await boot(env);
     await spread(ada.email, CEILING);
     expect(await attempt(ada.email, 'secret', 200)).toMatchObject({ error: { kind: 'throttled', account: true } });
@@ -305,7 +305,7 @@ describe('a refusal of the account', () => {
   });
 });
 
-describe('LoginThrottle', () => {
+describe('SignInThrottle', () => {
   const fake = (clear: (key: string) => Promise<void> = async () => {}) => {
     const keys: string[] = [];
     const limiter = {
@@ -325,8 +325,23 @@ describe('LoginThrottle', () => {
   const logged: string[] = [];
   const logger = { error: (message: string) => void logged.push(message) } as unknown as Logger;
   const make = (limiter: RateLimiter, fill = 7, previousKeys: Uint8Array<ArrayBuffer>[] = [], settings = config) =>
-    new LoginThrottle(limiter, { key: new Uint8Array(32).fill(fill), previousKeys }, settings, session, clock, logger);
+    new SignInThrottle(limiter, { key: new Uint8Array(32).fill(fill), previousKeys }, settings, session, clock, logger);
   const credentials = (id: number, sessionKey: string | null = 'key-one') => ({ user: { id, name: 'U', email: 'u@example.com' }, passwordHash: null, sessionKey });
+
+  it('writes the counter keys it always wrote: a changed label or prefix would reset every running count at a deploy', async () => {
+    const { keys, limiter } = fake();
+    const throttle = make(limiter);
+    await throttle.takeClient('ada@example.com', '203.0.113.1');
+    await throttle.takeAccount('ada@example.com', undefined);
+    await throttle.takeAccount('ada@example.com', 42);
+    await throttle.takeDevice('a-nonce');
+    expect(keys).toEqual([
+      'login:MoiMJMhU5cKKaHsl9IxfPA5dmAVPJOMySTXNsyE2LOA|_NCt-INtfZI7AGaRJ3L8KIqshcj0pHfPAL-LHprZ8P0',
+      'login-account:identifier:MoiMJMhU5cKKaHsl9IxfPA5dmAVPJOMySTXNsyE2LOA',
+      'login-account:id:42',
+      'login-device:JtEqR0GFyCrfbb0WVuOziocpooBegGjDzUC1LFYXFJo',
+    ]);
+  });
 
   it('keeps neither the address, the client address nor a plain hash of them in a cache key, only an HMAC under a key derived from APP_KEY', async () => {
     const { keys, limiter } = fake();
@@ -368,7 +383,7 @@ describe('LoginThrottle', () => {
   });
 
   describe('device cookies', () => {
-    const issue = (throttle: LoginThrottle, id = 1, sessionKey: string | null = 'key-one') => throttle.issueDevice(credentials(id, sessionKey))!;
+    const issue = (throttle: SignInThrottle, id = 1, sessionKey: string | null = 'key-one') => throttle.issueDevice(credentials(id, sessionKey))!;
 
     it('are accepted for exactly the account and session key they were issued for', () => {
       const throttle = make(fake().limiter);

@@ -2,7 +2,7 @@ import type { RateLimiter } from '@marmeon/cache';
 
 /**
  * Whose password check this is: the sign-in's own random key (it survives `regenerate()` within a sign-in, a new sign-in has a new one),
- * and whether that sign-in began with a typed password (`attempt()`), as opposed to a passkey or `login()`.
+ * and whether that sign-in began with a typed password (`attempt()`), as opposed to a passkey or `signIn()`.
  */
 export interface PasswordCheckScope {
   readonly session: string;

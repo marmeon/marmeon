@@ -1,6 +1,6 @@
-import type { LoginThrottle } from '../login-throttle.ts';
+import type { SignInThrottle } from '../sign-in-throttle.ts';
 
-/** A `LoginThrottle` that never holds anything up — for tests that build `Auth` or `PasswordBroker` by hand and test something else. */
+/** A `SignInThrottle` that never holds anything up — for tests that build `Auth` or `PasswordBroker` by hand and test something else. */
 export const NO_LOGIN_LIMITS = {
   takeClient: async () => undefined,
   takeAccount: async () => undefined,
@@ -10,4 +10,4 @@ export const NO_LOGIN_LIMITS = {
   deviceNonce: () => undefined,
   deviceCookieName: 'marmeon_device',
   issueDevice: () => undefined,
-} as unknown as LoginThrottle;
+} as unknown as SignInThrottle;

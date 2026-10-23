@@ -7,7 +7,7 @@ A Marmeon app is one program made of modules. A module is a feature in a folder 
 migrations and its schedule. The installed framework packages join the app on their own, through discovery.
 
 ```ts title="modules/notes/index.ts"
-import { Login } from '@marmeon/auth';
+import { SignedIn } from '@marmeon/auth';
 import { defineModule, listen } from '@marmeon/core';
 import apiRoutes from './api-routes.ts';
 import { NotesConfig } from './config.ts';
@@ -23,7 +23,7 @@ export default defineModule({
   name: 'notes',
   providers: [NotesServiceProvider],
   config: [NotesConfig],
-  listeners: [listen(Login, RecordLastVisit)],
+  listeners: [listen(SignedIn, RecordLastVisit)],
   jobs: [PruneTrashJob],
   migrations: new URL('./migrations/', import.meta.url),
   routes,

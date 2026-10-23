@@ -53,7 +53,7 @@ class SignIn extends Controller {
   }
   async handle(ctx: HttpContext) {
     const { proof } = (await ctx.input()) as { proof?: unknown };
-    await this.#auth.login(ada);
+    await this.#auth.signIn(ada);
     if (proof !== undefined) this.#session.put('_auth_two_factor_at', proof as never);
     return { signedIn: true };
   }

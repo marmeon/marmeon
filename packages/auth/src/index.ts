@@ -16,7 +16,7 @@ import { SignInAudience } from './live-audience.ts';
 import { MakeAuthCommand } from './make-auth.ts';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { SessionFingerprints } from './fingerprint.ts';
-import { LoginThrottle } from './login-throttle.ts';
+import { SignInThrottle } from './sign-in-throttle.ts';
 import { NewPassword } from './new-password.ts';
 import { EndAllSessionsCommand } from './end-all-sessions.ts';
 import { EndSessionsCommand } from './end-sessions.ts';
@@ -40,15 +40,15 @@ export type { EndedSessions } from './account-sessions.ts';
 export { Auth } from './auth.ts';
 export { credentialWriter } from './credential-writer.ts';
 export type { CredentialWriter } from './credential-writer.ts';
-export type { AttemptError, LoginOptions } from './auth.ts';
+export type { AttemptError, SignInOptions } from './auth.ts';
 export { AuthConfig, rememberCookieName } from './config.ts';
 export { NO_STORE, NoStoreWhenSignedIn } from './caching.ts';
-export { EmailChanged, EverySessionEnded, Failed, Lockout, Login, Logout, PasswordChanged, PasswordReset, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenReused, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from './events.ts';
-export type { LoginVia, EverySessionEndedInput, EverySessionEndedPayload, LoginInput, LoginPayload, PasskeyCloneSuspectedPayload, PasskeyRegisteredPayload, PasskeyRemovedInput, PasskeyRemovedPayload, PasskeySignInFailedInput, PasskeySignInFailedPayload, RecoveryCodeUsedPayload, RecoveryCodesGeneratedPayload, RegisteredPayload, RememberTokenReusedInput, RememberTokenReusedPayload, TwoFactorChallengeFailedInput, TwoFactorChallengeFailedPayload, TwoFactorDisabledPayload, TwoFactorEnabledPayload } from './events.ts';
+export { EmailChanged, EverySessionEnded, SignInFailed, SignInLockedOut, SignedIn, SignedOut, PasswordChanged, PasswordReset, RecoveryCodesGenerated, RecoveryCodeUsed, RememberTokenReused, PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, Registered, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from './events.ts';
+export type { SignInVia, EverySessionEndedInput, EverySessionEndedPayload, SignedInInput, SignedInPayload, PasskeyCloneSuspectedPayload, PasskeyRegisteredPayload, PasskeyRemovedInput, PasskeyRemovedPayload, PasskeySignInFailedInput, PasskeySignInFailedPayload, RecoveryCodeUsedPayload, RecoveryCodesGeneratedPayload, RegisteredPayload, RememberTokenReusedInput, RememberTokenReusedPayload, TwoFactorChallengeFailedInput, TwoFactorChallengeFailedPayload, TwoFactorDisabledPayload, TwoFactorEnabledPayload } from './events.ts';
 export { EmailChange } from './email-change.ts';
 export type { ApplyEmail, ConfirmEmailChangeError, EmailChangeHandlers, EmailChangeRequested, PendingEmailChange, RequestEmailChangeError } from './email-change.ts';
 export { DatabaseEmailChanges, EMAIL_CHANGES_TABLE, EmailChangeStore } from './email-changes.ts';
-export type { DeviceCookie } from './login-throttle.ts';
+export type { DeviceCookie } from './sign-in-throttle.ts';
 export { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, PasswordResetTokenStore } from './password-reset.ts';
 export { abilities, authenticate, confirmedPassword, guest } from './middleware.ts';
 export type { AuthenticateOptions, ConfirmedPasswordOptions } from './middleware.ts';
@@ -123,7 +123,7 @@ export class AuthServiceProvider implements ServiceProvider {
     // Built now, not on first use: a Node without argon2 stops the boot with the fix, not the first login.
     container.instance(Hasher, new PasswordHasher(container.make(HashConfig)));
     container.singleton(SessionFingerprints, (c) => new SessionFingerprints(c.make(EncryptionConfig)));
-    container.singleton(LoginThrottle, (c) => new LoginThrottle(c.make(RateLimiter), c.make(EncryptionConfig), c.make(AuthConfig), c.make(SessionConfig), c.make(Clock), c.make(Logger)));
+    container.singleton(SignInThrottle, (c) => new SignInThrottle(c.make(RateLimiter), c.make(EncryptionConfig), c.make(AuthConfig), c.make(SessionConfig), c.make(Clock), c.make(Logger)));
     container.scoped(Auth);
     // Opt-in like TwoFactorState: nothing binds an EmailChangeStore here, so making it without one fails with K1.
     container.scoped(EmailChange);

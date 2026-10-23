@@ -6,7 +6,7 @@ import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { AccountSessions, Auth, authenticate, AuthServiceProvider, Failed, Hasher, PasswordHasher, RememberTokenReused, SignInStore, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
+import { AccountSessions, Auth, authenticate, AuthServiceProvider, SignInFailed, Hasher, PasswordHasher, RememberTokenReused, SignInStore, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
 import { COMPLETE_PENDING, SIGN_IN_VERIFIED } from './auth.ts';
 import { NewPassword } from './new-password.ts';
 import { SIGN_INS_TABLE } from './sign-ins.ts';
@@ -53,7 +53,7 @@ class LoginController extends Controller {
   }
 }
 
-/** `auth.login()` for the account, remembered. */
+/** `auth.signIn()` for the account, remembered. */
 class LoginAsController extends Controller {
   readonly #auth: Auth;
   constructor(auth: Auth) {
@@ -62,7 +62,7 @@ class LoginAsController extends Controller {
   }
   async handle() {
     try {
-      return { result: await this.#auth.login(ada, { remember: true }) };
+      return { result: await this.#auth.signIn(ada, { remember: true }) };
     } catch (error) {
       return { error: (error as Error).message };
     }
@@ -145,9 +145,9 @@ const routes = openRoutes((Route) => {
   Route.middleware(authenticate()).get('/me', (ctx) => ({ id: ctx.user.id }));
 });
 
-const failed: Failed[] = [];
+const failed: SignInFailed[] = [];
 class RecordFailed {
-  handle(event: Failed) {
+  handle(event: SignInFailed) {
     failed.push(event);
   }
 }
@@ -177,7 +177,7 @@ async function boot(options: { totp?: boolean; hold: 'verify' | 'issue' | 'consu
     root: import.meta.dirname,
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
-    modules: [defineModule({ name: 'sign-in-race-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(Failed, RecordFailed), listen(RememberTokenReused, RecordReused)] })],
+    modules: [defineModule({ name: 'sign-in-race-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(SignInFailed, RecordFailed), listen(RememberTokenReused, RecordReused)] })],
   }, {
     env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
     override: (container: Container) => {
@@ -382,7 +382,7 @@ describe('a rehash only over the hash that was verified', () => {
     expect(await world.hasher.verify('secret', stored), 'the old password was not written back').toBe(false);
     expect((await world.send('/me')).status).toBe(401);
     expect(world.jar.has('marmeon_remember')).toBe(false);
-    expect(failed, 'no Failed event: the password was right').toHaveLength(0);
+    expect(failed, 'no SignInFailed event: the password was right').toHaveLength(0);
   });
 
   it('keeps the sign-in that rehashed, signing in under the new hash', async () => {
@@ -517,7 +517,7 @@ describe('a remember-me token is bound to the account state it was issued under'
     await expectNotSignedIn(world, world.jar, world.send);
   });
 
-  it('does not sign in login() either', async () => {
+  it('does not sign in signIn() either', async () => {
     const world = await boot({ hold: 'issue' });
     world.arm();
     await during(world, async () => (await world.send('/login-as', {})).json(), world.end);

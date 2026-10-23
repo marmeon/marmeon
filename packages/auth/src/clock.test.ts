@@ -35,7 +35,7 @@ class LoginController extends Controller {
     this.#auth = auth;
   }
   async handle() {
-    await this.#auth.login(ada, { remember: this.remember });
+    await this.#auth.signIn(ada, { remember: this.remember });
     return { ok: true };
   }
 }

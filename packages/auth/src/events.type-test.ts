@@ -3,7 +3,7 @@ import type { EventPayload } from '@marmeon/core';
 import * as v from 'valibot';
 import type {
   EverySessionEnded,
-  Login,
+  SignedIn,
   PasskeyCloneSuspected,
   PasskeyRegistered,
   PasskeyRemoved,
@@ -15,7 +15,7 @@ import type {
   TwoFactorChallengeFailed,
   TwoFactorDisabled,
   TwoFactorEnabled,
-  loginSchema,
+  signedInSchema,
   registeredSchema,
   everySessionEndedSchema,
   twoFactorEnabledSchema,
@@ -28,7 +28,7 @@ import type {
   passkeyRemovedSchema,
   rememberTokenReusedSchema,
   passkeyCloneSuspectedSchema,
-  LoginPayload,
+  SignedInPayload,
   RegisteredPayload,
   EverySessionEndedPayload,
   TwoFactorEnabledPayload,
@@ -41,7 +41,7 @@ import type {
   PasskeyRemovedPayload,
   RememberTokenReusedPayload,
   PasskeyCloneSuspectedPayload,
-  LoginInput,
+  SignedInInput,
   EverySessionEndedInput,
   TwoFactorChallengeFailedInput,
   PasskeySignInFailedInput,
@@ -53,7 +53,7 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ?
 type Expect<T extends true> = T;
 
 // The annotation on `static schema` must not lie: the schema behind it infers exactly the named payload.
-export type LoginOutput = Expect<Equal<v.InferOutput<typeof loginSchema>, LoginPayload>>;
+export type LoginOutput = Expect<Equal<v.InferOutput<typeof signedInSchema>, SignedInPayload>>;
 export type RegisteredOutput = Expect<Equal<v.InferOutput<typeof registeredSchema>, RegisteredPayload>>;
 export type EverySessionEndedOutput = Expect<Equal<v.InferOutput<typeof everySessionEndedSchema>, EverySessionEndedPayload>>;
 export type TwoFactorEnabledOutput = Expect<Equal<v.InferOutput<typeof twoFactorEnabledSchema>, TwoFactorEnabledPayload>>;
@@ -68,7 +68,7 @@ export type RememberTokenReusedOutput = Expect<Equal<v.InferOutput<typeof rememb
 export type PasskeyCloneSuspectedOutput = Expect<Equal<v.InferOutput<typeof passkeyCloneSuspectedSchema>, PasskeyCloneSuspectedPayload>>;
 
 // And `EventPayload` of the class is that payload.
-export type LoginEvent = Expect<Equal<EventPayload<typeof Login>, LoginPayload>>;
+export type SignedInEvent = Expect<Equal<EventPayload<typeof SignedIn>, SignedInPayload>>;
 export type RegisteredEvent = Expect<Equal<EventPayload<typeof Registered>, RegisteredPayload>>;
 export type EverySessionEndedEvent = Expect<Equal<EventPayload<typeof EverySessionEnded>, EverySessionEndedPayload>>;
 export type TwoFactorEnabledEvent = Expect<Equal<EventPayload<typeof TwoFactorEnabled>, TwoFactorEnabledPayload>>;
@@ -83,7 +83,7 @@ export type RememberTokenReusedEvent = Expect<Equal<EventPayload<typeof Remember
 export type PasskeyCloneSuspectedEvent = Expect<Equal<EventPayload<typeof PasskeyCloneSuspected>, PasskeyCloneSuspectedPayload>>;
 
 // What the schema accepts is the named input where it differs from the payload.
-export type LoginAccepts = Expect<Equal<v.InferInput<typeof loginSchema>, LoginInput>>;
+export type LoginAccepts = Expect<Equal<v.InferInput<typeof signedInSchema>, SignedInInput>>;
 export type EverySessionEndedAccepts = Expect<Equal<v.InferInput<typeof everySessionEndedSchema>, EverySessionEndedInput>>;
 export type TwoFactorChallengeFailedAccepts = Expect<Equal<v.InferInput<typeof twoFactorChallengeFailedSchema>, TwoFactorChallengeFailedInput>>;
 export type PasskeySignInFailedAccepts = Expect<Equal<v.InferInput<typeof passkeySignInFailedSchema>, PasskeySignInFailedInput>>;

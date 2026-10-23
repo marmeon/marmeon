@@ -198,12 +198,12 @@ The framework's packages dispatch events of their own, classes like any other:
 
 | Package | Events |
 | --- | --- |
-| `@marmeon/auth` | `Login`, `Logout`, `Failed`, `Lockout`, `Registered`, `PasswordChanged`, `PasswordReset`, `EmailChanged` |
+| `@marmeon/auth` | `SignedIn`, `SignedOut`, `SignInFailed`, `SignInLockedOut`, `Registered`, `PasswordChanged`, `PasswordReset`, `EmailChanged` |
 | `@marmeon/queue` | `JobQueued`, `JobProcessing`, `JobProcessed`, `JobReleased`, `JobFailed`, all extending `JobEvent` |
 | `@marmeon/scheduler` | `ScheduledTaskStarting`, `ScheduledTaskFinished`, `ScheduledTaskFailed`, `ScheduledTaskSkipped`, all extending `ScheduledTaskEvent` |
 
-`Login` and `Registered` can be queued: a queued listener gets `{ userId }`, and of `Login` also how and when the user signed in,
-their address and browser. `Failed` carries what was typed as the identifier, never the password, for an audit log. The
+`SignedIn` and `Registered` can be queued: a queued listener gets `{ userId }`, and of `SignedIn` also how and when the user signed in,
+their address and browser. `SignInFailed` carries what was typed as the identifier, never the password, for an audit log. The
 [authentication](authentication.md#events) page describes each.
 
 The events of the queue and the scheduler cannot be queued, since a queued listener of a job event would queue the next job. Their

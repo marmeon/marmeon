@@ -323,7 +323,7 @@ describe('user-profile module', () => {
     expect(people.data.find((person) => person.id === alan.id)?.activity).toBeNull();
   });
 
-  it('shows when a user last signed in — via the Login event of @marmeon/auth', async () => {
+  it('shows when a user last signed in — via the SignedIn event of @marmeon/auth', async () => {
     await app.post('/login', { form: { email: alan.email, password: 'password' } }).assertRedirect('/users/me');
     await app.assertDatabaseHas('login_activity', { user_id: alan.id });
 

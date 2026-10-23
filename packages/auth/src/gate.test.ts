@@ -125,7 +125,7 @@ class SignInController extends Controller {
     this.#auth = auth;
   }
   async handle(ctx: HttpContext<{}, { id: string }>) {
-    await this.#auth.login(users.get(Number(ctx.params.id))!);
+    await this.#auth.signIn(users.get(Number(ctx.params.id))!);
     return { ok: true };
   }
 }

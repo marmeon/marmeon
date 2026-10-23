@@ -126,7 +126,7 @@ class PasskeyController extends Route {
 }
 class LogoutController extends Route {
   async handle() {
-    await this.auth.logout();
+    await this.auth.signOut();
     return { ok: true };
   }
 }
