@@ -1,11 +1,12 @@
 import { globSync } from 'node:fs';
 import { marmeon } from '@marmeon/vite';
 import { defineConfig } from 'vitest/config';
-import { groupByServices, serviceFiles, tripwireEnv } from './scripts/test/services.ts';
+import { groupByServices, serviceFiles, splitTiming, timingEnv, tripwireEnv } from './scripts/test/services.ts';
 
 const include = ['packages/*/src/**/*.test.{ts,tsx}', 'apps/*/modules/**/*.test.{ts,tsx}', 'apps/*/build/**/*.test.ts', 'scripts/**/*.test.ts'];
 const root = import.meta.dirname;
-const candidates = globSync(include, { cwd: root, exclude: (name) => name === 'node_modules' || name === 'dist' || name.startsWith('.') }).sort();
+const found = globSync(include, { cwd: root, exclude: (name) => name === 'node_modules' || name === 'dist' || name.startsWith('.') }).sort();
+const { timing: timingFiles, other: candidates } = splitTiming(found);
 
 // One project per set of services the tests need, derived from the source (scripts/test/services.ts). `pnpm test:pgsql`,
 // `test:redis` and `test:s3` run the projects that include their service; `pnpm test` runs all of them.
@@ -24,6 +25,14 @@ const projects = [...groupByServices(serviceFiles(root, candidates))].map(([name
   },
 }));
 
+// The tests that assert something about wall-clock time (`*.timing.test.ts`) run last and alone: a ratio or a bound holds on a
+// machine that does nothing else. They need no service, so they run on SQLite and in memory with the tripwires of all three.
+// Vitest wants a `groupOrder` of its own for a project with other worker limits; the others stay at 0.
+const timing = {
+  extends: true as const,
+  test: { name: 'timing', include: timingFiles, env: timingEnv(), globalSetup: [], maxWorkers: 1, sequence: { groupOrder: 2 } },
+};
+
 export default defineConfig({
   // Workspace sources instead of built `dist/` output, and constructor injection for code Vitest loads
   // (the Node hook does not see it).
@@ -34,6 +43,6 @@ export default defineConfig({
     // A temporary directory per run (TMPDIR for every worker and process), and a red run when a test leaves a `marmeon-*` entry in it.
     // With Postgres: drops the test databases the run left behind (only `<database>_test_*` on MARMEON_TEST_PGSQL_URL's server).
     globalSetup: ['scripts/test/temp-hygiene.ts', 'packages/database/src/__fixtures__/test-databases.ts'],
-    projects,
+    projects: [...projects, timing],
   },
 });

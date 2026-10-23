@@ -488,6 +488,162 @@ export function mutationCommentHits(files: Iterable<SourceFile>): string[] {
   return hits;
 }
 
+/** Test files of every kind — the framework's, the stubs and the template, the examples — and the Vite and Vitest configurations. */
+const TEST_FILE = /(?:\.test\.tsx?$|(?:^|\/)vite(?:st)?\.config\.[cm]?[jt]s$)/;
+/** The names a test file starts a test, a suite or a fixture set from. */
+const TEST_FUNCTIONS = new Set(['it', 'test', 'describe', 'suite', 'bench']);
+/** Functions that take the configuration of the tests as an object. */
+const CONFIG_FUNCTIONS = new Set(['defineConfig', 'defineProject', 'defineWorkspace', 'mergeConfig']);
+
+interface AstNode {
+  type?: string;
+  start?: number;
+  [key: string]: unknown;
+}
+
+/** The identifier a call chain starts from: `it` in `it.skipIf(x)('a', …)`, `vi` in `vi.setConfig(…)`. */
+function chainRoot(node: AstNode | undefined): string | undefined {
+  let current = node;
+  while (current) {
+    if (current.type === 'Identifier') return current.name as string;
+    current = (current.type === 'MemberExpression' ? current.object : current.type === 'CallExpression' ? current.callee : undefined) as AstNode | undefined;
+  }
+  return undefined;
+}
+
+/** The local names bound to the exports of Vitest in one file: the API's own names, and every alias a file gives them. */
+interface ApiNames {
+  tests: Set<string>;
+  configs: Set<string>;
+  vi: Set<string>;
+}
+
+const apiNames = (): ApiNames => ({ tests: new Set(TEST_FUNCTIONS), configs: new Set(CONFIG_FUNCTIONS), vi: new Set(['vi']) });
+
+/** Which set the export `name` belongs to. */
+function setOf(names: ApiNames, name: string): Set<string> | undefined {
+  return names.tests.has(name) ? names.tests : names.configs.has(name) ? names.configs : names.vi.has(name) ? names.vi : undefined;
+}
+
+/** Whether a call's callee belongs to the API of tests and their configuration: `it`, `describe.each(…)`, `test.extend`, `vi.setConfig`, `defineConfig`, … */
+function isTestApi(callee: AstNode, names: ApiNames): boolean {
+  const root = chainRoot(callee);
+  if (root === undefined) return false;
+  if (names.tests.has(root) || names.configs.has(root)) return true;
+  return names.vi.has(root) && callee.type === 'MemberExpression' && (callee.property as AstNode).name === 'setConfig';
+}
+
+/** Whether `key` names `retry`: an identifier, a string, or a computed string or template without a hole. */
+function isRetryKey(property: AstNode): boolean {
+  const key = property.key as AstNode | undefined;
+  if (!key) return false;
+  if (key.type === 'Identifier') return !property.computed && key.name === 'retry';
+  if (key.type === 'Literal') return key.value === 'retry';
+  return key.type === 'TemplateLiteral' && (key.expressions as unknown[]).length === 0 && (key.quasis as { value: { cooked?: string } }[])[0]?.value.cooked === 'retry';
+}
+
+const isZero = (node: AstNode | undefined) => node?.type === 'Literal' && node.value === 0;
+
+/** Whether the value of a `retry` property is the literal `0` or `{ count: 0 }` — the only value that retries nothing and can be read. */
+function retriesNothing(property: AstNode): boolean {
+  const value = property.value as AstNode | undefined;
+  if (isZero(value)) return true;
+  if (value?.type !== 'ObjectExpression') return false;
+  const members = value.properties as AstNode[];
+  return members.every((member) => member.type === 'Property' && (member.key as AstNode | undefined)?.name === 'count' && isZero(member.value as AstNode));
+}
+
+const FUNCTION_LIKE = new Set(['ArrowFunctionExpression', 'FunctionExpression']);
+/** An argument of a test call that cannot hold `retry` unseen: a function, a literal, a template, an array, an object without a spread. */
+const isPlain = (node: AstNode) =>
+  FUNCTION_LIKE.has(node.type!) || node.type === 'Literal' || node.type === 'TemplateLiteral' || node.type === 'ArrayExpression' || (node.type === 'ObjectExpression' && !(node.properties as AstNode[]).some((member) => member.type === 'SpreadElement'));
+
+/**
+ * Rule 12: no test is retried — and nothing that hides a retry from this rule either. In a test file or a Vite or Vitest
+ * configuration, every property `retry` is a hit (written as an identifier, a string or a computed string) unless its value is the
+ * literal `0` or `{ count: 0 }`; so are `.retry(…)` on `it`/`test`/`describe`, `--retry` in a `package.json` script, an options
+ * argument of a test call or of `vi.setConfig()` that is not an object literal (a variable, a call) or spreads another object, and a
+ * name that takes over `it`/`test` (`const t = it`, `t = it`; an alias in an import or a destructuring counts as the export itself).
+ * In a test file (not in a configuration) one exception holds: an object that is directly an argument of a call or a `new` outside
+ * the API of tests and their configuration (`expect(config).toMatchObject({ retry: 3000 })`) is a `retry` of something else.
+ * `retryAfter`, strings, comments and `queue.retry(job)` are none. The rule catches a retry written by accident; it is no barrier
+ * against someone who sets out to get around it. `path:line: text`.
+ */
+export function retriedTestHits(files: Iterable<SourceFile>): string[] {
+  const hits: string[] = [];
+  for (const { path, text } of files) {
+    if (/(?:^|\/)package\.json$/.test(path)) {
+      text.split('\n').forEach((line, index) => {
+        if (/--retry\b/.test(line)) hits.push(`${path}:${index + 1}: ${line.trim().slice(0, 160)}`);
+      });
+      continue;
+    }
+    if (!TEST_FILE.test(path)) continue;
+    const { program, errors } = oxc().parseSync(path, text);
+    if (errors.length > 0) throw new Error(`${path}: oxc-parser cannot read it: ${errors[0]!.message}`);
+    const lineOf = (offset: number) => text.slice(0, offset).split('\n').length;
+    const hit = (node: AstNode) => hits.push(`${path}:${lineOf(node.start ?? 0)}: ${text.split('\n')[lineOf(node.start ?? 0) - 1]!.trim().slice(0, 160)}`);
+    const parentOf = new WeakMap<object, AstNode>();
+    const names = apiNames();
+    const isConfig = /(?:^|\/)vite(?:st)?\.config\.[cm]?[jt]s$/.test(path);
+    const walk = (node: unknown, each: (found: AstNode) => void): void => {
+      if (Array.isArray(node)) return node.forEach((child) => walk(child, each));
+      if (node === null || typeof node !== 'object') return;
+      const found = node as AstNode;
+      each(found);
+      for (const [key, child] of Object.entries(found)) {
+        if (key === 'parent') continue;
+        for (const inner of Array.isArray(child) ? child : [child]) if (inner !== null && typeof inner === 'object') parentOf.set(inner, found);
+        walk(child, each);
+      }
+    };
+    // Aliases first, in any order they are written: `import { it as t }`, `const { it: t } = …`, `const t = it`, `t = it`.
+    const bind = (local: AstNode | undefined, exported: string | undefined) => {
+      const set = exported === undefined ? undefined : setOf(names, exported);
+      if (set && local?.type === 'Identifier') set.add(local.name as string);
+    };
+    const taken: AstNode[] = [];
+    walk(program, (found) => {
+      if (found.type === 'ImportSpecifier') bind(found.local as AstNode, ((found.imported as AstNode).name ?? (found.imported as AstNode).value) as string);
+      if (found.type === 'Property' && parentOf.get(found)?.type === 'ObjectPattern' && (found.value as AstNode | undefined)?.type === 'Identifier' && (found.key as AstNode | undefined)?.type === 'Identifier') bind(found.value as AstNode, (found.key as AstNode).name as string);
+      const [target, source] = found.type === 'VariableDeclarator' ? [found.id, found.init] : found.type === 'AssignmentExpression' ? [found.left, found.right] : [];
+      const root = source ? chainRoot(source as AstNode) : undefined;
+      if (root !== undefined && setOf(names, root) === names.tests) {
+        bind(target as AstNode, root);
+        if ((source as AstNode).type !== 'CallExpression') taken.push(found); // `it.skipIf(x)` and `test.extend({})` make a new test function: bound, not refused
+      }
+    });
+    for (const found of taken) hit(found);
+    walk(program, (found) => {
+      if (found.type === 'Property' && isRetryKey(found) && !retriesNothing(found)) {
+        const call = parentOf.get(parentOf.get(found)!); // the call the object literal is an argument of, if it is
+        const outside =
+          !isConfig &&
+          (call?.type === 'CallExpression' || call?.type === 'NewExpression') &&
+          !(call.type === 'CallExpression' && isTestApi(call.callee as AstNode, names)) &&
+          (call.arguments as AstNode[]).includes(parentOf.get(found)!);
+        if (!outside) hit(found);
+      }
+      if (found.type === 'CallExpression') {
+        const callee = found.callee as AstNode;
+        const root = chainRoot(callee) ?? '';
+        const args = found.arguments as AstNode[];
+        if (callee.type === 'MemberExpression' && (callee.property as AstNode).name === 'retry' && names.tests.has(root)) hit(found);
+        if (names.vi.has(root) && callee.type === 'MemberExpression' && (callee.property as AstNode).name === 'setConfig' && args[0] && !isPlain(args[0])) hit(found);
+        const extend = callee.type === 'MemberExpression' && (callee.property as AstNode).name === 'extend';
+        if (names.tests.has(root) && !extend && args.length >= 2) {
+          // Behind the callback a name is the timeout (`it('a', fn, SLOW)`): Vitest takes nothing but a number there.
+          const afterCallback = FUNCTION_LIKE.has(args[1]!.type!) ? args[2] : undefined;
+          const options = args.slice(1).filter((arg) => !isPlain(arg) && !(arg === afterCallback && ['Identifier', 'MemberExpression', 'BinaryExpression'].includes(arg.type!)));
+          // With two arguments a lone name is the callback; with three, one that is no function or literal may hold the options.
+          if (options.length > 0 && (args.length >= 3 || options.some((arg) => arg.type === 'SpreadElement' || arg.type === 'ObjectExpression'))) hit(found);
+        }
+      }
+    });
+  }
+  return hits;
+}
+
 /** The repository's files as git sees them: tracked, and new ones that are not ignored — text only, as they are on disk; the frozen paths are left out. */
 export function repositoryFiles(repository: string = root): SourceFile[] {
   const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: repository, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -530,6 +686,9 @@ export function checkSource(repository: string = root): string[] {
     ...DOC_TEXT_RULES.flatMap((rule) => textRuleHits(files, rule).map((hit) => `${rule.what} ${textRuleWhere(hit)} (${rule.why}): ${hit}`)),
     ...runtimeStringHits(files).map((hit) => `the framework's messages speak to app developers (say what holds, not its decision or wave): ${hit}`),
     ...mutationCommentHits(files).map((hit) => `mutation testing (a disabled mutant hides the test gap it would show; CONTRIBUTING.md › Rules over the source): ${hit}`),
+    ...retriedTestHits(files).map(
+      (hit) => `a test that is retried measures noise — prove the property deterministically, or move a measurement of time into a *.timing.test.ts (CONTRIBUTING.md › Rules over the source): ${hit}`,
+    ),
     ...privateRecordHits(files).map((hit) => `no references to the private record (${privateRecordWhy(hit)}): ${hit}`),
     ...deprecationProblems(findDeprecations(files), coreVersion(repository)).map(
       (problem) => `every deprecation shows the way forward (a replacement, docs/<page>.md#<anchor>, "Removed in x.y"; CONTRIBUTING.md › Rules over the source): ${problem}`,
@@ -545,7 +704,7 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     console.log(
-      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; nothing outside a package's src/ imports an internal subpath; every deprecation names a replacement, a docs page and the version that removes it; no app, stub, template, doc or generator imports or installs ${LIBRARY}.`,
+      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; no test is retried; nothing outside a package's src/ imports an internal subpath; every deprecation names a replacement, a docs page and the version that removes it; no app, stub, template, doc or generator imports or installs ${LIBRARY}.`,
     );
   }
 }

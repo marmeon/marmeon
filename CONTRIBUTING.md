@@ -167,6 +167,10 @@ see fails in the plain `pnpm test` instead of silently dropping out of the servi
 `not-selected-for-test-pgsql.invalid` (or `-redis`, `-s3`) means exactly that: import the helper relatively, or extend the
 rule in `scripts/test/services.ts` — do not change the test.
 
+Tests that assert something about wall-clock time (a ratio, an upper bound) live in a file `<name>.timing.test.ts`. These files run
+in the `timing` project on SQLite, after all others and one at a time, so nothing competes with the measurement; they need no
+service, and `pnpm test:pgsql` and its siblings leave them out.
+
 With `DB_DRIVER=pgsql` and `DB_URL` in the environment, refreshed test apps of any app use Postgres: the role needs the
 right to create databases (one per worker, next to the configured one). Run `test:pgsql` for every change to the database,
 sessions, auth, queues or locks — Postgres finds races SQLite hides. Never run two Postgres or Redis suites at once: they share
@@ -279,6 +283,17 @@ checked over every file of the repository — tracked, or new and not ignored. E
     `kysely/helpers/postgres` — and no code block of a docs page or README of a package, app or example imports it. No app or
     template manifest installs it: not as a dependency, an alias (`npm:kysely@…`), a bundled dependency or an override.
     Apps take the builder, `sql`, `Kysely` and `Transaction` from `@marmeon/database`. `UPGRADING.md` may show an old import.
+
+12. **No test is retried**: in every test file and every Vite or Vitest configuration — the framework's tests, the stubs, the
+    template and the examples alike — each property `retry` is refused unless its value is `0` or `{ count: 0 }`, as are `.retry()`
+    on `it`/`test`/`describe` and `--retry` in a `package.json` script. So that nothing hides a retry from the rule, so are an
+    options argument of a test that is not an object literal or that spreads another object, and a name that takes over `it`/`test`
+    (`const t = it`, `t = it`; an alias in an import or a destructuring counts as the export, and the result of a call such as
+    `it.skipIf(x)` or `test.extend({})` is bound the same way without being refused). In a test file, a `retry` in an object passed directly to a call
+    or a `new` outside the test API (`expect(config).toMatchObject({ retry: 3000 })`) is something else and passes; in a
+    configuration nothing does. The rule catches a retry written by accident, it is no barrier against one who sets out to get around it. A test that passes on the second try measures noise:
+    prove the property without a clock (count the work), or move the measurement of time into a `<name>.timing.test.ts`. There is no
+    list of exceptions.
 
 A new rule joins the same script, with its test.
 

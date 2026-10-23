@@ -1,7 +1,7 @@
 import { globSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { groupByServices, SERVICE_VARIABLES, serviceFiles, tripwireEnv, type Service } from './services.ts';
+import { groupByServices, SERVICE_VARIABLES, serviceFiles, splitTiming, timingEnv, tripwireEnv, type Service } from './services.ts';
 import { tempDir } from './temp-dir.js';
 
 const repo = join(import.meta.dirname, '..', '..');
@@ -116,6 +116,20 @@ describe('the projects', () => {
     const groups = groupByServices(selection);
     expect([...groups.keys()].sort()).toEqual(['pgsql+redis', 'plain', 's3']);
     expect(groups.get('pgsql+redis')!.files).toEqual(['b.test.ts', 'c.test.ts']);
+  });
+
+  it('keeps a timing test out of the service projects, whatever it imports', () => {
+    const { timing, other } = splitTiming(['apps/web-app/modules/auth/registration.timing.test.ts', 'packages/auth/src/auth.test.ts', 'packages/auth/src/hashing.timing.test.tsx']);
+    expect(timing).toEqual(['apps/web-app/modules/auth/registration.timing.test.ts', 'packages/auth/src/hashing.timing.test.tsx']);
+    expect(other).toEqual(['packages/auth/src/auth.test.ts']);
+    const root = tree({ 'a.timing.test.ts': `export const url = process.env.${PGSQL};` });
+    expect(groupByServices(serviceFiles(root, splitTiming(['a.timing.test.ts']).other)).size).toBe(0);
+  });
+
+  it('pins the timing project to SQLite with the tripwires of every service', () => {
+    const env = timingEnv();
+    expect(env.DB_DRIVER).toBe('sqlite');
+    expect([SERVICE_VARIABLES.pgsql, SERVICE_VARIABLES.redis, SERVICE_VARIABLES.s3].every((name) => env[name]?.includes('.invalid'))).toBe(true);
   });
 
   it('sets the tripwire for every service outside the set', () => {

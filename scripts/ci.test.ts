@@ -22,6 +22,7 @@ import {
   PRIVATE_RECORD_RULES,
   privateRecordHits,
   privateRecordWhy,
+  retriedTestHits,
   runtimeStringHits,
   textRuleHits,
   textRuleWhere,
@@ -727,6 +728,87 @@ describe('rule 8: no mutant is disabled without a reason', () => {
   it('reads code files only, and holds for the repository', () => {
     expect(mutationCommentHits([{ path: 'CONTRIBUTING.md', text: comment('disable', 'x') }])).toEqual([]);
     expect(checkSource(root).filter((problem) => problem.startsWith('mutation testing'))).toEqual([]);
+  });
+});
+
+describe('rule 12: a test is not retried', () => {
+  const hits = (text: string, path = 'packages/a/src/a.test.ts') => retriedTestHits([{ path, text }]);
+
+  it('names a retry in the options of a test or a suite, in every kind of test file', () => {
+    expect(hits("it('x', { retry: 2 }, () => {});")).toEqual([expect.stringContaining('a.test.ts:1:')]);
+    expect(hits("describe('x', { retry: 1, timeout: 5 }, () => {});")).toHaveLength(1);
+    expect(hits("it.skipIf(ci)('x', { retry: 2 }, () => {});")).toHaveLength(1);
+    expect(hits("it('x', { retry: { count: 2 } }, () => {});")).toHaveLength(1);
+    expect(hits("vi.setConfig({ retry: 3 });")).toHaveLength(1);
+    expect(hits("it('x', () => {}).retry(2);\nit.retry(2)('y', () => {});")).toHaveLength(2);
+    expect(hits("it('x', { retry: 2 }, () => {});", 'packages/auth/stubs/react/modules/auth/a.test.ts')).toHaveLength(1);
+    expect(hits("it('x', { retry: 2 }, () => {});", 'packages/create-marmeon/template/modules/a.test.tsx')).toHaveLength(1);
+    expect(hits("it('x', { retry: 2 }, () => {});", 'examples/recipes/a/files/a.test.ts')).toHaveLength(1);
+  });
+
+  it('names a retry whose value cannot be read, however it is written or passed', () => {
+    expect(hits("const opts = { retry: 2 };\nit('x', opts, () => {});")).toHaveLength(2);
+    expect(hits("const o = { timeout: 5 };\nit('x', { ...o }, () => {});")).toHaveLength(1);
+    expect(hits("it('x', opts, () => {});")).toHaveLength(1);
+    expect(hits("it('x', pick(), () => {});")).toHaveLength(1);
+    expect(hits("it('x', { retry: process.env.CI ? 2 : 0 }, () => {});")).toHaveLength(1);
+    expect(hits("it('x', { retry: n }, () => {});\nit('y', { retry }, () => {});")).toHaveLength(2);
+    expect(hits("it('x', { retry: 1 + 1 }, () => {});")).toHaveLength(1);
+    expect(hits("it('x', { retry: { count: n } }, () => {});")).toHaveLength(1);
+    expect(hits("it('x', { 'retry': { 'count': 2 } }, () => {});\nit('y', { ['retry']: 2 }, () => {});")).toHaveLength(2);
+    expect(hits("it('x', { retry: { count: 0, delay: 5 } }, () => {});")).toHaveLength(1);
+    expect(hits("const t = it;\nt('x', { retry: 2 }, () => {});")).toHaveLength(2); // the new name, and what it is given
+    expect(hits("const slow = it.skipIf(ci);\nslow('x', { retry: 2 }, () => {});")).toHaveLength(1);
+    expect(hits("const test = base.extend({});\nconst t = test.extend({ retry: 2 });")).toHaveLength(1);
+    expect(hits("export default defineConfig({ test: { retry: 2 } });", 'vitest.config.ts')).toHaveLength(1);
+    expect(hits("const live = { retry: 500 };")).toHaveLength(1);
+  });
+
+  it('follows the names a file gives to the API of Vitest', () => {
+    expect(hits("import { it as t } from 'vitest';\nt('x', { retry: 2 }, () => {});")).toHaveLength(1);
+    expect(hits("import { it as t } from 'vitest';\nt('x', opts, () => {});")).toHaveLength(1);
+    expect(hits("const { it: t } = await import('vitest');\nt('x', { retry: 2 }, () => {});")).toHaveLength(1);
+    expect(hits("let t;\nt = it;\nt('x', { retry: 2 }, () => {});")).toHaveLength(2);
+    expect(hits("import { defineConfig as define } from 'vitest/config';\nexport default define({ test: { retry: 2 } });")).toHaveLength(1);
+  });
+
+  it('lets the result of a call that makes a test function, and an object that merely has a key of that name, pass', () => {
+    expect(hits("const myTest = test.extend({ db: 1 });\nconst redisIt = it.skipIf(!URL);\nmyTest('x', () => {});\nredisIt('y', { timeout: 5 }, () => {});")).toEqual([]);
+    expect(hits("const routes = { test: handler };\nhandler('x', { retry: 3000 }, () => {});")).toEqual([]);
+  });
+
+  it('keeps no exception in a configuration, and holds vi.setConfig and new to the same account', () => {
+    expect(hits("export default { projects: [mk({ retry: 2 })] };", 'vitest.config.ts')).toHaveLength(1);
+    expect(hits("export default id({ retry: 2 });", 'apps/x/vite.config.ts')).toHaveLength(1);
+    expect(hits("vi.setConfig(opts);\nvi.setConfig({ ...o });\nvi.setConfig({ timeout: 5 });")).toHaveLength(2);
+    expect(hits("new Hub(backend, { retry: 3000 });")).toEqual([]);
+    expect(hits("const hub = new Hub({ retry: 3000 });\nconst x = id({ retry: 3000 });")).toEqual([]);
+    expect(hits("const options = { retry: 3000 };\nnew Hub(options);")).toHaveLength(1);
+  });
+
+  it('names a retry in the Vitest configuration, in a Vite configuration, and the option on the command line', () => {
+    expect(hits('export default { test: { retry: 1 } };', 'apps/x/vite.config.ts')).toHaveLength(1);
+    expect(hits('export default { test: { retry: 1 } };', 'packages/create-marmeon/template/base/vite.config.mjs')).toHaveLength(1);
+    expect(hits('export default { test: { retry: 1 } };', 'vitest.config.ts')).toHaveLength(1);
+    expect(hits('export default { test: { projects: [{ test: { retry: 2 } }] } };', 'apps/x/vitest.config.mts')).toHaveLength(1);
+    expect(hits('{ "scripts": { "test": "vitest run --retry=2" } }', 'package.json')).toHaveLength(1);
+    expect(hits('{ "scripts": { "test": "vitest run --retry 2" } }', 'apps/x/package.json')).toHaveLength(1);
+  });
+
+  it('lets a retry of 0, a retry that is no test option, a string and a comment pass', () => {
+    expect(hits("it('x', { retry: 0 }, () => {});\nit('y', { retry: { count: 0 } }, () => {});")).toEqual([]);
+    expect(hits("expect(config).toMatchObject({ heartbeat: 20, retry: 3000 });")).toEqual([]);
+    expect(hits("it('x', () => queue.retry(job));\nit('y', handler);")).toEqual([]);
+    expect(hits("it.each(rows)('x', (row) => {});\ndescribe('y', { timeout: 5 }, () => {});")).toEqual([]);
+    expect(hits("const retryAfter = 2;\nit('x', { timeout: 5 }, () => send({ retryAfter: 2 }));")).toEqual([]);
+    expect(hits("it('x', () => expect(text).toMatch(/^retry: 2000/));\nconst s = 'retry: 3';")).toEqual([]);
+    expect(hits("// it('x', { retry: 2 }, () => {});\n/* retry: 3 */")).toEqual([]);
+    expect(hits('{ "scripts": { "queue": "marmeon queue:retry --all" } }', 'package.json')).toEqual([]);
+  });
+
+  it('reads tests, the configuration and manifests only, and holds for the repository', () => {
+    expect(hits("export const options = { retry: 2 };", 'packages/a/src/a.ts')).toEqual([]);
+    expect(checkSource(root).filter((problem) => problem.includes('is retried'))).toEqual([]);
   });
 });
 
