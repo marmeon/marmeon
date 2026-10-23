@@ -186,6 +186,17 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
     rmSync(file);
   }, 30_000);
 
+  it('writes a module whose routes.ts passes the lint preset without a warning', () => {
+    writeFileSync(join(app, '.gitignore'), 'node_modules\n'); // oxlint would walk pnpm's links without it
+    expect(marmeon(app, ['make:module', 'lintprobe', '--no-register']).code).toBe(0);
+    expect(marmeon(app, ['make:lint-config']).code).toBe(0);
+    const oxlint = spawnSync(join(repo, 'node_modules/.bin/oxlint'), ['--deny-warnings', '-f', 'unix', 'modules/lintprobe'], { cwd: app, encoding: 'utf8' });
+    expect([oxlint.status, oxlint.stdout]).toEqual([0, expect.not.stringContaining('routes.ts')]);
+    rmSync(join(app, 'modules/lintprobe'), { recursive: true });
+    rmSync(join(app, '.oxlintrc.json'));
+    rmSync(join(app, '.gitignore'));
+  }, 30_000);
+
   it('generates a complete resource that compiles, and a policy that lets the owner in and nobody else', async () => {
     const manifest = readFileSync(join(app, 'package.json'), 'utf8');
     const tsconfig = readFileSync(join(app, 'tsconfig.json'), 'utf8');
