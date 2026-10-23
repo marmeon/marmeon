@@ -463,3 +463,111 @@ describe('findPackage', () => {
     expect(findPackage('/abs', root)).toBeUndefined();
   });
 });
+
+describe('a hostile package.json and its declarations', () => {
+  /** An app depending on `hostile`, whose files are `files` (paths in the package) next to its `json`; `outside.js` lies next to the app. */
+  const appWith = (json: object, files: Record<string, string> = {}, dependencies: unknown = { hostile: '1.0.0' }) => {
+    const root = tempDir('marmeon-hostile-');
+    const app = join(root, 'app');
+    const dir = join(app, 'node_modules/hostile');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ name: 'app', type: 'module', dependencies }));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'hostile', version: '1.0.0', marmeon: {}, ...json }));
+    writeFileSync(join(root, 'outside.js'), 'export class Outside {}\n');
+    writeFileSync(join(root, 'outside.d.ts'), 'export declare class Outside {}\n');
+    for (const [file, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, file)), { recursive: true });
+      writeFileSync(join(dir, file), text);
+    }
+    return { root, app, dir };
+  };
+  const refusal = /^\[marmeon:K7\] hostile names an entry in its package\.json .* outside the package\.$/;
+  const classes = { 'index.js': 'export class A {}\n', 'index.d.ts': 'export declare class A {}\n' };
+
+  it('refuses an entry outside the package: "main", "exports", "types" and an absolute path', () => {
+    for (const json of [
+      { main: '../../outside.js' },
+      { exports: '../../outside.js' },
+      { exports: { '.': { import: './../../../outside.js' } } },
+      { exports: { '.': './index.js', './x': '../../outside.js' } },
+      { main: './index.js', types: '../../outside.d.ts' },
+    ]) {
+      const { app } = appWith(json, classes);
+      expect(() => generateManifest({ root: app, conditions: PROD }), JSON.stringify(json)).toThrow(refusal);
+    }
+    const { root, app } = appWith({}, classes);
+    writeFileSync(join(app, 'node_modules/hostile/package.json'), JSON.stringify({ name: 'hostile', marmeon: {}, main: join(root, 'outside.js') }));
+    expect(() => generateManifest({ root: app, conditions: PROD })).toThrow(refusal);
+  });
+
+  it('refuses an entry that is a symlink out of the package, and names no path', () => {
+    const { root, app, dir } = appWith({ main: './index.js' });
+    symlinkSync(join(root, 'outside.js'), join(dir, 'index.js'));
+    writeFileSync(join(dir, 'index.d.ts'), 'export declare class Outside {}\n');
+    expect(() => generateManifest({ root: app, conditions: PROD })).toThrow(refusal);
+    expect(() => generateManifest({ root: app, conditions: PROD })).not.toThrow(/outside\.js/);
+  });
+
+  it('refuses a dangling link out of the package, as the entry or as a directory above it', () => {
+    const file = appWith({ main: './index.js' });
+    symlinkSync(join(file.root, 'missing.js'), join(file.dir, 'index.js'));
+    expect(() => generateManifest({ root: file.app, conditions: PROD })).toThrow(refusal);
+    const directory = appWith({ main: './dist/index.js' });
+    symlinkSync(join(directory.root, 'missing'), join(directory.dir, 'dist'));
+    expect(() => generateManifest({ root: directory.app, conditions: PROD })).toThrow(refusal);
+  });
+
+  it('still reads a package whose entry lies in it, or does not exist yet', () => {
+    const { app } = appWith({ main: './index.js' }, classes);
+    expect(generateManifest({ root: app, conditions: PROD }).summary.packages).toEqual(['hostile']);
+    const missing = appWith({ main: './dist/index.js' });
+    expect(generateManifest({ root: missing.app, conditions: PROD }).summary.packages).toEqual(['hostile']);
+  });
+
+  it('refuses an "exports" nested deeper than 32 levels with the package named, without a RangeError', () => {
+    for (const nest of [(inner: unknown) => ({ import: inner }), (inner: unknown) => [inner]]) {
+      let deep: unknown = './index.js';
+      for (let level = 0; level < 20_000; level++) deep = nest(deep);
+      const { app } = appWith({ exports: deep });
+      expect(() => generateManifest({ root: app, conditions: PROD })).toThrow(/^\[marmeon:K7\] The "exports" of hostile nest deeper than 32 levels/);
+    }
+    let fine: unknown = './index.js';
+    for (let level = 0; level < 30; level++) fine = { import: fine };
+    expect(resolveExports({ name: 'x', dir: '/pkg', json: { exports: fine } }, '.', PROD)).toBe('/pkg/index.js');
+  });
+
+  it('writes text of a foreign .d.ts into a message with control characters escaped', () => {
+    const { app } = appWith(
+      { main: './index.js', types: './index.d.ts' },
+      {
+        'index.js': 'export class A {}\n',
+        'index.d.ts': 'export declare class A {\n    constructor(x /* \u001b]8;;https://evil.test\u0007 \u202e */: Missing);\n}\n',
+      },
+    );
+    const { manifest } = generateManifest({ root: app, conditions: PROD });
+    const messages = manifest.injections.map((entry) => ('unresolvable' in entry ? entry.unresolvable : ''));
+    expect(messages.length).toBeGreaterThan(0);
+    for (const message of messages) expect(message).not.toMatch(/[\p{Cc}\p{Cf}]/u);
+    expect(messages.join('\n')).toContain('\\u001b]8;;https://evil.test\\u0007');
+  });
+
+  it('writes a file name with control characters into a message escaped', () => {
+    const { app } = appWith(
+      { main: './index.js', types: './index.d.ts' },
+      { 'index.js': 'export class A {}\n', 'index.d.ts': "export { A } from './a\u001b[2J.js';\n", 'a\u001b[2J.d.ts': 'export declare class A {\n    constructor(x: string);\n}\n' },
+    );
+    const { manifest } = generateManifest({ root: app, conditions: PROD });
+    const message = manifest.injections.map((entry) => ('unresolvable' in entry ? entry.unresolvable : '')).join('\n');
+    expect(message).toContain('a\\u001b[2J.d.ts');
+    expect(message).not.toMatch(/[\p{Cc}\p{Cf}]/u);
+  });
+
+  it('ignores "dependencies" that is no object, in well under a second even as a 10 MB string', () => {
+    for (const dependencies of ['x'.repeat(10_000_000), 42, true, ['a', 'b'], null]) {
+      const { app } = appWith({}, {}, dependencies);
+      const started = performance.now();
+      expect(generateManifest({ root: app, conditions: PROD }).summary.packages).toEqual([]);
+      expect(performance.now() - started).toBeLessThan(1_000);
+    }
+  });
+});

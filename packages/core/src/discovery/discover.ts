@@ -5,6 +5,7 @@
  * imported: `node --watch` never sees it, so regenerating it never restarts a dev server.
  */
 import { withCode, withoutCode } from '../error-codes.ts';
+import { entryInside } from './contain.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
@@ -15,6 +16,7 @@ import {
   findPackage,
   resolveExports,
   resolveTypes,
+  printable,
   runtimeConditions,
   splitSpecifier,
   type PackageInfo,
@@ -28,9 +30,26 @@ const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock
 export class DiscoveryError extends Error {
   override name = 'DiscoveryError';
 
+  /** The message may quote text of a foreign package (a parameter, a file name): it is written with control characters escaped. */
   constructor(message: string) {
-    super(withCode('K7', message));
+    super(withCode('K7', printable(message)));
   }
+}
+
+/** The entry a package names, which must lie in the package (also by its real path): discovery imports it and reads its types. */
+function contained(pkg: PackageInfo, entry: string | undefined): string | undefined {
+  if (entry !== undefined && !entryInside(pkg.dir, entry)) {
+    throw new DiscoveryError(`${pkg.name} names an entry in its package.json ("main", "types" or "exports") that lies outside the package.`);
+  }
+  return entry;
+}
+
+function jsEntryOf(pkg: PackageInfo, subpath: string, conditions: readonly string[]): string | undefined {
+  return contained(pkg, resolveExports(pkg, subpath, conditions));
+}
+
+function typesEntryOf(pkg: PackageInfo, subpath: string, jsEntry: string): string | undefined {
+  return contained(pkg, resolveTypes(pkg, subpath, jsEntry));
 }
 
 export interface DiscoverOptions {
@@ -86,7 +105,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   const names: string[] = [];
 
   for (const pkg of walkDependencies(root)) {
-    const rootEntry = resolveExports(pkg, '.', conditions);
+    const rootEntry = jsEntryOf(pkg, '.', conditions);
     names.push(pkg.name);
 
     // Resolved to TypeScript sources (a workspace package in development): the load
@@ -101,8 +120,8 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
 
     const seen = new Set<string>();
     for (const subpath of exportedSubpaths(pkg)) {
-      const jsEntry = resolveExports(pkg, subpath, conditions);
-      const typesEntry = jsEntry && resolveTypes(pkg, subpath, jsEntry);
+      const jsEntry = jsEntryOf(pkg, subpath, conditions);
+      const typesEntry = jsEntry && typesEntryOf(pkg, subpath, jsEntry);
       if (!jsEntry || !typesEntry) continue;
       // Listed (and imported at boot) only when one of its classes is injected: a subpath without any — the React adapter's
       // `./table`, whose optional peer an app without tables does not install — is never loaded on the server.
@@ -136,7 +155,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
     }
 
     for (const provider of marmeonField(pkg)?.providers ?? []) {
-      const typesEntry = rootEntry && resolveTypes(pkg, '.', rootEntry);
+      const typesEntry = rootEntry && typesEntryOf(pkg, '.', rootEntry);
       if (!rootEntry || !typesEntry || !reader.read(typesEntry).exports.has(provider)) {
         throw new DiscoveryError(`${pkg.name} lists provider "${provider}" in package.json, but its entry does not export it.`);
       }
@@ -237,7 +256,9 @@ function walkDependencies(root: string): PackageInfo[] {
 
 /** A dependency list of a `package.json`, from its own properties only — never one an altered Object.prototype supplies. */
 function ownRecord(json: object, key: string): Record<string, unknown> {
-  return (Object.hasOwn(json, key) ? (json as Record<string, Record<string, unknown> | undefined>)[key] : undefined) ?? {};
+  const list = Object.hasOwn(json, key) ? (json as Record<string, unknown>)[key] : undefined;
+  // Only an object counts: the keys of a string are one per character, so a 10 MB `dependencies` would take minutes to look up.
+  return typeof list === 'object' && list !== null && !Array.isArray(list) ? (list as Record<string, unknown>) : {};
 }
 
 function dependencyNames(json: PackageInfo['json']): string[] {
@@ -287,8 +308,8 @@ function resolveDependency(type: string, location: Location, pkg: PackageInfo, c
       const found = findPackage(packageName, pkg.dir); // from the OWNER's directory
       if (!found) throw new DiscoveryError(`Cannot inject ${where}: package "${packageName}" is not installed.`);
       home = found;
-      const js = resolveExports(home, subpath, conditions);
-      const types = js && resolveTypes(home, subpath, js);
+      const js = jsEntryOf(home, subpath, conditions);
+      const types = js && typesEntryOf(home, subpath, js);
       declared = types ? reader.read(types).exports.get(name) : undefined;
     }
   }
@@ -307,8 +328,8 @@ function resolveDependency(type: string, location: Location, pkg: PackageInfo, c
 /** Finds the public subpath + export name under which a declaration is importable. */
 function publicRef(pkg: PackageInfo, declared: Location, reader: DeclarationReader, conditions: readonly string[]): PublicRef | undefined {
   for (const subpath of exportedSubpaths(pkg)) {
-    const js = resolveExports(pkg, subpath, conditions);
-    const types = js && resolveTypes(pkg, subpath, js);
+    const js = jsEntryOf(pkg, subpath, conditions);
+    const types = js && typesEntryOf(pkg, subpath, js);
     if (!js || !types) continue;
     for (const [exportName, location] of reader.read(types).exports) {
       if (location.file === declared.file && location.name === declared.name) {

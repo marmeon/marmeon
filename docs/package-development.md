@@ -359,7 +359,7 @@ change. Which module owns a table follows from the module its migration file is 
 packages name `system`.
 
 The directory must lie in your package: in the directory the app installed, not in a `node_modules` inside it, and not through a
-symlink that leads out. A provider re-exported from another package declares that package's migrations, which the app publishes from
+symlink that leads out. The same holds for the files `main`, `types` and `exports` name: discovery stops with [K7](errors.md#server-error-codes) when one lies outside the package, and when `exports` nests deeper than 32 levels. A provider re-exported from another package declares that package's migrations, which the app publishes from
 that package. The provider must be exported from the main entry (`.`) of the package the directory lies in: a provider that entry
 does not export is not counted for the package, and `publish` says so with a warning. A declaration that lies in no package the app
 depends on, such as one in the app's own provider, is passed over. To see what `publish` makes of yours, run
