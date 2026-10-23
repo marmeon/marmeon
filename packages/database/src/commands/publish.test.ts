@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Application, ServiceProviderClass } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { PackageMigrationsCheck } from '../checks.ts';
 import { PublishCommand, publishOwnMigrations } from './publish.ts';
@@ -139,6 +139,14 @@ function written(root: string): string[] {
   if (!existsSync(modules)) return [];
   return readdirSync(modules, { recursive: true, encoding: 'utf8' }).filter((path) => path.endsWith('.ts')).sort();
 }
+
+// `publish` names its files after the wall clock; a test that publishes twice and compares names must not straddle a second.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2030-05-06T07:08:09.000Z') });
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('marmeon publish', () => {
   it('writes the migrations into the module the package proposes, which it creates and registers', async () => {
