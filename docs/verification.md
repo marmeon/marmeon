@@ -189,7 +189,7 @@ With private registration, a new address on the security page waits beside the o
   has not confirmed. A newer request replaces the link. The link works only for the signed-in account it names, only
   once and only before it expires, and only while the account's sessions have not been ended since the request.
 - **A repeated request changes nothing.** Asking again for the address that already waits leaves the change and its link as they are and
-  sends no second mail, with the same answer as any request. An account also waits a minute (`AUTH_EMAIL_CHANGE_THROTTLE`) after a
+  sends no second mail, with the same answer as any request. An account also waits a minute (`AUTH_EMAIL_CHANGE_THROTTLE_SECONDS`) after a
   request that sent a link.
 - **Limits on the mail to one address.** The job that mails the link sends at most one mail an hour to an address for one account and
   three an hour to the address whoever asks, so that requests from many accounts cannot turn your domain into a mail cannon against a
@@ -269,7 +269,7 @@ The command is not scheduled by itself, because deleting accounts is your app's 
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `AUTH_UNVERIFIED_DAYS` | `7` | Days an account may stay without a confirmed address before `auth:prune-unverified` deletes it. A whole number; `0` deletes none. |
-| `AUTH_PRIVATE_REGISTRATION` | `true` | Whether registration and the change of address keep quiet about known addresses. Only `true` and `false` start; empty counts as unset. |
+| `AUTH_PRIVATE_REGISTRATION` | `true` | Whether registration and the change of address keep quiet about known addresses. A boolean (`true`, `false`, `1`, `0`); anything else stops the start, empty counts as unset. |
 
 ## Testing
 

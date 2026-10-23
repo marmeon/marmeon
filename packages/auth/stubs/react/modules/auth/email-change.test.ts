@@ -31,7 +31,7 @@ let SESSION: string;
 // Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
 beforeEach(async () => {
   // No pause between two requests of an account: most tests ask more than once (the pause has a test of its own).
-  app = await createTestApp(application, { database: 'refresh', env: { AUTH_EMAIL_CHANGE_THROTTLE: '0' } });
+  app = await createTestApp(application, { database: 'refresh', env: { AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: '0' } });
   ({ session: SESSION } = cookieNames(app));
 }, 30_000);
 
@@ -293,7 +293,7 @@ describe('changing the address (private registration) — the default', { timeou
 describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', { timeout: 30_000 }, () => {
   beforeEach(async () => {
     await app.close();
-    app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false', AUTH_EMAIL_CHANGE_THROTTLE: '0' } });
+    app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false', AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: '0' } });
     ({ session: SESSION } = cookieNames(app));
   }, 30_000);
 

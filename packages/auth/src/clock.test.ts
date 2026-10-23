@@ -66,6 +66,18 @@ class StateController extends Controller {
   }
 }
 
+/** Asks with the configured window (`AUTH_PASSWORD_TIMEOUT_SECONDS`) instead of one given by the route. */
+class ConfiguredWindowController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle() {
+    return { confirmed: this.#auth.passwordRecentlyConfirmed() };
+  }
+}
+
 /** Notes a proven factor the way `TwoFactor` does, on the app's clock. */
 class ProveController extends Controller {
   readonly #session: Session;
@@ -113,6 +125,7 @@ const routes = openRoutes((Route) => {
   Route.post('/prove', ProveController);
   Route.post('/stamp', StampController);
   Route.get('/state', StateController);
+  Route.get('/window', ConfiguredWindowController);
   Route.get('/setup', Page).name('test.setup');
   Route.get('/verify', Page).name('test.verify');
   Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: 600 })).get('/area', Page);
@@ -166,6 +179,24 @@ describe('Auth on the app clock', () => {
     expect(await (await send('/state')).json()).toEqual({ id: 1, confirmed: true });
     clock.travel({ minutes: 2 });
     expect(await (await send('/state')).json()).toEqual({ id: 1, confirmed: false });
+  });
+
+  it('counts AUTH_PASSWORD_TIMEOUT_SECONDS in seconds — 900 unless set', async () => {
+    const confirmedAfter = async (env: Record<string, string>, ...seconds: number[]) => {
+      const { clock, send } = await boot(env);
+      await send('/login', 'POST');
+      await send('/confirm', 'POST');
+      const answers: boolean[] = [];
+      let elapsed = 0;
+      for (const at of seconds) {
+        clock.travel({ seconds: at - elapsed });
+        elapsed = at;
+        answers.push(((await (await send('/window')).json()) as { confirmed: boolean }).confirmed);
+      }
+      return answers;
+    };
+    expect(await confirmedAfter({}, 899, 901), 'the default is 15 minutes').toEqual([true, false]);
+    expect(await confirmedAfter({ AUTH_PASSWORD_TIMEOUT_SECONDS: '300' }, 299, 301), 'seconds, not minutes').toEqual([true, false]);
   });
 
   it('ages the proof of a second factor behind twoFactor()', async () => {

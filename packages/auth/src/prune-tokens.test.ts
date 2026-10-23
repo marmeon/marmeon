@@ -1,6 +1,8 @@
+import { resolveConfig } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { sql, type Connections } from '@marmeon/database';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { AuthConfig } from './config.ts';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE } from './password-reset.ts';
 import { PruneTokensCommand } from './prune-tokens.ts';
@@ -109,5 +111,24 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     await command.handle({ args: [], options: {}, output, root: '/', spawn: async () => 0 } as never);
     expect(lines.pop()).toMatch(/ and 1 sign-in\.$/);
     expect((await connections.get<any>().selectFrom(SIGN_INS_TABLE).select('id').execute()).map((row: { id: string }) => row.id)).toEqual([live]);
+  });
+
+  it('counts AUTH_RESET_MINUTES in minutes: a reset token 59 seconds old stays, one 61 seconds old goes', async () => {
+    const config = (await resolveConfig([AuthConfig], { AUTH_RESET_MINUTES: '1' })).get(AuthConfig) as AuthConfig;
+    const clock = new TestClock();
+    clock.freeze(Date.parse('2026-10-05T10:00:00Z'));
+    const resets = new DatabasePasswordResetTokens(connections, clock);
+    await connections.get<any>().deleteFrom(PASSWORD_RESET_TABLE).execute();
+    await resets.create('older@example.com', 0);
+    clock.travel({ seconds: 2 });
+    await resets.create('younger@example.com', 0);
+    clock.travel({ seconds: 59 });
+    const signIns = new DatabaseSignIns(connections, clock);
+    const lines: string[] = [];
+    const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
+    const command = new PruneTokensCommand(resets, new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock), config, { lifetime: 120 } as never, signIns);
+    await command.handle({ args: [], options: {}, output, root: '/', spawn: async () => 0 } as never);
+    expect(lines.pop()).toMatch(/^Pruned 1 password reset token,/);
+    expect((await connections.get<any>().selectFrom(PASSWORD_RESET_TABLE).select('email').execute()).map((row: { email: string }) => row.email)).toEqual(['younger@example.com']);
   });
 });

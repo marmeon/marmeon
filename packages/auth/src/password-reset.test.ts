@@ -1,8 +1,10 @@
-import { ConsoleLogger, err, inTransaction, SystemClock, type Result } from '@marmeon/core';
+import { ConsoleLogger, err, inTransaction, resolveConfig, SystemClock, type Result } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { secret, type Connections } from '@marmeon/database';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
 import { DatabasePasswordResetTokens, PASSWORD_RESET_TABLE, PasswordBroker, type PasswordResetTokenTable } from './password-reset.ts';
+import { AuthConfig } from './config.ts';
 import { PasswordHasher, type PasswordHash } from './hashing.ts';
 import { ACCESS_TOKEN_TABLE, DatabaseAccessTokens, type AccessTokenStore } from './tokens.ts';
 import { NewPassword } from './new-password.ts';
@@ -251,5 +253,27 @@ describe.each(drivers)('password reset on %s', (driver) => {
     const created = must(await broker().createToken('ada@example.com'));
     const results = await Promise.all([tokens.consume('ada@example.com', created.token, 3600), tokens.consume('ada@example.com', created.token, 3600)]);
     expect(results.filter((result) => result.ok)).toHaveLength(1);
+  });
+
+  it('counts AUTH_RESET_MINUTES and AUTH_RESET_THROTTLE_SECONDS in minutes and seconds, from the configuration', async () => {
+    const config = (await resolveConfig([AuthConfig], { AUTH_RESET_MINUTES: '1', AUTH_RESET_THROTTLE_SECONDS: '30' })).get(AuthConfig) as AuthConfig;
+    const clock = new TestClock();
+    clock.freeze(Date.now());
+    const timed = new DatabasePasswordResetTokens(connections, clock);
+    const timedBroker = new PasswordBroker(users, timed, hasher, { dispatch: async () => {} } as never, config, new NewPassword(() => apiTokens, () => connections, { revokeTokensOnPasswordChange: false } as never, logger, () => signIns), NO_LOGIN_LIMITS as never);
+
+    const fresh = must(await timedBroker.createToken('ada@example.com'));
+    clock.travel({ seconds: 29 });
+    expect((await timedBroker.createToken('ada@example.com')).ok, '29 s: inside the pause').toBe(false);
+    clock.travel({ seconds: 2 });
+    const second = must(await timedBroker.createToken('ada@example.com'));
+    expect(second.token, '31 s: a new token').not.toBe(fresh.token);
+
+    clock.travel({ seconds: 59 });
+    expect((await timedBroker.reset('ada@example.com', second.token, 'new password')).ok, '59 s: accepted').toBe(true);
+
+    const late = must(await timedBroker.createToken('ada@example.com'));
+    clock.travel({ seconds: 61 });
+    expect(await timedBroker.reset('ada@example.com', late.token, 'newer password'), '61 s: refused').toStrictEqual(err({ kind: 'invalid-token' }));
   });
 });

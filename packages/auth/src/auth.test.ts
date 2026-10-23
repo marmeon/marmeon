@@ -1160,7 +1160,7 @@ describe('password changes and confirmation', () => {
 
   it('revokes every API token of the user with a new password — with AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true, in the transaction of the new hash', async () => {
     for (const revoke of [true, false]) {
-      const { add, browser, application, users } = await boot(revoke ? { env: { AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE: 'true' } } : {});
+      const { add, browser, application, users } = await boot(revoke ? { env: { AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE: '1' } } : {});
       const alan: TestUser = { id: 2, name: 'Alan', email: 'alan@example.com' };
       await add(ada);
       await add(alan);

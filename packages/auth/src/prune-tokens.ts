@@ -8,7 +8,7 @@ import { SignInStore } from './sign-ins.ts';
 import { AccessTokenStore } from './tokens.ts';
 
 /**
- * `marmeon auth:prune-tokens [--hours=0]`: deletes what can no longer be used — reset tokens older than `AUTH_RESET_EXPIRE`,
+ * `marmeon auth:prune-tokens [--hours=0]`: deletes what can no longer be used — reset tokens older than `AUTH_RESET_MINUTES`,
  * remember-me tokens that expired or are older than `AUTH_REMEMBER_DAYS` (all of them with `0`), API tokens expired more than
  * `--hours` ago (a lookup drops only the one it finds), changes of address that expired (when the app bound an `EmailChangeStore`), and sign-ins that are over. Valid reset and API tokens and changes of address stay. For the scheduler:
  * `s.command('auth:prune-tokens').daily().at('03:10').onOneServer()`.

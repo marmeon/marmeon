@@ -28,7 +28,7 @@ let app: TestApp;
 let SESSION: string;
 beforeEach(async () => {
   // No pause between two requests of an account: most tests ask more than once (the pause has a test of its own).
-  app = await createTestApp(application, { database: 'refresh', env: { AUTH_EMAIL_CHANGE_THROTTLE: '0' } });
+  app = await createTestApp(application, { database: 'refresh', env: { AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: '0' } });
   ({ session: SESSION } = cookieNames(app));
 });
 
@@ -382,7 +382,7 @@ describe('changing the address (private registration)', () => {
 describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', () => {
   beforeEach(async () => {
     await app.close();
-    app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false', AUTH_EMAIL_CHANGE_THROTTLE: '0' } });
+    app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false', AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: '0' } });
     ({ session: SESSION } = cookieNames(app));
   });
 

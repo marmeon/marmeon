@@ -493,7 +493,7 @@ export class Auth {
     return { session: key, typed: this.#session.get(AUTH_SESSION_KEYS.typedPassword) === true };
   }
 
-  /** Whether a password was typed or a passkey proven (`passkeys.confirm()`, a passwordless sign-in) within `seconds` (default `AUTH_PASSWORD_TIMEOUT`). */
+  /** Whether a password was typed or a passkey proven (`passkeys.confirm()`, a passwordless sign-in) within `seconds` (default `AUTH_PASSWORD_TIMEOUT_SECONDS`). */
   passwordRecentlyConfirmed(seconds = this.#config.passwordTimeout): boolean {
     const at = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.confirmedAt) : undefined;
     // A confirmation counts only inside the sign-in it was typed for: one dated before the sign-in began is not its own.

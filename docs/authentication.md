@@ -436,7 +436,7 @@ Every lifetime of a sign-in is listed here. The list of [sign-ins](#sign-ins) le
 | `AUTH_REMEMBER_DAYS` | 30 days (0 to 30) | The [remember-me](#remember-me) cookie, counted from the sign-in that made it. | AAL1: a convenience, not a proof. |
 | `twoFactor()` `maxAge` | 24 hours | The proof of a [second factor](two-factor-authentication.md#requiring-it); then the user is asked for it again. | AAL2 holds only on routes behind `twoFactor()`. |
 | `FACTOR_CHANGE_MAX_AGE` | 15 minutes, no setting | The proof that [changing the factors](two-factor-authentication.md#changing-the-factors), the e-mail address or an API token asks for. | A factor proven within this time. |
-| `AUTH_PASSWORD_TIMEOUT` | 15 minutes | The password or passkey confirmation of [sudo mode](#sudo-mode). | The password or a passkey; only a passkey also counts as a second factor. |
+| `AUTH_PASSWORD_TIMEOUT_SECONDS` | 15 minutes | The password or passkey confirmation of [sudo mode](#sudo-mode). | The password or a passkey; only a passkey also counts as a second factor. |
 
 `SESSION_LIFETIME` is renewed by every request, so on its own an active session would never end. `AUTH_SESSION_MAX_HOURS` (1 to 720)
 is the longest a sign-in lasts, however active the user is: a session signed in by password or passkey ends that many hours
@@ -512,7 +512,7 @@ persist the fingerprint and hand it back from `consume()` (kept over every rotat
 
 Some pages ask for a confirmation again even though the user is signed in, such as the page with the API tokens.
 `confirmedPassword()` lets a user through who typed the password, or proved a [passkey](passkeys.md#confirming-sudo-mode) with user
-verification, within the last `AUTH_PASSWORD_TIMEOUT` seconds, 15 minutes by default:
+verification, within the last `AUTH_PASSWORD_TIMEOUT_SECONDS`, 15 minutes by default:
 
 ```ts title="modules/auth/routes.ts"
 import { authenticate, confirmedPassword } from '@marmeon/auth';
@@ -775,7 +775,7 @@ What `EmailChange` decides, so that your controllers do not have to:
   whether the address is free or belongs to another account, and never asks. If `deliver` throws, nothing is stored. Your mail job
   decides what the owner of a taken address is sent.
 - **One link a minute.** A right password clears the password throttle, so a loop of valid requests would otherwise mail any address from
-  your domain. After a request that sent a link, the account waits `AUTH_EMAIL_CHANGE_THROTTLE` seconds (60 by default, `0` turns it off);
+  your domain. After a request that sent a link, the account waits `AUTH_EMAIL_CHANGE_THROTTLE_SECONDS` (60 seconds by default, `0` turns it off);
   a request inside the pause gets the same answer, `{ pending: true }`, and sends and stores nothing. A user who typed a wrong address
   asks again after the pause. A request that stored and sent nothing (the mail could not be handed over, the session had ended) gives the pause
   back. Without private registration there is no pause: the address is written at once, and your app throttles the confirmation mail it sends
@@ -1383,20 +1383,20 @@ listeners.
 | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` | `5` | Password sign-ins a minute for one identifier from one client: 1 to 60. See [limits](#limits-on-password-sign-ins). |
 | `AUTH_ACCOUNT_SIGN_INS_PER_DAY` | `100` | Password sign-ins a day for one account, from all clients: 10 to 100000. |
 | `AUTH_DEVICE_COOKIE_DAYS` | `90` | Days the device cookie lasts that a password sign-in or a completed reset hands the browser: 0 to 365, `0` turns it off. |
-| `AUTH_PASSWORD_TIMEOUT` | `900` | Seconds a typed password or a proven passkey counts for `confirmedPassword()`. |
-| `AUTH_RESET_EXPIRE` | `60` | Minutes a password reset link works. See [password reset](passwords.md#configuration). |
-| `AUTH_RESET_THROTTLE` | `60` | Seconds before another reset link goes to the same address. |
+| `AUTH_PASSWORD_TIMEOUT_SECONDS` | `900` | Seconds a typed password or a proven passkey counts for `confirmedPassword()`. |
+| `AUTH_RESET_MINUTES` | `60` | Minutes a password reset link works. See [password reset](passwords.md#configuration). |
+| `AUTH_RESET_THROTTLE_SECONDS` | `60` | Seconds before another reset link goes to the same address. |
 | `AUTH_EMAIL_CHANGE_MINUTES` | `60` | Minutes the link of a change of address works: 5 to 1440. See [changing the address](#changing-the-address). |
-| `AUTH_EMAIL_CHANGE_THROTTLE` | `60` | Seconds an account waits after a request for a new address that sent a link; `0` turns the pause off. See [changing the address](#changing-the-address). |
+| `AUTH_EMAIL_CHANGE_THROTTLE_SECONDS` | `60` | Seconds an account waits after a request for a new address that sent a link; `0` turns the pause off. See [changing the address](#changing-the-address). |
 | `AUTH_TOKEN_PREFIX` | `marmeon_` | The prefix of API tokens. See [API tokens](api-tokens.md#the-token-format). |
 | `AUTH_PRIVATE_REGISTRATION` | `true` | The private registration of the starter kit. See [starter kit](starter-kit.md#private-registration). |
 | `AUTH_UNVERIFIED_DAYS` | `7` | Days before `auth:prune-unverified` deletes an account without a confirmed address. See [email verification](verification.md#unconfirmed-accounts). |
 | `APP_NAME` | none | The app's name shown by authenticator apps next to the code. Two-factor setup needs it. See [two-factor authentication](two-factor-authentication.md#setting-up). |
 | `AUTH_PASSKEY_RP_ID` | host of `APP_URL` | The RP ID of [passkeys](passkeys.md#requirements): a parent domain of every allowed origin. Checked when passkeys are first used. |
 | `AUTH_PASSKEY_ORIGINS` | origin of `APP_URL` | The origins [passkeys](passkeys.md#requirements) are accepted from, comma-separated and exact: `https:`, or `http://localhost`. |
-| `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password, set by the user or by a reset, revokes every API token of the user. Only `true` and `false` start. See [API tokens](api-tokens.md#revoking-every-token-with-a-new-password). |
+| `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password, set by the user or by a reset, revokes every API token of the user. A boolean (`true`, `false`, `1`, `0`); anything else stops the start. See [API tokens](api-tokens.md#revoking-every-token-with-a-new-password). |
 
-The numbers are whole numbers of at least 1; `AUTH_RESET_THROTTLE` and `AUTH_UNVERIFIED_DAYS` may be `0`. A value outside its
+The numbers are whole numbers of at least 1; `AUTH_RESET_THROTTLE_SECONDS` and `AUTH_UNVERIFIED_DAYS` may be `0`. A value outside its
 range stops the start. The `HASH_*` variables are on the [hashing](hashing.md#configuration) page.
 
 ## Testing

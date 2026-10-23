@@ -84,7 +84,7 @@ export function guest(home = '/'): MiddlewareClass<{}, {}> {
 export interface ConfirmedPasswordOptions<N extends string = string> {
   /** Named route of the confirmation page (default `auth.password.confirm`). */
   readonly confirmRoute?: CheckRouteName<N>;
-  /** How long a confirmation counts, in seconds (default `AUTH_PASSWORD_TIMEOUT`, 15 minutes). */
+  /** How long a confirmation counts, in seconds (default `AUTH_PASSWORD_TIMEOUT_SECONDS`, 15 minutes). */
   readonly seconds?: number;
 }
 

@@ -244,7 +244,7 @@ and the change-of-address link answer 404.
 > With private registration off, the rate limit of the form is all that stops a stranger from finding out who has an account.
 > Outside development and tests the app logs a warning about it at every start.
 
-Only `true` and `false` are allowed. Any other value stops the start; an empty one counts as unset. To demand a confirmed address with private registration
+A boolean is allowed (`true`, `false`, `1`, `0`, in any case). Any other value stops the start; an empty one counts as unset. To demand a confirmed address with private registration
 off, put `verified()` of `@marmeon/auth` in place of `ConfirmedAddress` in `routes.ts`. The routes that add an authenticator app or a passkey
 demand a confirmed address in either mode, as does creating an API token, and the settings pages say so with a link to send the mail
 again. The owner's password reset removes whatever an account with an unconfirmed address holds (factors and tokens). Set
