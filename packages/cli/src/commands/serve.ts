@@ -109,7 +109,7 @@ export class ServeCommand {
     setTimeout(() => process.exit(1), 10_000 + delay).unref();
     this.#logger.info(
       delay > 0
-        ? `${signal} received, shutting down — not ready any more, still answering for ${delay / 1000} s (SHUTDOWN_DELAY)`
+        ? `${signal} received, shutting down — not ready any more, still answering for ${delay / 1000} s (SERVER_SHUTDOWN_DELAY_SECONDS)`
         : `${signal} received, shutting down`,
     );
     views?.close();

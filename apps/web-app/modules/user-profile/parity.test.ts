@@ -57,7 +57,7 @@ describe('once props: the locale list', () => {
 
 describe('the two 409s', () => {
   it('a new build answers `version` — signing in answers `history`, never cancelable', async () => {
-    app = await createTestApp(application, { database: 'refresh', env: { ASSET_VERSION: 'build-2' } });
+    app = await createTestApp(application, { database: 'refresh', env: { SERVER_ASSET_VERSION: 'build-2' } });
     const stale = await app.navigating().withHeaders({ [VERSION_HEADER]: 'build-1' }).get('/login').assertStatus(409);
     expect([stale.headers.get(LOCATION_HEADER), stale.headers.get(RELOAD_HEADER)]).toEqual(['http://localhost/login', 'version']);
     await app.factory(UserFactory).create({ email: 'ada@example.com' });

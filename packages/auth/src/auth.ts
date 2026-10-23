@@ -153,7 +153,7 @@ export interface LoginOptions {
   readonly remember?: boolean;
   /**
    * The client's address for the `Login` event (for "a new sign-in" notices, audit logs). Default: the request's (`RequestInfo`,
-   * through `TRUSTED_PROXIES` like `ctx.ip`) — pass it only to say something else.
+   * through `SERVER_TRUSTED_PROXIES` like `ctx.ip`) — pass it only to say something else.
    */
   readonly ip?: string | undefined;
   /** The browser's `User-Agent` header for the `Login` event — default: the request's, like `ip`. */

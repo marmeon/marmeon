@@ -71,7 +71,7 @@ let warnedAboutAddress = false;
 function warnAboutUnreadableAddress(): void {
   if (warnedAboutAddress) return;
   warnedAboutAddress = true;
-  process.emitWarning('ctx.ip is not an IP address (check what the proxy sends in X-Forwarded-For and TRUSTED_PROXIES); rate limits count such a client by the text it sent.', 'MarmeonRateLimitWarning');
+  process.emitWarning('ctx.ip is not an IP address (check what the proxy sends in X-Forwarded-For and SERVER_TRUSTED_PROXIES); rate limits count such a client by the text it sent.', 'MarmeonRateLimitWarning');
 }
 
 /** The eight 16-bit groups of a valid IPv6 address, `::` filled up and a dotted IPv4 tail turned into two groups. */

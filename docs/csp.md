@@ -179,7 +179,7 @@ securityHeaders({ hsts: { maxAge: 31_536_000, includeSubDomains: true } });
 
 With it, browsers refuse plain HTTP for your host for a year, and with `includeSubDomains` for every subdomain too. Turn it on
 only once all of them answer over HTTPS: a browser that has seen the header cannot reach an HTTP-only part any more.
-The header goes out only on HTTPS responses (behind a proxy: `TRUSTED_PROXIES`). A proxy that terminates TLS can send it instead.
+The header goes out only on HTTPS responses (behind a proxy: `SERVER_TRUSTED_PROXIES`). A proxy that terminates TLS can send it instead.
 `maxAge` is a whole number of seconds. To withdraw HSTS, send `maxAge: 0` for a while: browsers that have seen the header then forget it (not together with `preload`). `preload` asks for the browsers' preload lists and needs `includeSubDomains` and a
 `maxAge` of at least 31536000, a year; `securityHeaders()` throws a `TypeError` for anything else when the app starts.
 

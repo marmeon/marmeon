@@ -291,7 +291,7 @@ follow in the same response. A page can change that with a static `ssr`:
 | `'complete'` | The whole page at once, when everything is rendered. |
 | `false` | No markup. The browser renders the page. |
 
-Search engines and link previews always get the whole page at once. `SSR_ENABLED=false` turns server rendering off for every
+Search engines and link previews always get the whole page at once. `SERVER_SSR_ENABLED=false` turns server rendering off for every
 page.
 
 The browser hydrates the server's markup, so both must render the same thing. Values that differ between the two, such as

@@ -63,7 +63,7 @@ or `HEAD` request has the input `{}`. The parsed body is kept, so call `ctx.inpu
 
 | Request | Answer |
 | --- | --- |
-| A body over `MAX_BODY_SIZE` | 413. The bytes are counted as they arrive, whatever `Content-Length` says. |
+| A body over `SERVER_MAX_BODY_SIZE` | 413. The bytes are counted as they arrive, whatever `Content-Length` says. |
 | Malformed JSON | 400, `Malformed JSON body.` |
 | JSON that is not an object | 400, `The JSON body must be an object.` |
 | A multipart body that cannot be parsed | 400, `Malformed multipart body.` |
@@ -158,7 +158,7 @@ The page gets the parsed query and its defaults with it, so the browser never pa
 ## Files
 
 A file field of a `multipart/form-data` body arrives in `ctx.input()` as a `File`. The whole body is held in memory and counts
-against `MAX_BODY_SIZE`, and an empty file field, where nothing was chosen, is left out.
+against `SERVER_MAX_BODY_SIZE`, and an empty file field, where nothing was chosen, is left out.
 
 For files from your users, use the `upload()` rule of `@marmeon/storage` instead. The browser sends the file ahead of its form,
 streamed to a private disk with progress, and the form sends a token in its place. On submit, the rule checks the token, the size
@@ -247,7 +247,7 @@ The [request lifecycle](lifecycle.md#requests-that-only-read) page lists them.
 ## The client's address
 
 `ctx.ip` is the client's IP address. Without trusted proxies it is the address of whoever connected. Behind a proxy listed in
-`TRUSTED_PROXIES`, it is the right-most `X-Forwarded-For` entry that is not a trusted proxy itself, since entries further left are
+`SERVER_TRUSTED_PROXIES`, it is the right-most `X-Forwarded-For` entry that is not a trusted proxy itself, since entries further left are
 whatever the client claimed. In tests, `ctx.ip` is undefined.
 
 A service that has no `ctx`, such as a listener of the sign-in event, injects `RequestInfo` of `@marmeon/http` instead. It holds
@@ -272,8 +272,8 @@ from `index.html` carry it already, so you need it only for HTML your controller
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `MAX_BODY_SIZE` | `8m` | The largest request body, in bytes or with a unit: `512k`, `8m`, `1g`. A larger body is a 413. Uploads through `upload()` have their own limit. |
-| `TRUSTED_PROXIES` | none | The proxies whose `X-Forwarded-*` headers count, as addresses or ranges, or `*`. |
+| `SERVER_MAX_BODY_SIZE` | `8m` | The largest request body, in bytes or with a unit: `512k`, `8m`, `1g`. A larger body is a 413. Uploads through `upload()` have their own limit. |
+| `SERVER_TRUSTED_PROXIES` | none | The proxies whose `X-Forwarded-*` headers count, as addresses or ranges, or `*`. |
 
 ## Testing
 

@@ -325,7 +325,7 @@ describe('createHttpKernel — requests & responses', async () => {
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     modules: [defineModule({ name: 'drafts', routes })],
-  }, { env: { APP_KEY: generateKey(), MAX_BODY_SIZE: '1k' } });
+  }, { env: { APP_KEY: generateKey(), SERVER_MAX_BODY_SIZE: '1k' } });
   const app = createHttpKernel(application);
   const form = (fields: Record<string, string>) => ({ method: 'POST', body: new URLSearchParams(fields) });
 
@@ -405,7 +405,7 @@ describe('createHttpKernel — requests & responses', async () => {
     expect(response.headers.getSetCookie()).toEqual([expect.stringMatching(/^draft=[\w-]+; Path=\/; HttpOnly; SameSite=Lax$/)]);
   });
 
-  it('enforces the body limit from the server config (MAX_BODY_SIZE)', async () => {
+  it('enforces the body limit from the server config (SERVER_MAX_BODY_SIZE)', async () => {
     expect(application.container.make(ServerConfig).maxBodySize).toBe(1024);
     const response = await app.request('/drafts/1', {
       method: 'PUT',
@@ -422,10 +422,10 @@ describe('createHttpKernel — requests & responses', async () => {
     ).rejects.toThrow('The web middleware group needs the Encrypter');
   });
 
-  it('rejects an invalid MAX_BODY_SIZE at boot', async () => {
+  it('rejects an invalid SERVER_MAX_BODY_SIZE at boot', async () => {
     await expect(
-      createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { MAX_BODY_SIZE: 'lots' } }),
-    ).rejects.toThrow('server: MAX_BODY_SIZE — Expected bytes or a size like 512k, 8m or 1g');
+      createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { SERVER_MAX_BODY_SIZE: 'lots' } }),
+    ).rejects.toThrow('server: SERVER_MAX_BODY_SIZE — Expected bytes or a size like 512k, 8m or 1g');
   });
 });
 

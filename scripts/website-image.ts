@@ -296,7 +296,7 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
       // An old client's visit: the docs build the reload URL from what Caddy forwarded — trusted, it is Caddy's https address.
       const stale = curl(`${base}/docs/deployment`, { 'x-marmeon': '1', 'x-marmeon-version': 'stale', accept: 'text/html, application/json' });
       if (stale.status !== 409 || stale.headers.get('x-marmeon-location') !== `${base}/docs/deployment`) {
-        problems.push(`an old client's visit: ${stale.status}, x-marmeon-location "${stale.headers.get('x-marmeon-location')}" — expected 409 and ${base}/docs/deployment (TRUSTED_PROXIES)`);
+        problems.push(`an old client's visit: ${stale.status}, x-marmeon-location "${stale.headers.get('x-marmeon-location')}" — expected 409 and ${base}/docs/deployment (SERVER_TRUSTED_PROXIES)`);
       }
       const compressed = curl(`${base}/docs/validation`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip' });
       const plain = curl(`${base}/docs/validation`, { accept: 'text/html' });

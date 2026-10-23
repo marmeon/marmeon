@@ -154,7 +154,7 @@ Besides what the options add, every test app has:
 `app.make(NoteRepository)` hands you the same repository the controllers use.
 
 `app.kernel` answers `fetch(request)` and `request(path, init)`, and `settle()` waits for the work scheduled after a response. A
-request has no peer address unless you give one as the last argument, which then goes through `TRUSTED_PROXIES` like a real
+request has no peer address unless you give one as the last argument, which then goes through `SERVER_TRUSTED_PROXIES` like a real
 socket's:
 
 ```ts

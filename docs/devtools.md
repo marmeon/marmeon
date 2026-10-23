@@ -27,11 +27,11 @@ for its worker and its scheduler too. Everywhere else nothing is recorded, nothi
 | `NODE_ENV=development` | Record, and serve their pages. |
 | `NODE_ENV=test`, `production` with any `APP_ENV`, or no `NODE_ENV` | Off. Their routes answer `404`, and the start does not load `config/devtools.ts`. |
 | `DEVTOOLS_ENABLED=false` | Off, also in development. |
-| `DEVTOOLS_ENABLED=true` where the app is protected | The start fails. |
+| `DEVTOOLS_ENABLED=true` (or `1`) where the app is protected | The start fails. |
 | `createTestApp(application, { devtools: true })` | Record into memory, for the test. |
 
 The rule asks for development, not for "anything but production": a server whose `NODE_ENV` was forgotten records nothing.
-`DEVTOOLS_ENABLED=true` cannot turn them on anywhere else, and with `production` or no `NODE_ENV` it stops the start
+`DEVTOOLS_ENABLED=true` (or `1`) cannot turn them on anywhere else, and with `production` or no `NODE_ENV` it stops the start
 instead of being ignored. With `NODE_ENV=test` it has no effect, and the start logs a warning.
 
 > [!WARNING]
@@ -130,7 +130,7 @@ start, and so does an unknown name in `record`.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `DEVTOOLS_ENABLED` | not set | `false` turns the devtools off in development. `true` changes nothing, and stops the start where the app is protected. |
+| `DEVTOOLS_ENABLED` | not set | `false` turns the devtools off in development. `true` or `1` changes nothing, and stops the start where the app is protected. |
 
 ## Where the entries live
 

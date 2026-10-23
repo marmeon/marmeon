@@ -53,7 +53,7 @@ The two endpoints answer different questions on purpose:
 # Kubernetes
 livenessProbe: { httpGet: { path: /up, port: 3000 } }
 readinessProbe: { httpGet: { path: /up/ready, port: 3000 }, periodSeconds: 5 }
-env: [{ name: SHUTDOWN_DELAY, value: '5' }]
+env: [{ name: SERVER_SHUTDOWN_DELAY_SECONDS, value: '5' }]
 ```
 
 Both endpoints answer before anything else runs for a request: no middleware group, no session, no cookie, no CSRF check, no
@@ -142,25 +142,25 @@ probes therefore costs one run a second, not one per probe.
 When the server gets `SIGTERM`, readiness falls first:
 
 1. `/up/ready` answers `503 {"status":"draining"}` at once. The cached result of a moment ago does not count.
-2. `/up` stays `200`, and the server keeps answering requests for `SHUTDOWN_DELAY` seconds, so the load balancer has time to
+2. `/up` stays `200`, and the server keeps answering requests for the seconds in `SERVER_SHUTDOWN_DELAY_SECONDS`, so the load balancer has time to
    notice and send new requests elsewhere.
 3. Then the server closes. Both endpoints answer `503` on connections that are still open, while the requests in flight finish
    and the work after their responses drains.
 
-`SHUTDOWN_DELAY` is `0` by default. Set it, `5` is typical, behind a load balancer that learns about a stopping instance only from
+`SERVER_SHUTDOWN_DELAY_SECONDS` is `0` by default. Set it, `5` is typical, behind a load balancer that learns about a stopping instance only from
 its probes. The [deployment](deployment.md#health-checks) page shows the image's health check.
 
 ## Configuration
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `HEALTH_PATH` | `/up` | Where liveness answers. Readiness answers below it: `HEALTH_PATH=/healthz` gives `/healthz` and `/healthz/ready`. `off` turns both off, and the image's `HEALTHCHECK` then checks nothing. |
-| `SHUTDOWN_DELAY` | `0` | Seconds the server keeps answering after `SIGTERM`, while readiness already fails. At most 300. |
+| `SERVER_HEALTH_PATH` | `/up` | Where liveness answers. Readiness answers below it: `SERVER_HEALTH_PATH=/healthz` gives `/healthz` and `/healthz/ready`. `off` turns both off, and the image's `HEALTHCHECK` then checks nothing. |
+| `SERVER_SHUTDOWN_DELAY_SECONDS` | `0` | Seconds the server keeps answering after `SIGTERM`, while readiness already fails. At most 300. |
 
 A route of the app on one of the two paths could never be reached, so it stops the start:
 
 ```text
-The route "status" (GET /up) is where the health check answers — it would never be reached. Give the route another path, or move the health check: HEALTH_PATH=/healthz (or HEALTH_PATH=off).
+The route "status" (GET /up) is where the health check answers — it would never be reached. Give the route another path, or move the health check: SERVER_HEALTH_PATH=/healthz (or SERVER_HEALTH_PATH=off).
 ```
 
 A route with a parameter, such as `/:page`, never sees `up`, and needs no change.

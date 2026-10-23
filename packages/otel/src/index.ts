@@ -7,33 +7,36 @@ export { OtelSetupError } from './api.ts';
 // OpenTelemetry: spans from the framework's channels, through `@opentelemetry/api` only — the SDK and its
 // exporter are the app's (`bootstrap/telemetry.ts`). No auto-instrumentation, no module hooks (Node 26: DEP0205).
 
-/** `true` or `false`, in any case (as the SDK reads its own). */
-const flag = (name: string) => env.string().regex(/^(?:true|false)$/i, `${name} must be true or false.`).default('false');
-
 /**
  * The OpenTelemetry environment this package reads — the SDK reads its own (`OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_*`, …):
  *
  * ```sh
  * OTEL_SDK_DISABLED=true                                        # no spans from Marmeon (the SDK honours it too)
  * OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST=x-tenant,accept-language   # recorded request headers, redacted
- * OTEL_TRUST_TRACEPARENT=true                                   # continue a caller's trace — only behind an edge that sets the header
- * OTEL_RECORD_QUERY_VALUES=true                                 # url.query with its values (masked), not only its keys
+ * MARMEON_OTEL_TRUST_TRACEPARENT=true                           # continue a caller's trace — only behind an edge that sets the header
+ * MARMEON_OTEL_RECORD_QUERY_VALUES=true                         # url.query with its values (masked), not only its keys
  * ```
  */
 export const OtelConfig = defineConfig('otel', {
   env: env({
-    OTEL_SDK_DISABLED: flag('OTEL_SDK_DISABLED'),
+    /**
+     * The specification's switch: only `true`, in any case, disables the SDK and any other value leaves it on. Marmeon reads it
+     * the same way, or it and the SDK would disagree about whether spans are recorded.
+     */
+    OTEL_SDK_DISABLED: env.string().default('false'),
     OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: env.list(env.string()).default([]),
-    OTEL_TRUST_TRACEPARENT: flag('OTEL_TRUST_TRACEPARENT'),
-    OTEL_RECORD_QUERY_VALUES: flag('OTEL_RECORD_QUERY_VALUES'),
-  }),
+    MARMEON_OTEL_TRUST_TRACEPARENT: env.boolean().default(false),
+    MARMEON_OTEL_RECORD_QUERY_VALUES: env.boolean().default(false),
+  })
+    .renamed('OTEL_TRUST_TRACEPARENT', 'MARMEON_OTEL_TRUST_TRACEPARENT')
+    .renamed('OTEL_RECORD_QUERY_VALUES', 'MARMEON_OTEL_RECORD_QUERY_VALUES'),
   resolve: (e) => ({
     disabled: e.OTEL_SDK_DISABLED.toLowerCase() === 'true',
     requestHeaders: e.OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST.map((name) => name.toLowerCase()),
-    /** Continue an incoming request's trace (`traceparent`) instead of linking it (OTEL_TRUST_TRACEPARENT, docs/observability.md#a-callers-traceparent). */
-    trustTraceparent: e.OTEL_TRUST_TRACEPARENT.toLowerCase() === 'true',
+    /** Continue an incoming request's trace (`traceparent`) instead of linking it (MARMEON_OTEL_TRUST_TRACEPARENT, docs/observability.md#a-callers-traceparent). */
+    trustTraceparent: e.MARMEON_OTEL_TRUST_TRACEPARENT,
     /** `url.query` with its values (masked as text) — by default only its keys leave the process. */
-    recordQueryValues: e.OTEL_RECORD_QUERY_VALUES.toLowerCase() === 'true',
+    recordQueryValues: e.MARMEON_OTEL_RECORD_QUERY_VALUES,
   }),
 });
 export type OtelConfig = ConfigOf<typeof OtelConfig>;

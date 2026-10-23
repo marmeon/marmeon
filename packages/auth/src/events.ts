@@ -47,7 +47,7 @@ export const loginSchema = v.object({
  * A user signed in (password, remember-me cookie, registration). Queueable: a queued listener gets
  * `{ userId, remember, via, at, ip, userAgent }` (`EventPayload<typeof Login>`, `at` as an ISO-8601 string) and reads
  * the account as it is when it runs. `ip` and `userAgent` are the request's (`RequestInfo`: the address through
- * `TRUSTED_PROXIES`) — or what the app passed to `attempt()`/`login()`; null outside a request.
+ * `SERVER_TRUSTED_PROXIES`) — or what the app passed to `attempt()`/`login()`; null outside a request.
  */
 export class Login {
   static readonly event = 'auth.login';

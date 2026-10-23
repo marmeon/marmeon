@@ -33,7 +33,7 @@ export interface HstsOptions {
 
 export interface SecurityHeadersOptions {
   /**
-   * `Strict-Transport-Security`, sent on HTTPS responses only (behind a proxy: `TRUSTED_PROXIES` and its `X-Forwarded-Proto`).
+   * `Strict-Transport-Security`, sent on HTTPS responses only (behind a proxy: `SERVER_TRUSTED_PROXIES` and its `X-Forwarded-Proto`).
    * Off by default: turn it on once the site answers over HTTPS only — browsers hold on to it for `maxAge` seconds.
    */
   hsts?: false | HstsOptions;

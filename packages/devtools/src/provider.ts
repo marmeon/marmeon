@@ -38,7 +38,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
   static solutions = defineSolutions([
     {
       for: DevtoolsConfigError,
-      when: (e) => e.message.startsWith('DEVTOOLS_ENABLED=true with') || e.message.startsWith('The devtools were opted in'),
+      when: (e) => e.message.startsWith('DEVTOOLS_ENABLED is on with') || e.message.startsWith('The devtools were opted in'),
       solve: () => ({
         title: 'Remove DEVTOOLS_ENABLED in production',
         text: 'The devtools run with NODE_ENV=development only — nothing can turn them on in production or without NODE_ENV, whatever APP_ENV says. Remove DEVTOOLS_ENABLED from the environment, and install @marmeon/devtools as a dev dependency (pnpm add -D @marmeon/devtools): a production install then does not even have it.',
@@ -67,7 +67,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       );
     }
     if (config.ineffective && !test) {
-      app.container.make(Logger).warn(`DEVTOOLS_ENABLED=true has no effect with NODE_ENV=${config.environment ?? '(unset)'}: the devtools run with NODE_ENV=development only.`);
+      app.container.make(Logger).warn(`DEVTOOLS_ENABLED is on, which has no effect with NODE_ENV=${config.environment ?? '(unset)'}: the devtools run with NODE_ENV=development only.`);
     }
     if (!config.enabled && !test) return;
 

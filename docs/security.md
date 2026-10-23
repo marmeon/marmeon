@@ -118,7 +118,7 @@ until they expire. The [encryption](encryption.md#rotating-the-key) page explain
 - **Security headers.** A new app lists `securityHeaders()` from `@marmeon/http`, which sends `nosniff`, a strict `Referrer-Policy` and
   `X-Frame-Options: DENY` on every response. Its `hsts` option for `Strict-Transport-Security` is off until you turn it on, once the
   site answers over HTTPS alone; no route can weaken `nosniff` or HSTS. The [Content Security Policy](csp.md#the-other-security-headers) page lists them.
-- **Behind a proxy,** `X-Forwarded-*` headers count only from the addresses in `TRUSTED_PROXIES`. Otherwise any client could choose
+- **Behind a proxy,** `X-Forwarded-*` headers count only from the addresses in `SERVER_TRUSTED_PROXIES`. Otherwise any client could choose
   its own address, for rate limits and logs, and its own scheme. `*` trusts the direct peer only, and is safe only when nothing
   but your proxy can reach the app. The [deployment](deployment.md#trusted-proxies) page explains the values.
 - **No compression of documents.** A compressed page that holds a secret next to text an attacker controls leaks the secret byte
@@ -136,7 +136,7 @@ securityHeaders({ hsts: { maxAge: 31_536_000, includeSubDomains: true } })
 ```
 
 `maxAge: 0` withdraws it from the browsers that have seen it. The header is sent on HTTPS responses only; behind a proxy that
-means `TRUSTED_PROXIES` and its `X-Forwarded-Proto`. A proxy may set the header instead of the app.
+means `SERVER_TRUSTED_PROXIES` and its `X-Forwarded-Proto`. A proxy may set the header instead of the app.
 [`marmeon check`](check.md#hsts) warns when it finds none, before you go live.
 
 ## Accounts
@@ -276,8 +276,8 @@ explains what each shows.
 
 With `@marmeon/otel`, a request from outside starts a trace of its own, and an incoming `traceparent` header is only a link to the
 caller's span. A client cannot put its requests into a trace it chose, nor switch their recording on or off with the sampled flag,
-and its baggage is dropped. `OTEL_TRUST_TRACEPARENT=true` continues the caller's trace: set it only behind an edge that sets or
-strips the header, such as a gateway, an ingress or a mesh. `TRUSTED_PROXIES` is no reason, since a proxy usually passes the
+and its baggage is dropped. `MARMEON_OTEL_TRUST_TRACEPARENT=true` continues the caller's trace: set it only behind an edge that sets or
+strips the header, such as a gateway, an ingress or a mesh. `SERVER_TRUSTED_PROXIES` is no reason, since a proxy usually passes the
 client's header on unchanged. The [observability](observability.md#a-callers-traceparent) page covers tracing.
 
 ## Your checklist
@@ -316,11 +316,11 @@ client's header on unchanged. The [observability](observability.md#a-callers-tra
   want it, 7 by default. With `AUTH_PRIVATE_REGISTRATION=false`, tell your users that an unconfirmed account goes, and set
   `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`.
 - `abilities()` on every API route that acts: without it, every token of a user acts with all of the user's rights.
-- `OTEL_TRUST_TRACEPARENT` only behind an edge that owns the header, and `OTEL_RECORD_QUERY_VALUES` only when your URLs carry no
+- `MARMEON_OTEL_TRUST_TRACEPARENT` only behind an edge that owns the header, and `MARMEON_OTEL_RECORD_QUERY_VALUES` only when your URLs carry no
   personal data.
 - [HSTS](#strict-transport-security) once the site answers over HTTPS only: the `hsts` option of `securityHeaders()`, or the proxy.
   `marmeon check --only=boot,hsts` with the production environment tells you whether the app sends it.
-- `TRUSTED_PROXIES` set to exactly your proxy, or `*` for the direct peer when nothing else can reach the app. The proxy sets
+- `SERVER_TRUSTED_PROXIES` set to exactly your proxy, or `*` for the direct peer when nothing else can reach the app. The proxy sets
   `X-Forwarded-*` itself and does not compress pages.
 - `SESSION_ENCRYPT=true` when the session store is shared.
 - Tables: the tenant in the base query, `tableRoutes` on the page's registrar, an `authorize` for exports, a `throttle` on the

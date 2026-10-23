@@ -123,7 +123,7 @@ export async function loadDevtoolsOptions(root: string): Promise<DevtoolsOptions
 
 /**
  * Whether the devtools run (fail closed): **only** with `NODE_ENV=development` — not "anything but production" (a missing
- * `NODE_ENV`, `test` or `production` keeps them off, whatever `APP_ENV` says). `DEVTOOLS_ENABLED=false` turns them off there too; `DEVTOOLS_ENABLED=true`
+ * `NODE_ENV`, `test` or `production` keeps them off, whatever `APP_ENV` says). `DEVTOOLS_ENABLED=false` turns them off there too; switching it on (`true` or `1`)
  * cannot turn them on anywhere else — where the app is protected (production, no `NODE_ENV`) it fails the start.
  * Tests opt in with `createTestApp(App, { devtools: true })`.
  */
@@ -132,26 +132,25 @@ export const DevtoolsConfig = defineConfig('devtools', {
     NODE_ENV: env.string().optional(),
     /** Named in the start error — it opens nothing. */
     APP_ENV: env.string().optional(),
-    /** `true` or `false`, in any case. */
-    DEVTOOLS_ENABLED: env.string().regex(/^(?:true|false)$/i, 'DEVTOOLS_ENABLED must be true or false.').optional(),
+    DEVTOOLS_ENABLED: env.boolean().optional(),
     /** The app's own address: its host may open the pages too (besides `localhost`, `127.0.0.1` and `[::1]`). */
     APP_URL: env.string().optional(),
   }),
   resolve: (e) => {
-    const switched = e.DEVTOOLS_ENABLED?.toLowerCase();
-    if (switched === 'true' && environment.isProtected(e)) {
+    const switched = e.DEVTOOLS_ENABLED;
+    if (switched === true && environment.isProtected(e)) {
       throw new DevtoolsConfigError(
-        `DEVTOOLS_ENABLED=true with ${environment.describe(e)}: the devtools record requests, queries and mails — they never run in production or without NODE_ENV, whatever APP_ENV says. ` +
+        `DEVTOOLS_ENABLED is on with ${environment.describe(e)}: the devtools record requests, queries and mails — they never run in production or without NODE_ENV, whatever APP_ENV says. ` +
           'Remove DEVTOOLS_ENABLED (they run with NODE_ENV=development only), and install @marmeon/devtools as a dev dependency.',
       );
     }
     return {
-      enabled: environment.isDevelopment(e) && switched !== 'false',
+      enabled: environment.isDevelopment(e) && switched !== false,
       environment: environment.name(e),
       /** Production, no `NODE_ENV`: a test's opt-in fails the start there. */
       protected: environment.isProtected(e),
-      /** `DEVTOOLS_ENABLED=true` in a test: it has no effect (said once, at the start). */
-      ineffective: switched === 'true' && !environment.isDevelopment(e),
+      /** `DEVTOOLS_ENABLED` on in a test: it has no effect (said once, at the start). */
+      ineffective: switched === true && !environment.isDevelopment(e),
       /** The hosts the pages answer (a request for any other gets 403 — DNS rebinding): loopback names and `APP_URL`'s host. */
       hosts: devHosts(e.APP_URL),
     };

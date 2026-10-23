@@ -99,7 +99,7 @@ and Compose's `init: true` are not needed.
 
 | Role | Command | On `SIGTERM` |
 | --- | --- | --- |
-| web | `marmeon start` | Leaves readiness, answers for `SHUTDOWN_DELAY` seconds, then finishes the requests in flight and the work after them. |
+| web | `marmeon start` | Leaves readiness, answers for the seconds in `SERVER_SHUTDOWN_DELAY_SECONDS`, then finishes the requests in flight and the work after them. |
 | worker | `marmeon queue:work` | Takes no new job. The running one gets `--stop-timeout` seconds, 10 by default, then it goes back to the queue. |
 | scheduler | `marmeon schedule:work` | Starts no new run. Runs still going get `--stop-timeout` seconds, 30 by default. |
 
@@ -211,12 +211,12 @@ The settings a server needs, beyond those of each feature:
 | `APP_URL` | none | `https://…`. Cookies get `Secure` from it unless `SESSION_SECURE_COOKIE` says otherwise, and a protected app on `http://` warns at every start. Browsers ignore the `Clear-Site-Data` of a sign-out outside secure contexts (HTTPS, `http://localhost`), so a server on plain HTTP leaves the browser's storage in place after a sign-out. |
 | `HOST` | `127.0.0.1` | `0.0.0.0` in a container or where another machine reaches the app; the default behind a proxy on the same machine. |
 | `PORT` | `3000` | `0` takes a free port, and the start line names it. |
-| `TRUSTED_PROXIES` | none | The proxy's addresses or ranges. See [proxies](#proxies-and-http2). |
-| `SHUTDOWN_DELAY` | `0` | Seconds of requests after `SIGTERM`, at most 300. About 5 behind a load balancer that learns from its probes. |
-| `KEEP_ALIVE_TIMEOUT` | `65` | Seconds an idle connection stays open. Longer than the proxy keeps its own. |
+| `SERVER_TRUSTED_PROXIES` | none | The proxy's addresses or ranges. See [proxies](#proxies-and-http2). |
+| `SERVER_SHUTDOWN_DELAY_SECONDS` | `0` | Seconds of requests after `SIGTERM`, at most 300. About 5 behind a load balancer that learns from its probes. |
+| `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` | `65` | Seconds an idle connection stays open. Longer than the proxy keeps its own. |
 | `DB_DRIVER` | `sqlite` | `pgsql` for Postgres, with `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`, or the whole address in `DB_URL`, which then wins. See [database](database.md#configuration). |
 | `MAIL_DRIVER` | `log` | `smtp` in production, with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` and `MAIL_FROM_ADDRESS`. |
-| `ASSET_VERSION` | the build's | Tabs of an older version load the page fully on their next visit. Set it to the git commit, for example. |
+| `SERVER_ASSET_VERSION` | the build's | Tabs of an older version load the page fully on their next visit. Set it to the git commit, for example. |
 
 ### `HOST`
 
@@ -269,7 +269,7 @@ build` builds the browser's files for production under every `NODE_ENV` but `dev
 On `SIGTERM`, the web server:
 
 1. **Leaves readiness.** `/up/ready` answers `503` with `{"status":"draining"}` at once, while `/up` stays `200`.
-2. **Keeps answering for `SHUTDOWN_DELAY` seconds.** Every response carries `Connection: close`, so the client's next request
+2. **Keeps answering for the seconds in `SERVER_SHUTDOWN_DELAY_SECONDS`.** Every response carries `Connection: close`, so the client's next request
    opens a new connection, which the load balancer gives to another instance.
 3. **Drains.** Live streams end first, and their tabs connect to another server. No new connection is taken, the requests in
    flight finish, and then the work they deferred until after their response, such as a mail. The process exits at the latest
@@ -285,15 +285,15 @@ On `SIGTERM`, the web server:
 
 The delay exists because a load balancer learns late that an instance stops. Kubernetes removes a terminating pod from its
 endpoints at the same moment it sends `SIGTERM`, and the proxies notice a moment later. A load balancer that knows only its
-probes needs at least one probe interval. `SHUTDOWN_DELAY=5` covers both, without a `preStop` hook:
+probes needs at least one probe interval. `SERVER_SHUTDOWN_DELAY_SECONDS=5` covers both, without a `preStop` hook:
 
 ```yaml
 # Kubernetes: the container of a Deployment
 livenessProbe:  { httpGet: { path: /up, port: 3000 }, periodSeconds: 10 }
 readinessProbe: { httpGet: { path: /up/ready, port: 3000 }, periodSeconds: 5 }
 env:
-  - { name: SHUTDOWN_DELAY, value: '5' }
-terminationGracePeriodSeconds: 30   # more than SHUTDOWN_DELAY + 10 s
+  - { name: SERVER_SHUTDOWN_DELAY_SECONDS, value: '5' }
+terminationGracePeriodSeconds: 30   # more than SERVER_SHUTDOWN_DELAY_SECONDS + 10 s
 ```
 
 Use the delay or a `preStop` hook, not both.
@@ -304,8 +304,8 @@ Use the delay or a `preStop` hook, not both.
 outage must not get healthy processes restarted. The image's `HEALTHCHECK` uses it. `GET /up/ready` is the readiness check: it
 runs every health check of the app and its packages, such as the database and Redis, and answers `200` or `503`.
 
-`HEALTH_PATH` moves both, and `HEALTH_PATH=off` turns them off. The image's `HEALTHCHECK` follows `PORT` and `HEALTH_PATH`. With
-`HEALTH_PATH=off`, it checks nothing and the web container counts as healthy; your orchestrator then needs another way to see the
+`SERVER_HEALTH_PATH` moves both, and `SERVER_HEALTH_PATH=off` turns them off. The image's `HEALTHCHECK` follows `PORT` and `SERVER_HEALTH_PATH`. With
+`SERVER_HEALTH_PATH=off`, it checks nothing and the web container counts as healthy; your orchestrator then needs another way to see the
 app. Worker and scheduler containers have no HTTP server, so the Compose file turns their health check
 off. The [health checks](health.md) page explains both endpoints and your own checks.
 
@@ -340,27 +340,27 @@ stream with `X-Accel-Buffering: no`.
 
 A proxy that reuses its connections to the app must close an idle one before the app does. Otherwise it now and then sends a
 request on a connection the app is just closing, and the browser gets a `502`. The app keeps an idle connection for
-`KEEP_ALIVE_TIMEOUT` seconds, 65 by default. The nginx template keeps up to 16 idle connections and closes them after 60
+`SERVER_KEEP_ALIVE_TIMEOUT_SECONDS`, 65 by default. The nginx template keeps up to 16 idle connections and closes them after 60
 seconds, and an AWS load balancer also closes after 60. Behind a proxy that keeps them longer, such as Google's load balancer
-with 600 seconds, set `KEEP_ALIVE_TIMEOUT=620`.
+with 600 seconds, set `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS=620`.
 
 ### Other proxies
 
 Check that a proxy speaks HTTP/2 to the browser and passes responses on without buffering them. Some proxies buffer by default
 or end a response after a fixed time, so test live updates behind them before you rely on them. A proxy that probes the app
-should probe `/up/ready` when you set `SHUTDOWN_DELAY`, so it notices a stopping instance.
+should probe `/up/ready` when you set `SERVER_SHUTDOWN_DELAY_SECONDS`, so it notices a stopping instance.
 
 ### Trusted proxies
 
 By default, the app believes no `X-Forwarded-*` header. The client's address is the peer's, and the URL is what the peer asked
-for. `TRUSTED_PROXIES` names the proxies whose headers count: then the client's address in rate limits and logs comes from
+for. `SERVER_TRUSTED_PROXIES` names the proxies whose headers count: then the client's address in rate limits and logs comes from
 `X-Forwarded-For`, and the request's URL takes its scheme and host from `X-Forwarded-Proto` and `X-Forwarded-Host`. The CSRF
 check compares a form's origin with that URL.
 
 The peer's address is the socket's. An adapter that runs the kernel outside `startServer()` passes it as
 `kernel.fetch(request, { remoteAddress })`, taken from the socket and never from a header.
 
-| Where the proxy is | `TRUSTED_PROXIES` |
+| Where the proxy is | `SERVER_TRUSTED_PROXIES` |
 | --- | --- |
 | Caddy in the same Compose network, the web container publishes no port | `*`, as the template sets it |
 | On the same machine | `127.0.0.1` |
@@ -371,7 +371,7 @@ The peer's address is the socket's. An adapter that runs the kernel outside `sta
 A value that is no address, range or `*` stops the start.
 
 > [!WARNING]
-> Never set `TRUSTED_PROXIES=*` on a port anybody can reach: every client would then be the trusted proxy, and could choose its
+> Never set `SERVER_TRUSTED_PROXIES=*` on a port anybody can reach: every client would then be the trusted proxy, and could choose its
 > own address and the URL the app sees. Let the proxy set the forwarded headers rather than pass on a client's.
 
 ### Compression
@@ -384,7 +384,7 @@ leaks the secret byte by byte. Leave the proxy's compression off for them too. T
 
 With [OpenTelemetry](observability.md#a-callers-traceparent), every request from outside starts a trace of its own, and a caller's
 `traceparent` header becomes a link of it. Anyone can send that header, so taking it as the parent would let a client choose the
-trace its requests land in. Set `OTEL_TRUST_TRACEPARENT=true` only behind an edge that sets or strips the header itself, such as
+trace its requests land in. Set `MARMEON_OTEL_TRUST_TRACEPARENT=true` only behind an edge that sets or strips the header itself, such as
 an API gateway or a service mesh. A trusted proxy is no such edge by itself: Caddy and nginx pass the header on.
 
 ## More than one instance
@@ -535,7 +535,7 @@ A single server with Docker Compose is enough for many apps. A few things matter
   443 over TCP and 443 over UDP for HTTP/3.
 - **IPv6 on the Compose network.** Without it, Docker hands a visitor's IPv6 connection to Caddy through a proxy process of its
   own, and every IPv6 visitor arrives with the same address, which then shares one rate limit.
-- **Explicit ranges instead of `*`.** Give the Compose network fixed subnets and list them in `TRUSTED_PROXIES`.
+- **Explicit ranges instead of `*`.** Give the Compose network fixed subnets and list them in `SERVER_TRUSTED_PROXIES`.
 - **A tag per build.** Name each image after its commit, so an earlier version starts again without a build.
 
 ## Checklist
@@ -544,8 +544,8 @@ A single server with Docker Compose is enough for many apps. A few things matter
 - `APP_KEY` set, and the same on every instance. `APP_URL` starts with `https://`.
 - `marmeon migrate --force` once per deployment, for example in a one-off container. The release that first marks the stored
   formats needs [every old process stopped](#the-upgrade-that-stops-every-process) first.
-- The proxy speaks HTTP/2 to browsers, does not buffer event streams and sets `X-Forwarded-*`. `TRUSTED_PROXIES` names it.
-- `HOST=0.0.0.0` where another machine reaches the app directly. `KEEP_ALIVE_TIMEOUT` above the proxy's idle timeout to the app.
+- The proxy speaks HTTP/2 to browsers, does not buffer event streams and sets `X-Forwarded-*`. `SERVER_TRUSTED_PROXIES` names it.
+- `HOST=0.0.0.0` where another machine reaches the app directly. `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` above the proxy's idle timeout to the app.
 - `MAIL_DRIVER=smtp`.
 - Web, worker and scheduler each under a supervisor that restarts them, with grace periods longer than the drain.
 - A worker takes every queue the app uses: one without `--queue` does, and a `--queue` list names every queue or holds a `*`.
@@ -554,7 +554,7 @@ A single server with Docker Compose is enough for many apps. A few things matter
 - HSTS once the site answers over HTTPS only: the `hsts` option of `securityHeaders()` in `bootstrap/app.ts`. Before going live,
   `marmeon check --only=boot,hsts` with the production environment tells you whether the app sends it
   ([the check](check.md#hsts); `--skip=hsts` where your proxy sets the header).
-- `SHUTDOWN_DELAY` of about 5 behind a probing load balancer or in Kubernetes.
+- `SERVER_SHUTDOWN_DELAY_SECONDS` of about 5 behind a probing load balancer or in Kubernetes.
 - More than one instance or `--workers`: shared drivers for sessions, cache, queue, live updates and files, and Postgres instead
   of SQLite.
 - `storage/` on a volume.

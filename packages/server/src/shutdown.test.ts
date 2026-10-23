@@ -95,13 +95,13 @@ describe('stopping the server', () => {
     await app.shutdown();
   });
 
-  it('SHUTDOWN_DELAY: /up/ready 503 at once, requests still answered for the delay (connection: close), then the drain', async () => {
+  it('SERVER_SHUTDOWN_DELAY_SECONDS: /up/ready 503 at once, requests still answered for the delay (connection: close), then the drain', async () => {
     const app = await createApplication({
       root,
       discover: false,
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
       modules: [defineModule({ name: 'hello', apiRoutes: openRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
-    }, { env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '0.6' } });
+    }, { env: { APP_KEY: generateKey(), SERVER_SHUTDOWN_DELAY_SECONDS: '0.6' } });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
     const base = `http://127.0.0.1:${port}`;
@@ -118,7 +118,9 @@ describe('stopping the server', () => {
     expect(late.status).toBe(200);
     expect(late.headers.get('connection')).toBe('close');
     await closed;
+    // Read as seconds: 0.6 waits 600 ms — not the 60 ms of milliseconds by mistake, nor ten minutes.
     expect(performance.now() - started).toBeGreaterThanOrEqual(590);
+    expect(performance.now() - started).toBeLessThan(3000);
     await expect(fetch(`${base}/up`)).rejects.toThrow();
     await app.shutdown();
   });
@@ -128,14 +130,14 @@ describe('stopping the server', () => {
       root,
       discover: false,
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-    }, { env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '5' } });
+    }, { env: { APP_KEY: generateKey(), SERVER_SHUTDOWN_DELAY_SECONDS: '5' } });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const started = performance.now();
     await running.close({ immediately: true });
     expect(performance.now() - started).toBeLessThan(2_000);
     await app.shutdown();
     await expect(
-      createApplication({ root, discover: false, providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider] }, { env: { APP_KEY: generateKey(), SHUTDOWN_DELAY: '5s' } }),
+      createApplication({ root, discover: false, providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider] }, { env: { APP_KEY: generateKey(), SERVER_SHUTDOWN_DELAY_SECONDS: '5s' } }),
     ).rejects.toThrow('Expected seconds, like 5 or 0.5');
   });
 

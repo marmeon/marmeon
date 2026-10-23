@@ -5,7 +5,7 @@ import { token } from '@marmeon/core';
  * service may log it. Bound per request by the server kernel; outside a request (a job, a command) both are undefined.
  */
 export interface RequestInfo {
-  /** The client's address — through the proxies the app trusts (`TRUSTED_PROXIES`), like `ctx.ip`. */
+  /** The client's address — through the proxies the app trusts (`SERVER_TRUSTED_PROXIES`), like `ctx.ip`. */
   readonly ip: string | undefined;
   /** The `User-Agent` header, as the client sent it (anyone can send anything here — show it, never trust it). */
   readonly userAgent: string | undefined;

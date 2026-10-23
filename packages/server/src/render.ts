@@ -238,7 +238,7 @@ export interface ResponseFactoryOptions {
   onPage?: (request: Request, page: PageObject | RegionObject, kind: 'page' | 'layer' | 'island', origins: () => PropOrigins) => void;
   /** Where server-rendering errors go. */
   logger?: Logger;
-  /** Server rendering at all (`SSR_ENABLED=false` turns it off for every page: the browser renders them). Default: on. */
+  /** Server rendering at all (`SERVER_SSR_ENABLED=false` turns it off for every page: the browser renders them). Default: on. */
   ssr?: boolean;
   /** Development: say why an island (or a page) is a 404 where it was asked for the other. */
   debug?: boolean;
@@ -652,7 +652,7 @@ export async function toActionResponse(response: Response): Promise<Response> {
 /**
  * A page request (or an upload's target request) answered with a redirect to another origin becomes `409` with `x-marmeon-location`, the client's full load.
  * The client's `fetch` would follow the redirect and send its `x-xsrf-token` header on to that origin. "Another" is measured
- * against the origin the request came to (after `TRUSTED_PROXIES`); a protocol-relative `//host` is another origin. Same-origin
+ * against the origin the request came to (after `SERVER_TRUSTED_PROXIES`); a protocol-relative `//host` is another origin. Same-origin
  * redirects, and anything but http(s), pass as they are.
  */
 export async function leaveForeignRedirect(response: Response, request: Request): Promise<Response> {

@@ -151,7 +151,7 @@ describe('health endpoints', () => {
     }
   });
 
-  it('from the stop signal on /up/ready answers 503 "draining" while /up stays 200 (SHUTDOWN_DELAY); both 503 once it closes', async () => {
+  it('from the stop signal on /up/ready answers 503 "draining" while /up stays 200 (SERVER_SHUTDOWN_DELAY_SECONDS); both 503 once it closes', async () => {
     state.database = 'ok';
     const { application } = await boot();
     const kernel = createHttpKernel(application);
@@ -203,9 +203,9 @@ describe('health endpoints', () => {
     }
   });
 
-  it('HEALTH_PATH moves them (or turns them off); an app route on a health path fails the start', async () => {
+  it('SERVER_HEALTH_PATH moves them (or turns them off); an app route on a health path fails the start', async () => {
     state.database = 'ok';
-    const moved = await boot({ env: { HEALTH_PATH: '/healthz' } });
+    const moved = await boot({ env: { SERVER_HEALTH_PATH: '/healthz' } });
     const kernel = createHttpKernel(moved.application);
     expect((await kernel.request('/healthz')).status).toBe(200);
     expect((await kernel.request('/healthz/ready')).status).toBe(200);
@@ -213,16 +213,16 @@ describe('health endpoints', () => {
     await moved.application.shutdown();
 
     const ownUp = openRoutes((Route) => void Route.get('/up', () => ({ mine: true })).name('status'));
-    const off = await boot({ env: { HEALTH_PATH: 'off' }, routes: ownUp });
+    const off = await boot({ env: { SERVER_HEALTH_PATH: 'off' }, routes: ownUp });
     expect(await (await createHttpKernel(off.application).request('/up')).json()).toEqual({ mine: true });
     await off.application.shutdown();
 
     const clash = await boot({ routes: ownUp });
     expect(() => createHttpKernel(clash.application)).toThrow(
-      'The route "status" (GET /up) is where the health check answers — it would never be reached. Give the route another path, or move the health check: HEALTH_PATH=/healthz (or HEALTH_PATH=off).',
+      'The route "status" (GET /up) is where the health check answers — it would never be reached. Give the route another path, or move the health check: SERVER_HEALTH_PATH=/healthz (or SERVER_HEALTH_PATH=off).',
     );
     await clash.application.shutdown();
 
-    await expect(boot({ env: { HEALTH_PATH: 'up/' } })).rejects.toThrow('Expected a path like /up or /healthz (no trailing slash), or off');
+    await expect(boot({ env: { SERVER_HEALTH_PATH: 'up/' } })).rejects.toThrow('Expected a path like /up or /healthz (no trailing slash), or off');
   });
 });

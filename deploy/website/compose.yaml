@@ -35,7 +35,7 @@ services:
       SITE_FATHOM_SITE: ${WEBSITE_FATHOM_SITE-IBAFAHEM}
       # Only Caddy shares the network below with the docs — so its X-Forwarded-For/-Proto/-Host count: the search's rate
       # limit sees each visitor's address, not Caddy's. Change the subnets together with the network.
-      TRUSTED_PROXIES: 172.30.80.0/24,fd5b:c0de:d0c5::/64
+      SERVER_TRUSTED_PROXIES: 172.30.80.0/24,fd5b:c0de:d0c5::/64
     volumes:
       # The rate limit's cache and Node's compile cache — nothing to back up; a new volume only makes the first start slower.
       - storage:/app/storage

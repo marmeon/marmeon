@@ -208,7 +208,7 @@ describe('StartSession', () => {
   });
 
   it('keeps flash data through an asset-version reload (409)', async () => {
-    const { send } = await boot({ ASSET_VERSION: 'v2' }, { version: 'v2' });
+    const { send } = await boot({ SERVER_ASSET_VERSION: 'v2' }, { version: 'v2' });
     await send('/save', { method: 'POST' });
     const stale = await send('/count', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-version': 'v1' } });
     expect(stale.status).toBe(409);

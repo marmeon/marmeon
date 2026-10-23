@@ -37,7 +37,7 @@ The browser's word comes first because it cannot be faked by a page and needs no
 and without a token, and no session is started just to hand one out.
 
 Your app's own origin is the scheme and host the request reached it at, and the origin of `APP_URL`. Behind a proxy, the scheme
-and host come from its `X-Forwarded-Proto` and `X-Forwarded-Host`, but only when the proxy is in `TRUSTED_PROXIES`. `APP_URL`
+and host come from its `X-Forwarded-Proto` and `X-Forwarded-Host`, but only when the proxy is in `SERVER_TRUSTED_PROXIES`. `APP_URL`
 lets the configured address through even before you trust the proxy. The [deployment](deployment.md#trusted-proxies) page
 explains trusted proxies.
 

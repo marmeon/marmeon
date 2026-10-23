@@ -139,7 +139,7 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     const compose = caddy.file('compose.production.yaml');
     expect(compose).toContain('image: caddy:2');
     expect(compose).toContain("      - '443:443/udp'");
-    expect(compose).toContain("TRUSTED_PROXIES: '*'");
+    expect(compose).toContain("SERVER_TRUSTED_PROXIES: '*'");
     expect(compose).not.toContain("'3000:3000'");
     const caddyfile = caddy.file('deploy/Caddyfile');
     expect(caddyfile).toContain('{$APP_DOMAIN} {');
@@ -156,7 +156,7 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     expect(conf).not.toContain('X-Forwarded-For $proxy_add_x_forwarded_for');
     expect(conf).toContain('proxy_read_timeout 75s;');
     // nginx closes an idle connection to the app before the app does: the other way round, it would send a request on
-    // one the app is just closing — a 502 now and then. The app's default (KEEP_ALIVE_TIMEOUT) is longer than nginx's.
+    // one the app is just closing — a 502 now and then. The app's default (SERVER_KEEP_ALIVE_TIMEOUT_SECONDS) is longer than nginx's.
     const upstreamIdle = Number(/^\s*keepalive_timeout (\d+)s;/m.exec(conf)?.[1]);
     const app = await createApplication({ root: repo, discover: false, providers: [ServerServiceProvider] }, { env: {} });
     expect(upstreamIdle, 'the template names its keepalive_timeout').toBeGreaterThan(0);
@@ -176,7 +176,7 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     const result = makeDocker(pnpmApp(), '--systemd', '--caddy');
     const web = result.file('deploy/systemd/web.service');
     expect(web).toContain('ExecStart=/srv/shop/node_modules/.bin/marmeon start');
-    expect(web).toContain('Environment=HOST=127.0.0.1 PORT=3000 TRUSTED_PROXIES=127.0.0.1');
+    expect(web).toContain('Environment=HOST=127.0.0.1 PORT=3000 SERVER_TRUSTED_PROXIES=127.0.0.1');
     expect(web).toContain('TimeoutStopSec=30');
     expect(web).toContain('ReadWritePaths=/srv/shop/storage');
     expect(result.file('deploy/systemd/worker.service')).toMatch(/^ExecStart=\/srv\/shop\/node_modules\/\.bin\/marmeon queue:work$/m);
@@ -212,13 +212,13 @@ describe('the health check of the image', () => {
     return code;
   }
 
-  it('exits 0 for 200, 1 for 503, 1 when nothing listens; follows PORT and HEALTH_PATH', async () => {
+  it('exits 0 for 200, 1 for 503, 1 when nothing listens; follows PORT and SERVER_HEALTH_PATH', async () => {
     const up = await serve(200);
     const draining = await serve(503);
     try {
       expect(await check((up.address() as AddressInfo).port)).toBe(0);
       expect(await check((draining.address() as AddressInfo).port)).toBe(1);
-      expect(await check((up.address() as AddressInfo).port, { HEALTH_PATH: '/healthz' })).toBe(1);
+      expect(await check((up.address() as AddressInfo).port, { SERVER_HEALTH_PATH: '/healthz' })).toBe(1);
       const closed = (draining.address() as AddressInfo).port;
       draining.close();
       await once(draining, 'close');
@@ -228,14 +228,14 @@ describe('the health check of the image', () => {
     }
   });
 
-  it('checks nothing with HEALTH_PATH=off: no server answers there, the container stays healthy', async () => {
+  it('checks nothing with SERVER_HEALTH_PATH=off: no server answers there, the container stays healthy', async () => {
     const server = await serve(200);
     const port = (server.address() as AddressInfo).port;
     server.close();
     await once(server, 'close');
-    expect(await check(port, { HEALTH_PATH: 'off' })).toBe(0);
-    // An empty HEALTH_PATH counts as missing: /up as without it.
-    expect(await check(port, { HEALTH_PATH: '' })).toBe(1);
+    expect(await check(port, { SERVER_HEALTH_PATH: 'off' })).toBe(0);
+    // An empty SERVER_HEALTH_PATH counts as missing: /up as without it.
+    expect(await check(port, { SERVER_HEALTH_PATH: '' })).toBe(1);
   });
 
   it('is the command in the Dockerfile', () => {

@@ -53,7 +53,7 @@ describe('an island asks for the host its page was asked for', async () => {
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     modules: [defineModule({ name: 'island-host', routes })],
-  }, { env: { APP_KEY: generateKey(), NODE_ENV: 'development', TRUSTED_PROXIES: '127.0.0.1' } });
+  }, { env: { APP_KEY: generateKey(), NODE_ENV: 'development', SERVER_TRUSTED_PROXIES: '127.0.0.1' } });
   const app = createHttpKernel(application, { renderer: createDocumentRenderer({ template: () => FALLBACK_TEMPLATE, ssr: () => render }), debug: true });
   // The proxy is trusted, so `X-Forwarded-Host` makes the request's URL `localhost` — the `Host` header stays the client's.
   const page = (host: string, islands: string[]) =>

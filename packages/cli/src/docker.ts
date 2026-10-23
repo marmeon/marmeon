@@ -33,10 +33,10 @@ export interface DockerOptions {
 
 /**
  * The health check of the image: Node's `fetch` — no curl in a slim image — on `/up`, 200 or it fails. It follows `PORT` and
- * `HEALTH_PATH` like the server (an empty one counts as missing); `HEALTH_PATH=off` turns the server's endpoints off, so it checks nothing.
+ * `SERVER_HEALTH_PATH` like the server (an empty one counts as missing); `SERVER_HEALTH_PATH=off` turns the server's endpoints off, so it checks nothing.
  */
 export const HEALTHCHECK_SCRIPT =
-  "const p=process.env.HEALTH_PATH||'/up';p==='off'?process.exit(0):fetch('http://127.0.0.1:'+(process.env.PORT||3000)+p).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))";
+  "const p=process.env.SERVER_HEALTH_PATH||'/up';p==='off'?process.exit(0):fetch('http://127.0.0.1:'+(process.env.PORT||3000)+p).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))";
 
 export function dockerfile(app: DockerApp): string {
   const pnpm = app.packageManager === 'pnpm';
@@ -90,7 +90,7 @@ RUN mkdir -p storage/app/private storage/app/public storage/framework/cache stor
  && chown -R node:node storage
 USER node
 EXPOSE 3000
-# Liveness (/up) with Node's fetch — the image has no curl; it follows PORT and HEALTH_PATH (HEALTH_PATH=off: no check).
+# Liveness (/up) with Node's fetch — the image has no curl; it follows PORT and SERVER_HEALTH_PATH (SERVER_HEALTH_PATH=off: no check).
 # The worker and scheduler containers turn it off (compose).
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \\
   CMD ["node", "-e", ${JSON.stringify(HEALTHCHECK_SCRIPT)}]
@@ -138,14 +138,14 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
       ? [
           `      # Only ${proxy === 'caddy' ? 'Caddy' : 'nginx'} reaches this container (it publishes no port), so its X-Forwarded-* count. Publish a port and`,
           "      # this would trust anyone: name the proxy's address or network instead.",
-          "      TRUSTED_PROXIES: '*'",
+          "      SERVER_TRUSTED_PROXIES: '*'",
         ]
       : proxy
-        ? ["      # The proxy on this host connects through Docker's port forwarding: its address as the container sees it, e.g.", "      # TRUSTED_PROXIES: 172.17.0.1"]
+        ? ["      # The proxy on this host connects through Docker's port forwarding: its address as the container sees it, e.g.", "      # SERVER_TRUSTED_PROXIES: 172.17.0.1"]
         : []),
     '      # Behind a load balancer that learns from /up/ready that a container stops: answer a few more seconds.',
-    "      SHUTDOWN_DELAY: '0'",
-    '    # SIGTERM → SHUTDOWN_DELAY → drain (at most 10 s) — before Docker sends SIGKILL.',
+    "      SERVER_SHUTDOWN_DELAY_SECONDS: '0'",
+    '    # SIGTERM → SERVER_SHUTDOWN_DELAY_SECONDS → drain (at most 10 s) — before Docker sends SIGKILL.',
     '    stop_grace_period: 20s',
   ];
   const services = [
@@ -239,7 +239,7 @@ export function caddyfile({ systemd = false }: DockerOptions): string {
   const upstream = systemd ? '127.0.0.1:3000' : 'web:3000';
   return `# Written by \`marmeon make:docker --caddy\`. Caddy fetches the certificate for {$APP_DOMAIN} and speaks HTTP/1.1, HTTP/2 and
 # HTTP/3: a browser opens at most 6 HTTP/1.1 connections per host, so live streams (SSE) in more tabs need HTTP/2.
-# It sets X-Forwarded-For/-Proto/-Host itself (and drops a client's), which the app trusts from TRUSTED_PROXIES.
+# It sets X-Forwarded-For/-Proto/-Host itself (and drops a client's), which the app trusts from SERVER_TRUSTED_PROXIES.
 # Trying it locally: APP_DOMAIN=localhost and a \`tls internal\` line in the block.
 {$APP_DOMAIN} {
 	# No \`encode\`: the assets arrive compressed (marmeon build writes .br/.gz), and documents stay uncompressed — a
@@ -260,7 +260,7 @@ export function nginxConf({ systemd = false }: DockerOptions): string {
 upstream marmeon {
 	server ${upstream};
 	keepalive 16;
-	# Idle connections to the app close here first: the app keeps them longer (KEEP_ALIVE_TIMEOUT, default 65 s) — the other
+	# Idle connections to the app close here first: the app keeps them longer (SERVER_KEEP_ALIVE_TIMEOUT_SECONDS, default 65 s) — the other
 	# way round nginx would send a request on a connection the app is just closing (a 502 now and then).
 	keepalive_timeout 60s;
 }
@@ -280,7 +280,7 @@ server {
 	server_name example.com;
 	ssl_certificate ${systemd ? '/etc/letsencrypt/live/example.com/fullchain.pem' : '/etc/nginx/certs/fullchain.pem'};
 	ssl_certificate_key ${systemd ? '/etc/letsencrypt/live/example.com/privkey.pem' : '/etc/nginx/certs/privkey.pem'};
-	# MAX_BODY_SIZE of the app (default 8m).
+	# SERVER_MAX_BODY_SIZE of the app (default 8m).
 	client_max_body_size 8m;
 	# No gzip for documents: a compressed page that carries a secret (the CSRF token) is what BREACH reads. The assets arrive
 	# compressed already (marmeon build writes .br/.gz).
@@ -292,8 +292,8 @@ server {
 		proxy_set_header Connection "";
 		proxy_set_header Host $host;
 		# Set by nginx, never passed on: Proto, Host and For replace whatever the client sent — For is the address nginx
-		# sees (with TRUSTED_PROXIES: '*' the app takes the right-most entry anyway). Behind another proxy (a CDN), append
-		# ($proxy_add_x_forwarded_for) and name both proxies' ranges in TRUSTED_PROXIES instead of '*'.
+		# sees (with SERVER_TRUSTED_PROXIES: '*' the app takes the right-most entry anyway). Behind another proxy (a CDN), append
+		# ($proxy_add_x_forwarded_for) and name both proxies' ranges in SERVER_TRUSTED_PROXIES instead of '*'.
 		proxy_set_header X-Forwarded-For $remote_addr;
 		proxy_set_header X-Forwarded-Proto $scheme;
 		proxy_set_header X-Forwarded-Host $host;
@@ -340,8 +340,8 @@ WantedBy=multi-user.target
   return {
     web: unit('web', 'web server', 'web server (marmeon start)', 'start', 30, [
       '# Only the proxy on this machine connects: listen on loopback, trust its X-Forwarded-*.',
-      'Environment=HOST=127.0.0.1 PORT=3000 TRUSTED_PROXIES=127.0.0.1',
-      '# SIGTERM → SHUTDOWN_DELAY → drain (at most 10 s): TimeoutStopSec covers both.',
+      'Environment=HOST=127.0.0.1 PORT=3000 SERVER_TRUSTED_PROXIES=127.0.0.1',
+      '# SIGTERM → SERVER_SHUTDOWN_DELAY_SECONDS → drain (at most 10 s): TimeoutStopSec covers both.',
     ]),
     worker: unit('worker', 'queue worker', 'queue worker (marmeon queue:work)', 'queue:work', 30, [
       '# Every queue, fairly. For a priority, a second unit with --queue=mail.',

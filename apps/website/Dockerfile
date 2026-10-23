@@ -60,7 +60,7 @@ USER node
 EXPOSE 3000
 # Liveness (/up) with Node's fetch — the image has no curl.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
-  CMD ["node", "-e", "const p=process.env.HEALTH_PATH||'/up';p==='off'?process.exit(0):fetch('http://127.0.0.1:'+(process.env.PORT||3000)+p).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"]
+  CMD ["node", "-e", "const p=process.env.SERVER_HEALTH_PATH||'/up';p==='off'?process.exit(0):fetch('http://127.0.0.1:'+(process.env.PORT||3000)+p).then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"]
 # marmeon is the process — one Node — under tini: SIGTERM reaches it, its exit code (0 after a drain) is the container's.
 ENTRYPOINT ["/usr/bin/tini", "--", "marmeon"]
 CMD ["start"]

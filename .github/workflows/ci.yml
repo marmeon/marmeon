@@ -126,7 +126,7 @@ jobs:
 
   image:
     # create-marmeon --docker as a Docker image: marmeon make:docker → docker build → docker run (non-root, no .env, /up, the health
-    # check, SIGTERM with SHUTDOWN_DELAY → exit 0, read-only root, --workers=2, a worker's exit 70) and the image's size; then the docs' image
+    # check, SIGTERM with SERVER_SHUTDOWN_DELAY_SECONDS → exit 0, read-only root, --workers=2, a worker's exit 70) and the image's size; then the docs' image
     # (apps/website/Dockerfile): its contents, read-only, and deploy/website/compose.yaml behind Caddy over HTTP/2.
     name: image
     runs-on: ubuntu-latest
