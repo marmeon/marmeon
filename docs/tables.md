@@ -219,6 +219,11 @@ them: an export reads the whole filtered table. The [rate limiting](rate-limitin
 - `state` is the table's state in the URL, without defaults.
 - Actions, bulk actions and exports the user may not use are not in the props at all.
 
+**The kinds are open.** `filters[].type` (now `select` and `dateRange`), `page.type` (`offset` and `cursor`) and `exports[].format`
+(`csv`) grow: a new kind is a minor release, never a breaking change. Code that branches on one of them needs a `default` branch
+for a kind it does not know. `useTable` and `toTanStack` render a kind they do not know without throwing; `goTo()` and `next()` refuse a page kind they do not
+page, as they refuse a page that does not exist.
+
 The URLs carry the page's own route parameters: a table under `/teams/:team` links to `/teams/7/_tables/…`.
 
 ## The URL is strict
@@ -399,6 +404,23 @@ export default function Index({ members }: PageProps<ListMembersController>) {
 
 The example assumes the e-mail column is visible. The web app's page renders each cell from `table.columns`, so a column the user
 cannot see leaves no empty cell.
+
+A filter renderer of your own branches on `type` and renders nothing for a kind it does not know, since a minor release may add one:
+
+```tsx title="modules/members/views/FilterField.tsx"
+import type { TableFilter } from '@marmeon/table';
+
+function FilterField({ filter }: { filter: TableFilter }) {
+  switch (filter.type) {
+    case 'select':
+      return <select name={filter.key} defaultValue={filter.value ?? ''}>{/* … */}</select>;
+    case 'dateRange':
+      return <input name={filter.key} defaultValue={filter.value ?? ''} />;
+    default:
+      return null;
+  }
+}
+```
 
 - **Sorting, filtering, searching and paging** are visits of the page's URL with the props' keys and the columns' aliases:
   `table.sort('joined')`, `table.filter('locale', 'de')`, `table.filterBy({ … })`, `table.setSearch('ada')`, `table.goTo(2)`,

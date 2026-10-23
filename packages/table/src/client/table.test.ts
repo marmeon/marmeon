@@ -177,6 +177,22 @@ describe('the headless table on the client core alone', () => {
     expect(requests.at(-1)!.url).toBe('/members');
   });
 
+  it('takes a filter and a page kind it does not know: filtering goes through, paging by number or cursor is refused', async () => {
+    const data = app.navigator.page.props.members as Members;
+    const open = {
+      ...data,
+      filters: [{ name: 'age', type: 'numberRange', key: 'filter[age]', value: null }] as never,
+      page: { type: 'keyset', perPage: 10, perPageOptions: [10], nextCursor: 'x' } as never,
+    } as Members;
+    const table = new TableController(app.navigator, open);
+    // @ts-expect-error — the name is not one of the typed filters
+    table.filter('age', '1..2');
+    await settle();
+    expect(requests.at(-1)!.url).toBe('/members?filter%5Bage%5D=1..2');
+    expect(() => table.goTo(2)).toThrow('[marmeon:C11]');
+    expect(() => table.next()).toThrow('[marmeon:C11]');
+  });
+
   it('sets several filters in one visit — and none when nothing changed', async () => {
     const table = app.table();
     table.filterBy({ locale: null, joined: null });
