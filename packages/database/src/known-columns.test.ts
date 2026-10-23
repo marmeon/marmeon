@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { ModuleDefinition } from '@marmeon/core';
 import { sql, type Kysely } from 'kysely';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { appOf as fakeApp, drivers, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { inspectionConnection } from './migrator-connection.ts';
 import type { ConnectionOptions } from './config.ts';
@@ -52,10 +52,12 @@ describe.each(drivers)('selectAll() and returningAll() spell out the columns the
     const [locker] = await db.selectFrom('lockers').select('id').execute();
     await db.insertInto('items').values({ locker_id: locker!.id, label: 'main' }).execute();
   });
-  afterAll(async () => {
-    for (const connections of opened) await connections.destroy();
-    await drop();
+  // Each test opens three `Connections`, each with a pool: left open until the suite ends they would hold well over a hundred
+  // connections, and a server at its limit refuses the next one.
+  afterEach(async () => {
+    for (const connections of opened.splice(0)) await connections.destroy();
   });
+  afterAll(() => drop());
 
   const keys = (rows: readonly object[]) => Object.keys(rows[0]!).sort();
 

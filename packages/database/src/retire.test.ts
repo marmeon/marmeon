@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { ModuleDefinition } from '@marmeon/core';
 import { sql, type Kysely } from 'kysely';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { appOf as fakeApp, drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import type { ConnectionOptions } from './config.ts';
@@ -43,10 +43,11 @@ describe.each(drivers)('a retired column on %s', (driver) => {
     release = releaseProcess.get<any>();
     before = processOf(previous).get<any>();
   });
-  afterAll(async () => {
-    for (const connections of opened) await connections.destroy();
-    await drop();
+  // The pools a test opened are closed with it: kept until the suite ends they would exhaust the server's connections.
+  afterEach(async () => {
+    for (const connections of opened.splice(0)) await connections.destroy();
   });
+  afterAll(() => drop());
 
   const keys = (rows: readonly object[]) => Object.keys(rows[0]!).sort();
 
