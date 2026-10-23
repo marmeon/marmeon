@@ -143,7 +143,7 @@ name a required check lists stays the same.
 `compose.yaml` (`docker compose up -d`, ports of their own):
 
 ```sh
-pnpm test:pgsql   # MARMEON_TEST_PGSQL_URL, DB_DRIVER=pgsql and DB_URL → postgres://marmeon:secret@localhost:55432/marmeon
+pnpm test:pgsql   # MARMEON_TEST_PGSQL_URL, DB_DRIVER=pgsql and DB_URL → postgres://marmeon:secret@127.0.0.1:55432/marmeon
 pnpm test:redis   # MARMEON_TEST_REDIS_URL=redis://127.0.0.1:56379
 pnpm test:s3      # MARMEON_TEST_S3_ENDPOINT=http://127.0.0.1:56333
                   # (MARMEON_TEST_S3_KEY / MARMEON_TEST_S3_SECRET default to the compose identity)
