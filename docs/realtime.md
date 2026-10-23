@@ -216,9 +216,9 @@ screen.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `LIVE_DRIVER` | `memory` | How hints travel: `memory` within one process, `redis` to every process. |
-| `LIVE_REDIS_CONNECTION` | `default` | The Redis connection of the `redis` driver. |
-| `LIVE_HEARTBEAT` | `20` | Seconds between heartbeats on an idle stream, from 1 to 300. |
-| `LIVE_RETRY` | `3000` | Milliseconds before a browser opens a broken stream again, from 100 to 600000. |
+| `LIVE_CONNECTION` | `default` | The Redis connection of the `redis` driver. |
+| `LIVE_HEARTBEAT_SECONDS` | `20` | Seconds between heartbeats on an idle stream, from 1 to 300. |
+| `LIVE_RETRY_MILLISECONDS` | `3000` | Milliseconds before a browser opens a broken stream again, from 100 to 600000. |
 | `LIVE_MAX_STREAMS` | `1000` | Open streams per process. Beyond it, `503` with `Retry-After: 10`. |
 | `LIVE_MAX_STREAMS_PER_SESSION` | `16` | Open streams of one session per process. Beyond it, `429` with `Retry-After: 30` and a warning in the log. |
 | `LIVE_MAX_STREAM_SECONDS` | `900` | How long a stream lives at most, from 30 to 86400. It then closes (up to a quarter earlier, by chance) and its browser connects again and is checked. |
@@ -268,7 +268,7 @@ the client keeps a stream only while its tab is visible. The development server 
 this fallback is active. Behind a proxy that speaks HTTP/2 to the browser, every tab stays connected.
 
 The stream sends `X-Accel-Buffering: no` and `Cache-Control: no-cache, no-store, no-transform`, and the app never compresses it. A
-proxy that buffers or compresses `text/event-stream` holds hints back. Its idle timeout must be longer than `LIVE_HEARTBEAT`. The
+proxy that buffers or compresses `text/event-stream` holds hints back. Its idle timeout must be longer than `LIVE_HEARTBEAT_SECONDS`. The
 [deployment](deployment.md#live-updates-need-http2) page shows the settings for Caddy, nginx and other proxies.
 
 ## What there is not

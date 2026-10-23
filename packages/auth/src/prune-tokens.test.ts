@@ -97,7 +97,7 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     clock.freeze(Date.parse('2026-10-05T10:00:00Z'));
     const signIns = new DatabaseSignIns(connections, clock);
     await signIns.create({ userId: 1, userAgent: 'old' });
-    clock.travel({ hours: 3 }); // past SESSION_LIFETIME (120 minutes) and the write granularity
+    clock.travel({ hours: 3 }); // past SESSION_LIFETIME_MINUTES (120 minutes) and the write granularity
     const live = await signIns.create({ userId: 1, userAgent: 'live' });
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };

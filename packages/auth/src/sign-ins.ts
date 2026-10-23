@@ -116,7 +116,7 @@ export type RememberTokenError =
       readonly reused?: boolean;
     };
 
-/** How long a session may idle and how long it may last at all (`SESSION_LIFETIME`, `AUTH_SESSION_MAX_HOURS`), in seconds — what makes a row alive. */
+/** How long a session may idle and how long it may last at all (`SESSION_LIFETIME_MINUTES`, `AUTH_SESSION_MAX_HOURS`), in seconds — what makes a row alive. */
 export interface SignInWindow {
   readonly idleSeconds: number;
   readonly maxSeconds: number;

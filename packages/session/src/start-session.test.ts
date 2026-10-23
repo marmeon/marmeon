@@ -105,10 +105,10 @@ describe('StartSession', () => {
     expect(await (await send('/count')).json()).toEqual({ visits: 2, status: null });
   });
 
-  it('ends a session on the server after SESSION_LIFETIME although its cookie carries no expiry', async () => {
+  it('ends a session on the server after SESSION_LIFETIME_MINUTES although its cookie carries no expiry', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
-      const { send } = await boot({ SESSION_LIFETIME: '30' });
+      const { send } = await boot({ SESSION_LIFETIME_MINUTES: '30' });
       const first = await send('/count');
       expect(sessionCookie(first)).not.toMatch(/Max-Age|Expires/i);
       expect(await (await send('/count')).json()).toMatchObject({ visits: 2 });
@@ -116,6 +116,23 @@ describe('StartSession', () => {
       const later = await send('/count');
       expect(await later.json()).toMatchObject({ visits: 1 });
       expect(sessionCookie(later)!.split(';')[0]).not.toBe(sessionCookie(first)!.split(';')[0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('SESSION_LIFETIME_MINUTES=1 keeps a session at 59 seconds of silence and ends it at 61', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const alive = await boot({ SESSION_LIFETIME_MINUTES: '1' });
+      await alive.send('/count');
+      vi.setSystemTime(Date.now() + 59_000);
+      expect(await (await alive.send('/count')).json()).toMatchObject({ visits: 2 });
+
+      const gone = await boot({ SESSION_LIFETIME_MINUTES: '1' });
+      await gone.send('/count');
+      vi.setSystemTime(Date.now() + 61_000);
+      expect(await (await gone.send('/count')).json()).toMatchObject({ visits: 1 });
     } finally {
       vi.useRealTimers();
     }
@@ -149,6 +166,16 @@ describe('StartSession', () => {
     await send('/count');
     await application.kernel.settle();
     expect(await store.gc(0)).toBe(0); // the expired session was already collected by terminate()
+  });
+
+  it('asks the store to collect what is idle for SESSION_LIFETIME_MINUTES, in seconds', async () => {
+    const { send, application } = await boot({ SESSION_LOTTERY: '1/1', SESSION_LIFETIME_MINUTES: '7' });
+    const store = application.container.make(SessionStore);
+    const asked: number[] = [];
+    store.gc = (lifetimeSeconds) => (asked.push(lifetimeSeconds), Promise.resolve(0));
+    await send('/count');
+    await application.kernel.settle();
+    expect(asked).toEqual([420]);
   });
 
   it("logs a failed clean-up masked by the app's Redactor — this package's cookie an error quotes stays out of the log", async () => {
@@ -224,7 +251,7 @@ describe('StartSession', () => {
   });
 
   it('reads the cookie settings from the config', async () => {
-    const { send } = await boot({ SESSION_COOKIE: 'shop_session', SESSION_LIFETIME: '30', SESSION_SECURE_COOKIE: 'true', SESSION_SAME_SITE: 'strict' });
+    const { send } = await boot({ SESSION_COOKIE: 'shop_session', SESSION_LIFETIME_MINUTES: '30', SESSION_SECURE_COOKIE: 'true', SESSION_SAME_SITE: 'strict' });
     const cookie = (await send('/count')).headers.getSetCookie().find((header) => header.startsWith('__Host-shop_session='));
     expect(cookie).toMatch(/^__Host-shop_session=[\w-]+; Path=\/; HttpOnly; Secure; SameSite=Strict$/);
   });

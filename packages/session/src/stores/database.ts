@@ -18,7 +18,7 @@ type Sql = (typeof import('@marmeon/database'))['sql'];
  * Sessions in the app's database (`SESSION_DRIVER=database`): a row per session in `sessions` — keyed by the SHA-256 of the
  * session id (`id`), the payload as text in `payload` (JSON, or encrypted with `SESSION_ENCRYPT`), the signed-in user's
  * id in `user_id` (null for guests), the time of the last write in `last_activity` (epoch milliseconds) and a `version` that
- * goes up with every write. A session lives for the store's lifetime (`SESSION_LIFETIME`) after its last activity.
+ * goes up with every write. A session lives for the store's lifetime (`SESSION_LIFETIME_MINUTES`) after its last activity.
  *
  * Writing back is ONE statement, `UPDATE … WHERE id = ? AND version = ? AND last_activity > ?` (compare-and-set): a row a
  * sign-out deleted meanwhile — or another request wrote meanwhile — matches nothing, on Postgres and SQLite alike, across any

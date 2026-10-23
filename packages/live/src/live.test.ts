@@ -344,7 +344,7 @@ describe('the stream — hints, never data', () => {
     expect(await again.hello()).toEqual({ seq: { 'users.1': 2, 'dashboard.sign-ins': 0 }, missed: ['users.1'] });
   });
 
-  it('sends heartbeats on an idle stream (a comment line, every LIVE_HEARTBEAT)', async () => {
+  it('sends heartbeats on an idle stream (a comment line, every LIVE_HEARTBEAT_SECONDS)', async () => {
     const hub = hubOf(new MemoryLiveBackend(), { heartbeat: 0.02 });
     const reader = await open(hub, ['users.1']);
     await reader.waitFor(() => reader.heartbeats >= 3);

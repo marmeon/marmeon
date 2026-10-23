@@ -514,7 +514,7 @@ export class Auth {
 
   /**
    * The browsers the signed-in user is signed in on, the current one first and marked `current`, then by last request. Only sign-ins
-   * that are alive: within `SESSION_LIFETIME` and `AUTH_SESSION_MAX_HOURS`, or kept by a remember-me cookie. See
+   * that are alive: within `SESSION_LIFETIME_MINUTES` and `AUTH_SESSION_MAX_HOURS`, or kept by a remember-me cookie. See
    * `docs/authentication.md#sign-ins`.
    */
   async signIns(): Promise<readonly SignIn[]> {
