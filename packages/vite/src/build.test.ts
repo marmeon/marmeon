@@ -244,7 +244,7 @@ function routesApp(client: string): string {
       }),
       'node_modules/@marmeon/react/package.json': JSON.stringify({ name: '@marmeon/react', type: 'module', exports: './index.js' }),
       'node_modules/@marmeon/react/index.js':
-        'export const useRoute = (routes) => (name) => routes[name].path;\nexport const useForm = (name, params, initial) => ({ name, params, initial });\n',
+        'export const useRoute = (routes) => (name) => routes[name].path;\nexport const useForm = (name, initial, options) => ({ name, initial, options });\n',
       'bootstrap/client.ts': [
         "import { useForm, useRoute } from '@marmeon/react';",
         "import { routes } from 'virtual:marmeon/routes';",
@@ -258,7 +258,7 @@ function routesApp(client: string): string {
 
 describe('virtual:marmeon/routes in a build', () => {
   it('ships only the route names client code writes out; the SSR bundle has every route the browser may learn', () => {
-    const root = routesApp("document.title = route('home');\nconsole.log(useForm('profile.update', { user: 1 }, {}));\n");
+    const root = routesApp("document.title = route('home');\nconsole.log(useForm('profile.update', {}, { params: { user: 1 } }));\n");
     const { code, out } = build(root);
     expect(out).toContain('Built dist/client and dist/server');
     expect(code).toBe(0);

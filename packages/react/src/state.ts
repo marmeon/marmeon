@@ -86,7 +86,7 @@ export interface UseBlockerOptions {
  * docs/navigation.md#leaving-with-unsaved-changes.
  *
  * ```tsx
- * const form = useForm('user-profile.update', { user }, { name, bio });
+ * const form = useForm('user-profile.update', { name, bio }, { params: { user } });
  * useBlocker({ when: form.isDirty(), message: t('forms.unsaved') });     // or useForm(…, { guard: true })
  * ```
  */

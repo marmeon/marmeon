@@ -41,7 +41,7 @@ export function Toasts() {
 }
 
 export function States() {
-  const form = useForm('user-profile.update', { user: 1 }, { name: '', bio: '' }, { guard: true });
+  const form = useForm('user-profile.update', { name: '', bio: '' }, { params: { user: 1 }, guard: true });
   form.isDirty();
   form.isDirty('bio');
   // Argument of type '"bioo"' is not assignable to parameter of type '"bio" | "name" | undefined'.

@@ -40,7 +40,7 @@ export function InTheBrowser() {
   void (<Link route="auth.verification.verify" params={{ id: 1, hash: 'x' }} />);
 
   // Method, URL and fields from the route name.
-  const form = useForm('user-profile.update', { user: 7 }, { name: '', bio: '' });
+  const form = useForm('user-profile.update', { name: '', bio: '' }, { params: { user: 7 } });
   void form.submit();
   // Argument of type '"bioo"' is not assignable to parameter of type '"bio" | "name"'.
   // @ts-expect-error
@@ -48,17 +48,27 @@ export function InTheBrowser() {
   // Object literal may only specify known properties, but 'bioo' does not exist in type '{ name: string; bio: string; }'.
   // Did you mean to write 'bio'?
   // @ts-expect-error
-  useForm('user-profile.update', { user: 7 }, { name: '', bioo: '' });
+  useForm('user-profile.update', { name: '', bioo: '' }, { params: { user: 7 } });
   // … Type '{ name: string; bio: string; }' is not assignable to type '"'user-profile.update' takes route parameters — pass them
-  // before the initial data: useForm('user-profile.update', params, initial)"'.
+  // as useForm('user-profile.update', initial, { params })"'.
   // @ts-expect-error — the route needs { user }
   useForm('user-profile.update', { name: '', bio: '' });
+  // Options without the parameters: "Property 'params' is missing in type '{ guard: true; }' but required in type '{ params: … }'."
+  // @ts-expect-error
+  useForm('user-profile.update', { name: '', bio: '' }, { guard: true });
+  // The parameters before the initial data are taken for the fields: "Object literal may only specify known
+  // properties, and 'user' does not exist in type '{ name: string; bio: string; }'."
+  // @ts-expect-error
+  useForm('user-profile.update', { user: 7 }, { name: '', bio: '' });
+  // With options, too — "Expected 3 arguments, but got 4." (At run time a TypeError.)
+  // @ts-expect-error
+  useForm('user-profile.update', { user: 7 }, { name: '', bio: '' }, { guard: true });
   // ... '"'auth.logout' has no request schema to type a form with — give its controller `static request = defineRequest(…)`"'.
   // @ts-expect-error
   useForm('auth.logout', {});
   // ... '"'user-profile.updte' is not a route name — did you mean user-profile.update?"'.
   // @ts-expect-error
-  useForm('user-profile.updte', { user: 7 }, { name: '', bio: '' });
+  useForm('user-profile.updte', { name: '', bio: '' }, { params: { user: 7 } });
   // A route without parameters takes the initial data alone.
   useForm('auth.login.store', { email: '', password: '' });
   // The controller form stays: fields from the controller, any URL.

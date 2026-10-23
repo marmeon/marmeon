@@ -20,12 +20,12 @@ export default function Edit({ profile, old }: Props) {
   // `validate`: a field is checked against the server's schema when you leave it — "too short" before you save.
   // `remember`: typed, closed by Back, opened again by Forward — the input (and its errors) is still there, still dirty.
   // In memory only, with the layer's history entry: a reload, signing out or a new build start over.
-  const form = useForm('user-profile.update', { user: profile.public_id }, { name: old.name ?? profile.name, bio: old.bio ?? profile.bio }, { guard: app('unsaved'), validate: true, remember: true });
+  const form = useForm('user-profile.update', { name: old.name ?? profile.name, bio: old.bio ?? profile.bio }, { params: { user: profile.public_id }, guard: app('unsaved'), validate: true, remember: true });
 
   // The picture: a file input that uploads at once — to a target this route hands out for `avatar` (its policy decides),
   // with progress and cancel; the form sends only the token. On the server the file is checked again by its size and its
   // bytes (PNG, JPEG, WebP — an SVG or a renamed HTML file is refused) and moved to the public disk under a random name.
-  const avatarForm = useForm('user-profile.avatar.update', { user: profile.public_id }, { avatar: null });
+  const avatarForm = useForm('user-profile.avatar.update', { avatar: null }, { params: { user: profile.public_id } });
   const avatar = avatarForm.data.avatar;
   // Live: the profile beneath follows `users.<public_id>` — while this form has unsaved changes (its guard), a change from
   // another tab reloads nothing; it waits here until it is applied.

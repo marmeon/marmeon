@@ -50,7 +50,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 function Edit({ name }: { name: string }) {
   const [tab, setTab] = useRemember('tab', 'links');
-  const form = useForm('profile.update', {}, { name, password: '', card_number: '' }, { remember: true, guard: 'Unsaved.' });
+  const form = useForm('profile.update', { name, password: '', card_number: '' }, { remember: true, guard: 'Unsaved.' });
   return (
     <>
       <button data-testid="tab" onClick={() => setTab('activity')}>

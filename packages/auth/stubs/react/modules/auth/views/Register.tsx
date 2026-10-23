@@ -13,7 +13,6 @@ export default function Register({ old }: Props) {
   // Password fields are never sent for a check: their rules are checked on submit.
   const form = useForm(
     'auth.register.store',
-    {},
     { name: old.name ?? '', email: old.email ?? '', password: '', password_confirmation: '' },
     { validate: { on: 'blur', fields: ['name', 'email'] } },
   );

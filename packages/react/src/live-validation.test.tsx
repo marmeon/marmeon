@@ -18,7 +18,7 @@ const HISTORY = [await loadHistoryFallback()];
 /** Live validation in React: `useForm(…, { validate })`. */
 
 function Register({ on }: { on?: 'blur' | 'change' }) {
-  const form = useForm('register', {}, { name: '', email: '', password: '' }, { validate: on ? { on, debounce: 20 } : true });
+  const form = useForm('register', { name: '', email: '', password: '' }, { validate: on ? { on, debounce: 20 } : true });
   const field = (name: 'name' | 'email') => (
     <p>
       <input data-testid={name} value={String(form.data[name])} onChange={(event) => form.set(name, event.target.value)} onBlur={() => form.validate(name)} aria-busy={form.validating(name) || undefined} />

@@ -14,7 +14,7 @@ describe('collectRouteReferences', () => {
       import { Link, useForm, useRoute } from '@marmeon/react';
       export default function Page({ profile, isOwn }: Props) {
         const route = useRoute();
-        const form = useForm('user-profile.update', { user: profile.id }, { name: '' });
+        const form = useForm('user-profile.update', { name: '' }, { params: { user: profile.id } });
         return (
           <form action={route('auth.login')}>
             <Link route="user-profile.show" params={{ user: profile.id }}>{profile.name}</Link>
@@ -115,7 +115,7 @@ describe('collectRouteReferences', () => {
       import { Link, useForm, useRoute } from '@marmeon/react';
       export function Toast({ toast, rest, args }: Props) {
         const route = useRoute();
-        useForm('user-profile.' + toast.kind, {}, {});
+        useForm('user-profile.' + toast.kind, {});
         route(...args);
         return <><Link route={toast.action.route}>Undo</Link><Link {...rest} /><Link {...rest} href="/ok" /></>;
       }

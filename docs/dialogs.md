@@ -72,7 +72,7 @@ import type { EditNoteController } from '../controllers/EditNoteController.ts';
 
 export default function Edit({ note }: PageProps<EditNoteController>) {
   const layer = useLayer<EditNoteController>();
-  const form = useForm('notes.update', { note: note.id }, { title: note.title, body: note.body }, { guard: true });
+  const form = useForm('notes.update', { title: note.title, body: note.body }, { params: { note: note.id }, guard: true });
   const Heading = layer.isLayer ? 'h2' : 'h1';
   return (
     <section>

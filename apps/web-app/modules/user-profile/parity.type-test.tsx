@@ -24,16 +24,16 @@ export function Remembered() {
   // @ts-expect-error
   useRemember('password', '', { sensitive: true });
 
-  useForm('user-profile.update', { user: 1 }, { name: '', bio: '' }, { remember: true });
-  useForm('user-profile.update', { user: 1 }, { name: '', bio: '' }, { remember: { key: 'profile-edit' } });
+  useForm('user-profile.update', { name: '', bio: '' }, { params: { user: 1 }, remember: true });
+  useForm('user-profile.update', { name: '', bio: '' }, { params: { user: 1 }, remember: { key: 'profile-edit' } });
   // No overload matches this call. The last overload gave the following error. Type '"password"' is not assignable to type
   // '"password fields are never remembered — they stay in the field until the page is left"'. (No sensitive field here to name.)
   // @ts-expect-error
-  useForm('auth.register.store', {}, { name: '', email: '', password: '', password_confirmation: '' }, { remember: { include: ['password'] } });
+  useForm('auth.register.store', { name: '', email: '', password: '', password_confirmation: '' }, { remember: { include: ['password'] } });
 
   // Params forgotten — "No overload matches this call. The last overload gave the following error. …
   // Type '{ name: string; bio: string; }' is not assignable to type '"'user-profile.update' takes route parameters — pass them
-  // before the initial data: useForm('user-profile.update', params, initial)"'."
+  // as useForm('user-profile.update', initial, { params })"'."
   // @ts-expect-error
   useForm('user-profile.update', { name: '', bio: '' });
   return null;

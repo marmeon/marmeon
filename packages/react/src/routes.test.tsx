@@ -16,7 +16,7 @@ const routes = {
 
 function Page({ id }: { id: number }) {
   const route = useRoute();
-  const form = useForm('people.update', { person: id }, { name: 'Ada' });
+  const form = useForm('people.update', { name: 'Ada' }, { params: { person: id } });
   return (
     <>
       <Link route="people.show" params={{ person: id }} query={{ tab: 'links' }}>
@@ -95,6 +95,23 @@ describe('routes in the browser', () => {
     expect(html).toContain('<a href="https://example.com">elsewhere</a>');
     expect(html).toContain('<p>/people/7?page=2</p>'); // extra parameters into the query, like Router.url()
     expect(html).toContain('<p>put<!-- --> <!-- -->/people/7</p>');
+  });
+
+  const untyped = useForm as (...args: unknown[]) => unknown;
+  it.each([
+    ['four arguments', 'people.update', (name: string) => untyped(name, { person: 7 }, { guard: true }, { guard: true }), `useForm('people.update', …) takes (name, initial, options) — `],
+    ['parameters and initial data', 'people.update', (name: string) => untyped(name, { person: 7 }, { name: 'Ada' }), `'name' is no option of useForm (params, guard, remember, validate) — `],
+    ['empty parameters and initial data', 'profile.update', (name: string) => untyped(name, {}, { name: 'Ada' }), `'name' is no option of useForm (params, guard, remember, validate) — `],
+    ['options of a variable with an extra key', 'people.update', (name: string) => untyped(name, { name: 'Ada' }, { guard: true, onSuccess: () => {} }), `'onSuccess' is no option of useForm (params, guard, remember, validate) — `],
+  ])('refuses the route parameters before the initial data of useForm: %s', async (_case, name, call, start) => {
+    function Refused() {
+      call(name);
+      return null;
+    }
+    const render = createSsrRenderer(resolveModulePages({ '/modules/people/views/Page.tsx': async () => ({ default: Refused }) }), { routes });
+    await expect(render({ component: 'people/Page', props: {}, url: '/' })).rejects.toThrow(
+      `${start}the route parameters go in options.params: useForm('${name}', initial, { params })`,
+    );
   });
 
   it('renders a link that sends as a real form, which works without JavaScript: POST, _method first, the token, flat data', async () => {

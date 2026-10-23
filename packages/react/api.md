@@ -525,8 +525,8 @@ export declare function useFeature<API>(feature: FeatureHandle<API>): API;
 export declare function useFlash<const K extends string>(key: CheckFlashKey<K>, handler: FlashHandler<K & FlashKey>): void;
 // useForm
 export declare function useForm<T extends object>(initial: FormFields<T> & object, options?: FormOptions<FormFields<T>>): Form<T>;
-export declare function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, ...args: RouteFormArgs<N>): RouteForm<RouteFormFields<N>>;
-export declare function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, params: ParamsOf<N>, initial: RouteFormFields<N>, options: RouteFormOptions<RouteFormFields<N>>): RouteForm<RouteFormFields<N>>;
+export declare function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: RouteFormFields<N>, ...rest: RouteFormRest<N>): RouteForm<RouteFormFields<N>>;
+export declare function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: {} extends ParamsOf<N> ? RouteFormFields<N> : ParamsMissing<N>): RouteForm<RouteFormFields<N>>;
 // useIsland
 export declare function useIsland<C extends IslandAction = IslandAction>(): IslandState<C>;
 // useLayer
@@ -667,8 +667,8 @@ interface NoPrefetch {
 }
 // PageModules
 type PageModules = Record<string, () => Promise<unknown>>;
-// ParamsFirst
-type ParamsFirst<N extends string> = `'${N}' takes route parameters — pass them before the initial data: useForm('${N}', params, initial)`;
+// ParamsMissing
+type ParamsMissing<N extends string> = `'${N}' takes route parameters — pass them as useForm('${N}', initial, { params })`;
 // ParamsOption
 type ParamsOption<N extends string, RequiresParams extends boolean> = RequiresParams extends true ? {
     params: ParamsOf<N>;
@@ -716,10 +716,14 @@ type QueryOption<N extends string> = MethodOf<N> extends 'get' ? {
 };
 // QueryStateOf
 type QueryStateOf<N extends string> = [RouteQueryOf<N>] extends [never] ? Record<string, unknown> : RouteQueryOf<N>;
-// RouteFormArgs
-type RouteFormArgs<N extends string> = {} extends ParamsOf<N> ? [initial: RouteFormFields<N>] | [params: ParamsOf<N>, initial: RouteFormFields<N>] : [params: ParamsOf<N>, initial: RouteFormFields<N>] | [initial: ParamsFirst<N>];
 // RouteFormOf
 type RouteFormOf<N extends string> = FormOf<Instance<ControllerOf<N>>>;
+// RouteFormRest
+type RouteFormRest<N extends string> = {} extends ParamsOf<N> ? [options?: RouteFormOptions<RouteFormFields<N>> & {
+    params?: ParamsOf<N>;
+}] : [options: RouteFormOptions<RouteFormFields<N>> & {
+    params: ParamsOf<N>;
+}];
 // RouteLinkProps
 type RouteLinkProps<N extends string> = LinkOptions & PartialReloadOptions<Instance<ControllerOf<N>>> & {
     route: CheckPageRouteName<N>;

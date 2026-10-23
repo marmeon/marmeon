@@ -47,7 +47,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 }
 
 function Edit({ name }: { name: string }) {
-  const form = useForm('profile.update', {}, { name }, { guard: 'Unsaved changes.' });
+  const form = useForm('profile.update', { name }, { guard: 'Unsaved changes.' });
   const remove = useAction('project.destroy');
   const [typed, setTyped] = useState('');
   return (
@@ -72,7 +72,7 @@ Edit.layout = Layout;
 
 // A form whose callbacks reset fields after the submit — the password back to empty, the rest as sent.
 function Secret({ name }: { name: string }) {
-  const form = useForm('profile.update', {}, { name, password: '' }, { guard: 'Unsaved changes.' });
+  const form = useForm('profile.update', { name, password: '' }, { guard: 'Unsaved changes.' });
   return (
     <form
       data-testid="form"
