@@ -261,7 +261,7 @@ export interface MiddlewareProblem extends AddsConflict {
 // NOT_LIVE
 export declare const NOT_LIVE: unique symbol;
 // Next
-export type Next<TAdd extends object> = Exclude<keyof TAdd, ReservedContextKey> extends never ? (extension?: TAdd) => Promise<Response> : (extension: TAdd) => Promise<Response>;
+export type Next<TAdd extends object> = unknown extends TAdd ? (extension?: TAdd) => Promise<Response> : Exclude<keyof TAdd, ReservedContextKey> extends never ? (extension?: TAdd) => Promise<Response> : (extension: TAdd) => Promise<Response>;
 // NoReservedKeys
 export type NoReservedKeys = {
     readonly [K in ReservedContextKey]?: never;

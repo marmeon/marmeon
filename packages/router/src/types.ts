@@ -52,10 +52,16 @@ export interface RequestContext<TParams extends object = EmptyObject> extends Re
  */
 export type HttpContext<TState extends object = EmptyObject, TParams extends object = EmptyObject> = RequestContext<TParams> & TState;
 
-/** Middleware that adds nothing may call `next()`; otherwise the extension is mandatory. */
-export type Next<TAdd extends object> = Exclude<keyof TAdd, ReservedContextKey> extends never
+/**
+ * Middleware that adds nothing may call `next()`; otherwise the extension is mandatory. `any` (the only `object`
+ * that `unknown` extends) counts as nothing declared, so a middleware without declared keys fits where a pipeline takes
+ * any middleware.
+ */
+export type Next<TAdd extends object> = unknown extends TAdd
   ? (extension?: TAdd) => Promise<Response>
-  : (extension: TAdd) => Promise<Response>;
+  : Exclude<keyof TAdd, ReservedContextKey> extends never
+    ? (extension?: TAdd) => Promise<Response>
+    : (extension: TAdd) => Promise<Response>;
 
 /**
  * A pipeline stage. `TRequires` is the context it needs from earlier middleware,
