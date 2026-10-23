@@ -68,6 +68,11 @@ A test app made inside a test closes when the test ends. To switch to a test app
 close the first one with `await app.close()`. A test that closes the database connections itself, with `connections.destroy()`,
 rolls its transaction back right there, and the cleanup at the end of the test has nothing left to do.
 
+A hook or test that times out while its app is still starting leaves nothing open: when the app is ready at last and the test is
+over, it is closed again and `createTestApp()` throws, so the next test does not fail with the message above. For the first app of a
+worker, which creates and migrates the worker's database, give the file a `beforeAll` of its own with a longer hook timeout and
+open and close one app there.
+
 ## Factories
 
 `app.factory(Factory)` makes rows in the test's database. A factory names a table and the attributes of a row, and the module
