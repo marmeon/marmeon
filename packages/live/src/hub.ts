@@ -1,6 +1,7 @@
 import { outsideTransaction, Redactor, type Logger } from '@marmeon/core';
 import type { LiveHint } from '@marmeon/http';
 import type { LiveBackend, LiveMessage } from './backend.ts';
+import { monotonicNow } from './monotonic.ts';
 import { ACCOUNT_PREFIX } from './signer.ts';
 
 /** What `hello` says when a stream opens: the current sequence of each channel — and, after a reconnect, those it missed. */
@@ -16,7 +17,7 @@ export interface LiveStreamRequest {
   readonly scope: string;
   /** The scopes of the account behind the stream, one per key of `APP_KEY` the process knows, when a sign-in stands behind it. */
   readonly accounts?: readonly string[] | undefined;
-  /** When the sign-in was asked about (ms): an end of the account that arrived after is not known to the answer. */
+  /** When the sign-in was asked about (ms, on the hub's monotonic clock, not epoch time): an end of the account that arrived after is not known to the answer. */
   readonly checkedAt?: number | undefined;
   readonly connection: string;
   /** The `Last-Event-ID` of a reconnect — the sequences the stream had seen. */
@@ -326,7 +327,7 @@ export class LiveHub {
 
   /** Only account ends (and `'*'`) matter to a stream that is opening. The map stays in time order: the oldest entries are first, and are all that pruning looks at. */
   #rememberEnd(scope: string): void {
-    const now = Date.now();
+    const now = monotonicNow();
     this.#recentEnds.delete(scope);
     this.#recentEnds.set(scope, now);
     for (const [oldest, at] of this.#recentEnds) {

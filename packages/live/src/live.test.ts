@@ -7,6 +7,7 @@ import { MemoryLiveBackend, type LiveBackend, type LiveMessage } from './backend
 import { LiveBroadcaster } from './broadcaster.ts';
 import { LiveStreamController } from './endpoint.ts';
 import { LiveHub, OpenStream, type LiveHubOptions } from './hub.ts';
+import { monotonicNow } from './monotonic.ts';
 import { BroadcastRecorder } from './recorder.ts';
 import { RedisLiveBackend } from './redis.ts';
 import { liveKeys, LiveTokens } from './signer.ts';
@@ -135,6 +136,30 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
       await stream.hello();
     }
     expect(hub.size).toBe(2);
+  });
+
+  it('an account that ends while its sign-in is being asked about: the stream closes after `hello`, even if the wall clock runs ahead of the process clock or steps back', async () => {
+    vi.useFakeTimers({ toFake: ['performance', 'Date'] });
+    try {
+      const backend = new MemoryLiveBackend();
+      const hub = hubOf(backend);
+      await open(hub, ['users.1'], { account: 'other' }).then((reader) => reader.hello()); // the hub listens
+      const check = async () => {
+        vi.advanceTimersByTime(1);
+        vi.setSystemTime(Date.now() - 60_000);
+        await backend.end(tokens.accountScope('acct-1'));
+        return { kind: 'account', scope: 'acct-1' } as const;
+      };
+      const controller = new LiveStreamController(hub, tokens, 20, () => ADA, { check });
+      // The wall clock is an hour ahead of the monotonic one, as after a step: a `checkedAt` taken from it would postdate the end.
+      vi.setSystemTime(Date.now() + 3_600_000);
+      const stream = new LiveStreamReader(await controller.handle(request(`connection=tab-a-0001&${pair('users.1')}`)));
+      cleanups.push(() => stream.close());
+      await stream.closed;
+      expect(stream.events.map((each) => each.event)).toEqual(['hello']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('refuses with 503 when the audience cannot tell (the database is down), and opens nothing', async () => {
@@ -462,30 +487,45 @@ describe('the stream — hints, never data', () => {
   });
 
   it('an end of the account that arrived after its sign-in was asked about: the stream, opened on that answer, closes again at once', async () => {
-    const backend = new MemoryLiveBackend();
-    const hub = hubOf(backend);
-    await open(hub, ['users.1'], { account: 'other' }).then((reader) => reader.hello()); // the hub listens
-    const checkedAt = Date.now();
-    await backend.end('a:ada');
-    const stale = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-a', accounts: ['a:ada'], checkedAt, connection: 'tab-s-0001' }));
-    cleanups.push(() => stale.close());
-    await stale.closed;
-    expect(stale.events.map((each) => each.event)).toEqual(['hello']);
-    // Asked after the end: it stands.
-    const later = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-b', accounts: ['a:ada'], checkedAt: Date.now() + 1, connection: 'tab-t-0001' }));
-    cleanups.push(() => later.close());
-    await later.hello();
-    // `*` counts as well.
-    await backend.end('*');
-    const star = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-c', accounts: ['a:eve'], checkedAt: Date.now() - 5, connection: 'tab-u-0001' }));
-    cleanups.push(() => star.close());
-    await star.closed;
+    // Only `performance` and `Date` are faked, and the wall clock is moved on purpose: the order is the monotonic clock's, not the wall clock's.
+    vi.useFakeTimers({ toFake: ['performance', 'Date'] });
+    try {
+      const backend = new MemoryLiveBackend();
+      const hub = hubOf(backend);
+      await open(hub, ['users.1'], { account: 'other' }).then((reader) => reader.hello()); // the hub listens
+      const checkedAt = monotonicNow();
+      vi.advanceTimersByTime(1);
+      vi.setSystemTime(Date.now() - 60_000); // the wall clock steps back between the check and the end
+      await backend.end('a:ada');
+      const stale = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-a', accounts: ['a:ada'], checkedAt, connection: 'tab-s-0001' }));
+      cleanups.push(() => stale.close());
+      await stale.closed;
+      expect(stale.events.map((each) => each.event)).toEqual(['hello']);
+      // Asked after the end: it stands.
+      vi.advanceTimersByTime(1);
+      const later = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-b', accounts: ['a:ada'], checkedAt: monotonicNow(), connection: 'tab-t-0001' }));
+      cleanups.push(() => later.close());
+      await later.hello();
+      // In the very same millisecond the end counts as later (a tie is not safe to call earlier).
+      const tie = monotonicNow();
+      await backend.end('a:grace');
+      const same = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-d', accounts: ['a:grace'], checkedAt: tie, connection: 'tab-v-0001' }));
+      cleanups.push(() => same.close());
+      await same.closed;
+      // `*` counts as well.
+      vi.advanceTimersByTime(1);
+      await backend.end('*');
+      const star = new LiveStreamReader(await hub.open({ channels: ['users.1'], scope: 'session-c', accounts: ['a:eve'], checkedAt: monotonicNow() - 5, connection: 'tab-u-0001' }));
+      cleanups.push(() => star.close());
+      await star.closed;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('remembers only the ends of accounts (and `*`), forgets them after a minute, and keeps them in time order', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.useFakeTimers({ toFake: ['performance'] });
     try {
-      vi.setSystemTime(new Date('2031-01-01T00:00:00Z'));
       const backend = new MemoryLiveBackend();
       const hub = hubOf(backend);
       await (await open(hub, ['users.1'], { account: 'a:other' })).hello();
@@ -495,7 +535,7 @@ describe('the stream — hints, never data', () => {
       await backend.end('a:grace');
       await backend.end('a:ada'); // again: moves to the end, still two entries
       expect(hub.endsRemembered).toBe(2);
-      vi.setSystemTime(new Date('2031-01-01T00:01:30Z'));
+      vi.advanceTimersByTime(90_000);
       await backend.end('a:eve');
       expect(hub.endsRemembered).toBe(1);
     } finally {
