@@ -260,7 +260,7 @@ A reporter never sees the error itself. It gets an `ErrorReport` with the **mask
 
   | `source` | When | `context` |
   | --- | --- | --- |
-  | `request` | A request ends in a server error | `method`, `route` (the route's name, empty when it has none), `path` (without its query, the segments of sensitive route parameters masked) |
+  | `request` | A request ends in a server error, or work of a request that runs after its response fails (see below) | `method`, `route` (the route's name, empty when it has none), `path` (without its query, the segments of sensitive route parameters masked); `phase` for work after the response: `deferred`, `after-response` or `terminate` |
   | `job` | A job has failed for good: its last attempt, or an attempt that cannot be repeated (`job.fail()`, a payload that cannot run). Attempts that run again are only logged. | `job` (its name), `jobId`, `queue`, `connection`, `attempt`. Never the payload; a payload that no longer matches its schema is reported by the names of its fields, not the values the schema quotes |
   | `schedule` | A scheduled task throws | `task` (its name) |
   | `command` | A `marmeon` command ends with an error | `command` (its name). Never the arguments: they can carry secrets |
@@ -281,9 +281,14 @@ A reporter is built once, when the app boots, and runs outside any database tran
 - When the app shuts down, `flush()` of each reporter is called before the providers shut down, while the open reports finish, and the
   shutdown waits at most 2 seconds for all of it. A reporter that is still busy then loses its reports and the shutdown goes on, with a warning.
 
-Server errors of requests, jobs that failed for good, scheduled tasks and commands reach the reporters. These are logged but not
-reported: errors of server rendering, of deferred groups and of work after the response (`afterResponse.defer()`), errors at shutdown,
-a job that ignores its timeout and ends its worker (it runs again after `retryAfter`), a job that was queued by an error reporter (see below), a job on the `sync`
+Server errors of requests, jobs that failed for good, scheduled tasks and commands reach the reporters. So do the errors of work
+that a request leaves for after its response: a deferred group that fails while the page streams (`phase: 'deferred'`; the browser
+then loads the group itself, and a second failure there is a request error of its own), an `afterResponse.defer()` task
+(`'after-response'`) and a `terminate` hook (`'terminate'`). They are reports of the request they belong to, so a reporter groups
+them by `route` as before; they carry the same facts and nothing else, never the request's body, cookies or headers nor the props themselves; what an error's message quotes is masked like any request error's (see above).
+The reporters are flushed when the app shuts down, after the server has finished this work (it waits at most 8 seconds for it; a report of work still running then may be lost). A deferred group that only takes too
+long is logged, not reported. These are logged but not
+reported: errors of server rendering, errors at shutdown, a job that ignores its timeout and ends its worker (it runs again after `retryAfter`), a job that was queued by an error reporter (see below), a job on the `sync`
 connection (its error reaches whoever dispatched it, who reports it as their own), a command that is called wrong (exit code 2) or
 ends with an exit code but no error, and a prompt that was cancelled. To report an error you caught yourself, for example when a
 `catch` still answers 200, ask the app for the service:

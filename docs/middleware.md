@@ -373,7 +373,7 @@ export class CountResponses {
 }
 ```
 
-An error in `terminate` is logged and never reaches the client. The hook runs outside any open database transaction. For work a
+An error in `terminate` is logged and sent to the [error reporters](errors.md#reporting), and never reaches the client. The hook runs outside any open database transaction. For work a
 controller wants to do after its response, such as sending a mail, the [controllers](controllers.md#work-after-the-response) page
 shows `AfterResponse`.
 
