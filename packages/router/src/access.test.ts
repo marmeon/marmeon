@@ -281,9 +281,14 @@ describe('framework routes', () => {
     expect(router.accessProblems()).toHaveLength(1);
   });
 
-  it('does not count an app route whose `reserved` was set by hand', () => {
-    const router = load((Route) => Route.get('/x', () => 'x'));
-    router.routes[0]!.reserved = true;
+  it('does not count an app route whose `reserved` is set by hand: the loaded route is frozen', () => {
+    const router = load((Route) => {
+      Route.get('/x', () => 'x').reserved = true;
+    });
+    expect(() => {
+      router.routes[0]!.reserved = false;
+    }).toThrow(TypeError); // a loaded route is frozen
+    expect(router.routes[0]!.reserved).toBe(true);
     expect(router.isFrameworkRoute(router.routes[0]!)).toBe(false);
   });
 });
@@ -358,9 +363,13 @@ describe('Router.accessProblems()', () => {
     expect(problemsOf((Route) => Route.get('/_marmeon/x', () => 'x'), { framework: FRAMEWORK_ROUTES })).toEqual([]);
   });
 
-  it('still reports an app route whose `reserved` was set by hand', () => {
-    const router = load((Route) => Route.get('/x', () => 'x'));
-    router.routes[0]!.reserved = true;
+  it('still reports an app route whose `reserved` is set by hand: the loaded route is frozen', () => {
+    const router = load((Route) => {
+      Route.get('/x', () => 'x').reserved = true;
+    });
+    expect(() => {
+      router.routes[0]!.reserved = false;
+    }).toThrow(TypeError); // a loaded route is frozen
     expect(router.accessProblems()).toHaveLength(1);
   });
 

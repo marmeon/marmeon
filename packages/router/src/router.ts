@@ -1,7 +1,7 @@
 import { Redactor } from '@marmeon/core';
 import { formatAccessProblems, isEveryone, isScoped, openBindings, RouteAccessError, routeAccess, type AccessProblem } from './access.ts';
 import { HttpError } from './errors.ts';
-import { runPipeline } from './middleware.ts';
+import { addsConflicts, runPipeline, type AddsConflict } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
 import { createRequestState, type RequestState } from './request.ts';
 import { liveValidationFields, VALIDATED_HEADER } from './live-validation.ts';
@@ -118,6 +118,20 @@ export const defaultToResponse: ResponseFactory = (result) => {
 /** Masks secrets in the paths the router names in its errors: a webhook's token must not reach a log. */
 const shown = new Redactor();
 const showPath = (route: RouteDefinition): string => shown.path(route.path, route.path);
+
+/** A route whose middleware declares a key twice (see {@link Router.middlewareProblems}). */
+export interface MiddlewareProblem extends AddsConflict {
+  readonly route: RouteDefinition;
+}
+
+/** One line per conflict: the route, the key and both layers; `path` lets a caller redact the path. @internal */
+export function describeMiddlewareProblem({ route, key, first, second }: MiddlewareProblem, path: (route: RouteDefinition) => string = showPath): string {
+  const named = (layer: MiddlewareProblem['first']) => `"${layer.name}"`;
+  return (
+    `${route.methods.join('|')} ${path(route)}: ${named(first)} and ${named(second)} both add "${key}" to the context. ` +
+    'Remove one of them: two calls of authenticate() are two middleware, and a route runs both. See docs/middleware.md#listed-twice.'
+  );
+}
 
 export class Router {
   readonly #routes: RouteDefinition[] = [];
@@ -241,6 +255,8 @@ export class Router {
         }
       }
     }
+    // Nothing a request does (`ctx.route`) may change a route for the requests after it.
+    for (const route of this.#routes.slice(before)) route.seal();
     this.#indexNames();
     return this;
   }
@@ -278,6 +294,16 @@ export class Router {
     return list;
   }
 
+  /**
+   * The routes whose middleware has two layers that declare the same key in `adds` (`authenticate()` in a group and again on a
+   * route): which route, which key, and both layers. The kernel and `marmeon check` refuse them at start.
+   *
+   * @internal
+   */
+  middlewareProblems(): MiddlewareProblem[] {
+    return this.#routes.flatMap((route) => addsConflicts(this.middlewareFor(route)).map((conflict) => ({ route, ...conflict })));
+  }
+
   readonly #middlewareOf = new WeakMap<RouteDefinition, { readonly version: number; readonly list: readonly AnyMiddleware[] }>();
 
   /**
@@ -300,7 +326,8 @@ export class Router {
     let problems = this.#judged.get(route);
     if (problems === undefined) this.#judged.set(route, (problems = this.#problemsOf(route)));
     if (problems.length > 0) return Promise.reject(new RouteAccessError(formatAccessProblems(problems, { path: showPath })));
-    const ctx: HttpContext = { ...state, request: input.request, params: input.params, route };
+    // Frozen, flat: a layer extends the context with next({…}) and cannot assign to it (deep values stay as they are).
+    const ctx: HttpContext = Object.freeze({ ...state, request: input.request, params: Object.freeze({ ...input.params }), route });
     const toResponse = options.toResponse ?? defaultToResponse;
     const resolve = options.resolve ?? this.#resolve;
 
@@ -310,7 +337,9 @@ export class Router {
       async (afterMiddleware) => {
         // Bindings after the middleware (authentication answers before a 404 could tell what exists),
         // before `authorize` (which may look at the bound record).
-        const finalCtx = route.bindings.length ? { ...afterMiddleware, params: await bindParams(route, afterMiddleware, resolve) } : afterMiddleware;
+        const finalCtx: HttpContext = route.bindings.length
+          ? Object.freeze({ ...afterMiddleware, params: Object.freeze(await bindParams(route, afterMiddleware, resolve)) })
+          : afterMiddleware;
         const { action } = route;
         // The registrar's checks come first and answer before anything else does — interceptor, live validation and handler
         // alike — so there is no second way into a route that skips them.
@@ -346,11 +375,11 @@ export class Router {
               }
               pageQuery = { values: query.canonical, defaults: query.defaults };
             }
-            handlerCtx = {
+            handlerCtx = Object.freeze({
               ...finalCtx,
               ...(action.request.schema ? { body } : {}),
               ...(query ? { query: query.value as unknown as URLSearchParams } : {}),
-            };
+            });
           }
           try {
             result = await (resolve(action) as unknown as { handle: (ctx: HttpContext) => unknown }).handle(handlerCtx);
@@ -361,7 +390,7 @@ export class Router {
         } else {
           result = await action(finalCtx);
         }
-        return toResponse(result, pageQuery ? { ...finalCtx, pageQuery } : finalCtx);
+        return toResponse(result, pageQuery ? Object.freeze({ ...finalCtx, pageQuery }) : finalCtx);
       },
       { resolve, onTerminable: options.onTerminable, onError: options.onError },
     );
@@ -373,7 +402,7 @@ export class Router {
    */
   dispatchNotFound(request: Request, options: Omit<DispatchOptions, 'toResponse'> = {}): Promise<Response> {
     const state = options.state ?? createRequestState(request);
-    const ctx = { ...state, request, params: {} } as unknown as HttpContext;
+    const ctx = Object.freeze({ ...state, request, params: Object.freeze({}) }) as unknown as HttpContext;
     return runPipeline(
       ctx,
       this.middleware.get(GLOBAL),

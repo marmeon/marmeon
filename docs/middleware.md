@@ -143,6 +143,42 @@ Register the same controller on a route without `ApiVersion`, and the route is a
 `apiVersion`, and nothing on that route provides it. A context is copied for each layer, never changed in place, so a
 middleware only sees what came before it.
 
+A middleware extends the context; it never replaces a part of it. Every key that is passed to `next()` is checked when the
+request runs, and a key that is reserved, that the context has already, or that every object has (`then`, `toJSON`,
+`constructor`, …) fails the call with a `TypeError` that names the middleware and the key (code
+[H8](errors.md#server-error-codes)); the request answers 500. The reserved keys are `request`, `params`, `route`, `query`,
+`input`, `inputRead`, `cookies`, `ip`, `nonce`, `expectsJson`, `body` and `pageQuery`, listed in `RESERVED_CONTEXT_KEYS` from
+`@marmeon/router`. A key an earlier middleware added, such as `user` after `authenticate()`, is known only when the request
+runs, because the types of a middleware do not know what ran before it. A reserved key in what a middleware declares as added,
+as in `defineMiddleware<{ params: … }>()` or `Next<{ params: … }>` in a class, does not compile.
+
+The context itself is frozen, one level deep, and so are `ctx.params` and the route in `ctx.route`: `next({ … })` is the only way
+to add to the context, and an assignment such as `ctx.user = other` or `ctx.params.id = 'x'` throws a `TypeError`. So a package
+can neither swap the user that `authenticate()` set through `next()` nor through an assignment, and it cannot change a route for
+the requests after it (`ctx.route.action = …`, `ctx.route.middleware.splice(0)`); `name()`, `internal()` and `block()` of a route
+throw once the router has loaded it. What lies inside the other values stays as it is: the `user` object, `ctx.request.headers`,
+the `URLSearchParams` in `ctx.query`, what `await ctx.input()` returns before the validation, and `ctx.cookies` can still be
+changed. A policy therefore reads the user from `Auth` or the `Gate` and not from a value another middleware might have touched.
+
+Adding a new key is the normal way: `next({ team })`, or `next({ user, token })` as `authenticate('api')` does. Extending is
+allowed, replacing is not. A middleware that wants to refine a value gives the result a name of its own
+(`next({ activeTeam })`), and a service belongs in a container token, not in the context. A key you choose for your own
+middleware will not be taken by the framework later: new state of the framework comes as a container token.
+
+A middleware that adds keys declares them, so that the start can catch two middleware that add the same key to one route. A
+class says it in `static adds`, an object in the third argument of `defineMiddleware()`:
+
+```ts title="modules/notes/middleware/ApiVersion.ts"
+export class ApiVersion {
+  static readonly adds = ['apiVersion'] as const;
+  // …
+}
+```
+
+```ts
+const acting = defineMiddleware('acting', (ctx, next) => next({ team: teamOf(ctx) }), { adds: ['team'] });
+```
+
 A middleware can also require values. The first type parameter of `defineMiddleware` is what it adds, the second what it needs.
 This one needs the signed-in user of `authenticate()`, and adds nothing:
 
@@ -223,6 +259,11 @@ these lists suits work every response needs: headers, logging, shared page props
 A middleware listed twice for a route, say once in its group and once on the route, runs once, at its first place. Middleware
 counts as the same when it is the same value. `authenticate()` and the other factories of the framework return a new class on
 every call, so keep a factory's result in a constant when you add it in more than one place.
+
+Two middleware that are not the same value and declare the same key in [`adds`](#adding-to-the-context), `authenticate()` in a
+group and again on a route, stop the start: the message (code [H8](errors.md#server-error-codes)) names the route, the key and
+both middleware, and `marmeon check` reports it in `route-types`. Remove one of them. A middleware without `adds` is caught at
+run time instead, when the second one passes the key to `next()`.
 
 ## The order
 

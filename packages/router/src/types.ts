@@ -1,3 +1,4 @@
+import type { NoReservedKeys, ReservedContextKey } from './middleware.ts';
 import type { BodyOf, RequestDefinition, StandardSchemaV1, WithQuery } from './request-definition.ts';
 import type { RequestState } from './request.ts';
 import type { RouteDefinition } from './route-definition.ts';
@@ -52,7 +53,7 @@ export interface RequestContext<TParams extends object = EmptyObject> extends Re
 export type HttpContext<TState extends object = EmptyObject, TParams extends object = EmptyObject> = RequestContext<TParams> & TState;
 
 /** Middleware that adds nothing may call `next()`; otherwise the extension is mandatory. */
-export type Next<TAdd extends object> = keyof TAdd extends never
+export type Next<TAdd extends object> = Exclude<keyof TAdd, ReservedContextKey> extends never
   ? (extension?: TAdd) => Promise<Response>
   : (extension: TAdd) => Promise<Response>;
 
@@ -63,7 +64,7 @@ export type Next<TAdd extends object> = keyof TAdd extends never
  * `handle` is a property, not a method: property function types are checked contravariantly under
  * `strictFunctionTypes`, so middleware whose requirements are unmet is a compile error.
  */
-export interface MiddlewareHandler<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject> {
+export interface MiddlewareHandler<TRequires extends object = EmptyObject, TAdds extends object & NoReservedKeys = EmptyObject> {
   readonly handle: (ctx: HttpContext<TRequires>, next: Next<TAdds>) => Response | Promise<Response>;
   /**
    * Runs after the response has been handed off — for work the client should not
@@ -73,20 +74,22 @@ export interface MiddlewareHandler<TRequires extends object = EmptyObject, TAdds
 }
 
 /** Middleware as a plain object, from `defineMiddleware`. */
-export interface Middleware<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject>
+export interface Middleware<TRequires extends object = EmptyObject, TAdds extends object & NoReservedKeys = EmptyObject>
   extends MiddlewareHandler<TRequires, TAdds> {
   readonly name: string;
+  /** The keys it adds to the context; see `DefineMiddlewareOptions`. */
+  readonly adds?: readonly string[];
 }
 
 /**
  * Middleware as a class: built per request from the container, so it gets
  * constructor injection like a controller. See docs/middleware.md#middleware-classes.
  */
-export type MiddlewareClass<TRequires extends object = any, TAdds extends object = any> = new (
+export type MiddlewareClass<TRequires extends object = any, TAdds extends object & NoReservedKeys = any> = new (
   ...args: any[]
 ) => MiddlewareHandler<TRequires, TAdds>;
 
-export type MiddlewareLike<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject> =
+export type MiddlewareLike<TRequires extends object = EmptyObject, TAdds extends object & NoReservedKeys = EmptyObject> =
   | Middleware<TRequires, TAdds>
   | MiddlewareClass<TRequires, TAdds>;
 

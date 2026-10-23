@@ -666,6 +666,15 @@ candidate (below `latest`) until a maintainer moves or removes it (`npm dist-tag
 What a contributor to the framework needs and an app never does. The exported functions and classes document themselves in their
 sources; these are the rules that span several files.
 
+### The request context
+
+The context a handler and a middleware receive holds the keys of `RESERVED_CONTEXT_KEYS` (`@marmeon/router`) — everything of
+`RequestContext` plus `body` and `pageQuery` — and nothing in it may be replaced: `next(extension)` throws for a reserved key and
+for any key the context has already, and the router hands every context on frozen (nothing in the framework assigns to `ctx`; add
+a key with `next()`). A middleware that adds keys declares them in `static adds`, so that two on one route stop the start. A type test keeps the list equal to `keyof RequestContext | 'body' | 'pageQuery'`, so a key
+added to the context is added to the list in the same commit. After 1.0 the framework adds no new key to `ctx`; new
+request-scoped state goes into a container token, because an app's middleware may already use the name.
+
 ### The entry points of `@marmeon/core`
 
 Besides its main entry and the documented `@marmeon/core/diagnostics`, `@marmeon/core/dev` and `@marmeon/core/deprecation`

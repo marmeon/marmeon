@@ -64,6 +64,7 @@ import {
 import {
   clientIp,
   createRequestState,
+  describeMiddlewareProblem,
   formatAccessProblems,
   VALIDATED_HEADER,
   withQueuedCookies,
@@ -189,10 +190,19 @@ const START_CHECK = Symbol.for('marmeon.middleware.startCheck');
  * does not reach the logs. See docs/authorization.md#every-route-decides.
  */
 export function refuseUndecidedRoutes(application: Application): void {
-  const problems = application.container.make(Router).accessProblems();
-  if (problems.length === 0) return;
+  const router = application.container.make(Router);
+  const problems = router.accessProblems();
+  const duplicates = router.middlewareProblems();
+  if (problems.length === 0 && duplicates.length === 0) return;
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
-  throw new RouteAccessError(formatAccessProblems(problems, { path: (route) => redactor.path(route.path, route.path) }));
+  const path = (route: { path: string }) => redactor.path(route.path, route.path);
+  const parts = [
+    ...(problems.length > 0 ? [formatAccessProblems(problems, { path })] : []),
+    ...(duplicates.length > 0
+      ? [withCode('H8', `Two middleware add the same key to the context:\n${duplicates.map((problem) => `  ${describeMiddlewareProblem(problem, path)}`).join('\n')}`)]
+      : []),
+  ];
+  throw new RouteAccessError(parts.join('\n\n'));
 }
 
 /**

@@ -120,6 +120,10 @@ export interface CookieOptions {
 }
 // DEFAULT_MAX_BODY_SIZE
 export declare const DEFAULT_MAX_BODY_SIZE: number;
+// DefineMiddlewareOptions
+export interface DefineMiddlewareOptions<TAdds extends object = object> {
+    readonly adds?: readonly (keyof TAdds & string)[];
+}
 // DispatchInput
 export interface DispatchInput {
     request: Request;
@@ -213,11 +217,12 @@ export type MethodOf<N extends string> = Entry<N> extends {
     readonly method: infer M extends string;
 } ? M : string;
 // Middleware
-export interface Middleware<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject> extends MiddlewareHandler<TRequires, TAdds> {
+export interface Middleware<TRequires extends object = EmptyObject, TAdds extends object & NoReservedKeys = EmptyObject> extends MiddlewareHandler<TRequires, TAdds> {
     readonly name: string;
+    readonly adds?: readonly string[];
 }
 // MiddlewareClass
-export type MiddlewareClass<TRequires extends object = any, TAdds extends object = any> = new (...args: any[]) => MiddlewareHandler<TRequires, TAdds>;
+export type MiddlewareClass<TRequires extends object = any, TAdds extends object & NoReservedKeys = any> = new (...args: any[]) => MiddlewareHandler<TRequires, TAdds>;
 // MiddlewareEnsures
 export type MiddlewareEnsures = 'authenticated' | 'rate-limited';
 // MiddlewareGroups
@@ -230,12 +235,12 @@ export declare class MiddlewareGroups {
     names(): string[];
 }
 // MiddlewareHandler
-export interface MiddlewareHandler<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject> {
+export interface MiddlewareHandler<TRequires extends object = EmptyObject, TAdds extends object & NoReservedKeys = EmptyObject> {
     readonly handle: (ctx: HttpContext<TRequires>, next: Next<TAdds>) => Response | Promise<Response>;
     readonly terminate?: (ctx: HttpContext<TRequires>, response: Response) => void | Promise<void>;
 }
 // MiddlewareLike
-export type MiddlewareLike<TRequires extends object = EmptyObject, TAdds extends object = EmptyObject> = Middleware<TRequires, TAdds> | MiddlewareClass<TRequires, TAdds>;
+export type MiddlewareLike<TRequires extends object = EmptyObject, TAdds extends object & NoReservedKeys = EmptyObject> = Middleware<TRequires, TAdds> | MiddlewareClass<TRequires, TAdds>;
 // MiddlewarePriority
 export declare const MiddlewarePriority: {
     readonly encryptCookies: 100;
@@ -249,10 +254,18 @@ export declare const MiddlewarePriority: {
     readonly app: 1000;
     readonly limitLiveValidation: 1100;
 };
+// MiddlewareProblem
+export interface MiddlewareProblem extends AddsConflict {
+    readonly route: RouteDefinition;
+}
 // NOT_LIVE
 export declare const NOT_LIVE: unique symbol;
 // Next
-export type Next<TAdd extends object> = keyof TAdd extends never ? (extension?: TAdd) => Promise<Response> : (extension: TAdd) => Promise<Response>;
+export type Next<TAdd extends object> = Exclude<keyof TAdd, ReservedContextKey> extends never ? (extension?: TAdd) => Promise<Response> : (extension: TAdd) => Promise<Response>;
+// NoReservedKeys
+export type NoReservedKeys = {
+    readonly [K in ReservedContextKey]?: never;
+};
 // PageQuery
 export interface PageQuery {
     readonly values: Readonly<Record<string, unknown>>;
@@ -297,6 +310,8 @@ export type QuerySchemaOf<R> = R extends {
 } ? (Q extends StandardSchemaV1 ? Q : never) : never;
 // QueryValue
 export type QueryValue = Param | boolean | null | undefined | readonly (Param | boolean)[];
+// RESERVED_CONTEXT_KEYS
+export declare const RESERVED_CONTEXT_KEYS: ReadonlySet<string>;
 // RegionResultMarker
 export interface RegionResultMarker {
     readonly region: 'island';
@@ -347,6 +362,8 @@ export interface RequestStateOptions {
     nonce?: RequestNonce;
     cookies?: CookieDefaults;
 }
+// ReservedContextKey
+export type ReservedContextKey = (typeof RESERVED)[number];
 // ResponseContext
 export interface ResponseContext {
     readonly request: Request;
@@ -360,7 +377,7 @@ export declare class Route<TState extends object = EmptyObject, TParams extends 
     constructor(register: (route: RouteDefinition) => void, attributes?: GroupAttributes);
     prefix<const TPath extends string>(path: TPath): Route<TState, Simplify<TParams & ExtractParams<TPath>>, TBindings>;
     name(prefix: string): Route<TState, TParams, TBindings>;
-    middleware<TAdds extends object>(middleware: MiddlewareLike<TState, TAdds>): Route<Merge<TState, TAdds>, TParams, TBindings>;
+    middleware<TAdds extends object & NoReservedKeys = EmptyObject>(middleware: MiddlewareLike<TState, TAdds>): Route<Merge<TState, Omit<TAdds, ReservedContextKey>>, TParams, TBindings>;
     bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = keyof TBindings & string, const W extends BindingWith<B> = never>(param: TName, binder: B & ConsistentBinder<B>, options?: BindOptions<TScope, [BindingWith<B>] extends [never] ? NoRelations : readonly W[]>): Route<TState, TParams, Merge<TBindings, {
         [K in TName]: BoundValue<B, W>;
     }>>;
@@ -584,7 +601,7 @@ export declare function attributeName(field: string): string;
 // createNonce
 export declare function createNonce(): string;
 // defineMiddleware
-export declare function defineMiddleware<TAdds extends object = EmptyObject, TRequires extends object = EmptyObject>(name: string, handle: Middleware<TRequires, TAdds>['handle']): Middleware<TRequires, TAdds>;
+export declare function defineMiddleware<TAdds extends object & NoReservedKeys = EmptyObject, TRequires extends object = EmptyObject>(name: string, handle: Middleware<TRequires, TAdds>['handle'], options?: DefineMiddlewareOptions<TAdds>): Middleware<TRequires, TAdds>;
 // defineRequest
 export declare function defineRequest<TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TCtx = HttpContext>(definition: {
     schema?: TSchema | SchemaFactory<TSchema>;
@@ -647,6 +664,12 @@ export declare function urlFor(routes: RouteLookup, name: string, params?: Reado
 ### Referenced, not exported
 
 ```ts
+// AddsConflict
+export interface AddsConflict {
+    readonly key: string;
+    readonly first: AnyMiddleware;
+    readonly second: AnyMiddleware;
+}
 // AnswerOf
 type AnswerOf<N> = Instance<Entry<N> extends {
     readonly controller: infer C;
@@ -733,6 +756,8 @@ type QueryScalar = string | number | boolean;
 type Quoted<K> = `'${K & string}'`;
 // REQUEST
 declare const REQUEST: unique symbol;
+// RESERVED
+declare const RESERVED: readonly ['request', 'params', 'route', 'query', 'input', 'inputRead', 'cookies', 'ip', 'nonce', 'expectsJson', 'body', 'pageQuery'];
 // Registered
 type Registered = [keyof Routes] extends [never] ? false : true;
 // RegistrarAudit

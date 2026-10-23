@@ -136,9 +136,8 @@ describe('islands resolved in-process while the page streams', async () => {
     constructor(lifecycle: ResponseLifecycle) {
       this.#lifecycle = lifecycle;
     }
-    handle(ctx: HttpContext, next: Next<{}>) {
-      Object.assign(ctx, { lifecycle: this.#lifecycle });
-      return next();
+    handle(_ctx: HttpContext, next: Next<{ lifecycle: ResponseLifecycle }>) {
+      return next({ lifecycle: this.#lifecycle });
     }
   }
   const application = await createApplication({
