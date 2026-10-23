@@ -283,10 +283,9 @@ describe('Session', () => {
     const session = new Session(busy, config, plainSessionCodec);
     await session.start(id);
     session.put('visits', 2);
-    const started = performance.now();
+    // No stopwatch: an endless retry would end the test by its timeout instead of the answer.
     expect(await session.save()).toBe(false);
     expect(session.abandoned).toBe(true);
-    expect(performance.now() - started).toBeLessThan(3_000);
     expect(writes).toBeGreaterThan(3);
     expect(JSON.parse((await store.read(sessionKey(id)))!.data)).toMatchObject({ visits: 1 });
   });

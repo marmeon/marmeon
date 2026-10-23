@@ -1,7 +1,14 @@
+import * as crypto from 'node:crypto';
 import { createApplication } from '@marmeon/core';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { AuthServiceProvider, HashError, Hasher, MAX_PASSWORD_BYTES, PasswordHasher, type HasherOptions, type PasswordHash } from './index.ts';
 import { DEFAULT_HASHER_OPTIONS } from './hashing.ts';
+
+// Passes through; lets a test count the key derivations that were started.
+vi.mock('node:crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:crypto')>();
+  return { ...actual, argon2: vi.fn(actual.argon2), scrypt: vi.fn(actual.scrypt) };
+});
 
 /** Cheap costs: these tests are about behaviour, not strength (the app does the same in `.env.test`). */
 const cheap: HasherOptions = { driver: 'argon2id', argon2: { memory: 1024, time: 1, parallelism: 1 }, scrypt: { cost: 10, blockSize: 8, parallelism: 1 } };
@@ -94,11 +101,16 @@ describe('PasswordHasher', () => {
 
   it('refuses costs beyond the limits before computing anything — a planted hash cannot burn 4 GiB per login', async () => {
     const hash = await argon2.make('secret');
-    const started = performance.now();
+    const bigScrypt = (await scrypt.make('secret')).replace('ln=10', 'ln=24') as PasswordHash;
+    vi.mocked(crypto.argon2).mockClear();
+    vi.mocked(crypto.scrypt).mockClear();
     expect(await argon2.verify('secret', hash.replace('m=1024', 'm=4194304') as PasswordHash)).toBe(false);
     expect(await argon2.verify('secret', hash.replace('t=1', 't=999') as PasswordHash)).toBe(false);
-    expect(await argon2.verify('secret', (await scrypt.make('secret')).replace('ln=10', 'ln=24') as PasswordHash)).toBe(false);
-    expect(performance.now() - started).toBeLessThan(50);
+    expect(await argon2.verify('secret', bigScrypt)).toBe(false);
+    // What ran was the check of the configured costs (a refused hash answers like a wrong one), never the planted ones.
+    for (const [, options] of vi.mocked(crypto.argon2).mock.calls as unknown as [string, { memory: number; passes: number }][]) expect(options).toMatchObject({ memory: 1024, passes: 1 });
+    for (const [, , , options] of vi.mocked(crypto.scrypt).mock.calls as unknown as [unknown, unknown, unknown, { N: number }][]) expect(options.N).toBe(2 ** 10);
+    expect(vi.mocked(crypto.argon2).mock.calls.length + vi.mocked(crypto.scrypt).mock.calls.length).toBeGreaterThan(0); // the loops above saw something
   });
 
   it(`limits passwords to ${MAX_PASSWORD_BYTES} bytes (UTF-8), so huge inputs cost nothing`, async () => {

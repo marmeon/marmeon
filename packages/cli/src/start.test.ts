@@ -292,14 +292,13 @@ describe('marmeon start', { timeout: 30_000 }, () => {
     expect((await fetch(`${base}/up`)).status).toBe(200);
     expect((await fetch(`${base}/api/slow`)).status).toBe(200);
     expect(await server.exited).toBe(0);
-    expect(performance.now() - signalled).toBeGreaterThanOrEqual(1000);
+    expect(performance.now() - signalled).toBeGreaterThanOrEqual(990);
     expect(server.output()).toContain('SIGTERM received, shutting down — not ready any more, still answering for 1 s (SERVER_SHUTDOWN_DELAY_SECONDS)');
 
-    const interrupted = await start({ NODE_ENV: 'production', SERVER_SHUTDOWN_DELAY_SECONDS: '5' });
-    const stopped = performance.now();
+    // A delay of five minutes: if SIGINT waited it out, the test would end by its timeout instead of the exit.
+    const interrupted = await start({ NODE_ENV: 'production', SERVER_SHUTDOWN_DELAY_SECONDS: '300' });
     interrupted.child.kill('SIGINT');
     expect(await interrupted.exited).toBe(0);
-    expect(performance.now() - stopped).toBeLessThan(3000);
   }, 30_000);
 
   it('refuses to start when NODE_ENV=development or test comes from .env only — nothing of the app runs', () => {

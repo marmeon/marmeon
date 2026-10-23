@@ -51,9 +51,8 @@ describe('a live stream and the server', () => {
     // Read-only: the stream sets no cookie.
     expect(stream.response.headers.get('set-cookie')).toBeNull();
 
-    const started = performance.now();
+    // No stopwatch: a stream or socket left open would keep `close()` waiting past the test's timeout.
     await running.close();
-    expect(performance.now() - started).toBeLessThan(2000);
     await stream.closed;
     expect(running.server.listening).toBe(false);
     await app.shutdown();

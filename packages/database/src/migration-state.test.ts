@@ -215,10 +215,9 @@ describe.each(drivers)('what the app does when the database lacks migrations, on
     try {
       const migrating = new Migrator(appOf(state), connections).migrate();
       await inside;
-      const started = performance.now();
       // The transaction is open on one connection of the pool: this query runs on another, with the schema the database has.
+      // The migration is held until `release()` below, so a query that waited for it would never answer.
       await select(connections, 'users');
-      expect(performance.now() - started).toBeLessThan(2000);
       expect(connections.metadata().softDeletes.has('paused')).toBe(false);
       expect(connections.metadata().fresh).toBe(false);
       release();

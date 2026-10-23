@@ -423,10 +423,11 @@ describe('Auth (session guard)', () => {
     const boot = (floor: number | undefined) => {
       const users = new MemoryUsers();
       const real = new PasswordHasher();
-      const hasher = { make: real.make.bind(real), verify: real.verify.bind(real), needsRehash: () => false, dummyVerify: async () => false as const, ...(floor === undefined ? {} : { failureFloorMs: () => floor }) } as unknown as Hasher;
+      const failureFloorMs = vi.fn(() => floor);
+      const hasher = { make: real.make.bind(real), verify: real.verify.bind(real), needsRehash: () => false, dummyVerify: async () => false as const, ...(floor === undefined ? {} : { failureFloorMs }) } as unknown as Hasher;
       const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
       const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_REQUEST_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
-      return { users, hasher, auth };
+      return { users, hasher, auth, failureFloorMs };
     };
     const timed = async (run: () => Promise<unknown>) => {
       const started = performance.now();
@@ -473,11 +474,10 @@ describe('Auth (session guard)', () => {
     });
 
     it('does not delay a success', async () => {
-      const { users, hasher, auth } = boot(5000);
+      const { users, hasher, auth, failureFloorMs } = boot(100);
       users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
-      let result: unknown;
-      expect(await timed(async () => (result = await auth.attempt('ada@example.com', 'secret')))).toBeLessThan(2500);
-      expect(result).toStrictEqual(ok(ada));
+      expect(await auth.attempt('ada@example.com', 'secret')).toStrictEqual(ok(ada));
+      expect(failureFloorMs).not.toHaveBeenCalled(); // the padding is never asked for
     });
   });
 

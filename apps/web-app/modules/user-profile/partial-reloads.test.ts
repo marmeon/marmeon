@@ -3,6 +3,7 @@ import { Connections } from '@marmeon/database';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { ProfileActivity } from './ProfileActivity.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import { ProfileLinkFactory } from './factories/ProfileLinkFactory.ts';
 
@@ -71,20 +72,34 @@ describe('profile page: deferred and optional props', () => {
   });
 
   it('a slow deferred prop does not hold up the page: first the page, then the prop', async () => {
-    await app.close(); // one app per test — this one with a slow activity panel (development only, see config.ts)
-    const slow = await createTestApp(application, { database: 'refresh', seed: true, env: { PROFILE_ACTIVITY_DELAY: '400' } });
-    app = slow;
-    const users: User[] = await slow.make(UserRepository).query().selectAll().orderBy('id').execute();
-    const user = users[0]!;
+    // The activity panel is held by a gate: the page has to come without it, the reload only once the gate opens.
+    const opened = Promise.withResolvers<void>();
+    const real = app.make(ProfileActivity);
+    app.container.scoped(ProfileActivity, () =>
+      Object.assign(Object.create(real) as ProfileActivity, {
+        recent: async (...args: Parameters<ProfileActivity['recent']>) => {
+          await opened.promise;
+          return real.recent(...args);
+        },
+      }),
+    );
+    try {
+      const first = (await app.actingAs(ada).navigating().get(profile(ada)).assertOk()).page()!;
+      expect(first.deferredProps).toEqual({ default: ['activity'] });
 
-    let started = performance.now();
-    const first = (await slow.actingAs(user).navigating().get(`/users/${user.public_id}`).assertOk()).page()!;
-    expect(performance.now() - started).toBeLessThan(200);
-    expect(first.deferredProps).toEqual({ default: ['activity'] });
-
-    started = performance.now();
-    const deferred = (await slow.actingAs(user).reloading<ShowUserProfileController>('user-profile/Show', { only: ['activity'] }).get(`/users/${user.public_id}`)).page()!;
-    expect(performance.now() - started).toBeGreaterThanOrEqual(395);
-    expect(deferred.props.activity).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'joined' })]));
+      let settled = false;
+      const reloading = Promise.resolve(app.actingAs(ada).reloading<ShowUserProfileController>('user-profile/Show', { only: ['activity'] }).get(profile(ada))).then((response) => {
+        settled = true;
+        return response;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(settled).toBe(false);
+      opened.resolve();
+      const deferred = (await reloading).page()!;
+      expect(deferred.props.activity).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'joined' })]));
+    } finally {
+      opened.resolve();
+      app.container.scoped(ProfileActivity);
+    }
   });
 });
