@@ -255,7 +255,7 @@ again. The owner's password reset removes whatever an account with an unconfirme
 
 Every mail of the module goes through the queue, on its `mail` queue. A new app has the queue's table and `marmeon dev` starts a
 worker, so this works from the first start. By default the mailer writes each mail to the log. On a server you need a real
-mailer, `MAIL_MAILER=smtp`, and a worker, `marmeon queue:work`. The [deployment](deployment.md) page shows both.
+mailer, `MAIL_DRIVER=smtp`, and a worker, `marmeon queue:work`. The [deployment](deployment.md) page shows both.
 
 The scheduler deletes expired reset links and API tokens, takes expired remember-me tokens off their sign-ins and deletes the sign-ins that are over every night at 03:10, and the changes of address
 that nobody confirmed in time. `marmeon dev` runs the scheduler for you. On a server, run `marmeon schedule:work`.

@@ -30,13 +30,13 @@ describe('the tables readiness waits for', () => {
   async function required(providers: Parameters<typeof createApplication>[0]['providers'], env: Record<string, string>) {
     await using application = await createApplication(
       { root: '/tmp', discover: false, providers },
-      { env: { DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=', NODE_ENV: 'test', ...env }, override: (container) => container.instance(Logger, silent) },
+      { env: { DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=', NODE_ENV: 'test', ...env }, override: (container) => container.instance(Logger, silent) },
     );
     return { tables: application.container.make(SchemaRequirements).all().map((requirement) => requirement.table), report: await application.container.make(HealthChecks).run(application.container) };
   }
 
-  it('are none for QUEUE_CONNECTION=sync, so /up/ready stays green without them', async () => {
-    const { tables, report } = await required([CliServiceProvider, DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider], { QUEUE_CONNECTION: 'sync' });
+  it('are none for QUEUE_DRIVER=sync, so /up/ready stays green without them', async () => {
+    const { tables, report } = await required([CliServiceProvider, DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider], { QUEUE_DRIVER: 'sync' });
     expect(tables).toEqual([]);
     expect(report.ok).toBe(true);
   });
@@ -47,7 +47,7 @@ describe('the tables readiness waits for', () => {
   });
 
   it.skipIf(!REDIS_URL)('are the failed-job table alone for a Redis queue that keeps its failures in the database', async () => {
-    const { tables } = await required([CliServiceProvider, DatabaseServiceProvider, RedisServiceProvider, EncryptionServiceProvider, QueueServiceProvider], { QUEUE_CONNECTION: 'redis', REDIS_URL: REDIS_URL!, QUEUE_FAILED_DRIVER: 'database' });
+    const { tables } = await required([CliServiceProvider, DatabaseServiceProvider, RedisServiceProvider, EncryptionServiceProvider, QueueServiceProvider], { QUEUE_DRIVER: 'redis', REDIS_URL: REDIS_URL!, QUEUE_FAILED_DRIVER: 'database' });
     expect(tables).toEqual(['failed_jobs']);
   });
 });

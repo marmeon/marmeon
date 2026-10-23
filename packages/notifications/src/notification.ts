@@ -49,7 +49,7 @@ export type NotificationChannelName = keyof NotificationChannelMap & string;
 export interface NotificationQueueOptions {
   /** The queue of the notification's job and of its mail (default: the connection's default queue). */
   readonly queue?: string;
-  /** The queue connection (default: `QUEUE_CONNECTION`). */
+  /** The queue connection (default: `QUEUE_DRIVER`). */
   readonly connection?: string;
   /** Deliver no earlier than this — seconds, or a duration. */
   readonly delay?: number | Duration;

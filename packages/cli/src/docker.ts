@@ -212,10 +212,10 @@ export function compose(app: DockerApp, { proxy, systemd = false }: DockerOption
 #
 #   docker compose -f compose.production.yaml up -d --build
 #
-# Configuration and secrets live in .env.production on the server (APP_KEY, APP_URL=https://…, DB_*, MAIL_MAILER=smtp, …) —
+# Configuration and secrets live in .env.production on the server (APP_KEY, APP_URL=https://…, DB_*, MAIL_DRIVER=smtp, …) —
 # never a developer's .env. NODE_ENV=production comes from the image.
 # More than one web container, or containers on more than one machine: sessions, cache and queue must not use the file or
-# sqlite drivers (SESSION_DRIVER/CACHE_DRIVER=redis or database, QUEUE_CONNECTION=redis or database on Postgres).
+# sqlite drivers (SESSION_DRIVER/CACHE_DRIVER=redis or database, QUEUE_DRIVER=redis or database on Postgres).
 
 x-app: &app
   build: .
@@ -310,7 +310,7 @@ export function systemdUnits(app: DockerApp): Record<'web' | 'worker' | 'schedul
   const unit = (key: string, role: string, description: string, command: string, stop: number, extra: string[] = []) => `# Written by \`marmeon make:docker --systemd\`: the ${role} of ${app.name}. Copy to /etc/systemd/system/${app.name}-${key}.service, then
 #   systemctl daemon-reload && systemctl enable --now ${app.name}-${key}
 # The app lives in /srv/${app.name} (marmeon build and a production install done there), runs as the user ${app.name}, and reads
-# its configuration from /etc/${app.name}/env (APP_KEY, APP_URL, DB_*, MAIL_MAILER=smtp, … — chmod 600). Node must be on PATH.
+# its configuration from /etc/${app.name}/env (APP_KEY, APP_URL, DB_*, MAIL_DRIVER=smtp, … — chmod 600). Node must be on PATH.
 [Unit]
 Description=${app.name} ${description}
 After=network-online.target

@@ -51,28 +51,28 @@ await this.#mailer.queue(new NoteSharedMail(recipient, note.title, url, this.#tr
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `MAIL_MAILER` | `log` | `log` writes every mail to the log and sends nothing, `smtp` sends it, `array` keeps it in memory. |
+| `MAIL_DRIVER` | `log` | `log` writes every mail to the log and sends nothing, `smtp` sends it, `array` keeps it in memory. |
 | `MAIL_FROM_ADDRESS` | `hello@example.com` | The sender of every mail that names none. |
 | `MAIL_FROM_NAME` | empty | The sender's name. Empty, the address goes alone. |
 | `MAIL_HOST` | `127.0.0.1` | The SMTP server. |
 | `MAIL_PORT` | `587` | Its port. |
-| `MAIL_SECURE` | `false` | `true` speaks TLS from the first byte, for port 465. |
-| `MAIL_REQUIRE_TLS` | `true` | Without `MAIL_SECURE`, the connection must be upgraded with STARTTLS. |
+| `MAIL_SECURE` | `false` | A switch (`true`, `false`, `1` or `0`). `true` speaks TLS from the first byte, for port 465. |
+| `MAIL_REQUIRE_TLS` | `true` | A switch like `MAIL_SECURE`. Without `MAIL_SECURE`, the connection must be upgraded with STARTTLS. |
 | `MAIL_USERNAME`, `MAIL_PASSWORD` | empty | The SMTP credentials. |
 
-`smtp` needs nothing more: the package brings its SMTP client. A new app's `.env.test` sets `MAIL_MAILER=array`.
+`smtp` needs nothing more: the package brings its SMTP client. A new app's `.env.test` sets `MAIL_DRIVER=array`.
 
 ### The log mailer
 
 `log` is the default in every environment. In development that is the point: the mail's text goes to the log, and you click its
 links from there. Anywhere else it puts working password reset links into the log and leaves your users without their mails. So
-outside development and tests the app warns at every start while `MAIL_MAILER` is `log`:
+outside development and tests the app warns at every start while `MAIL_DRIVER` is `log`:
 
 ```text
-MAIL_MAILER=log outside development and tests: no mail is sent — every mail is written to the log instead, its links and tokens (password reset, e-mail verification, signed URLs) in plain text. Set MAIL_MAILER=smtp and MAIL_HOST, MAIL_USERNAME, MAIL_PASSWORD.
+MAIL_DRIVER=log outside development and tests: no mail is sent — every mail is written to the log instead, its links and tokens (password reset, e-mail verification, signed URLs) in plain text. Set MAIL_DRIVER=smtp and MAIL_HOST, MAIL_USERNAME, MAIL_PASSWORD.
 ```
 
-It is a warning and not an error, since a deployment may route mails through its log on purpose. Set `MAIL_MAILER=smtp` in
+It is a warning and not an error, since a deployment may route mails through its log on purpose. Set `MAIL_DRIVER=smtp` in
 production.
 
 ### SMTP and TLS

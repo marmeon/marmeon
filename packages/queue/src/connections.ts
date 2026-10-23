@@ -30,11 +30,11 @@ async function importOptional<T>(load: () => Promise<T>, name: string, what: str
 export const BUILT_IN_QUEUE_DRIVERS = ['sync', 'database', 'redis'] as const;
 export const BUILT_IN_FAILED_DRIVERS = ['database', 'null'] as const;
 
-export const importDatabase = (what = 'QUEUE_CONNECTION=database') =>
+export const importDatabase = (what = 'QUEUE_DRIVER=database') =>
   importOptional(() => import('@marmeon/database'), '@marmeon/database', what, 'pnpm add @marmeon/database');
 export const importEncryption = () =>
   importOptional(() => import('@marmeon/encryption'), '@marmeon/encryption', 'An encrypted job (static encrypted)', 'pnpm add @marmeon/encryption');
-export const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'QUEUE_CONNECTION=redis', 'pnpm add @marmeon/redis');
+export const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'QUEUE_DRIVER=redis', 'pnpm add @marmeon/redis');
 export const importCache = () =>
   importOptional(() => import('@marmeon/cache'), '@marmeon/cache', 'Unique jobs, withoutOverlapping and job.once', 'pnpm add @marmeon/cache');
 
@@ -63,7 +63,7 @@ export class QueueConnections {
   }
 
   /**
-   * Fails the start when `QUEUE_CONNECTION` or `QUEUE_FAILED_DRIVER` names a driver nobody brought (a typo never lands on another
+   * Fails the start when `QUEUE_DRIVER` or `QUEUE_FAILED_DRIVER` names a driver nobody brought (a typo never lands on another
    * driver), and builds what a driver of a provider provides — its factory's errors surface now, not at the first dispatch.
    */
   verify(): void {
@@ -251,7 +251,7 @@ export function checkTimeouts(registry: JobRegistry, connection: string, retryAf
       'Q4',
       `The queue connection "${connection}" gives a claimed job ${retryAfter}s (retryAfter) before another worker may take it, but ${list} may hold it ` +
         `for its timeout plus the worker's --stop-timeout of ${stopTimeout}s — a second worker would run it while the first still does. ` +
-        `Raise retryAfter (e.g. DB_QUEUE_RETRY_AFTER) above timeout + stop timeout, or lower the job's static timeout.`,
+        `Raise retryAfter (e.g. QUEUE_DATABASE_RETRY_AFTER_SECONDS) above timeout + stop timeout, or lower the job's static timeout.`,
     ),
   );
 }

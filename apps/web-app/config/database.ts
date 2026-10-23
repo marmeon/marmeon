@@ -7,7 +7,7 @@ import { defineConnection } from '@marmeon/database';
  * a file of their own they also work inside one, while the app's file is locked by it. The tables are migrated there by
  * their migrations in modules/system (they follow CACHE_CONNECTION / SESSION_CONNECTION).
  *
- * With Postgres (`DB_CONNECTION=pgsql`) leave CACHE_CONNECTION and SESSION_CONNECTION unset: the cache and the sessions open
+ * With Postgres (`DB_DRIVER=pgsql`) leave CACHE_CONNECTION and SESSION_CONNECTION unset: the cache and the sessions open
  * a small pool of their own to the app's database by themselves. This connection then stays unused (it never opens).
  */
 export const SystemDatabase = defineConnection('system', {

@@ -8,7 +8,7 @@ import { QueueServiceProvider } from '../../../index.ts';
 import { DispatchCommand, fixtureJobs } from '../jobs.ts';
 
 // A minimal app for the worker processes of `worker-processes.test.ts`: `marmeon queue:work` runs in it for real. The
-// database, queue and cache come from the environment (DB_*, QUEUE_CONNECTION, CACHE_DRIVER, REDIS_*), like any app's.
+// database, queue and cache come from the environment (DB_*, QUEUE_DRIVER, CACHE_DRIVER, REDIS_*), like any app's.
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   discover: false,

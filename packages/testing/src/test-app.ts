@@ -73,7 +73,7 @@ export interface TestAppOptions {
   /**
    * Jobs are recorded, not queued (default `'fake'`): the `Queue` is a `QueueFake`, available as `app.queue` —
    * `app.queue.assertDispatched(SendWelcomeMailJob, { userId })`, and `await app.queue.work()` runs them for real in the
-   * test. `'real'` keeps the configured connection (`QUEUE_CONNECTION`). Needs @marmeon/queue.
+   * test. `'real'` keeps the configured connection (`QUEUE_DRIVER`). Needs @marmeon/queue.
    */
   queue?: 'fake' | 'real';
   /**

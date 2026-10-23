@@ -412,7 +412,7 @@ These are the settings a new app starts with. Each feature's page lists its own 
 | `PORT` | `3000` | The port the server listens on. `0` takes a free one. |
 | `HOST` | `127.0.0.1` | The interface the server listens on. `0.0.0.0` for other machines. |
 | `LOG_LEVEL` | `info` | The lowest level that is logged, or `silent`. |
-| `DB_CONNECTION` | `sqlite` | `sqlite` or `pgsql`. |
+| `DB_DRIVER` | `sqlite` | `sqlite` or `pgsql`. |
 | `DB_DATABASE` | `storage/database.sqlite` | The SQLite file, or the name of the Postgres database (`marmeon` by default). |
 | `DB_HOST` | `127.0.0.1` | Postgres: the server. |
 | `DB_PORT` | `5432` | Postgres: its port. |
@@ -421,8 +421,8 @@ These are the settings a new app starts with. Each feature's page lists its own 
 | `DB_URL` | none | Postgres: the whole address instead. When it is set, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD` are not read. |
 | `SESSION_DRIVER` | `file` | Where sessions live: `file`, `database`, `redis` or `memory`. |
 | `CACHE_DRIVER` | `file` | Where the cache lives: `file`, `database`, `redis`, `memory` or a driver a package brings. |
-| `QUEUE_CONNECTION` | `database` | Where queued jobs wait: `database`, `redis`, `sync` or a driver a package brings. |
-| `MAIL_MAILER` | `log` | `log` writes every mail to the log, `smtp` sends it, `array` keeps it in memory. |
+| `QUEUE_DRIVER` | `database` | Where queued jobs wait: `database`, `redis`, `sync` or a driver a package brings. |
+| `MAIL_DRIVER` | `log` | `log` writes every mail to the log, `smtp` sends it, `array` keeps it in memory. |
 
 ## Testing
 

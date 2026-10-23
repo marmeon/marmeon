@@ -135,7 +135,7 @@ are resolved.
 
 The app starts on SQLite, in the file `storage/database.sqlite`. The creator runs `marmeon migrate`, so the tables exist when you
 first start the app. In development, `migrate` also writes the table types to `bootstrap/database.d.ts`, which the type checker
-uses for every query. You switch to PostgreSQL with `DB_CONNECTION=pgsql` and the server's `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and
+uses for every query. You switch to PostgreSQL with `DB_DRIVER=pgsql` and the server's `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and
 `DB_PASSWORD` in `.env`, or its whole address in `DB_URL`.
 
 ### Security from the start
@@ -174,7 +174,7 @@ runs. Copy the confirmation link from it and open it. The app asks you to sign i
 the dashboard.
 
 > [!NOTE]
-> The log mailer writes links and tokens in plain text. Outside development the app warns at every start while `MAIL_MAILER` is
+> The log mailer writes links and tokens in plain text. Outside development the app warns at every start while `MAIL_DRIVER` is
 > still `log`. Set up a real mailer before anyone else uses the app.
 
 ### Tests and lint

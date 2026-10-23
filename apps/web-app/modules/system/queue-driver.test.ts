@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
 describe('the app\'s own queue driver', () => {
-  it('QUEUE_CONNECTION=scratch selects it; it keeps and hands out jobs', async () => {
-    const app = await createTestApp(application, { env: { QUEUE_CONNECTION: 'scratch' } });
+  it('QUEUE_DRIVER=scratch selects it; it keeps and hands out jobs', async () => {
+    const app = await createTestApp(application, { env: { QUEUE_DRIVER: 'scratch' } });
     const connections = app.make(QueueConnections);
     expect(connections.options('scratch')).toEqual({ driver: 'custom', queue: 'default', retryAfter: 90 });
     const driver = connections.driver('scratch');

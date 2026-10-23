@@ -39,7 +39,7 @@ const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
 const drivers = PGSQL_URL ? (['sqlite', 'pgsql'] as const) : (['sqlite'] as const);
 
 describe.each(drivers)('a refreshed database on %s', (driver) => {
-  const env = { APP_KEY: generateKey(), ...(driver === 'pgsql' ? { DB_CONNECTION: 'pgsql', DB_URL: PGSQL_URL } : { DB_CONNECTION: 'sqlite', DB_URL: undefined, DB_DATABASE: ':memory:' }) };
+  const env = { APP_KEY: generateKey(), ...(driver === 'pgsql' ? { DB_DRIVER: 'pgsql', DB_URL: PGSQL_URL } : { DB_DRIVER: 'sqlite', DB_URL: undefined, DB_DATABASE: ':memory:' }) };
   const definition: ApplicationDefinition = {
     root: workspaceTempDir('marmeon-testing-db-'),
     discover: false,
@@ -140,7 +140,7 @@ describe('where the worker databases live', () => {
     const root = workspaceTempDir('marmeon-testing-db-');
     const app = await createTestApp(
       { root, discover: false, providers: [EncryptionServiceProvider, DatabaseServiceProvider] },
-      { env: { APP_KEY: generateKey(), DB_CONNECTION: 'sqlite', DB_URL: undefined }, database: 'refresh' },
+      { env: { APP_KEY: generateKey(), DB_DRIVER: 'sqlite', DB_URL: undefined }, database: 'refresh' },
     );
     try {
       expect(existsSync(join(root, 'storage', 'framework', 'testing'))).toBe(true);
@@ -152,7 +152,7 @@ describe('where the worker databases live', () => {
   it('names a Postgres database as before: the configured one, with _test_, the root’s hash and the worker', async () => {
     const worker = await workerDatabase('/some/app', {
       ...env,
-      DB_CONNECTION: 'pgsql',
+      DB_DRIVER: 'pgsql',
       DB_URL: 'postgres://u:p@localhost:5432/shop',
     });
     expect(new URL(worker.key).pathname).toMatch(/^\/shop_test_[0-9a-z]+_\d+$/);

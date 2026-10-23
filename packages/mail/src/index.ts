@@ -30,7 +30,7 @@ async function importQueue(): Promise<QueueModule | undefined> {
 }
 
 /**
- * Registers the `Mailer` and its `MailTransport` (`MAIL_MAILER`) — built on first use —, the `marmeon.mail` job for
+ * Registers the `Mailer` and its `MailTransport` (`MAIL_DRIVER`) — built on first use —, the `marmeon.mail` job for
  * `mailer.queue()` when the app has @marmeon/queue, and with `NODE_ENV=development` only the mail previews
  * (`/_marmeon/mail`). Found by `marmeon discover`.
  */

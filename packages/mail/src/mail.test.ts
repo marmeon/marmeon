@@ -182,7 +182,7 @@ describe('transports', () => {
     vi.doMock('nodemailer', () => ({ default: { createTransport: (options: Record<string, unknown>) => (created.push(options), { sendMail: async () => {}, close() {} }) } }));
     try {
       const send = async (env: Record<string, string>) => {
-        const app = await createApplication({ root: import.meta.dirname, discover: false, providers: [MailServiceProvider] }, { env: { LOG_LEVEL: 'silent', MAIL_MAILER: 'smtp', ...env } });
+        const app = await createApplication({ root: import.meta.dirname, discover: false, providers: [MailServiceProvider] }, { env: { LOG_LEVEL: 'silent', MAIL_DRIVER: 'smtp', ...env } });
         await app.container.make(Mailer).send(new WelcomeMail('Ada'));
         await app.shutdown();
         return created.at(-1)!;
@@ -201,13 +201,13 @@ describe('MailServiceProvider', () => {
   const boot = (env: Record<string, string>, override?: (container: Container) => void) =>
     createApplication({ root: import.meta.dirname, discover: false, providers: [MailServiceProvider] }, { env: { LOG_LEVEL: 'silent', ...env }, ...(override ? { override } : {}) });
 
-  it('picks the transport by MAIL_MAILER and sends from MAIL_FROM_*', async () => {
-    const app = await boot({ MAIL_MAILER: 'array', MAIL_FROM_ADDRESS: 'team@app.test', MAIL_FROM_NAME: 'The Team' });
+  it('picks the transport by MAIL_DRIVER and sends from MAIL_FROM_*', async () => {
+    const app = await boot({ MAIL_DRIVER: 'array', MAIL_FROM_ADDRESS: 'team@app.test', MAIL_FROM_NAME: 'The Team' });
     const message = await app.container.make(Mailer).send(new WelcomeMail('Ada'));
     expect(message.from).toEqual({ address: 'team@app.test', name: 'The Team' });
     expect((app.container.make(MailTransport) as ArrayTransport).messages).toEqual([message]);
     expect((await boot({})).container.make(MailTransport)).toBeInstanceOf(LogTransport);
-    expect((await boot({ MAIL_MAILER: 'smtp' })).container.make(MailTransport)).toBeInstanceOf(SmtpTransport);
+    expect((await boot({ MAIL_DRIVER: 'smtp' })).container.make(MailTransport)).toBeInstanceOf(SmtpTransport);
     await expect(boot({ MAIL_FROM_ADDRESS: 'nope' })).rejects.toThrow(/mail: MAIL_FROM_ADDRESS/);
   });
 
@@ -218,13 +218,13 @@ describe('MailServiceProvider', () => {
       await boot(env, (container) => container.instance(Logger, logger));
       return warnings;
     };
-    expect(await warningsWith({ NODE_ENV: 'production' })).toEqual([LOG_MAILER_WARNING]); // MAIL_MAILER unset: the default
-    expect(await warningsWith({ NODE_ENV: 'production', MAIL_MAILER: 'log' })).toEqual([LOG_MAILER_WARNING]);
+    expect(await warningsWith({ NODE_ENV: 'production' })).toEqual([LOG_MAILER_WARNING]); // MAIL_DRIVER unset: the default
+    expect(await warningsWith({ NODE_ENV: 'production', MAIL_DRIVER: 'log' })).toEqual([LOG_MAILER_WARNING]);
     expect(LOG_MAILER_WARNING).toContain('no mail is sent');
     expect(LOG_MAILER_WARNING).toContain('in plain text');
     // Quiet with a real mailer, and in development and tests (there the log is where the links are clicked).
-    expect(await warningsWith({ NODE_ENV: 'production', MAIL_MAILER: 'smtp' })).toEqual([]);
-    expect(await warningsWith({ NODE_ENV: 'production', MAIL_MAILER: 'array' })).toEqual([]);
+    expect(await warningsWith({ NODE_ENV: 'production', MAIL_DRIVER: 'smtp' })).toEqual([]);
+    expect(await warningsWith({ NODE_ENV: 'production', MAIL_DRIVER: 'array' })).toEqual([]);
     expect(await warningsWith({ NODE_ENV: 'development' })).toEqual([]);
     expect(await warningsWith({ NODE_ENV: 'test' })).toEqual([]);
     // Fail-closed: a missing NODE_ENV is protected like production — APP_ENV changes nothing.

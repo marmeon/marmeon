@@ -239,11 +239,11 @@ describe('DatabaseServiceProvider', () => {
       root,
       discover: false,
       providers: [DatabaseServiceProvider],
-    }, { env: { DB_CONNECTION: 'pgsql', DB_HOST: 'db.internal', DB_PORT: '6543', DB_DATABASE: 'shop', DB_USERNAME: 'shop', DB_PASSWORD: 's3cr€t' } });
+    }, { env: { DB_DRIVER: 'pgsql', DB_HOST: 'db.internal', DB_PORT: '6543', DB_DATABASE: 'shop', DB_USERNAME: 'shop', DB_PASSWORD: 's3cr€t' } });
     expect(pgsql.container.make(Connections).options()).toEqual({ driver: 'pgsql', url: 'postgres://shop:s3cr%E2%82%ACt@db.internal:6543/shop', poolMax: 10, infrastructurePoolMax: 4 });
     await pgsql.shutdown();
     await expect(
-      createApplication({ root, discover: false, providers: [DatabaseServiceProvider] }, { env: { DB_CONNECTION: 'pgsql', DB_URL: 'mysql://x' } }),
+      createApplication({ root, discover: false, providers: [DatabaseServiceProvider] }, { env: { DB_DRIVER: 'pgsql', DB_URL: 'mysql://x' } }),
     ).rejects.toThrow(/DB_URL.*postgres:\/\//);
   });
 
@@ -252,7 +252,7 @@ describe('DatabaseServiceProvider', () => {
       root,
       discover: false,
       providers: [DatabaseServiceProvider],
-    }, { env: { DB_CONNECTION: 'pgsql', DB_URL: 'postgres://app:secret@db.example:5433/app', DB_HOST: 'other', DB_DATABASE: 'other', DB_USERNAME: 'other' } });
+    }, { env: { DB_DRIVER: 'pgsql', DB_URL: 'postgres://app:secret@db.example:5433/app', DB_HOST: 'other', DB_DATABASE: 'other', DB_USERNAME: 'other' } });
     expect(pgsql.container.make(Connections).options()).toEqual({ driver: 'pgsql', url: 'postgres://app:secret@db.example:5433/app', poolMax: 10, infrastructurePoolMax: 4 });
     await pgsql.shutdown();
   });
@@ -301,14 +301,14 @@ describe('DatabaseServiceProvider', () => {
 });
 
 describe('pg (an optional peer)', () => {
-  it('without pg, DB_CONNECTION=pgsql says what to install — with the tested major; a broken install passes through', async () => {
+  it('without pg, DB_DRIVER=pgsql says what to install — with the tested major; a broken install passes through', async () => {
     const { importPg } = await import('./postgres.ts');
     const missing = Object.assign(new Error("Cannot find package 'pg' imported from /app/node_modules/@marmeon/database/dist/postgres.js"), { code: 'ERR_MODULE_NOT_FOUND' });
     const message = await importPg(() => Promise.reject(missing)).then(() => 'loaded', (error: Error) => error.message);
     // The message as the assertion's text: the whole command shows when it differs (Vitest shortens long strings).
-    expect(message, message).toBe('DB_CONNECTION=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@^8');
+    expect(message, message).toBe('DB_DRIVER=pgsql needs the "pg" package, which is not installed in this app: pnpm add pg@^8');
     await expect(importPg(() => Promise.reject(new SyntaxError('Unexpected token')))).rejects.toThrow(SyntaxError);
-    // A named connection is no DB_CONNECTION: the message names the connection.
+    // A named connection is no DB_DRIVER: the message names the connection.
     const named = await importPg(() => Promise.reject(missing), 'reporting').then(() => 'loaded', (error: Error) => error.message);
     expect(named, named).toBe('The Postgres connection "reporting" needs the "pg" package, which is not installed in this app: pnpm add pg@^8');
   });

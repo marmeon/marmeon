@@ -111,7 +111,7 @@ interface Prepared {
   readonly serialized: string;
 }
 
-/** The `Queue` of a running app: one driver per connection (`QUEUE_CONNECTION`, or `{ connection }` per dispatch). */
+/** The `Queue` of a running app: one driver per connection (`QUEUE_DRIVER`, or `{ connection }` per dispatch). */
 export class QueueManager implements Queue {
   readonly #deps: QueueManagerDependencies;
   readonly #transaction: Transaction<any> | undefined;

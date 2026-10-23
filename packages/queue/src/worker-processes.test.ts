@@ -99,7 +99,7 @@ async function withFixture(kind: SharedTarget['kind'], test: (fixture: Fixture) 
       await dispatcher.waitFor(/^ready$/);
       return dispatcher;
     },
-    retryAfter: (seconds) => ({ [target.kind === 'redis' ? 'REDIS_QUEUE_RETRY_AFTER' : 'DB_QUEUE_RETRY_AFTER']: String(seconds) }),
+    retryAfter: (seconds) => ({ [target.kind === 'redis' ? 'QUEUE_REDIS_RETRY_AFTER_SECONDS' : 'QUEUE_DATABASE_RETRY_AFTER_SECONDS']: String(seconds) }),
   };
   try {
     await test(fixture);

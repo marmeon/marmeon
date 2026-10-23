@@ -46,7 +46,7 @@ async function app(options: { env?: Record<string, string>; providers?: 'all' | 
     providers,
     modules: [{ name: 'test', jobs: (options.jobs ?? [PingJob]) as never }],
   }, {
-    env: { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=', NODE_ENV: 'test', ...options.env },
+    env: { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=', NODE_ENV: 'test', ...options.env },
     override: (container) => {
       container.instance(Clock, clock);
       container.instance(Logger, silent);
@@ -71,7 +71,7 @@ describe('the queue provider', () => {
     );
     expect(application.container.make(DevProcesses).all()).toEqual([{ name: 'queue', args: ['queue:work', '--stop-timeout=5'] }]);
 
-    await using sync = await app({ env: { QUEUE_CONNECTION: 'sync' } });
+    await using sync = await app({ env: { QUEUE_DRIVER: 'sync' } });
     expect(sync.container.make(DevProcesses).all()).toEqual([]);
   });
 
@@ -80,27 +80,27 @@ describe('the queue provider', () => {
       root: '/tmp',
       discover: false,
       providers: [CliServiceProvider, QueueServiceProvider],
-    }, { phase: 'build', env: { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: ':memory:' } });
+    }, { phase: 'build', env: { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:' } });
     expect(built.container.make(CommandRegistry).all().map((command) => command.command)).toEqual(expect.arrayContaining(['queue:work', 'queue:size', 'make:queue-table']));
   });
 
-  it('fails the start with what is missing: the database package for QUEUE_CONNECTION=database, the Encrypter for encrypted jobs', async () => {
+  it('fails the start with what is missing: the database package for QUEUE_DRIVER=database, the Encrypter for encrypted jobs', async () => {
     await expect(app({ providers: 'no-database' })).rejects.toThrow(
       'The database queue needs the DatabaseServiceProvider of @marmeon/database (installed packages register it: marmeon discover).',
     );
-    await using sync = await app({ providers: 'no-database', env: { QUEUE_CONNECTION: 'sync', QUEUE_FAILED_DRIVER: 'null' } });
+    await using sync = await app({ providers: 'no-database', env: { QUEUE_DRIVER: 'sync', QUEUE_FAILED_DRIVER: 'null' } });
     expect(sync.container.make(Queue)).toBeDefined();
     await expect(app({ providers: 'no-encryption', jobs: [SecretJob] })).rejects.toThrow('An encrypted job (static encrypted) needs the EncryptionServiceProvider');
-    await expect(app({ env: { DB_QUEUE_CONNECTION: 'reporting' } })).rejects.toThrow(/Database connection "reporting" is not configured/);
-    await expect(app({ env: { QUEUE_CONNECTION: 'redis' } })).rejects.toThrow(
-      'QUEUE_CONNECTION=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).',
+    await expect(app({ env: { QUEUE_DATABASE_CONNECTION: 'reporting' } })).rejects.toThrow(/Database connection "reporting" is not configured/);
+    await expect(app({ env: { QUEUE_DRIVER: 'redis' } })).rejects.toThrow(
+      'QUEUE_DRIVER=redis needs the RedisServiceProvider of @marmeon/redis (installed packages register it: marmeon discover).',
     );
   });
 });
 
 describe('the queue commands', () => {
   it('queue:work refuses to start with a timeout retryAfter cannot cover — a message, not a stack trace', async () => {
-    await using application = await app({ env: { DB_QUEUE_RETRY_AFTER: '30' } });
+    await using application = await app({ env: { QUEUE_DATABASE_RETRY_AFTER_SECONDS: '30' } });
     const { input: run, lines } = input('/tmp');
     expect(await application.container.make(QueueWorkCommand).handle(run)).toBe(1);
     expect(lines).toEqual([expect.stringMatching(/^✗ \[marmeon:Q4\] The queue connection "database" gives a claimed job 30s \(retryAfter\).*test\.ping \(timeout 60s\)/)]);
@@ -242,20 +242,20 @@ describe('the queue commands', () => {
     }
   });
 
-  it("make:queue-table's migration runs on DB_QUEUE_CONNECTION — a failed_jobs connection of its own stops it with what to do", async () => {
+  it("make:queue-table's migration runs on QUEUE_DATABASE_CONNECTION — a failed_jobs connection of its own stops it with what to do", async () => {
     const { default: migration } = (await import(QUEUE_MIGRATION.href)) as { default: Migration };
     const on = async (env: Record<string, string>) => {
       const config = (await resolveConfig([QueueConfig], env)).get(QueueConfig);
       const container = { make: () => config } as unknown as Resolver;
       return typeof migration.connection === 'function' ? migration.connection(container) : (migration.connection ?? 'default');
     };
-    expect(await on({ DB_QUEUE_CONNECTION: 'queue' })).toBe('queue');
+    expect(await on({ QUEUE_DATABASE_CONNECTION: 'queue' })).toBe('queue');
     expect(await on({})).toBe('default');
-    expect(await on({ DB_QUEUE_CONNECTION: 'queue', QUEUE_FAILED_CONNECTION: 'queue' })).toBe('queue');
+    expect(await on({ QUEUE_DATABASE_CONNECTION: 'queue', QUEUE_FAILED_CONNECTION: 'queue' })).toBe('queue');
     // Failed jobs only logged: their table is never used, wherever QUEUE_FAILED_CONNECTION points.
-    expect(await on({ DB_QUEUE_CONNECTION: 'queue', QUEUE_FAILED_DRIVER: 'null', QUEUE_FAILED_CONNECTION: 'archive' })).toBe('queue');
+    expect(await on({ QUEUE_DATABASE_CONNECTION: 'queue', QUEUE_FAILED_DRIVER: 'null', QUEUE_FAILED_CONNECTION: 'archive' })).toBe('queue');
     await expect(on({ QUEUE_FAILED_CONNECTION: 'archive' })).rejects.toThrow(
-      'The migration of make:queue-table creates jobs and failed_jobs on one connection, DB_QUEUE_CONNECTION (default) — but QUEUE_FAILED_CONNECTION is archive. Split it: this migration keeps jobs with connection: \'default\', a migration of its own creates failed_jobs with connection: \'archive\' — or let both use one connection.',
+      'The migration of make:queue-table creates jobs and failed_jobs on one connection, QUEUE_DATABASE_CONNECTION (default) — but QUEUE_FAILED_CONNECTION is archive. Split it: this migration keeps jobs with connection: \'default\', a migration of its own creates failed_jobs with connection: \'archive\' — or let both use one connection.',
     );
   });
 

@@ -522,7 +522,7 @@ function checkRegistration(privately: boolean) {
 /**
  * The production install sends a mail over SMTP — nodemailer is a dependency of @marmeon/mail, the app never names it. The child
  * boots an app as an app does, through the public API: `createApplication` with the `MailServiceProvider` and no `env`, so the
- * mail settings come from the process environment (`MAIL_MAILER=smtp`; a local server without TLS, so `MAIL_REQUIRE_TLS=false`,
+ * mail settings come from the process environment (`MAIL_DRIVER=smtp`; a local server without TLS, so `MAIL_REQUIRE_TLS=false`,
  * as for Mailpit). The `Mailer` sends one mail and `shutdown()` closes the transport.
  */
 async function checkSmtp(smoke: Smoke): Promise<void> {
@@ -536,7 +536,7 @@ async function checkSmtp(smoke: Smoke): Promise<void> {
       'await app.shutdown();\n';
     const env = {
       ...smoke.env,
-      MAIL_MAILER: 'smtp',
+      MAIL_DRIVER: 'smtp',
       MAIL_HOST: '127.0.0.1',
       MAIL_PORT: String(server.port),
       MAIL_SECURE: 'false',

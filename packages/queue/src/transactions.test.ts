@@ -74,7 +74,7 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
 
   async function app(env: Record<string, string> = {}): Promise<Application & { seen: Seen }> {
     const seen = new Seen();
-    const database = target.kind === 'sqlite' ? { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: target.file } : { DB_MANAGED: 'false', DB_CONNECTION: 'pgsql', DB_URL: target.url };
+    const database = target.kind === 'sqlite' ? { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file } : { DB_MANAGED: 'false', DB_DRIVER: 'pgsql', DB_URL: target.url };
     const application = await createApplication({
       root: '/tmp',
       discover: false,
@@ -125,7 +125,7 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
   });
 
   it('sync queue: the job runs after the commit, outside the transaction, and sees the committed row — never after a rollback', async () => {
-    await using application = await app({ QUEUE_CONNECTION: 'sync' });
+    await using application = await app({ QUEUE_DRIVER: 'sync' });
     const queue = application.container.make(Queue);
     const connections = application.container.make(Connections);
     const db = connections.get();

@@ -62,13 +62,13 @@ function connectionOptions(name: string, options: ConnectionDefinitionOptions): 
 export const DEFAULT_INFRASTRUCTURE_POOL_MAX = 4;
 
 /**
- * The default connection, from the environment: `DB_CONNECTION` (`sqlite` by default, or `pgsql`), the server and the account
+ * The default connection, from the environment: `DB_DRIVER` (`sqlite` by default, or `pgsql`), the server and the account
  * in parts (`DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`) or the whole address in `DB_URL`, which wins.
  * See `docs/database.md#configuration`.
  */
 export const DatabaseConfig = defineConfig('database', {
   env: env({
-    DB_CONNECTION: env.in(['sqlite', 'pgsql']).default('sqlite'),
+    DB_DRIVER: env.in(['sqlite', 'pgsql']).default('sqlite'),
     DB_DATABASE: env.string().optional(),
     DB_URL: env.url({ protocols: ['postgres', 'postgresql'], message: 'Expected a postgres:// URL' }).optional(),
     DB_HOST: env.string().default('127.0.0.1'),
@@ -81,9 +81,9 @@ export const DatabaseConfig = defineConfig('database', {
     DB_INFRA_POOL_MAX: env.integer().min(1).default(DEFAULT_INFRASTRUCTURE_POOL_MAX),
     /** `false`: another tool manages the database, so Marmeon neither migrates it nor takes a schema from migrations for it. */
     DB_MANAGED: env.boolean().default(true),
-  }),
+  }).renamed('DB_CONNECTION', 'DB_DRIVER'),
   resolve: (e): { default: ConnectionOptions } => {
-    if (e.DB_CONNECTION === 'sqlite') return { default: connectionOptions('default', { driver: 'sqlite', database: e.DB_DATABASE ?? 'storage/database.sqlite', managed: e.DB_MANAGED }) };
+    if (e.DB_DRIVER === 'sqlite') return { default: connectionOptions('default', { driver: 'sqlite', database: e.DB_DATABASE ?? 'storage/database.sqlite', managed: e.DB_MANAGED }) };
     return {
       default: connectionOptions('default', {
         driver: 'pgsql',
@@ -116,7 +116,7 @@ export function defineConnection<const Schema extends StandardSchemaV1>(
   name: string,
   definition: { env: Schema; resolve: (env: InferOutput<Schema>) => ConnectionDefinitionOptions },
 ): ConnectionDefinition {
-  if (name === 'default') throw new TypeError('"default" is the connection from DB_CONNECTION; give this one another name.');
+  if (name === 'default') throw new TypeError('"default" is the connection from DB_DRIVER; give this one another name.');
   return Object.freeze({ ...defineConfig(`database.${name}`, { env: definition.env, resolve: (e: InferOutput<Schema>) => connectionOptions(name, definition.resolve(e)) }), connection: name });
 }
 

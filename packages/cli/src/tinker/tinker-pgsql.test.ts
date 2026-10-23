@@ -7,8 +7,8 @@ describe.runIf(PGSQL_URL)('marmeon tinker --sandbox on Postgres', { timeout: 60_
   const database = 'marmeon_tinker_test';
   const url = new URL(PGSQL_URL ?? 'postgres://localhost');
   // The server's own database is no database of the app (its migrations never ran there): reading it as another tool's keeps tinker from refusing it.
-  const admin = { DB_CONNECTION: 'pgsql', DB_URL: url.href, DB_MANAGED: 'false' };
-  const env = { DB_CONNECTION: 'pgsql', DB_URL: Object.assign(new URL(url.href), { pathname: `/${database}` }).href };
+  const admin = { DB_DRIVER: 'pgsql', DB_URL: url.href, DB_MANAGED: 'false' };
+  const env = { DB_DRIVER: 'pgsql', DB_URL: Object.assign(new URL(url.href), { pathname: `/${database}` }).href };
   const recreate = `const { sql } = await import('@marmeon/database'); await sql.raw('drop database if exists ${database}').execute(db);`;
 
   beforeAll(() => {

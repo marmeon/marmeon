@@ -12,7 +12,7 @@ export interface QueueMailOptions {
   readonly queue?: string;
   /** Send no earlier than this — seconds, or a duration (`{ minutes: 5 }`). */
   readonly delay?: number | Duration;
-  /** The queue connection (default: `QUEUE_CONNECTION`). */
+  /** The queue connection (default: `QUEUE_DRIVER`). */
   readonly connection?: string;
 }
 

@@ -188,7 +188,7 @@ function appCopy(root: string): string {
  * route:types`, in the app's committed test environment (no `.env` needed). It writes `bootstrap/routes.ts` too, in the copy.
  */
 function writeBrowserRoutes(root: string): void {
-  const { MARMEON_CHILD: _child, DB_CONNECTION: _connection, DB_URL: _url, ...env } = process.env;
+  const { MARMEON_CHILD: _child, DB_DRIVER: _connection, DB_URL: _url, ...env } = process.env;
   const bin = join(PACKAGES, 'cli/bin/marmeon.js');
   const result = spawnSync(process.execPath, [bin, 'route:types'], { cwd: root, encoding: 'utf8', env: { ...env, NODE_ENV: 'test' } });
   if (result.status !== 0) throw new Error(`marmeon route:types failed in ${root}:\n${result.stdout}${result.stderr}`);

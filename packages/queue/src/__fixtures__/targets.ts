@@ -160,14 +160,14 @@ export function openDriver(target: SharedTarget, connections: Connections, optio
 
 /** What a target's queue and cache settings are for an app process (the fixture app's environment). */
 export function targetEnv(target: SharedTarget, retryAfter?: number): Record<string, string> {
-  const retry = retryAfter === undefined ? {} : { [target.kind === 'redis' ? 'REDIS_QUEUE_RETRY_AFTER' : 'DB_QUEUE_RETRY_AFTER']: String(retryAfter) };
+  const retry = retryAfter === undefined ? {} : { [target.kind === 'redis' ? 'QUEUE_REDIS_RETRY_AFTER_SECONDS' : 'QUEUE_DATABASE_RETRY_AFTER_SECONDS']: String(retryAfter) };
   switch (target.kind) {
     case 'sqlite':
-      return { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database', ...retry };
+      return { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, QUEUE_DRIVER: 'database', CACHE_DRIVER: 'database', ...retry };
     case 'pgsql':
-      return { DB_MANAGED: 'false', DB_CONNECTION: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '3', QUEUE_CONNECTION: 'database', CACHE_DRIVER: 'database', ...retry };
+      return { DB_MANAGED: 'false', DB_DRIVER: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '3', QUEUE_DRIVER: 'database', CACHE_DRIVER: 'database', ...retry };
     case 'redis':
-      return { DB_MANAGED: 'false', DB_CONNECTION: 'sqlite', DB_DATABASE: target.file, QUEUE_CONNECTION: 'redis', CACHE_DRIVER: 'redis', REDIS_URL: target.url, REDIS_PREFIX: target.prefix, ...retry };
+      return { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, QUEUE_DRIVER: 'redis', CACHE_DRIVER: 'redis', REDIS_URL: target.url, REDIS_PREFIX: target.prefix, ...retry };
   }
 }
 

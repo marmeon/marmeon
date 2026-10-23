@@ -30,7 +30,7 @@ its settings into `.env.production` next to the files:
 APP_NAME="My App"
 APP_URL=https://example.com
 APP_KEY=base64:…
-MAIL_MAILER=smtp
+MAIL_DRIVER=smtp
 MAIL_HOST=smtp.example.com
 MAIL_USERNAME=…
 MAIL_PASSWORD=…
@@ -186,8 +186,8 @@ A new app needs nothing more for SQLite, files, the database queue and the log m
 | For | Install |
 | --- | --- |
 | Redis for the cache, sessions, the queue or live updates | `pnpm add @marmeon/redis`. It brings the `redis` client. |
-| SMTP, `MAIL_MAILER=smtp` | Nothing: `@marmeon/mail` brings `nodemailer`. |
-| Postgres, `DB_CONNECTION=pgsql` | `pnpm add pg@^8` |
+| SMTP, `MAIL_DRIVER=smtp` | Nothing: `@marmeon/mail` brings `nodemailer`. |
+| Postgres, `DB_DRIVER=pgsql` | `pnpm add pg@^8` |
 | An S3 disk | `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3` |
 | Direct uploads to S3 | also `pnpm add @aws-sdk/s3-presigned-post@^3` |
 | MJML mail templates | `pnpm add mjml@^5`. A new app has it. |
@@ -214,8 +214,8 @@ The settings a server needs, beyond those of each feature:
 | `TRUSTED_PROXIES` | none | The proxy's addresses or ranges. See [proxies](#proxies-and-http2). |
 | `SHUTDOWN_DELAY` | `0` | Seconds of requests after `SIGTERM`, at most 300. About 5 behind a load balancer that learns from its probes. |
 | `KEEP_ALIVE_TIMEOUT` | `65` | Seconds an idle connection stays open. Longer than the proxy keeps its own. |
-| `DB_CONNECTION` | `sqlite` | `pgsql` for Postgres, with `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`, or the whole address in `DB_URL`, which then wins. See [database](database.md#configuration). |
-| `MAIL_MAILER` | `log` | `smtp` in production, with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` and `MAIL_FROM_ADDRESS`. |
+| `DB_DRIVER` | `sqlite` | `pgsql` for Postgres, with `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`, or the whole address in `DB_URL`, which then wins. See [database](database.md#configuration). |
+| `MAIL_DRIVER` | `log` | `smtp` in production, with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` and `MAIL_FROM_ADDRESS`. |
 | `ASSET_VERSION` | the build's | Tabs of an older version load the page fully on their next visit. Set it to the git commit, for example. |
 
 ### `HOST`
@@ -238,7 +238,7 @@ expired. Replacing the key without this step signs everybody out and breaks ever
 
 ### Mail
 
-The default `MAIL_MAILER=log` sends nothing. It writes every mail, reset and confirmation links included, into the log, and a
+The default `MAIL_DRIVER=log` sends nothing. It writes every mail, reset and confirmation links included, into the log, and a
 protected app warns about it at every start. Production needs `smtp`, and queued mails then go out through a worker.
 
 SMTP is encrypted or fails: `MAIL_SECURE=true` on port 465, or STARTTLS on the default port 587. `MAIL_REQUIRE_TLS=false` turns
@@ -396,7 +396,7 @@ store:
 | --- | --- | --- |
 | Sessions, `SESSION_DRIVER` | `memory`, or `file` across machines | `redis`, `database` |
 | Cache, rate limits and locks, `CACHE_DRIVER` | `memory`, or `file` across machines | `redis`, `database` |
-| Queue, `QUEUE_CONNECTION` | `sync` for real work, or `database` on SQLite across machines | `redis`, or `database` on Postgres |
+| Queue, `QUEUE_DRIVER` | `sync` for real work, or `database` on SQLite across machines | `redis`, or `database` on Postgres |
 | Live updates, `LIVE_DRIVER` | `memory` | `redis` |
 | Database | SQLite across machines | Postgres |
 | Uploads and files | the local disks across machines | an S3 disk |
@@ -546,7 +546,7 @@ A single server with Docker Compose is enough for many apps. A few things matter
   formats needs [every old process stopped](#the-upgrade-that-stops-every-process) first.
 - The proxy speaks HTTP/2 to browsers, does not buffer event streams and sets `X-Forwarded-*`. `TRUSTED_PROXIES` names it.
 - `HOST=0.0.0.0` where another machine reaches the app directly. `KEEP_ALIVE_TIMEOUT` above the proxy's idle timeout to the app.
-- `MAIL_MAILER=smtp`.
+- `MAIL_DRIVER=smtp`.
 - Web, worker and scheduler each under a supervisor that restarts them, with grace periods longer than the drain.
 - A worker takes every queue the app uses: one without `--queue` does, and a `--queue` list names every queue or holds a `*`.
 - The drivers the settings name are installed as `dependencies`.

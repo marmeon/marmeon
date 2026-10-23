@@ -246,7 +246,7 @@ export async function main(io: Io = processIo()): Promise<number> {
   out(`${paint('bold', 'Done.')} Next:`);
   if (shown !== '.') out(`  cd ${shown}`);
   for (const command of pending) out(`  ${command}`);
-  out(`  ${pm === 'pnpm' ? 'pnpm dev' : 'npm run dev'}${' '.repeat(pm === 'pnpm' ? 12 : 9)}# http://localhost:3000 — ${choices.kit ? 'register, and the confirmation link is in the log (MAIL_MAILER=log)' : 'add modules: marmeon make:module <name>'}`);
+  out(`  ${pm === 'pnpm' ? 'pnpm dev' : 'npm run dev'}${' '.repeat(pm === 'pnpm' ? 12 : 9)}# http://localhost:3000 — ${choices.kit ? 'register, and the confirmation link is in the log (MAIL_DRIVER=log)' : 'add modules: marmeon make:module <name>'}`);
   out(`  ${pm === 'pnpm' ? 'pnpm test' : 'npm test'}${' '.repeat(pm === 'pnpm' ? 11 : 12)}# Vitest`);
   return 0;
 }

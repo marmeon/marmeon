@@ -79,7 +79,7 @@ async function boot(env: Record<string, string> = {}, { test = true }: { test?: 
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, DatabaseServiceProvider, QueueServiceProvider, MailServiceProvider, DevtoolsServiceProvider],
     modules: [defineModule({ name: 'people', routes, jobs: [ReportJob], migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
   }, {
-    env: { NODE_ENV: 'test', APP_KEY: generateKey(), APP_URL: 'http://app.test:8080', DB_CONNECTION: 'sqlite', DB_DATABASE: join(root, 'db.sqlite'), QUEUE_CONNECTION: 'database', MAIL_MAILER: 'array', LOG_LEVEL: 'silent', ...env },
+    env: { NODE_ENV: 'test', APP_KEY: generateKey(), APP_URL: 'http://app.test:8080', DB_DRIVER: 'sqlite', DB_DATABASE: join(root, 'db.sqlite'), QUEUE_DRIVER: 'database', MAIL_DRIVER: 'array', LOG_LEVEL: 'silent', ...env },
     override: (container) => {
       if (test) tester = enableDevtoolsForTests(container);
     },

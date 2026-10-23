@@ -16,7 +16,7 @@ The package brings the Redis client, so an app installs nothing else. Then choos
 REDIS_URL=redis://127.0.0.1:6379
 CACHE_DRIVER=redis
 SESSION_DRIVER=redis
-QUEUE_CONNECTION=redis
+QUEUE_DRIVER=redis
 LIVE_DRIVER=redis
 ```
 
@@ -51,7 +51,7 @@ Each driver names the Redis connection it uses, `default` unless you set another
 | --- | --- | --- |
 | `CACHE_CONNECTION` | `default` | The cache, locks and rate limits, with `CACHE_DRIVER=redis`. |
 | `SESSION_CONNECTION` | `default` | Sessions, with `SESSION_DRIVER=redis`. |
-| `REDIS_QUEUE_CONNECTION` | `default` | The queue, with `QUEUE_CONNECTION=redis`. |
+| `QUEUE_REDIS_CONNECTION` | `default` | The queue, with `QUEUE_DRIVER=redis`. |
 | `LIVE_REDIS_CONNECTION` | `default` | Live updates, with `LIVE_DRIVER=redis`. |
 
 `CACHE_CONNECTION` and `SESSION_CONNECTION` name a database connection instead when their driver is `database`. A driver whose
@@ -72,7 +72,7 @@ export const QueueRedis = defineRedisConnection('queue', {
 });
 ```
 
-List it in `config` of `defineApplication()` in `bootstrap/app.ts`, and point the queue at it with `REDIS_QUEUE_CONNECTION=queue`.
+List it in `config` of `defineApplication()` in `bootstrap/app.ts`, and point the queue at it with `QUEUE_REDIS_CONNECTION=queue`.
 `resolve` returns the URL and the prefix. `default` is the name of the connection of `REDIS_URL`, and
 `defineRedisConnection('default', …)` throws.
 

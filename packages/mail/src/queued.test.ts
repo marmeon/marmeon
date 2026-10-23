@@ -60,7 +60,7 @@ async function app(env: Record<string, string> = {}, transport: MailTransport = 
     discover: false,
     providers: [EncryptionServiceProvider, QueueServiceProvider, MailServiceProvider],
   }, {
-    env: { LOG_LEVEL: 'silent', APP_KEY: KEY, NODE_ENV: 'test', QUEUE_CONNECTION: 'sync', QUEUE_FAILED_DRIVER: 'null', ...env },
+    env: { LOG_LEVEL: 'silent', APP_KEY: KEY, NODE_ENV: 'test', QUEUE_DRIVER: 'sync', QUEUE_FAILED_DRIVER: 'null', ...env },
     override: (c) => {
       c.instance(Clock, new TestClock());
       c.instance(MailTransport, transport);

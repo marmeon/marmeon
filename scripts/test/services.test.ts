@@ -93,7 +93,7 @@ describe('the services a test file needs', () => {
     expect(servicesOf(files, 'apps/without/modules/a/a.test.ts')).toEqual([]);
   });
 
-  it('selects a test that starts a nested Vitest: its refresh tests inherit DB_CONNECTION', () => {
+  it('selects a test that starts a nested Vitest: its refresh tests inherit DB_DRIVER', () => {
     const files = { 'packages/a/src/nested.test.ts': `spawn('node_modules/.bin/${VITEST}', ['run']);` };
     expect(servicesOf(files, 'packages/a/src/nested.test.ts')).toEqual(['pgsql']);
   });
@@ -120,8 +120,8 @@ describe('the projects', () => {
 
   it('sets the tripwire for every service outside the set', () => {
     const plain = tripwireEnv(new Set());
-    expect(Object.keys(plain).sort()).toEqual(['DB_CONNECTION', 'DB_URL', SERVICE_VARIABLES.pgsql, SERVICE_VARIABLES.redis, SERVICE_VARIABLES.s3].sort());
-    expect(Object.entries(plain).filter(([key]) => key !== 'DB_CONNECTION').every(([, value]) => value.includes('.invalid'))).toBe(true);
+    expect(Object.keys(plain).sort()).toEqual(['DB_DRIVER', 'DB_URL', SERVICE_VARIABLES.pgsql, SERVICE_VARIABLES.redis, SERVICE_VARIABLES.s3].sort());
+    expect(Object.entries(plain).filter(([key]) => key !== 'DB_DRIVER').every(([, value]) => value.includes('.invalid'))).toBe(true);
 
     const pgsql = tripwireEnv(new Set<Service>(['pgsql']));
     expect(Object.keys(pgsql).sort()).toEqual([SERVICE_VARIABLES.redis, SERVICE_VARIABLES.s3].sort());

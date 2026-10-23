@@ -134,7 +134,7 @@ export interface DispatchOptions {
   readonly delay?: number | Duration;
   /** The queue (default: the connection's, usually `default`). A worker without `--queue` takes every queue; `--queue=mail,default` takes only these, in this order. */
   readonly queue?: string;
-  /** The queue connection (default: `QUEUE_CONNECTION`). */
+  /** The queue connection (default: `QUEUE_DRIVER`). */
   readonly connection?: string;
   /** Only with `dispatch()`: see {@link UniqueDispatchOptions}. */
   readonly unique?: undefined;
