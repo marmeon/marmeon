@@ -38,7 +38,9 @@ export async function workerDatabase(root: string, env: Env): Promise<WorkerData
   }
   const url = new URL(options.url);
   // Per app too (like the SQLite file): two apps' tests in one worker must not share a schema.
-  url.pathname = `/${url.pathname.slice(1) || 'marmeon'}_test_${hash(root)}_${worker}`;
+  // A run of the repository's own tests tags its databases with its checkout, so the teardown of another checkout's run leaves them alone.
+  const tag = process.env.MARMEON_TEST_DATABASE_TAG ? `${process.env.MARMEON_TEST_DATABASE_TAG}_` : '';
+  url.pathname = `/${url.pathname.slice(1) || 'marmeon'}_test_${tag}${hash(root)}_${worker}`;
   return { key: url.href, env: { DB_DRIVER: 'pgsql', DB_URL: url.href }, adminUrl: options.url };
 }
 

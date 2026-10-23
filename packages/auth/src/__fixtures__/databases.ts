@@ -12,7 +12,7 @@ export async function migratedConnections(driver: 'sqlite' | 'pgsql', migrations
   let options: ConnectionOptions = { driver: 'sqlite', database: ':memory:' };
   let drop = async () => {};
   if (driver === 'pgsql') {
-    const name = `marmeon_auth_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const name = `marmeon_auth_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
     const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
     await sql`create database ${sql.id(name)}`.execute(admin.get());
     const url = new URL(PGSQL_URL!);
@@ -37,7 +37,7 @@ export async function migratedConnections(driver: 'sqlite' | 'pgsql', migrations
 
 /** A fresh, empty Postgres database (`pnpm test:pgsql`): its URL, and `drop()` removes it. */
 export async function freshPgsqlDatabase(): Promise<{ url: string; drop: () => Promise<void> }> {
-  const name = `marmeon_auth_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const name = `marmeon_auth_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
   await sql`create database ${sql.id(name)}`.execute(admin.get());
   const url = new URL(PGSQL_URL!);

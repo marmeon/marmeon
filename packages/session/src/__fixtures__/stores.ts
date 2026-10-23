@@ -79,7 +79,7 @@ export async function freshTarget(kind: StoreKind): Promise<{ target: StoreTarge
       return { target: { kind, file }, drop: async () => rmSync(directory, { recursive: true, force: true }) };
     }
     case 'pgsql': {
-      const name = `marmeon_sessions_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+      const name = `marmeon_sessions_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
       const admin = databaseConnections({ driver: 'pgsql', url: PGSQL_URL! });
       await sql`create database ${sql.id(name)}`.execute(admin.get());
       const url = new URL(PGSQL_URL!);

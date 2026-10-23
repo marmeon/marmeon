@@ -36,7 +36,7 @@ export async function open(kind: 'sqlite' | 'pgsql', managed = false) {
     const connections = connect({ driver: 'sqlite', database: join(tempDir('marmeon-auth-schema-'), 'app.sqlite') }, managed);
     return { connections, drop: async () => connections.destroy() };
   }
-  const name = `marmeon_auth_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const name = `marmeon_auth_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const admin = connect({ driver: 'pgsql', url: PGSQL_URL! }, false);
   await sql`create database ${sql.id(name)}`.execute(admin.get());
   const url = new URL(PGSQL_URL!);

@@ -129,7 +129,7 @@ export interface TestApp extends Application {
 /** A fresh database per app: SQLite in memory, or a new Postgres database (dropped by `close()`). */
 async function freshDatabase(driver: TestDriver): Promise<{ env: Record<string, string>; drop: () => Promise<void> }> {
   if (driver === 'sqlite') return { env: { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:' }, drop: async () => {} };
-  const name = `marmeon_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const name = `marmeon_test_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
   await sql`create database ${sql.id(name)}`.execute(admin.get());
   const url = new URL(PGSQL_URL!);
