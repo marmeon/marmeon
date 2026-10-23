@@ -570,4 +570,69 @@ describe('a hostile package.json and its declarations', () => {
       expect(performance.now() - started).toBeLessThan(1_000);
     }
   });
+
+  describe('relative imports in its .d.ts files', () => {
+    const outsideRefusal = /^\[marmeon:K7\] hostile imports "[^"]+" in its types, which lies outside the package\.$/;
+    const entry = { main: './index.js', types: './index.d.ts' };
+    const empty = 'export {};\n';
+
+    it('are not followed out of the package', () => {
+      for (const types of ["export * from '../../../outside.js';\n", "export { Outside } from '../../../outside.js';\n"]) {
+        const { app } = appWith(entry, { 'index.js': empty, 'index.d.ts': types });
+        expect(() => generateManifest({ root: app, conditions: PROD }), types).toThrow(outsideRefusal);
+      }
+    });
+
+    it('are not followed through a symlink out of the package', () => {
+      const directory = appWith(entry, { 'index.js': empty, 'index.d.ts': "export * from './link/outside.js';\n" });
+      symlinkSync(directory.root, join(directory.dir, 'link'));
+      expect(() => generateManifest({ root: directory.app, conditions: PROD })).toThrow(outsideRefusal);
+      const file = appWith(entry, { 'index.js': empty, 'index.d.ts': "export * from './part.js';\n" });
+      symlinkSync(join(file.root, 'outside.d.ts'), join(file.dir, 'part.d.ts'));
+      expect(() => generateManifest({ root: file.app, conditions: PROD })).toThrow(outsideRefusal);
+    });
+
+    it('are not followed for a parameter type either: the class is unresolvable, and the file outside is not read', () => {
+      const { root, app } = appWith(entry, {
+        'index.js': 'export class A {}\n',
+        'index.d.ts': "import { Outside } from '../../../outside.js';\nexport declare class A {\n    constructor(x: Outside);\n}\n",
+      });
+      chmodSync(join(root, 'outside.d.ts'), 0o000); // reading it would throw EACCES, not a DiscoveryError
+      try {
+        const { manifest } = generateManifest({ root: app, conditions: PROD });
+        const messages = manifest.injections.map((item) => ('unresolvable' in item ? item.unresolvable : ''));
+        expect(messages).toHaveLength(1);
+        expect(messages[0]).toMatch(/hostile imports "\.\.\/\.\.\/\.\.\/outside\.js" in its types, which lies outside the package\./);
+      } finally {
+        chmodSync(join(root, 'outside.d.ts'), 0o644);
+      }
+    });
+
+    it('name the specifier with control characters escaped', () => {
+      const { app } = appWith(entry, { 'index.js': empty, 'index.d.ts': "export * from '../../../out\u001b[2Jside.js';\n" });
+      expect(() => generateManifest({ root: app, conditions: PROD })).toThrow(/out\\u001b\[2Jside/);
+    });
+
+    it('stop at 64 levels of "export *" with a message, not a RangeError', () => {
+      const files: Record<string, string> = { 'index.js': empty, 'index.d.ts': "export * from './f0.js';\n" };
+      for (let index = 0; index < 10_000; index++) files[`f${index}.d.ts`] = `export * from './f${index + 1}.js';\n`;
+      const { app } = appWith(entry, files);
+      expect(() => generateManifest({ root: app, conditions: PROD })).toThrow(/^\[marmeon:K7\] hostile has re-exports nested deeper than 64 levels/);
+    });
+
+    it('may form a cycle, and a chain within the limit is read', () => {
+      const cycle = appWith(entry, {
+        'index.js': 'export class A {}\n',
+        'index.d.ts': "export * from './a.js';\nexport declare class A {}\n",
+        'a.d.ts': "export * from './b.js';\n",
+        'b.d.ts': "export * from './a.js';\n",
+      });
+      expect(generateManifest({ root: cycle.app, conditions: PROD }).summary.packages).toEqual(['hostile']);
+      const files: Record<string, string> = { 'index.js': 'export class A {}\n', 'index.d.ts': "export * from './f0.js';\n" };
+      for (let index = 0; index < 60; index++) files[`f${index}.d.ts`] = `export * from './f${index + 1}.js';\n`;
+      files['f60.d.ts'] = 'export declare class A {}\n';
+      const chain = appWith(entry, files);
+      expect(generateManifest({ root: chain.app, conditions: PROD }).summary.packages).toEqual(['hostile']);
+    });
+  });
 });
