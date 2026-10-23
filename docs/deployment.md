@@ -84,6 +84,10 @@ log entry:
 Marmeon in production (APP_ENV=production) on http://localhost:3000 (the build; 54 routes, 7 modules, packages: …)
 ```
 
+A `NODE_ENV=development` or `NODE_ENV=test` that comes from `.env` alone is for `marmeon dev`, and `marmeon start` and `marmeon serve`
+refuse it with `marmeon start runs in production`: the build is the production server, wherever it runs. To try the build on your
+machine run `NODE_ENV=production marmeon start`; `.env.production` is read then, besides `.env`.
+
 The app stays TypeScript in production. Node strips the types of the app's files, and the packages run their compiled `dist/`.
 
 ### One process

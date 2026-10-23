@@ -318,7 +318,8 @@ request. The list asks for `ctx.user.id` only, a new record gets its owner from 
 test tries somebody else's record on every such route. Name the singular record in PascalCase; the module is its plural in kebab
 case (`Category` → `categories`), or pass `--module=<name>`. The command stops before it writes anything when the module exists,
 when `@marmeon/auth` is not in the app's `package.json`, or when the auth module and its layout are missing. Add the fields you
-need to the migration, the two schemas and the form. See [`make:*` generators](console.md#generators).
+need to the migration, the two schemas and the form. A record with no owner, shared by all users, is not what the command
+writes: [records nobody owns](authorization.md#records-nobody-owns) shows the routes for it. See [`make:*` generators](console.md#generators).
 
 ## Configuration
 
