@@ -15,6 +15,8 @@ export { Application, createApplication, defineApplication } from './application
 export type { ApplicationDefinition, ApplicationPhase, CreateApplicationOptions } from './application.ts';
 export { defineModule } from './module.ts';
 export { ConsoleLogger, escapeControls, LogContextSources, Logger } from './logger.ts';
+export { ErrorReports } from './error-reports.ts';
+export type { ErrorReport, ErrorReporter, ErrorReporterClass, ReportedError } from './error-reports.ts';
 export { DEFAULT_HEALTH_TIMEOUT, HealthChecks } from './health.ts';
 export type { HealthCheck, HealthCheckClass, HealthCheckResult, HealthReport } from './health.ts';
 export { Clock, durationToMilliseconds, SystemClock } from './clock.ts';

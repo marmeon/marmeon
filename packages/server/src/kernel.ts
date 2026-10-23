@@ -5,7 +5,7 @@ import { heldOnLoopback, shadowedLocalhost } from './loopback.ts';
 import { honoPath } from './route-pattern.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
-import { currentRequest, environment, EnvironmentConfig, ErrorSolutions, Logger, outsideTransaction, Redactor, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
+import { currentRequest, environment, EnvironmentConfig, ErrorReports, ErrorSolutions, Logger, outsideTransaction, Redactor, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
 import { messageBase, runWithRequest, trace, withCode } from '@marmeon/core/internal';
 import { channels, type HttpRequestMessage, type PageSummary } from '@marmeon/core/diagnostics';
 import {
@@ -367,6 +367,27 @@ export function createHttpKernel(
     layerBases: dispatchLayerBase,
   });
 
+  let warnedAboutReport = false;
+  /**
+   * Gives a server error to the app's reporters; a client error (an `HttpError` below 500) is the caller's, not a bug. Never throws:
+   * reporting must not change the answer.
+   */
+  const reportError = (error: unknown, failed: Request, handler: ExceptionHandler): void => {
+    try {
+      // An exception handler from before reporters: its `report()` is not called any more, which TypeScript does not say.
+      if (!warnedAboutReport && typeof (handler as { report?: unknown }).report === 'function') {
+        warnedAboutReport = true;
+        logger.warn('The ExceptionHandler has a report() method, which is not called any more: move it into an error reporter (static errorReporters of a service provider, docs/errors.md#reporting).');
+      }
+      if (error instanceof HttpError && error.status < 500) return;
+      const route = matched.get(failed);
+      const { pathname } = new URL(failed.url);
+      container.make(ErrorReports).report(error, { source: 'request', context: { method: failed.method, route: route?.routeName ?? '', path: redactor.url(pathname, route?.path) } });
+    } catch (failure) {
+      logger.warn('Reporting an error failed', { exception: redactor.text(failure instanceof Error ? failure.message : 'Unprintable error') });
+    }
+  };
+
   const renderError = async (error: unknown, failed: Request, scope?: Container): Promise<Response> => {
     if (exceptions.hasSubscribers) {
       const status = error instanceof HttpError ? error.status : error instanceof ValidationError ? 422 : 500;
@@ -377,7 +398,7 @@ export function createHttpKernel(
     if (isLiveValidation(failed)) return renderLiveValidationError(handler, error, failed, scope);
     // An upload is answered as JSON whatever it accepts — never back to a form with flashed errors (it is read-only).
     const request = failed.headers.has(UPLOAD_HEADER) ? new Request(failed.url, { method: failed.method, headers: { ...Object.fromEntries(failed.headers), accept: 'application/json' } }) : failed;
-    handler.report(error);
+    reportError(error, failed, handler);
     if (regionOf(request) === 'island') return renderRegionError(handler, error, request, scope);
     try {
       // In the request's language, when a translator is bound (@marmeon/i18n) — the error page, its title, validation messages.
@@ -484,7 +505,7 @@ export function createHttpKernel(
       const { message, errors } = translator ? error.translate(translator) : error;
       return Response.json({ message, errors }, { status: 422, headers: { [VALIDATED_HEADER]: (liveValidationFields(request) ?? []).join(',') } });
     }
-    handler.report(error);
+    reportError(error, request, handler);
     return renderRegionError(handler, error, request, scope);
   };
 

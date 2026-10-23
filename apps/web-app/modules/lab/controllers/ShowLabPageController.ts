@@ -3,6 +3,7 @@ import { Database } from '@marmeon/database';
 import { abort, Controller, SharedData, type HttpContext } from '@marmeon/http';
 import { Router } from '@marmeon/router';
 import { LabConfig } from '../config.ts';
+import { RecentErrors } from '../RecentErrors.ts';
 import { CheckoutService, LabReport, Money, Orders, ReminderSchedule } from '../errors.ts';
 
 /** The lab's pages, each one view: a 404 unless the lab is on (`LabConfig`). */
@@ -69,9 +70,18 @@ export type ErrorKind = keyof typeof ERROR_KINDS;
 
 /** The lab's list of errors to trigger. */
 export class ShowErrorsLabController extends LabController {
+  readonly #recent: RecentErrors;
+
+  constructor(config: LabConfig, recent: RecentErrors) {
+    super(config);
+    this.#recent = recent;
+  }
+
   handle() {
     this.enabled();
-    return this.view('lab/Errors', { kinds: Object.entries(ERROR_KINDS).map(([kind, label]) => ({ kind, label })) });
+    // What the lab's error reporter got: masked, as any reporter would see it.
+    const recent = this.#recent.recent().map(({ error, context }) => ({ name: error.name, message: error.message, method: context.method ?? '', path: context.path ?? '' }));
+    return this.view('lab/Errors', { kinds: Object.entries(ERROR_KINDS).map(([kind, label]) => ({ kind, label })), recent });
   }
 }
 

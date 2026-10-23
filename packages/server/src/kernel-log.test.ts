@@ -90,7 +90,6 @@ describe('createHttpKernel — what its error lines write', async () => {
   class FailingHandler {
     register(container: Container) {
       container.instance(ExceptionHandler, {
-        report: () => {},
         render: () => {
           throw new Error(`rendering failed for /reset-password/${PATH_SECRET}?token=${QUERY_SECRET}`);
         },

@@ -7,7 +7,7 @@ import type { ShowErrorsLabController } from '../controllers/ShowLabPageControll
  * code, the request, the queries and the solution; in production the plain error page. Plain links load the page, the
  * buttons visit it — the error page then shows in the visit's dialog.
  */
-export default function Errors({ kinds }: PageProps<ShowErrorsLabController>) {
+export default function Errors({ kinds, recent }: PageProps<ShowErrorsLabController>) {
   return (
     <main>
       <Head title="Trigger an error" />
@@ -20,6 +20,15 @@ export default function Errors({ kinds }: PageProps<ShowErrorsLabController>) {
               {label}
             </a>{' '}
             · <Link href={`/lab/errors/${kind}`} data-visit={kind}>as a visit</Link>
+          </li>
+        ))}
+      </ul>
+      <h2>Reported errors</h2>
+      <p>The last server errors as an error reporter gets them: masked, newest first.</p>
+      <ul data-recent-errors>
+        {recent.map((report, index) => (
+          <li key={index}>
+            <code>{report.name}</code> {report.message} · {report.method} {report.path}
           </li>
         ))}
       </ul>

@@ -1,6 +1,7 @@
 import type { Application } from './application.ts';
 import type { ConfigDefinition } from './config/config.ts';
 import type { Container } from './container.ts';
+import type { ErrorReporterClass } from './error-reports.ts';
 import type { HealthCheckClass } from './health.ts';
 import type { SolutionDefinition } from './solutions.ts';
 
@@ -23,7 +24,8 @@ export interface ServiceProvider {
  * A provider class. Packages declare the configuration they need as
  * `static config = [LogConfig]`; it is validated with the app's own config,
  * before any provider registers. `static solutions` lists the solutions for the package's errors that the development
- * error page shows (`defineSolutions`); `static health` the package's readiness checks for `/up/ready`. Other packages add
+ * error page shows (`defineSolutions`); `static health` the package's readiness checks for `/up/ready`; `static errorReporters` the classes that receive the
+ * app's server errors, masked (docs/errors.md#reporting). Other packages add
  * their own lists through declaration merging (`marmeon`: `static commands`).
  */
 export interface ServiceProviderClass {
@@ -31,4 +33,5 @@ export interface ServiceProviderClass {
   readonly config?: readonly ConfigDefinition<any>[];
   readonly solutions?: readonly SolutionDefinition<any>[];
   readonly health?: readonly HealthCheckClass[];
+  readonly errorReporters?: readonly ErrorReporterClass[];
 }
