@@ -34,7 +34,7 @@ export function SiteFooter() {
             Discord
           </a>
           <Link href={SECURITY_POLICY_URL}>Security Policy</Link>
-          <Link href={RELEASE_POLICY_URL}>Release Policy</Link>
+          <Link href={RELEASE_POLICY_URL}>Releases and Support</Link>
           <Link route="site.imprint">Imprint</Link>
           <Link route="site.privacy">Privacy Policy</Link>
         </nav>
