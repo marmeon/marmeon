@@ -133,8 +133,14 @@ logger.info('Login failed', { email, password, headers: { authorization: 'Bearer
 
 When you must log text that may hold a secret, mask it with the app's `Redactor`: take it in your constructor and call its
 `text()` method. It takes out the values of sensitive keys such as `token=…`, bearer credentials, passwords in URLs, password
-hashes, API tokens and path segments that look like a token, and the values of the names packages add, such as the session
-cookie's. In text, `code` counts as a name only in a query parameter (`?code=…`) or a JSON key (`"code":…`), and a private key in
+hashes, API tokens, JWTs, the `APP_KEY` form
+(`base64:` and 32 bytes) and keys of well-known services by their prefix (`ghp_…`, `glpat-…`, `sk_live_…`, `whsec_…`, `npm_…`,
+`AIza…`, `xoxb-…`, `AKIA…`). It also takes out the values of the names packages add, such as the session cookie's.
+Words and path segments of 32 or more characters are masked when they look like a random token: mixed case, a digit and few
+separators — not a slug, a UUID or a name in camel case (a pagination cursor like `?cursor=eyJ…` shows as `[redacted]` too). So a foreign error message that quotes a secret is masked too. The limits: a
+hex secret without a key in front of it stays visible (a digest or a trace id is no secret), so do secrets under 32 characters
+without a known prefix, and standard base64 with `+` or `/` is masked only in pieces of 32 or more characters. In text, `code`
+counts as a name only in a query parameter (`?code=…`) or a JSON key (`"code":…`), and a private key in
 PEM form is removed whole. `redactText()` of `@marmeon/core` does the same with the core's key list alone, for code that runs without an app.
 
 Every error entry of the framework passes the app's `Redactor` as text: the exception handler's report, server rendering,

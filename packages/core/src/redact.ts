@@ -5,7 +5,7 @@
  * own `code` (`ECONNREFUSED`) is never hidden.
  */
 export const REDACTED_KEYS =
-  /pass(word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?key|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code|(?:^|[-_])t?otp|^(?:x-)?auth$|^code$/i;
+  /pass(word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?(?:previous[-_]?)?keys?|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code|(?:^|[-_])t?otp|^(?:x-)?auth$|^code$/i;
 // `userOtp`, `totpSecret`: an `otp` at a camel-case boundary — told from `footprint` by its capital, which `REDACTED_KEYS` ignores.
 const CAMEL_OTP = /[a-z](?:Otp|Totp)/;
 
@@ -26,7 +26,7 @@ const MAX_CAUSES = 5;
 // `password=…`, `token: …`, `"api_key":"…"`, `?signature=…&` — a sensitive key followed by its value (not a statement's `?`/`$1`
 // placeholder: `where password = ?` stays readable). Matches start at a word's beginning only (the lookbehind): otherwise a
 // long word costs quadratic time (a 64 KB string took seconds).
-const KEY_VALUE = /(?<![\w-])((?:[\w-]{0,64}(?:pass(?:word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?key|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code)[\w-]{0,64}|[\w-]{0,64}[-_]t?otp[\w-]{0,64}|[\w-]{0,64}(?-i:[a-z](?:Otp|Totp))[\w-]{0,64}|t?otp[\w-]{0,64}))("?\s*[:=]\s*"?)(?!\[redacted\]|\?|\$\d)((?:Bearer|Basic)\s+)?([^\s"'&,;}]+)/gi;
+const KEY_VALUE = /(?<![\w-])((?:[\w-]{0,64}(?:pass(?:word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?(?:previous[-_]?)?keys?|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code)[\w-]{0,64}|[\w-]{0,64}[-_]t?otp[\w-]{0,64}|[\w-]{0,64}(?-i:[a-z](?:Otp|Totp))[\w-]{0,64}|t?otp[\w-]{0,64}))("?\s*[:=]\s*"?)(?!\[redacted\]|\?|\$\d)((?:Bearer|Basic)\s+)?([^\s"'&,;}]+)/gi;
 // `Authorization: Bearer …` without the key in front (a header value on its own).
 const BEARER = /\b(Bearer|Basic)\s+(?!\[redacted\])[\w.~+/=-]+/g;
 // `postgres://user:secret@host`, `redis://:secret@host` — the password of a URL, to the last `@` before the first space, `?`, `#`,
@@ -46,6 +46,17 @@ const API_TOKEN = /(?<![A-Za-z0-9_])((?:[a-z0-9_]{0,15}_)?)[A-Za-z0-9]{40}[0-9a-
 // A path segment of 32 or more URL-safe characters (`/reset-password/<token>`, a signed link's hash) — kept unless it reads
 // like a word or an id (see `looksLikeToken`). Matches start right after a `/` only (no quadratic scan of long words).
 const PATH_SEGMENT = /(?<=\/)[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
+// A JSON Web Token on its own (`eyJ<header>.<payload>.<signature>`, base64url parts): a foreign error message may quote one
+// (`JSON.parse`, a header value) without any key in front. Starts at a word's beginning only, so the scan stays linear.
+const JWT = /(?<![\w-])eyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g;
+// Keys of well-known services by their prefix, too short or too regular for `looksLikeBareToken`: GitHub (`ghp_`, `gho_`, `ghu_`,
+// `ghs_`, `ghr_`, `github_pat_`), GitLab (`glpat-`), Stripe (`sk_live_`, `sk_test_`, `rk_…`, `whsec_`; a publishable `pk_…` is public), Slack (`xoxb-`, …),
+// npm (`npm_`), Google (`AIza`), AWS access key ids (`AKIA…`) and an `APP_KEY` / `APP_PREVIOUS_KEYS` value (`base64:` and 32 bytes).
+const PREFIXED_KEY = /(?<![\w-])(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|glpat-[\w-]{20,}|[sr]k_(?:live|test)_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{24,}|npm_[A-Za-z0-9]{36}|AIza[\w-]{35}|xox[abposr]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|base64:[A-Za-z0-9+/]{43}=)(?![A-Za-z0-9_])/g;
+// A free word of 32 or more URL-safe characters that is no path segment (those have `PATH_SEGMENT`) — what a foreign message quotes
+// (`Headers.append: "<value>" is an invalid header value`, `invalid input syntax for type uuid: "<value>"`). Kept unless it reads
+// like a random base64 string (`looksLikeBareToken`).
+const BARE_WORD = /(?<![\w/-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
 // A string with a URL in it (`scheme://…`): masked as text even under a key that is not sensitive.
 const URL_LIKE = /(?<![\w+.-])[a-z][\w+.-]*:\/\//i;
 // A private key in PEM form — to its end line, or to the end of the text when that is cut off.
@@ -79,6 +90,17 @@ function looksLikeToken(segment: string): boolean {
   return mixedCase && /\d/.test(segment) && separators * 8 <= segment.length;
 }
 
+/**
+ * Whether a free word (not a path segment) is a secret: mixed case, a digit and few separators — the short-word rule of
+ * {@link looksLikeToken} at any length, because a long identifier (`recursivelyTraverseReconnectPassiveEffects`) has no digit. A
+ * hex string stays (a digest, a commit, a trace id is no secret by itself; under a key it is masked by the key).
+ */
+function looksLikeBareToken(word: string): boolean {
+  if (!/[a-z]/.test(word) || !/[A-Z]/.test(word) || !/\d/.test(word) || /^[0-9a-f]+$/i.test(word)) return false;
+  const separators = word.length - word.replaceAll(/[-_]/g, '').length;
+  return separators * 8 <= word.length;
+}
+
 /** `text` with the passwords of the URLs in it replaced by `***` — nothing else, so an address stays readable (`db:show`, connection errors). */
 export function maskUrlPasswords(text: string): string {
   return text.replace(URL_PASSWORD, '$1***@');
@@ -87,8 +109,9 @@ export function maskUrlPasswords(text: string): string {
 /**
  * Text — an error's message and stack, as stored for a failed job — with what looks like a secret replaced: values of
  * sensitive keys (`password=…`, `"token":"…"`, `?signature=…`), bearer credentials, passwords in URLs, password hashes
- * (PHC strings), API tokens and token-like path segments (`/reset-password/<token>` in a link, a log line or a `Referer`).
- * A safety net, not a guarantee: an error that quotes a secret in free text still shows it.
+ * (PHC strings), API tokens, JWTs, keys of well-known services (`ghp_…`, `sk_live_…`, `xoxb-…`, `AKIA…`) and token-like words
+ * and path segments (`/reset-password/<token>` in a link, a log line or a `Referer`; a quoted value in a foreign error message).
+ * A safety net, not a guarantee: a secret in free text without one of these shapes still shows.
  */
 export function redactText(text: string): string {
   return text
@@ -99,7 +122,10 @@ export function redactText(text: string): string {
     .replace(PHC_HASH, '[redacted]')
     .replace(API_TOKEN_WITH_BAR, '$1|[redacted]')
     .replace(API_TOKEN, '$1[redacted]')
+    .replace(JWT, '[redacted]')
+    .replace(PREFIXED_KEY, '[redacted]')
     .replace(PATH_SEGMENT, (segment) => (looksLikeToken(segment) ? '[redacted]' : segment))
+    .replace(BARE_WORD, (word) => (looksLikeBareToken(word) ? '[redacted]' : word))
     .replace(KEY_VALUE, (_, key: string, separator: string, scheme: string | undefined) => `${key}${separator}${scheme ?? ''}[redacted]`)
     .replace(BEARER, '$1 [redacted]');
 }
