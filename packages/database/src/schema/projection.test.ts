@@ -485,7 +485,8 @@ describe.each(drivers)('the projection against the catalog on %s', (driver) => {
     });
   }
 
-  it('matches the database that the migrations of the web app migrate', async () => {
+  // A database of its own, and every migration of the web app on it: on Postgres the longest work of the file.
+  it('matches the database that the migrations of the web app migrate', { timeout: 30_000 }, async () => {
     await expectParity(driver, appMigrations('web-app'));
   });
 

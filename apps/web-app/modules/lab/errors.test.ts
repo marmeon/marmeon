@@ -2,10 +2,13 @@ import { readFileSync } from 'node:fs';
 import { ErrorReports, ErrorSolutions, Redactor } from '@marmeon/core';
 import { Router } from '@marmeon/router';
 import { createTestApp } from '@marmeon/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { RecentErrors } from './RecentErrors.ts';
 import { ERROR_KINDS, type ErrorKind } from './controllers/ShowLabPageController.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 const page = { headers: { accept: 'text/html' } };
 /**

@@ -4,15 +4,13 @@ import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@ma
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
-// Vitest's 5 s is too short under load: more time on CI runners only (CI=true).
-const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
 
 // Server rendering with the language files: the SSR entry loads the page's locale before rendering (streaming).
 // One Vite server for the file: each test still gets its own app, but none starts Vite again.
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 let app: TestApp;
@@ -35,7 +33,7 @@ describe('translated pages, rendered on the server', () => {
     const english = await app.get('/login', html('en')).assertServerRendered().assertHydrates();
     expect(english.body).toContain('<html lang="en">');
     expect(english.body).toContain('Keep me signed in');
-  }, ciTimeout);
+  });
 
   it('formats for the locale: plurals, dates, relative times', async () => {
     const ada = await app.factory(UserFactory).create({ name: 'Ada', created_at: '2026-01-15T10:00:00.000Z' });

@@ -1,9 +1,12 @@
 import { UserRepository, type User } from '#modules/auth';
 import { FLASH_WAITING_HEADER } from '@marmeon/http/protocol';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 /**
  * Flash messages on the server: a protocol field, taken only by an answer the user is shown — a page, a partial reload,

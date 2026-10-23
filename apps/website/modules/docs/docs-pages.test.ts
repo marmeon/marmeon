@@ -3,21 +3,20 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { Navigation } from './DocsRepository.ts';
 import { ENTRIES, SECTIONS } from './docs.test-support.ts';
-import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 let app: TestApp;
 beforeAll(async () => {
   app = await createTestApp(application);
-}, 30_000);
+});
 afterAll(() => app?.close());
 
-describe('pages', { timeout: 30_000 }, () => {
+describe('pages', () => {
   it('has no package pages — a package README is a card for npm: /packages/… is a 404', async () => {
     await app.get('/packages/http').assertNotFound();
     await app.get('/packages/core/README.md').assertNotFound();
@@ -30,7 +29,7 @@ describe('pages', { timeout: 30_000 }, () => {
     expect(response.body).toContain('Not Found');
     expect(response.body).toContain('class="site-header"');
     expect(response.body).not.toContain('id="sidebar"');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('shares the navigation — the eleven sections with their pages, nothing else — once per tab', async () => {
     const page = (await app.navigating().get('/docs/routing').assertOk()).page()!;

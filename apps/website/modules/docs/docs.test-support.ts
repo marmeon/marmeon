@@ -2,9 +2,6 @@ import { resolve } from 'node:path';
 import docsConfig, { type DocsPageEntry } from '../../docs.config.ts';
 import type { SearchResult } from './search.ts';
 
-// Vitest's 5 s is too short under load: more time on CI runners only (CI=true).
-export const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
-
 export const repo = resolve(import.meta.dirname, '../../../..');
 
 /** Every page of the docs in the order of docs.config.ts — across the sections. */

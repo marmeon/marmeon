@@ -1,10 +1,13 @@
 import { RedisConnections } from '@marmeon/redis';
 import { createHttpKernel } from '@marmeon/server';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from './warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 /**
  * Signing out while another request of the same browser is still running — the normal case: every

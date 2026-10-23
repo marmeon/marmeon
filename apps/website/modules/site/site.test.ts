@@ -3,13 +3,12 @@ import { join, resolve } from 'node:path';
 import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import { SSR_TEST_TIMEOUT } from '../docs/test-timeouts.ts';
 import { SNIPPETS } from './snippets.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 const repo = resolve(import.meta.dirname, '../../../..');
@@ -19,7 +18,7 @@ const coreVersion = (JSON.parse(readFileSync(join(repo, 'packages/core/package.j
 let app: TestApp;
 beforeAll(async () => {
   app = await createTestApp(application, { ssr: true, ssrServer: server });
-}, 60_000);
+});
 afterAll(() => app?.close());
 
 describe('the landing page', () => {
@@ -31,7 +30,7 @@ describe('the landing page', () => {
     expect(response.body).toMatch(/<a [^>]*href="\/docs"[^>]*class="button button--secondary"|<a [^>]*class="button button--secondary"[^>]*href="\/docs"/);
     expect(response.body).toMatch(/<a [^>]*class="button button--text"[^>]*href="https:\/\/github\.com\/marmeon\/marmeon"/);
     expect(response.body).toContain('pnpm create marmeon my-app');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('lists the seven principles and the seven steps of the chain', async () => {
     const body = (await app.get('/', document).assertOk()).body;
@@ -39,7 +38,7 @@ describe('the landing page', () => {
     expect(body.match(/<li class="chain-step"/g)).toHaveLength(7);
     expect(body.slice(body.indexOf('id="chain-title"'), body.indexOf('id="modules-title"')).match(/<h3>/g)).toHaveLength(7);
     for (const mistake of ['user_ud', 'ctx.params.nte', 'notes.indx', 'note.titel', 'form.errors.titel']) expect(body).toContain(mistake);
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('says who Marmeon is for: four situations, each with a link to its proof, and who it does not fit', async () => {
     const body = (await app.get('/', document).assertOk()).body;
@@ -56,14 +55,14 @@ describe('the landing page', () => {
     expect(section.match(/<h3>/g)).toHaveLength(4);
     for (const href of ['/docs/installation#running-the-app', '/docs/structure', '/docs/authorization', '/docs/authorization#every-route-decides']) expect(section, href).toContain(`href="${href}"`);
     expect(section).toContain('Not the right fit');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('points to the community from the start section', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     const start = body.slice(body.indexOf('id="start-title"')).replaceAll('<!-- -->', '');
     expect(start).toContain('<a href="https://discord.gg/Kv9hvscd9" rel="noopener">Discord</a>');
     expect(start).toContain('<a href="https://github.com/marmeon/marmeon/discussions" rel="noopener">discussion on GitHub</a>');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('has the six sections after the chain, each named by its heading', async () => {
     const body = (await app.get('/', document).assertOk()).body;
@@ -76,7 +75,7 @@ describe('the landing page', () => {
     expect(body).toContain('aria-label="Files of the notes module"');
     for (const group of ['In every new app', 'Add when you need it']) expect(body).toContain(group);
     expect(body.match(/<li><code>(<span class="package-scope">@marmeon\/<\/span>)?[a-z0-9]+<\/code>/g)).toHaveLength(16 + 3 + 6);
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('shows the test snippet and masks every secret in the devtools picture', async () => {
     const body = (await app.get('/', document).assertOk()).body;
@@ -87,7 +86,7 @@ describe('the landing page', () => {
     expect(panel.match(/••••/g)).toHaveLength(2);
     expect(panel).not.toMatch(/<a [^>]*href/);
     for (const secret of ['password', 'secret', 'token=', 'bearer', 'cookie=', 'app_key']) expect(panel.toLowerCase(), secret).not.toContain(secret);
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('highlights every snippet on the server, with classes and without a style attribute', async () => {
     const props = (await app.navigating().get('/').assertOk().assertPage('site/Landing')).page()!.props as { snippets: Record<string, { file?: string; html: string }> };
@@ -101,7 +100,7 @@ describe('the landing page', () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body).toContain('<span class="tk">export</span>');
     expect(body).not.toMatch(/<[a-z][^>]*\sstyle=/i);
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('is public: cacheable with an ETag, no cookie, a policy without a nonce', async () => {
     const response = await app.get('/', document).assertOk();
@@ -151,13 +150,13 @@ describe('the shared chrome', () => {
     expect(legal).not.toContain('nofollow');
     expect(legal).toContain('<a href="https://discord.gg/Kv9hvscd9" rel="noopener">Discord</a>');
     expect(legal).toContain('Made with <span role="img" aria-label="love">❤️</span> in Munich');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('renders no copy button on the server: it appears with JavaScript only', async () => {
     const body = (await app.get('/', document).assertOk()).body;
     expect(body).not.toContain('copy-button');
     expect(body).not.toContain('aria-live');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('gives an unknown path the header and footer but no version badge', async () => {
     const response = await app.get('/nothing-here', document);
@@ -165,11 +164,11 @@ describe('the shared chrome', () => {
     expect(response.body).toContain('class="site-header"');
     expect(response.body).toContain('class="site-footer"');
     expect(response.body).not.toContain('class="badge"');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('keeps the docs layout for the docs pages', async () => {
     const body = (await app.get('/docs/routing', document).assertOk()).body;
     expect(body).toContain('class="shell"');
     expect(body).not.toContain('class="site-header"');
-  }, SSR_TEST_TIMEOUT);
+  });
 });

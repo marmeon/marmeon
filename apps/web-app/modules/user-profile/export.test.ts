@@ -1,9 +1,12 @@
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from '../auth/factories/UserFactory.ts';
 import type { User } from '../auth/users.ts';
 import { ProfileLinkFactory } from './factories/ProfileLinkFactory.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 /** Signed in with a password just now — what the password confirmation ("sudo mode") asks for. */
 async function signedIn(app: TestApp, user: User) {

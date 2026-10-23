@@ -6,14 +6,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import docsConfig, { type DocsPageEntry } from '../../docs.config.ts';
 import { DocsError, DocsRepository } from './DocsRepository.ts';
-import { ciTimeout, ENTRIES, fileOf, repo } from './docs.test-support.ts';
+import { ENTRIES, fileOf, repo } from './docs.test-support.ts';
 import { PENDING_MARKER } from './markdown.ts';
-import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 describe('the repository and docs.config.ts', () => {
@@ -41,7 +40,7 @@ describe('the repository and docs.config.ts', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  }, ciTimeout);
+  });
 
   it('stops the start for a slug that is no lower-case words with dashes, a slug or a file listed twice, a file of the wrong place and the root README', async () => {
     const extra: DocsPageEntry[] = [
@@ -63,14 +62,14 @@ describe('the repository and docs.config.ts', () => {
       "The page 'other' names docs/routing.md — a page's file is docs/<slug>.md or a Markdown file at the root.",
       "The page 'readme' names README.md — the root README is no page of the docs (the start page is the app's own).",
     ]);
-  }, ciTimeout);
+  });
 
   it('refuses the slug "search": /docs/search is the search, a page of that name would be hidden by it', async () => {
     const docs = { sections: [...docsConfig.sections, { title: 'More', pages: [{ slug: 'search', label: 'Search' }] }] };
     const error = await new DocsRepository({ source: repo, docs }).load().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(DocsError);
     expect((error as DocsError).problems).toEqual(["The page slug 'search' is reserved — /docs/search is the search."]);
-  }, ciTimeout);
+  });
 
   it('marks a page that carries the pending marker in the navigation — and not one without it', async () => {
     const dir = copy();
@@ -87,7 +86,7 @@ describe('the repository and docs.config.ts', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  }, ciTimeout);
+  });
 
   it('shows a page with the pending marker as "draft" in the rendered navigation', async () => {
     const dir = copy();
@@ -100,7 +99,7 @@ describe('the repository and docs.config.ts', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('starts without the packages — their READMEs are no pages', async () => {
     const dir = copy();
@@ -112,7 +111,7 @@ describe('the repository and docs.config.ts', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  }, ciTimeout);
+  });
 
   it('shows raw HTML of a page as text — a <script> never reaches the page as markup (server-rendered)', async () => {
     const dir = copy();
@@ -127,7 +126,7 @@ describe('the repository and docs.config.ts', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('the app does not boot then', async () => {
     const dir = copy();

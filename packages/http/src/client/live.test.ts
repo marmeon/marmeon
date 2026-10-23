@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PAGE_HEADER, REGION_HEADER, type LiveSubscription, type PageObject, type RegionObject, PROTOCOL_VERSION } from '../protocol.ts';
 import type { Feature } from './feature.ts';
 import { actions } from './features/actions.ts';
@@ -135,13 +135,19 @@ describe('live props in the client core — server-driven, one stream per docume
 
   it('a hint waits at most 2 s: a burst that never pauses still reloads (once per 2 s, not per hint)', async () => {
     const { win } = await tab();
-    win.source!.emit('hello', { seq: { 'users.1': 0 } });
-    const started = Date.now();
-    for (let i = 1; Date.now() - started < LIVE_MAX_WAIT + 400; i++) {
-      win.source!.emit('refresh', { channel: 'users.1', only: ['profile'], seq: i });
-      await wait(100);
+    // The clock moves by hand from here: the burst lasts LIVE_MAX_WAIT + 400 ms of the feature's time, not of the test's.
+    vi.useFakeTimers();
+    try {
+      win.source!.emit('hello', { seq: { 'users.1': 0 } });
+      const started = Date.now();
+      for (let i = 1; Date.now() - started < LIVE_MAX_WAIT + 400; i++) {
+        win.source!.emit('refresh', { channel: 'users.1', only: ['profile'], seq: i });
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      expect(reloads(win)).toEqual(['/users/1 profile']);
+    } finally {
+      vi.useRealTimers();
     }
-    expect(reloads(win)).toEqual(['/users/1 profile']);
   });
 
   it('unsaved changes on screen (a guard holds): no reload — "updates available" until apply()', async () => {

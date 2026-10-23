@@ -8,12 +8,11 @@ import docsConfig from '../../docs.config.ts';
 import { SITE_CSP } from '../site/SiteServiceProvider.ts';
 import { DocsLines } from './DocsLines.ts';
 import { DocsRepository } from './DocsRepository.ts';
-import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 /**
@@ -24,7 +23,7 @@ afterAll(() => server?.close());
 let app: TestApp;
 beforeAll(async () => {
   app = await createTestApp(application, { ssr: true, ssrServer: server });
-}, 60_000);
+});
 afterAll(() => app?.close());
 
 const repo = resolve(import.meta.dirname, '../../../..');
@@ -95,7 +94,7 @@ describe('every page', () => {
     inline.set(path, executableInline(response.body));
     styled.set(path, inlineStyles(response.body));
     policies.add(response.headers.get('content-security-policy'));
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it.each(EXTRA)('%s renders without inline scripts or styles', async (path) => {
     const response = await app.get(path, html);
@@ -103,7 +102,7 @@ describe('every page', () => {
     inline.set(path, executableInline(response.body));
     styled.set(path, inlineStyles(response.body));
     policies.add(response.headers.get('content-security-policy'));
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it("runs no inline script — the 'self' policy of a publicly cached page holds without a nonce", () => {
     expect(inline.size).toBe(PAGES.length + EXTRA.length);
@@ -155,7 +154,7 @@ describe('the link check', () => {
 });
 
 // Reads every tracked file synchronously: about 200 ms alone, past Vitest's default 5 s while the other suites run.
-describe('the docs the framework names', { timeout: 30_000 }, () => {
+describe('the docs the framework names', () => {
   it('every docs path the framework names leads to a page and its anchor', () => {
     const docs = app.make(DocsRepository);
     const anchorsOf = new Map(docs.pages().map((page) => [page.file, new Set(page.anchors)]));

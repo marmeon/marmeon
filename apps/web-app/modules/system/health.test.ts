@@ -2,9 +2,12 @@ import { HealthChecks } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { ServerClosing } from '@marmeon/http';
 import { createTestApp } from '@marmeon/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { StorageWritable } from './health/StorageWritable.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 describe('health in the web app', () => {
   it('/up answers before the `web` group: no session cookie, no CSRF, no request id — a sign-in beside it gets them', async () => {

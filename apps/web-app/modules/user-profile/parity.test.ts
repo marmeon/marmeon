@@ -2,8 +2,11 @@ import { UserFactory, UserRepository } from '#modules/auth';
 import { browserRoutes, Router, type PageObject } from '@marmeon/http';
 import { LOCATION_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER, RELOAD_HEADER, VERSION_HEADER } from '@marmeon/http/protocol';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 /** Once props, `<Form>` without JavaScript, instant visits and the two 409s — in the web app. */
 

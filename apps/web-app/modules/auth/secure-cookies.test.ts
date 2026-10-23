@@ -2,9 +2,12 @@ import { Redactor } from '@marmeon/core';
 import { AuthConfig, rememberCookieName } from '@marmeon/auth';
 import { sessionCookieName, SessionConfig } from '@marmeon/session';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from './warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 // Cookies follow APP_URL — `https://` sends every cookie of the app with `Secure` (the session's, the XSRF token, the
 // remember-me token, the reset link's), `http://` without; SESSION_SECURE_COOKIE=true/false decides itself.

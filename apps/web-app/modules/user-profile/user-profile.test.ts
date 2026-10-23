@@ -3,13 +3,16 @@ import { Connections } from '@marmeon/database';
 import { PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { useForm } from '@marmeon/react';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { EditUserProfileController } from './controllers/EditUserProfileController.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import type { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
 import { ProfileLinkFactory } from './factories/ProfileLinkFactory.ts';
 import { ProfileDirectory } from './ProfileDirectory.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 let app: TestApp;
 let ada: User, alan: User, grace: User;

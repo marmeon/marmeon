@@ -81,7 +81,7 @@ declare module '@marmeon/database' {
 }
 `;
 
-describe.each(drivers)('TypeGenerator on %s', { timeout: 30_000 }, (driver) => {
+describe.each(drivers)('TypeGenerator on %s', (driver) => {
   const root = workspaceTempDir('marmeon-types-');
 
   it('generates the same file from the migrations on every driver — without a database', async () => {

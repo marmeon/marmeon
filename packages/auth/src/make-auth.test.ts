@@ -43,8 +43,7 @@ function fakeInput(root: string, options: Record<string, unknown> = {}) {
   return { input: { root, args: [], options, output, spawn } as never, lines, spawned };
 }
 
-// Each test runs make:auth, which spawns a child process: slow on a busy machine.
-describe('make:auth', { timeout: 30_000 }, () => {
+describe('make:auth', () => {
   it('writes the module, registers it, generates its route types, and reports what the app still needs', async () => {
     const root = blankApp();
     const { input, lines, spawned } = fakeInput(root);
@@ -105,7 +104,7 @@ describe('make:auth', { timeout: 30_000 }, () => {
       router.load(loaded.default);
     }
     expect(router.accessProblems().length, formatAccessProblems(router.accessProblems())).toBe(0);
-  });
+  }, 30_000); // imports the generated route files, and with them the framework packages they use, for the first time
 
   it('registers in the real modules list — a commented-out one before the call is left alone', async () => {
     const root = blankApp();

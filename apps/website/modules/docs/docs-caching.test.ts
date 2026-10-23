@@ -4,21 +4,20 @@ import application from '../../bootstrap/app.ts';
 import { SiteConfig } from '../../config/site.ts';
 import { CachePublicly } from '../site/middleware/CachePublicly.ts';
 import { repo } from './docs.test-support.ts';
-import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 let app: TestApp;
 beforeAll(async () => {
   app = await createTestApp(application);
-}, 30_000);
+});
 afterAll(() => app?.close());
 
-describe('public pages: no cookie, cacheable — and a cache can tell the document from its JSON', { timeout: 30_000 }, () => {
+describe('public pages: no cookie, cacheable — and a cache can tell the document from its JSON', () => {
   const document = { headers: { accept: 'text/html' } };
 
   it('sets no cookie, on any page — the public group has no session, no CSRF, no encrypted cookies', async () => {
@@ -77,7 +76,7 @@ describe('public pages: no cookie, cacheable — and a cache can tell the docume
     const dev = await createTestApp(application, { env: { NODE_ENV: 'development', DOCS_SOURCE: repo } });
     expect((await dev.get('/', document).assertOk()).headers.get('content-security-policy')).toMatch(/^script-src 'nonce-[\w+/=-]+' 'strict-dynamic'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'$/);
     // Two more apps, each rendering every page with Shiki when it boots.
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('never marks an answer with a cookie public (a cache would hand the cookie to everyone)', async () => {
     const config = app.make(SiteConfig);

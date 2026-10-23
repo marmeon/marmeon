@@ -5,11 +5,14 @@ import { Connections, InfrastructureTransactionError, Migrator } from '@marmeon/
 import { PAGE_HEADER, PROTOCOL_VERSION, UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { PruneUploadsCommand, TemporaryUploads, UPLOADS_TABLE } from '@marmeon/storage';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserRepository } from '../auth/UserRepository.ts';
 import { UserFactory } from '../auth/factories/UserFactory.ts';
 import type { User } from '../auth/users.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 /** A real PNG: the 8 signature bytes, then whatever — the server goes by the first bytes. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 1, 2, 3, 4]);

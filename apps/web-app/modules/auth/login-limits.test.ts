@@ -19,11 +19,10 @@ const CEILING = 10;
 
 let app: TestApp;
 let SESSION: string;
-// Every test boots the app on a refreshed database — seconds on a busy machine, so its hook and tests get 30 s.
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh', env: { AUTH_ACCOUNT_SIGN_INS_PER_DAY: String(CEILING) } });
   ({ session: SESSION } = cookieNames(app));
-}, 30_000);
+});
 
 /** The device cookie's name (the app runs on HTTP in tests: no `__Host-` prefix). */
 const DEVICE = 'marmeon_device';
@@ -50,7 +49,7 @@ async function fail(email: string, n: number) {
   for (let i = 0; i < n; i++) await signInFrom(nextClient(), email);
 }
 
-describe('the ceiling on the password sign-ins of an account', { timeout: 60_000 }, () => {
+describe('the ceiling on the password sign-ins of an account', () => {
   it('refuses the sign-in after the ceiling, from any client, with the right password too', async () => {
     const ada = await app.factory(UserFactory).create({ email: 'ada@example.com' });
     for (let i = 1; i <= CEILING; i++) expect((await signInFrom(nextClient(), ada.email)).message).toBe('These credentials do not match our records.');

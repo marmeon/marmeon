@@ -1,7 +1,6 @@
 import { createTestApp, startSsrServer, type SsrServer } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import { SSR_TEST_TIMEOUT } from '../docs/test-timeouts.ts';
 import { layout } from '../../bootstrap/layouts.ts';
 import { DocsLayout } from '../../layouts/DocsLayout.tsx';
 import { SiteLayout } from '../../layouts/SiteLayout.tsx';
@@ -11,7 +10,7 @@ import { fathomScript } from './fathom.ts';
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 const document = { headers: { accept: 'text/html' } };
@@ -38,7 +37,7 @@ describe('Fathom Analytics', () => {
       expect(body.split('usefathom.com/script.js'), path).toHaveLength(2); // once, and not again on hydration
       expect(policy, path).toBe("script-src 'self' https://cdn.usefathom.com/script.js; object-src 'none'; base-uri 'self'; style-src 'self'; frame-ancestors 'none'");
     }
-  }, SSR_TEST_TIMEOUT * 3);
+  });
 
   it('loads nothing in test and development, or without a site', async () => {
     for (const env of [{ SITE_FATHOM_SITE: 'IBAFAHEM' }, { NODE_ENV: 'development', SITE_FATHOM_SITE: 'IBAFAHEM' }, { NODE_ENV: 'production', SITE_FATHOM_SITE: '' }]) {
@@ -46,7 +45,7 @@ describe('Fathom Analytics', () => {
       expect(body, JSON.stringify(env)).not.toContain('usefathom');
       if (env.NODE_ENV !== 'development') expect(policy, JSON.stringify(env)).toBe(DEFAULT_POLICY);
     }
-  }, SSR_TEST_TIMEOUT * 3);
+  });
 
   it('refuses to boot with a site id that is not one', async () => {
     for (const bad of ['"><script>', 'abcdefgh', 'ABC', 'A'.repeat(17)]) {

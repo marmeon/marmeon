@@ -6,21 +6,20 @@ import application from '../../bootstrap/app.ts';
 import docsConfig from '../../docs.config.ts';
 import { DocsRepository } from './DocsRepository.ts';
 import { ENTRIES, fileOf, repo, results, SECTIONS } from './docs.test-support.ts';
-import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 let app: TestApp;
 beforeAll(async () => {
   app = await createTestApp(application);
-}, 30_000);
+});
 afterAll(() => app?.close());
 
-describe('the docs: sections of pages under /docs', { timeout: 30_000 }, () => {
+describe('the docs: sections of pages under /docs', () => {
   it('lists the 83 pages in eleven sections, in this order', () => {
     expect(docsConfig.sections.map((section) => section.title)).toEqual(SECTIONS);
     expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 6, 3, 5, 11, 9, 14, 11, 7, 7, 4]);
@@ -41,7 +40,7 @@ describe('the docs: sections of pages under /docs', { timeout: 30_000 }, () => {
         expect(page.props, entry.slug).toMatchObject({ title, section: section.title });
       }
     }
-  }, 60_000);
+  }, 60_000); // renders every page of the docs
 
   it('an unknown page is a 404 — and the old /guides/ paths are gone', async () => {
     await app.get('/docs/no-such-page').assertNotFound();
@@ -91,7 +90,7 @@ describe('the docs: sections of pages under /docs', { timeout: 30_000 }, () => {
     expect(html).toContain('pnpm create marmeon my-app');
     expect(html).toContain('class="terminal"');
     expect(html).not.toContain('copy-button');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('finds the release policy’s sections — and the record of changes comes after every other hit', async () => {
     // "likely" scores the same in the upgrade guide and in the release policy's "How to upgrade": by order alone the guide, the

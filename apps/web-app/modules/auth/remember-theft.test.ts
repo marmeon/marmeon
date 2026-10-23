@@ -21,7 +21,7 @@ let REMEMBER: string;
 beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
   ({ remember: REMEMBER } = cookieNames(app));
-}, 30_000);
+});
 
 const FIREFOX_ON_MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) Gecko/20100101 Firefox/130.0';
 
@@ -36,7 +36,7 @@ async function copiedCookie(user: User) {
 
 const replay = (cookie: string) => app.withCookie(REMEMBER, cookie).withHeaders({ 'user-agent': FIREFOX_ON_MAC }).get('/dashboard');
 
-describe('the mail about a copied "keep me signed in" cookie', { timeout: 30_000 }, () => {
+describe('the mail about a copied "keep me signed in" cookie', () => {
   it('tells the owner once, with the parsed browser and what happened to the sessions, never the raw user agent', async () => {
     const ada = await app.factory(UserFactory).create();
     await replay(await copiedCookie(ada));

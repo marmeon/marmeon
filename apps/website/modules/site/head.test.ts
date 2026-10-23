@@ -2,13 +2,12 @@ import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@ma
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { DocsRepository } from '../docs/DocsRepository.ts';
-import { SSR_TEST_TIMEOUT } from '../docs/test-timeouts.ts';
 import { expectOriginFromAppUrl } from './origin.test-support.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 const html = { headers: { accept: 'text/html' } };
@@ -29,7 +28,7 @@ const descriptionOf = (body: string) => tags(body, 'meta', 'name', 'description'
 let app: TestApp;
 beforeAll(async () => {
   app = await createTestApp(application, { ssr: true, ssrServer: server });
-}, SSR_TEST_TIMEOUT);
+});
 afterAll(() => app?.close());
 
 describe('the head of a page', () => {
@@ -49,7 +48,7 @@ describe('the head of a page', () => {
     expect(og(body, 'site_name')).toEqual(['Marmeon']);
     expect(og(body, 'title')).toEqual([title]);
     expect(body).not.toMatch(/twitter:|og:image/);
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('gives every page of the docs its derived description, its title and an article type', async () => {
     const problems: string[] = [];
@@ -67,31 +66,31 @@ describe('the head of a page', () => {
       if (JSON.stringify(found) !== JSON.stringify(expected)) problems.push(`${page.path}: ${JSON.stringify(found)}`);
     }
     expect(problems, problems.join('\n')).toEqual([]);
-  }, 120_000);
+  }, 120_000); // renders every page of the docs and reads its head
 
   it('leaves the query out of the canonical URL', async () => {
     const body = (await app.get('/docs/routing?utm_source=x', html).assertOk()).body;
     expect(canonicalOf(body)).toEqual(['http://localhost/docs/routing']);
     expect(og(body, 'url')).toEqual(['http://localhost/docs/routing']);
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('describes the search but names no canonical URL for it', async () => {
     const body = (await app.get('/docs/search?q=queue', html).assertOk()).body;
     expect(descriptionOf(body)).toHaveLength(1);
     expect(canonicalOf(body)).toEqual([]);
     expect(og(body, 'url')).toEqual([]);
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('names no canonical URL on a page that does not exist', async () => {
     const body = (await app.get('/no/such/page', html).assertNotFound()).body;
     expect(canonicalOf(body)).toEqual([]);
     expect(og(body, 'url')).toEqual([]);
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('takes the origin from APP_URL, not from the request', async () => {
     await expectOriginFromAppUrl('/docs/routing', (response) => canonicalOf(response.body)[0] ?? null, 'https://docs.example/docs/routing', html.headers, server);
     await expectOriginFromAppUrl('/', (response) => canonicalOf(response.body)[0] ?? null, 'https://docs.example/', html.headers, server);
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('shares the site root with a Visit', async () => {
     const props = (await app.navigating().get('/docs/routing').assertOk()).page()!.props;

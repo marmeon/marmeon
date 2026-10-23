@@ -2,12 +2,11 @@ import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@ma
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { expectOriginFromAppUrl } from '../site/origin.test-support.ts';
-import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 const BROWSER = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
@@ -18,7 +17,7 @@ let ssr: TestApp;
 beforeAll(async () => {
   app = await createTestApp(application);
   ssr = await createTestApp(application, { ssr: true, ssrServer: server });
-}, SSR_TEST_TIMEOUT);
+});
 afterAll(async () => {
   await app?.close();
   await ssr?.close();
@@ -45,7 +44,7 @@ describe('/docs/<slug> by Accept', () => {
     expect(html.headers.get('content-type')).toContain('text/html');
     expect(vary(html)).toContain('accept');
     expect(html.headers.get('etag')).not.toBe(markdown.headers.get('etag'));
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('never answers 304 with the other variant: an ETag belongs to one of them', async () => {
     const markdown = await app.get('/docs/routing', { headers: { accept: MARKDOWN } }).assertOk();
@@ -60,7 +59,7 @@ describe('/docs/<slug> by Accept', () => {
     const other = await app.get('/docs/routing', { headers: { accept: MARKDOWN, 'if-none-match': htmlEtag } });
     expect(other.status).toBe(200);
     expect(other.headers.get('content-type')).toBe('text/markdown; charset=utf-8');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('gives a Visit the page object even when it accepts Markdown', async () => {
     await app.navigating().get('/docs/routing', { headers: { accept: 'text/markdown, application/json' } }).assertOk().assertPage('docs/Page');
@@ -91,7 +90,7 @@ describe('/docs by Accept', () => {
     const html = await ssr.get('/docs', { headers: { accept: BROWSER } }).assertOk().assertServerRendered();
     expect(html.body).toContain('<link rel="alternate" type="text/markdown" href="/llms.txt"');
     expect(vary(html)).toContain('accept');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('takes the URLs from APP_URL, not from the request', async () => {
     await expectOriginFromAppUrl('/docs', (response) => (response.body.includes('https://docs.example/docs/routing.md') ? 'https://docs.example/docs/routing.md' : null), 'https://docs.example/docs/routing.md', { accept: MARKDOWN });
@@ -103,5 +102,5 @@ describe('pages that are not negotiated', () => {
     const response = await ssr.get(path, { headers: { accept: MARKDOWN } }).assertOk();
     expect(response.headers.get('content-type')).toContain('text/html');
     expect(vary(response)).not.toContain('accept');
-  }, SSR_TEST_TIMEOUT);
+  });
 });

@@ -2,10 +2,13 @@ import { RateLimiter } from '@marmeon/cache';
 import { ACTION_REDIRECT_HEADER, VALIDATED_HEADER } from '@marmeon/http/protocol';
 import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { RegisterController } from './controllers/RegisterController.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from './warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 /**
  * Live validation on the server: the form's own route, as far as its validation — middleware, `authorize`, the schema —

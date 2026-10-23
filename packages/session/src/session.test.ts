@@ -376,8 +376,8 @@ describe('session stores', () => {
     expect(records).toContain(last!.data);
     expect(last!.version).toBe(61);
     // Sixty writers racing over one record lose some sixty races, about 300 reads of up to 500 KB (the writers', the readers' and the
-    // guarded check in each write): the time is the work itself, no waiting on anything — a quarter second alone, over 5 s on a busy
-    // machine. A writer stuck behind the guard fails at the store's GUARD_TIMEOUT_MS (10 s), which is the real bound; this timeout is only room.
+    // guarded check in each write): the time is the work itself. A writer stuck behind the guard fails at the store's
+    // GUARD_TIMEOUT_MS (10 s) with its own error; this timeout lies above it, so that error is what a stuck writer reports.
   }, 30_000);
 
   it('file: refuses keys that are not session keys (SHA-256 hex) — a raw session id included', async () => {

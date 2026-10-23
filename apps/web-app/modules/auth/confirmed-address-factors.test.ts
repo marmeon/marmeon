@@ -21,11 +21,11 @@ const credentialsOf = (user: User) => ({ form: { email: user.email, password: 'p
 const device = () => softAuthenticator({ origin: 'http://localhost', rpId: 'localhost' });
 const FACTOR_TABLES = ['passkeys', 'two_factor_authentications', 'two_factor_recovery_codes', 'personal_access_tokens'] as const;
 
-describe('an unconfirmed address with AUTH_PRIVATE_REGISTRATION=false', { timeout: 30_000 }, () => {
+describe('an unconfirmed address with AUTH_PRIVATE_REGISTRATION=false', () => {
   beforeEach(async () => {
     app = await createTestApp(application, { database: 'refresh', env: { AUTH_PRIVATE_REGISTRATION: 'false' } });
     ({ session: SESSION } = cookieNames(app));
-  }, 30_000);
+  });
 
   it('refuses an authenticator and a passkey before the address is confirmed, and stores nothing', async () => {
     const squatter = await app.factory(UserFactory).create({ email_verified_at: null, first_verified_at: null });
@@ -53,11 +53,11 @@ describe('an unconfirmed address with AUTH_PRIVATE_REGISTRATION=false', { timeou
   });
 });
 
-describe('the reset of an account whose address was never confirmed', { timeout: 30_000 }, () => {
+describe('the reset of an account whose address was never confirmed', () => {
   beforeEach(async () => {
     app = await createTestApp(application, { database: 'refresh' });
     ({ session: SESSION } = cookieNames(app));
-  }, 30_000);
+  });
 
   /** The account gets a passkey, an authenticator, recovery codes and an API token — as the squatter could before the address had to be confirmed. */
   async function holdingEverything(user: User) {
