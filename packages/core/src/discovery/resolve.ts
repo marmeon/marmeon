@@ -18,7 +18,8 @@ export interface PackageJson {
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
-  marmeon?: { providers?: string[] };
+  /** Foreign input: read it through `marmeonField()`. */
+  marmeon?: unknown;
 }
 
 /**
@@ -69,12 +70,18 @@ export function findPackage(name: string, fromDir: string): PackageInfo | undefi
   for (let dir = fromDir; ; dir = dirname(dir)) {
     const candidate = join(dir, 'node_modules', name, 'package.json');
     if (existsSync(candidate)) {
+      let realDir: string;
+      let json: unknown;
       try {
-        const realDir = realpathSync(dirname(candidate));
-        return { name, dir: realDir, json: JSON.parse(readFileSync(join(realDir, 'package.json'), 'utf8')) };
+        realDir = realpathSync(dirname(candidate));
+        json = JSON.parse(readFileSync(join(realDir, 'package.json'), 'utf8'));
       } catch (cause) {
         throw new Error(withCode('K7', `The package.json of ${name} (${candidate}) cannot be read as JSON: ${printable(cause instanceof Error ? cause.message : String(cause))}`), { cause });
       }
+      if (typeof json !== 'object' || json === null || Array.isArray(json)) {
+        throw new Error(withCode('K7', `The package.json of ${name} (${candidate}) is not a JSON object.`));
+      }
+      return { name, dir: realDir, json: json as PackageInfo['json'] };
     }
     if (dirname(dir) === dir) return undefined;
   }
