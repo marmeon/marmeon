@@ -632,7 +632,7 @@ export interface StoreUsage {
 // APP_URL
 `APP_URL` — optional
 // DEVTOOLS_ENABLED
-`DEVTOOLS_ENABLED` — optional
+`DEVTOOLS_ENABLED` — optional (boolean)
 // NODE_ENV
 `NODE_ENV` — optional
 // devtools:clear

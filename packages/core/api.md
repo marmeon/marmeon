@@ -1473,3 +1473,12 @@ export interface Token<T> {
     readonly __type?: T;
 }
 ```
+
+## Environment
+
+```ts
+// APP_ENV
+`APP_ENV` — optional
+// NODE_ENV
+`NODE_ENV` — optional
+```
