@@ -17,7 +17,7 @@ import {
   type MailMessage,
 } from './index.ts';
 import { ArrayTransport, LogTransport, SmtpTransport } from './transports.ts';
-import { LOG_MAILER_WARNING } from './config.ts';
+import { fromDefaultWarning, LOG_MAILER_WARNING } from './config.ts';
 import { MailFake } from './fake.ts';
 import { textFromHtml } from './html.ts';
 
@@ -213,6 +213,7 @@ describe('MailServiceProvider', () => {
 
   it('warns once at boot when a protected environment runs on the log mailer — reset links would land in the log', async () => {
     const warningsWith = async (env: Record<string, string>) => {
+      env = { MAIL_FROM_ADDRESS: 'team@app.test', ...env };
       const warnings: string[] = [];
       const logger: Logger = { debug() {}, info() {}, warn: (message: string, _context?: LogContext) => void warnings.push(message), error() {}, child: () => logger };
       await boot(env, (container) => container.instance(Logger, logger));
@@ -230,6 +231,24 @@ describe('MailServiceProvider', () => {
     // Fail-closed: a missing NODE_ENV is protected like production — APP_ENV changes nothing.
     expect(await warningsWith({ NODE_ENV: 'production', APP_ENV: 'local' })).toEqual([LOG_MAILER_WARNING]);
     expect(await warningsWith({ NODE_ENV: '' })).toEqual([LOG_MAILER_WARNING]);
+  });
+
+  it('warns once at boot when a protected environment sends from the default address', async () => {
+    const warningsWith = async (env: Record<string, string>) => {
+      const warnings: string[] = [];
+      const logger: Logger = { debug() {}, info() {}, warn: (message: string, _context?: LogContext) => void warnings.push(message), error() {}, child: () => logger };
+      await boot(env, (container) => container.instance(Logger, logger));
+      return warnings;
+    };
+    expect(await warningsWith({ NODE_ENV: 'production', MAIL_DRIVER: 'smtp' })).toEqual([fromDefaultWarning('smtp')]);
+    expect(await warningsWith({ NODE_ENV: '', MAIL_DRIVER: 'smtp' })).toEqual([fromDefaultWarning('smtp')]);
+    expect(fromDefaultWarning('smtp')).toContain('MAIL_FROM_ADDRESS is not set: mail goes out from hello@example.com');
+    // On the log mailer both warnings apply, and the sender line says the mail is only logged.
+    expect(await warningsWith({ NODE_ENV: 'production' })).toEqual([LOG_MAILER_WARNING, fromDefaultWarning('log')]);
+    expect(fromDefaultWarning('log')).toContain('now only in the log');
+    expect(await warningsWith({ NODE_ENV: 'production', MAIL_DRIVER: 'smtp', MAIL_FROM_ADDRESS: 'team@app.test' })).toEqual([]);
+    expect(await warningsWith({ NODE_ENV: 'development', MAIL_DRIVER: 'smtp' })).toEqual([]);
+    expect(await warningsWith({ NODE_ENV: 'test', MAIL_DRIVER: 'smtp' })).toEqual([]);
   });
 
   it('takes a transport of your own — a class against the neutral message type', async () => {

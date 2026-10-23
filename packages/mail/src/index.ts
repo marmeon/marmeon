@@ -1,6 +1,6 @@
 import { Application, Logger, type Container, type ServiceProvider } from '@marmeon/core';
 import { devOnly } from '@marmeon/core/dev';
-import { LOG_MAILER_WARNING, MailConfig } from './config.ts';
+import { fromDefaultWarning, LOG_MAILER_WARNING, MailConfig } from './config.ts';
 import { MailError, Mailer, TransportMailer, type MailQueue } from './mailer.ts';
 import { MailPreviews } from './preview.ts';
 import { SendQueuedMail } from './queued.ts';
@@ -66,6 +66,7 @@ export class MailServiceProvider implements ServiceProvider {
     const config = app.container.make(MailConfig);
     // Production on the log mailer: no mail goes out, and reset links land in the log — said once, at boot.
     if (config.protected && config.mailer === 'log') app.container.make(Logger).warn(LOG_MAILER_WARNING, { mailer: 'log' });
+    if (config.protected && config.fromDefaulted) app.container.make(Logger).warn(fromDefaultWarning(config.mailer), { mailer: config.mailer });
     if (config.previews) await registerPreviews(app);
   }
 

@@ -58,6 +58,7 @@ export declare const MailConfig: import("@marmeon/core").ConfigDefinition<{
         address: string;
         name: string;
     };
+    fromDefaulted: boolean;
     smtp: {
         host: string;
         port: number;
@@ -122,6 +123,7 @@ export declare class MailServiceProvider implements ServiceProvider {
             address: string;
             name: string;
         };
+        fromDefaulted: boolean;
         smtp: {
             host: string;
             port: number;
@@ -306,7 +308,7 @@ export interface QueueMailOptions {
 // MAIL_DRIVER
 `MAIL_DRIVER` = `"log"`
 // MAIL_FROM_ADDRESS
-`MAIL_FROM_ADDRESS` = `"hello@example.com"`
+`MAIL_FROM_ADDRESS` — optional
 // MAIL_FROM_NAME
 `MAIL_FROM_NAME` = `""`
 // MAIL_HOST

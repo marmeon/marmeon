@@ -52,7 +52,7 @@ await this.#mailer.queue(new NoteSharedMail(recipient, note.title, url, this.#tr
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `MAIL_DRIVER` | `log` | `log` writes every mail to the log and sends nothing, `smtp` sends it, `array` keeps it in memory. |
-| `MAIL_FROM_ADDRESS` | `hello@example.com` | The sender of every mail that names none. |
+| `MAIL_FROM_ADDRESS` | optional, falls back to `hello@example.com` | The sender of every mail that names none. Set it to an address of your domain; see [The sender address](#the-sender-address). |
 | `MAIL_FROM_NAME` | empty | The sender's name. Empty, the address goes alone. |
 | `MAIL_HOST` | `127.0.0.1` | The SMTP server. |
 | `MAIL_PORT` | `587` | Its port. |
@@ -74,6 +74,18 @@ MAIL_DRIVER=log outside development and tests: no mail is sent — every mail is
 
 It is a warning and not an error, since a deployment may route mails through its log on purpose. Set `MAIL_DRIVER=smtp` in
 production.
+
+### The sender address
+
+Without `MAIL_FROM_ADDRESS` mail goes out from `hello@example.com`, which receiving servers reject or file as spam. Outside
+development and tests the app warns once at start when the variable is not set:
+
+```text
+MAIL_FROM_ADDRESS is not set: mail goes out from hello@example.com, which receiving servers reject or file as spam. Set it to an address of your domain.
+```
+
+With `MAIL_DRIVER=log` the line ends with "(MAIL_DRIVER=log: now only in the log.)", and the warning appears all the same. It is a
+warning and not an error: without SMTP the default does no harm. Development and tests stay quiet.
 
 ### SMTP and TLS
 
