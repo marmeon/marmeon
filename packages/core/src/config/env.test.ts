@@ -293,3 +293,84 @@ describe('env — the variables of a schema', () => {
     expect(Object.keys(schema[FIELDS]!)).toEqual(['A']);
   });
 });
+
+describe('env — renamed variables', () => {
+  const schema = env({ NOTES_PER_PAGE: env.integer().default(20) }).renamed('NOTES_PAGE_SIZE', 'NOTES_PER_PAGE');
+  const message = 'NOTES_PAGE_SIZE was renamed NOTES_PER_PAGE — same value; rename it in .env and wherever the environment is set (docs/configuration.md#renamed-variables).';
+
+  it('stops with a problem when the old name is set, instead of falling back to the default', () => {
+    expect(read(schema, { NOTES_PAGE_SIZE: '50' })).toEqual({ problems: [`NOTES_PAGE_SIZE — ${message}`] });
+  });
+
+  it('does not repeat the value of the old name', () => {
+    const result = read(schema, { NOTES_PAGE_SIZE: 'hunter2' });
+    expect(result).toEqual({ problems: [`NOTES_PAGE_SIZE — ${message}`] });
+    expect(JSON.stringify(result)).not.toContain('hunter2');
+  });
+
+  it('reads the new name alone as usual, and an empty old name as not set', () => {
+    expect(read(schema, { NOTES_PER_PAGE: '50' })).toEqual({ value: { NOTES_PER_PAGE: 50 } });
+    expect(read(schema, { NOTES_PAGE_SIZE: '' })).toEqual({ value: { NOTES_PER_PAGE: 20 } });
+    expect(read(schema, {})).toEqual({ value: { NOTES_PER_PAGE: 20 } });
+  });
+
+  it('stops when both names are set: the new one takes no precedence', () => {
+    expect(read(schema, { NOTES_PAGE_SIZE: '50', NOTES_PER_PAGE: '10' })).toEqual({ problems: [`NOTES_PAGE_SIZE — ${message}`] });
+  });
+
+  it('ignores an old name that is only inherited', () => {
+    expect(read(schema, Object.create({ NOTES_PAGE_SIZE: 'x' }))).toEqual({ value: { NOTES_PER_PAGE: 20 } });
+  });
+
+  it('lists every problem together', () => {
+    expect(read(schema, { NOTES_PAGE_SIZE: '50', NOTES_PER_PAGE: 'many' })).toEqual({
+      problems: [`NOTES_PAGE_SIZE — ${message}`, 'NOTES_PER_PAGE — NOTES_PER_PAGE must be a whole number.'],
+    });
+  });
+
+  it('stops the start of a config, naming the new variable', async () => {
+    const Config = defineConfig('notes', { env: schema, resolve: (e) => e.NOTES_PER_PAGE });
+    const error = await resolveConfig([Config], { NOTES_PAGE_SIZE: '50' }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ConfigError);
+    expect((error as ConfigError).message).toContain('NOTES_PAGE_SIZE was renamed NOTES_PER_PAGE');
+  });
+
+  it('keeps the schema it was called on unchanged', () => {
+    const plain = env({ A: env.string().default('a') });
+    plain.renamed('OLD_A', 'A');
+    expect(read(plain, { OLD_A: 'x' })).toEqual({ value: { A: 'a' } });
+  });
+
+  it('keeps the locks through .check()', () => {
+    const checked = schema.check(() => true, 'never', 'NOTES_PER_PAGE');
+    expect(read(checked, { NOTES_PAGE_SIZE: '50' })).toEqual({ problems: [`NOTES_PAGE_SIZE — ${message}`] });
+  });
+
+  it('chains locks and checks, and a later .renamed() leaves the locks of the schema it started from', () => {
+    const base = env({ A: env.string().default('a'), B: env.string().default('b') });
+    const first = base.check(() => true, 'never', 'A').renamed('OLD_A', 'A');
+    const second = first.check(() => true, 'never', 'A').renamed('OLD_B', 'B').check(() => true, 'never', 'B');
+    const lock = (from: string, to: string) => `${from} was renamed ${to} — same value; rename it in .env and wherever the environment is set (docs/configuration.md#renamed-variables).`;
+    expect(read(second, { OLD_A: 'x' })).toEqual({ problems: [`OLD_A — ${lock('OLD_A', 'A')}`] });
+    expect(read(second, { OLD_B: 'x' })).toEqual({ problems: [`OLD_B — ${lock('OLD_B', 'B')}`] });
+    expect(read(first, { OLD_B: 'x' })).toEqual({ value: { A: 'a', B: 'b' } });
+    expect(read(base, { OLD_A: 'x' })).toEqual({ value: { A: 'a', B: 'b' } });
+  });
+
+  it('refuses a rename that cannot work', () => {
+    const base = env({ A: env.string().default('a'), B: env.string().default('b') });
+    expect(() => base.renamed('A', 'A')).toThrow(TypeError);
+    // @ts-expect-error — the target is not a variable of the schema.
+    expect(() => base.renamed('OLD', 'MISSING')).toThrow(TypeError);
+    expect(() => base.renamed('B', 'A')).toThrow(TypeError);
+    expect(() => base.renamed('OLD', 'A').renamed('OLD', 'B')).toThrow(TypeError);
+    expect(() => base.renamed('old', 'A')).toThrow(TypeError);
+    expect(() => base.renamed('1OLD', 'A')).toThrow(TypeError);
+  });
+
+  it('hands out the locks under a registered symbol, frozen', () => {
+    const locks = (schema as unknown as Record<symbol, Record<string, string>>)[Symbol.for('marmeon.env.renamed')]!;
+    expect(locks).toEqual({ NOTES_PAGE_SIZE: 'NOTES_PER_PAGE' });
+    expect(Object.isFrozen(locks)).toBe(true);
+  });
+});

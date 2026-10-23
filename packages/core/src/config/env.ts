@@ -229,11 +229,16 @@ interface CrossCheck<Out> {
 
 /** Where an `EnvSchema` hands out its variables: a registered symbol, so a script outside the package finds it without importing `internal`. */
 const ENV_FIELDS: unique symbol = Symbol.for('marmeon.env.fields');
+/** The same for the retired names: old name to new name. */
+const ENV_RENAMED: unique symbol = Symbol.for('marmeon.env.renamed');
 
-/** The schema `env({ … })` makes — a Standard Schema; `.check()` adds a rule between variables. */
+const VARIABLE_NAME = /^[A-Z][A-Z0-9_]*$/;
+
+/** The schema `env({ … })` makes — a Standard Schema; `.check()` adds a rule between variables, `.renamed()` retires a name. */
 export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> implements StandardSchemaV1<In, Out> {
   readonly #fields: Fields;
   readonly #checks: readonly CrossCheck<Out>[];
+  #renamed: ReadonlyMap<string, string> = new Map();
   readonly '~standard': StandardSchemaV1<In, Out>['~standard'];
 
   constructor(fields: Fields, checks: readonly CrossCheck<Out>[] = []) {
@@ -259,7 +264,39 @@ export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> i
    * ```
    */
   check(test: (values: Out) => boolean, message: EnvMessage<Out>, variable: keyof Out & string): EnvSchema<Out, In> {
-    return new EnvSchema<Out, In>(this.#fields, [...this.#checks, { variable, test, message }]);
+    return this.#derive([...this.#checks, { variable, test, message }], this.#renamed);
+  }
+
+  /**
+   * Retires the name `from`: a start with `from` set (and not empty) stops with a problem that names `to`. The old value is
+   * never read, so a renamed variable cannot fall back to its default unnoticed. See docs/configuration.md#renamed-variables.
+   *
+   * ```ts
+   * env({ NOTES_PER_PAGE: env.integer().default(20) }).renamed('NOTES_PAGE_SIZE', 'NOTES_PER_PAGE')
+   * ```
+   */
+  renamed(from: string, to: keyof Out & string): EnvSchema<Out, In> {
+    if (!VARIABLE_NAME.test(from) || !VARIABLE_NAME.test(to)) throw new TypeError(`env.renamed(): ${from} and ${to} must be variable names in upper case, such as NOTES_PER_PAGE.`);
+    if (from === to) throw new TypeError(`env.renamed(): ${from} cannot be renamed to itself.`);
+    if (!Object.hasOwn(this.#fields, to)) throw new TypeError(`env.renamed(): ${to} is not a variable of this schema.`);
+    if (Object.hasOwn(this.#fields, from)) throw new TypeError(`env.renamed(): ${from} is a variable of this schema, so it cannot be retired.`);
+    if (this.#renamed.has(from)) throw new TypeError(`env.renamed(): ${from} is retired already.`);
+    return this.#derive(this.#checks, new Map([...this.#renamed, [from, to]]));
+  }
+
+  /** A copy with other checks and locks — the locks are set here only, so every one passed the tests of `.renamed()`. */
+  #derive(checks: readonly CrossCheck<Out>[], renamed: ReadonlyMap<string, string>): EnvSchema<Out, In> {
+    const schema = new EnvSchema<Out, In>(this.#fields, checks);
+    schema.#renamed = new Map(renamed);
+    return schema;
+  }
+
+  /**
+   * The retired names by name, frozen: old name to new name.
+   * @internal Read by the repository's API snapshot (`scripts/api.ts`) to list the locks next to the variables.
+   */
+  get [ENV_RENAMED](): Readonly<Record<string, string>> {
+    return Object.freeze(Object.fromEntries(this.#renamed));
   }
 
   #validate(environment: unknown): StandardResult<Out> {
@@ -267,6 +304,12 @@ export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> i
     const source = environment as Readonly<Record<string, unknown>>;
     const entries: [string, unknown][] = [];
     const issues: StandardIssue[] = [];
+    // First, and whatever the new name holds: a retired name that is set stops the start, with no precedence between the two.
+    for (const [from, to] of this.#renamed) {
+      const old = Object.hasOwn(source, from) ? source[from] : undefined;
+      if (old === undefined || old === '') continue;
+      issues.push({ message: `${from} was renamed ${to} — same value; rename it in .env and wherever the environment is set (docs/configuration.md#renamed-variables).`, path: [from] });
+    }
     for (const [name, field] of Object.entries(this.#fields)) {
       const raw = Object.hasOwn(source, name) ? source[name] : undefined;
       if (raw !== undefined && typeof raw !== 'string') {

@@ -272,6 +272,28 @@ message belongs to the variable its third argument names.
 The schema can also come from any library that implements Standard Schema, such as Zod or Valibot. Then the library decides how
 an empty variable is read.
 
+### Renamed variables
+
+When a variable gets a new name, an app that still sets the old one would silently run on the default of the new one: a page
+size, a session lifetime or a list of trusted proxies that is suddenly not what the deployment says. `.renamed(from, to)` retires
+the old name instead. A start with the old name set (and not empty) stops with a problem that names the new one, in every
+environment and even when the new name is set as well. The old value is never read:
+
+```ts title="modules/notes/config.ts"
+export const NotesConfig = defineConfig('notes', {
+  env: env({
+    NOTES_PER_PAGE: env.integer().min(5).default(20),
+  }).renamed('NOTES_PAGE_SIZE', 'NOTES_PER_PAGE'),
+  resolve: (e) => ({ perPage: e.NOTES_PER_PAGE }),
+});
+```
+
+`renamed()` throws when a name is not in upper case, when both names are the same, when the new name is not a variable of the
+schema, when the old one is, and when the old one is retired already.
+
+Reading both names would leave it open which one wins when a deployment sets both, so the old one only stops the start. Leave
+the `.renamed()` call in place: without it, the old name falls back to the default again, silently.
+
 ### Where a definition is listed
 
 A definition counts once it is listed, and it is checked once, however often it is listed:

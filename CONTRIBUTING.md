@@ -355,6 +355,8 @@ Members and declarations tagged `@internal` are left out, a `@deprecated` declar
 re-export from another package is the `export … from` statement (its declaration is in that package's snapshot). Below the
 entry's heading, "Types from other packages" names the libraries whose types the entry's declarations mention.
 
+A retired environment variable (`.renamed()`) is listed under Environment as `OLD` → `NEW` (renamed), so a lock stands in the diff like a variable.
+
 Experimental has three forms, one source each: a whole entry point or package through `marmeon.experimental` in the
 `package.json` (`true` for every entry point, variable and command of the package, or a list of subpaths such as
 `["./client/adapter"]`); one option of an options interface through `@experimental` in the JSDoc of the member, which the

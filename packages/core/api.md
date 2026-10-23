@@ -189,6 +189,7 @@ export declare class EnvSchema<Out, In = Readonly<Record<string, string | undefi
     readonly '~standard': StandardSchemaV1<In, Out>['~standard'];
     constructor(fields: Fields, checks?: readonly CrossCheck<Out>[]);
     check(test: (values: Out) => boolean, message: EnvMessage<Out>, variable: keyof Out & string): EnvSchema<Out, In>;
+    renamed(from: string, to: keyof Out & string): EnvSchema<Out, In>;
 }
 // EnvString
 // type-only
