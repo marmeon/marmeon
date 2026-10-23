@@ -450,7 +450,7 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `APP_KEY` | encryption | value | required | [Encryption](encryption.md#the-application-key) |
 | `APP_LOCALE` | i18n | value | `"en"` | [Localization](localization.md#configuration) |
 | `APP_LOCALES` | i18n | value | `[]` | [Localization](localization.md#configuration) |
-| `APP_NAME` | auth, redis | value | optional / `"marmeon"` | [Configuration](configuration.md#the-variables-of-a-new-app) |
+| `APP_NAME` | auth, redis | value | optional | [Configuration](configuration.md#the-variables-of-a-new-app) |
 | `APP_PREVIOUS_KEYS` | encryption | value | `[]` | [Encryption](encryption.md#the-application-key) |
 | `APP_URL` | auth, devtools, mail, server, session | value | optional | [Configuration](configuration.md#the-variables-of-a-new-app) |
 | `AUTH_ACCOUNT_SIGN_INS_PER_DAY` | auth | value | `100` | [Authentication](authentication.md#configuration) |

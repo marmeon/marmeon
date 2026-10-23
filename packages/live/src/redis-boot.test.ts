@@ -20,7 +20,7 @@ describe('LIVE_DRIVER=redis', () => {
       root: import.meta.dirname,
       discover: false,
       providers: [EncryptionServiceProvider, HttpServiceProvider, RedisServiceProvider, LiveServiceProvider],
-    }, { env: { APP_KEY: generateKey(), LIVE_DRIVER: 'redis', REDIS_URL: 'redis://127.0.0.1:1' }, override: (container) => container.instance(RedisConnections, new BrokenClient({ connections: { default: { url: 'redis://127.0.0.1:1', prefix: 'x:' } }, logger: silent })) });
+    }, { env: { APP_KEY: generateKey(), LIVE_DRIVER: 'redis', REDIS_URL: 'redis://127.0.0.1:1', APP_NAME: 'Live' }, override: (container) => container.instance(RedisConnections, new BrokenClient({ connections: { default: { url: 'redis://127.0.0.1:1', prefix: 'x:' } }, logger: silent })) });
     const outcome = await started.then(
       async (app) => {
         await app.shutdown();

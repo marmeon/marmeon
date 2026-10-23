@@ -7,30 +7,39 @@ export { defineRedisScript, RedisConnection, RedisConnections } from './connecti
 export type { RedisConnectionOptions, RedisScript } from './connections.ts';
 export { RedisHealthCheck } from './health.ts';
 
-/** `My App` → `my-app:` — the default prefix, so two apps on one Redis never share a key. */
-function prefixOf(name: string): string {
-  const slug = name
+/** `My App` → `my-app:`; undefined when the name has no letter or digit to make a slug of. */
+function prefixOf(name: string | undefined): string | undefined {
+  const slug = (name ?? '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return `${slug || 'marmeon'}:`;
+  return slug === '' ? undefined : `${slug}:`;
 }
+
+/** An explicit `REDIS_PREFIX`, else the app's name as a slug. There is no default: two apps on one Redis must never share a key. */
+const prefixFrom = (e: { REDIS_PREFIX: string | undefined; APP_NAME: string | undefined }): string | undefined => e.REDIS_PREFIX ?? prefixOf(e.APP_NAME);
 
 /**
  * The default connection, from the environment:
  *
  * ```sh
  * REDIS_URL=redis://127.0.0.1:6379      # redis://[[user]:password@]host[:port][/db], rediss:// for TLS
- * REDIS_PREFIX=myapp:                   # default: APP_NAME as a slug, plus ":"
+ * REDIS_PREFIX=myapp:                   # else APP_NAME as a slug, plus ":"; with neither the app does not start
  * ```
+ *
+ * See `docs/redis.md#configuration`.
  */
 export const RedisConfig = defineConfig('redis', {
   env: env({
     REDIS_URL: env.url({ protocols: ['redis', 'rediss'], message: 'Expected a redis:// or rediss:// URL' }).default('redis://127.0.0.1:6379'),
     REDIS_PREFIX: env.string().optional(),
-    APP_NAME: env.string().default('marmeon'),
-  }),
-  resolve: (e): { default: RedisConnectionOptions } => ({ default: { url: e.REDIS_URL, prefix: e.REDIS_PREFIX ?? prefixOf(e.APP_NAME) } }),
+    APP_NAME: env.string().optional(),
+  }).check(
+    (e) => prefixFrom(e) !== undefined,
+    'set REDIS_PREFIX, or APP_NAME (with a letter or digit) — apps on one Redis share their keys otherwise (docs/redis.md#configuration)',
+    'REDIS_PREFIX',
+  ),
+  resolve: (e): { default: RedisConnectionOptions } => ({ default: { url: e.REDIS_URL, prefix: prefixFrom(e)! } }),
 });
 export type RedisConfig = ConfigOf<typeof RedisConfig>;
 

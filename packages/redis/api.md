@@ -110,7 +110,7 @@ interface ClientModule {
 
 ```ts
 // APP_NAME
-`APP_NAME` = `"marmeon"`
+`APP_NAME` — optional
 // REDIS_PREFIX
 `REDIS_PREFIX` — optional
 // REDIS_URL

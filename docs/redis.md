@@ -34,11 +34,24 @@ The [cache](cache.md#drivers), [session](session.md#drivers), [queues](queues.md
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | The server: `redis://[[user]:password@]host[:port][/db]`, or `rediss://` for TLS. |
-| `REDIS_PREFIX` | the app's name as a slug, and `:` | Put in front of every key and channel, so two apps on one Redis never share a key. `My App` becomes `my-app:`. |
+| `REDIS_PREFIX` | `APP_NAME` as a slug, and `:` | Put in front of every key and channel, so two apps on one Redis never share a key. `My App` becomes `my-app:`. |
 
-`REDIS_URL` must start with `redis://` or `rediss://`, or the app does not start. The prefix comes from `APP_NAME`, and
-`marmeon:` when the name is not set. Leave `REDIS_PREFIX` out for that default; an empty `REDIS_PREFIX=` counts as not set too.
-A prefix you set is used as you write it, so end it with the colon yourself: `REDIS_PREFIX=notes-app:`.
+`REDIS_URL` must start with `redis://` or `rediss://`, or the app does not start. The prefix comes from `REDIS_PREFIX`, or from
+`APP_NAME` when `REDIS_PREFIX` is not set; an empty `REDIS_PREFIX=` counts as not set. A prefix you set is used as you write it,
+so end it with the colon yourself: `REDIS_PREFIX=notes-app:`. Names that differ only in case or punctuation give the same
+prefix, as do staging and production with one `APP_NAME`; give each its own `REDIS_PREFIX` when they share a Redis.
+
+There is no default prefix. Two apps on one Redis (or staging and production) with the same prefix would share their sessions,
+cache, rate limits, locks and queues, so an app with neither variable, or with an `APP_NAME` that has no letter or digit, does not
+start:
+
+```text
+[marmeon:K6] Invalid configuration — the application cannot start:
+  • redis: REDIS_PREFIX — set REDIS_PREFIX, or APP_NAME (with a letter or digit) — apps on one Redis share their keys otherwise (docs/redis.md#configuration)
+```
+
+The check runs at the start of every app that has `@marmeon/redis` installed, whichever drivers it uses. Apps made by
+`create-marmeon` set `APP_NAME` already. An app whose keys already live under `marmeon:` sets `REDIS_PREFIX=marmeon:`.
 
 Redis holds sessions, queued jobs and locks. Keep it off the public network, give it a password in the URL, and use `rediss://`
 whenever the connection leaves a private network.

@@ -41,7 +41,7 @@ describe('envNames', () => {
     expect(envNames(dir)).toEqual({
       current: [
         { name: 'ONE_ON', packages: ['one'], default: 'optional', boolean: true },
-        { name: 'ONE_PORT', packages: ['one', 'three'], default: '`1` / `2`', boolean: false },
+        { name: 'ONE_PORT', packages: ['one', 'three'], default: '`1` / `2`', boolean: false, disagreeing: true },
         { name: 'TWO_URL', packages: ['two'], default: 'required', boolean: false },
       ],
       retired: [{ name: 'ONE_OLD', to: 'ONE_PORT', package: 'one' }],
@@ -55,6 +55,29 @@ describe('envNames and two definitions', () => {
     mkdirSync(join(dir, 'packages/one'), { recursive: true });
     writeFileSync(join(dir, 'packages/one/api.md'), '## Environment\n\n```ts\n// ONE_URL\n`ONE_URL` — optional (a); = `"x"` (b)\n```\n');
     expect(envNames(dir).current).toEqual([{ name: 'ONE_URL', packages: ['one'], default: 'optional', boolean: false, divergent: true }]);
+  });
+});
+
+describe('envNames and one name in two packages', () => {
+  it('names a variable that one package gives a default and another leaves optional — one name, one default', () => {
+    const dir = tempDir('marmeon-env-names-');
+    for (const [name, line] of [['one', '`AUTH_NAME` = `"a"`'], ['two', '`AUTH_NAME` — optional']] as const) {
+      mkdirSync(join(dir, 'packages', name), { recursive: true });
+      writeFileSync(join(dir, 'packages', name, 'api.md'), `## Environment\n\n\`\`\`ts\n// AUTH_NAME\n${line}\n\`\`\`\n`);
+    }
+    const names = envNames(dir);
+    expect(names.current).toEqual([{ name: 'AUTH_NAME', packages: ['one', 'two'], default: '`"a"` / optional', boolean: false, disagreeing: true }]);
+    const row = { name: 'AUTH_NAME', packages: 'one, two', kind: 'value', default: '`"a"` / optional', page: '[Demo](demo.md#configuration)' };
+    expect(envNameProblems(names, [row])).toEqual([expect.stringMatching(/^AUTH_NAME \(one, two\): the configs that read it disagree on its default/)]);
+  });
+
+  it('takes the same default in two packages', () => {
+    const dir = tempDir('marmeon-env-names-');
+    for (const name of ['one', 'two']) {
+      mkdirSync(join(dir, 'packages', name), { recursive: true });
+      writeFileSync(join(dir, 'packages', name, 'api.md'), '## Environment\n\n```ts\n// AUTH_NAME\n`AUTH_NAME` — optional\n```\n');
+    }
+    expect(envNames(dir).current).toEqual([{ name: 'AUTH_NAME', packages: ['one', 'two'], default: 'optional', boolean: false }]);
   });
 });
 
