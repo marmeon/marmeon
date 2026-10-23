@@ -1329,7 +1329,7 @@ stay in the browser after a sign-out: set your own header only on answers that h
 
 | Event | When | Fields |
 | --- | --- | --- |
-| `SignedIn` | `attempt()`, `signIn()`, a sign-in by the remember-me cookie | `user`, `remember`, `at`, `via` (`attempt`, `app`, `remember` or `passkey`), `ip`, `userAgent` |
+| `SignedIn` | `attempt()` (after the second factor if the account has one), `signIn()`, a sign-in by the remember-me cookie or with a passkey alone | `user`, `remember`, `at`, `via` (`attempt`, `app`, `remember` or `passkey`), `ip`, `userAgent` |
 | `SignedOut` | `signOut()` | `user` |
 | `SignInFailed` | `attempt()` with an unknown identifier or a wrong password | `identifier`, and `user` when the identifier is known |
 | `SignInLockedOut` | `attempt()` turns an attempt away (`scope: 'client'`), or an account takes no more password sign-ins for the day (`scope: 'account'`, once per window) | `identifier`, `ip`, `scope` |
@@ -1340,6 +1340,7 @@ stay in the browser after a sign-out: set your own header only on answers that h
 | `EverySessionEnded` | `AccountSessions.endEveryone()`, `auth:end-all-sessions` | `at`, `accounts`, `resetTokens`, `accessTokens`, `signIns` (the counts), see [ending every session of every account](#ending-every-session-of-every-account) |
 | `RememberTokenReused` | A [remember-me cookie](#remember-me) that a rotation had replaced came back, however many rotations ago, or a known cookie came with a validator that was never issued: it was copied | `user`, `at`, `ip`, `userAgent`, `sessionsEnded` |
 | `TwoFactorEnabled`, `TwoFactorDisabled`, `RecoveryCodesGenerated`, `RecoveryCodeUsed`, `TwoFactorChallengeFailed` | The second factor of an account changes or is used | See [two-factor authentication](two-factor-authentication.md#events) |
+| `PasskeyRegistered`, `PasskeyRemoved`, `PasskeyCloneSuspected`, `PasskeySignInFailed` | A passkey is added or removed, is suspected of being copied, or fails a passwordless sign-in | See [passkeys](passkeys.md#events) |
 
 `SignInFailed` carries what was typed as the identifier, never the password. Use it for an audit log, and never show it to the client:
 it tells whether the address has an account. The `ip` and `userAgent` of `SignedIn` are the request's, the address resolved through
@@ -1370,7 +1371,7 @@ export class RecordLastLogin {
 }
 ```
 
-The module registers it with `listeners: [listen(SignedIn, RecordLastLogin)]`. `SignedIn` and `Registered` can also be queued. A queued
+The module registers it with `listeners: [listen(SignedIn, RecordLastLogin)]`. `SignedIn` can also be queued, like 12 more of the events above (the [events](events.md#the-frameworks-events) page marks them). A queued
 listener of `SignedIn` gets `{ userId, remember, via, at, ip, userAgent }`, with `at` as an ISO 8601 string, and one of `Registered`
 gets `{ userId }`. It reads the account as it is when it runs. The [events](events.md#queued-listeners) page explains queued
 listeners.
