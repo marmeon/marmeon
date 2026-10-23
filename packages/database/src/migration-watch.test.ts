@@ -17,7 +17,6 @@ const USERS = '2026_01_01_000000_create_users_table.ts';
 const ACCOUNTS = '2026_01_05_000000_create_accounts_table.ts';
 /** Latency of the operating system's file events: the wait ends as soon as the event is handled. */
 const EVENT = { timeout: 10_000, interval: 25 };
-const TEST = { timeout: 15_000 };
 const database = new URL('./index.ts', import.meta.url).href;
 
 /** A fixture migration copied into the app's directory, importing the package's source (a temporary directory has no node_modules). */
@@ -87,7 +86,7 @@ describe.each(drivers)('the migration watcher of the development server, on %s',
     await drop();
   });
 
-  it('refuses queries when a migration file appears and answers again once migrate ran in another process, with no restart', TEST, async () => {
+  it('refuses queries when a migration file appears and answers again once migrate ran in another process, with no restart', { timeout: 15_000 }, async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const { app, connections } = processOf();
     const watcher = watchMigrations(app);
@@ -107,7 +106,7 @@ describe.each(drivers)('the migration watcher of the development server, on %s',
     }
   });
 
-  it('reads a migration file again when it is changed: the new plan is in memory and in .marmeon/schema.json, not the old one', TEST, async () => {
+  it('reads a migration file again when it is changed: the new plan is in memory and in .marmeon/schema.json, not the old one', { timeout: 15_000 }, async () => {
     const { app, connections } = processOf();
     const watcher = watchMigrations(app);
     try {
@@ -128,7 +127,7 @@ describe.each(drivers)('the migration watcher of the development server, on %s',
     }
   });
 
-  it('knows a table the moment its migration file is removed and the database keeps it: the app runs on without it', TEST, async () => {
+  it('knows a table the moment its migration file is removed and the database keeps it: the app runs on without it', { timeout: 15_000 }, async () => {
     addAccounts();
     await migrate();
     const { app, connections } = processOf();
@@ -160,7 +159,7 @@ describe.each(drivers)('the migration watcher of the development server, on %s',
     };
   };
 
-  it('watches nothing outside development, and nothing once closed', TEST, async () => {
+  it('watches nothing outside development, and nothing once closed', { timeout: 15_000 }, async () => {
     const { app, connections } = processOf();
     await expect(select(connections)).resolves.toEqual([]);
     const first = await control();
