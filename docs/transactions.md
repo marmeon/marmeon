@@ -60,7 +60,10 @@ note, the revision, whatever the listeners wrote, and the queued job.
 | `connections.inTransaction(name?)` | Whether it runs inside a transaction of that connection. |
 
 Postgres applies an isolation level. SQLite has one writer at a time and ignores it. A transaction exists exactly as long as its
-callback runs. There is no transaction per request, and none that you begin without a callback joins by itself: those are
+callback runs. "Check, then insert" is not safe on Postgres at the default isolation level: two transactions can both pass the
+check. A rule such as "no two bookings overlap" belongs in a constraint, as the [bookings recipe](recipe-bookings.md) shows, with
+a row lock or `isolationLevel: 'serializable'` as the other ways; the latter makes Postgres abort one transaction, and running it
+again is up to you. There is no transaction per request, and none that you begin without a callback joins by itself: those are
 [transactions you control yourself](#transactions-you-control-yourself).
 
 ## What joins a transaction
