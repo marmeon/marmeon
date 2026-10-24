@@ -57,7 +57,14 @@ export default defineModule({
 });
 ```
 
-Migrations run in the order of their file names across all modules, character by character, so the timestamp decides. The starter kit's migrations start
+Migrations run in the order of their file names across all modules, character by character, so the timestamp decides. The
+"after the module's latest migration" above holds within one module only: `make:migration` looks at the folder it writes
+to. A foreign key from one module's table to another's (`bookings.room_id` to `rooms`) therefore needs the referenced table
+to be created first, in time. Generate the migration of the referenced module first (`make:migration create_rooms_table --module=rooms`,
+then `make:migration create_bookings_table --module=bookings`), or rename the file of the later one so that its timestamp is the
+larger, and check that its timestamp is the smaller one for the referenced table: two commands in the same second get the same
+timestamp. On Postgres a file that runs too early stops with the database's error for a missing table. SQLite accepts the
+reference and only checks it when rows are written, so check the order with `migrate:status` before you deploy. Rename a file only before it has run. The starter kit's migrations start
 with `0001_01_01_` and come before any you write. A `.ts` or `.js` file in the folder whose name does not fit the pattern stops
 every migration command with the name it expects, and so do two migrations with the same name and a module whose `migrations`
 folder does not exist.

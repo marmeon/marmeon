@@ -205,7 +205,7 @@ return this.back().with('email', ctx.body.email);
 ```
 
 `with(key, value)`, or `with({ … })` for several, keeps the values in the session for the next request, where the injected
-`Session` reads them with `get()`. `withErrors(errors)` and `withInput(input)` flash a form's errors and its input. A field whose
+`Session` reads them with `get()`. `withErrors(errors)` and `withInput(input)` flash a form's errors and its input. `errors` is a `Record<string, readonly string[]>`, the field's name (`'email'`, or `'address.city'` for a nested one) with its messages: `withErrors({ email: ['Already taken.'] })`. A field whose
 name contains "password", "passcode", "secret", "token", "credential", "signature", "jwt", "recovery", "card", "cvc", "cvv" or
 "iban", is an API key, private key or session id, or is a one-time code (`otp`, `totp_secret`, `code`, `sms_code`, `backup_codes`;
 not `footprint`, `zip_code`, `language_code` or `promoCode`), the `_token` and every file are left out of the input. The framework does both for you when validation

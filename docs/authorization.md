@@ -216,6 +216,39 @@ would hand out every note to whoever guesses an id. The route fails to start unl
 `marmeon route:list` shows each route that binds a record as public, as `everyone (public: user)` in the `ACCESS` column and
 as `publicBindings` in `--json` — review that list, not each file.
 
+### Records nobody owns
+
+`make:policy` and `make:resource` start from a record with an owner. A record for everybody, such as the rooms of a
+booking app that every visitor may look at, has no `user_id`, so the generated policy has nothing to compare. Open the reads
+with `everyone` and `{ public: true }`, and keep a real check on everything that changes data:
+
+```ts title="modules/rooms/routes.ts"
+import { authenticate, can } from '@marmeon/auth';
+import { defineRoutes, everyone } from '@marmeon/http';
+import { ListRoomsController } from './controllers/ListRoomsController.ts';
+import { ShowRoomController } from './controllers/ShowRoomController.ts';
+import { UpdateRoomController } from './controllers/UpdateRoomController.ts';
+import { RoomPolicy } from './policies/RoomPolicy.ts';
+import { RoomRepository } from './RoomRepository.ts';
+
+export default defineRoutes((Route) => {
+  const rooms = Route.prefix('/rooms').name('rooms.');
+
+  // Anyone may read, also a visitor who is not signed in; `.middleware(authenticate())` before `authorize(everyone)` would limit it to signed-in users.
+  // The list asks for no record, and the binding says its records are public.
+  const open = rooms.authorize(everyone);
+  open.get('/', ListRoomsController).name('index');
+  open.bind('room', RoomRepository, { public: true }).get('/:room', ShowRoomController).name('show');
+
+  // Only a signed-in user whom RoomPolicy lets in may change a room.
+  rooms.middleware(authenticate()).bind('room', RoomRepository).authorize(can(RoomPolicy, 'update', 'room')).put('/:room', UpdateRoomController).name('update');
+});
+```
+
+`RoomPolicy` decides without an owner: write the ability to compare the user with whatever makes someone allowed to manage
+rooms in your app, and leave it closed until you do. `public` excuses reads only ([a binding everyone may use](routing.md#a-binding-everyone-may-use)), so a route that changes a shared
+record always names a check. `marmeon route:list` shows `rooms.show` as `everyone (public: room)` and the list as `everyone`.
+
 ### The report
 
 The report names every route with where it was registered, so a long list is easy to work through:
