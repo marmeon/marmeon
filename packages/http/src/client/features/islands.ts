@@ -7,7 +7,7 @@ import { LOCATION_HEADER, protocolHeaders, REGION_HEADER, REGION_STATUS_HEADER, 
 import type { FeatureHost } from '../core.ts';
 import { defineFeature } from '../feature.ts';
 import { follow } from '../load-live.ts';
-import { REGIONS, type RegionOwner } from '../owner.ts';
+import { isMintedOwner, REGIONS, type RegionOwner } from '../owner.ts';
 import { atOrigin } from '../request.ts';
 import { ownedRegion, type Region, type RegionInitial, type RegionResponse, type RegionTransport } from '../region.ts';
 
@@ -88,6 +88,7 @@ export const islands = /* @__PURE__ */ defineFeature('islands', (host): IslandsF
   });
   return {
     region(url, { owner = host.navigator.regionOwner, initial } = {}) {
+      if (!isMintedOwner(owner, host.navigator)) throw new TypeError('A region belongs to an owner this navigator made: take it from navigator.regionOwner or the render options.');
       const target = new URL(url, host.window.location.href);
       if (target.origin !== host.window.location.origin) throw new Error(`A region comes from this site, not from ${target.origin} (${url}).`);
       const kept = owner.entry === undefined ? new Map() : host.entry(REGIONS, owner.entry);

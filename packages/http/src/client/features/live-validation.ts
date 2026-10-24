@@ -3,7 +3,7 @@
  * sent through what actions use of the navigator (`actionHost`). It holds nothing of the server's: each form's
  * `LiveValidation` keeps which fields were touched; the adapter keeps the errors.
  *
- * Prop-driven: an adapter loads it on a form's first use (`loadLiveValidation`, `liveValidationOnFirstUse` in
+ * Prop-driven: an adapter loads it on a form's first use (`liveValidationOnFirstUse` in
  * `lazy.ts`) — in a chunk of its own, never in an app's first download.
  */
 import { actionHost } from '../action-host.ts';

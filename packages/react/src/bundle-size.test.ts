@@ -390,6 +390,7 @@ describe('a production bundle says codes, not explanations', () => {
     'must be used inside the app createMarmeonApp() renders',
     'needs the app\'s messages',
     'Hydration mismatch',
+    'is not on screen: what is kept for it is detached',
     'has no heading (h1–h3)',
     'islands cannot change the document head',
     'needs an interval above 0 ms',

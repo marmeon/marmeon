@@ -14,10 +14,16 @@ const SEEN_LIMIT = 200;
 /** How many unheard messages wait for a listener (the oldest go). */
 const WAITING_LIMIT = 20;
 
-/** Listens to flash messages: all of them, or one key's. */
+/**
+ * Listens to flash messages: all of them, or one key's.
+ * @internal
+ */
 export type FlashListener = (message: FlashMessage) => void;
 
-/** The flash messages of one navigator. */
+/**
+ * The flash messages of one navigator.
+ * @internal
+ */
 export class FlashChannel {
   readonly #seen = new Set<string>();
   /** Delivered, not heard by anyone yet. */

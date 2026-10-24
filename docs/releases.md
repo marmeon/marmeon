@@ -201,14 +201,9 @@ Experimental means: it can change or go away in any minor version, without an en
 is still listed in the package's `api.md`, under **Experimental**, so a change shows in the pull request's diff, but the
 `breaking` label is not required for it. Build on it only when you can follow the releases. What is experimental in this release:
 
-- `@marmeon/http/client/adapter`: the interface a UI adapter builds on (the navigator, regions and layers, the feature wiring,
-  loading the first page). It stays experimental until a second adapter exists. What an app uses of the client core (`hooks`, `tabSync`, `xsrfToken`) stays in
-  `@marmeon/http/client`.
 - `@marmeon/table`
 - `@marmeon/react/table`
 - `@marmeon/react/table-tanstack`
-
-`features` of `ResolvePage` in `@marmeon/react` is experimental too, because it names a type of `@marmeon/http/client/adapter`.
 
 ### When a union grows
 

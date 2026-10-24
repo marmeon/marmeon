@@ -175,6 +175,8 @@ export interface DeferredProp<T> extends PageProp<'defer', T> {
 }
 // DeferredResult
 export type DeferredResult = Pick<PageObject, 'props' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn'>;
+// Duration
+export type Duration = number | `${number}${'s' | 'm' | 'h' | 'd'}`;
 // ERRORS_KEY
 export declare const ERRORS_KEY = "errors";
 // EXPECTS_JSON_VARY
@@ -1410,7 +1412,7 @@ declare const featureApi: unique symbol;
 
 Types from other packages: none
 
-### Experimental
+### Stable
 
 ```ts
 // ActionException
@@ -1495,7 +1497,6 @@ export interface ActionsFeature {
 // type-only
 export declare class BackRevalidation {
     #private;
-    constructor(core: BackCore, declare: DeclaredRevalidation | undefined);
     page(key: string, page: PageObject): Promise<void>;
     layer(layer: Layer): Promise<void>;
     readonly region: (component: string) => Promise<ReloadSpec | undefined>;
@@ -1509,26 +1510,10 @@ export interface BeforeVisit {
     cancel(): void;
     readonly cancelled: boolean;
 }
-// CachedEntry
-export interface CachedEntry {
-    readonly page: PageObject;
-}
-// CachedLevel
-export interface CachedLevel {
-    readonly key: string;
-    readonly depth: number;
-    readonly page: PageObject;
-}
-// CachedStack
-export interface CachedStack extends EntryStack {
-    readonly layers: readonly CachedLevel[];
-}
 // ClientHooks
 export interface ClientHooks {
     on<E extends 'before' | 'invalid'>(event: E, listener: HookEvents[E]): () => void;
 }
-// Commit
-export type Commit = (state: HistoryState, url: string, how: 'push' | 'replace') => void;
 // Confirm
 export type Confirm = string | ConfirmOptions;
 // ConfirmAnswer
@@ -1549,30 +1534,10 @@ export interface ConfirmRequest extends ConfirmOptions {
     readonly kind: 'confirm' | 'leave';
     readonly reason?: 'session';
 }
-// DeclaredOnBack
-export type DeclaredOnBack = (component: string) => Promise<ReloadSpec | undefined>;
 // DeclaredRevalidation
 export type DeclaredRevalidation = (component: string) => RevalidateOnBack | undefined | Promise<RevalidateOnBack | undefined>;
-// DocumentChange
-// type-only
-export declare class DocumentChange {
-    #private;
-    constructor(core: DocumentChangeCore);
-    get newVersion(): string | undefined;
-    subscribe(listener: () => void): () => void;
-    reloadNow(): void;
-    change(response: Response, how: DocumentChangeHow, consented?: true | readonly NavigationGuard[]): Promise<boolean>;
-}
-// DocumentChangeHow
-export type DocumentChangeHow = 'assign' | 'replace' | 'reload';
-// DrawOptions
-export type DrawOptions = Pick<RenderOptions, 'preserveState'> & Partial<RenderOptions>;
 // ERROR_PAGE
 export declare const ERROR_PAGE = "errors/Error";
-// EntryStack
-export interface EntryStack {
-    readonly page: string;
-}
 // EpochChange
 export interface EpochChange {
     readonly previous: string | undefined;
@@ -1599,130 +1564,19 @@ export declare const FORM_TOKEN_FIELD = "_token";
 // Feature
 export interface Feature<API = unknown> extends FeatureHandle<API> {
     readonly name: string;
-    setup(host: FeatureHost): API;
     readonly order?: number;
 }
-// FeatureEvent
-export type FeatureEvent = 'write' | 'send' | 'unload' | 'started' | 'stopped' | 'stale' | 'draw' | 'page' | 'arrive' | 'popped' | 'deferred' | 'restored';
 // FeatureHandle
 export interface FeatureHandle<API> {
     readonly name: string;
     readonly [featureApi]?: API;
 }
-// FeatureHook
-export type FeatureHook = keyof FeatureHooks;
-// FeatureHooks
-export interface FeatureHooks {
-    visit(visit: PendingVisit): boolean | Promise<boolean> | void;
-    start(visit: PendingVisit): VisitPart | void;
-    response(response: Response, visit: PendingVisit, event: Visit): Promise<PageObject | undefined> | void;
-    place(from: LayerControl | undefined, page: PageObject, options: PlaceOptions): Promise<PageObject | undefined> | void;
-    paint(key: string, page: PageObject): PageObject;
-    unsaved(leaving: (level: number) => boolean, ignore: readonly NavigationGuard[]): readonly NavigationGuard[];
-    extras(): Partial<RenderOptions>;
-    top(): string | void;
-    state(key: string, position: Scroll): HistoryState | void;
-    position(): Scroll | void;
-    pinned(): readonly string[];
-    adopt(key: string, position: Scroll): string | void;
-    own(): boolean | void;
-    navigate(event: NavigateEvent, state: HistoryState, own: boolean): boolean | void;
-    popState(state: HistoryState, own: boolean): boolean | void;
-    stack(key: string): EntryStack | false | void;
-    swap(run: () => Promise<void>, how: 'push' | 'replace' | 'traverse', keep: boolean): Promise<void> | void;
-    rearrange(stack: EntryStack, own: boolean): Promise<void> | void;
-    restore(state: HistoryState): Promise<void> | void;
-    declared(component: string): Promise<ReloadSpec | undefined> | void;
-    pending(name: string): true | void;
-    write(): void;
-    send(headers: Record<string, string>): void;
-    carry(from: RegionOwner, to: RegionOwner): void;
-    unload(): void;
-    started(): void;
-    stopped(): void;
-    stale(stale: boolean): void;
-    draw(): void;
-    page(): void;
-    arrive(stack: EntryStack): void;
-    popped(): void;
-    deferred(): void;
-    restored(page: PageObject, key: string, layer?: Layer): void;
-}
-// FeatureHost
-export interface FeatureHost {
-    readonly navigator: Navigator;
-    readonly window: NavigatorWindow;
-    readonly options: NavigatorOptions;
-    readonly initial: PageObject | undefined;
-    readonly cache: PageCache;
-    readonly scroll: ScrollMemory;
-    readonly history: HistoryWriter;
-    readonly once: OnceStore;
-    readonly flash: FlashChannel;
-    readonly inbox: FlashMessage[];
-    readonly version: string | null;
-    readonly page: PageObject;
-    readonly key: string | undefined;
-    readonly owner: RegionOwner;
-    readonly layers: readonly Layer[];
-    readonly left: boolean;
-    readonly started: boolean;
-    transitioning: boolean;
-    on<K extends FeatureHook>(name: K, hook: FeatureHooks[K]): () => void;
-    fire<K extends FeatureEvent>(name: K, ...args: Parameters<FeatureHooks[K]>): void;
-    entry<T>(slot: Slot<T>, key?: string): T;
-    peek<T>(slot: Slot<T>, key: string): T | undefined;
-    forget<T>(key: string, slot?: Slot<T>): void;
-    document<T>(slot: Slot<T>): T;
-    top(): string;
-    ownerOf(key: string, back?: boolean): RegionOwner;
-    declared(component: string): Promise<ReloadSpec | undefined>;
-    blocking(leaving: (level: number) => boolean, ignore?: readonly NavigationGuard[]): NavigationGuard[];
-    mayLeave(leaving: (level: number) => boolean, ignore?: true | readonly NavigationGuard[]): Promise<boolean>;
-    ask(request: ConfirmRequest): Promise<boolean>;
-    render(page: PageObject, options: RenderOptions): Promise<void>;
-    draw(page: PageObject, options: DrawOptions): Promise<void>;
-    paint(key: string, page: PageObject): PageObject;
-    setPage(page: PageObject): void;
-    leave(): void;
-    emit: VisitEmitter['emit'];
-    request(visit: Visit, callbacks: VisitCallbacks, task: (signal: AbortSignal, onProgress: (progress: VisitProgress) => void) => Promise<PageObject | undefined>): Promise<PageObject | undefined>;
-    send(url: string, init: SendInit, onProgress?: (progress: VisitProgress) => void): Promise<Response>;
-    read(response: Response, options: ReadOptions, visit: Visit, callbacks: VisitCallbacks): Promise<PageObject | undefined>;
-    fetchPage(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<PageObject | undefined>;
-    foreign(response: Response): boolean;
-    flushFlash(): void;
-    pendingChanged(): void;
-    visit(from: LayerControl | undefined, url: string, options: VisitOptions): Promise<PageObject | undefined>;
-    show(page: PageObject, history: 'push' | 'replace', options: {
-        preserveScroll: boolean;
-        preserveState: boolean;
-        hash: string;
-    }): Promise<PageObject | undefined>;
-    restorePage(page: PageObject, key: string, position: Scroll): Promise<void>;
-    traverse(state: HistoryState, own: boolean): Promise<void>;
-    own(): boolean;
-    readonly props: PropLoader;
-    readonly documentChange: DocumentChange;
-}
-// FlashChannel
-// type-only
-export declare class FlashChannel {
-    #private;
-    listen(listener: FlashListener, key?: FlashKey): () => void;
-    deliver(messages: readonly FlashMessage[]): void;
-    clear(): void;
-}
-// FlashListener
-export type FlashListener = (message: FlashMessage) => void;
 // FormLiveValidation
 export type FormLiveValidation = Pick<LiveValidation, 'changed' | 'blurred' | 'validate' | 'cancel' | 'reset' | 'pending' | 'subscribe'>;
 // Guards
 // type-only
 export declare class Guards {
     #private;
-    constructor(core: GuardCore);
-    check({ options: { ignoreGuards }, keeps, leaving }: PendingVisit): boolean | Promise<boolean>;
     add(guard: NavigationGuard): () => void;
     start(): void;
     stop(): void;
@@ -1767,8 +1621,6 @@ export interface InstantVisit {
 // type-only
 export declare class InstantVisits {
     #private;
-    constructor(core: InstantCore);
-    start({ options, method, keeps, layer, takes, ready, url }: PendingVisit): VisitPart | undefined;
     get leaving(): Scroll | undefined;
     show(instant: InstantVisit, url: string): InstantShown;
     end(shown: InstantShown): void;
@@ -1820,51 +1672,10 @@ export declare class Layer {
 export interface LayerCloseOptions {
     reload?: LayerClose['reload'];
 }
-// LayerControl
-export interface LayerControl {
-    readonly layer: Layer;
-    update(page: PageObject, drop?: ReadonlySet<number>): void;
-    dismiss(): void;
-}
-// LayerHost
-export interface LayerHost {
-    layerVisit(layer: Layer, url: string, options: VisitOptions): Promise<PageObject | undefined>;
-    layerReload(layer: Layer, options: Omit<VisitOptions, 'method'>): Promise<PageObject | undefined>;
-    closeLayer(layer: Layer, close: LayerClose): Promise<void>;
-    reloadLayer(layer: Layer, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean>;
-    layerChanged(layer: Layer): void;
-}
 // LayerStack
-export declare class LayerStack implements LayerHost {
+export declare class LayerStack {
     #private;
-    constructor(core: FeatureHost);
-    get controls(): LayerControl[];
     get list(): Layer[];
-    get closing(): boolean;
-    find(layer: Layer): LayerControl | undefined;
-    top(): string;
-    adopt(key: string, position: Scroll): string | undefined;
-    place(from: LayerControl | undefined, page: PageObject, options: PlaceOptions): Promise<PageObject | undefined> | undefined;
-    closed(from: LayerControl | undefined, response: Response, visit: Visit, callbacks: VisitCallbacks): Promise<PageObject | undefined>;
-    layerVisit(layer: Layer, url: string, options: VisitOptions): Promise<PageObject | undefined>;
-    layerReload(layer: Layer, options: Omit<VisitOptions, 'method'>): Promise<PageObject | undefined>;
-    closeLayer(layer: Layer, close: LayerClose): Promise<void>;
-    reloadLayer(layer: Layer, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean>;
-    layerChanged(layer: Layer): void;
-    stateOf(key: string, position: Scroll): HistoryState | undefined;
-    dismissFrom(index: number): Layer[];
-    set(levels: readonly CachedLevel[]): Layer[];
-    render(): Promise<void>;
-    cached(key: string): CachedStack | false;
-    loadAllDeferred(): void;
-    loadDeferred(control: LayerControl): void;
-    revalidate(control: LayerControl, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean>;
-    restore(state: HistoryState): Promise<void>;
-    takeClose(): void;
-    popped(): void;
-    rearrange(stack: CachedStack, own: boolean): Promise<void>;
-    arrive(stack: CachedStack): void;
-    reloadTop(reload: NonNullable<LayerClose['reload']>): Promise<void>;
 }
 // LinkClick
 export interface LinkClick {
@@ -1958,9 +1769,6 @@ export type LiveValidationTrigger = 'blur' | 'change';
 export type LooksLikePassword<K extends string> = Lowercase<K> extends `${string}${Split<typeof PASSWORD_TERMS>}${string}` | 'pass' ? true : false;
 // LooksSensitive
 export type LooksSensitive<K extends string> = Lowercase<K> extends SensitivePattern ? true : K extends `${string}${'Otp' | 'Totp'}${string}` ? true : false;
-// NEVER_REMEMBERED_FIELD
-// @deprecated
-export declare const NEVER_REMEMBERED_FIELD: RegExp;
 // NativeDialogs
 export interface NativeDialogs {
     confirm?(message?: string): boolean;
@@ -2088,17 +1896,6 @@ export interface NavigatorWindow {
     readonly performance?: Pick<Performance, 'getEntriesByType'>;
     readonly XMLHttpRequest?: new () => XMLHttpRequest;
 }
-// OnceStore
-// type-only
-export declare class OnceStore {
-    #private;
-    constructor(now?: () => number);
-    get size(): number;
-    keys(): string[];
-    headers(): Record<string, string>;
-    receive(page: PageObject): PageObject;
-    clear(): void;
-}
 // OptimisticUpdate
 export interface OptimisticUpdate {
     readonly target: PatchTarget;
@@ -2106,8 +1903,6 @@ export interface OptimisticUpdate {
 }
 // PROGRESS_ATTRIBUTE
 export declare const PROGRESS_ATTRIBUTE = "data-marmeon-progress";
-// PageCache
-export type PageCache = LruMap<string, CachedEntry>;
 // PageMessages
 export interface PageMessages<C = unknown> {
     readonly fallback: string;
@@ -2119,7 +1914,6 @@ export interface PageMessages<C = unknown> {
 // type-only
 export declare class PagePatches {
     #private;
-    constructor(core: PatchesCore);
     paint(key: string, page: PageObject): PageObject;
     drop(key: string, ids: ReadonlySet<number>): void;
     get page(): PatchTarget;
@@ -2132,30 +1926,6 @@ export interface PatchTarget {
         readonly quiet?: boolean;
     }): void;
     revalidate(spec: ReloadSpec, ids: readonly number[]): Promise<void>;
-}
-// PendingVisit
-export interface PendingVisit {
-    readonly options: VisitOptions;
-    readonly method: VisitMethod;
-    readonly target: URL;
-    readonly from: LayerControl | undefined;
-    readonly layer: boolean;
-    readonly keeps: boolean;
-    leaving(at: number): boolean;
-    url: string;
-    partial: boolean;
-    takes: boolean;
-    ready?: boolean;
-}
-// PlaceOptions
-export interface PlaceOptions {
-    readonly method: VisitMethod;
-    readonly replace: boolean;
-    readonly preserveScroll: boolean;
-    readonly preserveState: boolean;
-    readonly preserveUrl: boolean;
-    readonly partial: boolean;
-    readonly hash: string;
 }
 // Poll
 export interface Poll {
@@ -2174,8 +1944,6 @@ export interface PollOptions {
     keepAlive?: boolean;
     document?: PollDocument;
 }
-// PositionCheck
-export type PositionCheck = (value: unknown) => boolean;
 // PrefetchOptions
 export interface PrefetchOptions {
     cacheFor?: number;
@@ -2190,7 +1958,6 @@ export type PrefetchTrigger = 'hover' | 'mount';
 // type-only
 export declare class Prefetches {
     #private;
-    constructor(core: PrefetchCore);
     get size(): number;
     prefetch(url: string, options?: PrefetchOptions): Promise<void>;
     ready(url: string, layer: boolean): boolean;
@@ -2245,17 +2012,10 @@ export type QueryUpdate<Q> = {
 } | ((current: Q) => {
     readonly [K in keyof Q]?: Q[K] | undefined;
 });
-// ReadOptions
-export interface ReadOptions {
-    readonly replace: boolean;
-    readonly failed: boolean;
-    readonly consented?: true | readonly NavigationGuard[] | undefined;
-}
 // Region
 export declare class Region {
     #private;
     readonly id: string;
-    constructor(owner: RegionOwner, regions: Map<string, KeptRegion>, transport: RegionTransport, id: string, url: string, kept?: RegionInitial, onBack?: DeclaredOnBack);
     get snapshot(): RegionSnapshot;
     get url(): string;
     get query(): Record<string, unknown>;
@@ -2281,8 +2041,7 @@ export declare class RegionOwner {
     #private;
     readonly entry: string | undefined;
     readonly back: boolean;
-    readonly live: Map<string, LiveRegion>;
-    constructor(entry?: string, back?: boolean);
+    readonly live: ReadonlyMap<string, LiveRegion>;
     get signal(): AbortSignal;
     get closed(): boolean;
     close(): void;
@@ -2294,19 +2053,6 @@ export interface RegionReloadOptions {
     except?: readonly string[];
     reset?: readonly string[];
 }
-// RegionResponse
-export type RegionResponse = {
-    readonly kind: 'region';
-    readonly region: RegionObject;
-} | {
-    readonly kind: 'unauthorized' | 'forbidden';
-} | {
-    readonly kind: 'exception';
-    readonly failure: RegionFailure;
-}
- | {
-    readonly kind: 'cancelled';
-};
 // RegionSnapshot
 export interface RegionSnapshot {
     readonly status: RegionStatus;
@@ -2316,10 +2062,6 @@ export interface RegionSnapshot {
 }
 // RegionStatus
 export type RegionStatus = 'loading' | 'ready' | 'unauthorized' | 'forbidden' | 'exception';
-// RegionTransport
-export interface RegionTransport {
-    request(url: string, headers: Readonly<Record<string, string>>, signal: AbortSignal): Promise<RegionResponse>;
-}
 // ReloadSpec
 export interface ReloadSpec {
     readonly only?: readonly string[];
@@ -2354,13 +2096,8 @@ export interface RenderOptions {
     readonly placeholder?: boolean;
     readonly transition?: readonly string[];
 }
-// ResetProps
-export type ResetProps = readonly string[] | true;
 // RevalidateOnBack
 export type RevalidateOnBack = boolean | readonly string[];
-// SENSITIVE_REMEMBER_FIELD
-// @deprecated
-export declare const SENSITIVE_REMEMBER_FIELD: RegExp;
 // Scroll
 export interface Scroll {
     scroll: ScrollPosition;
@@ -2396,20 +2133,6 @@ export interface SelectionFeature {
 }
 // SelectionKey
 export type SelectionKey = string | number;
-// SendInit
-export interface SendInit {
-    readonly method: VisitMethod;
-    readonly headers: Record<string, string>;
-    readonly body?: BodyInit;
-    readonly signal: AbortSignal;
-}
-// Slot
-export interface Slot<T> {
-    readonly name: string;
-    create(): T;
-    clear?(value: T): void;
-    along?(value: T): Iterable<string> | undefined;
-}
 // Submission
 export interface Submission {
     readonly id: number;
@@ -2475,10 +2198,6 @@ export interface ViewTransitionLike {
 export type ViewTransitionOption = boolean | {
     readonly types?: readonly string[];
 };
-// ViewTransitions
-export interface ViewTransitions {
-    readonly running: ViewTransitionLike | undefined;
-}
 // Visit
 export interface Visit {
     readonly url: string;
@@ -2495,13 +2214,6 @@ export interface VisitCallbacks {
     onException?: VisitEvents['exception'];
     onCancel?: VisitEvents['cancel'];
     onFinish?: VisitEvents['finish'];
-}
-// VisitEmitter
-// type-only
-export declare class VisitEmitter {
-    #private;
-    on<E extends EmittedEvent>(event: E, listener: VisitEvents[E]): () => void;
-    emit<E extends EmittedEvent>(event: E, callback: VisitEvents[E] | undefined, ...args: Parameters<VisitEvents[E]>): void;
 }
 // VisitEvent
 export type VisitEvent = keyof VisitEvents;
@@ -2552,14 +2264,6 @@ export interface VisitOptions extends VisitCallbacks {
     instant?: InstantVisit;
     viewTransition?: ViewTransitionOption;
 }
-// VisitPart
-export interface VisitPart {
-    readonly page?: Promise<PageObject | undefined> | undefined;
-    readonly headers?: Readonly<Record<string, string>>;
-    sending?(signal: AbortSignal): void;
-    landed?(): void;
-    end?(): void;
-}
 // VisitProgress
 export interface VisitProgress {
     readonly loaded: number;
@@ -2580,8 +2284,6 @@ export declare function defaultFormEntries(form: {
 }): [string, string][];
 // defaultTitle
 export declare const defaultTitle: TitleTemplate;
-// defineFeature
-export declare function defineFeature<API>(name: string, setup: (host: FeatureHost) => API, order?: number): Feature<API>;
 // dirtyPaths
 export declare function dirtyPaths(initial: unknown, current: unknown, prefix?: string): string[];
 // fieldPath
@@ -2633,28 +2335,20 @@ export declare const loadInstant: () => Promise<Feature<InstantVisits>>;
 export declare const loadLayers: () => Promise<Feature<LayerStack>>;
 // loadLive
 export declare const loadLive: () => Promise<Feature<LiveFeature>>;
-// loadLiveValidation
-export declare const loadLiveValidation: () => Promise<Feature<LiveValidationFeature>>;
 // loadOptimistic
 export declare const loadOptimistic: () => Promise<Feature<PagePatches>>;
 // loadPageMessages
 export declare function loadPageMessages<C>(page: PageObject, messages: PageMessages<C> | undefined): Promise<C | undefined>;
-// loadPrefetch
-export declare const loadPrefetch: () => Promise<Feature<Prefetches>>;
 // loadSensitiveFields
 export declare function loadSensitiveFields(): Promise<void>;
 // loadTabSync
 export declare const loadTabSync: () => Promise<Feature<TabSync>>;
 // loadUploads
 export declare const loadUploads: () => Promise<Feature<UploadsFeature>>;
-// loadViewTransitions
-export declare const loadViewTransitions: () => Promise<Feature<ViewTransitions>>;
 // markBusy
 export declare function markBusy(navigator: Pick<Navigator, 'on'>, element?: Pick<Element, 'setAttribute' | 'removeAttribute'>): () => void;
 // matchesPath
 export { matchesPath } from '@marmeon/router/url';
-// mergePage
-export declare function mergePage(current: PageObject, partial: PageObject, reset?: ResetProps): PageObject;
 // optimistic
 export declare const optimistic: import("../feature.ts").Feature<PagePatches>;
 // pageInfo
@@ -2663,8 +2357,8 @@ export declare function pageInfo<TProps = ViewProps>(page: PageObject): PageInfo
 export declare function pageLocale(page: PageObject, messages: PageMessages): string;
 // pageName
 export declare function pageName(path: string): string | undefined;
-// pageQuery
-export declare function pageQuery(page: Pick<PageObject, 'query' | 'queryDefaults'>): Record<string, unknown>;
+// pageQueryOf
+export declare function pageQueryOf(page: Pick<PageObject, 'query' | 'queryDefaults'>): Record<string, unknown>;
 // prefetch
 export declare const prefetch: import("../feature.ts").Feature<Prefetches>;
 // prefetchTriggers
@@ -2711,9 +2405,6 @@ export declare function sensitiveControl(control: {
 }): 'never' | 'named' | undefined;
 // showProgress
 export declare function showProgress(navigator: ProgressSource, { delay, color }?: ProgressOptions, doc?: Document): () => void;
-// slot
-export declare function slot<T>(name: string, create: () => T & Emptiable<T>): Slot<T>;
-export declare function slot<T>(name: string, create: () => T, clear: (value: T) => void, along?: (value: T) => Iterable<string> | undefined): Slot<T>;
 // uploads
 export declare const uploads: import("../feature.ts").Feature<UploadsFeature>;
 // viewTransitions
@@ -2722,31 +2413,19 @@ export declare const viewTransitions: import("../feature.ts").Feature<{
 }>;
 // visitUrlOf
 export declare function visitUrlOf(click: LinkClick, href: string, target: string | null | undefined, location?: Pick<Location, 'href' | 'origin'>): string | undefined;
-// withoutDefaults
-export declare function withoutDefaults(values: Readonly<Record<string, unknown>>, defaults?: Readonly<Record<string, unknown>>): Query;
 // xsrfToken
 export declare function xsrfToken(): string | undefined;
 ```
 
-### Experimental, referenced (not exported)
+### Referenced, not exported
 
 ```ts
-// BackCore
-type BackCore = Pick<FeatureHost, 'key' | 'left' | 'props'> & RevalidateCore;
 // Boundary
 type Boundary = `${string}${'_' | '-' | '.'}`;
 // CODE_PREFIXES
 declare const CODE_PREFIXES = "verification|sms|mfa|2fa|two_factor|auth|backup|security";
 // DeferredResult
 export type DeferredResult = Pick<PageObject, 'props' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn'>;
-// DocumentChangeCore
-type DocumentChangeCore = Pick<NavigatorCore, 'window' | 'left' | 'leave' | 'emit' | 'fire' | 'blocking' | 'ask'>;
-// EmittedEvent
-type EmittedEvent = Exclude<VisitEvent, 'flash'>;
-// Emptiable
-type Emptiable<T> = T extends {
-    clear(): void;
-} ? unknown : "a slot's value must empty itself (clear()) — or say how to empty it: slot(name, create, clear)";
 // FlashData
 export interface FlashData {
 }
@@ -2760,25 +2439,8 @@ export type FlashMessage<K extends FlashKey = FlashKey> = K extends unknown ? {
 } : never;
 // FlashValue
 export type FlashValue<K extends string> = K extends keyof FlashData ? FlashData[K] : unknown;
-// GuardCore
-type GuardCore = Pick<FeatureHost, 'window' | 'key' | 'layers' | 'left' | 'started' | 'ask' | 'mayLeave'>;
-// HistoryWriter
-export declare class HistoryWriter {
-    #private;
-    commit: Commit;
-    constructor(window: NavigatorWindow);
-    get state(): unknown;
-    entryState(key: string): unknown;
-    field(name: string, check: PositionCheck, value?: (state: HistoryState) => unknown): void;
-    push(state: HistoryState, url: string): void;
-    replace(state: HistoryState, url: string): void;
-}
-// InstantCore
-type InstantCore = Pick<FeatureHost, 'window' | 'scroll' | 'cache' | 'page' | 'key' | 'owner' | 'left' | 'transitioning' | 'render' | 'draw' | 'paint' | 'setPage'>;
 // KEY_PREFIXES
 declare const KEY_PREFIXES = "api|app|private|encryption";
-// LandCore
-export type LandCore = Pick<NavigatorCore, 'cache' | 'page' | 'key' | 'left' | 'transitioning' | 'props' | 'setPage' | 'draw' | 'paint'>;
 // LayerClose
 export interface LayerClose {
     readonly layers: number;
@@ -2796,29 +2458,8 @@ export interface LiveSubscription {
     readonly only?: readonly string[];
     readonly token: string;
 }
-// LruMap
-export declare class LruMap<K, V> {
-    #private;
-    constructor(size: number, { pinned, together, forget }?: LruOptions<K>);
-    get size(): number;
-    get(key: K): V | undefined;
-    peek(key: K): V | undefined;
-    set(key: K, value: V): void;
-    update(key: K, value: V): void;
-    delete(key: K): void;
-    clear(): void;
-    values(): IterableIterator<V>;
-}
-// LruOptions
-export interface LruOptions<K> {
-    pinned?: () => ReadonlySet<K>;
-    together?: (key: K) => Iterable<K> | undefined;
-    forget?: (key: K) => void;
-}
 // NAME_TERMS
 declare const NAME_TERMS = "password|passcode|passphrase|secret|token|credential|signature|jwt|recovery|cvv|cvc|card|iban|dsn";
-// NavigatorCore
-export type NavigatorCore = FeatureHost;
 // OnceInfo
 export interface OnceInfo {
     readonly key: string;
@@ -2861,23 +2502,6 @@ export interface PageObject {
     epoch?: string;
     live?: LiveSubscription[];
 }
-// PatchesCore
-type PatchesCore = Pick<FeatureHost, 'cache' | 'page' | 'key' | 'left' | 'transitioning' | 'draw' | 'setPage' | 'props' | 'document'> & RevalidateCore;
-// PrefetchCore
-type PrefetchCore = Pick<FeatureHost, 'navigator' | 'window' | 'page' | 'left' | 'once' | 'send' | 'foreign' | 'document'>;
-// PropLoader
-export declare class PropLoader {
-    #private;
-    constructor(core: PropsCore, firstPage: PageObject, streamed: readonly string[]);
-    expect(page: PageObject): void;
-    adopt(key: string, page: PageObject): void;
-    base(key: string): PageObject | undefined;
-    load(): void;
-    each(key: string, page: PageObject, load: (props: readonly string[]) => Promise<unknown>): void;
-    receiveStreamed(group: string, streamed: DeferredResult | null): Promise<void>;
-}
-// PropsCore
-type PropsCore = NavigatorCore;
 // RegionObject
 export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // RegionResult
@@ -2895,26 +2519,12 @@ export type RegionResult = {
 } | {
     readonly status: 'browser';
 };
-// RevalidateCore
-export type RevalidateCore = LandCore & Pick<FeatureHost, 'fetchPage' | 'flushFlash'>;
 // RouteManifest
 export type RouteManifest = Readonly<Record<string, {
     readonly method: string;
     readonly path: string;
     readonly view?: string;
 }>>;
-// ScrollMemory
-export declare class ScrollMemory {
-    #private;
-    constructor(window: NavigatorWindow);
-    current(): Scroll;
-    apply({ scroll, scrollRegions }: Scroll): void;
-    of(state: HistoryState): Scroll;
-    get(key: string): Scroll | undefined;
-    set(key: string, position: Scroll): void;
-    saveLater(save: () => void): void;
-    cancelSave(): void;
-}
 // SensitivePattern
 type SensitivePattern = `${string}${Split<typeof NAME_TERMS>}${string}` | `${string}${Split<typeof KEY_PREFIXES>}${'' | '_' | '-'}key${string}` | `${string}session${'' | '_' | '-'}id${string}` | `${string}${Split<typeof CODE_PREFIXES>}${'' | '_' | '-'}code${string}` | `${'' | `${string}.`}${'code' | 'codes' | 'pass' | 'auth'}` | `${'' | Boundary}${'otp' | 'totp'}${string}`;
 // Serialize
@@ -2961,6 +2571,103 @@ export type ViewProps = Record<string, unknown>;
 type WindowEvent = 'popstate' | 'pageshow' | 'scroll' | 'beforeunload';
 // featureApi
 declare const featureApi: unique symbol;
+```
+
+### Experimental
+
+```ts
+// DevtoolsFeature
+export interface DevtoolsFeature {
+    readonly timeline: readonly TimelineEntry[];
+    readonly snapshots: readonly PatchSnapshot[];
+    readonly hydration: readonly HydrationIssue[];
+    readonly left: boolean;
+    readonly cache: Map<string, unknown>;
+    answerFor(url: string): TimelineEntry | undefined;
+    subscribe(listener: () => void): () => void;
+    onStarted(listener: () => void): () => void;
+    stop(): void;
+    readonly record: Omit<DevtoolsHook, 'navigator'> & {
+        document(url: string, requestId: string | undefined): void;
+    };
+}
+// DevtoolsGlobal
+export interface DevtoolsGlobal {
+    __MARMEON_DEVTOOLS_HOOK__?: Partial<DevtoolsHook>;
+}
+// DevtoolsHook
+export interface DevtoolsHook {
+    navigator(navigator: Navigator): void;
+    patches(ids: readonly number[]): void;
+    patched(id: number, beneath: Readonly<Record<string, unknown>>, changed: Readonly<Record<string, unknown>>): void;
+    committed(ids: Iterable<number>): void;
+    removed(ids: Iterable<number>): void;
+    recoverable(error: unknown, component: string, server: boolean): void;
+}
+// HydrationIssue
+export interface HydrationIssue {
+    readonly at: number;
+    readonly component: string;
+    readonly server: boolean;
+    readonly message: string;
+    readonly stack?: string;
+}
+// PatchSnapshot
+export interface PatchSnapshot {
+    readonly id: number;
+    request?: number;
+    readonly at: number;
+    before?: Readonly<Record<string, unknown>>;
+    after?: Readonly<Record<string, unknown>>;
+    state: 'shown' | 'committed' | 'removed';
+}
+// TimelineEntry
+export interface TimelineEntry {
+    readonly id: number;
+    readonly kind: TimelineKind;
+    readonly method: string;
+    readonly url: string;
+    readonly at: number;
+    end?: number;
+    status?: number;
+    requestId?: string;
+    answered?: string;
+    outcome?: TimelineOutcome;
+    location?: string;
+    reload?: string;
+    readonly only?: readonly string[];
+    readonly except?: readonly string[];
+    readonly name?: string;
+    component?: string;
+    errors?: ValidationErrors;
+    patches?: readonly number[];
+    readonly channel?: string;
+    readonly hinted?: readonly string[] | null;
+}
+// TimelineKind
+export type TimelineKind =
+'document' | 'visit'
+ | 'reload'
+ | 'partial'
+ | 'background'
+ | 'deferred' | 'prefetch'
+ | 'restore' | 'layer' | 'island' | 'action'
+ | 'validation' | 'upload'
+ | 'live';
+// TimelineOutcome
+export type TimelineOutcome = 'ok'
+ | 'invalid'
+ | 'reload'
+ | 'redirect'
+ | 'failed'
+ | 'cancelled'
+ | 'prefetched';
+// devtools
+export declare const devtools: import("../feature.ts").Feature<DevtoolsFeature>;
+// devtoolsReports
+export declare function devtoolsReports(api: () => DevtoolsFeature | undefined): Omit<DevtoolsHook, 'navigator'> & {
+    flush(): void;
+};
 ```
 
 ## `@marmeon/http/page`

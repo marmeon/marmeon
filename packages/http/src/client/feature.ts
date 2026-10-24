@@ -25,6 +25,7 @@ export type { FeatureHost } from './core.ts';
 /** A feature of the client core: `setup` runs once per navigator and returns what adapters use of it. */
 export interface Feature<API = unknown> extends FeatureHandle<API> {
   readonly name: string;
+  /** @internal The framework's own features are written against the core's host; it is not an API for apps or adapters. */
   setup(host: FeatureHost): API;
   /**
    * Where its hooks run among those of the other features: lower first; without one, after all that have one; then in the
@@ -38,7 +39,7 @@ export interface Feature<API = unknown> extends FeatureHandle<API> {
 /** The features `defineFeature` made: a handle that is none of them never reaches `setup`. */
 const made = new WeakMap<object, Feature>();
 
-/** A feature — `defineFeature('islands', (host) => ({ region: … }), 7)`. */
+/** @internal A feature of the client core — `defineFeature('islands', (host) => ({ region: … }), 7)`. */
 export function defineFeature<API>(name: string, setup: (host: FeatureHost) => API, order?: number): Feature<API> {
   const feature: Feature<API> = Object.freeze({ name, setup, order });
   made.set(feature, feature);
@@ -56,6 +57,7 @@ export function featureOf<API>(handle: FeatureHandle<API>): Feature<API> {
  * A place for what a feature keeps — per history entry or per document. The core creates the value on first use and empties
  * it (`clear`, by default the value's own `clear()`) when it lets go of the entry or the document: a slot whose value cannot
  * be emptied cannot be declared.
+ * @internal
  */
 export interface Slot<T> {
   readonly name: string;
@@ -68,9 +70,15 @@ export interface Slot<T> {
 /** What a slot's value must be when the slot names no `clear`: something that empties itself. */
 type Emptiable<T> = T extends { clear(): void } ? unknown : "a slot's value must empty itself (clear()) — or say how to empty it: slot(name, create, clear)";
 
-/** A slot whose value empties itself (`Map`, `Set`, …). */
+/**
+ * A slot whose value empties itself (`Map`, `Set`, …).
+ * @internal
+ */
 export function slot<T>(name: string, create: () => T & Emptiable<T>): Slot<T>;
-/** A slot with its own way of emptying the value — it must leave nothing of what the value held. */
+/**
+ * A slot with its own way of emptying the value — it must leave nothing of what the value held.
+ * @internal
+ */
 export function slot<T>(name: string, create: () => T, clear: (value: T) => void, along?: (value: T) => Iterable<string> | undefined): Slot<T>;
 export function slot<T>(name: string, create: () => T, clear?: (value: T) => void, along?: (value: T) => Iterable<string> | undefined): Slot<T> {
   return { name, create, clear, along };
@@ -88,7 +96,10 @@ export function emptySlots(slots: Map<Slot<unknown>, unknown>): void {
   slots.clear();
 }
 
-/** A visit about to start — what the `visit` and `start` hooks see. */
+/**
+ * A visit about to start — what the `visit` and `start` hooks see.
+ * @internal
+ */
 export interface PendingVisit {
   readonly options: VisitOptions;
   readonly method: VisitMethod;
@@ -111,7 +122,10 @@ export interface PendingVisit {
   ready?: boolean;
 }
 
-/** What a feature adds to a visit that starts (`start` hook). */
+/**
+ * What a feature adds to a visit that starts (`start` hook).
+ * @internal
+ */
 export interface VisitPart {
   /** The page, without asking the server (fetched ahead) — undefined when it did not come: then the server is asked. */
   readonly page?: Promise<PageObject | undefined> | undefined;
@@ -125,7 +139,10 @@ export interface VisitPart {
   end?(): void;
 }
 
-/** What memory has of an entry's stack: its page's entry (and what features put over it — layers). */
+/**
+ * What memory has of an entry's stack: its page's entry (and what features put over it — layers).
+ * @internal
+ */
 export interface EntryStack {
   readonly page: string;
 }
@@ -133,6 +150,7 @@ export interface EntryStack {
 /**
  * The hooks of the pipeline. Pipeline hooks run in the features' order (`Feature.order`, then the order they were attached) and
  * the first result that is not `undefined` wins; events (`void`) all run.
+ * @internal
  */
 export interface FeatureHooks {
   /** Before a visit: `false` (or a promise of it) stops it — a confirmation, unsaved changes. A promise only when asking. */
@@ -217,4 +235,5 @@ export interface FeatureHooks {
   restored(page: PageObject, key: string, layer?: Layer): void;
 }
 
+/** @internal */
 export type FeatureHook = keyof FeatureHooks;

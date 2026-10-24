@@ -418,6 +418,7 @@ export interface RememberFormOptions<F> {
 export type RememberKey<K extends string> = IsPassword<K> extends true ? `'${K}' looks like a password — passwords are never remembered: they stay in the field until the page is left` : LooksSensitive<K> extends true ? `'${K}' looks sensitive (a token, a secret, a code, a card) — remembered state leaves it out unless you say so: useRemember('${K}', initial, { sensitive: true })` : K;
 // ResolvePage
 export type ResolvePage = ((name: string) => Promise<PageComponent>) & {
+    readonly features?: readonly Feature[];
 };
 // RevalidateOnBack
 export type RevalidateOnBack<C extends ViewAction> = boolean | readonly (keyof ViewPropsOf<C> & string)[];
@@ -746,13 +747,6 @@ type ViewAction = {
 };
 // ViewPropsOf
 type ViewPropsOf<C extends ViewAction> = [PageProps<C>] extends [never] ? IslandProps<C> : PageProps<C>;
-```
-
-### Experimental
-
-```ts
-// ResolvePage.features
-readonly features?: readonly Feature[];
 ```
 
 ## `@marmeon/react/server`
