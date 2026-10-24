@@ -2,7 +2,8 @@ import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute, resolve, sep } from 'node:path';
 import { token, type Clock, type Resolver } from '@marmeon/core';
 import type { CheckDiskName, DefaultDiskName, DiskDriverFactory, DiskFor, DiskNameInput, DiskOptions, StorageOptions } from './config.ts';
-import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
+import type { Disk, DiskDriver, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
+import { forDriver } from './contents.ts';
 import { normalizeDirectory, normalizeKey } from './keys.ts';
 import { LocalDisk } from './drivers/local.ts';
 import { MemoryDisk } from './drivers/memory.ts';
@@ -37,7 +38,11 @@ export interface StorageDependencies {
 /** The names the framework's own disks answer to — a provider cannot bring a driver under one of them. */
 export const BUILT_IN_DISK_DRIVERS = ['local', 's3', 'memory'] as const;
 
-const DISK_MEMBERS = ['put', 'get', 'text', 'stream', 'open', 'exists', 'delete', 'move', 'copy', 'size', 'mimeType', 'lastModified', 'list', 'url', 'temporaryUrl'] as const;
+/** Every function a driver's disk must have: a key per member of {@link DiskDriver}, so a new member cannot be forgotten here. */
+const DISK_MEMBERS = Object.keys({
+  put: true, get: true, text: true, stream: true, open: true, exists: true, delete: true, move: true, copy: true,
+  size: true, mimeType: true, lastModified: true, list: true, url: true, temporaryUrl: true,
+} satisfies Record<Exclude<keyof DiskDriver, 'name' | 'visibility' | 'close'>, true>) as readonly (keyof DiskDriver)[];
 
 /**
  * A disk of a provider's driver, as the app gets it: every key is checked here ({@link normalizeKey}) before the driver sees it,
@@ -49,7 +54,7 @@ class GuardedDisk implements Disk {
   // Private fields with getters: an assignment to `visibility` (a plain field would take it) never unlocks `url()`.
   readonly #name: string;
   readonly #visibility: Visibility;
-  readonly #disk: Disk;
+  readonly #disk: DiskDriver;
 
   get name(): string {
     return this.#name;
@@ -60,10 +65,10 @@ class GuardedDisk implements Disk {
   }
 
   constructor(name: string, visibility: Visibility, made: unknown) {
-    const disk = made as Partial<Disk> | null | undefined;
+    const disk = made as Partial<DiskDriver> | null | undefined;
     const missing = DISK_MEMBERS.filter((member) => typeof disk?.[member] !== 'function');
     if (typeof disk !== 'object' || disk === null || missing.length > 0) {
-      throw new StorageSetupError(withCode('S2', `The driver of the disk "${name}" must return a Disk with ${DISK_MEMBERS.join(', ')}, name and visibility${missing.length > 0 ? ` — missing: ${missing.join(', ')}` : ''}.`));
+      throw new StorageSetupError(withCode('S2', `The driver of the disk "${name}" must return a DiskDriver with ${DISK_MEMBERS.join(', ')}, name and visibility${missing.length > 0 ? ` — missing: ${missing.join(', ')}` : ''}.`));
     }
     if (disk.name !== name) {
       throw new StorageSetupError(withCode('S2', `The driver of the disk "${name}" returned a disk named "${String(disk.name)}" — name must be the disk's name from the configuration.`));
@@ -73,7 +78,7 @@ class GuardedDisk implements Disk {
     }
     this.#name = name;
     this.#visibility = visibility;
-    this.#disk = disk as Disk;
+    this.#disk = disk as unknown as DiskDriver;
   }
 
   async put(key: string, contents: FileContents, options?: PutOptions): Promise<void> {
@@ -125,7 +130,7 @@ class GuardedDisk implements Disk {
   }
 
   async temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string> {
-    const url = await this.#disk.temporaryUrl(normalizeKey(key), options);
+    const url = await this.#disk.temporaryUrl(normalizeKey(key), forDriver(options));
     if (typeof url !== 'string' || url === '') throw new StorageError(`The driver of the disk "${this.name}" returned no URL from temporaryUrl().`);
     return url;
   }

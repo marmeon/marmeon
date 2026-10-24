@@ -461,7 +461,7 @@ export declare class RouteDefinition {
     get routeName(): string | undefined;
     internal(): this;
     get isInternal(): boolean;
-    block(lockSeconds?: number, waitSeconds?: number): this;
+    block(lock?: Duration, wait?: Duration): this;
     get blocking(): RouteBlocking | undefined;
 }
 // RouteDefinitions

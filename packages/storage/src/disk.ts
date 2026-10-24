@@ -17,12 +17,23 @@ export interface ListOptions {
   readonly recursive?: boolean;
 }
 
+/** What the app asks of `temporaryUrl()`. */
 export interface TemporaryUrlOptions {
-  /** How long the URL works: seconds, or a duration (`{ minutes: 5 }`). */
-  readonly expiresIn: number | Duration;
+  /** How long the URL works: seconds as a number, or a duration (`{ minutes: 5 }`). */
+  readonly expiresIn: Duration;
   /** The file name the browser saves it as (default: the key's last segment). */
   readonly filename?: string;
   /** Local disks: prepended to the path (`APP_URL`) — an absolute link, e.g. for a mail. S3 URLs are always absolute. */
+  readonly base?: string;
+}
+
+/** What a disk driver's `temporaryUrl()` is given: the framework has already turned `expiresIn` into whole seconds. */
+export interface DiskDriverTemporaryUrlOptions {
+  /** How long the URL works, in whole seconds, at least 1. */
+  readonly expiresInSeconds: number;
+  /** The file name the browser saves it as (default: the key's last segment). */
+  readonly filename?: string;
+  /** Prepended to the path — an absolute link, e.g. for a mail. */
   readonly base?: string;
 }
 
@@ -81,6 +92,35 @@ export interface Disk {
    */
   temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string>;
   /** Releases what the disk holds open (a client, a connection) when the app shuts down. Without it there is nothing to release. */
+  close?(): Promise<void>;
+}
+
+/**
+ * What a disk driver's factory returns (`static diskDrivers`, `docs/drivers.md#disk-drivers`): every member of {@link Disk}
+ * except `close`, which stays optional, with a `temporaryUrl()` that is given {@link DiskDriverTemporaryUrlOptions}. The
+ * framework wraps it, so the app's `temporaryUrl()` keeps taking a `Duration`.
+ */
+export interface DiskDriver {
+  /** The disk's name in the configuration. */
+  readonly name: string;
+  readonly visibility: Visibility;
+  put(key: string, contents: FileContents, options?: PutOptions): Promise<void>;
+  get(key: string): Promise<Uint8Array>;
+  text(key: string): Promise<string>;
+  stream(key: string): Promise<ReadableStream<Uint8Array>>;
+  open(key: string): Promise<OpenedFile>;
+  exists(key: string): Promise<boolean>;
+  /** Removes a file; `false` when there was none. */
+  delete(key: string): Promise<boolean>;
+  move(from: string, to: string): Promise<void>;
+  copy(from: string, to: string): Promise<void>;
+  size(key: string): Promise<number>;
+  mimeType(key: string): Promise<string>;
+  lastModified(key: string): Promise<Date>;
+  list(directory?: string, options?: ListOptions): Promise<string[]>;
+  url(key: string): string;
+  /** A URL that works until `expiresInSeconds` has passed — signed, for a private file. See {@link Disk.temporaryUrl}. */
+  temporaryUrl(key: string, options: DiskDriverTemporaryUrlOptions): Promise<string>;
   close?(): Promise<void>;
 }
 

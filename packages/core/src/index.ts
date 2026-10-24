@@ -19,8 +19,8 @@ export { ErrorReports } from './error-reports.ts';
 export type { ErrorReport, ErrorReporter, ErrorReporterClass, ReportedError } from './error-reports.ts';
 export { DEFAULT_HEALTH_TIMEOUT, HealthChecks } from './health.ts';
 export type { HealthCheck, HealthCheckClass, HealthCheckResult, HealthReport } from './health.ts';
-export { Clock, durationToMilliseconds, SystemClock } from './clock.ts';
-export type { Duration } from './clock.ts';
+export { Clock, durationToMilliseconds, durationToSeconds, SystemClock } from './clock.ts';
+export type { Duration, DurationParts } from './clock.ts';
 export { Translator } from './translator.ts';
 export { EventDispatcher, EventRegistry, listen, ListenerQueue, missingListenerQueue } from './events.ts';
 export type {

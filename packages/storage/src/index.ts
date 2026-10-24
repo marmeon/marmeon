@@ -16,7 +16,6 @@ import { registerUploads, UPLOADS_PREFIX } from './uploads/http.ts';
 import { TemporaryUploads, UPLOADS_COLUMNS, UPLOADS_TABLE } from './uploads/service.ts';
 import { TEMPORARY_PREFIX, NO_TEMPORARY_URLS, type TemporaryUrls } from './temporary.ts';
 import { encodeKey } from './keys.ts';
-import { secondsOf } from './contents.ts';
 import { withCode } from '@marmeon/core/internal';
 
 // Storage: disks — local (with a root jail), S3 (an optional peer) and memory (the fake) — behind one contract;
@@ -39,7 +38,7 @@ export type {
   StorageOptions,
   StorageTypes,
 } from './config.ts';
-export type { Disk, FileContents, ListOptions, OpenedFile, PrivateDisk, PublicDisk, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
+export type { Disk, DiskDriver, DiskDriverTemporaryUrlOptions, FileContents, ListOptions, OpenedFile, PrivateDisk, PublicDisk, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
 export { FileNotFoundError, InvalidKeyError, StorageError, StorageSetupError } from './errors.ts';
 export { Storage } from './storage.ts';
 export { serveFile } from './serve.ts';
@@ -131,7 +130,7 @@ export class StorageServiceProvider implements ServiceProvider {
   #temporaryUrls: TemporaryUrls = NO_TEMPORARY_URLS;
   #manager: StorageManager | undefined;
   /** What uploads need from other packages — found while booting (http, database, encryption). */
-  #uploads: Omit<ConstructorParameters<typeof TemporaryUploads>[0], 'disk' | 'clock' | 'lifetime' | 'sendWithin' | 'maxOpen' | 'maxOpenBytes' | 'maxOpenTotalBytes'> | undefined;
+  #uploads: Omit<ConstructorParameters<typeof TemporaryUploads>[0], 'disk' | 'clock' | 'lifetimeMilliseconds' | 'sendWithinSeconds' | 'maxOpen' | 'maxOpenBytes' | 'maxOpenTotalBytes'> | undefined;
 
   register(container: Container): void {
     container.singleton(StorageSetup, (c) => ({
@@ -172,8 +171,8 @@ export class StorageServiceProvider implements ServiceProvider {
           return storage.named(config.disk);
         },
         clock: c.make(Clock),
-        lifetime: config.lifetime * 60_000,
-        sendWithin: config.sendWithin * 60,
+        lifetimeMilliseconds: config.lifetimeMinutes * 60_000,
+        sendWithinSeconds: config.sendWithinMinutes * 60,
         maxOpen: config.maxOpen,
         maxOpenBytes: config.maxOpenBytes,
         maxOpenTotalBytes: config.maxOpenTotalBytes,
@@ -206,9 +205,9 @@ export class StorageServiceProvider implements ServiceProvider {
     if (!http || !page || !container.has(http.Router)) return;
     const signer = container.make(http.UrlSigner);
     this.#temporaryUrls = {
-      sign: (disk, key, { expiresIn, filename, base }) =>
+      sign: (disk, key, { expiresInSeconds, filename, base }) =>
         signer.signedPath(`${TEMPORARY_PREFIX}/${encodeURIComponent(disk)}/${encodeKey(key)}`, {
-          expiresIn: secondsOf(expiresIn),
+          expiresIn: expiresInSeconds,
           ...(filename === undefined ? {} : { query: { filename } }),
           ...(base === undefined ? {} : { base }),
         }),
@@ -224,7 +223,7 @@ export class StorageServiceProvider implements ServiceProvider {
         // Infrastructure: never the app's transaction — a rollback after store() never makes a used token usable again.
         db: () => connections.infrastructure(uploads.connection, UPLOADS_INFRASTRUCTURE),
         keys: [key.key, ...key.previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:upload-token', 32))),
-        receiveUrl: (id, expiresIn) => signer.signedPath(`${UPLOADS_PREFIX}/${id}`, { expiresIn }),
+        receiveUrl: (id, expiresInSeconds) => signer.signedPath(`${UPLOADS_PREFIX}/${id}`, { expiresIn: expiresInSeconds }),
       };
       // /up/ready is red when the table lacks a column the service writes; an app that made no table has no uploads to keep.
       const { SchemaRequirements } = await import('@marmeon/database');

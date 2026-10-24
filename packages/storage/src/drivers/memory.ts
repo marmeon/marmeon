@@ -1,7 +1,7 @@
 import { AssertionError } from 'node:assert';
 import type { Clock } from '@marmeon/core';
 import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
-import { bytesStream, toBytes } from '../contents.ts';
+import { bytesStream, forDriver, toBytes } from '../contents.ts';
 import { FileNotFoundError, StorageError } from '../errors.ts';
 import { encodeKey, normalizeDirectory, normalizeKey } from '../keys.ts';
 import { mimeTypeOf } from '../mime.ts';
@@ -115,7 +115,7 @@ export class MemoryDisk implements Disk {
   }
 
   async temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string> {
-    return this.#temporaryUrls.sign(this.name, normalizeKey(key), options);
+    return this.#temporaryUrls.sign(this.name, normalizeKey(key), forDriver(options));
   }
 
   /** Every key on the disk, sorted. */

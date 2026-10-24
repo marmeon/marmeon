@@ -145,7 +145,9 @@ export interface DefinitionImport {
     readonly reuseAnyBinding?: boolean;
 }
 // Duration
-export interface Duration {
+export type Duration = number | DurationParts;
+// DurationParts
+export interface DurationParts {
     readonly days?: number;
     readonly hours?: number;
     readonly minutes?: number;
@@ -431,7 +433,7 @@ export type QueuedListenerClass<P = any> = {
 export interface QueuedListenerOptions {
     readonly queue?: string;
     readonly connection?: string;
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
     readonly tries?: number;
     readonly backoff?: number | readonly number[];
 }
@@ -638,6 +640,8 @@ export declare function defineSolutions<const Classes extends readonly ErrorClas
 export declare function deprecated(id: string, message: string, removeIn: `${number}.${number}`): void;
 // durationToMilliseconds
 export declare function durationToMilliseconds(duration: Duration): number;
+// durationToSeconds
+export declare function durationToSeconds(duration: Duration): number;
 // editDefinition
 export declare function editDefinition(source: string, filename: string, edit: DefinitionEdit): DefinitionEditOutcome;
 // editDefinitionFile
@@ -1120,7 +1124,9 @@ export declare class Container implements Resolver {
     make<K extends Key<any>>(key: K & (K extends Constructor ? InjectCheck<K> : unknown)): Resolve<K>;
 }
 // Duration
-export interface Duration {
+export type Duration = number | DurationParts;
+// DurationParts
+export interface DurationParts {
     readonly days?: number;
     readonly hours?: number;
     readonly minutes?: number;
@@ -1205,7 +1211,7 @@ export type QueuedListenerClass<P = any> = {
 export interface QueuedListenerOptions {
     readonly queue?: string;
     readonly connection?: string;
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
     readonly tries?: number;
     readonly backoff?: number | readonly number[];
 }
@@ -1403,7 +1409,9 @@ export interface Clock {
 }
 export declare const Clock: import("./token.ts").Token<Clock>;
 // Duration
-export interface Duration {
+export type Duration = number | DurationParts;
+// DurationParts
+export interface DurationParts {
     readonly days?: number;
     readonly hours?: number;
     readonly minutes?: number;
@@ -1491,7 +1499,7 @@ type QueuedListenerFor<E extends EventClass, L> = L extends {
 export interface QueuedListenerOptions {
     readonly queue?: string;
     readonly connection?: string;
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
     readonly tries?: number;
     readonly backoff?: number | readonly number[];
 }

@@ -64,10 +64,10 @@ export interface UploadsOptions {
   readonly clock: Clock;
   /** HMAC keys of the tokens: the first signs, all verify (APP_KEY and APP_PREVIOUS_KEYS, derived). */
   readonly keys: readonly Uint8Array[];
-  /** How long a token works (ms). */
-  readonly lifetime: number;
-  /** How long the browser has to send the file (seconds). */
-  readonly sendWithin: number;
+  /** How long a token works. */
+  readonly lifetimeMilliseconds: number;
+  /** How long the browser has to send the file. */
+  readonly sendWithinSeconds: number;
   /** Open uploads (not used, token still works) one session may hold. */
   readonly maxOpen: number;
   /** Bytes the open uploads of one session may announce together. */
@@ -75,7 +75,7 @@ export interface UploadsOptions {
   /** Bytes the open uploads of all sessions may announce together; 0 = no limit. */
   readonly maxOpenTotalBytes: number;
   /** The signed URL the bytes of upload `id` go to (local and memory disks). */
-  readonly receiveUrl: (id: string, expiresIn: number) => string;
+  readonly receiveUrl: (id: string, expiresInSeconds: number) => string;
 }
 
 /** Every open upload counts for at least this many bytes in the sums, so files of 0 or 1 byte still run into the limits (a row costs more than its file). */
@@ -157,10 +157,10 @@ export class TemporaryUploads {
     }
     const token = `tu_${id}.${this.#sign(id)}`;
     if (disk instanceof S3Disk) {
-      const post = await disk.presignedPost(id, { maxBytes: Math.max(1, request.size), expiresIn: this.#options.sendWithin });
+      const post = await disk.presignedPost(id, { maxBytes: Math.max(1, request.size), expiresIn: this.#options.sendWithinSeconds });
       return { token, upload: { method: 'POST', url: post.url, fields: post.fields } };
     }
-    return { token, upload: { method: 'PUT', url: this.#options.receiveUrl(id, this.#options.sendWithin) } };
+    return { token, upload: { method: 'PUT', url: this.#options.receiveUrl(id, this.#options.sendWithinSeconds) } };
   }
 
   /**
@@ -284,7 +284,7 @@ export class TemporaryUploads {
       insert into ${sql.table(UPLOADS_TABLE)}
         (id, session, route, field, disk, key, name, max_bytes, size, created_at, expires_at, started_at, uploaded_at, consumed_at)
       select ${row.id}, ${row.session}, ${row.route}, ${row.field}, ${row.disk}, ${row.id}, ${row.name}, cast(${row.maxBytes} as bigint),
-        cast(${row.size} as bigint), cast(${row.now} as bigint), cast(${row.now + this.#options.lifetime} as bigint), null, null, null
+        cast(${row.size} as bigint), cast(${row.now} as bigint), cast(${row.now + this.#options.lifetimeMilliseconds} as bigint), null, null, null
       where (select count(*) from ${sql.table(UPLOADS_TABLE)} where session = ${row.session} and ${open}) < ${maxOpen}
         and (select coalesce(sum(${CHARGE}), 0) from ${sql.table(UPLOADS_TABLE)} where session = ${row.session} and ${open}) + ${row.charge} <= ${maxOpenBytes}
         and ${total}

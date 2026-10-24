@@ -113,7 +113,7 @@ how to keep it.
 | `size(key)`, `mimeType(key)`, `lastModified(key)` | What they say. |
 | `list(directory?, { recursive }?)` | The keys in a directory, sorted. |
 | `url(key)` | The public URL of a file on a public disk. |
-| `temporaryUrl(key, { expiresIn, filename?, base? })` | A signed link that expires. |
+| `temporaryUrl(key, { expiresIn, filename?, base? })` | A signed link that expires. `expiresIn` is seconds, or a [`Duration`](time.md#spans-of-time) such as `{ minutes: 5 }`. |
 
 A missing file throws `FileNotFoundError`. A reader never sees half a file: the local driver writes to a temporary file and
 renames it into place. The content type comes from the key's extension on a local disk, and from what was stored on S3 and in
@@ -187,7 +187,7 @@ A stream of unknown length is read into memory before it is uploaded.
 
 A package or an app can bring its own disk driver, for Google Cloud Storage or an FTP server say. Its provider lists it in
 `static diskDrivers`, and a disk in `defineStorage()` names it with `driver`. The framework keeps visibility and signed links
-for it as for the built-in disks. The [drivers](drivers.md#disk-drivers) page has the contract and what it guarantees.
+for it as for the built-in disks, and gives its `temporaryUrl()` the expiry as `expiresInSeconds`, whole seconds, whatever span the app wrote. The [drivers](drivers.md#disk-drivers) page has the contract and what it guarantees.
 
 ## Uploads
 

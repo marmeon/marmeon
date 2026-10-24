@@ -141,7 +141,7 @@ export function layout(t: Translator, { preview, body }: { preview: string; body
 
 | Method | What it does |
 | --- | --- |
-| `mailer.queue(mail, { queue?, delay?, connection? })` | Composes the mail now and queues it. A worker sends it. |
+| `mailer.queue(mail, { queue?, delay?, connection? })` | Composes the mail now and queues it. A worker sends it. `delay` is seconds, or a [`Duration`](time.md#spans-of-time). |
 | `mailer.send(mail)` | Composes the mail and sends it now. |
 
 Queue a mail whenever a request sends it:

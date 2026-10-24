@@ -368,8 +368,8 @@ describe('API tokens', { timeout: 30_000 }, () => {
   it('are pruned by the nightly schedule once expired — valid ones stay', async () => {
     const ada = await app.factory(UserFactory).create();
     app.freeze(Date.parse('2026-10-04T12:00:00Z'));
-    const expired = await app.make(AccessTokenStore).create(ada.id, 'one hour', { expiresIn: '1h' });
-    const valid = await app.make(AccessTokenStore).create(ada.id, 'a year', { expiresIn: '365d' });
+    const expired = await app.make(AccessTokenStore).create(ada.id, 'one hour', { expiresIn: { hours: 1 } });
+    const valid = await app.make(AccessTokenStore).create(ada.id, 'a year', { expiresIn: { days: 365 } });
     expect(app.schedule.due('2026-10-05T03:10:00Z')).toContain('auth:prune-tokens');
     expect((await app.schedule.run('2026-10-05T03:10:00Z')).find((result) => result.task === 'auth:prune-tokens')).toMatchObject({ outcome: 'ran' });
     expect((await app.make(AccessTokenStore).list(ada.id)).map((token) => token.id)).toEqual([valid.token.id]);

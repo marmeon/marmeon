@@ -1,5 +1,5 @@
 import { editableResponse, HttpError, isLiveValidation, type HttpContext, type MiddlewareClass, type Next, type RouteDefinition } from '@marmeon/router';
-import { Clock, type Resolver } from '@marmeon/core';
+import { Clock, durationToSeconds, type Duration, type Resolver } from '@marmeon/core';
 import { isIP } from 'node:net';
 import { Cache } from './cache.ts';
 
@@ -9,7 +9,11 @@ export class Limit {
   readonly decaySeconds: number;
   readonly key: string;
 
-  constructor(maxAttempts: number, decaySeconds: number, key = '') {
+  /** `decay` is how long a window lasts: whole seconds, or `{ minutes: 1 }` — a fraction of a second is a `RangeError`. */
+  constructor(maxAttempts: number, decay: Duration, key = '') {
+    const decaySeconds = durationToSeconds(decay);
+    if (!Number.isInteger(decaySeconds)) throw new RangeError(`A limit's window is a whole number of seconds (the key of its counter), not ${JSON.stringify(decay)}.`);
+    if (decaySeconds <= 0 && Number.isFinite(maxAttempts)) throw new RangeError(`A limit with a finite number of attempts needs a window longer than 0 seconds, not ${JSON.stringify(decay)}.`);
     this.maxAttempts = maxAttempts;
     this.decaySeconds = decaySeconds;
     this.key = key;
@@ -126,18 +130,18 @@ export class RateLimiter {
 
   /**
    * Counts one attempt against `key` and returns the attempts in the current window, this one included — atomically.
-   * The first attempt opens a window of `decaySeconds`; later ones do not extend it.
+   * The first attempt opens a window of `decay`; later ones do not extend it.
    */
-  hit(key: string, decaySeconds: number): Promise<number> {
-    return this.#cache.increment(`limiter:${key}`, 1, decaySeconds);
+  hit(key: string, decay: Duration): Promise<number> {
+    return this.#cache.increment(`limiter:${key}`, 1, decay);
   }
 
   /**
    * Counts one attempt and says whether it is within `maxAttempts` — one atomic step, so concurrent attempts can never
    * all slip through. A refused attempt counts too (the window does not restart).
    */
-  async attempt(key: string, maxAttempts: number, decaySeconds: number): Promise<boolean> {
-    return (await this.hit(key, decaySeconds)) <= maxAttempts;
+  async attempt(key: string, maxAttempts: number, decay: Duration): Promise<boolean> {
+    return (await this.hit(key, decay)) <= maxAttempts;
   }
 
   async attempts(key: string): Promise<number> {

@@ -12,7 +12,7 @@ import { toJson, validate } from './validate.ts';
 /** When a notification is delivered (`send` only). */
 export interface SendOptions {
   /** Deliver no earlier than this — seconds, or a duration (`{ minutes: 5 }`). Default: the notification's `static queue.delay`. */
-  readonly delay?: number | Duration;
+  readonly delay?: Duration;
 }
 
 type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['input'] : never;

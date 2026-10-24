@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import type * as S3 from '@aws-sdk/client-s3';
 import type * as Presigner from '@aws-sdk/s3-request-presigner';
 import type * as PresignedPost from '@aws-sdk/s3-presigned-post';
-import type { Clock } from '@marmeon/core';
+import type { Clock, Duration } from '@marmeon/core';
 import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
 import type { S3DiskOptions } from '../config.ts';
 import { secondsOf, toBytes } from '../contents.ts';
@@ -263,14 +263,14 @@ export class S3Disk implements Disk {
 
   /**
    * A presigned POST for the browser to send one file to `key`: a policy the store checks — this key, at most `maxBytes`
-   * (`content-length-range`), until it expires (seconds). The browser posts `fields`, then the file as `file`. (The bucket
+   * (`content-length-range`), until it expires (`expiresIn`: seconds, or a `Duration` such as `{ minutes: 15 }`). The browser posts `fields`, then the file as `file`. (The bucket
    * needs a CORS rule that allows the app's origin to POST.)
    */
-  async presignedPost(key: string, { maxBytes, expiresIn }: { maxBytes: number; expiresIn: number }): Promise<{ url: string; fields: Record<string, string> }> {
+  async presignedPost(key: string, { maxBytes, expiresIn }: { maxBytes: number; expiresIn: Duration }): Promise<{ url: string; fields: Record<string, string> }> {
     const { client } = await this.#client();
     const { createPresignedPost } = loadPresignedPost();
     const target = this.#key(key);
-    return createPresignedPost(client, { Bucket: this.#bucket, Key: target, Conditions: [['content-length-range', 1, maxBytes], ['eq', '$key', target]], Expires: expiresIn });
+    return createPresignedPost(client, { Bucket: this.#bucket, Key: target, Conditions: [['content-length-range', 1, maxBytes], ['eq', '$key', target]], Expires: secondsOf(expiresIn) });
   }
 
   /** Closes the client's sockets. */

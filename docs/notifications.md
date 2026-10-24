@@ -163,7 +163,7 @@ Inject `Notifications`:
 
 | Method | What it does |
 | --- | --- |
-| `send(recipient, Notification, data, { delay }?)` | Checks now, and queues one job per recipient. |
+| `send(recipient, Notification, data, { delay }?)` | Checks now, and queues one job per recipient. `delay` is seconds, or a [`Duration`](time.md#spans-of-time). |
 | `sendNow(recipient, Notification, data)` | Delivers in the calling process. |
 
 `send()` takes one recipient or a list. It checks the class, the kinds of recipient and the data at once, so a mistake fails

@@ -36,6 +36,21 @@ describe.each(storeKinds)('the %s store', (kind) => {
     expect(await cache.get('user')).toBeUndefined();
   });
 
+  it('takes a time to live as seconds or as a duration object, on the test clock', async () => {
+    const { cache, pass } = await open();
+    await cache.put('object', 1, { seconds: 1 });
+    await cache.put('number', 2, 1);
+    await cache.put('long', 3, { minutes: 1 });
+    expect(await cache.remember('remembered', { milliseconds: 1500 }, () => 4)).toBe(4);
+    expect(await cache.get('object')).toBe(1);
+    await pass(1_100);
+    expect(await cache.get('object')).toBeUndefined();
+    expect(await cache.get('number')).toBeUndefined();
+    expect(await cache.get('remembered')).toBe(4);
+    expect(await cache.get('long')).toBe(3);
+    await expect(cache.put('text', 1, '5m' as never)).rejects.toThrow('write `{ minutes: 5 }`');
+  });
+
   it('adds only absent (or expired) keys — and says whether it did', async () => {
     const { cache, pass } = await open();
     expect(await cache.add('welcome-sent:7', true, 1)).toBe(true);
@@ -199,6 +214,17 @@ describe.each(storeKinds)('the %s store', (kind) => {
     it('refuses a lock that never expires', async () => {
       const { cache } = await open();
       expect(() => cache.lock('forever', 0)).toThrow(/positive number of seconds/);
+      expect(() => cache.lock('forever', { minutes: 0 })).toThrow(/positive number of seconds/);
+      expect(() => cache.lock('text', '30s' as never)).toThrow('write `{ seconds: 30 }`');
+    });
+
+    it('holds a lock for a duration object', async () => {
+      const { cache, pass } = await open();
+      expect(await cache.lock('timed', { seconds: 1 }).get()).toBe(true);
+      expect(await cache.lock('timed', { seconds: 1 }).get()).toBe(false);
+      await pass(1_100);
+      expect(await cache.lock('timed', { seconds: 1 }).get()).toBe(true);
+      expect(await cache.lock('waits', 10).block({ milliseconds: 500 })).toBe(true);
     });
   });
 

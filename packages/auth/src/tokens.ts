@@ -1,8 +1,7 @@
 import { createHash, randomInt } from 'node:crypto';
 import { crc32 } from 'node:zlib';
-import { Clock, ContainerError } from '@marmeon/core';
+import { Clock, ContainerError, durationToSeconds, type Duration } from '@marmeon/core';
 import { Connections, sql, type Generated, type JsonColumn, type Secret } from '@marmeon/database';
-import type { Duration } from '@marmeon/http';
 import { AuthConfig } from './config.ts';
 import type { AuthUserId } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
@@ -86,15 +85,6 @@ export abstract class AccessTokenStore {
 }
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-const UNIT = { s: 1, m: 60, h: 3600, d: 86_400 } as const;
-
-function seconds(duration: Duration): number {
-  if (typeof duration === 'number') return duration;
-  const match = /^(\d+)([smhd])$/.exec(duration);
-  if (!match) throw new TypeError(`Invalid duration "${duration}".`);
-  return Number(match[1]) * UNIT[match[2] as keyof typeof UNIT];
-}
-
 const checksum = (value: string) => crc32(value).toString(16).padStart(8, '0');
 
 /** The domain the hash of a token's secret is taken in: a secret hashed any other way (the plain SHA-256 of tokens with a `|`, the form issued before) finds no row. */
@@ -142,7 +132,7 @@ export class DatabaseAccessTokens extends AccessTokenStore {
         token_hash: hashToken(secret),
         abilities: JSON.stringify(abilities),
         last_used_at: null,
-        expires_at: expiresIn === undefined ? null : new Date(now.getTime() + seconds(expiresIn) * 1000),
+        expires_at: expiresIn === undefined ? null : new Date(now.getTime() + Math.floor(durationToSeconds(expiresIn)) * 1000),
         created_at: now,
         updated_at: now,
       })

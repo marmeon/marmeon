@@ -215,7 +215,7 @@ export class SendRemindersController extends Controller {
 
 | Option | What it does |
 | --- | --- |
-| `delay` | Seconds, or a duration such as `{ minutes: 5 }`, before the job may run. |
+| `delay` | A [`Duration`](time.md#spans-of-time), seconds or an object such as `{ minutes: 5 }`, before the job may run. |
 | `queue` | The queue's name. Without it the connection's default queue, `default` unless configured. |
 | `connection` | The queue connection. Without it `QUEUE_DRIVER`. |
 
@@ -354,7 +354,7 @@ A job can also end an attempt on its own:
 | Call | What happens |
 | --- | --- |
 | `job.discard(reason)` | The job ends without a retry and without a failed entry. For a record that is gone. |
-| `job.release(delay)` | The job goes back to the queue, to run again after `delay` seconds or a duration. The attempt counts, so a release on the last attempt fails the job. |
+| `job.release(delay)` | The job goes back to the queue, to run again after `delay`, a [`Duration`](time.md#spans-of-time). The attempt counts, so a release on the last attempt fails the job. |
 | `job.fail(reason)` | The job fails now, without further attempts. |
 
 Some jobs can never succeed, and they fail at once, after one attempt:

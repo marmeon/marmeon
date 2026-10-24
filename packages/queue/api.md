@@ -26,7 +26,7 @@ export type CheckJob<J extends JobClass> = unknown extends JobInput<J> ? unknown
 };
 // DispatchOptions
 export interface DispatchOptions {
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
     readonly queue?: string;
     readonly connection?: string;
     readonly unique?: undefined;
@@ -72,7 +72,7 @@ export interface JobContext {
     readonly connection: string;
     readonly signal: AbortSignal;
     discard(reason?: string): void;
-    release(delay?: number | Duration): void;
+    release(delay?: Duration): void;
     fail(reason: string | Error): void;
     once(key: string, fn: () => unknown, options?: {
         readonly for?: number;
@@ -522,7 +522,7 @@ export interface ReservedJob extends QueuedJob {
 // UniqueDispatchOptions
 export interface UniqueDispatchOptions extends Omit<DispatchOptions, 'unique'> {
     readonly unique: string;
-    readonly uniqueFor?: number | Duration;
+    readonly uniqueFor?: Duration;
     readonly uniqueUntil?: 'processing' | 'done';
 }
 // UniqueRecord
@@ -716,7 +716,7 @@ export type CheckJob<J extends JobClass> = unknown extends JobInput<J> ? unknown
 };
 // DispatchOptions
 export interface DispatchOptions {
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
     readonly queue?: string;
     readonly connection?: string;
     readonly unique?: undefined;
@@ -747,7 +747,7 @@ export interface JobContext {
     readonly connection: string;
     readonly signal: AbortSignal;
     discard(reason?: string): void;
-    release(delay?: number | Duration): void;
+    release(delay?: Duration): void;
     fail(reason: string | Error): void;
     once(key: string, fn: () => unknown, options?: {
         readonly for?: number;
@@ -818,7 +818,7 @@ export type SchemaOutput<S> = S extends StandardSchemaV1 ? NonNullable<S['~stand
 // UniqueDispatchOptions
 export interface UniqueDispatchOptions extends Omit<DispatchOptions, 'unique'> {
     readonly unique: string;
-    readonly uniqueFor?: number | Duration;
+    readonly uniqueFor?: Duration;
     readonly uniqueUntil?: 'processing' | 'done';
 }
 // UniqueRecord

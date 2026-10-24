@@ -193,7 +193,7 @@ export class ShareLinks {
   }
 
   share(noteId: number): string {
-    return this.#signer.temporarySignedRoute('notes.shared', { note: noteId }, '7d', { base: this.#app.url });
+    return this.#signer.temporarySignedRoute('notes.shared', { note: noteId }, { days: 7 }, { base: this.#app.url });
   }
 }
 ```
@@ -201,7 +201,7 @@ export class ShareLinks {
 | Method | What it signs |
 | --- | --- |
 | `signedRoute(name, params, { base })` | A named route, valid forever. |
-| `temporarySignedRoute(name, params, expiresIn, { base })` | A named route, valid for `expiresIn`: seconds, or `'30s'`, `'60m'`, `'2h'`, `'7d'`. |
+| `temporarySignedRoute(name, params, expiresIn, { base })` | A named route, valid for `expiresIn`: seconds, or a [`Duration`](time.md#spans-of-time) such as `{ days: 7 }`. |
 | `signedPath(path, { query, expiresIn, base })` | A path without a route name, such as a file's. |
 | `hasValidSignature(url)` | Checks a URL yourself. |
 
@@ -237,7 +237,7 @@ beforeEach(async () => {
 });
 
 it('refuses an expired link', async () => {
-  const link = app.make(UrlSigner).temporarySignedRoute('notes.shared', { note: 1 }, '7d');
+  const link = app.make(UrlSigner).temporarySignedRoute('notes.shared', { note: 1 }, { days: 7 });
   app.travel({ days: 8 });
   await app.get(link).assertForbidden();
 });

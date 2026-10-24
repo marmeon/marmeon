@@ -175,8 +175,6 @@ export interface DeferredProp<T> extends PageProp<'defer', T> {
 }
 // DeferredResult
 export type DeferredResult = Pick<PageObject, 'props' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn'>;
-// Duration
-export type Duration = number | `${number}${'s' | 'm' | 'h' | 'd'}`;
 // ERRORS_KEY
 export declare const ERRORS_KEY = "errors";
 // EXPECTS_JSON_VARY

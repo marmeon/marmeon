@@ -5,7 +5,7 @@ import { dirname, join, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Disk, FileContents, ListOptions, OpenedFile, TemporaryUrlOptions, Visibility } from '../disk.ts';
-import { toReadable } from '../contents.ts';
+import { forDriver, toReadable } from '../contents.ts';
 import { FileNotFoundError, InvalidKeyError, StorageError } from '../errors.ts';
 import { basename, encodeKey, normalizeDirectory, normalizeKey } from '../keys.ts';
 import { mimeTypeOf } from '../mime.ts';
@@ -218,7 +218,7 @@ export class LocalDisk implements Disk {
   }
 
   async temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string> {
-    return this.#temporaryUrls.sign(this.name, normalizeKey(key), options);
+    return this.#temporaryUrls.sign(this.name, normalizeKey(key), forDriver(options));
   }
 
   /** Whether a real path lies inside the root. */

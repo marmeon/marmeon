@@ -63,7 +63,7 @@ export class CreateAccessTokenController extends Controller {
   }
 
   async handle(ctx: ContextOf<typeof CreateAccessTokenRequest> & Authenticated) {
-    const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: '90d' });
+    const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: { days: 90 } });
     return this.view('auth/AccessTokens', {
       tokens: await this.#tokens.list(ctx.user.id),
       abilities: abilityDescriptions(this.#translator),
@@ -77,8 +77,8 @@ The form sends one ability or several, one value per ticked checkbox, so the sch
 
 `create(userId, name, { abilities, expiresIn })` returns `{ plainText, token }`. The table keeps only a SHA-256 hash of the token's
 secret, so the plain text exists only in this one response. Without `abilities` a token may do everything, `['*']`. Without
-`expiresIn` it lives until it is revoked; the starter kit gives every token 90 days. `expiresIn` takes seconds, or `'30m'`,
-`'12h'`, `'90d'`.
+`expiresIn` it lives until it is revoked; the starter kit gives every token 90 days. `expiresIn` takes seconds, or a
+[`Duration`](time.md#spans-of-time) such as `{ days: 90 }`; a string such as `'90d'` is refused.
 
 The controller renders the page with the plain text instead of redirecting. A redirect would have to carry the token through the
 session as flash data, and so write it into the session store.

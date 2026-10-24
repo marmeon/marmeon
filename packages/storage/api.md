@@ -38,6 +38,27 @@ export interface Disk {
     temporaryUrl(key: string, options: TemporaryUrlOptions): Promise<string>;
     close?(): Promise<void>;
 }
+// DiskDriver
+export interface DiskDriver {
+    readonly name: string;
+    readonly visibility: Visibility;
+    put(key: string, contents: FileContents, options?: PutOptions): Promise<void>;
+    get(key: string): Promise<Uint8Array>;
+    text(key: string): Promise<string>;
+    stream(key: string): Promise<ReadableStream<Uint8Array>>;
+    open(key: string): Promise<OpenedFile>;
+    exists(key: string): Promise<boolean>;
+    delete(key: string): Promise<boolean>;
+    move(from: string, to: string): Promise<void>;
+    copy(from: string, to: string): Promise<void>;
+    size(key: string): Promise<number>;
+    mimeType(key: string): Promise<string>;
+    lastModified(key: string): Promise<Date>;
+    list(directory?: string, options?: ListOptions): Promise<string[]>;
+    url(key: string): string;
+    temporaryUrl(key: string, options: DiskDriverTemporaryUrlOptions): Promise<string>;
+    close?(): Promise<void>;
+}
 // DiskDriverContext
 export interface DiskDriverContext {
     readonly name: string;
@@ -45,7 +66,13 @@ export interface DiskDriverContext {
     readonly container: Resolver;
 }
 // DiskDriverFactory
-export type DiskDriverFactory<O = any> = (options: O, context: DiskDriverContext) => Disk;
+export type DiskDriverFactory<O = any> = (options: O, context: DiskDriverContext) => DiskDriver;
+// DiskDriverTemporaryUrlOptions
+export interface DiskDriverTemporaryUrlOptions {
+    readonly expiresInSeconds: number;
+    readonly filename?: string;
+    readonly base?: string;
+}
 // DiskDrivers
 export interface DiskDrivers {
     local: LocalDiskOptions;
@@ -201,8 +228,8 @@ export declare class StorageServiceProvider implements ServiceProvider {
     static config: import("@marmeon/core").ConfigDefinition<{
         disk: string;
         connection: string;
-        lifetime: number;
-        sendWithin: number;
+        lifetimeMinutes: number;
+        sendWithinMinutes: number;
         maxOpen: number;
         maxOpenBytes: number;
         maxOpenTotalBytes: number;
@@ -269,13 +296,13 @@ export declare class TemporaryUploads {
 }
 // TemporaryUrlOptions
 export interface TemporaryUrlOptions {
-    readonly expiresIn: number | Duration;
+    readonly expiresIn: Duration;
     readonly filename?: string;
     readonly base?: string;
 }
 // TemporaryUrls
 export interface TemporaryUrls {
-    sign(disk: string, key: string, options: TemporaryUrlOptions): string;
+    sign(disk: string, key: string, options: DiskDriverTemporaryUrlOptions): string;
 }
 // UPLOADS_TABLE
 export declare const UPLOADS_TABLE = "temporary_uploads";
@@ -324,8 +351,8 @@ export interface UploadTarget {
 export declare const UploadsConfig: import("@marmeon/core").ConfigDefinition<{
     disk: string;
     connection: string;
-    lifetime: number;
-    sendWithin: number;
+    lifetimeMinutes: number;
+    sendWithinMinutes: number;
     maxOpen: number;
     maxOpenBytes: number;
     maxOpenTotalBytes: number;
@@ -337,12 +364,12 @@ export interface UploadsOptions {
     readonly disk: () => Disk;
     readonly clock: Clock;
     readonly keys: readonly Uint8Array[];
-    readonly lifetime: number;
-    readonly sendWithin: number;
+    readonly lifetimeMilliseconds: number;
+    readonly sendWithinSeconds: number;
     readonly maxOpen: number;
     readonly maxOpenBytes: number;
     readonly maxOpenTotalBytes: number;
-    readonly receiveUrl: (id: string, expiresIn: number) => string;
+    readonly receiveUrl: (id: string, expiresInSeconds: number) => string;
 }
 // Visibility
 export type Visibility = 'public' | 'private';
@@ -504,6 +531,27 @@ export interface Disk {
 interface DiskBase {
     readonly visibility?: Visibility;
 }
+// DiskDriver
+export interface DiskDriver {
+    readonly name: string;
+    readonly visibility: Visibility;
+    put(key: string, contents: FileContents, options?: PutOptions): Promise<void>;
+    get(key: string): Promise<Uint8Array>;
+    text(key: string): Promise<string>;
+    stream(key: string): Promise<ReadableStream<Uint8Array>>;
+    open(key: string): Promise<OpenedFile>;
+    exists(key: string): Promise<boolean>;
+    delete(key: string): Promise<boolean>;
+    move(from: string, to: string): Promise<void>;
+    copy(from: string, to: string): Promise<void>;
+    size(key: string): Promise<number>;
+    mimeType(key: string): Promise<string>;
+    lastModified(key: string): Promise<Date>;
+    list(directory?: string, options?: ListOptions): Promise<string[]>;
+    url(key: string): string;
+    temporaryUrl(key: string, options: DiskDriverTemporaryUrlOptions): Promise<string>;
+    close?(): Promise<void>;
+}
 // DiskDriverContext
 export interface DiskDriverContext {
     readonly name: string;
@@ -511,7 +559,13 @@ export interface DiskDriverContext {
     readonly container: Resolver;
 }
 // DiskDriverFactory
-export type DiskDriverFactory<O = any> = (options: O, context: DiskDriverContext) => Disk;
+export type DiskDriverFactory<O = any> = (options: O, context: DiskDriverContext) => DiskDriver;
+// DiskDriverTemporaryUrlOptions
+export interface DiskDriverTemporaryUrlOptions {
+    readonly expiresInSeconds: number;
+    readonly filename?: string;
+    readonly base?: string;
+}
 // DiskDrivers
 export interface DiskDrivers {
     local: LocalDiskOptions;
@@ -634,13 +688,13 @@ export interface StorageTypes {
 }
 // TemporaryUrlOptions
 export interface TemporaryUrlOptions {
-    readonly expiresIn: number | Duration;
+    readonly expiresIn: Duration;
     readonly filename?: string;
     readonly base?: string;
 }
 // TemporaryUrls
 export interface TemporaryUrls {
-    sign(disk: string, key: string, options: TemporaryUrlOptions): string;
+    sign(disk: string, key: string, options: DiskDriverTemporaryUrlOptions): string;
 }
 // UnionToIntersection
 type UnionToIntersection<U> = (U extends unknown ? (x: () => U) => void : never) extends (x: infer I) => void ? I : never;

@@ -148,6 +148,24 @@ describe('a route cannot be changed once it is loaded', () => {
     expect(route.middleware).toHaveLength(1);
   });
 
+  it('takes the lock and the wait of block() as seconds or as durations', () => {
+    const router = new Router().load(
+      openRoutes((Route) => {
+        Route.get('/a', () => 'ok').name('a').block();
+        Route.get('/b', () => 'ok').name('b').block({ seconds: 5 }, { milliseconds: 500 });
+        Route.get('/c', () => 'ok').name('c').block(30);
+      }),
+    );
+    expect(router.findByName('a')!.blocking).toEqual({ lockSeconds: 10, waitSeconds: 10 });
+    expect(router.findByName('b')!.blocking).toEqual({ lockSeconds: 5, waitSeconds: 0.5 });
+    expect(router.findByName('c')!.blocking).toEqual({ lockSeconds: 30, waitSeconds: 30 });
+    const register = (lock: unknown, wait?: unknown) => () => new Router().load(openRoutes((Route) => Route.get('/d', () => 'ok').block(lock as never, wait as never)));
+    expect(register(0)).toThrow(TypeError);
+    expect(register({ minutes: -1 })).toThrow('positive span of time');
+    expect(register(5, { milliseconds: 0 })).toThrow('wait must be');
+    expect(register('10s')).toThrow('write `{ seconds: 10 }`');
+  });
+
   it('refuses name(), internal() and block() after loading', () => {
     const router = new Router().load(openRoutes((Route) => Route.get('/', () => 'ok').name('home')));
     const route = router.findByName('home')!;

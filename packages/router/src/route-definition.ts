@@ -1,3 +1,4 @@
+import { durationToSeconds, type Duration } from '@marmeon/core';
 import type { AccessCheck } from './access.ts';
 import type { AnyAction, AnyMiddleware, HttpMethod, RouteBinding } from './types.ts';
 
@@ -93,18 +94,20 @@ export class RouteDefinition {
   /**
    * Runs the route's requests one at a time per session: `StartSession` holds an atomic lock (needs
    * `@marmeon/cache`) from loading the session until it is saved. A second request of the same browser waits up to
-   * `waitSeconds` (then 423); a crashed request's lock expires after `lockSeconds`. See docs/routing.md#one-request-at-a-time.
+   * `wait` (then 423); a crashed request's lock expires after `lock`. Both are seconds, or `{ seconds: 5 }`. See docs/routing.md#one-request-at-a-time.
    *
    * ```ts
    * Route.post('/cart/checkout', CheckoutController).name('cart.checkout').block();       // 10 s lock, waits up to 10 s
-   * Route.post('/wizard/step', WizardStepController).block(5, 2);
+   * Route.post('/wizard/step', WizardStepController).block(5, { seconds: 2 });
    * ```
    */
-  block(lockSeconds = 10, waitSeconds: number = lockSeconds): this {
+  block(lock: Duration = 10, wait: Duration = lock): this {
     this.#assertOpen('block');
-    for (const [what, value] of [['lockSeconds', lockSeconds], ['waitSeconds', waitSeconds]] as const) {
-      if (!Number.isFinite(value) || value <= 0) throw new TypeError(`block(): ${what} must be a positive number of seconds (got ${value}) — ${this.path}.`);
-    }
+    const [lockSeconds, waitSeconds] = [lock, wait].map((value, i) => {
+      const seconds = durationToSeconds(value);
+      if (seconds <= 0) throw new TypeError(`block(): ${i === 0 ? 'lock' : 'wait'} must be a positive span of time (got ${JSON.stringify(value)}) — ${this.path}.`);
+      return seconds;
+    }) as [number, number];
     this.#blocking = { lockSeconds, waitSeconds };
     return this;
   }

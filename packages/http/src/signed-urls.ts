@@ -1,5 +1,5 @@
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
-import { Clock } from '@marmeon/core';
+import { Clock, durationToSeconds, type Duration } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { fillPath, HttpError, Router, toSearchParams, type CheckRouteName, type HttpContext, type Next, type Param, type ParamsOf, type RouteNameInput } from '@marmeon/router';
@@ -11,9 +11,6 @@ type SignedArgs<N extends string> = {} extends ParamsOf<N>
   ? [params?: SignedParams<N>, options?: SignedRouteOptions]
   : [params: SignedParams<N>, options?: SignedRouteOptions];
 
-/** `3600` seconds, or `'60m'`, `'2h'`, `'7d'`, `'30s'`. */
-export type Duration = number | `${number}${'s' | 'm' | 'h' | 'd'}`;
-
 export interface SignedRouteOptions {
   /** Prepended to the path: `https://app.example` → an absolute link, e.g. for a mail. */
   readonly base?: string;
@@ -23,17 +20,8 @@ export interface SignedRouteOptions {
 export interface SignedPathOptions extends SignedRouteOptions {
   /** Signed with the path (`signature` and `expires` are reserved). */
   readonly query?: Readonly<Record<string, string>>;
-  /** Stops working after this; without it the link never expires. */
+  /** Stops working after this (seconds, or `{ days: 7 }`); without it the link never expires. */
   readonly expiresIn?: Duration;
-}
-
-const UNIT = { s: 1, m: 60, h: 3600, d: 86_400 } as const;
-
-function seconds(duration: Duration): number {
-  if (typeof duration === 'number') return duration;
-  const match = /^(\d+)([smhd])$/.exec(duration);
-  if (!match) throw new TypeError(`Invalid duration "${duration}" — use seconds or e.g. '60m'.`);
-  return Number(match[1]) * UNIT[match[2] as keyof typeof UNIT];
 }
 
 /** A key for one purpose, derived from `APP_KEY` (HKDF): a signature is never also a cookie or session key. */
@@ -47,7 +35,7 @@ function derive(key: Uint8Array, purpose: string): Buffer {
  * signed: behind proxies, the request host is not always the public one. See docs/urls.md#signed-urls.
  *
  * ```ts
- * const url = signer.temporarySignedRoute('auth.verification.verify', { id: user.id, hash }, '60m', { base: config.url });
+ * const url = signer.temporarySignedRoute('auth.verification.verify', { id: user.id, hash }, { minutes: 60 }, { base: config.url });
  * ```
  */
 export class UrlSigner {
@@ -110,7 +98,7 @@ export class UrlSigner {
 
   /** Seconds since the epoch, by the app's clock. */
   #expiry(expiresIn: Duration): number {
-    return Math.floor(this.#clock.now() / 1000) + seconds(expiresIn);
+    return Math.floor(this.#clock.now() / 1000) + Math.floor(durationToSeconds(expiresIn));
   }
 
   #route(name: string, params: Readonly<Record<string, Param>>): { path: string; query: URLSearchParams } {

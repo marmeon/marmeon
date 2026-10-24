@@ -63,7 +63,7 @@ Give the subclass a record of its own.
 
 ## Contracts are stable
 
-The interfaces a driver implements, such as `QueueDriver`, `FailedJobStore` and `Disk`, are public API. From 1.0 on, a new method comes
+The interfaces a driver implements, such as `QueueDriver`, `FailedJobStore` and `DiskDriver`, are public API. From 1.0 on, a new method comes
 only as an optional member, or with a default that keeps the old behaviour, so a driver written today keeps working. A member that
 is optional says in its documentation what the framework does without it.
 
@@ -116,10 +116,10 @@ the safe behaviour in the table.
 
 ## Disk drivers
 
-A disk driver implements `Disk` and is a `DiskDriverFactory`: it gets the options of the disk from `defineStorage()` and the
+A disk driver implements `DiskDriver` and is a `DiskDriverFactory`: it gets the options of the disk from `defineStorage()` and the
 disk's `name`, the app `root` and the `container`, and returns the disk. A disk selects its driver by name, like the built-in
 `local`, `s3` and `memory`. The built-in drivers are configured in `defineStorage()`, not constructed — their classes are not
-part of the public API; a driver of your own implements `Disk`:
+part of the public API; a driver of your own implements `DiskDriver`:
 
 ```ts title="src/GcsServiceProvider.ts"
 import type { DiskDriverFactory } from '@marmeon/storage';
@@ -148,7 +148,7 @@ export const AppStorage = defineStorage({
 
 Declaring the options in `DiskDrivers` is what makes `defineStorage()` check them; every disk has `visibility` and `url` on top.
 A disk whose `driver` nobody brought stops the start with the disk's name and the drivers there are. The disks of a
-driver are built at the start, so a factory that throws, or returns something that is not a `Disk` (every member of the
+driver are built at the start, so a factory that throws, or returns something that is not a `DiskDriver` (every member of the
 contract is required), stops it then. The test fake replaces every disk with a memory disk, so a test never reaches a
 provider's driver.
 
@@ -157,6 +157,9 @@ What the framework keeps for a disk of a provider's driver, whatever the driver 
 - **Visibility is the configuration's.** The returned disk must have the configured `name` and `visibility`, or the start stops.
   `url()` on a private disk is refused by the framework and never reaches the driver, and a private disk with a `url` option
   stops the start.
+- **`temporaryUrl()` gets whole seconds.** The app writes `expiresIn` as seconds or a [`Duration`](time.md#spans-of-time); the
+  framework turns it into `expiresInSeconds`, a whole number of at least 1, before it calls the driver's `temporaryUrl(key,
+  { expiresInSeconds, filename?, base? })`. A driver's factory returns a `DiskDriver`: the members of a disk, with that signature.
 - **A private file is reached only through a signed URL.** `temporaryUrl()` of a private disk must sign the URL and let it expire.
   That is the driver's job: the framework cannot tell a signature from a long string and refuses only an empty result. A driver
   that returns an unsigned URL publishes its private files.
@@ -168,7 +171,7 @@ What the framework keeps for a disk of a provider's driver, whatever the driver 
 - **The disk is held privately.** The app gets a wrapper that delegates to the driver's disk; its `name` and `visibility` are the
   configured ones.
 
-Every member of `Disk` is required except `close()`, which the framework calls at shutdown when the disk has one — close a client
+Every member of `DiskDriver` is required except `close()`, which the framework calls at shutdown when the disk has one — close a client
 or a connection there.
 
 ## Cache drivers

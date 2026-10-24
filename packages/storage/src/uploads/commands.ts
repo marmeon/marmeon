@@ -63,7 +63,7 @@ export class PruneUploadsCommand {
       output.error(`--hours must be a number ≥ 0 (uploads made longer ago than that are deleted), not ${String(options.hours)}.`);
       return 1;
     }
-    const lifetime = this.#config.lifetime; // minutes
+    const lifetime = this.#config.lifetimeMinutes; // minutes
     if (hours * 60 < lifetime && options.force !== true) {
       output.error(
         `--hours=${String(options.hours)} would delete uploads whose token still works: a token works for ${lifetime} minutes (UPLOADS_LIFETIME_MINUTES), ` +

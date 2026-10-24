@@ -696,7 +696,7 @@ export class TestApp {
     return this.#shared.clock;
   }
 
-  /** Moves the app's time forward (negative parts: back): `app.travel({ minutes: 1, seconds: 1 })`. Returns the new time. */
+  /** Moves the app's time forward (negative parts: back; a number is seconds): `app.travel({ minutes: 1, seconds: 1 })`. Returns the new time. */
   travel(duration: Duration): number {
     return this.#shared.clock.travel(duration);
   }

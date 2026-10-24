@@ -167,7 +167,7 @@ export declare class MjmlError extends Error {
 // QueueMailOptions
 export interface QueueMailOptions {
     readonly queue?: string;
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
     readonly connection?: string;
 }
 // calendarEvent
@@ -295,7 +295,7 @@ export declare const Mailer: import("@marmeon/core").Token<Mailer>;
 // QueueMailOptions
 export interface QueueMailOptions {
     readonly queue?: string;
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
     readonly connection?: string;
 }
 ```

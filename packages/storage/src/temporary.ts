@@ -1,4 +1,4 @@
-import type { TemporaryUrlOptions } from './disk.ts';
+import type { DiskDriverTemporaryUrlOptions } from './disk.ts';
 import { StorageSetupError } from './errors.ts';
 import { withCode } from '@marmeon/core/internal';
 
@@ -11,7 +11,7 @@ export const TEMPORARY_PREFIX = '/_marmeon/storage';
  * the app's `Clock`. Bound by the `StorageServiceProvider`.
  */
 export interface TemporaryUrls {
-  sign(disk: string, key: string, options: TemporaryUrlOptions): string;
+  sign(disk: string, key: string, options: DiskDriverTemporaryUrlOptions): string;
 }
 
 /** Without @marmeon/http there is nothing to sign with, and no route that would serve the URL. */
