@@ -32,7 +32,7 @@ export default defineConfig({
     // Console output of passing tests (the default logger prints every query) stays out of the CI log; a failing test still shows its own.
     silent: 'passed-only',
     // A temporary directory per run (TMPDIR for every worker and process), and a red run when a test leaves a `marmeon-*` entry in it.
-    // With Postgres: drops the test databases the run left behind (only `<database>_test_*` on MARMEON_TEST_PGSQL_URL's server).
+    // With Postgres: drops the test databases the run left behind (only this checkout's `<database>_test_<tag>_*` ones on MARMEON_TEST_PGSQL_URL's server; another checkout's run keeps its own).
     globalSetup: ['scripts/test/temp-hygiene.ts', 'packages/database/src/__fixtures__/test-databases.ts'],
     projects,
   },

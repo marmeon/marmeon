@@ -19,7 +19,7 @@ export async function freshDatabase(driver: 'sqlite' | 'pgsql', { managed = true
   // `managed: false` for a test that builds its tables itself instead of migrating them: no record of migrations, and none is asked for.
   const unmanaged = managed ? {} : { managed: false };
   if (driver === 'sqlite') return { options: { driver: 'sqlite', database: ':memory:', ...unmanaged }, drop: async () => {} };
-  const name = `marmeon_test_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const name = `marmeon_test_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
   await sql`create database ${sql.id(name)}`.execute(admin.get());
   const url = new URL(PGSQL_URL!);

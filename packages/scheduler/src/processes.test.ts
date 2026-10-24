@@ -38,7 +38,7 @@ async function freshTarget(kind: Target['kind']): Promise<{ target: Target; drop
   let target: Target;
   let drop: () => Promise<void>;
   if (kind === 'pgsql') {
-    const name = `marmeon_schedule_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const name = `marmeon_schedule_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
     const admin = new Connections({ connections: { default: { driver: 'pgsql', url: PGSQL_URL! } }, root: '/', logger: silent });
     await sql`create database ${sql.id(name)}`.execute(admin.get());
     const url = new URL(PGSQL_URL!);

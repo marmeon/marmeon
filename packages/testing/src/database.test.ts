@@ -4,7 +4,7 @@ import { Connections, DatabaseServiceProvider, defineFactory, type Generated, ty
 import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { workerDatabase } from './database.ts';
 import { createTestApp, type TestApp } from './index.ts';
@@ -203,13 +203,26 @@ describe('where the worker databases live', () => {
     }
   });
 
+  const pgsql = { DB_DRIVER: 'pgsql', DB_URL: 'postgres://u:p@localhost:5432/shop' };
+
   it('names a Postgres database as before: the configured one, with _test_, the root’s hash and the worker', async () => {
-    const worker = await workerDatabase('/some/app', {
-      ...env,
-      DB_DRIVER: 'pgsql',
-      DB_URL: 'postgres://u:p@localhost:5432/shop',
-    });
-    expect(new URL(worker.key).pathname).toMatch(/^\/shop_test_[0-9a-z]+_\d+$/);
-    expect(worker.adminUrl).toBe('postgres://u:p@localhost:5432/shop');
+    vi.stubEnv('MARMEON_TEST_DATABASE_TAG', '');
+    try {
+      const worker = await workerDatabase('/some/app', { ...env, ...pgsql });
+      expect(new URL(worker.key).pathname).toMatch(/^\/shop_test_[0-9a-z]+_\d+$/);
+      expect(worker.adminUrl).toBe('postgres://u:p@localhost:5432/shop');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('puts the checkout’s tag of a run of the repository’s tests in front of the root’s hash', async () => {
+    vi.stubEnv('MARMEON_TEST_DATABASE_TAG', 'abcd1234');
+    try {
+      const worker = await workerDatabase('/some/app', { ...env, ...pgsql });
+      expect(new URL(worker.key).pathname).toMatch(/^\/shop_test_abcd1234_[0-9a-z]+_\d+$/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

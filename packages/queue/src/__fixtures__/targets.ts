@@ -95,7 +95,7 @@ export async function freshTarget(kind: QueueKind): Promise<{ target: QueueTarge
       };
     }
     case 'pgsql': {
-      const name = `marmeon_queue_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+      const name = `marmeon_queue_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
       const admin = databaseConnections({ driver: 'pgsql', url: PGSQL_URL! });
       await sql`create database ${sql.id(name)}`.execute(admin.get());
       const url = new URL(PGSQL_URL!);
