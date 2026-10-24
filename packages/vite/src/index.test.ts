@@ -150,6 +150,15 @@ describe('marmeon()', () => {
     expect(html(marmeon({ test: true }), '<body></body>')).toBeUndefined();
   });
 
+  it('refuses the removed options pages and lang with a hint to the fixed conventions', () => {
+    // @ts-expect-error `pages` was removed
+    expect(() => marmeon({ pages: 'views/*.tsx' })).toThrow(new TypeError('marmeon(): `pages` was removed: page components live in `modules/<module>/views/` (docs/vite.md#options). Remove it from `marmeon()`.'));
+    // @ts-expect-error `lang` was removed
+    expect(() => marmeon({ lang: ['lang/*.ts'] })).toThrow(/`lang` was removed: language files live in `lang\/` and `modules\/<module>\/lang\/`/);
+    expect(() => marmeon({ pages: undefined } as never)).not.toThrow();
+    expect(() => marmeon({})).not.toThrow();
+  });
+
   it('runs the constructor-injection transform and serves virtual:marmeon/pages, virtual:marmeon/lang and virtual:marmeon/routes', () => {
     const plugins = marmeon();
     expect(plugins.map((plugin) => plugin.name)).toEqual([

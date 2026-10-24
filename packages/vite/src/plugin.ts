@@ -54,20 +54,6 @@ export interface MarmeonOptions {
    */
   entries?: { client?: string; ssr?: string };
   /**
-   * Page components, as a glob relative to the app root (`virtual:marmeon/pages`). Default `modules/*\/views/**\/*.tsx`.
-   * Only files in `modules/<module>/views/` at the app root get a page name; any other file the glob matches is ignored. See docs/vite.md#options.
-   *
-   * @experimental The route types read the default pattern, so a custom glob is only half supported; it may change in a minor release.
-   */
-  pages?: string | string[];
-  /**
-   * Language files, as a glob relative to the app root (`virtual:marmeon/lang`, one chunk per file — the browser loads
-   * only the page's locale). Default `modules/*\/lang/*.ts` and `lang/*.ts` (namespace `app`).
-   *
-   * @experimental `@marmeon/i18n` reads only `lang/` and `modules/*\/lang/` on the server, so a custom glob reaches the browser but not the server's translator; this may change in a minor release.
-   */
-  lang?: string | string[];
-  /**
    * More places where client code hands a route name to the framework, besides the React adapter's
    * (`<Link route>`, `useRoute()`, `useForm(name, …)` — built in). Only names written out at a sink
    * reach the browser's route manifest (`virtual:marmeon/routes`).
@@ -112,8 +98,12 @@ export const CLIENT_CHUNKS: Rolldown.CodeSplittingOptions = {
 const ENV_OWNED = 'marmeon(): `envDir` and `envPrefix` are set by the plugin, so no variable reaches the client bundle by its name. Remove them from the config, or pass `marmeon({ viteEnv: true })` to manage them yourself. See docs/vite.md#environment-variables.';
 const NO_PUBLIC_ENV_PREFIX = '__MARMEON_NO_PUBLIC_ENV__';
 const DEFAULT_ENTRIES: MarmeonEntries = { client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' };
-const DEFAULT_PAGES = 'modules/*/views/**/*.tsx';
-const DEFAULT_LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
+const PAGES = 'modules/*/views/**/*.tsx';
+const LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
+const REMOVED_OPTIONS: Record<string, string> = {
+  pages: 'page components live in `modules/<module>/views/`',
+  lang: 'language files live in `lang/` and `modules/<module>/lang/`',
+};
 
 /**
  * The Vite plugin of a Marmeon app. UI-agnostic: the adapter brings its own plugin. See docs/vite.md#introduction.
@@ -124,8 +114,12 @@ const DEFAULT_LANG = ['modules/*/lang/*.ts', 'lang/*.ts'];
  * ```
  */
 export function marmeon(options: MarmeonOptions = {}): Plugin[] {
+  for (const [name, hint] of Object.entries(REMOVED_OPTIONS)) {
+    if ((options as Record<string, unknown>)[name] !== undefined) {
+      throw new TypeError(`marmeon(): \`${name}\` was removed: ${hint} (docs/vite.md#options). Remove it from \`marmeon()\`.`);
+    }
+  }
   const entries: MarmeonEntries = { ...DEFAULT_ENTRIES, ...options.entries };
-  const pages = options.pages ?? DEFAULT_PAGES;
   const api: MarmeonPluginApi = { entries };
 
   const main: Plugin & { api: MarmeonPluginApi } = {
@@ -155,7 +149,7 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
       if (command === 'serve' && !options.test) {
         // Vite scans index.html as written, which lacks the client entry and the devtools' bar: found only on the first request,
         // each re-bundling reloads the page (a 504 "Outdated Optimize Dep").
-        result.optimizeDeps = { entries: [entries.client, ...[pages].flat()], include: installedModules(root, PREBUNDLED) };
+        result.optimizeDeps = { entries: [entries.client, PAGES], include: installedModules(root, PREBUNDLED) };
       }
       // An app's own `server.fs.deny` is extended by this list, not replaced (Vite concatenates arrays). A pattern
       // with a slash is matched against the absolute path, so the app's directories carry the root.
@@ -205,10 +199,10 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     main,
     asyncEntry,
     marmeonInjection() as Plugin,
-    virtualGlob('pages', pages),
-    virtualGlob('lang', options.lang ?? DEFAULT_LANG),
+    virtualGlob('pages', PAGES),
+    virtualGlob('lang', LANG),
     routesModule({ sinks: [...ROUTE_SINKS, ...(options.routeSinks ?? [])], ...(options.test ? { test: true } : {}) }),
-    serverImports({ pages: typeof pages === 'string' ? [pages] : pages, client: entries.client, ...(options.serverModules ? { serverModules: options.serverModules } : {}) }),
+    serverImports({ pages: [PAGES], client: entries.client, ...(options.serverModules ? { serverModules: options.serverModules } : {}) }),
   ];
 }
 

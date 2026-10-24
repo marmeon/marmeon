@@ -111,14 +111,12 @@ generation](urls.md#which-routes-the-browser-knows) page explains which those ar
 | Option | Default | Effect |
 | --- | --- | --- |
 | `entries` | `{ client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' }` | Where the entries are, relative to the app root. |
-| `pages` | `'modules/*/views/**/*.tsx'` | Which files are pages. Only files in `modules/<module>/views/` at the app root get a page name; any other file the glob matches is ignored. |
-| `lang` | `['modules/*/lang/*.ts', 'lang/*.ts']` | Which files are language files. |
 | `serverModules` | none | More server modules, as globs. `'!glob'` takes files out of the conventions. |
 | `routeSinks` | none | More places where client code hands the framework a route name, for an adapter of your own. |
 | `test` | `false` | For `vitest.config.ts`. |
 | `viteEnv` | `false` | Keep Vite's own handling of `.env` files and `VITE_*` variables. See [Environment variables](#environment-variables). |
 
-The options `pages` and `lang` are experimental: they can change in any minor release. See [the release policy](releases.md#experimental).
+Pages are the `.tsx` files in `modules/<module>/views/`, and language files are the `.ts` files in `lang/` and `modules/<module>/lang/`. `marmeon()` takes no `pages` or `lang` option and throws a `TypeError` if you pass one.
 
 ## Environment variables
 

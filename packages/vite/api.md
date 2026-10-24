@@ -41,15 +41,6 @@ export type RouteSink = {
 export declare function marmeon(options?: MarmeonOptions): Plugin[];
 ```
 
-### Experimental
-
-```ts
-// MarmeonOptions.lang
-lang?: string | string[];
-// MarmeonOptions.pages
-pages?: string | string[];
-```
-
 ## `@marmeon/vite/client`
 
 Types from other packages: none

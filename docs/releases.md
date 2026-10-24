@@ -212,7 +212,7 @@ is still listed in the package's `api.md`, under **Experimental**, so a change s
 - `@marmeon/react/table-tanstack`
 - `marmeon tinker`
 
-The options `pages` and `lang` of the Vite plugin and the members of `@marmeon/testing` that follow an experimental
+The members of `@marmeon/testing` that follow an experimental
 package (`devtools`, `broadcast`, `live` of the test app) are experimental too, one by one; their declarations say so.
 
 So is `features` of `ResolvePage` in `@marmeon/react`, which names a type of `@marmeon/http/client/adapter`.

@@ -24,7 +24,7 @@ function app(files: Record<string, string>): string {
     'bootstrap/client.ts': "import pages from 'virtual:marmeon/pages';\nfor (const load of Object.values(pages)) void load();\n",
     'bootstrap/ssr.ts': "import { ShowHomeController } from '../modules/demo/controllers/ShowHomeController.ts';\nexport const render = () => new ShowHomeController().handle();\n",
     'modules/demo/controllers/ShowHomeController.ts': CONTROLLER,
-    'modules/demo/views/Home.ts': "import type { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport default (props: ReturnType<ShowHomeController['handle']>) => props;\n",
+    'modules/demo/views/Home.tsx': "import type { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport default (props: ReturnType<ShowHomeController['handle']>) => props;\n",
     ...files,
   };
   for (const [path, content] of Object.entries(all)) {
@@ -41,7 +41,7 @@ async function serve(root: string, options: MarmeonOptions = {}): Promise<ViteDe
     logLevel: 'silent',
     appType: 'custom',
     server: { middlewareMode: true, hmr: false, ws: false },
-    plugins: marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' }, pages: 'modules/*/views/**/*.ts', ...options }),
+    plugins: marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' }, ...options }),
   });
   servers.push(server);
   return server;
@@ -56,7 +56,7 @@ function ssrImport(server: ViteDevServer, path: string): Promise<unknown> {
 
 const message = (error: unknown) => (error as Error).message;
 const DIRECT =
-  "[marmeon] modules/demo/views/Home.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value: a controller is server code, and a value import bundles it — with everything it imports — into the browser. A class is a value even where only its type is used: write import type { ShowHomeController } from '../controllers/ShowHomeController.ts'. If the browser needs a value from it, move that value into a module both sides import.";
+  "[marmeon] modules/demo/views/Home.tsx:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value: a controller is server code, and a value import bundles it — with everything it imports — into the browser. A class is a value even where only its type is used: write import type { ShowHomeController } from '../controllers/ShowHomeController.ts'. If the browser needs a value from it, move that value into a module both sides import.";
 
 describe('valueImports()', () => {
   it('finds what loads a module at runtime — not import type, export type or a typeof import()', () => {
@@ -93,18 +93,18 @@ describe('valueImports()', () => {
 
 describe('server imports while serving', () => {
   it('fails a page that imports a controller as a value — in the browser environment (the overlay shows it)', async () => {
-    const root = app({ 'modules/demo/views/Home.ts': "import { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport default (props: ReturnType<ShowHomeController['handle']>) => props;\n" });
+    const root = app({ 'modules/demo/views/Home.tsx': "import { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport default (props: ReturnType<ShowHomeController['handle']>) => props;\n" });
     const server = await serve(root);
-    const error = await server.environments.client!.transformRequest('/modules/demo/views/Home.ts').catch((caught: unknown) => caught);
+    const error = await server.environments.client!.transformRequest('/modules/demo/views/Home.tsx').catch((caught: unknown) => caught);
     expect(message(error)).toBe(DIRECT);
     expect((error as { plugin?: string }).plugin).toBe('marmeon:server-imports');
   });
 
   it('lets import type and type re-exports through, and server code import anything', async () => {
-    const root = app({ 'modules/demo/views/Types.ts': "export type { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport type * from '../controllers/ShowHomeController.ts';\n" });
+    const root = app({ 'modules/demo/views/Types.tsx': "export type { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport type * from '../controllers/ShowHomeController.ts';\n" });
     const server = await serve(root);
-    await expect(server.environments.client!.transformRequest('/modules/demo/views/Home.ts')).resolves.toBeTruthy();
-    await expect(server.environments.client!.transformRequest('/modules/demo/views/Types.ts')).resolves.toBeTruthy();
+    await expect(server.environments.client!.transformRequest('/modules/demo/views/Home.tsx')).resolves.toBeTruthy();
+    await expect(server.environments.client!.transformRequest('/modules/demo/views/Types.tsx')).resolves.toBeTruthy();
     // The SSR entry is server code: it may import the controller.
     await expect(ssrImport(server, '/bootstrap/ssr.ts')).resolves.toBeTruthy();
   });
@@ -112,29 +112,29 @@ describe('server imports while serving', () => {
   it('follows client code into the modules it imports: view → helper → controller names the helper and the chain', async () => {
     const root = app({
       'modules/demo/helpers.ts': "import { ShowHomeController } from './controllers/ShowHomeController.ts';\nexport const label = () => ShowHomeController.name;\n",
-      'modules/demo/views/Home.ts': "import { label } from '../helpers.ts';\nexport default () => label();\n",
+      'modules/demo/views/Home.tsx': "import { label } from '../helpers.ts';\nexport default () => label();\n",
     });
     const server = await serve(root);
-    await server.environments.client!.transformRequest('/modules/demo/views/Home.ts');
+    await server.environments.client!.transformRequest('/modules/demo/views/Home.tsx');
     const error = await server.environments.client!.transformRequest('/modules/demo/helpers.ts').catch((caught: unknown) => caught);
     expect(message(error)).toContain(
-      '[marmeon] modules/demo/helpers.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value (modules/demo/helpers.ts is client code: modules/demo/views/Home.ts → modules/demo/helpers.ts): a controller is server code',
+      '[marmeon] modules/demo/helpers.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value (modules/demo/helpers.ts is client code: modules/demo/views/Home.tsx → modules/demo/helpers.ts): a controller is server code',
     );
   });
 
   it('checks pages in server environments too (SSR, tests with marmeon({ test: true })) — also through modules loaded before as server code', async () => {
     const files = {
       'modules/demo/helpers.ts': "import { ShowHomeController } from './controllers/ShowHomeController.ts';\nexport const label = () => ShowHomeController.name;\n",
-      'modules/demo/views/Home.ts': "import { label } from '../helpers.ts';\nexport default () => label();\n",
+      'modules/demo/views/Home.tsx': "import { label } from '../helpers.ts';\nexport default () => label();\n",
     };
     for (const test of [false, true]) {
       const server = await serve(app(files), { test });
-      await expect(ssrImport(server, '/modules/demo/views/Home.ts')).rejects.toThrow('[marmeon] modules/demo/helpers.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value');
+      await expect(ssrImport(server, '/modules/demo/views/Home.tsx')).rejects.toThrow('[marmeon] modules/demo/helpers.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value');
 
       // The helper is server code first (a controller's import): fine. A page that imports it later fails all the same.
       const later = await serve(app(files), { test });
       await expect(ssrImport(later, '/modules/demo/helpers.ts')).resolves.toBeTruthy();
-      await expect(ssrImport(later, '/modules/demo/views/Home.ts')).rejects.toThrow('(modules/demo/helpers.ts is client code: modules/demo/views/Home.ts → modules/demo/helpers.ts)');
+      await expect(ssrImport(later, '/modules/demo/views/Home.tsx')).rejects.toThrow('(modules/demo/helpers.ts is client code: modules/demo/views/Home.tsx → modules/demo/helpers.ts)');
     }
   });
 
@@ -142,16 +142,16 @@ describe('server imports while serving', () => {
     const root = app({
       'modules/demo/services/Billing.ts': "export const billing = 'server-only';\n",
       'modules/demo/jobs/labels.ts': "export const labels = ['shared'];\n",
-      'modules/demo/views/Home.ts': "import { billing } from '../services/Billing.ts';\nimport { labels } from '../jobs/labels.ts';\nexport default () => [billing, labels];\n",
+      'modules/demo/views/Home.tsx': "import { billing } from '../services/Billing.ts';\nimport { labels } from '../jobs/labels.ts';\nexport default () => [billing, labels];\n",
     });
     const plain = await serve(root);
-    const error = await plain.environments.client!.transformRequest('/modules/demo/views/Home.ts').catch((caught: unknown) => caught);
-    expect(message(error)).toContain('modules/demo/views/Home.ts:2:1 — imports modules/demo/jobs/labels.ts as a value: a job is server code');
+    const error = await plain.environments.client!.transformRequest('/modules/demo/views/Home.tsx').catch((caught: unknown) => caught);
+    expect(message(error)).toContain('modules/demo/views/Home.tsx:2:1 — imports modules/demo/jobs/labels.ts as a value: a job is server code');
     expect(message(error)).not.toContain('Billing');
 
     const configured = await serve(root, { serverModules: ['modules/*/services/**', '!modules/demo/jobs/labels.ts'] });
-    const other = await configured.environments.client!.transformRequest('/modules/demo/views/Home.ts').catch((caught: unknown) => caught);
-    expect(message(other)).toContain('modules/demo/views/Home.ts:1:1 — imports modules/demo/services/Billing.ts as a value: a module matching modules/*/services/** is server code');
+    const other = await configured.environments.client!.transformRequest('/modules/demo/views/Home.tsx').catch((caught: unknown) => caught);
+    expect(message(other)).toContain('modules/demo/views/Home.tsx:1:1 — imports modules/demo/services/Billing.ts as a value: a module matching modules/*/services/** is server code');
     expect(message(other)).not.toContain('labels.ts');
   });
 });
