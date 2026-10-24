@@ -615,7 +615,8 @@ export default defineModule({
 
 const ROUTES = `import { defineRoutes } from '@marmeon/http';
 
-export default defineRoutes((Route) => {
+// Take the registrar as a parameter once there is a route: defineRoutes((Route) => { … }).
+export default defineRoutes(() => {
   // Route.get('/path', ShowSomethingController).name('module.something');
 });
 `;
