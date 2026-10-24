@@ -39,7 +39,7 @@ export default defineDocs({
       pages: [
         { slug: 'why-marmeon', label: 'Why Marmeon' },
         { slug: 'upgrading', label: 'Upgrade Guide', file: 'UPGRADING.md', changes: true },
-        { slug: 'releases', label: 'Release Policy' },
+        { slug: 'releases', label: 'Releases and Support' },
         { slug: 'contributing', label: 'Contribution Guide', file: 'CONTRIBUTING.md' },
         { slug: 'security-policy', label: 'Security Policy', file: 'SECURITY.md' },
         { slug: 'packages', label: 'Packages' },

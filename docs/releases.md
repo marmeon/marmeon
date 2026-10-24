@@ -1,8 +1,9 @@
-# Release Policy
+# Releases and Support
 
 ## Introduction
 
-This page says how Marmeon is versioned, what a version number promises, and how you upgrade. Every package of the framework
+This page says how Marmeon is versioned, what a version number promises, which versions get fixes and security fixes, which platforms
+are supported, what is public API, what a release candidate is, and how you upgrade. Every package of the framework
 carries the same version, so one number describes the whole framework:
 
 ```sh
@@ -41,6 +42,17 @@ Breaking changes come only in a major version, except for a [security hardening]
 removed is [deprecated](#deprecations) first, in a minor version, and goes in the next major version, with its entry in the
 upgrade guide. What is outside the [public API](#what-is-public-api) is outside this promise. [Which versions get
 fixes](#which-versions-get-fixes) is a separate question.
+
+## Release candidates
+
+A release candidate, `x.y.z-rc.N`, is a preview of the release `x.y.z`. It comes under the npm dist-tag `next` and never moves `latest`,
+so an app only gets one when it asks: `pnpm add @marmeon/core@next`, and the same for every other framework package, all in the same version.
+
+From the first candidate to its release, only bug fixes, documentation and internals change; the public API is the one the release
+will have. The exception is a security hardening: it may come all the same and brings the next candidate. A hardening
+that breaks an app can move the release to the next breaking version. A candidate gets no fixes once its release has appeared: move to the
+release with `latest`, because `next` may still point at the last candidate. Report a bug in the issues, and a vulnerability as the
+[security policy](../SECURITY.md) describes.
 
 ## Which versions get fixes
 

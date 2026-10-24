@@ -649,6 +649,11 @@ the pair again: a version with `-rc.` is staged as `next` only, any other versio
 whatever the tag, so the guard refuses a candidate while npm has no `latest`. After `x.y.z` ships, `next` still points at the last
 candidate (below `latest`) until a maintainer moves or removes it (`npm dist-tag add|rm`, with two-factor authentication).
 
+Between the first candidate and its release, the project is frozen: only pull requests labelled `fix`, `docs` or `internal` are
+merged, and `feature` and `breaking` ones wait. A security hardening is the exception
+([Releases and Support](docs/releases.md#what-is-public-api)): it may be merged and brings the next candidate; whether the version
+changes follows from its label, as for any release.
+
 ### The tarballs
 
 - Packages are packed with **pnpm** only — `npm pack` and `npm publish` of a directory ignore `publishConfig.exports` and would
