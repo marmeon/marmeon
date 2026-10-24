@@ -73,12 +73,27 @@ describe('RedisConnections without a server', () => {
       (await createApplication({ root: import.meta.dirname, discover: false, providers: [RedisServiceProvider] }, { env: { APP_NAME: 'Shop', ...variables } })).container.make(RedisConfig).default.prefix;
     expect(await prefix({ REDIS_PREFIX: '' })).toBe('shop:');
     expect(await prefix({ REDIS_PREFIX: 'tenant-a:' })).toBe('tenant-a:');
-    expect(await prefix({ APP_NAME: '' })).toBe('marmeon:');
+  });
+
+  it('takes the prefix from REDIS_PREFIX alone, or from APP_NAME alone', async () => {
+    const prefix = async (variables: Record<string, string>) =>
+      (await createApplication({ root: import.meta.dirname, discover: false, providers: [RedisServiceProvider] }, { env: variables })).container.make(RedisConfig).default.prefix;
+    expect(await prefix({ REDIS_PREFIX: 'tenant-a:' })).toBe('tenant-a:');
+    expect(await prefix({ APP_NAME: 'My App' })).toBe('my-app:');
+    expect(await prefix({ APP_NAME: 'My App', REDIS_PREFIX: 'x:' })).toBe('x:');
+  });
+
+  it('stops at the start with neither REDIS_PREFIX nor a usable APP_NAME — never a silent "marmeon:"', async () => {
+    const start = (variables: Record<string, string>) => createApplication({ root: import.meta.dirname, discover: false, providers: [RedisServiceProvider] }, { env: variables });
+    const unusable: Record<string, string>[] = [{}, { APP_NAME: '' }, { REDIS_PREFIX: '' }, { APP_NAME: '', REDIS_PREFIX: '' }, { APP_NAME: '!!!' }];
+    for (const variables of unusable) {
+      await expect(start(variables), JSON.stringify(variables)).rejects.toThrow(/REDIS_PREFIX.*APP_NAME.*share their keys/s);
+    }
   });
 
   it('rejects a REDIS_URL that is not one', async () => {
     await expect(
-      createApplication({ root: import.meta.dirname, discover: false, providers: [RedisServiceProvider] }, { env: { REDIS_URL: 'localhost:6379' } }),
+      createApplication({ root: import.meta.dirname, discover: false, providers: [RedisServiceProvider] }, { env: { REDIS_URL: 'localhost:6379', APP_NAME: 'Shop' } }),
     ).rejects.toThrow(/REDIS_URL.*redis:\/\//s);
   });
 });

@@ -296,6 +296,7 @@ list is `docs/configuration.md` › "Every variable", compared with the `Environ
 - A switch is read with `env.boolean()`: no `env.in(['true', 'false'])`, no `true|false` pattern and no compare with `'true'` in a package's
   source, and no variable that reads `true` and `false` as text.
 - One variable has one meaning: two configs of a package do not read it differently.
+- One name has one default: every package that reads a variable gives it the same default, or leaves it optional in all of them.
 - A retired name is never given out again.
 
 A rename is a `breaking` pull request with `.renamed()`; its `UPGRADING.md` entry is written when the release is prepared, and the description says what an app renames.

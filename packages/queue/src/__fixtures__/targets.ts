@@ -163,9 +163,9 @@ export function targetEnv(target: SharedTarget, retryAfter?: number): Record<str
   const retry = retryAfter === undefined ? {} : { [target.kind === 'redis' ? 'QUEUE_REDIS_RETRY_AFTER_SECONDS' : 'QUEUE_DATABASE_RETRY_AFTER_SECONDS']: String(retryAfter) };
   switch (target.kind) {
     case 'sqlite':
-      return { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, QUEUE_DRIVER: 'database', CACHE_DRIVER: 'database', ...retry };
+      return { APP_NAME: 'Queue Fixture', DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, QUEUE_DRIVER: 'database', CACHE_DRIVER: 'database', ...retry };
     case 'pgsql':
-      return { DB_MANAGED: 'false', DB_DRIVER: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '3', QUEUE_DRIVER: 'database', CACHE_DRIVER: 'database', ...retry };
+      return { APP_NAME: 'Queue Fixture', DB_MANAGED: 'false', DB_DRIVER: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '3', QUEUE_DRIVER: 'database', CACHE_DRIVER: 'database', ...retry };
     case 'redis':
       return { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, QUEUE_DRIVER: 'redis', CACHE_DRIVER: 'redis', REDIS_URL: target.url, REDIS_PREFIX: target.prefix, ...retry };
   }

@@ -87,13 +87,13 @@ async function freshTarget(kind: Target['kind']): Promise<{ target: Target; drop
 function env(target: Target): Record<string, string> {
   switch (target.kind) {
     case 'sqlite':
-      return { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'database' };
+      return { APP_NAME: 'Scheduler Fixture', DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'database' };
     case 'file':
-      return { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'file', CACHE_PATH: target.cache };
+      return { APP_NAME: 'Scheduler Fixture', DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'file', CACHE_PATH: target.cache };
     case 'pgsql':
-      return { DB_MANAGED: 'false', DB_DRIVER: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '2', CACHE_DRIVER: 'database' };
+      return { APP_NAME: 'Scheduler Fixture', DB_MANAGED: 'false', DB_DRIVER: 'pgsql', DB_URL: target.url, DB_POOL_MAX: '2', CACHE_DRIVER: 'database' };
     case 'redis':
-      return { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'redis', REDIS_URL: target.url, REDIS_PREFIX: target.prefix };
+      return { APP_NAME: 'Scheduler Fixture', DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, CACHE_DRIVER: 'redis', REDIS_URL: target.url, REDIS_PREFIX: target.prefix };
   }
 }
 
@@ -298,7 +298,7 @@ describe.concurrent('the scheduler processes (sqlite)', () => {
     const started: SchedulerProcess[] = [];
     try {
       // Production without a .env: everything it needs is given here.
-      const work = start(started, 'schedule:work', { NODE_ENV: 'production', DB_MANAGED: 'false', DB_DATABASE: ':memory:', CACHE_DRIVER: driver, CACHE_PATH: directory, FIXTURE_ONE_SERVER: '1' });
+      const work = start(started, 'schedule:work', { NODE_ENV: 'production', APP_NAME: 'Scheduler Fixture', DB_MANAGED: 'false', DB_DATABASE: ':memory:', CACHE_DRIVER: driver, CACHE_PATH: directory, FIXTURE_ONE_SERVER: '1' });
       await work.waitFor(/Running the schedule every minute/);
       expect(work.lines.join('\n')).toContain(warning);
       await stop(work);

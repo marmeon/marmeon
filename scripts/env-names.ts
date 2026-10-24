@@ -38,6 +38,8 @@ export interface EnvName {
   readonly boolean: boolean;
   /** Set when a package reads the variable differently in two configs (the snapshot line names both). */
   readonly divergent?: boolean;
+  /** Set when the configs that read it do not agree on its default or on whether it is optional (`default` then lists them). */
+  readonly disagreeing?: boolean;
 }
 
 export interface EnvNames {
@@ -83,7 +85,7 @@ export function envNames(root: string): EnvNames {
     }
   }
   return {
-    current: [...current].sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, { packages, defaults, boolean, divergent }]) => ({ name, packages: [...packages].sort(), default: [...defaults].join(' / '), boolean, ...(divergent ? { divergent } : {}) })),
+    current: [...current].sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, { packages, defaults, boolean, divergent }]) => ({ name, packages: [...packages].sort(), default: [...defaults].join(' / '), boolean, ...(divergent ? { divergent } : {}), ...(defaults.size > 1 ? { disagreeing: true } : {}) })),
     retired: retired.sort((a, b) => (a.name < b.name ? -1 : 1)),
   };
 }
@@ -144,6 +146,7 @@ export function envNameProblems(names: EnvNames, table: readonly TableRow[]): st
       if (/^`"(?:true|false|1|0)"`$/i.test(variable.default)) fail('it is a switch read as a string — read it with env.boolean()');
     }
     if (variable.divergent === true) fail('two configs of the package read it differently — one variable has one meaning and one default');
+    if (variable.disagreeing === true) fail(`the configs that read it disagree on its default (${variable.default}) — a name has one default in every package, so give them the same or name the variable after its area`);
     if (name.endsWith('_CONNECTION') && driverDefaults.has(variable.default)) fail('_CONNECTION names a database or Redis connection, but its default is that of a _DRIVER variable — a variable that picks a driver ends with _DRIVER');
     if (/DRIVER/.test(name) && !name.endsWith('_DRIVER')) fail('a variable that picks a driver ends with _DRIVER');
     if (/CONNECTION/.test(name) && !name.endsWith('_CONNECTION')) fail('a variable that names a connection ends with _CONNECTION');

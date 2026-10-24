@@ -47,7 +47,7 @@ describe('the tables readiness waits for', () => {
   });
 
   it.skipIf(!REDIS_URL)('are the failed-job table alone for a Redis queue that keeps its failures in the database', async () => {
-    const { tables } = await required([CliServiceProvider, DatabaseServiceProvider, RedisServiceProvider, EncryptionServiceProvider, QueueServiceProvider], { QUEUE_DRIVER: 'redis', REDIS_URL: REDIS_URL!, QUEUE_FAILED_DRIVER: 'database' });
+    const { tables } = await required([CliServiceProvider, DatabaseServiceProvider, RedisServiceProvider, EncryptionServiceProvider, QueueServiceProvider], { QUEUE_DRIVER: 'redis', REDIS_URL: REDIS_URL!, REDIS_PREFIX: 'tables-test:', QUEUE_FAILED_DRIVER: 'database' });
     expect(tables).toEqual(['failed_jobs']);
   });
 });
