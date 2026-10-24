@@ -81,10 +81,11 @@ describe.each(drivers)('the migration watcher of the development server, on %s',
     vi.unstubAllEnvs();
     vi.useRealTimers();
   });
-  afterAll(async () => {
-    for (const connections of opened) await connections.destroy();
-    await drop();
+  // The pools a test opened are closed with it: kept until the suite ends they would exhaust the server's connections.
+  afterEach(async () => {
+    for (const connections of opened.splice(0)) await connections.destroy();
   });
+  afterAll(() => drop());
 
   it('refuses queries when a migration file appears and answers again once migrate ran in another process, with no restart', { timeout: 15_000 }, async () => {
     vi.useFakeTimers({ toFake: ['Date'] });

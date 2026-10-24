@@ -59,10 +59,11 @@ describe.each(drivers)('what the app does when the database lacks migrations, on
     await dropAllTables(inspectionConnection(scratch), driver);
   });
   afterEach(() => vi.useRealTimers());
-  afterAll(async () => {
-    for (const connections of opened) await connections.destroy();
-    await drop();
+  // The pools a test opened are closed with it: kept until the suite ends they would exhaust the server's connections.
+  afterEach(async () => {
+    for (const connections of opened.splice(0)) await connections.destroy();
   });
+  afterAll(() => drop());
 
   it('refuses every query of a process whose code has migrations the database lacks — a table without secrets as well', async () => {
     await migrate([auth]);
