@@ -3,6 +3,7 @@ import { isLiveChannel } from '@marmeon/http/internal';
 import { Redactor, type Logger } from '@marmeon/core';
 import { CONNECTION_ID } from './broadcaster.ts';
 import { END_FRAME, STREAM_HEADERS, type LiveHub } from './hub.ts';
+import { monotonicNow } from './monotonic.ts';
 import type { LiveTokens } from './signer.ts';
 
 /** A refusal as plain text — never an error page: `EventSource` reads nothing of it, and it costs no render. */
@@ -61,7 +62,7 @@ export class LiveStreamController {
     }
     // After the tokens, so a forged request learns nothing of the sign-in; before the hub, so an ended one holds no place in it.
     // Before the sign-in is asked: an end that arrives after this moment is one the answer may not know of (the hub checks).
-    const checkedAt = Date.now();
+    const checkedAt = monotonicNow();
     let accounts: string[] | undefined;
     if (this.#audience) {
       try {
