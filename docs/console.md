@@ -327,8 +327,6 @@ instead of waiting. An agent without a terminal is never asked. The scheduler ru
 
 ## Tinker
 
-`marmeon tinker` is experimental: it can change in any minor release. See [the release policy](releases.md#experimental).
-
 `marmeon tinker` opens a REPL with the booted app. It is Node's own REPL: `await` works at the top level, input may span several
 lines, and you type TypeScript with the same erasable syntax as the app's files:
 
@@ -341,6 +339,8 @@ Marmeon tinker · my-app · NODE_ENV=development · db sqlite (storage/database.
 > await jobs.dispatch(SendWelcomeMailJob, { userId: user!.id })
 ```
 
+The TypeScript input relies on Node's `module.stripTypeScriptTypes`, which Node still calls experimental: the command, its flags, the exit codes and the sandbox are stable, but what the REPL accepts of TypeScript follows Node's type stripping.
+
 | Helper | What it is |
 | --- | --- |
 | `app` | The `Application`: its container, modules and root. |
@@ -352,7 +352,7 @@ Marmeon tinker · my-app · NODE_ENV=development · db sqlite (storage/database.
 | `mail` | The `Mailer`. |
 | `url(name, params?, query?)` | The path of a named route. |
 | `t(key, params?)` | A text in `APP_LOCALE`. |
-| `config.<name>` | The resolved configuration: `config.app`, `config.mail`, … |
+| `config.<name>` | The resolved configuration: `config.app`, `config.mail`, … It shows secrets as they are, the `APP_KEY` bytes and SMTP and Redis passwords included: mind the scrollback and the CI logs of `tinker -e`. |
 
 Every class and token the container binds, every class a module lists, such as jobs, listeners and seeders, and every repository is
 there by its name: `make(Mailer)` and `jobs.dispatch(SendWelcomeMailJob, …)` need no import. A helper is built on first use, and
@@ -397,12 +397,12 @@ Tinker works in every environment: whoever has a shell on the server can already
 protected, in production, a staging server included, or without a `NODE_ENV`, the banner says so in red and names the database:
 `PRODUCTION — NODE_ENV=production, APP_ENV=staging, db pgsql (db.internal:5432/app): every change is real.` It names the driver, host and
 database, never a user or a password. With `--execute` the same line goes to stderr, so a script's stdout keeps only the value.
-`--sandbox` is the safe way to look around.
+`--sandbox` takes back the default connection's writes; on Postgres the rows it wrote stay locked until the session ends, so keep it short.
 
 ### History
 
 The inputs of interactive sessions are kept in `storage/framework/tinker_history`, the last 1000 lines. A new file is readable
-only by its owner. It is plain text: a password you hash or a token you paste is in it. `--no-history` keeps none. The history
+only by its owner, and an existing one is made owner-only too (if that fails, the session keeps no history). It is plain text: a password you hash or a token you paste is in it. `--no-history` keeps none. The history
 holds inputs only, never what the REPL printed.
 
 ## Lint

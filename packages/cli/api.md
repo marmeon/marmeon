@@ -273,11 +273,6 @@ marmeon schema:project
 // serve
 marmeon serve [--workers=N]
 --workers (string)
-```
-
-## Experimental
-
-```ts
 // tinker
 marmeon tinker [--sandbox] [--execute "<code>"] [--no-history]
 --execute (string, short e)

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, rmSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { bin, environment, marmeon, session, webApp } from '../__fixtures__/tinker.ts';
@@ -123,13 +123,12 @@ describe('marmeon tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
     expect(unknown.stderr).toContain('NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging');
   });
 
-  it('keeps a history in storage/framework/tinker_history only for the owner — none with --no-history', async () => {
-    // The history belongs to the app root (here the web app's storage/, which git ignores); a developer's own history stays.
+  it('leaves the history file as it was with --no-history', async () => {
     const history = join(webApp, 'storage/framework/tinker_history');
-    const existed = existsSync(history);
-    await session([], env, '1 + 1\n.exit\n');
-    expect(existsSync(history)).toBe(true);
-    expect(statSync(history).mode & 0o777).toBe(0o600);
-    if (!existed) rmSync(history);
+    const snapshot = () => (existsSync(history) ? readFileSync(history, 'utf8') : undefined);
+    const before = snapshot();
+    const { code } = await session(['--no-history'], env, "'x'\n.exit\n");
+    expect(code).toBe(0);
+    expect(snapshot()).toBe(before);
   });
 });

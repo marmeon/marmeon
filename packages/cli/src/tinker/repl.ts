@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import repl, { type REPLServer } from 'node:repl';
 import { PassThrough } from 'node:stream';
@@ -41,8 +41,9 @@ export async function interactive(session: TinkerSession, options: InteractiveOp
     completer: completer(session, evaluator.complete),
   });
   session.attach(server.context as Record<string, unknown>);
-  defineCommands(server, session, options.history);
-  if (options.history) await setupHistory(server, options.history);
+  const history = options.history && keepHistory(options.history, output) ? options.history : undefined;
+  defineCommands(server, session, history);
+  if (history) await setupHistory(server, history);
   const closed = new Promise<void>((resolve) => server.once('exit', resolve));
   if (options.signal?.aborted) server.close();
   else options.signal?.addEventListener('abort', () => server.close(), { once: true });
@@ -258,6 +259,17 @@ async function listHelpers(session: TinkerSession, write: (text?: string) => voi
   }
   const names = session.names();
   write(`Names (${names.length}, Tab completes them; make('Name') resolves one): ${names.slice(0, 12).join(', ')}${names.length > 12 ? ', …' : ''}`);
+}
+
+/** Node creates a new history file as 0600 but leaves an existing one as it is: tighten it, or keep no history. */
+function keepHistory(file: string, output: NodeJS.WritableStream): boolean {
+  try {
+    if (existsSync(file)) chmodSync(file, 0o600);
+    return true;
+  } catch {
+    output.write(`${style('dim', `No history: ${file} cannot be made owner-only.`)}\n`);
+    return false;
+  }
 }
 
 function setupHistory(server: REPLServer, file: string): Promise<void> {
