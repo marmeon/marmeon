@@ -1,7 +1,10 @@
 # Databases for the framework's own tests: `docker compose up -d`, then `pnpm test:pgsql`, `pnpm test:redis` and `pnpm test:s3`.
 # Own ports on purpose — 5432/3306 may belong to other projects on the same machine.
+# The ports are bound to 127.0.0.1 only, so clients use 127.0.0.1, never `localhost`: Node tries ::1 first, nothing listens there, and
+# a connect to a closed port inside the ephemeral source-port range (macOS: 49152–65535, which holds 55432) can connect to itself
+# (same source and destination port) and hang for good.
 # An app reaches the Postgres here with DB_DRIVER=pgsql, DB_HOST=127.0.0.1, DB_PORT=55432, DB_DATABASE=marmeon,
-# DB_USERNAME=marmeon and DB_PASSWORD=secret (or DB_URL=postgres://marmeon:secret@localhost:55432/marmeon).
+# DB_USERNAME=marmeon and DB_PASSWORD=secret (or DB_URL=postgres://marmeon:secret@127.0.0.1:55432/marmeon).
 name: marmeon
 
 services:
