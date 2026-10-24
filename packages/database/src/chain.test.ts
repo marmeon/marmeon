@@ -1133,10 +1133,12 @@ describe.each(drivers)('loading relations on %s', (driver) => {
     await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').withTrashed().execute()).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').withCount('comments').execute()).rejects.toThrow(message);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('users').select('name').whereHas('comments').execute()).rejects.toThrow(message);
-    // A repository bound to such a connection: update() stamps updated_at, delete() may only mark a row deleted.
+    // A repository bound to such a connection: update() stamps updated_at, delete() may only mark a row deleted, and neither knows
+    // the primary key.
     const plain = new PostRepository(connections).using(db.withoutPlugins());
-    await expect(plain.update(0, { title: 'never' })).rejects.toThrow(message);
-    await expect(plain.delete(0)).rejects.toThrow(message);
+    const keyless = "A lookup by primary key needs the app's connection, which knows the schema";
+    await expect(plain.update(0, { title: 'never' })).rejects.toThrow(keyless);
+    await expect(plain.delete(0)).rejects.toThrow(keyless);
     await expect(connections.infrastructure<FixtureTables>().selectFrom('api_keys').select((eb) => ['name', secret(eb, 'token')]).execute()).rejects.toThrow(
       `This query reads a column with secret(), which only the app's connection checks — it was not sent: it runs on the database connection "default" without Marmeon's plugins (infrastructure(), withoutPlugins()), which check no column. Name the column there as it is, or build the query on connections.get() or Database. See docs/migrations.md#secret-columns.`,
     );

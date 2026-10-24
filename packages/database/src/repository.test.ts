@@ -277,7 +277,8 @@ describe.each(drivers)('Repository without markers on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeAll(async () => {
-    ({ connections, close } = await freshConnections(driver));
+    // Another tool owns the table, so its primary key is read from the catalog.
+    ({ connections, close } = await freshConnections(driver, { managed: false }));
     // Columns named like the markers' — but no migration said `softDeletes()` or `timestamps()`.
     await connections
       .get()
@@ -298,5 +299,184 @@ describe.each(drivers)('Repository without markers on %s', (driver) => {
     expect(await entries.delete(gone.id)).toBe(true);
     expect(await entries.query().select('message').execute()).toEqual([{ message: 'still kept' }]);
     expect(await connections.get<LogTables>().selectFrom('log_entries').select('id').execute()).toHaveLength(1);
+  });
+});
+
+describe.each(drivers)('Repository on a table whose primary key is not id, on %s', (driver) => {
+  interface PageTables {
+    pages: { slug: string; title: string };
+  }
+  class Pages extends Repository<'pages', PageTables> {
+    static table = 'pages' as const;
+  }
+  let connections: Connections;
+  let close: () => Promise<void>;
+  beforeAll(async () => {
+    ({ connections, close } = await freshConnections(driver));
+    const slugs: ModuleDefinition[] = [{ name: 'pages', migrations: new URL('./__fixtures__/migrations/slug-keys/', import.meta.url) }];
+    await new Migrator({ modules: slugs, root: '/' } as unknown as Application, connections).migrate();
+  });
+  afterAll(() => close());
+
+  it('finds, updates and deletes by the key the migration declared', async () => {
+    const pages = new Pages(connections);
+    await pages.insert({ slug: 'welcome', title: 'Welcome' });
+    expect(await pages.find('welcome')).toMatchObject({ title: 'Welcome' });
+    expect(await pages.find('missing')).toBeUndefined();
+    expect(await pages.exists('welcome')).toBe(true);
+    expect(await pages.update('welcome', { title: 'Hello' })).toMatchObject({ title: 'Hello' });
+    expect((await pages.findOrFail('welcome')).title).toBe('Hello');
+    await expect(pages.findOrFail('missing')).rejects.toBeInstanceOf(RecordNotFoundError);
+    expect(await pages.delete('welcome')).toBe(true);
+    expect(await pages.count()).toBe(0);
+  });
+
+  it('batches by the key and binds it as a route parameter of at most 255 characters', async () => {
+    const pages = new Pages(connections);
+    for (const slug of ['a', 'b', 'c']) await pages.insert({ slug, title: slug });
+    const batches: string[][] = [];
+    for await (const batch of pages.chunk(2)) batches.push(batch.map((page) => page.slug));
+    expect(batches).toEqual([['a', 'b'], ['c']]);
+
+    expect(await pages.findByRouteKey('b')).toMatchObject({ title: 'b' });
+    const queries: string[] = [];
+    connections.onQuery((query) => queries.push(query.sql));
+    expect(await pages.findByRouteKey('x'.repeat(256))).toBeUndefined();
+    expect(await pages.findByRouteKey('')).toBeUndefined();
+    expect(queries).toEqual([]);
+  });
+});
+
+describe.each(drivers)('Repository on a table without a single-column primary key on %s', (driver) => {
+  interface PivotTables {
+    role_user: { role_id: number; user_id: number };
+    audit_lines: { line: string };
+  }
+  class RoleUser extends Repository<'role_user', PivotTables> {
+    static table = 'role_user' as const;
+  }
+  class AuditLines extends Repository<'audit_lines', PivotTables> {
+    static table = 'audit_lines' as const;
+  }
+  let connections: Connections;
+  let close: () => Promise<void>;
+  beforeAll(async () => {
+    // A composite key cannot be declared with the blueprint: another tool made these tables, and the catalog tells.
+    ({ connections, close } = await freshConnections(driver, { managed: false }));
+    const db = connections.get();
+    await db.schema
+      .createTable('role_user')
+      .addColumn('role_id', 'integer', (c) => c.notNull())
+      .addColumn('user_id', 'integer', (c) => c.notNull())
+      .addPrimaryKeyConstraint('role_user_pkey', ['role_id', 'user_id'])
+      .execute();
+    await db.schema.createTable('audit_lines').addColumn('line', 'text', (c) => c.notNull()).execute();
+  });
+  afterAll(() => close());
+
+  it('refuses every method that takes a key with a TypeError — it never falls back to id', async () => {
+    const roleUser = new RoleUser(connections) as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+    const message = 'role_user has no single-column primary key — use query().';
+    await expect(roleUser.find!(1)).rejects.toThrow(new TypeError(message));
+    await expect(roleUser.exists!(1)).rejects.toThrow(message);
+    await expect(roleUser.update!(1, { role_id: 2 })).rejects.toThrow(message);
+    await expect(roleUser.delete!(1)).rejects.toThrow(message);
+    await expect(roleUser.findByRouteKey!('1')).rejects.toThrow(message);
+    await expect(new RoleUser(connections).chunk(10).next()).rejects.toThrow(message);
+    await expect(new AuditLines(connections).findByRouteKey('1')).rejects.toThrow('audit_lines has no single-column primary key — use query().');
+  });
+
+  it('still reads and writes through query() and insert()', async () => {
+    const roleUser = new RoleUser(connections);
+    await roleUser.insert({ role_id: 1, user_id: 2 });
+    expect(await roleUser.query().selectAll().execute()).toEqual([{ role_id: 1, user_id: 2 }]);
+    expect(await roleUser.count()).toBe(1);
+  });
+
+  it('binds a table without a key by the column routeKey names', async () => {
+    class ByLine extends Repository<'audit_lines', PivotTables> {
+      static table = 'audit_lines' as const;
+      static routeKey = 'line';
+    }
+    await new AuditLines(connections).insert({ line: 'one' });
+    expect(await new ByLine(connections).findByRouteKey('one')).toEqual({ line: 'one' });
+  });
+});
+
+describe.each(drivers)('Scoped route bindings under a parent keyed by a slug on %s', (driver) => {
+  interface ProjectTables {
+    projects: { slug: string; name: string };
+    tasks: { id: Generated<number>; project_id: string; title: string };
+  }
+  class Tasks extends Repository<'tasks', ProjectTables> {
+    static table = 'tasks' as const;
+  }
+  let connections: Connections;
+  let close: () => Promise<void>;
+  const ctx = {} as never;
+  beforeAll(async () => {
+    // A foreign key to a text column cannot be declared with the blueprint: the catalog tells.
+    ({ connections, close } = await freshConnections(driver, { managed: false }));
+    const db = connections.get();
+    await db.schema.createTable('projects').addColumn('slug', 'varchar(100)', (c) => c.primaryKey()).addColumn('name', 'text', (c) => c.notNull()).execute();
+    await db.schema
+      .createTable('tasks')
+      .addColumn('id', driver === 'sqlite' ? 'integer' : 'bigint', (c) => (driver === 'sqlite' ? c.primaryKey().autoIncrement() : c.primaryKey().generatedByDefaultAsIdentity()))
+      .addColumn('project_id', 'varchar(100)', (c) => c.notNull().references('projects.slug'))
+      .addColumn('title', 'text', (c) => c.notNull())
+      .execute();
+  });
+  afterAll(() => close());
+
+  it('compares with the column the foreign key references, so a task under the wrong parent is not found', async () => {
+    const db = connections.get<ProjectTables>();
+    await db.insertInto('projects').values([{ slug: 'alpha', name: 'Alpha' }, { slug: 'beta', name: 'Beta' }]).execute();
+    const tasks = new Tasks(connections);
+    const task = await tasks.insert({ project_id: 'alpha', title: 'Write' });
+    const scope = (slug: string, column = 'project_id') => ({ param: 'project', parent: { slug, name: slug }, column });
+    expect(await tasks.resolveRouteBinding(String(task.id), { ctx, scope: scope('alpha') })).toMatchObject({ title: 'Write' });
+    expect(await tasks.resolveRouteBinding(String(task.id), { ctx, scope: scope('beta') })).toBeUndefined();
+    // A parent without the referenced column is no parent.
+    expect(await tasks.resolveRouteBinding(String(task.id), { ctx, scope: { param: 'project', parent: { id: 1 }, column: 'project_id' } })).toBeUndefined();
+  });
+
+  it('refuses a scope column that is no foreign key instead of comparing with an id', async () => {
+    const tasks = new Tasks(connections);
+    await expect(tasks.resolveRouteBinding('1', { ctx, scope: { param: 'project', parent: { id: 1 }, column: 'title' } })).rejects.toThrow(
+      'tasks.title is not a foreign key',
+    );
+  });
+});
+
+describe.each(drivers)('Repository lookups that need what the schema says, on %s', (driver) => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+  beforeAll(async () => {
+    ({ connections, close } = await freshConnections(driver));
+    await new Migrator({ modules, root: '/' } as unknown as Application, connections).migrate();
+    await connections.get().schema.createTable('raw_notes').addColumn('id', 'integer', (c) => c.primaryKey()).execute();
+  });
+  afterAll(() => close());
+
+  it('says that a table raw SQL made has an unknown primary key', async () => {
+    class RawNotes extends Repository<'raw_notes', { raw_notes: { id: number } }> {
+      static table = 'raw_notes' as const;
+    }
+    await expect((new RawNotes(connections) as unknown as { find(id: number): Promise<unknown> }).find(1)).rejects.toThrow(
+      'raw_notes is not a table the migrations created with schema.create(), so its primary key is unknown — create it with schema.create() or use query() (docs/migrations.md#raw-sql).',
+    );
+  });
+
+  it('refuses a route key of a kind that matches no text unless a routeKeyPattern says what it looks like', async () => {
+    class ByCreated extends Repository<'users', FixtureTables> {
+      static table = 'users' as const;
+      static routeKey = 'created_at';
+    }
+    class ByCreatedChecked extends ByCreated {
+      static routeKeyPattern = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/;
+    }
+    await expect(new ByCreated(connections).findByRouteKey('yesterday')).rejects.toThrow('users.created_at');
+    await expect(new ByCreated(connections).findByRouteKey('yesterday')).rejects.toThrow('routeKeyPattern');
+    expect(await new ByCreatedChecked(connections).findByRouteKey('yesterday')).toBeUndefined();
   });
 });

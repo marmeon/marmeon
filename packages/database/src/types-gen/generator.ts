@@ -6,7 +6,7 @@ import { Connections } from '../connections.ts';
 import { deriveRelations } from '../introspection.ts';
 import { Migrator } from '../migrations/migrator.ts';
 import { factsOf } from '../schema/projection.ts';
-import { renderTypes, TYPES_FORMAT_MARK, type Rendered, type SchemaSnapshot } from './render.ts';
+import { renderTypes, TYPES_FORMAT, TYPES_FORMAT_MARK, type Rendered, type SchemaSnapshot } from './render.ts';
 
 declare module '@marmeon/core' {
   interface ModuleDefinition {
@@ -66,7 +66,7 @@ export class TypeGenerator {
     const lines = readFileSync(this.path, 'utf8').split(/\r?\n/).slice(0, 5);
     if (lines.includes(TYPES_FORMAT_MARK)) return 'current';
     const found = lines.map((line) => /^\/\/ @marmeon-format (\d+)$/.exec(line)?.[1]).find((n) => n !== undefined);
-    return found !== undefined && Number(found) > 1 ? 'newer' : 'other';
+    return found !== undefined && Number(found) > TYPES_FORMAT ? 'newer' : 'other';
   }
 
   /** Throws when the committed file is of a newer format: such a file is never written over. */

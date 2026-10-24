@@ -4,7 +4,7 @@ import { defineRoutes } from '@marmeon/router';
 import { expectTypeOf } from 'vitest';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Repository, type LinkWriter, type ModuleTables, type RelatedWriter, type RelationWriter, type WithRelations, type WritableRelationName } from './index.ts';
+import { Repository, type LinkWriter, type ModuleTables, type PrimaryKeyOf, type RelatedWriter, type RelationWriter, type WithRelations, type WritableRelationName } from './index.ts';
 
 class Posts extends Repository<'posts', FixtureTables> {
   static table = 'posts' as const;
@@ -144,4 +144,36 @@ export async function namedTypes() {
   expectTypeOf(posts.relation(1, 'tags')).toEqualTypeOf<LinkWriter<number>>();
   expectTypeOf(posts.relation(1, 'comments')).toEqualTypeOf<RelatedWriter<FixtureTables, 'comments', 'post_id'>>();
   expectTypeOf<WritableRelationName<Blog, 'posts'>>().toEqualTypeOf<'comments' | 'post_stats' | 'post_tag' | 'tags'>();
+}
+
+interface KeyTables {
+  pages: { slug: string; title: string };
+  role_user: { role_id: number; user_id: number };
+  audit_lines: { line: string };
+}
+class Pages extends Repository<'pages', KeyTables> {
+  static table = 'pages' as const;
+}
+class RoleUser extends Repository<'role_user', KeyTables> {
+  static table = 'role_user' as const;
+}
+declare const pages: Pages;
+declare const roleUser: RoleUser;
+
+/** The key of a repository is the table's primary key — the column's type, or `never` where no single value names a row. */
+export async function primaryKeyTypes() {
+  expectTypeOf<PrimaryKeyOf<'pages', KeyTables>>().toEqualTypeOf<string>();
+  expectTypeOf<PrimaryKeyOf<'users', FixtureTables>>().toEqualTypeOf<number>();
+  expectTypeOf<PrimaryKeyOf<'post_stats', FixtureTables>>().toEqualTypeOf<number>();
+  expectTypeOf<PrimaryKeyOf<'role_user', KeyTables>>().toEqualTypeOf<never>();
+  expectTypeOf<PrimaryKeyOf<'audit_lines', KeyTables>>().toEqualTypeOf<never>();
+  void pages.find('welcome');
+  // Argument of type 'number' is not assignable to parameter of type 'string'.
+  // @ts-expect-error — the key of pages is its slug, a string
+  void pages.find(1);
+  // Argument of type 'number' is not assignable to parameter of type 'never'.
+  // @ts-expect-error — a composite key names no row by one value
+  void roleUser.find(1);
+  // @ts-expect-error — nor does it update, delete or bind by one
+  void roleUser.delete(1);
 }

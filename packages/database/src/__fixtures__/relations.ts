@@ -1,8 +1,25 @@
-// What `db:types` generates as `Relations` for the fixture migrations `auth`, `relations`, `relations-readers` and
-// `relations-secrets` — so the package's tests can type `with()`. Imported for its declarations only; the shipped package has none
+// What `db:types` generates as `Relations` and `PrimaryKeys` for the fixture migrations `auth`, `relations`, `relations-readers`,
+// `relations-secrets` and `uuids` (and the tables a few tests build themselves) — so the package's tests can type `with()` and the keys of a repository. Imported for its declarations only; the shipped package has none
 // of them.
 
 declare module '../types.ts' {
+  interface PrimaryKeys {
+    accounts: 'id';
+    api_keys: 'id';
+    articles: 'id';
+    categories: 'id';
+    comments: 'id';
+    log_entries: 'id';
+    members: 'id';
+    pages: 'slug';
+    post_stats: 'post_id';
+    posts: 'id';
+    profiles: 'id';
+    role_user: readonly ['role_id', 'user_id'];
+    tags: 'id';
+    teams: 'id';
+    users: 'id';
+  }
   interface Relations {
     api_keys: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: true };

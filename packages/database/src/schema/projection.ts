@@ -177,6 +177,7 @@ export function factsOf(projection: SchemaProjection, driver: Driver): Introspec
   const types = new Map<string, Map<string, string>>();
   const markers: SchemaMarker[] = [];
   const secretColumns: { table: string; column: string }[] = [];
+  const primaryKeys = new Map<string, string[]>();
   for (const table of projection.tables.values()) {
     const known = knownColumns(table);
     columns.set(table.name, known.map((column) => column.name));
@@ -184,6 +185,8 @@ export function factsOf(projection: SchemaProjection, driver: Driver): Introspec
     // A retired column stays secret until it is dropped: reading it explicitly is still refused.
     for (const column of table.columns) if (column.secret) secretColumns.push({ table: table.name, column: column.name });
     for (const marker of table.markers) markers.push({ table: table.name, column: '', marker, value: null });
+    const primary = known.filter((column) => column.primary).map((column) => column.name);
+    if (primary.length) primaryKeys.set(table.name, primary);
     const nullable = new Map(known.map((column) => [column.name, column.nullable]));
     for (const key of table.foreignKeys) {
       foreignKeys.push({ table: table.name, column: key.column, references: key.references, referenced: key.referenced, nullable: nullable.get(key.column) ?? false });
@@ -198,6 +201,7 @@ export function factsOf(projection: SchemaProjection, driver: Driver): Introspec
     markers: markers.sort((a, b) => byCodePoint(a.table, b.table) || byCodePoint(a.column, b.column) || byCodePoint(a.marker, b.marker)),
     types,
     secretColumns,
+    primaryKeys: new Map([...primaryKeys].sort(([a], [b]) => byCodePoint(a, b))),
   };
 }
 

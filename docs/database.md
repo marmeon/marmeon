@@ -296,6 +296,19 @@ migrates and reads through a role with privileges on the record of migrations st
 Marmeon writes (a table `migrations` with the columns `batch, checksum, id, module, name`, or `batch, id, module, name` as 0.3 wrote them) is refused with `managed: false` as well (D1): Marmeon
 migrates it, so the option would hide its secret columns. A `migrations` table of another shape is another tool's.
 
+The generated file knows no table of such a connection, so `PrimaryKeyOf<'orders'>` is `never` and a repository's `find()` refuses
+every key until you declare it, once per table, next to your types for the tables:
+
+```ts title="bootstrap/keys.d.ts"
+declare module '@marmeon/database' {
+  interface PrimaryKeys {
+    orders: 'id';
+  }
+}
+```
+
+At run time the repository reads the key from the database's catalog. See [primary keys](queries.md#table-types).
+
 ## Readiness
 
 The app's readiness check, `/up/ready`, sends `select 1` to every configured connection. One that does not answer makes the
