@@ -12,6 +12,7 @@ export { I18nContext, useLocale, useTranslation } from './i18n.tsx';
 export type { I18nValue } from './i18n.tsx';
 export type {
   CheckedPatch,
+  ClientRouter,
   PartialReloadOptions,
   PatchedProps,
   PrefetchOptions,
@@ -19,13 +20,12 @@ export type {
   PropName,
   ReloadOptions,
   ReloadingOptions,
-  Router,
   TypedVisitOptions,
   Visit,
   VisitCallbacks,
+  VisitError,
   VisitEvent,
   VisitEvents,
-  VisitException,
   VisitMethod,
   VisitOptions,
   VisitProgress,
@@ -46,7 +46,7 @@ export type { CheckFormElementRoute, FieldName, FormFieldsOf, FormProps, FormRen
 export { ConfirmDialog } from './confirm.tsx';
 export type { Confirm, ConfirmAnswer, ConfirmComponent, ConfirmDialogProps, ConfirmOptions, ConfirmProps, ConfirmRequest } from './confirm.tsx';
 export { useAction, usePendingSubmissions } from './use-action.ts';
-export type { Action, ActionException, ActionField, ActionReload, ActionResultOf, ActionSubmitOptions, PendingSubmission } from './use-action.ts';
+export type { ActionError, ActionField, ActionReload, ActionResultOf, ActionSubmitOptions, ClientAction, PendingSubmission } from './use-action.ts';
 export type { FieldPath, Form as FormHandle, FormField, FormOptions, FormState, FormSubmitOptions, LiveValidationSetting, PasswordNeverRemembered, RememberFormOptions, RouteForm, RouteFormFields, RouteFormOptions } from './use-form.ts';
 export { useRoute } from './routes.ts';
 export type { RouteFunction } from './routes.ts';

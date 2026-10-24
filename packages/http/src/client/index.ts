@@ -18,12 +18,12 @@ export { isSensitiveRememberField, NEVER_REMEMBERED_FIELD, SENSITIVE_REMEMBER_FI
 export type { Confirm, ConfirmAnswer, ConfirmOptions, ConfirmRequest } from './confirm.ts';
 export type { ProgressIndicator, ProgressOptions, ProgressSource } from './progress.ts';
 export type { Poll, PollOptions, PollDocument } from './poll.ts';
-export type { PrefetchOptions, ViewTransitionOption, Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitMethod, VisitOptions, VisitProgress, InstantVisit, VersionChange } from './navigation.ts';
+export type { PrefetchOptions, ViewTransitionOption, Visit, VisitCallbacks, VisitError, VisitEvent, VisitEvents, VisitMethod, VisitOptions, VisitProgress, InstantVisit, VersionChange } from './navigation.ts';
 export type { PrefetchTrigger } from './links.ts';
 export type { TitleTemplate } from './title.ts';
 export type { LayerCloseOptions } from './layer.ts';
 export type { RegionFailure, RegionStatus } from './region.ts';
-export type { ActionException, ActionMethod, ActionOptions, ActionOutcome } from './action.ts';
+export type { ActionError, ActionMethod, ActionOptions, ActionOutcome } from './action.ts';
 export type { OptimisticUpdate, Reloading, PropsPatch, PatchTarget, ReloadSpec } from './optimistic.ts';
 export type { QueryStateOptions, QueryUpdate } from './query-state.ts';
 export type { SelectionKey } from './features/selection.ts';

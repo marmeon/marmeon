@@ -1,6 +1,6 @@
 import type { FeatureHandle } from '@marmeon/http/client';
 import { loadInstant, loadPageMessages, markBusy, Navigator, laterTarget, loadOptimistic, pageLocale, prefetchWith, RegionOwner, TitleRegistry, type Feature, type Layer, type LayerStack as LayersFeature, type PatchTarget, type RegionOwner as RegionOwnerType } from '@marmeon/http/client/adapter';
-import type { ConfirmAnswer, ConfirmRequest, OptimisticUpdate, PrefetchOptions, Reloading, ProgressIndicator, TitleTemplate, ViewTransitionOption, VisitException, VisitEvent, VisitEvents, VisitOptions } from '@marmeon/http/client';
+import type { ConfirmAnswer, ConfirmRequest, OptimisticUpdate, PrefetchOptions, Reloading, ProgressIndicator, TitleTemplate, ViewTransitionOption, VisitError, VisitEvent, VisitEvents, VisitOptions } from '@marmeon/http/client';
 import type { BrowserRouteNameInput, CheckIslandRouteName, PageInfo, PageProps, RouteManifest, SharedProps } from '@marmeon/http/page';
 import { matchesPath, pageInfo } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';
@@ -37,9 +37,9 @@ export type {
   ProgressOptions,
   Visit,
   VisitCallbacks,
+  VisitError,
   VisitEvent,
   VisitEvents,
-  VisitException,
   VisitMethod,
   VisitOptions,
   VisitProgress,
@@ -95,7 +95,7 @@ export type TypedVisitOptions<T = unknown> = Omit<VisitOptions, keyof PartialRel
 export type ReloadOptions<T = unknown> = Omit<TypedVisitOptions<T>, 'method' | 'data'> & { data?: Record<string, unknown> };
 
 /** Programmatic navigation, from {@link useRouter}. */
-export interface Router<T = unknown> {
+export interface ClientRouter<T = unknown> {
   /** Resolves with the {@link PageInfo} of the page the visit ended on (undefined if it did not end on one). */
   visit(url: string, options?: TypedVisitOptions<T>): Promise<PageInfo | undefined>;
   /** The current page again from the server, keeping scroll position and component state — `reload({ only: ['stats'] })`. */
@@ -121,9 +121,9 @@ export interface Router<T = unknown> {
  * @internal What the hooks read: the page (or the layer) around them and how to navigate from it. A layer brings its own patches
  * and reloads; the page's are its history entry's — `useRouter()` makes them, attaching the optimistic patches on first use.
  */
-export interface RouterValue extends Omit<Router, 'visit' | 'reload' | 'optimistic' | 'reloading'>, Partial<Pick<Router, 'optimistic' | 'reloading'>> {
+export interface RouterValue extends Omit<ClientRouter, 'visit' | 'reload' | 'optimistic' | 'reloading'>, Partial<Pick<ClientRouter, 'optimistic' | 'reloading'>> {
   page: PageObject;
-  /** {@link Router.visit}, resolving with the page object — `useRouter()` turns it into the app's `PageInfo`. */
+  /** {@link ClientRouter.visit}, resolving with the page object — `useRouter()` turns it into the app's `PageInfo`. */
   visit(url: string, options?: TypedVisitOptions): Promise<PageObject | undefined>;
   reload(options?: ReloadOptions): Promise<PageObject | undefined>;
   /** The navigator — null while rendering on the server (for the hooks of this package). */
@@ -256,7 +256,7 @@ const infoOf = (page: PageObject | undefined): PageInfo | undefined => (page ? p
  * router.reload({ only: ['stats'] });            // 'stat' would be a compile error
  * ```
  */
-export function useRouter<T = unknown>(): Router<T> {
+export function useRouter<T = unknown>(): ClientRouter<T> {
   const { visit: visitPage, reload: reloadPage, prefetch, on, optimistic: own, reloading: ownReloading, navigator } = useRouterContext();
   const routes = useContext(RoutesContext);
   // The page's patches and reloads are those of its history entry — never in its props in memory. The optimistic patches
@@ -273,7 +273,7 @@ export function useRouter<T = unknown>(): Router<T> {
   // The app sees the page's info, never the wire object the navigator resolves with.
   const visit = useCallback(async (url: string, options?: VisitOptions) => infoOf(await visitPage(url, options)), [visitPage]);
   const reload = useCallback(async (options?: ReloadOptions) => infoOf(await reloadPage(options)), [reloadPage]);
-  return useMemo(() => ({ visit, reload, prefetch, on, optimistic, reloading }) as Router<T>, [visit, reload, prefetch, on, optimistic, reloading]);
+  return useMemo(() => ({ visit, reload, prefetch, on, optimistic, reloading }) as ClientRouter<T>, [visit, reload, prefetch, on, optimistic, reloading]);
 }
 
 /**
@@ -387,7 +387,7 @@ export function MarmeonApp({
   // A deep link's document brings the layers over its page: rendered over it, apart from it.
   const firstPage = useMemo(() => withoutLayers(initialPage), [initialPage]);
   const [current, setCurrent] = useState<Current>({ page: firstPage, Component: initialComponent, catalog: initialCatalog, key: 0 });
-  const [failure, setFailure] = useState<VisitException | null>(null);
+  const [failure, setFailure] = useState<VisitError | null>(null);
 
   // The navigator waits until a page is on screen before it restores the scroll position.
   const committed = useRef<(() => void)[]>([]);

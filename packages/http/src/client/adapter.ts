@@ -16,12 +16,12 @@ export { isSensitiveRememberField, loadSensitiveFields, Remembered } from './rem
 export type { Confirm, ConfirmAnswer, ConfirmOptions, ConfirmRequest, ConfirmHandler, NativeDialogs } from './confirm.ts';
 export type { ProgressIndicator, ProgressOptions, ProgressSource } from './progress.ts';
 export type { Poll, PollOptions, PollDocument } from './poll.ts';
-export type { PrefetchOptions, ViewTransitionOption, Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitMethod, VisitOptions, VisitProgress, RevalidateOnBack, InstantVisit, VersionChange, ViewTransitionLike, NavigationGuard, NavigatorOptions, NavigatorWindow, RenderOptions, ScrollRegion, HistoryState } from './navigation.ts';
+export type { PrefetchOptions, ViewTransitionOption, Visit, VisitCallbacks, VisitError, VisitEvent, VisitEvents, VisitMethod, VisitOptions, VisitProgress, RevalidateOnBack, InstantVisit, VersionChange, ViewTransitionLike, NavigationGuard, NavigatorOptions, NavigatorWindow, RenderOptions, ScrollRegion, HistoryState } from './navigation.ts';
 export type { PrefetchTrigger, LinkClick, PrefetchSetting } from './links.ts';
 export type { TitleTemplate } from './title.ts';
 export type { LayerCloseOptions, LayerControl, LayerHost } from './layer.ts';
 export type { RegionFailure, RegionStatus, RegionSnapshot, RegionInitial, RegionReloadOptions, RegionTransport, KeptRegion, DeclaredOnBack, RegionResponse } from './region.ts';
-export type { ActionException, ActionMethod, ActionOptions, ActionOutcome, ActionHost, Submissions, Submission } from './action.ts';
+export type { ActionError, ActionMethod, ActionOptions, ActionOutcome, ActionHost, Submissions, Submission } from './action.ts';
 export type { OptimisticUpdate, Reloading, PropsPatch, PatchTarget, ReloadSpec } from './optimistic.ts';
 export type { QueryStateOptions, QueryUpdate, QueryStateTarget } from './query-state.ts';
 export type { SelectionKey, SelectionFeature } from './features/selection.ts';

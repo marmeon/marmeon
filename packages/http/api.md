@@ -995,8 +995,8 @@ Types from other packages: none
 ### Stable
 
 ```ts
-// ActionException
-export type ActionException = {
+// ActionError
+export type ActionError = {
     readonly type: 'network';
     readonly cause: unknown;
 } | {
@@ -1040,7 +1040,7 @@ export type ActionOutcome = {
 } | {
     readonly ok: false;
     readonly kind: 'exception';
-    readonly exception: ActionException;
+    readonly exception: ActionError;
 } | {
     readonly ok: false;
     readonly kind: 'cancelled';
@@ -1249,22 +1249,8 @@ export interface VisitCallbacks {
     onCancel?: VisitEvents['cancel'];
     onFinish?: VisitEvents['finish'];
 }
-// VisitEvent
-export type VisitEvent = keyof VisitEvents;
-// VisitEvents
-export interface VisitEvents {
-    start: (visit: Visit) => void;
-    progress: (progress: VisitProgress, visit: Visit) => void;
-    success: (page: PageInfo, visit: Visit) => void;
-    error: (errors: ValidationErrors, visit: Visit) => void;
-    exception: (exception: VisitException) => void;
-    cancel: (visit: Visit) => void;
-    finish: (visit: Visit) => void;
-    flash: (message: FlashMessage) => void;
-    version: (event: VersionChange) => void;
-}
-// VisitException
-export type VisitException = {
+// VisitError
+export type VisitError = {
     readonly type: 'network';
     readonly visit: Visit;
     readonly cause: unknown;
@@ -1275,6 +1261,20 @@ export type VisitException = {
     readonly page: PageInfo | undefined;
     readonly html: string | undefined;
 };
+// VisitEvent
+export type VisitEvent = keyof VisitEvents;
+// VisitEvents
+export interface VisitEvents {
+    start: (visit: Visit) => void;
+    progress: (progress: VisitProgress, visit: Visit) => void;
+    success: (page: PageInfo, visit: Visit) => void;
+    error: (errors: ValidationErrors, visit: Visit) => void;
+    exception: (exception: VisitError) => void;
+    cancel: (visit: Visit) => void;
+    finish: (visit: Visit) => void;
+    flash: (message: FlashMessage) => void;
+    version: (event: VersionChange) => void;
+}
 // VisitMethod
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 // VisitOptions
@@ -1413,8 +1413,8 @@ Types from other packages: none
 ### Stable
 
 ```ts
-// ActionException
-export type ActionException = {
+// ActionError
+export type ActionError = {
     readonly type: 'network';
     readonly cause: unknown;
 } | {
@@ -1474,7 +1474,7 @@ export type ActionOutcome = {
 } | {
     readonly ok: false;
     readonly kind: 'exception';
-    readonly exception: ActionException;
+    readonly exception: ActionError;
 } | {
     readonly ok: false;
     readonly kind: 'cancelled';
@@ -1750,7 +1750,7 @@ export type LiveValidationOutcome = {
     readonly errors: ValidationErrors;
 } | {
     readonly kind: 'exception';
-    readonly exception: ActionException;
+    readonly exception: ActionError;
 } | {
     readonly kind: 'cancelled';
 };
@@ -2213,22 +2213,8 @@ export interface VisitCallbacks {
     onCancel?: VisitEvents['cancel'];
     onFinish?: VisitEvents['finish'];
 }
-// VisitEvent
-export type VisitEvent = keyof VisitEvents;
-// VisitEvents
-export interface VisitEvents {
-    start: (visit: Visit) => void;
-    progress: (progress: VisitProgress, visit: Visit) => void;
-    success: (page: PageInfo, visit: Visit) => void;
-    error: (errors: ValidationErrors, visit: Visit) => void;
-    exception: (exception: VisitException) => void;
-    cancel: (visit: Visit) => void;
-    finish: (visit: Visit) => void;
-    flash: (message: FlashMessage) => void;
-    version: (event: VersionChange) => void;
-}
-// VisitException
-export type VisitException = {
+// VisitError
+export type VisitError = {
     readonly type: 'network';
     readonly visit: Visit;
     readonly cause: unknown;
@@ -2239,6 +2225,20 @@ export type VisitException = {
     readonly page: PageInfo | undefined;
     readonly html: string | undefined;
 };
+// VisitEvent
+export type VisitEvent = keyof VisitEvents;
+// VisitEvents
+export interface VisitEvents {
+    start: (visit: Visit) => void;
+    progress: (progress: VisitProgress, visit: Visit) => void;
+    success: (page: PageInfo, visit: Visit) => void;
+    error: (errors: ValidationErrors, visit: Visit) => void;
+    exception: (exception: VisitError) => void;
+    cancel: (visit: Visit) => void;
+    finish: (visit: Visit) => void;
+    flash: (message: FlashMessage) => void;
+    version: (event: VersionChange) => void;
+}
 // VisitMethod
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 // VisitOptions

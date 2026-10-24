@@ -1,4 +1,4 @@
-import type { VisitException } from '@marmeon/http/client';
+import type { VisitError } from '@marmeon/http/client';
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react';
 import type { ResolvePage } from './pages.ts';
 
@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 }
 
-type ServerFailure = Extract<VisitException, { type: 'server' }>;
+type ServerFailure = Extract<VisitError, { type: 'server' }>;
 
 /**
  * The notice when the server could not be reached — in the first download: offline, no chunk could load. Also what a server's
@@ -89,7 +89,7 @@ export function RenderErrorFallback(props: { resolve: ResolvePage; error: unknow
  * What a failed visit shows, over the page (which stays, with whatever was typed into it): the server could not be reached — a
  * notice; a 5xx — the server's error page in a dialog (`failure.tsx`).
  */
-export function VisitFailure({ failure, resolve, onDismiss }: { failure: VisitException | null; resolve: ResolvePage; onDismiss: () => void }) {
+export function VisitFailure({ failure, resolve, onDismiss }: { failure: VisitError | null; resolve: ResolvePage; onDismiss: () => void }) {
   if (!failure) return null;
   if (failure.type === 'network') return <NetworkNotice onDismiss={onDismiss} />;
   return (

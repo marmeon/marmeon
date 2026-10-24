@@ -35,8 +35,10 @@ export interface VisitProgress {
  *   something in front of it (a proxy), plain HTML (`html`).
  *
  * Validation errors are no failure: they are the `error` event (the page's `errors` prop, see `useForm`).
+ *
+ * A plain object, not an `Error`: narrow on `type`.
  */
-export type VisitException =
+export type VisitError =
   | { readonly type: 'network'; readonly visit: Visit; readonly cause: unknown }
   | { readonly type: 'server'; readonly visit: Visit; readonly status: number; readonly page: PageInfo | undefined; readonly html: string | undefined };
 
@@ -54,7 +56,7 @@ export interface VisitEvents {
   /** The visit ended on a page with validation errors (its `errors` prop — the server redirected back to the form). */
   error: (errors: ValidationErrors, visit: Visit) => void;
   /** The request failed: offline or a 5xx. The page stays; the app shows a fallback. */
-  exception: (exception: VisitException) => void;
+  exception: (exception: VisitError) => void;
   /** A newer visit (or Back/Forward) replaced this one before it finished. */
   cancel: (visit: Visit) => void;
   finish: (visit: Visit) => void;

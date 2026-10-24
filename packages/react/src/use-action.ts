@@ -1,5 +1,5 @@
 import type { Submission } from '@marmeon/http/client/adapter';
-import { resolveRoute, type ActionException, type ActionMethod, type ActionOutcome, type Confirm, type OptimisticUpdate, type Reloading } from '@marmeon/http/client';
+import { resolveRoute, type ActionError, type ActionMethod, type ActionOutcome, type Confirm, type OptimisticUpdate, type Reloading } from '@marmeon/http/client';
 import { actions } from '@marmeon/http/client/adapter';
 import type {
   ActionBodyOf,
@@ -20,7 +20,7 @@ import { useRouterContext } from './app.tsx';
 import { RoutesContext } from './routes.ts';
 import type { RouteFormFields } from './use-form.ts';
 
-export type { ActionException } from '@marmeon/http/client';
+export type { ActionError } from '@marmeon/http/client';
 
 /** The fields of an action's body (its request schema's input), by name — any string without a schema. */
 export type ActionField<N extends string> = [ActionBodyOf<N>] extends [never] ? string : keyof ActionBodyOf<N> & string;
@@ -37,7 +37,7 @@ export type ActionResultOf<N extends string> =
       : { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: ActionDataOf<N>; readonly flash: readonly FlashMessage[] })
   | (ActionRedirects<N> extends true ? { readonly ok: true; readonly kind: 'redirect'; readonly redirect: string; readonly flash: readonly FlashMessage[] } : never)
   | { readonly ok: false; readonly kind: 'invalid'; readonly errors: Partial<Record<ActionField<N>, string>>; readonly message: string | undefined }
-  | { readonly ok: false; readonly kind: 'exception'; readonly exception: ActionException }
+  | { readonly ok: false; readonly kind: 'exception'; readonly exception: ActionError }
   | { readonly ok: false; readonly kind: 'cancelled' };
 
 /** Reloads to run once an action succeeded — from `router.reloading(…)` / `useIsland().reloading(…)`. */
@@ -92,7 +92,7 @@ export interface PendingSubmission<N extends string> {
 }
 
 /** What `useAction` gives a component. */
-export interface Action<N extends string, RequiresParams extends boolean = false> {
+export interface ClientAction<N extends string, RequiresParams extends boolean = false> {
   /**
    * Sends the action — without navigating: no history entry, no page change. Resolves with how it ended (never rejects for a
    * failed request). Calls run side by side; each has its own optimistic patches.
@@ -110,7 +110,7 @@ export interface Action<N extends string, RequiresParams extends boolean = false
   readonly errors: Partial<Record<ActionField<N>, string>>;
   readonly hasErrors: boolean;
   /** Why the last call failed — offline, or the server's status (401/419: signed out). Cleared by the next call. */
-  readonly exception: ActionException | undefined;
+  readonly exception: ActionError | undefined;
   clearErrors(...fields: ActionField<N>[]): void;
   /** Aborts this component's calls under way: each ends `cancelled`, its patches rolled back. */
   cancel(): void;
@@ -133,9 +133,9 @@ function flatten<T>(value: T | readonly T[] | readonly (T | readonly T[])[] | un
  * CSRF, authorization and validation run as for a form. It never touches the history; its answer is never cached; a redirect
  * is reported, not followed. See docs/actions.md#sending.
  */
-export function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>): Action<N, {} extends ParamsOf<N> ? false : true>;
-export function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>, params: ParamsOf<N>): Action<N, false>;
-export function useAction(name: string, params?: Readonly<Record<string, Param>>): Action<string, boolean> {
+export function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>): ClientAction<N, {} extends ParamsOf<N> ? false : true>;
+export function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>, params: ParamsOf<N>): ClientAction<N, false>;
+export function useAction(name: string, params?: Readonly<Record<string, Param>>): ClientAction<string, boolean> {
   const router = useRouterContext();
   const manifest = useContext(RoutesContext);
   const [calls, setCalls] = useState<readonly PendingSubmission<string>[]>([]);
@@ -197,7 +197,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
 
   return useMemo(
     () => ({
-      submit: submit as Action<string, boolean>['submit'],
+      submit: submit as ClientAction<string, boolean>['submit'],
       pending: calls.length > 0,
       submissions: calls,
       result,

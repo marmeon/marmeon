@@ -10,7 +10,7 @@
  */
 import type { ValidationErrors } from '../page.ts';
 import { ACTION_REDIRECT_HEADER, LOCATION_HEADER, protocolHeaders, VALIDATE_HEADER, VALIDATED_HEADER } from '../protocol.ts';
-import type { ActionException, ActionHost, ActionMethod } from './action.ts';
+import type { ActionError, ActionHost, ActionMethod } from './action.ts';
 import { notify } from './notify.ts';
 
 /** Field names live validation never sends: passwords, their confirmations, current passwords (`/password/i`). */
@@ -58,7 +58,7 @@ export interface LiveValidationRequest {
 export type LiveValidationOutcome =
   | { readonly kind: 'valid'; readonly fields: readonly string[] }
   | { readonly kind: 'invalid'; readonly fields: readonly string[]; readonly errors: ValidationErrors }
-  | { readonly kind: 'exception'; readonly exception: ActionException }
+  | { readonly kind: 'exception'; readonly exception: ActionError }
   | { readonly kind: 'cancelled' };
 
 const CANCELLED: LiveValidationOutcome = { kind: 'cancelled' };

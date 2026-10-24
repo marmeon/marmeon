@@ -2,7 +2,7 @@
 // @vitest-environment-options { "url": "https://app.test/users/1/edit" }
 import type { RouteManifest } from '@marmeon/http/page';
 import { PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
-import type { VisitException } from '@marmeon/http/client';
+import type { VisitError } from '@marmeon/http/client';
 import { loadHistoryFallback } from '@marmeon/http/client/adapter';
 import { act, type CSSProperties } from 'react';
 import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
@@ -117,14 +117,14 @@ describe('LayerDialog renders no style attribute', () => {
 });
 
 describe('the failure dialogs, the error page and the confirmation dialog render no style attribute', () => {
-  type Server = Extract<VisitException, { type: 'server' }>;
+  type Server = Extract<VisitError, { type: 'server' }>;
   const servers: Server[] = [
     { type: 'server', status: 502, page: undefined, html: '<h1>Bad gateway</h1>' } as Server,
     { type: 'server', status: 500, page: undefined, html: undefined } as Server,
   ];
 
   it('the notice of an unreachable server — classes of styles.css, in the first download', () => {
-    const html = renderToStaticMarkup(<VisitFailure failure={{ type: 'network' } as VisitException} resolve={resolve} onDismiss={() => {}} />);
+    const html = renderToStaticMarkup(<VisitFailure failure={{ type: 'network' } as VisitError} resolve={resolve} onDismiss={() => {}} />);
     expect(html).toContain('class="marmeon-failure marmeon-failure--network"');
     expect(styled(html), styled(html).join(' ')).toEqual([]);
   });
