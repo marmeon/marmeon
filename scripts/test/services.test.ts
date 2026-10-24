@@ -1,7 +1,7 @@
 import { globSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { groupByServices, SERVICE_VARIABLES, serviceFiles, splitTiming, timingEnv, tripwireEnv, type Service } from './services.ts';
+import { groupByServices, SERVICE_VARIABLES, serviceFiles, processFiles, splitTiming, timingEnv, tripwireEnv, type Service } from './services.ts';
 import { tempDir } from './temp-dir.js';
 
 const repo = join(import.meta.dirname, '..', '..');
@@ -26,6 +26,12 @@ const REFRESH = 're' + 'fresh';
 const VITEST = 'vi' + 'test';
 const FIXTURES = '__fixtu' + 'res__';
 const PGSQL = SERVICE_VARIABLES.pgsql;
+const CHILD_PROCESS = 'node:child_' + 'process';
+const SSR_TRUE = 'ss' + 'r: true';
+
+function startsOf(files: Record<string, string>, file: string): boolean {
+  return processFiles(tree(files), [file]).has(file);
+}
 
 describe('the services a test file needs', () => {
   it('follows relative imports to a helper that reads the Postgres URL — also two levels deep', () => {
@@ -104,6 +110,44 @@ describe('the services a test file needs', () => {
   });
 });
 
+describe('the tests that start processes', () => {
+  it('finds a child process import in a helper the test imports', () => {
+    const files = {
+      'packages/a/src/a.test.ts': "import { run } from './__fixtures__/run.ts';",
+      'packages/a/src/__fixtures__/run.ts': `import { spawn } from '${CHILD_PROCESS}'; export const run = spawn;`,
+    };
+    expect(startsOf(files, 'packages/a/src/a.test.ts')).toBe(true);
+  });
+
+  it('finds a dynamic import and a require of child_process', () => {
+    expect(startsOf({ 'a.test.ts': `const { spawn } = await import('${CHILD_PROCESS}');` }, 'a.test.ts')).toBe(true);
+    expect(startsOf({ 'a.test.ts': `const { spawn } = require('${CHILD_PROCESS}');` }, 'a.test.ts')).toBe(true);
+  });
+
+  it('finds a test that starts the Vite dev server or resolves the package to run it', () => {
+    expect(startsOf({ 'a.test.ts': 'const { vite } = await createViteDevRenderer({});' }, 'a.test.ts')).toBe(true);
+    expect(startsOf({ 'a.test.ts': "const dir = createRequire(import.meta.url).resolve('vite/package.json');" }, 'a.test.ts')).toBe(true);
+  });
+
+  it('finds a nested Vitest', () => {
+    expect(startsOf({ 'a.test.ts': `const bin = 'node_modules/.bin/${VITEST}';` }, 'a.test.ts')).toBe(true);
+  });
+
+  it('finds a value import of vite, but not a type import', () => {
+    expect(startsOf({ 'a.test.ts': "import { createServer } from 'vite';" }, 'a.test.ts')).toBe(true);
+    expect(startsOf({ 'a.test.ts': "import type { Plugin } from 'vite';" }, 'a.test.ts')).toBe(false);
+  });
+
+  it('finds a test app that renders through SSR', () => {
+    expect(startsOf({ 'a.test.ts': `const app = await createTestApp(application, { ${SSR_TRUE} });` }, 'a.test.ts')).toBe(true);
+    expect(startsOf({ 'a.test.ts': "const app = await createTestApp(application, { ssr: 'stream' });" }, 'a.test.ts')).toBe(true);
+  });
+
+  it('is false for a file without any of these', () => {
+    expect(startsOf({ 'a.test.ts': "import { b } from './b.ts';", 'b.ts': 'export const b = 1;' }, 'a.test.ts')).toBe(false);
+  });
+});
+
 describe('the projects', () => {
   const selection = new Map<string, ReadonlySet<Service>>([
     ['a.test.ts', new Set<Service>()],
@@ -116,6 +160,14 @@ describe('the projects', () => {
     const groups = groupByServices(selection);
     expect([...groups.keys()].sort()).toEqual(['pgsql+redis', 'plain', 's3']);
     expect(groups.get('pgsql+redis')!.files).toEqual(['b.test.ts', 'c.test.ts']);
+  });
+
+  it('keeps the tests that start processes in projects of their own, per set of services', () => {
+    const groups = groupByServices(selection, new Set(['b.test.ts', 'a.test.ts']));
+    expect([...groups.keys()].sort()).toEqual(['pgsql+redis', 'pgsql+redis-process', 'plain-process', 's3']);
+    expect(groups.get('pgsql+redis-process')!.files).toEqual(['b.test.ts']);
+    expect(groups.get('plain-process')!.process).toBe(true);
+    expect(groups.get('s3')!.process).toBe(false);
   });
 
   it('keeps a timing test out of the service projects, whatever it imports', () => {
@@ -163,6 +215,16 @@ describe('this repository', () => {
   it('runs a test of the HTTP package that needs nothing on no service', () => {
     const http = [...selection].filter(([file]) => file.startsWith('packages/http/src/')).map(([, services]) => services);
     expect(http.some((services) => services.size === 0)).toBe(true);
+  });
+
+  it('puts a test that renders through Vite in the process projects and a plain unit test outside', () => {
+    const found = processFiles(repo, [
+      'apps/web-app/modules/members/members.test.ts',
+      'apps/web-app/modules/dashboard/stream.test.ts',
+      'packages/server/src/vite.test.ts',
+      'apps/website/modules/docs/search.test.ts',
+    ]);
+    expect([...found].sort()).toEqual(['apps/web-app/modules/dashboard/stream.test.ts', 'apps/web-app/modules/members/members.test.ts', 'packages/server/src/vite.test.ts']);
   });
 
   it('runs the web app on Postgres and a website test that opens no database on none', () => {

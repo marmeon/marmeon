@@ -106,9 +106,28 @@ function usesDatabase(directory: string, cache: Map<string, boolean>): boolean {
  * would drop its service from the selection.
  */
 export function serviceFiles(root: string, files: readonly string[]): Map<string, ReadonlySet<Service>> {
+  const graph = importGraph(root);
+  const manifests = new Map<string, boolean>();
+
+  const result = new Map<string, ReadonlySet<Service>>();
+  for (const file of files) {
+    const needed = new Set<Service>();
+    for (const absolute of graph.closure(file)) {
+      const text = graph.read(absolute);
+      for (const service of SERVICES) if (text.includes(SERVICE_VARIABLES[service])) needed.add(service);
+      if (isTestOrHelper(graph.pathOf(absolute)) && (REFRESH.test(text) || NESTED_VITEST.test(text))) needed.add('pgsql');
+    }
+    const [top, app] = file.split('/');
+    if (top === 'apps' && app && usesDatabase(join(root, top, app), manifests)) needed.add('pgsql');
+    result.set(file, needed);
+  }
+  return result;
+}
+
+/** Reads files under `root` once and follows their relative imports. */
+function importGraph(root: string) {
   const texts = new Map<string, string>();
   const imports = new Map<string, string[]>();
-  const manifests = new Map<string, boolean>();
   const pathOf = (absolute: string): string => relative(root, absolute).split(sep).join('/');
 
   const read = (absolute: string): string => {
@@ -127,29 +146,57 @@ export function serviceFiles(root: string, files: readonly string[]): Map<string
     }
     return found;
   };
-
-  const result = new Map<string, ReadonlySet<Service>>();
-  for (const file of files) {
-    const closure = new Set<string>();
+  /** The file and every file its relative imports reach. */
+  const closure = (file: string): Set<string> => {
+    const reached = new Set<string>();
     const pending = [resolve(root, file)];
     while (pending.length > 0) {
       const next = pending.pop()!;
-      if (closure.has(next)) continue;
-      closure.add(next);
+      if (reached.has(next)) continue;
+      reached.add(next);
       pending.push(...importsOf(next));
     }
+    return reached;
+  };
+  return { read, pathOf, closure };
+}
 
-    const needed = new Set<Service>();
-    for (const absolute of closure) {
-      const text = read(absolute);
-      for (const service of SERVICES) if (text.includes(SERVICE_VARIABLES[service])) needed.add(service);
-      if (isTestOrHelper(pathOf(absolute)) && (REFRESH.test(text) || NESTED_VITEST.test(text))) needed.add('pgsql');
+/** An import of `child_process`, as a static import, a dynamic import or a `require`. */
+const CHILD_PROCESS = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)(['"])(?:node:)?child_process\1/;
+
+/** A value import of `vite`; `import type` does not load it. */
+const VITE_IMPORT = /(?:^|[;\n])\s*(?:import\s+(?!type\b)[^;'"]*?from\s*|export\s+(?!type\b)[^;'"]*?from\s*|import\s*\(\s*)(['"])vite\1/;
+
+/** A test app that renders through Vite's SSR (the `ssr` option of `createTestApp`) or a server shared by several. */
+const SSR_APP = /\bssr:\s*(?:true\b|['"]stream['"])|\bstartSsrServer\s*\(/;
+
+/** A test or helper that starts Vite's dev server itself, or resolves the package to run it from another directory. */
+const VITE_DEV = /\b(?:createViteDevRenderer|importVite)\s*\(|resolve\(\s*['"]vite\/package\.json['"]/;
+
+/**
+ * The files among `files` that start processes or render through Vite, themselves or in a relative import they reach: a file that
+ * imports `node:child_process`, starts a nested Vitest, imports `vite` as a value, starts its dev server or builds a test app
+ * with the `ssr` option. Such a test takes as long as the machine lets its child run, so `vitest.config.ts` gives these files
+ * projects of their own with bounded workers. Reads files and starts nothing.
+ */
+export function processFiles(root: string, files: readonly string[]): Set<string> {
+  const graph = importGraph(root);
+  const starts = new Map<string, boolean>();
+  const startsIn = (absolute: string): boolean => {
+    let found = starts.get(absolute);
+    if (found === undefined) {
+      const text = graph.read(absolute);
+      found =
+        CHILD_PROCESS.test(text) ||
+        NESTED_VITEST.test(text) ||
+        VITE_IMPORT.test(text) ||
+        SSR_APP.test(text) ||
+        (isTestOrHelper(graph.pathOf(absolute)) && VITE_DEV.test(text));
+      starts.set(absolute, found);
     }
-    const [top, app] = file.split('/');
-    if (top === 'apps' && app && usesDatabase(join(root, top, app), manifests)) needed.add('pgsql');
-    result.set(file, needed);
-  }
-  return result;
+    return found;
+  };
+  return new Set(files.filter((file) => [...graph.closure(file)].some(startsIn)));
 }
 
 /** A test file that asserts something about wall-clock time: it runs in the `timing` project, last and alone, and never needs a service. */
@@ -160,22 +207,26 @@ export function splitTiming(files: readonly string[]): { timing: string[]; other
   return { timing: files.filter((file) => TIMING.test(file)), other: files.filter((file) => !TIMING.test(file)) };
 }
 
-/** The name of a project: its services sorted and joined with `+`, or `plain`. */
-export function projectName(services: ReadonlySet<Service>): string {
-  return services.size === 0 ? 'plain' : [...services].sort().join('+');
+/** The name of a project: its services sorted and joined with `+`, or `plain`; `-process` for the tests that start processes. */
+export function projectName(services: ReadonlySet<Service>, process = false): string {
+  const name = services.size === 0 ? 'plain' : [...services].sort().join('+');
+  return process ? `${name}-process` : name;
 }
 
 export interface ServiceGroup {
   readonly services: ReadonlySet<Service>;
+  /** Whether the files start processes or render through Vite (see {@link processFiles}). */
+  readonly process: boolean;
   readonly files: string[];
 }
 
-/** Groups test files by the set of services they need, keyed by project name. */
-export function groupByServices(selection: ReadonlyMap<string, ReadonlySet<Service>>): Map<string, ServiceGroup> {
+/** Groups test files by the set of services they need and whether they start processes, keyed by project name. */
+export function groupByServices(selection: ReadonlyMap<string, ReadonlySet<Service>>, processFiles: ReadonlySet<string> = new Set()): Map<string, ServiceGroup> {
   const groups = new Map<string, ServiceGroup>();
   for (const [file, services] of [...selection].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
-    const name = projectName(services);
-    const group = groups.get(name) ?? { services, files: [] };
+    const process = processFiles.has(file);
+    const name = projectName(services, process);
+    const group = groups.get(name) ?? { services, process, files: [] };
     group.files.push(file);
     groups.set(name, group);
   }
