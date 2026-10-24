@@ -154,6 +154,7 @@ type Instance<C> = C extends abstract new (...args: never) => infer I ? I : neve
  * ```
  */
 export async function createTestApp(definition: ApplicationDefinition, options: TestAppOptions = {}): Promise<TestApp> {
+  const watch = await watchTest();
   if (options.ssrServer) {
     if (!options.ssr) throw new Error("createTestApp(…, { ssrServer }) needs ssr: true (or ssr: 'stream').");
     checkSsrServer(options.ssrServer, definition.root);
@@ -279,30 +280,60 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
         openRefreshed.delete(app);
         await isolation.rollback();
       });
+      // No await since it counts as open: a late app is closed before it seeds, and the cleanup above frees the worker's database.
+      if (watch.ended) throw lateApp();
       if (options.seed) await application.container.make(database.Seeding).run();
     } catch (error) {
       await app.close();
       throw error;
     }
   }
-  await closeWhenTheTestEnds(app);
+  await closeWhenTheTestEnds(app, watch);
   return app;
 }
 
 /** Refreshed test apps not closed yet — at most one at a time (see createTestApp). */
 const openRefreshed = new Set<TestApp>();
 
-/**
- * Inside a Vitest test (or its `beforeEach`), the app closes when the test ends — its transaction is
- * rolled back, its connections closed. Elsewhere: `app.close()` or `await using`.
- */
-async function closeWhenTheTestEnds(app: TestApp): Promise<void> {
+/** Where the test that called {@link createTestApp} stands: `ended` turns true when it is over. */
+interface TestWatch {
+  insideTest: boolean;
+  ended: boolean;
+  onTestFinished: typeof import('vitest').onTestFinished | undefined;
+}
+
+async function watchTest(): Promise<TestWatch> {
+  const watch: TestWatch = { insideTest: false, ended: false, onTestFinished: undefined };
   try {
     const { onTestFinished } = await import('vitest');
-    onTestFinished(() => app.close());
+    onTestFinished(() => {
+      watch.ended = true;
+    });
+    watch.insideTest = true;
+    watch.onTestFinished = onTestFinished;
   } catch {
     // Not inside a Vitest test.
   }
+  return watch;
+}
+
+const lateApp = () => new Error('The test ended (or its hook timed out) before this test app was ready; the app was closed again.');
+
+/**
+ * Inside a Vitest test (or its `beforeEach`), the app closes when the test ends — its transaction is
+ * rolled back, its connections closed. Elsewhere: `app.close()` or `await using`.
+ *
+ * A hook that timed out while the app was still starting has nothing to close it when the app is ready at last: its test is
+ * over, and the open app would make every following test fail with "Another test app … is still open". Such an app closes at once.
+ */
+async function closeWhenTheTestEnds(app: TestApp, watch: TestWatch): Promise<void> {
+  if (!watch.onTestFinished) return;
+  if (!watch.ended) {
+    watch.onTestFinished(() => app.close());
+    return;
+  }
+  await app.close();
+  throw lateApp();
 }
 
 interface Shared {

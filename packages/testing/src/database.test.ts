@@ -4,7 +4,7 @@ import { Connections, DatabaseServiceProvider, defineFactory, type Generated, ty
 import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { workerDatabase } from './database.ts';
 import { createTestApp, type TestApp } from './index.ts';
@@ -123,6 +123,60 @@ it('types database assertions by the table', () => void (async (app: TestApp) =>
 describe('createTestApp options', () => {
   it('only seeds a refreshed database', async () => {
     await expect(createTestApp({ root: workspaceTempDir('marmeon-testing-db-'), discover: false }, { env: {}, seed: true })).rejects.toThrow("add database: 'refresh'");
+  });
+});
+
+describe('a test app that is ready after its test ended (a hook that timed out)', () => {
+  let open!: () => void;
+  let reached!: () => void;
+  const gate = new Promise<void>((resolve) => (open = resolve));
+  const booting = new Promise<void>((resolve) => (reached = resolve));
+  class Gate {
+    async boot() {
+      reached();
+      await gate;
+    }
+  }
+  // Seeding is where a late app would stand open (and hold the worker's database) if it were counted before it is refused.
+  let releaseSeeding!: () => void;
+  const seeding = new Promise<void>((resolve) => (releaseSeeding = resolve));
+  class SlowSeeder {
+    async handle() {
+      await seeding;
+    }
+  }
+  const definition: ApplicationDefinition = {
+    root: workspaceTempDir('marmeon-testing-db-'),
+    discover: false,
+    providers: [EncryptionServiceProvider, DatabaseServiceProvider, Gate],
+    modules: [defineModule({ name: 'slow', seeders: [SlowSeeder] })],
+  };
+  const env = { APP_KEY: generateKey(), DB_DRIVER: 'sqlite', DB_URL: undefined };
+  let late: Promise<TestApp>;
+
+  // The worker's database is created and migrated by the first app: not inside the late one's race.
+  beforeAll(async () => {
+    const warm = await createTestApp({ ...definition, providers: [EncryptionServiceProvider, DatabaseServiceProvider] }, { env, database: 'refresh' });
+    await warm.close();
+  });
+
+  it('starts an app that the test does not wait for', async () => {
+    late = createTestApp(definition, { env, database: 'refresh', seed: true });
+    late.catch(() => {});
+    await booting;
+  });
+
+  it('closes that app when it is ready, and never lets it stand in the way of the next test app', async () => {
+    const withoutGate = { ...definition, providers: [EncryptionServiceProvider, DatabaseServiceProvider] };
+    const next = createTestApp(withoutGate, { env, database: 'refresh' });
+    open();
+    const [nextResult] = await Promise.allSettled([next]);
+    releaseSeeding();
+    const [lateResult] = await Promise.allSettled([late]);
+    expect(lateResult).toMatchObject({ status: 'rejected', reason: expect.objectContaining({ message: expect.stringContaining('before this test app was ready') }) });
+    expect(nextResult.status).toBe('fulfilled');
+    await (nextResult as PromiseFulfilledResult<TestApp>).value.close();
+    await (await createTestApp(withoutGate, { env, database: 'refresh' })).close();
   });
 });
 
