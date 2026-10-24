@@ -40,6 +40,15 @@ export interface PostgresConnection {
  */
 export type ConnectionDefinitionOptions = { readonly driver: 'sqlite'; readonly database: string; readonly managed?: boolean | undefined } | PostgresConnection;
 
+/** Whether a Postgres URL names a database: without one `pg` reads `PGDATABASE`, then the user name — a default shared between apps. */
+function hasDatabaseName(url: string): boolean {
+  try {
+    return new URL(url).pathname.length > 1;
+  } catch {
+    return false;
+  }
+}
+
 /** `options` as the connections use them: a Postgres server's parts made into its URL, unless the URL is given. */
 function connectionOptions(name: string, options: ConnectionDefinitionOptions): ConnectionOptions {
   const managed = options.managed === false ? { managed: false } : {};
@@ -49,8 +58,11 @@ function connectionOptions(name: string, options: ConnectionDefinitionOptions): 
     ...(options.poolMax === undefined ? {} : { poolMax: options.poolMax }),
     ...(options.infrastructurePoolMax === undefined ? {} : { infrastructurePoolMax: options.infrastructurePoolMax }),
   };
-  if (options.url !== undefined) return { driver: 'pgsql', url: new URL(options.url).href, ...pools };
-  if (options.database === undefined) throw new TypeError(`The Postgres connection "${name}" needs a url or a database.`);
+  if (options.url !== undefined) {
+    if (!hasDatabaseName(options.url)) throw new TypeError(`The Postgres connection "${name}" needs a database: the name in its url's path, or database.`);
+    return { driver: 'pgsql', url: new URL(options.url).href, ...pools };
+  }
+  if (!options.database) throw new TypeError(`The Postgres connection "${name}" needs a url or a database.`);
   const url = new URL(`postgres://${options.host ?? '127.0.0.1'}:${options.port ?? 5432}`);
   url.username = options.username ?? 'postgres';
   url.password = options.password ?? '';
@@ -81,7 +93,13 @@ export const DatabaseConfig = defineConfig('database', {
     DB_INFRA_POOL_MAX: env.integer().min(1).default(DEFAULT_INFRASTRUCTURE_POOL_MAX),
     /** `false`: another tool manages the database, so Marmeon neither migrates it nor takes a schema from migrations for it. */
     DB_MANAGED: env.boolean().default(true),
-  }).renamed('DB_CONNECTION', 'DB_DRIVER'),
+  })
+    .renamed('DB_CONNECTION', 'DB_DRIVER')
+    .check(
+      (e) => e.DB_DRIVER !== 'pgsql' || (e.DB_URL !== undefined ? hasDatabaseName(e.DB_URL) : e.DB_DATABASE !== undefined),
+      'set DB_DATABASE, or DB_URL with the database\'s name in its path — apps on one Postgres server share their tables otherwise (docs/database.md#configuration)',
+      'DB_DATABASE',
+    ),
   resolve: (e): { default: ConnectionOptions } => {
     if (e.DB_DRIVER === 'sqlite') return { default: connectionOptions('default', { driver: 'sqlite', database: e.DB_DATABASE ?? 'storage/database.sqlite', managed: e.DB_MANAGED }) };
     return {
@@ -90,7 +108,7 @@ export const DatabaseConfig = defineConfig('database', {
         url: e.DB_URL,
         host: e.DB_HOST,
         port: e.DB_PORT,
-        database: e.DB_DATABASE ?? 'marmeon',
+        database: e.DB_DATABASE,
         username: e.DB_USERNAME,
         password: e.DB_PASSWORD,
         poolMax: e.DB_POOL_MAX,

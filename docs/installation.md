@@ -136,7 +136,7 @@ are resolved.
 The app starts on SQLite, in the file `storage/database.sqlite`. The creator runs `marmeon migrate`, so the tables exist when you
 first start the app. In development, `migrate` also writes the table types to `bootstrap/database.d.ts`, which the type checker
 uses for every query. You switch to PostgreSQL with `DB_DRIVER=pgsql` and the server's `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and
-`DB_PASSWORD` in `.env`, or its whole address in `DB_URL`.
+`DB_PASSWORD` in `.env`, or its whole address in `DB_URL`; the database's name is required, there is no default.
 
 ### Security from the start
 
