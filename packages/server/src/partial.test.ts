@@ -6,12 +6,12 @@ import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
 
-/** How long the deferred prop takes — the first response must not wait for it. */
-const SLOW = 400;
 
 describe('createHttpKernel — partial reloads and deferred props', async () => {
   const computed: Record<string, number> = {};
   const count = (name: string) => (computed[name] = (computed[name] ?? 0) + 1);
+  /** While set, the deferred prop waits for it — the first response must not. */
+  let hold: Promise<void> | undefined;
 
   const application = await createApplication({
     root: import.meta.dirname,
@@ -28,7 +28,7 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
               stats: optional(() => (count('stats'), { links: 3 })),
               activity: defer(async () => {
                 count('activity');
-                await new Promise((done) => setTimeout(done, SLOW));
+                await hold;
                 return ['signed in'];
               }),
             }),
@@ -67,19 +67,30 @@ describe('createHttpKernel — partial reloads and deferred props', async () => 
 
   it('sends the page without a deferred prop at once — loading it is a partial reload of its own', async () => {
     for (const key of Object.keys(computed)) delete computed[key];
-    let started = performance.now();
-    const first = await json(await visit());
-    const firstTook = performance.now() - started;
-    expect(first.props).toEqual({ name: 'Ada', expensive: 42 });
-    expect(first.deferredProps).toEqual({ default: ['activity'] });
-    expect(computed.activity).toBeUndefined();
-    expect(firstTook).toBeLessThan(SLOW / 2);
+    const gate = Promise.withResolvers<void>();
+    hold = gate.promise;
+    try {
+      // The deferred prop is held back: a first response that waited for it would never come.
+      const first = await json(await visit());
+      expect(first.props).toEqual({ name: 'Ada', expensive: 42 });
+      expect(first.deferredProps).toEqual({ default: ['activity'] });
+      expect(computed.activity).toBeUndefined();
 
-    started = performance.now();
-    const deferred = await json(await visit({ 'x-marmeon-partial-component': 'users/Show', 'x-marmeon-partial-data': 'activity' }));
-    expect(performance.now() - started).toBeGreaterThanOrEqual(SLOW - 5);
-    expect(deferred.props).toEqual({ activity: ['signed in'] });
-    expect(deferred.deferredProps).toBeUndefined();
+      let settled = false;
+      const reloading = visit({ 'x-marmeon-partial-component': 'users/Show', 'x-marmeon-partial-data': 'activity' }).then((response) => {
+        settled = true;
+        return response;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(settled).toBe(false);
+      gate.resolve();
+      const deferred = await json(await reloading);
+      expect(deferred.props).toEqual({ activity: ['signed in'] });
+      expect(deferred.deferredProps).toBeUndefined();
+    } finally {
+      gate.resolve();
+      hold = undefined;
+    }
   });
 
   it('varies page responses by the partial headers, so no cache answers one with the other', async () => {

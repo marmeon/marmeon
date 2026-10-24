@@ -685,9 +685,10 @@ describe('password reset', () => {
   it('enumeration by timing: the request only queues a job — token and mail are made by the worker', async () => {
     await app.close(); // one database app per test
     let mailed = 0;
+    const mailer = Promise.withResolvers<void>(); // sending is held back: a request that waited for it would never answer
     class SlowMailer extends MailFake {
       override async queue(mailable: Mailable): Promise<MailMessage> {
-        await new Promise((resolve) => setTimeout(resolve, 150)); // slow work for a known address
+        await mailer.promise; // slow work for a known address
         mailed++;
         return super.queue(mailable);
       }
@@ -696,17 +697,15 @@ describe('password reset', () => {
     ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const kernel = createHttpKernel(app.application); // its own kernel: TestApp waits for deferred work, a browser does not
-    const time = async (email: string) => {
-      const started = performance.now();
+    const forgot = async (email: string) => {
       const response = await kernel.request('/forgot-password', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: `email=${email}` });
-      const ms = performance.now() - started;
       expect(response.status).toBe(303);
-      return ms;
     };
-    expect(await time('ada@example.com')).toBeLessThan(100);
-    expect(await time('nobody@example.com')).toBeLessThan(100);
+    await forgot('ada@example.com');
+    await forgot('nobody@example.com');
     await kernel.settle();
     expect(mailed).toBe(0);
+    mailer.resolve();
     await app.queue.work();
     expect(mailed).toBe(1);
   });

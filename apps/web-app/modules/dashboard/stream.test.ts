@@ -1,4 +1,5 @@
 import { UserRepository, type User } from '#modules/auth';
+import { MemberStats } from '#modules/user-profile';
 import { Session } from '@marmeon/session';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -7,56 +8,108 @@ import { ProfileActivity } from '../user-profile/ProfileActivity.ts';
 import { ProfileDirectory } from '../user-profile/ProfileDirectory.ts';
 
 // The dashboard as a browser gets it: the shell first, the islands — and deferred props — later in the same response.
-// "Members" is slow on purpose here (DASHBOARD_ISLAND_DELAY), the profile's activity too (PROFILE_ACTIVITY_DELAY).
-const DELAY = 400;
+// "Members" and the profile's activity are held back by a gate the test opens once the part before them has arrived: what
+// streams first is a matter of order, not of milliseconds.
 let app: TestApp;
 let ada: User;
+// Taken before any test replaces them: `ProfileActivity` is scoped, so it cannot be resolved from the app once it was re-registered.
+let realMembers: MemberStats;
+let realActivity: ProfileActivity;
 beforeAll(async () => {
   app = await createTestApp(application, {
     database: 'refresh',
     seed: true,
     ssr: 'stream',
-    env: { DASHBOARD_ADMINS: 'ada@example.com', DASHBOARD_ISLAND_DELAY: String(DELAY), PROFILE_ACTIVITY_DELAY: '150' },
+    env: { DASHBOARD_ADMINS: 'ada@example.com' },
   });
   const users: User[] = await app.make(UserRepository).query().selectAll().orderBy('id').execute();
   [ada] = users as [User];
+  realMembers = app.make(MemberStats);
+  realActivity = app.make(ProfileActivity);
   // Warm up Vite's SSR modules: the first render of a page loads them.
   await (await app.actingAs(ada).stream('/dashboard')).text();
   await (await app.actingAs(ada).stream(`/users/${ada.public_id}`)).text();
 });
 afterAll(() => app.close());
 
-/** Reads a streamed response, noting when each marker first appeared (ms after the request started). */
-async function follow(started: number, response: Response, markers: Record<string, RegExp>) {
-  const headers = performance.now() - started;
+/** A promise the test settles by hand, to hold a part of a page back until the part before it has arrived. */
+function gate() {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  return { opened: promise, open: () => resolve() };
+}
+
+/** Holds `MemberStats.current()` (the "Members" island) back until `opened` settles. */
+function holdMembers(opened: Promise<void>) {
+  const real = realMembers;
+  app.container.scoped(MemberStats, () =>
+    Object.assign(Object.create(real) as MemberStats, {
+      current: async () => {
+        await opened;
+        return real.current();
+      },
+    }),
+  );
+}
+
+/** Holds `ProfileActivity.recent()` (the profile's deferred panel) back until `opened` settles. */
+function holdActivity(opened: Promise<void>) {
+  const real = realActivity;
+  app.container.scoped(ProfileActivity, () =>
+    Object.assign(Object.create(real) as ProfileActivity, {
+      recent: async (...args: Parameters<ProfileActivity['recent']>) => {
+        await opened;
+        return real.recent(...args);
+      },
+    }),
+  );
+}
+
+/**
+ * Reads a streamed response and returns the markers in the order they first appeared. `onFirst` runs when a marker appears —
+ * that is where a test opens its gate, so a part held back can only arrive after the part it waits for.
+ */
+async function follow(response: Response, markers: Record<string, RegExp>, onFirst: (name: string) => void = () => {}) {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let html = '';
-  const at: Record<string, number> = {};
+  const order: string[] = [];
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     html += decoder.decode(value, { stream: true });
-    for (const [name, marker] of Object.entries(markers)) if (at[name] === undefined && marker.test(html)) at[name] = performance.now() - started;
+    for (const [name, marker] of Object.entries(markers)) {
+      if (order.includes(name) || !marker.test(html)) continue;
+      order.push(name);
+      onFirst(name);
+    }
   }
-  return { headers, html, at, end: performance.now() - started };
+  return { html, order };
 }
 
 describe('the dashboard as it streams', () => {
   it('a slow island does not hold the shell back — it arrives later in the same response', async () => {
-    const started = performance.now();
-    const response = await app.actingAs(ada).stream('/dashboard');
-    const { headers, at, end } = await follow(started, response, {
-      shell: /<h1>Dashboard<\/h1>/,
-      signIns: /data-island="dashboard\.sign-ins" data-status="ready"/,
-      members: /data-island="dashboard\.members" data-status="ready"/,
-    });
-    expect(response.status).toBe(200);
-    expect(headers).toBeLessThan(DELAY / 2);
-    expect(at.shell!).toBeLessThan(DELAY / 2);
-    expect(at.signIns!).toBeLessThan(DELAY / 2);
-    expect(at.members!).toBeGreaterThanOrEqual(DELAY);
-    expect(end).toBeGreaterThanOrEqual(DELAY);
+    const members = gate();
+    holdMembers(members.opened);
+    try {
+      // The response itself comes while "Members" is held; the island follows once the shell and the other islands are in.
+      const response = await app.actingAs(ada).stream('/dashboard');
+      const { order } = await follow(
+        response,
+        {
+          shell: /<h1>Dashboard<\/h1>/,
+          signIns: /data-island="dashboard\.sign-ins" data-status="ready"/,
+          members: /data-island="dashboard\.members" data-status="ready"/,
+        },
+        (name) => {
+          if (name === 'signIns') members.open();
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(order).toEqual(['shell', 'signIns', 'members']);
+    } finally {
+      members.open();
+      app.container.singleton(MemberStats);
+    }
   });
 
   it('streams under the strict CSP: React\'s scripts that reveal the late islands carry the response\'s nonce — every script does', async () => {
@@ -107,17 +160,24 @@ describe('the dashboard as it streams', () => {
 
 describe('deferred props in the first response', () => {
   it('streams the profile’s activity with the page — the page object says so, the browser does not ask again', async () => {
-    const started = performance.now();
-    const response = await app.actingAs(ada).stream(`/users/${ada.public_id}`);
-    const { at, html } = await follow(started, response, { shell: /<h1>Ada Lovelace<\/h1>/, activity: /id="marmeon-deferred-[^"]*">\{"props":\{"activity"/ });
-    const page = JSON.parse(/<script type="application\/json" id="marmeon-page">(.*?)<\/script>/.exec(html)![1]!) as { streamedProps?: string[]; deferredProps?: Record<string, string[]> };
-    expect(page).toMatchObject({ streamedProps: ['default'], deferredProps: { default: ['activity'] } });
-    expect(at.shell!).toBeLessThan(150);
-    expect(at.activity!).toBeGreaterThanOrEqual(150);
+    const activity = gate();
+    holdActivity(activity.opened);
+    try {
+      const response = await app.actingAs(ada).stream(`/users/${ada.public_id}`);
+      const { order, html } = await follow(response, { shell: /<h1>Ada Lovelace<\/h1>/, activity: /id="marmeon-deferred-[^"]*">\{"props":\{"activity"/ }, (name) => {
+        if (name === 'shell') activity.open();
+      });
+      const page = JSON.parse(/<script type="application\/json" id="marmeon-page">(.*?)<\/script>/.exec(html)![1]!) as { streamedProps?: string[]; deferredProps?: Record<string, string[]> };
+      expect(page).toMatchObject({ streamedProps: ['default'], deferredProps: { default: ['activity'] } });
+      expect(order).toEqual(['shell', 'activity']);
+    } finally {
+      activity.open();
+      app.container.scoped(ProfileActivity);
+    }
   });
 
   it('a deferred prop that writes the session once the headers are out throws in development — the browser loads the group', async () => {
-    const real = app.make(ProfileActivity);
+    const real = realActivity;
     app.container.scoped(ProfileActivity, (container) =>
       Object.assign(Object.create(real) as ProfileActivity, {
         recent: async (...args: Parameters<ProfileActivity['recent']>) => {
@@ -138,13 +198,9 @@ describe('deferred props in the first response', () => {
 
 describe('a deep link of a layer, streamed', () => {
   it('the layer renders in the shell over its base — with the page, not a boundary streamed later', async () => {
-    const started = performance.now();
     const streamed = await app.actingAs(ada).stream(`/users/${ada.public_id}/edit`);
-    const { at, html } = await follow(started, streamed, { shell: /<h1>Ada Lovelace<\/h1>/, layer: /<dialog open="" data-marmeon-layer="user-profile\/Edit"/ });
-    // In the shell — it hydrates there (ssr.test.ts), the browser loads the layer code first: no later than the profile's
-    // deferred activity (150 ms) would take, counted from the shell — not from the request, whose shell a loaded machine
-    // can hold back on its own (228 ms under a full `test:pgsql`).
-    expect(at.layer! - at.shell!).toBeLessThan(150);
+    const { html } = await follow(streamed, {});
+    // In the shell — it hydrates there (ssr.test.ts), the browser loads the layer code first.
     expect(html.indexOf('data-marmeon-layer')).toBeGreaterThan(html.indexOf('<h1>Ada Lovelace</h1>'));
     // Not a part streamed after the shell (React sends those as hidden segments).
     expect(html.slice(0, html.indexOf('data-marmeon-layer'))).not.toContain('<div hidden id="');

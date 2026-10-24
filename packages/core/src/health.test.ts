@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createApplication } from './application.ts';
 import { Container } from './container.ts';
-import { HealthChecks, type HealthCheck } from './health.ts';
+import { HealthChecks, type HealthCheck, type HealthReport } from './health.ts';
 import { defineModule } from './module.ts';
 import { token } from './token.ts';
 
@@ -54,12 +54,20 @@ describe('HealthChecks', () => {
   });
 
   it('the default time limit is 2 s — a check that hangs does not hold up the others', async () => {
-    const container = new Container();
-    container.instance(Pinger, { ping: () => new Promise(() => {}) });
-    const started = performance.now();
-    const report = await new HealthChecks([PingCheck]).run(container, { timeout: 50 });
-    expect(report.checks[0]).toMatchObject({ name: 'ping', status: 'timeout', ms: 50 });
-    expect(performance.now() - started).toBeLessThan(1_500);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const container = new Container();
+      container.instance(Pinger, { ping: () => new Promise(() => {}) });
+      let report: HealthReport | undefined;
+      const running = new HealthChecks([PingCheck]).run(container).then((result) => (report = result));
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(report).toBeUndefined(); // still inside its time
+      await vi.advanceTimersByTimeAsync(1);
+      await running;
+      expect(report!.checks[0]).toMatchObject({ name: 'ping', status: 'timeout', ms: 2_000 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('every check is built anew in a scope of its own (constructor injection)', async () => {

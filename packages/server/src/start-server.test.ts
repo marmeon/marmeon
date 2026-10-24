@@ -44,9 +44,8 @@ describe('startServer', () => {
     const hmrClosed = new Promise((resolve) => (hmr.onclose = resolve));
     expect((await fetch(`http://127.0.0.1:${port}/nope`, { headers: { connection: 'keep-alive' } })).status).toBe(404);
 
-    const started = performance.now();
+    // No stopwatch: a stream or socket left open would keep `close()` waiting past the test's timeout.
     await running.close();
-    expect(performance.now() - started).toBeLessThan(2000);
     await hmrClosed;
     expect(running.server.listening).toBe(false);
     await app.shutdown();

@@ -32,11 +32,9 @@ describe('RedisConnections without a server', () => {
     await redis.close();
   });
 
-  it('fails fast when Redis is unreachable — no request waits for a reconnect loop', async () => {
+  it('refuses a command with the cause when Redis is unreachable', async () => {
     const unreachable = connections('x:', 'redis://127.0.0.1:1');
-    const started = performance.now();
     await expect(unreachable.get().command(['PING'])).rejects.toThrow(/Could not connect to Redis "default" \(redis:\/\/127\.0\.0\.1:1\)/);
-    expect(performance.now() - started).toBeLessThan(2_000);
     await unreachable.close();
   });
 

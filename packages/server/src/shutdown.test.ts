@@ -7,13 +7,13 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
-import { createApplication, defineModule } from '@marmeon/core';
+import { createApplication, defineModule, Logger } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { AfterResponse, HttpServiceProvider } from '@marmeon/http';
 import { openRoutes } from './test-helpers/open-routes.ts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { startServer } from './kernel.ts';
-import { ServerServiceProvider } from './provider.ts';
+import { ServerConfig, ServerServiceProvider } from './provider.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const root = tempDir('marmeon-drain-');
@@ -89,9 +89,9 @@ describe('stopping the server', () => {
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development', drainTimeoutMs: 200 });
     const { port } = running.server.address() as AddressInfo;
     await fetch(`http://127.0.0.1:${port}/api/hang`, { method: 'POST' });
-    const started = performance.now();
+    const warn = vi.spyOn(app.container.make(Logger), 'warn');
     await running.close();
-    expect(performance.now() - started).toBeLessThan(1_000);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Work after responses still ran 200 ms after the server closed'));
     await app.shutdown();
   });
 
@@ -102,25 +102,33 @@ describe('stopping the server', () => {
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
       modules: [defineModule({ name: 'hello', apiRoutes: openRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
     }, { env: { APP_KEY: generateKey(), SERVER_SHUTDOWN_DELAY_SECONDS: '0.6' } });
+    // Read as seconds: 0.6 is 600 ms — not the 60 ms of milliseconds by mistake, nor ten minutes.
+    expect(app.container.make(ServerConfig).shutdownDelayMs).toBe(600);
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
     const { port } = running.server.address() as AddressInfo;
     const base = `http://127.0.0.1:${port}`;
     expect((await fetch(`${base}/up/ready`)).status).toBe(200);
-    const started = performance.now();
-    const closed = running.close();
-    // Not ready from the signal on — the load balancer's next probe sends traffic elsewhere — but still answering.
-    const ready = await fetch(`${base}/up/ready`);
-    expect(ready.status).toBe(503);
-    expect(await ready.json()).toEqual({ status: 'draining' });
-    expect((await fetch(`${base}/up`)).status).toBe(200);
-    await sleep(300);
-    const late = await fetch(`${base}/api/hello`);
-    expect(late.status).toBe(200);
-    expect(late.headers.get('connection')).toBe('close');
+    // The delay runs on a clock the test moves: the requests below are answered inside it however slow the machine is.
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    let closed: Promise<void>;
+    let ended = false;
+    try {
+      closed = running.close().then(() => void (ended = true));
+      // Not ready from the signal on — the load balancer's next probe sends traffic elsewhere — but still answering.
+      const ready = await fetch(`${base}/up/ready`);
+      expect(ready.status).toBe(503);
+      expect(await ready.json()).toEqual({ status: 'draining' });
+      expect((await fetch(`${base}/up`)).status).toBe(200);
+      await vi.advanceTimersByTimeAsync(599);
+      const late = await fetch(`${base}/api/hello`);
+      expect(late.status).toBe(200);
+      expect(late.headers.get('connection')).toBe('close');
+      expect(ended).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+    } finally {
+      vi.useRealTimers();
+    }
     await closed;
-    // Read as seconds: 0.6 waits 600 ms — not the 60 ms of milliseconds by mistake, nor ten minutes.
-    expect(performance.now() - started).toBeGreaterThanOrEqual(590);
-    expect(performance.now() - started).toBeLessThan(3000);
     await expect(fetch(`${base}/up`)).rejects.toThrow();
     await app.shutdown();
   });
@@ -130,11 +138,10 @@ describe('stopping the server', () => {
       root,
       discover: false,
       providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
-    }, { env: { APP_KEY: generateKey(), SERVER_SHUTDOWN_DELAY_SECONDS: '5' } });
+    }, { env: { APP_KEY: generateKey(), SERVER_SHUTDOWN_DELAY_SECONDS: '300' } });
     const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
-    const started = performance.now();
+    // No stopwatch: a delay of five minutes that was waited out would end the test by its timeout instead.
     await running.close({ immediately: true });
-    expect(performance.now() - started).toBeLessThan(2_000);
     await app.shutdown();
     await expect(
       createApplication({ root, discover: false, providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider] }, { env: { APP_KEY: generateKey(), SERVER_SHUTDOWN_DELAY_SECONDS: '5s' } }),
