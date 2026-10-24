@@ -125,9 +125,6 @@
       "src/upload-header.ts",
       "src/live-protocol.ts",
       "src/tab-sync-protocol.ts"
-    ],
-    "experimental": [
-      "./client/adapter"
     ]
   }
 }

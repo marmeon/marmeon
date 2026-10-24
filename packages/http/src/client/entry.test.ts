@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import * as page from '../page.ts';
 import * as adapter from './adapter.ts';
 import * as client from './index.ts';
+// @ts-expect-error `pageQuery` is the pagination fields of @marmeon/database; the adapter's helper is `pageQueryOf`
+import { pageQuery } from '@marmeon/http/client/adapter';
 
 describe('the entries of the client core', () => {
   it('keeps what only a UI adapter builds on out of @marmeon/http/client', () => {
@@ -28,6 +30,18 @@ describe('the entries of the client core', () => {
     for (const name of ['pageInfo', 'pageName', 'scriptJson', 'matchesPath', 'ERROR_PAGE', 'LAYER_BACKDROP']) {
       expect(page, name).not.toHaveProperty(name);
       expect(adapter, name).toHaveProperty(name);
+    }
+  });
+
+  it('names the helper that reads the query of a page pageQueryOf, as pageQuery is the name in @marmeon/database', () => {
+    expect(adapter).toHaveProperty('pageQueryOf');
+    expect(adapter).not.toHaveProperty('pageQuery');
+    expect(pageQuery).toBeUndefined();
+  });
+
+  it('keeps the lazy loaders and constants only the core itself uses out of the adapter entry', () => {
+    for (const name of ['loadLiveValidation', 'loadPrefetch', 'loadViewTransitions', 'withoutDefaults', 'NEVER_REMEMBERED_FIELD', 'SENSITIVE_REMEMBER_FIELD']) {
+      expect(adapter, name).not.toHaveProperty(name);
     }
   });
 });

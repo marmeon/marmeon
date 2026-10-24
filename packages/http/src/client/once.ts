@@ -16,6 +16,7 @@ interface Kept {
   readonly expiresAt: number | undefined;
 }
 
+/** @internal */
 export class OnceStore {
   #scope: string | undefined;
   readonly #values = new Map<string, Kept>();

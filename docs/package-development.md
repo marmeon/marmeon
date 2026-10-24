@@ -484,10 +484,13 @@ A page name with `::` (`package::Page`) belongs to a package: an app's page file
 ## Writing a UI adapter
 
 A UI adapter renders pages; the client core does the rest (the protocol, history, the page cache, requests and every security
-invariant). `@marmeon/http/client/adapter` is what an adapter builds on: the `Navigator`, regions and layers, `defineFeature`, reading the
-first page, the form and link helpers and the page helpers. It is [experimental](releases.md#experimental) until a second adapter
-exists, so it can change in any minor version. `@marmeon/http/client` keeps what an app uses (the `hooks` and `tabSync` handles for
-`useFeature()`, `xsrfToken`, the types an adapter re-exports) and does not change with it.
+invariant). `@marmeon/http/client/adapter` is what an adapter builds on: the `Navigator`, regions and layers, the features the core ships, reading the
+first page, the form and link helpers and the page helpers. It is stable like any other entry point: a new required member of an
+interface an adapter implements is a `breaking` change, a new capability arrives as an optional member or as one of the
+core's features. `defineFeature` is the framework's own route to a feature and is not part of the entry; a public way for
+third parties to write features would need a deliberately narrow host, and it could be added after 1.0 without breaking this
+entry. `@marmeon/http/client` keeps what an app uses (the `hooks` and `tabSync` handles for `useFeature()`,
+`xsrfToken`, the types an adapter re-exports).
 
 Browser code of a package imports the core only from these two entries, and never from `@marmeon/http/internal`: that one is server
 code. The contract of an adapter, what it has to provide and the test that proves it, is in

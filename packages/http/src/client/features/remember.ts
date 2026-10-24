@@ -5,7 +5,8 @@
  * `remember`).
  */
 import { defineFeature } from '../feature.ts';
-import { REMEMBERED, type Remembered } from '../remember.ts';
+import { isHeld } from '../owner.ts';
+import { REMEMBERED, Remembered } from '../remember.ts';
 
 /** What adapters use of remembered state. */
 export interface RememberFeature {
@@ -14,4 +15,6 @@ export interface RememberFeature {
 }
 
 /** Remembered state: `navigator.use(remember).of(owner.entry)`. */
-export const remember = /* @__PURE__ */ defineFeature('remember', (host): RememberFeature => ({ of: (entry) => host.entry(REMEMBERED, entry) }));
+export const remember = /* @__PURE__ */ defineFeature('remember', (host): RememberFeature => ({
+  of: (entry) => (isHeld(host, entry) ? host.entry(REMEMBERED, entry) : new Remembered()),
+}));

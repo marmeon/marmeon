@@ -9,6 +9,7 @@ import type { ReloadSpec } from './optimistic.ts';
  * Which merged props a partial reload replaces instead (`reset`): these names, or — `true` — every prop it brought. A revalidation
  * (an action's reload, a live hint's, Back's) is `true`: what the server says now takes the place of what was there, so a row
  * deleted meanwhile is gone. "Load more" (a visit with `data`/`query`) resets nothing: it appends.
+ * @internal
  */
 export type ResetProps = readonly string[] | true;
 
@@ -26,6 +27,7 @@ export const MERGE_MARKS = ['mergeProps', 'deepMergeProps', 'matchPropsOn'] as c
  * down), unless `reset`. Deferred props that arrived are no longer pending. What the page says about merging (`mergeProps`,
  * `deepMergeProps`, `matchPropsOn`) is the partial's for the props it brought and stays as it was for the others — it never
  * piles up over reloads.
+ * @internal
  */
 export function mergePage(current: PageObject, partial: PageObject, reset: ResetProps = []): PageObject {
   const props: Record<string, unknown> = { ...current.props };

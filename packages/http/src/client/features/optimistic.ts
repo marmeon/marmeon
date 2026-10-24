@@ -39,6 +39,7 @@ type PatchesCore = Pick<FeatureHost, 'cache' | 'page' | 'key' | 'left' | 'transi
 export class PagePatches {
   readonly #core: PatchesCore;
 
+  /** @internal */
   constructor(core: PatchesCore) {
     this.#core = core;
   }

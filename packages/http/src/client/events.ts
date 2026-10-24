@@ -100,7 +100,10 @@ export interface VisitCallbacks {
 /** The events the navigator emits itself (flash messages go through their own channel). */
 type EmittedEvent = Exclude<VisitEvent, 'flash'>;
 
-/** The listeners of one navigator's events. */
+/**
+ * The listeners of one navigator's events.
+ * @internal
+ */
 export class VisitEmitter {
   readonly #listeners: { [E in EmittedEvent]: Set<VisitEvents[E]> } = {
     start: new Set(),

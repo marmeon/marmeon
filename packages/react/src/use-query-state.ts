@@ -1,6 +1,6 @@
 import { assertQueryPage, type QueryState } from '@marmeon/http/client/adapter';
 import { resolveRoute, type QueryStateOptions, type QueryUpdate } from '@marmeon/http/client';
-import { pageQuery } from '@marmeon/http/client/adapter';
+import { pageQueryOf } from '@marmeon/http/client/adapter';
 import { queryState } from '@marmeon/http/client/adapter';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, Routes, RouteQueryOf } from '@marmeon/http/page';
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
@@ -74,5 +74,5 @@ export function useQueryState<const N extends BrowserRouteNameInput>(
     if (state.current) state.current.set(update);
     else early.current.push(update);
   }, []) as SetQueryState<QueryStateOf<N>>;
-  return [(draft ?? pageQuery(page)) as QueryStateOf<N>, set];
+  return [(draft ?? pageQueryOf(page)) as QueryStateOf<N>, set];
 }

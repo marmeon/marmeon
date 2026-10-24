@@ -13,12 +13,18 @@ import { atOrigin, navigable } from './request.ts';
 /** What a new build asks by default when loading it would lose unsaved changes. */
 export const DEFAULT_NEW_VERSION_MESSAGE = 'A new version of this app is available. Load it now? Your unsaved changes will be lost.';
 
-/** How the page loads fully: the URL of the 409 (`assign`, or `replace` the entry), or the page on screen again (`reload`). */
+/**
+ * How the page loads fully: the URL of the 409 (`assign`, or `replace` the entry), or the page on screen again (`reload`).
+ * @internal
+ */
 export type DocumentChangeHow = 'assign' | 'replace' | 'reload';
 
 type DocumentChangeCore = Pick<NavigatorCore, 'window' | 'left' | 'leave' | 'emit' | 'fire' | 'blocking' | 'ask'>;
 
-/** The full loads of one navigator, and the new build it postponed. */
+/**
+ * The full loads of one navigator, and the new build it postponed.
+ * @internal
+ */
 export class DocumentChange {
   readonly #core: DocumentChangeCore;
   /**
@@ -28,6 +34,7 @@ export class DocumentChange {
   #newVersion: string | undefined;
   readonly #listeners = new Set<() => void>();
 
+  /** @internal */
   constructor(core: DocumentChangeCore) {
     this.#core = core;
   }

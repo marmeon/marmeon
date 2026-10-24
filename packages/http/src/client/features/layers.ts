@@ -15,7 +15,7 @@ import type { Visit, VisitCallbacks } from '../events.ts';
 import { defineFeature, slot, type EntryStack } from '../feature.ts';
 import { takeFlash } from '../flash.ts';
 import { entry, isHistoryState, newKey, type HistoryState, type PositionCheck } from '../history.ts';
-import { Layer, type LayerControl, type LayerHost } from '../layer.ts';
+import { Layer, type LayerControl } from '../layer.ts';
 import { follow } from '../load-live.ts';
 import { keepDeferred, mergePage, pick, resetOf } from '../merge.ts';
 import type { VisitOptions } from '../navigation.ts';
@@ -37,14 +37,20 @@ export interface PendingClose {
 /** How long a layer's close waits for the browser to go back before it replaces the entry instead (ms). */
 const CLOSE_TIMEOUT = 1000;
 
-/** One layer of a stack kept in memory. */
+/**
+ * One layer of a stack kept in memory.
+ * @internal
+ */
 export interface CachedLevel {
   readonly key: string;
   readonly depth: number;
   readonly page: PageObject;
 }
 
-/** What memory keeps of an entry's stack: the key of the page's entry, the layers over it. */
+/**
+ * What memory keeps of an entry's stack: the key of the page's entry, the layers over it.
+ * @internal
+ */
 export interface CachedStack extends EntryStack {
   readonly layers: readonly CachedLevel[];
 }
@@ -91,7 +97,7 @@ const LAYER_HEADERS = { [REGION_HEADER]: 'layer' };
  * The layers of one navigator — what `navigator.use(layers)` returns, and the host of each layer (its visits, closing, its
  * reloads for actions).
  */
-export class LayerStack implements LayerHost {
+export class LayerStack {
   readonly #core: FeatureHost;
   /** The layers the document came with (a deep link of a layer's URL) — stacked once the history is taken over. */
   #initial: readonly PageObject[];
@@ -100,13 +106,17 @@ export class LayerStack implements LayerHost {
   /** The close the popstate under way finishes — taken when it arrives, done when its arrival is. */
   #popClose: PendingClose | undefined;
 
+  /** @internal */
   constructor(core: FeatureHost) {
     this.#core = core;
     // A deep link of a layer's URL: the page under it (its base, or the neutral surface), the layers apart.
     this.#initial = (core.initial?.layers ?? []).slice(0, MAX_LAYER_DEPTH).map((layer) => core.once.receive(takeFlash(layer).page));
   }
 
-  /** The handles of the layers on screen, bottom first (the document's slot). */
+  /**
+   * The handles of the layers on screen, bottom first (the document's slot).
+   * @internal
+   */
   get controls(): LayerControl[] {
     return this.#core.document(STACK);
   }
@@ -116,16 +126,23 @@ export class LayerStack implements LayerHost {
     return this.controls.map((control) => control.layer);
   }
 
-  /** A layer closes by going back: the popstate it caused is its own. */
+  /**
+   * A layer closes by going back: the popstate it caused is its own.
+   * @internal
+   */
   get closing(): boolean {
     return this.#pendingClose !== undefined;
   }
 
+  /** @internal */
   find(layer: Layer): LayerControl | undefined {
     return this.controls.find((control) => control.layer === layer);
   }
 
-  /** The current history entry: the top layer's, or the page's. */
+  /**
+   * The current history entry: the top layer's, or the page's.
+   * @internal
+   */
   top(): string {
     return this.controls.at(-1)?.layer.entry ?? this.#core.key!;
   }
@@ -133,6 +150,7 @@ export class LayerStack implements LayerHost {
   /**
    * A deep link's layers, stacked once the history is taken over — the entry (`key`) is the top layer's, the page beneath gets
    * a key of its own (returned). Undefined: the document came with no layers.
+   * @internal
    */
   adopt(key: string, position: Scroll): string | undefined {
     const initial = this.#initial;
@@ -158,6 +176,7 @@ export class LayerStack implements LayerHost {
    * Where a visit's answer goes, when the layers take it: an answer that is a layer opens over the level it came from — or
    * replaces that layer in place when it is the same one (its key: a failed form) — and a reload of the page under the
    * layers lands there. Undefined: not the layers' — the answer is shown as the page.
+   * @internal
    */
   place(from: LayerControl | undefined, page: PageObject, options: PlaceOptions): Promise<PageObject | undefined> | undefined {
     const { method, replace, preserveState, preserveUrl, partial } = options;
@@ -181,7 +200,10 @@ export class LayerStack implements LayerHost {
     return this.#open(at, page);
   }
 
-  /** `closeLayer()` answered a layer's request: close, then the visit ends on what is beneath (a success). */
+  /**
+   * `closeLayer()` answered a layer's request: close, then the visit ends on what is beneath (a success).
+   * @internal
+   */
   async closed(from: LayerControl | undefined, response: Response, visit: Visit, callbacks: VisitCallbacks): Promise<PageObject | undefined> {
     let close: LayerClose = { layers: 1 };
     try {
@@ -199,14 +221,20 @@ export class LayerStack implements LayerHost {
     return shown;
   }
 
-  /** A visit from inside a layer — `layer.visit()`: sent as the layer's, its answer placed for it. */
+  /**
+   * A visit from inside a layer — `layer.visit()`: sent as the layer's, its answer placed for it.
+   * @internal
+   */
   layerVisit(layer: Layer, url: string, options: VisitOptions): Promise<PageObject | undefined> {
     const from = this.find(layer);
     // A layer that left the screen visits nothing any more.
     return from ? this.#core.visit(from, url, options) : Promise.resolve(undefined);
   }
 
-  /** `layer.reload()`: the layer's page again, as the layer's. */
+  /**
+   * `layer.reload()`: the layer's page again, as the layer's.
+   * @internal
+   */
   layerReload(layer: Layer, options: Omit<VisitOptions, 'method'>): Promise<PageObject | undefined> {
     const from = this.find(layer);
     return from ? this.#core.visit(from, atOrigin(layer.page.url, this.#core.window), { replace: true, preserveScroll: true, preserveState: true, ...options }) : Promise.resolve(undefined);
@@ -218,6 +246,7 @@ export class LayerStack implements LayerHost {
    * (Forward then asks the server again: what closed is forgotten); otherwise the current entry becomes what stays. Then
    * `close.reload` reloads what is beneath — the page and the layers that stay — and a layer shown once (an action's answer)
    * reloads them fully.
+   * @internal
    */
   async closeLayer(layer: Layer, close: LayerClose): Promise<void> {
     const index = this.controls.findIndex((control) => control.layer === layer);
@@ -228,18 +257,27 @@ export class LayerStack implements LayerHost {
     await this.#close(layer, close);
   }
 
-  /** A layer's reload for an action — see `LayerHost.reloadLayer`. */
+  /**
+   * A layer's reload for an action — see `LayerHost.reloadLayer`.
+   * @internal
+   */
   reloadLayer(layer: Layer, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean> {
     const control = this.find(layer);
     return control ? this.revalidate(control, spec, drop, signal) : Promise.resolve(false);
   }
 
-  /** Memory keeps what a layer's props became (an action's patches committed). */
+  /**
+   * Memory keeps what a layer's props became (an action's patches committed).
+   * @internal
+   */
   layerChanged(layer: Layer): void {
     updatePage(this.#core.cache, layer.entry, layer.page);
   }
 
-  /** The history state of entry `key` on screen when it is a layer's (with the keys beneath it) — undefined for the page's. */
+  /**
+   * The history state of entry `key` on screen when it is a layer's (with the keys beneath it) — undefined for the page's.
+   * @internal
+   */
   stateOf(key: string, position: Scroll): HistoryState | undefined {
     const index = this.controls.findIndex((control) => control.layer.entry === key);
     if (index < 0) return undefined;
@@ -249,6 +287,7 @@ export class LayerStack implements LayerHost {
   /**
    * The layers from `index` up leave the screen (in their order from the top): their islands stop, `onClose` runs, and a
    * layer shown once is forgotten. Returns them.
+   * @internal
    */
   dismissFrom(index: number): Layer[] {
     const removed = this.controls.splice(Math.max(0, index));
@@ -263,6 +302,7 @@ export class LayerStack implements LayerHost {
    * The layers on screen become `levels` (from memory, by Back/Forward): the ones they share at the bottom stay as they are, the
    * others leave, the new ones are made from memory — their islands too (what their views declare reloads). Returns the
    * layers that left.
+   * @internal
    */
   set(levels: readonly CachedLevel[]): Layer[] {
     const controls = this.controls;
@@ -277,12 +317,18 @@ export class LayerStack implements LayerHost {
     return removed;
   }
 
-  /** The layers changed, the page did not: rendered with the same page (kept as it is). */
+  /**
+   * The layers changed, the page did not: rendered with the same page (kept as it is).
+   * @internal
+   */
   async render(): Promise<void> {
     await this.#core.draw(this.#core.paint(this.#core.key!, this.#core.page), { preserveState: true });
   }
 
-  /** What memory keeps of the stack of entry `key` — its page's entry and the layers' — or false when a part is gone. */
+  /**
+   * What memory keeps of the stack of entry `key` — its page's entry and the layers' — or false when a part is gone.
+   * @internal
+   */
   cached(key: string): CachedStack | false {
     const cache = this.#core.cache;
     const top = cache.get(key);
@@ -301,12 +347,18 @@ export class LayerStack implements LayerHost {
     return { page: page!, layers };
   }
 
-  /** The deferred props of every layer on screen. */
+  /**
+   * The deferred props of every layer on screen.
+   * @internal
+   */
   loadAllDeferred(): void {
     for (const control of this.controls) this.loadDeferred(control);
   }
 
-  /** A layer's deferred props: one partial request per group, as the layer's — each merged in if it still shows that page. */
+  /**
+   * A layer's deferred props: one partial request per group, as the layer's — each merged in if it still shows that page.
+   * @internal
+   */
   loadDeferred(control: LayerControl): void {
     const page = control.layer.page;
     this.#core.props.each(control.layer.entry, page, (props) => {
@@ -325,7 +377,10 @@ export class LayerStack implements LayerHost {
     });
   }
 
-  /** A layer's props again from the server, in the background (as `revalidate()` in `revalidate.ts` does for a page's) — replacing merged props. */
+  /**
+   * A layer's props again from the server, in the background (as `revalidate()` in `revalidate.ts` does for a page's) — replacing merged props.
+   * @internal
+   */
   async revalidate(control: LayerControl, spec: ReloadSpec, drop: ReadonlySet<number>, signal: AbortSignal): Promise<boolean> {
     const base = control.layer.page;
     if (control.layer.closed || this.#core.left) return false;
@@ -349,6 +404,7 @@ export class LayerStack implements LayerHost {
    * Back/Forward to a layer's entry that is not in memory (closed explicitly, shown once, evicted): asked for again — over
    * what is beneath it, when that is on screen or in memory. Otherwise the whole stack loads like a deep link (the server
    * puts the layer's declared base under it).
+   * @internal
    */
   async restore(state: HistoryState): Promise<void> {
     const below = state.layer?.below ?? [];
@@ -381,13 +437,19 @@ export class LayerStack implements LayerHost {
     });
   }
 
-  /** The close the popstate under way finishes, if a layer closes by going back — taken. */
+  /**
+   * The close the popstate under way finishes, if a layer closes by going back — taken.
+   * @internal
+   */
   takeClose(): void {
     this.#popClose = this.#pendingClose;
     this.#pendingClose = undefined;
   }
 
-  /** The popstate's arrival is done: the closing visit goes on. */
+  /**
+   * The popstate's arrival is done: the closing visit goes on.
+   * @internal
+   */
   popped(): void {
     const closing = this.#popClose;
     this.#popClose = undefined;
@@ -398,6 +460,7 @@ export class LayerStack implements LayerHost {
    * Back/Forward to the page on screen with other layers (a layer closed by Back, opened again by Forward): only the layers
    * change. Those Forward opened again from memory reload what their views declare — and when an action's answer (shown
    * once) left, what is beneath reloads (or what the closing asked for).
+   * @internal
    */
   async rearrange(stack: CachedStack, own: boolean): Promise<void> {
     const closing = this.#popClose;
@@ -410,7 +473,10 @@ export class LayerStack implements LayerHost {
     if (reload !== undefined) await this.reloadTop(reload);
   }
 
-  /** Back/Forward brings a page from memory: the layers that closed are forgotten, the stack's own come back over it. */
+  /**
+   * Back/Forward brings a page from memory: the layers that closed are forgotten, the stack's own come back over it.
+   * @internal
+   */
   arrive(stack: CachedStack): void {
     for (const key of this.#popClose?.forget ?? []) this.#core.cache.delete(key);
     this.set(stack.layers);
@@ -421,6 +487,7 @@ export class LayerStack implements LayerHost {
    * does not have are ignored), or (`true`) all of them: what the closed layer changed may show on any of them (a removed
    * link on the edit layer and on the profile under it). In the background, each landing in place; the page first, so a
    * flash message reaches the page's layout.
+   * @internal
    */
   async reloadTop(reload: NonNullable<LayerClose['reload']>): Promise<void> {
     if (reload !== true && reload.length === 0) return;

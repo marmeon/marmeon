@@ -13,7 +13,7 @@ import type { PageObject, RegionObject } from '../protocol.ts';
 import { mergePage, pick, resetOf, type ResetProps } from './merge.ts';
 import { notify } from './notify.ts';
 import { PatchQueue, type OptimisticUpdate, type PatchTarget, type PropsPatch, type Reloading, type ReloadSpec } from './optimistic.ts';
-import { pageQuery, queryUrl } from './query.ts';
+import { pageQueryOf, queryUrl } from './query.ts';
 import type { RegionOwner } from './owner.ts';
 import { partialReloadHeaders } from './request.ts';
 
@@ -50,7 +50,10 @@ export interface RegionReloadOptions {
   reset?: readonly string[];
 }
 
-/** How a region request ended, as the navigator's transport reports it. */
+/**
+ * How a region request ended, as the navigator's transport reports it.
+ * @internal
+ */
 export type RegionResponse =
   | { readonly kind: 'region'; readonly region: RegionObject }
   | { readonly kind: 'unauthorized' | 'forbidden' }
@@ -58,7 +61,10 @@ export type RegionResponse =
   /** Aborted — or the document is being left (a 409: the whole page loads again). */
   | { readonly kind: 'cancelled' };
 
-/** Sends a region's requests (the navigator: page headers, the asset version, a 409 loads the whole page again). */
+/**
+ * Sends a region's requests (the navigator: page headers, the asset version, a 409 loads the whole page again).
+ * @internal
+ */
 export interface RegionTransport {
   request(url: string, headers: Readonly<Record<string, string>>, signal: AbortSignal): Promise<RegionResponse>;
 }
@@ -104,7 +110,10 @@ export function regionId(url: string): string {
   return parsed.pathname + parsed.search;
 }
 
-/** What a region shown from memory by Back/Forward declares to reload then — asked for when it is loaded (rendered) again. */
+/**
+ * What a region shown from memory by Back/Forward declares to reload then — asked for when it is loaded (rendered) again.
+ * @internal
+ */
 export type DeclaredOnBack = (component: string) => Promise<ReloadSpec | undefined>;
 
 /**
@@ -122,7 +131,7 @@ export function ownedRegion(owner: RegionOwner, kept: Map<string, KeptRegion>, t
   if (initial && !('failure' in initial) && !known) kept.set(id, initial);
   // Back/Forward brought what it kept: its view may declare props to reload then.
   const region = new Region(owner, kept, transport, id, url, known ?? initial, known && isRegionObject(known) ? onBack : undefined);
-  if (!owner.closed) owner.live.set(id, region);
+  owner.keep(id, region);
   return region;
 }
 
@@ -178,6 +187,7 @@ export class Region {
     },
   };
 
+  /** @internal */
   constructor(owner: RegionOwner, regions: Map<string, KeptRegion>, transport: RegionTransport, id: string, url: string, kept?: RegionInitial, onBack?: DeclaredOnBack) {
     this.#owner = owner;
     this.#kept = regions;
@@ -203,7 +213,7 @@ export class Region {
 
   /** The region's query, defaults filled in — what its controller saw as `ctx.query` (empty before it loaded). */
   get query(): Record<string, unknown> {
-    return this.#region ? pageQuery(this.#region) : {};
+    return this.#region ? pageQueryOf(this.#region) : {};
   }
 
   /** A patch of its props for an action — shown at once over them, never kept before it succeeded. */
@@ -254,7 +264,7 @@ export class Region {
     let url = this.#url;
     if (query) {
       const current = this.#region;
-      const values: Record<string, unknown> = { ...(current ? pageQuery(current) : {}) };
+      const values: Record<string, unknown> = { ...(current ? pageQueryOf(current) : {}) };
       for (const [key, value] of Object.entries(query)) {
         if (value !== undefined) values[key] = value;
         else if (current?.queryDefaults && Object.hasOwn(current.queryDefaults, key)) values[key] = current.queryDefaults[key];

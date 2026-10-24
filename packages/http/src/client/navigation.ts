@@ -32,7 +32,7 @@ import { notify } from './notify.ts';
 import { ONCE } from './once.ts';
 import type { OptimisticUpdate } from './optimistic.ts';
 import { applyPatches, listOf, rollBack } from './patches.ts';
-import { RegionOwner } from './owner.ts';
+import { mintOwner, type RegionOwner } from './owner.ts';
 import { atOrigin, buildRequest, isForeign, navigable, partialReloadHeaders, untilAborted } from './request.ts';
 import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
 
@@ -375,7 +375,7 @@ export class Navigator {
       },
       document: (slot) => held(this.#document, slot),
       top: () => this.#first('top') ?? core.key!,
-      ownerOf: (key, back) => new RegionOwner(key, back),
+      ownerOf: (key, back) => mintOwner(key, back, this),
       declared: (component) => this.#first('declared', component) ?? Promise.resolve(undefined),
       blocking: (leaving, ignore = []) => this.#all('unsaved', leaving, ignore).flat(),
       mayLeave: async (leaving, ignore) => {
@@ -451,7 +451,7 @@ export class Navigator {
   }
 
   /**
-   * Attaches a feature whose code loads on first use — `navigator.load(loadLiveValidation)`: its chunk is fetched once,
+   * Attaches a feature whose code loads on first use — `navigator.load(loadLayers)`: its chunk is fetched once,
    * then it is attached like `use` (idempotent). Rejects when the chunk cannot load (offline, gone after a deployment).
    */
   async load<API>(loader: () => Promise<Feature<API>>): Promise<API> {

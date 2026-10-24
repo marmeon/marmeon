@@ -384,7 +384,7 @@ export function entryOf(specifier: string, names: readonly string[]): string {
 
 /** The client core as an adapter uses it at least: the navigator, the document, links, forms, routes, titles, messages. */
 const CORE = [
-  ...['isHistoryState', 'mergePage', 'Navigator'],
+  ...['isHistoryState', 'Navigator'],
   ...['hasServerMarkup', 'readInitialPage', 'rootElement'],
   ...['isCurrentLink', 'visitUrlOf'],
   ...['defaultFormEntries', 'dirtyPaths', 'fieldPath', 'firstErrors', 'formEntries', 'formObject', 'isDirtyPath', 'restoreFormEntries', 'sameEntries'],

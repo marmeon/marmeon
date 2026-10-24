@@ -41,6 +41,7 @@ export class Guards {
   /** The user chose to leave for another site (or a full load): the browser's own question does not ask again. */
   #unloadAllowed = false;
 
+  /** @internal */
   constructor(core: GuardCore) {
     this.#core = core;
   }
@@ -48,6 +49,7 @@ export class Guards {
   /**
    * Whether a visit may start (the `visit` hook — after the core asked its own confirmation): the unsaved changes it would take
    * off the screen — a promise only when something is asked, so a visit nobody guards starts at once.
+   * @internal
    */
   check({ options: { ignoreGuards }, keeps, leaving }: PendingVisit): boolean | Promise<boolean> {
     return keeps || ignoreGuards === true || this.blocking(leaving, ignoreGuards).length === 0 || this.#core.mayLeave(leaving, ignoreGuards);

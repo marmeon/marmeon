@@ -1,6 +1,6 @@
 import { regionInitial, type PropsPatch, type Region, type ReloadSpec, type RegionSnapshot } from '@marmeon/http/client/adapter';
 import { createPoll, resolveRoute, type OptimisticUpdate, type RegionFailure, type Reloading, type RegionStatus } from '@marmeon/http/client';
-import { pageQuery } from '@marmeon/http/client/adapter';
+import { pageQueryOf } from '@marmeon/http/client/adapter';
 import { islands } from '@marmeon/http/client/adapter';
 import type {
   BrowserRouteNameInput,
@@ -145,7 +145,7 @@ function IslandBody(props: BodyProps) {
 function ServerIsland({ ssr, url, streamed, scriptId, onShown: _onShown, ...props }: BodyProps & { ssr: SsrResolvers }) {
   const result = streamed ? use(ssr.island(url)) : NOT_RESOLVED;
   const snapshot = snapshotOf(result);
-  const value: IslandValue = { snapshot, query: snapshot.region ? pageQuery(snapshot.region) : {}, reload: noReload, region: null };
+  const value: IslandValue = { snapshot, query: snapshot.region ? pageQueryOf(snapshot.region) : {}, reload: noReload, region: null };
   return (
     <>
       <IslandContent {...props} snapshot={snapshot} value={value} />

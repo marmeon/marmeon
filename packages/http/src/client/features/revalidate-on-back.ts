@@ -22,6 +22,7 @@ export class BackRevalidation {
   readonly #core: BackCore;
   readonly #declare: DeclaredRevalidation | undefined;
 
+  /** @internal */
   constructor(core: BackCore, declare: DeclaredRevalidation | undefined) {
     this.#core = core;
     this.#declare = declare;
