@@ -121,10 +121,6 @@
     }
   },
   "marmeon": {
-    "experimental": [
-      "./table",
-      "./table-tanstack"
-    ],
     "browser": [
       "src/**"
     ]

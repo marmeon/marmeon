@@ -4,14 +4,14 @@
  * through `useTable`. Types only: TanStack is in a bundle only where the app imports it. See docs/tables.md#tanstack-table.
  */
 import type { ColumnDef, OnChangeFn, PaginationState, RowSelectionState, SortingState, TableFeatures, TableOptions, Updater } from '@tanstack/react-table';
-import type { AnyTableData, RowOf, SortableOf } from '@marmeon/table/client';
+import type { AnyTableData, TableRowOf, SortableOf } from '@marmeon/table/client';
 import type { Table } from './table.ts';
 
 export interface ToTanStackOptions<F extends TableFeatures, T extends AnyTableData> {
   /** TanStack's features — `tableFeatures({ rowSortingFeature, rowPaginationFeature, rowSelectionFeature })`, at module scope. */
   readonly features: F;
   /** Columns of your own (cells, sizes) — default: one per visible column, its header the column's label. */
-  readonly columns?: readonly ColumnDef<F, RowOf<T>>[];
+  readonly columns?: readonly ColumnDef<F, TableRowOf<T>>[];
 }
 
 const apply = <S>(updater: Updater<S>, current: S): S => (typeof updater === 'function' ? (updater as (old: S) => S)(current) : updater);
@@ -21,7 +21,7 @@ const apply = <S>(updater: Updater<S>, current: S): S => (typeof updater === 'fu
  * pagination — plus the entry's selection, each with the handler that sends it back. Manual sorting, filtering and pagination: TanStack
  * never sorts or pages rows itself (it sees one page). One column sorts at a time, and a sort is never removed (the table has a default).
  */
-export function toTanStack<F extends TableFeatures, T extends AnyTableData>(table: Table<T>, { features, columns }: ToTanStackOptions<F, T>): TableOptions<F, RowOf<T>> {
+export function toTanStack<F extends TableFeatures, T extends AnyTableData>(table: Table<T>, { features, columns }: ToTanStackOptions<F, T>): TableOptions<F, TableRowOf<T>> {
   const { data } = table;
   const sorting: SortingState = data.sort ? [{ id: data.sort.column, desc: data.sort.direction === 'desc' }] : [];
   const pagination: PaginationState = data.page.type === 'offset' ? { pageIndex: data.page.page - 1, pageSize: data.page.perPage } : { pageIndex: 0, pageSize: data.page.perPage };
@@ -44,16 +44,16 @@ export function toTanStack<F extends TableFeatures, T extends AnyTableData>(tabl
   };
   const options = {
     features,
-    data: data.rows as readonly RowOf<T>[],
+    data: data.rows as readonly TableRowOf<T>[],
     columns:
       columns ??
       table.columns.map((column) => ({
         id: column.name,
-        accessorFn: (row: RowOf<T>) => (row as Record<string, unknown>)[column.name],
+        accessorFn: (row: TableRowOf<T>) => (row as Record<string, unknown>)[column.name],
         header: column.label,
         enableSorting: column.sortable,
       })),
-    getRowId: (row: RowOf<T>) => String(table.key(row)),
+    getRowId: (row: TableRowOf<T>) => String(table.key(row)),
     state: { sorting, pagination, rowSelection },
     onSortingChange,
     onPaginationChange,
@@ -65,5 +65,5 @@ export function toTanStack<F extends TableFeatures, T extends AnyTableData>(tabl
     enableSortingRemoval: false,
     ...(data.page.type === 'offset' ? { rowCount: data.page.total } : { pageCount: -1 }),
   };
-  return options as unknown as TableOptions<F, RowOf<T>>;
+  return options as unknown as TableOptions<F, TableRowOf<T>>;
 }

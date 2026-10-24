@@ -7,7 +7,7 @@ import { Controller, defineRequest, HttpServiceProvider, type ContextOf } from '
 import { IncomingRequest, PROTOCOL_VERSION } from '@marmeon/http/internal';
 import { defineMiddleware, type HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
-import { action, bulk, column, defineTable, exportCsv, filter, Tables, tableRoutes, TableServiceProvider, type TableContext } from '../index.ts';
+import { action, bulk, column, defineTable, exportCsv, filter, DataTables, tableRoutes, TableServiceProvider, type TableContext } from '../index.ts';
 import { EmailPolicy, MemberPolicy } from './policies.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
 import './schema.ts';
@@ -209,9 +209,9 @@ export const TeamsRequest = defineRequest({ query: TeamsTable.query });
 /** The page: the table as JSON (the page protocol is the http package's — here the prop alone). */
 export class MembersPage extends Controller {
   static request = MembersRequest;
-  readonly #tables: Tables;
+  readonly #tables: DataTables;
 
-  constructor(tables: Tables) {
+  constructor(tables: DataTables) {
     super();
     this.#tables = tables;
   }
@@ -223,9 +223,9 @@ export class MembersPage extends Controller {
 
 export class FeedPage extends Controller {
   static request = FeedRequest;
-  readonly #tables: Tables;
+  readonly #tables: DataTables;
 
-  constructor(tables: Tables) {
+  constructor(tables: DataTables) {
     super();
     this.#tables = tables;
   }
@@ -237,9 +237,9 @@ export class FeedPage extends Controller {
 
 export class FeedCopyPage extends Controller {
   static request = FeedRequest;
-  readonly #tables: Tables;
+  readonly #tables: DataTables;
 
-  constructor(tables: Tables) {
+  constructor(tables: DataTables) {
     super();
     this.#tables = tables;
   }
@@ -251,9 +251,9 @@ export class FeedCopyPage extends Controller {
 
 export class LeakyPage extends Controller {
   static request = LeakyRequest;
-  readonly #tables: Tables;
+  readonly #tables: DataTables;
 
-  constructor(tables: Tables) {
+  constructor(tables: DataTables) {
     super();
     this.#tables = tables;
   }
@@ -265,9 +265,9 @@ export class LeakyPage extends Controller {
 
 export class WithTeamPage extends Controller {
   static request = WithTeamRequest;
-  readonly #tables: Tables;
+  readonly #tables: DataTables;
 
-  constructor(tables: Tables) {
+  constructor(tables: DataTables) {
     super();
     this.#tables = tables;
   }
@@ -279,9 +279,9 @@ export class WithTeamPage extends Controller {
 
 export class TeamsPage extends Controller {
   static request = TeamsRequest;
-  readonly #tables: Tables;
+  readonly #tables: DataTables;
 
-  constructor(tables: Tables) {
+  constructor(tables: DataTables) {
     super();
     this.#tables = tables;
   }
@@ -293,10 +293,10 @@ export class TeamsPage extends Controller {
 
 /** The export, answered from inside a transaction the controller opened — its later batches run after it finished. */
 export class ExportInTransaction extends Controller {
-  readonly #tables: Tables;
+  readonly #tables: DataTables;
   readonly #connections: Connections;
 
-  constructor(tables: Tables, connections: Connections) {
+  constructor(tables: DataTables, connections: Connections) {
     super();
     this.#tables = tables;
     this.#connections = connections;
@@ -309,9 +309,9 @@ export class ExportInTransaction extends Controller {
 
 /** A page that forgot the table's query schema. */
 export class NoSchemaPage extends Controller {
-  readonly #tables: Tables;
+  readonly #tables: DataTables;
 
-  constructor(tables: Tables) {
+  constructor(tables: DataTables) {
     super();
     this.#tables = tables;
   }

@@ -11,12 +11,12 @@ import { querySchema } from './state.ts';
  * that takes no resource (`viewEmails(user)`), or a check of the request (`(ctx) => ctx.user.admin`). A `can(…)` of
  * @marmeon/auth works as a check, too: its denial (403/404) means "hidden".
  */
-export type Visibility =
+export type TableVisibility =
   | { readonly kind: 'policy'; readonly policy: PolicyClass; readonly ability: string }
-  | { readonly kind: 'check'; readonly check: VisibilityCheck };
+  | { readonly kind: 'check'; readonly check: TableVisibilityCheck };
 
 /** A visibility check of the request. */
-export type VisibilityCheck = (ctx: any, resolve: ClassResolver) => boolean | Promise<boolean>;
+export type TableVisibilityCheck = (ctx: any, resolve: ClassResolver) => boolean | Promise<boolean>;
 
 /** A policy ability for a row (or for the request, when its method takes no resource). */
 export interface RowAuthorization {
@@ -43,10 +43,10 @@ export type CheckRowAbility<P, K extends string> = string extends K
     ? K
     : `'${K}' is not an ability of this policy — it has ${JoinNames<AbilityOf<P>>}`;
 
-function visibility(args: readonly unknown[], where: string): Visibility {
+function visibility(args: readonly unknown[], where: string): TableVisibility {
   const [first, second] = args;
   if (typeof first === 'function' && typeof second === 'string') return { kind: 'policy', policy: first as PolicyClass, ability: second };
-  if (typeof first === 'function' && second === undefined) return { kind: 'check', check: first as VisibilityCheck };
+  if (typeof first === 'function' && second === undefined) return { kind: 'check', check: first as TableVisibilityCheck };
   throw new TypeError(`${where}.visible() takes a policy and one of its abilities — visible(MemberPolicy, 'viewEmails') — or a check, visible((ctx) => …).`);
 }
 
@@ -56,7 +56,7 @@ function visibility(args: readonly unknown[], where: string): Visibility {
  * A column of a table — built by {@link column}. `R` is the column it reads (`'name'`, `'users.created_at'`); its name in URLs and
  * props is its key in `columns` (an alias — the database column never leaves the server).
  */
-export class Column<R extends string = string, S extends boolean = boolean, Q extends boolean = boolean, V extends boolean = boolean> {
+export class ColumnDefinition<R extends string = string, S extends boolean = boolean, Q extends boolean = boolean, V extends boolean = boolean> {
   declare readonly '~sortable': S;
   declare readonly '~searchable': Q;
   /** `true` once `visible(…)` decides: the column may be missing — optional in the row's type. */
@@ -65,9 +65,9 @@ export class Column<R extends string = string, S extends boolean = boolean, Q ex
   readonly isSortable: boolean;
   readonly isSearchable: boolean;
   readonly text: string | null;
-  readonly visibility: Visibility | undefined;
+  readonly visibility: TableVisibility | undefined;
 
-  constructor(ref: R, options: { sortable?: boolean; searchable?: boolean; label?: string | null; visibility?: Visibility | undefined } = {}) {
+  constructor(ref: R, options: { sortable?: boolean; searchable?: boolean; label?: string | null; visibility?: TableVisibility | undefined } = {}) {
     if (typeof ref !== 'string' || !/^[A-Za-z_][\w]*(\.[A-Za-z_][\w]*)?$/.test(ref)) {
       throw new TypeError(`column(${JSON.stringify(ref)}): a column of the query, as "name" or "table.name".`);
     }
@@ -79,28 +79,28 @@ export class Column<R extends string = string, S extends boolean = boolean, Q ex
   }
 
   /** Sortable by the URL (`?sort=joined`, `?sort=-joined`) — the key always breaks ties. */
-  sortable(): Column<R, true, Q, V> {
-    return new Column(this.ref, { ...this.#options(), sortable: true });
+  sortable(): ColumnDefinition<R, true, Q, V> {
+    return new ColumnDefinition(this.ref, { ...this.#options(), sortable: true });
   }
 
   /** Looked into by the table's search (`?search=`, case-insensitive, `LIKE` wildcards taken literally) — only while visible. */
-  searchable(): Column<R, S, true, V> {
-    return new Column(this.ref, { ...this.#options(), searchable: true });
+  searchable(): ColumnDefinition<R, S, true, V> {
+    return new ColumnDefinition(this.ref, { ...this.#options(), searchable: true });
   }
 
   /** A label for the props — otherwise the app labels the column by its name (its own translations). */
-  label(text: string): Column<R, S, Q, V> {
-    return new Column(this.ref, { ...this.#options(), label: text });
+  label(text: string): ColumnDefinition<R, S, Q, V> {
+    return new ColumnDefinition(this.ref, { ...this.#options(), label: text });
   }
 
   /**
    * Shows the column only when the policy says so — or the check: otherwise it is not selected (not in the SQL), not in the props, the
    * devtools, a cursor or an export, and sorting or searching by it is refused (400). In the row's type it becomes optional.
    */
-  visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): Column<R, S, Q, true>;
-  visible(check: VisibilityCheck): Column<R, S, Q, true>;
-  visible(...args: unknown[]): Column<R, S, Q, true> {
-    return new Column(this.ref, { ...this.#options(), visibility: visibility(args, `column('${this.ref}')`) });
+  visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): ColumnDefinition<R, S, Q, true>;
+  visible(check: TableVisibilityCheck): ColumnDefinition<R, S, Q, true>;
+  visible(...args: unknown[]): ColumnDefinition<R, S, Q, true> {
+    return new ColumnDefinition(this.ref, { ...this.#options(), visibility: visibility(args, `column('${this.ref}')`) });
   }
 
   #options() {
@@ -109,8 +109,8 @@ export class Column<R extends string = string, S extends boolean = boolean, Q ex
 }
 
 /** A column of the table's query: `column('name')`, `column('users.created_at').sortable()`. Checked against the query's tables. */
-export function column<const R extends string>(ref: R): Column<R, false, false, false> {
-  return new Column(ref);
+export function column<const R extends string>(ref: R): ColumnDefinition<R, false, false, false> {
+  return new ColumnDefinition(ref);
 }
 
 // --- Filters ---------------------------------------------------------------------------------------------------------------
@@ -120,9 +120,9 @@ export class Filter<R extends string = string, T extends 'select' | 'dateRange' 
   readonly ref: R;
   readonly type: T;
   readonly options: readonly O[];
-  readonly visibility: Visibility | undefined;
+  readonly visibility: TableVisibility | undefined;
 
-  constructor(ref: R, type: T, options: readonly O[], visibility?: Visibility) {
+  constructor(ref: R, type: T, options: readonly O[], visibility?: TableVisibility) {
     if (typeof ref !== 'string' || !/^[A-Za-z_][\w]*(\.[A-Za-z_][\w]*)?$/.test(ref)) throw new TypeError(`filter.${type}(${JSON.stringify(ref)}): a column of the query.`);
     if (type === 'select' && (options.length === 0 || !options.every((option) => typeof option === 'string' && option.length > 0 && option.length <= 100))) {
       throw new TypeError(`filter.select('${ref}', options): one or more non-empty strings.`);
@@ -135,7 +135,7 @@ export class Filter<R extends string = string, T extends 'select' | 'dateRange' 
 
   /** Offers the filter only when the policy (or the check) says so — otherwise using it is refused (400). */
   visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): Filter<R, T, O>;
-  visible(check: VisibilityCheck): Filter<R, T, O>;
+  visible(check: TableVisibilityCheck): Filter<R, T, O>;
   visible(...args: unknown[]): Filter<R, T, O> {
     return new Filter(this.ref, this.type, this.options, visibility(args, `filter.${this.type}('${this.ref}')`));
   }
@@ -162,7 +162,7 @@ export type BulkActionClass<R = any, C = any> = new (...args: any[]) => { handle
 
 interface ActionOptions {
   readonly authorization?: RowAuthorization | undefined;
-  readonly visibility?: Visibility | undefined;
+  readonly visibility?: TableVisibility | undefined;
   readonly confirm?: boolean;
   readonly max?: number;
 }
@@ -173,7 +173,7 @@ export class RowAction<H extends RowActionClass = RowActionClass, P = unknown, K
   declare readonly '~ability': K;
   readonly handler: H;
   readonly authorization: RowAuthorization | undefined;
-  readonly visibility: Visibility | undefined;
+  readonly visibility: TableVisibility | undefined;
   readonly confirms: boolean;
 
   constructor(handler: H, options: ActionOptions = {}) {
@@ -194,7 +194,7 @@ export class RowAction<H extends RowActionClass = RowActionClass, P = unknown, K
 
   /** Offers the action only when the policy (or the check) says so, for the whole request — hidden, it is not in the props and its endpoint answers 403. */
   visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): RowAction<H, P, K>;
-  visible(check: VisibilityCheck): RowAction<H, P, K>;
+  visible(check: TableVisibilityCheck): RowAction<H, P, K>;
   visible(...args: unknown[]): RowAction<H, P, K> {
     return new RowAction(this.handler, { ...this.#options(), visibility: visibility(args, 'action(…)') });
   }
@@ -223,7 +223,7 @@ export class BulkAction<H extends BulkActionClass = BulkActionClass, P = unknown
   declare readonly '~ability': K;
   readonly handler: H;
   readonly authorization: RowAuthorization | undefined;
-  readonly visibility: Visibility | undefined;
+  readonly visibility: TableVisibility | undefined;
   readonly confirms: boolean;
   readonly limit: number;
 
@@ -245,7 +245,7 @@ export class BulkAction<H extends BulkActionClass = BulkActionClass, P = unknown
 
   /** Offers the bulk action only when the policy (or the check) says so — hidden, its endpoint answers 403. */
   visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): BulkAction<H, P, K>;
-  visible(check: VisibilityCheck): BulkAction<H, P, K>;
+  visible(check: TableVisibilityCheck): BulkAction<H, P, K>;
   visible(...args: unknown[]): BulkAction<H, P, K> {
     return new BulkAction(this.handler, { ...this.#options(), visibility: visibility(args, 'bulk(…)') });
   }
@@ -275,10 +275,10 @@ export const DEFAULT_EXPORT_MAX = 10_000;
 /** An export — built by {@link exportCsv}. */
 export class TableExport {
   readonly format = 'csv' as const;
-  readonly visibility: Visibility | undefined;
+  readonly visibility: TableVisibility | undefined;
   readonly limit: number;
 
-  constructor(visibility?: Visibility, max: number = DEFAULT_EXPORT_MAX) {
+  constructor(visibility?: TableVisibility, max: number = DEFAULT_EXPORT_MAX) {
     if (!Number.isSafeInteger(max) || max < 1) throw new RangeError(`exportCsv().max(${max}): a whole number ≥ 1.`);
     this.visibility = visibility;
     this.limit = max;
@@ -297,7 +297,7 @@ export class TableExport {
    * export what they see (the visible columns, every page). A refused export is a 403 and is not in the props.
    */
   authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
-  authorize(check: VisibilityCheck): TableExport;
+  authorize(check: TableVisibilityCheck): TableExport;
   authorize(...args: unknown[]): TableExport {
     return new TableExport(visibility(args, 'exportCsv()'), this.limit);
   }
@@ -310,7 +310,7 @@ export function exportCsv(): TableExport {
 
 // --- The definition --------------------------------------------------------------------------------------------------------
 
-export type AnyColumn = Column<string, boolean, boolean, boolean>;
+export type AnyColumn = ColumnDefinition<string, boolean, boolean, boolean>;
 export type AnyFilter = Filter<string, 'select' | 'dateRange', string>;
 export type AnyRowAction = RowAction<RowActionClass, any, string>;
 export type AnyBulkAction = BulkAction<BulkActionClass, any, string>;
@@ -348,7 +348,7 @@ const TABLE_TYPES = Symbol.for('marmeon.table.types');
  * A table: its definition, and its types for the client — `TableProps<typeof MembersTable>`. Use it with
  * `tables.resolve(MembersTable, ctx)` (the page's prop) and `tableRoutes(Route, MembersTable)` (its actions and exports).
  */
-export interface Table<
+export interface DataTable<
   Row extends object = any,
   Ctx = any,
   C extends string = string,
@@ -380,7 +380,7 @@ export interface TableQuerySchema<QV extends object = TableQueryValues> extends 
 
 type KeyPrefix<P extends string> = P extends '' ? '' : `${P}_`;
 type SizesOf<Pg> = Pg extends { readonly perPage: infer S } ? (S extends readonly (infer N)[] ? N : S) : 25 | 50 | 100;
-type SearchableNames<Cols> = { [A in keyof Cols]: Cols[A] extends Column<string, boolean, true> ? A : never }[keyof Cols];
+type SearchableNames<Cols> = { [A in keyof Cols]: Cols[A] extends ColumnDefinition<string, boolean, true> ? A : never }[keyof Cols];
 type FilterValue<F> = F extends Filter<string, 'select', infer O> ? O : string;
 
 /** The parsed query of a table — what `ctx.query` and `useQueryState` hold for its keys. */
@@ -394,10 +394,10 @@ export type QueryValuesOf<P extends string, Cols, Filters, Pg> = Simplify<
 >;
 
 /** What the browser gets for table `T`: the page prop `tables.resolve(T, ctx)` resolves to. */
-export type TableProps<T> = T extends Table<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S> ? TableData<Row, C, F, A, B, E, S> : never;
+export type TableProps<T> = T extends DataTable<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S> ? TableData<Row, C, F, A, B, E, S> : never;
 
 /** A row of table `T` as the server hands it to actions and policies: the key and the visible columns (by name). */
-export type RowOfTable<T> = T extends Table<infer Row> ? Row : never;
+export type DataTableRow<T> = T extends DataTable<infer Row> ? Row : never;
 
 // --- Type checks (the messages a wrong definition shows) -------------------------------------------------------------------
 
@@ -418,7 +418,7 @@ type Selected<DB, TB extends keyof DB, O> = Exclude<keyof O & string, PlainColum
 
 /** A column that reads a value the base query selects: under that name, and not searched (the search runs in WHERE). */
 type SelectedProblem<DB, TB extends keyof DB, O, A, C> =
-  C extends Column<infer R extends string, boolean, infer Q>
+  C extends ColumnDefinition<infer R extends string, boolean, infer Q>
     ? R extends Selected<DB, TB, O>
       ? A extends R
         ? Q extends true
@@ -438,7 +438,7 @@ type Problem<M extends string> = { readonly [K in M]: true };
 export type CheckColumns<DB, TB extends keyof DB, Cols, O = {}> = {
   [A in keyof Cols]: A extends 'can'
     ? Problem<`'can' is taken — a row's abilities are its 'can'; name the column otherwise`>
-    : Cols[A] extends Column<infer R extends string>
+    : Cols[A] extends ColumnDefinition<infer R extends string>
       ? [ColumnProblem<DB, TB, R, O> | SelectedProblem<DB, TB, O, A, Cols[A]>] extends [never]
         ? unknown
         : Problem<ColumnProblem<DB, TB, R, O> | SelectedProblem<DB, TB, O, A, Cols[A]>>
@@ -472,7 +472,7 @@ export type KeyInput = string | { readonly column: string; readonly type: KeyTyp
 export type KeyColumn<K> = K extends { readonly column: infer C extends string } ? C : K & string;
 
 /** The key by name only: a column of the query whose values are numbers (an integer key) — a text key names its type. */
-export type CheckKey<DB, TB extends keyof DB, K extends string> = string extends K
+export type CheckColumnKey<DB, TB extends keyof DB, K extends string> = string extends K
   ? StringReference<DB, TB>
   : [ColumnProblem<DB, TB, K>] extends [never]
     ? ExtractTypeFromReferenceExpression<DB, TB, K> extends number
@@ -492,9 +492,9 @@ export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string e
     : ColumnProblem<DB, TB, K>;
 
 /** The sortable columns' names. */
-type SortableNames<Cols> = { [A in keyof Cols]: Cols[A] extends Column<string, true> ? A : never }[keyof Cols] & string;
+type SortableNames<Cols> = { [A in keyof Cols]: Cols[A] extends ColumnDefinition<string, true> ? A : never }[keyof Cols] & string;
 /** Sortable columns every user sees (no `.visible()`) — what a default sort may name. */
-type SortableForEveryone<Cols> = { [A in keyof Cols]: Cols[A] extends Column<string, true, boolean, false> ? A : never }[keyof Cols] & string;
+type SortableForEveryone<Cols> = { [A in keyof Cols]: Cols[A] extends ColumnDefinition<string, true, boolean, false> ? A : never }[keyof Cols] & string;
 
 /** `name` or `-name` of a sortable column. */
 export type CheckSort<Cols, S extends string> = string extends S
@@ -508,15 +508,15 @@ export type CheckSort<Cols, S extends string> = string extends S
         : `'${S}' is not a sortable column — it sorts by ${JoinNames<SortableNames<Cols> | `-${SortableNames<Cols>}`>}`;
 
 /** The name a key column has in a row: its last part (`users.id` → `id`). */
-export type KeyName<K extends string> = K extends `${string}.${infer C}` ? KeyName<C> : K;
+type KeyName<K extends string> = K extends `${string}.${infer C}` ? KeyName<C> : K;
 
 type ValueOf<DB, TB extends keyof DB, O, C> =
-  C extends Column<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ExtractTypeFromReferenceExpression<DB, TB, R>) : never;
+  C extends ColumnDefinition<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ExtractTypeFromReferenceExpression<DB, TB, R>) : never;
 
 /** A row as the table sends it (and hands it to actions and policies): the visible columns by name, plus the key. */
-export type RowOf<DB, TB extends keyof DB, Cols, K extends string, O = {}> = Simplify<
-  { readonly [A in keyof Cols as Cols[A] extends Column<string, boolean, boolean, true> ? never : A]: ValueOf<DB, TB, O, Cols[A]> } & {
-    readonly [A in keyof Cols as Cols[A] extends Column<string, boolean, boolean, true> ? A : never]?: ValueOf<DB, TB, O, Cols[A]>;
+type RowOf<DB, TB extends keyof DB, Cols, K extends string, O = {}> = Simplify<
+  { readonly [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? never : A]: ValueOf<DB, TB, O, Cols[A]> } & {
+    readonly [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? A : never]?: ValueOf<DB, TB, O, Cols[A]>;
   } & { readonly [P in KeyName<K>]: ExtractTypeFromReferenceExpression<DB, TB, K> }
 >;
 
@@ -592,7 +592,7 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
    * The column that identifies a row — what actions send: a number column by name (`'users.id'`, read as an integer), or with its
    * type (`{ column: 'uuid', type: 'uuid' }`, see {@link KeyType}) — every key the browser sends is parsed by it first.
    */
-  readonly key: CheckKey<DbOf<Q>, TbOf<Q>, K> | { readonly column: CheckKeyColumn<DbOf<Q>, TbOf<Q>, K>; readonly type: KeyType };
+  readonly key: CheckColumnKey<DbOf<Q>, TbOf<Q>, K> | { readonly column: CheckKeyColumn<DbOf<Q>, TbOf<Q>, K>; readonly type: KeyType };
   readonly columns: Cols & NoInfer<CheckColumns<DbOf<Q>, TbOf<Q>, Cols, OutOf<Q>>>;
   readonly filters?: Filters & NoInfer<CheckFilters<DbOf<Q>, TbOf<Q>, Filters, OutOf<Q>>>;
   /** The sort without `?sort=` — `'-joined'`; default: the first sortable column. The key is always the last order. */
@@ -604,7 +604,7 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
 }
 
 /** The table `defineTable` makes of its input. */
-type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = Table<
+type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P extends string, Pg> = DataTable<
   RowOf<DbOf<Q>, TbOf<Q>, Cols, K, OutOf<Q>>,
   CtxOf<Q>,
   keyof Cols & string,
@@ -614,7 +614,7 @@ type TableOf<Q, Cols, K extends string, Filters, Actions, Bulk, Exports, P exten
   keyof Exports & string,
   QueryValuesOf<P, Cols, Filters, Pg>,
   // The names spelled out (a key-remapped type, no alias): a wrong sort in the browser reads "… not assignable to '"name" | "joined"'".
-  keyof { [A in keyof Cols as Cols[A] extends Column<string, true> ? A : never]: 0 } & string
+  keyof { [A in keyof Cols as Cols[A] extends ColumnDefinition<string, true> ? A : never]: 0 } & string
 >;
 
 /**
@@ -679,7 +679,7 @@ function normalize(input: RawInput): TableDefinition {
   const keyType: KeyType = typeof keyInput === 'string' ? 'integer' : keyInput?.type;
   if (typeof key !== 'string' || !/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)?$/.test(key)) throw new TypeError(`defineTable('${name}'): key is a column of the query.`);
   if (!['integer', 'bigint', 'string', 'uuid'].includes(keyType)) throw new TypeError(`defineTable('${name}'): key type ${JSON.stringify(keyType)} — 'integer', 'bigint', 'string' or 'uuid'.`);
-  const columns = entries(input.columns, 'column', Column, name);
+  const columns = entries(input.columns, 'column', ColumnDefinition, name);
   if (Object.keys(columns).length === 0) throw new TypeError(`defineTable('${name}'): a table needs a column.`);
   if ('can' in columns) throw new TypeError(`defineTable('${name}'): the name 'can' is taken — a row's abilities are its 'can'.`);
   const keyName = key.slice(key.lastIndexOf('.') + 1);

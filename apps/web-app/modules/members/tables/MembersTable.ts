@@ -1,5 +1,5 @@
 import type { Authenticated } from '@marmeon/auth';
-import { action, bulk, column, defineTable, exportCsv, filter, type RowOfTable, type TableContext } from '@marmeon/table';
+import { action, bulk, column, defineTable, exportCsv, filter, type DataTableRow, type TableContext } from '@marmeon/table';
 import { RemoveMemberLinks } from '../actions/RemoveMemberLinks.ts';
 import { RemoveMembersLinks } from '../actions/RemoveMembersLinks.ts';
 import { MemberPolicy } from '../policies/MemberPolicy.ts';
@@ -32,4 +32,4 @@ export const MembersTable = defineTable({
 });
 
 /** A row of the table as actions and policies get it: the key and the visible columns. */
-export type MemberRow = RowOfTable<typeof MembersTable>;
+export type MemberRow = DataTableRow<typeof MembersTable>;

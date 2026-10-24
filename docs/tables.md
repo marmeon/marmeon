@@ -2,8 +2,6 @@
 
 ## Introduction
 
-This package is experimental, and so are `@marmeon/react/table` and `@marmeon/react/table-tanstack`: they can change in any minor release. See [the release policy](releases.md#experimental).
-
 A list that people sort, filter, page through, tick rows in, act on and download is where the classic leaks of a web app live: a
 hidden column that still travels in the props, a sort parameter that reaches `ORDER BY`, a bulk action that takes another tenant's
 ids, a cell that a spreadsheet runs as a formula. A data table handles them once. You write **one definition** per table on the
@@ -140,7 +138,7 @@ The page's controller validates the table's state as its query and resolves the 
 ```ts title="modules/members/controllers/ListMembersController.ts"
 import type { Authenticated } from '@marmeon/auth';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
-import { Tables } from '@marmeon/table';
+import { DataTables } from '@marmeon/table';
 import { MembersTable } from '../tables/MembersTable.ts';
 
 export const ListMembersRequest = defineRequest({ query: MembersTable.query });
@@ -148,9 +146,9 @@ export const ListMembersRequest = defineRequest({ query: MembersTable.query });
 export class ListMembersController extends Controller {
   static request = ListMembersRequest;
 
-  readonly #tables: Tables;
+  readonly #tables: DataTables;
 
-  constructor(tables: Tables) {
+  constructor(tables: DataTables) {
     super();
     this.#tables = tables;
   }
