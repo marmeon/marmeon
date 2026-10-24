@@ -197,8 +197,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
     restoreFormEntries(form, kept.entries, kept.names);
     setErrors(kept.errors);
     measure();
-    // Once, when the form mounts in its entry.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once, when the form mounts in its entry: `remember` and `measure` are read then, not followed
   }, [store, rememberKey]);
   const neverNames = useRef(new Set<string>());
   const keep = useCallback(
@@ -412,7 +411,7 @@ function useFormLiveValidation(
           return next;
         }),
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `config` is a new object each render: the memo follows its URL, method, trigger, debounce and field list
   }, [navigator, url, method, config === undefined, config?.on, config?.debounce, fieldsKey]);
   useEffect(() => () => live?.cancel(), [live]);
   useSyncExternalStore(live?.subscribe ?? noSubscription, () => live?.pending ?? NOTHING_PENDING, () => NOTHING_PENDING);

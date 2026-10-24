@@ -14,6 +14,7 @@ import {
   LIBRARY,
   libraryImportHits,
   negativeEnvHits,
+  lintDisableHits,
   mutationCommentHits,
   oldNameHits,
   OLD_NAME,
@@ -670,6 +671,40 @@ describe('check:source — a problem names its rule and why', () => {
     PRIVATE_RECORD_RULES.forEach((rule, index) => {
       expect(problems).toContainEqual(expect.stringContaining(`no references to the private record (${rule.why}): notes/${index}.txt:1: ${rule.what}: `));
     });
+  });
+});
+
+describe('rule 13: no lint rule is disabled without a reason', () => {
+  const hits = (...lines: string[]) => lintDisableHits([{ path: 'packages/react/src/x.ts', text: lines.join('\n') }]);
+  const tools = ['eslint', 'oxlint'];
+
+  it('accepts a disable with a reason of three words, in either tool and every form', () => {
+    for (const tool of tools) {
+      expect(hits(`// ${tool}-disable-next-line no-x -- the value is read once`)).toEqual([]);
+      expect(hits(`foo(); // ${tool}-disable-line no-x -- the value is read once`)).toEqual([]);
+      expect(hits(`/* ${tool}-disable no-x -- the value is read once */`)).toEqual([]);
+    }
+  });
+
+  it('names a disable without a reason, with a short one, or with a reason above it', () => {
+    for (const tool of tools) {
+      expect(hits(`// ${tool}-disable-next-line no-x`)).toEqual([expect.stringContaining('x.ts:1: a lint-disable comment needs a reason')]);
+      expect(hits(`// ${tool}-disable-next-line no-x -- because`)).toHaveLength(1);
+      expect(hits('// the value is read once', `// ${tool}-disable-next-line no-x`)).toEqual([expect.stringContaining('x.ts:2:')]);
+      expect(hits(`/* ${tool}-disable */`)).toHaveLength(1);
+    }
+  });
+
+  it('reads a JSX comment in a .tsx file', () => {
+    const jsx = (comment: string) => lintDisableHits([{ path: 'packages/react/src/x.tsx', text: `const a = <p>{/* ${comment} */}</p>;` }]);
+    expect(jsx('eslint-disable-line no-x')).toEqual([expect.stringContaining('x.tsx:1: a lint-disable comment needs a reason')]);
+    expect(jsx('eslint-disable-line no-x -- the value is read once')).toEqual([]);
+  });
+
+  it('leaves enable comments, strings and other files alone, and holds for the repository', () => {
+    expect(hits('// eslint-enable no-x', "const a = '// eslint-disable-next-line no-x';")).toEqual([]);
+    expect(lintDisableHits([{ path: 'CONTRIBUTING.md', text: '// eslint-disable-next-line no-x' }])).toEqual([]);
+    expect(checkSource(root).filter((problem) => problem.startsWith('a disabled lint rule'))).toEqual([]);
   });
 });
 

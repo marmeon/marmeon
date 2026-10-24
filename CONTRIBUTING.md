@@ -302,6 +302,10 @@ checked over every file of the repository — tracked, or new and not ignored. E
     prove the property without a clock (count the work), or move the measurement of time into a `<name>.timing.test.ts`. There is no
     list of exceptions.
 
+13. **No lint rule is disabled without a reason**: every `eslint-disable` or `oxlint-disable` comment in code (`-next-line`, `-line`
+    or a range, also inside `/* */`; comments are read with oxc-parser) gives its reason after ` -- `, at least three words — why the
+    rule is wrong for this line. `// oxlint-disable-next-line no-control-regex -- control characters are exactly what it removes`.
+
 A new rule joins the same script, with its test.
 
 ### Environment variables
@@ -914,6 +918,8 @@ oxlint's correctness rules as errors, plus `no-import-type-side-effects`, and tu
 brands such as `readonly #event = true`, deliberate copies before deleting while iterating, `this` aliases that walk a parent
 chain. The apps carry the preset of `marmeon make:lint-config` — `apps/web-app` with `--boundaries`, `apps/blank-app` without —
 which oxlint takes for their files instead: nested configs replace, they do not merge.
+
+A lint-disable comment gives its reason after ` -- `; `check:source` refuses one without ([rule 13](#rules-over-the-source-pnpm-checksource)).
 
 The generated preset is long on purpose. oxlint matches import specifiers as text, so whether an import leaves its module
 depends on the folder depth, and the preset has one override per depth. Its patterns are gitignore globs with negations
