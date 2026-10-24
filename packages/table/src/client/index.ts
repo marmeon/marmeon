@@ -157,7 +157,7 @@ export type {
   ColumnOf,
   ExportOf,
   FilterOf,
-  RowOf,
+  TableRowOf,
   SortableOf,
   TableControllerOptions,
   TableRunOptions,

@@ -9,11 +9,11 @@ import { AliasNode, IdentifierNode, type KyselyPlugin, type RootOperationNode } 
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM } from './csv.ts';
-import type { AnyBulkAction, AnyColumn, AnyFilter, AnyRowAction, KeyType, Table, TableDefinition, TableExport, TableProps, Visibility } from './define.ts';
+import type { AnyBulkAction, AnyColumn, AnyFilter, AnyRowAction, KeyType, DataTable, TableDefinition, TableExport, TableProps, TableVisibility } from './define.ts';
 import { parseState, queryKeys, stateQuery, type TableState } from './state.ts';
 
 /** The request context a table's query needs. */
-export type ContextOfTable<T> = T extends Table<any, infer Ctx> ? Ctx : never;
+export type ContextOfTable<T> = T extends DataTable<any, infer Ctx> ? Ctx : never;
 
 /** Rows a CSV export reads per query. */
 const EXPORT_BATCH = 500;
@@ -59,13 +59,14 @@ const ActionBody = v.object({ key: v.union([v.pipe(v.number(), v.safeInteger()),
  * picked by name). Every endpoint starts again at the top — nothing the browser sends is trusted: an action's row is looked up in the
  * base query, its policy asked again.
  */
-export class Tables {
+export class DataTables {
   readonly #db: Connection<any>;
   readonly #gate: () => Gate;
   readonly #resolve: ClassResolver;
   readonly #router: Router;
   readonly #encrypter: () => CursorEncrypter;
 
+  /** @internal — the container builds it (`TableServiceProvider`); an app injects `DataTables`. */
   constructor(db: Connection<any>, gate: () => Gate, resolve: ClassResolver, router: Router, encrypter: () => CursorEncrypter) {
     this.#db = db;
     this.#gate = gate;
@@ -78,7 +79,7 @@ export class Tables {
    * The page's prop for `table`: the visible columns, this page of rows (only their visible columns and key), the state, and what
    * the user may do — as a lazy prop it runs only when the response includes it: `members: () => this.#tables.resolve(MembersTable, ctx)`.
    */
-  async resolve<T extends Table>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>> {
+  async resolve<T extends DataTable>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>> {
     const definition = table.definition;
     const context = ctx as unknown as HttpContext;
     await this.#authorizeTable(definition, context);
@@ -293,7 +294,7 @@ export class Tables {
     if (definition.authorize && !(await definition.authorize(ctx, this.#resolve))) throw forbidden();
   }
 
-  async #visible(visibility: Visibility | undefined, ctx: HttpContext): Promise<boolean> {
+  async #visible(visibility: TableVisibility | undefined, ctx: HttpContext): Promise<boolean> {
     if (!visibility) return true;
     if (visibility.kind === 'policy') return this.#gate().allows(visibility.policy as PolicyClass<any>, visibility.ability as never);
     try {
@@ -307,14 +308,14 @@ export class Tables {
 
   /** What this request may see — each visibility asked once. */
   async #view(definition: TableDefinition, ctx: HttpContext): Promise<View> {
-    const answers = new Map<Visibility, Promise<boolean>>();
-    const ask = (visibility: Visibility | undefined) => {
+    const answers = new Map<TableVisibility, Promise<boolean>>();
+    const ask = (visibility: TableVisibility | undefined) => {
       if (!visibility) return Promise.resolve(true);
       let answer = answers.get(visibility);
       if (!answer) answers.set(visibility, (answer = this.#visible(visibility, ctx)));
       return answer;
     };
-    const keep = async <E extends { readonly visibility: Visibility | undefined }>(record: Readonly<Record<string, E>>) => {
+    const keep = async <E extends { readonly visibility: TableVisibility | undefined }>(record: Readonly<Record<string, E>>) => {
       const out: (readonly [string, E])[] = [];
       // One after another: a policy that queries must not open a connection per entry at once.
       for (const [name, entry] of Object.entries(record)) if (await ask(entry.visibility)) out.push([name, entry]);
@@ -453,7 +454,7 @@ export function keyNameOf(definition: TableDefinition): string {
 
 /**
  * The query with the visible columns (by name) and the key selected — nothing else: a hidden column never reaches the SQL. A value the
- * base query selects itself (`withCount(…, { as })`) is in its rows already, under its name ({@link Tables.#base} left out the hidden ones).
+ * base query selects itself (`withCount(…, { as })`) is in its rows already, under its name ({@link DataTables.#base} left out the hidden ones).
  */
 function project(definition: TableDefinition, query: SelectQuery<any, any, any>, view: View): SelectQuery<any, any, Row> {
   const keyName = keyNameOf(definition);

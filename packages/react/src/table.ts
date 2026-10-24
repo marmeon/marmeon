@@ -11,7 +11,7 @@ import type {
   ColumnOf,
   ExportOf,
   FilterOf,
-  RowOf,
+  TableRowOf,
   SortableOf,
   SortDirection,
   TableColumn,
@@ -22,7 +22,7 @@ import type { SelectionKey } from '@marmeon/http/client';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type MouseEvent } from 'react';
 import { RegionOwnerContext, useRouterContext } from './app.tsx';
 
-export type { ActionOf, BulkOf, ColumnOf, ExportOf, FilterOf, RowOf, SortableOf, TableRunOptions, TableRunOutcome, TableStatusInfo } from '@marmeon/table/client';
+export type { ActionOf, BulkOf, ColumnOf, ExportOf, FilterOf, TableRowOf, SortableOf, TableRunOptions, TableRunOutcome, TableStatusInfo } from '@marmeon/table/client';
 
 /**
  * The words of a table — English by default, the app's through its translations: `labels: { column: (name) => t(`column.${name}`),
@@ -32,7 +32,7 @@ export interface TableLabels<T extends AnyTableData> {
   /** A column's label — default: the definition's `.label()`, else its name. */
   column?(name: ColumnOf<T>): string;
   /** What names a row in the names of its checkbox and its buttons — default: its key. */
-  row?(row: RowOf<T>): string;
+  row?(row: TableRowOf<T>): string;
   /** The live region's text after a change of the list — default "42 rows, sorted by joined (descending), page 2 of 5". */
   status?(info: TableStatusInfo): string;
   /** A row's checkbox — default "Select Ada Lovelace". */
@@ -96,9 +96,9 @@ export interface Table<T extends AnyTableData> {
   readonly columns: readonly TableColumnView<T>[];
   readonly rows: T['rows'];
   /** A row's key (what actions send). */
-  key(row: RowOf<T>): SelectionKey;
+  key(row: TableRowOf<T>): SelectionKey;
   /** What names a row ({@link TableLabels.row}). */
-  label(row: RowOf<T>): string;
+  label(row: TableRowOf<T>): string;
 
   /** Sorts by a column's name in the props — toggled without a direction. A visit of the page's URL (`?sort=`), back to page 1. */
   sort(column: SortableOf<T>, direction?: SortDirection): void;
@@ -124,16 +124,16 @@ export interface Table<T extends AnyTableData> {
   readonly selectedCount: number;
   /** Every row on this page is selected. */
   readonly allSelected: boolean;
-  isSelected(row: RowOf<T>): boolean;
-  select(row: RowOf<T>, selected?: boolean): void;
-  toggle(row: RowOf<T>): void;
+  isSelected(row: TableRowOf<T>): boolean;
+  select(row: TableRowOf<T>, selected?: boolean): void;
+  toggle(row: TableRowOf<T>): void;
   /** Every row on this page. */
   selectAll(selected?: boolean): void;
   /** Every row that matches the table's state — not only those on screen. */
   selectMatching(): void;
   clearSelection(): void;
   /** A row's checkbox, named after the row. */
-  checkboxProps(row: RowOf<T>): CheckboxProps;
+  checkboxProps(row: TableRowOf<T>): CheckboxProps;
   /** The page's checkbox (checked: every row on it, indeterminate: some). */
   pageCheckboxProps(): CheckboxProps;
 
@@ -141,13 +141,13 @@ export interface Table<T extends AnyTableData> {
   readonly bulk: T['bulk'];
   readonly exports: T['exports'];
   /** Whether row action `action` is offered for `row` (its policy said yes). */
-  can(action: ActionOf<T>, row: RowOf<T>): boolean;
+  can(action: ActionOf<T>, row: TableRowOf<T>): boolean;
   /** Runs a row action; then the table reloads (replacing what it showed). */
-  run(action: ActionOf<T>, row: RowOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
+  run(action: ActionOf<T>, row: TableRowOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
   /** Runs a bulk action for what is selected; then the selection is cleared and the table reloads. */
   runBulk(name: BulkOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
   /** The name of a row action's button for `row` ({@link TableLabels.action}). */
-  actionLabel(action: ActionOf<T>, row: RowOf<T>): string;
+  actionLabel(action: ActionOf<T>, row: TableRowOf<T>): string;
   /** An action of this table is under way. */
   readonly pending: boolean;
   /** An export's URL — with the table's sort, search and filters. A download (`<a href download>`), not a visit. */
@@ -204,10 +204,10 @@ export function useTable<T extends AnyTableData>(data: T, options: UseTableOptio
       }
       return controller;
     };
-    const rowLabel = (row: RowOf<T>) => labels.row?.(row) ?? String(keyOf(data, row));
+    const rowLabel = (row: TableRowOf<T>) => labels.row?.(row) ?? String(keyOf(data, row));
     const columnLabel = (column: TableColumn) => labels.column?.(column.name as ColumnOf<T>) ?? column.label ?? column.name;
     const selection = controller?.selection;
-    const isSelected = (row: RowOf<T>) => selection?.has(keyOf(data, row)) ?? false;
+    const isSelected = (row: TableRowOf<T>) => selection?.has(keyOf(data, row)) ?? false;
     const keys = data.rows.map((row) => keyOf(data, row));
     const allSelected = keys.length > 0 && keys.every((key) => selection?.has(key) ?? false);
     const someSelected = !allSelected && keys.some((key) => selection?.has(key) ?? false);

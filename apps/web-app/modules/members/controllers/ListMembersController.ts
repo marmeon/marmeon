@@ -1,6 +1,6 @@
 import type { Authenticated } from '@marmeon/auth';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
-import { Tables } from '@marmeon/table';
+import { DataTables } from '@marmeon/table';
 import { MembersTable } from '../tables/MembersTable.ts';
 
 /**
@@ -13,9 +13,9 @@ export const ListMembersRequest = defineRequest({ query: MembersTable.query });
 export class ListMembersController extends Controller {
   static request = ListMembersRequest;
 
-  readonly #tables: Tables;
+  readonly #tables: DataTables;
 
-  constructor(tables: Tables) {
+  constructor(tables: DataTables) {
     super();
     this.#tables = tables;
   }

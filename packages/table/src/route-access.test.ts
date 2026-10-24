@@ -2,9 +2,9 @@ import { defineRoutes, everyone, Router } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { Deactivate } from './__fixtures__/app.ts';
 import { MemberPolicy } from './__fixtures__/policies.ts';
-import { action, column, defineTable, exportCsv, tableRoutes, type Table } from './index.ts';
+import { action, column, defineTable, exportCsv, tableRoutes, type DataTable } from './index.ts';
 
-const table = (options: { authorized: boolean }): Table =>
+const table = (options: { authorized: boolean }): DataTable =>
   defineTable({
     name: 'rows',
     query: ((db: { selectFrom(name: string): unknown }) => db.selectFrom('members')) as never,
@@ -14,7 +14,7 @@ const table = (options: { authorized: boolean }): Table =>
     export: { csv: options.authorized ? exportCsv().authorize(() => true) : exportCsv() },
   } as never);
 
-const load = (decide: (Root: Parameters<Parameters<typeof defineRoutes>[0]>[0]) => Parameters<typeof tableRoutes>[0], rows: Table) =>
+const load = (decide: (Root: Parameters<Parameters<typeof defineRoutes>[0]>[0]) => Parameters<typeof tableRoutes>[0], rows: DataTable) =>
   new Router().load(defineRoutes((Root) => tableRoutes(decide(Root) as never, rows as never)));
 
 describe('tableRoutes — a registrar that lets everyone call its routes', () => {
