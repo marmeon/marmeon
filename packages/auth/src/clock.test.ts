@@ -135,6 +135,8 @@ const routes = openRoutes((Route) => {
 async function boot(env: Record<string, string> = {}) {
   const users = new Users();
   const clock = new TestClock();
+  // The stamps are whole seconds: a tick between stamping and checking would move a boundary a test probes.
+  clock.freeze();
   // Switched on after the sign-in: the sign-in itself must not stop at a second factor.
   const hasFactor = { on: false };
   const application = await createApplication({

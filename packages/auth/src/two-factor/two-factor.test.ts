@@ -1214,6 +1214,7 @@ describe('twoFactor() middleware', () => {
 
   it('writes the proof of a step-up on the app clock, so that travelling ages it', async () => {
     const clock = new TestClock();
+    clock.freeze(); // the proof ages across a 60 s boundary: a running clock would move it between two steps
     const booted = await boot({}, { clock });
     const { b, secret: key } = await enable(booted);
     clock.travel({ seconds: 61 });
