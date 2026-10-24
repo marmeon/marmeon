@@ -81,7 +81,7 @@ describe('mailer.queue()', () => {
 
     const queue = application.container.make(Queue) as QueueFake;
     const [dispatched] = queue.dispatched(SendQueuedMail);
-    expect(dispatched).toMatchObject({ queue: 'mail', delay: 30, payload: { mailable: 'ResetMail' } });
+    expect(dispatched).toMatchObject({ queue: 'mail', delaySeconds: 30, payload: { mailable: 'ResetMail' } });
     const stored = queue.pending().map((entry) => entry.payload).join('\n');
     expect(stored).toContain('"job":"marmeon.mail"');
     expect(stored).not.toContain('plain-reset-token-123'); // no plaintext link in the queue

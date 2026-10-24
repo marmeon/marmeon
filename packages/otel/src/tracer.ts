@@ -213,7 +213,7 @@ export function instrument(app: Application, api: OtelApi, options: InstrumentOp
           'messaging.batch.message_count': dispatch.jobs.length > 1 ? dispatch.jobs.length : undefined,
           'marmeon.queue.connection': dispatch.connection,
           'marmeon.queue.jobs': [...dispatch.jobs],
-          'marmeon.queue.delay': dispatch.delay > 0 ? dispatch.delay : undefined,
+          'marmeon.queue.delay': dispatch.delaySeconds > 0 ? dispatch.delaySeconds : undefined,
         });
         if (api.isSpanContextValid(span.spanContext())) dispatch.traceparent = traceparentOf(span);
       },

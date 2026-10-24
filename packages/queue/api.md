@@ -156,9 +156,9 @@ export declare class JobProcessing extends JobEvent {
 // JobQueued
 export declare class JobQueued extends JobEvent {
     #private;
-    readonly delay: number;
+    readonly delaySeconds: number;
     constructor(data: ConstructorParameters<typeof JobEvent>[0] & {
-        delay: number;
+        delaySeconds: number;
     });
 }
 // JobRecord
@@ -192,12 +192,12 @@ export declare class JobRegistry {
 export declare class JobReleased extends JobEvent {
     #private;
     readonly attempt: number;
-    readonly delay: number;
+    readonly delaySeconds: number;
     readonly reason: 'error' | 'job' | 'unknown' | 'stopping' | 'busy';
     readonly ms: number | undefined;
     constructor(data: ConstructorParameters<typeof JobEvent>[0] & {
         attempt: number;
-        delay: number;
+        delaySeconds: number;
         reason: JobReleased['reason'];
         ms?: number;
     });
@@ -655,7 +655,7 @@ export interface DispatchedJob<J extends JobClass = JobClass> {
     readonly id: string;
     readonly queue: string | undefined;
     readonly connection: string | undefined;
-    readonly delay: number;
+    readonly delaySeconds: number;
     readonly inTransaction: boolean;
     readonly unique: (Pick<UniqueRecord, 'key' | 'for' | 'until'>) | undefined;
     readonly chain: readonly {

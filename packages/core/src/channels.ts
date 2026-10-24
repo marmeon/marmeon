@@ -125,7 +125,7 @@ export interface QueueDispatchMessage extends MessageBase, Ended {
   readonly connection: string;
   readonly queue: string;
   /** Seconds before they may run. */
-  readonly delay: number;
+  readonly delaySeconds: number;
   /** A unique dispatch's key. */
   readonly unique?: string;
   /** Their ids, once queued — none when a unique job with the key was queued already. */

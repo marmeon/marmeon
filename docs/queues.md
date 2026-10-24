@@ -497,10 +497,10 @@ Every step of a job is an event of the app's event dispatcher:
 
 | Event | When | Fields besides `connection`, `queue`, `job` and `jobId` |
 | --- | --- | --- |
-| `JobQueued` | The job was queued, after the commit when it was dispatched in a transaction. | `delay` |
+| `JobQueued` | The job was queued, after the commit when it was dispatched in a transaction. | `delaySeconds` |
 | `JobProcessing` | An attempt starts. | `attempt` |
 | `JobProcessed` | An attempt ran to its end. | `attempt`, `ms`, `discarded` |
-| `JobReleased` | An attempt ended and the job went back to the queue, to run again after `delay` seconds. | `attempt`, `delay`, `reason`, `ms` |
+| `JobReleased` | An attempt ended and the job went back to the queue, to run again after `delaySeconds`. | `attempt`, `delaySeconds`, `reason`, `ms` |
 | `JobFailed` | The job failed for good and is in the failed jobs now. The rest of its chain is dropped. | `attempt`, `error` |
 
 `reason` says why a job went back:

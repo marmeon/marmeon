@@ -27,11 +27,11 @@ export abstract class JobEvent {
 export class JobQueued extends JobEvent {
   readonly #event = true;
   /** Seconds before it may run. */
-  readonly delay: number;
+  readonly delaySeconds: number;
 
-  constructor(data: ConstructorParameters<typeof JobEvent>[0] & { delay: number }) {
+  constructor(data: ConstructorParameters<typeof JobEvent>[0] & { delaySeconds: number }) {
     super(data);
-    this.delay = data.delay;
+    this.delaySeconds = data.delaySeconds;
   }
 }
 
@@ -64,11 +64,11 @@ export class JobProcessed extends JobEvent {
   }
 }
 
-/** An attempt ended and the job went back to the queue, to run again in `delay` seconds. */
+/** An attempt ended and the job went back to the queue, to run again in `delaySeconds`. */
 export class JobReleased extends JobEvent {
   readonly #event = true;
   readonly attempt: number;
-  readonly delay: number;
+  readonly delaySeconds: number;
   /**
    * `error`: the attempt failed and the job retries; `job`: the job (or a middleware) asked for it; `unknown`: no class for this name
    * here; `stopping`: the worker stops; `busy`: `job.once` found its key running in another attempt — this attempt is given back.
@@ -76,10 +76,10 @@ export class JobReleased extends JobEvent {
   readonly reason: 'error' | 'job' | 'unknown' | 'stopping' | 'busy';
   readonly ms: number | undefined;
 
-  constructor(data: ConstructorParameters<typeof JobEvent>[0] & { attempt: number; delay: number; reason: JobReleased['reason']; ms?: number }) {
+  constructor(data: ConstructorParameters<typeof JobEvent>[0] & { attempt: number; delaySeconds: number; reason: JobReleased['reason']; ms?: number }) {
     super(data);
     this.attempt = data.attempt;
-    this.delay = data.delay;
+    this.delaySeconds = data.delaySeconds;
     this.reason = data.reason;
     this.ms = data.ms;
   }

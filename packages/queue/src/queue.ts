@@ -182,7 +182,7 @@ export class QueueManager implements Queue {
       encrypted: pending.map(([job]) => (job as { encrypted?: unknown }).encrypted === true),
       connection,
       queue: options.queue ?? this.#deps.connection(connection)?.queue ?? '',
-      delay,
+      delaySeconds: delay,
       ...(options.unique === undefined ? {} : { unique: String(options.unique) }),
       jobIds: [],
     };
@@ -243,7 +243,7 @@ export class QueueManager implements Queue {
     const queue = options.queue ?? connection.queue;
     const delay = delaySeconds(options.delay);
     const ids = prepared.map(({ record }) => record.uuid);
-    const queued = () => Promise.all(prepared.map(({ record }) => this.#emit(new JobQueued({ connection: name, queue, job: record.job, jobId: record.uuid, delay }))));
+    const queued = () => Promise.all(prepared.map(({ record }) => this.#emit(new JobQueued({ connection: name, queue, job: record.job, jobId: record.uuid, delaySeconds: delay }))));
 
     if (connection.driver === 'sync') {
       // Held until the commit inside a transaction: a sync job must never act on data that is rolled back.

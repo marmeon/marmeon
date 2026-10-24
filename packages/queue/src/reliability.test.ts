@@ -363,10 +363,10 @@ describe.each(processKinds)('job.once, withoutOverlapping and job events on %s',
       expect(await held.get()).toBe(true);
       await app.queue.dispatch(OnceJob, { n: 1 });
       await app.work();
-      const outcome = (event: JobEvent) => `${event.constructor.name}:${JSON.stringify({ attempt: (event as JobReleased).attempt, reason: (event as JobReleased).reason, delay: (event as JobReleased).delay })}`;
+      const outcome = (event: JobEvent) => `${event.constructor.name}:${JSON.stringify({ attempt: (event as JobReleased).attempt, reason: (event as JobReleased).reason, delaySeconds: (event as JobReleased).delaySeconds })}`;
       const after = app.seen.events.filter((event) => event instanceof JobReleased || event instanceof JobFailed).map(outcome);
       // With one try, a failed attempt would be the end: the job is released instead, and the attempt is given back.
-      expect(after, JSON.stringify(after)).toEqual(['JobReleased:{"attempt":1,"reason":"busy","delay":5}']);
+      expect(after, JSON.stringify(after)).toEqual(['JobReleased:{"attempt":1,"reason":"busy","delaySeconds":5}']);
       expect(app.seen.mails).toBe(0);
       expect(await app.queue.size()).toBe(1);
       await held.release();
@@ -387,7 +387,7 @@ describe.each(processKinds)('job.once, withoutOverlapping and job events on %s',
       await app.queue.dispatch(GuardedJob, { key: 'report' });
       await app.work();
       expect(app.seen.entries).toEqual([]);
-      expect(app.seen.events.find((event) => event instanceof JobReleased)).toMatchObject({ reason: 'job', delay: 30, attempt: 1 });
+      expect(app.seen.events.find((event) => event instanceof JobReleased)).toMatchObject({ reason: 'job', delaySeconds: 30, attempt: 1 });
       await held.release();
       // The release delay follows the queue's clock (on Redis too: its scores are the app's time).
       app.clock.travel({ seconds: 30 });
@@ -411,7 +411,7 @@ describe.each(processKinds)('job.once, withoutOverlapping and job events on %s',
         'JobProcessing:true:true:default',
         'JobFailed:true:true:default',
       ]);
-      expect(app.seen.events[2]).toMatchObject({ reason: 'error', attempt: 1, delay: 0, ms: expect.any(Number) });
+      expect(app.seen.events[2]).toMatchObject({ reason: 'error', attempt: 1, delaySeconds: 0, ms: expect.any(Number) });
       expect((app.seen.events[4] as JobFailed).error.message).toBe('note 1 failed');
       expect(app.seen.events[0]).toBeInstanceOf(JobQueued);
       expect(app.seen.events[1]).toBeInstanceOf(JobProcessing);

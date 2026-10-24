@@ -372,7 +372,7 @@ export class Recorder {
           queue: message.queue,
           connection: message.connection,
           kind: message.kind,
-          delay: message.delay,
+          delay: message.delaySeconds,
           ...(message.unique === undefined ? {} : { unique: message.unique }),
           ...(message.payloads && index < message.payloads.length ? { payload: this.#redactor.payload(message.payloads[index], message.encrypted?.[index] === true) } : {}),
           ...(message.durationMs === undefined ? {} : { durationMs: message.durationMs }),

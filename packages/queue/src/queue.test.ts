@@ -915,7 +915,7 @@ describe('the version of the job record', () => {
     await w.run({ queues: ['default'], stopWhenEmpty: true });
     expect(events).toHaveLength(1);
     expect(events[0]).toBeInstanceOf(JobReleased);
-    expect(events[0]).toMatchObject({ jobId: id, job: 'test.welcome', queue: 'default', connection: 'memory', reason: 'unknown', delay: 100, attempt: 1 });
+    expect(events[0]).toMatchObject({ jobId: id, job: 'test.welcome', queue: 'default', connection: 'memory', reason: 'unknown', delaySeconds: 100, attempt: 1 });
   });
 
   it('counts the time a record is held from when it could be claimed: a delay over six hours, a late link of a chain, a retried job', async () => {

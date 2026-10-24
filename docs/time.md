@@ -119,7 +119,7 @@ it('sends the reminder five minutes later', async () => {
   const app = await createTestApp(application, { database: 'refresh' });
   const ada = await app.factory(UserFactory).create();
   await app.actingAs(ada).post('/billing/reminders').assertRedirect();
-  app.queue.assertDispatched(SendInvoiceReminderJob, (_payload, job) => job.delay === 300);
+  app.queue.assertDispatched(SendInvoiceReminderJob, (_payload, job) => job.delaySeconds === 300);
 
   expect(await app.queue.work()).toMatchObject({ processed: 0 });
   app.travel({ minutes: 5 });

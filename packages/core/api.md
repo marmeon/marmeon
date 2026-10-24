@@ -1001,7 +1001,7 @@ export interface QueueDispatchMessage extends MessageBase, Ended {
     readonly jobs: readonly string[];
     readonly connection: string;
     readonly queue: string;
-    readonly delay: number;
+    readonly delaySeconds: number;
     readonly unique?: string;
     jobIds: string[];
     readonly payloads?: readonly unknown[];
