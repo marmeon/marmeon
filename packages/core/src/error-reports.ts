@@ -28,7 +28,10 @@ export interface ErrorReport {
   readonly error: ReportedError;
   /** What ran when the error happened. */
   readonly source: 'request' | 'job' | 'schedule' | 'command';
-  /** Masked facts about the place: for a request its `method`, `route` (name) and `path` (without the query). */
+  /**
+   * Masked facts about the place: for a request its `method`, `route` (name) and `path` (without the query), and `phase` when the
+   * error came after the response was sent (`deferred`, `after-response` or `terminate`).
+   */
   readonly context: Readonly<Record<string, string>>;
 }
 

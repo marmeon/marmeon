@@ -256,8 +256,8 @@ export class ShareNoteController extends Controller {
 }
 ```
 
-Deferred work runs outside any open database transaction, one task after the other. An error is logged and never reaches the
-client. A server that stops gracefully waits up to 8 seconds for deferred work. It is no queue all the same: work that takes
+Deferred work runs outside any open database transaction, one task after the other. An error is logged and sent to the
+[error reporters](errors.md#reporting), and never reaches the client. A server that stops gracefully waits up to 8 seconds for deferred work. It is no queue all the same: work that takes
 longer, or a process that crashes, loses it. Work that must not get lost belongs in a job, which the [queues](queues.md) page
 explains. A request that only reads, such as an island's or a live validation, cannot defer work: it throws in development and
 in tests, and is dropped everywhere else.

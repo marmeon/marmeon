@@ -236,6 +236,8 @@ export interface ResponseFactoryOptions {
    * message's prop sizes (it computes nothing unless something listens).
    */
   onPage?: (request: Request, page: PageObject | RegionObject, kind: 'page' | 'layer' | 'island', origins: () => PropOrigins) => void;
+  /** Hears a deferred group that failed while it streamed with its page (already logged) — the kernel's, for the error reporters. */
+  onDeferredError?: (error: unknown, request: Request) => void;
   /** Where server-rendering errors go. */
   logger?: Logger;
   /** Server rendering at all (`SERVER_SSR_ENABLED=false` turns it off for every page: the browser renders them). Default: on. */
@@ -276,7 +278,7 @@ export function createResponseFactory(
   renderer: PageRenderer = shellRenderer,
   routes?: RouteLookup,
   version: string | null = null,
-  { app, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000, layerBases, onPage }: ResponseFactoryOptions = {},
+  { app, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000, layerBases, onPage, onDeferredError }: ResponseFactoryOptions = {},
 ): ScopedResponseFactory {
   // What the error lines below mask their text with: the app's (the names its packages add — the session cookie — count too).
   const redactor = app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
@@ -328,6 +330,11 @@ export function createResponseFactory(
               return result;
             } catch (error) {
               logger.error(`The deferred group [${group}] of [${page.component}] failed while streaming — the browser loads it`, { component: page.component, ...describe(error) });
+              try {
+                onDeferredError?.(error, request);
+              } catch {
+                // Reporting must not change what the page streams.
+              }
               return null;
             } finally {
               clearTimeout(timer);

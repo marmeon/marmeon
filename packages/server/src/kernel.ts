@@ -365,9 +365,28 @@ export function createHttpKernel(
     debug,
     islands: dispatchIsland,
     layerBases: dispatchLayerBase,
+    onDeferredError: (error, request) => reportLate(error, request, 'deferred'),
   });
 
   let warnedAboutReport = false;
+  /** Errors already reported for a request: one the controller and its late work share (a promise both return) is reported once. Per request, so a failure that recurs is reported again. */
+  const reported = new WeakMap<Request, WeakSet<object>>();
+  /** Hands a server error (not a client one, an `HttpError` below 500) to the reporters: the request's method, route name and path, never its body, cookies or headers. */
+  const giveToReporters = (error: unknown, failed: Request, phase?: 'deferred' | 'after-response' | 'terminate'): void => {
+    if (error instanceof HttpError && error.status < 500) return;
+    // The same error object reaches us twice when a controller awaits a promise that its deferred work returns too.
+    if (typeof error === 'object' && error !== null && reported.get(failed)?.has(error)) return;
+    const route = matched.get(failed);
+    const { pathname } = new URL(failed.url);
+    if (typeof error === 'object' && error !== null) reported.set(failed, (reported.get(failed) ?? new WeakSet()).add(error));
+    container.make(ErrorReports).report(error, {
+      source: 'request',
+      context: { method: failed.method, route: route?.routeName ?? '', path: redactor.url(pathname, route?.path), ...(phase ? { phase } : {}) },
+      // Late work logs its own line (the caller's); a request error logs here.
+      ...(phase ? { log: false as const } : {}),
+    });
+  };
+
   /**
    * Gives a server error to the app's reporters; a client error (an `HttpError` below 500) is the caller's, not a bug. Never throws:
    * reporting must not change the answer.
@@ -379,10 +398,19 @@ export function createHttpKernel(
         warnedAboutReport = true;
         logger.warn('The ExceptionHandler has a report() method, which is not called any more: move it into an error reporter (static errorReporters of a service provider, docs/errors.md#reporting).');
       }
-      if (error instanceof HttpError && error.status < 500) return;
-      const route = matched.get(failed);
-      const { pathname } = new URL(failed.url);
-      container.make(ErrorReports).report(error, { source: 'request', context: { method: failed.method, route: route?.routeName ?? '', path: redactor.url(pathname, route?.path) } });
+      giveToReporters(error, failed);
+    } catch (failure) {
+      logger.warn('Reporting an error failed', { exception: redactor.text(failure instanceof Error ? failure.message : 'Unprintable error') });
+    }
+  };
+
+  /**
+   * An error of a request's late work (a deferred group while the page streams, `afterResponse.defer()`, a `terminate` hook): the
+   * request has been answered, so it is only reported, with `phase` in the context. Never throws. The caller logged it already.
+   */
+  const reportLate = (error: unknown, request: Request, phase: 'deferred' | 'after-response' | 'terminate'): void => {
+    try {
+      giveToReporters(error, request, phase);
     } catch (failure) {
       logger.warn('Reporting an error failed', { exception: redactor.text(failure instanceof Error ? failure.message : 'Unprintable error') });
     }
@@ -719,7 +747,10 @@ export function createHttpKernel(
         .then(
           () => undefined,
           // Masked like text: a message may quote a connection URL or a token — the log context's keys alone would not catch it.
-          (error: unknown) => logger.error('A terminate hook failed', { exception: redactor.text(String(error)) }),
+          (error: unknown) => {
+            logger.error('A terminate hook failed', { exception: redactor.text(String(error)) });
+            reportLate(error, request, 'terminate');
+          },
         );
       pending.add(task);
       void task.finally(() => pending.delete(task));
@@ -747,6 +778,7 @@ export function createHttpKernel(
             await outsideTransaction(work);
           } catch (error) {
             logger.error('Deferred work failed', { exception: redactor.text(error instanceof Error ? (error.stack ?? error.message) : String(error)) });
+            reportLate(error, request, 'after-response');
           }
         }
       });
