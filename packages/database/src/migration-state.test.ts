@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { ErrorSolutions, type Logger, type ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { appOf as fakeApp, createLegacyTables, drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { PAUSE, type Pause } from './__fixtures__/migrations/state-pause/2026_01_31_000000_create_paused_table.ts';
 import { inspectionConnection, migratorConnection } from './migrator-connection.ts';
@@ -19,6 +19,9 @@ const auth: ModuleDefinition = { name: 'auth', migrations: fixtures('auth') };
 const accounts: ModuleDefinition = { name: 'accounts', migrations: fixtures('accounts') };
 const root = workspaceTempDir('marmeon-migration-state-');
 const appOf = (modules: ModuleDefinition[]) => fakeApp(modules, root);
+
+/** Past the time after which a refused process asks the database again; only `Date` is faked, so the drivers' timers stay real. */
+const pastRecheck = () => vi.setSystemTime(Date.now() + 1_100);
 
 const ACCOUNTS = ['2026_01_05_000000_create_accounts_table', '2026_01_06_000000_add_recovery_code_to_accounts_table'];
 
@@ -55,6 +58,7 @@ describe.each(drivers)('what the app does when the database lacks migrations, on
     opened.push(scratch);
     await dropAllTables(inspectionConnection(scratch), driver);
   });
+  afterEach(() => vi.useRealTimers());
   afterAll(async () => {
     for (const connections of opened) await connections.destroy();
     await drop();
@@ -87,23 +91,27 @@ describe.each(drivers)('what the app does when the database lacks migrations, on
   });
 
   it('is red on readiness with the code, and green once the migrations ran', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     await migrate([auth]);
     const behind = processOf([auth, accounts]);
     const check = new DatabaseHealthCheck(behind, new SchemaRequirements());
     await expect(check.handle()).rejects.toThrow(/^\[marmeon:D2\] The database connection "default" failed: .*lacks 2 migrations/s);
     await migrate([auth, accounts]);
-    await sleep(1100);
+    pastRecheck();
     await expect(check.handle()).resolves.toBe('default');
   });
 
   it('asks the database again within a second of the last time — not on every query', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     await migrate([auth]);
     const behind = processOf([auth, accounts]);
     for (let attempt = 0; attempt < 5; attempt++) await expect(select(behind, 'users')).rejects.toMatchObject({ reason: 'pending' });
     // `migrate` in another process; this one is ready without a restart, when a second has passed.
     await migrate([auth, accounts]);
+    // The window is exactly one second: a millisecond short of it the refusal stands, at it the database is asked again.
+    vi.setSystemTime(Date.now() + 999);
     await expect(select(behind, 'users')).rejects.toBeInstanceOf(MigrationStateError);
-    await sleep(1100);
+    vi.setSystemTime(Date.now() + 1);
     await expect(select(behind, 'users')).resolves.toEqual([]);
     expect([...(behind.metadata().secrets.get('accounts') ?? [])].sort()).toEqual(['password', 'recovery_code', 'totp_secret']);
   });
