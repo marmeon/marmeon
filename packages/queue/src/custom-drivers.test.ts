@@ -45,9 +45,9 @@ class SlowJob {
 /** A driver that remembers what it was pushed, over a memory queue. */
 class SpyDriver extends MemoryQueueDriver {
   readonly pushed: string[] = [];
-  override async push(queue: string, payload: string, delay: number): Promise<string> {
+  override async push(queue: string, payload: string, delaySeconds: number): Promise<string> {
     this.pushed.push(payload);
-    return super.push(queue, payload, delay);
+    return super.push(queue, payload, delaySeconds);
   }
 }
 

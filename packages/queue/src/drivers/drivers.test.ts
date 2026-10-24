@@ -140,9 +140,9 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
         clock.travel({ seconds: 60 });
         const taken = (await driver.reserve(['default']))!;
         // The late worker's hand-off changes nothing: no second "next".
-        expect(await driver.ack(lost, [{ queue: 'default', payload: 'next', delay: 0 }])).toBe(false);
+        expect(await driver.ack(lost, [{ queue: 'default', payload: 'next', delaySeconds: 0 }])).toBe(false);
         expect(await driver.size('default')).toBe(1);
-        expect(await driver.ack(taken, [{ queue: 'later', payload: 'next', delay: 0 }, { queue: 'later', payload: 'delayed', delay: 30 }])).toBe(true);
+        expect(await driver.ack(taken, [{ queue: 'later', payload: 'next', delaySeconds: 0 }, { queue: 'later', payload: 'delayed', delaySeconds: 30 }])).toBe(true);
         expect(await driver.size('default')).toBe(0);
         expect(await driver.size('later')).toBe(2);
         expect((await driver.reserve(['later']))?.payload).toBe('next');
@@ -286,7 +286,7 @@ describe.each(databaseKinds)('the database queue driver on %s, in a transaction'
       }
       await driver.push('default', 'first', 0);
       const job = (await driver.reserve(['default']))!;
-      await expect(driver.ack(job, [{ queue: 'default', payload: 'explode', delay: 0 }])).rejects.toThrow(/refused/);
+      await expect(driver.ack(job, [{ queue: 'default', payload: 'explode', delaySeconds: 0 }])).rejects.toThrow(/refused/);
       // Not acknowledged: still there, still claimed — after retryAfter it runs again and hands on then.
       const { rows } = await sql<{ payload: string; reserved_at: unknown }>`select payload, reserved_at from jobs`.execute(db);
       expect(rows).toHaveLength(1);

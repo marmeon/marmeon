@@ -349,11 +349,11 @@ export interface QueueCounts {
 }
 // QueueDriver
 export interface QueueDriver {
-    push(queue: string, payload: string, delay: number): Promise<string>;
+    push(queue: string, payload: string, delaySeconds: number): Promise<string>;
     reserve(queues: readonly string[]): Promise<ReservedJob | undefined>;
     reserveAny?(except?: readonly string[]): Promise<ReservedJob | undefined>;
     ack(job: ReservedJob, next?: readonly QueuedPush[]): Promise<boolean>;
-    release(job: ReservedJob, delay: number, options?: ReleaseOptions): Promise<boolean>;
+    release(job: ReservedJob, delaySeconds: number, options?: ReleaseOptions): Promise<boolean>;
     fail(job: ReservedJob): Promise<boolean>;
     size(queue: string): Promise<number>;
     counts?(queue: string): Promise<QueueCounts>;
@@ -507,7 +507,7 @@ export interface QueuedJob {
 export interface QueuedPush {
     readonly queue: string;
     readonly payload: string;
-    readonly delay: number;
+    readonly delaySeconds: number;
 }
 // ReleaseOptions
 export interface ReleaseOptions {

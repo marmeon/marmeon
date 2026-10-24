@@ -214,7 +214,7 @@ export class Worker {
     // Success hands the chain on — together with the acknowledgement (one atomic step of the driver). A discarded job
     // ends its chain: what comes next was waiting for it.
     const next = requested?.kind === 'discard' ? undefined : nextInChain(record, this.#deps.clock.now());
-    const acknowledged = await this.#deps.driver.ack(reserved, next ? [{ queue: reserved.queue, payload: next, delay: 0 }] : []);
+    const acknowledged = await this.#deps.driver.ack(reserved, next ? [{ queue: reserved.queue, payload: next, delaySeconds: 0 }] : []);
     if (!acknowledged) {
       // Another worker holds the job now: it acknowledges, frees the unique lock and hands the chain on.
       logger.warn(`${record.job} finished after its claim expired (retryAfter) — another worker may have run it as well`, context);

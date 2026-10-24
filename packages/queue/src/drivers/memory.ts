@@ -26,9 +26,9 @@ export class MemoryQueueDriver implements QueueDriver {
     this.#retryAfter = options.retryAfter ?? 90;
   }
 
-  async push(queue: string, payload: string, delay: number): Promise<string> {
+  async push(queue: string, payload: string, delaySeconds: number): Promise<string> {
     const id = String(this.#next++);
-    this.#entries.push({ id, queue, payload, attempts: 0, reservedAt: undefined, availableAt: this.#clock.now() + delay * 1000 });
+    this.#entries.push({ id, queue, payload, attempts: 0, reservedAt: undefined, availableAt: this.#clock.now() + delaySeconds * 1000 });
     return id;
   }
 
@@ -64,16 +64,16 @@ export class MemoryQueueDriver implements QueueDriver {
 
   async ack(job: ReservedJob, next: readonly QueuedPush[] = []): Promise<boolean> {
     if (!this.#remove(job)) return false;
-    for (const push of next) await this.push(push.queue, push.payload, push.delay);
+    for (const push of next) await this.push(push.queue, push.payload, push.delaySeconds);
     return true;
   }
 
-  async release(job: ReservedJob, delay: number, options: ReleaseOptions = {}): Promise<boolean> {
+  async release(job: ReservedJob, delaySeconds: number, options: ReleaseOptions = {}): Promise<boolean> {
     const entry = this.#claimed(job);
     if (!entry) return false;
     if (options.refund) entry.attempts -= 1;
     entry.reservedAt = undefined;
-    entry.availableAt = this.#clock.now() + delay * 1000;
+    entry.availableAt = this.#clock.now() + delaySeconds * 1000;
     if (options.availableAt !== undefined) entry.payload = withAvailableAt(entry.payload, options.availableAt);
     return true;
   }

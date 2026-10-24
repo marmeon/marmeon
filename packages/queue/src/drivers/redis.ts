@@ -132,12 +132,12 @@ export class RedisQueueDriver implements QueueDriver {
     this.#retryAfter = options.retryAfter;
   }
 
-  async push(queue: string, payload: string, delay: number): Promise<string> {
+  async push(queue: string, payload: string, delaySeconds: number): Promise<string> {
     const [redis, { push }] = await Promise.all([this.#connection(), loadScripts()]);
     const id = crypto.randomUUID();
     const now = this.#clock.now();
     const keys = this.#keys(redis, queue);
-    await redis.run(push, [keys.list, keys.delayed, redis.key('queues')], [queue, `${id}:0:${payload}`, now + Math.round(delay * 1000), now]);
+    await redis.run(push, [keys.list, keys.delayed, redis.key('queues')], [queue, `${id}:0:${payload}`, now + Math.round(delaySeconds * 1000), now]);
     return id;
   }
 
@@ -202,17 +202,17 @@ export class RedisQueueDriver implements QueueDriver {
     for (const push of next) {
       const target = this.#keys(redis, push.queue);
       keys.push(target.list, target.delayed);
-      args.push(push.queue, `${crypto.randomUUID()}:0:${push.payload}`, now + Math.round(push.delay * 1000));
+      args.push(push.queue, `${crypto.randomUUID()}:0:${push.payload}`, now + Math.round(push.delaySeconds * 1000));
     }
     return Number(await redis.run(ack, keys, args)) === 1;
   }
 
-  async release(job: ReservedJob, delay: number, options: ReleaseOptions = {}): Promise<boolean> {
+  async release(job: ReservedJob, delaySeconds: number, options: ReleaseOptions = {}): Promise<boolean> {
     const [redis, { release }] = await Promise.all([this.#connection(), loadScripts()]);
     const keys = this.#keys(redis, job.queue);
     const payload = options.availableAt === undefined ? job.payload : withAvailableAt(job.payload, options.availableAt);
     const back = `${job.id}:${options.refund ? job.attempts - 1 : job.attempts}:${payload}`;
-    return Number(await redis.run(release, [keys.reserved, keys.delayed], [member(job), this.#clock.now() + Math.round(delay * 1000), back])) === 1;
+    return Number(await redis.run(release, [keys.reserved, keys.delayed], [member(job), this.#clock.now() + Math.round(delaySeconds * 1000), back])) === 1;
   }
 
   async fail(job: ReservedJob): Promise<boolean> {

@@ -21,9 +21,9 @@ class ScratchQueueDriver implements QueueDriver {
     this.#retryAfter = retryAfter;
   }
 
-  async push(queue: string, payload: string, delay: number): Promise<string> {
+  async push(queue: string, payload: string, delaySeconds: number): Promise<string> {
     const id = String(this.#next++);
-    this.#entries.set(id, { id, queue, payload, attempts: 0, availableAt: this.#now() + delay * 1000 });
+    this.#entries.set(id, { id, queue, payload, attempts: 0, availableAt: this.#now() + delaySeconds * 1000 });
     return id;
   }
 
@@ -45,18 +45,18 @@ class ScratchQueueDriver implements QueueDriver {
     return entry?.reservedAt === job.reservedAt && entry.attempts === job.attempts ? entry : undefined;
   }
 
-  async ack(job: ReservedJob, next: readonly { queue: string; payload: string; delay: number }[] = []): Promise<boolean> {
+  async ack(job: ReservedJob, next: readonly { queue: string; payload: string; delaySeconds: number }[] = []): Promise<boolean> {
     if (!this.#claimed(job)) return false;
     this.#entries.delete(job.id);
-    for (const { queue, payload, delay } of next) await this.push(queue, payload, delay);
+    for (const { queue, payload, delaySeconds } of next) await this.push(queue, payload, delaySeconds);
     return true;
   }
 
-  async release(job: ReservedJob, delay: number, options: { refund?: boolean } = {}): Promise<boolean> {
+  async release(job: ReservedJob, delaySeconds: number, options: { refund?: boolean } = {}): Promise<boolean> {
     const entry = this.#claimed(job);
     if (!entry) return false;
     delete entry.reservedAt;
-    entry.availableAt = this.#now() + delay * 1000;
+    entry.availableAt = this.#now() + delaySeconds * 1000;
     if (options.refund) entry.attempts--;
     return true;
   }
