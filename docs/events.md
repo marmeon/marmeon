@@ -198,13 +198,38 @@ The framework's packages dispatch events of their own, classes like any other:
 
 | Package | Events |
 | --- | --- |
-| `@marmeon/auth` | `SignedIn`, `SignedOut`, `SignInFailed`, `SignInLockedOut`, `Registered`, `PasswordChanged`, `PasswordReset`, `EmailChanged` |
+| `@marmeon/auth` | The 19 events in the table below |
 | `@marmeon/queue` | `JobQueued`, `JobProcessing`, `JobProcessed`, `JobReleased`, `JobFailed`, all extending `JobEvent` |
 | `@marmeon/scheduler` | `ScheduledTaskStarting`, `ScheduledTaskFinished`, `ScheduledTaskFailed`, `ScheduledTaskSkipped`, all extending `ScheduledTaskEvent` |
 
-`SignedIn` and `Registered` can be queued: a queued listener gets `{ userId }`, and of `SignedIn` also how and when the user signed in,
-their address and browser. `SignInFailed` carries what was typed as the identifier, never the password, for an audit log. The
-[authentication](authentication.md#events) page describes each.
+The events of `@marmeon/auth`; the ones marked queueable can have a [queued listener](#queued-listeners):
+
+| Event | Fires | Queueable |
+| --- | --- | --- |
+| `SignedIn` | `attempt()` (after the second factor if the account has one), `signIn()`, a sign-in by the remember-me cookie or with a passkey alone | yes |
+| `SignedOut` | `signOut()` | no |
+| `SignInFailed` | `attempt()` with an unknown identifier or a wrong password | no |
+| `SignInLockedOut` | `attempt()` turns an attempt away, or an account takes no more password sign-ins for the day | no |
+| `Registered` | Your registration, after it created the account (the app dispatches it) | yes |
+| `PasswordChanged` | `updatePassword()` | no |
+| `PasswordReset` | A reset with a link from the mail | no |
+| `EmailChanged` | `EmailChange.confirm()`, and `EmailChange.request()` without private registration | no |
+| `EverySessionEnded` | `AccountSessions.endEveryone()`, `auth:end-all-sessions` | yes |
+| `RememberTokenReused` | A remember-me cookie that a rotation had replaced came back, or came with a validator that was never issued | yes |
+| `TwoFactorEnabled` | A second factor was turned on | yes |
+| `TwoFactorDisabled` | A second factor was turned off: by the user, the operator's reset or the password reset of an account with an unconfirmed address | yes |
+| `RecoveryCodesGenerated` | The account's first second factor was turned on, or new recovery codes were asked for | yes |
+| `RecoveryCodeUsed` | A recovery code signed in or stepped up | yes |
+| `TwoFactorChallengeFailed` | A wrong second factor at sign-in, at a step-up or when confirming sudo mode with a passkey | yes |
+| `PasskeyRegistered` | A passkey was added | yes |
+| `PasskeyRemoved` | A passkey was removed, by the user or by the password reset of an account with an unconfirmed address | yes |
+| `PasskeyCloneSuspected` | A passkey answered with a sign count that did not move forward | yes |
+| `PasskeySignInFailed` | A passwordless sign-in failed against a passkey that exists | yes |
+
+A queued listener gets the event's fields as JSON, with `userId` in place of `user` and `at` as an ISO-8601 string; the authentication, two-factor and passkeys pages list them. The six others (`SignedOut`, `SignInFailed`, `SignInLockedOut`, `PasswordChanged`, `PasswordReset`, `EmailChanged`) cannot be queued: their listeners run in the process that dispatched them.
+`SignInFailed` carries what was typed as the identifier, never the password, for an audit log. The
+[authentication](authentication.md#events), [two-factor authentication](two-factor-authentication.md#events) and [passkeys](passkeys.md#events)
+pages describe each.
 
 The events of the queue and the scheduler cannot be queued, since a queued listener of a job event would queue the next job. Their
 listeners run where the event happens: in the worker, in the process that queued the job, or in the scheduler. An error of one is
