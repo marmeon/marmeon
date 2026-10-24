@@ -56,7 +56,7 @@ async function queuePayloads(app: TestApp): Promise<string> {
 }
 
 describe('the verification mail through the queue', () => {
-  it('a mail server that is down never fails the registration: 303 and the account exists, the mail retries, waits in failed_jobs after its tries, and queue:retry sends it', async () => {
+  it('a mail server that is down never fails the registration: 303 and the account exists, the mail retries, waits in failed_jobs after its tries, and queue:retry sends it', { timeout: heavyTimeout }, async () => {
     const transport = new TestTransport();
     transport.down = true;
     const app = await realApp(transport);
@@ -84,7 +84,7 @@ describe('the verification mail through the queue', () => {
     await work(app);
     expect(transport.sent.map((message) => message.subject).sort()).toEqual(['Confirm your e-mail address', 'Welcome to Marmeon']);
     await app.assertDatabaseCount('failed_jobs', 0);
-  }, heavyTimeout);
+  });
 
   // No clock — a time bound fails on a loaded machine: the mail server never answers — a request that waited for it
   // would never return; one that reached it at all fails at once.

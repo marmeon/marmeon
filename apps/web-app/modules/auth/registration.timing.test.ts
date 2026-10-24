@@ -12,12 +12,13 @@ beforeEach(async () => {
   app = await createTestApp(application, { database: 'refresh' });
 });
 
-describe('registration', () => {
+describe('the time of a registration', () => {
   const register = (form: Record<string, string>) =>
     app.post('/register', { form: { name: 'Ada Lovelace', email: 'ada@example.com', password: 'correct horse', password_confirmation: 'correct horse', ...form }, headers: { referer: 'http://localhost/register' } });
 
-  // A timing test: a leak makes every attempt fail, a stall of a busy machine only some — so a failed attempt is tried again.
-  it('takes as long for a known address as for a new one — the password is hashed either way (the configured costs)', { retry: 2, timeout: 120_000 /* 352 sign-ups at the configured hash costs — seconds, more on a busy machine */ }, async () => {
+  // Runs alone and last (the `timing` project). A leak is a ratio far from 1; the median of paired ratios holds the bounds without a
+  // repeat. The hashing itself is counted in `hashing.test.ts` of @marmeon/auth.
+  it('takes as long for a known address as for a new one — the password is hashed either way (the configured costs)', { timeout: 120_000 /* 352 sign-ups at the configured hash costs: seconds of real hashing */ }, async () => {
     await app.close();
     app = await createTestApp(application, { database: 'refresh', env: { HASH_ARGON_MEMORY: '19456', HASH_ARGON_TIME: '2' } });
     await app.factory(UserFactory).create({ email: 'ada@example.com' });

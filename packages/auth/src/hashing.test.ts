@@ -111,26 +111,16 @@ describe('PasswordHasher', () => {
     expect(await argon2.verify(`${longest}x`, hash)).toBe(false);
   });
 
-  // A timing test: a leak fails every attempt, a stall of a busy machine only some — so a failed attempt is tried again.
-  it('dummyVerify takes as long as a real verify (unknown e-mail ≈ wrong password)', { retry: 2 }, async () => {
-    const hasher = new PasswordHasher(); // real costs: differences must not hide in noise
-    const hash = await hasher.make('secret');
-    await hasher.dummyVerify('warm-up'); // the first call also makes its reference hash
-    const real: number[] = [];
-    const dummy: number[] = [];
-    for (let i = 0; i < 7; i++) {
-      let started = performance.now();
-      await hasher.verify('wrong password', hash);
-      real.push(performance.now() - started);
-      started = performance.now();
-      expect(await hasher.dummyVerify('wrong password')).toBe(false);
-      dummy.push(performance.now() - started);
-    }
-    const ratio = median(dummy) / median(real);
-    expect(ratio).toBeGreaterThan(0.5); // wide bounds: parallel test workers add noise; skipping the hash would be ~0.02
-    expect(ratio).toBeLessThan(2);
-    // Without it, an unknown e-mail would answer in no time:
-    expect(median(real)).toBeGreaterThan(5);
+  // The cost of a dummy check is proven here and measured in `hashing.timing.test.ts`.
+  it('dummyVerify does the work of a real verify: one check against a hash made with the configured costs', async () => {
+    const hasher = new PasswordHasher(cheap);
+    const verify = vi.spyOn(hasher, 'verify');
+    expect(await hasher.dummyVerify('wrong password')).toBe(false);
+    expect(verify).toHaveBeenCalledTimes(1);
+    const [password, hash] = verify.mock.calls[0]!;
+    expect(password).toBe('wrong password');
+    expect(hasher.needsRehash(hash)).toBe(false); // the configured driver and costs: no cheaper than a real check
+    expect(hash).toMatch(/^\$argon2id\$v=19\$m=1024,t=1,p=1\$/);
   });
 
   describe('failureFloorMs', () => {
@@ -308,9 +298,4 @@ export async function hasherTypes() {
 function flip(base64: string): string {
   const i = Math.floor(base64.length / 2);
   return base64.slice(0, i) + (base64[i] === 'A' ? 'B' : 'A') + base64.slice(i + 1);
-}
-
-function median(values: number[]): number {
-  const sorted = values.toSorted((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)]!;
 }

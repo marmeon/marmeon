@@ -1,5 +1,4 @@
 import { Auth, EmailChange, TwoFactorState } from '@marmeon/auth';
-import { Limit, RateLimiter } from '@marmeon/cache';
 import { err, ok } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { UrlSigner } from '@marmeon/http';
@@ -112,38 +111,42 @@ describe('changing the address (private registration)', () => {
     }
   });
 
-  // A timing test: a leak makes every attempt fail, a stall of a busy machine only some — so a failed attempt is tried again.
-  it('takes as long for a taken address as for a free one — the request does the same either way (paired)', { retry: 2, timeout: 30_000 }, async () => {
+  // The time of the two requests is measured in `email-change.timing.test.ts`. The same work for both addresses shows the same thing
+  // without a clock: the request never asks whether the address has an account, and the worker decides which
+  // mail goes out.
+  it('does the same work for a taken address as for a free one — the same jobs, the same mails, the same row', async () => {
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
-    const session = await signIn(await app.factory(UserFactory).create({ email: 'kj@example.com' }));
-    app.freeze(); // no sudo window, throttle window or expiry passes while it measures
-    // The throttle still counts every change — with room for all of them.
-    app.make(RateLimiter).for('auth.email-change', (ctx) => Limit.perMinute(1_000_000).by(String(ctx.user?.id)));
-    // A change takes well under a millisecond — a busy machine's noise is larger than that. So a measurement is a run of four changes,
-    // and a pair is two runs of each kind in mirrored order (free, taken, taken, free — the next pair the other way round: no "first
-    // of the pair" effect). Twenty-one pairs counted, as for the registration, the first pair warms up; the median of the
-    // paired ratios counts — a busy machine slows both halves of a pair alike, a lone stall moves one ratio, not the median.
-    const run = async (kind: 'free' | 'taken', pair: number, n: number) => {
-      const started = performance.now();
-      for (let k = 0; k < 4; k++) await change(session, kind === 'free' ? `person${pair}.${n}.${k}@example.com` : 'ada@example.com').assertRedirect('/settings/security');
-      return performance.now() - started;
+    const kj = await app.factory(UserFactory).create({ email: 'kj@example.com' });
+    const mo = await app.factory(UserFactory).create({ email: 'mo@example.com' });
+    app.freeze(); // the expiry of the stored change is then equal, too
+    // What the request left behind, with the typed address put aside: the jobs in the queue, then (once a worker ran) the mails, then the row.
+    const mails = () => app.mail.queued(ConfirmNewEmailMail).length + app.mail.queued(EmailInUseMail).length;
+    const work = async (user: User, email: string) => {
+      const before = mails();
+      const response = await change(await signIn(user), email).assertRedirect('/settings/security');
+      const queues = app.queue.pending().map((job) => job.queue);
+      const dispatched = app.queue.dispatched(SendEmailChangeMailJob, { user: user.id }).map((entry) => Object.keys(entry.payload as object).toSorted());
+      const row = await app.make(Connections).get<any>().selectFrom('email_changes').selectAll().where('user_id', '=', user.id).execute();
+      const inTheRequest = mails() - before; // a mail composed in the request, for one kind of address only, would show here
+      await app.queue.work();
+      const toEmail = (_mail: unknown, message: { to: readonly { address: string }[] }) => message.to[0]!.address === email;
+      const toNewAddress = app.mail.queued(ConfirmNewEmailMail, toEmail).length + app.mail.queued(EmailInUseMail, toEmail).length;
+      return {
+        status: response.status,
+        jobs: queues.length,
+        queues,
+        dispatched,
+        inTheRequest,
+        mailsToTheNewAddress: toNewAddress,
+        rows: row.map((entry) => ({ columns: Object.keys(entry).toSorted(), email: entry.email === email ? '<typed>' : entry.email, expiresAt: String(entry.expires_at), hasToken: typeof entry.token_hash === 'string' && entry.token_hash.length > 0 })),
+      };
     };
-    const ratios: number[] = [];
-    const took = { free: [] as number[], taken: [] as number[] };
-    for (let i = 0; i <= 21; i++) {
-      const pair = { free: 0, taken: 0 };
-      const order = i % 2 === 0 ? (['free', 'taken', 'taken', 'free'] as const) : (['taken', 'free', 'free', 'taken'] as const);
-      for (const [n, kind] of order.entries()) pair[kind] += await run(kind, i, n);
-      if (i === 0) continue;
-      ratios.push(pair.taken / pair.free);
-      took.free.push(pair.free / 8);
-      took.taken.push(pair.taken / 8);
-    }
-    const median = (values: number[]) => values.toSorted((a, b) => a - b)[(values.length - 1) / 2]!;
-    const ratio = median(ratios);
-    const seen = `median of ${ratios.length} paired ratios ${ratio.toFixed(3)} (a change: median taken ${median(took.taken).toFixed(2)} ms, free ${median(took.free).toFixed(2)} ms)`;
-    expect(ratio, seen).toBeGreaterThan(0.75);
-    expect(ratio, seen).toBeLessThan(1.33);
+    const taken = await work(kj, 'ada@example.com');
+    const free = await work(mo, 'bob@example.com');
+    expect(taken.jobs).toBeGreaterThan(0);
+    expect(taken.rows).toHaveLength(1);
+    expect(taken.mailsToTheNewAddress).toBe(1);
+    expect(taken).toEqual(free);
   });
 
   it('notes to the owner of a taken address that someone wanted it — nothing changes for anybody', async () => {

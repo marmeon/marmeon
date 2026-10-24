@@ -152,6 +152,14 @@ export function serviceFiles(root: string, files: readonly string[]): Map<string
   return result;
 }
 
+/** A test file that asserts something about wall-clock time: it runs in the `timing` project, last and alone, and never needs a service. */
+export const TIMING = /\.timing\.test\.tsx?$/;
+
+/** `files` split into the timing tests and the rest; only the rest goes to {@link serviceFiles}. */
+export function splitTiming(files: readonly string[]): { timing: string[]; other: string[] } {
+  return { timing: files.filter((file) => TIMING.test(file)), other: files.filter((file) => !TIMING.test(file)) };
+}
+
 /** The name of a project: its services sorted and joined with `+`, or `plain`. */
 export function projectName(services: ReadonlySet<Service>): string {
   return services.size === 0 ? 'plain' : [...services].sort().join('+');
@@ -189,4 +197,12 @@ export function tripwireEnv(services: ReadonlySet<Service>): Record<string, stri
   if (!services.has('redis')) env[SERVICE_VARIABLES.redis] = 'redis://not-selected-for-test-redis.invalid:6379';
   if (!services.has('s3')) env[SERVICE_VARIABLES.s3] = 'http://not-selected-for-test-s3.invalid';
   return env;
+}
+
+/**
+ * The `test.env` of the `timing` project: SQLite, pinned against a `DB_DRIVER` in the shell, and the tripwires of all three services
+ * (the Postgres one as the variable only — the web app's tests need the driver to stay SQLite).
+ */
+export function timingEnv(): Record<string, string> {
+  return { ...tripwireEnv(new Set<Service>(['pgsql'])), DB_DRIVER: 'sqlite', [SERVICE_VARIABLES.pgsql]: 'postgres://tripwire@not-selected-for-test-pgsql.invalid/marmeon' };
 }

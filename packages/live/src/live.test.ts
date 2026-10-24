@@ -16,7 +16,6 @@ import { LiveStreamReader } from './test-stream.ts';
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;
 
 const silent: Logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent };
-const OPTIONS: LiveHubOptions = { heartbeat: 20, retry: 3000, maxStreams: 100 };
 const tokens = new LiveTokens(liveKeys(new Uint8Array(32).fill(7)));
 const ADA = 'scope-of-adas-session';
 const GRACE = 'scope-of-graces-session';
@@ -30,7 +29,7 @@ afterEach(async () => {
 const everyHint: unknown[] = [];
 
 function hubOf(backend: LiveBackend = new MemoryLiveBackend(), options: Partial<LiveHubOptions> = {}, closing?: AbortSignal): LiveHub {
-  const hub = new LiveHub(backend, { ...OPTIONS, ...options }, silent, closing);
+  const hub = new LiveHub(backend, { heartbeat: 20, retry: 3000, maxStreams: 100, ...options }, silent, closing);
   cleanups.push(() => hub.close());
   return hub;
 }
@@ -201,7 +200,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
   it('holds at most LIVE_MAX_STREAMS_PER_SESSION streams of one session (16): the 17th → 429 with its own log line — other sessions still open', async () => {
     const warnings: string[] = [];
     const logger: Logger = { ...silent, warn: (message) => void warnings.push(message), child: () => logger };
-    const hub = new LiveHub(new MemoryLiveBackend(), OPTIONS, logger);
+    const hub = new LiveHub(new MemoryLiveBackend(), { heartbeat: 20, retry: 3000, maxStreams: 100 }, logger);
     cleanups.push(() => hub.close());
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
     const opened: LiveStreamReader[] = [];
