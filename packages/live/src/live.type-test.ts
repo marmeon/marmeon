@@ -2,10 +2,20 @@
 // compiler shows them, are quoted in the comments.
 import { island, view, type SharedData } from '@marmeon/http';
 import type { Broadcaster } from './broadcaster.ts';
+import type { LiveConfig } from './config.ts';
 import { notificationsChannel } from './notifications.ts';
 
 declare const broadcast: Broadcaster;
 declare const shared: SharedData;
+
+// The heartbeat and the reconnect delay say their unit in the name.
+export const heartbeat: LiveConfig['heartbeatSeconds'] = 20;
+export const retry: LiveConfig['retryMilliseconds'] = 3000;
+// @ts-expect-error — the old name is gone
+export type Old = LiveConfig['heartbeat'];
+// Namespace '"…/live/src/index"' has no exported member 'LiveBackend'.
+// @ts-expect-error — the backend belongs to the framework, not to the entry point
+export type Backend = import('@marmeon/live').LiveBackend;
 
 export function liveTypes() {
   const profile = { name: 'Ada' };

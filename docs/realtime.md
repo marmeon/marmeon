@@ -2,8 +2,6 @@
 
 ## Introduction
 
-`@marmeon/live` is experimental: it can change in any minor release. See [the release policy](releases.md#experimental).
-
 When something changes, the other tabs that show it should follow: another user added a link to a profile, a notification
 arrived, an administrator removed a row. A page **follows a channel**, and when something changes the server sends the channel a
 **hint**. Every tab that follows the channel then reloads the props it named, through the page's own route, as a partial reload.
@@ -284,7 +282,7 @@ Real-time updates are the hints on this page. These are not part of the framewor
 ## Testing
 
 In a test, hints go out as in production, and `app.broadcast` records them. `app.live(path)` opens the stream of a page, signed for
-the test's session (`BroadcastRecorder` and `LiveStreamReader`, to type a variable, come from `@marmeon/live/testing`):
+the test's session (`BroadcastTester` and `LiveStreamReader`, to type a variable, come from `@marmeon/live/testing`):
 
 ```ts title="modules/user-profile/live.test.ts"
 import { UserRepository, type User } from '#modules/auth';

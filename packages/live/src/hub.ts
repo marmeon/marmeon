@@ -28,9 +28,9 @@ export interface LiveStreamRequest {
 
 export interface LiveHubOptions {
   /** Seconds between heartbeats. */
-  readonly heartbeat: number;
+  readonly heartbeatSeconds: number;
   /** Milliseconds a browser waits before reconnecting (`retry:`). */
-  readonly retry: number;
+  readonly retryMilliseconds: number;
   /** Streams this process holds at most. */
   readonly maxStreams: number;
   /**
@@ -119,20 +119,20 @@ export class OpenStream {
   }
 
   /** Opens with `retry:` and `hello` (the channels' sequences), then the hints that came meanwhile; heartbeats from now on. */
-  hello(seqs: readonly number[], lastEventId: string | null | undefined, { retry, heartbeat, maxStreamSeconds = MAX_STREAM_SECONDS }: Pick<LiveHubOptions, 'retry' | 'heartbeat' | 'maxStreamSeconds'>): void {
+  hello(seqs: readonly number[], lastEventId: string | null | undefined, { retryMilliseconds, heartbeatSeconds, maxStreamSeconds = MAX_STREAM_SECONDS }: Pick<LiveHubOptions, 'retryMilliseconds' | 'heartbeatSeconds' | 'maxStreamSeconds'>): void {
     // Closed while `hello` was prepared (the tab went away, the server closes): no heartbeat for a stream nobody reads.
     if (this.#closed) return;
     const channels = [...this.channels];
     channels.forEach((channel, index) => this.#seqs.set(channel, seqs[index] ?? 0));
     const seen = seenIn(lastEventId);
     const missed = channels.filter((channel) => seen.has(channel) && seen.get(channel) !== this.#seqs.get(channel));
-    this.#write(`retry: ${retry}\n\n` + event('hello', { seq: Object.fromEntries(this.#seqs), ...(seen.size > 0 ? { missed } : {}) } satisfies LiveHello, eventId(this.#seqs)));
+    this.#write(`retry: ${retryMilliseconds}\n\n` + event('hello', { seq: Object.fromEntries(this.#seqs), ...(seen.size > 0 ? { missed } : {}) } satisfies LiveHello, eventId(this.#seqs)));
     const waiting = this.#waiting ?? [];
     this.#waiting = undefined;
     // Hints that came while `hello` was prepared: those it counted already are not told again (their sequence is at most its).
     for (const message of waiting) if (message.seq > (this.#seqs.get(message.channel) ?? 0)) this.hint(message);
     // A comment line now and then: proxies and load balancers close connections that stay silent.
-    this.#heartbeat = setInterval(() => outsideTransaction(() => this.#write(': heartbeat\n\n')), heartbeat * 1000);
+    this.#heartbeat = setInterval(() => outsideTransaction(() => this.#write(': heartbeat\n\n')), heartbeatSeconds * 1000);
     this.#heartbeat.unref?.();
     // A stream does not live for ever: it closes after a while (a little earlier by chance, so the tabs of one deploy do not return
     // together) and its browser is checked again.

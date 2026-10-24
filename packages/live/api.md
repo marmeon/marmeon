@@ -6,16 +6,7 @@
 
 Types from other packages: none
 
-### Augments
-
-```ts
-// @marmeon/notifications.NotificationChannelMap
-interface NotificationChannelMap {
-    live: {};
-}
-```
-
-### Experimental
+### Stable
 
 ```ts
 // Broadcaster
@@ -23,15 +14,12 @@ export interface Broadcaster {
     refresh(channel: string, options?: RefreshOptions): Promise<void>;
 }
 export declare const Broadcaster: import("@marmeon/core").Token<Broadcaster>;
-// LiveBackend
-export type LiveBackend = Backend;
-export declare const LiveBackend: import("@marmeon/core").Token<Backend>;
 // LiveConfig
 export declare const LiveConfig: import("@marmeon/core").ConfigDefinition<{
     driver: "memory" | "redis";
     redisConnection: string;
-    heartbeat: number;
-    retry: number;
+    heartbeatSeconds: number;
+    retryMilliseconds: number;
     maxStreams: number;
     maxStreamsPerSession: number;
     maxStreamSeconds: number;
@@ -43,25 +31,14 @@ export interface LiveHello {
     readonly seq: Readonly<Record<string, number>>;
     readonly missed?: readonly string[];
 }
-// LiveMessage
-export type LiveMessage = {
-    readonly kind: 'refresh';
-    readonly channel: string;
-    readonly only: readonly string[] | null;
-    readonly seq: number;
-    readonly except?: string | undefined;
-} | {
-    readonly kind: 'end';
-    readonly scope: string;
-};
 // LiveServiceProvider
 export declare class LiveServiceProvider implements ServiceProvider {
     #private;
     static config: import("@marmeon/core").ConfigDefinition<{
         driver: "memory" | "redis";
         redisConnection: string;
-        heartbeat: number;
-        retry: number;
+        heartbeatSeconds: number;
+        retryMilliseconds: number;
         maxStreams: number;
         maxStreamsPerSession: number;
         maxStreamSeconds: number;
@@ -86,16 +63,12 @@ export declare function notificationsChannel(recipient: {
 }): string;
 ```
 
-### Experimental, referenced (not exported)
+### Augments
 
 ```ts
-// LiveBackend
-export interface LiveBackend {
-    refresh(channel: string, only: readonly string[] | null, except: string | undefined): Promise<number>;
-    end(scope: string): Promise<void>;
-    seqs(channels: readonly string[]): Promise<number[]>;
-    listen(listener: (message: LiveMessage) => void): Promise<() => Promise<void>>;
-    close(): Promise<void>;
+// @marmeon/notifications.NotificationChannelMap
+interface NotificationChannelMap {
+    live: {};
 }
 ```
 
@@ -103,11 +76,11 @@ export interface LiveBackend {
 
 Types from other packages: none
 
-### Experimental
+### Stable
 
 ```ts
-// BroadcastRecorder
-export declare class BroadcastRecorder {
+// BroadcastTester
+export declare class BroadcastTester {
     #private;
     refreshed(channel?: string): readonly RecordedRefresh[];
     assertRefreshed(channel: string, { only, times }?: {
@@ -128,16 +101,15 @@ export interface LiveEvent {
 export declare class LiveStreamReader {
     #private;
     readonly response: Response;
-    readonly events: LiveEvent[];
-    heartbeats: number;
-    retry: number | undefined;
     readonly closed: Promise<void>;
-    constructor(response: Response);
+    get events(): readonly LiveEvent[];
+    get heartbeats(): number;
+    get retryMilliseconds(): number | undefined;
     get status(): number;
     get ended(): boolean;
     get hints(): LiveHint[];
-    hello(timeout?: number): Promise<LiveHello>;
-    waitFor(until: number | (() => boolean), timeout?: number, what?: string): Promise<void>;
+    hello(timeout?: Duration): Promise<LiveHello>;
+    waitFor(until: number | (() => boolean), timeout?: Duration, what?: string): Promise<void>;
     close(): Promise<void>;
 }
 // RecordedRefresh
@@ -148,7 +120,7 @@ export interface RecordedRefresh {
 }
 ```
 
-### Experimental, referenced (not exported)
+### Referenced, not exported
 
 ```ts
 // LiveHello
@@ -158,7 +130,7 @@ export interface LiveHello {
 }
 ```
 
-## Experimental
+## Environment
 
 ```ts
 // LIVE_CONNECTION

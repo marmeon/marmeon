@@ -37,7 +37,7 @@ import { AssertionError } from 'node:assert';
 import type { AuthUser } from '@marmeon/auth';
 import type { MailFake } from '@marmeon/mail/testing';
 import type { NotificationFake } from '@marmeon/notifications/testing';
-import type { BroadcastRecorder, LiveStreamReader } from '@marmeon/live/testing';
+import type { BroadcastTester, LiveStreamReader } from '@marmeon/live/testing';
 import type { QueueFake } from '@marmeon/queue/testing';
 import type { StorageFake } from '@marmeon/storage/testing';
 import type { DevtoolsTester } from '@marmeon/devtools/testing';
@@ -170,7 +170,7 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
   const storage = options.storage === 'real' ? undefined : await importStorage();
   let storageFake: StorageFake | undefined;
   const live = await importLive();
-  let broadcast: BroadcastRecorder | undefined;
+  let broadcast: BroadcastTester | undefined;
   const devtools = options.devtools ? await importDevtools() : undefined;
   let devtoolsTester: DevtoolsTester | undefined;
   let eventFake: EventFake | undefined;
@@ -222,8 +222,8 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
       }
       // Live hints are sent as in production (the streams of `app.live()` get them) — and recorded: `app.broadcast`.
       if (live && container.has(live.Broadcaster)) {
-        broadcast = new live.BroadcastRecorder();
-        container.instance(live.BroadcastRecorder, broadcast);
+        broadcast = new live.BroadcastTester();
+        container.instance(live.BroadcastTester, broadcast);
       }
       eventFake = new EventFake(container.make(EventRegistry), options.events === 'fake' ? 'all' : options.events === undefined || options.events === 'real' ? [] : options.events);
       container.instance(EventFake, eventFake);
@@ -350,7 +350,7 @@ interface Shared {
   /** What the devtools recorded, with `createTestApp(…, { devtools: true })`. */
   readonly devtools: DevtoolsTester | undefined;
   /** What the app's Broadcaster sent — when it has @marmeon/live. */
-  readonly broadcast: BroadcastRecorder | undefined;
+  readonly broadcast: BroadcastTester | undefined;
   readonly live: LiveModule | undefined;
   /** Every dispatched event. */
   readonly events: EventFake;
@@ -560,8 +560,8 @@ export class TestApp {
   readonly #session: Promise<SessionAccess | undefined>;
 
   /**
-   * Use `createTestApp()`. `shared` names experimental types of the devtools and live packages, which a stable
-   * signature must not.
+   * Use `createTestApp()`. `shared` names experimental types of the devtools package, which a stable signature
+   * must not.
    *
    * @internal
    */
@@ -618,10 +618,8 @@ export class TestApp {
    * What the app's `Broadcaster` sent — every refresh once it went out (after its commit): `app.broadcast.assertRefreshed(
    * \`users.${ada.id}\`, { only: ['profile'] })`, `assertNotRefreshed`, `assertNothingRefreshed`. The hints reach the streams as in
    * production (`app.live(path)`). Needs @marmeon/live.
-   *
-   * @experimental Follows `@marmeon/live`.
    */
-  get broadcast(): BroadcastRecorder {
+  get broadcast(): BroadcastTester {
     if (!this.#shared.broadcast) throw new Error('app.broadcast needs @marmeon/live in the app.');
     return this.#shared.broadcast;
   }
@@ -631,8 +629,6 @@ export class TestApp {
    * those given (`(await app.island(…)).page()?.live`) — and reads it as it arrives: `hello()`, `waitFor(n)`, `hints`. Signing
    * out through the same view ends it; it closes with the app or `stream.close()`. `connection` is the tab's id
    * (`x-marmeon-connection`, default `test-tab-0001`). See `docs/fakes.md#live-updates`.
-   *
-   * @experimental Follows `@marmeon/live`.
    */
   async live(
     target: string | readonly LiveSubscription[],

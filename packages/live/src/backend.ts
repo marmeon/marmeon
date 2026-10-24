@@ -1,3 +1,5 @@
+import { token } from '@marmeon/core';
+
 /**
  * Where hints travel: from the process that refreshes a channel to every process with a stream on it. `memory` — one
  * process (development, tests, a single server); `redis` — Redis pub/sub, every process of the app. Each channel counts its
@@ -16,6 +18,7 @@ export type LiveMessage =
     }
   | { readonly kind: 'end'; readonly scope: string };
 
+/** Where this app's hints travel — `memory` or `redis` (`LIVE_DRIVER`). */
 export interface LiveBackend {
   /** Counts the channel's sequence up and sends the hint to every process — in that order, atomically. Returns the seq. */
   refresh(channel: string, only: readonly string[] | null, except: string | undefined): Promise<number>;
@@ -27,6 +30,8 @@ export interface LiveBackend {
   listen(listener: (message: LiveMessage) => void): Promise<() => Promise<void>>;
   close(): Promise<void>;
 }
+
+export const LiveBackend = token<LiveBackend>('LiveBackend');
 
 /** How the memory backend bounds what it remembers of channels — like Redis's TTL on the sequence keys. */
 export interface MemoryLiveOptions {

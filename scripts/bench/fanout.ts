@@ -52,7 +52,7 @@ async function measure(count: number, runs: number, live: string | undefined): P
   const module = { ...((await load('backend')) as typeof import('../../packages/live/src/backend.ts')), ...((await load('hub')) as typeof import('../../packages/live/src/hub.ts')) };
   const logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => logger };
   const backend = new module.MemoryLiveBackend();
-  const hub = new module.LiveHub(backend, { heartbeat: 300, retry: 3000, maxStreams: count + 1 }, logger);
+  const hub = new module.LiveHub(backend, { heartbeatSeconds: 300, retryMilliseconds: 3000, maxStreams: count + 1 }, logger);
   const gc = (globalThis as { gc?: () => void }).gc;
   gc?.();
   const before = process.memoryUsage().heapUsed;
