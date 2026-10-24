@@ -1,6 +1,15 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseSync } from '../oxc.ts';
+import { entryInside } from './contain.ts';
+import { DiscoveryError } from './error.ts';
+import type { PackageInfo } from './resolve.ts';
+
+/** Levels of `export *` and re-exports the reader follows; a longer chain is a hostile or broken package, not a real one. */
+const MAX_REEXPORT_DEPTH = 64;
+
+/** The package a declaration file belongs to: every relative import is followed only inside its directory. */
+type Owner = Pick<PackageInfo, 'name' | 'dir'>;
 
 type Node = { type: string; start: number; end: number; [key: string]: any };
 
@@ -36,17 +45,41 @@ export interface DeclarationFile {
   readonly exports: Map<string, Location>;
 }
 
-/** Reads `.d.ts` files — the types `tsc` ships with a package — with caching and cycle safety. */
+/**
+ * Reads `.d.ts` files — the types `tsc` ships with a package — with caching and cycle safety. A relative import is followed only
+ * to a file inside the package (also by its real path), so a dependency cannot make discovery read files elsewhere on the disk.
+ */
 export class DeclarationReader {
   readonly #cache = new Map<string, DeclarationFile>();
+  /** Files whose reading failed: asking again throws the same error at once, so a hostile chain is parsed once, not once per class. */
+  readonly #failed = new Map<string, DiscoveryError>();
 
-  read(file: string): DeclarationFile {
+  read(file: string, owner: Owner): DeclarationFile {
+    return this.#read(file, owner, 0);
+  }
+
+  #read(file: string, owner: Owner, depth: number): DeclarationFile {
     const cached = this.#cache.get(file);
     if (cached) return cached;
+    const failed = this.#failed.get(file);
+    if (failed) throw failed;
+    if (depth > MAX_REEXPORT_DEPTH) {
+      throw new DiscoveryError(`${owner.name} has re-exports nested deeper than ${MAX_REEXPORT_DEPTH} levels, so its types cannot be read.`);
+    }
 
     const info: DeclarationFile = { file, values: new Set(), classes: new Map(), imports: new Map(), exports: new Map() };
     this.#cache.set(file, info); // before following re-exports, so cycles terminate
+    try {
+      this.#parse(file, owner, depth, info);
+    } catch (error) {
+      this.#cache.delete(file); // half read: a later read must not take it for complete
+      if (error instanceof DiscoveryError) this.#failed.set(file, error);
+      throw error;
+    }
+    return info;
+  }
 
+  #parse(file: string, owner: Owner, depth: number, info: DeclarationFile): void {
     const source = readFileSync(file, 'utf8');
     const { program } = parseSync(file, source);
 
@@ -63,19 +96,19 @@ export class DeclarationReader {
           break;
 
         case 'ExportAllDeclaration': {
-          const target = this.#relative(file, node.source.value);
+          const target = this.#relative(file, node.source.value, owner);
           if (target && !node.exported) {
-            for (const [name, location] of this.read(target).exports) if (name !== 'default') info.exports.set(name, location);
+            for (const [name, location] of this.#read(target, owner, depth + 1).exports) if (name !== 'default') info.exports.set(name, location);
           }
           break;
         }
 
         case 'ExportNamedDeclaration':
           if (node.source) {
-            const target = this.#relative(file, node.source.value);
+            const target = this.#relative(file, node.source.value, owner);
             // `export type { Guards } from …` makes no value: a class exported so cannot be injected, there is nothing to import at runtime.
             if (target && node.exportKind !== 'type') {
-              const targetExports = this.read(target).exports;
+              const targetExports = this.#read(target, owner, depth + 1).exports;
               for (const specifier of node.specifiers) {
                 if (specifier.exportKind === 'type') continue;
                 const location = targetExports.get(specifier.local.name ?? specifier.local.value);
@@ -107,7 +140,6 @@ export class DeclarationReader {
           this.#declare(node, info, source, false);
       }
     }
-    return info;
   }
 
   #declare(declaration: Node, info: DeclarationFile, source: string, exported: boolean): void {
@@ -129,18 +161,28 @@ export class DeclarationReader {
   }
 
   /** `./x.js` → `./x.d.ts` (also `.mjs` → `.d.mts`, extensionless → `.d.ts` or `/index.d.ts`). */
-  #relative(fromFile: string, specifier: string): string | undefined {
+  #relative(fromFile: string, specifier: string, owner: Owner): string | undefined {
     if (!specifier.startsWith('.')) return undefined;
     const base = resolve(dirname(fromFile), specifier);
     const candidates = /\.m?[jt]s$/.test(base)
       ? [base.replace(/\.m?[jt]s$/, (ext) => (ext.startsWith('.m') ? '.d.mts' : '.d.ts'))]
       : [`${base}.d.ts`, `${base}/index.d.ts`];
-    return candidates.find((candidate) => existsSync(candidate));
+    // `..` or `./` names the package's own root: the candidate above it lies outside, `index.d.ts` inside is the one meant.
+    let outside = false;
+    for (const candidate of candidates) {
+      if (!entryInside(owner.dir, candidate)) {
+        outside = true;
+        continue;
+      }
+      if (existsSync(candidate)) return candidate;
+    }
+    if (outside) throw new DiscoveryError(`${owner.name} imports "${specifier}" in its types, which lies outside the package.`);
+    return undefined;
   }
 
   /** Resolves a relative import of `fromFile` to the declaration file it points at. */
-  relativeTarget(fromFile: string, specifier: string): string | undefined {
-    return this.#relative(fromFile, specifier);
+  relativeTarget(fromFile: string, specifier: string, owner: Owner): string | undefined {
+    return this.#relative(fromFile, specifier, owner);
   }
 }
 

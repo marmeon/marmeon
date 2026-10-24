@@ -4,19 +4,21 @@
  * of resolution conditions; module paths are relative to the app, so transitive dependencies resolve. The manifest is read, not
  * imported: `node --watch` never sees it, so regenerating it never restarts a dev server.
  */
-import { withCode, withoutCode } from '../error-codes.ts';
+import { withoutCode } from '../error-codes.ts';
 import { entryInside } from './contain.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
+import { DiscoveryError } from './error.ts';
+
+export { DiscoveryError };
 import {
   exportedSubpaths,
   findPackage,
   resolveExports,
   resolveTypes,
-  printable,
   runtimeConditions,
   splitSpecifier,
   type PackageInfo,
@@ -26,15 +28,6 @@ import {
 const MANIFEST_VERSION = '3';
 const UNRESOLVABLE = Symbol.for('marmeon.injection.unresolvable');
 const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'];
-
-export class DiscoveryError extends Error {
-  override name = 'DiscoveryError';
-
-  /** The message may quote text of a foreign package (a parameter, a file name): it is written with control characters escaped. */
-  constructor(message: string) {
-    super(withCode('K7', printable(message)));
-  }
-}
 
 /** The entry a package names, which must lie in the package (also by its real path): discovery imports it and reads its types. */
 function contained(pkg: PackageInfo, entry: string | undefined): string | undefined {
@@ -127,8 +120,8 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
       // `./table`, whose optional peer an app without tables does not install — is never loaded on the server.
       const module = () => moduleIndex(pathToFileURL(jsEntry).href);
 
-      for (const [publicName, location] of reader.read(typesEntry).exports) {
-        const params = reader.read(location.file).classes.get(location.name);
+      for (const [publicName, location] of reader.read(typesEntry, pkg).exports) {
+        const params = reader.read(location.file, pkg).classes.get(location.name);
         const key = `${location.file}#${location.name}`;
         if (!params || seen.has(key)) continue;
         seen.add(key);
@@ -156,7 +149,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
 
     for (const provider of marmeonField(pkg)?.providers ?? []) {
       const typesEntry = rootEntry && typesEntryOf(pkg, '.', rootEntry);
-      if (!rootEntry || !typesEntry || !reader.read(typesEntry).exports.has(provider)) {
+      if (!rootEntry || !typesEntry || !reader.read(typesEntry, pkg).exports.has(provider)) {
         throw new DiscoveryError(`${pkg.name} lists provider "${provider}" in package.json, but its entry does not export it.`);
       }
       providers.push([moduleIndex(pathToFileURL(rootEntry).href), provider]);
@@ -284,7 +277,7 @@ interface ResolveContext {
 function resolveDependency(type: string, location: Location, pkg: PackageInfo, context: ResolveContext): PublicRef {
   const { reader, conditions, where } = context;
   const [root, member] = type.split('.');
-  const file = reader.read(location.file);
+  const file = reader.read(location.file, pkg);
 
   let declared: Location | undefined;
   let home = pkg;
@@ -301,8 +294,8 @@ function resolveDependency(type: string, location: Location, pkg: PackageInfo, c
     if (!name) throw new DiscoveryError(`Cannot inject ${where}: a namespace itself cannot be injected.`);
 
     if (imported.from.startsWith('.')) {
-      const target = reader.relativeTarget(location.file, imported.from);
-      declared = target ? reader.read(target).exports.get(name) : undefined;
+      const target = reader.relativeTarget(location.file, imported.from, pkg);
+      declared = target ? reader.read(target, pkg).exports.get(name) : undefined;
     } else {
       const { name: packageName, subpath } = splitSpecifier(imported.from);
       const found = findPackage(packageName, pkg.dir); // from the OWNER's directory
@@ -310,11 +303,11 @@ function resolveDependency(type: string, location: Location, pkg: PackageInfo, c
       home = found;
       const js = jsEntryOf(home, subpath, conditions);
       const types = js && typesEntryOf(home, subpath, js);
-      declared = types ? reader.read(types).exports.get(name) : undefined;
+      declared = types ? reader.read(types, home).exports.get(name) : undefined;
     }
   }
 
-  if (!declared || !reader.read(declared.file).values.has(declared.name)) {
+  if (!declared || !reader.read(declared.file, home).values.has(declared.name)) {
     throw new DiscoveryError(`Cannot inject ${where}: "${type}" is only a type — the package needs to export a token for it.`);
   }
 
@@ -331,7 +324,7 @@ function publicRef(pkg: PackageInfo, declared: Location, reader: DeclarationRead
     const js = jsEntryOf(pkg, subpath, conditions);
     const types = js && typesEntryOf(pkg, subpath, js);
     if (!js || !types) continue;
-    for (const [exportName, location] of reader.read(types).exports) {
+    for (const [exportName, location] of reader.read(types, pkg).exports) {
       if (location.file === declared.file && location.name === declared.name) {
         return { url: pathToFileURL(js).href, exportName };
       }
