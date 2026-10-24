@@ -463,7 +463,7 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | Q6 | `notifications` | Notifications are not set up: a class without a name, schema or `via()`, a name or channel taken twice, or a package or provider missing. [Defining notifications](notifications.md#defining-notifications) |
 | Q7 | `mail` | An MJML template is invalid, or the `mjml` package is not installed. [Writing mails](mail.md#writing-mails) |
 | S1 | `cache` | The cache is not set up: a driver's package or provider is missing, the driver is unknown, or a custom driver breaks its contract. [Drivers](cache.md#drivers) |
-| S2 | `storage` | Storage is not set up: a disk, its driver, its visibility or its URL is configured wrongly, or the AWS SDK or another package is missing. [Configuration](storage.md#configuration) |
+| S2 | `storage` | Storage is not set up: a disk, its driver, its visibility or its URL is configured wrongly, or the AWS SDK or another package is missing, or a body schema holds an `upload()` in a list, a union, an optional object or `.when()` fields. [Configuration](storage.md#configuration), [Uploads](storage.md#uploads) |
 | S3 | `storage` | A storage key a disk refuses: `..`, an absolute path, a backslash, a control character or a symlink out of the disk's root. [Keys](storage.md#keys) |
 | S4 | `otel` | The OpenTelemetry API is not installed, or is not version 1. [Installation](observability.md#installation) |
 | S5 | `i18n` | A message with a syntax error, such as an unclosed placeholder. [Messages](localization.md#messages) |

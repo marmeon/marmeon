@@ -1,6 +1,9 @@
 import type { Upload } from '@marmeon/http/page';
 import { translatable, type JoinNames } from '@marmeon/router';
+import { withCode } from '@marmeon/core/internal';
 import { metaOf, rules as r, type Rule } from '@marmeon/validation';
+import { contentsOf } from '@marmeon/validation/internal';
+import { StorageSetupError } from '../errors.ts';
 import { isActiveType, UPLOAD_TYPES, type UploadMime } from './sniff.ts';
 import { RejectedUpload, TemporaryUpload, type UploadProblem } from './temporary-upload.ts';
 
@@ -96,25 +99,73 @@ export function uploadRuleOf(schema: unknown): UploadRule | undefined {
   return metaOf(schema, UPLOAD_RULE) as UploadRule | undefined;
 }
 
+/** Whether an `upload()` is in `node` or below it — through the same cases as {@link contentsOf}; `seen` ends a loop in a shape an app changed. */
+function holdsUpload(node: unknown, seen: WeakSet<object>): boolean {
+  if (typeof node !== 'object' || node === null || seen.has(node)) return false;
+  seen.add(node);
+  if (uploadRuleOf(node)) return true;
+  const contents = contentsOf(node);
+  switch (contents?.kind) {
+    case 'object':
+      return [contents.fields, ...contents.conditional].some((shape) => Object.values(shape).some((entry) => holdsUpload(entry, seen)));
+    case 'list':
+      return holdsUpload(contents.item, seen);
+    case 'union':
+      return contents.options.some((option) => holdsUpload(option, seen));
+    case 'modified':
+      return holdsUpload(contents.rule, seen);
+    default:
+      return false;
+  }
+}
+
 /**
  * The upload fields of a body schema — an object of rules (`r.object`) — by path (`avatar`, `profile.photo`): its fields, and
- * the fields of objects in it. Lists of files and optional objects of files are not supported yet.
+ * the fields of objects in it. An `upload()` anywhere else — in a list, in a union, in an optional or nullable object, in
+ * fields that apply only under a condition — throws a {@link StorageSetupError}: the form could never send it.
  */
 export function uploadFields(schema: unknown): Map<string, UploadRule> {
   const found = new Map<string, UploadRule>();
-  const walk = (node: unknown, path: string, depth: number) => {
-    if (depth > 10) return;
+  const OPTIONAL = 'a file in an optional or nullable rule';
+  // A list or a union says more than the optional rule around it.
+  const reason = (outer: string | undefined, own: string) => (outer === undefined || outer === OPTIONAL ? own : outer);
+  const walk = (node: unknown, path: string, depth: number, unsupported: string | undefined) => {
+    // Depth counts the fields of objects; an upload found below the cap is refused, not skipped.
+    if (depth > 10) {
+      if (holdsUpload(node, new WeakSet())) throw new StorageSetupError(withCode('S2', `${path === '' ? 'The body' : `\`${path}\``} is nested deeper than 10 fields — flatten the body schema, the files in it cannot be found (docs/storage.md#uploads).`));
+      return;
+    }
     const rule = uploadRuleOf(node);
     if (rule) {
+      if (unsupported !== undefined) {
+        throw new StorageSetupError(
+          withCode('S2', `${path === '' ? 'The body' : `\`${path}\``} holds ${unsupported}, which uploads do not support yet — give each file a field of its own in an object that is always there (docs/storage.md#uploads).`),
+        );
+      }
       if (path !== '') found.set(path, rule);
       return;
     }
-    // An object rule's fields (`r.object()`'s `entries`).
-    const entries = typeof node === 'object' && node !== null ? (node as { readonly entries?: unknown }).entries : undefined;
-    if (typeof entries === 'object' && entries !== null) {
-      for (const [key, entry] of Object.entries(entries)) walk(entry, path === '' ? key : `${path}.${key}`, depth + 1);
+    const contents = contentsOf(node);
+    if (!contents) return;
+    const field = (key: string) => (path === '' ? key : `${path}.${key}`);
+    switch (contents.kind) {
+      case 'object':
+        for (const [key, entry] of Object.entries(contents.fields)) walk(entry, field(key), depth + 1, unsupported);
+        for (const shape of contents.conditional) {
+          for (const [key, entry] of Object.entries(shape)) walk(entry, field(key), depth + 1, reason(unsupported, 'a file in fields that apply only under a condition'));
+        }
+        break;
+      case 'list':
+        walk(contents.item, path, depth, reason(unsupported, 'a list of files'));
+        break;
+      case 'union':
+        for (const option of contents.options) walk(option, path, depth, reason(unsupported, 'a file in a union'));
+        break;
+      case 'modified':
+        walk(contents.rule, path, depth, unsupported ?? OPTIONAL);
+        break;
     }
   };
-  walk(schema, '', 0);
+  walk(schema, '', 0, undefined);
   return found;
 }

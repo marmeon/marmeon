@@ -218,7 +218,10 @@ controller, the [validation](validation.md#uploads) page the rule, and the [form
 - **The types a rule can name** are those known by their first bytes: PNG, JPEG, GIF, WebP and AVIF images, PDF, ZIP, MP4 and MP3.
   Any other type in `mime` throws when the rule is built. A file of another format, such as CSV, counts as
   `application/octet-stream`, which only a rule without `mime` accepts.
-- **Not yet:** lists of files, a file inside an optional or nullable object, and a form without JavaScript.
+- **One file per field.** A file belongs in a field of its own, in the body or in an object that is always there; the field
+  itself may be `upload(…).nullable()`. A list of files, a file inside an optional or nullable object, in a union or in
+  `.when()` fields stops the start when the routes load (error S2), and the message names the field. (A form without JavaScript is not
+  supported either.)
 
 On S3, the browser sends the file straight to the bucket with a presigned POST that limits its size. The bucket then needs CORS
 for your app's origin, and the app one more package: `pnpm add @aws-sdk/s3-presigned-post@^3`.

@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@marmeon/core';
 import { issueOfFields, parseQuery, translatable } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { metaOf, rules as r, type Rule } from './index.ts';
+import { contentsOf } from './internal.ts';
 
 type Result = { value?: unknown; issues?: readonly { message: string; path?: readonly PropertyKey[] }[] };
 
@@ -379,5 +380,25 @@ describe('Standard Schema', () => {
     const short = name.max(2);
     expect(await check(name, 'Ada')).toEqual({ value: 'Ada' });
     expect(await errors(short, 'Ada')).toEqual({ _: ['The value field must not be longer than 2 characters.'] });
+  });
+});
+
+describe('contentsOf — the rules inside a rule', () => {
+  const item = r.string();
+
+  it('names an object’s fields, a list’s item, a union’s options and what a modifier wraps', () => {
+    expect(contentsOf(r.object({ a: item }))).toMatchObject({ kind: 'object', fields: { a: item } });
+    expect(contentsOf(r.array(item))).toEqual({ kind: 'list', item });
+    expect(contentsOf(r.list(item))).toEqual({ kind: 'list', item });
+    expect(contentsOf(r.union([item, r.literal('x')]))).toMatchObject({ kind: 'union', options: [item, expect.anything()] });
+    const object = r.object({ a: item });
+    for (const wrapped of [object.optional(), object.nullable(), object.default({ a: '' })]) expect(contentsOf(wrapped)).toEqual({ kind: 'modified', rule: object });
+  });
+
+  it('survives custom() and transform(), and is nothing for a rule without others inside', () => {
+    expect(contentsOf(r.object({ a: item }).custom(() => true))).toMatchObject({ kind: 'object' });
+    expect(contentsOf(r.array(item).transform((list) => list.length))).toMatchObject({ kind: 'list' });
+    expect(contentsOf(item)).toBeUndefined();
+    expect(contentsOf({ '~standard': {} })).toBeUndefined();
   });
 });

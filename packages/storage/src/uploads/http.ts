@@ -1,6 +1,6 @@
 import type { Container, Resolver } from '@marmeon/core';
 import { HttpError, type ClassResolver, type HttpContext, type RequestDefinition, type StandardSchemaV1 } from '@marmeon/router';
-import { FRAMEWORK_ROUTES } from '@marmeon/router/internal';
+import { FRAMEWORK_ROUTES, isControllerClass } from '@marmeon/router/internal';
 import { RejectedUpload } from './temporary-upload.ts';
 import { uploadFields } from './rule.ts';
 import type { TemporaryUploads } from './service.ts';
@@ -51,6 +51,13 @@ function locate(input: Record<string, unknown>, path: string): { holder: Record<
  */
 export function registerUploads(http: Http, uploadHeader: string, container: Container, uploads: () => TemporaryUploads): void {
   const router = container.make(http.Router);
+
+  // The routes are read now, not at the first submit: a static body schema with an upload no form could send stops the start.
+  // A schema built by a factory needs the app's services, so it is read with the request (where `uploadFields` throws the same way).
+  router.checkRoutes((route) => {
+    if (!isControllerClass(route.action) || !route.action.request?.schema || typeof route.action.request.schema === 'function') return;
+    uploadFields(route.action.request.schema);
+  });
 
   router.intercept({
     claims: (request) => request.headers.has(uploadHeader) && !new URL(request.url).pathname.startsWith(`${UPLOADS_PREFIX}/`),
