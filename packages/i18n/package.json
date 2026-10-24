@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/i18n",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Translations for Marmeon apps: typed messages per module (TS files), an ICU subset, a translator per request and the locale middleware. UI-agnostic — `@marmeon/i18n/messages` is the browser-safe core the UI adapters build on.",
   "keywords": [
     "marmeon",

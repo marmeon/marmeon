@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/devtools",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Development tools for Marmeon apps: redacted recordings of requests, queries, jobs, mails and more, with a toolbar and pages.",
   "keywords": [
     "marmeon",
