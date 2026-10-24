@@ -25,7 +25,7 @@ class Accounts implements UserProvider {
     const row = await this.#db().selectFrom('accounts').select('session_key').where('id', '=', Number(id)).executeTakeFirst();
     return row && { user, passwordHash: null, sessionKey: row.session_key };
   }
-  async findForLogin(): Promise<Credentials | undefined> {
+  async findForSignIn(): Promise<Credentials | undefined> {
     return undefined;
   }
   async updatePasswordHash(): Promise<boolean> {

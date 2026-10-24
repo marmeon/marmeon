@@ -25,7 +25,7 @@ describe('the welcome mail', () => {
   it('is queued by the registration (QueueFake), not sent in the request — and sent when the job runs, in the account language', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     await register(app, 'de').assertRedirect('/register/sent');
-    const user = (await app.make(UserRepository).findForLogin('kj@example.com'))!.user;
+    const user = (await app.make(UserRepository).findForSignIn('kj@example.com'))!.user;
 
     app.queue.assertDispatchedTimes(SendWelcomeMailJob, 1).assertDispatched(SendWelcomeMailJob, (payload, job) => payload.userId === user.id && job.delay === 0);
     app.mail.assertNotSent(WelcomeMail);
@@ -41,7 +41,7 @@ describe('the welcome mail', () => {
   it('is discarded when the account is gone by the time the job runs — no mail, no failed job', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     await register(app).assertRedirect('/register/sent');
-    const user = (await app.make(UserRepository).findForLogin('kj@example.com'))!.user;
+    const user = (await app.make(UserRepository).findForSignIn('kj@example.com'))!.user;
     await app.make(UserRepository).delete(user.id);
 
     expect(await app.queue.work({ queues: ['default'], maxJobs: 1 })).toMatchObject({ processed: 1, failed: 0 });
@@ -90,7 +90,7 @@ describe('the welcome mail', () => {
   it('is sent once per account (job.once): a second job for the same account — or a retry after the mail went out — sends nothing', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     await register(app).assertRedirect('/register/sent');
-    const user = (await app.make(UserRepository).findForLogin('kj@example.com'))!.user;
+    const user = (await app.make(UserRepository).findForSignIn('kj@example.com'))!.user;
     await app.make(Queue).dispatch(SendWelcomeMailJob, { userId: user.id });
     await app.queue.work();
     app.mail.assertSentCount(WelcomeMail, 1);

@@ -3,7 +3,7 @@ import type { CommandInput } from 'marmeon';
 import { AccountSessions } from './account-sessions.ts';
 import { TwoFactorDisabled } from './events.ts';
 import { TwoFactorState } from './two-factor/state.ts';
-import { idOf, UserProvider } from './user.ts';
+import { assertSignInFinder, idOf, UserProvider } from './user.ts';
 
 /** Exact, trimmed lookup: an address typed in capitals finds nothing when the account stores it in lower case. */
 const noAccount = (identifier: string) => `No account has the identifier ${identifier}: the lookup is exact (only trimmed), so type it as it is stored, e.g. ${identifier.toLowerCase()}.`;
@@ -14,7 +14,7 @@ const noAccount = (identifier: string) => `No account has the identifier ${ident
  * person asking is the owner runs it — hence `--force`, in every environment. The owner gets the mail about it (`TwoFactorDisabled` with
  * `via: 'operator'`), the log gets a line. It ends every session and remember-me cookie of the account first, so a session that is open on
  * a lost device, or an attacker's, cannot enrol a "first" factor once the account has none; the next sign-in needs the password only.
- * The account is found by `UserProvider.findForLogin()` with the identifier as the sign-in form normalizes it.
+ * The account is found by `UserProvider.findForSignIn()` with the identifier as the sign-in form normalizes it.
  */
 export class ResetTwoFactorCommand {
   static command = 'auth:reset-two-factor';
@@ -44,7 +44,8 @@ export class ResetTwoFactorCommand {
       output.error('Usage: marmeon auth:reset-two-factor <identifier> --force');
       return 1;
     }
-    const found = await this.#users.findForLogin(identifier);
+    assertSignInFinder(this.#users);
+    const found = await this.#users.findForSignIn(identifier);
     if (!found) {
       output.error(noAccount(identifier));
       return 1;

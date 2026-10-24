@@ -24,7 +24,7 @@ class Users implements UserProvider {
     const user = id === 2 ? bob : id === 1 ? ada : undefined;
     return user && { user, passwordHash: this.hash, sessionKey: this.keys.get(id) ?? null };
   }
-  async findForLogin(email: string): Promise<Credentials | undefined> {
+  async findForSignIn(email: string): Promise<Credentials | undefined> {
     return this.findById(email === bob.email ? 2 : 1);
   }
   async updatePasswordHash(id: number, hash: PasswordHash, options: { readonly expected?: PasswordHash; readonly sessionKey?: string; readonly expectedSessionKey?: string | null } = {}): Promise<boolean> {

@@ -39,7 +39,7 @@ class MemoryUsers implements UserProvider<TestUser> {
     const row = this.rows.get(Number(id));
     return row && { user: row.user, passwordHash: row.hash, sessionKey: this.keys.get(Number(id)) ?? null };
   }
-  async findForLogin(email: string): Promise<Credentials<TestUser> | undefined> {
+  async findForSignIn(email: string): Promise<Credentials<TestUser> | undefined> {
     for (const row of this.rows.values()) if (row.user.email === email) return { user: row.user, passwordHash: row.hash, sessionKey: this.keys.get(row.user.id) ?? null };
     return undefined;
   }

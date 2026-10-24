@@ -10,7 +10,7 @@ const ada: AuthUser = { id: 7, name: 'Ada', email: 'ada@example.com' };
 const users = (overrides: Partial<UserProvider> = {}) =>
   ({
     findById: async () => ({ user: ada, passwordHash: null, sessionKey: 'k' }) satisfies Credentials,
-    findForLogin: async () => undefined,
+    findForSignIn: async () => undefined,
     updatePasswordHash: async () => {},
     updateSessionKey: async () => true,
     updateEverySessionKey: async () => ({ accounts: 1, sampleId: ada.id }),

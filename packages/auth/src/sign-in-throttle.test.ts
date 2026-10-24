@@ -26,9 +26,9 @@ class RecordLockout {
 
 class SpyUsers extends MemoryUsers<AuthUser> {
   lookups = 0;
-  override async findForLogin(identifier: string) {
+  override async findForSignIn(identifier: string) {
     this.lookups++;
-    return super.findForLogin(identifier);
+    return super.findForSignIn(identifier);
   }
 }
 

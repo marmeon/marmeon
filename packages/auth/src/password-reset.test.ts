@@ -34,7 +34,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
   let refuseWrites = false;
   const users: UserProvider = {
     findById: async () => undefined,
-    findForLogin: async (email) => (email === ada.email && !accountGone ? { user: ada, passwordHash: hash, sessionKey: null } : undefined),
+    findForSignIn: async (email) => (email === ada.email && !accountGone ? { user: ada, passwordHash: hash, sessionKey: null } : undefined),
     updatePasswordHash: async (_id, next) => (refuseWrites ? false : ((hash = next), written.push(inTransaction()), true)),
     updateSessionKey: async () => false,
     updateEverySessionKey: async () => ({ accounts: 0, sampleId: undefined }),

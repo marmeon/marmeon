@@ -6,7 +6,7 @@ import { PasswordReset } from './events.ts';
 import { Hasher } from './hashing.ts';
 import { SignInThrottle, type DeviceCookie } from './sign-in-throttle.ts';
 import { NewPassword } from './new-password.ts';
-import { idOf, UserProvider, type AuthUser } from './user.ts';
+import { assertSignInFinder, idOf, UserProvider, type AuthUser } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
 
 /** The table the app's migration creates (`make:auth` writes it) — see {@link PasswordResetTokenTable}. */
@@ -156,7 +156,8 @@ export class PasswordBroker {
    * one within `AUTH_RESET_THROTTLE_SECONDS` of the last token, so the answer never tells whether an account exists.
    */
   async createToken(email: string): Promise<Result<{ user: AuthUser; token: string }, { readonly kind: 'unavailable' }>> {
-    const found = await this.#users.findForLogin(email);
+    assertSignInFinder(this.#users);
+    const found = await this.#users.findForSignIn(email);
     if (!found) return err({ kind: 'unavailable' });
     const created = await this.#tokens.create(email, this.#config.resetThrottle);
     return created.ok ? ok({ user: found.user, token: created.value }) : err({ kind: 'unavailable' });
@@ -180,9 +181,10 @@ export class PasswordBroker {
    */
   async reset(email: string, value: string, password: string): Promise<Result<AuthUser, { readonly kind: 'invalid-token' }>> {
     this.#newPassword.assertReady(); // before the token is spent
+    assertSignInFinder(this.#users);
     const consumed = await this.#tokens.consume(email, value, this.#config.resetExpire * 60);
     if (!consumed.ok) return consumed; // as the store made it: an expired token's deletion keeps its commitAnyway
-    const found = await this.#users.findForLogin(email);
+    const found = await this.#users.findForSignIn(email);
     if (!found) return commitAnyway(err({ kind: 'invalid-token' })); // the token is used up for good
     const { revoked } = await this.#newPassword.store(this.#users, idOf(found.user), await this.#hasher.make(password), 'reset', found.user);
     // The owner is back in: the account takes passwords again, if guesses had shut it (best effort: the reset already stands).

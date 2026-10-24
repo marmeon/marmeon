@@ -77,7 +77,7 @@ export async function everyoneEndedIsReadOnly() {
 // A provider keeps the whole contract: the session-key methods, and a password write that says whether it wrote.
 export const fullProvider: UserProvider = {
   findById: async () => undefined,
-  findForLogin: async () => undefined,
+  findForSignIn: async () => undefined,
   updatePasswordHash: async (_id, _hash, _options): Promise<boolean> => true,
   updateSessionKey: async (): Promise<boolean> => true,
   updateEverySessionKey: async () => ({ accounts: 0, sampleId: undefined }),

@@ -104,7 +104,7 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.#credentials(this.query().where('id', '=', id));
   }
 
-  findForLogin(email: string): Promise<Credentials<User> | undefined> {
+  findForSignIn(email: string): Promise<Credentials<User> | undefined> {
     return this.#credentials(this.query().where('email', '=', email));
   }
 
@@ -132,8 +132,8 @@ your own that leaves one out does not compile.
 `Credentials` is `{ user, passwordHash, sessionKey }`: the hash travels next to the user, never inside it, so it cannot reach a page by
 accident. A user who cannot sign in with a password has `passwordHash: null`. The `sessionKey` is a value of
 the account that ends its other sessions when it changes, as [signing out without a password](#signing-out-other-devices-without-a-password)
-explains; it is `null` for an account that has none yet. Both `findById()` and `findForLogin()` must return it: a `findForLogin()` that
-leaves out a key `findById()` returns makes `attempt()` throw, and a bad sign-in is not what it reports. `findForLogin()` gets what the person typed after
+explains; it is `null` for an account that has none yet. Both `findById()` and `findForSignIn()` must return it: a `findForSignIn()` that
+leaves out a key `findById()` returns makes `attempt()` throw, and a bad sign-in is not what it reports. `findForSignIn()` gets what the person typed after
 the request's schema normalized it; the starter kit's schema trims the address and makes it lower case. Compare it exactly (binary,
 case-sensitive) with the stored, normalized address: a database collation that treats `é` and `e`, or trailing spaces, as equal finds
 an account for a spelling that has a counter of its own, and so lets anyone test which spellings an account answers to. Until a provider is
@@ -658,7 +658,7 @@ export default defineMigration({
 });
 ```
 
-Your provider stores the key and hands it back as `sessionKey` from `findById()` and `findForLogin()`. A secret column is read
+Your provider stores the key and hands it back as `sessionKey` from `findById()` and `findForSignIn()`. A secret column is read
 only with `secret()`, as the starter kit's `UserRepository` reads the password hash. Its parts that signing in needs, with the
 session key added:
 
@@ -674,7 +674,7 @@ export class UserRepository extends Repository<'users'> implements UserProvider<
     return this.#credentials(this.query().where('id', '=', id));
   }
 
-  findForLogin(email: string): Promise<Credentials<User> | undefined> {
+  findForSignIn(email: string): Promise<Credentials<User> | undefined> {
     return this.#credentials(this.query().where('email', '=', email));
   }
 
@@ -878,7 +878,7 @@ sign-ins are gone by then. The starter kit's accounts have a `session_key` colum
 A custom `SignInStore` needs `remembered(cookie)`, which says whether the token of a cookie is still stored and must see an `endAll()` at once (no cache, no lagging replica), or a session survives `end()`; a sign-in by a
 remember-me cookie asks it right before it starts. A store without `endAll()` (JavaScript, a cast) makes `end()` throw error A6 before it changes anything.
 
-`@marmeon/auth` brings this as a command, `marmeon auth:end-sessions <identifier> --force` (the identifier as your sign-in form normalizes it; the account is found by `UserProvider.findForLogin()`), for an operator who has no admin page.
+`@marmeon/auth` brings this as a command, `marmeon auth:end-sessions <identifier> --force` (the identifier as your sign-in form normalizes it; the account is found by `UserProvider.findForSignIn()`), for an operator who has no admin page.
 It prints how many stored sessions it deleted at once (the others end at their next request), requires `--force` in every environment,
 exits with 1 for an unknown identifier, and shows an error of the call instead of hiding it. The password still signs in, so change it first when it may be known.
 
@@ -1154,7 +1154,7 @@ another place:
 
 | Contract | Kind | Required members | Default | If a member is missing |
 | --- | --- | --- | --- | --- |
-| `UserProvider` (`@marmeon/auth`) | Interface | `findById`, `findForLogin`, `updatePasswordHash`, `updateSessionKey`, `updateEverySessionKey` (both finders return `Credentials` with `sessionKey`) | None: the app binds one. The starter kit's `UserRepository` delegates the last three to `credentialWriter()`. | Does not compile. In JavaScript or through a cast, a missing `updateSessionKey` or `updateEverySessionKey` is error A5 when needed; any other member is a plain `TypeError`. |
+| `UserProvider` (`@marmeon/auth`) | Interface | `findById`, `findForSignIn`, `updatePasswordHash`, `updateSessionKey`, `updateEverySessionKey` (both finders return `Credentials` with `sessionKey`) | None: the app binds one. The starter kit's `UserRepository` delegates the last three to `credentialWriter()`. | Does not compile. In JavaScript or through a cast, a missing `updateSessionKey` or `updateEverySessionKey` is error A5 when needed; any other member is a plain `TypeError`. |
 | `Hasher` (`@marmeon/auth`) | Interface | `make`, `verify`, `needsRehash`, `dummyVerify`, `failureFloorMs` | `PasswordHasher` (Argon2id by default), bound by the package. | Does not compile. In JavaScript, error A6 at the first sign-in without `failureFloorMs`, or when it answers anything but a finite number of milliseconds, 0 or more. |
 | `SignInStore` (`@marmeon/auth`) | Abstract class | `create`, `seen`, `list`, `end`, `endAll`, `endEveryone`, `prune`, `issueToken`, `dropToken`, `consume`, `remembered`, `forgetToken`, `rebind` | `DatabaseSignIns` on `sign_ins`, once the app has a `UserProvider`. | Does not compile. In JavaScript, error A6 for `endAll`, `dropToken` or `endEveryone`, before anything is ended. |
 | `PasswordResetTokenStore` (`@marmeon/auth`) | Abstract class | `create`, `consume`, `forget`, `prune`, `forgetEveryone` | `DatabasePasswordResetTokens` on `password_reset_tokens`. | Does not compile. In JavaScript, error A6 for `forgetEveryone`. |
@@ -1172,8 +1172,8 @@ a member that is never has a default.
 
 ### For your own user provider
 
-A `UserProvider` implements every method of the table. `findById()` and `findForLogin()` both return the `sessionKey`, and
-`updatePasswordHash()` answers with a boolean. The other three decide whether a session survives, so the package writes them for
+A `UserProvider` implements every method of the table. `findById()` and `findForSignIn()` both return the `sessionKey`, and
+`updatePasswordHash()` answers with a boolean. A provider that still has the old name `findForLogin()` stops the app at its start with an A5 error that names `findForSignIn()`; the signature is the same. The other three decide whether a session survives, so the package writes them for
 you: `credentialWriter(db, { table })` returns them for a table with the columns `id`, `password`, `session_key` and `updated_at`
 (`table` defaults to `'users'` and must be a plain lower-case name, or it throws a `TypeError`). Delegate to it, as the starter
 kit's `UserRepository` does. The kit keeps the default table; a repository of your own passes its table, which `Repository.table`

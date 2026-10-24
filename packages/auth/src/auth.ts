@@ -17,7 +17,7 @@ import { clearPasswordCheck, takePasswordCheck, type PasswordCheckError, type Pa
 import { describeDevice } from './device.ts';
 import { SignInStore, type SignIn } from './sign-ins.ts';
 import { TwoFactorState, type SecondFactor } from './two-factor/state.ts';
-import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
+import { assertSignInFinder, idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
 import { RateLimiter } from '@marmeon/cache';
 
 /** Session keys of the signed-in user — `_`-prefixed: framework bookkeeping, left out of `session.all()`. */
@@ -259,7 +259,7 @@ export class Auth {
    * session waits for the factor (`pendingSecondFactor()`), and an app that does not handle that case shows a failed sign-in at worst.
    * See `docs/errors.md#results`. There is one kind for an unknown identifier, a wrong password and an
    * account without a password alike — in the same time (`dummyVerify`), so neither the answer nor its duration
-   * tells which addresses have an account. Rehashes the password when the costs changed — only over the hash it verified (see `UserProvider.updatePasswordHash()`); a reset that landed meanwhile makes it `invalid-credentials`. Both `findForLogin()` and `findById()` must
+   * tells which addresses have an account. Rehashes the password when the costs changed — only over the hash it verified (see `UserProvider.updatePasswordHash()`); a reset that landed meanwhile makes it `invalid-credentials`. Both `findForSignIn()` and `findById()` must
    * hand back `sessionKey` when the account has one; a provider that returns it from only one makes `attempt()` throw.
    */
   async attempt(identifier: string, password: string, options: SignInOptions = {}): Promise<Result<AuthUser, AttemptError>> {
@@ -267,6 +267,7 @@ export class Auth {
     if (typeof this.#hasher.failureFloorMs !== 'function') {
       throw new Error(withCode('A6', 'The Hasher needs failureFloorMs(): the time a failed sign-in is padded to, in milliseconds (0 gives up the padding). See docs/hashing.md#making-and-checking-hashes.'));
     }
+    assertSignInFinder(this.#users);
     const ip = options.ip ?? this.#request.ip;
     // Counted BEFORE anything is read or checked (see `SignInThrottle.takeClient()`).
     const wait = await this.#signInThrottle.takeClient(identifier, ip);
@@ -275,7 +276,7 @@ export class Auth {
       return err({ kind: 'throttled', retryAfter: wait });
     }
     const started = performance.now();
-    const found = await this.#users.findForLogin(identifier);
+    const found = await this.#users.findForSignIn(identifier);
     // The account's own ceiling, whichever clients the guesses come from, counted before the password is checked. Past it nothing is
     // checked — the right password included — and an unknown identifier gets the same answer and does the same work.
     // The one exception is the owner's own browser: a valid device cookie for exactly this account counts on a limit of its own instead.
@@ -647,8 +648,8 @@ export class Auth {
   }
 
   /**
-   * Whether the account is still what `findForLogin()` verified: `false` for a real change (the session key) during the check. Throws when
-   * the provider hands the session key back from only one of `findForLogin()` and `findById()` — that is the provider's contract, not a race.
+   * Whether the account is still what `findForSignIn()` verified: `false` for a real change (the session key) during the check. Throws when
+   * the provider hands the session key back from only one of `findForSignIn()` and `findById()` — that is the provider's contract, not a race.
    */
   async #sameAccount(identifier: string, credentials: Credentials, current: Credentials): Promise<boolean> {
     const contract = (missing: string, has: string) =>
@@ -659,11 +660,11 @@ export class Auth {
             'Hand the stored key back from both methods (see docs/authentication.md#the-user-type-and-where-users-come-from).',
         ),
       );
-    if (credentials.sessionKey != null && current.sessionKey === undefined) throw contract('findById', 'findForLogin');
+    if (credentials.sessionKey != null && current.sessionKey === undefined) throw contract('findById', 'findForSignIn');
     if (credentials.sessionKey === undefined && current.sessionKey != null) {
       // A key that appeared during the check is a race (a mismatch); a provider that still omits it on a second read breaks its contract.
-      const again = await this.#users.findForLogin(identifier);
-      if (again !== undefined && again.sessionKey === undefined) throw contract('findForLogin', 'findById');
+      const again = await this.#users.findForSignIn(identifier);
+      if (again !== undefined && again.sessionKey === undefined) throw contract('findForSignIn', 'findById');
     }
     return this.#fingerprints.matches(this.#fingerprints.of(current), credentials);
   }

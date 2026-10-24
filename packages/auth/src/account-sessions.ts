@@ -38,7 +38,7 @@ export function missingSessionKeyMethod(caller: string): Error {
     withCode(
       'A5',
       `${caller} needs UserProvider.updateSessionKey(id, key, expected): store the key in a column of the account ` +
-        '(a session_key column) and hand it back as sessionKey from findById() and findForLogin().',
+        '(a session_key column) and hand it back as sessionKey from findById() and findForSignIn().',
     ),
   );
 }
@@ -98,7 +98,7 @@ export async function rotateSessionKey(
       withCode(
         'A5',
         `${caller} stored a new key, but UserProvider.findById() does not hand it back as sessionKey — the other ` +
-          'sessions would stay signed in. Return the session_key column as sessionKey from findById() and findForLogin().',
+          'sessions would stay signed in. Return the session_key column as sessionKey from findById() and findForSignIn().',
       ),
     );
   const key = randomBytes(32).toString('base64url');
@@ -282,7 +282,7 @@ export class AccountSessions {
         withCode(
           'A5',
           'AccountSessions.endEveryone() needs UserProvider.updateEverySessionKey(key): write the key into the session_key column of every account ' +
-            'with one UPDATE, and hand it back as sessionKey from findById() and findForLogin().',
+            'with one UPDATE, and hand it back as sessionKey from findById() and findForSignIn().',
         ),
       );
     }

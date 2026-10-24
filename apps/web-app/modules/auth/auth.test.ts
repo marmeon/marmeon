@@ -1042,7 +1042,7 @@ describe('the session key', () => {
   it('compares and sets the password hash: with an expectation it writes only over the stored hash, and says whether it did', async () => {
     const ada = await app.factory(UserFactory).create({ session_key: null });
     const users = app.make(UserRepository);
-    const stored = async () => (await users.findForLogin(ada.email))?.passwordHash;
+    const stored = async () => (await users.findForSignIn(ada.email))?.passwordHash;
     const h1 = (await stored())!;
     expect(await users.updatePasswordHash(ada.id, 'h2' as never, { expected: 'h0' as never }), 'a hash that is not stored').toBe(false);
     expect(await stored()).toBe(h1);
@@ -1085,7 +1085,7 @@ describe('the session key', () => {
     expect((await users.findById(ada.id))?.sessionKey).toBeNull();
     await users.updateSessionKey(ada.id, 'a-new-key-of-at-least-32-characters', null);
     expect((await users.findById(ada.id))?.sessionKey).toBe('a-new-key-of-at-least-32-characters');
-    expect((await users.findForLogin(ada.email))?.sessionKey).toBe('a-new-key-of-at-least-32-characters');
+    expect((await users.findForSignIn(ada.email))?.sessionKey).toBe('a-new-key-of-at-least-32-characters');
     expect(await users.find(ada.id)).not.toHaveProperty('session_key');
     expect(await users.findById(ada.id)).not.toHaveProperty('user.session_key');
     await expect(users.updateSessionKey(ada.id, '', null)).rejects.toThrow(/at least 32/);

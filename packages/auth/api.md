@@ -1132,7 +1132,7 @@ export interface UserProvider<U = AuthUser> {
     findById(id: U extends {
         readonly id: infer Id;
     } ? Id : never): Promise<Credentials<U> | undefined>;
-    findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
+    findForSignIn(identifier: string): Promise<Credentials<U> | undefined>;
     updatePasswordHash(id: U extends {
         readonly id: infer Id;
     } ? Id : never, hash: PasswordHash, options?: {
@@ -2071,7 +2071,7 @@ export interface UserProvider<U = AuthUser> {
     findById(id: U extends {
         readonly id: infer Id;
     } ? Id : never): Promise<Credentials<U> | undefined>;
-    findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
+    findForSignIn(identifier: string): Promise<Credentials<U> | undefined>;
     updatePasswordHash(id: U extends {
         readonly id: infer Id;
     } ? Id : never, hash: PasswordHash, options?: {
@@ -2760,7 +2760,7 @@ export interface UserProvider<U = AuthUser> {
     findById(id: U extends {
         readonly id: infer Id;
     } ? Id : never): Promise<Credentials<U> | undefined>;
-    findForLogin(identifier: string): Promise<Credentials<U> | undefined>;
+    findForSignIn(identifier: string): Promise<Credentials<U> | undefined>;
     updatePasswordHash(id: U extends {
         readonly id: infer Id;
     } ? Id : never, hash: PasswordHash, options?: {
