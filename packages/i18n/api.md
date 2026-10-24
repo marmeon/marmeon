@@ -25,10 +25,10 @@ export declare class Catalog {
     translate<N extends string>(locale: string, namespace: N): Translate<N>;
     formatter(locale: string): Formatter;
 }
-// CheckKey
-export type CheckKey<K extends string, T, N extends string> = K extends KeyOf<T> ? K : `'${K}' is not a key of the ${N} messages${Suggest<K, KeyOf<T> & string>}`;
+// CheckMessageKey
+export type CheckMessageKey<K extends string, T, N extends string> = K extends MessageKeyOf<T> ? K : `'${K}' is not a key of the ${N} messages${Suggest<K, MessageKeyOf<T> & string>}`;
 // CheckTranslationKey
-export type CheckTranslationKey<K extends string> = string extends TranslationKey ? K : K extends TranslationKey ? K : K extends `${infer N}.${infer P}` ? N extends keyof Translations ? `'${P}' is not a key of the ${N} messages${Suggest<P, KeyOf<Translations[N]> & string>}` : `'${N}' is not a namespace of messages — namespaces are module names (modules/<module>/lang/en.ts) and 'app' (lang/en.ts)` : `'${K}' is not a translation key — keys are '<namespace>.<path>', e.g. 'auth.login.title'`;
+export type CheckTranslationKey<K extends string> = string extends TranslationKey ? K : K extends TranslationKey ? K : K extends `${infer N}.${infer P}` ? N extends keyof Translations ? `'${P}' is not a key of the ${N} messages${Suggest<P, MessageKeyOf<Translations[N]> & string>}` : `'${N}' is not a namespace of messages — namespaces are module names (modules/<module>/lang/en.ts) and 'app' (lang/en.ts)` : `'${K}' is not a translation key — keys are '<namespace>.<path>', e.g. 'auth.login.title'`;
 // CurrentLocale
 export declare class CurrentLocale {
     #private;
@@ -61,10 +61,6 @@ export declare class I18nServiceProvider implements ServiceProvider {
     register(container: Container): void;
     boot(app: Application): Promise<void>;
 }
-// KeyOf
-export type KeyOf<T> = T extends string ? never : {
-    [K in keyof T & Segment]: T[K] extends string ? `${K}` : `${K}.${KeyOf<T[K]>}`;
-}[keyof T & Segment];
 // LangFiles
 export type LangFiles = Readonly<Record<string, () => Promise<unknown>>>;
 // LocalePreference
@@ -89,6 +85,10 @@ export type MessageAt<T, P extends string> = P extends `${infer Head}.${infer Re
 export declare class MessageError extends Error {
     name: string;
 }
+// MessageKeyOf
+export type MessageKeyOf<T> = T extends string ? never : {
+    [K in keyof T & Segment]: T[K] extends string ? `${K}` : `${K}.${MessageKeyOf<T[K]>}`;
+}[keyof T & Segment];
 // MessageLoader
 export interface MessageLoader {
     readonly fallback: string;
@@ -98,6 +98,8 @@ export interface MessageLoader {
 }
 // MessageOf
 export type MessageOf<K extends string> = K extends `${infer N}.${infer P}` ? N extends keyof Translations ? MessageAt<Translations[N], P> : string : string;
+// MessageParamsOf
+export type MessageParamsOf<M> = M extends string ? (string extends M ? Record<string, unknown> : Simplify<Text<M, [], {}>>) : Record<string, unknown>;
 // MessageSyntaxError
 export declare class MessageSyntaxError extends SyntaxError {
     name: string;
@@ -108,14 +110,12 @@ export type MessageTree = {
 };
 // Messages
 export type Messages<T> = {
-    readonly [K in keyof T]: T[K] extends string ? (string extends T[K] ? string : Keeps<keyof ParamsOf<T[K]> & string>) : Messages<T[K]>;
+    readonly [K in keyof T]: T[K] extends string ? (string extends T[K] ? string : Keeps<keyof MessageParamsOf<T[K]> & string>) : Messages<T[K]>;
 };
 // MessagesOf
 export type MessagesOf<N extends string> = N extends keyof Translations ? Translations[N] : MessageTree;
 // Namespace
 export type Namespace = [keyof Translations] extends [never] ? string : keyof Translations & string;
-// ParamsOf
-export type ParamsOf<M> = M extends string ? (string extends M ? Record<string, unknown> : Simplify<Text<M, [], {}>>) : Record<string, unknown>;
 // SetLocale
 export declare class SetLocale {
     #private;
@@ -124,17 +124,17 @@ export declare class SetLocale {
 }
 // Translate
 export interface Translate<N extends string = Namespace> {
-    <K extends KeyOf<MessagesOf<N>> | (string & {})>(key: CheckKey<K, MessagesOf<N>, N>, ...params: TranslateArgs<MessageAt<MessagesOf<N>, K>>): string;
+    <K extends MessageKeyOf<MessagesOf<N>> | (string & {})>(key: CheckMessageKey<K, MessagesOf<N>, N>, ...params: TranslateArgs<MessageAt<MessagesOf<N>, K>>): string;
     readonly locale: string;
     readonly namespace: N;
     readonly format: Formatter;
     has(key: string): boolean;
 }
 // TranslateArgs
-export type TranslateArgs<M> = [M] extends [never] ? [params?: Record<string, unknown>] : {} extends ParamsOf<M> ? [params?: ParamsOf<M>] : [params: ParamsOf<M>];
+export type TranslateArgs<M> = [M] extends [never] ? [params?: Record<string, unknown>] : {} extends MessageParamsOf<M> ? [params?: MessageParamsOf<M>] : [params: MessageParamsOf<M>];
 // TranslationKey
 export type TranslationKey = [keyof Translations] extends [never] ? string : {
-    [N in keyof Translations & string]: `${N}.${KeyOf<Translations[N]>}`;
+    [N in keyof Translations & string]: `${N}.${MessageKeyOf<Translations[N]>}`;
 }[keyof Translations & string];
 // Translations
 export interface Translations {
@@ -162,7 +162,7 @@ export declare function createMessageLoader(files: LangFiles, { fallback }?: {
 // createTranslate
 export declare function createTranslate<N extends string>(catalog: Catalog, locale: string, namespace: N): Translate<N>;
 // trans
-export declare function trans<K extends TranslationKey | (string & {})>(key: CheckTranslationKey<K>, params?: Partial<ParamsOf<MessageOf<K>>>): (issue: object) => string;
+export declare function trans<K extends TranslationKey | (string & {})>(key: CheckTranslationKey<K>, params?: Partial<MessageParamsOf<MessageOf<K>>>): (issue: object) => string;
 ```
 
 ### Referenced, not exported
@@ -232,8 +232,8 @@ export declare class Catalog {
     translate<N extends string>(locale: string, namespace: N): Translate<N>;
     formatter(locale: string): Formatter;
 }
-// CheckKey
-export type CheckKey<K extends string, T, N extends string> = K extends KeyOf<T> ? K : `'${K}' is not a key of the ${N} messages${Suggest<K, KeyOf<T> & string>}`;
+// CheckMessageKey
+export type CheckMessageKey<K extends string, T, N extends string> = K extends MessageKeyOf<T> ? K : `'${K}' is not a key of the ${N} messages${Suggest<K, MessageKeyOf<T> & string>}`;
 // Formatter
 export interface Formatter {
     readonly locale: string;
@@ -242,10 +242,6 @@ export interface Formatter {
     relativeTime(value: number, unit: Intl.RelativeTimeFormatUnit, options?: Intl.RelativeTimeFormatOptions): string;
     relative(date: Date | number | string, now: Date | number | string, options?: Intl.RelativeTimeFormatOptions): string;
 }
-// KeyOf
-export type KeyOf<T> = T extends string ? never : {
-    [K in keyof T & Segment]: T[K] extends string ? `${K}` : `${K}.${KeyOf<T[K]>}`;
-}[keyof T & Segment];
 // LangFiles
 export type LangFiles = Readonly<Record<string, () => Promise<unknown>>>;
 // MessageAt
@@ -254,6 +250,10 @@ export type MessageAt<T, P extends string> = P extends `${infer Head}.${infer Re
 export declare class MessageError extends Error {
     name: string;
 }
+// MessageKeyOf
+export type MessageKeyOf<T> = T extends string ? never : {
+    [K in keyof T & Segment]: T[K] extends string ? `${K}` : `${K}.${MessageKeyOf<T[K]>}`;
+}[keyof T & Segment];
 // MessageLoader
 export interface MessageLoader {
     readonly fallback: string;
@@ -261,6 +261,8 @@ export interface MessageLoader {
         fallback?: string;
     }): Promise<Catalog>;
 }
+// MessageParamsOf
+export type MessageParamsOf<M> = M extends string ? (string extends M ? Record<string, unknown> : Simplify<Text<M, [], {}>>) : Record<string, unknown>;
 // MessageSyntaxError
 export declare class MessageSyntaxError extends SyntaxError {
     name: string;
@@ -271,24 +273,22 @@ export type MessageTree = {
 };
 // Messages
 export type Messages<T> = {
-    readonly [K in keyof T]: T[K] extends string ? (string extends T[K] ? string : Keeps<keyof ParamsOf<T[K]> & string>) : Messages<T[K]>;
+    readonly [K in keyof T]: T[K] extends string ? (string extends T[K] ? string : Keeps<keyof MessageParamsOf<T[K]> & string>) : Messages<T[K]>;
 };
 // MessagesOf
 export type MessagesOf<N extends string> = N extends keyof Translations ? Translations[N] : MessageTree;
 // Namespace
 export type Namespace = [keyof Translations] extends [never] ? string : keyof Translations & string;
-// ParamsOf
-export type ParamsOf<M> = M extends string ? (string extends M ? Record<string, unknown> : Simplify<Text<M, [], {}>>) : Record<string, unknown>;
 // Translate
 export interface Translate<N extends string = Namespace> {
-    <K extends KeyOf<MessagesOf<N>> | (string & {})>(key: CheckKey<K, MessagesOf<N>, N>, ...params: TranslateArgs<MessageAt<MessagesOf<N>, K>>): string;
+    <K extends MessageKeyOf<MessagesOf<N>> | (string & {})>(key: CheckMessageKey<K, MessagesOf<N>, N>, ...params: TranslateArgs<MessageAt<MessagesOf<N>, K>>): string;
     readonly locale: string;
     readonly namespace: N;
     readonly format: Formatter;
     has(key: string): boolean;
 }
 // TranslateArgs
-export type TranslateArgs<M> = [M] extends [never] ? [params?: Record<string, unknown>] : {} extends ParamsOf<M> ? [params?: ParamsOf<M>] : [params: ParamsOf<M>];
+export type TranslateArgs<M> = [M] extends [never] ? [params?: Record<string, unknown>] : {} extends MessageParamsOf<M> ? [params?: MessageParamsOf<M>] : [params: MessageParamsOf<M>];
 // Translations
 export interface Translations {
 }

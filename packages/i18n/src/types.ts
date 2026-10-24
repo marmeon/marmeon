@@ -20,9 +20,9 @@ export type Namespace = [keyof Translations] extends [never] ? string : keyof Tr
 type Segment = string | number;
 
 /** The keys of a message tree: dot paths to its texts — `'login.title' | 'attempts'`. */
-export type KeyOf<T> = T extends string
+export type MessageKeyOf<T> = T extends string
   ? never
-  : { [K in keyof T & Segment]: T[K] extends string ? `${K}` : `${K}.${KeyOf<T[K]>}` }[keyof T & Segment];
+  : { [K in keyof T & Segment]: T[K] extends string ? `${K}` : `${K}.${MessageKeyOf<T[K]>}` }[keyof T & Segment];
 
 type Prop<T, K extends string> = K extends keyof T ? T[K] : K extends `${infer N extends number}` ? (N extends keyof T ? T[N] : never) : never;
 
@@ -32,7 +32,7 @@ export type MessageAt<T, P extends string> = P extends `${infer Head}.${infer Re
 /** Every key of the app — `namespace.path`: `'auth.login.title'`. Any string until a module declares its messages. */
 export type TranslationKey = [keyof Translations] extends [never]
   ? string
-  : { [N in keyof Translations & string]: `${N}.${KeyOf<Translations[N]>}` }[keyof Translations & string];
+  : { [N in keyof Translations & string]: `${N}.${MessageKeyOf<Translations[N]>}` }[keyof Translations & string];
 
 /** The text of an app-wide key (`auth.login.title`). */
 export type MessageOf<K extends string> = K extends `${infer N}.${infer P}`
@@ -93,13 +93,13 @@ type Branches<S extends string, Depth extends 0[], Out> = S extends `${infer Bef
 type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
 /** The placeholders of a text and what they take: `'{count, plural, …} left'` → `{ count: number }`. */
-export type ParamsOf<M> = M extends string ? (string extends M ? Record<string, unknown> : Simplify<Text<M, [], {}>>) : Record<string, unknown>;
+export type MessageParamsOf<M> = M extends string ? (string extends M ? Record<string, unknown> : Simplify<Text<M, [], {}>>) : Record<string, unknown>;
 
 /**
  * The arguments after the key: the placeholders' values — required when the text has any. For a key that is no key
  * (`never`), optional: the error is the key's, not a count of arguments.
  */
-export type TranslateArgs<M> = [M] extends [never] ? [params?: Record<string, unknown>] : {} extends ParamsOf<M> ? [params?: ParamsOf<M>] : [params: ParamsOf<M>];
+export type TranslateArgs<M> = [M] extends [never] ? [params?: Record<string, unknown>] : {} extends MessageParamsOf<M> ? [params?: MessageParamsOf<M>] : [params: MessageParamsOf<M>];
 
 // ---------------------------------------------------------------------------------------------------------------
 // Translations of a source file.
@@ -119,13 +119,13 @@ type Keeps<Names extends string> = [Names] extends [never] ? string : UnionToInt
  * ```
  */
 export type Messages<T> = {
-  readonly [K in keyof T]: T[K] extends string ? (string extends T[K] ? string : Keeps<keyof ParamsOf<T[K]> & string>) : Messages<T[K]>;
+  readonly [K in keyof T]: T[K] extends string ? (string extends T[K] ? string : Keeps<keyof MessageParamsOf<T[K]> & string>) : Messages<T[K]>;
 };
 
 /** `K` when it is a key of tree `T`; otherwise a message naming the namespace, with the keys next to it. */
-export type CheckKey<K extends string, T, N extends string> = K extends KeyOf<T>
+export type CheckMessageKey<K extends string, T, N extends string> = K extends MessageKeyOf<T>
   ? K
-  : `'${K}' is not a key of the ${N} messages${Suggest<K, KeyOf<T> & string>}`;
+  : `'${K}' is not a key of the ${N} messages${Suggest<K, MessageKeyOf<T> & string>}`;
 
 /** `K` when it is an app-wide key; otherwise a message saying why. */
 export type CheckTranslationKey<K extends string> = string extends TranslationKey
@@ -134,6 +134,6 @@ export type CheckTranslationKey<K extends string> = string extends TranslationKe
     ? K
     : K extends `${infer N}.${infer P}`
       ? N extends keyof Translations
-        ? `'${P}' is not a key of the ${N} messages${Suggest<P, KeyOf<Translations[N]> & string>}`
+        ? `'${P}' is not a key of the ${N} messages${Suggest<P, MessageKeyOf<Translations[N]> & string>}`
         : `'${N}' is not a namespace of messages — namespaces are module names (modules/<module>/lang/en.ts) and 'app' (lang/en.ts)`
       : `'${K}' is not a translation key — keys are '<namespace>.<path>', e.g. 'auth.login.title'`;

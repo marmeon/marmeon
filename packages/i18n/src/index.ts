@@ -10,10 +10,10 @@ import frameworkEn from './lang/en.ts';
 import { langFileOf } from './loader.ts';
 import { isLanguageTag, negotiateLocale, supportedLocale } from './locale.ts';
 import { createTranslator, CurrentLocale, Translator } from './translator.ts';
-import type { CheckTranslationKey, MessageOf, ParamsOf, TranslationKey } from './types.ts';
+import type { CheckTranslationKey, MessageOf, MessageParamsOf, TranslationKey } from './types.ts';
 
 export { Catalog, createMessageLoader, createTranslate, MessageError, MessageSyntaxError } from './messages.ts';
-export type { CheckKey, Formatter, KeyOf, LangFiles, MessageAt, MessageLoader, Messages, MessagesOf, MessageTree, Namespace, ParamsOf, Translate, TranslateArgs, Translations } from './messages.ts';
+export type { CheckMessageKey, Formatter, LangFiles, MessageAt, MessageKeyOf, MessageLoader, MessageParamsOf, Messages, MessagesOf, MessageTree, Namespace, Translate, TranslateArgs, Translations } from './messages.ts';
 export { CurrentLocale, Translator } from './translator.ts';
 export type { CheckTranslationKey, MessageOf, TranslationKey } from './types.ts';
 
@@ -198,7 +198,7 @@ export class SetLocale {
  */
 export function trans<K extends TranslationKey | (string & {})>(
   key: CheckTranslationKey<K>,
-  params?: Partial<ParamsOf<MessageOf<K>>>,
+  params?: Partial<MessageParamsOf<MessageOf<K>>>,
 ): (issue: object) => string {
   return translatable(key, params);
 }

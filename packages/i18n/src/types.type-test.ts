@@ -1,5 +1,13 @@
 // Type guarantees of messages, keys and placeholders — compiled by the package build, never run.
-import type { KeyOf, MessageAt, Messages, ParamsOf, TranslateArgs } from './types.ts';
+// @ts-expect-error — `KeyOf` is not exported; `MessageKeyOf` is
+import type { KeyOf } from './index.ts';
+// @ts-expect-error — `ParamsOf` is not exported; `MessageParamsOf` is
+import type { ParamsOf } from './index.ts';
+// @ts-expect-error — `CheckKey` is not exported; `CheckMessageKey` is
+import type { CheckKey } from './index.ts';
+// @ts-expect-error — `KeyOf` is not exported by the browser-safe core either
+import type { KeyOf as CoreKeyOf } from './messages.ts';
+import type { MessageKeyOf, MessageAt, Messages, MessageParamsOf, TranslateArgs } from './types.ts';
 
 const en = {
   login: { title: 'Sign in', failed: 'These credentials do not match our records.' },
@@ -13,15 +21,15 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ?
 const is = <T extends true>(_: T) => undefined;
 
 export function placeholders() {
-  is<Equal<KeyOf<typeof en>, 'login.title' | 'login.failed' | 'attempts' | 'greeting' | 'kind' | 'plain'>>(true);
+  is<Equal<MessageKeyOf<typeof en>, 'login.title' | 'login.failed' | 'attempts' | 'greeting' | 'kind' | 'plain'>>(true);
   is<Equal<MessageAt<typeof en, 'login.title'>, 'Sign in'>>(true);
-  is<Equal<ParamsOf<(typeof en)['attempts']>, { count: number }>>(true);
+  is<Equal<MessageParamsOf<(typeof en)['attempts']>, { count: number }>>(true);
   // Nested placeholders inside plural branches count; `#` does not.
-  is<Equal<ParamsOf<(typeof en)['greeting']>, { name: string | number; count: number; sender: string | number; since: Date | number | string }>>(true);
-  is<Equal<ParamsOf<(typeof en)['kind']>, { kind: string; label: string | number }>>(true);
-  is<Equal<ParamsOf<(typeof en)['plain']>, {}>>(true);
+  is<Equal<MessageParamsOf<(typeof en)['greeting']>, { name: string | number; count: number; sender: string | number; since: Date | number | string }>>(true);
+  is<Equal<MessageParamsOf<(typeof en)['kind']>, { kind: string; label: string | number }>>(true);
+  is<Equal<MessageParamsOf<(typeof en)['plain']>, {}>>(true);
   // Without `as const` the text is just `string`: anything goes.
-  is<Equal<ParamsOf<string>, Record<string, unknown>>>(true);
+  is<Equal<MessageParamsOf<string>, Record<string, unknown>>>(true);
 
   const t = <M extends string>(_message: M, ..._params: TranslateArgs<M>) => '';
   t(en.attempts, { count: 3 });
@@ -73,3 +81,5 @@ export function translations() {
 
   return [de, missing, renamed, extra];
 }
+
+export type Unused = [KeyOf<string>, ParamsOf<string>, CheckKey<'a', {}, 'b'>, CoreKeyOf<string>];
