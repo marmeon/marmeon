@@ -6,8 +6,8 @@ import { devHosts } from '@marmeon/core/dev';
 import { DEFAULT_MAX_AGE_HOURS, DEFAULT_MAX_BYTES } from './file-store.ts';
 
 /** The devtools cannot run as configured: forced on in production, or `config/devtools.ts` malformed. */
-export class DevtoolsConfigError extends ConfigError {
-  override name = 'DevtoolsConfigError';
+export class DevtoolsSetupError extends ConfigError {
+  override name = 'DevtoolsSetupError';
 }
 
 /** What the recorder can watch — `record` lists those it does (default: all). */
@@ -58,7 +58,7 @@ export type DevtoolsDefinition = DevtoolsOptions & { readonly [DEFINITION]: true
 /** The app's devtools settings, for `config/devtools.ts` (its default export). */
 export function defineDevtools(options: DevtoolsOptions): DevtoolsDefinition {
   for (const watcher of options.record ?? []) {
-    if (!WATCHERS.includes(watcher)) throw new DevtoolsConfigError(`defineDevtools({ record }): "${String(watcher)}" is not something the devtools record — ${WATCHERS.join(', ')}.`);
+    if (!WATCHERS.includes(watcher)) throw new DevtoolsSetupError(`defineDevtools({ record }): "${String(watcher)}" is not something the devtools record — ${WATCHERS.join(', ')}.`);
   }
   return Object.freeze({ ...options, [DEFINITION]: true as const });
 }
@@ -116,7 +116,7 @@ export async function loadDevtoolsOptions(root: string): Promise<DevtoolsOptions
   const module = (await import(pathToFileURL(file).href)) as { default?: unknown };
   const options = module.default;
   if (options === undefined || options === null || typeof options !== 'object' || !(DEFINITION in options)) {
-    throw new DevtoolsConfigError('config/devtools.ts must `export default defineDevtools({ … })` (from @marmeon/devtools).');
+    throw new DevtoolsSetupError('config/devtools.ts must `export default defineDevtools({ … })` (from @marmeon/devtools).');
   }
   return options as DevtoolsOptions;
 }
@@ -139,7 +139,7 @@ export const DevtoolsConfig = defineConfig('devtools', {
   resolve: (e) => {
     const switched = e.DEVTOOLS_ENABLED;
     if (switched === true && environment.isProtected(e)) {
-      throw new DevtoolsConfigError(
+      throw new DevtoolsSetupError(
         `DEVTOOLS_ENABLED is on with ${environment.describe(e)}: the devtools record requests, queries and mails — they never run in production or without NODE_ENV, whatever APP_ENV says. ` +
           'Remove DEVTOOLS_ENABLED (they run with NODE_ENV=development only), and install @marmeon/devtools as a dev dependency.',
       );

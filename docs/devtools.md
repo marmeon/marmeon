@@ -2,8 +2,6 @@
 
 ## Introduction
 
-`@marmeon/devtools` is experimental: it can change in any minor release. See [the release policy](releases.md#experimental).
-
 While you develop, the devtools record what your app does: requests, queries, jobs, mails, notifications, log entries,
 exceptions, scheduled runs, live hints, events and commands. They show it at `/_marmeon/devtools`, and a small bar at the bottom
 right of every page shows the requests of that page. Values that look like secrets, such as a password, a token or a link's
@@ -136,7 +134,8 @@ start, and so does an unknown name in `record`.
 
 The entries are files in `storage/framework/devtools/`, one file per process and hour. The server, the worker and the scheduler
 of `marmeon dev` write into the same directory, and the pages show them together. The files form a ring: by default 50 MB and 24
-hours. Each process that writes keeps the ring within its limits, and two commands help:
+hours. The files are a cache of the version that wrote them, so after an update older entries may show incompletely
+(`devtools:clear` empties them). Each process that writes keeps the ring within its limits, and two commands help:
 
 ```sh
 pnpm marmeon devtools:prune   # removes entries past the age, then the oldest until the size fits

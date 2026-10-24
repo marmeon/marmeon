@@ -1,5 +1,5 @@
 import { html, type Html } from '@marmeon/core';
-import type { AnyEntry, Entry, EntryType, RequestContent } from '../entry.ts';
+import type { AnyEntry, Entry, EntryType, RequestEntryContent } from '../entry.ts';
 import { badge, duration, entryHref, firstLine, href, time } from './layout.ts';
 
 /**
@@ -139,7 +139,7 @@ export function origin(entry: AnyEntry): Html {
  * A request's status as the protocol means it: a 409 with a location is a full reload (a new build, or signing in or out —
  * the visit worked), not a failure; a redirect shows where to.
  */
-export function statusBadge(content: RequestContent): Html {
+export function statusBadge(content: RequestEntryContent): Html {
   const status = content.status ?? 0;
   if (status === 409 && content.location) {
     return badge(`409 reload${content.reload ? ` (${content.reload})` : ''}`, 'info', `The protocol's full reload to ${content.location} — ${content.reload === 'version' ? 'a new build' : 'the page crossed the sign-in boundary'}; no failure`);
@@ -149,7 +149,7 @@ export function statusBadge(content: RequestContent): Html {
 }
 
 /** What kind of request it was, from the protocol's headers. */
-export function requestBadges(content: RequestContent): Html {
+export function requestBadges(content: RequestEntryContent): Html {
   const headers = content.headers;
   const badges: Html[] = [];
   if (content.region) badges.push(badge(content.region, 'info'));

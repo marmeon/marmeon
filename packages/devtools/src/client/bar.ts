@@ -6,7 +6,7 @@
 import type { DevtoolsFeature } from '@marmeon/http/client/adapter';
 import type { Layer, Navigator, Region, TimelineEntry } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';
-import type { AnyEntry, RequestContent } from '../entry.ts';
+import type { AnyEntry, RequestEntryContent } from '../entry.ts';
 import { h, json, jsonBytes, size, STYLES, type Child } from './dom.ts';
 
 export const TABS = ['visits', 'page', 'layers', 'optimistic', 'server', 'ssr'] as const;
@@ -282,8 +282,8 @@ export class DevtoolsBar {
   #page(title: string, page: PageObject, layer: Layer | undefined): Node {
     const answer = this.#api.answerFor(page.url);
     const record = answer?.requestId ? this.#record(answer.requestId) : undefined;
-    const request = record?.entries.find((entry): entry is AnyEntry & { type: 'request'; content: RequestContent } => entry.type === 'request' && !(entry.content as RequestContent).inProcess && (entry.content as RequestContent).page?.component === page.component)
-      ?? record?.entries.find((entry): entry is AnyEntry & { type: 'request'; content: RequestContent } => entry.type === 'request' && !(entry.content as RequestContent).inProcess);
+    const request = record?.entries.find((entry): entry is AnyEntry & { type: 'request'; content: RequestEntryContent } => entry.type === 'request' && !(entry.content as RequestEntryContent).inProcess && (entry.content as RequestEntryContent).page?.component === page.component)
+      ?? record?.entries.find((entry): entry is AnyEntry & { type: 'request'; content: RequestEntryContent } => entry.type === 'request' && !(entry.content as RequestEntryContent).inProcess);
     const summary = request?.content.page;
     const shared = new Set(summary?.shared ?? []);
     const optional = summary?.optional ?? [];
@@ -489,7 +489,7 @@ export class DevtoolsBar {
 
   #server(record: ServerRecord): Node {
     const byType = (type: AnyEntry['type']) => record.entries.filter((entry) => entry.type === type);
-    const requests = byType('request') as (AnyEntry & { content: RequestContent })[];
+    const requests = byType('request') as (AnyEntry & { content: RequestEntryContent })[];
     const section = (title: string, items: readonly AnyEntry[], line: (entry: AnyEntry) => Child) =>
       items.length === 0 ? null : [h('h3', {}, `${title} (${items.length})`), h('table', {}, h('tbody', {}, items.map((entry) => h('tr', {}, h('td', { class: 'mono' }, line(entry))))))];
     const text = (entry: AnyEntry, fields: readonly string[]) =>
@@ -566,7 +566,7 @@ export class DevtoolsBar {
     const issues = this.#api.hydration;
     const document = this.#api.timeline.find((entry) => entry.kind === 'document');
     const record = document?.requestId ? this.#record(document.requestId) : undefined;
-    const ssr = (record?.entries.find((entry) => entry.type === 'request' && !(entry.content as RequestContent).inProcess)?.content as RequestContent | undefined)?.ssr;
+    const ssr = (record?.entries.find((entry) => entry.type === 'request' && !(entry.content as RequestEntryContent).inProcess)?.content as RequestEntryContent | undefined)?.ssr;
     return [
       h('h3', {}, 'Server rendering of this document'),
       h('p', { class: 'muted' }, ssr ? `${ssr.component}: ${ssr.durationMs === undefined ? '?' : ms(ssr.durationMs)}${ssr.streamed ? ', streamed' : ''}${ssr.complete ? '' : ', shell first'}${ssr.failed ? ' — failed, rendered in the browser' : ''}` : 'Not recorded (rendered in the browser, or before the bar).'),

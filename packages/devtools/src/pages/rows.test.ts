@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { RequestContent } from '../entry.ts';
+import type { RequestEntryContent } from '../entry.ts';
 import { requestBadges } from './rows.ts';
 
-const badges = (headers: Record<string, string>) => String(requestBadges({ headers } as unknown as RequestContent));
+const badges = (headers: Record<string, string>) => String(requestBadges({ headers } as unknown as RequestEntryContent));
 
 describe('requestBadges', () => {
   it('names an upload, an action and a validation by their own header, though each carries the protocol version too', () => {

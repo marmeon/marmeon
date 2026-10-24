@@ -1,10 +1,10 @@
 import { defineSolutions, ErrorSolutions, escapeHtml, Logger, Redactor, token, type Application, type ServiceProvider } from '@marmeon/core';
 import { CSP_NONCE_PLACEHOLDER } from '@marmeon/core/internal';
 import { DevtoolsClearCommand, DevtoolsPruneCommand } from './commands.ts';
-import { DevtoolsConfig, DevtoolsConfigError, loadDevtoolsOptions, resolveOptions, type ResolvedDevtoolsOptions } from './config.ts';
-import { FileStore } from './file-store.ts';
+import { DevtoolsConfig, DevtoolsSetupError, loadDevtoolsOptions, resolveOptions, type ResolvedDevtoolsOptions } from './config.ts';
+import { FileDevtoolsStore } from './file-store.ts';
 import { Recorder } from './recorder.ts';
-import { DevtoolsStore, MemoryStore } from './store.ts';
+import { DevtoolsStore, MemoryDevtoolsStore } from './store.ts';
 import { DevtoolsTestOptIn } from './test-opt-in.ts';
 
 /** Where the Vite dev server serves the in-page bar's client — never part of a build. */
@@ -37,7 +37,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
   /** On the error page and when `marmeon` cannot start the app. */
   static solutions = defineSolutions([
     {
-      for: DevtoolsConfigError,
+      for: DevtoolsSetupError,
       when: (e) => e.message.startsWith('DEVTOOLS_ENABLED is on with') || e.message.startsWith('The devtools were opted in'),
       solve: () => ({
         title: 'Remove DEVTOOLS_ENABLED in production',
@@ -46,7 +46,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       }),
     },
     {
-      for: DevtoolsConfigError,
+      for: DevtoolsSetupError,
       when: (e) => e.message.startsWith('config/devtools.ts') || e.message.startsWith('defineDevtools'),
       solve: () => ({
         title: 'Fix config/devtools.ts',
@@ -62,7 +62,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
     const config = app.container.make(DevtoolsConfig);
     const test = app.container.has(DevtoolsTestOptIn) ? app.container.make(DevtoolsTestOptIn) : undefined;
     if (test && config.protected) {
-      throw new DevtoolsConfigError(
+      throw new DevtoolsSetupError(
         `The devtools were opted in (createTestApp(…, { devtools: true })) with NODE_ENV=${config.environment ?? '(unset)'} — they never run in production or without NODE_ENV.`,
       );
     }
@@ -75,10 +75,10 @@ export class DevtoolsServiceProvider implements ServiceProvider {
     const store: DevtoolsStore = test
       ? test.store
       : options.storage.driver === 'memory'
-        ? new MemoryStore()
-        : new FileStore({ directory: options.storage.path, maxBytes: options.storage.maxBytes, maxAgeHours: options.storage.maxAgeHours });
+        ? new MemoryDevtoolsStore()
+        : new FileDevtoolsStore({ directory: options.storage.path, maxBytes: options.storage.maxBytes, maxAgeHours: options.storage.maxAgeHours });
     // The ring starts within its limits (files of yesterday's session go now, not with the first write).
-    if (store instanceof FileStore) await store.prune();
+    if (store instanceof FileDevtoolsStore) await store.prune();
     app.container.instance(DevtoolsSettings, options);
     app.container.instance(DevtoolsStore, store);
     this.#recorder = new Recorder({
@@ -97,7 +97,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       store,
       redactor: app.container.has(Redactor) ? app.container.make(Redactor) : new Redactor(),
       hosts: config.hosts,
-      ...(store instanceof FileStore ? { maxBytes: options.storage.maxBytes } : {}),
+      ...(store instanceof FileDevtoolsStore ? { maxBytes: options.storage.maxBytes } : {}),
     });
     // The in-page bar in every document `marmeon dev` renders: HTML the dev renderer adds to the document's head —
     // its client comes from the Vite dev server, never from a client chunk. Bound by @marmeon/server only with NODE_ENV=development.

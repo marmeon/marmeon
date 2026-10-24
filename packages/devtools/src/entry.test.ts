@@ -6,7 +6,7 @@ import * as testing from './testing.ts';
 
 describe('the entry points of the devtools', () => {
   it('keeps what an app documents in the main entry', () => {
-    for (const name of ['defineDevtools', 'DevtoolsServiceProvider', 'FileStore', 'DevtoolsConfig', 'DevtoolsConfigError']) expect(devtools, name).toHaveProperty(name);
+    for (const name of ['defineDevtools', 'DevtoolsServiceProvider', 'FileDevtoolsStore', 'DevtoolsConfig', 'DevtoolsSetupError']) expect(devtools, name).toHaveProperty(name);
   });
 
   it('keeps the recorder and the test opt-in out of the main entry and in ./internal', () => {
@@ -17,7 +17,7 @@ describe('the entry points of the devtools', () => {
   });
 
   it('keeps the test double in ./testing only', () => {
-    expect(Object.keys(testing)).toEqual(['DevtoolsTester']);
+    expect(Object.keys(testing)).toEqual([]);
     for (const name of ['DevtoolsTester', 'DevtoolsTestOptIn', 'enableDevtoolsForTests']) expect(devtools, name).not.toHaveProperty(name);
   });
 

@@ -1,7 +1,7 @@
 import { Application } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { DevtoolsConfig, loadDevtoolsOptions, resolveOptions } from './config.ts';
-import { FileStore } from './file-store.ts';
+import { FileDevtoolsStore } from './file-store.ts';
 import { DevtoolsStore } from './store.ts';
 
 /**
@@ -13,7 +13,7 @@ async function storeOf(app: Application): Promise<DevtoolsStore> {
   if (app.container.has(DevtoolsStore)) return app.container.make(DevtoolsStore);
   const development = app.container.make(DevtoolsConfig).environment === 'development';
   const { storage } = resolveOptions(development ? await loadDevtoolsOptions(app.root) : {}, app.root);
-  return new FileStore({ directory: storage.path, maxBytes: storage.maxBytes, maxAgeHours: storage.maxAgeHours });
+  return new FileDevtoolsStore({ directory: storage.path, maxBytes: storage.maxBytes, maxAgeHours: storage.maxAgeHours });
 }
 
 function megabytes(bytes: number): string {

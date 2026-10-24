@@ -6,20 +6,20 @@
 
 Types from other packages: none
 
-### Experimental
+### Stable
 
 ```ts
 // AnyEntry
 export type AnyEntry = {
     [T in EntryType]: Entry<T>;
 }[EntryType];
-// CommandContent
-export interface CommandContent {
+// CommandEntryContent
+export interface CommandEntryContent {
     readonly command: string;
     readonly args: readonly string[];
     readonly exitCode?: number;
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
 // DevtoolsClearCommand
 export declare class DevtoolsClearCommand {
@@ -38,10 +38,6 @@ export declare const DevtoolsConfig: import("@marmeon/core").ConfigDefinition<{
     hosts: ReadonlySet<string>;
 }>;
 export type DevtoolsConfig = ConfigOf<typeof DevtoolsConfig>;
-// DevtoolsConfigError
-export declare class DevtoolsConfigError extends ConfigError {
-    name: string;
-}
 // DevtoolsDefinition
 export type DevtoolsDefinition = DevtoolsOptions & {
     readonly [DEFINITION]: true;
@@ -90,6 +86,10 @@ export declare class DevtoolsServiceProvider implements ServiceProvider {
     boot(app: Application): Promise<void>;
     shutdown(): Promise<void>;
 }
+// DevtoolsSetupError
+export declare class DevtoolsSetupError extends ConfigError {
+    name: string;
+}
 // DevtoolsStore
 export interface DevtoolsStore {
     write(entries: readonly AnyEntry[]): Promise<void>;
@@ -114,17 +114,17 @@ export interface Entry<T extends EntryType = EntryType> {
 }
 // EntryContents
 export interface EntryContents {
-    request: RequestContent;
-    query: QueryContent;
-    job: JobContent;
-    mail: MailContent;
-    notification: NotificationContent;
-    log: LogContent;
-    exception: ExceptionContent;
-    schedule: ScheduleContent;
-    live: LiveContent;
-    event: EventContent;
-    command: CommandContent;
+    request: RequestEntryContent;
+    query: QueryEntryContent;
+    job: JobEntryContent;
+    mail: MailEntryContent;
+    notification: NotificationEntryContent;
+    log: LogEntryContent;
+    exception: ExceptionEntryContent;
+    schedule: ScheduleEntryContent;
+    live: LiveEntryContent;
+    event: EventEntryContent;
+    command: CommandEntryContent;
 }
 // EntryQuery
 export interface EntryQuery {
@@ -144,21 +144,21 @@ export interface EntryTail {
 }
 // EntryType
 export type EntryType = keyof EntryContents;
-// ErrorContent
-export interface ErrorContent {
+// ErrorDetails
+export interface ErrorDetails {
     readonly class: string;
     readonly message: string;
     readonly stack?: string;
 }
-// EventContent
-export interface EventContent {
+// EventEntryContent
+export interface EventEntryContent {
     readonly name: string;
     readonly class: string;
     readonly payload: unknown;
     readonly listeners: readonly string[];
 }
-// ExceptionContent
-export interface ExceptionContent extends ErrorContent {
+// ExceptionEntryContent
+export interface ExceptionEntryContent extends ErrorDetails {
     readonly in: 'request' | 'job' | 'schedule' | 'command';
     readonly status?: number;
     readonly method?: string;
@@ -170,14 +170,13 @@ export interface ExceptionContent extends ErrorContent {
         readonly docs?: string;
     }[];
 }
-// FileStore
-export declare class FileStore implements DevtoolsStore {
+// FileDevtoolsStore
+export declare class FileDevtoolsStore implements DevtoolsStore {
     #private;
     readonly directory: string;
     readonly maxBytes: number;
     readonly maxAgeMs: number;
-    corrupt: number;
-    constructor(options: FileStoreOptions);
+    constructor(options: FileDevtoolsStoreOptions);
     write(entries: readonly AnyEntry[]): Promise<void>;
     list(query?: EntryQuery): Promise<AnyEntry[]>;
     get(id: string): Promise<AnyEntry | undefined>;
@@ -186,44 +185,44 @@ export declare class FileStore implements DevtoolsStore {
     prune(): Promise<PruneResult>;
     usage(): Promise<StoreUsage>;
 }
-// FileStoreOptions
-export interface FileStoreOptions {
+// FileDevtoolsStoreOptions
+export interface FileDevtoolsStoreOptions {
     readonly directory: string;
     readonly maxBytes?: number;
     readonly maxAgeHours?: number;
     readonly now?: () => number;
     readonly onError?: (error: unknown, during: 'write' | 'read' | 'prune') => void;
 }
-// JobContent
-export interface JobContent {
+// JobEntryContent
+export interface JobEntryContent {
     readonly status: 'queued' | 'done' | 'failed' | 'released' | 'discarded';
     readonly name: string;
     readonly queue: string;
     readonly connection: string;
     readonly attempt?: number;
     readonly kind?: 'dispatch' | 'bulk' | 'chain';
-    readonly delay?: number;
+    readonly delaySeconds?: number;
     readonly unique?: string;
     readonly payload?: unknown;
     readonly originRequestId?: string;
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
-// LiveContent
-export interface LiveContent {
+// LiveEntryContent
+export interface LiveEntryContent {
     readonly channel: string;
     readonly only: readonly string[] | null;
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
-// LogContent
-export interface LogContent {
+// LogEntryContent
+export interface LogEntryContent {
     readonly level: 'debug' | 'info' | 'warn' | 'error';
     readonly message: string;
     readonly context: Readonly<Record<string, unknown>>;
 }
-// MailContent
-export interface MailContent {
+// MailEntryContent
+export interface MailEntryContent {
     readonly mailable: string;
     readonly mode: 'send' | 'queue' | 'worker';
     readonly from?: string;
@@ -239,10 +238,10 @@ export interface MailContent {
         readonly contentType?: string;
     }[];
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
-// MemoryStore
-export declare class MemoryStore implements DevtoolsStore {
+// MemoryDevtoolsStore
+export declare class MemoryDevtoolsStore implements DevtoolsStore {
     #private;
     constructor(options?: {
         maxEntries?: number;
@@ -256,8 +255,8 @@ export declare class MemoryStore implements DevtoolsStore {
     prune(): Promise<PruneResult>;
     usage(): Promise<StoreUsage>;
 }
-// NotificationContent
-export interface NotificationContent {
+// NotificationEntryContent
+export interface NotificationEntryContent {
     readonly notification: string;
     readonly id: string;
     readonly recipient: {
@@ -268,7 +267,7 @@ export interface NotificationContent {
     readonly channels?: readonly string[];
     readonly outcome?: 'delivered' | 'gone' | 'delivered-before';
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
 // PathPattern
 export type PathPattern = string | RegExp;
@@ -277,8 +276,8 @@ export interface PruneResult {
     readonly files: number;
     readonly bytes: number;
 }
-// QueryContent
-export interface QueryContent {
+// QueryEntryContent
+export interface QueryEntryContent {
     readonly connection: string;
     readonly driver: string;
     readonly sql: string;
@@ -286,10 +285,10 @@ export interface QueryContent {
     readonly sensitive: boolean;
     readonly durationMs: number;
     readonly slow: boolean;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
-// RequestContent
-export interface RequestContent {
+// RequestEntryContent
+export interface RequestEntryContent {
     readonly method: string;
     readonly url: string;
     readonly path: string;
@@ -324,17 +323,17 @@ export interface RequestContent {
         readonly failed?: boolean;
     };
     readonly dropped?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
-// ScheduleContent
-export interface ScheduleContent {
+// ScheduleEntryContent
+export interface ScheduleEntryContent {
     readonly task: string;
     readonly minute: number;
     readonly reason: 'due' | 'catch-up' | 'test';
     readonly outcome?: 'ran' | 'skipped' | 'failed';
     readonly skipped?: string;
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
 // StoreUsage
 export interface StoreUsage {
@@ -348,7 +347,7 @@ export type Watcher = 'requests' | 'queries' | 'jobs' | 'mails' | 'notifications
 export declare function defineDevtools(options: DevtoolsOptions): DevtoolsDefinition;
 ```
 
-### Experimental, referenced (not exported)
+### Referenced, not exported
 
 ```ts
 // DEFINITION
@@ -363,14 +362,14 @@ Types from other packages: none
 
 Types from other packages: none
 
-### Experimental
+### Stable
 
 ```ts
 // DevtoolsTester
+// type-only
 export declare class DevtoolsTester {
     #private;
-    constructor(container: Container, store: MemoryStore);
-    get store(): MemoryStore;
+    get store(): MemoryDevtoolsStore;
     entries<T extends EntryType>(type: T): Entry<T>[];
     entries(): AnyEntry[];
     batch(id: string): AnyEntry[];
@@ -381,20 +380,20 @@ export declare class DevtoolsTester {
 }
 ```
 
-### Experimental, referenced (not exported)
+### Referenced, not exported
 
 ```ts
 // AnyEntry
 export type AnyEntry = {
     [T in EntryType]: Entry<T>;
 }[EntryType];
-// CommandContent
-export interface CommandContent {
+// CommandEntryContent
+export interface CommandEntryContent {
     readonly command: string;
     readonly args: readonly string[];
     readonly exitCode?: number;
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
 // DevtoolsStore
 export interface DevtoolsStore {
@@ -420,17 +419,17 @@ export interface Entry<T extends EntryType = EntryType> {
 }
 // EntryContents
 export interface EntryContents {
-    request: RequestContent;
-    query: QueryContent;
-    job: JobContent;
-    mail: MailContent;
-    notification: NotificationContent;
-    log: LogContent;
-    exception: ExceptionContent;
-    schedule: ScheduleContent;
-    live: LiveContent;
-    event: EventContent;
-    command: CommandContent;
+    request: RequestEntryContent;
+    query: QueryEntryContent;
+    job: JobEntryContent;
+    mail: MailEntryContent;
+    notification: NotificationEntryContent;
+    log: LogEntryContent;
+    exception: ExceptionEntryContent;
+    schedule: ScheduleEntryContent;
+    live: LiveEntryContent;
+    event: EventEntryContent;
+    command: CommandEntryContent;
 }
 // EntryQuery
 export interface EntryQuery {
@@ -450,21 +449,21 @@ export interface EntryTail {
 }
 // EntryType
 export type EntryType = keyof EntryContents;
-// ErrorContent
-export interface ErrorContent {
+// ErrorDetails
+export interface ErrorDetails {
     readonly class: string;
     readonly message: string;
     readonly stack?: string;
 }
-// EventContent
-export interface EventContent {
+// EventEntryContent
+export interface EventEntryContent {
     readonly name: string;
     readonly class: string;
     readonly payload: unknown;
     readonly listeners: readonly string[];
 }
-// ExceptionContent
-export interface ExceptionContent extends ErrorContent {
+// ExceptionEntryContent
+export interface ExceptionEntryContent extends ErrorDetails {
     readonly in: 'request' | 'job' | 'schedule' | 'command';
     readonly status?: number;
     readonly method?: string;
@@ -476,36 +475,36 @@ export interface ExceptionContent extends ErrorContent {
         readonly docs?: string;
     }[];
 }
-// JobContent
-export interface JobContent {
+// JobEntryContent
+export interface JobEntryContent {
     readonly status: 'queued' | 'done' | 'failed' | 'released' | 'discarded';
     readonly name: string;
     readonly queue: string;
     readonly connection: string;
     readonly attempt?: number;
     readonly kind?: 'dispatch' | 'bulk' | 'chain';
-    readonly delay?: number;
+    readonly delaySeconds?: number;
     readonly unique?: string;
     readonly payload?: unknown;
     readonly originRequestId?: string;
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
-// LiveContent
-export interface LiveContent {
+// LiveEntryContent
+export interface LiveEntryContent {
     readonly channel: string;
     readonly only: readonly string[] | null;
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
-// LogContent
-export interface LogContent {
+// LogEntryContent
+export interface LogEntryContent {
     readonly level: 'debug' | 'info' | 'warn' | 'error';
     readonly message: string;
     readonly context: Readonly<Record<string, unknown>>;
 }
-// MailContent
-export interface MailContent {
+// MailEntryContent
+export interface MailEntryContent {
     readonly mailable: string;
     readonly mode: 'send' | 'queue' | 'worker';
     readonly from?: string;
@@ -521,10 +520,10 @@ export interface MailContent {
         readonly contentType?: string;
     }[];
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
-// MemoryStore
-export declare class MemoryStore implements DevtoolsStore {
+// MemoryDevtoolsStore
+export declare class MemoryDevtoolsStore implements DevtoolsStore {
     #private;
     constructor(options?: {
         maxEntries?: number;
@@ -538,8 +537,8 @@ export declare class MemoryStore implements DevtoolsStore {
     prune(): Promise<PruneResult>;
     usage(): Promise<StoreUsage>;
 }
-// NotificationContent
-export interface NotificationContent {
+// NotificationEntryContent
+export interface NotificationEntryContent {
     readonly notification: string;
     readonly id: string;
     readonly recipient: {
@@ -550,15 +549,15 @@ export interface NotificationContent {
     readonly channels?: readonly string[];
     readonly outcome?: 'delivered' | 'gone' | 'delivered-before';
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
 // PruneResult
 export interface PruneResult {
     readonly files: number;
     readonly bytes: number;
 }
-// QueryContent
-export interface QueryContent {
+// QueryEntryContent
+export interface QueryEntryContent {
     readonly connection: string;
     readonly driver: string;
     readonly sql: string;
@@ -566,10 +565,10 @@ export interface QueryContent {
     readonly sensitive: boolean;
     readonly durationMs: number;
     readonly slow: boolean;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
-// RequestContent
-export interface RequestContent {
+// RequestEntryContent
+export interface RequestEntryContent {
     readonly method: string;
     readonly url: string;
     readonly path: string;
@@ -604,17 +603,17 @@ export interface RequestContent {
         readonly failed?: boolean;
     };
     readonly dropped?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
-// ScheduleContent
-export interface ScheduleContent {
+// ScheduleEntryContent
+export interface ScheduleEntryContent {
     readonly task: string;
     readonly minute: number;
     readonly reason: 'due' | 'catch-up' | 'test';
     readonly outcome?: 'ran' | 'skipped' | 'failed';
     readonly skipped?: string;
     readonly durationMs?: number;
-    readonly error?: ErrorContent;
+    readonly error?: ErrorDetails;
 }
 // StoreUsage
 export interface StoreUsage {
@@ -624,7 +623,7 @@ export interface StoreUsage {
 }
 ```
 
-## Experimental
+## Environment
 
 ```ts
 // APP_ENV
@@ -635,6 +634,11 @@ export interface StoreUsage {
 `DEVTOOLS_ENABLED` — optional (boolean)
 // NODE_ENV
 `NODE_ENV` — optional
+```
+
+## Commands
+
+```ts
 // devtools:clear
 marmeon devtools:clear
 // devtools:prune

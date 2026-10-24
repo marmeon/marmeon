@@ -560,8 +560,7 @@ export class TestApp {
   readonly #session: Promise<SessionAccess | undefined>;
 
   /**
-   * Use `createTestApp()`. `shared` names experimental types of the devtools package, which a stable signature
-   * must not.
+   * Use `createTestApp()`.
    *
    * @internal
    */
@@ -657,8 +656,6 @@ export class TestApp {
   /**
    * What the devtools recorded — with `createTestApp(App, { devtools: true })`: `app.devtools.entries('request')`,
    * `app.devtools.assertRecorded('mail', (mail) => mail.to.includes('ada@example.com'))`.
-   *
-   * @experimental Follows `@marmeon/devtools`.
    */
   get devtools(): DevtoolsTester {
     if (!this.#shared.devtools) throw new Error('app.devtools needs createTestApp(…, { devtools: true }) (and @marmeon/devtools in the app).');

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { AnyEntry } from './entry.ts';
 import { limitOf, matchesHead, type DevtoolsStore, type EntryHead, type EntryQuery, type EntryTail, type PruneResult, type StoreUsage } from './store.ts';
 
-export interface FileStoreOptions {
+export interface FileDevtoolsStoreOptions {
   /** The directory — absolute; `storage/framework/devtools` of the app by default. */
   readonly directory: string;
   /** The most the files may take together (default 50 MB): the oldest go first. */
@@ -49,7 +49,7 @@ interface FileState {
  * each read from whole lines only, so a line another process is writing is read next time. A failed write is reported and
  * loses its entries, never the request. See docs/devtools.md#where-the-entries-live.
  */
-export class FileStore implements DevtoolsStore {
+export class FileDevtoolsStore implements DevtoolsStore {
   readonly directory: string;
   readonly maxBytes: number;
   readonly maxAgeMs: number;
@@ -72,10 +72,14 @@ export class FileStore implements DevtoolsStore {
   #arrivals: Indexed[] = [];
   readonly #files = new Map<string, FileState>();
   #seq = 0;
-  /** Lines that could not be read as an entry (never expected: whole lines only) — for tests. */
-  corrupt = 0;
+  #corrupt = 0;
 
-  constructor(options: FileStoreOptions) {
+  /** @internal Lines that could not be read as an entry (never expected: whole lines only) — for tests. */
+  get corrupt(): number {
+    return this.#corrupt;
+  }
+
+  constructor(options: FileDevtoolsStoreOptions) {
     this.directory = options.directory;
     this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
     this.maxAgeMs = (options.maxAgeHours ?? DEFAULT_MAX_AGE_HOURS) * 3_600_000;
@@ -306,7 +310,7 @@ export class FileStore implements DevtoolsStore {
     try {
       entry = JSON.parse(line.toString('utf8')) as AnyEntry;
     } catch {
-      this.corrupt++;
+      this.#corrupt++;
       return;
     }
     if (typeof entry?.id !== 'string' || typeof entry.at !== 'number' || this.#byId.has(entry.id)) return;

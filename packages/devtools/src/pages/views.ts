@@ -379,7 +379,7 @@ ${section('Input', c.input === undefined ? html`<p class="empty">The app read no
           ['Queue', `${entry.content.connection}/${entry.content.queue}`],
           ['Attempt', entry.content.attempt],
           ['Dispatched as', entry.content.kind],
-          ['Delay', entry.content.delay ? `${entry.content.delay} s` : undefined],
+          ['Delay', entry.content.delaySeconds ? `${entry.content.delaySeconds} s` : undefined],
           ['Unique', entry.content.unique],
           ['Duration', duration(entry.content.durationMs)],
           ['All its entries', entry.jobId ? html`<a href="${href('/jobs', { jobId: entry.jobId })}">dispatch and attempts</a>` : undefined],
