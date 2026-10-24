@@ -1,5 +1,5 @@
-import { createTestApp } from '@marmeon/testing';
-import { describe, expect, it } from 'vitest';
+import { createTestApp, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { DocsRepository } from './DocsRepository.ts';
 import { DESCRIPTION_MAX, fallbackDescription, summarize } from './description.ts';
@@ -53,9 +53,15 @@ describe('summarize', () => {
   });
 });
 
-describe('the description of every page of the docs', { timeout: 30_000 }, () => {
+describe('the description of every page of the docs', () => {
+  let app: TestApp;
+  // The website reads and parses every page of the docs when it boots: that is this hook's work, not a test's.
+  beforeAll(async () => {
+    app = await createTestApp(application);
+  }, 30_000);
+  afterAll(() => app?.close());
+
   it('is 50 to 160 characters of plain text and none is the fallback', async () => {
-    const app = await createTestApp(application);
     const pages = app.make(DocsRepository).pages();
     expect(pages.length).toBeGreaterThan(60);
     const problems = pages.flatMap((page) => {
@@ -67,7 +73,6 @@ describe('the description of every page of the docs', { timeout: 30_000 }, () =>
   });
 
   it('starts with the first sentence of the page', async () => {
-    const app = await createTestApp(application);
     expect(app.make(DocsRepository).doc('csrf')!.description).toMatch(/^Cross-site request forgery is a page on another site that makes a visitor's browser send a request to your app\./);
   });
 });

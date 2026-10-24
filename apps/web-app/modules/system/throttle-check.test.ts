@@ -6,6 +6,7 @@ const app = fileURLToPath(new URL('../..', import.meta.url));
 const cli = fileURLToPath(new URL('../../../../packages/cli/bin/marmeon.js', import.meta.url));
 
 // The app shows what `marmeon check` asks of every app: a route anyone may POST to has a limit.
+// `marmeon check` boots the whole app in a child process and runs its checks: that is the work this timeout is for.
 it('limits every route that anyone may POST to', { timeout: 60_000 }, () => {
   const env = { ...process.env };
   for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST') delete env[key];

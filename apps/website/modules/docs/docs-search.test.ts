@@ -3,22 +3,21 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { SearchController } from './controllers/SearchController.ts';
 import { results } from './docs.test-support.ts';
-import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 let app: TestApp;
 beforeAll(async () => {
   app = await createTestApp(application);
-}, 30_000);
+});
 afterAll(() => app?.close());
 
 // Some tests boot apps of their own (server-rendered, throttled): slow on a busy machine.
-describe('the search (a server route)', { timeout: 30_000 }, () => {
+describe('the search (a server route)', () => {
   it('finds onOneServer() on the scheduling page and "missed runs" under its heading — anchors into the section', async () => {
     const hits = results(await app.navigating().get('/docs/search?q=onOneServer').assertOk().assertPage('docs/Search'));
     const scheduling = hits.find((result) => result.href.startsWith('/docs/scheduling#'));
@@ -64,7 +63,7 @@ describe('the search (a server route)', { timeout: 30_000 }, () => {
     expect(body).not.toContain('<dialog');
     expect(body).toContain('<h1');
     expect(body).toContain('<button type="submit"');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('keeps the layer and the page answer of one URL apart in a shared cache: different ETags, Vary names the region', async () => {
     const layer = await app.layering().get('/docs/search?q=onOneServer').assertOk();
@@ -85,7 +84,7 @@ describe('the search (a server route)', { timeout: 30_000 }, () => {
     const empty = (await ssr.get('/docs/search', document).assertOk()).body;
     expect(empty).not.toContain('search-group');
     expect(empty).toContain('role="status"');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('a query over 100 characters is invalid and falls back to the empty search (no 422, no 500, no work)', async () => {
     const response = await app.navigating().get(`/docs/search?q=${'onOneServer'.repeat(910)}`).assertOk();

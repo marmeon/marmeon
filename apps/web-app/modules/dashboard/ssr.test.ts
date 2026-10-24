@@ -3,14 +3,11 @@ import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@ma
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 
-// Vitest's 5 s is too short under load: more time on CI runners only (CI=true).
-const ciTimeout = process.env.CI === 'true' ? 15_000 : undefined;
-
 // Islands in the SSR stream: resolved in-process while the page renders — rendered completely here, as for a bot.
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 let app: TestApp;
@@ -34,7 +31,7 @@ describe('test apps that share the Vite server', () => {
 
     const next = await createTestApp(application, { database: 'refresh', ssr: true, ssrServer: server });
     await next.get('/login', document).assertOk().assertServerRendered().assertDontSee(probe.name).assertDontSee(probe.email);
-  }, ciTimeout);
+  });
 });
 
 describe('the dashboard, rendered on the server with its islands', () => {
@@ -64,7 +61,7 @@ describe('the dashboard, rendered on the server with its islands', () => {
       expect(response.body.includes('"stats"')).toBe(admin);
       expect(response.page()!.props).toMatchObject({ auth: { user: { name: admin ? ada.name : alan.name } } });
     });
-  }, ciTimeout);
+  });
 
   it('sees whoever the page signed in — a remember-me sign-in of the page request itself (the cookie does not know it yet)', async () => {
     const login = await app.post('/login', { form: { email: ada.email, password: 'password', remember: 'on' } }).assertRedirect();

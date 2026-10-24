@@ -38,7 +38,7 @@ describe('/llms.txt', () => {
   it('links pages that answer as Markdown', async () => {
     const urls = [...(await app.get('/llms.txt').assertOk()).body.matchAll(/^- \[.*\]\((.+)\)$/gm)].map((match) => new URL(match[1]!).pathname);
     for (const path of urls) expect((await app.get(path).assertOk()).headers.get('content-type')).toBe('text/markdown; charset=utf-8');
-  }, 60_000);
+  }, 60_000); // requests every page that llms.txt lists
 
   it('takes its origin from APP_URL, not from the request', async () => {
     await expectOriginFromAppUrl('/llms.txt', (response) => /\((https[^)]*)\)/.exec(response.body)?.[1] ?? null, 'https://docs.example/docs/why-marmeon.md');

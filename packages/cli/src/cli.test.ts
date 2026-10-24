@@ -6,8 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { marmeon, webApp, webAppCopy } from './__fixtures__/cli.js';
 
-// Each test runs the CLI as a child process: slow on a busy CI runner.
-describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
+describe('marmeon (in the web app)', () => {
   it('lists commands grouped by namespace', () => {
     const { code, stdout } = marmeon(webApp, []);
     expect(code).toBe(0);
@@ -189,7 +188,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     expect(forced.code).toBe(0);
     expect(forced.stdout).toContain('Migrated 2026_10_01_120000_create_users_table');
     expect(forced.stdout).not.toContain('database.d.ts');
-  }, 30_000);
+  });
 
   it('migrates from scratch and seeds (migrate:fresh --seed, db:seed)', () => {
     const fresh = marmeon(webApp, ['migrate:fresh', '--seed', '--no-types'], { DB_DATABASE: ':memory:' });
@@ -198,7 +197,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     const unknown = marmeon(webApp, ['db:seed', '--class=Nope'], { DB_DATABASE: ':memory:' });
     expect(unknown.code).toBe(1);
     expect(unknown.stderr).toBe('✗ [marmeon:D13] There is no seeder "Nope".\n');
-  }, 30_000);
+  });
 
   it('checks that the committed table types match the migrations (db:types --check, as in CI)', () => {
     const { code, stdout } = marmeon(webApp, ['db:types', '--check'], { DB_DATABASE: ':memory:' });
@@ -261,7 +260,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
     const dev = marmeon(webApp, ['dev', '--nope'], {}, 20_000);
     expect(dev.code).toBe(2);
     expect(dev.stderr).toContain('Usage: marmeon dev');
-  }, 30_000);
+  });
 
   it('rejects unknown commands and invalid options', () => {
     const unknown = marmeon(webApp, ['nope']);
@@ -278,7 +277,7 @@ describe('marmeon (in the web app)', { timeout: 30_000 }, () => {
   });
 });
 
-describe('marmeon console log lines', { timeout: 30_000 }, () => {
+describe('marmeon console log lines', () => {
   /** A copy of the web app whose own provider logs through the console logger while it boots. */
   function appThatLogsWhileBooting(): string {
     const app = webAppCopy();

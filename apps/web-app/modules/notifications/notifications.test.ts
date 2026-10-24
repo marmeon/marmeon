@@ -4,7 +4,7 @@ import { notificationsChannel } from '@marmeon/live';
 import { Inbox, Notifications, SendQueuedNotification } from '@marmeon/notifications';
 import { JobRegistry } from '@marmeon/queue';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { NewSignInNotification } from '../auth/index.ts';
 import { UserFactory } from '../auth/factories/UserFactory.ts';
@@ -12,6 +12,9 @@ import { NotifyAboutNewSignIn } from '../auth/listeners/NotifyAboutNewSignIn.ts'
 import { NewSignInMail } from '../auth/mail/NewSignInMail.ts';
 import type { User } from '../auth/users.ts';
 import type { ShowNotificationsController } from './controllers/ShowNotificationsController.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 const FIREFOX = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15.6; rv:142.0) Gecko/20100101 Firefox/142.0';
 

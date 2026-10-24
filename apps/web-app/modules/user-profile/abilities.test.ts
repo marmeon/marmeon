@@ -2,13 +2,16 @@ import { UserRepository, type User } from '#modules/auth';
 import type { AuthUser } from '@marmeon/auth';
 import { LoginActivityRepository } from './LoginActivityRepository.ts';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ShowRecentSignInsController } from '../dashboard/controllers/ShowRecentSignInsController.ts';
 import type { EditUserProfileController } from './controllers/EditUserProfileController.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import { ProfileLinkPolicy } from './policies/ProfileLinkPolicy.ts';
 import { ProfilePolicy } from './policies/ProfilePolicy.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 /** Every policy call of a request, by ability — what the projection asked. */
 let asked: string[] = [];

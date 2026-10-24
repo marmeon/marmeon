@@ -1,12 +1,11 @@
 import { createTestApp, startSsrServer, type SsrServer } from '@marmeon/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 describe('the layout of a docs page (server-rendered)', () => {
@@ -33,7 +32,7 @@ describe('the layout of a docs page (server-rendered)', () => {
     expect(body).not.toContain('style=');
     expect(body).toContain('<details class="toc-mobile">');
     expect(body).toContain('<details class="docs-menu">');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('renders the start page and the search without the section navigation — the search also without the top field', async () => {
     const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
@@ -44,5 +43,5 @@ describe('the layout of a docs page (server-rendered)', () => {
       expect(body, path).toContain('class="docs-top"');
       if (path.startsWith('/docs/search')) expect(body, path).not.toContain('data-search-trigger');
     }
-  }, SSR_TEST_TIMEOUT);
+  });
 });

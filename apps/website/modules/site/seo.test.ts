@@ -28,7 +28,7 @@ describe('/sitemap.xml', () => {
   it('names only URLs that answer', async () => {
     const urls = locs((await app.get('/sitemap.xml').assertOk()).body);
     for (const url of urls) await app.get(new URL(url).pathname, { headers: { accept: 'text/html' } }).assertOk();
-  }, 60_000);
+  }, 60_000); // requests every URL of the sitemap
 
   it('leaves out a draft and escapes the URLs', () => {
     expect(sitemapPaths([{ path: '/docs/a', pending: false }, { path: '/docs/b', pending: true }])).toEqual(['/', '/docs', '/docs/a', '/imprint', '/privacy']);

@@ -1,10 +1,13 @@
 import { Registered } from '@marmeon/auth';
 import { EventRegistry } from '@marmeon/core';
 import { createTestApp } from '@marmeon/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { RebuildMemberStatsJob } from './jobs/RebuildMemberStatsJob.ts';
 import { MemberStats } from './MemberStats.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 const post = (app: Awaited<ReturnType<typeof createTestApp>>, email: string) =>
   app.post('/register', { form: { name: 'New Member', email, password: 'orbital mechanics', password_confirmation: 'orbital mechanics' } });

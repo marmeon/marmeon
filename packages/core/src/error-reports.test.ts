@@ -384,9 +384,10 @@ describe('ErrorReports — one reporter does not starve another', () => {
         }
       }
       const { errorReports, logger } = setup(NeverSettles);
-      for (let second = 0; second < 300; second++) {
+      // 120 s, twice the minute between two lines about dropped reports; 10 s steps, because every pending timer slows the clock's advance.
+      for (let step = 0; step < 12; step++) {
         for (let index = 0; index < 50; index++) errorReports.report(new Error('x'), request);
-        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(10_000);
       }
       expect(received).toBeLessThanOrEqual(MAX_OPEN_REPORTS);
       expect(logger.warnings.some((warning) => /never finished|reports open/.test(warning))).toBe(true);
@@ -406,9 +407,11 @@ describe('ErrorReports — one reporter does not starve another', () => {
         }
       }
       const { errorReports, logger } = setup(Slow);
-      for (let second = 0; second < 130; second++) {
-        for (let index = 0; index < 60; index++) errorReports.report(new Error('x'), request);
-        await vi.advanceTimersByTimeAsync(1000);
+      // A report takes 5 s and 51 arrive every 2.5 s: when a batch arrives, 102 would be open, more than the 100 a reporter may hold. 75 s are
+      // more than the minute between two lines about dropped reports.
+      for (let step = 0; step < 30; step++) {
+        for (let index = 0; index < 51; index++) errorReports.report(new Error('x'), request);
+        await vi.advanceTimersByTimeAsync(2500);
       }
       expect(logger.warnings.filter((warning) => /\d+ error reports were dropped/.test(warning)).length).toBeGreaterThanOrEqual(1);
     } finally {

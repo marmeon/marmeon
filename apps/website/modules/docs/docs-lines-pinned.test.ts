@@ -12,7 +12,7 @@ const pinned = existsSync(join(appRoot, 'docs-lines.json')) ? Object.keys((JSON.
 let app: TestApp;
 beforeAll(async () => {
   app = await createTestApp(application);
-}, 60_000);
+}, 60_000); // boots the website with every pinned line's snapshot
 afterAll(() => app?.close());
 
 describe('the pinned release lines', () => {
@@ -33,5 +33,5 @@ describe('the pinned release lines', () => {
       await app.get(`/docs/${line.name}/llms.txt`).assertOk();
       await app.get(`/docs/${line.name}/llms-full.txt`).assertOk();
     }
-  }, 120_000);
+  }, 120_000); // requests every page of every pinned line, as HTML and as Markdown
 });

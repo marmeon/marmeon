@@ -2,9 +2,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cookieNames, twoFactorCode } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from './warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 const MODULES = join(import.meta.dirname, '..');
 
@@ -37,11 +40,11 @@ describe('forms that carry secrets', () => {
   });
 });
 
-describe('the two-factor settings page, rendered on the server', { timeout: 30_000 }, () => {
+describe('the two-factor settings page, rendered on the server', () => {
   let app: TestApp;
   beforeEach(async () => {
     app = await createTestApp(application, { database: 'refresh', ssr: true });
-  }, 30_000);
+  });
 
   it('posts both forms to their routes without JavaScript', async () => {
     const ada = await app.factory(UserFactory).create();

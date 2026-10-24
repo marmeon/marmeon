@@ -32,7 +32,7 @@ beforeAll(async () => {
   } finally {
     await app.close();
   }
-}, 60_000);
+});
 afterAll(() => server?.close());
 
 describe('the SSR lab', () => {
@@ -65,7 +65,7 @@ describe('the SSR lab', () => {
   it('a slow Suspense boundary is in the HTML when the page renders completely (tests and bots)', async () => {
     const { app } = await lab();
     await app.get('/lab/streaming', page).assertOk().assertServerRendered().assertSee('<p data-slow-part="true">Rendered 1000 ms after the shell.</p>').assertDontSee('Loading the slow part');
-  }, 10_000);
+  });
 
   it('renders a Date prop as the browser gets it — an ISO string — so the page renders on the server and hydrates', async () => {
     const { app } = await lab();
@@ -73,7 +73,7 @@ describe('the SSR lab', () => {
     const { now } = response.page()!.props as { now: string };
     // `now.slice(…)` in the view: a string on the server too.
     response.assertSee(`<time dateTime="${now}">${now.slice(11, 19)}</time>`);
-  }, 10_000);
+  });
 
   it('an error in a Suspense boundary still delivers the page — the shell, and that part for the browser to render', async () => {
     const { app, entries } = await lab();

@@ -1,8 +1,11 @@
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from '../auth/factories/UserFactory.ts';
 import type { RaceValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 /**
  * The rules of @marmeon/validation in the app: `/lab/validation` — a request schema of `rules`, the framework's

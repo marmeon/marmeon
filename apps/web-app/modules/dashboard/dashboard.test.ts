@@ -4,12 +4,15 @@ import { defineModule } from '@marmeon/core';
 import { AfterResponse, Controller, defineRoutes, everyone } from '@marmeon/http';
 import { Session } from '@marmeon/session';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { ProfileDirectory } from '../user-profile/ProfileDirectory.ts';
 import { LoginActivityRepository } from '../user-profile/LoginActivityRepository.ts';
 import type { ShowMemberStatsController } from './controllers/ShowMemberStatsController.ts';
 import type { ShowRecentSignInsController } from './controllers/ShowRecentSignInsController.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 /** An island that writes the session — what an island must not do. */
 class WritesSessionIsland extends Controller {

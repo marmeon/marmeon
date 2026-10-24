@@ -1,9 +1,12 @@
 import { UserFactory } from '#modules/auth';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import type { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import { ProfileLinkFactory } from './factories/ProfileLinkFactory.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 let app: TestApp;
 beforeEach(async () => {

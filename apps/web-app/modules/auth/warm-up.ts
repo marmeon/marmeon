@@ -44,3 +44,14 @@ export async function warmUp(): Promise<void> {
     await development.close();
   }
 }
+
+/**
+ * For a test file's `beforeAll(warmUpDatabase, WARM_UP_TIMEOUT)` when its tests only need the worker's database and the app's
+ * modules: one seeded app, opened and closed. The first app of a worker creates and migrates its database (on Postgres a
+ * `create database` and every migration); without this hook the file's first test, or its first `beforeEach`, would pay that
+ * inside Vitest's 5 s. {@link warmUp} does this and more, for the files that register or send mail.
+ */
+export async function warmUpDatabase(): Promise<void> {
+  const app = await createTestApp(application, { database: 'refresh', seed: true });
+  await app.close();
+}

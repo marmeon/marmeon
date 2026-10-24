@@ -10,7 +10,7 @@ let app: TestApp;
 let ada: User, alan: User;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000); // Vite starts once for the file — seconds on a busy machine
+}); // Vite starts once for the file
 afterAll(() => server?.close());
 
 beforeEach(async () => {
@@ -21,7 +21,7 @@ beforeEach(async () => {
 
 const page = { headers: { accept: 'text/html' } };
 
-describe('the profile page, rendered on the server', { timeout: 30_000 }, () => {
+describe('the profile page, rendered on the server', () => {
   it('hydrates: what the server rendered is what the browser renders from the page object — dates included', async () => {
     // A sign-in leaves a timestamp with milliseconds: rendered from a Date, the server would say "29 seconds ago" where the
     // browser says "28" (and write a `dateTime` the browser never sees).
@@ -54,7 +54,7 @@ describe('the profile page, rendered on the server', { timeout: 30_000 }, () => 
   });
 });
 
-describe('view transitions: the avatars the list and the profile share, rendered on the server', { timeout: 30_000 }, () => {
+describe('view transitions: the avatars the list and the profile share, rendered on the server', () => {
   it('without inline styles — view-transition-name only through the CSSOM (React, during a transition): a strict style-src blocks none', async () => {
     await app.make(UserRepository).update(ada.id, { avatar_path: 'avatars/ada.png' });
     for (const url of ['/people', `/users/${ada.public_id}`]) {
@@ -68,7 +68,7 @@ describe('view transitions: the avatars the list and the profile share, rendered
   });
 });
 
-describe('the app’s pages, rendered on the server', { timeout: 30_000 }, () => {
+describe('the app’s pages, rendered on the server', () => {
   it('carry no style attribute — the views name classes of styles/app.css (a strict style-src would block one)', async () => {
     // Signed in for real: a fresh sign-in counts as a confirmed password (the settings pages are in sudo mode).
     const login = await app.post('/login', { form: { email: ada.email, password: 'password' } }).assertRedirect('/users/me');
@@ -82,7 +82,7 @@ describe('the app’s pages, rendered on the server', { timeout: 30_000 }, () =>
   });
 });
 
-describe('the people list, rendered on the server — its query state included', { timeout: 30_000 }, () => {
+describe('the people list, rendered on the server — its query state included', () => {
   it('renders the filtered, sorted list from the URL, and it hydrates: useQueryState reads the parsed query of the page', async () => {
     const response = await app.actingAs(ada).get('/people?q=a&sort=-name', page).assertServerRendered().assertHydrates();
     expect(response.body).toContain('value="a"'); // the search field holds the query
@@ -100,7 +100,7 @@ describe('the people list, rendered on the server — its query state included',
   });
 });
 
-describe('a deep link of a layer, rendered on the server', { timeout: 30_000 }, () => {
+describe('a deep link of a layer, rendered on the server', () => {
   it('renders the edit layer over the profile in one document — and it hydrates', async () => {
     const response = await app.actingAs(ada).get(`/users/${ada.public_id}/edit`, page).assertOk().assertServerRendered().assertHydrates();
     expect(response.body).toContain('<dialog open="" data-marmeon-layer="user-profile/Edit"');
@@ -119,7 +119,7 @@ describe('a deep link of a layer, rendered on the server', { timeout: 30_000 }, 
   });
 });
 
-describe('the people list’s page links, rendered on the server', { timeout: 30_000 }, () => {
+describe('the people list’s page links, rendered on the server', () => {
   it('speak the reader’s language — the app’s words (layouts/Pagination.tsx), links from the parsed query', async () => {
     await app.factory(UserFactory).count(12).create(); // 15 people: two pages
     const german = await app.actingAs(ada).get('/people?page=2&sort=-name', { headers: { ...page.headers, 'accept-language': 'de' } }).assertServerRendered().assertHydrates();

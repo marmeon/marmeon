@@ -66,7 +66,7 @@ describe('create-marmeon — the call', () => {
     child.stdin.end();
     expect(ended).toBe(USAGE);
     expect(stderr.trim()).toBe(NO_DIRECTORY);
-  }, 15_000);
+  });
 
   it('refuses wrong calls with exit 2 — an unknown flag, two directories, two package managers', async () => {
     const cwd = workspace();

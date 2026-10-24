@@ -2,9 +2,12 @@ import { Connections, sql } from '@marmeon/database';
 import { RedisConnections } from '@marmeon/redis';
 import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from './warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 /** Redis runs when `MARMEON_TEST_REDIS_URL` is set (`pnpm test:redis`). */
 const REDIS_URL = process.env.MARMEON_TEST_REDIS_URL;

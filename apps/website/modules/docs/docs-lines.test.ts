@@ -3,12 +3,11 @@ import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@ma
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { DocsRepository } from './DocsRepository.ts';
-import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 // One line, 0.9.x, with three pages, UPGRADING.md and its index — the website's own repository pins none yet.
@@ -25,7 +24,7 @@ beforeAll(async () => {
   withLines = await createTestApp(application, { env: lines });
   // Whatever the repository pins: a missing directory and file are "no lines".
   withoutLines = await createTestApp(application, { env: { DOCS_LINES: '/nonexistent/lines', DOCS_LINE_PINS: '/nonexistent/docs-lines.json' } });
-}, 60_000);
+});
 afterAll(async () => {
   await Promise.all([app?.close(), withLines?.close(), withoutLines?.close()]);
 });
@@ -49,7 +48,7 @@ describe('a page of a release line', () => {
     expect(body).not.toContain('data-search-trigger');
     expect(text).toMatch(/<span class="badge">0\.9\.0<\/span>/);
     expect(body).toContain('href="/docs/0.9.x/middleware"');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('says the same on the start of a line: one noindex, the start of the docs as canonical, the header', async () => {
     const response = await app.get('/docs/0.9.x', html).assertOk().assertServerRendered();
@@ -58,14 +57,14 @@ describe('a page of a release line', () => {
     expect(tag(response.body, 'link', 'rel', 'canonical').map(hrefOf)).toEqual(['http://localhost/docs']);
     expect(response.headers.get('x-robots-tag')).toBe('noindex');
     expect(response.body).not.toContain('data-search-trigger');
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('names the start of the docs as canonical when the newest docs no longer have the page', async () => {
     const body = (await app.get('/docs/0.9.x/retired-feature', html).assertOk()).body;
     expect(tag(body, 'link', 'rel', 'canonical').map(hrefOf)).toEqual(['http://localhost/docs']);
     expect(body).toMatch(/<meta name="robots" content="noindex"/);
     expect(app.make(DocsRepository).doc('retired-feature')).toBeUndefined();
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('carries the line, its own navigation and the pager of the line as props', async () => {
     const page = (await withLines.navigating().get('/docs/0.9.x/routing').assertOk()).page()!;

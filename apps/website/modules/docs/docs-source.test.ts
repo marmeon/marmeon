@@ -8,12 +8,11 @@ import docsConfig from '../../docs.config.ts';
 import { expectOriginFromAppUrl } from '../site/origin.test-support.ts';
 import { DocsError, DocsRepository } from './DocsRepository.ts';
 import { markdownParser } from './markdown.ts';
-import { SSR_TEST_TIMEOUT } from './test-timeouts.ts';
 
 let server: SsrServer;
 beforeAll(async () => {
   server = await startSsrServer(application);
-}, 30_000);
+});
 afterAll(() => server?.close());
 
 const repo = resolve(import.meta.dirname, '../../../..');
@@ -66,7 +65,7 @@ describe('/docs/<slug>.md', () => {
       }
     }
     expect(broken, broken.join('\n')).toEqual([]);
-  }, 60_000);
+  }, 60_000); // parses every page and checks each of its links
 
   it('is named by every HTML page of the docs', async () => {
     const ssr = await createTestApp(application, { ssr: true, ssrServer: server });
@@ -75,7 +74,7 @@ describe('/docs/<slug>.md', () => {
     expect(tag).toContain('type="text/markdown"');
     expect(tag).toContain('href="/docs/routing.md"');
     await ssr.get('/docs/search', { headers: { accept: 'text/html' } }).assertOk();
-  }, SSR_TEST_TIMEOUT);
+  });
 
   it('rewrites a link in a table cell', async () => {
     const source = tempDir('marmeon-docs-source-');
@@ -122,5 +121,5 @@ describe('the "View as Markdown" link (server-rendered)', () => {
     expect((await ssr.get('/docs/routing.md').assertOk()).headers.get('content-type')).toBe('text/markdown; charset=utf-8');
     expect(link((await ssr.get('/docs/upgrading', { headers: { accept: 'text/html' } }).assertOk()).body)[0]).toContain('href="/docs/upgrading.md"');
     for (const path of ['/docs', '/docs/search']) expect(link((await ssr.get(path, { headers: { accept: 'text/html' } }).assertOk()).body)).toEqual([]);
-  }, SSR_TEST_TIMEOUT);
+  });
 });

@@ -1,9 +1,12 @@
 import { NO_STORE } from '@marmeon/auth';
 import { INTENDED_KEY } from '@marmeon/http';
 import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from '../auth/factories/UserFactory.ts';
+import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
+
+beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
 let app: TestApp;
 beforeEach(async () => {
