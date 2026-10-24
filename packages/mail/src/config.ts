@@ -3,10 +3,16 @@ import { devHosts } from '@marmeon/core/dev';
 
 const DEFAULT_FROM_ADDRESS = 'hello@example.com';
 
+/** The built-in transports; a provider can bring more (`static mailDrivers`). */
+export const BUILT_IN_MAIL_DRIVERS = ['log', 'array', 'smtp'] as const;
+
 export const MailConfig = defineConfig('mail', {
   env: env({
-    /** `log` (default: written to the log, nothing is sent), `array` (kept in memory) or `smtp` (nodemailer, a dependency of this package). */
-    MAIL_DRIVER: env.in(['log', 'array', 'smtp']).default('log'),
+    /**
+     * `log` (default: written to the log, nothing is sent), `array` (kept in memory), `smtp` (nodemailer, a dependency of this package)
+     * or a transport a provider brings. A name nobody brought stops the start.
+     */
+    MAIL_DRIVER: env.string().regex(/^[a-z][a-z0-9-]*$/, 'must be a driver name: lowercase letters, digits and dashes').default('log'),
     MAIL_FROM_ADDRESS: env.email('MAIL_FROM_ADDRESS must be an e-mail address').optional(),
     MAIL_FROM_NAME: env.string().default(''),
     MAIL_HOST: env.string().default('127.0.0.1'),
@@ -23,7 +29,7 @@ export const MailConfig = defineConfig('mail', {
   resolve: (e) => {
     const address = e.MAIL_FROM_ADDRESS ?? DEFAULT_FROM_ADDRESS;
     return {
-      mailer: e.MAIL_DRIVER,
+      driver: e.MAIL_DRIVER,
       from: e.MAIL_FROM_NAME ? { address, name: e.MAIL_FROM_NAME } : address,
       /** `MAIL_FROM_ADDRESS` is not set: the boot of a protected environment warns ({@link fromDefaultWarning}). */
       fromDefaulted: e.MAIL_FROM_ADDRESS === undefined,
@@ -60,6 +66,6 @@ export const LOG_MAILER_WARNING =
  * What the boot logs, once per process, when a protected environment (production, no `NODE_ENV`) sends from the
  * default address because `MAIL_FROM_ADDRESS` is not set. Not an error: without SMTP the default does no harm.
  */
-export const fromDefaultWarning = (mailer: string): string =>
+export const fromDefaultWarning = (driver: string): string =>
   `MAIL_FROM_ADDRESS is not set: mail goes out from ${DEFAULT_FROM_ADDRESS}, which receiving servers reject or file as spam. ` +
-  `Set it to an address of your domain.${mailer === 'log' ? ' (MAIL_DRIVER=log: now only in the log.)' : ''}`;
+  `Set it to an address of your domain.${driver === 'log' ? ' (MAIL_DRIVER=log: now only in the log.)' : ''}`;

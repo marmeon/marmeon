@@ -462,6 +462,7 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 | Q5 | `scheduler` | A schedule cannot start: a cron expression, time, time zone or task name that is invalid, a task without a frequency, or a package or provider the scheduler needs missing. [Frequencies](scheduling.md#frequencies) |
 | Q6 | `notifications` | Notifications are not set up: a class without a name, schema or `via()`, a name or channel taken twice, or a package or provider missing. [Defining notifications](notifications.md#defining-notifications) |
 | Q7 | `mail` | An MJML template is invalid, or the `mjml` package is not installed. [Writing mails](mail.md#writing-mails) |
+| Q8 | `mail` | The mail driver cannot be set up: `MAIL_DRIVER` names a transport nobody brought, or a provider's factory returns something without `send()`. [Mail transports](drivers.md#mail-transports) |
 | S1 | `cache` | The cache is not set up: a driver's package or provider is missing, the driver is unknown, or a custom driver breaks its contract. [Drivers](cache.md#drivers) |
 | S2 | `storage` | Storage is not set up: a disk, its driver, its visibility or its URL is configured wrongly, or the AWS SDK or another package is missing. [Configuration](storage.md#configuration) |
 | S3 | `storage` | A storage key a disk refuses: `..`, an absolute path, a backslash, a control character or a symlink out of the disk's root. [Keys](storage.md#keys) |

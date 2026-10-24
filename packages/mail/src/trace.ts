@@ -9,7 +9,7 @@ const sends = channels.tracing('mail.send');
  * Runs `send` on the `mail.send` channel while something listens — the recipients, subject and body filled in from
  * the composed message (raw: the devtools redact it). Without a subscriber (or an app) it just runs.
  */
-export function traceMail(app: Application | undefined, mailable: string, mode: MailSendMessage['mode'], send: () => Promise<MailMessage>): Promise<MailMessage> {
+export function traceMail<T extends MailMessage>(app: Application | undefined, mailable: string, mode: MailSendMessage['mode'], send: () => Promise<T>): Promise<T> {
   if (!app || !sends.hasSubscribers) return send();
   return trace(sends, { ...messageBase(app), mailable, mode }, send, (ended, message) => {
     ended.to = message.to.map((to) => to.address);
