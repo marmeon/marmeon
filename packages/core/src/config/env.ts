@@ -234,11 +234,18 @@ const ENV_RENAMED: unique symbol = Symbol.for('marmeon.env.renamed');
 
 const VARIABLE_NAME = /^[A-Z][A-Z0-9_]*$/;
 
+/** Options of `EnvSchema.renamed()`. */
+export interface RenamedOptions {
+  /** How the old value becomes the new one, when the unit changes: the stop message says it in place of "same value". */
+  readonly conversion?: string;
+}
+
 /** The schema `env({ … })` makes — a Standard Schema; `.check()` adds a rule between variables, `.renamed()` retires a name. */
 export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> implements StandardSchemaV1<In, Out> {
   readonly #fields: Fields;
   readonly #checks: readonly CrossCheck<Out>[];
   #renamed: ReadonlyMap<string, string> = new Map();
+  #notes: ReadonlyMap<string, string> = new Map();
   readonly '~standard': StandardSchemaV1<In, Out>['~standard'];
 
   constructor(fields: Fields, checks: readonly CrossCheck<Out>[] = []) {
@@ -264,7 +271,7 @@ export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> i
    * ```
    */
   check(test: (values: Out) => boolean, message: EnvMessage<Out>, variable: keyof Out & string): EnvSchema<Out, In> {
-    return this.#derive([...this.#checks, { variable, test, message }], this.#renamed);
+    return this.#derive([...this.#checks, { variable, test, message }], this.#renamed, this.#notes);
   }
 
   /**
@@ -274,20 +281,25 @@ export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> i
    * ```ts
    * env({ NOTES_PER_PAGE: env.integer().default(20) }).renamed('NOTES_PAGE_SIZE', 'NOTES_PER_PAGE')
    * ```
+   *
+   * The problem says the value carries over unchanged. When it does not (the old name had no unit), `conversion` says how the value changes instead.
    */
-  renamed(from: string, to: keyof Out & string): EnvSchema<Out, In> {
+  renamed(from: string, to: keyof Out & string, options: RenamedOptions = {}): EnvSchema<Out, In> {
+    const { conversion } = options;
     if (!VARIABLE_NAME.test(from) || !VARIABLE_NAME.test(to)) throw new TypeError(`env.renamed(): ${from} and ${to} must be variable names in upper case, such as NOTES_PER_PAGE.`);
+    if (conversion !== undefined && conversion.trim() === '') throw new TypeError(`env.renamed(): the conversion of ${from} is empty — say how the value changes, or leave it out.`);
     if (from === to) throw new TypeError(`env.renamed(): ${from} cannot be renamed to itself.`);
     if (!Object.hasOwn(this.#fields, to)) throw new TypeError(`env.renamed(): ${to} is not a variable of this schema.`);
     if (Object.hasOwn(this.#fields, from)) throw new TypeError(`env.renamed(): ${from} is a variable of this schema, so it cannot be retired.`);
     if (this.#renamed.has(from)) throw new TypeError(`env.renamed(): ${from} is retired already.`);
-    return this.#derive(this.#checks, new Map([...this.#renamed, [from, to]]));
+    return this.#derive(this.#checks, new Map([...this.#renamed, [from, to]]), conversion === undefined ? this.#notes : new Map([...this.#notes, [from, conversion]]));
   }
 
   /** A copy with other checks and locks — the locks are set here only, so every one passed the tests of `.renamed()`. */
-  #derive(checks: readonly CrossCheck<Out>[], renamed: ReadonlyMap<string, string>): EnvSchema<Out, In> {
+  #derive(checks: readonly CrossCheck<Out>[], renamed: ReadonlyMap<string, string>, notes: ReadonlyMap<string, string>): EnvSchema<Out, In> {
     const schema = new EnvSchema<Out, In>(this.#fields, checks);
     schema.#renamed = new Map(renamed);
+    schema.#notes = new Map(notes);
     return schema;
   }
 
@@ -308,7 +320,8 @@ export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> i
     for (const [from, to] of this.#renamed) {
       const old = Object.hasOwn(source, from) ? source[from] : undefined;
       if (old === undefined || old === '') continue;
-      issues.push({ message: `${from} was renamed ${to} — same value; rename it in .env and wherever the environment is set (docs/configuration.md#renamed-variables).`, path: [from] });
+      const advice = this.#notes.get(from) ?? 'same value; rename it in .env and wherever the environment is set';
+      issues.push({ message: `${from} was renamed ${to} — ${advice} (docs/configuration.md#renamed-variables).`, path: [from] });
     }
     for (const [name, field] of Object.entries(this.#fields)) {
       const raw = Object.hasOwn(source, name) ? source[name] : undefined;

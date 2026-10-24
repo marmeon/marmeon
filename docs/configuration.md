@@ -289,7 +289,8 @@ export const NotesConfig = defineConfig('notes', {
 ```
 
 `renamed()` throws when a name is not in upper case, when both names are the same, when the new name is not a variable of the
-schema, when the old one is, and when the old one is retired already.
+schema, when the old one is, and when the old one is retired already. The option `{ conversion }` replaces the "same value" advice in the
+problem, for a rename that changes the unit; it cannot be empty.
 
 Reading both names would leave it open which one wins when a deployment sets both, so the old one only stops the start. Leave
 the `.renamed()` call in place: without it, the old name falls back to the default again, silently.
@@ -437,13 +438,14 @@ The names follow a few rules:
   `PORT` and `HOST` have none, because platforms set them, and the names of the OpenTelemetry specification stay as it writes them.
 - `<AREA>_DRIVER` picks the driver. `<AREA>_CONNECTION` names a connection of the database or of Redis, and nothing else.
 - A duration says its unit: `_MILLISECONDS`, `_SECONDS`, `_MINUTES`, `_HOURS` or `_DAYS`. A rate ends in `_PER_MINUTE` or
-  `_PER_DAY`, a size in `_MB`.
+  `_PER_DAY`.
+- A size is a whole number and says its unit: `_KB` or `_MB` (1,024-based). `_SIZE`, `_MEMORY` and `_BYTES` are not units.
 - A switch is read as a boolean: `true`, `false`, `1` or `0`, in any case, and anything else stops the start. `OTEL_SDK_DISABLED` is the one exception: it
   follows the OpenTelemetry specification, where only `true`, in any case, disables the SDK. Any other value, `1` included, leaves spans on
   and logs a warning ([Observability](observability.md#configuration)).
-- A rename keeps the unit, the default and the limits, so an app renames a key and never converts a value.
+- A rename keeps the unit, the default and the limits, so an app renames a key and never converts a value. The one exception: when the old name had no unit, the new name's unit may differ, and the stop message for the old name says the conversion.
 
-The Kind column says which rule a variable falls under: `driver`, `connection`, `switch`, `duration` or `value` for the rest.
+The Kind column says which rule a variable falls under: `driver`, `connection`, `switch`, `duration`, `size` or `value` for the rest.
 
 | Variable | Package | Kind | Default | Page |
 | --- | --- | --- | --- | --- |
@@ -488,7 +490,7 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `DB_URL` | database | value | optional | [Database: Getting Started](database.md#configuration) |
 | `DB_USERNAME` | database | value | `"postgres"` | [Database: Getting Started](database.md#configuration) |
 | `DEVTOOLS_ENABLED` | devtools | switch | optional | [Devtools](devtools.md#only-in-development) |
-| `HASH_ARGON_MEMORY` | auth | value | `19456` | [Hashing](hashing.md#configuration) |
+| `HASH_ARGON_MEMORY_KB` | auth | size | `19456` | [Hashing](hashing.md#configuration) |
 | `HASH_ARGON_PARALLELISM` | auth | value | `1` | [Hashing](hashing.md#configuration) |
 | `HASH_ARGON_TIME` | auth | value | `2` | [Hashing](hashing.md#configuration) |
 | `HASH_DRIVER` | auth | driver | `"argon2id"` | [Hashing](hashing.md#configuration) |
@@ -537,7 +539,7 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `SERVER_ASSET_VERSION` | server | value | optional | [Deployment](deployment.md#configuration) |
 | `SERVER_HEALTH_PATH` | server | value | `"/up"` | [Deployment](deployment.md#health-checks) |
 | `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` | server | duration | `65` | [Deployment](deployment.md#configuration) |
-| `SERVER_MAX_BODY_SIZE` | server | value | `"8m"` | [Requests](requests.md#configuration) |
+| `SERVER_MAX_BODY_MB` | server | size | `8` | [Requests](requests.md#configuration) |
 | `SERVER_SHUTDOWN_DELAY_SECONDS` | server | duration | `0` | [Deployment](deployment.md#configuration) |
 | `SERVER_SSR_ENABLED` | server | switch | `true` | [Pages & Layouts](pages.md#server-rendering) |
 | `SERVER_TRUSTED_PROXIES` | server | value | `[]` | [Deployment](deployment.md#configuration) |
@@ -554,8 +556,8 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `UPLOADS_DISK` | storage | value | `"uploads"` | [File Storage](storage.md#configuration) |
 | `UPLOADS_LIFETIME_MINUTES` | storage | duration | `120` | [File Storage](storage.md#configuration) |
 | `UPLOADS_MAX_OPEN` | storage | value | `20` | [File Storage](storage.md#configuration) |
-| `UPLOADS_MAX_OPEN_MB` | storage | value | `1024` | [File Storage](storage.md#configuration) |
-| `UPLOADS_MAX_OPEN_TOTAL_MB` | storage | value | `10240` | [File Storage](storage.md#configuration) |
+| `UPLOADS_MAX_OPEN_MB` | storage | size | `1024` | [File Storage](storage.md#configuration) |
+| `UPLOADS_MAX_OPEN_TOTAL_MB` | storage | size | `10240` | [File Storage](storage.md#configuration) |
 | `UPLOADS_SEND_WITHIN_MINUTES` | storage | duration | `15` | [File Storage](storage.md#configuration) |
 
 ## Testing

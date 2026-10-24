@@ -10,7 +10,7 @@ export type Input = Record<string, unknown>;
 
 export interface RequestStateOptions {
   /** Largest accepted body in bytes. Defaults to 8 MiB. */
-  maxBodySize?: number;
+  maxBodyBytes?: number;
   /** The client's IP address, as the server determined it (see the kernel's trusted proxies). */
   ip?: string | undefined;
   /** The response's CSP nonce (the kernel binds the same one in the request's scope). Default: a fresh one. */
@@ -55,14 +55,14 @@ export interface RequestState {
   expectsJson(): boolean;
 }
 
-export const DEFAULT_MAX_BODY_SIZE = 8 * 1024 * 1024;
+const DEFAULT_MAX_BODY_BYTES = 8 * 1024 * 1024;
 
 /** Bracket nesting deeper than this is rejected (a request is not a data structure attack surface). */
 const MAX_DEPTH = 20;
 /** Nesting limit of a JSON body; far below where V8's own recursion gives out, far above any real payload. */
 const MAX_JSON_DEPTH = 256;
 
-export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX_BODY_SIZE, ip, nonce = new RequestNonce(), cookies }: RequestStateOptions = {}): RequestState {
+export function createRequestState(request: Request, { maxBodyBytes = DEFAULT_MAX_BODY_BYTES, ip, nonce = new RequestNonce(), cookies }: RequestStateOptions = {}): RequestState {
   const query = new URL(request.url).searchParams;
   let input: Promise<Input> | undefined;
   let read: Input | undefined;
@@ -70,7 +70,7 @@ export function createRequestState(request: Request, { maxBodySize = DEFAULT_MAX
   return {
     query,
     input: () =>
-      (input ??= parseInput(request, maxBodySize).then((parsed) => {
+      (input ??= parseInput(request, maxBodyBytes).then((parsed) => {
         read = parsed;
         return parsed;
       })),
@@ -162,14 +162,14 @@ function dropProtoKeys(root: object): void {
   }
 }
 
-async function parseInput(request: Request, maxBodySize: number): Promise<Input> {
+async function parseInput(request: Request, maxBodyBytes: number): Promise<Input> {
   const type = mediaType(request);
   if (request.method === 'GET' || request.method === 'HEAD' || request.body === null || type === undefined) {
     return build([]);
   }
 
   if (type === 'application/json' || type.endsWith('+json')) {
-    const text = new TextDecoder().decode(await readBody(request, maxBodySize));
+    const text = new TextDecoder().decode(await readBody(request, maxBodyBytes));
     if (text.trim() === '') return build([]);
     let body: unknown;
     try {
@@ -187,12 +187,12 @@ async function parseInput(request: Request, maxBodySize: number): Promise<Input>
   }
 
   if (type === 'application/x-www-form-urlencoded') {
-    const form = new URLSearchParams(new TextDecoder().decode(await readBody(request, maxBodySize)));
+    const form = new URLSearchParams(new TextDecoder().decode(await readBody(request, maxBodyBytes)));
     return build(form);
   }
 
   if (type === 'multipart/form-data') {
-    const bytes = await readBody(request, maxBodySize);
+    const bytes = await readBody(request, maxBodyBytes);
     let form: FormData;
     try {
       form = await new Response(bytes, { headers: { 'content-type': request.headers.get('content-type')! } }).formData();

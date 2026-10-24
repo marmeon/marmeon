@@ -191,7 +191,7 @@ export declare class EnvSchema<Out, In = Readonly<Record<string, string | undefi
     readonly '~standard': StandardSchemaV1<In, Out>['~standard'];
     constructor(fields: Fields, checks?: readonly CrossCheck<Out>[]);
     check(test: (values: Out) => boolean, message: EnvMessage<Out>, variable: keyof Out & string): EnvSchema<Out, In>;
-    renamed(from: string, to: keyof Out & string): EnvSchema<Out, In>;
+    renamed(from: string, to: keyof Out & string, options?: RenamedOptions): EnvSchema<Out, In>;
 }
 // EnvString
 // type-only
@@ -465,6 +465,10 @@ export declare class Redactor {
     path(path: string, pattern?: string): string;
     url(url: string, pattern?: string): string;
     fit(value: unknown, maxBytes?: number): unknown;
+}
+// RenamedOptions
+export interface RenamedOptions {
+    readonly conversion?: string;
 }
 // ReportedError
 export interface ReportedError {

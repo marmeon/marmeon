@@ -20,7 +20,7 @@ describe('the time of a registration', () => {
   // repeat. The hashing itself is counted in `hashing.test.ts` of @marmeon/auth.
   it('takes as long for a known address as for a new one — the password is hashed either way (the configured costs)', { timeout: 120_000 /* 352 sign-ups at the configured hash costs: seconds of real hashing */ }, async () => {
     await app.close();
-    app = await createTestApp(application, { database: 'refresh', env: { HASH_ARGON_MEMORY: '19456', HASH_ARGON_TIME: '2' } });
+    app = await createTestApp(application, { database: 'refresh', env: { HASH_ARGON_MEMORY_KB: '19456', HASH_ARGON_TIME: '2' } });
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     // A measurement is a run of four sign-ups of one kind, and a pair is two runs of each kind in mirrored order (new, known, known,
     // new — the next pair the other way round: no "first of the pair" effect), as for the change of address: a lone sign-up's

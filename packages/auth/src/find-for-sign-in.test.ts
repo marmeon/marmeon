@@ -53,7 +53,7 @@ describe('a UserProvider with the old name findForLogin()', () => {
       discover: false,
       providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DatabaseServiceProvider, AuthServiceProvider],
     }, {
-      env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', DB_DATABASE: ':memory:', LOG_LEVEL: 'silent', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' },
+      env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', DB_DATABASE: ':memory:', LOG_LEVEL: 'silent', HASH_ARGON_MEMORY_KB: '1024', HASH_ARGON_TIME: '1' },
       override: (container: Container) => container.instance(UserProvider, new OldProvider() as unknown as UserProvider),
     });
     await expect(boot).rejects.toThrow(/A5.*renamed findForSignIn\(\)/s);

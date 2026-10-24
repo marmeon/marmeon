@@ -135,7 +135,7 @@ explains.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `HASH_DRIVER` | `argon2id` | `argon2id` or `scrypt`. |
-| `HASH_ARGON_MEMORY` | `19456` | KiB of memory per hash, from 1024 to 262144. |
+| `HASH_ARGON_MEMORY_KB` | `19456` | KiB of memory per hash, from 1024 to 262144. |
 | `HASH_ARGON_TIME` | `2` | Passes, from 1 to 16. |
 | `HASH_ARGON_PARALLELISM` | `1` | Lanes, from 1 to 16. |
 | `HASH_SCRYPT_COST` | `17` | The log2 of N, from 10 to 20. |
@@ -147,6 +147,6 @@ production.
 
 ## Testing
 
-Hashing at full cost makes tests slow. A new app's `.env.test` sets cheap costs, `HASH_ARGON_MEMORY=1024` and `HASH_ARGON_TIME=1`:
+Hashing at full cost makes tests slow. A new app's `.env.test` sets cheap costs, `HASH_ARGON_MEMORY_KB=1024` and `HASH_ARGON_TIME=1`:
 tests check behaviour, not strength. `UserFactory` stores one hash made at these costs for every user, with the password
 `password`, so making fifty users hashes nothing.

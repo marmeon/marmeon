@@ -118,8 +118,6 @@ export interface CookieOptions {
     httpOnly?: boolean;
     sameSite?: 'lax' | 'strict' | 'none';
 }
-// DEFAULT_MAX_BODY_SIZE
-export declare const DEFAULT_MAX_BODY_SIZE: number;
 // DefineMiddlewareOptions
 export interface DefineMiddlewareOptions<TAdds extends object = object> {
     readonly adds?: readonly (keyof TAdds & string)[];
@@ -357,7 +355,7 @@ export interface RequestState {
 }
 // RequestStateOptions
 export interface RequestStateOptions {
-    maxBodySize?: number;
+    maxBodyBytes?: number;
     ip?: string | undefined;
     nonce?: RequestNonce;
     cookies?: CookieDefaults;

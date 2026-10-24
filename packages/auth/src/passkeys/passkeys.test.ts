@@ -227,7 +227,7 @@ const routes = openRoutes((Route) => {
 
 const ada: TestUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
-const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
+const CHEAP = { HASH_ARGON_MEMORY_KB: '1024', HASH_ARGON_TIME: '1' };
 const ORIGIN = 'http://localhost:3000';
 
 async function boot(env: Record<string, string> = {}, options: { passkeys?: boolean; unboundState?: boolean; users?: MemoryUsers; clock?: TestClock } = {}) {

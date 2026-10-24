@@ -59,7 +59,7 @@ export type { RedactableQuery } from './redact.ts';
 export { ConfigError, defineConfig, resolveConfig } from './config/config.ts';
 export { env } from './config/env.ts';
 export { EnvironmentConfig } from './config/environment-config.ts';
-export type { EnvBlock, EnvMessage, EnvNumber, EnvRead, EnvSchema, EnvString, EnvVariable } from './config/env.ts';
+export type { EnvBlock, EnvMessage, EnvNumber, EnvRead, EnvSchema, EnvString, EnvVariable, RenamedOptions } from './config/env.ts';
 export { DOTENV_MARKER, environment, NODE_ENVIRONMENTS, readEnvFile, resolveEnvironment } from './environment.ts';
 export type { NodeEnvironment, NodeEnvironmentName, ResolvedEnvironment } from './environment.ts';
 export type { ConfigDefinition, ConfigOf } from './config/config.ts';

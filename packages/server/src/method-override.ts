@@ -19,7 +19,7 @@ export const METHOD_FIELD_WINDOW = 16 * 1024;
  * then runs for the method it became, as for any write.
  *
  * Only the complete fields within the first {@link METHOD_FIELD_WINDOW} bytes count — before the first file of a multipart
- * body: the body is read once, by its route (bounded by `SERVER_MAX_BODY_SIZE`), not buffered here first.
+ * body: the body is read once, by its route (bounded by `SERVER_MAX_BODY_MB`), not buffered here first.
  */
 export async function overrideMethod(request: Request): Promise<Request> {
   if (request.method !== 'POST' || request.body === null) return request;
