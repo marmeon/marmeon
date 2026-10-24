@@ -1,0 +1,13 @@
+{
+  "beforeCopy": [
+    "marmeon make:module bookings",
+    "marmeon make:controller ListBookings --module=bookings --view",
+    "marmeon make:controller StoreBooking --module=bookings --request",
+    "marmeon make:test bookings --module=bookings --path=/bookings"
+  ],
+  "afterCopy": [
+    "marmeon migrate",
+    "marmeon db:types",
+    "marmeon route:types"
+  ]
+}
