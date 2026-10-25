@@ -60,6 +60,9 @@ export type ViewTransitionOption = boolean | { readonly types?: readonly string[
 /** Scroll and focus stay the navigator's (`ScrollMemory`, the adapter's focus handling) in what it intercepts. */
 const MANUAL = { scroll: 'manual', focusReset: 'manual' } as const;
 
+/** A visit that takes longer than this with nothing new on screen draws a development warning (C14). */
+const SLOW_VISIT_MS = 1000;
+
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 export interface VisitOptions extends VisitCallbacks {
@@ -290,6 +293,8 @@ export class Navigator {
   #inFlight: AbortController | undefined;
   /** Requests in the background (`visit.async`): they die with the document's pages when it is left. */
   readonly #background = new Set<AbortController>();
+  /** Development only: the routes (or paths) already warned about as slow — once each per document. */
+  readonly #slowVisits = new Set<string>();
   /** Who follows the page on screen (`subscribe`) — query state, say. */
   readonly #pageListeners = new Set<(page: PageObject) => void>();
   /** The visit under way in the foreground (not in the background) — `data-pending`, `usePending`. */
@@ -732,6 +737,9 @@ export class Navigator {
     const visit: Visit = background ? { url: request.url, method, async: true, ...named } : { url: request.url, method, ...named };
     // An async visit lands only on the page (or the layer) it started from.
     const fromKey = core.key;
+    // Development only: a plain GET visit with nothing to show meanwhile — no placeholder, nothing fetched ahead — is timed.
+    const timed = (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && pending.takes && !keeps && !pending.layer && !options.instant && !prefetched;
+    const startedAt = timed ? performance.now() : 0;
     try {
       return await this.#request(visit, options, async (signal, onProgress) => {
         for (const part of parts) part.sending?.(signal);
@@ -765,6 +773,15 @@ export class Navigator {
         // The URL — and so the query state — stays the one of the page on screen.
         if (preserveUrl) page = withQueryOf({ ...page, url: current.url }, current);
         const shown = await this.#place(from, page, { method, replace, preserveScroll, preserveState, preserveUrl, partial: partial !== undefined, hash: preserveUrl ? '' : target.hash });
+        if (timed && shown && performance.now() - startedAt > SLOW_VISIT_MS) {
+          const where = options.name ?? page.route ?? target.pathname;
+          if (!this.#slowVisits.has(where)) {
+            this.#slowVisits.add(where);
+            console.warn(
+              `[marmeon:C14] The visit to ${where} took ${Math.round(performance.now() - startedAt)} ms with nothing new on screen — give its view a placeholder and the link \`instant\`, or prefetch it. See docs/navigation.md#instant-visits`,
+            );
+          }
+        }
         if (shown) {
           const errors = validationErrors(shown);
           if (errors) this.#events.emit('error', options.onError, errors, visit);
