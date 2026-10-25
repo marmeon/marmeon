@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { isPrefetch, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PROTOCOL_VERSION } from './protocol.ts';
-import { partialReloadOf, resolvePageProps } from './page-props.ts';
+import { onceScopeOf, partialReloadOf, resolvePageProps } from './page-props.ts';
 import { always, deepMerge, defer, merge, optional } from './props.ts';
 import { SharedData } from './shared-data.ts';
 import { view, type PageProps } from './view.ts';
@@ -225,5 +225,27 @@ describe('PageProps with wrapped props', () => {
     shared.share('pagePropsErrors', always('x'));
     // @ts-expect-error -- optional() makes a prop possibly missing, which `pageProps` is not declared as
     shared.share('pageProps', optional(() => ({ user: null })));
+  });
+});
+
+describe('onceScopeOf', () => {
+  it('changes with the page’s language: a switch through the URL sends translated once props again', () => {
+    expect(onceScopeOf('ada-session', 'de')).not.toBe(onceScopeOf('ada-session', 'en'));
+    expect(onceScopeOf('ada-session', 'de')).toBe(onceScopeOf('ada-session', 'de'));
+  });
+
+  it('is an opaque 16-byte hash: neither the session’s scope nor the locale appears in it', () => {
+    const scope = onceScopeOf('ada-session-0123456789', 'de');
+    expect(scope).toMatch(/^[\w-]{22}$/);
+    expect(scope).not.toContain('ada-session');
+    expect(scope).not.toContain('0123456789');
+  });
+
+  it('tells a guest from a signed-in user, and gives a guest a scope too', () => {
+    const guest = onceScopeOf(undefined, 'en');
+    expect(guest).toMatch(/^[\w-]{22}$/);
+    expect(guest).not.toBe(onceScopeOf('ada-session', 'en'));
+    expect(guest).toBe(onceScopeOf(undefined, 'en'));
+    expect(onceScopeOf(undefined, undefined)).toMatch(/^[\w-]{22}$/);
   });
 });

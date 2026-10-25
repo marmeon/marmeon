@@ -165,7 +165,7 @@ export type CheckOnceValue<T> = [UnstorablePart<T>] extends [never]
 
 /**
  * A prop the browser keeps: computed for the first page that has it, then skipped while the tab holds it — for data that is
- * the same on every page, such as a country list. Held only by the document and only for the session it was sent to
+ * the same on every page, such as a country list. Held only by the document and only for the session and language it was sent to
  * (`PageObject.onceScope`). See docs/responses.md#once-props.
  *
  * ```ts

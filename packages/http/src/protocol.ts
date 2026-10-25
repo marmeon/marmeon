@@ -96,7 +96,7 @@ export interface PageObject {
    */
   onceProps?: Record<string, OnceInfo>;
   /**
-   * Who the once props are for — opaque, new with every sign-in and sign-out. The server skips a held value only under the
+   * Who the once props are for, and in which language — opaque, new with every sign-in, sign-out and switch of language. The server skips a held value only under the
    * same scope: another tab may have signed someone else in (the cookie changed, the memory did not).
    */
   onceScope?: string;

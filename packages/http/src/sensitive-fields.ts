@@ -23,13 +23,15 @@ const PASSWORD_TERMS = 'password|passcode|passphrase';
 const PASSWORD_NAME = new RegExp(`${PASSWORD_TERMS}|^pass$`, 'i');
 // One segment of a name: a term; a code after a prefix (`recovery_code`, `smsCode` — the separator is optional, so camel case is
 // the same branch); `otp` or `totp` only as a word (`otp`, `user_totp`, `otpCode` — not `footprint` or `rootPath`) or at a camel-case
-// boundary (`userOtp`, told by its capital); `code` or `pass` as the whole name (any other `…_code` is a place, a currency or a
+// boundary (`userOtp`, see `CAMEL_OTP`); `code` or `pass` as the whole name (any other `…_code` is a place, a currency or a
 // discount: `zip_code`, `promoCode`).
-const SENSITIVE_SEGMENT = new RegExp(`${NAME_TERMS}|(?:${KEY_PREFIXES})[-_]?key|session[-_]?id|(?:${CODE_PREFIXES})[-_]?code|(?:^|[-_])t?otp|(?-i:[a-z](?:Otp|Totp))|^(?:codes?|pass|auth)$`, 'i');
+const SENSITIVE_SEGMENT = new RegExp(`${NAME_TERMS}|(?:${KEY_PREFIXES})[-_]?key|session[-_]?id|(?:${CODE_PREFIXES})[-_]?code|(?:^|[-_])t?otp|^(?:codes?|pass|auth)$`, 'i');
+// The camel-case boundary is told by its capital, so it is the one pattern that ignores no case.
+const CAMEL_OTP = /[a-z](?:Otp|Totp)/;
 
 /** Whether a field — a name, or a path through nested data — is one whose value is kept in neither flashed nor remembered input. */
 export function isSensitiveField(field: string): boolean {
-  return field.split(/[.[\]]+/).some((segment) => segment !== '' && SENSITIVE_SEGMENT.test(segment));
+  return field.split(/[.[\]]+/).some((segment) => segment !== '' && (SENSITIVE_SEGMENT.test(segment) || CAMEL_OTP.test(segment)));
 }
 
 /** Whether a field is never kept, not even when a form names it (`include`): a password. */

@@ -1,4 +1,4 @@
-import { createApplication, defineModule } from '@marmeon/core';
+import { createApplication, defineModule, Translator } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import {
   browserRoutes,
@@ -29,6 +29,8 @@ describe('once props on the server', async () => {
   const count = (name: string) => (computed[name] = (computed[name] ?? 0) + 1);
   /** Who the page is for — what the session package binds (a hash of the session id); changes with every sign-in. */
   let scope: string | undefined = 'ada-session';
+  /** The page's language (the router's locale prefix sets the translator's). */
+  let locale = 'en';
 
   class ShareCountries {
     readonly #shared: SharedData;
@@ -57,6 +59,7 @@ describe('once props on the server', async () => {
   }, { env: { APP_KEY: generateKey() } });
   application.container.make(Router).middleware.append('web', ShareCountries, 400);
   application.container.scoped(PageSession, () => ({ csrfToken: () => 'csrf-of-the-session', scope: () => scope, generation: () => undefined }));
+  application.container.scoped(Translator, () => ({ locale, has: () => false, text: (key: string) => key }) as never);
   const app = createHttpKernel(application);
   const visit = async (path: string, headers: Record<string, string> = {}) =>
     (await (await app.request(path, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, ...headers } })).json()) as PageObject;
@@ -69,13 +72,16 @@ describe('once props on the server', async () => {
     const page = await visit('/a');
     expect(page.props).toEqual({ countries: ['DE', 'GB'], rates: [1.1, 1.2], name: 'A' });
     expect(page.onceProps).toEqual({ countries: { key: 'countries' }, rates: { key: 'pages/A:rates', expiresAt: expect.any(Number) } });
-    expect(page.onceScope).toBe('ada-session');
+    expect(page.onceScope).toMatch(/^[\w-]{22}$/);
+    expect(page.onceScope).not.toContain('ada-session');
     expect((await visit('/b')).onceProps).toMatchObject({ shared: { key: 'shared-key' } });
   });
 
   it('skips what the browser holds under the same scope — not computed, still announced', async () => {
     reset();
-    const page = await visit('/a', { 'x-marmeon-once': 'countries,pages/A:rates', 'x-marmeon-once-scope': 'ada-session' });
+    const held = (await visit('/a')).onceScope!;
+    reset();
+    const page = await visit('/a', { 'x-marmeon-once': 'countries,pages/A:rates', 'x-marmeon-once-scope': held });
     expect(page.props).toEqual({ name: 'A' });
     expect(Object.keys(page.onceProps ?? {})).toEqual(['countries', 'rates']);
     expect(computed).toEqual({});
@@ -83,12 +89,43 @@ describe('once props on the server', async () => {
 
   it('computes it again for another scope — someone else signed in (another tab): never a value held for someone else', async () => {
     reset();
+    const held = (await visit('/a')).onceScope!;
+    reset();
     scope = 'alan-session';
     try {
-      const page = await visit('/a', { 'x-marmeon-once': 'countries,pages/A:rates', 'x-marmeon-once-scope': 'ada-session' });
+      const page = await visit('/a', { 'x-marmeon-once': 'countries,pages/A:rates', 'x-marmeon-once-scope': held });
       expect(page.props).toMatchObject({ countries: ['DE', 'GB'], rates: [1.1, 1.2] });
-      expect(page.onceScope).toBe('alan-session');
+      expect(page.onceScope).not.toBe(held);
+      expect(page.onceScope).not.toContain('alan-session');
       expect(computed).toEqual({ countries: 1, rates: 1 });
+    } finally {
+      scope = 'ada-session';
+    }
+  });
+
+  it('computes it again for another language — a switch through the URL sends translated values anew', async () => {
+    reset();
+    const held = (await visit('/a')).onceScope!;
+    reset();
+    locale = 'de';
+    try {
+      const page = await visit('/a', { 'x-marmeon-once': 'countries,pages/A:rates', 'x-marmeon-once-scope': held });
+      expect(page.props).toMatchObject({ countries: ['DE', 'GB'], rates: [1.1, 1.2] });
+      expect(page.onceScope).not.toBe(held);
+      expect(computed).toEqual({ countries: 1, rates: 1 });
+    } finally {
+      locale = 'en';
+    }
+  });
+
+  it('gives a guest a scope too, other than a signed-in user’s', async () => {
+    reset();
+    const signedIn = (await visit('/a')).onceScope!;
+    scope = undefined;
+    try {
+      const guest = (await visit('/a')).onceScope;
+      expect(guest).toMatch(/^[\w-]{22}$/);
+      expect(guest).not.toBe(signedIn);
     } finally {
       scope = 'ada-session';
     }
@@ -96,7 +133,7 @@ describe('once props on the server', async () => {
 
   it('a partial reload that names a once prop gets it fresh; a full load (a document) always computes everything', async () => {
     reset();
-    const page = await visit('/a', { 'x-marmeon-once': 'pages/A:rates', 'x-marmeon-once-scope': 'ada-session', 'x-marmeon-partial-component': 'pages/A', 'x-marmeon-partial-data': 'rates' });
+    const page = await visit('/a', { 'x-marmeon-once': 'pages/A:rates', 'x-marmeon-once-scope': (await visit('/a')).onceScope!, 'x-marmeon-partial-component': 'pages/A', 'x-marmeon-partial-data': 'rates' });
     expect(page.props).toEqual({ rates: [1.1, 1.2] });
     const html = await (await app.request('/a')).text();
     expect(html).toContain('"countries":["DE","GB"]');

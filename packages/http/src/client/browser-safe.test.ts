@@ -1,4 +1,5 @@
-import { relative } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, type Rolldown } from 'vite';
 import { describe, expect, it } from 'vitest';
@@ -72,4 +73,17 @@ describe('@marmeon/http/client is browser-safe', () => {
     expect(externals).toEqual([]);
     expect(modules.filter((id) => !SHARED.includes(id))).toEqual([]);
   }, 30_000);
+
+  it('writes no regular-expression modifier group — older browsers refuse the whole module', () => {
+    const clientDir = fileURLToPath(new URL('.', import.meta.url));
+    const files = [
+      ...SHARED.map((id) => join(packages, id)),
+      ...readdirSync(clientDir, { recursive: true, encoding: 'utf8' })
+        .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+        .map((name) => join(clientDir, name)),
+    ];
+    expect(files.length).toBeGreaterThan(10);
+    const offending = files.filter((file) => /\(\?[-ims]+(?:-[ims]+)?:/.test(readFileSync(file, 'utf8')));
+    expect(offending.map((file) => relative(packages, file))).toEqual([]);
+  });
 });
