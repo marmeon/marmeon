@@ -1,7 +1,7 @@
 import { defaultTitle, scriptJson, type TitleRegistry } from '@marmeon/http/client/adapter';
 import type { TitleTemplate } from '@marmeon/http/client';
 import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useState, type ReactElement, type ReactNode } from 'react';
-import { headTags, mergeHead, type HeadEntry, type HeadFields, type HeadRegistry } from './head-fields.ts';
+import { headTags, mergeHead, type HeadEntry, type HeadFields, type HeadLanguages, type HeadRegistry } from './head-fields.ts';
 
 export { defaultTitle } from '@marmeon/http/client/adapter';
 export type { TitleTemplate } from '@marmeon/http/client';
@@ -106,19 +106,19 @@ function PageHead({ title, children, ...fields }: HeadProps) {
 /**
  * Server: the collected head as HTML — title (escaped, through the template), the fields' tags and the `<Head>`s' own.
  * Without a `<Head title>`, the title is `template('')` (as on the client), or the template's own `<title>` when that is empty.
- * `appUrl` is what a relative URL in the fields is resolved against — the app's configuration, never the request.
+ * `languages`: those of a localized page, named by `hreflang`. `appUrl` is what a relative URL in the fields is resolved against — the app's configuration, never the request.
  */
 export function renderHead(
   collector: HeadCollector,
   template: TitleTemplate,
   renderTag: (tag: ReactElement) => string,
-  { appUrl, warn, nonce }: { appUrl?: string; warn?: (message: string) => void; nonce?: string } = {},
+  { appUrl, warn, nonce, languages }: { appUrl?: string; warn?: (message: string) => void; nonce?: string; languages?: HeadLanguages } = {},
 ): string {
   const { entries } = collector;
   const merged = mergeHead(entries);
   const text = template(merged.title ?? '');
   const title = text === '' ? '' : `<title ${MARKER}="ssr">${escapeHtml(text)}</title>`;
-  const fields = headTags(merged, appUrl, warn)
+  const fields = headTags(merged, appUrl, warn, languages)
     .map(({ element, attributes, json }) => {
       if (json !== undefined) {
         // The text is `scriptJson` (`<` escaped), written as a string: never a React child, never `dangerouslySetInnerHTML`.

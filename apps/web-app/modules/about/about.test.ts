@@ -102,6 +102,7 @@ describe('the public pages', () => {
 
 describe('the public pages in search results and link previews', () => {
   const page = { headers: { accept: 'text/html' } };
+  const tag = (attributes: string) => `<${attributes.startsWith('rel=') ? 'link' : 'meta'} ${attributes} data-marmeon-head="ssr"/>`;
 
   it('describes a feature: description, canonical and Open Graph from APP_URL, a card', async () => {
     await app
@@ -109,7 +110,7 @@ describe('the public pages in search results and link previews', () => {
       .assertServerRendered()
       .assertSee('<title data-marmeon-head="ssr">Typed routes — Marmeon</title>')
       .assertSee('<meta name="description" content="Route names and parameters are checked by the compiler, in controllers and views alike." data-marmeon-head="ssr"/>')
-      .assertSee('<link rel="canonical" href="http://localhost/en/about/features/typed-routes" data-marmeon-head="ssr"/>')
+      .assertSee(tag('rel="canonical" href="http://localhost/en/about/features/typed-routes"'))
       .assertSee('<meta property="og:title" content="Typed routes" data-marmeon-head="ssr"/>')
       .assertSee('<meta property="og:url" content="http://localhost/en/about/features/typed-routes" data-marmeon-head="ssr"/>')
       .assertSee('<meta property="article:modified_time" content="2026-03-02T09:00:00Z" data-marmeon-head="ssr"/>')
@@ -131,9 +132,21 @@ describe('the public pages in search results and link previews', () => {
     });
   });
 
+  it('names every language of a page, and x-default, absolute from APP_URL', async () => {
+    const response = await app.get('/de/about/features/typed-routes', page).assertServerRendered();
+    response
+      .assertSee(tag('rel="canonical" href="http://localhost/de/about/features/typed-routes"'))
+      .assertSee(tag('rel="alternate" hreflang="en" href="http://localhost/en/about/features/typed-routes"'))
+      .assertSee(tag('rel="alternate" hreflang="de" href="http://localhost/de/about/features/typed-routes"'))
+      .assertSee(tag('rel="alternate" hreflang="x-default" href="http://localhost/about/features/typed-routes"'))
+      .assertSee('<meta property="og:locale" content="de" data-marmeon-head="ssr"/>')
+      .assertSee('<meta property="og:locale:alternate" content="en" data-marmeon-head="ssr"/>');
+  });
+
   it('describes the list, and a foreign Host does not reach the head', async () => {
-    const response = await app.get('/en/about', { headers: { ...page.headers, host: 'evil.example' } }).assertServerRendered();
-    response.assertSee('<link rel="canonical" href="http://localhost/en/about" data-marmeon-head="ssr"/>').assertSee('<meta property="og:site_name" content="Marmeon" data-marmeon-head="ssr"/>');
+    const response = await app.get('/en/about', { headers: { ...page.headers, host: 'evil.example', 'x-forwarded-host': 'evil.example' } }).assertServerRendered();
+    response.assertSee(tag('rel="canonical" href="http://localhost/en/about"')).assertSee('<meta property="og:site_name" content="Marmeon" data-marmeon-head="ssr"/>');
+    response.assertSee(tag('rel="alternate" hreflang="de" href="http://localhost/de/about"'));
     expect(response.body).not.toContain('evil.example');
   });
 });

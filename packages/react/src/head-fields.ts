@@ -73,6 +73,17 @@ function blocksOf(jsonLd: JsonLd | readonly JsonLd[] | undefined): readonly Json
   return jsonLd === undefined ? [] : Array.isArray(jsonLd) ? (jsonLd as readonly JsonLd[]) : [jsonLd as JsonLd];
 }
 
+/** The languages of a localized page: its own locale, and every locale's path (`PageObject.alternates`, with `x-default`). */
+export interface HeadLanguages {
+  readonly locale: string;
+  readonly paths: Readonly<Record<string, string>>;
+}
+
+/** The languages a page names, or undefined when it is not localized — only the server's `alternates` make a page one. */
+export function languagesOf(page: { locale?: string; alternates?: Readonly<Record<string, string>> }): HeadLanguages | undefined {
+  return page.locale !== undefined && page.alternates !== undefined ? { locale: page.locale, paths: page.alternates } : undefined;
+}
+
 function defined<T extends object>(value: T | undefined): Partial<T> {
   return Object.fromEntries(Object.entries(value ?? {}).filter(([, item]) => item !== undefined)) as Partial<T>;
 }
@@ -120,8 +131,12 @@ export function absoluteUrl(value: string, base: string | undefined, warn?: (mes
   }
 }
 
-/** The tags for the merged fields of a page, in the order they are written. */
-export function headTags(head: HeadEntry, base: string | undefined, warn?: (message: string) => void): HeadTag[] {
+/**
+ * The tags for the merged fields of a page, in the order they are written. A localized page (`languages`) also names each of
+ * its languages with `hreflang` and `x-default`, is its own `canonical` unless a `<Head>` says otherwise, and tells Open Graph
+ * its `locale` and the `locale:alternate`s.
+ */
+export function headTags(head: HeadEntry, base: string | undefined, warn?: (message: string) => void, languages?: HeadLanguages): HeadTag[] {
   const tags: HeadTag[] = [];
   const counts = new Map<string, number>();
   const add = (element: 'meta' | 'link', label: string, name: string, value: string | number | undefined, content = 'content') => {
@@ -135,7 +150,21 @@ export function headTags(head: HeadEntry, base: string | undefined, warn?: (mess
   const { title, description, canonical, robots, openGraph: og, twitter } = head;
 
   add('meta', 'name', 'description', description);
-  add('link', 'rel', 'canonical', url(canonical), 'href');
+  // All the languages or none, with one warning: an address that fails (no `APP_URL` on the server) fails them all. The query is
+  // left off — it may only track — so a page whose query selects it sets its own `canonical`.
+  let hrefs: Map<string, string> | undefined;
+  if (languages) {
+    hrefs = new Map();
+    for (const [locale, path] of Object.entries(languages.paths)) {
+      const href = absoluteUrl(path.replace(/\?.*$/s, ''), base, warn);
+      if (href === undefined) {
+        hrefs = undefined;
+        break;
+      }
+      hrefs.set(locale, href);
+    }
+  }
+  add('link', 'rel', 'canonical', canonical !== undefined ? url(canonical) : languages && hrefs?.get(languages.locale), 'href');
   if (robots) {
     const parts = [robots.index === undefined ? '' : robots.index ? 'index' : 'noindex', robots.follow === undefined ? '' : robots.follow ? 'follow' : 'nofollow'];
     add('meta', 'name', 'robots', parts.filter(Boolean).join(', '));
@@ -147,7 +176,12 @@ export function headTags(head: HeadEntry, base: string | undefined, warn?: (mess
     add('meta', 'property', 'og:type', og.type);
     add('meta', 'property', 'og:url', url(og.url));
     add('meta', 'property', 'og:site_name', og.siteName);
-    add('meta', 'property', 'og:locale', og.locale);
+    add('meta', 'property', 'og:locale', og.locale ?? (languages && languages.locale.replaceAll('-', '_')));
+    if (languages) {
+      for (const locale of Object.keys(languages.paths)) {
+        if (locale !== 'x-default' && locale !== languages.locale) add('meta', 'property', 'og:locale:alternate', locale.replaceAll('-', '_'));
+      }
+    }
     const imageUrl = url(image?.url);
     add('meta', 'property', 'og:image', imageUrl);
     if (imageUrl !== undefined) {
@@ -170,6 +204,11 @@ export function headTags(head: HeadEntry, base: string | undefined, warn?: (mess
     add('meta', 'name', 'twitter:image', url(twitter.image));
     add('meta', 'name', 'twitter:image:alt', twitter.imageAlt);
   }
+  if (hrefs) {
+    for (const [locale, href] of hrefs) {
+      tags.push({ element: 'link', key: `alternate:${locale}`, attributes: [['rel', 'alternate'], ['hreflang', locale], ['href', href]] });
+    }
+  }
   // A block that cannot be serialized (a cycle, a `bigint`) is an app's bug: development names it, production leaves it out.
   blocksOf(head.jsonLd).forEach((block, index) => {
     try {
@@ -183,6 +222,9 @@ export function headTags(head: HeadEntry, base: string | undefined, warn?: (mess
   return tags;
 }
 
+/** The tags the languages stand for: what the server wrote for them is the registry's, whether or not a `<Head>` ever mounts. */
+const SERVER_LANGUAGE_TAGS = ['link[rel="canonical"]', 'link[rel="alternate"][hreflang]'].map((selector) => `${selector}[data-marmeon-head="ssr"]`).join(',');
+
 /**
  * The browser's `<Head>`s (layouts and page): the merged fields are kept as elements in `document.head`, updated in place
  * when a navigation changes them and removed once no `<Head>` stands for them. An adapter's `<Head>` takes an `order()` when
@@ -195,11 +237,19 @@ export class HeadRegistry {
   readonly #warn: ((message: string) => void) | undefined;
   #next = 0;
   #pending = false;
+  #languages: HeadLanguages | undefined;
+  #took = false;
 
   /** `origin`: the app's (`APP_URL`), as the server resolved the head's URLs — else the browser's. `warn`: development only. */
   constructor(origin?: string, warn?: (message: string) => void) {
     this.#origin = origin;
     this.#warn = warn;
+  }
+
+  /** The languages of the page shown, `undefined` for a page that is not localized: a navigation sets them again. */
+  setLanguages(languages: HeadLanguages | undefined): void {
+    this.#languages = languages;
+    this.#apply();
   }
 
   /** A number in render order — taken once, when a head component mounts. */
@@ -240,8 +290,14 @@ export class HeadRegistry {
   }
 
   #apply(): void {
+    // The server's canonical and hreflang are this registry's from now on — also on a page without a `<Head>`, which would never
+    // take them over. The other fields stay until a `<Head>` hydrates and replaces them (it may be behind a `<Suspense>`).
+    if (!this.#took) {
+      this.#took = true;
+      for (const stale of document.head.querySelectorAll(SERVER_LANGUAGE_TAGS)) stale.remove();
+    }
     const sorted = [...this.#entries].sort(([a], [b]) => a - b).map(([, entry]) => entry);
-    const wanted = new Map(headTags(mergeHead(sorted), this.#origin ?? location.origin, this.#warn).map((tag) => [tag.key, tag]));
+    const wanted = new Map(headTags(mergeHead(sorted), this.#origin ?? location.origin, this.#warn, this.#languages).map((tag) => [tag.key, tag]));
     for (const [key, element] of this.#elements) {
       if (wanted.has(key)) continue;
       element.remove();

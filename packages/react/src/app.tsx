@@ -24,7 +24,7 @@ import {
 import { ErrorBoundary, LayoutError, RenderErrorFallback, Rethrow, VisitFailure } from './fallbacks.tsx';
 import { ConfirmHost, type ConfirmComponent, type PendingQuestion } from './confirm.tsx';
 import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
-import { HeadRegistry } from './head-fields.ts';
+import { HeadRegistry, languagesOf } from './head-fields.ts';
 import { I18nContext } from './i18n.tsx';
 import type { LayerEntry, LayerFrame } from './layer.tsx';
 import { loadView } from './views.ts';
@@ -594,6 +594,8 @@ export function MarmeonApp({
 
   const titles = useMemo(() => (typeof document === 'undefined' ? undefined : new TitleRegistry(title)), [title]);
   const fields = useMemo(() => (typeof document === 'undefined' ? undefined : new HeadRegistry(readAppOrigin(), process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? (message) => console.warn(message) : undefined)), []);
+  // The languages of the page shown: hreflang follows a navigation, also to a page without a `<Head>`.
+  useEffect(() => fields?.setLanguages(languagesOf(page)), [fields, page.locale, page.alternates]);
   const head = useMemo(() => ({ template: title, collector: headCollector, titles, fields }), [title, headCollector, titles, fields]);
 
   const layouts = placeholder ? layoutsOf(placeholder.View, placeholder.name, layout) : layoutsOf(Component, viewName(resolve, page.component, page.props), layout);
