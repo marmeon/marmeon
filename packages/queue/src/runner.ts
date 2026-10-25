@@ -1,4 +1,4 @@
-import { Application, durationToMilliseconds, outsideTransaction, type Container, type Duration, type StandardIssue } from '@marmeon/core';
+import { Application, durationToSeconds, outsideTransaction, type Container, type Duration, type StandardIssue } from '@marmeon/core';
 import { messageBase, runWithJob, trace, withCode, withoutCode } from '@marmeon/core/internal';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import type { JobRecord, UniqueRecord } from './driver.ts';
@@ -82,9 +82,9 @@ export function toJson(job: JobClass, payload: unknown): unknown {
 }
 
 /** Seconds of a delay given as seconds or as a duration. */
-export function delaySeconds(delay: number | Duration | undefined): number {
+export function delaySeconds(delay: Duration | undefined): number {
   if (delay === undefined) return 0;
-  const seconds = typeof delay === 'number' ? delay : durationToMilliseconds(delay) / 1000;
+  const seconds = durationToSeconds(delay);
   if (!Number.isFinite(seconds) || seconds < 0) throw new QueueError(`A delay must be seconds ≥ 0 (or a duration), not ${JSON.stringify(delay)}.`);
   return seconds;
 }

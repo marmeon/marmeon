@@ -27,7 +27,7 @@ export interface JobContext {
   /** Ends the job without retrying and without a failed entry — e.g. its record is gone: `return job.discard('user no longer exists')`. */
   discard(reason?: string): void;
   /** Puts the job back, to run again after `delay` (seconds or a duration; default: now). The attempt counts. */
-  release(delay?: number | Duration): void;
+  release(delay?: Duration): void;
   /** Fails the job now — no more attempts, it goes to the failed jobs. */
   fail(reason: string | Error): void;
   /**
@@ -131,7 +131,7 @@ export type PendingJob<J extends JobClass = JobClass> = readonly [job: J, payloa
 /** Where and when a job is queued. */
 export interface DispatchOptions {
   /** Run no earlier than this — seconds, or a duration (`{ minutes: 5 }`). */
-  readonly delay?: number | Duration;
+  readonly delay?: Duration;
   /** The queue (default: the connection's, usually `default`). A worker without `--queue` takes every queue; `--queue=mail,default` takes only these, in this order. */
   readonly queue?: string;
   /** The queue connection (default: `QUEUE_DRIVER`). */
@@ -163,7 +163,7 @@ export interface UniqueDispatchOptions extends Omit<DispatchOptions, 'unique'> {
   /** The key (per job class): `stats:${userId}`. */
   readonly unique: string;
   /** Seconds (or a duration) the lock holds at most — then a lost or stuck job no longer blocks new ones. Default 3600. */
-  readonly uniqueFor?: number | Duration;
+  readonly uniqueFor?: Duration;
   /** When the lock is freed: when a worker starts the job (`processing`), or when the job is done (`done`, default). */
   readonly uniqueUntil?: 'processing' | 'done';
 }

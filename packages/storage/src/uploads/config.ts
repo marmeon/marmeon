@@ -29,8 +29,8 @@ export const UploadsConfig = defineConfig('uploads', {
   resolve: (e) => ({
     disk: e.UPLOADS_DISK,
     connection: e.UPLOADS_CONNECTION,
-    lifetime: e.UPLOADS_LIFETIME_MINUTES,
-    sendWithin: e.UPLOADS_SEND_WITHIN_MINUTES,
+    lifetimeMinutes: e.UPLOADS_LIFETIME_MINUTES,
+    sendWithinMinutes: e.UPLOADS_SEND_WITHIN_MINUTES,
     maxOpen: e.UPLOADS_MAX_OPEN,
     maxOpenBytes: e.UPLOADS_MAX_OPEN_MB * MEGABYTE,
     maxOpenTotalBytes: e.UPLOADS_MAX_OPEN_TOTAL_MB * MEGABYTE,

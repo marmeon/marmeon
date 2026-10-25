@@ -27,7 +27,7 @@ describe('the welcome mail', () => {
     await register(app, 'de').assertRedirect('/register/sent');
     const user = (await app.make(UserRepository).findForSignIn('kj@example.com'))!.user;
 
-    app.queue.assertDispatchedTimes(SendWelcomeMailJob, 1).assertDispatched(SendWelcomeMailJob, (payload, job) => payload.userId === user.id && job.delay === 0);
+    app.queue.assertDispatchedTimes(SendWelcomeMailJob, 1).assertDispatched(SendWelcomeMailJob, (payload, job) => payload.userId === user.id && job.delaySeconds === 0);
     app.mail.assertNotSent(WelcomeMail);
 
     // The welcome mail, the dashboard's member numbers (user-profile, a unique job) and the queued verification listener —

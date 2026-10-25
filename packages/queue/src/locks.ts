@@ -1,5 +1,5 @@
 import type { Cache, Lock } from '@marmeon/cache';
-import { durationToMilliseconds, type Duration, type StandardSchemaV1 } from '@marmeon/core';
+import { durationToSeconds, type Duration, type StandardSchemaV1 } from '@marmeon/core';
 import type { JobRecord, UniqueRecord } from './driver.ts';
 import type { JobMiddleware, JobStatics, SchemaOutput, UniqueDispatchOptions } from './job.ts';
 import { QueueError } from './registry.ts';
@@ -15,8 +15,8 @@ export const DEFAULT_ONCE_FOR = 86_400;
 /** The app's cache, for the queue's locks — or an error saying how to get one. */
 export type CacheSource = () => Promise<Cache>;
 
-function seconds(value: number | Duration, what: string): number {
-  const result = typeof value === 'number' ? value : durationToMilliseconds(value) / 1000;
+function seconds(value: Duration, what: string): number {
+  const result = durationToSeconds(value);
   if (!Number.isFinite(result) || result <= 0) throw new QueueError(`${what} must be seconds > 0 (or a duration), not ${JSON.stringify(value)}.`);
   return result;
 }

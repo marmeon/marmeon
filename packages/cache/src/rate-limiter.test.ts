@@ -59,6 +59,29 @@ const peer = (remoteAddress: string, headers: Record<string, string> = {}) => ({
   env: { remoteAddress },
 });
 
+describe('Limit', () => {
+  it('takes its window as seconds or as a duration object, and keeps the seconds', () => {
+    expect(new Limit(5, { minutes: 1 }).decaySeconds).toBe(60);
+    expect(new Limit(5, 60).decaySeconds).toBe(60);
+    expect(new Limit(5, { hours: 1 }).by('x').decaySeconds).toBe(3600);
+    expect(Limit.perMinute(5).decaySeconds).toBe(60);
+    expect(Limit.none().decaySeconds).toBe(0);
+  });
+
+  it('refuses a window that is not a whole number of seconds', () => {
+    expect(() => new Limit(5, { milliseconds: 500 })).toThrow(RangeError);
+    expect(() => new Limit(5, 1.5)).toThrow(RangeError);
+    const weeks = Temporal.Duration.from({ weeks: 1 });
+    expect(() => new Limit(5, weeks as never)).toThrow(TypeError);
+    expect(() => new Limit(5, Temporal.Duration.from({ years: 1 }) as never)).toThrow(TypeError);
+    expect(new Limit(5, Temporal.Duration.from({ minutes: 1 }) as never).decaySeconds).toBe(60);
+    expect(() => new Limit(5, 0)).toThrow(RangeError);
+    expect(() => new Limit(5, { minutes: -1 })).toThrow(RangeError);
+    expect(new Limit(Number.POSITIVE_INFINITY, 0).decaySeconds).toBe(0);
+    expect(() => new Limit(5, '1m' as never)).toThrow('write `{ minutes: 1 }`');
+  });
+});
+
 describe('clientKey()', () => {
   it('keeps an IPv4 address and names a missing or empty one unknown', () => {
     expect(clientKey('203.0.113.9')).toBe('203.0.113.9');

@@ -68,7 +68,7 @@ export type { ContentSecurityPolicyOptions, CspDirectives, CspSource } from './c
 export { securityHeaders } from './security-headers.ts';
 export type { HstsOptions, ReferrerPolicy, SecurityHeadersOptions } from './security-headers.ts';
 export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
-export type { Duration, SignedPathOptions, SignedRouteOptions } from './signed-urls.ts';
+export type { SignedPathOptions, SignedRouteOptions } from './signed-urls.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
 export { addVary, defineMiddleware, defineRequest, defineRoutes, describeAccess, editableResponse, everyone, EXPECTS_JSON_VARY, isLiveValidation, liveValidationFields, ownResponse, RequestNonce, Router, translatable, ValidationError } from '@marmeon/router';

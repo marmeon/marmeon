@@ -132,6 +132,6 @@ describe.each(DISK_KINDS.map((kind) => [kind.name, kind] as const))('the %s disk
   it.skipIf(kind.skip || kind.name === 's3')('temporaryUrl(): signed by the app (local, memory)', async () => {
     const disk = await make();
     expect(await disk.temporaryUrl('exports/7.json', { expiresIn: { minutes: 5 }, filename: 'export.json' })).toBe('/signed/files/exports/7.json');
-    expect(recordingUrls.last).toEqual({ disk: 'files', key: 'exports/7.json', options: { expiresIn: { minutes: 5 }, filename: 'export.json' } });
+    expect(recordingUrls.last).toEqual({ disk: 'files', key: 'exports/7.json', options: { expiresInSeconds: 300, filename: 'export.json' } });
   });
 });

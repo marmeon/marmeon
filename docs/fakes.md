@@ -113,7 +113,7 @@ a dispatch is recorded with the commit, and a rollback records nothing.
 | `assertListenerQueued(Listener, match)` | A [queued listener](events.md#queued-listeners) was queued. |
 | `assertListenerNotQueued(Listener, match)` | It was not. |
 
-`dispatched(Job, match)` returns the dispatches themselves, with their payload, id, queue, delay and unique key. `pending()` lists
+`dispatched(Job, match)` returns the dispatches themselves, with their payload, id, queue, `delaySeconds` and unique key. `pending()` lists
 the jobs still waiting, `failed()` the jobs `work()` recorded as failed, and `size(queue)` counts a queue. A unique job takes its
 lock in the app's cache as on a real queue, so a second dispatch with the same key is not recorded until `work()` ran the first.
 The [queues](queues.md) page covers jobs.
@@ -281,8 +281,8 @@ it('prunes expired tokens at night and keeps valid ones', async () => {
   const app = await createTestApp(application, { database: 'refresh' });
   const ada = await app.factory(UserFactory).create();
   app.freeze(Date.parse('2026-10-04T12:00:00Z'));
-  await app.make(AccessTokenStore).create(ada.id, 'one hour', { expiresIn: '1h' });
-  const valid = await app.make(AccessTokenStore).create(ada.id, 'a year', { expiresIn: '365d' });
+  await app.make(AccessTokenStore).create(ada.id, 'one hour', { expiresIn: { hours: 1 } });
+  const valid = await app.make(AccessTokenStore).create(ada.id, 'a year', { expiresIn: { days: 365 } });
 
   expect(app.schedule.due('2026-10-05T03:10:00Z')).toContain('auth:prune-tokens');
   const results = await app.schedule.run('2026-10-05T03:10:00Z');

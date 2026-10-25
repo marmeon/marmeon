@@ -666,8 +666,8 @@ export default defineRoutes((Route) => {
 });
 ```
 
-A second request waits up to 10 seconds for the first one, then answers `423`. `.block(lockSeconds, waitSeconds)` changes both
-times. The lock needs the cache's atomic locks. The [session](session.md#requests-that-must-not-overlap) page explains when a
+A second request waits up to 10 seconds for the first one, then answers `423`. `.block(lock, wait)` changes both
+times. Each is seconds, or a [`Duration`](time.md#spans-of-time) such as `{ seconds: 5 }`. The lock needs the cache's atomic locks. The [session](session.md#requests-that-must-not-overlap) page explains when a
 route needs it.
 
 ## When no route matches

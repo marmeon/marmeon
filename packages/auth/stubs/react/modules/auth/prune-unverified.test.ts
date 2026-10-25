@@ -71,7 +71,7 @@ describe('pruning accounts whose address was never confirmed — the default', {
     for (const user of [old, confirmed]) {
       const signIns = app.make(SignInStore);
       await signIns.issueToken(user.id, await signIns.create({ userId: user.id, userAgent: undefined }), { until: new Date(app.clock.now() + 30 * DAY), fingerprint: 'fingerprint' });
-      await app.make(AccessTokenStore).create(user.id, 'cli', { expiresIn: '365d' });
+      await app.make(AccessTokenStore).create(user.id, 'cli', { expiresIn: { days: 365 } });
       await app.make(PasswordResetTokenStore).create(user.email, 0);
     }
 

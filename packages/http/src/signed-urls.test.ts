@@ -36,7 +36,7 @@ describe('UrlSigner', () => {
   });
 
   it('a changed parameter, a changed expiry, a signature from another route — all invalid', () => {
-    const url = new URL(signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, '60m'), 'http://x');
+    const url = new URL(signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, { minutes: 60 }), 'http://x');
     const tampered = (change: (url: URL) => void) => {
       const copy = new URL(url);
       change(copy);
@@ -63,6 +63,31 @@ describe('UrlSigner', () => {
     expect(signer(KEY).hasValidSignature(url)).toBe(true);
     clock.travel({ seconds: 2 });
     expect(signer(KEY).hasValidSignature(url)).toBe(false);
+  });
+
+  it('writes the same expiry for a duration object as for the seconds', () => {
+    clock.freeze();
+    const expires = (url: string) => new URL(url, 'http://x').searchParams.get('expires');
+    const named = signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, { minutes: 60 });
+    expect(expires(named)).toBe(expires(signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, 3600)));
+    expect(expires(named)).toBe(String(Math.floor(clock.now() / 1000) + 3600));
+    expect(expires(signer(KEY).signedPath('/x', { expiresIn: { days: 7 } }))).toBe(String(Math.floor(clock.now() / 1000) + 7 * 86_400));
+  });
+
+  it('rounds the expiry down to a whole second, never up', () => {
+    clock.freeze(1_700_000_000_000);
+    const url = signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, { seconds: 1, milliseconds: 900 });
+    expect(new URL(url, 'http://x').searchParams.get('expires')).toBe(String(1_700_000_001));
+  });
+
+  it('refuses a string as the time span: no link, not even one without an expiry', () => {
+    expect(() => signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, '60m' as any)).toThrow(TypeError);
+    expect(() => signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, '60m' as any)).toThrow('write `{ minutes: 60 }`');
+    expect(() => signer(KEY).signedPath('/x', { expiresIn: '7d' as any })).toThrow('write `{ days: 7 }`');
+    // @ts-expect-error — a string is no time span; it is `{ days: 7 }`
+    expect(() => signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, '7d')).toThrow(TypeError);
+    // @ts-expect-error — the calendar decides how long a week is
+    expect(() => signer(KEY).temporarySignedRoute('verify', { id: 7, hash: 'abc' }, { weeks: 1 })).toThrow(TypeError);
   });
 
   it('signs a path without a route name: query and expiry signed, path as given', () => {
@@ -103,7 +128,7 @@ describe('signed() middleware', () => {
     }, { env: { APP_KEY: KEY, LOG_LEVEL: 'silent' } });
     const appSigner = application.container.make(UrlSigner);
     const middleware = new ValidateSignature(appSigner);
-    const url = appSigner.temporarySignedRoute('verify', { id: 7, hash: 'abc' }, '5m', { base: 'https://app.example' });
+    const url = appSigner.temporarySignedRoute('verify', { id: 7, hash: 'abc' }, { minutes: 5 }, { base: 'https://app.example' });
     const run = (href: string) =>
       Promise.resolve()
         .then(() => middleware.handle({ request: new Request(href) } as never, async () => new Response('ok')))

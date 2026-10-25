@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { SystemClock, err, ok, token, type Clock, type Resolver, type Result } from '@marmeon/core';
+import { SystemClock, durationToMilliseconds, durationToSeconds, err, ok, token, type Clock, type Duration, type Resolver, type Result } from '@marmeon/core';
 
 /**
  * A key-value store with expiry. Values must survive `JSON.stringify`. `add`, `increment`
@@ -7,21 +7,21 @@ import { SystemClock, err, ok, token, type Clock, type Resolver, type Result } f
  */
 export interface Cache {
   get<T = unknown>(key: string): Promise<T | undefined>;
-  /** Stores a value; without `ttlSeconds` it never expires. */
-  put(key: string, value: unknown, ttlSeconds?: number): Promise<void>;
+  /** Stores a value; without `ttl` (seconds, or `{ minutes: 5 }`) it never expires. */
+  put(key: string, value: unknown, ttl?: Duration): Promise<void>;
   /** Stores the value only if the key is absent (or expired); returns whether it did. Atomic: of two at once, one wins. */
-  add(key: string, value: unknown, ttlSeconds?: number): Promise<boolean>;
+  add(key: string, value: unknown, ttl?: Duration): Promise<boolean>;
   has(key: string): Promise<boolean>;
   forget(key: string): Promise<void>;
   /**
    * Adds `by` (an integer, negative to count down) to the integer at `key` and returns the result — atomically, in one
    * step of the store: two processes counting at once never lose a count. A missing key (or one holding no integer)
-   * starts at 0 and gets `ttlSeconds`; an existing one keeps its expiry — a rate limit window does not restart with
+   * starts at 0 and gets `ttl`; an existing one keeps its expiry — a rate limit window does not restart with
    * every hit.
    */
-  increment(key: string, by?: number, ttlSeconds?: number): Promise<number>;
-  /** The cached value, or `compute()` stored for `ttlSeconds`. Not a lock: two misses at once both compute. */
-  remember<T>(key: string, ttlSeconds: number | undefined, compute: () => T | Promise<T>): Promise<T>;
+  increment(key: string, by?: number, ttl?: Duration): Promise<number>;
+  /** The cached value, or `compute()` stored for `ttl`. Not a lock: two misses at once both compute. */
+  remember<T>(key: string, ttl: Duration | undefined, compute: () => T | Promise<T>): Promise<T>;
   /** Seconds until the key expires, undefined if absent or without expiry. */
   ttl(key: string): Promise<number | undefined>;
   /** Empties the cache. Locks stay — they belong to whoever holds them. */
@@ -32,10 +32,10 @@ export interface Cache {
    */
   prune(): Promise<number | undefined>;
   /**
-   * An atomic lock, held for at most `seconds` (it expires, so a crashed holder cannot block forever). `owner` restores a
+   * An atomic lock, held for at most `ttl` (seconds, or `{ seconds: 30 }`; it expires, so a crashed holder cannot block forever). `owner` restores a
    * lock taken elsewhere (another request, a job) to release it. See `docs/cache.md#locks`.
    */
-  lock(name: string, seconds: number, owner?: string): Lock;
+  lock(name: string, ttl: Duration, owner?: string): Lock;
 }
 export const Cache = token<Cache>('Cache');
 
@@ -117,7 +117,7 @@ export class LockTimeoutError extends Error {
 }
 
 /**
- * One atomic lock, made by `cache.lock(name, seconds)`. Its owner token is random per lock object:
+ * One atomic lock, made by `cache.lock(name, ttl)`. Its owner token is random per lock object:
  * only the object that took the lock (or one restored with the same `owner`) can release it.
  */
 export class Lock {
@@ -158,12 +158,13 @@ export class Lock {
   }
 
   /**
-   * Waits up to `seconds` (real time, polled every 250 ms) for the lock, then throws {@link LockTimeoutError}. With
+   * Waits up to `wait` (real time, polled every 250 ms) for the lock, then throws {@link LockTimeoutError}. With
    * `callback`: runs it while holding the lock and releases it afterwards; returns its result.
    */
-  block(seconds: number): Promise<true>;
-  block<T>(seconds: number, callback: () => T | Promise<T>): Promise<T>;
-  async block<T>(seconds: number, callback?: () => T | Promise<T>): Promise<T | true> {
+  block(wait: Duration): Promise<true>;
+  block<T>(wait: Duration, callback: () => T | Promise<T>): Promise<T>;
+  async block<T>(wait: Duration, callback?: () => T | Promise<T>): Promise<T | true> {
+    const seconds = durationToSeconds(wait);
     const deadline = performance.now() + seconds * 1000;
     while (!(await this.get())) {
       if (performance.now() + 250 > deadline) throw new LockTimeoutError(`Could not take the lock "${this.name}" within ${seconds} s.`);
@@ -193,9 +194,9 @@ export class Lock {
   }
 }
 
-/** Seconds → an expiry by `clock`; undefined = never. */
-function expiresAt(clock: Clock, ttlSeconds: number | undefined): number | null {
-  return ttlSeconds === undefined ? null : clock.now() + ttlSeconds * 1000;
+/** A span → an expiry by `clock`; undefined = never. */
+function expiresAt(clock: Clock, ttl: Duration | undefined): number | null {
+  return ttl === undefined ? null : clock.now() + durationToMilliseconds(ttl);
 }
 
 /** The cache on top of a driver: keys get the prefix, TTLs become expiry times, everything atomic is the driver's. */
@@ -216,12 +217,12 @@ export class StoreCache implements Cache {
     return (await this.#store.read(this.#prefix + key))?.value as T | undefined;
   }
 
-  async put(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
-    await this.#store.write(this.#prefix + key, { value, expires: expiresAt(this.#clock, ttlSeconds) });
+  async put(key: string, value: unknown, ttl?: Duration): Promise<void> {
+    await this.#store.write(this.#prefix + key, { value, expires: expiresAt(this.#clock, ttl) });
   }
 
-  add(key: string, value: unknown, ttlSeconds?: number): Promise<boolean> {
-    return this.#store.add(this.#prefix + key, { value, expires: expiresAt(this.#clock, ttlSeconds) });
+  add(key: string, value: unknown, ttl?: Duration): Promise<boolean> {
+    return this.#store.add(this.#prefix + key, { value, expires: expiresAt(this.#clock, ttl) });
   }
 
   async has(key: string): Promise<boolean> {
@@ -232,16 +233,16 @@ export class StoreCache implements Cache {
     await this.#store.delete(this.#prefix + key);
   }
 
-  async increment(key: string, by = 1, ttlSeconds?: number): Promise<number> {
+  async increment(key: string, by = 1, ttl?: Duration): Promise<number> {
     if (!Number.isSafeInteger(by)) throw new TypeError(`cache.increment() counts in integers (got ${by} for "${key}").`);
-    return this.#store.increment(this.#prefix + key, by, expiresAt(this.#clock, ttlSeconds));
+    return this.#store.increment(this.#prefix + key, by, expiresAt(this.#clock, ttl));
   }
 
-  async remember<T>(key: string, ttlSeconds: number | undefined, compute: () => T | Promise<T>): Promise<T> {
+  async remember<T>(key: string, ttl: Duration | undefined, compute: () => T | Promise<T>): Promise<T> {
     const entry = await this.#store.read(this.#prefix + key);
     if (entry) return entry.value as T;
     const value = await compute();
-    await this.put(key, value, ttlSeconds);
+    await this.put(key, value, ttl);
     return value;
   }
 
@@ -261,7 +262,7 @@ export class StoreCache implements Cache {
     return counts.some((count) => count !== undefined) ? counts.reduce<number>((sum, count) => sum + (count ?? 0), 0) : undefined;
   }
 
-  lock(name: string, seconds: number, owner?: string): Lock {
-    return new Lock(this.#locks, { name, key: this.#prefix + name, seconds, clock: this.#clock, ...(owner === undefined ? {} : { owner }) });
+  lock(name: string, ttl: Duration, owner?: string): Lock {
+    return new Lock(this.#locks, { name, key: this.#prefix + name, seconds: durationToSeconds(ttl), clock: this.#clock, ...(owner === undefined ? {} : { owner }) });
   }
 }

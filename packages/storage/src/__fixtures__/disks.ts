@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TestClock } from '@marmeon/core/testing';
 import type { S3DiskOptions } from '../config.ts';
-import type { Disk, TemporaryUrlOptions, Visibility } from '../disk.ts';
+import type { Disk, DiskDriverTemporaryUrlOptions, Visibility } from '../disk.ts';
 import { LocalDisk } from '../drivers/local.ts';
 import { MemoryDisk } from '../drivers/memory.ts';
 import { S3Disk } from '../drivers/s3.ts';
@@ -17,7 +17,7 @@ export const S3_BUCKET = 'marmeon-test';
 export const S3_CREDENTIALS = { accessKeyId: process.env.MARMEON_TEST_S3_KEY ?? 'marmeon', secretAccessKey: process.env.MARMEON_TEST_S3_SECRET ?? 'marmeon-secret' };
 
 /** A temporary-URL signer that only records — the real one (UrlSigner) is tested through the app. */
-export const recordingUrls: TemporaryUrls & { last?: { disk: string; key: string; options: TemporaryUrlOptions } } = {
+export const recordingUrls: TemporaryUrls & { last?: { disk: string; key: string; options: DiskDriverTemporaryUrlOptions } } = {
   sign(disk, key, options) {
     recordingUrls.last = { disk, key, options };
     return `/signed/${disk}/${key}`;

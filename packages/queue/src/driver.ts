@@ -49,7 +49,7 @@ export interface QueuedPush {
   readonly queue: string;
   readonly payload: string;
   /** Seconds before it may be claimed. */
-  readonly delay: number;
+  readonly delaySeconds: number;
 }
 
 /** A queue's jobs by state — see {@link QueueDriver.counts}. */
@@ -72,8 +72,8 @@ export interface QueueCounts {
  * decide what a dispatch inside a database transaction does — without them the job is held until the outermost commit and dropped on a rollback, and `queue.using(trx)` refuses.
  */
 export interface QueueDriver {
-  /** Queues `payload` on `queue`, to be claimed no earlier than `delay` seconds from now. Returns the entry's id. */
-  push(queue: string, payload: string, delay: number): Promise<string>;
+  /** Queues `payload` on `queue`, to be claimed no earlier than `delaySeconds` from now. Returns the entry's id. */
+  push(queue: string, payload: string, delaySeconds: number): Promise<string>;
   /**
    * Claims the next available job of the first queue (in order) that has one — also a job whose claim is older than
    * `retryAfter` (its worker died). Increments `attempts`. `undefined` when there is none.
@@ -93,10 +93,10 @@ export interface QueueDriver {
    */
   ack(job: ReservedJob, next?: readonly QueuedPush[]): Promise<boolean>;
   /**
-   * Back to the queue, available again in `delay` seconds; the attempt stays counted — unless `refund`: then it is given back,
+   * Back to the queue, available again in `delaySeconds`; the attempt stays counted — unless `refund`: then it is given back,
    * because the job never ran (`job.once` found its key busy in another attempt).
    */
-  release(job: ReservedJob, delay: number, options?: ReleaseOptions): Promise<boolean>;
+  release(job: ReservedJob, delaySeconds: number, options?: ReleaseOptions): Promise<boolean>;
   /** Leaves the queue for good — the worker has recorded it in the failed jobs first. */
   fail(job: ReservedJob): Promise<boolean>;
   /** Jobs waiting, delayed or running on `queue`. */

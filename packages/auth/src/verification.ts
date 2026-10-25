@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { UrlSigner, type Duration } from '@marmeon/http';
+import type { Duration } from '@marmeon/core';
+import { UrlSigner } from '@marmeon/http';
 import { addVary, EXPECTS_JSON_VARY, Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteName, type RouteNameInput } from '@marmeon/router';
 
 // These answers are chosen by `expectsJson`: a shared cache must not hand one variant to the other client.
@@ -20,7 +21,7 @@ export function emailHash(email: string): string {
 export interface VerificationLinkOptions<N extends string = string> {
   /** Absolute links for mails: the app's URL. */
   readonly base: string;
-  /** Default `60m`. */
+  /** Default 60 minutes. */
   readonly expiresIn?: Duration;
   /** Default `auth.verification.verify` (a route with `:id` and `:hash`, behind `signed()`). */
   readonly route?: CheckRouteName<N>;
@@ -38,7 +39,7 @@ export class EmailVerification {
   }
 
   link<const N extends RouteNameInput = never>(user: { readonly id: string | number; readonly email: string }, options: VerificationLinkOptions<N>): string {
-    const { base, expiresIn = '60m' } = options;
+    const { base, expiresIn = { minutes: 60 } } = options;
     // A configurable name is only known at runtime: checked there (`Route [...] is not defined`).
     const route = (options.route ?? 'auth.verification.verify') as RouteName;
     return this.#signer.temporarySignedRoute(route, { id: user.id, hash: emailHash(user.email) }, expiresIn, { base });

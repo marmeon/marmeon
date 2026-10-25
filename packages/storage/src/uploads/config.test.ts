@@ -6,11 +6,11 @@ const resolve = async (env: Record<string, string>) => (await resolveConfig([Upl
 
 describe('UploadsConfig: variable names', () => {
   it('keeps the defaults of the durations under their new names', async () => {
-    expect(await resolve({})).toMatchObject({ lifetime: 120, sendWithin: 15 });
+    expect(await resolve({})).toMatchObject({ lifetimeMinutes: 120, sendWithinMinutes: 15 });
   });
 
   it('reads the durations in minutes by their new names, with their bounds', async () => {
-    expect(await resolve({ UPLOADS_LIFETIME_MINUTES: '30', UPLOADS_SEND_WITHIN_MINUTES: '5' })).toMatchObject({ lifetime: 30, sendWithin: 5 });
+    expect(await resolve({ UPLOADS_LIFETIME_MINUTES: '30', UPLOADS_SEND_WITHIN_MINUTES: '5' })).toMatchObject({ lifetimeMinutes: 30, sendWithinMinutes: 5 });
     await expect(resolve({ UPLOADS_LIFETIME_MINUTES: '1441' })).rejects.toThrow(/UPLOADS_LIFETIME_MINUTES/);
     await expect(resolve({ UPLOADS_LIFETIME_MINUTES: '0' })).rejects.toThrow(/UPLOADS_LIFETIME_MINUTES/);
     await expect(resolve({ UPLOADS_SEND_WITHIN_MINUTES: '0' })).rejects.toThrow(/UPLOADS_SEND_WITHIN_MINUTES/);

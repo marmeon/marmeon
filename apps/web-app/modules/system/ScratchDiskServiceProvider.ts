@@ -1,14 +1,14 @@
-import { durationToMilliseconds, type Resolver } from '@marmeon/core';
+import type { Resolver } from '@marmeon/core';
 import { UrlSigner } from '@marmeon/http';
 import {
   FileNotFoundError,
   normalizeKey,
-  type Disk,
+  type DiskDriver,
   type DiskDriverFactory,
   type FileContents,
   type OpenedFile,
   type PutOptions,
-  type TemporaryUrlOptions,
+  type DiskDriverTemporaryUrlOptions,
   type Visibility,
 } from '@marmeon/storage';
 
@@ -26,7 +26,7 @@ interface Entry {
 }
 
 /** Files in this process's memory, at most `capacity` of them — what a disk driver of your own has to do, in the smallest form. */
-class ScratchDisk implements Disk {
+class ScratchDisk implements DiskDriver {
   readonly name: string;
   readonly visibility: Visibility;
   readonly #files = new Map<string, Entry>();
@@ -115,9 +115,8 @@ class ScratchDisk implements Disk {
   }
 
   /** Signed and expiring — the only way to a private file. Nothing serves the path: the URL shows what the contract asks for. */
-  async temporaryUrl(key: string, { expiresIn }: TemporaryUrlOptions): Promise<string> {
-    const seconds = typeof expiresIn === 'number' ? expiresIn : Math.round(durationToMilliseconds(expiresIn) / 1000);
-    return this.#container.make(UrlSigner).signedPath(`/scratch/${this.name}/${this.#key(key)}`, { expiresIn: seconds });
+  async temporaryUrl(key: string, { expiresInSeconds }: DiskDriverTemporaryUrlOptions): Promise<string> {
+    return this.#container.make(UrlSigner).signedPath(`/scratch/${this.name}/${this.#key(key)}`, { expiresIn: expiresInSeconds });
   }
 }
 

@@ -95,15 +95,15 @@ export class DatabaseQueueDriver implements QueueDriver {
     return (await this.#connection()).inTransaction?.() ?? false;
   }
 
-  async push(queue: string, payload: string, delay: number): Promise<string> {
+  async push(queue: string, payload: string, delaySeconds: number): Promise<string> {
     const { db, sql } = await use(this.#connection, this.#cache);
-    return this.#insert(db, sql, { queue, payload, delay });
+    return this.#insert(db, sql, { queue, payload, delaySeconds });
   }
 
-  async #insert(db: Connection<any>, sql: Sql, { queue, payload, delay }: QueuedPush): Promise<string> {
+  async #insert(db: Connection<any>, sql: Sql, { queue, payload, delaySeconds }: QueuedPush): Promise<string> {
     const now = this.#clock.now();
     const { rows } = await sql<{ id: number | string }>`insert into jobs (queue, payload, attempts, reserved_at, available_at, created_at)
-      values (${queue}, ${payload}, 0, null, cast(${now + Math.round(delay * 1000)} as bigint), cast(${now} as bigint)) returning id`.execute(db);
+      values (${queue}, ${payload}, 0, null, cast(${now + Math.round(delaySeconds * 1000)} as bigint), cast(${now} as bigint)) returning id`.execute(db);
     return String(rows[0]!.id);
   }
 
@@ -155,10 +155,10 @@ export class DatabaseQueueDriver implements QueueDriver {
     return connection.db.transaction().execute((trx) => handOff(trx));
   }
 
-  async release(job: ReservedJob, delay: number, options: ReleaseOptions = {}): Promise<boolean> {
+  async release(job: ReservedJob, delaySeconds: number, options: ReleaseOptions = {}): Promise<boolean> {
     const { db, sql } = await use(this.#connection, this.#cache);
     const attempts = options.refund ? job.attempts - 1 : job.attempts;
-    const result = await sql`update jobs set reserved_at = null, available_at = cast(${this.#clock.now() + Math.round(delay * 1000)} as bigint),
+    const result = await sql`update jobs set reserved_at = null, available_at = cast(${this.#clock.now() + Math.round(delaySeconds * 1000)} as bigint),
       attempts = cast(${attempts} as integer), payload = ${options.availableAt === undefined ? job.payload : withAvailableAt(job.payload, options.availableAt)}
       where id = cast(${Number(job.id)} as bigint) and attempts = cast(${job.attempts} as integer) and reserved_at is not null`.execute(db);
     return result.numAffectedRows === 1n;

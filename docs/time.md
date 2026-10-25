@@ -32,7 +32,7 @@ No timer is faked and nothing sleeps. The rate limiter reads the time through th
 | Method | What it does |
 | --- | --- |
 | `app.freeze(time)` | Stops the clock, at `time` when given, else now. Returns the frozen time in milliseconds. |
-| `app.travel(duration)` | Moves the clock by a duration, such as `{ minutes: 61 }`. Negative parts move it back. |
+| `app.travel(duration)` | Moves the clock by a duration: seconds as a number (`app.travel(90)`), or an object such as `{ minutes: 61 }`. Negative values move it back. |
 | `app.travelTo(time)` | Jumps to a `Date` or epoch milliseconds. |
 | `app.clock.unfreeze()` | Lets the clock run again from where it stands. |
 | `app.clock.now()` | The app's time in milliseconds, as the app's services read it. |
@@ -53,8 +53,28 @@ it('moves a frozen clock by exactly the duration', async () => {
 });
 ```
 
-A duration takes `days`, `hours`, `minutes`, `seconds` and `milliseconds`. Each test app has its own clock, so one test's travel
+A number means seconds (`app.travel(90)`); an object takes `days`, `hours`, `minutes`, `seconds` and `milliseconds`. Each test app has its own clock, so one test's travel
 never reaches another test.
+
+## Spans of time
+
+`Duration` from `@marmeon/core` is the one type for a span of time. It is a number of seconds, or an object with the parts
+`days`, `hours`, `minutes`, `seconds` and `milliseconds`: `90`, `{ minutes: 5 }`, `{ hours: 1, seconds: 30 }`. A `Temporal.Duration`
+fits too. There are no strings: `'60m'` is a `TypeError` that names the object to write, `{ minutes: 60 }`, so a typo never turns into
+a link without an expiry. The parts `years`, `months` and `weeks` are refused as well, because their length depends on the calendar, and so are `microseconds` and `nanoseconds`, which a millisecond clock cannot keep.
+`durationToSeconds(duration)` and `durationToMilliseconds(duration)` turn one into a number, and refuse anything else.
+
+Four rules say where a span is a `Duration`:
+
+1. An option or a parameter that takes a span and has no unit in its name is a `Duration`: `delay`, `release()`, `expiresIn`,
+   `uniqueFor`, the `ttl` of the cache, `lock()` and `block()` of a lock, the window of a `Limit`, and `Route.block()`.
+2. A number with a unit in its name stays a number: `keepAliveTimeoutMs`, `SESSION_MAX_SECONDS`, a measured `durationMs`.
+3. A name without a unit never holds a bare number that means something else than seconds. A `Duration` is seconds when it is a number.
+4. A contract that your app implements, such as a cache store or a lock store, gets normalised numbers with the unit in the name,
+   never a `Duration`.
+
+An expiry is rounded down to a whole second, so a link or a token never lives longer than you asked: `{ seconds: 1, milliseconds: 900 }`
+expires after one second. A `Limit` takes only whole seconds, because its window is part of the key its count is stored under.
 
 ## What follows the clock
 
@@ -99,7 +119,7 @@ it('sends the reminder five minutes later', async () => {
   const app = await createTestApp(application, { database: 'refresh' });
   const ada = await app.factory(UserFactory).create();
   await app.actingAs(ada).post('/billing/reminders').assertRedirect();
-  app.queue.assertDispatched(SendInvoiceReminderJob, (_payload, job) => job.delay === 300);
+  app.queue.assertDispatched(SendInvoiceReminderJob, (_payload, job) => job.delaySeconds === 300);
 
   expect(await app.queue.work()).toMatchObject({ processed: 0 });
   app.travel({ minutes: 5 });

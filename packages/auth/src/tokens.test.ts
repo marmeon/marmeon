@@ -41,6 +41,18 @@ describe.each(drivers)('API tokens on %s', (driver) => {
     expect(await tokens.find(plainText)).toMatchObject({ id: token.id, userId: 1, abilities: ['users:read'] });
   });
 
+  it('expires in a duration object as in seconds, rounded down, and refuses a string', async () => {
+    const days = await tokens.create(1, 'ninety days', { expiresIn: { days: 90 } });
+    const seconds = await tokens.create(1, 'the same', { expiresIn: 90 * 86_400 });
+    const spread = Math.abs(new Date(days.token.expiresAt!).getTime() - new Date(seconds.token.expiresAt!).getTime());
+    expect(spread).toBeLessThan(2000);
+    expect(new Date(days.token.expiresAt!).getTime() - Date.now()).toBeGreaterThan(90 * 86_400_000 - 2000);
+    expect(new Date(days.token.expiresAt!).getTime() - Date.now()).toBeLessThanOrEqual(90 * 86_400_000);
+    const before = (await tokens.list(1)).length;
+    await expect(tokens.create(1, 'text', { expiresIn: '90d' as never })).rejects.toThrow('write `{ days: 90 }`');
+    expect((await tokens.list(1)).length).toBe(before);
+  });
+
   it('authenticates every token of the fixtures, in the directory', async () => {
     const directory = new URL('./__fixtures__/formats/access-token/', import.meta.url);
     const files = readdirSync(directory).filter((file) => file.endsWith('.json'));
@@ -119,7 +131,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
   });
 
   it('refuses an expired token whose hash matches, and does not tell it from an unknown one', async () => {
-    const expiring = await tokens.create(1, 'short', { expiresIn: '1h' });
+    const expiring = await tokens.create(1, 'short', { expiresIn: { hours: 1 } });
     expect(await tokens.find(expiring.plainText)).toBeDefined();
     await connections.get<any>().updateTable(ACCESS_TOKEN_TABLE).set({ expires_at: new Date(Date.now() - 1000) }).execute();
     queries.length = 0;
@@ -137,7 +149,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
   });
 
   it('refuses expired and revoked tokens; revokes only the user’s own', async () => {
-    const expiring = await tokens.create(1, 'short', { expiresIn: '1h' });
+    const expiring = await tokens.create(1, 'short', { expiresIn: { hours: 1 } });
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_601_000 });
     expect(await tokens.find(expiring.plainText)).toBeUndefined();
     vi.useRealTimers();

@@ -180,14 +180,14 @@ export class Worker {
         // Asked to stop and the job did not finish in time: back to the queue at once, for another worker.
         await this.#deps.driver.release(reserved, 0);
         logger.warn(`Released ${record.job}: the worker is stopping and the job did not finish within the stop timeout`, context);
-        await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delay: 0, reason: 'stopping', ms }));
+        await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: 0, reason: 'stopping', ms }));
         return 'interrupted';
       case 'error':
         // `job.once` on a key another attempt runs right now: this attempt never got to it — back to the queue, the attempt given back.
         if (settled.error instanceof JobOnceBusyError) {
           await this.#deps.driver.release(reserved, ONCE_BUSY_DELAY, { refund: true });
           logger.info(`Released ${record.job}: ${settled.error.message}`, context);
-          await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delay: ONCE_BUSY_DELAY, reason: 'busy', ms }));
+          await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: ONCE_BUSY_DELAY, reason: 'busy', ms }));
           return 'released';
         }
         return this.#retryOrFail(reserved, record, settled.error, ms, 'error');
@@ -204,7 +204,7 @@ export class Worker {
       }
       await this.#deps.driver.release(reserved, requested.delay, { availableAt: this.#deps.clock.now() + Math.round(requested.delay * 1000) });
       logger.info(`Released ${record.job} (by the job), again in ${requested.delay}s`, context);
-      await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delay: requested.delay, reason: 'job', ms }));
+      await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: requested.delay, reason: 'job', ms }));
       return 'released';
     }
     if (requested?.kind === 'fail') {
@@ -214,7 +214,7 @@ export class Worker {
     // Success hands the chain on — together with the acknowledgement (one atomic step of the driver). A discarded job
     // ends its chain: what comes next was waiting for it.
     const next = requested?.kind === 'discard' ? undefined : nextInChain(record, this.#deps.clock.now());
-    const acknowledged = await this.#deps.driver.ack(reserved, next ? [{ queue: reserved.queue, payload: next, delay: 0 }] : []);
+    const acknowledged = await this.#deps.driver.ack(reserved, next ? [{ queue: reserved.queue, payload: next, delaySeconds: 0 }] : []);
     if (!acknowledged) {
       // Another worker holds the job now: it acknowledges, frees the unique lock and hands the chain on.
       logger.warn(`${record.job} finished after its claim expired (retryAfter) — another worker may have run it as well`, context);
@@ -227,7 +227,7 @@ export class Worker {
     await this.#emit(new JobProcessed({ ...this.#about(reserved, record), attempt: reserved.attempts, ms, discarded: requested?.kind === 'discard' }));
     if (acknowledged && next) {
       const queued = (parseRecord(next) as { record: JobRecord }).record;
-      await this.#emit(new JobQueued({ connection: this.#deps.connection, queue: reserved.queue, job: queued.job, jobId: queued.uuid, delay: 0 }));
+      await this.#emit(new JobQueued({ connection: this.#deps.connection, queue: reserved.queue, job: queued.job, jobId: queued.uuid, delaySeconds: 0 }));
     }
     return 'processed';
   }
@@ -458,7 +458,7 @@ export class Worker {
       if (!this.#warnedAbout(id)) {
         this.#deps.logger.warn(`Holding ${name}: ${this.#message(error)} It waits for a worker that can run it, again in ${delay}s.`, context);
       }
-      await this.#emit(new JobReleased({ connection: this.#deps.connection, queue: reserved.queue, job: name, jobId: id, attempt: reserved.attempts, delay, reason: 'unknown' }));
+      await this.#emit(new JobReleased({ connection: this.#deps.connection, queue: reserved.queue, job: name, jobId: id, attempt: reserved.attempts, delaySeconds: delay, reason: 'unknown' }));
     };
     await (record ? this.#deps.runner.unrunnable(record, attempt, error, release) : release());
     return 'released';
@@ -478,7 +478,7 @@ export class Worker {
       const delay = backoffDelay(record.backoff, reserved.attempts);
       await this.#deps.driver.release(reserved, delay, { availableAt: this.#deps.clock.now() + Math.round(delay * 1000) });
       this.#deps.logger.warn(`Attempt ${reserved.attempts} of ${record.tries} of ${record.job} failed, again in ${delay}s: ${this.#message(error)}`, context);
-      await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delay, reason, ...(ms === undefined ? {} : { ms }) }));
+      await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: delay, reason, ...(ms === undefined ? {} : { ms }) }));
       return 'released';
     }
     await this.#fail(reserved, record, error, record.tries > 1 ? ` after ${record.tries} attempts` : '', ms);

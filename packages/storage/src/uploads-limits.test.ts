@@ -57,8 +57,8 @@ describe('temporary uploads: what may wait unsent', () => {
       disk: on,
       clock,
       keys: [new Uint8Array(32).fill(7)],
-      lifetime: LIFETIME,
-      sendWithin: 900,
+      lifetimeMilliseconds: LIFETIME,
+      sendWithinSeconds: 900,
       maxOpen: 20,
       maxOpenBytes: 1024 * MB,
       maxOpenTotalBytes: 10_240 * MB,
@@ -147,7 +147,7 @@ describe('temporary uploads: what may wait unsent', () => {
     disk.assertCount(1);
     clock.travel({ seconds: 1 });
 
-    const command = new PruneUploadsCommand(service, clock, { lifetime: 120 } as never);
+    const command = new PruneUploadsCommand(service, clock, { lifetimeMinutes: 120 } as never);
     const lines: string[] = [];
     expect(await command.handle({ options: {}, args: [], output: { success: (line: string) => lines.push(line), error: () => {} } } as never)).toBe(0);
     expect(lines).toEqual(['Pruned 1 temporary upload.']);

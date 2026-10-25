@@ -23,8 +23,8 @@ export interface DispatchedJob<J extends JobClass = JobClass> {
   readonly id: string;
   readonly queue: string | undefined;
   readonly connection: string | undefined;
-  /** Seconds. */
-  readonly delay: number;
+  /** Seconds before it may run. */
+  readonly delaySeconds: number;
   /** Dispatched inside a transaction — `connections.transaction()` (recorded with its commit) or `queue.using(trx)`. */
   readonly inTransaction: boolean;
   /** The unique key it was dispatched with (`{ unique: 'stats:7' }`), with how long and until when its lock holds. */
@@ -106,12 +106,12 @@ export class QueueFake implements Queue {
       encrypted: pending.map(([job]) => (job as { encrypted?: unknown }).encrypted === true),
       connection: options.connection ?? FAKE_CONNECTION,
       queue: options.queue ?? 'default',
-      delay: 0,
+      delaySeconds: 0,
       ...(options.unique === undefined ? {} : { unique: String(options.unique) }),
       jobIds: [],
     };
     try {
-      (message as { delay: number }).delay = delaySeconds(options.delay);
+      (message as { delaySeconds: number }).delaySeconds = delaySeconds(options.delay);
     } catch {
       // An invalid delay fails the dispatch itself, with its message.
     }
@@ -303,7 +303,7 @@ export class QueueFake implements Queue {
       for (const { job, payload, prepared, chain } of entries) {
         const { record } = prepared;
         const unique = record.unique ? { key: record.unique.key, for: record.unique.for, until: record.unique.until } : undefined;
-        owner.#dispatched.push({ job, payload, id: record.uuid, queue: options.queue, connection: options.connection, delay, inTransaction: this.#inTransaction || ambient, unique, chain });
+        owner.#dispatched.push({ job, payload, id: record.uuid, queue: options.queue, connection: options.connection, delaySeconds: delay, inTransaction: this.#inTransaction || ambient, unique, chain });
         // Stamped like the real queue's push: the time it can first be claimed.
         await owner.#memory().push(options.queue ?? 'default', JSON.stringify({ ...record, availableAt: this.#container.make(Clock).now() + Math.round(delay * 1000) }), delay);
       }

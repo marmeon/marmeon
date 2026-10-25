@@ -38,8 +38,9 @@ export function LimiterUser(limiter: RateLimiter) {
 export function TravelInTime(app: TestApp) {
   app.travel({ minutes: 5, seconds: 1 });
   app.freeze();
-  // @ts-expect-error — a duration names its unit: { seconds: 5 } (a bare number would be ambiguous)
-  app.travel(5);
+  app.travel(5); // a number is seconds
+  // @ts-expect-error — a string is no span of time: { minutes: 5 }
+  app.travel('5m');
   // @ts-expect-error — `minute` is no unit (did you mean `minutes`?)
   app.travel({ minute: 5 });
 }

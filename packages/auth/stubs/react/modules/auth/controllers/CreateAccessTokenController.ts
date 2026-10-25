@@ -46,7 +46,7 @@ export class CreateAccessTokenController extends Controller {
   async handle(ctx: ContextOf<typeof CreateAccessTokenRequest> & Authenticated) {
     const checked = await this.#auth.checkPassword(ctx.body.current_password);
     if (!checked.ok) throw new ValidationError({ current_password: [passwordCheckMessage(this.#translator, checked.error)] });
-    const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: '90d' });
+    const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: { days: 90 } });
     return this.view('auth/AccessTokens', {
       tokens: await this.#tokens.list(ctx.user.id),
       abilities: abilityDescriptions(this.#translator),

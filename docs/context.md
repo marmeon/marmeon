@@ -101,9 +101,10 @@ warns about it. The [service container](container.md#default-values-are-never-in
 
 ### Spans of time
 
-`Duration` describes a span of time as an object, such as `{ minutes: 5 }` or `{ hours: 1, seconds: 30 }`. It takes `days`,
-`hours`, `minutes`, `seconds` and `milliseconds`, and a negative part goes back in time. `durationToMilliseconds(duration)` turns
-it into a number.
+`Duration` from `@marmeon/core` describes a span of time: a number of seconds, or an object such as `{ minutes: 5 }` or
+`{ hours: 1, seconds: 30 }`. It takes `days`, `hours`, `minutes`, `seconds` and `milliseconds`, and a negative part goes back in
+time. `durationToMilliseconds(duration)` and `durationToSeconds(duration)` turn it into a number. The [time](time.md#spans-of-time)
+page has the rules for where a span is a `Duration` and where it is a plain number.
 
 ## Testing
 

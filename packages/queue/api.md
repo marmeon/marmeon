@@ -26,7 +26,7 @@ export type CheckJob<J extends JobClass> = unknown extends JobInput<J> ? unknown
 };
 // DispatchOptions
 export interface DispatchOptions {
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
     readonly queue?: string;
     readonly connection?: string;
     readonly unique?: undefined;
@@ -72,7 +72,7 @@ export interface JobContext {
     readonly connection: string;
     readonly signal: AbortSignal;
     discard(reason?: string): void;
-    release(delay?: number | Duration): void;
+    release(delay?: Duration): void;
     fail(reason: string | Error): void;
     once(key: string, fn: () => unknown, options?: {
         readonly for?: number;
@@ -156,9 +156,9 @@ export declare class JobProcessing extends JobEvent {
 // JobQueued
 export declare class JobQueued extends JobEvent {
     #private;
-    readonly delay: number;
+    readonly delaySeconds: number;
     constructor(data: ConstructorParameters<typeof JobEvent>[0] & {
-        delay: number;
+        delaySeconds: number;
     });
 }
 // JobRecord
@@ -192,12 +192,12 @@ export declare class JobRegistry {
 export declare class JobReleased extends JobEvent {
     #private;
     readonly attempt: number;
-    readonly delay: number;
+    readonly delaySeconds: number;
     readonly reason: 'error' | 'job' | 'unknown' | 'stopping' | 'busy';
     readonly ms: number | undefined;
     constructor(data: ConstructorParameters<typeof JobEvent>[0] & {
         attempt: number;
-        delay: number;
+        delaySeconds: number;
         reason: JobReleased['reason'];
         ms?: number;
     });
@@ -349,11 +349,11 @@ export interface QueueCounts {
 }
 // QueueDriver
 export interface QueueDriver {
-    push(queue: string, payload: string, delay: number): Promise<string>;
+    push(queue: string, payload: string, delaySeconds: number): Promise<string>;
     reserve(queues: readonly string[]): Promise<ReservedJob | undefined>;
     reserveAny?(except?: readonly string[]): Promise<ReservedJob | undefined>;
     ack(job: ReservedJob, next?: readonly QueuedPush[]): Promise<boolean>;
-    release(job: ReservedJob, delay: number, options?: ReleaseOptions): Promise<boolean>;
+    release(job: ReservedJob, delaySeconds: number, options?: ReleaseOptions): Promise<boolean>;
     fail(job: ReservedJob): Promise<boolean>;
     size(queue: string): Promise<number>;
     counts?(queue: string): Promise<QueueCounts>;
@@ -507,7 +507,7 @@ export interface QueuedJob {
 export interface QueuedPush {
     readonly queue: string;
     readonly payload: string;
-    readonly delay: number;
+    readonly delaySeconds: number;
 }
 // ReleaseOptions
 export interface ReleaseOptions {
@@ -522,7 +522,7 @@ export interface ReservedJob extends QueuedJob {
 // UniqueDispatchOptions
 export interface UniqueDispatchOptions extends Omit<DispatchOptions, 'unique'> {
     readonly unique: string;
-    readonly uniqueFor?: number | Duration;
+    readonly uniqueFor?: Duration;
     readonly uniqueUntil?: 'processing' | 'done';
 }
 // UniqueRecord
@@ -655,7 +655,7 @@ export interface DispatchedJob<J extends JobClass = JobClass> {
     readonly id: string;
     readonly queue: string | undefined;
     readonly connection: string | undefined;
-    readonly delay: number;
+    readonly delaySeconds: number;
     readonly inTransaction: boolean;
     readonly unique: (Pick<UniqueRecord, 'key' | 'for' | 'until'>) | undefined;
     readonly chain: readonly {
@@ -716,7 +716,7 @@ export type CheckJob<J extends JobClass> = unknown extends JobInput<J> ? unknown
 };
 // DispatchOptions
 export interface DispatchOptions {
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
     readonly queue?: string;
     readonly connection?: string;
     readonly unique?: undefined;
@@ -747,7 +747,7 @@ export interface JobContext {
     readonly connection: string;
     readonly signal: AbortSignal;
     discard(reason?: string): void;
-    release(delay?: number | Duration): void;
+    release(delay?: Duration): void;
     fail(reason: string | Error): void;
     once(key: string, fn: () => unknown, options?: {
         readonly for?: number;
@@ -818,7 +818,7 @@ export type SchemaOutput<S> = S extends StandardSchemaV1 ? NonNullable<S['~stand
 // UniqueDispatchOptions
 export interface UniqueDispatchOptions extends Omit<DispatchOptions, 'unique'> {
     readonly unique: string;
-    readonly uniqueFor?: number | Duration;
+    readonly uniqueFor?: Duration;
     readonly uniqueUntil?: 'processing' | 'done';
 }
 // UniqueRecord

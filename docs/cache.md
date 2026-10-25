@@ -95,12 +95,12 @@ works too. The [database](database.md#more-connections) page shows how to define
 | Method | What it does |
 | --- | --- |
 | `get(key)` | The value, or `undefined`. |
-| `put(key, value, ttlSeconds?)` | Stores a value. Without a time it never expires. |
-| `add(key, value, ttlSeconds?)` | Stores the value only when the key is free, and says whether it did. |
+| `put(key, value, ttl?)` | Stores a value. Without a time it never expires. `ttl` is seconds, or a [`Duration`](time.md#spans-of-time) such as `{ minutes: 5 }`. |
+| `add(key, value, ttl?)` | Stores the value only when the key is free, and says whether it did. |
 | `has(key)` | Whether the key holds a value. |
 | `forget(key)` | Removes the key. |
-| `increment(key, by = 1, ttlSeconds?)` | Adds a whole number and returns the result. |
-| `remember(key, ttlSeconds, compute)` | The value, or `compute()` stored and returned. |
+| `increment(key, by = 1, ttl?)` | Adds a whole number and returns the result. |
+| `remember(key, ttl, compute)` | The value, or `compute()` stored and returned. |
 | `ttl(key)` | Seconds until the key expires, or `undefined`. |
 | `flush()` | Removes every entry. Locks stay. |
 
@@ -115,7 +115,7 @@ clock, so `app.travel()` in a test moves it, except on Redis, whose keys expire 
 
 ## Locks
 
-A lock lets one process do a piece of work while others wait or give up. It is held for a number of seconds at most, so a holder
+A lock lets one process do a piece of work while others wait or give up. It is held for a span of time at most (seconds, or a [`Duration`](time.md#spans-of-time)), so a holder
 that crashes cannot block it forever:
 
 ```ts title="modules/notes/controllers/ExportNotesController.ts"
@@ -151,14 +151,14 @@ export class ExportNotesController extends Controller {
   and returns `ok(result)`, or `err({ kind: 'locked' })` without calling it when someone else holds the lock — a
   [`Result`](errors.md#results), so a callback that returns `false` is not mistaken for a taken lock. Returned from a
   `transaction()` callback, `locked` rolls the transaction back ([transactions](transactions.md#returning-an-err)).
-- **`block(seconds, callback?)`** waits up to `seconds` for the lock, trying every 250 milliseconds, then throws
+- **`block(wait, callback?)`** waits up to `wait` (seconds, or a `Duration`) for the lock, trying every 250 milliseconds, then throws
   `LockTimeoutError`. With a callback it runs it, releases the lock and returns the result.
 - **`release()`** frees the lock only while this lock object holds it. A lock that expired and was taken by another stays
   theirs.
 - **`forceRelease()`** frees it, whoever holds it. **`owned()`** says whether this object holds it now.
 
-Each lock object has a random owner token. `cache.lock(name, seconds, owner)` makes an object with a known owner, so a job can
-release a lock that a request took, given the lock's `owner`. The number of seconds must be positive.
+Each lock object has a random owner token. `cache.lock(name, ttl, owner)` makes an object with a known owner, so a job can
+release a lock that a request took, given the lock's `owner`. The time to live must be positive.
 
 ```ts
 const exported = await this.#cache.lock('report', 60).get(() => this.#exports.build(ctx.user.id));

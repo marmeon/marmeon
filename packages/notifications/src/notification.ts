@@ -52,7 +52,7 @@ export interface NotificationQueueOptions {
   /** The queue connection (default: `QUEUE_DRIVER`). */
   readonly connection?: string;
   /** Deliver no earlier than this — seconds, or a duration. */
-  readonly delay?: number | Duration;
+  readonly delay?: Duration;
   /** Attempts of the job in all (default 3). */
   readonly tries?: number;
   /** Seconds before the next attempt — one value, or one per retry (the last repeats). Default [10, 60, 300]. */

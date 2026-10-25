@@ -37,7 +37,7 @@ export interface QueuedListenerOptions {
   /** The queue connection (default: `QUEUE_DRIVER`). */
   readonly connection?: string;
   /** Run no earlier than this — seconds, or a duration. */
-  readonly delay?: number | Duration;
+  readonly delay?: Duration;
   /** Attempts in all (default 1: no retry). */
   readonly tries?: number;
   /** Seconds before the next attempt — one value, or one per retry (the last repeats). */

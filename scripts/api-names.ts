@@ -23,7 +23,6 @@ export const KNOWN: readonly string[] = [
   'Column',
   'ColumnOf',
   'DispatchOptions',
-  'Duration',
   'Entry',
   'Invokable',
   'KeyOf',

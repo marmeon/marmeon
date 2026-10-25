@@ -12,16 +12,16 @@ Types from other packages: none
 // Cache
 export interface Cache {
     get<T = unknown>(key: string): Promise<T | undefined>;
-    put(key: string, value: unknown, ttlSeconds?: number): Promise<void>;
-    add(key: string, value: unknown, ttlSeconds?: number): Promise<boolean>;
+    put(key: string, value: unknown, ttl?: Duration): Promise<void>;
+    add(key: string, value: unknown, ttl?: Duration): Promise<boolean>;
     has(key: string): Promise<boolean>;
     forget(key: string): Promise<void>;
-    increment(key: string, by?: number, ttlSeconds?: number): Promise<number>;
-    remember<T>(key: string, ttlSeconds: number | undefined, compute: () => T | Promise<T>): Promise<T>;
+    increment(key: string, by?: number, ttl?: Duration): Promise<number>;
+    remember<T>(key: string, ttl: Duration | undefined, compute: () => T | Promise<T>): Promise<T>;
     ttl(key: string): Promise<number | undefined>;
     flush(): Promise<void>;
     prune(): Promise<number | undefined>;
-    lock(name: string, seconds: number, owner?: string): Lock;
+    lock(name: string, ttl: Duration, owner?: string): Lock;
 }
 export declare const Cache: import("@marmeon/core").Token<Cache>;
 // CacheClearCommand
@@ -111,7 +111,7 @@ export declare class Limit {
     readonly maxAttempts: number;
     readonly decaySeconds: number;
     readonly key: string;
-    constructor(maxAttempts: number, decaySeconds: number, key?: string);
+    constructor(maxAttempts: number, decay: Duration, key?: string);
     static perSecond(maxAttempts: number, seconds?: number): Limit;
     static perMinute(maxAttempts: number, minutes?: number): Limit;
     static perHour(maxAttempts: number, hours?: number): Limit;
@@ -147,8 +147,8 @@ export declare class Lock {
     get<T>(callback: () => T | Promise<T>): Promise<Result<Awaited<T>, {
         kind: 'locked';
     }>>;
-    block(seconds: number): Promise<true>;
-    block<T>(seconds: number, callback: () => T | Promise<T>): Promise<T>;
+    block(wait: Duration): Promise<true>;
+    block<T>(wait: Duration, callback: () => T | Promise<T>): Promise<T>;
     release(): Promise<boolean>;
     forceRelease(): Promise<void>;
     owned(): Promise<boolean>;
@@ -186,8 +186,8 @@ export declare class RateLimiter {
     constructor(cache: Cache);
     for(name: string, callback: LimiterCallback): this;
     limiter(name: string): LimiterCallback | undefined;
-    hit(key: string, decaySeconds: number): Promise<number>;
-    attempt(key: string, maxAttempts: number, decaySeconds: number): Promise<boolean>;
+    hit(key: string, decay: Duration): Promise<number>;
+    attempt(key: string, maxAttempts: number, decay: Duration): Promise<boolean>;
     attempts(key: string): Promise<number>;
     tooManyAttempts(key: string, maxAttempts: number): Promise<boolean>;
     availableIn(key: string): Promise<number>;

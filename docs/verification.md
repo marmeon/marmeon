@@ -83,7 +83,7 @@ export class VerificationMailer {
 }
 ```
 
-`link(user, { base, expiresIn, route })` signs the route `auth.verification.verify` for 60 minutes by default. `base` is the
+`link(user, { base, expiresIn, route })` signs the route `auth.verification.verify` for 60 minutes by default (`expiresIn` is seconds, or a [`Duration`](time.md#spans-of-time)). `base` is the
 app's address from `APP_URL`, never a request's `Host` header, so nobody can make a mail point elsewhere. The mail is written in
 the language stored with the account, not the request's.
 

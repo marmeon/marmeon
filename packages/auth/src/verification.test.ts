@@ -27,6 +27,15 @@ describe('EmailVerification', () => {
     expect(signer.hasValidSignature(link)).toBe(true);
   });
 
+  it('lasts 60 minutes unless told otherwise', () => {
+    const expires = (options: { expiresIn?: { hours: number } }) =>
+      Number(new URL(verification.link(ada, { base: 'https://app.example', ...options })).searchParams.get('expires'));
+    const now = Math.floor(Date.now() / 1000);
+    expect(expires({})).toBeGreaterThanOrEqual(now + 3600 - 1);
+    expect(expires({})).toBeLessThanOrEqual(now + 3600 + 1);
+    expect(expires({ expiresIn: { hours: 2 } })).toBeGreaterThanOrEqual(now + 7200 - 1);
+  });
+
   it('another user’s link or an old address does not match', () => {
     const params = { id: '1', hash: emailHash('ada@example.com') };
     expect(verification.matches(ada, params)).toBe(true);

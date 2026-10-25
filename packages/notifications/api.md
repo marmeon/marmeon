@@ -178,7 +178,7 @@ export interface NotificationMail {
 export interface NotificationQueueOptions {
     readonly queue?: string;
     readonly connection?: string;
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
     readonly tries?: number;
     readonly backoff?: number | readonly number[];
 }
@@ -334,7 +334,7 @@ export type SendData<N> = N extends {
 } ? SchemaInput<S> : never;
 // SendOptions
 export interface SendOptions {
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
 }
 // SendQueuedNotification
 export declare class SendQueuedNotification {
@@ -583,7 +583,7 @@ export interface NotificationMail {
 export interface NotificationQueueOptions {
     readonly queue?: string;
     readonly connection?: string;
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
     readonly tries?: number;
     readonly backoff?: number | readonly number[];
 }
@@ -636,7 +636,7 @@ export type SendData<N> = N extends {
 } ? SchemaInput<S> : never;
 // SendOptions
 export interface SendOptions {
-    readonly delay?: number | Duration;
+    readonly delay?: Duration;
 }
 // SendResult
 export type SendResult<R> = R extends readonly unknown[] ? string[] : string;

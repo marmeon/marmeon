@@ -108,6 +108,14 @@ describe.skipIf(!S3_ENDPOINT)('uploads straight to S3: a presigned POST with a s
     expect(await disk.size('tmp/1')).toBe(100);
   });
 
+  it('takes the time to send as a duration object too', async () => {
+    const disk = await make();
+    const target = await disk.presignedPost('tmp/4', { maxBytes: 100, expiresIn: { minutes: 15 } });
+    expect((await post(target, new Uint8Array(10))).status).toBeLessThan(300);
+    await expect(disk.presignedPost('tmp/5', { maxBytes: 100, expiresIn: '15m' as never })).rejects.toThrow('write `{ minutes: 15 }`');
+    await expect(disk.presignedPost('tmp/6', { maxBytes: 100, expiresIn: 0.2 })).rejects.toThrow(RangeError);
+  });
+
   it('one byte over content-length-range — the store refuses it, nothing lands', async () => {
     const disk = await make();
     const target = await disk.presignedPost('tmp/2', { maxBytes: 100, expiresIn: 60 });

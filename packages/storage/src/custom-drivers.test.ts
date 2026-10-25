@@ -6,7 +6,7 @@ import { createHttpKernel } from '@marmeon/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
 import { defineStorage, type DiskDriverFactory } from './config.ts';
-import type { Disk } from './disk.ts';
+import type { Disk, DiskDriver, DiskDriverTemporaryUrlOptions } from './disk.ts';
 import { MemoryDisk } from './drivers/memory.ts';
 import { StorageFake } from './fake.ts';
 import { Storage, StorageError, StorageServiceProvider, StorageSetupError } from './index.ts';
@@ -24,9 +24,25 @@ const signed = { sign: (disk: string, key: string) => `/signed/${disk}/${key}?si
 const memory = (name: string, visibility: 'public' | 'private' = 'private', url?: string) =>
   new MemoryDisk({ name, visibility, url, temporaryUrls: signed, clock: new TestClock() });
 
+/** The memory disk as a driver sees the contract: `temporaryUrl()` gets whole seconds. */
+const asDriver = (disk: MemoryDisk, seen: DiskDriverTemporaryUrlOptions[] = []): DiskDriver =>
+  new Proxy(disk, {
+    get(target, property) {
+      if (property === 'temporaryUrl') {
+        return (key: string, options: DiskDriverTemporaryUrlOptions) => {
+          seen.push(options);
+          const { expiresInSeconds, ...rest } = options;
+          return target.temporaryUrl(key, { expiresIn: expiresInSeconds, ...rest });
+        };
+      }
+      const value = Reflect.get(target, property, target) as unknown;
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  }) as unknown as DiskDriver;
+
 /** A driver backed by a memory disk — the contract in its smallest form. */
 const crate: DiskDriverFactory<{ visibility?: 'public' | 'private'; url?: string }> = (options, { name }) =>
-  memory(name, options.visibility ?? 'private', options.url);
+  asDriver(memory(name, options.visibility ?? 'private', options.url));
 
 function boot(storage: ReturnType<typeof defineStorage>, providers: readonly object[], options: { fake?: boolean } = {}) {
   return createApplication(
@@ -98,7 +114,7 @@ describe('disk drivers of providers', () => {
 
   it('negative: a driver that returns no disk, or half of one, stops the start', async () => {
     await expect(boot(disks(), [providing(() => ({ name: 'media', visibility: 'private' }))])).rejects.toThrow(/missing: put, get/);
-    await expect(boot(disks(), [providing(() => undefined)])).rejects.toThrow(/must return a Disk/);
+    await expect(boot(disks(), [providing(() => undefined)])).rejects.toThrow(/must return a DiskDriver/);
   });
 
   it('a factory that fails stops the start with its error', async () => {
@@ -140,6 +156,19 @@ describe('disk drivers of providers', () => {
     expect(urlCalls).toBe(0);
     const good = (await boot(disks(), [Crate])).container.make(Storage).disk('media') as unknown as Disk;
     await expect(good.temporaryUrl('a.txt', { expiresIn: 60 })).resolves.toBe('/signed/media/a.txt?signature=x');
+  });
+
+  it('hands a driver whole seconds, whatever span the app wrote', async () => {
+    const seen: DiskDriverTemporaryUrlOptions[] = [];
+    const watching = providing((_: unknown, { name }: { name: string }) => asDriver(memory(name), seen));
+    const disk = (await boot(disks(), [watching])).container.make(Storage).disk('media') as unknown as Disk;
+    await disk.temporaryUrl('a.txt', { expiresIn: { minutes: 5 }, filename: 'x.txt' });
+    await disk.temporaryUrl('a.txt', { expiresIn: 90 });
+    await disk.temporaryUrl('a.txt', { expiresIn: { seconds: 1, milliseconds: 900 } });
+    expect(seen).toEqual([{ expiresInSeconds: 300, filename: 'x.txt' }, { expiresInSeconds: 90 }, { expiresInSeconds: 1 }]);
+    await expect(disk.temporaryUrl('a.txt', { expiresIn: { milliseconds: 500 } })).rejects.toThrow(RangeError);
+    await expect(disk.temporaryUrl('a.txt', { expiresIn: '5m' as never })).rejects.toThrow('write `{ minutes: 5 }`');
+    expect(seen).toHaveLength(3);
   });
 
   it('a public disk of a driver keeps its url()', async () => {

@@ -1,5 +1,5 @@
 import { defineConfig, env, type ConfigDefinition, type InferOutput, type Resolver, type StandardSchemaV1 } from '@marmeon/core';
-import type { Disk, PrivateDisk, PublicDisk, Visibility } from './disk.ts';
+import type { Disk, DiskDriver, PrivateDisk, PublicDisk, Visibility } from './disk.ts';
 
 interface DiskBase {
   /** `private` (default): files only through `temporaryUrl()`. `public`: `url()` and, for local disks, a route. */
@@ -78,7 +78,7 @@ export interface DiskDriverContext {
  * Creates the disk `context.name` from its options. The disk's `visibility` must be the configured one and its `name` the
  * disk's; a private disk's `temporaryUrl()` must be signed and expire. See `docs/drivers.md#disk-drivers`.
  */
-export type DiskDriverFactory<O = any> = (options: O, context: DiskDriverContext) => Disk;
+export type DiskDriverFactory<O = any> = (options: O, context: DiskDriverContext) => DiskDriver;
 
 /** The resolved configuration: the default disk's name and every disk. */
 export interface StorageOptions<D extends Readonly<Record<string, DiskOptions>> = Readonly<Record<string, DiskOptions>>, Default extends string = string> {

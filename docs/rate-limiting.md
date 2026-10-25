@@ -50,6 +50,7 @@ promise of either:
 | `Limit.perHour(max, hours = 1)` | `max` attempts per `hours` hours. |
 | `Limit.perDay(max, days = 1)` | `max` attempts per `days` days. |
 | `Limit.none()` | No limit. |
+| `new Limit(max, decay)` | `max` attempts per `decay`: seconds, or a [`Duration`](time.md#spans-of-time) such as `{ minutes: 10 }`. A window of a fraction of a second is a `RangeError`. |
 
 `.by(key)` says whose attempts count together. Use the client's address for guests and the user's id for signed-in users. A list
 of limits counts each one on its own, and the first one that is used up refuses the request:
@@ -213,8 +214,8 @@ at many accounts from one client share no count, and one account guessed from ma
 
 | Method | What it does |
 | --- | --- |
-| `attempt(key, max, decaySeconds)` | Counts one attempt and says whether it is within `max`, in one atomic step. A refused attempt counts too. |
-| `hit(key, decaySeconds)` | Counts one attempt and returns the count of the window, this one included. |
+| `attempt(key, max, decay)` | Counts one attempt and says whether it is within `max`, in one atomic step. A refused attempt counts too. |
+| `hit(key, decay)` | Counts one attempt and returns the count of the window, this one included. |
 | `attempts(key)` | The count of the window. |
 | `tooManyAttempts(key, max)` | Whether `max` is used up. For showing a state, never for letting an attempt through. |
 | `availableIn(key)` | Seconds until the window ends. |

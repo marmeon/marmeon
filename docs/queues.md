@@ -215,7 +215,7 @@ export class SendRemindersController extends Controller {
 
 | Option | What it does |
 | --- | --- |
-| `delay` | Seconds, or a duration such as `{ minutes: 5 }`, before the job may run. |
+| `delay` | A [`Duration`](time.md#spans-of-time), seconds or an object such as `{ minutes: 5 }`, before the job may run. |
 | `queue` | The queue's name. Without it the connection's default queue, `default` unless configured. |
 | `connection` | The queue connection. Without it `QUEUE_DRIVER`. |
 
@@ -354,7 +354,7 @@ A job can also end an attempt on its own:
 | Call | What happens |
 | --- | --- |
 | `job.discard(reason)` | The job ends without a retry and without a failed entry. For a record that is gone. |
-| `job.release(delay)` | The job goes back to the queue, to run again after `delay` seconds or a duration. The attempt counts, so a release on the last attempt fails the job. |
+| `job.release(delay)` | The job goes back to the queue, to run again after `delay`, a [`Duration`](time.md#spans-of-time). The attempt counts, so a release on the last attempt fails the job. |
 | `job.fail(reason)` | The job fails now, without further attempts. |
 
 Some jobs can never succeed, and they fail at once, after one attempt:
@@ -497,10 +497,10 @@ Every step of a job is an event of the app's event dispatcher:
 
 | Event | When | Fields besides `connection`, `queue`, `job` and `jobId` |
 | --- | --- | --- |
-| `JobQueued` | The job was queued, after the commit when it was dispatched in a transaction. | `delay` |
+| `JobQueued` | The job was queued, after the commit when it was dispatched in a transaction. | `delaySeconds` |
 | `JobProcessing` | An attempt starts. | `attempt` |
 | `JobProcessed` | An attempt ran to its end. | `attempt`, `ms`, `discarded` |
-| `JobReleased` | An attempt ended and the job went back to the queue, to run again after `delay` seconds. | `attempt`, `delay`, `reason`, `ms` |
+| `JobReleased` | An attempt ended and the job went back to the queue, to run again after `delaySeconds`. | `attempt`, `delaySeconds`, `reason`, `ms` |
 | `JobFailed` | The job failed for good and is in the failed jobs now. The rest of its chain is dropped. | `attempt`, `error` |
 
 `reason` says why a job went back:
