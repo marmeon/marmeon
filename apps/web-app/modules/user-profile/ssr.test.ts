@@ -36,7 +36,7 @@ describe('the profile page, rendered on the server', () => {
       .actingAs(ada)
       .get(`/users/${alan.public_id}`, page)
       .assertServerRendered()
-      .assertSee('<title data-marmeon-head="ssr">Alan Turing — Marmeon</title><meta name="description" content="Computability pioneer." data-marmeon-head="ssr"/>')
+      .assertSee('<title data-marmeon-head="ssr">Alan Turing — Marmeon</title><meta name="description" content="Computability pioneer." data-marmeon-head="ssr-tag"/>')
       .assertSee('<h1>Alan Turing</h1>');
   });
 

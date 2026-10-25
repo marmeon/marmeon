@@ -9,11 +9,11 @@ export interface OpenGraph {
   /** Default: the page's `description`. */
   description?: string;
   type?: 'website' | 'article' | 'profile';
-  /** Relative to `APP_URL`. */
+  /** Relative to the origin of `APP_URL`. */
   url?: string;
   siteName?: string;
   locale?: string;
-  /** A URL (relative to `APP_URL`), or the URL with its size and text. */
+  /** A URL (relative to the origin of `APP_URL`), or the URL with its size and text. */
   image?: string | { url: string; width?: number; height?: number; alt?: string };
   article?: { publishedTime?: string; modifiedTime?: string; authors?: string[]; tags?: string[] };
 }
@@ -28,7 +28,7 @@ export interface TwitterCard {
   title?: string;
   /** Default: the page's `description`. */
   description?: string;
-  /** A URL, relative to `APP_URL`. */
+  /** A URL, relative to the origin of `APP_URL`. */
   image?: string;
   imageAlt?: string;
 }
@@ -45,7 +45,7 @@ export type JsonLd = { readonly '@context'?: string; readonly '@type': string | 
 export interface HeadFields {
   /** The page's summary for search results. */
   description?: string;
-  /** The page's address when several lead to it; relative to `APP_URL`. */
+  /** The page's address when several lead to it; relative to the origin of `APP_URL`. */
   canonical?: string;
   /** What crawlers may do with the page; a part left out is not said. */
   robots?: { index?: boolean; follow?: boolean };
@@ -106,7 +106,7 @@ export function mergeHead(entries: readonly HeadEntry[]): HeadEntry {
 }
 
 /**
- * A URL as the head states it: made absolute against `base` (the server: `APP_URL`, never the request; the browser: its
+ * A URL as the head states it: made absolute against the origin of `base` (the server: `APP_URL`, never the request; the browser: its
  * origin), `http(s)` only. Anything else is dropped, with `warn` saying why (development).
  */
 export function absoluteUrl(value: string, base: string | undefined, warn?: (message: string) => void): string | undefined {
@@ -121,7 +121,8 @@ export function absoluteUrl(value: string, base: string | undefined, warn?: (mes
     return drop(`the app's URL (APP_URL) "${base}" is not a URL.`);
   }
   try {
-    const url = new URL(value, base);
+    // Against the origin, not `base` itself: an `APP_URL` with a path would otherwise turn `a` into `/shop/a` on one side only.
+    const url = new URL(value, origin);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return drop('only http(s) URLs belong in the head.');
     // `//host/x` and `/\host/x` have no scheme but name another host: a path stays on the app's origin.
     if (!/^[a-z][a-z\d+.-]*:/i.test(value.trim()) && url.origin !== origin) return drop("a path without a scheme must stay on the app's own origin.");

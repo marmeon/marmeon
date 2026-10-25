@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "https://app.test/a" }
 import { PAGE_HEADER, type PageObject, PROTOCOL_VERSION } from '@marmeon/http/protocol';
-import { act, useState, type ReactNode } from 'react';
+import { act, StrictMode, useState, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp, usePage, useRouter } from './app.tsx';
@@ -235,6 +235,42 @@ describe('document title', () => {
     await click('to-b');
     await settle();
     expect(document.title).toBe('Shop');
+  });
+});
+
+describe('tags of <Head> the server wrote', () => {
+  const SERVER_TAG = '<script type="text/plain" src="/late.js" data-marmeon-head="ssr-tag"></script>';
+  const left = () => document.head.querySelectorAll('script[src="/late.js"]').length;
+  afterEach(() => void (document.head.innerHTML = ''));
+
+  it('stay through hydration, which no <Head> may have reached yet, and go with the next page', async () => {
+    document.head.innerHTML = SERVER_TAG;
+    server = () => respond(page('B', '/b'));
+    await mount(page('A', '/a'));
+    await settle();
+    expect(left()).toBe(1);
+    await click('to-b');
+    await settle();
+    expect(left()).toBe(0);
+  });
+
+  it('stay through the double run of effects in StrictMode', async () => {
+    document.head.innerHTML = SERVER_TAG;
+    server = () => respond(page('B', '/b'));
+    const Component = await resolve('app/A');
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <MarmeonApp features={HISTORY} initialPage={page('A', '/a')} initialComponent={Component} resolve={resolve} />
+        </StrictMode>,
+      );
+    });
+    await settle();
+    expect(left()).toBe(1);
+    await click('to-b');
+    await settle();
+    expect(left()).toBe(0);
   });
 });
 

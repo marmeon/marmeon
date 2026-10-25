@@ -88,6 +88,7 @@ export type DefaultLayout = (name: string) => PageLayout | undefined;
 /** The layouts a page renders in, outermost first: its own, else the app's default. */
 export function layoutsOf(page: PageComponent, name: string, defaultLayout?: DefaultLayout): readonly Layout[] {
   const layout = page.layout !== undefined ? page.layout : defaultLayout?.(name);
+  if (page.layout === undefined) checkLayout(name, layout);
   if (layout === undefined || layout === null) return [];
   return isLayoutList(layout) ? layout : [layout];
 }

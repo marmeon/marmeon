@@ -32,7 +32,11 @@ export const HeadContext = createContext<HeadContextValue>({ template: defaultTi
 export interface HeadProps extends HeadFields {
   /** Page title, passed through the app's title template. */
   title?: string;
-  /** `<meta>` and `<link>` elements for this page. */
+  /**
+   * `<meta>`, `<link>`, `<script>` and `<style>` elements for this page. In the browser only string, number and `true` props become
+   * attributes (never `on*`), a string child of a script or style is its text, and a script or style gets the page's nonce. The
+   * server's elements are kept when the page hydrates. See docs/pages.md#the-document-head.
+   */
   children?: ReactNode;
 }
 
@@ -83,16 +87,17 @@ function PageHead({ title, children, ...fields }: HeadProps) {
   const signature = JSON.stringify([tags.map((tag) => [tag.type, tag.props]), simple, blocks]);
   // `signature` stands in for `tags` and `fields`, whose identity changes on every render.
   useEffect(() => {
-    // Server-rendered tags (title included) hand over to the ones managed here — removed first,
-    // so the title set next is not removed with them.
+    // The tags written here are taken over from the server's where they equal them (a script that ran is not written again).
+    // Only the server's title and the fields' tags (`ssr`) are removed here, before the title is set; the tags of other
+    // `<Head>`s stay for them, and `sweepServerTags` removes the rest.
+    const elements = tags.map(toDescription).filter((description): description is TagDescription => description !== null).map(adoptOrCreate).filter((element): element is HTMLElement => element !== null);
     for (const stale of document.head.querySelectorAll(`[${MARKER}="ssr"]`)) stale.remove();
     if (title !== undefined) {
       if (titles) titles.set(order, title);
       else document.title = template(title);
     }
     registry?.set(fieldsOrder, { title, ...fields });
-    const elements = tags.map(toElement).filter((element): element is HTMLElement => element !== null);
-    for (const element of elements) document.head.append(element);
+    for (const element of elements) if (!element.isConnected) document.head.append(element);
     return () => {
       if (title !== undefined) titles?.delete(order);
       registry?.delete(fieldsOrder);
@@ -136,20 +141,102 @@ export function createHeadCollector(onLate?: (title: string | undefined) => void
   return { entries: [], sealed: false, onLate };
 }
 
-/** `data-marmeon-head="ssr"` on server-rendered tags, so the client can take them over. */
+/** The marker of the tags of `<Head>` the server wrote: the `<Head>` that renders them takes them over (the fields' own are `ssr`). */
+const SERVER_TAG = 'ssr-tag';
+
+/** `data-marmeon-head="ssr-tag"` on server-rendered tags, so the client can take them over. */
 export function markServerTag(tag: ReactElement): ReactElement {
-  return cloneElement(tag, { [MARKER]: 'ssr' } as Record<string, string>);
+  return cloneElement(tag, { [MARKER]: SERVER_TAG } as Record<string, string>);
 }
 
-function toElement(tag: ReactElement): HTMLElement | null {
+/** A tag of `<Head>` as the browser would have it: its attributes (strings only) and, for a script or style, its text. */
+interface TagDescription {
+  readonly name: string;
+  readonly attributes: ReadonlyMap<string, string>;
+  readonly text: string | undefined;
+}
+
+const ATTRIBUTE_NAMES: Readonly<Record<string, string>> = { className: 'class', htmlFor: 'for', httpEquiv: 'http-equiv', charSet: 'charset', acceptCharset: 'accept-charset' };
+/** The attributes React writes as `name=""` for `true` and leaves out for `false`. */
+const BOOLEAN_ATTRIBUTES: ReadonlySet<string> = new Set(
+  'allowfullscreen async autofocus autoplay controls default defer disabled disablepictureinpicture disableremoteplayback formnovalidate hidden loop nomodule novalidate open playsinline readonly required reversed scoped seamless itemscope inert capture download'.split(' '),
+);
+const NOT_ATTRIBUTES: ReadonlySet<string> = new Set(['children', 'nonce', 'suppressHydrationWarning', 'suppressContentEditableWarning', 'dangerouslySetInnerHTML', 'style']);
+
+/**
+ * The attributes React would write for the props, since the server's tag is compared with them. Only strings, numbers and the
+ * booleans of boolean attributes (and of `data-*` and `aria-*`) become attributes: a function prop would otherwise be written as
+ * the source of an inline handler, and an object as `[object Object]`. `on*` is never an attribute, and `nonce` is the page's (see
+ * `pageNonce`), not the tag's.
+ */
+function toDescription(tag: ReactElement): TagDescription | null {
   if (typeof tag.type !== 'string') return null;
-  const element = document.createElement(tag.type);
-  for (const [name, value] of Object.entries(tag.props as Record<string, unknown>)) {
-    if (name === 'children' || value === undefined || value === null || value === false) continue;
-    element.setAttribute(name === 'httpEquiv' ? 'http-equiv' : name === 'charSet' ? 'charset' : name, String(value));
+  const attributes = new Map<string, string>();
+  const props = tag.props as Record<string, unknown>;
+  for (const [prop, value] of Object.entries(props)) {
+    if (NOT_ATTRIBUTES.has(prop) || /^on/i.test(prop)) continue;
+    const name = (ATTRIBUTE_NAMES[prop] ?? prop).toLowerCase();
+    if (/^(data|aria)-/.test(name) && typeof value === 'boolean') attributes.set(name, String(value));
+    else if (BOOLEAN_ATTRIBUTES.has(name)) {
+      if (value) attributes.set(name, (name === 'capture' || name === 'download') && typeof value === 'string' ? value : '');
+    } else if (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) attributes.set(name, String(value));
+  }
+  // As React writes a script or style: only a single string is its text.
+  const text = (tag.type === 'script' || tag.type === 'style') && typeof props.children === 'string' ? props.children : undefined;
+  return { name: tag.type, attributes, text };
+}
+
+/** The text of a script or style as React writes it into the server's document (`</script` and `</style` cannot end the element). */
+function serverText(name: string, text: string): string {
+  if (name === 'script') return text.replace(/(<\/|<)(s)(cript)/gi, (_, prefix: string, letter: string, rest: string) => `${prefix}${letter === 's' ? '\\u0073' : '\\u0053'}${rest}`);
+  return text.replace(/(<\/|<)(s)(tyle)/gi, (_, prefix: string, letter: string, rest: string) => `${prefix}${letter === 's' ? '\\73 ' : '\\53 '}${rest}`);
+}
+
+/** The CSP nonce of the page: the one its server-written scripts carry (the browser hides the attribute, `.nonce` keeps it). */
+function pageNonce(): string | undefined {
+  const script = document.querySelector<HTMLScriptElement>('script[nonce]');
+  return script?.nonce || script?.getAttribute('nonce') || undefined;
+}
+
+function sameTag(element: Element, { name, attributes, text }: TagDescription): boolean {
+  if (element.localName !== name) return false;
+  const present = [...element.attributes].filter((attribute) => attribute.name !== MARKER && attribute.name !== 'nonce');
+  if (present.length !== attributes.size || present.some((attribute) => attributes.get(attribute.name) !== attribute.value)) return false;
+  return text === undefined || element.textContent === serverText(name, text);
+}
+
+/** The server's element for the tag, now the client's; else a new one — a script or style with the page's nonce. */
+function adoptOrCreate(description: TagDescription): HTMLElement | null {
+  const rendered = [...document.head.querySelectorAll<HTMLElement>(`[${MARKER}="${SERVER_TAG}"]`)].find((element) => sameTag(element, description));
+  if (rendered) {
+    rendered.setAttribute(MARKER, 'client');
+    return rendered;
+  }
+  const element = document.createElement(description.name);
+  for (const [name, value] of description.attributes) element.setAttribute(name, value);
+  if (description.text !== undefined) {
+    try {
+      element.textContent = description.text;
+    } catch {
+      // A Trusted Types policy refuses a script's or style's text: the tag is left out.
+      return null;
+    }
+  }
+  if (description.name === 'script' || description.name === 'style') {
+    const nonce = pageNonce();
+    if (nonce) element.setAttribute('nonce', nonce);
   }
   element.setAttribute(MARKER, 'client');
   return element;
+}
+
+/**
+ * Removes the tags of `<Head>` the server wrote and no `<Head>` took over. Called once the app has committed its next page: a
+ * `<Head>` in a Suspense boundary may hydrate late, and until then its tags are the ones it takes over.
+ * @internal
+ */
+export function sweepServerTags(): void {
+  for (const stale of document.head.querySelectorAll(`[${MARKER}="${SERVER_TAG}"]`)) stale.remove();
 }
 
 function escapeHtml(text: string): string {

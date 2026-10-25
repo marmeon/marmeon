@@ -6,7 +6,7 @@ import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp, useRouterContext } from './app.tsx';
-import { resolveModulePages, type ErrorFallbackProps, type PageComponent } from './pages.ts';
+import { layoutsOf, resolveModulePages, type ErrorFallbackProps, type PageComponent } from './pages.ts';
 
 const HISTORY = [await loadHistoryFallback()];
 
@@ -171,5 +171,14 @@ describe('a layout with error', () => {
     View.layout = Bad;
     const bad = resolveModulePages({ '/modules/app/views/View.tsx': async () => ({ default: View }) });
     await expect(bad('app/View')).rejects.toThrow(/\[marmeon:R19\] Page \[app\/View\] has a layout whose error is no component/);
+  });
+
+  it('throws R19 while a page resolves its default layout', () => {
+    const Bad = () => null;
+    Bad.error = 'nope';
+    const View = () => null;
+    expect(() => layoutsOf(View, 'app/View', () => Bad as never)).toThrow(/\[marmeon:R19\] Page \[app\/View\] has a layout whose error is no component/);
+    expect(() => layoutsOf(View, 'app/View', () => [Outer, Bad] as never)).toThrow(/at index 1 whose error is no component/);
+    expect(() => layoutsOf(View, 'app/View', () => 'nope' as never)).toThrow(/\[marmeon:R1\]/);
   });
 });

@@ -225,7 +225,10 @@ stays with the framework. Type a variable with `PageInfo` from `@marmeon/react`.
 </Head>
 ```
 
-The server renders the head into the first document, and the browser keeps it current on every visit. When a layout and a page
+The server renders the head into the first document, and the browser keeps it current on every visit. A `<script>`, `<style>` or
+`<link>` inside `<Head>` that the server wrote is kept when the page hydrates, so a script does not run a second time; one the
+browser adds on a later visit gets the page's CSP nonce. A string child of a `<script>` or `<style>` is its text; a function or object
+prop, such as `onLoad`, is never written as an attribute. When a layout and a page
 both set a title, the last one rendered wins, which is the page.
 
 The title goes through the app's title template, which both entries take as `title`:

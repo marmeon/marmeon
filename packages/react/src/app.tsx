@@ -23,7 +23,7 @@ import {
 } from 'react';
 import { ErrorBoundary, LayoutError, RenderErrorFallback, Rethrow, VisitFailure } from './fallbacks.tsx';
 import { ConfirmHost, type ConfirmComponent, type PendingQuestion } from './confirm.tsx';
-import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
+import { defaultTitle, HeadContext, sweepServerTags, type HeadCollector } from './head.tsx';
 import { HeadRegistry, languagesOf } from './head-fields.ts';
 import { I18nContext } from './i18n.tsx';
 import type { LayerEntry, LayerFrame } from './layer.tsx';
@@ -594,6 +594,14 @@ export function MarmeonApp({
 
   const titles = useMemo(() => (typeof document === 'undefined' ? undefined : new TitleRegistry(title)), [title]);
   const fields = useMemo(() => (typeof document === 'undefined' ? undefined : new HeadRegistry(readAppOrigin(), process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? (message) => console.warn(message) : undefined)), []);
+  // The tags of `<Head>` the server wrote and none took over are removed once the next page is committed — not earlier: a `<Head>`
+  // in a Suspense boundary may hydrate late, and a script it takes over has already run.
+  const sweptFor = useRef(page);
+  useEffect(() => {
+    if (sweptFor.current === page) return;
+    sweptFor.current = page;
+    sweepServerTags();
+  }, [page]);
   // The languages of the page shown: hreflang follows a navigation, also to a page without a `<Head>`.
   useEffect(() => fields?.setLanguages(languagesOf(page)), [fields, page.locale, page.alternates]);
   const head = useMemo(() => ({ template: title, collector: headCollector, titles, fields }), [title, headCollector, titles, fields]);

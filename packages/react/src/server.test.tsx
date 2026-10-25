@@ -99,7 +99,7 @@ describe('<Head> on the server', () => {
     const { html, head } = await renderAll(render, { component: 'greeting/Titled', props: { name: 'Ada' }, url: '/ada' });
     expect(html).toBe('<p>Ada</p>');
     expect(head).toBe(
-      '<title data-marmeon-head="ssr">Ada &#60;admin&#62; — Shop</title><meta name="description" content="Profile of Ada" data-marmeon-head="ssr"/>',
+      '<title data-marmeon-head="ssr">Ada &#60;admin&#62; — Shop</title><meta name="description" content="Profile of Ada" data-marmeon-head="ssr-tag"/>',
     );
   });
 
@@ -389,7 +389,7 @@ describe('streaming SSR', () => {
     const rendering = createSsrRenderer(pages(slow.promise))(page('app/HeadBeside'), { complete: true, onWarning });
     setTimeout(() => slow.settle('done'), 10);
     const { head } = await rendering;
-    expect(head).toBe('<title data-marmeon-head="ssr">Beside</title><meta name="beside" content="yes" data-marmeon-head="ssr"/>');
+    expect(head).toBe('<title data-marmeon-head="ssr">Beside</title><meta name="beside" content="yes" data-marmeon-head="ssr-tag"/>');
     expect(onWarning).not.toHaveBeenCalled();
   });
 
