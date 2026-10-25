@@ -23,7 +23,7 @@ export abstract class JobEvent {
   }
 }
 
-/** A job was queued — after the commit, when it was dispatched inside a transaction; also the next job of a chain. */
+/** A job was queued — after the commit, when it was dispatched inside a transaction (never for one you began yourself); also the next job of a chain. */
 export class JobQueued extends JobEvent {
   readonly #event = true;
   /** Seconds before it may run. */

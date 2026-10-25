@@ -178,8 +178,9 @@ export class Worker {
 
     switch (settled.kind) {
       case 'interrupted':
-        // Asked to stop and the job did not finish in time: back to the queue at once, for another worker.
-        await this.#deps.driver.release(reserved, 0);
+        // Asked to stop and the job did not finish in time: back to the queue at once, for another worker. The stop was the
+        // worker's, not the job's: the attempt is given back, or a job with a single try would fail on the next worker.
+        await this.#deps.driver.release(reserved, 0, { refund: true });
         logger.warn(`Released ${record.job}: the worker is stopping and the job did not finish within the stop timeout`, context);
         await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: 0, reason: 'stopping', ms }));
         return 'interrupted';

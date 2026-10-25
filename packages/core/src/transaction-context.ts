@@ -69,6 +69,28 @@ export class TransactionFrame {
   }
 }
 
+const bound = new WeakMap<object, TransactionFrame>();
+
+/** @internal — for database drivers: the handle the callback of `frame`'s transaction receives, so {@link followsTransaction} can tell it. */
+export function bindTransaction(handle: object, frame: TransactionFrame): void {
+  bound.set(handle, frame);
+}
+
+/**
+ * @internal — whether `handle` is a transaction the current call chain's hooks ({@link afterCommit}, {@link afterRollback})
+ * follow: the one `transaction()` handed out, or a savepoint of the same connection inside it. A transaction the app began
+ * itself, or one of another connection, is not: its commit and rollback are not reported.
+ */
+export function followsTransaction(handle: object): boolean {
+  const frame = bound.get(handle);
+  if (!frame) return false;
+  for (let current = currentTransaction(); current; current = current.parent) {
+    if (current.owner !== frame.owner) return false;
+    if (current === frame) return true;
+  }
+  return false;
+}
+
 /** A transaction cannot be used the way it was asked to (see the message). */
 export class TransactionError extends Error {
   override name = 'TransactionError';

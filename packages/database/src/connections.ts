@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { Redactor, rollBackOnErr, runTransaction, TransactionError, token, type Application, type Logger } from '@marmeon/core';
-import { messageBase, publishEnded, transactionOf, withCode } from '@marmeon/core/internal';
+import { bindTransaction, messageBase, publishEnded, transactionOf, withCode } from '@marmeon/core/internal';
 import { channels, type DbQueryMessage } from '@marmeon/core/diagnostics';
 import { Kysely, sql, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type KyselyPlugin, type LogEvent, type OperationNode } from 'kysely';
 import type { Connection, Transaction } from './builder.ts';
@@ -101,9 +101,12 @@ export class Connections {
       );
     }
     return driver.exclusive(() =>
-      runTransaction(driver, name, () => {
+      runTransaction(driver, name, (frame) => {
         const builder = options.isolationLevel ? db.transaction().setIsolationLevel(options.isolationLevel) : db.transaction();
-        return builder.execute(async (trx) => rollBackOnErr(await callback(trx as Transaction<Tables>)));
+        return builder.execute(async (trx) => {
+          bindTransaction(trx, frame);
+          return rollBackOnErr(await callback(trx as Transaction<Tables>));
+        });
       }),
     );
   }

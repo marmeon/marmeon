@@ -29,6 +29,21 @@ class UnitOfWork {
 /** What the jobs of this file saw — a test-only recorder, injected. */
 class Seen {
   readonly entries: { job: string; payload: unknown; attempt: number; id: string; unit?: string; log?: Record<string, unknown> }[] = [];
+  /** The ids of the `JobQueued` events, in order. */
+  readonly queued: string[] = [];
+}
+
+/** Records every `JobQueued`. */
+class QueuedRecorder {
+  readonly #seen: Seen;
+
+  constructor(seen: Seen) {
+    this.#seen = seen;
+  }
+
+  handle(event: JobQueued): void {
+    this.#seen.queued.push(event.jobId);
+  }
 }
 
 class WelcomeJob {
@@ -291,6 +306,85 @@ describe('dispatching', () => {
     await expect(queue.dispatch(ChoosyJob, { choice: 'fail' })).rejects.toThrow(/the account is gone/);
     await queue.dispatch(ChoosyJob, { choice: 'discard' });
     expect(await queue.size()).toBe(0);
+  });
+
+  describe('through queue.using(trx)', () => {
+    class Rollback extends Error {}
+    const recording = [{ name: 'test', jobs: allJobs, listeners: [listen(JobQueued, QueuedRecorder)] }];
+
+    it('runs a sync job only after the commit, never after a rollback', async () => {
+      await using application = await app({ env: { QUEUE_DRIVER: 'sync' } });
+      const queue = application.container.make(Queue);
+      const connections = application.container.make(Connections);
+      await expect(
+        connections.transaction(async (trx) => {
+          await queue.using(trx).dispatch(WelcomeJob, { userId: 1 });
+          throw new Rollback();
+        }),
+      ).rejects.toBeInstanceOf(Rollback);
+      expect(application.seen.entries).toEqual([]);
+      await connections.transaction(async (trx) => {
+        await queue.using(trx).dispatch(WelcomeJob, { userId: 2 });
+        expect(application.seen.entries).toEqual([]);
+      });
+      expect(application.seen.entries).toMatchObject([{ payload: { userId: 2 } }]);
+    });
+
+    it('refuses a sync job through a transaction the app began itself — nothing tells the queue how it ends', async () => {
+      await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, modules: recording });
+      const queue = application.container.make(Queue);
+      const db = application.container.make(Connections).get();
+      await expect(db.transaction().execute((trx) => queue.using(trx).dispatch(WelcomeJob, { userId: 1 }))).rejects.toThrow(/sync queue cannot run a job for a transaction you began yourself/);
+      expect(application.seen.entries).toEqual([]);
+      expect(application.seen.queued).toEqual([]);
+    });
+
+    it('refuses a sync job through a savepoint the app began itself inside connections.transaction(), although the outer commits', async () => {
+      await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, modules: recording });
+      const queue = application.container.make(Queue);
+      const connections = application.container.make(Connections);
+      const db = connections.get();
+      await connections.transaction(async () => {
+        const trx = await db.startTransaction().execute();
+        await expect(queue.using(trx).dispatch(WelcomeJob, { userId: 1 })).rejects.toThrow(/sync queue cannot run a job for a transaction you began yourself/);
+        await trx.rollback().execute();
+      });
+      expect(application.seen.entries).toEqual([]);
+      expect(application.seen.queued).toEqual([]);
+    });
+
+    it('fires no JobQueued for a savepoint the app began itself inside connections.transaction(), although the outer commits', async () => {
+      await using application = await app({ modules: recording });
+      const queue = application.container.make(Queue);
+      const connections = application.container.make(Connections);
+      const db = connections.get();
+      await connections.transaction(async () => {
+        const trx = await db.startTransaction().execute();
+        await queue.using(trx).dispatch(WelcomeJob, { userId: 1 });
+        await trx.rollback().execute();
+      });
+      expect(application.seen.queued).toEqual([]);
+      expect(await queue.size()).toBe(0);
+    });
+
+    it('reports JobQueued after the commit, and not at all after a rollback', async () => {
+      await using application = await app({ modules: recording });
+      const queue = application.container.make(Queue);
+      const connections = application.container.make(Connections);
+      await expect(
+        connections.transaction(async (trx) => {
+          await queue.using(trx).dispatch(WelcomeJob, { userId: 1 });
+          throw new Rollback();
+        }),
+      ).rejects.toBeInstanceOf(Rollback);
+      expect(application.seen.queued).toEqual([]);
+      let id = '';
+      await connections.transaction(async (trx) => {
+        id = await queue.using(trx).dispatch(WelcomeJob, { userId: 2 });
+        expect(application.seen.queued).toEqual([]);
+      });
+      expect(application.seen.queued).toEqual([id]);
+    });
   });
 
   it('encrypts the payload of a static encrypted job — no plaintext in jobs or failed_jobs', async () => {
@@ -590,7 +684,7 @@ describe('the worker', () => {
     expect(driver.entries()).toHaveLength(2);
   });
 
-  it('when asked to stop, releases a job that does not finish within the stop timeout', async () => {
+  it('when asked to stop, releases a job that does not finish within the stop timeout, its attempt given back', async () => {
     await using application = await app();
     const { driver, worker: w } = worker(application);
     await push(application, driver, 'test.rude-slow', {});
@@ -599,7 +693,7 @@ describe('the worker', () => {
     await sleep(20);
     stop.abort();
     expect(await running).toMatchObject({ reason: 'interrupted' });
-    expect(driver.entries()).toMatchObject([{ reserved: false, attempts: 1 }]);
+    expect(driver.entries()).toMatchObject([{ reserved: false, attempts: 0 }]);
   });
 
   it('refuses to start when retryAfterSeconds does not cover a job timeout plus the stop timeout', () => {
@@ -643,6 +737,18 @@ describe('the QueueFake', () => {
     const db = application.container.make(Connections).get();
     await db.transaction().execute((trx) => fake.using(trx).dispatch(WelcomeJob, { userId: 1 }));
     expect(fake.dispatched(WelcomeJob)).toMatchObject([{ payload: { userId: 1 }, inTransaction: true }]);
+  });
+
+  it('refuses a unique job, and a sync one, through a transaction the app began itself like the Queue', async () => {
+    await using application = await app();
+    const fake = new QueueFake(application.container);
+    const db = application.container.make(Connections).get();
+    await expect(db.transaction().execute((trx) => fake.using(trx).dispatch(WelcomeJob, { userId: 1 }, { unique: 'welcome' }))).rejects.toThrow(/unique job cannot follow a transaction you began yourself/);
+    await using synced = await app({ env: { QUEUE_DRIVER: 'sync' } });
+    const syncFake = new QueueFake(synced.container);
+    const syncDb = synced.container.make(Connections).get();
+    await expect(syncDb.transaction().execute((trx) => syncFake.using(trx).dispatch(WelcomeJob, { userId: 1 }))).rejects.toThrow(/sync queue cannot run a job for a transaction you began yourself/);
+    expect(fake.dispatched(WelcomeJob)).toEqual([]);
   });
 });
 

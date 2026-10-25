@@ -316,7 +316,7 @@ chain. Three helpers bind to a transaction explicitly:
 
 - `repository.using(trx)` builds the repository again, working in `trx`. This is why a repository's constructor takes only
   `Connections`: with more parameters, `using()` throws and says so.
-- `queue.using(trx).dispatch(…)` writes the job's row through `trx`.
+- `queue.using(trx).dispatch(…)` writes the job's row through `trx`. Nothing reports the commit of a transaction you began yourself, so `JobQueued` is not fired for it, and a `sync` or unique job through it throws a `QueueError`; dispatch those inside `connections.transaction()`.
 - `factory(…).using(trx)` inserts a factory's rows through it.
 
 They are for transactions the ambient context does not know: one you start with Kysely's `db.startTransaction()`, a second
@@ -333,6 +333,9 @@ try {
   throw error;
 }
 ```
+
+Such a transaction reports neither its commit nor its rollback, so the job above is a row that exists once `trx` commits, but
+`JobQueued` is not fired for it, and a `sync` job or a unique job dispatched through it throws a `QueueError`.
 
 Kysely's own `db.transaction().execute(callback)` is not ambient either. Outside `connections.transaction()` it is a plain
 transaction, and inside its callback only `trx`, or a repository bound with `using(trx)`, is in it. A query on the plain `db`

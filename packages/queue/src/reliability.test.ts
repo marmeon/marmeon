@@ -6,7 +6,7 @@ import { Connections, DatabaseServiceProvider, InfrastructureTransactionError } 
 import { RedisServiceProvider } from '@marmeon/redis';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
-import { connectionOptions, databaseConnections, freshTarget, openDriver, PGSQL_URL, processKinds, REDIS_URL, silent, targetEnv, type SharedTarget } from './__fixtures__/targets.ts';
+import { connectionOptions, databaseConnections, databaseKinds, freshTarget, openDriver, PGSQL_URL, processKinds, REDIS_URL, silent, targetEnv, type SharedTarget } from './__fixtures__/targets.ts';
 import { QueueConnections } from './connections.ts';
 import { QueueFake } from './fake.ts';
 import {
@@ -260,6 +260,47 @@ describe.each(processKinds)('unique jobs on %s', (kind) => {
       });
       await app.work();
       expect(app.seen.entries.map((entry) => entry.n)).toEqual([2, 4]);
+    });
+  });
+});
+
+describe.each(processKinds)('unique jobs through queue.using(trx) on %s', (kind) => {
+  it('refuses a transaction the app began itself, taking no lock', async () => {
+    await withApp(kind, async (app) => {
+      const db = app.container.make(Connections).get();
+      await expect(db.transaction().execute((trx) => app.queue.using(trx).dispatch(NoteJob, { n: 1 }, { unique: 'report' }))).rejects.toThrow(/unique job cannot follow a transaction you began yourself/);
+      expect(await app.queue.size()).toBe(0);
+      expect(await app.queue.dispatch(NoteJob, { n: 2 }, { unique: 'report' })).toEqual(expect.any(String));
+    });
+  });
+});
+
+describe.each(databaseKinds)('unique jobs through a savepoint the app began itself on %s', (kind) => {
+  it('is refused inside connections.transaction(), taking no lock', async () => {
+    await withApp(kind, async (app) => {
+      const connections = app.container.make(Connections);
+      await connections.transaction(async () => {
+        const trx = await connections.get().startTransaction().execute();
+        await expect(app.queue.using(trx).dispatch(NoteJob, { n: 1 }, { unique: 'report' })).rejects.toThrow(/unique job cannot follow a transaction you began yourself/);
+        await trx.rollback().execute();
+      });
+      expect(await app.queue.dispatch(NoteJob, { n: 2 }, { unique: 'report' })).toEqual(expect.any(String));
+    });
+  });
+});
+
+describe.each(databaseKinds)('unique jobs through queue.using(trx) of connections.transaction() on %s', (kind) => {
+  it('frees the key when the transaction rolls back', async () => {
+    await withApp(kind, async (app) => {
+      const connections = app.container.make(Connections);
+      await expect(
+        connections.transaction(async (trx) => {
+          expect(await app.queue.using(trx).dispatch(NoteJob, { n: 1 }, { unique: 'report' })).toEqual(expect.any(String));
+          throw new Rollback();
+        }),
+      ).rejects.toBeInstanceOf(Rollback);
+      expect(await app.queue.size()).toBe(0);
+      expect(await app.queue.dispatch(NoteJob, { n: 2 }, { unique: 'report' })).toEqual(expect.any(String));
     });
   });
 });
@@ -553,6 +594,18 @@ describe('QueueFake', () => {
       }).catch(() => {});
       expect(await fake.dispatch(NoteJob, { n: 5 }, { unique: 'rolled-back' })).toEqual(expect.any(String));
       fake.assertNotDispatched(NoteJob, { n: 4 });
+    });
+  });
+
+  it('records a unique job through the trx of connections.transaction() and refuses one through a transaction the app began itself', async () => {
+    await withFake(async ({ fake, container }) => {
+      const connections = container.make(Connections);
+      await connections.transaction((trx) => fake.using(trx).dispatch(NoteJob, { n: 1 }, { unique: 'through-trx' }));
+      fake.assertDispatched(NoteJob, { n: 1 }, { unique: 'through-trx' });
+      const trx = await connections.get().startTransaction().execute();
+      await expect(fake.using(trx).dispatch(NoteJob, { n: 2 }, { unique: 'detached' })).rejects.toThrow(/unique job cannot follow a transaction you began yourself/);
+      await trx.rollback().execute();
+      fake.assertNotDispatched(NoteJob, { n: 2 });
     });
   });
 
