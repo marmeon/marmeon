@@ -150,3 +150,11 @@ describe('the public pages in search results and link previews', () => {
     expect(response.body).not.toContain('evil.example');
   });
 });
+
+describe('the public list with an image', () => {
+  it('sizes the image and loads it lazily, without a preload', async () => {
+    const response = await app.get('/en/about', { headers: { accept: 'text/html' } }).assertServerRendered();
+    expect(response.body).toMatch(/<img [^>]*alt="An illustration of the feature list[^"]*" width="320" height="80" loading="lazy"/);
+    expect(response.body).not.toContain('rel="preload" as="image"');
+  });
+});

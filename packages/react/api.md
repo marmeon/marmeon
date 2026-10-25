@@ -254,6 +254,18 @@ export interface I18nValue {
     readonly locale: string;
     readonly catalog: Catalog;
 }
+// Image
+export declare function Image({ src, alt, sizes, priority, width, height, ...rest }: ImageProps): import("react").JSX.Element;
+// ImageProps
+export type ImageProps = ImageBase & ({
+    src: ImageSource;
+    width?: never;
+    height?: never;
+} | {
+    src: string;
+    width: number;
+    height: number;
+});
 // Island
 export declare function Island<const N extends BrowserRouteNameInput>(props: IslandElementProps<N>): import("react").JSX.Element;
 // IslandElementProps
@@ -676,6 +688,14 @@ type HrefLinkProps = (LinkOptions & PartialReloadOptions & PrefetchProps & Curre
     data?: VisitOptions['data'];
     route?: never;
 });
+// ImageAttributes
+type ImageAttributes = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'srcSet' | 'sizes' | 'alt' | 'width' | 'height' | 'loading' | 'fetchPriority'>;
+// ImageBase
+interface ImageBase extends ImageAttributes {
+    alt: string;
+    sizes?: string;
+    priority?: boolean;
+}
 // IncludableName
 type IncludableName<F> = Extract<FieldName<F>, string> extends infer N ? (N extends string ? (LooksLikePassword<N> extends true ? never : N) : never) : never;
 // Instance
