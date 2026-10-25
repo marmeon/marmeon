@@ -1,6 +1,6 @@
 import { defaultFormEntries, fieldPath, firstErrors, FORM_METHOD_FIELD, FORM_TOKEN_FIELD, formEntries, formObject, linkQuery, liveValidationOnFirstUse, restoreFormEntries, sameEntries, sensitiveControl, type FormLiveValidation } from '@marmeon/http/client/adapter';
 import { isSensitiveRememberField, resolveRoute, type Confirm, type LooksLikePassword, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
-import type { BrowserRouteNameInput, CheckBrowserRouteName, MethodOf, ParamsOf, RouteQueryOf, Routes } from '@marmeon/http/page';
+import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, MethodOf, RouteQueryOf, Routes } from '@marmeon/http/page';
 import {
   useCallback,
   useContext,
@@ -97,7 +97,7 @@ export interface FormRenderState<F> {
 /** The fields of a form that `remember.include` may name: any but those named like a password, which are never remembered. */
 type IncludableName<F> = Extract<FieldName<F>, string> extends infer N ? (N extends string ? (LooksLikePassword<N> extends true ? never : N) : never) : never;
 
-type ParamsProp<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf<N> } : { params: ParamsOf<N> };
+type ParamsProp<N extends string> = {} extends BrowserParamsOf<N> ? { params?: BrowserParamsOf<N> } : { params: BrowserParamsOf<N> };
 
 export type FormProps<N extends string> = {
   /** The route it sends to — method and URL from it; a GET route writes its query. */
@@ -159,7 +159,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
   } = props as FormProps<string> & { params?: Record<string, string | number> };
   const { visit, page } = useRouterContext();
   const manifest = useContext(RoutesContext);
-  const target = resolveRoute(manifest, route as string, params);
+  const target = resolveRoute(manifest, route as string, params, undefined, page);
   const method = target.method.toLowerCase() as VisitMethod;
   const element = useRef<HTMLFormElement | null>(null);
 
@@ -251,7 +251,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
         const current = query[name];
         query[name] = current === undefined ? value : [...(Array.isArray(current) ? current : [current]), value];
       }
-      url = resolveRoute(manifest, route as string, params, linkQuery(page as never, target.url, query)).url;
+      url = resolveRoute(manifest, route as string, params, linkQuery(page as never, target.url, query), page).url;
     } else {
       // Files: multipart (with progress), as the browser would; else the fields as the server parses them.
       body = entries.some(([, value]) => value instanceof Blob) ? data : formObject(entries);

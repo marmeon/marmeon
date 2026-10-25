@@ -246,6 +246,19 @@ export function usePage<TProps extends object = {}>(): PageInfo<SharedProps & TP
   return useMemo(() => pageInfo<SharedProps & TProps>(page), [page]);
 }
 
+/**
+ * The page of a localized route in every language of the app, for a language switcher — empty on a page that is not localized
+ * (`x-default` is left out, it is no language). `url` is a path of this site, its query kept; `current` marks the language the page is in.
+ * Needs no messages. See docs/localization.md#a-language-switcher.
+ */
+export function useAlternates(): readonly { locale: string; url: string; current: boolean }[] {
+  const { page } = useRouterContext();
+  return useMemo(
+    () => Object.entries(page.alternates ?? {}).filter(([locale]) => locale !== 'x-default').map(([locale, url]) => ({ locale, url, current: locale === page.locale })),
+    [page.alternates, page.locale],
+  );
+}
+
 const infoOf = (page: PageObject | undefined): PageInfo | undefined => (page ? pageInfo(page) : undefined);
 
 /**

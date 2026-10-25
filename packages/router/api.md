@@ -40,6 +40,10 @@ export type BodyOf<TSchema extends StandardSchemaV1> = [TSchema] extends [never]
 export type BoundValue<B, W extends string = never> = [W] extends [never] ? B extends new (...args: any[]) => RouteBinder<infer T> ? T : never : (WithOf<B> & {
     readonly with: readonly W[];
 })['value'];
+// BrowserParamsOf
+export type BrowserParamsOf<N extends string, E = Entry<N>> = true extends IsUnion<N> ? Record<string, Param> : [E] extends [never] ? ParamsOf<N> : E extends {
+    readonly path: string;
+} ? LocalizedParamValues<E> : ParamsOf<N>;
 // BrowserRouteName
 export type BrowserRouteName = Registered extends true ? {
     [N in keyof Routes]: Routes[N] extends {
@@ -299,12 +303,8 @@ export type QueryValue = Param | boolean | null | undefined | readonly (Param | 
 export declare const RESERVED_CONTEXT_KEYS: ReadonlySet<string>;
 // RedirectArgsOf
 export type RedirectArgsOf<E, N extends string> = E extends {
-    readonly path: infer P extends string;
-} ? ParamValues<ExtractParams<P>> extends infer All ? (E extends {
-    readonly localized: true;
-} ? Omit<All, 'locale'> & {
-    readonly locale?: Param;
-} : All) extends infer Given ? {} extends Given ? [params?: Given, query?: QueryParams<N>] : [params: Given, query?: QueryParams<N>] : never : never : never;
+    readonly path: string;
+} ? LocalizedParamValues<E> extends infer Given ? {} extends Given ? [params?: Given, query?: QueryParams<N>] : [params: Given, query?: QueryParams<N>] : never : never;
 // RedirectRouteArgs
 export type RedirectRouteArgs<N extends string> = [N] extends [never] ? RouteArgs<N> : true extends IsUnion<N> ? RouteArgs<N> : N extends keyof Routes ? RedirectArgsOf<Routes[N], N> : RouteArgs<N>;
 // RegionResultMarker
@@ -736,6 +736,14 @@ type JoinKeys<K> = [K] extends [never] ? '' : Quoted<K>;
 type LastOf<U> = UnionToIntersection<U> extends () => infer R ? R : never;
 // LastSegment
 type LastSegment<N extends string, Sep extends string> = N extends `${string}${Sep}${infer Tail}` ? LastSegment<Tail, Sep> : N;
+// LocalizedParamValues
+type LocalizedParamValues<E> = E extends {
+    readonly path: infer P extends string;
+} ? E extends {
+    readonly localized: true;
+} ? Omit<ParamValues<ExtractParams<P>>, 'locale'> & {
+    readonly locale?: Param;
+} : ParamValues<ExtractParams<P>> : never;
 // NoParent
 type NoParent = 'scopedBy names a parameter bound before this one — bind the parent first: Route.bind(parent, …).bind(child, …, { scopedBy: parent })';
 // NoRelations

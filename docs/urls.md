@@ -94,6 +94,11 @@ export default function Index({ notes }: PageProps<ListNotesController>) {
 }
 ```
 
+A [localized route](routing.md#routes-under-a-locale) needs no `locale` in the browser: it takes the locale of the page on screen,
+and `params={{ locale: 'de' }}` or `route('about', { locale: 'de' })` chooses another. Only the page's own value is trusted:
+a locale you write is encoded into the path's first segment like any parameter, so it can lead to a page of this site that does
+not exist, never to another host. On the server, `router.url()` keeps `locale` required.
+
 The browser builds the URL itself, from a route manifest that the build writes. The [navigation](navigation.md) page covers
 links, their options and the router of the page.
 

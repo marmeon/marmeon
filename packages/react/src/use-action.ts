@@ -5,13 +5,13 @@ import type {
   ActionBodyOf,
   ActionDataOf,
   ActionRedirects,
+  BrowserParamsOf,
   BrowserRouteNameInput,
   CheckActionRouteName,
   CheckBrowserRouteName,
   FlashMessage,
   MethodOf,
   Param,
-  ParamsOf,
   Query,
   QueryParams,
 } from '@marmeon/http/page';
@@ -49,7 +49,7 @@ type DataOption<N extends string> = [ActionBodyOf<N>] extends [never]
     ? { data?: ActionBodyOf<N> }
     : { data: ActionBodyOf<N> };
 
-type ParamsOption<N extends string, RequiresParams extends boolean> = RequiresParams extends true ? { params: ParamsOf<N> } : { params?: ParamsOf<N> };
+type ParamsOption<N extends string, RequiresParams extends boolean> = RequiresParams extends true ? { params: BrowserParamsOf<N> } : { params?: BrowserParamsOf<N> };
 
 type QueryOption<N extends string> = MethodOf<N> extends 'get' ? { query?: QueryParams<N> } : { query?: never };
 
@@ -133,8 +133,8 @@ function flatten<T>(value: T | readonly T[] | readonly (T | readonly T[])[] | un
  * CSRF, authorization and validation run as for a form. It never touches the history; its answer is never cached; a redirect
  * is reported, not followed. See docs/actions.md#sending.
  */
-export function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>): ClientAction<N, {} extends ParamsOf<N> ? false : true>;
-export function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>, params: ParamsOf<N>): ClientAction<N, false>;
+export function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>): ClientAction<N, {} extends BrowserParamsOf<N> ? false : true>;
+export function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>, params: BrowserParamsOf<N>): ClientAction<N, false>;
 export function useAction(name: string, params?: Readonly<Record<string, Param>>): ClientAction<string, boolean> {
   const router = useRouterContext();
   const manifest = useContext(RoutesContext);
@@ -153,7 +153,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
       if (!navigator) {
         throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:R7] useAction('${name}'): actions run in the browser, not while rendering on the server.` : `[marmeon:R7] ${name}`);
       }
-      const target = resolveRoute(manifest, name, { ...boundParams.current, ...options.params }, options.query);
+      const target = resolveRoute(manifest, name, { ...boundParams.current, ...options.params }, options.query, router.page);
       const method = target.method.split(',')[0]!.toLowerCase() as ActionMethod;
       const body = options.data as Record<string, unknown> | undefined;
       const id = ++nextCall.current;

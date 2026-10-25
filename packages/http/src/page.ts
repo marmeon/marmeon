@@ -29,6 +29,7 @@ export type {
 } from './props.ts';
 // Types — erased, so the browser bundle stays free of router code.
 export type {
+  BrowserParamsOf,
   BrowserRouteName,
   BrowserRouteNameInput,
   CheckBrowserRouteName,
@@ -79,7 +80,7 @@ export type CheckViewName<V extends string> = string extends V
       : `'${V}' is not a view — view names are '<module>/<Page>' (modules/<module>/views/<Page>.tsx)`;
 
 /** The routes the browser knows — `routes` of `virtual:marmeon/routes` (the `marmeon()` Vite plugin). */
-export type RouteManifest = Readonly<Record<string, { readonly method: string; readonly path: string; readonly view?: string }>>;
+export type RouteManifest = Readonly<Record<string, { readonly method: string; readonly path: string; readonly view?: string; readonly localized?: true }>>;
 
 /**
  * Props every page receives next to its controller's own — the signed-in user, flash messages, validation errors. Declared

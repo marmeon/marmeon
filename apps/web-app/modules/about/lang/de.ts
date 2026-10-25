@@ -12,4 +12,5 @@ export default {
     translations: { title: 'Übersetzungen', summary: 'Texte stehen je Modul in Sprachdateien, in der Sprache der Anfrage.' },
   },
   back: 'Alle Funktionen',
+  language: 'Sprache',
 } satisfies Messages<typeof en>;

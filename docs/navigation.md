@@ -44,6 +44,10 @@ leaves, and how to animate page changes with view transitions.
 <Link href="https://example.com/help">Help</Link>
 ```
 
+A route under [`Route.localized()`](routing.md#routes-under-a-locale) takes the locale of the page on screen, so on a German page
+`<Link route="about.index">` leads to `/de/about`, and `params={{ locale: 'en' }}` chooses another language
+([language switcher](localization.md#a-language-switcher)). The same goes for `route()`, `useRoute()`, `<Form route>`, `useForm(name)`, `useAction(name)` and `<Island route>`.
+
 A typo in the name, a missing parameter or a query field the route's query schema does not have is a compile error. A link to the
 page on screen leaves out query fields that are at their default. `href` takes any URL instead, unchecked. A link opens normally
 when it is not a plain left click, when it leads to another site, or when its `target` is not `_self`.

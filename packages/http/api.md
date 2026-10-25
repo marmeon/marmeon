@@ -607,6 +607,7 @@ export type RouteManifest = Readonly<Record<string, {
     readonly method: string;
     readonly path: string;
     readonly view?: string;
+    readonly localized?: true;
 }>>;
 // RouteName
 export type { RouteName } from '@marmeon/router';
@@ -1328,7 +1329,9 @@ export declare function isSensitiveRememberField(field: string, include?: readon
 // progressBar
 export declare function progressBar(options?: ProgressOptions): ProgressIndicator;
 // resolveRoute
-export declare function resolveRoute(manifest: RouteManifest | undefined, name: string, params?: Readonly<Record<string, Param>>, query?: Query): {
+export declare function resolveRoute(manifest: RouteManifest | undefined, name: string, params?: Readonly<Record<string, Param>>, query?: Query, defaults?: {
+    readonly locale?: string | undefined;
+}): {
     url: string;
     method: string;
 };
@@ -1384,6 +1387,7 @@ export type RouteManifest = Readonly<Record<string, {
     readonly method: string;
     readonly path: string;
     readonly view?: string;
+    readonly localized?: true;
 }>>;
 // SensitivePattern
 type SensitivePattern = `${string}${Split<typeof NAME_TERMS>}${string}` | `${string}${Split<typeof KEY_PREFIXES>}${'' | '_' | '-'}key${string}` | `${string}session${'' | '_' | '-'}id${string}` | `${string}${Split<typeof CODE_PREFIXES>}${'' | '_' | '-'}code${string}` | `${'' | `${string}.`}${'code' | 'codes' | 'pass' | 'auth'}` | `${'' | Boundary}${'otp' | 'totp'}${string}`;
@@ -2406,7 +2410,9 @@ export declare function regionInitial(result: RegionResult): RegionInitial | und
 // remember
 export declare const remember: import("../feature.ts").Feature<RememberFeature>;
 // resolveRoute
-export declare function resolveRoute(manifest: RouteManifest | undefined, name: string, params?: Readonly<Record<string, Param>>, query?: Query): {
+export declare function resolveRoute(manifest: RouteManifest | undefined, name: string, params?: Readonly<Record<string, Param>>, query?: Query, defaults?: {
+    readonly locale?: string | undefined;
+}): {
     url: string;
     method: string;
 };
@@ -2551,6 +2557,7 @@ export type RouteManifest = Readonly<Record<string, {
     readonly method: string;
     readonly path: string;
     readonly view?: string;
+    readonly localized?: true;
 }>>;
 // SensitivePattern
 type SensitivePattern = `${string}${Split<typeof NAME_TERMS>}${string}` | `${string}${Split<typeof KEY_PREFIXES>}${'' | '_' | '-'}key${string}` | `${string}session${'' | '_' | '-'}id${string}` | `${string}${Split<typeof CODE_PREFIXES>}${'' | '_' | '-'}code${string}` | `${'' | `${string}.`}${'code' | 'codes' | 'pass' | 'auth'}` | `${'' | Boundary}${'otp' | 'totp'}${string}`;
@@ -2625,6 +2632,8 @@ export type ActionRedirects<N extends string> = unknown extends ActionAnswerOf<N
 export interface AlwaysProp<T> extends PageProp<'always', T> {
     readonly value: unknown;
 }
+// BrowserParamsOf
+export type { BrowserParamsOf } from '@marmeon/router';
 // BrowserRouteName
 export type { BrowserRouteName } from '@marmeon/router';
 // BrowserRouteNameInput
@@ -2824,6 +2833,7 @@ export type RouteManifest = Readonly<Record<string, {
     readonly method: string;
     readonly path: string;
     readonly view?: string;
+    readonly localized?: true;
 }>>;
 // RouteName
 export type { RouteName } from '@marmeon/router';

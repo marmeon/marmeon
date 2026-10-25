@@ -6,7 +6,7 @@ import type {
   BrowserRouteNameInput,
   CheckIslandRouteName,
   IslandProps as IslandPropsOf,
-  ParamsOf,
+  BrowserParamsOf,
   QueryFields,
   QueryOf,
   QueryParams,
@@ -32,7 +32,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { RegionOwnerContext, useRouterContext, type CheckedPatch } from './app.tsx';
+import { RegionOwnerContext, RouterContext, useRouterContext, type CheckedPatch } from './app.tsx';
 import { ErrorBoundary } from './fallbacks.tsx';
 import { IslandHeadContext } from './head.tsx';
 import { DataScript, SsrContext, streamedJson, streamedText, type SsrResolvers } from './streamed.tsx';
@@ -42,7 +42,7 @@ import { viewOf } from './views.ts';
 import { IslandScopeContext } from './island-scope.ts';
 
 /** The path parameters of the island's route: required when its path has required ones. */
-type ParamsProp<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf<N> } : { params: ParamsOf<N> };
+type ParamsProp<N extends string> = {} extends BrowserParamsOf<N> ? { params?: BrowserParamsOf<N> } : { params: BrowserParamsOf<N> };
 
 /**
  * `<Island>`'s props for route `N` — checked against `bootstrap/routes.ts`. (The props of the island's *view* are
@@ -100,10 +100,11 @@ const noReload = () => Promise.resolve();
  */
 export function Island<const N extends BrowserRouteNameInput>(props: IslandElementProps<N>) {
   const manifest = useContext(RoutesContext);
+  const page = useContext(RouterContext)?.page;
   const { route, params, query, fallback = null, load = 'eager', as = 'div', className, id } = props as IslandElementProps & {
     params?: Record<string, string | number>;
   };
-  const url = resolveRoute(manifest, route, params, query).url;
+  const url = resolveRoute(manifest, route, params, query, page).url;
   const scriptId = `marmeon-island-${useId()}`;
   // Until its part has rendered in the browser (hydrated), the element stays the same: a page update reaching a boundary
   // that is still streaming would make React render it in the browser instead — and load the island again.

@@ -1,6 +1,6 @@
 import { dirtyPaths, firstErrors, isDirtyPath, liveValidationOnFirstUse, type FormLiveValidation } from '@marmeon/http/client/adapter';
 import { resolveRoute, type LooksLikePassword, type LooksSensitive, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
-import type { BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, ParamsOf, PasswordNeverLive, Routes } from '@marmeon/http/page';
+import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, PasswordNeverLive, Routes } from '@marmeon/http/page';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 import { useRememberStore } from './remember.ts';
@@ -193,9 +193,9 @@ type ParamsMissing<N extends string> = `'${N}' takes route parameters — pass t
  * The options of a route form, with its route parameters: `{ params }` is required when the route has required parameters,
  * else optional.
  */
-type RouteFormRest<N extends string> = {} extends ParamsOf<N>
-  ? [options?: RouteFormOptions<RouteFormFields<N>> & { params?: ParamsOf<N> }]
-  : [options: RouteFormOptions<RouteFormFields<N>> & { params: ParamsOf<N> }];
+type RouteFormRest<N extends string> = {} extends BrowserParamsOf<N>
+  ? [options?: RouteFormOptions<RouteFormFields<N>> & { params?: BrowserParamsOf<N> }]
+  : [options: RouteFormOptions<RouteFormFields<N>> & { params: BrowserParamsOf<N> }];
 
 /**
  * Form state typed by a controller's request schema, sent to a URL you pass to `form.post(url)`.
@@ -213,7 +213,7 @@ export function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRo
 /** A route form without options: the route takes no required parameters. */
 export function useForm<const N extends BrowserRouteNameInput>(
   name: CheckFormRoute<N>,
-  initial: {} extends ParamsOf<N> ? RouteFormFields<N> : ParamsMissing<N>,
+  initial: {} extends BrowserParamsOf<N> ? RouteFormFields<N> : ParamsMissing<N>,
 ): RouteForm<RouteFormFields<N>>;
 export function useForm(...args: unknown[]): unknown {
   const named = typeof args[0] === 'string';
@@ -231,9 +231,9 @@ export function useForm(...args: unknown[]): unknown {
   const params = named ? options.params : undefined;
   const initial = (named ? args[1] : args[0]) as Record<string, unknown>;
 
-  const { visit } = useRouterContext();
+  const { visit, page } = useRouterContext();
   const manifest = useContext(RoutesContext);
-  const target = name === undefined ? undefined : resolveRoute(manifest, name, params);
+  const target = name === undefined ? undefined : resolveRoute(manifest, name, params, undefined, page);
   // Remembered input: what this history entry kept of the form, back where it was typed — sensitive fields never were.
   const remember = rememberSetting(options.remember, name);
   const { store, key: rememberKey } = useRememberStore(remember?.key ?? '');

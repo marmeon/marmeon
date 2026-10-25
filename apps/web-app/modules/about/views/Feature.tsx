@@ -1,13 +1,13 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, useLocale, useRoute, useTranslation } from '@marmeon/react';
+import { Head, Link, useRoute, useTranslation } from '@marmeon/react';
 import type { ShowFeatureController } from '../controllers/ShowFeatureController.ts';
+import { LanguageSwitch } from '../layouts/LanguageSwitch.tsx';
 
 /** One feature of the public list. */
 export default function Feature({ feature }: PageProps<ShowFeatureController>) {
   const t = useTranslation('about');
   const route = useRoute();
-  const { locale } = useLocale();
-  const path = route('about.features.show', { locale, feature: feature.slug });
+  const path = route('about.features.show', { feature: feature.slug });
   return (
     <main>
       <Head
@@ -25,11 +25,12 @@ export default function Feature({ feature }: PageProps<ShowFeatureController>) {
           publisher: { '@type': 'Organization', name: 'Marmeon' },
         }}
       />
+      <LanguageSwitch label={t('language')} />
       <h1>{t(`features.${feature.slug}.title`)}</h1>
       <p>{t(`features.${feature.slug}.summary`)}</p>
       <p className="muted">{t('updated', { date: t.format.date(feature.updatedAt, { dateStyle: 'medium', timeZone: 'UTC' }) })}</p>
       <p>
-        <Link route="about.index" params={{ locale }} preload="viewport">{t('back')}</Link>
+        <Link route="about.index" preload="viewport">{t('back')}</Link>
       </p>
     </main>
   );
