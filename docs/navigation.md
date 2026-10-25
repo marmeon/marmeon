@@ -252,6 +252,9 @@ at once without a placeholder. The code loads when the first instant link render
 Only a plain `GET` visit of a page shows a placeholder. A link with `only` or `except`, a link with `layer` and a visit in the
 background go as usual, without one.
 
+In development, a plain `GET` visit that takes longer than a second with no placeholder and nothing fetched ahead logs one warning
+per route (`C14`) — the signal to give that view a placeholder or to prefetch the link. Production builds carry no such code.
+
 ## Showing that a visit runs
 
 A new app shows a thin bar at the top of the window for visits slower than 250 milliseconds. It is the `progress` option in

@@ -507,6 +507,7 @@ included, gets the code alone.
 | C11 | tables | A page the table does not have, a page size it does not offer, or a next page where there is none. |
 | C12 | tables | A row action, a bulk action or an export the table does not offer to this user. |
 | C13 | the navigator | A warning in development: the browser has no Navigation API, and the history fallback was not attached. |
+| C14 | the navigator | A warning in development: a plain `GET` visit took more than a second with no placeholder and nothing fetched ahead — once per route and document. |
 | R1 | pages | A page's `layout` is not a component or a list of them. |
 | R2 | pages | No page of that name: no default export in `modules/<module>/views/…`. |
 | R3 | pages | A page module without a default export. |

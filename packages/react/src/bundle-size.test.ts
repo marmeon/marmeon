@@ -397,6 +397,7 @@ describe('a production bundle says codes, not explanations', () => {
     'is for the view of an island',
     'there is no navigator while rendering on the server',
     'does not sort by',
+    'with nothing new on screen',
     'offers no row action',
     'it changes something only in the browser',
   ];
