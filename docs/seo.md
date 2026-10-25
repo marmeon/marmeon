@@ -6,7 +6,7 @@ A search engine reads a page's title and description, and a chat app or social n
 draw a preview of a link. `<Head>` sets all of them from the page, next to the title. The server writes them into the first
 document, which is the one crawlers and link previews read, and the browser keeps them current on every visit.
 
-This page covers the fields of `<Head>`. The [pages](pages.md#the-document-head) page covers the title and the template around it.
+This page covers the fields of `<Head>` and the sitemap and `robots.txt`, which Marmeon writes from your routes. The [pages](pages.md#the-document-head) page covers the title and the template around it.
 
 ## The head's fields
 
@@ -62,3 +62,76 @@ made absolute:
 
 A path stays on the app's own origin: `//other.example/x` and `/\other.example/x` name another host and are left out, while a full `https://cdn.example/x.png` keeps its host. Without `APP_URL`, a relative URL is left out. A URL with another scheme than `http:` or `https:`, such as `javascript:` or
 `data:`, is left out as well, and development logs a warning for each.
+
+## Sitemap and robots.txt
+
+Mark a route with `.sitemap()` and it appears in `/sitemap.xml`:
+
+```ts title="modules/about/routes.ts"
+export default defineRoutes((Route) => {
+  const about = Route.authorize(everyone).name('about.');
+
+  about.get('/about', ShowAboutController).name('index').sitemap();
+  about.get('/about/features/:feature{[a-z-]+}', ShowFeatureController).name('features.show').sitemap();
+});
+```
+
+The file is made when a crawler asks, from the routes the app loaded at start. Nothing is generated at build time, because a
+`<loc>` needs the address of the app (`APP_URL`) and a page of a record needs the database. A route without parameters is one
+entry. A route with parameters says which pages it has in a `sitemap()` method of its controller:
+
+```ts title="modules/about/controllers/ShowFeatureController.ts"
+import { Controller, type SitemapEntries } from '@marmeon/http';
+
+export class ShowFeatureController extends Controller {
+  // …
+
+  sitemap(): SitemapEntries<{ feature: string }> {
+    return this.#catalog.all().map((feature) => ({
+      params: { feature: feature.slug },
+      lastModified: new Date(feature.updatedAt),
+    }));
+  }
+}
+```
+
+`sitemap()` returns a list, a generator (`async *sitemap()` reads a large table in batches), or a promise of a list. Each entry
+is `{ params, lastModified? }`: `params` fills the path of the route, and `lastModified` becomes `<lastmod>` as a `YYYY-MM-DD`
+date. The controller is built in a scope of its own, so it may take services in its constructor. A route without parameters may
+have the method too, to say when its page changed: the latest date it gives is the one that counts. A closure cannot have it.
+
+The address of each entry is built from the route's path, with every value encoded, and from `APP_URL`, never from the `Host`
+header of the request. An entry the route would answer with a 404 is left out, with one warning in the log for the route: a
+value the constraint refuses, a missing parameter, a dot segment (`..`), a value with a slash (unless the constraint allows one). The sitemap never names a URL that
+does not work. The file escapes `& < > " '`.
+
+`/robots.txt` has three lines and names the sitemap:
+
+```text
+User-agent: *
+Disallow: /_marmeon/
+
+Sitemap: https://example.com/sitemap.xml
+```
+
+It has no `Disallow` for anything else. A `Disallow` keeps no one out and tells every reader where something is. Protect a page
+with [authorization](authorization.md), and leave it out of the sitemap by not marking it. Both endpoints exist only when a route
+carries `.sitemap()`. A route of your own on `/sitemap.xml` or `/robots.txt` wins, so an app that needs other rules writes its own
+`robots.txt` as a route. So does a catch-all route that is not localized, such as `/:page{.+}`: it takes both paths and the
+endpoints never answer.
+
+The start stops, with code H10, when a marked route:
+
+- is not a `GET` route, is `.internal()`, or belongs to the `api` group;
+- sits behind a middleware that adds `user` (`authenticate()`), or does not say `authorize(everyone)` (a policy or a check of
+  your own): a sitemap lists pages anyone can open;
+- is localized with `Route.localized()`: its pages are not listed yet;
+- has parameters but no `sitemap()` method on its controller;
+
+or when `APP_URL` is not set to an `http` or `https` address.
+
+The endpoints run behind the global middleware only, so a request has no session and no cookie, and the answer says
+`Cache-Control: public, max-age=300`. The sitemap is made once for requests that arrive together, and kept in the process for
+five minutes; a failing `sitemap()` is reported once, and for 30 seconds the app does not call it again: it serves the last file it made, or
+answers `503` with `Retry-After`. The endpoints send no cookie, whatever a global middleware sets. A
+file lists at most 50 000 URLs (the limit of the format). The rest is left out, and the log says so.

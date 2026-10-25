@@ -3,6 +3,7 @@ import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
 import { heldOnLoopback, shadowedLocalhost } from './loopback.ts';
 import { checkLocalizedRoutes, localizedPath } from './localized-routes.ts';
+import { createSitemapEndpoints, sitemapRoutes } from './sitemap.ts';
 import { honoPath } from './route-pattern.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
@@ -244,6 +245,9 @@ export function createHttpKernel(
   // The locales a localized route can name (`@marmeon/i18n`); the start stops without them, and on a route they would shadow.
   const urlLocales = container.has(UrlLocales) ? container.make(UrlLocales) : undefined;
   checkLocalizedRoutes(router, urlLocales, (route) => redactor.path(route.path, route.path));
+  // The routes marked with `.sitemap()`: the start stops here when their sitemap could not be written.
+  const appUrl = container.has(ServerConfig) ? container.make(ServerConfig).appUrl : undefined;
+  const listed = sitemapRoutes(router, appUrl, (route) => redactor.path(route.path, route.path));
   container.instance(AssetVersion, { value: version });
   // SERVER_TRUSTED_PROXIES: only from these peers `X-Forwarded-For` sets the client's address and `X-Forwarded-Proto`/`-Host` the URL.
   const proxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
@@ -839,7 +843,27 @@ export function createHttpKernel(
   const ordered = router.registrationOrder;
   for (const route of ordered) if (router.isFrameworkRoute(route)) register(route);
   app.all('*', (c, next) => (router.isReservedPath(c.req.path) ? notFound(c) : next()));
-  for (const route of ordered) if (!router.isFrameworkRoute(route)) register(route);
+  for (const route of ordered) if (!router.isFrameworkRoute(route) && !route.generatedFrom) register(route);
+
+  // After every route of the app (one on the same path wins), before the localized routes' versions without a locale: such a
+  // route (`/:page`) would otherwise take `/sitemap.xml`. Only when a route asks for it, and behind the global middleware alone.
+  if (listed.length > 0) {
+    const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
+    const answer = (answerWith: () => Response | Promise<Response>) => (c: Context) =>
+      handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) => {
+        // A public answer carries no cookie, whatever a global middleware queued: a shared cache would hand it to everyone.
+        state.cookies.lock(() => false);
+        return router.dispatchGlobal(c.req.raw, answerWith, {
+          resolve: (Class) => scope.make(Class),
+          state,
+          onTerminable,
+          onError: (error) => renderError(error, c.req.raw, scope),
+        });
+      }, islandParent(c.env));
+    app.get('/sitemap.xml', answer(() => endpoints.sitemap()));
+    app.get('/robots.txt', answer(() => endpoints.robots()));
+  }
+  for (const route of ordered) if (route.generatedFrom) register(route);
 
   app.notFound(notFound);
   app.onError((error, c) => renderError(error, c.req.raw));

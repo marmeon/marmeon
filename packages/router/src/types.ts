@@ -242,3 +242,21 @@ export interface LayerResultMarker {
 }
 
 export type AnyAction = Action<any, any, any>;
+
+/**
+ * One page a route with parameters puts in the sitemap: the parameters of its path, and when it last changed.
+ * See docs/seo.md#sitemap-and-robotstxt.
+ */
+export interface SitemapEntry<TParams = Record<string, string | number>> {
+  readonly params: TParams;
+  readonly lastModified?: Date;
+}
+
+/**
+ * What a controller's `sitemap()` returns for a route marked with `.sitemap()`: its entries, as a list, a generator or a
+ * promise of a list. See docs/seo.md#sitemap-and-robotstxt.
+ */
+export type SitemapEntries<TParams = Record<string, string | number>> =
+  | Iterable<SitemapEntry<TParams>>
+  | AsyncIterable<SitemapEntry<TParams>>
+  | Promise<readonly SitemapEntry<TParams>[]>;

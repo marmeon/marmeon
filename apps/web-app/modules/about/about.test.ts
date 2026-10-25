@@ -13,6 +13,28 @@ beforeEach(async () => {
   app = await createTestApp(application, { ssr: true, ssrServer: server });
 });
 
+describe('the sitemap', () => {
+  it('lists the about page and every feature, to a guest without a cookie', async () => {
+    const response = await app.get('/sitemap.xml').assertOk();
+    expect(response.headers.get('cache-control')).toBe('public, max-age=300');
+    expect(response.headers.has('set-cookie')).toBe(false);
+    const locs = [...response.body.matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]);
+    expect(locs).toEqual([
+      'http://localhost/about',
+      'http://localhost/about/features/typed-routes',
+      'http://localhost/about/features/instant-visits',
+      'http://localhost/about/features/server-rendering',
+      'http://localhost/about/features/translations',
+    ]);
+    expect(response.body).toContain('<loc>http://localhost/about/features/typed-routes</loc><lastmod>2026-03-02</lastmod>');
+  });
+
+  it('names the sitemap in robots.txt', async () => {
+    const response = await app.get('/robots.txt').assertOk();
+    expect(response.body).toBe('User-agent: *\nDisallow: /_marmeon/\n\nSitemap: http://localhost/sitemap.xml\n');
+  });
+});
+
 describe('the public pages', () => {
   it('shows the list of features to a guest', async () => {
     const response = await app.navigating().get('/about').assertOk().assertPage('about/Index');

@@ -29,6 +29,7 @@ export class RouteDefinition {
   /** @internal Set by `Router.load` for a framework route under `/_marmeon/`, which the server registers before all others. */
   reserved = false;
   #internal: boolean;
+  #sitemap = false;
   #blocking: RouteBlocking | undefined;
   #sealed = false;
 
@@ -93,6 +94,25 @@ export class RouteDefinition {
     this.#assertOpen('internal');
     this.#internal = true;
     return this;
+  }
+
+  /**
+   * Lists the route in `/sitemap.xml`. A route with parameters needs a `sitemap()` method on its controller, which says which
+   * parameters are pages. Only a `GET` page anyone may open qualifies; the start stops on any other. See docs/seo.md#sitemap-and-robotstxt.
+   *
+   * ```ts
+   * Route.get('/about', ShowAboutController).name('about.index').sitemap();
+   * ```
+   */
+  sitemap(): this {
+    this.#assertOpen('sitemap');
+    this.#sitemap = true;
+    return this;
+  }
+
+  /** Whether {@link sitemap} marked the route. */
+  get inSitemap(): boolean {
+    return this.#sitemap;
   }
 
   /** Whether {@link internal} applies, to the route or its group. */

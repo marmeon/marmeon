@@ -277,6 +277,17 @@ The file's third line, `// @marmeon-format 1`, names its format. A file without 
 `route:types` reads the routes without booting the app, so it needs no `.env` and no key. It sees the route files of your
 modules. A route that a service provider registers in its `boot()` method serves requests but is not in the file.
 
+### Routes in the sitemap
+
+Call `.sitemap()` on a `GET` page anyone may open, and `/sitemap.xml` lists it. A route with parameters needs a `sitemap()` method
+on its controller that returns its pages:
+
+```ts
+about.get('/about', ShowAboutController).name('index').sitemap();
+```
+
+The [search engines](seo.md#sitemap-and-robotstxt) page shows the method, the limits and what stops the start.
+
 ### Routes the browser never learns
 
 By default, the browser can look up the named routes of the `web` group, so `<Link>` and `useRoute()` work without the server.
