@@ -18,8 +18,8 @@ import { applyPatches, listOf, rollBack } from './patches.ts';
 /** The methods of an action — a GET reads (its `data` goes into the query), the others write. */
 export type ActionMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
-/** Why an action failed besides invalid input: offline (`network`), or what the server answered (401, 403, 404, 419, 5xx, …). */
-export type ActionException =
+/** Why an action failed besides invalid input: offline (`network`), or what the server answered (401, 403, 404, 419, 5xx, …). A plain object, not an `Error`: narrow on `type`. */
+export type ActionError =
   | { readonly type: 'network'; readonly cause: unknown }
   | { readonly type: 'server'; readonly status: number; readonly message: string | undefined };
 
@@ -32,7 +32,7 @@ export type ActionOutcome =
   | { readonly ok: true; readonly kind: 'data'; readonly status: number; readonly data: unknown; readonly flash: readonly FlashMessage[] }
   | { readonly ok: true; readonly kind: 'redirect'; readonly redirect: string; readonly flash: readonly FlashMessage[] }
   | { readonly ok: false; readonly kind: 'invalid'; readonly errors: ValidationErrors; readonly message: string | undefined }
-  | { readonly ok: false; readonly kind: 'exception'; readonly exception: ActionException }
+  | { readonly ok: false; readonly kind: 'exception'; readonly exception: ActionError }
   | { readonly ok: false; readonly kind: 'cancelled' };
 
 export interface ActionOptions {

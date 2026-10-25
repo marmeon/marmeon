@@ -1,5 +1,5 @@
 import { ERROR_PAGE, type ErrorPageProps } from '@marmeon/http/client/adapter';
-import { isDevelopment, type VisitException } from '@marmeon/http/client';
+import { isDevelopment, type VisitError } from '@marmeon/http/client';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorPage } from './error-page.tsx';
 import type { PageComponent, ResolvePage } from './pages.ts';
@@ -48,7 +48,7 @@ export function RenderErrorFallback({ resolve, error }: { resolve: ResolvePage; 
  * A 5xx over the page (which stays, with whatever was typed into it): the server's error page in a dialog — with the exception in
  * debug mode (development), else just status and title. Plain HTML from something in front of the server goes into a sandboxed frame.
  */
-export function ServerFailure({ failure, resolve, onDismiss }: { failure: Extract<VisitException, { type: 'server' }>; resolve: ResolvePage; onDismiss: () => void }) {
+export function ServerFailure({ failure, resolve, onDismiss }: { failure: Extract<VisitError, { type: 'server' }>; resolve: ResolvePage; onDismiss: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const element = dialog.current;

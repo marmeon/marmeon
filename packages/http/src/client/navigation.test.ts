@@ -1,6 +1,6 @@
 import { LOCATION_HEADER, PAGE_HEADER, RELOAD_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isHistoryState, mergePage, Navigator, type VisitException } from './navigation.ts';
+import { isHistoryState, mergePage, Navigator, type VisitError } from './navigation.ts';
 import type { PatchTarget } from './optimistic.ts';
 import { boot, FakeEntry, FakeWindow, historyFeatures, ORIGIN, page, pageResponse, PATHS, settle } from './test-window.ts';
 import { pageInfo } from '../page-support.ts';
@@ -164,14 +164,14 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
   });
 
   /** The server failure of an exception, for asserting on its `page`. */
-  function failure(exception: VisitException | undefined) {
+  function failure(exception: VisitError | undefined) {
     return exception?.type === 'server' ? exception : undefined;
   }
 
   /** Records a navigator's events, in order. */
   function record(navigator: Navigator) {
     const events: string[] = [];
-    const errors: VisitException[] = [];
+    const errors: VisitError[] = [];
     navigator.on('start', (visit) => events.push(`start ${visit.method} ${visit.url}`));
     navigator.on('progress', (progress) => events.push(`progress ${progress.percentage}`));
     navigator.on('success', (_page, visit) => events.push(`success ${visit.url}`));
@@ -220,7 +220,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       };
       const { navigator, shown } = boot(win, page('/a'));
       const { events, errors } = record(navigator);
-      const own: VisitException[] = [];
+      const own: VisitError[] = [];
       const invalid: unknown[] = [];
 
       await expect(navigator.visit('/b', { onException: (exception) => void own.push(exception), onError: (errors) => void invalid.push(errors) })).resolves.toBeUndefined();

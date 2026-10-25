@@ -9,21 +9,8 @@ Types from other packages: `react`, `react-dom`
 ### Stable
 
 ```ts
-// Action
-export interface Action<N extends string, RequiresParams extends boolean = false> {
-    submit(...args: SubmitArgs<N, RequiresParams>): Promise<ActionResultOf<N>>;
-    readonly pending: boolean;
-    readonly submissions: readonly PendingSubmission<N>[];
-    readonly result: ActionResultOf<N> | undefined;
-    readonly data: ([ActionDataOf<N>] extends [never] ? never : ActionDataOf<N>) | undefined;
-    readonly errors: Partial<Record<ActionField<N>, string>>;
-    readonly hasErrors: boolean;
-    readonly exception: ActionException | undefined;
-    clearErrors(...fields: ActionField<N>[]): void;
-    cancel(): void;
-}
-// ActionException
-export type { ActionException } from '@marmeon/http/client';
+// ActionError
+export type { ActionError } from '@marmeon/http/client';
 // ActionField
 export type ActionField<N extends string> = [ActionBodyOf<N>] extends [never] ? string : keyof ActionBodyOf<N> & string;
 // ActionReload
@@ -48,7 +35,7 @@ export type ActionResultOf<N extends string> = ([ActionDataOf<N>] extends [never
 } | {
     readonly ok: false;
     readonly kind: 'exception';
-    readonly exception: ActionException;
+    readonly exception: ActionError;
 } | {
     readonly ok: false;
     readonly kind: 'cancelled';
@@ -69,6 +56,28 @@ export type CheckFormElementRoute<N extends string> = CheckBrowserRouteName<N> e
 export type CheckedPatch<R, P> = (props: P) => {
     readonly [K in keyof R]: K extends keyof P ? P[K] : `'${K & string}' is not a prop of this page`;
 };
+// ClientAction
+export interface ClientAction<N extends string, RequiresParams extends boolean = false> {
+    submit(...args: SubmitArgs<N, RequiresParams>): Promise<ActionResultOf<N>>;
+    readonly pending: boolean;
+    readonly submissions: readonly PendingSubmission<N>[];
+    readonly result: ActionResultOf<N> | undefined;
+    readonly data: ([ActionDataOf<N>] extends [never] ? never : ActionDataOf<N>) | undefined;
+    readonly errors: Partial<Record<ActionField<N>, string>>;
+    readonly hasErrors: boolean;
+    readonly exception: ActionError | undefined;
+    clearErrors(...fields: ActionField<N>[]): void;
+    cancel(): void;
+}
+// ClientRouter
+export interface ClientRouter<T = unknown> {
+    visit(url: string, options?: TypedVisitOptions<T>): Promise<PageInfo | undefined>;
+    reload(options?: ReloadOptions<T>): Promise<PageInfo | undefined>;
+    prefetch(url: string, options?: PrefetchOptions): Promise<void>;
+    on<E extends VisitEvent>(event: E, listener: VisitEvents[E]): () => void;
+    optimistic<R extends object>(patch: ((props: PatchedProps<T>) => R) & NoInfer<CheckedPatch<R, PatchedProps<T>>>): OptimisticUpdate;
+    reloading<const I extends readonly BrowserRouteNameInput[] = []>(options?: ReloadingOptions<T, I>): readonly Reloading[];
+}
 // Confirm
 export type { Confirm } from '@marmeon/http/client';
 // ConfirmAnswer
@@ -440,15 +449,6 @@ export interface RouteFormOptions<F> extends Omit<FormOptions<F>, 'remember'> {
 }
 // RouteFunction
 export type RouteFunction = <const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>, ...args: RouteArgs<N>) => string;
-// Router
-export interface Router<T = unknown> {
-    visit(url: string, options?: TypedVisitOptions<T>): Promise<PageInfo | undefined>;
-    reload(options?: ReloadOptions<T>): Promise<PageInfo | undefined>;
-    prefetch(url: string, options?: PrefetchOptions): Promise<void>;
-    on<E extends VisitEvent>(event: E, listener: VisitEvents[E]): () => void;
-    optimistic<R extends object>(patch: ((props: PatchedProps<T>) => R) & NoInfer<CheckedPatch<R, PatchedProps<T>>>): OptimisticUpdate;
-    reloading<const I extends readonly BrowserRouteNameInput[] = []>(options?: ReloadingOptions<T, I>): readonly Reloading[];
-}
 // SetQueryState
 export type SetQueryState<Q> = (update: QueryUpdate<Q>) => void;
 // TitleTemplate
@@ -485,12 +485,12 @@ export type { ViewTransitionOption } from '@marmeon/http/client';
 export type { Visit } from '@marmeon/http/client';
 // VisitCallbacks
 export type { VisitCallbacks } from '@marmeon/http/client';
+// VisitError
+export type { VisitError } from '@marmeon/http/client';
 // VisitEvent
 export type { VisitEvent } from '@marmeon/http/client';
 // VisitEvents
 export type { VisitEvents } from '@marmeon/http/client';
-// VisitException
-export type { VisitException } from '@marmeon/http/client';
 // VisitMethod
 export type { VisitMethod } from '@marmeon/http/client';
 // VisitOptions
@@ -516,8 +516,8 @@ export { progressBar } from '@marmeon/http/client';
 // resolveModulePages
 export declare function resolveModulePages(modules: PageModules): ResolvePage;
 // useAction
-export declare function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>): Action<N, {} extends ParamsOf<N> ? false : true>;
-export declare function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>, params: ParamsOf<N>): Action<N, false>;
+export declare function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>): ClientAction<N, {} extends ParamsOf<N> ? false : true>;
+export declare function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>, params: ParamsOf<N>): ClientAction<N, false>;
 // useBlocker
 export declare function useBlocker({ when, message }: UseBlockerOptions): void;
 // useFeature
@@ -557,7 +557,7 @@ export declare function useRemember<T, const K extends string = string>(key: Sen
 // useRoute
 export declare function useRoute(): RouteFunction;
 // useRouter
-export declare function useRouter<T = unknown>(): Router<T>;
+export declare function useRouter<T = unknown>(): ClientRouter<T>;
 // useTranslation
 export declare function useTranslation<N extends Namespace>(namespace: N): Translate<N>;
 // useUpload

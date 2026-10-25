@@ -39,7 +39,7 @@ import { ScrollMemory, TOP, type Scroll, type ScrollRegion } from './scroll.ts';
 export { DEFAULT_PAGE_CACHE_SIZE } from './cache.ts';
 export { DEFAULT_LEAVE_MESSAGE } from './confirm.ts';
 export { DEFAULT_NEW_VERSION_MESSAGE } from './document-change.ts';
-export type { Visit, VisitCallbacks, VisitEvent, VisitEvents, VisitException, VisitProgress, VersionChange } from './events.ts';
+export type { Visit, VisitCallbacks, VisitError, VisitEvent, VisitEvents, VisitProgress, VersionChange } from './events.ts';
 export type { IgnoredGuard, NavigationGuard } from './features/guard.ts';
 export type { InstantVisit } from './features/instant.ts';
 export type { PrefetchOptions } from './features/prefetch.ts';

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { VisitException } from '@marmeon/http/client';
+import type { VisitError } from '@marmeon/http/client';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -35,7 +35,7 @@ async function render(node: React.ReactNode): Promise<HTMLElement> {
 
 describe('when the failure chunk cannot load', () => {
   it('a 5xx shows the notice of an unreachable server — the page and the app stay', async () => {
-    const failure = { type: 'server', status: 502, page: undefined, html: '<h1>Bad gateway</h1>' } as unknown as VisitException;
+    const failure = { type: 'server', status: 502, page: undefined, html: '<h1>Bad gateway</h1>' } as unknown as VisitError;
     const container = await render(
       <>
         <p data-page="">page</p>
