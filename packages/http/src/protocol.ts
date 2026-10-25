@@ -293,7 +293,7 @@ export const PURPOSE_HEADER = 'purpose';
 /**
  * Whether `request` is a prefetch — ours (`Purpose: prefetch`) or the browser's (`Sec-Purpose: prefetch`). Answer it
  * like the real request, minus side effects: the client shows the prefetched page when the link is clicked (within
- * its `cacheFor`), without asking again. A page whose visit must do something should not be prefetched.
+ * its `cacheForMs`), without asking again. A page whose visit must do something should not be prefetched.
  */
 export function isPrefetch(request: Request): boolean {
   const purpose = `${request.headers.get(PURPOSE_HEADER) ?? ''},${request.headers.get('sec-purpose') ?? ''}`;

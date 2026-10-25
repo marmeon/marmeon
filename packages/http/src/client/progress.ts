@@ -1,6 +1,6 @@
 /**
  * The progress bar of visits — plain DOM, no UI framework: every adapter shows the same one. An opt-in feature: an app
- * that wants it passes `progressBar(options)` to its adapter (React: `createMarmeonApp({ progress: progressBar({ delay: 250 }) })`)
+ * that wants it passes `progressBar(options)` to its adapter (React: `createMarmeonApp({ progress: progressBar({ delayMs: 250 }) })`)
  * — one that does not carries none of it, and builds its own indicator from the visit events and `aria-busy` if it likes.
  * Styled through CSS variables, set as inline style properties (no `<style>` element, so a strict
  * Content-Security-Policy does not block it):
@@ -13,12 +13,12 @@ import type { VisitEvents } from './events.ts';
 
 export interface ProgressOptions {
   /** Milliseconds before the bar shows — fast visits never show it. Default 250. */
-  delay?: number;
+  delayMs?: number;
   /** The bar's color, unless `--marmeon-progress-color` sets one. */
   color?: string;
 }
 
-export const DEFAULT_PROGRESS_DELAY = 250;
+export const DEFAULT_PROGRESS_DELAY_MS = 250;
 
 /** The attribute on the bar's element (for styles and tests). */
 export const PROGRESS_ATTRIBUTE = 'data-marmeon-progress';
@@ -34,13 +34,13 @@ export interface ProgressSource {
  */
 export type ProgressIndicator = (navigator: ProgressSource) => () => void;
 
-/** The progress bar as an adapter's indicator: `createMarmeonApp({ progress: progressBar({ delay: 250 }) })`. */
+/** The progress bar as an adapter's indicator: `createMarmeonApp({ progress: progressBar({ delayMs: 250 }) })`. */
 export function progressBar(options: ProgressOptions = {}): ProgressIndicator {
   return (navigator) => showProgress(navigator, options);
 }
 
 /** Shows a progress bar while the navigator's requests run. Returns the function that removes it. */
-export function showProgress(navigator: ProgressSource, { delay = DEFAULT_PROGRESS_DELAY, color = '#4f46e5' }: ProgressOptions = {}, doc: Document = document): () => void {
+export function showProgress(navigator: ProgressSource, { delayMs = DEFAULT_PROGRESS_DELAY_MS, color = '#4f46e5' }: ProgressOptions = {}, doc: Document = document): () => void {
   let running = 0;
   let element: HTMLElement | undefined;
   /** The bar of the last visit, fading out. */
@@ -99,7 +99,7 @@ export function showProgress(navigator: ProgressSource, { delay = DEFAULT_PROGRE
     navigator.on('start', (visit) => {
       if (visit.async) return;
       running++;
-      if (running === 1 && !element && showTimer === undefined) showTimer = setTimeout(show, delay);
+      if (running === 1 && !element && showTimer === undefined) showTimer = setTimeout(show, delayMs);
     }),
     navigator.on('progress', ({ percentage }, visit) => {
       if (percentage !== undefined && !visit.async) set((percentage / 100) * 0.9);

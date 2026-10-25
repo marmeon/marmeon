@@ -31,6 +31,11 @@ export function Registration() {
   // @ts-expect-error
   useForm('auth.register.store', { name: '', email: '', password: '', password_confirmation: '' }, { validate: { on: 'keypress' } });
 
+  // The unit is in the name: Object literal may only specify known properties, and 'debounce' does not exist. Did you mean 'debounceMs'?
+  // @ts-expect-error
+  useForm('auth.register.store', { name: '', email: '', password: '', password_confirmation: '' }, { validate: { on: 'change', debounce: 300 } });
+  useForm('auth.register.store', { name: '', email: '', password: '', password_confirmation: '' }, { validate: { on: 'change', debounceMs: 300 } });
+
   // A route without a request schema has nothing to validate — the form's own message:
   // No overload matches this call. The last overload gave the following error. Argument of type '"auth.logout"' is not assignable
   // to parameter of type '"'auth.logout' has no request schema to type a form with — give its controller `static request =

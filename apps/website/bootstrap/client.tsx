@@ -5,4 +5,4 @@ import { title } from './head.ts';
 import { layout } from './layouts.ts';
 import { resolvePage } from './pages.ts';
 
-void createMarmeonApp({ resolve: resolvePage, title, routes, layout, progress: progressBar({ delay: 250 }) });
+void createMarmeonApp({ resolve: resolvePage, title, routes, layout, progress: progressBar({ delayMs: 250 }) });

@@ -14,7 +14,7 @@ import { LiveValidation, sendLiveValidation, type LiveValidationOptions, type Li
 export interface LiveValidationFeature {
   /** One check of `request.fields` against the request schema of the route at `url` — sent as the form would be (minus passwords and files). */
   validate(url: string, request: LiveValidationRequest): Promise<LiveValidationOutcome>;
-  /** The live validation of one form at `url`: touched fields, debounce, the check under way. */
+  /** The live validation of one form at `url`: touched fields, the debounce, the check under way. */
   form(url: string, options: Omit<LiveValidationOptions, 'send'>): LiveValidation;
 }
 

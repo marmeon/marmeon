@@ -18,7 +18,7 @@ export default function People({ people, now }: Props) {
   const t = useTranslation('user-profile');
   // The URL's query, as the server parsed it (ListPeopleRequest) — typed: `query.sort` is one of the four sorts.
   // Typing filters as you go: one partial reload of `people` per pause, replacing the history entry (no entry per key).
-  const [query, setQuery] = useQueryState('user-profile.people', { only: ['people'], debounce: 300, history: 'replace' });
+  const [query, setQuery] = useQueryState('user-profile.people', { only: ['people'], debounceMs: 300, history: 'replace' });
   const ago = (iso: string) => t.format.relative(iso, now);
 
   return (

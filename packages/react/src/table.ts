@@ -53,7 +53,7 @@ export interface UseTableOptions<T extends AnyTableData> {
   /** The page prop the table is — default: found on the page (the same object, or a table of the same name). */
   prop?: string;
   /** Wait this long (ms) after the last keystroke before searching (default 300). */
-  searchDebounce?: number;
+  searchDebounceMs?: number;
 }
 
 /** The attributes of a column's `<th>`: `aria-sort` only on the one the table is sorted by (WAI-ARIA APG) — never `none`. */
@@ -176,7 +176,7 @@ export function useTable<T extends AnyTableData>(data: T, options: UseTableOptio
   const made = useRef<TableController<T> | null>(null);
   // In the browser, once the page has its history entry: before that (and on the server) nothing is selected.
   if (navigator && entry !== undefined && !made.current) {
-    made.current = new TableController(navigator, data, { ...(options.prop !== undefined ? { prop: options.prop } : {}), entry, ...(options.searchDebounce !== undefined ? { searchDebounce: options.searchDebounce } : {}) });
+    made.current = new TableController(navigator, data, { ...(options.prop !== undefined ? { prop: options.prop } : {}), entry, ...(options.searchDebounceMs !== undefined ? { searchDebounceMs: options.searchDebounceMs } : {}) });
   }
   const controller = made.current;
   controller?.update(data, entry === undefined ? {} : { entry });

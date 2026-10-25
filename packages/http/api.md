@@ -1165,7 +1165,7 @@ export interface PollOptions {
 }
 // PrefetchOptions
 export interface PrefetchOptions {
-    cacheFor?: number;
+    cacheForMs?: number;
     data?: Record<string, unknown>;
     layer?: boolean;
 }
@@ -1175,7 +1175,7 @@ export type PrefetchTrigger = 'hover' | 'mount' | 'viewport';
 export type ProgressIndicator = (navigator: ProgressSource) => () => void;
 // ProgressOptions
 export interface ProgressOptions {
-    delay?: number;
+    delayMs?: number;
     color?: string;
 }
 // ProgressSource
@@ -1189,7 +1189,7 @@ export interface QueryStateOptions {
     only?: readonly string[];
     except?: readonly string[];
     reset?: readonly string[];
-    debounce?: number;
+    debounceMs?: number;
     history?: 'push' | 'replace';
     preserveScroll?: boolean;
 }
@@ -1318,7 +1318,7 @@ export interface VisitProgress {
 // accepted
 export declare function accepted(request: ConfirmRequest, answer: ConfirmAnswer): boolean;
 // createPoll
-export declare function createPoll(run: () => Promise<unknown>, interval: number, { keepAlive, document }?: PollOptions): Poll;
+export declare function createPoll(run: () => Promise<unknown>, intervalMs: number, { keepAlive, document }?: PollOptions): Poll;
 // hooks
 export declare const hooksHandle: FeatureHandle<ClientHooks>;
 // isDevelopment
@@ -1593,8 +1593,8 @@ export declare class Guards {
     blocking(leaving: (level: number) => boolean, ignore?: readonly NavigationGuard[]): NavigationGuard[];
     navigate(event: NavigateEvent, state: HistoryState, closing: boolean): boolean;
 }
-// HOVER_PREFETCH_DELAY
-export declare const HOVER_PREFETCH_DELAY = 75;
+// HOVER_PREFETCH_DELAY_MS
+export declare const HOVER_PREFETCH_DELAY_MS = 75;
 // HistoryState
 export interface HistoryState {
     readonly component: string;
@@ -1748,7 +1748,7 @@ export interface LiveValidationOptions {
     }>) => void;
     readonly hasError?: (field: string) => boolean;
     readonly on?: LiveValidationTrigger;
-    readonly debounce?: number;
+    readonly debounceMs?: number;
     readonly fields?: readonly string[];
 }
 // LiveValidationOutcome
@@ -1966,7 +1966,7 @@ export interface PollOptions {
 }
 // PrefetchOptions
 export interface PrefetchOptions {
-    cacheFor?: number;
+    cacheForMs?: number;
     data?: Record<string, unknown>;
     layer?: boolean;
 }
@@ -1990,7 +1990,7 @@ export declare class Prefetches {
 export type ProgressIndicator = (navigator: ProgressSource) => () => void;
 // ProgressOptions
 export interface ProgressOptions {
-    delay?: number;
+    delayMs?: number;
     color?: string;
 }
 // ProgressSource
@@ -2020,7 +2020,7 @@ export interface QueryStateOptions {
     only?: readonly string[];
     except?: readonly string[];
     reset?: readonly string[];
-    debounce?: number;
+    debounceMs?: number;
     history?: 'push' | 'replace';
     preserveScroll?: boolean;
 }
@@ -2299,7 +2299,7 @@ export declare const actions: import("../feature.ts").Feature<ActionsFeature>;
 // assertQueryPage
 export declare function assertQueryPage(name: string, path: string, page: Pick<PageObject, 'url' | 'queryDefaults'>): void;
 // createPoll
-export declare function createPoll(run: () => Promise<unknown>, interval: number, { keepAlive, document }?: PollOptions): Poll;
+export declare function createPoll(run: () => Promise<unknown>, intervalMs: number, { keepAlive, document }?: PollOptions): Poll;
 // defaultFormEntries
 export declare function defaultFormEntries(form: {
     readonly elements: ArrayLike<unknown>;
@@ -2430,7 +2430,7 @@ export declare function sensitiveControl(control: {
     getAttribute(name: string): string | null;
 }): 'never' | 'named' | undefined;
 // showProgress
-export declare function showProgress(navigator: ProgressSource, { delay, color }?: ProgressOptions, doc?: Document): () => void;
+export declare function showProgress(navigator: ProgressSource, { delayMs, color }?: ProgressOptions, doc?: Document): () => void;
 // uploads
 export declare const uploads: import("../feature.ts").Feature<UploadsFeature>;
 // viewTransitions

@@ -30,8 +30,8 @@ export interface CreateMarmeonAppOptions {
    */
   messages?: MessageLoader;
   /**
-   * An indicator of visits under way (opt-in): `progress: progressBar({ delay: 250 })` shows the core's bar for visits
-   * slower than `delay`; none without it.
+   * An indicator of visits under way (opt-in): `progress: progressBar({ delayMs: 250 })` shows the core's bar for visits
+   * slower than `delayMs`; none without it.
    */
   progress?: ProgressIndicator;
   /**

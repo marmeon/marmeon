@@ -839,7 +839,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(win.requests).toEqual([]);
     });
 
-    it('uses a prefetched page once, within cacheFor — then the server is asked again', async () => {
+    it('uses a prefetched page once, within cacheForMs — then the server is asked again', async () => {
       const win = new FakeWindow(`${ORIGIN}/a`);
       let n = 0;
       win.handler = (url) => pageResponse(page(new URL(url).pathname, { n: ++n }));
@@ -850,7 +850,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       await navigator.visit('/b');
       expect(visible().props).toEqual({ n: 3 }); // not the prefetched n: 1 again
 
-      await navigator.use(prefetch).prefetch('/c', { cacheFor: 0 }); // stale as soon as it arrives
+      await navigator.use(prefetch).prefetch('/c', { cacheForMs: 0 }); // stale as soon as it arrives
       await navigator.visit('/c');
       expect(visible().props).toEqual({ n: 5 });
       expect(win.requests.map(purpose)).toEqual(['prefetch', undefined, undefined, 'prefetch', undefined]);

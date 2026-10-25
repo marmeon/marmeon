@@ -7,7 +7,7 @@ type Props = PageProps<ShowStreamingLabController>;
 type Slow = Props['slow'];
 
 /**
- * A slow part of a page, as a Suspense boundary: on the server it takes `slow.delay` ms (the shell is streamed first,
+ * A slow part of a page, as a Suspense boundary: on the server it takes `slow.delayMs` ms (the shell is streamed first,
  * this part follows in the same response); in the browser its content is there at once, so hydration renders the same.
  * One promise per page object — the server's is new for every request, the browser's lives as long as the page.
  */
@@ -15,8 +15,8 @@ const pending = new WeakMap<Slow, Promise<string>>();
 function slowText(slow: Slow): Promise<string> {
   let promise = pending.get(slow);
   if (!promise) {
-    const delay = typeof window === 'undefined' ? slow.delay : 0;
-    promise = new Promise((resolve) => setTimeout(() => resolve(slow.text), delay));
+    const delayMs = typeof window === 'undefined' ? slow.delayMs : 0;
+    promise = new Promise((resolve) => setTimeout(() => resolve(slow.text), delayMs));
     pending.set(slow, promise);
   }
   return promise;

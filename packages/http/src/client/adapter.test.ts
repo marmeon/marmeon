@@ -76,7 +76,7 @@ async function createTextApp(rootId = 'app') {
   // "Hydrating" plain text means keeping the server's; without markup the adapter renders the page itself.
   if (!hasServerMarkup(root)) await render(initialPage);
   const navigator = new Navigator({ features: [historyFallback], initialPage, render });
-  const stops = [navigator.start(), showProgress(navigator, { delay: 0 })];
+  const stops = [navigator.start(), showProgress(navigator, { delayMs: 0 })];
   return { navigator, root, stop: () => stops.forEach((stop) => stop()) };
 }
 

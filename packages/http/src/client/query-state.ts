@@ -27,7 +27,7 @@ export interface QueryStateOptions {
    */
   reset?: readonly string[];
   /** Wait this long (ms) after the last change before asking the server — one request per pause while typing. Default 0. */
-  debounce?: number;
+  debounceMs?: number;
   /** A history entry per change (`'push'`, the default — Back undoes a sort), or the current one replaced (`'replace'`, typing — Back leaves the search). */
   history?: 'push' | 'replace';
   /** Keep the scroll position (default true). */
@@ -68,7 +68,7 @@ function keyOf(values: Readonly<Record<string, unknown>>, defaults: PageObject['
 
 /**
  * The query state of the page on screen. `set()` changes it at once (a typed input shows what is typed — the
- * `draft`) and, after `debounce` ms, visits the page's URL with the new query: partially (`only`), keeping component
+ * `draft`) and, after `debounceMs`, visits the page's URL with the new query: partially (`only`), keeping component
  * state and scroll, pushing or replacing the history entry. The draft gives way to the page when the page changes for
  * any other reason — Back/Forward, a link — so what the state shows is always this page's query.
  */
@@ -104,7 +104,7 @@ export class QueryState<Q extends Record<string, unknown> = Record<string, unkno
     return this.#draft ?? (pageQueryOf(page) as Q);
   }
 
-  /** Changes the state now and the URL after `debounce` ms. `undefined` takes a field back to its default. */
+  /** Changes the state now and the URL after `debounceMs`. `undefined` takes a field back to its default. */
   set(update: QueryUpdate<Q>): void {
     const current = this.value();
     const patch = typeof update === 'function' ? update(current) : update;
@@ -121,12 +121,12 @@ export class QueryState<Q extends Record<string, unknown> = Record<string, unkno
     this.#draft = next as Q;
     this.#notify();
     clearTimeout(this.#timer);
-    const debounce = this.options.debounce ?? 0;
-    if (debounce > 0) {
+    const debounceMs = this.options.debounceMs ?? 0;
+    if (debounceMs > 0) {
       this.#timer = setTimeout(() => {
         this.#timer = undefined;
         void this.#send();
-      }, debounce);
+      }, debounceMs);
     } else {
       this.#timer = undefined;
       void this.#send();

@@ -48,6 +48,13 @@ export function States() {
   // @ts-expect-error
   form.isDirty('bioo');
   usePending('user-profile.update', { delay: 'short' });
+  usePending('user-profile.update', { delayMs: 300 });
+  // A number is delayMs: Type 'number' is not assignable to type '"short" | undefined'.
+  // @ts-expect-error
+  usePending('user-profile.update', { delay: 300 });
+  // Either the word or the number, never both: Type 'number' is not assignable to type 'undefined'.
+  // @ts-expect-error
+  usePending('user-profile.update', { delay: 'short', delayMs: 300 });
   // Argument of type '"user-profile.updte"' is not assignable to parameter of type '"'user-profile.updte' is not a route name — did you mean user-profile.update?"'.
   // @ts-expect-error
   usePending('user-profile.updte');

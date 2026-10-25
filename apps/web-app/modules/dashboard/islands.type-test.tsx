@@ -15,7 +15,10 @@ export function TheDashboard() {
     <>
       <Island route="dashboard.sign-ins" query={{ limit: 5, range: '7d' }} fallback={<p>…</p>} />
       <Island route="dashboard.members" unauthorized={<p>Administrators only.</p>} />
-      <Island route="dashboard.activity" load="visible" poll={15_000} />
+      <Island route="dashboard.activity" load="visible" pollMs={15_000} />
+      {/* The unit is in the name: Property 'poll' does not exist on type '…'. Did you mean 'pollMs'? */}
+      {/* @ts-expect-error */}
+      <Island route="dashboard.activity" poll={15_000} />
       {/* A link to a page is fine — to an island it is not:
           Type '"dashboard.sign-ins"' is not assignable to type '"'dashboard.sign-ins' is an island, not a page — embed it with
           <Island route=\"dashboard.sign-ins\">; links and visits go to pages"'. */}

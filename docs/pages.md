@@ -350,7 +350,7 @@ import { messages } from './i18n.ts';
 import { layout } from './layouts.ts';
 import { resolvePage } from './pages.ts';
 
-void createMarmeonApp({ resolve: resolvePage, title, routes, layout, messages, progress: progressBar({ delay: 250 }) });
+void createMarmeonApp({ resolve: resolvePage, title, routes, layout, messages, progress: progressBar({ delayMs: 250 }) });
 ```
 
 ```tsx title="bootstrap/ssr.tsx"

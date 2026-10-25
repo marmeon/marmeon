@@ -265,7 +265,7 @@ export type IslandElementProps<N extends string = string> = {
     error?: ReactNode | ((retry: () => void) => ReactNode);
     load?: 'eager' | 'visible';
     buffer?: number;
-    poll?: number;
+    pollMs?: number;
     keepAlive?: boolean;
     as?: string;
     className?: string;
@@ -349,7 +349,7 @@ export interface LiveUpdatesState {
 // LiveValidationSetting
 export interface LiveValidationSetting<F> {
     on?: 'blur' | 'change';
-    debounce?: number;
+    debounceMs?: number;
     fields?: readonly (PasswordNeverLive | (keyof {
         [K in keyof F & string as Lowercase<K> extends `${string}password${string}` ? never : K]: true;
     } & string))[];
@@ -511,9 +511,13 @@ export interface UseLayerOptions {
     onClose?: () => void;
 }
 // UsePendingOptions
-export interface UsePendingOptions {
-    delay?: 'short' | number;
-}
+export type UsePendingOptions = {
+    delay?: 'short';
+    delayMs?: never;
+} | {
+    delay?: never;
+    delayMs?: number;
+};
 // UsePollOptions
 export interface UsePollOptions {
     keepAlive?: boolean;
@@ -590,11 +594,11 @@ export declare function useNewVersion(): NewVersion | undefined;
 // usePage
 export declare function usePage<TProps extends object = {}>(): PageInfo<SharedProps & TProps>;
 // usePending
-export declare function usePending<const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>, { delay }?: UsePendingOptions): boolean;
+export declare function usePending<const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>, { delay, delayMs }?: UsePendingOptions): boolean;
 // usePendingSubmissions
 export declare function usePendingSubmissions<const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>): readonly PendingSubmission<N>[];
 // usePoll
-export declare function usePoll<T = unknown>(interval: number, options?: ReloadOptions<T>, { keepAlive, autoStart }?: UsePollOptions): Pick<Poll, 'start' | 'stop'>;
+export declare function usePoll<T = unknown>(intervalMs: number, options?: ReloadOptions<T>, { keepAlive, autoStart }?: UsePollOptions): Pick<Poll, 'start' | 'stop'>;
 // useQueryState
 export declare function useQueryState<const N extends BrowserRouteNameInput>(name: CheckQueryRoute<N>, options?: UseQueryStateOptions<N>): [QueryStateOf<N>, SetQueryState<QueryStateOf<N>>];
 // useRemember
@@ -722,7 +726,7 @@ type Nested<P extends string, V, Depth extends unknown[]> = {
 // NoPrefetch
 interface NoPrefetch {
     prefetch?: 'only links (GET) are prefetched — never an action (POST, PUT, PATCH, DELETE)';
-    cacheFor?: never;
+    cacheForMs?: never;
     preload?: 'only links (GET) are preloaded — never an action (POST, PUT, PATCH, DELETE)';
 }
 // PageModules
@@ -756,7 +760,7 @@ type ParamsProp<N extends string> = {} extends ParamsOf<N> ? {
 // PrefetchProps
 interface PrefetchProps {
     prefetch?: boolean | PrefetchTrigger | readonly PrefetchTrigger[];
-    cacheFor?: number;
+    cacheForMs?: number;
     preload?: boolean | PrefetchTrigger | readonly PrefetchTrigger[];
 }
 // Primitive
@@ -999,7 +1003,7 @@ export type { TableStatusInfo } from '@marmeon/table/client';
 export interface UseTableOptions<T extends AnyTableData> {
     labels?: TableLabels<T>;
     prop?: string;
-    searchDebounce?: number;
+    searchDebounceMs?: number;
 }
 // useTable
 export declare function useTable<T extends AnyTableData>(data: T, options?: UseTableOptions<T>): Table<T>;

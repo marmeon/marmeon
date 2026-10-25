@@ -66,8 +66,8 @@ export type IslandElementProps<N extends string = string> = {
   load?: 'eager' | 'visible';
   /** Load this many pixels before it comes into view (with `load="visible"`, default 0). */
   buffer?: number;
-  /** Reload every `poll` ms (in the background, paused while the tab is hidden) — once it is loaded. */
-  poll?: number;
+  /** Reload every `pollMs` ms (in the background, paused while the tab is hidden) — once it is loaded. */
+  pollMs?: number;
   /** Keep polling while the tab is hidden. */
   keepAlive?: boolean;
   /** The element around it (default `div`) — it carries `data-island` and `data-status`, and is what `load="visible"` watches. */
@@ -172,7 +172,7 @@ function snapshotOf(result: RegionResult): RegionSnapshot {
 function BrowserIsland({ url, streamed, scriptId, onShown, ...props }: BodyProps) {
   const router = useRouterContext();
   const owner = useContext(RegionOwnerContext);
-  const { load = 'eager', buffer = 0, poll, keepAlive = false } = props;
+  const { load = 'eager', buffer = 0, pollMs, keepAlive = false } = props;
   // What the server streamed into this boundary — read once, while hydrating (and rendered again as it was).
   const [text] = useState(() => (streamed ? streamedText(scriptId) : undefined));
   const navigator = router.navigator();
@@ -219,11 +219,11 @@ function BrowserIsland({ url, streamed, scriptId, onShown, ...props }: BodyProps
 
   const ready = snapshot.status === 'ready';
   useEffect(() => {
-    if (!region || !visible || !ready || !poll) return undefined;
-    const polling = createPoll(() => region.reload(), poll, { keepAlive });
+    if (!region || !visible || !ready || !pollMs) return undefined;
+    const polling = createPoll(() => region.reload(), pollMs, { keepAlive });
     polling.start();
     return () => polling.stop();
-  }, [region, visible, ready, poll, keepAlive]);
+  }, [region, visible, ready, pollMs, keepAlive]);
 
   const value = useMemo<IslandValue | null>(
     () => (region ? { snapshot, query: region.query, reload: (options) => region.reload(options), region } : null),

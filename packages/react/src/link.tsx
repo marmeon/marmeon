@@ -1,4 +1,4 @@
-import { FORM_METHOD_FIELD, FORM_TOKEN_FIELD, HOVER_PREFETCH_DELAY, isCurrentLink, linkQuery, loadInstant, observeWith, prefetchTriggers, prefetchUrlOf, visitUrlOf } from '@marmeon/http/client/adapter';
+import { FORM_METHOD_FIELD, FORM_TOKEN_FIELD, HOVER_PREFETCH_DELAY_MS, isCurrentLink, linkQuery, loadInstant, observeWith, prefetchTriggers, prefetchUrlOf, visitUrlOf } from '@marmeon/http/client/adapter';
 import { resolveRoute, type Confirm, type PrefetchTrigger, type ViewTransitionOption, type VisitMethod, type VisitOptions } from '@marmeon/http/client';
 import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProp, MethodOf, ParamsOf, Query, QueryParams } from '@marmeon/http/page';
 import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
@@ -48,11 +48,11 @@ interface PrefetchProps {
   /**
    * Fetch the page ahead, so the click shows it at once: `true`/`'hover'` when the pointer rests on the link
    * (75 ms) or presses it, `'mount'` as soon as the link is rendered, `'viewport'` once it has been half in view for 250 ms
-   * (a few at a time, never more than 20 for a page; nothing with Save-Data), or several. Kept in memory for `cacheFor`.
+   * (a few at a time, never more than 20 for a page; nothing with Save-Data), or several. Kept in memory for `cacheForMs`.
    */
   prefetch?: boolean | PrefetchTrigger | readonly PrefetchTrigger[];
   /** How long the prefetched page is used, in ms (default 30 000). */
-  cacheFor?: number;
+  cacheForMs?: number;
   /**
    * Load the code of the target's view ahead, and ask the server nothing: the same triggers as `prefetch` (`true` is `'hover'`).
    * Only for links with `route` to a page; it combines with `prefetch`. See docs/navigation.md#loading-the-code-only.
@@ -63,7 +63,7 @@ interface PrefetchProps {
 /** Actions (POST, DELETE, …) are never fetched ahead — the type is the message (and ignored at runtime). */
 interface NoPrefetch {
   prefetch?: 'only links (GET) are prefetched — never an action (POST, PUT, PATCH, DELETE)';
-  cacheFor?: never;
+  cacheForMs?: never;
   preload?: 'only links (GET) are preloaded — never an action (POST, PUT, PATCH, DELETE)';
 }
 
@@ -169,7 +169,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     except,
     reset,
     prefetch,
-    cacheFor,
+    cacheForMs,
     preload,
     layer,
     instant,
@@ -233,7 +233,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
   const fetchAhead = () => {
     clearTimeout(hover.current);
     const url = prefetchUrlOf(href);
-    if (url !== undefined) void prefetchPage(url, { ...(cacheFor === undefined ? {} : { cacheFor }), ...(layer ? { layer: true } : {}) });
+    if (url !== undefined) void prefetchPage(url, { ...(cacheForMs === undefined ? {} : { cacheForMs }), ...(layer ? { layer: true } : {}) });
   };
   // An instant link and a layer's link: their code loads when it renders — it is there before anyone clicks.
   const instantly = options.instant !== undefined;
@@ -259,8 +259,8 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     const element = anchor.current;
     const url = inView ? prefetchUrlOf(href) : undefined;
     if (!navigator || !element || (url === undefined && !preloadInView)) return undefined;
-    return observeWith(navigator, element, url, { ...(cacheFor === undefined ? {} : { cacheFor }), ...(layer ? { layer: true } : {}) }, preloadInView ? () => resolve(view!) : undefined);
-  }, [inView, preloadInView, navigator, href, cacheFor, layer, view, resolve]);
+    return observeWith(navigator, element, url, { ...(cacheForMs === undefined ? {} : { cacheForMs }), ...(layer ? { layer: true } : {}) }, preloadInView ? () => resolve(view!) : undefined);
+  }, [inView, preloadInView, navigator, href, cacheForMs, layer, view, resolve]);
 
   if (method !== 'get') {
     // A `javascript:` or `data:` address sends nothing — not with JavaScript (the visit refuses it), not without (a button that
@@ -323,7 +323,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
       onClick={handleClick}
       onMouseEnter={(event) => {
         onMouseEnter?.(as(event));
-        if (ahead) hover.current = setTimeout(startAhead, HOVER_PREFETCH_DELAY);
+        if (ahead) hover.current = setTimeout(startAhead, HOVER_PREFETCH_DELAY_MS);
       }}
       onMouseLeave={(event) => {
         onMouseLeave?.(as(event));

@@ -14,7 +14,7 @@ import { title } from './head.ts';
 import { messages } from './i18n.ts';
 import { resolvePage } from './pages.ts';
 
-void createMarmeonApp({ resolve: resolvePage, title, routes, messages, progress: progressBar({ delay: 250 }) });
+void createMarmeonApp({ resolve: resolvePage, title, routes, messages, progress: progressBar({ delayMs: 250 }) });
 ```
 
 Pages and layouts name classes, never a `style` attribute. That keeps the app ready for a strict Content-Security-Policy, which

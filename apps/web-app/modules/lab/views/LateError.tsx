@@ -3,7 +3,7 @@ import { Head } from '@marmeon/react';
 import { Suspense, use } from 'react';
 import type { ShowLateErrorLabController } from '../controllers/ShowLabPageController.ts';
 
-/** Settles after `delay` ms on the server — and then fails there; in the browser it works. One promise per page object. */
+/** Settles after `delayMs` ms on the server — and then fails there; in the browser it works. One promise per page object. */
 type Late = PageProps<ShowLateErrorLabController>['late'];
 const pending = new WeakMap<Late, Promise<string>>();
 function part(late: Late): Promise<string> {
@@ -11,7 +11,7 @@ function part(late: Late): Promise<string> {
   if (!promise) {
     const server = typeof window === 'undefined';
     promise = new Promise((resolve, reject) =>
-      setTimeout(() => (server ? reject(new Error('The lab’s late part fails on the server, after the shell was sent.')) : resolve('Rendered by the browser.')), server ? late.delay : 0),
+      setTimeout(() => (server ? reject(new Error('The lab’s late part fails on the server, after the shell was sent.')) : resolve('Rendered by the browser.')), server ? late.delayMs : 0),
     );
     pending.set(late, promise);
   }

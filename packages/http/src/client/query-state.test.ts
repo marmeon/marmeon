@@ -67,7 +67,7 @@ describe('query state in the client core (no UI framework)', () => {
   it('typing: the state changes at once, the URL once per pause — one partial reload, replacing the history entry, the list replaced', async () => {
     window.fetch = server as typeof fetch;
     const { navigator, page, stop } = start();
-    const state = navigator.use(queryState).create<{ q: string; sort: string }>({ only: ['people'], debounce: 20, history: 'replace' });
+    const state = navigator.use(queryState).create<{ q: string; sort: string }>({ only: ['people'], debounceMs: 20, history: 'replace' });
     const length = window.history.length;
 
     for (const q of ['a', 'al', 'ala']) state.set({ q });
@@ -86,7 +86,7 @@ describe('query state in the client core (no UI framework)', () => {
   it('keeps what is typed while a request is on its way — and what the server normalized away (a trailing space)', async () => {
     window.fetch = server as typeof fetch;
     const { navigator, stop } = start();
-    const state = navigator.use(queryState).create<{ q: string; sort: string }>({ only: ['people'], debounce: 10, history: 'replace' });
+    const state = navigator.use(queryState).create<{ q: string; sort: string }>({ only: ['people'], debounceMs: 10, history: 'replace' });
     let release!: () => void;
     slow = new Promise((done) => (release = done));
     state.set({ q: 'ada ' });
@@ -138,7 +138,7 @@ describe('query state in the client core (no UI framework)', () => {
   it('drops a change still waiting when it is disposed (the page was left)', async () => {
     window.fetch = server as typeof fetch;
     const { navigator, stop } = start();
-    const state = navigator.use(queryState).create({ debounce: 10 });
+    const state = navigator.use(queryState).create({ debounceMs: 10 });
     state.set({ q: 'x' });
     state.dispose();
     await new Promise((done) => setTimeout(done, 30));

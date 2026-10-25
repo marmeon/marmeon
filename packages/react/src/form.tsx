@@ -402,7 +402,7 @@ function useFormLiveValidation(
       data: () => (element.current ? formObject(formEntries(element.current)) : {}),
       hasError: (field) => errorsRef.current[field] !== undefined,
       on: config.on ?? 'blur',
-      ...(config.debounce === undefined ? {} : { debounce: config.debounce }),
+      ...(config.debounceMs === undefined ? {} : { debounceMs: config.debounceMs }),
       ...(config.fields ? { fields: config.fields.map(fieldPath) } : {}),
       onResult: (outcome) =>
         setErrors((current) => {
@@ -412,7 +412,7 @@ function useFormLiveValidation(
         }),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `config` is a new object each render: the memo follows its URL, method, trigger, debounce and field list
-  }, [navigator, url, method, config === undefined, config?.on, config?.debounce, fieldsKey]);
+  }, [navigator, url, method, config === undefined, config?.on, config?.debounceMs, fieldsKey]);
   useEffect(() => () => live?.cancel(), [live]);
   useSyncExternalStore(live?.subscribe ?? noSubscription, () => live?.pending ?? NOTHING_PENDING, () => NOTHING_PENDING);
   return live;
