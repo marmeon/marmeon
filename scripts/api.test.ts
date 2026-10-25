@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { FOREIGN_TYPES, foreignPackage, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, stabilityProblems } from './api.ts';
-import { KNOWN, SAME_VALUE } from './api-names.ts';
+import { SAME_VALUE } from './api-names.ts';
 import { compareSnapshots, parseSnapshot, type ApiItem } from './api-snapshot.ts';
 import { INTERNAL } from './check-source.ts';
 import { frameworkPackages } from './packages.ts';
@@ -12,7 +12,7 @@ import { tempDir } from './test/temp-dir.js';
 const repository = fileURLToPath(new URL('..', import.meta.url));
 
 /** The fixtures are no framework: the real exceptions would be stale in them. */
-const NO_NAMES = { sameValue: {}, known: [] };
+const NO_NAMES = { sameValue: {} };
 const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, ...options });
 
 /** Writes `dist/<name>` files into a fresh package; `exports` maps subpaths to their `.d.ts` under `dist/`. */
@@ -1015,15 +1015,17 @@ describe('one exported name, one declaration', () => {
     expect(names(packages)).toHaveLength(1);
   });
 
-  it('lets a name of known differ, and names one that no longer does', () => {
-    const packages = { a: 'export interface Foo { a: 1 }\n', b: 'export interface Foo { b: 2 }\n' };
-    expect(names(packages, { known: ['Foo'] })).toEqual([]);
-    expect(names({ a: 'export interface Foo { a: 1 }\n' }, { known: ['Foo'] })).toEqual(['`Foo` is listed in KNOWN but no longer collides — delete the line']);
+  it('refuses every collision that sameValue does not list', () => {
+    const packages = {
+      a: 'export interface Foo { a: 1 }\nexport interface Bar { a: 1 }\n',
+      b: 'export interface Foo { b: 2 }\nexport interface Bar { b: 2 }\n',
+    };
+    expect(names(packages)).toHaveLength(2);
+    expect(names(packages, { sameValue: { Foo: 'the same value' } })).toHaveLength(1);
   });
 
-  it('keeps the lists of the repository to the agreed exceptions, KNOWN sorted', () => {
+  it('keeps the list of the repository to the agreed exceptions', () => {
     expect(Object.keys(SAME_VALUE).sort()).toEqual(['CookieDefaults', 'RevalidateOnBack', 'Translator']);
-    expect([...KNOWN]).toEqual([...KNOWN].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })));
   });
 });
 
