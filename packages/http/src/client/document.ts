@@ -1,4 +1,4 @@
-import { isPageObject, PAGE_SCRIPT_ID, type PageObject } from '../protocol.ts';
+import { APP_ORIGIN_META, isPageObject, PAGE_SCRIPT_ID, type PageObject } from '../protocol.ts';
 
 /**
  * The page the server rendered — the JSON in `<script id="marmeon-page" type="application/json">` (in the document
@@ -8,6 +8,19 @@ export function readInitialPage(doc: Pick<Document, 'getElementById'> = document
   const page: unknown = JSON.parse(doc.getElementById(PAGE_SCRIPT_ID)?.textContent ?? 'null');
   if (!isPageObject(page)) throw new Error(`Missing or invalid #${PAGE_SCRIPT_ID} script — was the page server-rendered?`);
   return page;
+}
+
+/** The origin of the app's `APP_URL`, as the first document carries it; undefined when the server has none. */
+export function readAppOrigin(doc: Pick<Document, 'head'> = document): string | undefined {
+  // Not one a `<Head>` wrote (those carry the marker): only the server's own tag is the base.
+  const content = doc.head.querySelector(`meta[name="${APP_ORIGIN_META}"]:not([data-marmeon-head])`)?.getAttribute('content');
+  if (!content) return undefined;
+  try {
+    const { origin, protocol } = new URL(content);
+    return protocol === 'http:' || protocol === 'https:' ? origin : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The element the server rendered into — waits for it while a streamed document is still arriving. */

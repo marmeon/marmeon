@@ -1,13 +1,21 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, useTranslation } from '@marmeon/react';
+import { Head, Link, useRoute, useTranslation } from '@marmeon/react';
 import type { ShowFeatureController } from '../controllers/ShowFeatureController.ts';
 
 /** One feature of the public list. */
 export default function Feature({ feature }: PageProps<ShowFeatureController>) {
   const t = useTranslation('about');
+  const route = useRoute();
+  const path = route('about.features.show', { feature: feature.slug });
   return (
     <main>
-      <Head title={t(`features.${feature.slug}.title`)} />
+      <Head
+        title={t(`features.${feature.slug}.title`)}
+        description={t(`features.${feature.slug}.summary`)}
+        canonical={path}
+        openGraph={{ type: 'article', siteName: 'Marmeon', url: path, article: { modifiedTime: feature.updatedAt } }}
+        twitter={{ card: 'summary' }}
+      />
       <h1>{t(`features.${feature.slug}.title`)}</h1>
       <p>{t(`features.${feature.slug}.summary`)}</p>
       <p className="muted">{t('updated', { date: t.format.date(feature.updatedAt, { dateStyle: 'medium', timeZone: 'UTC' }) })}</p>

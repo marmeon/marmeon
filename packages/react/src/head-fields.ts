@@ -1,0 +1,211 @@
+/** The `<meta>` and `<link>` fields of `<Head>`: their types, the merge of layout and page, and the tags they become. */
+
+/** Open Graph: how a link to the page is previewed. See docs/seo.md#the-heads-fields. */
+export interface OpenGraph {
+  /** Default: the page's `title`, without the title template. */
+  title?: string;
+  /** Default: the page's `description`. */
+  description?: string;
+  type?: 'website' | 'article' | 'profile';
+  /** Relative to `APP_URL`. */
+  url?: string;
+  siteName?: string;
+  locale?: string;
+  /** A URL (relative to `APP_URL`), or the URL with its size and text. */
+  image?: string | { url: string; width?: number; height?: number; alt?: string };
+  article?: { publishedTime?: string; modifiedTime?: string; authors?: string[]; tags?: string[] };
+}
+
+/** A Twitter/X card. See docs/seo.md#the-heads-fields. */
+export interface TwitterCard {
+  /** Set once, in the layout, and every page has it. */
+  card?: 'summary' | 'summary_large_image';
+  site?: string;
+  creator?: string;
+  /** Default: the page's `title`, without the title template. */
+  title?: string;
+  /** Default: the page's `description`. */
+  description?: string;
+  /** A URL, relative to `APP_URL`. */
+  image?: string;
+  imageAlt?: string;
+}
+
+/** The fields of `<Head>` besides the title and its children. */
+export interface HeadFields {
+  /** The page's summary for search results. */
+  description?: string;
+  /** The page's address when several lead to it; relative to `APP_URL`. */
+  canonical?: string;
+  /** What crawlers may do with the page; a part left out is not said. */
+  robots?: { index?: boolean; follow?: boolean };
+  openGraph?: OpenGraph;
+  twitter?: TwitterCard;
+}
+
+/** What one `<Head>` sets: its title and fields. */
+export type HeadEntry = HeadFields & { title?: string };
+
+/** A `<meta>` or `<link>` the fields stand for. `key` names it among the others, so the browser can update it in place. */
+export interface HeadTag {
+  readonly element: 'meta' | 'link';
+  readonly key: string;
+  readonly attributes: readonly (readonly [string, string])[];
+}
+
+function defined<T extends object>(value: T | undefined): Partial<T> {
+  return Object.fromEntries(Object.entries(value ?? {}).filter(([, item]) => item !== undefined)) as Partial<T>;
+}
+
+/** The `<Head>`s in render order as one: the last one sets a simple field, an object merges key by key. */
+export function mergeHead(entries: readonly HeadEntry[]): HeadEntry {
+  const merged: HeadEntry = {};
+  for (const { title, description, canonical, robots, openGraph, twitter } of entries) {
+    if (title !== undefined) merged.title = title;
+    if (description !== undefined) merged.description = description;
+    if (canonical !== undefined) merged.canonical = canonical;
+    if (robots) merged.robots = { ...merged.robots, ...defined(robots) };
+    if (openGraph) merged.openGraph = { ...merged.openGraph, ...defined(openGraph) };
+    if (twitter) merged.twitter = { ...merged.twitter, ...defined(twitter) };
+  }
+  return merged;
+}
+
+/**
+ * A URL as the head states it: made absolute against `base` (the server: `APP_URL`, never the request; the browser: its
+ * origin), `http(s)` only. Anything else is dropped, with `warn` saying why (development).
+ */
+export function absoluteUrl(value: string, base: string | undefined, warn?: (message: string) => void): string | undefined {
+  const drop = (why: string) => {
+    warn?.(`[marmeon] <Head> dropped "${value}": ${why}`);
+    return undefined;
+  };
+  let origin: string | undefined;
+  try {
+    origin = base === undefined ? undefined : new URL(base).origin;
+  } catch {
+    return drop(`the app's URL (APP_URL) "${base}" is not a URL.`);
+  }
+  try {
+    const url = new URL(value, base);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return drop('only http(s) URLs belong in the head.');
+    // `//host/x` and `/\host/x` have no scheme but name another host: a path stays on the app's origin.
+    if (!/^[a-z][a-z\d+.-]*:/i.test(value.trim()) && url.origin !== origin) return drop("a path without a scheme must stay on the app's own origin.");
+    return url.href;
+  } catch {
+    return drop(origin === undefined ? "it is relative and the app's URL (APP_URL) is not set." : 'it is not a URL.');
+  }
+}
+
+/** The tags for the merged fields of a page, in the order they are written. */
+export function headTags(head: HeadEntry, base: string | undefined, warn?: (message: string) => void): HeadTag[] {
+  const tags: HeadTag[] = [];
+  const counts = new Map<string, number>();
+  const add = (element: 'meta' | 'link', label: string, name: string, value: string | number | undefined, content = 'content') => {
+    if (value === undefined || value === '') return;
+    const key = `${label}:${name}`;
+    const seen = counts.get(key) ?? 0;
+    counts.set(key, seen + 1);
+    tags.push({ element, key: seen === 0 ? key : `${key}#${seen}`, attributes: [[label, name], [content, String(value)]] });
+  };
+  const url = (value: string | undefined) => (value === undefined ? undefined : absoluteUrl(value, base, warn));
+  const { title, description, canonical, robots, openGraph: og, twitter } = head;
+
+  add('meta', 'name', 'description', description);
+  add('link', 'rel', 'canonical', url(canonical), 'href');
+  if (robots) {
+    const parts = [robots.index === undefined ? '' : robots.index ? 'index' : 'noindex', robots.follow === undefined ? '' : robots.follow ? 'follow' : 'nofollow'];
+    add('meta', 'name', 'robots', parts.filter(Boolean).join(', '));
+  }
+  if (og) {
+    const image = typeof og.image === 'string' ? { url: og.image } : og.image;
+    add('meta', 'property', 'og:title', og.title ?? title);
+    add('meta', 'property', 'og:description', og.description ?? description);
+    add('meta', 'property', 'og:type', og.type);
+    add('meta', 'property', 'og:url', url(og.url));
+    add('meta', 'property', 'og:site_name', og.siteName);
+    add('meta', 'property', 'og:locale', og.locale);
+    const imageUrl = url(image?.url);
+    add('meta', 'property', 'og:image', imageUrl);
+    if (imageUrl !== undefined) {
+      add('meta', 'property', 'og:image:width', image && 'width' in image ? image.width : undefined);
+      add('meta', 'property', 'og:image:height', image && 'height' in image ? image.height : undefined);
+      add('meta', 'property', 'og:image:alt', image && 'alt' in image ? image.alt : undefined);
+    }
+    const { publishedTime, modifiedTime, authors, tags: labels } = og.article ?? {};
+    add('meta', 'property', 'article:published_time', publishedTime);
+    add('meta', 'property', 'article:modified_time', modifiedTime);
+    for (const author of authors ?? []) add('meta', 'property', 'article:author', author);
+    for (const label of labels ?? []) add('meta', 'property', 'article:tag', label);
+  }
+  if (twitter) {
+    add('meta', 'name', 'twitter:card', twitter.card);
+    add('meta', 'name', 'twitter:site', twitter.site);
+    add('meta', 'name', 'twitter:creator', twitter.creator);
+    add('meta', 'name', 'twitter:title', twitter.title ?? title);
+    add('meta', 'name', 'twitter:description', twitter.description ?? description);
+    add('meta', 'name', 'twitter:image', url(twitter.image));
+    add('meta', 'name', 'twitter:image:alt', twitter.imageAlt);
+  }
+  return tags;
+}
+
+/**
+ * The browser's `<Head>`s (layouts and page): the merged fields are kept as elements in `document.head`, updated in place
+ * when a navigation changes them and removed once no `<Head>` stands for them. An adapter's `<Head>` takes an `order()` when
+ * it mounts, `set()`s its entry and `delete()`s it when it unmounts.
+ */
+export class HeadRegistry {
+  readonly #entries = new Map<number, HeadEntry>();
+  readonly #elements = new Map<string, HTMLElement>();
+  readonly #origin: string | undefined;
+  readonly #warn: ((message: string) => void) | undefined;
+  #next = 0;
+  #pending = false;
+
+  /** `origin`: the app's (`APP_URL`), as the server resolved the head's URLs — else the browser's. `warn`: development only. */
+  constructor(origin?: string, warn?: (message: string) => void) {
+    this.#origin = origin;
+    this.#warn = warn;
+  }
+
+  /** A number in render order — taken once, when a head component mounts. */
+  order(): number {
+    return this.#next++;
+  }
+
+  set(order: number, entry: HeadEntry): void {
+    this.#entries.set(order, entry);
+    this.#apply();
+  }
+
+  /** Applied a moment later: a navigation's `<Head>` that replaces this one `set()`s first, so the elements stay. */
+  delete(order: number): void {
+    if (!this.#entries.delete(order) || this.#pending) return;
+    this.#pending = true;
+    queueMicrotask(() => {
+      this.#pending = false;
+      this.#apply();
+    });
+  }
+
+  #apply(): void {
+    const sorted = [...this.#entries].sort(([a], [b]) => a - b).map(([, entry]) => entry);
+    const wanted = new Map(headTags(mergeHead(sorted), this.#origin ?? location.origin, this.#warn).map((tag) => [tag.key, tag]));
+    for (const [key, element] of this.#elements) {
+      if (wanted.has(key)) continue;
+      element.remove();
+      this.#elements.delete(key);
+    }
+    for (const [key, { element: name, attributes }] of wanted) {
+      let element = this.#elements.get(key);
+      if (!element) {
+        element = document.createElement(name);
+        element.setAttribute('data-marmeon-head', 'meta');
+        document.head.append(element);
+        this.#elements.set(key, element);
+      }
+      for (const [attribute, value] of attributes) if (element.getAttribute(attribute) !== value) element.setAttribute(attribute, value);
+    }
+  }
+}

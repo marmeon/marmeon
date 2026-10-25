@@ -334,6 +334,12 @@ export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'strea
 /** Id of the `<script type="application/json">` that carries the initial page. */
 export const PAGE_SCRIPT_ID = 'marmeon-page';
 
+/**
+ * Name of the `<meta>` in the first document that carries the app's origin (`APP_URL`), for the head's absolute URLs.
+ * @internal
+ */
+export const APP_ORIGIN_META = 'marmeon-app-origin';
+
 export function isPageObject(value: unknown): value is PageObject {
   return typeof value === 'object' && value !== null && 'component' in value && 'props' in value && 'url' in value;
 }

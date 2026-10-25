@@ -1,13 +1,20 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, useTranslation } from '@marmeon/react';
+import { Head, Link, useRoute, useTranslation } from '@marmeon/react';
 import type { ShowAboutController } from '../controllers/ShowAboutController.ts';
 
 /** The public list of features. */
 export default function Index({ features }: PageProps<ShowAboutController>) {
   const t = useTranslation('about');
+  const route = useRoute();
   return (
     <main>
-      <Head title={t('title')} />
+      <Head
+        title={t('title')}
+        description={t('intro')}
+        canonical={route('about.index')}
+        openGraph={{ type: 'website', siteName: 'Marmeon', title: t('title') }}
+        twitter={{ card: 'summary' }}
+      />
       <h1>{t('title')}</h1>
       <p>{t('intro')}</p>
       <ul>

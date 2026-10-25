@@ -9,7 +9,7 @@ export { xsrfToken, isHistoryState, Navigator } from './navigation.ts';
 export { createPoll } from './poll.ts';
 export { progressBar, PROGRESS_ATTRIBUTE, showProgress } from './progress.ts';
 export { accepted } from './confirm.ts';
-export { isDevelopment, hasServerMarkup, readInitialPage, rootElement } from './document.ts';
+export { isDevelopment, hasServerMarkup, readAppOrigin, readInitialPage, rootElement } from './document.ts';
 export { resolveRoute } from './routes.ts';
 export { pageQueryOf, linkQuery, queryUrl } from './query.ts';
 export { isSensitiveRememberField, loadSensitiveFields, Remembered } from './remember.ts';

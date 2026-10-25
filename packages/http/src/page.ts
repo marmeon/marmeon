@@ -283,6 +283,11 @@ export interface SsrRenderOptions {
    * @internal
    */
   placeholder?: Readonly<Record<string, unknown>>;
+  /**
+   * The app's own address (`APP_URL`): what the `<Head>`'s relative URLs — `canonical`, `og:image` … — are resolved against.
+   * Always the configuration's, never the request's `Host`, which anybody can set. Without it, a relative URL is dropped.
+   */
+  appUrl?: string;
 }
 
 /**

@@ -103,6 +103,7 @@ export default defineDocs({
         { slug: 'client-features', label: 'Client Features & Tab Sync' },
         { slug: 'vite', label: 'Asset Bundling (Vite)' },
         { slug: 'styling', label: 'Styling' },
+        { slug: 'seo', label: 'Search Engines & Sharing' },
       ],
     },
     {

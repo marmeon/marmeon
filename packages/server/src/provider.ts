@@ -63,7 +63,7 @@ export const ServerConfig = defineConfig('server', {
       .min(1, 'Expected at least 1 second')
       .max(3600, 'Expected at most 3600 seconds')
       .default(65),
-    /** The app's own address: its host is one the development server writes `last-error.md` for (besides the loopback names). */
+    /** The app's own address: the document head's absolute URLs are built from it, and its host is one the development server writes `last-error.md` for (besides the loopback names). */
     APP_URL: env.string().optional(),
     NODE_ENV: env.string().optional(),
   })

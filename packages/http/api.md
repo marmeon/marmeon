@@ -684,6 +684,7 @@ export interface SsrRenderOptions {
     resolveIsland?: (url: string) => Promise<RegionResult>;
     resolveDeferred?: (group: string) => Promise<DeferredResult | null>;
     nonce?: string;
+    appUrl?: string;
 }
 // SsrResult
 export interface SsrResult {
@@ -2391,6 +2392,8 @@ export declare function progressBar(options?: ProgressOptions): ProgressIndicato
 export declare const queryState: import("../feature.ts").Feature<QueryStateFeature>;
 // queryUrl
 export declare function queryUrl(page: Pick<PageObject, 'url' | 'queryDefaults'>, values: Readonly<Record<string, unknown>>): string;
+// readAppOrigin
+export declare function readAppOrigin(doc?: Pick<Document, 'head'>): string | undefined;
 // readInitialPage
 export declare function readInitialPage(doc?: Pick<Document, 'getElementById'>): PageObject;
 // regionInitial
@@ -2842,6 +2845,7 @@ export interface SsrRenderOptions {
     resolveIsland?: (url: string) => Promise<RegionResult>;
     resolveDeferred?: (group: string) => Promise<DeferredResult | null>;
     nonce?: string;
+    appUrl?: string;
 }
 // SsrResult
 export interface SsrResult {

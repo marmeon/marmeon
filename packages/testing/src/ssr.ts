@@ -81,6 +81,8 @@ interface Resolved {
   page?: PageObject;
   /** The response's CSP nonce, when it had one. */
   nonce?: string;
+  /** The app's URL, when the render had one (the head's origin tag). */
+  appUrl?: string;
 }
 
 /**
@@ -116,6 +118,7 @@ export class TestSsr {
         if (seen && stream) seen.page = page;
         // The response's CSP nonce: the browser reads the same document — rendered again with it.
         if (seen && options.nonce) seen.nonce = options.nonce;
+        if (seen && options.appUrl) seen.appUrl = options.appUrl;
         try {
           const document = await renderer.render(page, request, {
             ...options,
@@ -149,7 +152,7 @@ export class TestSsr {
           throw error;
         }
       },
-      shell: (page, request, nonce) => renderer.shell(page, request, nonce),
+      shell: (page, request, nonce, appUrl) => renderer.shell(page, request, nonce, appUrl),
     };
   }
 
@@ -187,7 +190,7 @@ export class TestSsr {
   /** What happened while rendering request `id`, and the page rendered again from its JSON (the browser's view of it). */
   async finish(id: string, url: string, page: PageObject | undefined): Promise<SsrOutcome> {
     const errors = this.#errors.get(id) ?? [];
-    const { islands, deferred, page: live, nonce } = this.#resolved.get(id) ?? { islands: new Map<string, RegionResult>(), deferred: new Map<string, DeferredResult | null>() };
+    const { islands, deferred, page: live, nonce, appUrl } = this.#resolved.get(id) ?? { islands: new Map<string, RegionResult>(), deferred: new Map<string, DeferredResult | null>() };
     this.#errors.delete(id);
     this.#resolved.delete(id);
     if (!page || errors.length > 0) return { errors, rerendered: undefined };
@@ -201,6 +204,7 @@ export class TestSsr {
       resolveIsland: async (island: string): Promise<RegionResult> => islands.get(island) ?? { status: 'browser' },
       ...(this.#stream ? { resolveDeferred: async (group: string): Promise<DeferredResult | null> => deferred.get(group) ?? null } : {}),
       ...(nonce ? { nonce } : {}),
+      ...(appUrl ? { appUrl } : {}),
     };
     const render = async (from: PageObject): Promise<string | undefined> => {
       const document = await this.renderer.render(from, new Request(url), options).catch(() => undefined);

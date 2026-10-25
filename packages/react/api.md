@@ -243,7 +243,7 @@ export interface FormSubmitOptions extends Omit<VisitOptions, 'method' | 'data' 
 // Head
 export declare function Head(props: HeadProps): import("react").JSX.Element | null;
 // HeadProps
-export interface HeadProps {
+export interface HeadProps extends HeadFields {
     title?: string;
     children?: ReactNode;
 }
@@ -351,6 +351,27 @@ export interface LiveValidationSetting<F> {
 export interface NewVersion {
     readonly location: string;
     reload(): void;
+}
+// OpenGraph
+export interface OpenGraph {
+    title?: string;
+    description?: string;
+    type?: 'website' | 'article' | 'profile';
+    url?: string;
+    siteName?: string;
+    locale?: string;
+    image?: string | {
+        url: string;
+        width?: number;
+        height?: number;
+        alt?: string;
+    };
+    article?: {
+        publishedTime?: string;
+        modifiedTime?: string;
+        authors?: string[];
+        tags?: string[];
+    };
 }
 // PageComponent
 export type PageComponent = ComponentType<any> & {
@@ -461,6 +482,16 @@ export type RouteFunction = <const N extends BrowserRouteNameInput>(name: CheckB
 export type SetQueryState<Q> = (update: QueryUpdate<Q>) => void;
 // TitleTemplate
 export type { TitleTemplate } from '@marmeon/http/client';
+// TwitterCard
+export interface TwitterCard {
+    card?: 'summary' | 'summary_large_image';
+    site?: string;
+    creator?: string;
+    title?: string;
+    description?: string;
+    image?: string;
+    imageAlt?: string;
+}
 // TypedVisitOptions
 export type TypedVisitOptions<T = unknown> = Omit<VisitOptions, keyof PartialReloadOptions> & PartialReloadOptions<T>;
 // UseBlockerOptions
@@ -605,6 +636,17 @@ type DataOption<N extends string> = [ActionBodyOf<N>] extends [never] ? {
 type Field<F> = keyof F & string;
 // FormFields
 type FormFields<T> = [FormOf<T>] extends [never] ? T : FormOf<T>;
+// HeadFields
+export interface HeadFields {
+    description?: string;
+    canonical?: string;
+    robots?: {
+        index?: boolean;
+        follow?: boolean;
+    };
+    openGraph?: OpenGraph;
+    twitter?: TwitterCard;
+}
 // HrefLinkProps
 type HrefLinkProps = (LinkOptions & PartialReloadOptions & PrefetchProps & CurrentProps & AnchorAttributes & {
     href: string;

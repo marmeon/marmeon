@@ -1,11 +1,16 @@
-import { createTestApp, type TestApp } from '@marmeon/testing';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestApp, startSsrServer, type SsrServer, type TestApp } from '@marmeon/testing';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { FeatureCatalog } from './FeatureCatalog.ts';
 
 let app: TestApp;
+let server: SsrServer;
+beforeAll(async () => {
+  server = await startSsrServer(application);
+});
+afterAll(() => server?.close());
 beforeEach(async () => {
-  app = await createTestApp(application);
+  app = await createTestApp(application, { ssr: true, ssrServer: server });
 });
 
 describe('the public pages', () => {
@@ -37,5 +42,28 @@ describe('the public pages', () => {
     } finally {
       find.mockRestore();
     }
+  });
+});
+
+describe('the public pages in search results and link previews', () => {
+  const page = { headers: { accept: 'text/html' } };
+
+  it('describes a feature: description, canonical and Open Graph from APP_URL, a card', async () => {
+    await app
+      .get('/about/features/typed-routes', page)
+      .assertServerRendered()
+      .assertSee('<title data-marmeon-head="ssr">Typed routes — Marmeon</title>')
+      .assertSee('<meta name="description" content="Route names and parameters are checked by the compiler, in controllers and views alike." data-marmeon-head="ssr"/>')
+      .assertSee('<link rel="canonical" href="http://localhost/about/features/typed-routes" data-marmeon-head="ssr"/>')
+      .assertSee('<meta property="og:title" content="Typed routes" data-marmeon-head="ssr"/>')
+      .assertSee('<meta property="og:url" content="http://localhost/about/features/typed-routes" data-marmeon-head="ssr"/>')
+      .assertSee('<meta property="article:modified_time" content="2026-03-02T09:00:00Z" data-marmeon-head="ssr"/>')
+      .assertSee('<meta name="twitter:card" content="summary" data-marmeon-head="ssr"/>');
+  });
+
+  it('describes the list, and a foreign Host does not reach the head', async () => {
+    const response = await app.get('/about', { headers: { ...page.headers, host: 'evil.example' } }).assertServerRendered();
+    response.assertSee('<link rel="canonical" href="http://localhost/about" data-marmeon-head="ssr"/>').assertSee('<meta property="og:site_name" content="Marmeon" data-marmeon-head="ssr"/>');
+    expect(response.body).not.toContain('evil.example');
   });
 });
