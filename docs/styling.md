@@ -47,6 +47,9 @@ A stylesheet can also be linked from `index.html` directly, which Vite processes
 A linked stylesheet applies before the entry runs, also in development. A module can bring its own stylesheet next to its views:
 `marmeon make:auth` writes `modules/auth/auth.css` and imports it in `bootstrap/client.tsx`.
 
+Web fonts are declared in a stylesheet like any other. To have the browser fetch the ones the first screen sets with the document,
+name their files in the [`fonts` option](vite.md#fonts) of `marmeon()`.
+
 The [starter kit](starter-kit.md#the-look) has a look of its own in plain CSS, with tokens you can change.
 
 ## No `style` attributes

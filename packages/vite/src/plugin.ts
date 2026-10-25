@@ -2,6 +2,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { marmeonInjection, CSP_NONCE_PLACEHOLDER } from '@marmeon/core/internal';
 import { defaultClientConditions, defaultServerConditions, type Plugin, type Rolldown, type UserConfig } from 'vite';
+import { checkFonts, preloadFonts, type MarmeonFont } from './fonts.ts';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
 import { routesModule } from './routes-module.ts';
 import { serverImports } from './server-imports.ts';
@@ -65,6 +66,11 @@ export interface MarmeonOptions {
    */
   serverModules?: readonly string[];
   /**
+   * Fonts the first screen sets. The built `index.html` preloads each, so the text paints in its own font at once. See
+   * docs/vite.md#fonts.
+   */
+  fonts?: readonly MarmeonFont[];
+  /**
    * For `vitest.config.ts`: conditions, injection, virtual modules and the server-import check only — no entries, no HTML, no CSP
    * nonce, no pre-bundling, no build settings.
    */
@@ -119,6 +125,7 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
       throw new TypeError(`marmeon(): \`${name}\` was removed: ${hint} (docs/vite.md#options). Remove it from \`marmeon()\`.`);
     }
   }
+  checkFonts(options.fonts ?? []);
   const entries: MarmeonEntries = { ...DEFAULT_ENTRIES, ...options.entries };
   const api: MarmeonPluginApi = { entries };
 
@@ -201,6 +208,7 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     marmeonInjection() as Plugin,
     virtualGlob('pages', PAGES),
     virtualGlob('lang', LANG),
+    ...(options.fonts?.length && !options.test ? [preloadFonts(options.fonts)] : []),
     routesModule({ sinks: [...ROUTE_SINKS, ...(options.routeSinks ?? [])], ...(options.test ? { test: true } : {}) }),
     serverImports({ pages: [PAGES], client: entries.client, ...(options.serverModules ? { serverModules: options.serverModules } : {}) }),
   ];

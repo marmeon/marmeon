@@ -7,6 +7,13 @@
  * animation of its own; what moves and how is said here. Under prefers-reduced-motion the navigator starts none at all.
  */
 
+@import '@fontsource-variable/ibm-plex-sans/wght.css';
+
+/* Font: the file `marmeon({ fonts })` preloads (vite.config.ts) is the Latin subset of this family (docs/vite.md#fonts). */
+body {
+  font-family: 'IBM Plex Sans Variable', system-ui, sans-serif;
+}
+
 /* Layout */
 .app-header {
   display: flex;
