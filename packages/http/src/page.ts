@@ -5,7 +5,7 @@
 import type { PageObject, RegionObject } from './protocol.ts';
 import type { Serialize, ViewProps } from './view.ts';
 
-import type { JoinNames, Suggest } from '@marmeon/router';
+import type { ControllerOf, JoinNames, Suggest } from '@marmeon/router';
 
 export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view.ts';
 export type { IslandOf, IslandProps, IslandResult } from './island.ts';
@@ -139,6 +139,18 @@ export interface PageInfo<TProps = ViewProps> {
 /** What a view's placeholder gets (instant visits): what its controller declares (`declare readonly instant: { name: string }`). */
 export type InstantProps<C> = C extends { readonly instant: infer P } ? (P extends object ? P : never) : never;
 
+type InstantOf<N extends string> = InstantProps<ControllerOf<N> extends abstract new (...args: never) => infer I ? I : never>;
+
+/**
+ * The `instant` of route `N` — what its target's placeholder gets (a link's `instant` prop, a test's `app.placeholder(route, instant)`):
+ * typed by the controller's `declare readonly instant: {…}`, `true` when the placeholder takes nothing.
+ */
+export type InstantProp<N extends string> = [InstantOf<N>] extends [never]
+  ? `'${N}' shows no placeholder — declare what it gets on its controller (\`declare readonly instant: { … }\`) and give its view one (\`View.placeholder = …\`)`
+  : {} extends InstantOf<N>
+    ? true | InstantOf<N>
+    : InstantOf<N>;
+
 /** The token of an upload (`tu_<id>.<signature>`): what an upload field sends — and what a test gets from `app.upload(…)`. */
 export type UploadToken = string & { readonly '~uploadToken': true };
 
@@ -264,6 +276,13 @@ export interface SsrRenderOptions {
    * React's scripts that reveal Suspense boundaries, its `<style>` tags — and on the `<Head>`'s scripts and styles.
    */
   nonce?: string;
+  /**
+   * Render the placeholder of the page's view (the values are what it gets: the `instant` of a link; the page's props stay empty), inside the view's layouts —
+   * what an instant visit shows before its answer. Rejects when the view has none. For `app.placeholder()` in tests.
+   *
+   * @internal
+   */
+  placeholder?: Readonly<Record<string, unknown>>;
 }
 
 /**

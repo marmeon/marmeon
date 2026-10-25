@@ -1,6 +1,6 @@
 import { FORM_METHOD_FIELD, FORM_TOKEN_FIELD, HOVER_PREFETCH_DELAY, isCurrentLink, linkQuery, loadInstant, prefetchTriggers, prefetchUrlOf, visitUrlOf } from '@marmeon/http/client/adapter';
 import { resolveRoute, type Confirm, type PrefetchTrigger, type ViewTransitionOption, type VisitMethod, type VisitOptions } from '@marmeon/http/client';
-import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProps, MethodOf, ParamsOf, Query, QueryParams } from '@marmeon/http/page';
+import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProp, MethodOf, ParamsOf, Query, QueryParams } from '@marmeon/http/page';
 import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
 import { loadLayers, useRouterContext, type PartialReloadOptions } from './app.tsx';
 import { RoutesContext } from './routes.ts';
@@ -86,16 +86,6 @@ type MethodProps<N extends string> = [MethodOf<N>] extends ['get']
   : ButtonAttributes & NoPrefetch & { method?: MethodOf<N> & VisitMethod; data?: VisitOptions['data'] };
 
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
-
-/** What the placeholder of route `N`'s view gets: its controller's `declare readonly instant: {…}`. */
-type InstantOf<N extends string> = InstantProps<Instance<ControllerOf<N>>>;
-
-/** The `instant` prop: what the target's placeholder gets — `true` when it takes nothing. */
-type InstantProp<N extends string> = [InstantOf<N>] extends [never]
-  ? `'${N}' shows no placeholder — declare what it gets on its controller (\`declare readonly instant: { … }\`) and give its view one (\`View.placeholder = …\`)`
-  : {} extends InstantOf<N>
-    ? true | InstantOf<N>
-    : InstantOf<N>;
 
 /**
  * `<Link route="user-profile.show" params={{ user: 7 }} query={{ tab: 'links' }}>` — checked against `bootstrap/routes.ts`;

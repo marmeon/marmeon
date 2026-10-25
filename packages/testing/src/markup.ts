@@ -1,3 +1,35 @@
+import { AssertionError } from 'node:assert';
+
+/** What `app.placeholder(route, instant)` renders: the markup of an instant visit's placeholder, layouts included. */
+export class TestMarkup {
+  /** The rendered HTML. */
+  readonly html: string;
+
+  /**
+   * Use `app.placeholder()`.
+   *
+   * @internal
+   */
+  constructor(html: string) {
+    this.html = html;
+  }
+
+  assertSee(text: string): this {
+    if (!this.html.includes(text)) this.#fail(`Expected to see "${text}"`);
+    return this;
+  }
+
+  assertDontSee(text: string): this {
+    if (this.html.includes(text)) this.#fail(`Expected not to see "${text}"`);
+    return this;
+  }
+
+  #fail(message: string): never {
+    const excerpt = this.html.length > 600 ? `${this.html.slice(0, 600)}…` : this.html;
+    throw new AssertionError({ message: `${message}\n  placeholder\n  ${excerpt}` });
+  }
+}
+
 /** Elements without content: never on the stack. */
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 /** Elements whose content is text, not markup. */

@@ -168,6 +168,39 @@ it('edits a note in a layer over the note', async () => {
 `assertLayerClosed({ layers, reload })` passes when the answer closes the layer, one layer unless `layers` says more, and reloads
 the props in `reload` beneath it. The [dialogs](dialogs.md) page explains layers.
 
+## Instant visits
+
+`app.placeholder(route, instant)` renders the placeholder an [instant visit](navigation.md#instant-visits) shows before the page's
+answer: the target view's `placeholder`, with what the link passes, inside the view's layouts. It needs `ssr: true`. The markup it
+returns has `assertSee()` and `assertDontSee()`, and the page's own text is never in it:
+
+```ts title="modules/notes/instant.test.ts"
+import { createTestApp } from '@marmeon/testing';
+import { it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+
+it('shows the title at once, and nothing of the page', async () => {
+  const app = await createTestApp(application, { ssr: true });
+
+  const placeholder = await app.placeholder('notes.show', { title: 'Groceries' });
+  placeholder.assertSee('Groceries').assertSee('Loading…').assertDontSee('Milk');
+});
+```
+
+`instant` is typed by the controller's `declare readonly instant: { … }`, as the link's `instant` prop is. Leave it out, or pass
+`true`, when the controller declares `instant: {}`. A wrong key, or a route whose controller declares none, is a compile error:
+
+```text
+Object literal may only specify known properties, but 'titel' does not exist in type '{ title: string; }'. Did you mean to write 'title'?
+```
+
+The layouts render without the page's props and the shared props, as for a guest. The page's `url` is the route's pattern, and there
+is no `locale`.
+
+The helper finds the view in `.marmeon/routes.json`, which lists the page a controller writes out once (`this.view('notes/Show', …)`).
+It fails, with the reason, for a route whose controller computes the view's name, for a view without a `placeholder` and
+for a placeholder that throws. `html` holds the markup as a string, for a check the two assertions do not cover.
+
 ## Actions
 
 `acting()` sends a request as `useAction()` does. An action's answer is its data, a `422` with the field errors, or, for a

@@ -95,6 +95,8 @@ export interface ViteDevOptions {
 export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBody, devHead }: ViteDevOptions): Promise<{
   vite: ViteDevServer;
   renderer: PageRenderer;
+  /** The app's SSR entry's `render`, loaded through Vite's module runner — for what a document does not carry (a placeholder's markup). */
+  ssr: () => Promise<SsrRender>;
 }> {
   // Imported lazily: production servers never load Vite.
   const { createServer, isRunnableDevEnvironment } = await importVite(root);
@@ -129,11 +131,12 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBod
     throw new Error('The Vite SSR environment is not runnable in this process.');
   }
 
+  const loadRender = async () => (await ssr.runner.import<{ render: SsrRender }>(`/${entry}`)).render;
   const renderer = createDocumentRenderer({
     template: async (request) =>
       withDevBody(await vite.transformIndexHtml(new URL(request.url).pathname, await readFile(join(root, 'index.html'), 'utf8')), devBody?.() ?? '', devHead?.() ?? ''),
     // Through Vite's module runner on every request: an edited view renders without a restart.
-    ssr: async () => (await ssr.runner.import<{ render: SsrRender }>(`/${entry}`)).render,
+    ssr: loadRender,
     // Stack traces of SSR errors point into the sources, not into Vite's transformed modules.
     fixStack: (error) => vite.ssrFixStacktrace(error as Error),
     // A page that could not render on the server: into Vite's overlay — to the tabs connected now (`hot.send`, which
@@ -146,5 +149,5 @@ export async function createViteDevRenderer({ root, ssrEntry, httpServer, devBod
     },
   });
 
-  return { vite, renderer };
+  return { vite, renderer, ssr: loadRender };
 }

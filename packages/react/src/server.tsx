@@ -40,15 +40,18 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
   const head = (collector: HeadCollector, nonce?: string) =>
     renderHead(collector, title, (tag) => renderToStaticMarkup(markServerTag(nonce ? withNonce(tag, nonce) : tag)));
 
-  return async (page, { complete = false, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce } = {}) => {
+  return async (page, { complete = false, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce, placeholder } = {}) => {
     // A deep link's layers render with the page, in the shell: the layer stack and their views are loaded first.
     const [Component, catalog] = await Promise.all([
       resolve(page.component),
       loadPageMessages(page, messages),
       ...(page.layers?.length ? [loadLayerStack(), ...page.layers.map((layered) => loadView(resolve, layered.component))] : []),
     ]);
-    if (Component.ssr === false) return { html: '', head: head(createHeadCollector(), nonce) };
-    const whole = complete || Component.ssr === 'complete';
+    if (placeholder !== undefined && !Component.placeholder) {
+      throw new Error(`[${page.component}] has no placeholder: set \`${viewName(page.component)}.placeholder = …\` on the view (see docs/navigation.md#instant-visits).`);
+    }
+    if (Component.ssr === false && placeholder === undefined) return { html: '', head: head(createHeadCollector(), nonce) };
+    const whole = complete || placeholder !== undefined || Component.ssr === 'complete';
     // Deferred groups stream with the page — not when it is sent whole: they are computed once the headers are out.
     const streamedProps = !whole && resolveDeferred ? Object.entries(page.deferredProps ?? {}).flatMap(([group, props]) => (props.length > 0 ? [group] : [])) : [];
     const rendered: PageObject = streamedProps.length > 0 ? { ...page, streamedProps } : page;
@@ -75,6 +78,7 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
         initialCatalog={catalog}
         ssr={ssr}
         layer={layer}
+        initialPlaceholder={placeholder}
       />,
       {
         signal,
@@ -103,6 +107,11 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
 /** A `<script>` or `<style>` of a `<Head>` with the response's CSP nonce; other tags as they are. */
 function withNonce(tag: ReactElement, nonce: string): ReactElement {
   return tag.type === 'script' || tag.type === 'style' ? cloneElement(tag, { nonce } as Record<string, string>) : tag;
+}
+
+/** `user-profile/Show` → `Show`: how the view is usually named in its file. */
+function viewName(component: string): string {
+  return component.slice(component.lastIndexOf('/') + 1);
 }
 
 function lateHead(component: string, title: string | undefined): string {

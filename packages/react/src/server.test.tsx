@@ -142,6 +142,49 @@ describe('layouts on the server', () => {
   });
 });
 
+describe('a view\'s placeholder on the server', () => {
+  function Shell({ children }: { children: ReactNode }) {
+    return <div className="shell">{children}</div>;
+  }
+  function Note({ title, body }: { title: string; body: string }) {
+    return <p>{title}: {body}</p>;
+  }
+  Note.placeholder = ({ title }: { title: string }) => <h1>{title}</h1>;
+  Note.layout = Shell;
+  function Bare() {
+    return <p>bare</p>;
+  }
+  function Throwing() {
+    return <p>page</p>;
+  }
+  Throwing.placeholder = () => {
+    throw new Error('placeholder broke');
+  };
+  const withPlaceholders = resolveModulePages({
+    '/modules/notes/views/Note.tsx': async () => ({ default: Note }),
+    '/modules/notes/views/Bare.tsx': async () => ({ default: Bare }),
+    '/modules/notes/views/Throwing.tsx': async () => ({ default: Throwing }),
+  });
+
+  it('renders the placeholder with what the link passed, inside the view\'s layouts — never the page', async () => {
+    const render = createSsrRenderer(withPlaceholders);
+    const { html } = await renderAll(render, { component: 'notes/Note', props: {}, url: '/notes/1' }, { placeholder: { title: 'Groceries' } });
+    expect(html).toBe('<div class="shell"><h1>Groceries</h1></div>');
+  });
+
+  it('names the view that has no placeholder', async () => {
+    const render = createSsrRenderer(withPlaceholders);
+    await expect(render({ component: 'notes/Bare', props: {}, url: '/' }, { placeholder: {} })).rejects.toThrow(
+      '[notes/Bare] has no placeholder: set `Bare.placeholder = …` on the view (see docs/navigation.md#instant-visits).',
+    );
+  });
+
+  it('rejects with the error of a placeholder that throws', async () => {
+    const render = createSsrRenderer(withPlaceholders);
+    await expect(renderAll(render, { component: 'notes/Throwing', props: {}, url: '/' }, { placeholder: {}, onError: () => {} })).rejects.toThrow('placeholder broke');
+  });
+});
+
 describe('<Pagination>', () => {
   it('links the pages around the current one — keeping the rest of the query string', async () => {
     const { html } = await renderAll(createSsrRenderer(resolve), { component: 'people/List', props: { page: 6, lastPage: 20 }, url: '/people?q=ada&page=6' });
