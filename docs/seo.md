@@ -156,12 +156,17 @@ carries `.sitemap()`. A route of your own on `/sitemap.xml` or `/robots.txt` win
 `robots.txt` as a route. So does a catch-all route that is not localized, such as `/:page{.+}`: it takes both paths and the
 endpoints never answer.
 
+A route under `Route.localized()` appears once per language. Its hook (or the path itself) names the page, not the language, so
+`sitemap()` returns entries without `locale`; the app writes one `<url>` for each locale the app supports (`APP_LOCALES`), in the spelling of its
+URL. Each `<url>` lists all versions as `<xhtml:link rel="alternate" hreflang="…">`, and `x-default` for the address without a
+language, which redirects to the visitor's. A page with two languages and three features is six `<url>` elements with three links
+each; the file declares `xmlns:xhtml` when it holds any. See [Routes under a locale](routing.md#routes-under-a-locale).
+
 The start stops, with code H10, when a marked route:
 
 - is not a `GET` route, is `.internal()`, or belongs to the `api` group;
 - sits behind a middleware that adds `user` (`authenticate()`), or does not say `authorize(everyone)` (a policy or a check of
   your own): a sitemap lists pages anyone can open;
-- is localized with `Route.localized()`: its pages are not listed yet;
 - has parameters but no `sitemap()` method on its controller;
 
 or when `APP_URL` is not set to an `http` or `https` address.
@@ -170,4 +175,4 @@ The endpoints run behind the global middleware only, so a request has no session
 `Cache-Control: public, max-age=300`. The sitemap is made once for requests that arrive together, and kept in the process for
 five minutes; a failing `sitemap()` is reported once, and for 30 seconds the app does not call it again: it serves the last file it made, or
 answers `503` with `Retry-After`. The endpoints send no cookie, whatever a global middleware sets. A
-file lists at most 50 000 URLs (the limit of the format). The rest is left out, and the log says so.
+file lists at most 50 000 URLs (the limit of the format); each language of a localized page counts as one, and an entry whose versions do not all fit is left out whole. The rest is left out, and the log says so.

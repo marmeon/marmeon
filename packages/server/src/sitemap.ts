@@ -19,7 +19,8 @@ export interface SitemapEndpoints {
   robots(): Response;
 }
 
-const hasParameters = (route: RouteDefinition): boolean => /\/:\w/.test(route.path);
+/** Whether the path has parameters of its own: the `/:locale` of a localized route is the framework's, not the hook's. */
+const hasParameters = (route: RouteDefinition): boolean => /\/:\w/.test(route.localized ? route.path.replace(/^\/:locale/, '') : route.path);
 
 const hookOf = (route: RouteDefinition): boolean =>
   typeof (route.action as { prototype?: { sitemap?: unknown } }).prototype?.sitemap === 'function';
@@ -54,8 +55,12 @@ const escapeXml = (text: string): string => text.replace(/[&<>"']/g, (char) => X
 
 type Entries = SitemapEntries<Record<string, string | number>>;
 
-/** The sitemap and robots.txt of `routes`; their URLs begin with `appUrl`. */
-export function createSitemapEndpoints(routes: readonly RouteDefinition[], container: Container, { appUrl, logger, report }: { appUrl: string; logger: Pick<Logger, 'warn'>; report: (error: unknown) => void }): SitemapEndpoints {
+/**
+ * The sitemap and robots.txt of `routes`; their URLs begin with `appUrl`. A localized route is listed once per entry and locale
+ * (`locales`, each in its URL spelling), every `<url>` naming all of its language versions and the address without a locale as
+ * `x-default`.
+ */
+export function createSitemapEndpoints(routes: readonly RouteDefinition[], container: Container, { appUrl, locales = [], logger, report }: { appUrl: string; locales?: readonly string[]; logger: Pick<Logger, 'warn'>; report: (error: unknown) => void }): SitemapEndpoints {
   const clock = container.has(Clock) ? container.make(Clock) : { now: () => Date.now() };
   /** The routes already warned about, once each: the file is made every five minutes, a line each time would be noise. */
   const warned = new Set<RouteDefinition>();
@@ -92,31 +97,44 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
   async function build(): Promise<string> {
     const lines: string[] = [];
     let count = 0;
+    let localizedSeen = false;
     truncated = false;
     collect: for (const route of routes) {
       const name = route.routeName ?? route.path;
       for await (const entry of entriesOf(route)) {
-        let path: string;
+        // A localized route's hook names the page, not its language: one `<url>` for each of the app's locales.
+        const versions = route.localized ? locales : [undefined];
+        let paths: string[];
+        let unprefixed: string | undefined;
         try {
-          path = fillPath(name, route.path, entry.params as Record<string, string | number>).path;
-          // Matched as the server matches a request: decoded, so `..%2Fadmin` (a segment with a slash) and a value the
-          // constraint refuses are no page.
-          if (!matchesPath(route.path, decodeURIComponent(path))) throw new Error('the path does not match the route');
+          paths = versions.map((locale) => {
+            const path = fillPath(name, route.path, { ...(entry.params as Record<string, string | number>), ...(locale === undefined ? {} : { locale }) }).path;
+            // Matched as the server matches a request: decoded, so `..%2Fadmin` (a segment with a slash) and a value the
+            // constraint refuses are no page.
+            if (!matchesPath(route.path, decodeURIComponent(path))) throw new Error('the path does not match the route');
+            return path;
+          });
+          if (route.localized) unprefixed = fillPath(name, route.path.replace(/^\/:locale/, '') || '/', entry.params as Record<string, string | number>).path;
         } catch {
           warnOnce(route, `The sitemap entries of ${route.methods.join('|')} ${route.path} include parameters that name no page of the route (a missing one, a dot segment, one its constraint refuses); they are left out.`);
           continue;
         }
-        if (count === SITEMAP_LIMIT_URLS) {
+        // The limit counts URLs, each locale one: an entry that does not fit whole is left out, so no `<url>` names a version that is missing.
+        if (count + paths.length > SITEMAP_LIMIT_URLS) {
           if (!truncated) logger.warn(withCode('H10', `The sitemap lists ${SITEMAP_LIMIT_URLS} URLs, the most one file may hold: the rest is left out. See docs/seo.md#sitemap-and-robotstxt.`));
           truncated = true;
           break collect;
         }
         const lastmod = day(entry.lastModified);
-        lines.push(`  <url><loc>${escapeXml(new URL(path, appUrl).href)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}</url>`);
-        count++;
+        const alternates = unprefixed === undefined ? '' : [...versions.map((locale, index) => [locale!, paths[index]!] as const), ['x-default', unprefixed] as const].map(([language, path]) => `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`).join('');
+        if (alternates) localizedSeen = true;
+        for (const path of paths) {
+          lines.push(`  <url><loc>${escapeXml(new URL(path, appUrl).href)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}${alternates}</url>`);
+        }
+        count += paths.length;
       }
     }
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${lines.join('\n')}${lines.length > 0 ? '\n' : ''}</urlset>\n`;
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${localizedSeen ? ' xmlns:xhtml="http://www.w3.org/1999/xhtml"' : ''}>\n${lines.join('\n')}${lines.length > 0 ? '\n' : ''}</urlset>\n`;
   }
 
   // Requests that come while the file is made share the run, and for five minutes afterwards its result. A run that fails is

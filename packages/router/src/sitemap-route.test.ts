@@ -72,8 +72,9 @@ describe('.sitemap()', () => {
     expect(() => new Router().load(defineRoutes((Route) => void Route.get('/open', () => 'x').sitemap()))).toThrow('asks who may call it');
   });
 
-  it('refuses a localized route until its languages are listed', () => {
-    expect(() => load((Route) => void Route.localized().get('/about', () => 'x').sitemap())).toThrow('localized');
+  it('accepts a localized route, whose `/:locale` is no parameter of its controller', () => {
+    expect(() => load((Route) => void Route.localized().get('/about', () => 'x').sitemap())).not.toThrow();
+    expect(() => load((Route) => void Route.localized().get('/posts/:slug', () => 'x').sitemap())).toThrow('sitemap() method');
   });
 
   it('masks a secret segment in the path of the message', () => {
