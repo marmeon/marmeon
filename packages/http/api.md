@@ -105,7 +105,7 @@ export interface CloseLayerOptions {
 export declare class CloseLayerResult extends RedirectResult {
     readonly close: LayerClose;
     constructor({ layers, reload }?: CloseLayerOptions);
-    toResponse(request: Request, routes: RouteLookup, flasher?: Flasher): Response;
+    toResponse(request: Request, routes: RouteLookup, flasher?: Flasher, locale?: string): Response;
 }
 // ContentSecurityPolicyOptions
 export interface ContentSecurityPolicyOptions extends CspDirectives {
