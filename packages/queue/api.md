@@ -118,7 +118,7 @@ export interface JobMiddlewareContext<P = unknown> {
     readonly payload: P;
     readonly job: JobContext;
     readonly timeout: number;
-    readonly retryAfter: number | undefined;
+    readonly retryAfterSeconds: number | undefined;
     cache(): Promise<Cache>;
 }
 // JobOnceBusyError
@@ -262,7 +262,7 @@ export type QueueConfig = ConfigOf<typeof QueueConfig>;
 export interface QueueConnection {
     readonly driver: QueueDriver;
     readonly queue: string;
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
 }
 // QueueConnectionOptions
 export type QueueConnectionOptions = {
@@ -272,11 +272,11 @@ export type QueueConnectionOptions = {
     readonly driver: 'database' | 'redis';
     readonly queue: string;
     readonly connection: string;
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
 } | {
     readonly driver: 'custom';
     readonly queue: string;
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
 };
 // QueueConnections
 export declare class QueueConnections {
@@ -681,7 +681,7 @@ export interface JobMiddlewareContext<P = unknown> {
     readonly payload: P;
     readonly job: JobContext;
     readonly timeout: number;
-    readonly retryAfter: number | undefined;
+    readonly retryAfterSeconds: number | undefined;
     cache(): Promise<Cache>;
 }
 // JobPayload
