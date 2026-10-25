@@ -487,7 +487,7 @@ export class Router {
 
 /**
  * Refuses a route marked with `.sitemap()` that cannot be a page anyone opens: a write, a route the browser never learns, an API
- * route, one behind `user`, a localized one, or one with parameters whose controller does not say which are pages.
+ * route, one behind `user`, or one with parameters whose controller does not say which are pages.
  */
 function checkSitemapRoute(route: RouteDefinition): void {
   const at = `${route.methods.join('|')} ${showPath(route)}`;
@@ -501,8 +501,8 @@ function checkSitemapRoute(route: RouteDefinition): void {
   // Everyone, and said so: a check that asks who the visitor is (a policy, a role, a login middleware without `adds`) is no public page.
   const checks = routeAccess(route);
   if (checks.length === 0 || !checks.every(isEveryone)) refuse('a sitemap lists pages anyone can open, and this route asks who may call it (authorize(everyone) says that anyone may)');
-  if (route.localized) refuse('the pages of a localized route are not listed yet: leave sitemap() off, or serve the route without Route.localized()');
-  if (/\/:\w/.test(route.path) && !(isControllerClass(route.action) && typeof route.action.prototype.sitemap === 'function')) {
+  // The `/:locale` of a localized route is not one of its parameters: the sitemap fills it for every language.
+  if (/\/:\w/.test(route.localized ? route.path.replace(/^\/:locale/, '') : route.path) && !(isControllerClass(route.action) && typeof route.action.prototype.sitemap === 'function')) {
     refuse('the path has parameters, so its controller needs a sitemap() method that returns the entries (a closure cannot)');
   }
 }

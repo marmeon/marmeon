@@ -14,9 +14,32 @@ beforeEach(async () => {
 });
 
 describe('the sitemap', () => {
-  it('has none while no route of the app is listed in it: the localized pages are not', async () => {
-    await app.get('/sitemap.xml').assertNotFound();
-    await app.get('/robots.txt').assertNotFound();
+  it('lists the about page and every feature in each language, to a guest without a cookie', async () => {
+    const response = await app.get('/sitemap.xml').assertOk();
+    expect(response.headers.get('cache-control')).toBe('public, max-age=300');
+    expect(response.headers.has('set-cookie')).toBe(false);
+    const locs = [...response.body.matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]);
+    const features = ['typed-routes', 'instant-visits', 'server-rendering', 'translations'];
+    expect(locs).toEqual([
+      'http://localhost/en/about',
+      'http://localhost/de/about',
+      ...features.flatMap((feature) => [`http://localhost/en/about/features/${feature}`, `http://localhost/de/about/features/${feature}`]),
+    ]);
+    expect(response.body).toContain('<loc>http://localhost/en/about/features/typed-routes</loc><lastmod>2026-03-02</lastmod>');
+  });
+
+  it('names every language of a page in its entries, and the address without one as x-default', async () => {
+    const response = await app.get('/sitemap.xml').assertOk();
+    expect(response.body).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
+    const german = response.body.split('<url>').find((entry) => entry.startsWith('<loc>http://localhost/de/about</loc>'))!;
+    expect(german).toContain('<xhtml:link rel="alternate" hreflang="en" href="http://localhost/en/about"/>');
+    expect(german).toContain('<xhtml:link rel="alternate" hreflang="de" href="http://localhost/de/about"/>');
+    expect(german).toContain('<xhtml:link rel="alternate" hreflang="x-default" href="http://localhost/about"/>');
+  });
+
+  it('names the sitemap in robots.txt', async () => {
+    const response = await app.get('/robots.txt').assertOk();
+    expect(response.body).toBe('User-agent: *\nDisallow: /_marmeon/\n\nSitemap: http://localhost/sitemap.xml\n');
   });
 });
 

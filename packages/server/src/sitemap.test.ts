@@ -234,6 +234,109 @@ describe('/sitemap.xml', () => {
     }
   });
 
+  describe('a localized route', () => {
+    const urlLocales: UrlLocales = { supported: ['en', 'de'], preferred: async () => 'en' };
+    const features = openRoutes((Route) => {
+      Route.localized().get('/about', AboutController).name('about').sitemap();
+      Route.localized().get('/features/:slug', PostController).name('features.show').sitemap();
+      Route.get('/plain', () => 'plain').name('plain').sitemap();
+    });
+    const links = (xml: string): string[] => [...xml.matchAll(/<xhtml:link rel="alternate" hreflang="([^"]+)" href="([^"]+)"\/>/g)].map((match) => `${match[1]} ${match[2]}`);
+
+    it('lists every locale of every entry, each `<url>` naming all versions and x-default without a prefix', async () => {
+      state.slugs = [{ params: { slug: 'a' } }, { params: { slug: 'b' } }, { params: { slug: 'c' } }];
+      const { application, create } = await boot({ routes: features, urlLocales });
+      try {
+        const xml = await (await create().request('/sitemap.xml')).text();
+        expect(xml).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
+        const urls = xml.split('<url>').slice(1);
+        expect(locs(xml)).toEqual([
+          `${url}/en/about`,
+          `${url}/de/about`,
+          `${url}/en/features/a`,
+          `${url}/de/features/a`,
+          `${url}/en/features/b`,
+          `${url}/de/features/b`,
+          `${url}/en/features/c`,
+          `${url}/de/features/c`,
+          `${url}/plain`,
+        ]);
+        // Three entries in two locales: six `<url>` with three links each.
+        const pages = urls.filter((entry) => entry.includes('/features/'));
+        expect(pages).toHaveLength(6);
+        for (const entry of pages) expect(entry.match(/<xhtml:link /g)).toHaveLength(3);
+        expect(links(urls[2]!)).toEqual([`en ${url}/en/features/a`, `de ${url}/de/features/a`, `x-default ${url}/features/a`]);
+        expect(links(urls[3]!)).toEqual(links(urls[2]!));
+        expect(links(urls[0]!)).toEqual([`en ${url}/en/about`, `de ${url}/de/about`, `x-default ${url}/about`]);
+        // A route that is not localized is as it was.
+        expect(urls.at(-1)).toBe(`<loc>${url}/plain</loc></url>\n</urlset>\n`);
+      } finally {
+        await application.shutdown();
+      }
+    });
+
+    it('escapes the parameters in every address and attribute, and leaves out an entry that names no page', async () => {
+      state.slugs = [{ params: { slug: "a&b'c" } }, { params: { slug: '..' } }];
+      const { application, create, logger } = await boot({ routes: features, urlLocales });
+      try {
+        const xml = await (await create().request('/sitemap.xml')).text();
+        expect(xml).toContain(`<xhtml:link rel="alternate" hreflang="x-default" href="${url}/features/a%26b&apos;c"/>`);
+        expect(xml).not.toMatch(/href="[^"]*[<>']/);
+        expect(xml).not.toContain('/features/..');
+        expect(logger.warnings).toHaveLength(1);
+      } finally {
+        await application.shutdown();
+      }
+    });
+
+    it('writes APP_URL into every link, whatever Host says', async () => {
+      state.slugs = [];
+      const { application, create } = await boot({ routes: features, urlLocales, env: { APP_URL: url, SERVER_TRUSTED_PROXIES: '*' } });
+      try {
+        const xml = await (await create().request('/sitemap.xml', { headers: { host: 'evil.example', 'x-forwarded-host': 'evil.example' } })).text();
+        expect(xml).not.toContain('evil.example');
+        expect(links(xml).every((link) => link.split(' ')[1]!.startsWith(`${url}/`))).toBe(true);
+      } finally {
+        await application.shutdown();
+      }
+    });
+
+    it('lets no hook choose the locale: a `locale` parameter of an entry is overwritten', async () => {
+      state.slugs = [{ params: { slug: 'a', locale: '//evil.example' } }, { params: { slug: 'a', locale: 'fr' } }] as unknown as typeof state.slugs;
+      const { application, create } = await boot({ routes: features, urlLocales });
+      try {
+        const xml = await (await create().request('/sitemap.xml')).text();
+        const feature = xml.split('<url>').filter((entry) => entry.includes('/features/'));
+        expect(locs(feature.join('')).filter((loc, index, all) => all.indexOf(loc) === index)).toEqual([`${url}/en/features/a`, `${url}/de/features/a`]);
+        expect(links(feature.join('')).map((link) => link.split(' ')[0])).toEqual(['en', 'de', 'x-default', 'en', 'de', 'x-default', 'en', 'de', 'x-default', 'en', 'de', 'x-default']);
+        expect(links(feature[0]!)).toContain(`x-default ${url}/features/a`);
+        expect(xml).not.toContain('evil');
+        expect(xml).not.toContain('fr');
+        expect(xml.replace('<?xml version="1.0" encoding="UTF-8"?>', '')).not.toContain('?');
+      } finally {
+        await application.shutdown();
+      }
+    });
+
+    it('counts every locale against the limit and leaves out an entry that does not fit whole', async () => {
+      state.slugs = Array.from({ length: SITEMAP_LIMIT_URLS }, (_, index) => ({ params: { slug: `p${index}` } }));
+      const routes = openRoutes((Route) => {
+        Route.get('/plain', () => 'plain').name('plain').sitemap();
+        Route.localized().get('/features/:slug', PostController).sitemap();
+      });
+      const { application, create, logger } = await boot({ routes, urlLocales });
+      try {
+        const xml = await (await create().request('/sitemap.xml')).text();
+        // One plain URL and 24 999 entries of two locales fit; the next entry would make 50 001, so neither of its versions is listed.
+        expect(locs(xml)).toHaveLength(SITEMAP_LIMIT_URLS - 1);
+        expect(locs(xml).at(-1)).toBe(`${url}/de/features/p24998`);
+        expect(logger.warnings).toHaveLength(1);
+      } finally {
+        await application.shutdown();
+      }
+    });
+  });
+
   it('cuts the file at 50 000 URLs and warns once', async () => {
     state.slugs = Array.from({ length: SITEMAP_LIMIT_URLS + 1 }, (_, index) => ({ params: { slug: `p${index}` } }));
     const { application, create, logger, clock } = await boot({ routes: openRoutes((Route) => void Route.get('/posts/:slug', PostController).sitemap()) });

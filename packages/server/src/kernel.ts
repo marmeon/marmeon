@@ -848,7 +848,7 @@ export function createHttpKernel(
   // After every route of the app (one on the same path wins), before the localized routes' versions without a locale: such a
   // route (`/:page`) would otherwise take `/sitemap.xml`. Only when a route asks for it, and behind the global middleware alone.
   if (listed.length > 0) {
-    const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
+    const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, locales: urlLocales?.supported, logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
     const answer = (answerWith: () => Response | Promise<Response>) => (c: Context) =>
       handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) => {
         // A public answer carries no cookie, whatever a global middleware queued: a shared cache would hand it to everyone.
