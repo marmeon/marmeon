@@ -24,6 +24,7 @@
     "marmeon": "workspace:*",
     "@marmeon/core": "workspace:*",
     "@marmeon/database": "workspace:*",
+    "@marmeon/encryption": "workspace:*",
     "@marmeon/http": "workspace:*",
     "@marmeon/i18n": "workspace:*",
     "@marmeon/log": "workspace:*",

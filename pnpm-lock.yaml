@@ -211,6 +211,9 @@ importers:
       '@marmeon/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@marmeon/encryption':
+        specifier: workspace:*
+        version: link:../../packages/encryption
       '@marmeon/http':
         specifier: workspace:*
         version: link:../../packages/http

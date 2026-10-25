@@ -24,6 +24,7 @@ Every package has the same version as every other: upgrade them together. The [r
 | `@marmeon/http` | Controllers, pages and their props, redirects, signed URLs, cookies, and the browser's side of every visit. | [Responses](responses.md), [pages](pages.md), [URL generation](urls.md) |
 | `@marmeon/server` | The HTTP server, server rendering, health checks and the graceful stop. | [Request lifecycle](lifecycle.md), [health checks](health.md) |
 | `@marmeon/session` | Sessions with their drivers, flash data and CSRF protection. | [Session](session.md), [CSRF protection](csrf.md) |
+| `@marmeon/encryption` | Encryption with `APP_KEY` and key rotation, behind every cookie and session. | [Encryption](encryption.md) |
 | `@marmeon/validation` | The validation rules, with messages in the request's language. | [Validation](validation.md) |
 | `@marmeon/i18n` | Translations, the request's language and formatting. | [Localization](localization.md) |
 | `@marmeon/database` | Connections, migrations, table types, repositories, factories, transactions and pagination. | [Database](database.md), [repositories](queries.md), [migrations](migrations.md) |
@@ -42,9 +43,6 @@ As dev dependencies, a new app has three more:
 | `@marmeon/vite` | The Vite plugin: the entries, the injection lists and the check that keeps server code out of the browser. | [Asset bundling](vite.md) |
 | `@marmeon/testing` | `createTestApp()`, requests and assertions, the database refresh and the fakes. | [Testing](testing.md), [fakes](fakes.md) |
 | `@marmeon/devtools` | What the app did while you develop: requests, queries, jobs and mails. Development only. | [Devtools](devtools.md) |
-
-`@marmeon/encryption` comes along as a dependency of `@marmeon/http` and `@marmeon/session`: it encrypts with `APP_KEY` and
-rotates keys. See [encryption](encryption.md).
 
 ## Packages you add
 
