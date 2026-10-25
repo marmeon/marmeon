@@ -280,7 +280,7 @@ server {
 	server_name example.com;
 	ssl_certificate ${systemd ? '/etc/letsencrypt/live/example.com/fullchain.pem' : '/etc/nginx/certs/fullchain.pem'};
 	ssl_certificate_key ${systemd ? '/etc/letsencrypt/live/example.com/privkey.pem' : '/etc/nginx/certs/privkey.pem'};
-	# SERVER_MAX_BODY_SIZE of the app (default 8m).
+	# SERVER_MAX_BODY_MB of the app (default 8).
 	client_max_body_size 8m;
 	# No gzip for documents: a compressed page that carries a secret (the CSRF token) is what BREACH reads. The assets arrive
 	# compressed already (marmeon build writes .br/.gz).

@@ -100,7 +100,7 @@ describe('ctx.input()', () => {
 
   it('rejects bodies over the limit — by header and by actually counting', async () => {
     const big = 'x'.repeat(2048);
-    const byHeader = await rejection(createRequestState(form(`a=${big}`), { maxBodySize: 1024 }).input());
+    const byHeader = await rejection(createRequestState(form(`a=${big}`), { maxBodyBytes: 1024 }).input());
     expect(byHeader.status).toBe(413);
 
     // A streamed body without Content-Length is counted while reading.
@@ -117,7 +117,7 @@ describe('ctx.input()', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
     } as RequestInit);
     expect(streamed.headers.get('content-length')).toBeNull();
-    expect((await rejection(createRequestState(streamed, { maxBodySize: 1024 }).input())).status).toBe(413);
+    expect((await rejection(createRequestState(streamed, { maxBodyBytes: 1024 }).input())).status).toBe(413);
   });
 
   it('answers malformed or non-object JSON with 400', async () => {

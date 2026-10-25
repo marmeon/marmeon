@@ -117,7 +117,21 @@ describe('envNameProblems', () => {
     }
     for (const unit of ['MILLISECONDS', 'SECONDS', 'MINUTES', 'HOURS', 'DAYS']) expect(check([variable(`AUTH_FOO_TIMEOUT_${unit}`)])).toEqual([]);
     expect(check([variable('AUTH_RETRY_ATTEMPTS_PER_MINUTE')])).toEqual([]);
-    expect(check([variable('AUTH_PAGE_SIZE'), variable('AUTH_MESSAGE')])).toEqual([]);
+    expect(check([variable('AUTH_PAGE_LIMIT'), variable('AUTH_MESSAGE')])).toEqual([]);
+  });
+
+  it('names a size without its unit, and accepts _KB and _MB with a whole number', () => {
+    for (const name of ['SERVER_MAX_BODY_SIZE', 'HASH_ARGON_MEMORY', 'UPLOADS_MAX_BYTES']) {
+      expect(check([variable(name)]), name).toEqual([expect.stringContaining('it names a size, so it ends with its unit (_KB, _MB')]);
+    }
+    expect(check([variable('SERVER_MAX_BODY_MB', '`8`'), variable('HASH_ARGON_MEMORY_KB', '`19456`'), variable('UPLOADS_MAX_MB', 'required'), variable('UPLOADS_CAP_MB', 'optional')])).toEqual([]);
+    expect(check([variable('SERVER_MAX_BODY_MB', '`"8m"`')])).toEqual([expect.stringContaining('it is a whole number')]);
+    expect(check([variable('SERVER_MAX_BODY_MB', '`1.5`')])).toEqual([expect.stringContaining('it is a whole number')]);
+  });
+
+  it('lets the factor of scrypt stay a _SIZE, and takes the size as its own kind', () => {
+    expect(check([variable('HASH_SCRYPT_BLOCK_SIZE', '`8`')])).toEqual([]);
+    expect(kindOf(variable('SERVER_MAX_BODY_MB', '`8`'))).toBe('size');
   });
 
   it('finds a duration by the start of a word, and takes TIME as no duration', () => {

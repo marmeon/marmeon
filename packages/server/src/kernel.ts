@@ -96,8 +96,8 @@ export interface KernelOptions {
    * `ServerConfig.debug` (`NODE_ENV=development`, never "not production"); off without a `ServerConfig`.
    */
   debug?: boolean;
-  /** Largest accepted request body in bytes. Defaults to `ServerConfig.maxBodySize` (env `SERVER_MAX_BODY_SIZE`), else 8 MiB. */
-  maxBodySize?: number;
+  /** Largest accepted request body in bytes. Defaults to `ServerConfig.maxBodyBytes` (env `SERVER_MAX_BODY_MB`), else 8 MiB. */
+  maxBodyBytes?: number;
   /** Asset version for 409 reloads. Defaults to `SERVER_ASSET_VERSION`, else the renderer's (the build's), else none. */
   version?: string | null;
   /** Server rendering (default: `ServerConfig.ssr`, env `SERVER_SSR_ENABLED`, on). Off: every page goes out without markup, the browser renders it. */
@@ -221,7 +221,7 @@ export function createHttpKernel(
     renderer,
     clientDir,
     debug = container.has(ServerConfig) ? container.make(ServerConfig).debug : false,
-    maxBodySize = container.has(ServerConfig) ? container.make(ServerConfig).maxBodySize : undefined,
+    maxBodyBytes = container.has(ServerConfig) ? container.make(ServerConfig).maxBodyBytes : undefined,
     version = (container.has(ServerConfig) ? container.make(ServerConfig).assetVersion : undefined) ?? renderer?.version ?? null,
     ssr = container.has(ServerConfig) ? container.make(ServerConfig).ssr : true,
     strictReadOnly = !environment.isProtected(),
@@ -658,7 +658,7 @@ export function createHttpKernel(
     // The response's CSP nonce: made only when a document needs it — the same for the header, React and the template.
     const nonce = new RequestNonce();
     scope.instance(RequestNonce, nonce);
-    const state = createRequestState(request, { maxBodySize, ip, nonce, ...(cookieDefaults ? { cookies: cookieDefaults } : {}) });
+    const state = createRequestState(request, { maxBodyBytes, ip, nonce, ...(cookieDefaults ? { cookies: cookieDefaults } : {}) });
     if (debug || requests.hasSubscribers) states.set(request, state);
     scope.instance(CookieJar, state.cookies); // injectable per request
     scope.instance(IncomingRequest, request); // which tab sent it (`x-marmeon-connection`), for the live Broadcaster

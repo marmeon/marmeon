@@ -93,17 +93,17 @@ export const HashConfig = defineConfig('hash', {
     /** `argon2id` (default, OWASP's first choice) or `scrypt` (where Node lacks argon2). Hashes of both are verified either way. */
     HASH_DRIVER: env.in(['argon2id', 'scrypt']).default(DEFAULT_HASHER_OPTIONS.driver),
     /** argon2id: KiB of memory per hash (OWASP: 19456). Tests set it low in `.env.test`. */
-    HASH_ARGON_MEMORY: whole(DEFAULT_HASHER_OPTIONS.argon2.memory, HASH_LIMITS.argon2.memory),
+    HASH_ARGON_MEMORY_KB: whole(DEFAULT_HASHER_OPTIONS.argon2.memory, HASH_LIMITS.argon2.memory),
     HASH_ARGON_TIME: whole(DEFAULT_HASHER_OPTIONS.argon2.time, HASH_LIMITS.argon2.time),
     HASH_ARGON_PARALLELISM: whole(DEFAULT_HASHER_OPTIONS.argon2.parallelism, HASH_LIMITS.argon2.parallelism),
     /** scrypt: log2 of N (OWASP: 17). */
     HASH_SCRYPT_COST: whole(DEFAULT_HASHER_OPTIONS.scrypt.cost, HASH_LIMITS.scrypt.cost),
     HASH_SCRYPT_BLOCK_SIZE: whole(DEFAULT_HASHER_OPTIONS.scrypt.blockSize, HASH_LIMITS.scrypt.blockSize),
     HASH_SCRYPT_PARALLELISM: whole(DEFAULT_HASHER_OPTIONS.scrypt.parallelism, HASH_LIMITS.scrypt.parallelism),
-  }),
+  }).renamed('HASH_ARGON_MEMORY', 'HASH_ARGON_MEMORY_KB'),
   resolve: (e) => ({
     driver: e.HASH_DRIVER,
-    argon2: { memory: e.HASH_ARGON_MEMORY, time: e.HASH_ARGON_TIME, parallelism: e.HASH_ARGON_PARALLELISM },
+    argon2: { memory: e.HASH_ARGON_MEMORY_KB, time: e.HASH_ARGON_TIME, parallelism: e.HASH_ARGON_PARALLELISM },
     scrypt: { cost: e.HASH_SCRYPT_COST, blockSize: e.HASH_SCRYPT_BLOCK_SIZE, parallelism: e.HASH_SCRYPT_PARALLELISM },
   }),
 });

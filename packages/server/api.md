@@ -29,7 +29,7 @@ export interface KernelOptions {
     renderer?: PageRenderer;
     clientDir?: string;
     debug?: boolean;
-    maxBodySize?: number;
+    maxBodyBytes?: number;
     version?: string | null;
     ssr?: boolean;
     strictReadOnly?: boolean;
@@ -81,7 +81,7 @@ export interface ServeOptions {
 export declare const ServerConfig: import("@marmeon/core").ConfigDefinition<{
     port: number;
     host: string;
-    maxBodySize: number;
+    maxBodyBytes: number;
     assetVersion: string | undefined;
     appUrl: string | undefined;
     trustedProxies: string[];
@@ -99,7 +99,7 @@ export declare class ServerServiceProvider implements ServiceProvider {
     static config: import("@marmeon/core").ConfigDefinition<{
         port: number;
         host: string;
-        maxBodySize: number;
+        maxBodyBytes: number;
         assetVersion: string | undefined;
         appUrl: string | undefined;
         trustedProxies: string[];
@@ -119,7 +119,7 @@ export declare class ViteSetupError extends Error {
     name: string;
 }
 // createHttpKernel
-export declare function createHttpKernel(application: Application, { container, renderer, clientDir, debug, maxBodySize, version, ssr, strictReadOnly, islandTimeout, health, }?: KernelOptions): HttpKernel;
+export declare function createHttpKernel(application: Application, { container, renderer, clientDir, debug, maxBodyBytes, version, ssr, strictReadOnly, islandTimeout, health, }?: KernelOptions): HttpKernel;
 // startServer
 export declare function startServer({ app, ssrEntry, port, host, mode: chosenMode, drainTimeoutMs, shutdownDelayMs, keepAliveTimeoutMs, }: ServeOptions): Promise<RunningServer>;
 ```
@@ -138,7 +138,7 @@ export declare function startServer({ app, ssrEntry, port, host, mode: chosenMod
 // KEEP_ALIVE_TIMEOUT
 `KEEP_ALIVE_TIMEOUT` → `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` (renamed)
 // MAX_BODY_SIZE
-`MAX_BODY_SIZE` → `SERVER_MAX_BODY_SIZE` (renamed)
+`MAX_BODY_SIZE` → `SERVER_MAX_BODY_MB` (renamed)
 // NODE_ENV
 `NODE_ENV` — optional
 // PORT
@@ -149,8 +149,10 @@ export declare function startServer({ app, ssrEntry, port, host, mode: chosenMod
 `SERVER_HEALTH_PATH` = `"/up"`
 // SERVER_KEEP_ALIVE_TIMEOUT_SECONDS
 `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` = `65`
+// SERVER_MAX_BODY_MB
+`SERVER_MAX_BODY_MB` = `8`
 // SERVER_MAX_BODY_SIZE
-`SERVER_MAX_BODY_SIZE` = `"8m"`
+`SERVER_MAX_BODY_SIZE` → `SERVER_MAX_BODY_MB` (renamed)
 // SERVER_SHUTDOWN_DELAY_SECONDS
 `SERVER_SHUTDOWN_DELAY_SECONDS` = `0`
 // SERVER_SSR_ENABLED

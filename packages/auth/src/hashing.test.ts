@@ -283,8 +283,17 @@ describe('AuthServiceProvider', () => {
     expect(await (await boot({})).container.make(Hasher).make('secret')).toMatch(/^\$argon2id\$v=19\$m=19456,t=2,p=1\$/);
   });
 
+  it('stops the start when HASH_ARGON_MEMORY is still set, naming HASH_ARGON_MEMORY_KB', async () => {
+    await expect(boot({ HASH_ARGON_MEMORY: '19456' })).rejects.toThrow('HASH_ARGON_MEMORY was renamed HASH_ARGON_MEMORY_KB');
+  });
+
+  it('reads HASH_ARGON_MEMORY_KB in KiB, as before', async () => {
+    const hash = await (await boot({ HASH_ARGON_MEMORY_KB: '19456' })).container.make(Hasher).make('secret');
+    expect(hash).toMatch(/^\$argon2id\$v=19\$m=19456,t=2,p=1\$/);
+  });
+
   it('refuses costs outside the limits at boot', async () => {
-    await expect(boot({ HASH_ARGON_MEMORY: '64' })).rejects.toThrow(/hash: HASH_ARGON_MEMORY/);
+    await expect(boot({ HASH_ARGON_MEMORY_KB: '64' })).rejects.toThrow(/hash: HASH_ARGON_MEMORY_KB/);
     await expect(boot({ HASH_DRIVER: 'bcrypt' })).rejects.toThrow(/hash: HASH_DRIVER/);
   });
 });

@@ -19,7 +19,7 @@ export { CookieJar, parseCookies, serializeCookie } from './cookies.ts';
 export type { CookieCodec, CookieDefaults, CookieOptions } from './cookies.ts';
 export { createNonce, RequestNonce } from './nonce.ts';
 export { editableResponse, ownResponse } from './response.ts';
-export { DEFAULT_MAX_BODY_SIZE, addVary, expectsJson, EXPECTS_JSON_VARY } from './request.ts';
+export { addVary, expectsJson, EXPECTS_JSON_VARY } from './request.ts';
 export type { Input, RequestState, RequestStateOptions } from './request.ts';
 export { attributeName, defineRequest, messageOf, NOT_LIVE, nothingToValidate, parseQuery, queryInput, translatable, ValidationError } from './request-definition.ts';
 export { isLiveValidation, issueOfFields, liveValidationFields } from './live-validation.ts';

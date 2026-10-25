@@ -129,7 +129,7 @@ async function boot(options: Options = {}) {
     modules: [defineModule({ name: 'auth-email-change-test', routes, migrations: new URL('./__fixtures__/migrations/', import.meta.url), listeners: [listen(EmailChanged, RecordEvent)] })],
   }, {
     env: {
-      APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1', CACHE_DRIVER: 'memory',
+      APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', HASH_ARGON_MEMORY_KB: '1024', HASH_ARGON_TIME: '1', CACHE_DRIVER: 'memory',
       AUTH_PRIVATE_REGISTRATION: options.privateRegistration === false ? 'false' : 'true',
       AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: String(options.throttle ?? 0),
     },

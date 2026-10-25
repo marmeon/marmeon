@@ -325,7 +325,7 @@ describe('createHttpKernel — requests & responses', async () => {
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
     modules: [defineModule({ name: 'drafts', routes })],
-  }, { env: { APP_KEY: generateKey(), SERVER_MAX_BODY_SIZE: '1k' } });
+  }, { env: { APP_KEY: generateKey(), SERVER_MAX_BODY_MB: '1' } });
   const app = createHttpKernel(application);
   const form = (fields: Record<string, string>) => ({ method: 'POST', body: new URLSearchParams(fields) });
 
@@ -405,9 +405,24 @@ describe('createHttpKernel — requests & responses', async () => {
     expect(response.headers.getSetCookie()).toEqual([expect.stringMatching(/^draft=[\w-]+; Path=\/; HttpOnly; SameSite=Lax$/)]);
   });
 
-  it('enforces the body limit from the server config (SERVER_MAX_BODY_SIZE)', async () => {
-    expect(application.container.make(ServerConfig).maxBodySize).toBe(1024);
-    const response = await app.request('/drafts/1', {
+  it('enforces the body limit from the server config (SERVER_MAX_BODY_MB)', async () => {
+    expect(application.container.make(ServerConfig).maxBodyBytes).toBe(1024 ** 2);
+    const put = (text: string) =>
+      app.request('/drafts/1', {
+        method: 'PUT',
+        body: JSON.stringify({ text }),
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+      });
+    const wrapper = JSON.stringify({ text: '' }).length;
+    expect((await put('x'.repeat(1024 ** 2 - wrapper))).status).toBe(200);
+    const response = await put('x'.repeat(1024 ** 2 - wrapper + 1));
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ message: 'The request body exceeds 1048576 bytes.' });
+  });
+
+  it('takes a limit under 1 MB from createHttpKernel({ maxBodyBytes }), which wins over the config', async () => {
+    const small = createHttpKernel(application, { maxBodyBytes: 1024 });
+    const response = await small.request('/drafts/1', {
       method: 'PUT',
       body: JSON.stringify({ text: 'x'.repeat(2000) }),
       headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -422,10 +437,35 @@ describe('createHttpKernel — requests & responses', async () => {
     ).rejects.toThrow('The web middleware group needs the Encrypter');
   });
 
-  it('rejects an invalid SERVER_MAX_BODY_SIZE at boot', async () => {
+  it.each(['8m', 'lots', '1.5', '0', '-1', '1048576'])('rejects SERVER_MAX_BODY_MB=%s at boot', async (value) => {
     await expect(
-      createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { SERVER_MAX_BODY_SIZE: 'lots' } }),
-    ).rejects.toThrow('server: SERVER_MAX_BODY_SIZE — Expected bytes or a size like 512k, 8m or 1g');
+      createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { SERVER_MAX_BODY_MB: value } }),
+    ).rejects.toThrow(/server: SERVER_MAX_BODY_MB — Expected (a whole number of MB|at least 1 MB|at most 1024 MB)/);
+  });
+});
+
+describe('createHttpKernel — the default body limit', async () => {
+  const routes = openRoutes((Route) => {
+    Route.put('/drafts/:id', (ctx) => ctx.input());
+  });
+  const application = await createApplication({
+    root: import.meta.dirname,
+    discover: false,
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
+    modules: [defineModule({ name: 'drafts', routes })],
+  }, { env: { APP_KEY: generateKey() } });
+  const app = createHttpKernel(application);
+  const put = (bytes: number) =>
+    app.request('/drafts/1', {
+      method: 'PUT',
+      body: JSON.stringify({ text: 'x'.repeat(bytes - JSON.stringify({ text: '' }).length) }),
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+    });
+
+  it('is 8 MiB: a body of exactly that passes, one byte more is a 413', async () => {
+    expect(application.container.make(ServerConfig).maxBodyBytes).toBe(8 * 1024 ** 2);
+    expect((await put(8 * 1024 ** 2)).status).toBe(200);
+    expect((await put(8 * 1024 ** 2 + 1)).status).toBe(413);
   });
 });
 

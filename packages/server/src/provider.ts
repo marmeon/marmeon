@@ -4,12 +4,7 @@ import { DevRequestRecorder, type RequestRecorder } from './error-page/recorder-
 import { isProxyEntry } from './proxies.ts';
 import { ServerTiming } from './server-timing.ts';
 
-const UNITS = { '': 1, k: 1024, m: 1024 ** 2, g: 1024 ** 3 } as const;
-
-/** `8m` → 8388608: bytes, or a size with a unit (`k`, `m`, `g`, any case). */
-function bytes(size: string): number {
-  return Number.parseInt(size, 10) * UNITS[(size.match(/[kmg]$/i)?.[0].toLowerCase() ?? '') as keyof typeof UNITS];
-}
+const BODY_UNIT_CONVERSION = 'in whole MB now: `8m` → `8`, bytes ÷ 1,048,576; under 1 MB use `createHttpKernel({ maxBodyBytes })`';
 
 export const ServerConfig = defineConfig('server', {
   env: env({
@@ -20,8 +15,12 @@ export const ServerConfig = defineConfig('server', {
      * host); `0.0.0.0` or `::`: every interface (a container, a PaaS, a phone testing `marmeon dev`).
      */
     HOST: env.string().default('127.0.0.1'),
-    /** Largest accepted request body: bytes, or with a unit — `512k`, `8m`, `1g`. */
-    SERVER_MAX_BODY_SIZE: env.string().regex(/^\d+[kmg]?$/i, 'Expected bytes or a size like 512k, 8m or 1g').default('8m'),
+    /** Largest accepted request body in MB (1,024-based), a whole number from 1 to 1024 (the body is buffered in memory). Less than 1 MB: `createHttpKernel({ maxBodyBytes })`. */
+    SERVER_MAX_BODY_MB: env
+      .integer('Expected a whole number of MB, like 8')
+      .min(1, 'Expected at least 1 MB')
+      .max(1024, 'Expected at most 1024 MB (1 GiB); larger files go through upload()')
+      .default(8),
     /**
      * The app's proxies (load balancers), comma-separated: addresses or ranges — `127.0.0.1,10.0.0.0/8,fd00::/8` — or
      * `*` when the app is only reachable through its own proxy. Only from these, `X-Forwarded-For` sets `ctx.ip` and
@@ -68,7 +67,8 @@ export const ServerConfig = defineConfig('server', {
     APP_URL: env.string().optional(),
     NODE_ENV: env.string().optional(),
   })
-    .renamed('MAX_BODY_SIZE', 'SERVER_MAX_BODY_SIZE')
+    .renamed('MAX_BODY_SIZE', 'SERVER_MAX_BODY_MB', { conversion: BODY_UNIT_CONVERSION })
+    .renamed('SERVER_MAX_BODY_SIZE', 'SERVER_MAX_BODY_MB', { conversion: BODY_UNIT_CONVERSION })
     .renamed('HEALTH_PATH', 'SERVER_HEALTH_PATH')
     .renamed('ASSET_VERSION', 'SERVER_ASSET_VERSION')
     .renamed('SHUTDOWN_DELAY', 'SERVER_SHUTDOWN_DELAY_SECONDS')
@@ -79,7 +79,7 @@ export const ServerConfig = defineConfig('server', {
     port: e.PORT,
     /** The interface to listen on (env `HOST`, default 127.0.0.1). */
     host: e.HOST,
-    maxBodySize: bytes(e.SERVER_MAX_BODY_SIZE),
+    maxBodyBytes: e.SERVER_MAX_BODY_MB * 1024 ** 2,
     assetVersion: e.SERVER_ASSET_VERSION,
     appUrl: e.APP_URL,
     trustedProxies: e.SERVER_TRUSTED_PROXIES,

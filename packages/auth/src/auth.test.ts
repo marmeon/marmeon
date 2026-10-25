@@ -261,7 +261,7 @@ const routes = openRoutes((Route) => {
   signedIn.post('/logout-others', LogoutOtherDevicesController);
 });
 
-const CHEAP = { HASH_ARGON_MEMORY: '1024', HASH_ARGON_TIME: '1' };
+const CHEAP = { HASH_ARGON_MEMORY_KB: '1024', HASH_ARGON_TIME: '1' };
 
 async function boot(options: { env?: Record<string, string>; users?: MemoryUsers; logger?: Logger; factors?: Map<number, SecondFactor[]>; consume?: (real: SignInStore) => SignInStore['consume'] } = {}) {
   const users = options.users ?? new MemoryUsers();

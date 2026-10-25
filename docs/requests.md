@@ -63,7 +63,7 @@ or `HEAD` request has the input `{}`. The parsed body is kept, so call `ctx.inpu
 
 | Request | Answer |
 | --- | --- |
-| A body over `SERVER_MAX_BODY_SIZE` | 413. The bytes are counted as they arrive, whatever `Content-Length` says. |
+| A body over `SERVER_MAX_BODY_MB` | 413. The bytes are counted as they arrive, whatever `Content-Length` says. |
 | Malformed JSON | 400, `Malformed JSON body.` |
 | JSON that is not an object | 400, `The JSON body must be an object.` |
 | A multipart body that cannot be parsed | 400, `Malformed multipart body.` |
@@ -158,7 +158,7 @@ The page gets the parsed query and its defaults with it, so the browser never pa
 ## Files
 
 A file field of a `multipart/form-data` body arrives in `ctx.input()` as a `File`. The whole body is held in memory and counts
-against `SERVER_MAX_BODY_SIZE`, and an empty file field, where nothing was chosen, is left out.
+against `SERVER_MAX_BODY_MB`, and an empty file field, where nothing was chosen, is left out.
 
 For files from your users, use the `upload()` rule of `@marmeon/storage` instead. The browser sends the file ahead of its form,
 streamed to a private disk with progress, and the form sends a token in its place. On submit, the rule checks the token, the size
@@ -272,7 +272,7 @@ from `index.html` carry it already, so you need it only for HTML your controller
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `SERVER_MAX_BODY_SIZE` | `8m` | The largest request body, in bytes or with a unit: `512k`, `8m`, `1g`. A larger body is a 413. Uploads through `upload()` have their own limit. |
+| `SERVER_MAX_BODY_MB` | `8` | The largest request body in MB (1,024-based), a whole number from 1 to 1024, because the body is buffered in memory; larger files go through `upload()`. A larger body is a 413. Less than 1 MB: `createHttpKernel(application, { maxBodyBytes })`. Uploads through `upload()` have their own limit. |
 | `SERVER_TRUSTED_PROXIES` | none | The proxies whose `X-Forwarded-*` headers count, as addresses or ranges, or `*`. |
 
 ## Testing

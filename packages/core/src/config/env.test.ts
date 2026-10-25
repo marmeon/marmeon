@@ -368,6 +368,22 @@ describe('env — renamed variables', () => {
     expect(() => base.renamed('1OLD', 'A')).toThrow(TypeError);
   });
 
+  it('puts a note in the place of "same value" for the name it is given for only', () => {
+    const noted = env({ NOTES_PER_PAGE: env.integer().default(20), NOTES_LIMIT_MB: env.integer().default(8) })
+      .renamed('NOTES_PAGE_SIZE', 'NOTES_PER_PAGE')
+      .renamed('NOTES_LIMIT', 'NOTES_LIMIT_MB', { conversion: 'in whole MB now: bytes ÷ 1,048,576' });
+    const result = read(noted, { NOTES_LIMIT: '10485760', NOTES_PAGE_SIZE: '5' }) as { problems: string[] };
+    expect(result.problems).toContain('NOTES_LIMIT — NOTES_LIMIT was renamed NOTES_LIMIT_MB — in whole MB now: bytes ÷ 1,048,576 (docs/configuration.md#renamed-variables).');
+    expect(result.problems.find((problem) => problem.startsWith('NOTES_PAGE_SIZE'))).toContain('same value');
+    expect(result.problems.find((problem) => problem.startsWith('NOTES_LIMIT'))).not.toContain('same value');
+  });
+
+  it('refuses an empty conversion, naming the old variable', () => {
+    const base = env({ A: env.string().default('a') });
+    expect(() => base.renamed('OLD_A', 'A', { conversion: '' })).toThrow(/OLD_A/);
+    expect(() => base.renamed('OLD_A', 'A', { conversion: '  ' })).toThrow(TypeError);
+  });
+
   it('hands out the locks under a registered symbol, frozen', () => {
     const locks = (schema as unknown as Record<symbol, Record<string, string>>)[Symbol.for('marmeon.env.renamed')]!;
     expect(locks).toEqual({ NOTES_PAGE_SIZE: 'NOTES_PER_PAGE' });

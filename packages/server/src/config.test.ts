@@ -11,7 +11,7 @@ const resolve = async (env: Record<string, string>) => (await resolveConfig([Ser
 describe('ServerConfig: variable names', () => {
   it('keeps the defaults under the new names', async () => {
     expect(await resolve({})).toMatchObject({
-      maxBodySize: 8 * 1024 * 1024,
+      maxBodyBytes: 8 * 1024 * 1024,
       trustedProxies: [],
       ssr: true,
       health: '/up',
@@ -23,7 +23,7 @@ describe('ServerConfig: variable names', () => {
   it('reads the server variables by their new names, the durations as seconds', async () => {
     expect(
       await resolve({
-        SERVER_MAX_BODY_SIZE: '512k',
+        SERVER_MAX_BODY_MB: '2',
         SERVER_TRUSTED_PROXIES: '10.0.0.0/8',
         SERVER_ASSET_VERSION: 'abc',
         SERVER_SSR_ENABLED: 'false',
@@ -31,7 +31,7 @@ describe('ServerConfig: variable names', () => {
         SERVER_SHUTDOWN_DELAY_SECONDS: '2.5',
         SERVER_KEEP_ALIVE_TIMEOUT_SECONDS: '30',
       }),
-    ).toMatchObject({ maxBodySize: 512 * 1024, trustedProxies: ['10.0.0.0/8'], assetVersion: 'abc', ssr: false, health: '/healthz', shutdownDelayMs: 2500, keepAliveTimeoutMs: 30_000 });
+    ).toMatchObject({ maxBodyBytes: 2 * 1024 * 1024, trustedProxies: ['10.0.0.0/8'], assetVersion: 'abc', ssr: false, health: '/healthz', shutdownDelayMs: 2500, keepAliveTimeoutMs: 30_000 });
   });
 
   it('reads the server-rendering switch with env.boolean(): 0 turns it off, anything else is an error', async () => {
@@ -41,8 +41,22 @@ describe('ServerConfig: variable names', () => {
     await expect(resolve({ SERVER_SSR_ENABLED: 'off' })).rejects.toThrow(/SERVER_SSR_ENABLED/);
   });
 
+  it.each(['MAX_BODY_SIZE', 'SERVER_MAX_BODY_SIZE'])('names the conversion, not "same value", when %s is set', async (from) => {
+    const error = await resolve({ [from]: '10485760' }).catch((caught: unknown) => caught);
+    const message = (error as ConfigError).message;
+    expect(message).not.toContain('same value');
+    expect(message).toContain('in whole MB now: `8m` → `8`, bytes ÷ 1,048,576');
+    expect(message).toContain('createHttpKernel({ maxBodyBytes })');
+  });
+
+  it.each([['1048576'], ['1025']])('stops the start when SERVER_MAX_BODY_MB is %s, above 1 GiB', async (value) => {
+    await expect(resolve({ SERVER_MAX_BODY_MB: value })).rejects.toThrow('Expected at most 1024 MB (1 GiB); larger files go through upload()');
+    expect((await resolve({ SERVER_MAX_BODY_MB: '1024' })).maxBodyBytes).toBe(1024 ** 3);
+  });
+
   it.each([
-    ['MAX_BODY_SIZE', 'SERVER_MAX_BODY_SIZE', '1m'],
+    ['MAX_BODY_SIZE', 'SERVER_MAX_BODY_MB', '1m'],
+    ['SERVER_MAX_BODY_SIZE', 'SERVER_MAX_BODY_MB', '8m'],
     ['HEALTH_PATH', 'SERVER_HEALTH_PATH', '/healthz'],
     ['ASSET_VERSION', 'SERVER_ASSET_VERSION', 'abc'],
     ['SHUTDOWN_DELAY', 'SERVER_SHUTDOWN_DELAY_SECONDS', '5'],

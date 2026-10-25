@@ -26,7 +26,16 @@ export const DURATION_WORDS = [
 /** Abbreviated units, with the long form the name should end with. */
 const ABBREVIATED: Readonly<Record<string, string>> = { MS: 'MILLISECONDS', SEC: 'SECONDS', SECS: 'SECONDS', MIN: 'MINUTES', MINS: 'MINUTES', HRS: 'HOURS' };
 
-export type Kind = 'driver' | 'connection' | 'switch' | 'duration' | 'value';
+/** A size says its unit as `_KB` or `_MB` (1,024-based). */
+export const SIZE_UNITS = ['KB', 'MB'] as const;
+/** Words that name a size without a unit; the name ends with `_KB` or `_MB` instead. */
+const SIZE_WORDS = ['SIZE', 'MEMORY', 'BYTES'] as const;
+/** Names that end with a size word and are none: each with the reason. */
+export const NOT_A_SIZE: Readonly<Record<string, string>> = {
+  HASH_SCRYPT_BLOCK_SIZE: "scrypt's r is a factor of the block, not a number of bytes",
+};
+
+export type Kind = 'driver' | 'connection' | 'switch' | 'duration' | 'size' | 'value';
 
 export interface EnvName {
   readonly name: string;
@@ -106,6 +115,7 @@ export function docsTable(markdown: string): TableRow[] {
 }
 
 const lastWord = (name: string): string => name.slice(name.lastIndexOf('_') + 1);
+const isSize = (name: string): boolean => (SIZE_UNITS as readonly string[]).includes(lastWord(name));
 const isRate = (name: string): boolean => /_PER_(?:SECOND|MINUTE|HOUR|DAY)$/.test(name);
 const hasUnit = (name: string): boolean => (UNITS as readonly string[]).includes(lastWord(name));
 
@@ -116,6 +126,7 @@ export function kindOf(variable: EnvName): Kind {
   if (name.endsWith('_CONNECTION')) return 'connection';
   if (variable.boolean || variable.default === '`true`' || variable.default === '`false`' || (SPECIFICATION_NAMES as readonly string[]).includes(name) && variable.default === '`"false"`') return 'switch';
   if (hasUnit(name)) return 'duration';
+  if (isSize(name)) return 'size';
   return 'value';
 }
 
@@ -141,6 +152,11 @@ export function envNameProblems(names: EnvNames, table: readonly TableRow[]): st
       if (abbreviation !== undefined) fail(`it ends with the abbreviated unit _${lastWord(name)} — write _${abbreviation}`);
       else if (words.some((word) => (DURATION_WORDS as readonly string[]).includes(word)) && !hasUnit(name) && !isRate(name)) {
         fail(`it names a duration, so it ends with its unit (${UNITS.map((unit) => `_${unit}`).join(', ')}) — rename it and retire the old name with .renamed()`);
+      }
+      if (isSize(name)) {
+        if (variable.default !== 'required' && variable.default !== 'optional' && !/^`\d+`$/.test(variable.default)) fail(`it ends with a size unit, so it is a whole number — its default is ${variable.default}`);
+      } else if ((SIZE_WORDS as readonly string[]).includes(lastWord(name)) && NOT_A_SIZE[name] === undefined) {
+        fail(`it names a size, so it ends with its unit (${SIZE_UNITS.map((unit) => `_${unit}`).join(', ')}, 1,024-based) and is a whole number — rename it and retire the old name with .renamed()`);
       }
       if (hasUnit(name) && (variable.default === '`true`' || variable.default === '`false`')) fail('it ends with a unit but is a switch');
       if (/^`"(?:true|false|1|0)"`$/i.test(variable.default)) fail('it is a switch read as a string — read it with env.boolean()');
