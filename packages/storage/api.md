@@ -198,8 +198,8 @@ export interface S3DiskOptions extends DiskBase {
     readonly root?: string | undefined;
     readonly url?: string | undefined;
 }
-// ServeOptions
-export interface ServeOptions {
+// ServeFileOptions
+export interface ServeFileOptions {
     readonly cacheControl: string;
     readonly filename?: string | undefined;
 }
@@ -394,7 +394,7 @@ export declare function normalizeDirectory(directory: string): string;
 // normalizeKey
 export declare function normalizeKey(key: string): string;
 // serveFile
-export declare function serveFile(disk: Disk, key: string, request: Request, options: ServeOptions): Promise<Response>;
+export declare function serveFile(disk: Disk, key: string, request: Request, options: ServeFileOptions): Promise<Response>;
 // upload
 export declare function upload<const M extends string = UploadMime>(options: {
     readonly maxBytes: number;

@@ -1,7 +1,7 @@
 import type { CommandClass } from 'marmeon';
 import type { CheckJob, JobClass, JobInput } from '@marmeon/queue';
 import { ScheduleError } from './cron.ts';
-import { PendingTask, type InvokableClass, type TaskDefinition, type UnscheduledTask } from './task.ts';
+import { PendingTask, type CallableTaskClass, type TaskDefinition, type UnscheduledTask } from './task.ts';
 import { withCode } from '@marmeon/core/internal';
 
 /** The payload argument of `s.job()`: optional when the job's schema takes an empty object. */
@@ -19,8 +19,8 @@ export interface Schedule {
   job<J extends JobClass>(job: J & CheckJob<J>, ...payload: JobPayloadArgument<J>): UnscheduledTask<'job'>;
   /** Runs a console command when due, in the scheduler's process — `s.command('session:prune')`, `s.command('queue:prune-failed', ['--hours=168'])`. */
   command(command: string | CommandClass, args?: readonly string[]): UnscheduledTask<'command'>;
-  /** Runs an invokable class when due — built through the container in a scope of its own, then `handle()`. */
-  call(target: InvokableClass): UnscheduledTask<'call'>;
+  /** Runs a callable task class when due — built through the container in a scope of its own, then `handle()`. */
+  call(target: CallableTaskClass): UnscheduledTask<'call'>;
 }
 
 const DEFINE = Symbol.for('marmeon.scheduler.define');

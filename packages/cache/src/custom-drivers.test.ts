@@ -1,7 +1,7 @@
 import { createApplication, Logger, SystemClock, type Application, type ServiceProviderClass } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { silent } from './__fixtures__/stores.ts';
-import { Cache, StoreCache, type CacheDriver, type CacheDriverFactory, type CacheStore, type Entry, type LockStore } from './cache.ts';
+import { Cache, StoreCache, type CacheDriver, type CacheDriverFactory, type CacheEntry, type CacheStore, type LockStore } from './cache.ts';
 import { guardDriver } from './guarded.ts';
 import { CacheServiceProvider, CacheSetupError } from './index.ts';
 import { RateLimiter } from './rate-limiter.ts';
@@ -11,7 +11,7 @@ import { RateLimiter } from './rate-limiter.ts';
 
 /** Entries in a map; the expiry is its own to keep — unless `keepsExpired`. */
 class DictStore implements CacheStore {
-  readonly entries = new Map<string, Entry>();
+  readonly entries = new Map<string, CacheEntry>();
   readonly keys: unknown[] = [];
   pruned = 0;
   prune?: () => Promise<number>;
@@ -20,16 +20,16 @@ class DictStore implements CacheStore {
     this.#keepsExpired = options.keepsExpired ?? false;
     if (options.prune) this.prune = async () => ++this.pruned;
   }
-  async read(key: string): Promise<Entry | undefined> {
+  async read(key: string): Promise<CacheEntry | undefined> {
     this.keys.push(key);
     const entry = this.entries.get(key);
     return entry && (this.#keepsExpired || entry.expires === null || entry.expires > Date.now()) ? entry : undefined;
   }
-  async write(key: string, entry: Entry): Promise<void> {
+  async write(key: string, entry: CacheEntry): Promise<void> {
     this.keys.push(key);
     this.entries.set(key, entry);
   }
-  async add(key: string, entry: Entry): Promise<boolean> {
+  async add(key: string, entry: CacheEntry): Promise<boolean> {
     if (await this.read(key)) return false;
     this.entries.set(key, entry);
     return true;

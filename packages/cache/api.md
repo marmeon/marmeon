@@ -54,6 +54,11 @@ export interface CacheDriverContext {
 }
 // CacheDriverFactory
 export type CacheDriverFactory = (context: CacheDriverContext) => CacheDriver;
+// CacheEntry
+export interface CacheEntry {
+    value: unknown;
+    expires: number | null;
+}
 // CacheHealthCheck
 export declare class CacheHealthCheck implements HealthCheck {
     #private;
@@ -93,18 +98,13 @@ export declare class CacheSetupError extends Error {
 }
 // CacheStore
 export interface CacheStore {
-    read(key: string): Promise<Entry | undefined>;
-    write(key: string, entry: Entry): Promise<void>;
-    add(key: string, entry: Entry): Promise<boolean>;
+    read(key: string): Promise<CacheEntry | undefined>;
+    write(key: string, entry: CacheEntry): Promise<void>;
+    add(key: string, entry: CacheEntry): Promise<boolean>;
     increment(key: string, by: number, expires: number | null): Promise<number>;
     delete(key: string): Promise<void>;
     clear(): Promise<void>;
     prune?(): Promise<number>;
-}
-// Entry
-export interface Entry {
-    value: unknown;
-    expires: number | null;
 }
 // Limit
 export declare class Limit {

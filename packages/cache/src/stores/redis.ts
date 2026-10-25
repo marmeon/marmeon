@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { SystemClock, type Clock } from '@marmeon/core';
 import type { RedisConnection, RedisScript } from '@marmeon/redis';
-import type { CacheStore, Entry, LockStore } from '../cache.ts';
+import type { CacheEntry, CacheStore, LockStore } from '../cache.ts';
 
 /** A named Lua script (the shape of `defineRedisScript` — built here, as @marmeon/redis is an optional peer). */
 function script(name: string, lua: string): RedisScript {
@@ -54,7 +54,7 @@ export class RedisStore implements CacheStore, LockStore {
     this.#clock = clock;
   }
 
-  async read(key: string): Promise<Entry | undefined> {
+  async read(key: string): Promise<CacheEntry | undefined> {
     const redis = await this.#connection();
     const name = redis.key(`cache:${key}`);
     const [value, ttl] = await Promise.all([redis.command<string | null>(['GET', name]), redis.command<number>(['PTTL', name])]);
@@ -62,7 +62,7 @@ export class RedisStore implements CacheStore, LockStore {
     return { value: JSON.parse(value) as unknown, expires: ttl >= 0 ? this.#clock.now() + ttl : null };
   }
 
-  async write(key: string, entry: Entry): Promise<void> {
+  async write(key: string, entry: CacheEntry): Promise<void> {
     const redis = await this.#connection();
     const name = redis.key(`cache:${key}`);
     const ms = this.#remaining(entry.expires);
@@ -71,7 +71,7 @@ export class RedisStore implements CacheStore, LockStore {
     else await redis.command(['SET', name, serialize(entry.value), 'PX', ms]);
   }
 
-  async add(key: string, entry: Entry): Promise<boolean> {
+  async add(key: string, entry: CacheEntry): Promise<boolean> {
     const redis = await this.#connection();
     const ms = this.#remaining(entry.expires);
     const args = ['SET', redis.key(`cache:${key}`), serialize(entry.value), 'NX', ...(ms === undefined ? [] : ['PX', Math.max(1, ms)])];

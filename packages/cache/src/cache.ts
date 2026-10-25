@@ -40,7 +40,7 @@ export interface Cache {
 export const Cache = token<Cache>('Cache');
 
 /** A cached value and when it expires: epoch milliseconds (by the store's {@link Clock}), null = never. */
-export interface Entry {
+export interface CacheEntry {
   value: unknown;
   expires: number | null;
 }
@@ -52,10 +52,10 @@ export interface Entry {
  */
 export interface CacheStore {
   /** The entry, if present and not expired. */
-  read(key: string): Promise<Entry | undefined>;
-  write(key: string, entry: Entry): Promise<void>;
+  read(key: string): Promise<CacheEntry | undefined>;
+  write(key: string, entry: CacheEntry): Promise<void>;
   /** Writes `entry` only if the key is absent or expired — atomically. Whether it wrote. */
-  add(key: string, entry: Entry): Promise<boolean>;
+  add(key: string, entry: CacheEntry): Promise<boolean>;
   /**
    * Adds `by` to the integer at `key` — atomically — and returns the new value. Absent, expired or not an integer: the
    * key starts over at `by` and expires at `expires`. An existing integer keeps its expiry.

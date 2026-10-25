@@ -1,7 +1,7 @@
 import { resolveConfig } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { AuthConfig } from '../config.ts';
-import { PasskeyConfig, PasskeyConfigError, relyingPartyFrom, type PasskeyConfigValue } from './config.ts';
+import { PasskeyConfig, PasskeySetupError, relyingPartyFrom, type PasskeyConfigValue } from './config.ts';
 
 const from = (appUrl: string | undefined, extra: { rpId?: string; origins?: string } = {}) => relyingPartyFrom({ appUrl, ...extra });
 
@@ -17,7 +17,7 @@ describe('the relying party from APP_URL', () => {
 
   it('refuses an RP ID that is not a parent domain on a label boundary', () => {
     expect(() => from('https://app.example.com', { rpId: 'ample.com' })).toThrow(/not the host of https:\/\/app\.example\.com or a parent domain/);
-    expect(() => from('https://app.example.com', { rpId: 'other.com' })).toThrow(PasskeyConfigError);
+    expect(() => from('https://app.example.com', { rpId: 'other.com' })).toThrow(PasskeySetupError);
     expect(() => from('https://app.example.com', { rpId: 'other.com' })).toThrow('[marmeon:A1] Passkeys cannot be used: ');
   });
 
@@ -63,8 +63,8 @@ describe('PasskeyConfig', () => {
     await expect(resolveConfig([AuthConfig], env)).resolves.toBeDefined();
     const resolved = await resolveConfig([PasskeyConfig], env);
     const config = resolved.get(PasskeyConfig) as PasskeyConfigValue;
-    expect(() => config.relyingParty()).toThrow(PasskeyConfigError);
-    expect(() => config.relyingParty()).toThrow(PasskeyConfigError); // a failure is not cached as a value
+    expect(() => config.relyingParty()).toThrow(PasskeySetupError);
+    expect(() => config.relyingParty()).toThrow(PasskeySetupError); // a failure is not cached as a value
   });
 
   it('resolves the relying party from the environment once, and keeps it', async () => {

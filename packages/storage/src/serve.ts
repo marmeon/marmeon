@@ -3,7 +3,7 @@ import { FileNotFoundError, InvalidKeyError } from './errors.ts';
 import { basename } from './keys.ts';
 import { contentDisposition, isInlineType, mimeTypeOf } from './mime.ts';
 
-export interface ServeOptions {
+export interface ServeFileOptions {
   /** `Cache-Control` of the response. */
   readonly cacheControl: string;
   /** The name the browser saves the file as (default: the key's last segment). */
@@ -19,7 +19,7 @@ export interface ServeOptions {
  * - `Content-Disposition: attachment` for everything but raster images (PNG, JPEG, GIF, WebP, AVIF) — HTML, SVG, PDF, XML
  *   and text are downloaded, never shown on the app's origin.
  */
-export function fileHeaders(key: string, contentType: string, options: ServeOptions): Headers {
+export function fileHeaders(key: string, contentType: string, options: ServeFileOptions): Headers {
   const filename = options.filename ?? basename(key);
   // The type by the name the file goes out as: a ".png" key with HTML in it stays an image/png (and nosniff keeps it one).
   const type = contentType || mimeTypeOf(filename);
@@ -33,7 +33,7 @@ export function fileHeaders(key: string, contentType: string, options: ServeOpti
 }
 
 /** A file of a disk as a response — 404 for a missing file or a refused key, 304 when `If-Modified-Since` still holds. */
-export async function serveFile(disk: Disk, key: string, request: Request, options: ServeOptions): Promise<Response> {
+export async function serveFile(disk: Disk, key: string, request: Request, options: ServeFileOptions): Promise<Response> {
   let file;
   try {
     file = await disk.open(key);

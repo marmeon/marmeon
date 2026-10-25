@@ -5,16 +5,16 @@ import { heldOnLoopback, shadowedLocalhost } from './loopback.ts';
 import { honoPath } from './route-pattern.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
-import { currentRequest, environment, EnvironmentConfig, ErrorReports, ErrorSolutions, Logger, outsideTransaction, Redactor, Translator, type Application, type Container, type RequestInfo as RequestContext } from '@marmeon/core';
+import { currentRequest, environment, EnvironmentConfig, ErrorReports, ErrorSolutions, Logger, outsideTransaction, Redactor, Translator, type Application, type Container, type CurrentRequest } from '@marmeon/core';
 import { messageBase, runWithRequest, trace, withCode } from '@marmeon/core/internal';
 import { channels, type HttpRequestMessage, type PageSummary } from '@marmeon/core/diagnostics';
 import {
   AfterResponse,
   AssetVersion,
+  ClientInfo,
   CookieDefaults,
   ExceptionHandler,
   HttpError,
-  RequestInfo,
   isActionRequest,
   LIVE_PATH,
   ParentRequest,
@@ -55,7 +55,6 @@ import {
   liveValidationFields,
   Router,
   type RouteDefinition,
-  type DispatchOptions,
   type HttpContext,
   type MiddlewareHandler,
   type RequestState,
@@ -68,6 +67,7 @@ import {
   formatAccessProblems,
   VALIDATED_HEADER,
   withQueuedCookies,
+  type DispatchOptions,
 } from '@marmeon/router/internal';
 import { Hono, type Context } from 'hono';
 import { getPath } from 'hono/utils/url';
@@ -561,7 +561,7 @@ export function createHttpKernel(
     const header = c.req.header('x-request-id');
     const requestId = header && REQUEST_ID.test(header) ? header : randomUUID();
     const started = performance.now();
-    const info: RequestContext = { requestId };
+    const info: CurrentRequest = { requestId };
     timing?.begin(info);
     recorder?.begin(info);
 
@@ -663,7 +663,7 @@ export function createHttpKernel(
     scope.instance(CookieJar, state.cookies); // injectable per request
     scope.instance(IncomingRequest, request); // which tab sent it (`x-marmeon-connection`), for the live Broadcaster
     // Who sent it — for services without `ctx`: `Auth`'s SignedIn event. The header is read only when asked for.
-    scope.instance(RequestInfo, {
+    scope.instance(ClientInfo, {
       ip,
       get userAgent() {
         return request.headers.get('user-agent') ?? undefined;

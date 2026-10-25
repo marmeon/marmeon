@@ -34,10 +34,6 @@ export type CheckAnswer = boolean | string | void | undefined;
 export type CheckQueryFields<S extends Shape> = {
     [K in keyof S]: undefined extends InputOf<S[K]> ? [Extract<Exclude<InputOf<S[K]>, undefined>, string | readonly string[]>] extends [never] ? `Query field '${K & string}' is read from the URL as text — give it a rule that takes a string: r.string(), r.integer(), r.boolean(), r.in([…]), r.array(…)` : S[K] : `Query field '${K & string}' needs .default(…) — a query is parsed field by field and never answers 422; .optional() leaves it undefined`;
 };
-// ColumnOf
-export type ColumnOf<R> = R extends {
-    find(id: never): Promise<infer Row>;
-} ? Extract<keyof NonNullable<Row>, string> : string;
 // CustomCheck
 export type CustomCheck<T> = (value: T, context: CustomContext) => MaybePromise<CheckAnswer>;
 // CustomContext
@@ -67,6 +63,10 @@ export declare class ObjectRule<S extends Shape, When extends Shape = {}> extend
     when<const W extends Shape>(condition: (data: ShapeOutput<S>) => boolean, fields: W): ObjectRule<S, Simplify<When & W>>;
     confirmed(field: keyof S & string, confirmation?: string): this;
 }
+// RepositoryColumnOf
+export type RepositoryColumnOf<R> = R extends {
+    find(id: never): Promise<infer Row>;
+} ? Extract<keyof NonNullable<Row>, string> : string;
 // RepositoryLike
 export interface RepositoryLike {
     query(): unknown;
@@ -86,8 +86,8 @@ export declare class Rule<Output = unknown, Input = Output> implements StandardS
     custom(check: CustomCheck<Output> | {
         readonly validate: CustomCheck<Output>;
     }, message?: RuleMessage): this;
-    unique<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: ColumnOf<R>, options?: UniqueOptions<Ctx>): this;
-    exists<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: ColumnOf<R>, options?: ExistsOptions<Ctx>): this;
+    unique<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options?: UniqueOptions<Ctx>): this;
+    exists<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options?: ExistsOptions<Ctx>): this;
     live(): this;
 }
 // RuleDefinition

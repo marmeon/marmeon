@@ -1,4 +1,4 @@
-import { currentRequest, type Application, type RequestInfo } from '@marmeon/core';
+import { currentRequest, type Application, type CurrentRequest } from '@marmeon/core';
 import { channels, type DbQueryMessage, type LogMessage } from '@marmeon/core/diagnostics';
 import { MAX_RECORDED, type RequestRecorder, type RequestRecording } from './recorder-token.ts';
 
@@ -15,7 +15,7 @@ interface Recording {
  * goes when the request does, and a request resolved in-process for another (an island) records its own.
  */
 export function createRequestRecorder(app: Application): RequestRecorder {
-  const recordings = new WeakMap<RequestInfo, Recording>();
+  const recordings = new WeakMap<CurrentRequest, Recording>();
   const current = () => {
     const info = currentRequest();
     return info ? recordings.get(info) : undefined;

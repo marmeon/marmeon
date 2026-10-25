@@ -9,7 +9,7 @@ import { ScheduleConfig } from './config.ts';
 import { CronExpression, ScheduleError } from './cron.ts';
 import { ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, type ScheduledTaskEvent } from './events.ts';
 import { collectTasks, type ScheduleDefinition } from './schedule.ts';
-import type { InvokableClass, TaskDefinition } from './task.ts';
+import type { CallableTaskClass, TaskDefinition } from './task.ts';
 import { checkTimeZone, isDue, lastDue, MINUTE, minuteOf, nextDue } from './time.ts';
 import { withCode, withoutCode } from '@marmeon/core/internal';
 
@@ -110,7 +110,7 @@ function nameOf(definition: TaskDefinition): string {
       return [command, ...definition.args].join(' ');
     }
     case 'call':
-      return (definition.target as InvokableClass).name;
+      return (definition.target as CallableTaskClass).name;
   }
 }
 
@@ -121,7 +121,7 @@ function summaryOf(definition: TaskDefinition): string {
     case 'command':
       return `command ${[typeof definition.target === 'string' ? definition.target.trim() : (definition.target as CommandClass).command, ...definition.args].join(' ')}`;
     case 'call':
-      return `call ${(definition.target as InvokableClass).name}`;
+      return `call ${(definition.target as CallableTaskClass).name}`;
   }
 }
 
@@ -482,7 +482,7 @@ export class Scheduler {
       }
       case 'call': {
         const instance = scope.make(definition.target as never) as { handle?: () => unknown };
-        if (typeof instance.handle !== 'function') throw new ScheduleError(`${(definition.target as InvokableClass).name} has no handle() — s.call() runs invokable classes.`);
+        if (typeof instance.handle !== 'function') throw new ScheduleError(`${(definition.target as CallableTaskClass).name} has no handle() — s.call() runs callable task classes.`);
         await instance.handle();
         return;
       }

@@ -1,12 +1,12 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 /** What every log entry of a request carries. */
-export interface RequestInfo {
+export interface CurrentRequest {
   readonly requestId: string;
 }
 
 /** What every log entry of a queued job carries — the job's name, its id (stable over retries) and the attempt. */
-export interface JobInfo {
+export interface CurrentJob {
   readonly job: string;
   readonly jobId: string;
   readonly attempt: number;
@@ -24,42 +24,42 @@ export interface JobInfo {
 
 // The one deliberate piece of ambient state: the unit of work being handled — a request or a job — for
 // cross-cutting concerns like logging, so a logger needs nothing passed around. Context only, never services or data.
-const requests = new AsyncLocalStorage<RequestInfo>();
-const jobs = new AsyncLocalStorage<JobInfo>();
-const tasks = new AsyncLocalStorage<TaskInfo>();
+const requests = new AsyncLocalStorage<CurrentRequest>();
+const jobs = new AsyncLocalStorage<CurrentJob>();
+const tasks = new AsyncLocalStorage<CurrentTask>();
 
 /** What every log entry of a scheduled task carries — its name (@marmeon/scheduler). */
-export interface TaskInfo {
+export interface CurrentTask {
   readonly task: string;
 }
 
 /** Runs `fn` with `info` as the current request — set by the HTTP kernel per request. */
-export function runWithRequest<T>(info: RequestInfo, fn: () => T): T {
+export function runWithRequest<T>(info: CurrentRequest, fn: () => T): T {
   return requests.run(info, fn);
 }
 
 /** The request currently being handled, if any. */
-export function currentRequest(): RequestInfo | undefined {
+export function currentRequest(): CurrentRequest | undefined {
   return requests.getStore();
 }
 
 /** Runs `fn` with `info` as the current job — set by the queue worker per attempt. */
-export function runWithJob<T>(info: JobInfo, fn: () => T): T {
+export function runWithJob<T>(info: CurrentJob, fn: () => T): T {
   return jobs.run(info, fn);
 }
 
 /** The job currently being handled, if any. */
-export function currentJob(): JobInfo | undefined {
+export function currentJob(): CurrentJob | undefined {
   return jobs.getStore();
 }
 
 /** Runs `fn` with `info` as the current scheduled task — set by the scheduler per run. */
-export function runWithTask<T>(info: TaskInfo, fn: () => T): T {
+export function runWithTask<T>(info: CurrentTask, fn: () => T): T {
   return tasks.run(info, fn);
 }
 
 /** The scheduled task currently running, if any. */
-export function currentTask(): TaskInfo | undefined {
+export function currentTask(): CurrentTask | undefined {
   return tasks.getStore();
 }
 

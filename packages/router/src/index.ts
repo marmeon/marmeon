@@ -4,7 +4,7 @@ export { Route, joinPaths } from './route.ts';
 export { RouteDefinition } from './route-definition.ts';
 export type { RouteBlocking } from './route-definition.ts';
 export { Router, defineRoutes } from './router.ts';
-export type { DispatchInput, DispatchOptions, LoadOptions, MiddlewareProblem, PageQuery, ResponseContext, ResponseFactory, RouteDefinitions, RouteInterceptor, RouterOptions } from './router.ts';
+export type { LoadOptions, MiddlewareProblem, PageQuery, ResponseContext, RouteDefinitions, RouteInterceptor, RouterOptions } from './router.ts';
 export { GLOBAL, MiddlewareGroups, MiddlewarePriority } from './middleware-groups.ts';
 export { defineMiddleware, RESERVED_CONTEXT_KEYS } from './middleware.ts';
 export type { DefineMiddlewareOptions, NoReservedKeys, PipelineOptions, ReservedContextKey } from './middleware.ts';

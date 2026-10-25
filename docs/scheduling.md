@@ -63,7 +63,7 @@ export const schedule = defineSchedule((s) => {
 The job must be listed in its module's `jobs`. It is queued as a [unique job](queues.md#unique-jobs) until a worker starts it, so
 while the job of the last hour still waits, because the workers are behind or down, the task queues no second one.
 
-### Invokable classes
+### Callable task classes
 
 `s.call(Class)` builds a class through the container, in a scope of its own, and calls its `handle()`:
 

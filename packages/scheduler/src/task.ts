@@ -4,14 +4,14 @@ import type { JobClass } from '@marmeon/queue';
 import { ScheduleError } from './cron.ts';
 import { withCode } from '@marmeon/core/internal';
 
-/** What a task does: queue a job (`s.job`), run a console command (`s.command`), or call an invokable class (`s.call`). */
+/** What a task does: queue a job (`s.job`), run a console command (`s.command`), or call a callable task class (`s.call`). */
 export type TaskKind = 'job' | 'command' | 'call';
 
 /** A class `s.call()` runs — built through the container in a scope of its own (constructor injection), then `handle()`. */
-export interface Invokable {
+export interface CallableTask {
   handle(): unknown;
 }
-export type InvokableClass = new (...args: any[]) => Invokable;
+export type CallableTaskClass = new (...args: any[]) => CallableTask;
 
 /** A condition of `when()`/`skip()`, asked each time the task is due — with the task's own scope, for services. */
 export type TaskFilter = (scope: Container) => boolean | Promise<boolean>;
@@ -34,7 +34,7 @@ export type CheckTime<T extends string> = string extends T ? T : T extends TimeO
 /** Everything known about a task — what `defineSchedule` collected. */
 export interface TaskDefinition {
   readonly kind: TaskKind;
-  readonly target: JobClass | CommandClass | InvokableClass | string;
+  readonly target: JobClass | CommandClass | CallableTaskClass | string;
   readonly payload: unknown;
   readonly args: readonly string[];
   /** The module whose schedule defined it — for messages. */

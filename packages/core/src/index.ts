@@ -38,7 +38,7 @@ export type {
 } from './events.ts';
 export type { LogContext } from './logger.ts';
 export { currentJob, currentLogContext, currentRequest, currentTask } from './request-context.ts';
-export type { JobInfo, RequestInfo, TaskInfo } from './request-context.ts';
+export type { CurrentJob, CurrentRequest, CurrentTask } from './request-context.ts';
 export {
   afterCommit,
   afterRollback,

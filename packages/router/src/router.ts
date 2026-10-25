@@ -335,7 +335,10 @@ export class Router {
     return urlFor(this, name, params, query as Query | undefined);
   }
 
-  /** Runs a matched route through its middleware pipeline and action. */
+  /**
+   * Runs a matched route through its middleware pipeline and action.
+   * @internal
+   */
   dispatch(route: RouteDefinition, input: DispatchInput, options: DispatchOptions = {}): Promise<Response> {
     const state = options.state ?? createRequestState(input.request);
     // Whoever calls dispatch directly (a custom server) gets no way around the rule the kernel enforces at start.
@@ -416,6 +419,7 @@ export class Router {
   /**
    * A request no route matched: it still passes the global middleware (security
    * headers, request logging, …), then ends in a 404.
+   * @internal
    */
   dispatchNotFound(request: Request, options: Omit<DispatchOptions, 'toResponse'> = {}): Promise<Response> {
     const state = options.state ?? createRequestState(request);

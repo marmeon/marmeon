@@ -84,6 +84,12 @@ export declare class ClientHistory {
     get cleared(): boolean;
     get siteData(): readonly SiteData[];
 }
+// ClientInfo
+export interface ClientInfo {
+    readonly ip: string | undefined;
+    readonly userAgent: string | undefined;
+}
+export declare const ClientInfo: import("@marmeon/core").Token<ClientInfo>;
 // ClientRoutesOptions
 export interface ClientRoutesOptions {
     readonly include?: readonly string[];
@@ -397,8 +403,8 @@ export type { Middleware } from '@marmeon/router';
 export type { MiddlewareClass } from '@marmeon/router';
 // NONCE
 export declare const NONCE: unique symbol;
-// NO_REQUEST_INFO
-export declare const NO_REQUEST_INFO: RequestInfo;
+// NO_CLIENT_INFO
+export declare const NO_CLIENT_INFO: ClientInfo;
 // Next
 export type { Next } from '@marmeon/router';
 // OLD_INPUT_KEY
@@ -571,12 +577,6 @@ export type RegionResult = {
 };
 // RequestDefinition
 export type { RequestDefinition } from '@marmeon/router';
-// RequestInfo
-export interface RequestInfo {
-    readonly ip: string | undefined;
-    readonly userAgent: string | undefined;
-}
-export declare const RequestInfo: import("@marmeon/core").Token<RequestInfo>;
 // RequestNonce
 export { RequestNonce } from '@marmeon/router';
 // ResolvedPage

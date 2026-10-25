@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { clientKey, RateLimiter } from '@marmeon/cache';
 import { Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
-import { RequestInfo } from '@marmeon/http';
+import { ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
 import { AccountSessions, claimRefused } from '../account-sessions.ts';
@@ -108,7 +108,7 @@ export class Passkeys implements SecondFactorPasskeys {
   readonly #connections: Connections;
   readonly #limiter: RateLimiter;
   readonly #events: EventDispatcher;
-  readonly #request: RequestInfo;
+  readonly #request: ClientInfo;
   readonly #users: UserProvider;
   readonly #cookies: CookieJar;
   readonly #clock: Clock;
@@ -125,7 +125,7 @@ export class Passkeys implements SecondFactorPasskeys {
     connections: Connections,
     limiter: RateLimiter,
     events: EventDispatcher,
-    request: RequestInfo,
+    request: ClientInfo,
     users: UserProvider,
     cookies: CookieJar,
     clock: Clock,

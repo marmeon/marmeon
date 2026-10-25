@@ -1,8 +1,8 @@
-import type { CacheDriverFactory, CacheStore, Entry, LockStore } from '@marmeon/cache';
+import type { CacheDriverFactory, CacheEntry, CacheStore, LockStore } from '@marmeon/cache';
 
 /** Entries in this process's memory — what a store of your own has to do, in the smallest form. */
 class ScratchStore implements CacheStore {
-  readonly #entries = new Map<string, Entry>();
+  readonly #entries = new Map<string, CacheEntry>();
   readonly #now: () => number;
 
   constructor(now: () => number) {
@@ -10,7 +10,7 @@ class ScratchStore implements CacheStore {
   }
 
   /** The live entry, dropping an expired one. Synchronous, so what decides on it never yields between reading and writing. */
-  #live(key: string): Entry | undefined {
+  #live(key: string): CacheEntry | undefined {
     const entry = this.#entries.get(key);
     if (entry && entry.expires !== null && entry.expires <= this.#now()) {
       this.#entries.delete(key);
@@ -19,16 +19,16 @@ class ScratchStore implements CacheStore {
     return entry;
   }
 
-  async read(key: string): Promise<Entry | undefined> {
+  async read(key: string): Promise<CacheEntry | undefined> {
     return this.#live(key);
   }
 
-  async write(key: string, entry: Entry): Promise<void> {
+  async write(key: string, entry: CacheEntry): Promise<void> {
     this.#entries.set(key, entry);
   }
 
   // No `await` between reading and writing a key: that is what makes these atomic in one process.
-  async add(key: string, entry: Entry): Promise<boolean> {
+  async add(key: string, entry: CacheEntry): Promise<boolean> {
     if (this.#live(key)) return false;
     this.#entries.set(key, entry);
     return true;

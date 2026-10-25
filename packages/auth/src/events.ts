@@ -46,7 +46,7 @@ export const signedInSchema = v.object({
 /**
  * A user signed in (password, remember-me cookie, registration). Queueable: a queued listener gets
  * `{ userId, remember, via, at, ip, userAgent }` (`EventPayload<typeof SignedIn>`, `at` as an ISO-8601 string) and reads
- * the account as it is when it runs. `ip` and `userAgent` are the request's (`RequestInfo`: the address through
+ * the account as it is when it runs. `ip` and `userAgent` are the request's (`ClientInfo`: the address through
  * `SERVER_TRUSTED_PROXIES`) — or what the app passed to `attempt()`/`signIn()`; null outside a request.
  */
 export class SignedIn {
