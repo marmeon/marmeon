@@ -8,7 +8,7 @@ import { LiveBroadcaster } from './broadcaster.ts';
 import { LiveStreamController } from './endpoint.ts';
 import { LiveHub, OpenStream, type LiveHubOptions } from './hub.ts';
 import { monotonicNow } from './monotonic.ts';
-import { BroadcastRecorder } from './recorder.ts';
+import { BroadcastTester } from './recorder.ts';
 import { RedisLiveBackend } from './redis.ts';
 import { liveKeys, LiveTokens } from './signer.ts';
 import { LiveStreamReader } from './test-stream.ts';
@@ -29,7 +29,7 @@ afterEach(async () => {
 const everyHint: unknown[] = [];
 
 function hubOf(backend: LiveBackend = new MemoryLiveBackend(), options: Partial<LiveHubOptions> = {}, closing?: AbortSignal): LiveHub {
-  const hub = new LiveHub(backend, { heartbeat: 20, retry: 3000, maxStreams: 100, ...options }, silent, closing);
+  const hub = new LiveHub(backend, { heartbeatSeconds: 20, retryMilliseconds: 3000, maxStreams: 100, ...options }, silent, closing);
   cleanups.push(() => hub.close());
   return hub;
 }
@@ -41,7 +41,7 @@ async function open(hub: LiveHub, channels: string[], { scope = ADA, connection 
   return reader;
 }
 
-function broadcasterOf(backend: LiveBackend, connection?: string, recorder?: BroadcastRecorder) {
+function broadcasterOf(backend: LiveBackend, connection?: string, recorder?: BroadcastTester) {
   return new LiveBroadcaster({ backend: () => backend, connection, logger: silent, recorder });
 }
 
@@ -87,8 +87,17 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     const reader = new LiveStreamReader(response);
     cleanups.push(() => reader.close());
     expect(await reader.hello()).toEqual({ seq: { 'users.1': 0, 'dashboard.sign-ins': 0 } });
-    expect(reader.retry).toBe(3000);
+    expect(reader.retryMilliseconds).toBe(3000);
     expect(hub.streams()).toEqual([{ scope: ADA, connection: 'tab-a-0001', channels: ['users.1', 'dashboard.sign-ins'] }]);
+  });
+
+  it('takes the timeout of waitFor() as a duration', async () => {
+    const hub = hubOf();
+    const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
+    const reader = new LiveStreamReader(await controller.handle(request(`connection=tab-a-0001&${pair('users.1')}`)));
+    cleanups.push(() => reader.close());
+    await reader.hello({ milliseconds: 500 });
+    await expect(reader.waitFor(1, { milliseconds: 50 })).rejects.toThrow('within 50 ms');
   });
 
   it('refuses a token rewritten to another channel (users.1 → users.2): 403, no stream', async () => {
@@ -200,7 +209,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
   it('holds at most LIVE_MAX_STREAMS_PER_SESSION streams of one session (16): the 17th → 429 with its own log line — other sessions still open', async () => {
     const warnings: string[] = [];
     const logger: Logger = { ...silent, warn: (message) => void warnings.push(message), child: () => logger };
-    const hub = new LiveHub(new MemoryLiveBackend(), { heartbeat: 20, retry: 3000, maxStreams: 100 }, logger);
+    const hub = new LiveHub(new MemoryLiveBackend(), { heartbeatSeconds: 20, retryMilliseconds: 3000, maxStreams: 100 }, logger);
     cleanups.push(() => hub.close());
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
     const opened: LiveStreamReader[] = [];
@@ -369,7 +378,7 @@ describe('the stream — hints, never data', () => {
   });
 
   it('sends heartbeats on an idle stream (a comment line, every LIVE_HEARTBEAT_SECONDS)', async () => {
-    const hub = hubOf(new MemoryLiveBackend(), { heartbeat: 0.02 });
+    const hub = hubOf(new MemoryLiveBackend(), { heartbeatSeconds: 0.02 });
     const reader = await open(hub, ['users.1']);
     await reader.waitFor(() => reader.heartbeats >= 3);
     expect(reader.hints).toEqual([]);
@@ -405,8 +414,8 @@ describe('the stream — hints, never data', () => {
     await Promise.all([adaA.closed, adaB.closed]);
     for (const reader of [adaA, adaB]) {
       expect(reader.events.map((each) => each.event)).toEqual(['hello']);
-      expect(reader.retry).toBeGreaterThanOrEqual(1000);
-      expect(reader.retry).toBeLessThanOrEqual(10_000);
+      expect(reader.retryMilliseconds).toBeGreaterThanOrEqual(1000);
+      expect(reader.retryMilliseconds).toBeLessThanOrEqual(10_000);
     }
     expect(hub.size).toBe(2);
     await backend.refresh('users.1', null, undefined);
@@ -692,7 +701,7 @@ describe('the Broadcaster — after the commit, never in a rollback', () => {
     const hub = hubOf(backend);
     const reader = await open(hub, ['users.1']);
     await reader.hello();
-    const recorder = new BroadcastRecorder();
+    const recorder = new BroadcastTester();
     await runTransaction(owner, 'default', async () => {
       await broadcasterOf(backend, undefined, recorder).refresh('users.1', { only: ['profile'] });
       await settle();
@@ -708,7 +717,7 @@ describe('the Broadcaster — after the commit, never in a rollback', () => {
     const hub = hubOf(backend);
     const reader = await open(hub, ['users.1']);
     await reader.hello();
-    const recorder = new BroadcastRecorder();
+    const recorder = new BroadcastTester();
     await expect(
       runTransaction(owner, 'default', async () => {
         await broadcasterOf(backend, undefined, recorder).refresh('users.1');
@@ -761,9 +770,9 @@ describe('a heartbeat keeps a stream alive behind a proxy with an idle timeout',
     return { port: (server.address() as AddressInfo).port, cut: () => cuts, close: () => new Promise((resolve) => server.close(() => resolve())) };
   }
 
-  async function streamThroughProxy(heartbeat: number) {
+  async function streamThroughProxy(heartbeatSeconds: number) {
     const backend = new MemoryLiveBackend();
-    const hub = hubOf(backend, { heartbeat });
+    const hub = hubOf(backend, { heartbeatSeconds });
     const app: Server = createServer(async (_request, response) => {
       const answer = await hub.open({ channels: ['users.1'], scope: ADA, connection: 'tab-a-0001' });
       response.writeHead(answer.status, Object.fromEntries(answer.headers));

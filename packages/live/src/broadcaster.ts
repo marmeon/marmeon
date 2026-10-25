@@ -3,7 +3,7 @@ import { channels } from '@marmeon/core/diagnostics';
 import { messageBase, trace } from '@marmeon/core/internal';
 import { checkedChannel } from '@marmeon/http/internal';
 import type { LiveBackend } from './backend.ts';
-import type { BroadcastRecorder } from './recorder.ts';
+import type { BroadcastTester } from './recorder.ts';
 
 /** What a refresh says besides its channel. */
 export interface RefreshOptions {
@@ -33,7 +33,7 @@ export interface LiveBroadcasterDependencies {
   readonly connection: string | undefined;
   readonly logger: Logger;
   /** Tests: what was refreshed (`app.broadcast`). */
-  readonly recorder?: BroadcastRecorder | undefined;
+  readonly recorder?: BroadcastTester | undefined;
   /** The app its hints are reported for on the `live.refresh` channel. */
   readonly app?: Application | undefined;
   /** Masks a failure's text in the log — the app's, so the names its packages add (the session cookie) count; without one, the core's key list. */
@@ -46,7 +46,7 @@ export class LiveBroadcaster implements Broadcaster {
   readonly #backend: () => LiveBackend;
   readonly #connection: string | undefined;
   readonly #logger: Logger;
-  readonly #recorder: BroadcastRecorder | undefined;
+  readonly #recorder: BroadcastTester | undefined;
   readonly #app: Application | undefined;
   readonly #redactor: Redactor;
 

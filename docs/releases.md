@@ -205,13 +205,12 @@ is still listed in the package's `api.md`, under **Experimental**, so a change s
 - `@marmeon/http/client/adapter`: the interface a UI adapter builds on (the navigator, regions and layers, the feature wiring,
   loading the first page). It stays experimental until a second adapter exists. What an app uses of the client core (`hooks`, `tabSync`, `xsrfToken`) stays in
   `@marmeon/http/client`.
-- `@marmeon/live`
 - `@marmeon/table`
 - `@marmeon/react/table`
 - `@marmeon/react/table-tanstack`
 
 The members of `@marmeon/testing` that follow an experimental
-package (`devtools`, `broadcast`, `live` of the test app) are experimental too, one by one; their declarations say so.
+package (`devtools` of the test app) are experimental too, one by one; their declarations say so.
 
 So is `features` of `ResolvePage` in `@marmeon/react`, which names a type of `@marmeon/http/client/adapter`.
 

@@ -1,29 +1,24 @@
 import cluster from 'node:cluster';
-import { Application, Logger, Redactor, token, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { Application, Logger, Redactor, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { CLUSTER_WORKER, withCode } from '@marmeon/core/internal';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { CONNECTION_HEADER, defineRoutes, LIVE_PATH, LiveAudience, LiveSigner, PageSession, ReadOnly, Router, ServerClosing } from '@marmeon/http';
 import { FRAMEWORK_ROUTES, IncomingRequest } from '@marmeon/http/internal';
-import { MemoryLiveBackend, type LiveBackend as Backend } from './backend.ts';
+import { LiveBackend, MemoryLiveBackend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
 import { LiveConfig } from './config.ts';
 import { LiveStreamController } from './endpoint.ts';
 import { LiveHub } from './hub.ts';
 import { LiveChannel } from './notifications.ts';
-import { BroadcastRecorder } from './recorder.ts';
+import { BroadcastTester } from './recorder.ts';
 import { RedisLiveBackend } from './redis.ts';
 import { liveKeys, LiveTokens } from './signer.ts';
 
-export type { LiveMessage } from './backend.ts';
 export { Broadcaster } from './broadcaster.ts';
 export type { RefreshOptions } from './broadcaster.ts';
 export type { LiveHello } from './hub.ts';
 export { LiveConfig } from './config.ts';
 export { notificationsChannel } from './notifications.ts';
-
-/** Where this app's hints travel — `memory` or `redis` (`LIVE_DRIVER`). */
-export type LiveBackend = Backend;
-export const LiveBackend = token<LiveBackend>('LiveBackend');
 
 /** Live props need a piece the app does not have. */
 export class LiveSetupError extends Error {
@@ -97,8 +92,8 @@ export class LiveServiceProvider implements ServiceProvider {
       return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.redisConnection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
     });
     container.singleton(LiveHub, (c) => {
-      const { heartbeat, retry, maxStreams, maxStreamsPerSession, maxStreamSeconds } = c.make(LiveConfig);
-      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeat, retry, maxStreams, maxStreamsPerSession, maxStreamSeconds }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal, c.make(Redactor));
+      const { heartbeatSeconds, retryMilliseconds, maxStreams, maxStreamsPerSession, maxStreamSeconds } = c.make(LiveConfig);
+      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeatSeconds, retryMilliseconds, maxStreams, maxStreamsPerSession, maxStreamSeconds }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal, c.make(Redactor));
       return this.#hub;
     });
     // Signs the channels a page follows for the session of its request.
@@ -106,7 +101,7 @@ export class LiveServiceProvider implements ServiceProvider {
     container.scoped(LiveSigner, (c) => c.make(LiveTokens).for(() => sessionScopeOf(c, true), () => readOnlyRequest(c)));
     // Per resolution: in a request it knows the tab that sent it (x-marmeon-connection); in a job or a command, none.
     container.bind(Broadcaster, (c) => {
-      const recorder = container.has(BroadcastRecorder) ? container.make(BroadcastRecorder) : undefined;
+      const recorder = container.has(BroadcastTester) ? container.make(BroadcastTester) : undefined;
       return new LiveBroadcaster({ backend: () => container.make(LiveBackend), connection: connectionOf(c), logger: c.make(Logger).child({ channel: 'live' }), recorder, app: c.make(Application), redactor: c.make(Redactor) });
     });
     container.scoped(LiveStreamController, (c) => new LiveStreamController(c.make(LiveHub), c.make(LiveTokens), c.make(LiveConfig).maxChannels, () => sessionScopeOf(c), container.has(LiveAudience) ? c.make(LiveAudience) : undefined, c.make(Logger).child({ channel: 'live' }), c.make(Redactor)));

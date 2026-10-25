@@ -10,9 +10,9 @@ import { Controller, HttpServiceProvider, type PageObject } from '@marmeon/http'
 import { ServerServiceProvider, startServer } from '@marmeon/server';
 import { SessionEndings, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { MemoryLiveBackend } from './backend.ts';
+import { LiveBackend, MemoryLiveBackend } from './backend.ts';
 import { LiveHub } from './hub.ts';
-import { Broadcaster, LiveBackend, LiveServiceProvider } from './index.ts';
+import { Broadcaster, LiveServiceProvider } from './index.ts';
 import { LiveStreamReader } from './test-stream.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { openRoutes } from './test-helpers/open-routes.ts';

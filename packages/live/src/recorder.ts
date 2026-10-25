@@ -15,7 +15,7 @@ const sameProps = (a: readonly string[] | null, b: readonly string[] | null) => 
  * What the app's `Broadcaster` sent — `app.broadcast` in tests: every refresh that went out (after its commit), as it
  * went out; the hints themselves reach the streams as in production (`app.live(path)`).
  */
-export class BroadcastRecorder {
+export class BroadcastTester {
   readonly #refreshed: RecordedRefresh[] = [];
 
   /** @internal — the broadcaster, when a refresh goes out. */

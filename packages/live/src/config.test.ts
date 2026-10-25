@@ -6,11 +6,11 @@ const resolve = async (env: Record<string, string>) => (await resolveConfig([Liv
 
 describe('LiveConfig: variable names', () => {
   it('keeps the defaults under the new names', async () => {
-    expect(await resolve({})).toMatchObject({ redisConnection: 'default', heartbeat: 20, retry: 3000 });
+    expect(await resolve({})).toMatchObject({ redisConnection: 'default', heartbeatSeconds: 20, retryMilliseconds: 3000 });
   });
 
   it('reads the connection, the heartbeat in seconds and the retry in milliseconds by their new names', async () => {
-    expect(await resolve({ LIVE_CONNECTION: 'live', LIVE_HEARTBEAT_SECONDS: '5', LIVE_RETRY_MILLISECONDS: '500' })).toMatchObject({ redisConnection: 'live', heartbeat: 5, retry: 500 });
+    expect(await resolve({ LIVE_CONNECTION: 'live', LIVE_HEARTBEAT_SECONDS: '5', LIVE_RETRY_MILLISECONDS: '500' })).toMatchObject({ redisConnection: 'live', heartbeatSeconds: 5, retryMilliseconds: 500 });
   });
 
   it('keeps the bounds of the heartbeat and the retry', async () => {
