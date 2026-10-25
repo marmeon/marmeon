@@ -9,7 +9,7 @@ import { MarmeonApp, loadLayerStack } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import { createHeadCollector, markServerTag, renderHead, type HeadCollector } from './head.tsx';
 import type { LayerFrame } from './layer.tsx';
-import type { DefaultLayout, ResolvePage } from './pages.ts';
+import { viewName, type DefaultLayout, type ResolvePage } from './pages.ts';
 import { loadView } from './views.ts';
 import { ssrResolvers } from './streamed.tsx';
 
@@ -43,12 +43,12 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
   return async (page, { complete = false, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce, placeholder } = {}) => {
     // A deep link's layers render with the page, in the shell: the layer stack and their views are loaded first.
     const [Component, catalog] = await Promise.all([
-      resolve(page.component),
+      resolve(viewName(resolve, page.component, page.props)),
       loadPageMessages(page, messages),
       ...(page.layers?.length ? [loadLayerStack(), ...page.layers.map((layered) => loadView(resolve, layered.component))] : []),
     ]);
     if (placeholder !== undefined && !Component.placeholder) {
-      throw new Error(`[${page.component}] has no placeholder: set \`${viewName(page.component)}.placeholder = …\` on the view (see docs/navigation.md#instant-visits).`);
+      throw new Error(`[${page.component}] has no placeholder: set \`${fileViewName(page.component)}.placeholder = …\` on the view (see docs/navigation.md#instant-visits).`);
     }
     if (Component.ssr === false && placeholder === undefined) return { html: '', head: head(createHeadCollector(), nonce) };
     const whole = complete || placeholder !== undefined || Component.ssr === 'complete';
@@ -110,7 +110,7 @@ function withNonce(tag: ReactElement, nonce: string): ReactElement {
 }
 
 /** `user-profile/Show` → `Show`: how the view is usually named in its file. */
-function viewName(component: string): string {
+function fileViewName(component: string): string {
   return component.slice(component.lastIndexOf('/') + 1);
 }
 

@@ -2,7 +2,7 @@ import { ERROR_PAGE, type ErrorPageProps } from '@marmeon/http/client/adapter';
 import { isDevelopment, type VisitError } from '@marmeon/http/client';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorPage } from './error-page.tsx';
-import type { ErrorFallback, PageComponent, ResolvePage } from './pages.ts';
+import { viewName, type ErrorFallback, type PageComponent, type ResolvePage } from './pages.ts';
 
 /*
  * What a failure shows — a chunk of its own (like the layers): `fallbacks.tsx` loads it when the server answers a visit
@@ -41,7 +41,8 @@ export function LazyPage({ resolve, name, props }: { resolve: ResolvePage; name:
 
 /** The app's error page (`errors/Error`) for an error thrown while rendering. */
 export function RenderErrorFallback({ resolve, error }: { resolve: ResolvePage; error: unknown }) {
-  return <LazyPage resolve={resolve} name={ERROR_PAGE} props={renderErrorProps(error)} />;
+  const props = renderErrorProps(error);
+  return <LazyPage resolve={resolve} name={viewName(resolve, ERROR_PAGE, props)} props={props} />;
 }
 
 /** A layout's `error` for an error thrown while rendering below it — inside the layout, with a retry. */
@@ -69,7 +70,7 @@ export function ServerFailure({ failure, resolve, onDismiss }: { failure: Extrac
         </button>
       </form>
       {page ? (
-        <LazyPage resolve={resolve} name={page.component} props={page.props} />
+        <LazyPage resolve={resolve} name={viewName(resolve, page.component, page.props)} props={page.props} />
       ) : html ? (
         // No scripts, no access to this origin: the answer is shown, never run.
         <iframe sandbox="" srcDoc={html} title={`Server error ${status}`} className="marmeon-failure__frame" />

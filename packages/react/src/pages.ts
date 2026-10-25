@@ -133,6 +133,19 @@ export type ResolvePage = ((name: string) => Promise<PageComponent>) & {
 
 type PageModules = Record<string, () => Promise<unknown>>;
 
+const known = new WeakMap<ResolvePage, ReadonlySet<string>>();
+
+/**
+ * The view that shows a page: `errors/<status>` for an error page whose status the app has a view for (`modules/errors/views/404.tsx`),
+ * else the name on the wire. Server and browser ask the same resolver, so both pick the same view and hydrate alike.
+ */
+export function viewName(resolve: ResolvePage, component: string, props: object): string {
+  if (component !== ERROR_PAGE) return component;
+  const status = (props as { status?: unknown }).status;
+  const own = typeof status === 'number' ? `errors/${status}` : undefined;
+  return own && known.get(resolve)?.has(own) ? own : component;
+}
+
 /**
  * Maps the modular-monolith view convention to page names:
  * `modules/user-profile/views/Show.tsx` -> `user-profile/Show`.
@@ -185,5 +198,7 @@ export function resolveModulePages(modules: PageModules): ResolvePage {
     }
     return page;
   };
-  return Object.assign(resolve, { features: [revalidateOnBack] });
+  const resolver = Object.assign(resolve, { features: [revalidateOnBack] });
+  known.set(resolver, new Set(pages.keys()));
+  return resolver;
 }

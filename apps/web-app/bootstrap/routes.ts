@@ -191,6 +191,7 @@ declare module '@marmeon/http/page' {
     'dashboard/MyActivity': true;
     'dashboard/RecentSignIns': true;
     'dashboard/Show': true;
+    'errors/404': true;
     'errors/Error': true;
     'lab/BrowserOnly': true;
     'lab/ClientOnly': true;
