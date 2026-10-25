@@ -438,7 +438,9 @@ The names follow a few rules:
 - `<AREA>_DRIVER` picks the driver. `<AREA>_CONNECTION` names a connection of the database or of Redis, and nothing else.
 - A duration says its unit: `_MILLISECONDS`, `_SECONDS`, `_MINUTES`, `_HOURS` or `_DAYS`. A rate ends in `_PER_MINUTE` or
   `_PER_DAY`, a size in `_MB`.
-- A switch is read as a boolean: `true`, `false`, `1` or `0`, in any case, and anything else stops the start.
+- A switch is read as a boolean: `true`, `false`, `1` or `0`, in any case, and anything else stops the start. `OTEL_SDK_DISABLED` is the one exception: it
+  follows the OpenTelemetry specification, where only `true`, in any case, disables the SDK. Any other value, `1` included, leaves spans on
+  and logs a warning ([Observability](observability.md#configuration)).
 - A rename keeps the unit, the default and the limits, so an app renames a key and never converts a value.
 
 The Kind column says which rule a variable falls under: `driver`, `connection`, `switch`, `duration` or `value` for the rest.

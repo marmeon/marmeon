@@ -31,14 +31,14 @@ class Recording implements Logger {
   }
 }
 
-async function boot() {
+async function boot(env: Record<string, string> = {}) {
   const logger = new Recording();
   const app = await createApplication({
     root: import.meta.dirname,
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, OtelServiceProvider],
     modules: [defineModule({ name: 'app', routes: openRoutes((Route) => void Route.get('/hello', () => ({ hello: true }))) })],
-  }, { env: { APP_KEY: generateKey() }, override: (container) => container.instance(Logger, logger) });
+  }, { env: { APP_KEY: generateKey(), ...env }, override: (container) => container.instance(Logger, logger) });
   return { app, logger };
 }
 
@@ -53,6 +53,26 @@ describe('@marmeon/otel without an SDK', () => {
       expect(logger.lines.filter((line) => line.level !== 'info')).toEqual([
         { level: 'debug', message: 'No OpenTelemetry SDK is registered — no spans. Start one before the app boots (docs/observability.md#starting-the-sdk).' },
       ]);
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it.each(['1', 'yes'])('warns when OTEL_SDK_DISABLED is "%s", neither true nor false, and leaves spans on', async (value) => {
+    const { app, logger } = await boot({ OTEL_SDK_DISABLED: value });
+    try {
+      expect(logger.lines.filter((line) => line.level === 'warn')).toEqual([
+        { level: 'warn', message: 'OTEL_SDK_DISABLED is neither "true" nor "false": spans stay on. Only "true" disables them.' },
+      ]);
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it.each(['true', 'FALSE', ''])('does not warn when OTEL_SDK_DISABLED is "%s"', async (value) => {
+    const { app, logger } = await boot({ OTEL_SDK_DISABLED: value });
+    try {
+      expect(logger.lines.filter((line) => line.level === 'warn')).toEqual([]);
     } finally {
       await app.shutdown();
     }

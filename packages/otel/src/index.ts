@@ -32,6 +32,8 @@ export const OtelConfig = defineConfig('otel', {
     .renamed('OTEL_RECORD_QUERY_VALUES', 'MARMEON_OTEL_RECORD_QUERY_VALUES'),
   resolve: (e) => ({
     disabled: e.OTEL_SDK_DISABLED.toLowerCase() === 'true',
+    /** @internal `OTEL_SDK_DISABLED` is neither `true` nor `false`: boot warns about it. */
+    sdkDisabledUnrecognised: !['true', 'false'].includes(e.OTEL_SDK_DISABLED.toLowerCase()),
     requestHeaders: e.OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST.map((name) => name.toLowerCase()),
     /** Continue an incoming request's trace (`traceparent`) instead of linking it (MARMEON_OTEL_TRUST_TRACEPARENT, docs/observability.md#a-callers-traceparent). */
     trustTraceparent: e.MARMEON_OTEL_TRUST_TRACEPARENT,
@@ -68,9 +70,13 @@ export class OtelServiceProvider implements ServiceProvider {
 
   async boot(app: Application): Promise<void> {
     const config = app.container.make(OtelConfig);
+    const logger = app.container.make(Logger).child({ channel: 'otel' });
+    // The specification asks for a warning, and for the value to count as `false`.
+    if (config.sdkDisabledUnrecognised) {
+      logger.warn('OTEL_SDK_DISABLED is neither "true" nor "false": spans stay on. Only "true" disables them.');
+    }
     if (config.disabled) return;
     const api = await loadOtelApi();
-    const logger = app.container.make(Logger).child({ channel: 'otel' });
     if (!sdkRegistered(api)) {
       logger.debug('No OpenTelemetry SDK is registered — no spans. Start one before the app boots (docs/observability.md#starting-the-sdk).');
       return;

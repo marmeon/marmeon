@@ -206,7 +206,6 @@ is still listed in the package's `api.md`, under **Experimental**, so a change s
   loading the first page). It stays experimental until a second adapter exists. What an app uses of the client core (`hooks`, `tabSync`, `xsrfToken`) stays in
   `@marmeon/http/client`.
 - `@marmeon/live`
-- `@marmeon/otel`
 - `@marmeon/table`
 - `@marmeon/react/table`
 - `@marmeon/react/table-tanstack`

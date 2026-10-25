@@ -6,7 +6,7 @@
 
 Types from other packages: none
 
-### Experimental
+### Stable
 
 ```ts
 // OtelConfig
@@ -36,7 +36,7 @@ export declare class OtelSetupError extends Error {
 }
 ```
 
-## Experimental
+## Environment
 
 ```ts
 // MARMEON_OTEL_RECORD_QUERY_VALUES

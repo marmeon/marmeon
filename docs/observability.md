@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The channel names and the shape of their messages are stable. `@marmeon/otel` is experimental: it can change in any minor release. See [the release policy](releases.md#experimental).
+The channel names and the shape of their messages are stable, and so is `@marmeon/otel`.
 
 The framework reports what it does: every request, query, job, mail, notification, live hint, scheduled run, command, log entry,
 exception and event. It publishes these reports on channels of Node's `node:diagnostics_channel`, and the framework's tools
@@ -302,7 +302,7 @@ This records `http.request.header.x-tenant`, while `authorization`, `cookie` and
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `OTEL_SDK_DISABLED` | `false` | `true`, as the OpenTelemetry specification says (`1` does not count): no spans from the framework, and the API is not even loaded. The SDK honours it too. |
+| `OTEL_SDK_DISABLED` | `false` | `true`, as the OpenTelemetry specification says (`1` does not count): no spans from the framework, and the API is not even loaded. The SDK honours it too. Any value other than `true` or `false` leaves spans on and logs a warning on the `otel` logger at boot. |
 | `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` | empty | Request headers to record, separated by commas. |
 | `MARMEON_OTEL_TRUST_TRACEPARENT` | `false` | `true` or `1`: an incoming `traceparent` is the parent of the request's span instead of a link. |
 | `MARMEON_OTEL_RECORD_QUERY_VALUES` | `false` | `true` or `1`: `url.query` carries the values of the query, masked like any text, not only its keys. |
