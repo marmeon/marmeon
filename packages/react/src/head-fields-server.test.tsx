@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Head, type HeadProps } from './head.tsx';
+import { Head, type HeadProps, type JsonLd } from './head.tsx';
 import { mergeHead } from './head-fields.ts';
 import { resolveModulePages } from './pages.ts';
 import { createSsrRenderer } from './server.tsx';
@@ -151,6 +151,67 @@ describe('<Head> fields on the server', () => {
   it('takes the app URL from the option, not from the page URL', async () => {
     const result = await (render as SsrRender)({ component: 'seo/Heads', props: { heads: [{ canonical: '/a' }] }, url: 'https://evil.example/a' }, { appUrl: APP_URL });
     expect(result.head).toContain('href="https://app.example/a"');
+  });
+});
+
+describe('<Head jsonLd> on the server', () => {
+  const blocksOf = (head: string) => [...head.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1]!);
+
+  it.each([
+    ['a closing script tag', '</script><script>alert(1)</script>'],
+    ['an upper-case closing tag with a space', '</SCRIPT >'],
+    ['a comment opener', '<!--'],
+    ['an opening script tag', '<script'],
+    ['line and paragraph separators', 'a b c'],
+    ['a less-than sign in text', 'a < b && c<d'],
+  ])('keeps %s inside the block and parses back to the same object', async (_, name) => {
+    const value = { '@context': 'https://schema.org', '@type': 'Person', name, nested: { list: [name] } };
+    const head = await headOf([{ jsonLd: value }]);
+    const [block] = blocksOf(head);
+    expect(blocksOf(head)).toHaveLength(1);
+    expect(block).not.toContain('<');
+    expect(JSON.parse(block!)).toEqual(value);
+    // Nothing of the text escaped into the head around the block.
+    expect(head.replace(/<script type="application\/ld\+json"[^>]*>[\s\S]*?<\/script>/g, '')).not.toContain('alert');
+  });
+
+  it('writes the nonce of the response, and no attribute without one', async () => {
+    const withNonce = await headOf([{ jsonLd: { '@type': 'Thing' } }], { appUrl: APP_URL, nonce: 'abc123' });
+    expect(withNonce).toContain('<script type="application/ld+json" nonce="abc123" data-marmeon-head="ssr">{"@type":"Thing"}</script>');
+    const without = await headOf([{ jsonLd: { '@type': 'Thing' } }]);
+    expect(without).toContain('<script type="application/ld+json" data-marmeon-head="ssr">{"@type":"Thing"}</script>');
+    expect(without).not.toContain('nonce');
+  });
+
+  it('collects the blocks of a layout and its page in render order, an array adding each of its blocks', async () => {
+    const head = await headOf([{ jsonLd: { '@type': 'Organization', name: 'Shop' } }, { jsonLd: [{ '@type': 'Article' }, { '@type': 'Person' }] }]);
+    expect(blocksOf(head).map((block) => JSON.parse(block)['@type'])).toEqual(['Organization', 'Article', 'Person']);
+  });
+
+  it('names the block that is no JSON in development, and leaves it out in production', async () => {
+    const cycle: Record<string, unknown> = { '@type': 'Article' };
+    cycle.self = cycle;
+    await expect(headOf([{ jsonLd: cycle as never }])).rejects.toThrow('@type "Article"');
+    await expect(headOf([{ jsonLd: { '@type': ['Thing', 'Event'], count: 1n as never } }])).rejects.toThrow('["Thing","Event"]');
+    vi.stubEnv('NODE_ENV', 'production');
+    try {
+      const head = await headOf([{ jsonLd: [cycle as never, { '@type': 'Person' }] }]);
+      expect(blocksOf(head).map((block) => JSON.parse(block)['@type'])).toEqual(['Person']);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('accepts JSON only: a Date, a function or undefined is a type error', () => {
+    // @ts-expect-error a Date is not JSON
+    const date: JsonLd = { '@type': 'Article', datePublished: new Date() };
+    // @ts-expect-error a function is not JSON
+    const callback: JsonLd = { '@type': 'Article', run: () => 1 };
+    // @ts-expect-error `undefined` is not JSON
+    const missing: JsonLd = { '@type': 'Article', author: undefined };
+    // @ts-expect-error every block needs a @type
+    const untyped: JsonLd = { name: 'x' };
+    expect([date, callback, missing, untyped]).toHaveLength(4);
   });
 });
 

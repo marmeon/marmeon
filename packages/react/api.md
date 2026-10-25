@@ -292,6 +292,13 @@ export interface IslandState<C extends IslandAction = IslandAction> {
         except?: readonly (keyof IslandPropsOf<C> & string)[];
     }): readonly Reloading[];
 }
+// JsonLd
+export type JsonLd = {
+    readonly '@context'?: string;
+    readonly '@type': string | readonly string[];
+} & {
+    readonly [key: string]: JsonLdValue;
+};
 // LayerCloseOptions
 export type { LayerCloseOptions } from '@marmeon/http/client';
 // LayerDialog
@@ -646,6 +653,7 @@ export interface HeadFields {
     };
     openGraph?: OpenGraph;
     twitter?: TwitterCard;
+    jsonLd?: JsonLd | readonly JsonLd[];
 }
 // HrefLinkProps
 type HrefLinkProps = (LinkOptions & PartialReloadOptions & PrefetchProps & CurrentProps & AnchorAttributes & {
@@ -674,6 +682,10 @@ type IslandAction = {
 };
 // IslandQueryPatch
 type IslandQueryPatch<C> = IslandAction extends C ? Readonly<Record<string, unknown>> : [QueryOf<C>] extends [never] ? 'this island has no query schema — give its controller `static request = defineRequest({ query })`' : QueryFields<QueryOf<C>>;
+// JsonLdValue
+type JsonLdValue = string | number | boolean | null | readonly JsonLdValue[] | {
+    readonly [key: string]: JsonLdValue;
+};
 // LayerAction
 type LayerAction = {
     handle: (...args: never[]) => unknown;

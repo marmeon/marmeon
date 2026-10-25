@@ -27,6 +27,7 @@ This page covers the fields of `<Head>` and the sitemap and `robots.txt`, which 
 | `robots`      | `<meta name="robots">`, from `index` and `follow`               |
 | `openGraph`   | `og:*` as `property`, `article:*` for an article                |
 | `twitter`     | `twitter:*` as `name`                                           |
+| `jsonLd`      | `<script type="application/ld+json">`, see [Structured data](#structured-data) |
 
 `robots` says only what you set: `{ index: false }` writes `noindex`, and `{ index: false, follow: true }` writes
 `noindex, follow`. A crawler treats a missing part as allowed.
@@ -62,6 +63,41 @@ made absolute:
 
 A path stays on the app's own origin: `//other.example/x` and `/\other.example/x` name another host and are left out, while a full `https://cdn.example/x.png` keeps its host. Without `APP_URL`, a relative URL is left out. A URL with another scheme than `http:` or `https:`, such as `javascript:` or
 `data:`, is left out as well, and development logs a warning for each.
+
+## Structured data
+
+`jsonLd` writes [schema.org](https://schema.org) data for search engines as `<script type="application/ld+json">`. Pass one block or an array:
+
+```tsx title="modules/notes/views/Show.tsx"
+<Head
+  title={note.title}
+  jsonLd={{
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: note.title,
+    datePublished: note.createdAt,
+    author: { '@type': 'Person', name: note.author.name },
+  }}
+/>
+```
+
+A block is plain JSON with an `@type`. The type `JsonLd` refuses a `Date`, a function and `undefined`, so write a date as its ISO string.
+A layout and its page both contribute: the blocks of every `<Head>` are written in render order, so a layout can say
+`{ '@type': 'Organization', … }` and the page its article. They do not replace each other.
+
+Text from your users is safe in a block. The server writes the JSON with every `<` escaped (`\u003c`), so a name such as
+`</script><script>…` can neither end the script early nor open a comment, and the block parses back to exactly the object you
+passed. In the browser the block is set as the element's text, so no HTML parser reads it. Do not put the JSON in a `<script>`
+child of `<Head>` yourself: React escapes it and the block would no longer be JSON.
+
+The block carries the response's [CSP nonce](csp.md) like the server's other scripts. The nonce is not what protects it, because a data block
+never runs and `script-src` does not govern it. The escaping does.
+
+A block that `JSON.stringify` cannot write (a cycle, a `bigint`) is a bug in the app: development throws an error that names the
+block's `@type`, and production leaves the block out.
+
+Under `require-trusted-types-for 'script'` a browser refuses to set a script's text. The browser then removes the block
+instead of writing it, and development logs a warning. The first document, as the server sent it, still has the block, and crawlers read that one.
 
 ## Sitemap and robots.txt
 

@@ -83,6 +83,21 @@ describe('the public pages in search results and link previews', () => {
       .assertSee('<meta name="twitter:card" content="summary" data-marmeon-head="ssr"/>');
   });
 
+  it('gives a feature as structured data, in a block that text cannot leave', async () => {
+    const response = await app.get('/about/features/typed-routes', page).assertServerRendered();
+    const blocks = [...response.body.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1]!);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).not.toContain('<');
+    expect(JSON.parse(blocks[0]!)).toEqual({
+      '@context': 'https://schema.org',
+      '@type': 'TechArticle',
+      headline: 'Typed routes',
+      description: 'Route names and parameters are checked by the compiler, in controllers and views alike.',
+      dateModified: '2026-03-02T09:00:00Z',
+      publisher: { '@type': 'Organization', name: 'Marmeon' },
+    });
+  });
+
   it('describes the list, and a foreign Host does not reach the head', async () => {
     const response = await app.get('/about', { headers: { ...page.headers, host: 'evil.example' } }).assertServerRendered();
     response.assertSee('<link rel="canonical" href="http://localhost/about" data-marmeon-head="ssr"/>').assertSee('<meta property="og:site_name" content="Marmeon" data-marmeon-head="ssr"/>');
