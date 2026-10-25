@@ -341,6 +341,13 @@ export interface MarmeonAppProps {
    * `startTransition` with its types, and the core starts none). See docs/navigation.md#view-transitions.
    */
   viewTransition?: ViewTransitionOption | 'react' | undefined;
+  /**
+   * Server rendering only: the first page is its view's placeholder (the values are what it gets, the page's props stay empty), as an instant visit
+   * shows it — for `app.placeholder()` in tests.
+   *
+   * @internal
+   */
+  initialPlaceholder?: Readonly<Record<string, unknown>>;
 }
 
 interface Current {
@@ -383,10 +390,19 @@ export function MarmeonApp({
   confirm: Confirm,
   features,
   viewTransition,
+  initialPlaceholder,
 }: MarmeonAppProps) {
   // A deep link's document brings the layers over its page: rendered over it, apart from it.
   const firstPage = useMemo(() => withoutLayers(initialPage), [initialPage]);
-  const [current, setCurrent] = useState<Current>({ page: firstPage, Component: initialComponent, catalog: initialCatalog, key: 0 });
+  const [current, setCurrent] = useState<Current>({
+    page: firstPage,
+    Component: initialComponent,
+    catalog: initialCatalog,
+    key: 0,
+    ...(initialPlaceholder && initialComponent.placeholder
+      ? { placeholder: { Component: initialComponent.placeholder, View: initialComponent, name: initialPage.component, props: initialPlaceholder } }
+      : {}),
+  });
   const [failure, setFailure] = useState<VisitError | null>(null);
 
   // The navigator waits until a page is on screen before it restores the scroll position.

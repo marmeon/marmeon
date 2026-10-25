@@ -616,10 +616,6 @@ type Instance<C> = C extends abstract new (...args: never) => infer I ? I : neve
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
 // Instance (3)
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
-// InstantOf
-type InstantOf<N extends string> = InstantProps<Instance<ControllerOf<N>>>;
-// InstantProp
-type InstantProp<N extends string> = [InstantOf<N>] extends [never] ? `'${N}' shows no placeholder — declare what it gets on its controller (\`declare readonly instant: { … }\`) and give its view one (\`View.placeholder = …\`)` : {} extends InstantOf<N> ? true | InstantOf<N> : InstantOf<N>;
 // IsPassword
 type IsPassword<K extends string> = LooksLikePassword<K>;
 // IslandAction

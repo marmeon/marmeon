@@ -157,6 +157,7 @@ export declare class TestApp {
     island<const N extends RouteNameInput>(name: CheckIslandRouteName<N>, ...[params, query]: RouteArgs<N>): PendingTestResponse;
     layering(): TestApp;
     layer<const N extends RouteNameInput>(name: CheckLayerRouteName<N>, ...[params, query]: RouteArgs<N>): PendingTestResponse;
+    placeholder<const N extends RouteNameInput>(route: CheckPageRouteName<N>, ...[instant]: true extends InstantProp<N> ? [instant?: InstantProp<N>] : [instant: InstantProp<N>]): Promise<TestMarkup>;
     acting(): TestApp;
     validating(...fields: string[]): TestApp;
     expectingJson(): TestApp;
@@ -185,6 +186,13 @@ export interface TestAppOptions {
     ssrServer?: SsrServer;
     debug?: boolean;
     devtools?: boolean;
+}
+// TestMarkup
+export declare class TestMarkup {
+    #private;
+    readonly html: string;
+    assertSee(text: string): this;
+    assertDontSee(text: string): this;
 }
 // TestResponse
 export declare class TestResponse {

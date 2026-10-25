@@ -2,15 +2,17 @@ import { Application, Clock, createApplication, EventRegistry, type ApplicationD
 import { loadEnv } from '@marmeon/core/internal';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { Encrypter } from '@marmeon/encryption';
-import { CONNECTION_HEADER, CookieEncryption, LIVE_PATH, Router } from '@marmeon/http';
+import { browserRoutes, CONNECTION_HEADER, CookieEncryption, LIVE_PATH, Router } from '@marmeon/http';
 import { protocolHeaders, writeAppBrowserRoutes } from '@marmeon/http/internal';
 import {
   urlFor,
   type CheckIslandRouteName,
+  type CheckPageRouteName,
   type CheckRouteName,
   type CheckUploadField,
   type ControllerOf,
   type FormOf,
+  type InstantProp,
   type ParamsOf,
   type UploadToken,
   type CheckLayerRouteName,
@@ -45,6 +47,7 @@ import type { DevtoolsTester } from '@marmeon/devtools/testing';
 import type { ScheduleTester } from '@marmeon/scheduler/testing';
 import type { FactoryDefinition, PendingFactory, RowOf, Tables } from '@marmeon/database';
 import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
+import { TestMarkup } from './markup.ts';
 import { PendingTestResponse } from './pending.ts';
 import { checkSsrServer, SSR_TEST_HEADER, TestSsr, type SsrServer } from './ssr.ts';
 import { TestResponse, type PageNameOf, type PageSource, type PropsOf } from './response.ts';
@@ -971,6 +974,35 @@ export class TestApp {
   layer<const N extends RouteNameInput>(name: CheckLayerRouteName<N>, ...[params, query]: RouteArgs<N>): PendingTestResponse {
     const path = urlFor(this.make(Router), name, params as Readonly<Record<string, Param>> | undefined, query as Query | undefined);
     return this.layering().get(path);
+  }
+
+  /**
+   * Renders the placeholder of the page a route shows — what `<Link route instant>` puts on screen before the answer — in its layouts:
+   * `(await app.placeholder('notes.show', { title })).assertSee(title)`. `instant` is what the controller's `declare readonly instant: {…}`
+   * names, as the link passes it. The view is the one the controller writes out once (`this.view('notes/Show', …)`: it is in
+   * `.marmeon/routes.json`). Needs `createTestApp(…, { ssr: true })`. See `docs/testing-pages.md#instant-visits`.
+   */
+  async placeholder<const N extends RouteNameInput>(
+    route: CheckPageRouteName<N>,
+    ...[instant]: true extends InstantProp<N> ? [instant?: InstantProp<N>] : [instant: InstantProp<N>]
+  ): Promise<TestMarkup> {
+    const name: string = route;
+    const fail = (message: string): never => {
+      throw new AssertionError({ message: `app.placeholder('${name}'): ${message}` });
+    };
+    const { ssr } = this.#shared;
+    if (!ssr) return fail('it needs server rendering in the test: createTestApp(app, { ssr: true })');
+    const found = browserRoutes(this.make(Router).routes, this.application.definition.clientRoutes).routes[name];
+    if (!found) return fail('no such route, or the browser does not learn it (an `.internal()` or API route, or `clientRoutes.except`).');
+    if (!found.view) {
+      return fail("the route does not name its view once, so there is none to look up — write it out in the controller (`this.view('notes/Show', …)`), not computed.");
+    }
+    try {
+      return new TestMarkup(await ssr.placeholder(found.view, instant === true || instant === undefined ? {} : (instant as unknown as Readonly<Record<string, unknown>>), found.path));
+    } catch (error) {
+      const reason = error instanceof Error ? (error.stack ?? error.message) : String(error);
+      return fail(error instanceof Error && error.message.includes('has no placeholder') ? error.message : `the placeholder did not render: ${reason}`);
+    }
   }
 
   /**

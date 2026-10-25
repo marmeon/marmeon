@@ -270,6 +270,8 @@ export declare class HttpServiceProvider implements ServiceProvider {
 export declare const INTENDED_KEY = "_intended_url";
 // Input
 export type { Input } from '@marmeon/router';
+// InstantProp
+export type InstantProp<N extends string> = [InstantOf<N>] extends [never] ? `'${N}' shows no placeholder — declare what it gets on its controller (\`declare readonly instant: { … }\`) and give its view one (\`View.placeholder = …\`)` : {} extends InstantOf<N> ? true | InstantOf<N> : InstantOf<N>;
 // InstantProps
 export type InstantProps<C> = C extends {
     readonly instant: infer P;
@@ -892,6 +894,8 @@ type DeepItemKey<T, Depth extends unknown[]> = Depth['length'] extends 4 ? never
 declare const ISLAND_RESULT: unique symbol;
 // Instance
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
+// InstantOf
+type InstantOf<N extends string> = InstantProps<ControllerOf<N> extends abstract new (...args: never) => infer I ? I : never>;
 // IslandAction
 type IslandAction = {
     handle: (...args: never[]) => unknown;
@@ -2648,6 +2652,8 @@ export type FlashMessage<K extends FlashKey = FlashKey> = K extends unknown ? {
 export type FlashValue<K extends string> = K extends keyof FlashData ? FlashData[K] : unknown;
 // FormOf
 export type { FormOf } from '@marmeon/router';
+// InstantProp
+export type InstantProp<N extends string> = [InstantOf<N>] extends [never] ? `'${N}' shows no placeholder — declare what it gets on its controller (\`declare readonly instant: { … }\`) and give its view one (\`View.placeholder = …\`)` : {} extends InstantOf<N> ? true | InstantOf<N> : InstantOf<N>;
 // InstantProps
 export type InstantProps<C> = C extends {
     readonly instant: infer P;
@@ -2914,6 +2920,8 @@ export declare const Flasher: import("@marmeon/core").Token<Flasher>;
 declare const ISLAND_RESULT: unique symbol;
 // Instance
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
+// InstantOf
+type InstantOf<N extends string> = InstantProps<ControllerOf<N> extends abstract new (...args: never) => infer I ? I : never>;
 // IslandAction
 type IslandAction = {
     handle: (...args: never[]) => unknown;

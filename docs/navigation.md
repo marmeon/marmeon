@@ -245,6 +245,9 @@ The link passes the values: `<Link route="notes.show" params={{ note: note.id }}
 that declares `instant: {}` takes `instant` alone. A link with `instant` to a route whose controller declares nothing is a compile
 error.
 
+A test renders the placeholder with `app.placeholder('notes.show', { title })` and asserts on its markup
+([testing pages](testing-pages.md#instant-visits)).
+
 The placeholder never gets the page's props, only what the link handed it. The history entry is written when the page lands. A
 visit that fails or is cancelled shows the page on screen again, and Back during the visit cancels it. A page fetched ahead shows
 at once without a placeholder. The code loads when the first instant link renders.

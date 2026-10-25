@@ -1,4 +1,4 @@
-import type { DeferredResult, RegionResult } from '@marmeon/http/page';
+import type { DeferredResult, RegionResult, SsrRender } from '@marmeon/http/page';
 import type { PageObject } from '@marmeon/http/protocol';
 import type { ApplicationDefinition } from '@marmeon/core';
 import type { PageRenderer } from '@marmeon/server';
@@ -34,6 +34,7 @@ export interface SsrServer {
 interface SsrServerState {
   readonly root: string;
   readonly renderer: PageRenderer;
+  readonly ssr: () => Promise<SsrRender>;
   closed: boolean;
 }
 
@@ -45,8 +46,8 @@ const servers = new WeakMap<SsrServer, SsrServerState>();
  * of a file can share: start it in `beforeAll`, close it in `afterAll`. See docs/testing-pages.md#one-vite-server-per-file.
  */
 export async function startSsrServer(application: ApplicationDefinition): Promise<SsrServer> {
-  const { vite, renderer } = await createViteDevRenderer({ root: application.root });
-  const state: SsrServerState = { root: application.root, renderer, closed: false };
+  const { vite, renderer, ssr } = await createViteDevRenderer({ root: application.root });
+  const state: SsrServerState = { root: application.root, renderer, ssr, closed: false };
   let closing: Promise<void> | undefined;
   const server: SsrServer = Object.freeze({
     root: application.root,
@@ -89,6 +90,7 @@ interface Resolved {
  */
 export class TestSsr {
   readonly renderer: PageRenderer;
+  readonly #entry: () => Promise<SsrRender>;
   readonly #close: () => Promise<void>;
   readonly #errors = new Map<string, unknown[]>();
   /** What each render's islands and deferred groups resolved to — the browser renders them again from that, not from a request. */
@@ -96,7 +98,8 @@ export class TestSsr {
   readonly #stream: boolean;
   #next = 0;
 
-  private constructor(renderer: PageRenderer, close: () => Promise<void>, { stream = false }: { stream?: boolean } = {}) {
+  private constructor(renderer: PageRenderer, entry: () => Promise<SsrRender>, close: () => Promise<void>, { stream = false }: { stream?: boolean } = {}) {
+    this.#entry = entry;
     this.#close = close;
     this.#stream = stream;
     const record = (request: Request, error: unknown) => {
@@ -155,10 +158,22 @@ export class TestSsr {
     if (server) {
       const state = usable(server, root);
       // The shared Vite outlives this app: closing the app only drops its own error and island bookkeeping.
-      return new TestSsr(state.renderer, async () => {}, options);
+      return new TestSsr(state.renderer, state.ssr, async () => {}, options);
     }
-    const { vite, renderer } = await createViteDevRenderer({ root });
-    return new TestSsr(renderer, () => vite.close(), options);
+    const { vite, renderer, ssr } = await createViteDevRenderer({ root });
+    return new TestSsr(renderer, ssr, () => vite.close(), options);
+  }
+
+  /** The markup of `view`'s placeholder with `instant`, in the view's layouts — rendered completely. Rejects when the view has none. */
+  async placeholder(view: string, instant: Readonly<Record<string, unknown>>, url: string): Promise<string> {
+    const render = await this.#entry();
+    const page: PageObject = { component: view, props: {}, url };
+    const failures: unknown[] = [];
+    const { html } = await render(page, { placeholder: instant, complete: true, onError: (error) => failures.push(error) });
+    const markup = typeof html === 'string' ? html : await new Response(html).text();
+    // A boundary the browser would render instead: the placeholder did not render on the server.
+    if (failures.length > 0) throw failures[0];
+    return markup;
   }
 
   /** A fresh id for the next request — send it as {@link SSR_TEST_HEADER}. */
