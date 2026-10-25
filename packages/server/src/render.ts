@@ -64,7 +64,7 @@ import {
 } from '@marmeon/http/internal';
 import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { ownResponse, RequestNonce, urlFor, type ResponseContext, type RouteLookup } from '@marmeon/router';
-import { defaultToResponse, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseFactory } from '@marmeon/router/internal';
+import { defaultToResponse, PageAlternates, VALIDATE_HEADER, VALIDATED_HEADER, type ResponseFactory } from '@marmeon/router/internal';
 import { documentOf, FALLBACK_TEMPLATE, renderDocument, withNonce, withPreloads } from './html.ts';
 import { preloadTags, type AssetPreloads } from './preloads.ts';
 
@@ -485,7 +485,8 @@ export function createResponseFactory(
   return async (result, ctx, scope) => {
     if (isRedirectResult(result)) {
       const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
-      const response = result.toResponse(ctx.request, routes ?? noRouter, flasher);
+      const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
+      const response = result.toResponse(ctx.request, routes ?? noRouter, flasher, translator?.locale);
       // An action's redirect is not followed: its answer is what the user is shown, so it takes the flash messages.
       return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope)) : response;
     }
@@ -526,13 +527,15 @@ export function createResponseFactory(
     const language = translator ? { locale: translator.locale, ...(translator.fallbackLocale ? { fallbackLocale: translator.fallbackLocale } : {}) } : {};
     // The parsed query, for `useQueryState`: what the URL set validly, and the defaults — never parsed again in the browser.
     const query = ctx.pageQuery ? { query: { ...ctx.pageQuery.values }, queryDefaults: { ...ctx.pageQuery.defaults } } : {};
+    // The page of a localized route in each locale (set by `SetLocale`), for the language switcher and `hreflang`.
+    const alternates = scope?.has(PageAlternates) ? scope.make(PageAlternates).paths : undefined;
     const layer = isLayerResult(result) ? layerInfo(result, ctx.request) : undefined;
     // The route that answered (`<Link activeMatch>`): its name — never an internal one's, and none for an error page.
     const matched = (ctx as { route?: { routeName?: string | undefined; isInternal?: boolean } }).route;
     const route = matched?.routeName !== undefined && !matched.isInternal ? { route: matched.routeName } : {};
     // The channels it follows: its own and — a page, which shows the layout — the shared ones, signed for this session.
     const live = await liveSubscriptions([...(layer ? [] : (shared?.liveChannels() ?? [])), ...liveOf(result)], scope, result.component);
-    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...query, ...(layer ? { layer } : {}), ...route, ...pageSession, ...live };
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version, ...language, ...(alternates ? { alternates: { ...alternates } } : {}), ...query, ...(layer ? { layer } : {}), ...route, ...pageSession, ...live };
     // Shown to the user: it takes the flash messages — and a response with them is never kept by a cache (a document
     // from the HTTP cache would fire them again).
     const flash = deliver(ctx.request, scope, flashOf(result));

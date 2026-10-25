@@ -201,6 +201,28 @@ export type RouteArgs<N extends string> = {} extends ParamsOf<N>
   ? [params?: ParamsOf<N>, query?: QueryParams<N>]
   : [params: ParamsOf<N>, query?: QueryParams<N>];
 
+/**
+ * The arguments after a route name for the route entry `E` (what `marmeon route:types` writes) named `N`: the path's
+ * parameters and a query. A localized entry takes its `locale` as an option, so `redirect().route()` can fill in the request's;
+ * any other entry needs every parameter its path names, a `locale` of its own included.
+ */
+export type RedirectArgsOf<E, N extends string> = E extends { readonly path: infer P extends string }
+  ? ParamValues<ExtractParams<P>> extends infer All
+    ? (E extends { readonly localized: true } ? Omit<All, 'locale'> & { readonly locale?: Param } : All) extends infer Given
+      ? {} extends Given
+        ? [params?: Given, query?: QueryParams<N>]
+        : [params: Given, query?: QueryParams<N>]
+      : never
+    : never
+  : never;
+
+/**
+ * The arguments of `redirect().route()`: those of {@link RouteArgs}, except that the `locale` of a localized route may be left
+ * out — the redirect takes the locale of the request. Any other route needs every parameter it has, a `locale` of its own
+ * path included.
+ */
+export type RedirectRouteArgs<N extends string> = [N] extends [never] ? RouteArgs<N> : true extends IsUnion<N> ? RouteArgs<N> : N extends keyof Routes ? RedirectArgsOf<Routes[N], N> : RouteArgs<N>;
+
 // -- "Did you mean …?" ---------------------------------------------------------------------------------------
 
 /** `user-profile.links.store` → `user-profile.links`; `home` → `''`. */

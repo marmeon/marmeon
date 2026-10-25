@@ -186,11 +186,12 @@ The `SetLocale` middleware of the `web` group picks the request's locale, after 
 its errors are translated too. With only one supported locale there is nothing to choose, and every request speaks it. With more,
 it takes the first supported locale of:
 
-1. the session's `locale`, a language switcher's choice;
-2. the signed-in user's, through `LocalePreference`;
-3. the browser's `Accept-Language`, by quality, then by order. `de-AT` falls back to `de`, and `de` matches the first supported
+1. the URL's, on a [localized route](#the-locale-in-the-url) only;
+2. the session's `locale`, a language switcher's choice;
+3. the signed-in user's, through `LocalePreference`;
+4. the browser's `Accept-Language`, by quality, then by order. `de-AT` falls back to `de`, and `de` matches the first supported
    `de-…`;
-4. `APP_LOCALE`.
+5. `APP_LOCALE`.
 
 The default `LocalePreference` knows no user. The starter kit binds one in its provider that reads the account's stored language:
 
@@ -200,14 +201,64 @@ container.scoped(LocalePreference, (c) => ({ preferredLocale: async () => (await
 
 A value from a session, a header or a form becomes a locale only when it names a supported one, and then in the app's spelling.
 So what reaches `<html lang>`, the page and the browser's language files is always one of your locales, never a path or markup.
-Every response of the `web` group carries `Content-Language`. With more than one supported locale it also carries
-`Vary: accept-language`, so a cache keeps the languages apart — but the chosen locale lives in the session (a guest's is gone when the browser closes), so a shared cache
-must not store pages per URL (or the locale belongs in the URL). Routes of the `api` group pass no `SetLocale`: their `Translator`
-speaks `APP_LOCALE`. The page carries its `locale` and the fallback locale, never the messages: the browser loads
-those itself.
+Every response of the `web` group carries `Content-Language`. With more than one supported locale, a route that is not localized
+also carries `Vary: accept-language`, so a cache keeps the languages apart. But the chosen locale lives in the session (a guest's
+is gone when the browser closes), so a shared cache must not store such pages per URL: put the locale into the URL with
+[a localized route](#the-locale-in-the-url). Routes of the `api` group pass no `SetLocale`: their `Translator` speaks
+`APP_LOCALE`. The page carries its `locale` and the fallback locale, never the messages: the browser loads those itself.
 
 `Locales` is a service of the whole app: `default`, `fallback`, `supported` with the default first, `explicit` for whether
 `APP_LOCALES` names them, and `find(value)`, which returns the supported locale a value names, or `undefined`.
+
+### The locale in the URL
+
+A route under [`Route.localized()`](routing.md#routes-under-a-locale) speaks the locale of its URL: `/de/about` is in German
+whatever the session and the browser say, and `/en/about` in English. One URL is one language, so nothing about the visitor
+decides the answer and a response of such a route carries `Content-Language` but no `Vary: accept-language`.
+
+`SetLocale` never writes the locale of a URL into the session. A link that someone else sends you must not change the language
+you chose, and the session keeps its `locale` for your own switch. It reads the session only for the preferred locale that the
+tab-sync epoch follows. A localized route does not need a session at all: in a group of your own, without `StartSession`,
+`SetLocale` reads none, and its pages carry no epoch, because one that followed the browser's languages could come out of a shared
+cache with the wrong visitor's. Such a group adds the middleware itself, as the `web` group has it from
+the provider:
+
+```ts title="modules/site/SiteServiceProvider.ts"
+import { SetLocale } from '@marmeon/i18n';
+
+async boot(app: Application): Promise<void> {
+  app.container.make(Router).middleware.append('public', SetLocale);
+}
+```
+
+`@marmeon/i18n` also binds what the router needs to serve the routes, the locales a URL can name and the visitor's preferred
+one. That is the answer the URL without a locale redirects to: the session's locale, then the signed-in user's, then the browser's
+languages, then `APP_LOCALE`. A group without a session skips the first two.
+
+The page object of a localized page carries `alternates`: the same page in every locale, as paths, with the query as it came,
+and `x-default` for the path without a locale.
+
+```json
+{ "de": "/de/about?tab=1", "en": "/en/about?tab=1", "x-default": "/about?tab=1" }
+```
+
+A page built for a language switcher or for `hreflang` links reads them from there. The paths come from the route's pattern and the
+parameters that matched, each encoded, never from the request's path. A page that is not localized has no `alternates`.
+
+`redirect().route()` to a localized route that names no `locale` takes the locale of the request (the URL's, on a localized page):
+`this.redirect().route('about')` from a German page leads to `/de/about`. Give `{ locale }` to choose another. `Router.url()`
+never guesses: its `locale` is required, because a mail for Ada is in Ada's language, not the request's.
+
+The tab-sync epoch follows the visitor's *preferred* locale (session, account, browser), not the URL's. Moving from `/de/about` to
+`/en/about` changes nothing for the other tabs, which would otherwise discard everything and load again.
+
+#### Caches
+
+A localized URL is one language, so a cache can key a page by its URL alone. That is a condition for a shared cache, not a
+promise: a page of the `web` group still carries a nonce, a CSRF token and the session cookie, and stays private. A CDN fits a
+group without a session, where nothing belongs to one visitor, like the `public` group above. The URL without a locale
+depends on the cookie and the browser's language, so it is `private, no-store`. See
+[pages in a shared cache](csp.md#pages-in-a-shared-cache).
 
 ### A language switcher
 
@@ -256,7 +307,7 @@ it on every device.
 `this.#history.clear({ siteData: false })` makes the browser load the next page in full and drops the pages the client keeps in
 memory in the old language. It does not clear the browser's HTTP cache: pages without a `Cache-Control` that grants freshness are
 asked for again on a normal visit (Back and Forward may still show a page in the old language until the next visit), and clearing it is slow in Chrome ([the cost](client-features.md#the-browsers-storage-on-sign-out)).
-The locale is part of what the browser's other tabs watch, so they load again in the new language, as
+The preferred locale is part of what the browser's other tabs watch, so they load again in the new language, as
 [tab sync](client-features.md#tab-sync) explains.
 
 ## In the browser

@@ -297,6 +297,16 @@ export type QuerySchemaOf<R> = R extends {
 export type QueryValue = Param | boolean | null | undefined | readonly (Param | boolean)[];
 // RESERVED_CONTEXT_KEYS
 export declare const RESERVED_CONTEXT_KEYS: ReadonlySet<string>;
+// RedirectArgsOf
+export type RedirectArgsOf<E, N extends string> = E extends {
+    readonly path: infer P extends string;
+} ? ParamValues<ExtractParams<P>> extends infer All ? (E extends {
+    readonly localized: true;
+} ? Omit<All, 'locale'> & {
+    readonly locale?: Param;
+} : All) extends infer Given ? {} extends Given ? [params?: Given, query?: QueryParams<N>] : [params: Given, query?: QueryParams<N>] : never : never : never;
+// RedirectRouteArgs
+export type RedirectRouteArgs<N extends string> = [N] extends [never] ? RouteArgs<N> : true extends IsUnion<N> ? RouteArgs<N> : N extends keyof Routes ? RedirectArgsOf<Routes[N], N> : RouteArgs<N>;
 // RegionResultMarker
 export interface RegionResultMarker {
     readonly region: 'island';
@@ -475,6 +485,7 @@ export interface RouteInterceptor {
 export interface RouteLookup {
     findByName(name: string): {
         readonly path: string;
+        readonly localized?: boolean;
     } | undefined;
 }
 // RouteName
@@ -803,6 +814,7 @@ export type QueryValue = Param | boolean | null | undefined | readonly (Param | 
 export interface RouteLookup {
     findByName(name: string): {
         readonly path: string;
+        readonly localized?: boolean;
     } | undefined;
 }
 // fillPath

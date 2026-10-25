@@ -92,7 +92,7 @@ A user has the app open in three tabs and signs out in one. Without tab sync, th
 and keep it in memory, until their next request. Tab sync is on by default, so every tab lets go:
 
 1. Each page carries the session's epoch, an opaque value that changes when someone signs in or out, the session is renewed, or
-   the language changes. Flash messages and other writes leave it alone.
+   the visitor's preferred language changes (not the language of a page's URL). Flash messages and other writes leave it alone.
 2. A tab whose epoch changes tells the other tabs of the browser through a `BroadcastChannel`. The message holds the epoch and
    nothing else: no props, no ids, no tokens.
 3. A tab that hears of another epoch asks the server for the current one. So does a tab that becomes visible again, or comes back

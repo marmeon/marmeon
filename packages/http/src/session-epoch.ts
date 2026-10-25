@@ -1,4 +1,5 @@
 import { createHmac, hkdfSync } from 'node:crypto';
+import { PreferredLocale } from '@marmeon/core/internal';
 import { Translator, type Container, type Key, type Resolver } from '@marmeon/core';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { PageSession } from './page-session.ts';
@@ -7,8 +8,8 @@ import { PageSession } from './page-session.ts';
  * The session's epoch: what the tabs of one browser compare to know that someone signed in or out, the
  * session was regenerated or the language changed — `PageObject.epoch`, the answer of `/_marmeon/session`. An HMAC (its key
  * derived from `APP_KEY` by HKDF, context `session-epoch`) over the session's generation and user (`PageSession.generation()`)
- * and the locale, truncated: opaque — it tells nothing about the session, the user or the language, and cannot be guessed
- * without the key. Equal input, equal epoch: flash messages and other session writes leave it as it is.
+ * and the visitor's preferred locale (not the URL's), truncated: opaque — it tells nothing about the session, the user or the
+ * language, and cannot be guessed without the key. Equal input, equal epoch: flash messages and other session writes leave it as it is.
  */
 export class SessionEpoch {
   readonly #key: Uint8Array;
@@ -36,18 +37,20 @@ export class SessionEpoch {
 const RECENT_EPOCHS = 1024;
 
 /**
- * The epoch of the request `scope` belongs to — undefined without a `SessionEpoch` (a kernel without the http provider). Without a
+ * The epoch of the request `scope` belongs to — undefined without a `SessionEpoch` (a kernel without the http provider) and for a page whose preference is none (`PreferredLocale`). Without a
  * session (`PageSession`) or a translator, their part is empty.
  */
 export function epochOf(scope: Pick<Container, 'has' | 'make'> | undefined): string | undefined {
   if (!scope?.has(SessionEpoch)) return undefined;
   const generation = scope.has(PageSession) ? scope.make(PageSession).generation() : undefined;
-  const locale = scope.has(Translator) ? scope.make(Translator).locale : undefined;
+  const preferred = scope.has(PreferredLocale) ? scope.make(PreferredLocale).value : undefined;
+  if (preferred === null) return undefined;
+  const locale = preferred ?? (scope.has(Translator) ? scope.make(Translator).locale : undefined);
   return scope.make(SessionEpoch).of(generation, locale);
 }
 
 /** {@link epochOf} for a binding's resolver (which cannot say what is bound): a service that is not there counts as none. */
-export function epochOfResolver(resolver: Resolver): string {
+export function epochOfResolver(resolver: Resolver): string | undefined {
   const optional = <T>(key: Key<T>): T | undefined => {
     try {
       return resolver.make(key);
@@ -55,7 +58,9 @@ export function epochOfResolver(resolver: Resolver): string {
       return undefined; // no session (or no translator) in this app
     }
   };
-  return resolver.make(SessionEpoch).of(optional(PageSession)?.generation(), optional(Translator)?.locale);
+  const preferred = optional(PreferredLocale)?.value;
+  if (preferred === null) return undefined; // a page without a preference has no epoch
+  return resolver.make(SessionEpoch).of(optional(PageSession)?.generation(), preferred ?? optional(Translator)?.locale);
 }
 
 /**
@@ -64,9 +69,9 @@ export function epochOfResolver(resolver: Resolver): string {
  * session, writes none and extends none, and sets no cookie; `no-store`, never cached.
  */
 export class SessionEpochController {
-  readonly #epoch: () => string;
+  readonly #epoch: () => string | undefined;
 
-  constructor(epoch: () => string) {
+  constructor(epoch: () => string | undefined) {
     this.#epoch = epoch;
   }
 

@@ -35,6 +35,6 @@ describe('@marmeon/http/protocol', () => {
 
   it('types the wire objects the page side builds on', () => {
     expectTypeOf(adapter.pageInfo).parameter(0).toEqualTypeOf<PageObject>();
-    expectTypeOf<RegionObject>().toEqualTypeOf<Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>>();
+    expectTypeOf<RegionObject>().toEqualTypeOf<Omit<PageObject, 'locale' | 'fallbackLocale' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>>();
   });
 });

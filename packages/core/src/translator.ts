@@ -23,6 +23,22 @@ export interface Translator {
 export const Translator = token<Translator>('Translator');
 
 /**
+ * The locale the visitor prefers — their session's, their account's, else the browser's — which the tab-sync epoch follows.
+ * It is not the request's locale: a localized page speaks the locale of its URL, and an epoch that followed the URL would
+ * change with every move between `/de/…` and `/en/…`, and every other tab would reload. Bound per request by `@marmeon/i18n`.
+ * @internal
+ */
+export interface PreferredLocale {
+  /**
+   * `null`: there is no preference to follow (a localized page without a session) — the page then has no epoch at all, since
+   * nothing of it may depend on the URL or the browser's languages. Undefined until the locale middleware ran (and on a route
+   * it never runs for): the epoch then follows the translator.
+   */
+  readonly value: string | null | undefined;
+}
+export const PreferredLocale = token<PreferredLocale>('PreferredLocale');
+
+/**
  * `{name}` placeholders filled from `params` — for framework texts while no translator is bound (no plural or
  * select: those need `@marmeon/i18n`). Unknown placeholders stay as they are.
  */

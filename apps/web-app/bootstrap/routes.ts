@@ -83,8 +83,8 @@ import type { VerifyEmailController } from '../modules/auth/controllers/VerifyEm
 
 declare module '@marmeon/router' {
   interface Routes {
-    'about.features.show': { method: 'get'; path: '/about/features/:feature{[a-z-]+}'; controller: typeof ShowFeatureController };
-    'about.index': { method: 'get'; path: '/about'; controller: typeof ShowAboutController };
+    'about.features.show': { method: 'get'; path: '/:locale/about/features/:feature{[a-z-]+}'; controller: typeof ShowFeatureController; localized: true };
+    'about.index': { method: 'get'; path: '/:locale/about'; controller: typeof ShowAboutController; localized: true };
     'api.users.index': { method: 'get'; path: '/api/users'; controller: typeof ListUsersController; browser: false };
     'auth.devices.logout': { method: 'post'; path: '/settings/devices/logout'; controller: typeof LogoutOtherDevicesController };
     'auth.email.confirm': { method: 'get'; path: '/email/change/:id/:token'; controller: typeof ConfirmEmailChangeController; browser: false };
