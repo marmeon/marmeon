@@ -8,7 +8,7 @@ const seconds = (name: string) => env.integer(`${name} must be a number of secon
 
 /**
  * The queue connections: `sync` runs a job at once, in the dispatching process; `database` keeps jobs in the `jobs`
- * table, `redis` in Redis; a provider can bring more (`static queueDrivers`, `docs/drivers.md#queue-drivers-and-failed-job-stores`). `retryAfter` must be longer
+ * table, `redis` in Redis; a provider can bring more (`static queueDrivers`, `docs/drivers.md#queue-drivers-and-failed-job-stores`). `retryAfterSeconds` must be longer
  * than any job's `timeout` plus the worker's `--stop-timeout`, or a second worker would claim a job still running —
  * `queue:work` refuses to start otherwise. See `docs/queues.md#configuration`.
  */
@@ -35,8 +35,8 @@ export const QueueConfig = defineConfig('queue', {
   resolve: (e) => {
     const connections: Record<string, QueueConnectionOptions> = {
       sync: { driver: 'sync', queue: 'default' },
-      database: { driver: 'database', queue: e.QUEUE_DATABASE_QUEUE, connection: e.QUEUE_DATABASE_CONNECTION, retryAfter: e.QUEUE_DATABASE_RETRY_AFTER_SECONDS },
-      redis: { driver: 'redis', queue: e.QUEUE_REDIS_QUEUE, connection: e.QUEUE_REDIS_CONNECTION, retryAfter: e.QUEUE_REDIS_RETRY_AFTER_SECONDS },
+      database: { driver: 'database', queue: e.QUEUE_DATABASE_QUEUE, connection: e.QUEUE_DATABASE_CONNECTION, retryAfterSeconds: e.QUEUE_DATABASE_RETRY_AFTER_SECONDS },
+      redis: { driver: 'redis', queue: e.QUEUE_REDIS_QUEUE, connection: e.QUEUE_REDIS_CONNECTION, retryAfterSeconds: e.QUEUE_REDIS_RETRY_AFTER_SECONDS },
     };
     return {
       default: e.QUEUE_DRIVER,

@@ -118,14 +118,14 @@ export const COMPLETE_PENDING = Symbol('marmeon.auth.completePending');
 
 /**
  * Why `attempt()` did not sign anybody in. `two-factor-required` is no failure: the password was right, and the sign-in waits for a
- * factor (`auth.pendingSecondFactor()`). `throttled` checked nothing: `retryAfter` seconds until the minute of this client and identifier
+ * factor (`auth.pendingSecondFactor()`). `throttled` checked nothing: `retryAfterSeconds` until the minute of this client and identifier
  * is free again, or, with `account: true`, the account's daily ceiling — then waiting does not help, the way out is a password reset or
  * a passkey.
  */
 export type AttemptError =
   | { readonly kind: 'invalid-credentials' }
   | { readonly kind: 'two-factor-required'; readonly factors: readonly SecondFactor[] }
-  | { readonly kind: 'throttled'; readonly retryAfter: number; readonly account?: true };
+  | { readonly kind: 'throttled'; readonly retryAfterSeconds: number; readonly account?: true };
 
 declare module '@marmeon/session' {
   interface SessionData {
@@ -273,7 +273,7 @@ export class Auth {
     const wait = await this.#signInThrottle.takeClient(identifier, ip);
     if (wait !== undefined) {
       await this.#events.dispatch(new SignInLockedOut(identifier, ip, 'client'));
-      return err({ kind: 'throttled', retryAfter: wait });
+      return err({ kind: 'throttled', retryAfterSeconds: wait });
     }
     const started = performance.now();
     const found = await this.#users.findForSignIn(identifier);
@@ -288,7 +288,7 @@ export class Auth {
       if (held.first) await this.#events.dispatch(new SignInLockedOut(identifier, ip, 'account'));
       // Padded like a wrong password: the refusal is no faster than a check, and an unknown account costs the same.
       await this.#padFailure(started);
-      return err({ kind: 'throttled', retryAfter: held.retryAfter, account: true as const });
+      return err({ kind: 'throttled', retryAfterSeconds: held.retryAfterSeconds, account: true as const });
     }
     const credentials = await this.#check(identifier, password, found, started);
     if (!credentials) return err({ kind: 'invalid-credentials' });

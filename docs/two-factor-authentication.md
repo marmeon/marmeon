@@ -160,7 +160,7 @@ if (done.ok) return this.redirect().intended().route('user-profile.me');
 | `no-challenge` | No sign-in waits for a code. Show the login page. |
 | `expired` | The wait ended: more than five minutes, or a changed password or session key, or a deleted account. The password has to be typed again. |
 | `invalid-code` | The code is wrong, was used before or belongs to a factor that is off. `attemptsLeft` says how many wrong tries remain. |
-| `throttled` | Too many tries for this account. `retryAfter` is in seconds. |
+| `throttled` | Too many tries for this account. `retryAfterSeconds` is the wait. |
 
 The fifth wrong code answers `invalid-code` with `attemptsLeft: 0` and drops the waiting sign-in at the same time; the next call
 answers `no-challenge`. So send the user back to the login page at `attemptsLeft: 0`, as the example app does with a hint. The

@@ -17,13 +17,13 @@ interface Entry {
  */
 export class MemoryQueueDriver implements QueueDriver {
   readonly #clock: Clock;
-  readonly #retryAfter: number;
+  readonly #retryAfterSeconds: number;
   readonly #entries: Entry[] = [];
   #next = 1;
 
-  constructor(options: { clock?: Clock; retryAfter?: number } = {}) {
+  constructor(options: { clock?: Clock; retryAfterSeconds?: number } = {}) {
     this.#clock = options.clock ?? new SystemClock();
-    this.#retryAfter = options.retryAfter ?? 90;
+    this.#retryAfterSeconds = options.retryAfterSeconds ?? 90;
   }
 
   async push(queue: string, payload: string, delaySeconds: number): Promise<string> {
@@ -38,7 +38,7 @@ export class MemoryQueueDriver implements QueueDriver {
       const entry = this.#entries.find(
         (candidate) =>
           candidate.queue === queue &&
-          (candidate.reservedAt === undefined ? candidate.availableAt <= now : candidate.reservedAt <= now - this.#retryAfter * 1000),
+          (candidate.reservedAt === undefined ? candidate.availableAt <= now : candidate.reservedAt <= now - this.#retryAfterSeconds * 1000),
       );
       if (!entry) continue;
       entry.attempts += 1;
@@ -52,7 +52,7 @@ export class MemoryQueueDriver implements QueueDriver {
   async reserveAny(except: readonly string[] = []): Promise<ReservedJob | undefined> {
     const now = this.#clock.now();
     const candidates = this.#entries.filter((entry) => !except.includes(entry.queue));
-    const expired = candidates.filter((entry) => entry.reservedAt !== undefined && entry.reservedAt <= now - this.#retryAfter * 1000);
+    const expired = candidates.filter((entry) => entry.reservedAt !== undefined && entry.reservedAt <= now - this.#retryAfterSeconds * 1000);
     const due = candidates.filter((entry) => entry.reservedAt === undefined && entry.availableAt <= now);
     // Stable sorts: entries are kept in the order they were pushed (the id's order).
     const entry = expired.sort((a, b) => a.reservedAt! - b.reservedAt! || a.availableAt - b.availableAt)[0] ?? due.sort((a, b) => a.availableAt - b.availableAt)[0];

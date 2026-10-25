@@ -209,17 +209,17 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
         // Every other request counts and is decided on its own count, in one atomic step (`hit`).
         const attempts = live ? await this.#limiter.attempts(key) : await this.#limiter.hit(key, limit.decaySeconds);
         if (live ? attempts >= limit.maxAttempts : attempts > limit.maxAttempts) {
-          const retryAfter = await this.#limiter.availableIn(key);
+          const retryAfterSeconds = await this.#limiter.availableIn(key);
           throw new HttpError(
             429,
             'Too Many Attempts.',
             {
-              'retry-after': String(retryAfter),
+              'retry-after': String(retryAfterSeconds),
               'x-ratelimit-limit': String(limit.maxAttempts),
               'x-ratelimit-remaining': '0',
-              'x-ratelimit-reset': String(Math.ceil(this.#clock.now() / 1000) + retryAfter),
+              'x-ratelimit-reset': String(Math.ceil(this.#clock.now() / 1000) + retryAfterSeconds),
             },
-            { key: 'marmeon.errors.throttled', params: { seconds: retryAfter } },
+            { key: 'marmeon.errors.throttled', params: { seconds: retryAfterSeconds } },
           );
         }
         if (live) continue;
@@ -277,8 +277,8 @@ export class LimitLiveValidation {
     for (const limit of limits) {
       const key = `${LIVE_VALIDATION_LIMITER}:${name}:${limit.decaySeconds}:${limit.key}`;
       if (!(await this.#limiter.attempt(key, limit.maxAttempts, limit.decaySeconds))) {
-        const retryAfter = await this.#limiter.availableIn(key);
-        throw new HttpError(429, 'Too Many Attempts.', { 'retry-after': String(retryAfter) }, { key: 'marmeon.errors.throttled', params: { seconds: retryAfter } });
+        const retryAfterSeconds = await this.#limiter.availableIn(key);
+        throw new HttpError(429, 'Too Many Attempts.', { 'retry-after': String(retryAfterSeconds) }, { key: 'marmeon.errors.throttled', params: { seconds: retryAfterSeconds } });
       }
     }
     return next();

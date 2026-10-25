@@ -268,16 +268,16 @@ take, at two looks in a row, are named once in a warning, so they do not wait wi
 `@marmeon/queue` itself sets the interval with `watchOtherQueues` in `worker.run({ … })`, in seconds, or turns the look off with
 `false`.
 
-### Timeouts and `retryAfter`
+### Timeouts and `retryAfterSeconds`
 
 Node cannot stop a running promise from outside. A job's `timeout` is therefore enforced in two steps:
 
 1. When the timeout passes, `job.signal` aborts. Pass it on, as in `fetch(url, { signal: job.signal })`, or check
    `job.signal.aborted` between steps.
 2. A job that has not stopped `--stop-timeout` seconds later ends the **worker**, with exit code 70. A supervisor starts a new
-   worker, and the job comes back after `retryAfter`.
+   worker, and the job comes back after `retryAfterSeconds`.
 
-`retryAfter`, 90 seconds by default, is how long a claimed job stays with its worker before another worker may take it again. It
+`retryAfterSeconds`, 90 seconds by default, is how long a claimed job stays with its worker before another worker may take it again. It
 must be longer than every job's `timeout` plus `--stop-timeout`, or a second worker would run a job the first one still runs.
 `queue:work` checks every job of the app at its start and refuses to start with a message that names the jobs and what to change.
 
@@ -485,10 +485,10 @@ export class RebuildMemberStatsJob {
 An attempt that finds the key taken does not run. It goes back to the queue for `releaseAfter` seconds, 5 by default. That counts
 as an attempt, so a job with this middleware needs `tries`. The key can depend on the payload:
 `` withoutOverlapping<typeof RebuildStatsJob>((payload) => `stats:${payload.userId}`) ``. The lock expires after `expiresAfter`
-seconds, by default the connection's `retryAfter`. `shared: true` shares the key with other jobs.
+seconds, by default the connection's `retryAfterSeconds`. `shared: true` shares the key with other jobs.
 
 A middleware of your own implements `handle(context, next)`. `context` holds the `payload`, the `job` context, the job's `timeout`,
-the connection's `retryAfter` and `cache()`. Call `next()` to run the job, or end the attempt with `context.job.release()` or
+the connection's `retryAfterSeconds` and `cache()`. Call `next()` to run the job, or end the attempt with `context.job.release()` or
 `context.job.discard()`.
 
 ## Job events

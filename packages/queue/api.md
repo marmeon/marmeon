@@ -118,7 +118,7 @@ export interface JobMiddlewareContext<P = unknown> {
     readonly payload: P;
     readonly job: JobContext;
     readonly timeout: number;
-    readonly retryAfter: number | undefined;
+    readonly retryAfterSeconds: number | undefined;
     cache(): Promise<Cache>;
 }
 // JobOnceBusyError
@@ -215,7 +215,7 @@ export declare class JobRunner {
         readonly queue: string;
         readonly connection: string;
         readonly signal: AbortSignal;
-        readonly retryAfter?: number;
+        readonly retryAfterSeconds?: number;
     }): Promise<Requested | undefined>;
     unrunnable<T>(record: JobRecord, attempt: {
         readonly attempt: number;
@@ -308,7 +308,7 @@ export type QueueConfig = ConfigOf<typeof QueueConfig>;
 export interface QueueConnection {
     readonly driver: QueueDriver;
     readonly queue: string;
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
 }
 // QueueConnectionOptions
 export type QueueConnectionOptions = {
@@ -318,11 +318,11 @@ export type QueueConnectionOptions = {
     readonly driver: 'database' | 'redis';
     readonly queue: string;
     readonly connection: string;
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
 } | {
     readonly driver: 'custom';
     readonly queue: string;
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
 };
 // QueueConnections
 export declare class QueueConnections {
@@ -572,7 +572,7 @@ export interface WorkerDependencies {
     readonly failed: FailedJobStore;
     readonly clock: Clock;
     readonly logger: Logger;
-    readonly retryAfter?: number;
+    readonly retryAfterSeconds?: number;
     readonly events?: JobEvents;
     readonly redactor?: Redactor;
     readonly errors?: ErrorReports;
@@ -768,7 +768,7 @@ export interface JobMiddlewareContext<P = unknown> {
     readonly payload: P;
     readonly job: JobContext;
     readonly timeout: number;
-    readonly retryAfter: number | undefined;
+    readonly retryAfterSeconds: number | undefined;
     cache(): Promise<Cache>;
 }
 // JobPayload

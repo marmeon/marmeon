@@ -177,7 +177,7 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
     // A driver outside the database — like redis: no joinsTransaction().
     const memory = new MemoryQueueDriver({ clock: container.make(Clock) });
     const queue = new QueueManager({
-      connection: (name) => (name === 'outside' ? { driver: 'database', queue: 'default', connection: 'default', retryAfter: 90 } : undefined),
+      connection: (name) => (name === 'outside' ? { driver: 'database', queue: 'default', connection: 'default', retryAfterSeconds: 90 } : undefined),
       connectionNames: () => ['outside'],
       default: 'outside',
       registry: container.make(JobRegistry),

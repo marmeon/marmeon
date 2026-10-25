@@ -8,5 +8,5 @@ import type { Translator } from '@marmeon/i18n';
  */
 export function passwordCheckMessage(translator: Translator, error: PasswordCheckError): string {
   if (error.kind === 'invalid-password') return translator.get('auth.validation.password_incorrect');
-  return translator.get(error.account ? 'auth.validation.throttled_account' : 'auth.validation.throttled', { seconds: error.retryAfter });
+  return translator.get(error.account ? 'auth.validation.throttled_account' : 'auth.validation.throttled', { seconds: error.retryAfterSeconds });
 }

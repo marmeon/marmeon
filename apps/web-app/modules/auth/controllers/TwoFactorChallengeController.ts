@@ -46,7 +46,7 @@ export class TwoFactorChallengeController extends Controller {
         // The password has to be typed again: the wait ended (too long, too many wrong codes, a changed password).
         return this.redirect().route('auth.login').flash('toast', { kind: 'error', message: this.#translator.get('auth.two_factor.expired') });
       case 'throttled':
-        throw new ValidationError({ [field]: [this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter })] });
+        throw new ValidationError({ [field]: [this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfterSeconds })] });
       case 'invalid-code': {
         // The last wrong code ended the wait (Auth dropped it): the password has to be typed again.
         if (done.error.attemptsLeft === 0) return this.redirect().route('auth.login').flash('toast', { kind: 'error', message: this.#translator.get('auth.two_factor.locked') });

@@ -542,7 +542,7 @@ describe('the worker', () => {
   it('fails a job that came back more often than its tries (its worker died each time) instead of running it again', async () => {
     await using application = await app();
     application.clock.freeze();
-    const driver = new MemoryQueueDriver({ clock: application.clock, retryAfter: 60 });
+    const driver = new MemoryQueueDriver({ clock: application.clock, retryAfterSeconds: 60 });
     const { failed, worker: w } = worker(application, driver);
     await push(application, driver, 'test.welcome', { userId: 1 }, { tries: 1 });
     await driver.reserve(['default']); // a worker that dies
@@ -560,7 +560,7 @@ describe('the worker', () => {
     expect((await failed.all())[0]!.exception).toMatch(/^JobTimeoutError: test\.polite-slow timed out after 0\.1s/);
   });
 
-  it('gives up on a job that ignores its timeout and the grace period — the claim stays, for retryAfter', async () => {
+  it('gives up on a job that ignores its timeout and the grace period — the claim stays, for retryAfterSeconds', async () => {
     await using application = await app();
     const { driver, worker: w } = worker(application);
     await push(application, driver, 'test.rude-slow', {});
@@ -602,12 +602,12 @@ describe('the worker', () => {
     expect(driver.entries()).toMatchObject([{ reserved: false, attempts: 1 }]);
   });
 
-  it('refuses to start when retryAfter does not cover a job timeout plus the stop timeout', () => {
+  it('refuses to start when retryAfterSeconds does not cover a job timeout plus the stop timeout', () => {
     const registry = new JobRegistry().add([WelcomeJob, PoliteSlowJob], 'module test');
     expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow(QueueSetupError);
     expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow('[marmeon:Q4] The queue connection "database"');
     expect(() => checkTimeouts(registry, 'database', 70, 10)).toThrow(
-      'The queue connection "database" gives a claimed job 70s (retryAfter) before another worker may take it, but test.welcome (timeout 60s) may hold it for its timeout plus the worker\'s --stop-timeout of 10s — a second worker would run it while the first still does. Raise retryAfter (e.g. QUEUE_DATABASE_RETRY_AFTER_SECONDS) above timeout + stop timeout, or lower the job\'s static timeout.',
+      'The queue connection "database" gives a claimed job 70s (retryAfterSeconds) before another worker may take it, but test.welcome (timeout 60s) may hold it for its timeout plus the worker\'s --stop-timeout of 10s — a second worker would run it while the first still does. Raise retryAfterSeconds (e.g. QUEUE_DATABASE_RETRY_AFTER_SECONDS) above timeout + stop timeout, or lower the job\'s static timeout.',
     );
     expect(() => checkTimeouts(registry, 'database', 71, 10)).not.toThrow();
   });

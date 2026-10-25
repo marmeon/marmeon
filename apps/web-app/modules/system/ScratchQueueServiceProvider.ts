@@ -9,16 +9,16 @@ interface Entry {
   reservedAt?: number;
 }
 
-/** Jobs in this process's memory, claims honouring `retryAfter` — what a driver of your own has to do, in the smallest form. */
+/** Jobs in this process's memory, claims honouring `retryAfterSeconds` — what a driver of your own has to do, in the smallest form. */
 class ScratchQueueDriver implements QueueDriver {
   readonly #entries = new Map<string, Entry>();
   readonly #now: () => number;
-  readonly #retryAfter: number;
+  readonly #retryAfterSeconds: number;
   #next = 1;
 
-  constructor(now: () => number, retryAfter: number) {
+  constructor(now: () => number, retryAfterSeconds: number) {
     this.#now = now;
-    this.#retryAfter = retryAfter;
+    this.#retryAfterSeconds = retryAfterSeconds;
   }
 
   async push(queue: string, payload: string, delaySeconds: number): Promise<string> {
@@ -30,7 +30,7 @@ class ScratchQueueDriver implements QueueDriver {
   async reserve(queues: readonly string[]): Promise<ReservedJob | undefined> {
     const now = this.#now();
     for (const queue of queues) {
-      const entry = [...this.#entries.values()].find((e) => e.queue === queue && (e.reservedAt === undefined ? e.availableAt <= now : e.reservedAt <= now - this.#retryAfter * 1000));
+      const entry = [...this.#entries.values()].find((e) => e.queue === queue && (e.reservedAt === undefined ? e.availableAt <= now : e.reservedAt <= now - this.#retryAfterSeconds * 1000));
       if (!entry) continue;
       entry.attempts++;
       entry.reservedAt = now;
@@ -74,7 +74,7 @@ class ScratchQueueDriver implements QueueDriver {
   }
 }
 
-const scratch: QueueDriverFactory = ({ clock }) => ({ driver: new ScratchQueueDriver(() => clock.now(), 90), queue: 'default', retryAfter: 90 });
+const scratch: QueueDriverFactory = ({ clock }) => ({ driver: new ScratchQueueDriver(() => clock.now(), 90), queue: 'default', retryAfterSeconds: 90 });
 
 /** A queue driver of the app's own, `QUEUE_DRIVER=scratch` — a package brings its drivers the same way (docs/drivers.md#bringing-a-driver). */
 export class ScratchQueueServiceProvider {

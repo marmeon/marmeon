@@ -247,7 +247,7 @@ export class LoginController extends Controller {
       case 'two-factor-required':
         return this.redirect().route('auth.two-factor.challenge');
       case 'throttled': {
-        const message = signedIn.error.account ? this.#translator.get('auth.login.locked') : this.#translator.get('auth.login.throttled', { seconds: signedIn.error.retryAfter });
+        const message = signedIn.error.account ? this.#translator.get('auth.login.locked') : this.#translator.get('auth.login.throttled', { seconds: signedIn.error.retryAfterSeconds });
         throw new ValidationError({ email: [message] }, { email });
       }
       case 'invalid-credentials':
@@ -281,7 +281,7 @@ at once cannot all slip past a limit. An app with its own login controller has t
 
 | Limit | Default | Setting | Answer |
 | --- | --- | --- | --- |
-| One identifier from one client (an IPv6 address counts as its /64) | 5 a minute | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` (1 to 60) | `throttled` with `retryAfter` seconds |
+| One identifier from one client (an IPv6 address counts as its /64) | 5 a minute | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` (1 to 60) | `throttled` with `retryAfterSeconds` |
 | One account, from all clients together | 100 a day | `AUTH_ACCOUNT_SIGN_INS_PER_DAY` (10 to 100000) | `throttled` with `account: true` |
 | One device cookie of the account's owner, instead of the line above | 10 an hour | fixed | after that the cookie counts as none |
 

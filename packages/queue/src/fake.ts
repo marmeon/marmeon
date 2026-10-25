@@ -264,7 +264,7 @@ export class QueueFake implements Queue {
   }
 
   #memory(): MemoryQueueDriver {
-    this.#driver ??= new MemoryQueueDriver({ clock: this.#container.make(Clock), retryAfter: 3600 });
+    this.#driver ??= new MemoryQueueDriver({ clock: this.#container.make(Clock), retryAfterSeconds: 3600 });
     return this.#driver;
   }
 

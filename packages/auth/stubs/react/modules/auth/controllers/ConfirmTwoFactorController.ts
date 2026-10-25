@@ -40,8 +40,8 @@ export class ConfirmTwoFactorController extends Controller {
           // The session ended while the factor was set up: nothing was stored.
           return this.redirect().route('auth.login');
         case 'throttled':
-          if (done.error.account) throw new ValidationError({ password: [this.#translator.get('auth.validation.throttled_account', { seconds: done.error.retryAfter })] });
-          throw new ValidationError({ code: [this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter })] });
+          if (done.error.account) throw new ValidationError({ password: [this.#translator.get('auth.validation.throttled_account', { seconds: done.error.retryAfterSeconds })] });
+          throw new ValidationError({ code: [this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfterSeconds })] });
         case 'invalid-password':
           throw new ValidationError({ password: [this.#translator.get('auth.validation.password_incorrect')] });
         case 'invalid-code':

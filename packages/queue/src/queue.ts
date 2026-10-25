@@ -74,12 +74,12 @@ export const Queue = token<Queue>('Queue');
 
 /**
  * A queue connection as configured: which driver, its default queue, and (for every driver but `sync`) how long a claim holds.
- * `custom` is a driver that a provider brings (`static queueDrivers`); its queue and `retryAfter` are those its factory returned.
+ * `custom` is a driver that a provider brings (`static queueDrivers`); its queue and `retryAfterSeconds` are those its factory returned.
  */
 export type QueueConnectionOptions =
   | { readonly driver: 'sync'; readonly queue: string }
-  | { readonly driver: 'database' | 'redis'; readonly queue: string; readonly connection: string; readonly retryAfter: number }
-  | { readonly driver: 'custom'; readonly queue: string; readonly retryAfter: number };
+  | { readonly driver: 'database' | 'redis'; readonly queue: string; readonly connection: string; readonly retryAfterSeconds: number }
+  | { readonly driver: 'custom'; readonly queue: string; readonly retryAfterSeconds: number };
 
 export interface QueueManagerDependencies {
   /** The options of a connection, `undefined` when there is none of that name. */

@@ -16,7 +16,7 @@ const CLOCK_SKEW_SECONDS = 300;
 
 /** An account past its daily ceiling: the seconds to wait, and whether this is the first refusal of the window (the owner is told once). */
 export interface AccountHeld {
-  readonly retryAfter: number;
+  readonly retryAfterSeconds: number;
   readonly first: boolean;
 }
 
@@ -87,7 +87,7 @@ export class SignInThrottle {
     if (await this.#limiter.attempt(key, this.#perDay, ACCOUNT_SECONDS)) return undefined;
     // Once per window: the owner is told, the app can listen for the event.
     const first = await this.#limiter.attempt(`${key}|notice`, 1, ACCOUNT_SECONDS);
-    return { retryAfter: Math.max(1, await this.#limiter.availableIn(key)), first };
+    return { retryAfterSeconds: Math.max(1, await this.#limiter.availableIn(key)), first };
   }
 
   /**

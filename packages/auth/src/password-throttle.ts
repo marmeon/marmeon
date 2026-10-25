@@ -28,7 +28,7 @@ const accountDayKey = (userId: number | string) => `password-check-day:account:$
 /** A password check that is held up: the seconds to wait, and `account: true` when it is the account's cap and not the sign-in's own windows. */
 export interface PasswordThrottled {
   readonly kind: 'throttled';
-  readonly retryAfter: number;
+  readonly retryAfterSeconds: number;
   readonly account?: true;
 }
 
@@ -68,7 +68,7 @@ export async function takePasswordCheck(limiter: RateLimiter, scope: PasswordChe
     }
   }
   if (waits.length === 0) return undefined;
-  return { kind: 'throttled', retryAfter: Math.max(1, ...waits), ...(account ? { account: true as const } : {}) };
+  return { kind: 'throttled', retryAfterSeconds: Math.max(1, ...waits), ...(account ? { account: true as const } : {}) };
 }
 
 /** A right password clears the sign-in's minute (the hours stay: a slow guesser is still counted). */

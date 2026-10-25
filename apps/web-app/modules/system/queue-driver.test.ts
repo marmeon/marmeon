@@ -7,7 +7,7 @@ describe('the app\'s own queue driver', () => {
   it('QUEUE_DRIVER=scratch selects it; it keeps and hands out jobs', async () => {
     const app = await createTestApp(application, { env: { QUEUE_DRIVER: 'scratch' } });
     const connections = app.make(QueueConnections);
-    expect(connections.options('scratch')).toEqual({ driver: 'custom', queue: 'default', retryAfter: 90 });
+    expect(connections.options('scratch')).toEqual({ driver: 'custom', queue: 'default', retryAfterSeconds: 90 });
     const driver = connections.driver('scratch');
     await driver.push('default', '{}', 0);
     expect(await driver.size('default')).toBe(1);

@@ -120,16 +120,16 @@ export type RedisQueueConnection = RedisConnection | (() => Promise<RedisConnect
 export class RedisQueueDriver implements QueueDriver {
   readonly #connection: () => Promise<RedisConnection>;
   readonly #clock: Clock;
-  readonly #retryAfter: number;
+  readonly #retryAfterSeconds: number;
   /** `reserveAny`: the queue it took from last (whose successor comes first next time), and the registry it read. */
   #last: string | undefined;
   #known: { queues: string[]; at: number } | undefined;
 
-  /** `retryAfter`: seconds after which a claimed job counts as abandoned (its worker died) and is claimed again. */
-  constructor(connection: RedisQueueConnection, options: { retryAfter: number; clock?: Clock }) {
+  /** `retryAfterSeconds`: seconds after which a claimed job counts as abandoned (its worker died) and is claimed again. */
+  constructor(connection: RedisQueueConnection, options: { retryAfterSeconds: number; clock?: Clock }) {
     this.#connection = typeof connection === 'function' ? connection : async () => connection;
     this.#clock = options.clock ?? new SystemClock();
-    this.#retryAfter = options.retryAfter;
+    this.#retryAfterSeconds = options.retryAfterSeconds;
   }
 
   async push(queue: string, payload: string, delaySeconds: number): Promise<string> {
@@ -146,7 +146,7 @@ export class RedisQueueDriver implements QueueDriver {
     for (const queue of queues) {
       const now = this.#clock.now();
       const keys = this.#keys(redis, queue);
-      const member = await redis.run<string | null>(reserve, [keys.list, keys.delayed, keys.reserved], [now, now + this.#retryAfter * 1000]);
+      const member = await redis.run<string | null>(reserve, [keys.list, keys.delayed, keys.reserved], [now, now + this.#retryAfterSeconds * 1000]);
       if (typeof member !== 'string') continue;
       const { id, attempts, payload } = parseMember(member);
       return { id, queue, payload, attempts, reservedAt: now };
@@ -172,7 +172,7 @@ export class RedisQueueDriver implements QueueDriver {
       return [list, delayed, reserved];
     });
     const now = this.#clock.now();
-    const claimed = await redis.run<[number, string] | null>(reserveAny, keys, [now, now + this.#retryAfter * 1000, Math.max(after, 0) + 1]);
+    const claimed = await redis.run<[number, string] | null>(reserveAny, keys, [now, now + this.#retryAfterSeconds * 1000, Math.max(after, 0) + 1]);
     if (!Array.isArray(claimed)) return this.#forget();
     const queue = queues[Number(claimed[0]) - 1]!;
     this.#last = queue;

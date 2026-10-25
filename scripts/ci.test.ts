@@ -835,7 +835,7 @@ describe('rule 12: a test is not retried', () => {
     expect(hits("expect(config).toMatchObject({ heartbeat: 20, retry: 3000 });")).toEqual([]);
     expect(hits("it('x', () => queue.retry(job));\nit('y', handler);")).toEqual([]);
     expect(hits("it.each(rows)('x', (row) => {});\ndescribe('y', { timeout: 5 }, () => {});")).toEqual([]);
-    expect(hits("const retryAfter = 2;\nit('x', { timeout: 5 }, () => send({ retryAfter: 2 }));")).toEqual([]);
+    expect(hits("const retryAfterSeconds = 2;\nit('x', { timeout: 5 }, () => send({ retryAfterSeconds: 2 }));")).toEqual([]);
     expect(hits("it('x', () => expect(text).toMatch(/^retry: 2000/));\nconst s = 'retry: 3';")).toEqual([]);
     expect(hits("// it('x', { retry: 2 }, () => {});\n/* retry: 3 */")).toEqual([]);
     expect(hits('{ "scripts": { "queue": "marmeon queue:retry --all" } }', 'package.json')).toEqual([]);

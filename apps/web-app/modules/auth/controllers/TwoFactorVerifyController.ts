@@ -35,7 +35,7 @@ export class TwoFactorVerifyController extends Controller {
         // No factor to prove (it was turned off meanwhile): the settings page is where one is set up.
         return this.redirect().route('auth.two-factor');
       case 'throttled':
-        throw new ValidationError({ [field]: [this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter })] });
+        throw new ValidationError({ [field]: [this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfterSeconds })] });
       case 'invalid-code': {
         const what = this.#translator.get(field === 'code' ? 'auth.two_factor.invalid' : 'auth.two_factor.invalid_recovery');
         throw new ValidationError({ [field]: [done.error.attemptsLeft <= 2 ? this.#translator.get('auth.two_factor.invalid_left', { what, count: done.error.attemptsLeft }) : what] });

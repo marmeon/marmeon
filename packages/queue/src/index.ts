@@ -97,7 +97,7 @@ export class QueueServiceProvider implements ServiceProvider {
       const registry = new JobRegistry();
       for (const module of c.make(Application).modules) registry.add(module.jobs ?? [], `module ${module.name}`);
       // The framework's own jobs (`marmeon.*`): queued listeners here — when the app has one —, queued mails from
-      // @marmeon/mail. (A worker checks every registered job's timeout against retryAfter.)
+      // @marmeon/mail. (A worker checks every registered job's timeout against retryAfterSeconds.)
       if (c.make(EventRegistry).all().some((binding) => isQueuedListener(binding.listener))) registry.add([CallQueuedListener], '@marmeon/queue', { framework: true });
       return registry;
     });

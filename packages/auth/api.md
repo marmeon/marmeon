@@ -81,7 +81,7 @@ export type AttemptError = {
     readonly factors: readonly SecondFactor[];
 } | {
     readonly kind: 'throttled';
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
     readonly account?: true;
 };
 // Auth
@@ -727,7 +727,7 @@ export interface PasswordRuleOptions {
 // PasswordThrottled
 export interface PasswordThrottled {
     readonly kind: 'throttled';
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
     readonly account?: true;
 }
 // PendingEmailChange
@@ -1237,7 +1237,7 @@ export declare const ACCOUNT_STILL_CLAIMED: unique symbol;
 export declare const ANNOUNCE_ENDED: unique symbol;
 // AccountHeld
 export interface AccountHeld {
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
     readonly first: boolean;
 }
 // CLAIM_ACCOUNT
@@ -1388,7 +1388,7 @@ export type PasskeyError = {
     readonly kind: 'clone-suspected';
 } | {
     readonly kind: 'throttled';
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
 };
 // PasskeyRecord
 export interface PasskeyRecord {
@@ -1597,7 +1597,7 @@ export declare abstract class AccessTokenStore {
 }
 // AccountHeld
 export interface AccountHeld {
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
     readonly first: boolean;
 }
 // AccountSessions
@@ -1621,7 +1621,7 @@ export type AttemptError = {
     readonly factors: readonly SecondFactor[];
 } | {
     readonly kind: 'throttled';
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
     readonly account?: true;
 };
 // AttestationConveyancePreference
@@ -1886,7 +1886,7 @@ export declare abstract class PasswordResetTokenStore {
 // PasswordThrottled
 export interface PasswordThrottled {
     readonly kind: 'throttled';
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
     readonly account?: true;
 }
 // PendingView
@@ -2268,7 +2268,7 @@ export type ChallengeError = {
     readonly attemptsLeft: number;
 } | {
     readonly kind: 'throttled';
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
 };
 // ConfirmError
 export type ConfirmError = {
@@ -2279,7 +2279,7 @@ export type ConfirmError = {
     readonly kind: 'invalid-code';
 } | {
     readonly kind: 'throttled';
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
     readonly account?: true;
 }
  | {
@@ -2385,7 +2385,7 @@ export declare abstract class AccessTokenStore {
 }
 // AccountHeld
 export interface AccountHeld {
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
     readonly first: boolean;
 }
 // AccountSessions
@@ -2409,7 +2409,7 @@ export type AttemptError = {
     readonly factors: readonly SecondFactor[];
 } | {
     readonly kind: 'throttled';
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
     readonly account?: true;
 };
 // Auth
@@ -2608,7 +2608,7 @@ export declare abstract class PasswordResetTokenStore {
 // PasswordThrottled
 export interface PasswordThrottled {
     readonly kind: 'throttled';
-    readonly retryAfter: number;
+    readonly retryAfterSeconds: number;
     readonly account?: true;
 }
 // PendingView

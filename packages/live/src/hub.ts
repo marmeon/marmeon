@@ -191,8 +191,8 @@ export class OpenStream {
 }
 
 /** A refusal as plain text (`EventSource` reads nothing of it): the status, why, and when to try again. */
-const refuse = (status: number, message: string, retryAfter: string) =>
-  new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'retry-after': retryAfter } });
+const refuse = (status: number, message: string, retryAfterSeconds: string) =>
+  new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'retry-after': retryAfterSeconds } });
 
 /** Adds `stream` to the set under `key` — the index of a channel or a session. */
 function index(map: Map<string, Set<OpenStream>>, key: string, stream: OpenStream): void {

@@ -4,7 +4,7 @@ import { connectionOptions, databaseConnections, databaseKinds, queueKinds, queu
 import type { ReservedJob } from '../driver.ts';
 import { claimAnyStatement, DatabaseQueueDriver, FAIR_CLAIM_INDEX } from './database.ts';
 
-async function withQueue(kind: (typeof queueKinds)[number], test: (queue: QueueUnderTest) => Promise<void>, options: { retryAfter?: number } = {}): Promise<void> {
+async function withQueue(kind: (typeof queueKinds)[number], test: (queue: QueueUnderTest) => Promise<void>, options: { retryAfterSeconds?: number } = {}): Promise<void> {
   const queue = await queueUnderTest(kind, options);
   try {
     await test(queue);
@@ -106,7 +106,7 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
     });
   });
 
-  it('hands a claimed job out again after retryAfter (its worker died) — and the old claim can no longer touch it', async () => {
+  it('hands a claimed job out again after retryAfterSeconds (its worker died) — and the old claim can no longer touch it', async () => {
     await withQueue(
       kind,
       async ({ driver, clock }) => {
@@ -126,7 +126,7 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
         expect(await driver.size('default')).toBe(1);
         expect(await driver.ack(taken)).toBe(true);
       },
-      { retryAfter: 60 },
+      { retryAfterSeconds: 60 },
     );
   });
 
@@ -150,7 +150,7 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
         clock.travel({ seconds: 30 });
         expect((await driver.reserve(['later']))?.payload).toBe('delayed');
       },
-      { retryAfter: 60 },
+      { retryAfterSeconds: 60 },
     );
   });
 
@@ -210,7 +210,7 @@ describe.each(queueKinds)('the %s queue driver', (kind) => {
         // The database: an expired claim first, then by when a job became due. Redis: the queues in turn (after mail, whose job it took last).
         expect(taken.join(' ')).toBe(kind === 'redis' ? 'fresh#1 later#1 lost#2' : 'lost#2 later#1 fresh#1');
       },
-      { retryAfter: 60 },
+      { retryAfterSeconds: 60 },
     );
   });
 
@@ -249,7 +249,7 @@ describe.each(databaseKinds)('the database queue driver on %s, in a transaction'
       const database = driver as DatabaseQueueDriver;
       // A second process's view: its own connections.
       const other = databaseConnections(connectionOptions(target as Exclude<typeof target, { kind: 'memory' }>));
-      const outside = new DatabaseQueueDriver({ db: other.get(), driver: kind }, { retryAfter: 90 });
+      const outside = new DatabaseQueueDriver({ db: other.get(), driver: kind }, { retryAfterSeconds: 90 });
       try {
         await db
           .transaction()
@@ -287,7 +287,7 @@ describe.each(databaseKinds)('the database queue driver on %s, in a transaction'
       await driver.push('default', 'first', 0);
       const job = (await driver.reserve(['default']))!;
       await expect(driver.ack(job, [{ queue: 'default', payload: 'explode', delaySeconds: 0 }])).rejects.toThrow(/refused/);
-      // Not acknowledged: still there, still claimed — after retryAfter it runs again and hands on then.
+      // Not acknowledged: still there, still claimed — after retryAfterSeconds it runs again and hands on then.
       const { rows } = await sql<{ payload: string; reserved_at: unknown }>`select payload, reserved_at from jobs`.execute(db);
       expect(rows).toHaveLength(1);
       expect(rows[0]!.payload).toBe('first');
@@ -302,7 +302,7 @@ describe.each(databaseKinds)('the database queue driver on %s, in a transaction'
         transformQuery: ({ node }) => (statements++, node),
         transformResult: async ({ result }) => result,
       });
-      const driver = new DatabaseQueueDriver({ db: counting, driver: kind }, { retryAfter: 90, clock });
+      const driver = new DatabaseQueueDriver({ db: counting, driver: kind }, { retryAfterSeconds: 90, clock });
       for (const queue of ['default', 'mail', 'reports']) await driver.push(queue, 'later', 60);
       statements = 0;
       expect(await driver.reserveAny()).toBeUndefined();
