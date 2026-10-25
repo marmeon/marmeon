@@ -165,6 +165,7 @@ export interface JobRecord {
   readonly data: unknown;
   readonly encrypted?: true;
   readonly tries: number;
+  /** Seconds before each retry. */
   readonly backoff: readonly number[];
   /** When it was first dispatched (epoch ms). */
   readonly dispatchedAt: number;
