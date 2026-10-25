@@ -1,5 +1,5 @@
 import { SystemClock, type Clock } from '@marmeon/core';
-import type { CacheStore, Entry, LockStore } from '../cache.ts';
+import type { CacheEntry, CacheStore, LockStore } from '../cache.ts';
 
 /** Every this many writes, `#sweep` looks at `SWEEP_BATCH` entries: more checked than written, so expired ones cannot pile up. */
 const SWEEP_EVERY = 32;
@@ -21,15 +21,15 @@ export class MemoryStore implements CacheStore, LockStore {
     this.#clock = clock;
   }
 
-  async read(key: string): Promise<Entry | undefined> {
+  async read(key: string): Promise<CacheEntry | undefined> {
     return this.#alive(key);
   }
 
-  async write(key: string, entry: Entry): Promise<void> {
+  async write(key: string, entry: CacheEntry): Promise<void> {
     this.#set(key, entry);
   }
 
-  async add(key: string, entry: Entry): Promise<boolean> {
+  async add(key: string, entry: CacheEntry): Promise<boolean> {
     if (this.#alive(key)) return false;
     this.#set(key, entry);
     return true;
@@ -87,7 +87,7 @@ export class MemoryStore implements CacheStore, LockStore {
   }
 
   /** Serialized, like every real store: a cached object is a copy, never shared with the caller. */
-  #set(key: string, entry: Entry): void {
+  #set(key: string, entry: CacheEntry): void {
     this.#sweepOnWrite();
     this.#entries.set(key, { raw: JSON.stringify(entry.value) as string | undefined, expires: entry.expires });
   }
@@ -118,7 +118,7 @@ export class MemoryStore implements CacheStore, LockStore {
     return cursor;
   }
 
-  #alive(key: string): Entry | undefined {
+  #alive(key: string): CacheEntry | undefined {
     const stored = this.#entries.get(key);
     if (!stored) return undefined;
     if (stored.expires !== null && stored.expires <= this.#clock.now()) {

@@ -122,19 +122,6 @@ export interface CookieOptions {
 export interface DefineMiddlewareOptions<TAdds extends object = object> {
     readonly adds?: readonly (keyof TAdds & string)[];
 }
-// DispatchInput
-export interface DispatchInput {
-    request: Request;
-    params: Record<string, string>;
-}
-// DispatchOptions
-export interface DispatchOptions {
-    toResponse?: ResponseFactory;
-    resolve?: ClassResolver;
-    state?: RequestState;
-    onTerminable?: (handler: MiddlewareHandler<any, any>, ctx: HttpContext) => void;
-    onError?: (error: unknown, ctx: HttpContext) => Response | Promise<Response>;
-}
 // EXPECTS_JSON_VARY
 export declare const EXPECTS_JSON_VARY: readonly ['Accept', 'X-Requested-With'];
 // EmptyObject
@@ -367,8 +354,6 @@ export interface ResponseContext {
     readonly request: Request;
     readonly pageQuery?: PageQuery | undefined;
 }
-// ResponseFactory
-export type ResponseFactory = (result: unknown, ctx: ResponseContext) => Response | Promise<Response>;
 // Route
 export declare class Route<TState extends object = EmptyObject, TParams extends object = EmptyObject, TBindings extends object = EmptyObject> {
     #private;
@@ -503,8 +488,6 @@ export declare class Router {
     findByName(name: string): RouteDefinition | undefined;
     middlewareFor(route: RouteDefinition): readonly AnyMiddleware[];
     url<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): string;
-    dispatch(route: RouteDefinition, input: DispatchInput, options?: DispatchOptions): Promise<Response>;
-    dispatchNotFound(request: Request, options?: Omit<DispatchOptions, 'toResponse'>): Promise<Response>;
 }
 // RouterOptions
 export interface RouterOptions {

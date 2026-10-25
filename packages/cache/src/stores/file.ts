@@ -4,7 +4,7 @@ import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SystemClock, type Clock } from '@marmeon/core';
 import { withFileGuard } from '@marmeon/core/internal';
-import type { CacheStore, Entry, LockStore } from '../cache.ts';
+import type { CacheEntry, CacheStore, LockStore } from '../cache.ts';
 
 /** A guard older than this was left by a process that died inside its few-microsecond critical section. */
 const STALE_GUARD_MS = 2_000;
@@ -32,16 +32,16 @@ export class FileStore implements CacheStore, LockStore {
     mkdirSync(this.#locks, { recursive: true });
   }
 
-  async read(key: string): Promise<Entry | undefined> {
+  async read(key: string): Promise<CacheEntry | undefined> {
     const entry = await this.#readFile(this.#path(key));
     return entry && this.#isAlive(entry) ? entry : undefined;
   }
 
-  async write(key: string, entry: Entry): Promise<void> {
+  async write(key: string, entry: CacheEntry): Promise<void> {
     await this.#writeFile(this.#path(key), entry);
   }
 
-  add(key: string, entry: Entry): Promise<boolean> {
+  add(key: string, entry: CacheEntry): Promise<boolean> {
     const file = this.#path(key);
     return this.#guarded(file, async () => {
       const current = await this.#readFile(file);
@@ -56,7 +56,7 @@ export class FileStore implements CacheStore, LockStore {
     return this.#guarded(file, async () => {
       const current = await this.#readFile(file);
       const counting = current && this.#isAlive(current) && Number.isSafeInteger(current.value);
-      const next: Entry = counting ? { value: (current.value as number) + by, expires: current.expires } : { value: by, expires };
+      const next: CacheEntry = counting ? { value: (current.value as number) + by, expires: current.expires } : { value: by, expires };
       await this.#writeFile(file, next);
       return next.value as number;
     });
@@ -127,19 +127,19 @@ export class FileStore implements CacheStore, LockStore {
     return removed;
   }
 
-  #isAlive(entry: Entry): boolean {
+  #isAlive(entry: CacheEntry): boolean {
     return entry.expires === null || entry.expires > this.#clock.now();
   }
 
-  async #readFile(file: string): Promise<Entry | undefined> {
+  async #readFile(file: string): Promise<CacheEntry | undefined> {
     try {
-      return JSON.parse(await readFile(file, 'utf8')) as Entry;
+      return JSON.parse(await readFile(file, 'utf8')) as CacheEntry;
     } catch {
       return undefined; // absent (or unreadable: counts as absent, the next write replaces it)
     }
   }
 
-  async #writeFile(file: string, entry: Entry): Promise<void> {
+  async #writeFile(file: string, entry: CacheEntry): Promise<void> {
     const temporary = `${file}.${crypto.randomUUID()}.tmp`;
     await writeFile(temporary, JSON.stringify(entry), { mode: 0o600 });
     await rename(temporary, file);

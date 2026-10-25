@@ -9,7 +9,7 @@ import { CookieEncryption, EncryptCookies } from './encrypt-cookies.ts';
 import { DefaultExceptionHandler, ExceptionHandler } from './errors.ts';
 import { ParentRequest } from './parent-request.ts';
 import { ReadOnly } from './read-only.ts';
-import { NO_REQUEST_INFO, RequestInfo } from './request-info.ts';
+import { ClientInfo, NO_CLIENT_INFO } from './client-info.ts';
 import { ResponseLifecycle } from './response-lifecycle.ts';
 import { epochOfResolver, SessionEpoch, SessionEpochController } from './session-epoch.ts';
 import { SharedData } from './shared-data.ts';
@@ -71,7 +71,7 @@ export class HttpServiceProvider implements ServiceProvider {
     container.scoped(ResponseLifecycle);
     container.scoped(ClientHistory);
     // Who sent the request: the kernel binds it per request; outside one (a job, a command) nobody.
-    container.scoped(RequestInfo, () => NO_REQUEST_INFO);
+    container.scoped(ClientInfo, () => NO_CLIENT_INFO);
     container.singleton(UrlSigner);
     // The session's epoch: on every page object, and what `/_marmeon/session` answers.
     container.singleton(SessionEpoch);

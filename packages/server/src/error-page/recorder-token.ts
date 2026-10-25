@@ -1,4 +1,4 @@
-import { token, type RequestInfo } from '@marmeon/core';
+import { token, type CurrentRequest } from '@marmeon/core';
 import type { DbQueryMessage, LogMessage } from '@marmeon/core/diagnostics';
 
 /** What the error page shows of a request's queries and log entries — raw; the page redacts them. */
@@ -17,9 +17,9 @@ export interface RequestRecording {
  */
 export interface RequestRecorder {
   /** Starts recording the request whose context is `info`. */
-  begin(info: RequestInfo): void;
+  begin(info: CurrentRequest): void;
   /** What was recorded for the request of `info` so far. */
-  recording(info: RequestInfo): RequestRecording | undefined;
+  recording(info: CurrentRequest): RequestRecording | undefined;
   /** Stops listening (the provider's `shutdown`). */
   close(): void;
 }

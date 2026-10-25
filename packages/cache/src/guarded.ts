@@ -1,5 +1,5 @@
 import type { Clock } from '@marmeon/core';
-import type { CacheDriver, CacheStore, Entry, LockStore } from './cache.ts';
+import type { CacheDriver, CacheEntry, CacheStore, LockStore } from './cache.ts';
 import { CacheSetupError } from './errors.ts';
 import { withCode } from '@marmeon/core/internal';
 
@@ -41,7 +41,7 @@ export class GuardedStore implements CacheStore {
     if (typeof store.prune === 'function') this.prune = () => store.prune!();
   }
 
-  async read(key: string): Promise<Entry | undefined> {
+  async read(key: string): Promise<CacheEntry | undefined> {
     const entry = await this.#store.read(keyOf('cache key', key));
     if (typeof entry !== 'object' || entry === null) return undefined;
     // Expiry is the contract's, not the driver's goodwill: an entry past it is gone.
@@ -49,11 +49,11 @@ export class GuardedStore implements CacheStore {
     return entry;
   }
 
-  async write(key: string, entry: Entry): Promise<void> {
+  async write(key: string, entry: CacheEntry): Promise<void> {
     return this.#store.write(keyOf('cache key', key), entry);
   }
 
-  async add(key: string, entry: Entry): Promise<boolean> {
+  async add(key: string, entry: CacheEntry): Promise<boolean> {
     return (await this.#store.add(keyOf('cache key', key), entry)) === true;
   }
 

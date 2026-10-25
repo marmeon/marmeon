@@ -1,4 +1,4 @@
-import { currentRequest, type Application, type RequestInfo } from '@marmeon/core';
+import { currentRequest, type Application, type CurrentRequest } from '@marmeon/core';
 import { channels } from '@marmeon/core/diagnostics';
 
 /** What one request spent — its queries and server rendering (filled from the channels while it runs). */
@@ -19,7 +19,7 @@ interface Timing {
  */
 export class ServerTiming {
   /** Per request, keyed by its context object — a nested request (an island resolved in-process) has its own. */
-  readonly #timings = new WeakMap<RequestInfo, Timing>();
+  readonly #timings = new WeakMap<CurrentRequest, Timing>();
   readonly #off: (() => void)[];
 
   constructor(app: Application) {
@@ -46,12 +46,12 @@ export class ServerTiming {
   }
 
   /** Starts measuring the request whose context is `info`. */
-  begin(info: RequestInfo): void {
+  begin(info: CurrentRequest): void {
     this.#timings.set(info, { db: 0, queries: 0, ssr: undefined });
   }
 
   /** The header's value for the request of `info`, which took `ms` until its response. */
-  header(info: RequestInfo, ms: number): string | undefined {
+  header(info: CurrentRequest, ms: number): string | undefined {
     const timing = this.#timings.get(info);
     if (!timing) return undefined;
     const metrics = [`app;dur=${round(ms)};desc="App"`, `db;dur=${round(timing.db)};desc="${timing.queries} ${timing.queries === 1 ? 'query' : 'queries'}"`];

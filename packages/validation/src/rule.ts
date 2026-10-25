@@ -148,12 +148,12 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
    * validation never asks the database, so free and taken values get the same answer there — `.live()` turns that on. See
    * `docs/validation.md#database-rules-and-why-they-never-run-live`.
    */
-  unique<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: ColumnOf<R>, options: UniqueOptions<Ctx> = {}): this {
+  unique<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options: UniqueOptions<Ctx> = {}): this {
     return this.with(databaseStep('unique', Repository, column, options));
   }
 
   /** The value is in a row of `Repository`'s table (not soft-deleted). Not live, like {@link unique}. */
-  exists<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: ColumnOf<R>, options: ExistsOptions<Ctx> = {}): this {
+  exists<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options: ExistsOptions<Ctx> = {}): this {
     return this.with(databaseStep('exists', Repository, column, options));
   }
 
@@ -221,7 +221,7 @@ export interface RepositoryLike {
 }
 
 /** The columns of a repository's rows (from its `find()`), or any name for another class. */
-export type ColumnOf<R> = R extends { find(id: never): Promise<infer Row> } ? Extract<keyof NonNullable<Row>, string> : string;
+export type RepositoryColumnOf<R> = R extends { find(id: never): Promise<infer Row> } ? Extract<keyof NonNullable<Row>, string> : string;
 
 export interface ExistsOptions<Ctx = any> {
   /** Narrows the rows that count — a tenant, say: `(query, ctx) => query.where('team_id', '=', ctx.user.team_id)`. */

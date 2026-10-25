@@ -108,6 +108,22 @@ export interface CreateApplicationOptions {
     container?: Container;
     override?: (container: Container) => void;
 }
+// CurrentJob
+export interface CurrentJob {
+    readonly job: string;
+    readonly jobId: string;
+    readonly attempt: number;
+    readonly requestId?: string;
+    readonly fromReporter?: true;
+}
+// CurrentRequest
+export interface CurrentRequest {
+    readonly requestId: string;
+}
+// CurrentTask
+export interface CurrentTask {
+    readonly task: string;
+}
 // DEFAULT_HEALTH_TIMEOUT
 export declare const DEFAULT_HEALTH_TIMEOUT = 2000;
 // DOTENV_MARKER
@@ -348,14 +364,6 @@ export interface InjectionWarning {
 }
 // IsJson
 export type IsJson<T> = 0 extends 1 & T ? true : false extends JsonMember<T> ? false : true;
-// JobInfo
-export interface JobInfo {
-    readonly job: string;
-    readonly jobId: string;
-    readonly attempt: number;
-    readonly requestId?: string;
-    readonly fromReporter?: true;
-}
 // Key
 export type Key<T = unknown> = Token<T> | Constructor<T>;
 // Listener
@@ -479,10 +487,6 @@ export interface ReportedError {
     readonly status: number | undefined;
     readonly cause: ReportedError | undefined;
 }
-// RequestInfo
-export interface RequestInfo {
-    readonly requestId: string;
-}
 // Resolve
 export type Resolve<K> = K extends Token<infer T> ? T : K extends Constructor<infer T> ? T : never;
 // ResolvedEnvironment
@@ -568,10 +572,6 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
 export declare class SystemClock implements Clock {
     now(): number;
 }
-// TaskInfo
-export interface TaskInfo {
-    readonly task: string;
-}
 // Token
 export interface Token<T> {
     readonly key: symbol;
@@ -616,13 +616,13 @@ export declare function commitAnyway<E>(result: Err<E>): Err<E>;
 // createApplication
 export declare function createApplication(definition: ApplicationDefinition, options?: CreateApplicationOptions): Promise<Application>;
 // currentJob
-export declare function currentJob(): JobInfo | undefined;
+export declare function currentJob(): CurrentJob | undefined;
 // currentLogContext
 export declare function currentLogContext(): Readonly<Record<string, unknown>>;
 // currentRequest
-export declare function currentRequest(): RequestInfo | undefined;
+export declare function currentRequest(): CurrentRequest | undefined;
 // currentTask
-export declare function currentTask(): TaskInfo | undefined;
+export declare function currentTask(): CurrentTask | undefined;
 // currentTransaction
 export declare function currentTransaction(): TransactionFrame | undefined;
 // defineApplication

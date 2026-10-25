@@ -1,6 +1,6 @@
 import { SystemClock, type Clock } from '@marmeon/core';
 import type { Connection } from '@marmeon/database';
-import type { CacheStore, Entry, LockStore } from '../cache.ts';
+import type { CacheEntry, CacheStore, LockStore } from '../cache.ts';
 
 /** The tables `marmeon make:cache-table` creates (the app owns the migration; the store types them itself). */
 export const CACHE_TABLE = 'cache';
@@ -34,7 +34,7 @@ export class DatabaseStore implements CacheStore, LockStore {
     this.#clock = clock;
   }
 
-  async read(key: string): Promise<Entry | undefined> {
+  async read(key: string): Promise<CacheEntry | undefined> {
     const { db, sql } = await this.#use();
     const now = this.#clock.now();
     const { rows } = await sql<{ value: string; expiration: number | null }>`select value, expiration from cache where key = ${key}`.execute(db);
@@ -48,13 +48,13 @@ export class DatabaseStore implements CacheStore, LockStore {
     return { value: JSON.parse(row.value) as unknown, expires: row.expiration === null ? null : Number(row.expiration) };
   }
 
-  async write(key: string, entry: Entry): Promise<void> {
+  async write(key: string, entry: CacheEntry): Promise<void> {
     const { db, sql } = await this.#use();
     await sql`insert into cache (key, value, expiration) values (${key}, ${serialize(entry.value)}, ${entry.expires})
       on conflict (key) do update set value = excluded.value, expiration = excluded.expiration`.execute(db);
   }
 
-  async add(key: string, entry: Entry): Promise<boolean> {
+  async add(key: string, entry: CacheEntry): Promise<boolean> {
     const { db, sql } = await this.#use();
     // Inserts a new row, or replaces an expired one; a live row stays and nothing is returned.
     const { rows } = await sql`insert into cache (key, value, expiration) values (${key}, ${serialize(entry.value)}, ${entry.expires})

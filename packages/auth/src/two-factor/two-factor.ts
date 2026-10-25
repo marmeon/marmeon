@@ -2,7 +2,7 @@ import { RateLimiter } from '@marmeon/cache';
 import { Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { DecryptError, Encrypter } from '@marmeon/encryption';
-import { RequestInfo } from '@marmeon/http';
+import { ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
 import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, COMPLETE_PENDING, DROP_REMEMBER_TOKEN, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE } from '../auth.ts';
@@ -74,7 +74,7 @@ export class TwoFactor {
   readonly #encrypter: Encrypter;
   readonly #limiter: RateLimiter;
   readonly #events: EventDispatcher;
-  readonly #request: RequestInfo;
+  readonly #request: ClientInfo;
   readonly #users: UserProvider;
   readonly #cookies: CookieJar;
   readonly #config: AuthConfig;
@@ -91,7 +91,7 @@ export class TwoFactor {
     encrypter: Encrypter,
     limiter: RateLimiter,
     events: EventDispatcher,
-    request: RequestInfo,
+    request: ClientInfo,
     users: UserProvider,
     cookies: CookieJar,
     config: AuthConfig,

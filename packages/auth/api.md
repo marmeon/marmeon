@@ -87,7 +87,7 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: ClientInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
     attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
     deviceCookie(): Promise<DeviceCookie | undefined>;
     signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
@@ -1369,10 +1369,6 @@ export declare const PASSKEYS_TABLE = "passkeys";
 // PasskeyConfig
 export declare const PasskeyConfig: import("@marmeon/core").ConfigDefinition<PasskeyConfigValue>;
 export type PasskeyConfig = ConfigOf<typeof PasskeyConfig>;
-// PasskeyConfigError
-export declare class PasskeyConfigError extends Error {
-    readonly name = "PasskeyConfigError";
-}
 // PasskeyConfigValue
 export interface PasskeyConfigValue {
     relyingParty(): RelyingParty;
@@ -1413,6 +1409,10 @@ export declare class PasskeyServiceProvider implements ServiceProvider {
     static config: import("@marmeon/core").ConfigDefinition<import("./config.ts").PasskeyConfigValue>[];
     register(container: Container): void;
     boot(app: Application): Promise<void>;
+}
+// PasskeySetupError
+export declare class PasskeySetupError extends Error {
+    readonly name = "PasskeySetupError";
 }
 // PasskeyStore
 export declare class PasskeyStore extends TwoFactorState {
@@ -1471,7 +1471,7 @@ export interface PasskeyTable {
 // Passkeys
 export declare class Passkeys implements SecondFactorPasskeys {
     #private;
-    constructor(auth: Auth, session: Session, store: PasskeyStore, twoFactorStore: TwoFactorStore, state: TwoFactorState, config: PasskeyConfig, authConfig: AuthConfig, connections: Connections, limiter: RateLimiter, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, clock: Clock, logger: Logger, sessionConfig: SessionConfig, accountSessions: AccountSessions);
+    constructor(auth: Auth, session: Session, store: PasskeyStore, twoFactorStore: TwoFactorStore, state: TwoFactorState, config: PasskeyConfig, authConfig: AuthConfig, connections: Connections, limiter: RateLimiter, events: EventDispatcher, request: ClientInfo, users: UserProvider, cookies: CookieJar, clock: Clock, logger: Logger, sessionConfig: SessionConfig, accountSessions: AccountSessions);
     registrationOptions(): Promise<PublicKeyCredentialCreationOptionsJSON>;
     register(response: RegistrationResponseJSON, name: string, password?: string): Promise<Result<{
         recoveryCodes: readonly string[] | null;
@@ -1629,7 +1629,7 @@ export type AttestationConveyancePreference = 'none' | 'indirect' | 'direct' | '
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: ClientInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
     attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
     deviceCookie(): Promise<DeviceCookie | undefined>;
     signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
@@ -2315,7 +2315,7 @@ export interface TotpSetup {
 // TwoFactor
 export declare class TwoFactor {
     #private;
-    constructor(auth: Auth, session: Session, state: TwoFactorState, store: TwoFactorStore, encrypter: Encrypter, limiter: RateLimiter, events: EventDispatcher, request: RequestInfo, users: UserProvider, cookies: CookieJar, config: AuthConfig, clock: Clock, logger: Logger, passkeys: SecondFactorPasskeys, connections: Connections, sessionConfig: SessionConfig);
+    constructor(auth: Auth, session: Session, state: TwoFactorState, store: TwoFactorStore, encrypter: Encrypter, limiter: RateLimiter, events: EventDispatcher, request: ClientInfo, users: UserProvider, cookies: CookieJar, config: AuthConfig, clock: Clock, logger: Logger, passkeys: SecondFactorPasskeys, connections: Connections, sessionConfig: SessionConfig);
     challenge(input: SecondFactorInput): Promise<Result<AuthUser, ChallengeError>>;
     stepUp(input: SecondFactorInput): Promise<Result<void, ChallengeError>>;
     status(): Promise<{
@@ -2415,7 +2415,7 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: RequestInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
+    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: ClientInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
     attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
     deviceCookie(): Promise<DeviceCookie | undefined>;
     signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;

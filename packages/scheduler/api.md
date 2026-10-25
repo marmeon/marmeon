@@ -9,6 +9,12 @@ Types from other packages: none
 ### Stable
 
 ```ts
+// CallableTask
+export interface CallableTask {
+    handle(): unknown;
+}
+// CallableTaskClass
+export type CallableTaskClass = new (...args: any[]) => CallableTask;
 // CatchUp
 export type CatchUp = 'once' | 'skip';
 // CheckTime
@@ -46,12 +52,6 @@ export interface Frequencies<K extends TaskKind> {
     yearly(): ScheduledTask<K>;
     cron(expression: string): ScheduledTask<K>;
 }
-// Invokable
-export interface Invokable {
-    handle(): unknown;
-}
-// InvokableClass
-export type InvokableClass = new (...args: any[]) => Invokable;
 // JobPayloadArgument
 export type JobPayloadArgument<J extends JobClass> = {} extends JobInput<J> ? [payload?: JobInput<J>] : [payload: JobInput<J>];
 // RunReason
@@ -60,7 +60,7 @@ export type RunReason = 'due' | 'catch-up' | 'test';
 export interface Schedule {
     job<J extends JobClass>(job: J & CheckJob<J>, ...payload: JobPayloadArgument<J>): UnscheduledTask<'job'>;
     command(command: string | CommandClass, args?: readonly string[]): UnscheduledTask<'command'>;
-    call(target: InvokableClass): UnscheduledTask<'call'>;
+    call(target: CallableTaskClass): UnscheduledTask<'call'>;
 }
 // ScheduleConfig
 export declare const ScheduleConfig: import("@marmeon/core").ConfigDefinition<{
@@ -216,7 +216,7 @@ export interface Task {
 // TaskDefinition
 export interface TaskDefinition {
     readonly kind: TaskKind;
-    readonly target: JobClass | CommandClass | InvokableClass | string;
+    readonly target: JobClass | CommandClass | CallableTaskClass | string;
     readonly payload: unknown;
     readonly args: readonly string[];
     readonly module: string;
@@ -328,6 +328,12 @@ export type ScheduleTime = Date | number | string | Temporal.Instant | Temporal.
 ### Referenced, not exported
 
 ```ts
+// CallableTask
+export interface CallableTask {
+    handle(): unknown;
+}
+// CallableTaskClass
+export type CallableTaskClass = new (...args: any[]) => CallableTask;
 // CatchUp
 export type CatchUp = 'once' | 'skip';
 // CronExpression
@@ -340,12 +346,6 @@ export declare class CronExpression {
     matchesHour(time: Omit<WallTime, 'minute'>): boolean;
     toString(): string;
 }
-// Invokable
-export interface Invokable {
-    handle(): unknown;
-}
-// InvokableClass
-export type InvokableClass = new (...args: any[]) => Invokable;
 // RunReason
 export type RunReason = 'due' | 'catch-up' | 'test';
 // ScheduleConfig
@@ -382,7 +382,7 @@ export interface Task {
 // TaskDefinition
 export interface TaskDefinition {
     readonly kind: TaskKind;
-    readonly target: JobClass | CommandClass | InvokableClass | string;
+    readonly target: JobClass | CommandClass | CallableTaskClass | string;
     readonly payload: unknown;
     readonly args: readonly string[];
     readonly module: string;

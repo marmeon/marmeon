@@ -2,7 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { randomBytes } from 'node:crypto';
 import { afterCommit, afterRollback, Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
-import { ClientHistory, RequestInfo } from '@marmeon/http';
+import { ClientHistory, ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
 import { ANNOUNCE_ENDED, AccountSessions, missingSessionKeyMethod, notABoolean, passwordHashWritten, rotateSessionKey } from './account-sessions.ts';
@@ -154,7 +154,7 @@ export interface SignInOptions {
   /** Keeps this browser signed in for up to `AUTH_REMEMBER_DAYS` days without the password — a convenience, not a proof. See `docs/authentication.md#remember-me`. */
   readonly remember?: boolean;
   /**
-   * The client's address for the `SignedIn` event (for "a new sign-in" notices, audit logs). Default: the request's (`RequestInfo`,
+   * The client's address for the `SignedIn` event (for "a new sign-in" notices, audit logs). Default: the request's (`ClientInfo`,
    * through `SERVER_TRUSTED_PROXIES` like `ctx.ip`) — pass it only to say something else.
    */
   readonly ip?: string | undefined;
@@ -194,7 +194,7 @@ export class Auth {
   readonly #rememberCookie: string;
   readonly #logger: Logger;
   readonly #history: ClientHistory;
-  readonly #request: RequestInfo;
+  readonly #request: ClientInfo;
   readonly #newPassword: NewPassword;
   readonly #twoFactor: TwoFactorState;
   readonly #accountSessions: AccountSessions;
@@ -222,7 +222,7 @@ export class Auth {
     sessionConfig: SessionConfig,
     logger: Logger,
     history: ClientHistory,
-    request: RequestInfo,
+    request: ClientInfo,
     newPassword: NewPassword,
     twoFactor: TwoFactorState,
     accountSessions: AccountSessions,

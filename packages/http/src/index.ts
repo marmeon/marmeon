@@ -50,7 +50,7 @@ export { SharedData } from './shared-data.ts';
 export { addLive, carryLive, LIVE_CHANNEL, LiveAudience, LiveSigner, withLiveMethod } from './live.ts';
 export type { LiveDeclaration, LiveMethod, LiveOnly, PagePropNames } from './live.ts';
 export { ServerClosing } from './server-closing.ts';
-export { NO_REQUEST_INFO, RequestInfo } from './request-info.ts';
+export { ClientInfo, NO_CLIENT_INFO } from './client-info.ts';
 // The live protocol — not re-exported by `page.ts`: what the browser needs of it, only the live feature's chunk imports.
 export { CONNECTION_HEADER, LIVE_PATH } from './live-protocol.ts';
 // The tab-sync protocol — like the live protocol, only the tabSync feature's chunk imports it in the browser.

@@ -4,14 +4,14 @@ import type { RelyingParty } from './webauthn.ts';
 import { withCode } from '@marmeon/core/internal';
 
 /** Thrown the first time the relying party is needed, when `APP_URL` or the passkey variables cannot name one safely. */
-export class PasskeyConfigError extends Error {
-  override readonly name = 'PasskeyConfigError';
+export class PasskeySetupError extends Error {
+  override readonly name = 'PasskeySetupError';
 }
 
 const LOOPBACK = new Set(['127.0.0.1', '[::1]']);
 
 function problem(message: string): never {
-  throw new PasskeyConfigError(withCode('A1', `Passkeys cannot be used: ${message}`));
+  throw new PasskeySetupError(withCode('A1', `Passkeys cannot be used: ${message}`));
 }
 
 /** `http://localhost[:port]`, or `https:` — nothing else is a secure context a browser runs WebAuthn in. */
@@ -35,7 +35,7 @@ function checkOrigin(origin: string): URL {
  * The relying party the app's passkeys belong to, from configuration only — `APP_URL` (the RP ID is its host, the one origin
  * its origin), optionally overridden by `rpId` (`AUTH_PASSKEY_RP_ID`) and a comma-separated `origins` (`AUTH_PASSKEY_ORIGINS`).
  * Never read from a request: a `Host` header is the client's to forge, and a forged relying party accepts responses made for another site.
- * Throws {@link PasskeyConfigError}.
+ * Throws {@link PasskeySetupError}.
  */
 export function relyingPartyFrom(input: { appUrl: string | undefined; rpId?: string | undefined; origins?: string | undefined }): RelyingParty {
   if (!input.appUrl) return problem('APP_URL is not set.');
