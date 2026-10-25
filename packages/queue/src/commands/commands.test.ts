@@ -99,11 +99,11 @@ describe('the queue provider', () => {
 });
 
 describe('the queue commands', () => {
-  it('queue:work refuses to start with a timeout retryAfter cannot cover — a message, not a stack trace', async () => {
+  it('queue:work refuses to start with a timeout retryAfterSeconds cannot cover — a message, not a stack trace', async () => {
     await using application = await app({ env: { QUEUE_DATABASE_RETRY_AFTER_SECONDS: '30' } });
     const { input: run, lines } = input('/tmp');
     expect(await application.container.make(QueueWorkCommand).handle(run)).toBe(1);
-    expect(lines).toEqual([expect.stringMatching(/^✗ \[marmeon:Q4\] The queue connection "database" gives a claimed job 30s \(retryAfter\).*test\.ping \(timeout 60s\)/)]);
+    expect(lines).toEqual([expect.stringMatching(/^✗ \[marmeon:Q4\] The queue connection "database" gives a claimed job 30s \(retryAfterSeconds\).*test\.ping \(timeout 60s\)/)]);
   });
 
   it('queue:work without --queue (or with --queue=*) takes every queue, oldest first; --queue only narrows it down', async () => {

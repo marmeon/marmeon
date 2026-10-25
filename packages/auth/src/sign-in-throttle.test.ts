@@ -107,7 +107,7 @@ async function boot(env: Record<string, string> = {}, options: { factors?: boole
       const [name, value] = pair!.split('=') as [string, string];
       if (value !== '') cookies[name] = value;
     }
-    return { json: (await response.json()) as { ok: boolean; error?: { kind: string; retryAfter?: number; account?: true } }, response, cookies };
+    return { json: (await response.json()) as { ok: boolean; error?: { kind: string; retryAfterSeconds?: number; account?: true } }, response, cookies };
   };
   const header = (cookies: Record<string, string>) => Object.entries(cookies).map(([name, value]) => `${name}=${value}`).join('; ');
   /** One attempt from the client `n` (every client its own address), with the cookies of a browser. */
@@ -128,7 +128,7 @@ describe('the limit per client and identifier', () => {
     expect(users.lookups).toBe(5);
     const held = await attempt(ada.email, 'secret');
     expect(held).toMatchObject({ ok: false, error: { kind: 'throttled' } });
-    expect(held.error?.retryAfter).toBeGreaterThan(0);
+    expect(held.error?.retryAfterSeconds).toBeGreaterThan(0);
     expect(held.error).not.toHaveProperty('account');
     expect(users.lookups, 'no lookup for the held-up attempt').toBe(5);
     expect(verified, 'no hash for the held-up attempt').toHaveLength(5);
@@ -167,7 +167,7 @@ describe('the ceiling per account', () => {
     const lookups = users.lookups;
     const held = await attempt(ada.email, 'secret', 200);
     expect(held).toMatchObject({ ok: false, error: { kind: 'throttled', account: true } });
-    expect(held.error?.retryAfter).toBeGreaterThan(0);
+    expect(held.error?.retryAfterSeconds).toBeGreaterThan(0);
     expect(users.lookups, 'one query, as for any attempt').toBe(lookups + 1);
     expect(verified, 'no hash for the refused attempt').toHaveLength(CEILING);
   });
@@ -184,7 +184,7 @@ describe('the ceiling per account', () => {
     const known = await attempt(ada.email, 'secret', 500);
     const before = users.lookups;
     const unknown = await attempt('nobody@example.com', 'secret', 501);
-    expect(unknown).toEqual({ ...known, error: { ...known.error, retryAfter: unknown.error?.retryAfter } });
+    expect(unknown).toEqual({ ...known, error: { ...known.error, retryAfterSeconds: unknown.error?.retryAfterSeconds } });
     expect(users.lookups).toBe(before + 1);
     expect(lockouts.map((event) => [event.scope, event.identifier])).toEqual([['account', ada.email], ['account', 'nobody@example.com']]);
   });

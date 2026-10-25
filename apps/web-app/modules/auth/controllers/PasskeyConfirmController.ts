@@ -29,7 +29,7 @@ export class PasskeyConfirmController extends Controller {
   async handle(ctx: ContextOf<typeof PasskeyConfirmRequest>) {
     const done = await this.#passkeys.confirm(ctx.body.response);
     if (done.ok) return this.redirect().intended().route('auth.security');
-    if (done.error.kind === 'throttled') return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter }) }, { status: 429 });
+    if (done.error.kind === 'throttled') return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfterSeconds }) }, { status: 429 });
     // No challenge, an expired one, a wrong answer: the client learns only that it did not work.
     return this.json({ error: this.#translator.get('auth.passkeys.failed') }, { status: 422 });
   }

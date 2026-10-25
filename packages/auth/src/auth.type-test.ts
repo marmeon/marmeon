@@ -438,7 +438,9 @@ export async function checkPasswordIsAResult() {
       case 'invalid-password':
         return 'invalid';
       case 'throttled':
-        return checked.error.retryAfter;
+        // @ts-expect-error the unit is part of the name: `retryAfterSeconds`
+        void checked.error.retryAfter;
+        return checked.error.retryAfterSeconds;
     }
   }
   return undefined;

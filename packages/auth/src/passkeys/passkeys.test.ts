@@ -480,7 +480,7 @@ describe('Passkeys: registering', () => {
     const b = booted.browser();
     await b.login();
     for (let i = 0; i < 5; i++) expect(await addPasskey(b, device(), 'x', 'wrong')).toEqual({ ok: false, kind: 'invalid-password' });
-    expect(await addPasskey(b, device(), 'x', 'secret')).toMatchObject({ ok: false, kind: 'throttled', retryAfter: expect.any(Number) });
+    expect(await addPasskey(b, device(), 'x', 'secret')).toMatchObject({ ok: false, kind: 'throttled', retryAfterSeconds: expect.any(Number) });
     expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(0);
   });
 
@@ -795,7 +795,7 @@ describe('Passkeys: signing in without a password', () => {
       await b.pk('sign-in', { response: { id: 'nope', challenge: options.challenge } });
     }
     const options = await b.pk('sign-in-options');
-    expect(await b.pk('sign-in', { response: { id: 'nope' } })).toMatchObject({ ok: false, kind: 'throttled', retryAfter: expect.any(Number) });
+    expect(await b.pk('sign-in', { response: { id: 'nope' } })).toMatchObject({ ok: false, kind: 'throttled', retryAfterSeconds: expect.any(Number) });
     expect(options.challenge).toBeTypeOf('string');
   });
 
@@ -1153,7 +1153,7 @@ describe('Passkeys: confirming sudo mode', () => {
     const booted = await boot();
     const b = await unconfirmed(booted);
     for (let attempt = 0; attempt < 10; attempt++) expect(await b.pk('confirm', { response: { id: 'unknown' } })).toMatchObject({ ok: false, kind: 'no-challenge' });
-    expect(await b.pk('confirm', { response: { id: 'unknown' } })).toMatchObject({ ok: false, kind: 'throttled', retryAfter: expect.any(Number) });
+    expect(await b.pk('confirm', { response: { id: 'unknown' } })).toMatchObject({ ok: false, kind: 'throttled', retryAfterSeconds: expect.any(Number) });
   });
 
   it('counts a passwordless sign-in as a fresh confirmation', async () => {

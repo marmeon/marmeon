@@ -62,9 +62,9 @@ export interface QueueCounts {
 /**
  * The contract of a queue driver: `sync` runs at once, `database` keeps jobs in the `jobs` table, `redis` in
  * lists. A claim must be atomic across processes — two workers never hold the same job at once — and counts the
- * attempt. `ack`, `release` and `fail` act only on the claim they are given: if the claim expired (after `retryAfter`)
- * and another worker holds the job now, they change nothing and return false. A driver that expects `retryAfter` to guard
- * its claims must honour it in `reserve`: a claim older than `retryAfter` is taken again — a driver that ignores it runs a
+ * attempt. `ack`, `release` and `fail` act only on the claim they are given: if the claim expired (after `retryAfterSeconds`)
+ * and another worker holds the job now, they change nothing and return false. A driver that expects `retryAfterSeconds` to guard
+ * its claims must honour it in `reserve`: a claim older than `retryAfterSeconds` is taken again — a driver that ignores it runs a
  * job twice while the first worker still holds it. The payload arrives as the queue stores it, already encrypted for an
  * encrypted job. Packages and apps bring their own: see `docs/drivers.md#queue-drivers-and-failed-job-stores`.
  *
@@ -76,7 +76,7 @@ export interface QueueDriver {
   push(queue: string, payload: string, delaySeconds: number): Promise<string>;
   /**
    * Claims the next available job of the first queue (in order) that has one — also a job whose claim is older than
-   * `retryAfter` (its worker died). Increments `attempts`. `undefined` when there is none.
+   * `retryAfterSeconds` (its worker died). Increments `attempts`. `undefined` when there is none.
    */
   reserve(queues: readonly string[]): Promise<ReservedJob | undefined>;
   /**
@@ -132,7 +132,7 @@ export interface QueueConnection {
   /** The queue a job goes to when it names none. */
   readonly queue: string;
   /** Seconds before a claim may be taken again; positive. `queue:work` checks every job's timeout against it. */
-  readonly retryAfter: number;
+  readonly retryAfterSeconds: number;
 }
 
 /** Creates a queue connection: `static queueDrivers = { sqs: (context) => … }` on a service provider. */

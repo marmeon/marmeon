@@ -288,7 +288,7 @@ then loads the group itself, and a second failure there is a request error of it
 them by `route` as before; they carry the same facts and nothing else, never the request's body, cookies or headers nor the props themselves; what an error's message quotes is masked like any request error's (see above).
 The reporters are flushed when the app shuts down, after the server has finished this work (it waits at most 8 seconds for it; a report of work still running then may be lost). A deferred group that only takes too
 long is logged, not reported. These are logged but not
-reported: errors of server rendering, errors at shutdown, a job that ignores its timeout and ends its worker (it runs again after `retryAfter`), a job that was queued by an error reporter (see below), a job on the `sync`
+reported: errors of server rendering, errors at shutdown, a job that ignores its timeout and ends its worker (it runs again after `retryAfterSeconds`), a job that was queued by an error reporter (see below), a job on the `sync`
 connection (its error reaches whoever dispatched it, who reports it as their own), a command that is called wrong (exit code 2) or
 ends with an exit code but no error, and a prompt that was cancelled. To report an error you caught yourself, for example when a
 `catch` still answers 200, ask the app for the service:

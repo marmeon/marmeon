@@ -328,7 +328,7 @@ describe('TwoFactor: setting up', () => {
     expect(await b.tf('regenerate', { password: '' })).toMatchObject({ codes: null, kind: 'invalid-password' });
     for (let attempt = 0; attempt < 5; attempt++) expect(await b.tf('regenerate', { password: 'wrong' })).toMatchObject({ codes: null, kind: 'invalid-password' });
     expect(await booted.connections.get<any>().selectFrom('two_factor_recovery_codes').selectAll().execute()).toEqual(before);
-    expect(await b.tf('regenerate', { password: 'secret' })).toMatchObject({ codes: null, kind: 'throttled', retryAfter: expect.any(Number) });
+    expect(await b.tf('regenerate', { password: 'secret' })).toMatchObject({ codes: null, kind: 'throttled', retryAfterSeconds: expect.any(Number) });
     expect(await booted.connections.get<any>().selectFrom('two_factor_recovery_codes').selectAll().execute()).toEqual(before);
   });
 
@@ -708,7 +708,7 @@ describe('TwoFactor: the errors of confirm()', () => {
           return error satisfies never;
       }
     };
-    expect([...kinds].map((kind) => kindOf({ kind, retryAfter: 1 } as ConfirmError))).toEqual([...kinds]);
+    expect([...kinds].map((kind) => kindOf({ kind, retryAfterSeconds: 1 } as ConfirmError))).toEqual([...kinds]);
     expect(await b.tf('confirm', { code: '123456', password: 'secret' })).toMatchObject({ kind: 'not-started' });
   });
 });
@@ -762,8 +762,8 @@ describe('TwoFactor: signing in', () => {
     // The enabling confirm() counted too and was cleared with its success; five wrong codes used this minute's five.
     const again = await waiting(booted);
     const refused = await again.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) });
-    expect(refused).toMatchObject({ ok: false, kind: 'throttled', retryAfter: expect.any(Number) });
-    expect(refused.retryAfter).toBeGreaterThan(0);
+    expect(refused).toMatchObject({ ok: false, kind: 'throttled', retryAfterSeconds: expect.any(Number) });
+    expect(refused.retryAfterSeconds).toBeGreaterThan(0);
     expect(await again.tf('who')).toEqual({ id: null });
   });
 

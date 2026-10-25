@@ -45,8 +45,8 @@ export interface JobMiddlewareContext<P = unknown> {
   readonly job: JobContext;
   /** The job's `timeout` in seconds. */
   readonly timeout: number;
-  /** Seconds a claim holds before another worker may take the job again (`retryAfter`) — undefined on the sync connection. */
-  readonly retryAfter: number | undefined;
+  /** Seconds a claim holds before another worker may take the job again (`retryAfterSeconds`) — undefined on the sync connection. */
+  readonly retryAfterSeconds: number | undefined;
   /** The app's `Cache` (@marmeon/cache) — for locks across workers. */
   cache(): Promise<Cache>;
 }

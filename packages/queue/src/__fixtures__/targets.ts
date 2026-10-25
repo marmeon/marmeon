@@ -124,18 +124,18 @@ export interface QueueUnderTest {
   close(): Promise<void>;
 }
 
-export async function queueUnderTest(kind: QueueKind, options: { retryAfter?: number } = {}): Promise<QueueUnderTest> {
+export async function queueUnderTest(kind: QueueKind, options: { retryAfterSeconds?: number } = {}): Promise<QueueUnderTest> {
   const { target, drop } = await freshTarget(kind);
   const clock = new TestClock();
-  const retryAfter = options.retryAfter ?? 90;
+  const retryAfterSeconds = options.retryAfterSeconds ?? 90;
   if (target.kind === 'memory') {
-    return { driver: new MemoryQueueDriver({ clock, retryAfter }), failed: new MemoryFailedJobStore(), clock, target, connections: undefined, close: drop };
+    return { driver: new MemoryQueueDriver({ clock, retryAfterSeconds }), failed: new MemoryFailedJobStore(), clock, target, connections: undefined, close: drop };
   }
   const connections = databaseConnections(connectionOptions(target));
   const connection = { db: connections.get(), driver: connections.options().driver };
   const redis = target.kind === 'redis' ? redisConnections(target.url, target.prefix) : undefined;
   return {
-    driver: redis ? new RedisQueueDriver(redis.get(), { retryAfter, clock: clock as Clock }) : new DatabaseQueueDriver(connection, { retryAfter, clock: clock as Clock }),
+    driver: redis ? new RedisQueueDriver(redis.get(), { retryAfterSeconds, clock: clock as Clock }) : new DatabaseQueueDriver(connection, { retryAfterSeconds, clock: clock as Clock }),
     failed: new DatabaseFailedJobStore(connection),
     clock,
     target,
@@ -149,18 +149,18 @@ export async function queueUnderTest(kind: QueueKind, options: { retryAfter?: nu
 }
 
 /** The queue driver of a shared target, as another process opens it (with the system clock). */
-export function openDriver(target: SharedTarget, connections: Connections, options: { retryAfter?: number } = {}): { driver: QueueDriver; close(): Promise<void> } {
-  const retryAfter = options.retryAfter ?? 90;
+export function openDriver(target: SharedTarget, connections: Connections, options: { retryAfterSeconds?: number } = {}): { driver: QueueDriver; close(): Promise<void> } {
+  const retryAfterSeconds = options.retryAfterSeconds ?? 90;
   if (target.kind === 'redis') {
     const redis = redisConnections(target.url, target.prefix);
-    return { driver: new RedisQueueDriver(redis.get(), { retryAfter }), close: () => redis.close() };
+    return { driver: new RedisQueueDriver(redis.get(), { retryAfterSeconds }), close: () => redis.close() };
   }
-  return { driver: new DatabaseQueueDriver({ db: connections.get(), driver: target.kind }, { retryAfter }), close: async () => {} };
+  return { driver: new DatabaseQueueDriver({ db: connections.get(), driver: target.kind }, { retryAfterSeconds }), close: async () => {} };
 }
 
 /** What a target's queue and cache settings are for an app process (the fixture app's environment). */
-export function targetEnv(target: SharedTarget, retryAfter?: number): Record<string, string> {
-  const retry = retryAfter === undefined ? {} : { [target.kind === 'redis' ? 'QUEUE_REDIS_RETRY_AFTER_SECONDS' : 'QUEUE_DATABASE_RETRY_AFTER_SECONDS']: String(retryAfter) };
+export function targetEnv(target: SharedTarget, retryAfterSeconds?: number): Record<string, string> {
+  const retry = retryAfterSeconds === undefined ? {} : { [target.kind === 'redis' ? 'QUEUE_REDIS_RETRY_AFTER_SECONDS' : 'QUEUE_DATABASE_RETRY_AFTER_SECONDS']: String(retryAfterSeconds) };
   switch (target.kind) {
     case 'sqlite':
       return { APP_NAME: 'Queue Fixture', DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: target.file, QUEUE_DRIVER: 'database', CACHE_DRIVER: 'database', ...retry };

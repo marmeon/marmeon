@@ -12,7 +12,7 @@ import type { QueueDriverFactory } from '@marmeon/queue';
 const sqs: QueueDriverFactory = ({ name, container, clock }) => ({
   driver: new SqsQueueDriver(container.make(SqsConfig), clock),
   queue: 'default',
-  retryAfter: 90,
+  retryAfterSeconds: 90,
 });
 
 export class SqsServiceProvider {
@@ -71,7 +71,7 @@ is optional says in its documentation what the framework does without it.
 ## Queue drivers and failed-job stores
 
 A queue driver implements `QueueDriver` and returns a `QueueConnection` from its factory: the driver, the connection's default
-queue and `retryAfter`, the seconds before a claim may be taken again. A failed-job store implements `FailedJobStore`.
+queue and `retryAfterSeconds`, the seconds before a claim may be taken again. A failed-job store implements `FailedJobStore`.
 
 ```ts
 import type { FailedJobStoreFactory } from '@marmeon/queue';
@@ -85,14 +85,14 @@ export class DynamoServiceProvider {
 ```
 
 The driver is built once, at the start when `QUEUE_DRIVER` selects it, and on first use otherwise. A factory that returns
-no driver, no queue name, or a `retryAfter` that is not a positive number stops the start. A custom connection is named like its
+no driver, no queue name, or a `retryAfterSeconds` that is not a positive number stops the start. A custom connection is named like its
 driver: dispatch to it with `{ connection: 'sqs' }`, work it with `queue:work --connection=sqs`.
 
 What a driver must guarantee:
 
 - **A claim is atomic.** Two workers never hold one job. `ack`, `release` and `fail` act only on the claim they are given, and
   return `false` when the claim has expired and another worker holds the job.
-- **`retryAfter` is honoured.** `reserve` takes a job again whose claim is older than `retryAfter`, and never earlier. The
+- **`retryAfterSeconds` is honoured.** `reserve` takes a job again whose claim is older than `retryAfterSeconds`, and never earlier. The
   framework checks every job's `timeout` plus the worker's `--stop-timeout` against it when `queue:work` starts, but only the
   driver can keep a claim from being taken too early. A driver that ignores it runs a job twice.
 - **The payload is opaque.** It arrives as the queue stores it. A job with `static encrypted` is encrypted before `push`, so the

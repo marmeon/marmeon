@@ -37,8 +37,8 @@ interface Fixture {
   worker(args: readonly string[], env?: Record<string, string>): WorkerProcess;
   /** `marmeon fixture:dispatch …` — started, ready, waiting for "go". */
   dispatcher(args: readonly string[]): Promise<WorkerProcess>;
-  /** The env name of the target's retryAfter. */
-  retryAfter(seconds: number): Record<string, string>;
+  /** The env name of the target's retryAfterSeconds. */
+  retryAfterSeconds(seconds: number): Record<string, string>;
 }
 
 async function withFixture(kind: SharedTarget['kind'], test: (fixture: Fixture) => Promise<void>): Promise<void> {
@@ -99,7 +99,7 @@ async function withFixture(kind: SharedTarget['kind'], test: (fixture: Fixture) 
       await dispatcher.waitFor(/^ready$/);
       return dispatcher;
     },
-    retryAfter: (seconds) => ({ [target.kind === 'redis' ? 'QUEUE_REDIS_RETRY_AFTER_SECONDS' : 'QUEUE_DATABASE_RETRY_AFTER_SECONDS']: String(seconds) }),
+    retryAfterSeconds: (seconds) => ({ [target.kind === 'redis' ? 'QUEUE_REDIS_RETRY_AFTER_SECONDS' : 'QUEUE_DATABASE_RETRY_AFTER_SECONDS']: String(seconds) }),
   };
   try {
     await test(fixture);
@@ -167,10 +167,10 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
     },
   );
 
-  it('runs a job again after retryAfter when its worker was killed mid-job (SIGKILL) — attempt 2, same id', { timeout: 60_000 }, async () => {
+  it('runs a job again after retryAfterSeconds when its worker was killed mid-job (SIGKILL) — attempt 2, same id', { timeout: 60_000 }, async () => {
     await withFixture(kind, async (fixture) => {
       await fixture.driver.push('default', record('fixture.stubborn', { n: 1 }), 0);
-      const env = fixture.retryAfter(3);
+      const env = fixture.retryAfterSeconds(3);
       const a = fixture.worker(['--stop-timeout=1', '--sleep=0.05'], env);
       const [started] = await fixture.until(async () => {
         const rows = await fixture.handled('started');
@@ -192,10 +192,10 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
     });
   });
 
-  it('ends a worker whose job ignores its timeout (after the grace period), and a second worker takes the job over after retryAfter', { timeout: 60_000 }, async () => {
+  it('ends a worker whose job ignores its timeout (after the grace period), and a second worker takes the job over after retryAfterSeconds', { timeout: 60_000 }, async () => {
     await withFixture(kind, async (fixture) => {
       await fixture.driver.push('default', record('fixture.stubborn', { n: 1 }), 0);
-      const env = fixture.retryAfter(3);
+      const env = fixture.retryAfterSeconds(3);
       const a = fixture.worker(['--stop-timeout=1', '--sleep=0.05'], env);
       // Timeout 1 s, grace 1 s: the worker must give up on its own, with the exit code supervisors see.
       expect(await a.exited(8000)).toBe(70);
@@ -231,7 +231,7 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
     await withFixture(kind, async (fixture) => {
       // A minute of work that ignores its signal (and keeps the process busy): the worker still ends, with 0, in seconds.
       await fixture.driver.push('default', record('fixture.slow', { n: 1, ms: 60_000 }), 0);
-      const worker = fixture.worker(['--stop-timeout=0.3', '--sleep=0.05'], fixture.retryAfter(30));
+      const worker = fixture.worker(['--stop-timeout=0.3', '--sleep=0.05'], fixture.retryAfterSeconds(30));
       await fixture.until(async () => (await fixture.handled('started')).length > 0);
       worker.child.kill('SIGTERM');
       expect(await worker.exited(8000)).toBe(0);
@@ -241,11 +241,11 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
     });
   });
 
-  it('refuses to start when retryAfter is not longer than a job timeout plus the stop timeout', { timeout: 30_000 }, async () => {
+  it('refuses to start when retryAfterSeconds is not longer than a job timeout plus the stop timeout', { timeout: 30_000 }, async () => {
     await withFixture(kind, async (fixture) => {
-      const worker = fixture.worker(['--stop-timeout=1'], fixture.retryAfter(2));
+      const worker = fixture.worker(['--stop-timeout=1'], fixture.retryAfterSeconds(2));
       expect(await worker.exited()).toBe(1);
-      expect(worker.lines.join('\n')).toMatch(/gives a claimed job 2s \(retryAfter\).*fixture\.record \(timeout 1s\)/);
+      expect(worker.lines.join('\n')).toMatch(/gives a claimed job 2s \(retryAfterSeconds\).*fixture\.record \(timeout 1s\)/);
     });
   });
 
@@ -319,7 +319,7 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
 
   it('sends a job.once mail once when the worker dies after the mail and before the acknowledgement (twice without the marker)', { timeout: 60_000 }, async () => {
     await withFixture(kind, async (fixture) => {
-      const env = fixture.retryAfter(3);
+      const env = fixture.retryAfterSeconds(3);
       const run = async (n: number, once: boolean) => {
         await fixture.driver.push('default', record('fixture.mail-once', { n, once }), 0);
         const first = fixture.worker(['--stop-timeout=1', '--sleep=0.05'], env);

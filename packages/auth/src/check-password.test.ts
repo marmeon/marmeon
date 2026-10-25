@@ -126,7 +126,7 @@ describe('Auth.checkPassword()', () => {
     expect(verified).toHaveLength(5);
     const held = await check('secret');
     expect(held).toMatchObject({ checked: { kind: 'throttled' }, confirmed: false });
-    expect((held.checked as { retryAfter: number }).retryAfter).toBeGreaterThan(0);
+    expect((held.checked as { retryAfterSeconds: number }).retryAfterSeconds).toBeGreaterThan(0);
     expect(verified, 'nothing was hashed for the held-up check').toHaveLength(5);
   });
 

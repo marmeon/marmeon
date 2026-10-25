@@ -16,8 +16,8 @@ describe('QueueConfig: variable names', () => {
       QUEUE_REDIS_RETRY_AFTER_SECONDS: '30',
     });
     expect(config.default).toBe('redis');
-    expect(config.connections.database).toEqual({ driver: 'database', queue: 'mail', connection: 'jobs', retryAfter: 120 });
-    expect(config.connections.redis).toEqual({ driver: 'redis', queue: 'urgent', connection: 'cache', retryAfter: 30 });
+    expect(config.connections.database).toEqual({ driver: 'database', queue: 'mail', connection: 'jobs', retryAfterSeconds: 120 });
+    expect(config.connections.redis).toEqual({ driver: 'redis', queue: 'urgent', connection: 'cache', retryAfterSeconds: 30 });
     expect(config.failed.connection).toBe('jobs');
   });
 

@@ -193,7 +193,7 @@ export class JobRunner {
    */
   run(
     prepared: Extract<Prepared, { kind: 'ready' }>,
-    attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal; readonly retryAfter?: number },
+    attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal; readonly retryAfterSeconds?: number },
   ): Promise<Requested | undefined> {
     if (!attempts.hasSubscribers || !this.#container.has(Application)) return this.#run(prepared, attempt);
     const { record } = prepared;
@@ -250,7 +250,7 @@ export class JobRunner {
 
   async #run(
     prepared: Extract<Prepared, { kind: 'ready' }>,
-    attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal; readonly retryAfter?: number },
+    attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal; readonly retryAfterSeconds?: number },
   ): Promise<Requested | undefined> {
     const { record, job, payload } = prepared;
     let requested: Requested | undefined;
@@ -272,7 +272,7 @@ export class JobRunner {
         requested ??= { kind: 'fail', reason };
       },
       once: (key, fn, options = {}) =>
-        runOnce(this.#cache, key, fn, { ...(options.for === undefined ? {} : { for: options.for }), lockSeconds: attempt.retryAfter ?? timeoutOf(job) + 60 }),
+        runOnce(this.#cache, key, fn, { ...(options.for === undefined ? {} : { for: options.for }), lockSeconds: attempt.retryAfterSeconds ?? timeoutOf(job) + 60 }),
     };
     const middleware: readonly JobMiddleware[] = job.middleware ?? [];
     // A job is a boundary: it never runs inside a transaction that was open where it was dispatched or worked on.
@@ -289,7 +289,7 @@ export class JobRunner {
         }
         let called = false;
         await layer.handle(
-          { payload, job: context, timeout: timeoutOf(job), retryAfter: attempt.retryAfter, cache: this.#cache },
+          { payload, job: context, timeout: timeoutOf(job), retryAfterSeconds: attempt.retryAfterSeconds, cache: this.#cache },
           () => {
             if (called) throw new QueueError(`A middleware of ${record.job} called next() twice — the job would run twice.`);
             called = true;

@@ -36,14 +36,14 @@ export type ChallengeError =
   | { readonly kind: 'no-challenge' }
   | { readonly kind: 'expired' }
   | { readonly kind: 'invalid-code'; readonly attemptsLeft: number }
-  | { readonly kind: 'throttled'; readonly retryAfter: number };
+  | { readonly kind: 'throttled'; readonly retryAfterSeconds: number };
 
 /** Why `confirm()` did not turn the factor on. */
 export type ConfirmError =
   | { readonly kind: 'not-started' }
   | { readonly kind: 'invalid-password' }
   | { readonly kind: 'invalid-code' }
-  | { readonly kind: 'throttled'; readonly retryAfter: number; readonly account?: true }
+  | { readonly kind: 'throttled'; readonly retryAfterSeconds: number; readonly account?: true }
   /** The session ended while the factor was being set up (another device changed the password, `AccountSessions.end()`): nothing was stored. */
   | { readonly kind: 'signed-out' };
 
@@ -133,7 +133,7 @@ export class TwoFactor {
     // Recovery codes and passkeys cannot be guessed (80 bits; a signature): they share the generous counter, not the code budget.
     const recovery = 'recoveryCode' in input || 'passkey' in input;
     const wait = recovery ? await this.#throttleRecovery(userId) : await this.#throttleCodes(userId);
-    if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
+    if (wait !== undefined) return err({ kind: 'throttled', retryAfterSeconds: wait });
 
     const verdict = await this.#verify(userId, input);
     if (verdict !== 'valid') {
@@ -164,7 +164,7 @@ export class TwoFactor {
     // A passkey shares the generous counter with recovery codes (it cannot be guessed); a failure ends no session, so it is not the TOTP budget.
     const recovery = 'recoveryCode' in input || 'passkey' in input;
     const wait = recovery ? await this.#throttleRecovery(userId) : await this.#throttleCodes(userId);
-    if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
+    if (wait !== undefined) return err({ kind: 'throttled', retryAfterSeconds: wait });
 
     const minute = recovery ? this.#recoveryKey(userId) : this.#codeKey('minute', userId);
     const verdict = await this.#verify(userId, input, 'step-up');
@@ -236,7 +236,7 @@ export class TwoFactor {
     const checked = await this.#auth.checkPassword(password);
     if (!checked.ok) return err(checked.error);
     const wait = await this.#throttleCodes(id);
-    if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
+    if (wait !== undefined) return err({ kind: 'throttled', retryAfterSeconds: wait });
 
     const secret = await this.#decrypt(row.encryptedSecret, id);
     const step = secret === undefined ? undefined : verifyTotp(secret, code, new Date(this.#clock.now()));

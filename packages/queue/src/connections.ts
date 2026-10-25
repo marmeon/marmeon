@@ -95,12 +95,12 @@ export class QueueConnections {
     const built = Object.hasOwn(this.#config.connections, name) ? this.#config.connections[name] : undefined;
     if (built && built.driver !== 'custom') return built;
     const custom = this.#customConnection(name);
-    return custom && { driver: 'custom', queue: custom.queue, retryAfter: custom.retryAfter };
+    return custom && { driver: 'custom', queue: custom.queue, retryAfterSeconds: custom.retryAfterSeconds };
   }
 
   /**
    * The connection a provider's driver provides — built once, its failure remembered (a factory that throws does not run, and leak,
-   * again on every lookup). The result is checked: a driver without a positive `retryAfter` never runs.
+   * again on every lookup). The result is checked: a driver without a positive `retryAfterSeconds` never runs.
    */
   #customConnection(name: string): QueueConnection | undefined {
     const made = this.#custom.get(name);
@@ -129,8 +129,8 @@ export class QueueConnections {
         options.driver === 'custom'
           ? this.#customConnection(name)!.driver
           : options.driver === 'redis'
-          ? new RedisQueueDriver(async () => this.#container.make((await importRedis()).RedisConnections).get(options.connection), { retryAfter: options.retryAfter, clock })
-          : new DatabaseQueueDriver(async () => this.#database(options.connection), { retryAfter: options.retryAfter, clock });
+          ? new RedisQueueDriver(async () => this.#container.make((await importRedis()).RedisConnections).get(options.connection), { retryAfterSeconds: options.retryAfterSeconds, clock })
+          : new DatabaseQueueDriver(async () => this.#database(options.connection), { retryAfterSeconds: options.retryAfterSeconds, clock });
       this.#drivers.set(name, driver);
     }
     return driver;
@@ -188,14 +188,14 @@ export class QueueConnections {
   }
 
   /**
-   * A worker for `connection`, after checking that every job's timeout fits the connection's `retryAfter`: a job may
+   * A worker for `connection`, after checking that every job's timeout fits the connection's `retryAfterSeconds`: a job may
    * hold its claim for `timeout` plus `stopTimeout` (the grace before its worker gives up), and must be done before
    * another worker may claim it again.
    */
   worker(connection: string, stopTimeout: number): Worker {
     const options = this.options(connection);
     if (options.driver === 'sync') throw new QueueSetupError(withCode('Q4', 'The sync queue connection runs each job when it is dispatched — there is nothing for a worker to do. Use --connection=database (or redis).'));
-    checkTimeouts(this.#container.make(JobRegistry), connection, options.retryAfter, stopTimeout);
+    checkTimeouts(this.#container.make(JobRegistry), connection, options.retryAfterSeconds, stopTimeout);
     return new Worker({
       driver: this.driver(connection),
       connection,
@@ -203,7 +203,7 @@ export class QueueConnections {
       failed: this.failed(),
       clock: this.#container.make(Clock),
       logger: this.#container.make(Logger).child({ channel: 'queue' }),
-      retryAfter: options.retryAfter,
+      retryAfterSeconds: options.retryAfterSeconds,
       events: this.events,
       ...(this.#container.has(ErrorReports) ? { errors: this.#container.make(ErrorReports) } : {}),
       // The app's: the names its packages add (the session's cookie) are masked in failed jobs and their log lines too.
@@ -225,34 +225,34 @@ export class QueueConnections {
 
 const DRIVER_MEMBERS = ['push', 'reserve', 'ack', 'release', 'fail', 'size', 'queues'] as const;
 
-/** What a queue driver's factory returned, or why it cannot run: every required member, a queue, a positive `retryAfter`, and no transaction join without `using`. */
+/** What a queue driver's factory returned, or why it cannot run: every required member, a queue, a positive `retryAfterSeconds`, and no transaction join without `using`. */
 function checkConnection(name: string, connection: unknown): QueueConnection {
-  const { driver, queue, retryAfter } = (connection ?? {}) as Partial<QueueConnection>;
+  const { driver, queue, retryAfterSeconds } = (connection ?? {}) as Partial<QueueConnection>;
   if (DRIVER_MEMBERS.some((member) => typeof driver?.[member] !== 'function')) {
-    throw new QueueSetupError(withCode('Q4', `The queue driver "${name}" must return { driver, queue, retryAfter } with a QueueDriver (${DRIVER_MEMBERS.join(', ')}).`));
+    throw new QueueSetupError(withCode('Q4', `The queue driver "${name}" must return { driver, queue, retryAfterSeconds } with a QueueDriver (${DRIVER_MEMBERS.join(', ')}).`));
   }
   if (typeof queue !== 'string' || queue === '') throw new QueueSetupError(withCode('Q4', `The queue driver "${name}" returned no default queue name.`));
-  if (typeof retryAfter !== 'number' || !Number.isFinite(retryAfter) || retryAfter <= 0) {
-    throw new QueueSetupError(withCode('Q4', `The queue driver "${name}" returned retryAfter ${String(retryAfter)} — it must be a positive number of seconds, or a claim could be taken again at once and run twice.`));
+  if (typeof retryAfterSeconds !== 'number' || !Number.isFinite(retryAfterSeconds) || retryAfterSeconds <= 0) {
+    throw new QueueSetupError(withCode('Q4', `The queue driver "${name}" returned retryAfterSeconds ${String(retryAfterSeconds)} — it must be a positive number of seconds, or a claim could be taken again at once and run twice.`));
   }
   // A driver that joins the app's transaction writes through it: without `using` a push could land outside and survive a rollback.
   if (typeof driver!.joinsTransaction === 'function' && typeof driver!.using !== 'function') {
     throw new QueueSetupError(withCode('Q4', `The queue driver "${name}" has joinsTransaction() but no using(transaction): a job it pushes inside a transaction could outlive a rollback. Give it both, or neither.`));
   }
-  return { driver: driver!, queue, retryAfter };
+  return { driver: driver!, queue, retryAfterSeconds };
 }
 
-/** Every job must be done (timeout + the worker's grace) before its claim may be taken again (`retryAfter`) — else it runs twice. */
-export function checkTimeouts(registry: JobRegistry, connection: string, retryAfter: number, stopTimeout: number): void {
-  const offenders = registry.all().filter((job) => timeoutOf(job) + stopTimeout >= retryAfter);
+/** Every job must be done (timeout + the worker's grace) before its claim may be taken again (`retryAfterSeconds`) — else it runs twice. */
+export function checkTimeouts(registry: JobRegistry, connection: string, retryAfterSeconds: number, stopTimeout: number): void {
+  const offenders = registry.all().filter((job) => timeoutOf(job) + stopTimeout >= retryAfterSeconds);
   if (offenders.length === 0) return;
   const list = offenders.map((job) => `${job.job} (timeout ${timeoutOf(job)}s)`).join(', ');
   throw new QueueSetupError(
     withCode(
       'Q4',
-      `The queue connection "${connection}" gives a claimed job ${retryAfter}s (retryAfter) before another worker may take it, but ${list} may hold it ` +
+      `The queue connection "${connection}" gives a claimed job ${retryAfterSeconds}s (retryAfterSeconds) before another worker may take it, but ${list} may hold it ` +
         `for its timeout plus the worker's --stop-timeout of ${stopTimeout}s — a second worker would run it while the first still does. ` +
-        `Raise retryAfter (e.g. QUEUE_DATABASE_RETRY_AFTER_SECONDS) above timeout + stop timeout, or lower the job's static timeout.`,
+        `Raise retryAfterSeconds (e.g. QUEUE_DATABASE_RETRY_AFTER_SECONDS) above timeout + stop timeout, or lower the job's static timeout.`,
     ),
   );
 }

@@ -122,7 +122,7 @@ account's user handle. The user is the passkey's own account. It returns the use
 | `no-challenge`, `expired` | No challenge is open in this session, or it is older than five minutes. |
 | `invalid` | Anything else: an unknown passkey, a wrong signature or origin, a missing user verification. The client learns nothing more. |
 | `clone-suspected` | The passkey's sign count did not move forward ([below](#counter-and-cloned-keys)). |
-| `throttled` | Sixty failed tries a minute from one address. `retryAfter` is in seconds. Only failures count, so many people may sign in from behind one address, and garbage sent from an address cannot lock the owner out. |
+| `throttled` | Sixty failed tries a minute from one address. `retryAfterSeconds` is the wait. Only failures count, so many people may sign in from behind one address, and garbage sent from an address cannot lock the owner out. |
 
 The `SignedIn` event says `via: 'passkey'`. A listener that switches over `event.via` exhaustively must handle the new value. The new-sign-in notice of the example app (`apps/web-app`) covers passkeys too: with no password typed, it is the owner's only hint. The session counts as
 having passed a second factor and as freshly [confirmed for sudo mode](authentication.md#sudo-mode): the passkey, proven with user verification just now, is what `confirmedPassword()` asks for.
@@ -179,7 +179,7 @@ challenge bound to the signed-in account and to this purpose, and allows only th
 ```ts title="modules/auth/controllers/PasskeyConfirmController.ts"
 const done = await this.#passkeys.confirm(ctx.body.response);
 if (done.ok) return this.redirect().intended().route('auth.security');
-if (done.error.kind === 'throttled') return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfter }) }, { status: 429 });
+if (done.error.kind === 'throttled') return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfterSeconds }) }, { status: 429 });
 return this.json({ error: this.#translator.get('auth.passkeys.failed') }, { status: 422 });
 ```
 

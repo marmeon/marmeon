@@ -72,23 +72,23 @@ export function claimAnyStatement(sql: Sql, driver: DatabaseQueueConnection['dri
 export class DatabaseQueueDriver implements QueueDriver {
   readonly #connection: () => Promise<DatabaseQueueConnection>;
   readonly #clock: Clock;
-  readonly #retryAfter: number;
+  readonly #retryAfterSeconds: number;
   readonly #cache: { sql?: Promise<Sql> } = {};
 
   /**
    * `connection`: resolved on first use (the driver is built before the database package boots).
-   * `retryAfter`: seconds after which a claimed job counts as abandoned (its worker died) and is claimed again.
+   * `retryAfterSeconds`: seconds after which a claimed job counts as abandoned (its worker died) and is claimed again.
    */
-  constructor(connection: DatabaseQueueConnection | (() => Promise<DatabaseQueueConnection>), options: { retryAfter: number; clock?: Clock }) {
+  constructor(connection: DatabaseQueueConnection | (() => Promise<DatabaseQueueConnection>), options: { retryAfterSeconds: number; clock?: Clock }) {
     this.#connection = typeof connection === 'function' ? connection : async () => connection;
     this.#clock = options.clock ?? new SystemClock();
-    this.#retryAfter = options.retryAfter;
+    this.#retryAfterSeconds = options.retryAfterSeconds;
   }
 
   /** The same driver, writing through `db` — a transaction: its dispatches commit or roll back with it. */
   using(db: Connection<any>): DatabaseQueueDriver {
     const outer = this.#connection;
-    return new DatabaseQueueDriver(async () => ({ db, driver: (await outer()).driver, inTransaction: () => true }), { retryAfter: this.#retryAfter, clock: this.#clock });
+    return new DatabaseQueueDriver(async () => ({ db, driver: (await outer()).driver, inTransaction: () => true }), { retryAfterSeconds: this.#retryAfterSeconds, clock: this.#clock });
   }
 
   async joinsTransaction(): Promise<boolean> {
@@ -111,7 +111,7 @@ export class DatabaseQueueDriver implements QueueDriver {
     const { db, sql, driver } = await use(this.#connection, this.#cache);
     for (const queue of queues) {
       const now = this.#clock.now();
-      const expired = now - this.#retryAfter * 1000;
+      const expired = now - this.#retryAfterSeconds * 1000;
       const { rows } = await sql<{ id: number | string; queue: string; payload: string; attempts: number | string }>`update jobs
           set reserved_at = cast(${now} as bigint), attempts = attempts + 1
           where id = (
@@ -135,7 +135,7 @@ export class DatabaseQueueDriver implements QueueDriver {
   async reserveAny(except: readonly string[] = []): Promise<ReservedJob | undefined> {
     const { db, sql, driver } = await use(this.#connection, this.#cache);
     const now = this.#clock.now();
-    const { rows } = await claimAnyStatement(sql, driver, { now, expired: now - this.#retryAfter * 1000, except }).execute(db);
+    const { rows } = await claimAnyStatement(sql, driver, { now, expired: now - this.#retryAfterSeconds * 1000, except }).execute(db);
     const row = rows[0];
     return row ? { id: String(row.id), queue: row.queue, payload: row.payload, attempts: Number(row.attempts), reservedAt: now } : undefined;
   }
@@ -143,7 +143,7 @@ export class DatabaseQueueDriver implements QueueDriver {
   async ack(job: ReservedJob, next: readonly QueuedPush[] = []): Promise<boolean> {
     if (next.length === 0) return this.#delete(job);
     // The acknowledgement and the next job of the chain in ONE transaction: a crash (or a failed insert) between the two
-    // would otherwise lose the rest of the chain; this way the job stays claimed and runs again after retryAfter.
+    // would otherwise lose the rest of the chain; this way the job stays claimed and runs again after retryAfterSeconds.
     const connection = await use(this.#connection, this.#cache);
     const handOff = async (db: Connection<any>) => {
       if (!(await this.#delete(job, db))) return false;

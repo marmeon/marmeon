@@ -49,7 +49,7 @@ export interface WorkOptions {
   readonly watchOtherQueues?: number | false;
   /**
    * A job ignored its timeout and the grace period: the worker cannot go on (the job keeps running). `queue:work` logs
-   * and exits the process — the supervisor restarts it, the job returns after `retryAfter`. Default: throw {@link JobStuckError}.
+   * and exits the process — the supervisor restarts it, the job returns after `retryAfterSeconds`. Default: throw {@link JobStuckError}.
    */
   readonly onStuck?: (job: ReservedJob, error: JobStuckError) => void;
 }
@@ -73,7 +73,7 @@ export interface WorkerDependencies {
   readonly clock: Clock;
   readonly logger: Logger;
   /** Seconds a claim holds on this connection — what `withoutOverlapping` locks for by default. */
-  readonly retryAfter?: number;
+  readonly retryAfterSeconds?: number;
   /** Job events (`JobProcessing`, `JobProcessed`, `JobReleased`, `JobFailed`, `JobQueued` for the next of a chain) — the app's `EventDispatcher`. */
   readonly events?: JobEvents;
   /** What masks a failure's text in the failed jobs and the log — the app's, with the names its packages add (default: the core's list). */
@@ -98,7 +98,7 @@ const DEFAULT_STOP_TIMEOUT = 10;
  * code that queued it) — goes back with its attempt given back and a growing pause, for six hours, then it fails.
  *
  * Delivery is at-least-once: the job leaves the queue only after `handle()` finished — a worker that dies in between
- * leaves it claimed, and it runs again once `retryAfter` is over.
+ * leaves it claimed, and it runs again once `retryAfterSeconds` is over.
  */
 export class Worker {
   readonly #deps: WorkerDependencies;
@@ -217,7 +217,7 @@ export class Worker {
     const acknowledged = await this.#deps.driver.ack(reserved, next ? [{ queue: reserved.queue, payload: next, delaySeconds: 0 }] : []);
     if (!acknowledged) {
       // Another worker holds the job now: it acknowledges, frees the unique lock and hands the chain on.
-      logger.warn(`${record.job} finished after its claim expired (retryAfter) — another worker may have run it as well`, context);
+      logger.warn(`${record.job} finished after its claim expired (retryAfterSeconds) — another worker may have run it as well`, context);
     } else {
       await this.#releaseUnique(record, 'done');
     }
@@ -378,7 +378,7 @@ export class Worker {
         queue: reserved.queue,
         connection: this.#deps.connection,
         signal: abort.signal,
-        ...(this.#deps.retryAfter === undefined ? {} : { retryAfter: this.#deps.retryAfter }),
+        ...(this.#deps.retryAfterSeconds === undefined ? {} : { retryAfterSeconds: this.#deps.retryAfterSeconds }),
       })
       .then(
         (requested) => ({ kind: 'done' as const, requested }),
@@ -407,7 +407,7 @@ export class Worker {
       if (first.kind === 'stuck') {
         const error = new JobStuckError(
           `${prepared.record.job} ignored its timeout of ${timeout}s and did not stop within ${grace}s more (job.signal aborted). ` +
-            `Node cannot cancel a running promise, so this worker must end; the job runs again once retryAfter is over (attempt ${reserved.attempts} of ${prepared.record.tries}).`,
+            `Node cannot cancel a running promise, so this worker must end; the job runs again once retryAfterSeconds is over (attempt ${reserved.attempts} of ${prepared.record.tries}).`,
         );
         this.#deps.logger.error(error.message, { job: prepared.record.job, jobId: prepared.record.uuid, attempt: reserved.attempts });
         if (options.onStuck) options.onStuck(reserved, error);

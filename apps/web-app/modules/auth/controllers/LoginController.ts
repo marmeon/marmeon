@@ -44,7 +44,7 @@ export class LoginController extends Controller {
       case 'two-factor-required':
         return this.redirect().route('auth.two-factor.challenge');
       case 'throttled': {
-        const message = signedIn.error.account ? this.#translator.get('auth.login.locked') : this.#translator.get('auth.login.throttled', { seconds: signedIn.error.retryAfter });
+        const message = signedIn.error.account ? this.#translator.get('auth.login.locked') : this.#translator.get('auth.login.throttled', { seconds: signedIn.error.retryAfterSeconds });
         throw new ValidationError({ email: [message] }, { email });
       }
       case 'invalid-credentials':

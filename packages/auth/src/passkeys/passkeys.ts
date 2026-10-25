@@ -60,7 +60,7 @@ export type PasskeyError =
   | { readonly kind: 'expired' }
   | { readonly kind: 'invalid' }
   | { readonly kind: 'clone-suspected' }
-  | { readonly kind: 'throttled'; readonly retryAfter: number };
+  | { readonly kind: 'throttled'; readonly retryAfterSeconds: number };
 
 /** Why `register()` did not add the passkey. */
 export type RegisterError =
@@ -287,7 +287,7 @@ export class Passkeys implements SecondFactorPasskeys {
    */
   async signIn(response: AuthenticationResponseJSON, options: { readonly remember?: boolean } = {}): Promise<Result<AuthUser, PasskeyError>> {
     const wait = await this.#waitForSignIn();
-    if (wait !== undefined) return err({ kind: 'throttled', retryAfter: wait });
+    if (wait !== undefined) return err({ kind: 'throttled', retryAfterSeconds: wait });
     const account: { credentials?: Credentials | undefined } = {};
     const checked = await this.#check(response, 'sign-in', undefined, account);
     // Only the account state the assertion was checked against is signed in: a reset or an ending in between makes it `expired` (and so `invalid` here).
@@ -348,7 +348,7 @@ export class Passkeys implements SecondFactorPasskeys {
     const user = await this.#requireUser('confirm');
     const id = idOf(user);
     const key = `passkey-confirm:${id}`;
-    if (!(await this.#limiter.attempt(key, CONFIRM_WINDOW.attempts, CONFIRM_WINDOW.seconds))) return err({ kind: 'throttled', retryAfter: Math.max(1, await this.#limiter.availableIn(key)) });
+    if (!(await this.#limiter.attempt(key, CONFIRM_WINDOW.attempts, CONFIRM_WINDOW.seconds))) return err({ kind: 'throttled', retryAfterSeconds: Math.max(1, await this.#limiter.availableIn(key)) });
     // No open challenge, or an answer signed for another one (a second tab, a double click), is not judged: the owner's own correct passkey can meet it.
     const challenge = await this.#takeChallenge('confirm', id);
     if (!challenge.ok) return err(challenge.error);

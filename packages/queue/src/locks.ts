@@ -84,7 +84,7 @@ export async function runOnce(cache: CacheSource, key: string, fn: () => unknown
 export interface WithoutOverlappingOptions {
   /** Seconds until the job runs again when another holds the key (default 5). Each wait is an attempt: give the job `tries`. */
   readonly releaseAfter?: number;
-  /** Seconds the lock holds at most (default: the connection's `retryAfter` — as long as a claim may run). */
+  /** Seconds the lock holds at most (default: the connection's `retryAfterSeconds` — as long as a claim may run). */
   readonly expiresAfter?: number;
   /** Share the key with other jobs (default: per job — `stats:1` of one job does not block `stats:1` of another). */
   readonly shared?: boolean;
@@ -109,7 +109,7 @@ export function withoutOverlapping<J extends { readonly schema: StandardSchemaV1
       const name = typeof key === 'string' ? key : key(context.payload);
       if (typeof name !== 'string' || name === '') throw new QueueError(`withoutOverlapping() of ${context.job.name} needs a key, not ${JSON.stringify(name)}.`);
       const lockName = options.shared ? `queue:overlap:${name}` : `queue:overlap:${context.job.name}:${name}`;
-      const lock = (await context.cache()).lock(lockName, options.expiresAfter ?? context.retryAfter ?? context.timeout + 60);
+      const lock = (await context.cache()).lock(lockName, options.expiresAfter ?? context.retryAfterSeconds ?? context.timeout + 60);
       if (!(await lock.get())) {
         context.job.release(releaseAfter);
         return;

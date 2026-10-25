@@ -589,7 +589,7 @@ const isPlain = (node: AstNode) =>
  * name that takes over `it`/`test` (`const t = it`, `t = it`; an alias in an import or a destructuring counts as the export itself).
  * In a test file (not in a configuration) one exception holds: an object that is directly an argument of a call or a `new` outside
  * the API of tests and their configuration (`expect(config).toMatchObject({ retry: 3000 })`) is a `retry` of something else.
- * `retryAfter`, strings, comments and `queue.retry(job)` are none. The rule catches a retry written by accident; it is no barrier
+ * `retryAfterSeconds`, strings, comments and `queue.retry(job)` are none. The rule catches a retry written by accident; it is no barrier
  * against someone who sets out to get around it. `path:line: text`.
  */
 export function retriedTestHits(files: Iterable<SourceFile>): string[] {
