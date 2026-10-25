@@ -141,6 +141,10 @@ The text font is IBM Plex Sans, served from your own app: `styles/app.css` impor
 which Vite bundles into `/assets/`, so no request goes to another host and `font-src 'self'` is enough. To use another font,
 replace the `@import` and `--font-text`, and remove the dependency. The mono font is the system's.
 
+`vite.config.ts` preloads the Latin subset of the font and gives it a stand-in, a local Arial sized to match
+(`virtual:marmeon/fonts.css`, imported in `bootstrap/client.tsx`), so the text barely moves when the font arrives; see
+[Fonts](vite.md#a-fallback-with-the-same-size). With another font, change `fonts` in `vite.config.ts` and the stack in `--font-text`.
+
 ## Two-factor authentication
 
 Each user decides for their own account. On `/settings/two-factor` they scan a QR code with an authenticator app, type the first

@@ -9,9 +9,13 @@ Types from other packages: `vite`
 ### Stable
 
 ```ts
+// FontFallback
+export type FontFallback = 'Arial' | 'Helvetica' | 'Times New Roman' | 'Georgia' | 'Courier New';
 // MarmeonFont
 export interface MarmeonFont {
     file: string;
+    family?: string;
+    fallback?: FontFallback;
 }
 // MarmeonOptions
 export interface MarmeonOptions {

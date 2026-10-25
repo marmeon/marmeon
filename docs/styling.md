@@ -48,7 +48,8 @@ A linked stylesheet applies before the entry runs, also in development. A module
 `marmeon make:auth` writes `modules/auth/auth.css` and imports it in `bootstrap/client.tsx`.
 
 Web fonts are declared in a stylesheet like any other. To have the browser fetch the ones the first screen sets with the document,
-name their files in the [`fonts` option](vite.md#fonts) of `marmeon()`.
+name their files in the [`fonts` option](vite.md#fonts) of `marmeon()`. The same option gives a web font a
+[fallback of matching size](vite.md#a-fallback-with-the-same-size), so the text barely moves when the font arrives.
 
 The [starter kit](starter-kit.md#the-look) has a look of its own in plain CSS, with tokens you can change.
 

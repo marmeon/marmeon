@@ -437,6 +437,18 @@ describe('the starter kit’s own files', () => {
     expect(readFileSync(join(TEMPLATE, 'kit/styles/app.css'), 'utf8')).toContain("@import '@fontsource-variable/ibm-plex-sans/wght.css';");
   });
 
+  it('preloads the font and gives it a stand-in of matching size: the config names both, the client imports it, the stack uses it', async () => {
+    const cwd = workspace();
+    expect((await create(cwd, ['kit', '--no-install', '--no-git'])).code).toBe(0);
+    const config = readFileSync(join(cwd, 'kit/vite.config.ts'), 'utf8');
+    expect(config).toContain("file: '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2', family: 'IBM Plex Sans Variable', fallback: 'Arial'");
+    expect(readFileSync(join(cwd, 'kit/bootstrap/client.tsx'), 'utf8')).toContain("import 'virtual:marmeon/fonts.css';");
+    expect(readFileSync(join(cwd, 'kit/styles/app.css'), 'utf8')).toContain("--font-text: 'IBM Plex Sans Variable', 'IBM Plex Sans Variable Fallback', system-ui");
+    // The blank app keeps its plain config.
+    expect((await create(cwd, ['blank', '--minimal', '--no-install', '--no-git'])).code).toBe(0);
+    expect(readFileSync(join(cwd, 'blank/vite.config.ts'), 'utf8')).not.toContain('fonts');
+  });
+
   it('the stylesheet defines every token it uses, keeps the mono font a system stack, and respects dark mode and reduced motion', () => {
     const css = readFileSync(join(TEMPLATE, 'kit/styles/app.css'), 'utf8');
     const defined = new Set([...css.matchAll(/^\s*(--[\w-]+):/gm)].map((match) => match[1]));
@@ -468,10 +480,10 @@ describe('the starter kit’s own files', () => {
     for (const file of laidOut) expect(readFileSync(file, 'utf8'), file).not.toMatch(/<br\s*\/?>/);
   });
 
-  it('its client is the blank app’s — with its dialog (`confirm: Confirm`) and nothing else', () => {
+  it('its client is the blank app’s — with its dialog (`confirm: Confirm`), its stylesheets and nothing else', () => {
     const base = readFileSync(join(TEMPLATE, 'base/bootstrap/client.tsx'), 'utf8');
     const kit = readFileSync(join(TEMPLATE, 'kit/bootstrap/client.tsx'), 'utf8');
-    const dialog = /^import '\.\.\/styles\/app\.css';.*\n|^import \{ Confirm \} from '\.\.\/layouts\/Confirm\.tsx';\n|^\/\/ `confirm`: .*\n(?:\/\/ .*\n)?|, confirm: Confirm/gm;
+    const dialog = /^import 'virtual:marmeon\/fonts\.css';.*\n|^import '\.\.\/styles\/app\.css';.*\n|^import \{ Confirm \} from '\.\.\/layouts\/Confirm\.tsx';\n|^\/\/ `confirm`: .*\n(?:\/\/ .*\n)?|, confirm: Confirm/gm;
     expect(kit).not.toBe(base);
     expect(kit.replace(dialog, '')).toBe(base);
   });

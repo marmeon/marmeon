@@ -1,5 +1,6 @@
 import { createMarmeonApp, progressBar } from '@marmeon/react';
 import '@marmeon/react/styles.css'; // the framework's look: layers, dialogs, the error page (a stylesheet, no inline style)
+import 'virtual:marmeon/fonts.css'; // the font's stand-in while it loads (vite.config.ts)
 import '../styles/app.css'; // the starter kit's look: tokens, base styles, the font (make:auth adds the auth module's classes after it)
 import { routes } from 'virtual:marmeon/routes';
 import { Confirm } from '../layouts/Confirm.tsx';
