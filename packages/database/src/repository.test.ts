@@ -254,6 +254,8 @@ describe.each(drivers)('Repository as a route binder on %s', (driver) => {
     // Alan's page, Ada's article: not found — the IDOR the scope prevents
     expect(await articles.resolveRouteBinding(String(post.id), { ctx, scope: { param: 'user', parent: alan, column: 'user_id' } })).toBeUndefined();
     expect(await new ArticlesBySlug(connections).resolveRouteBinding('notes', { ctx })).toMatchObject({ id: post.id });
+    // The mark that lets a route scope a binding by this repository (`Route.bind(…, { scopedBy })`), subclasses included.
+    expect(Articles.routeBindingScoped).toBe(true);
 
     const queries: string[] = [];
     connections.onQuery((query) => queries.push(query.sql));

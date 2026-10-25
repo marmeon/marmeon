@@ -31,6 +31,7 @@ class Teams implements RouteBinder<Team> {
   }
 }
 class Members implements RouteBinder<Member> {
+  static readonly routeBindingScoped = true;
   resolveRouteBinding(value: string, { scope }: RouteBindingContext) {
     lookups.push(`member ${value}${scope ? ` in ${scope.param} (${scope.column})` : ''}`);
     return members.find(
@@ -81,6 +82,8 @@ function router() {
       Route.bind('team', Teams).bind('member', Members, { scopedBy: 'team' }).get('/teams/:team/members/:member', ShowMemberController);
       Route.bind('team', Teams).get('/teams/:team', (ctx) => ({ name: ctx.params.team.name }));
       Route.bind('team', Teams).put('/teams/:team', UpdateTeamController);
+      // The parent is optional: a request without it must be a 404 before the binder is asked.
+      Route.bind('team', Teams).bind('member', Members, { scopedBy: 'team' }).get('/optional/:team?/members/:member', ShowMemberController);
       Route.bind('member', Members).get('/members/:member?', (ctx) => ({ member: ctx.params.member?.name ?? null }));
       Route.bind('team', TeamsWith, { with: ['members'] }).get('/rosters/:team', (ctx) => ({ team: ctx.params.team.name, members: ctx.params.team.members.map((m) => m.name) }));
       Route.bind('team', TeamsWith)
@@ -120,6 +123,20 @@ describe('Route.bind', () => {
     expect(await (await call('/teams/1/members/10')).json()).toEqual({ team: 'Red', member: 'Ada' });
     expect(lookups).toEqual(['team 1', 'member 10 in team (team_id)']);
     expect((await call('/teams/1/members/20')).status).toBe(404); // Alan exists — but not in team 1
+  });
+
+  it('answers 404 without calling the binder when the parent of a scoped binding is missing', async () => {
+    lookups.length = 0;
+    expect((await call('/optional/members/10')).status).toBe(404);
+    expect(lookups).toEqual([]);
+    expect((await call('/optional/1/members/10')).status).toBe(200);
+  });
+
+  it('refuses at load a scoped binding whose binder does not say it scopes (it would find a record of another parent)', () => {
+    const unmarked = checkedRoutes((Route) => {
+      Route.bind('team', Teams).bind('member', Teams, { scopedBy: 'team' } as never).get('/teams/:team/members/:member', () => 'x');
+    });
+    expect(() => new Router().load(unmarked)).toThrow(/H11[\s\S]*Teams[\s\S]*routeBindingScoped/);
   });
 
   it('binds before authorize, so authorization sees the record; validation comes after', async () => {
@@ -185,6 +202,10 @@ export function typeLevelTests() {
     //   undefined; … }'.
     // @ts-expect-error — (3c) a column scopes only together with its parent: alone it would bind the member unscoped
     Route.bind('team', Teams).bind('member', Members, { column: 'team_id' });
+    // @ts-expect-error — (3d) a binder that does not say it scopes (routeBindingScoped) cannot take scopedBy
+    Route.bind('team', Teams).bind('member', Teams, { scopedBy: 'team' });
+    // @ts-expect-error — (3e) a union of a binder that scopes and one that does not is not one that scopes
+    Route.bind('team', Teams).bind('member', Members as typeof Members | typeof Teams, { scopedBy: 'team' });
     // @ts-expect-error — (4) a controller that needs a bound member — the route binds none
     Route.bind('team', Teams).get('/teams/:team/members/:member', ShowMemberController);
     // @ts-expect-error — (5) not a binder (no resolveRouteBinding)

@@ -29,9 +29,17 @@ type NoRelations = 'this binder loads nothing with the record — only one with 
  * `bind()`'s options: unscoped, or scoped by a parameter bound before (`scopedBy`, and the `column` that points at it) — a `column`
  * alone would bind without the parent. `with` goes with both.
  */
-type BindOptions<TScope extends string, TWith> =
+type BindOptions<TScope extends string, TWith, TScoping extends boolean> =
   | { readonly scopedBy?: never; readonly column?: never; readonly public?: true; readonly with?: TWith }
-  | { readonly scopedBy: [TScope] extends [never] ? NoParent : TScope; readonly column?: string; readonly public?: true; readonly with?: TWith };
+  | {
+      readonly scopedBy: TScoping extends false ? NotScoping : [TScope] extends [never] ? NoParent : TScope;
+      readonly column?: string;
+      readonly public?: true;
+      readonly with?: TWith;
+    };
+
+/** What `scopedBy` takes for a binder that does not say it scopes — the message the compiler shows. */
+type NotScoping = 'this binder does not say it finds a record within its parent — declare static readonly routeBindingScoped = true and read binding.scope, as a repository does';
 
 /** What `scopedBy` takes before any parameter is bound — the message the compiler shows. */
 type NoParent = 'scopedBy names a parameter bound before this one — bind the parent first: Route.bind(parent, …).bind(child, …, { scopedBy: parent })';
@@ -171,13 +179,14 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
    * Resolves the route parameter `param` with `binder`: the action gets the record instead of
    * the string, a missing one answers 404. Registered before the route, like middleware, so the type reaches `handle`. A scoped
    * binding (`scopedBy`) looks the child up *within* its parent (`team_id = team.id`, or `column`), so an id from somewhere else
-   * is a 404 — insecure direct object references cannot happen by forgetting a check. See docs/routing.md#scoped-bindings. `with`
+   * is a 404 — insecure direct object references cannot happen by forgetting a check. Only a binder that declares
+   * `routeBindingScoped` takes `scopedBy`; without it the app does not start. See docs/routing.md#scoped-bindings. `with`
    * names relations a repository loads with the record, in the same query: docs/routing.md#loading-relations-with-the-record.
    */
   bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = keyof TBindings & string, const W extends BindingWith<B> = never>(
     param: TName,
     binder: B & ConsistentBinder<B>,
-    options?: BindOptions<TScope, [BindingWith<B>] extends [never] ? NoRelations : readonly W[]>,
+    options?: BindOptions<TScope, [BindingWith<B>] extends [never] ? NoRelations : readonly W[], [B] extends [{ readonly routeBindingScoped: true }] ? true : false>,
   ): Route<TState, TParams, Merge<TBindings, { [K in TName]: BoundValue<B, W> }>> {
     // Untyped code gets past the options type: a column without its parent would bind the record unscoped.
     if (options?.column !== undefined && options.scopedBy === undefined) {

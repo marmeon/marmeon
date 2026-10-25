@@ -374,7 +374,9 @@ export declare class Route<TState extends object = EmptyObject, TParams extends 
     }>, TBindings>;
     name(prefix: string): Route<TState, TParams, TBindings>;
     middleware<TAdds extends object & NoReservedKeys = EmptyObject>(middleware: MiddlewareLike<TState, TAdds>): Route<Merge<TState, Omit<TAdds, ReservedContextKey>>, TParams, TBindings>;
-    bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = keyof TBindings & string, const W extends BindingWith<B> = never>(param: TName, binder: B & ConsistentBinder<B>, options?: BindOptions<TScope, [BindingWith<B>] extends [never] ? NoRelations : readonly W[]>): Route<TState, TParams, Merge<TBindings, {
+    bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = keyof TBindings & string, const W extends BindingWith<B> = never>(param: TName, binder: B & ConsistentBinder<B>, options?: BindOptions<TScope, [BindingWith<B>] extends [never] ? NoRelations : readonly W[], [B] extends [{
+        readonly routeBindingScoped: true;
+    }] ? true : false>): Route<TState, TParams, Merge<TBindings, {
         [K in TName]: BoundValue<B, W>;
     }>>;
     authorize(check: (ctx: RouteContext<TState, TParams, TBindings, ''>, resolve: ClassResolver) => boolean | Promise<boolean>): Route<TState, TParams, TBindings>;
@@ -401,7 +403,9 @@ export interface RouteBinder<T> {
     readonly routeBindingWith?: RouteBindingWith;
 }
 // RouteBinderClass
-export type RouteBinderClass<T = unknown> = new (...args: any[]) => RouteBinder<T>;
+export type RouteBinderClass<T = unknown> = (new (...args: any[]) => RouteBinder<T>) & {
+    readonly routeBindingScoped?: true;
+};
 // RouteBinding
 export interface RouteBinding {
     readonly param: string;
@@ -686,13 +690,13 @@ type AnswerOf<N> = Instance<Entry<N> extends {
     handle: (...args: never[]) => infer R;
 } ? Awaited<R> : never;
 // BindOptions
-type BindOptions<TScope extends string, TWith> = {
+type BindOptions<TScope extends string, TWith, TScoping extends boolean> = {
     readonly scopedBy?: never;
     readonly column?: never;
     readonly public?: true;
     readonly with?: TWith;
 } | {
-    readonly scopedBy: [TScope] extends [never] ? NoParent : TScope;
+    readonly scopedBy: TScoping extends false ? NotScoping : [TScope] extends [never] ? NoParent : TScope;
     readonly column?: string;
     readonly public?: true;
     readonly with?: TWith;
@@ -754,6 +758,8 @@ type NonGetRouteAction<TState extends object, TParams extends object, TBindings 
 type NonStringFields<I> = {
     [K in keyof I]-?: unknown extends I[K] ? never : [Extract<Exclude<I[K], undefined>, string | readonly string[]>] extends [never] ? K : never;
 }[keyof I];
+// NotScoping
+type NotScoping = 'this binder does not say it finds a record within its parent — declare static readonly routeBindingScoped = true and read binding.scope, as a repository does';
 // ParamEntry
 type ParamEntry<Segment extends string> = Segment extends `${infer Name}{${string}}` ? ParamEntry<Name> : Segment extends `${infer Name}?` ? {
     [K in Name]?: string;

@@ -558,7 +558,8 @@ The attachment is looked up with `note_id` equal to the column of the note that 
 if that is the note's key). A `column` that is no foreign key is a `TypeError` when the route is called: there is no parent column to compare with. An attachment of another note answers 404, so a
 changed id in the URL cannot reach somebody else's attachment. The column defaults to the parent's name with `_id`. Pass
 `column` when yours is called differently: `{ scopedBy: 'note', column: 'parent_note_id' }`. A `column` without `scopedBy` is a
-compile error, and refused when the routes load: it would look the attachment up without its note.
+compile error, and refused when the routes load: it would look the attachment up without its note. Only a binder that says it
+scopes takes `scopedBy`: a repository does, a binder of your own declares it ([Your own binder](#your-own-binder)).
 
 ### A binding everyone may use
 
@@ -685,6 +686,40 @@ export default defineRoutes((Route) => {
 The second argument of `resolveRouteBinding` carries the request's context, for a scoped binding the parent, and in `with` the names
 the route asks to load. `bind()` accepts `with` for a binder that declares what it loads in a `routeBindingWith` property, as a
 repository does; for any other binder it is a compile error.
+
+A binder you use with `scopedBy` must look the record up within its parent, so it says so: `static readonly routeBindingScoped = true`
+and it reads `binding.scope`. A binder without the mark is a compile error with `scopedBy`, and an app that gets past the types stops
+at start with `H11`, because a binder that ignores the scope would hand out a record of another parent. A repository carries the mark, and so does every subclass: one that overrides `resolveRouteBinding` passes `binding` on
+(`super.resolveRouteBinding(value, binding)`) or reads `binding.scope` itself.
+When the parent is missing from the request the router answers 404 and does not call the binder.
+
+```ts title="modules/notes/NoteAttachments.ts"
+import type { Row } from '@marmeon/database';
+import type { RouteBinder, RouteBindingContext } from '@marmeon/http';
+import { AttachmentRepository } from './AttachmentRepository.ts';
+
+/** `/notes/:note/:attachment` — an attachment of the note bound before, or a 404. */
+export class NoteAttachments implements RouteBinder<Row<'attachments'>> {
+  static readonly routeBindingScoped = true;
+
+  readonly #attachments: AttachmentRepository;
+
+  constructor(attachments: AttachmentRepository) {
+    this.#attachments = attachments;
+  }
+
+  resolveRouteBinding(id: string, binding: RouteBindingContext) {
+    const note = binding.scope?.parent as Row<'notes'> | undefined;
+    if (!note) return undefined;
+    if (!/^\d{1,15}$/.test(id)) return undefined;
+    return this.#attachments.query().selectAll().where('id', '=', Number(id)).where('note_id', '=', note.id).executeTakeFirst();
+  }
+}
+```
+
+```ts
+Route.authorize(can(NotePolicy, 'view', 'note')).bind('note', NoteRepository).bind('attachment', NoteAttachments, { scopedBy: 'note' });
+```
 
 ## API routes
 
