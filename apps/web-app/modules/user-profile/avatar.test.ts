@@ -1,6 +1,6 @@
 import { Connections } from '@marmeon/database';
 import { PAGE_HEADER, PROTOCOL_VERSION, UPLOAD_HEADER } from '@marmeon/http/protocol';
-import { PruneUploadsCommand, UPLOADS_TABLE } from '@marmeon/storage';
+import { UPLOADS_TABLE } from '@marmeon/storage';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -234,7 +234,7 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
     app.storage.disk('uploads').assertCount(2);
     app.travel({ hours: 1, seconds: 1 });
 
-    expect(await app.make(PruneUploadsCommand).handle({ options: {}, args: [], output: { success: () => {}, error: () => {} } } as never)).toBe(0);
+    expect((await app.command('uploads:prune')).code).toBe(0);
     const rows = await uploadRows();
     expect(rows.map((row) => row.id)).toEqual([fresh.slice(3, 39)]);
     app.storage.disk('uploads').assertCount(1);
@@ -247,20 +247,20 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
     app.freeze();
     const token = await as.upload(ROUTE, 'avatar', png('open-form.png'), { user: ada.public_id });
     app.travel({ minutes: 30 }); // the form is still open: the token works for 120 minutes (UPLOADS_LIFETIME_MINUTES)
-    const errors: string[] = [];
-    const run = (options: Record<string, unknown>) => app.make(PruneUploadsCommand).handle({ options, args: [], output: { success: () => {}, error: (line: string) => errors.push(line) } } as never);
-    expect(await run({ hours: '0' })).toBe(1);
-    expect(errors[0], errors[0]).toBe(
-      '--hours=0 would delete uploads whose token still works: a token works for 120 minutes (UPLOADS_LIFETIME_MINUTES), so --hours must be at least 2 — or pass --force to delete them anyway (a form still open loses its files).',
+    const run = (options: Record<string, string | boolean>) => app.command('uploads:prune', { options });
+    const refused = await run({ hours: '0' });
+    expect(refused.code).toBe(1);
+    expect(refused.lines[0], refused.lines[0]).toBe(
+      '✗ --hours=0 would delete uploads whose token still works: a token works for 120 minutes (UPLOADS_LIFETIME_MINUTES), so --hours must be at least 2 — or pass --force to delete them anyway (a form still open loses its files).',
     );
-    expect(await run({ hours: '1.5' })).toBe(1);
+    expect((await run({ hours: '1.5' })).code).toBe(1);
     expect((await uploadRows()).map((row) => row.id)).toEqual([token.slice(3, 39)]);
     app.storage.disk('uploads').assertCount(1);
     await send(as, ada, token).assertRedirect(); // still works
     // At the lifetime it is allowed — and --force takes the user's word.
     const second = await as.upload(ROUTE, 'avatar', png('second.png'), { user: ada.public_id });
-    expect(await run({ hours: '2' })).toBe(0);
-    expect(await run({ hours: '0', force: true })).toBe(0);
+    expect((await run({ hours: '2' })).code).toBe(0);
+    expect((await run({ hours: '0', force: true })).code).toBe(0);
     expect(await uploadRows()).toEqual([]);
     (await send(as, ada, second).assertStatus(422)).assertInvalid({ avatar: 'The file did not arrive — choose it again.' });
   });

@@ -224,6 +224,32 @@ it('shows an empty search', async () => {
 
 The [service providers](providers.md#testing) page explains when a replacement takes effect.
 
+## Running commands
+
+`app.command(name, { args, options })` runs a [console command](console.md) by its name against the test app's own container, config
+and database. The lookup, the flag parsing and the exit codes are those of `marmeon <name>`; nothing is asked, as with `--no-interaction`.
+It needs the `marmeon` package in the app and its `CliServiceProvider` (installed packages register it), and resolves with the exit code and the lines the command printed:
+
+```ts title="modules/auth/prune.test.ts"
+const run = await app.command('cache:clear');
+expect(run.code).toBe(0);
+expect(run.lines[0]).toContain('Cleared the cache');
+
+await app.command('queue:retry', { args: ['all'] });
+await app.command('uploads:prune', { options: { hours: 2, force: true } });
+```
+
+`options` are the command's flags by name: `true` is a bare `--force`, a string or number is `--hours=2`, an array repeats the flag,
+`false` leaves it out, `help: true` prints the command's help and exits with 0. An argument that starts with a dash stays a positional.
+`lines` holds everything the command printed, errors included, without colours; a success line starts with `✓ `, a warning
+with `! ` and an error with `✗ `. A non-zero exit does not throw: an unknown command or a flag the command does not declare ends with 2 (`list` and `help` belong to the CLI itself and are not commands here: they end with 2 too),
+a command that returns 1 or throws ends with 1, and for a throw the error and up to five stack frames are in `lines`.
+
+A command that starts another `marmeon` (`make:auth` runs `route:types`, `build` runs several) cannot do so in the app's own
+directory from a test: it is refused with an error line, and the command ends as it does when the child fails. Pass
+a temporary directory as `root` (`mkdtempSync(join(tmpdir(), 'notes-'))`) and the child runs there, its output in `lines`. Generators and `publish` write into the app's source unless that
+`root` is given, so give it to every test that runs one.
+
 ## Errors in tests
 
 A test app answers errors as production does: a page request that fails gets the plain error page, and a JSON request gets the

@@ -2,7 +2,7 @@ import { SignedIn, Registered } from '@marmeon/auth';
 import { EventDispatcher } from '@marmeon/core';
 import { Connections, sql } from '@marmeon/database';
 import { MailTransport, type MailMessage, type MailReceipt } from '@marmeon/mail';
-import { QueueConnections, QueueRetryCommand } from '@marmeon/queue';
+import { QueueConnections } from '@marmeon/queue';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -80,8 +80,7 @@ describe('the verification mail through the queue', () => {
     expect(await queuePayloads(app)).not.toContain('/email/verify/'); // the signed link: encrypted, also in failed_jobs
 
     transport.down = false;
-    const output = { success: () => {}, error: () => {}, line: () => {}, info: () => {}, warn: () => {}, table: () => {} };
-    expect(await app.make(QueueRetryCommand).handle({ args: ['all'], options: {}, output, root: '', spawn: async () => 0 } as never)).toBe(0);
+    expect((await app.command('queue:retry', { args: ['all'] })).code).toBe(0);
     await work(app);
     expect(transport.sent.map((message) => message.subject).sort()).toEqual(['Confirm your e-mail address', 'Welcome to Marmeon']);
     await app.assertDatabaseCount('failed_jobs', 0);
@@ -164,8 +163,7 @@ describe('the reset link through the queue', () => {
     expect(seen.join('\n')).not.toContain('ada@example.com'); // the address: encrypted too
 
     transport.down = false;
-    const output = { success: () => {}, error: () => {}, line: () => {} };
-    await app.make(QueueRetryCommand).handle({ args: ['all'], options: {}, output, root: '', spawn: async () => 0 } as never);
+    await app.command('queue:retry', { args: ['all'] });
     await work(app);
     const token = new URL(/https?:\/\/\S+\/reset-password\?\S+(?=\))/.exec(transport.sent[0]!.text)![0]).searchParams.get('token')!;
     expect(token).toMatch(/^\S{20,}$/);

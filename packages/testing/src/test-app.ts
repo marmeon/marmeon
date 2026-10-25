@@ -34,6 +34,7 @@ import {
 import { createHttpKernel, type HttpKernel } from '@marmeon/server';
 import { DevRequestRecorder, importRequestRecorder } from '@marmeon/server/internal';
 import { AssertionError } from 'node:assert';
+import { stripVTControlCharacters } from 'node:util';
 import type { AuthUser } from '@marmeon/auth';
 import type { MailFake } from '@marmeon/mail/testing';
 import type { NotificationFake } from '@marmeon/notifications/testing';
@@ -472,6 +473,29 @@ async function importScheduler(): Promise<(typeof import('@marmeon/scheduler') &
   }
 }
 
+/** `marmeon` is an optional peer, like the session. */
+async function importCli(): Promise<typeof import('marmeon') & typeof import('marmeon/internal')> {
+  try {
+    return { ...(await import('marmeon')), ...(await import('marmeon/internal')) };
+  } catch (error) {
+    throw new Error('app.command() needs marmeon in the app (pnpm add marmeon).', { cause: error });
+  }
+}
+
+/** The options of `app.command()` as the flags `marmeon` takes: `true` is a bare flag, `false` and `undefined` leave it out, an array repeats it. */
+function commandFlags(options: CommandRunOptions['options'] = {}): string[] {
+  const flags: string[] = [];
+  for (const [name, value] of Object.entries(options)) {
+    // `marmeon` takes `--no-interaction` itself; here nothing is asked anyway.
+    if (name === 'no-interaction') continue;
+    for (const each of Array.isArray(value) ? value : [value]) {
+      if (each === undefined || each === false) continue;
+      flags.push(each === true ? `--${name}` : `--${name}=${each}`);
+    }
+  }
+  return flags;
+}
+
 /** @marmeon/auth is an optional peer, like the session. */
 async function importAuth(): Promise<typeof import('@marmeon/auth/testing') | undefined> {
   try {
@@ -550,6 +574,24 @@ function cookieCrypto(container: Container): CookieCrypto {
       }
     },
   };
+}
+
+/** What `app.command()` takes besides the command's name. */
+export interface CommandRunOptions {
+  /** The directory the command runs in, and where a command it starts runs. Without it the app's root, and a command may not start another `marmeon`. */
+  readonly root?: string;
+  /** The positional arguments after the name. */
+  readonly args?: readonly string[];
+  /** The command's flags by name: `true` is a bare `--name`, a string or number is `--name=value`, an array repeats the flag, `false` leaves it out. */
+  readonly options?: Readonly<Record<string, string | number | boolean | readonly (string | number | boolean)[] | undefined>>;
+}
+
+/** What `app.command()` resolves with. */
+export interface CommandRun {
+  /** The exit code `marmeon` would end with. */
+  readonly code: number;
+  /** Everything the command printed, line by line, errors included, without colours. */
+  readonly lines: readonly string[];
 }
 
 export class TestApp {
@@ -779,6 +821,60 @@ export class TestApp {
   /** Resolves a service from the app, e.g. to inspect state after a request. */
   make<K extends Key<any>>(key: K): Resolve<K> {
     return this.application.container.make(key as never) as Resolve<K>;
+  }
+
+  /**
+   * Runs a console command by its name, against this app's own container, config and database: `await app.command('cache:clear')`,
+   * `app.command('uploads:prune', { options: { hours: 2, force: true } })`. Flags are parsed and checked as `marmeon <name>` does, and
+   * nothing is asked (`--no-interaction`). Resolves with the exit code and the lines the command printed (errors included, no colours);
+   * a non-zero exit does not throw. An unknown command or wrong flags exit with 2, a command that throws with 1. A command that starts
+   * another `marmeon` (`make:auth`) needs `root` to run it in. Needs marmeon. See `docs/testing.md#running-commands`.
+   */
+  async command(name: string, { args = [], options, root }: CommandRunOptions = {}): Promise<CommandRun> {
+    const cli = await importCli();
+    const lines: string[] = [];
+    const push = (text: string) => void lines.push(...stripVTControlCharacters(text).replace(/\n$/, '').split('\n'));
+    const output = Object.assign(new cli.Output(), {
+      line: (text = '') => push(text),
+      warn: (text: string) => push(`! ${text}`),
+      error: (text: string) => push(`✗ ${text}`),
+    });
+    const container = this.application.container;
+    if (!container.has(cli.CommandRegistry)) {
+      throw new Error('app.command() needs the CLI provider in the app: register CliServiceProvider of marmeon (installed packages register it: marmeon discover).');
+    }
+    const registry = container.make(cli.CommandRegistry);
+    const Command = registry.get(name);
+    if (!Command) {
+      output.error(`Command "${name}" is not defined. Run "marmeon list" to see all commands.`);
+      return { code: 2, lines };
+    }
+    if (options?.help === true && !Command.options?.help) {
+      cli.printCommandHelp({ output }, Command);
+      return { code: 0, lines };
+    }
+    const argv = [...commandFlags(options), ...(args.some((arg) => arg.startsWith('-')) ? ['--'] : []), ...args];
+    const scope = container.createScope();
+    if (!scope.has(cli.CommandRegistry)) scope.instance(cli.CommandRegistry, registry);
+    const where = root ?? this.application.root;
+    const spawn = async (...spawned: string[]): Promise<number> => {
+      if (root === undefined) {
+        output.error('A sub-command runs as its own marmeon process; pass `root` (a temporary directory) to let it run there.');
+        return 1;
+      }
+      return await cli.spawnMarmeon(root, spawned, true, push);
+    };
+    try {
+      const code = await cli.runCommand(scope, Command, argv, { output, root: where, spawn });
+      return { code, lines };
+    } catch (error) {
+      if (error instanceof cli.CommandArgumentsError) {
+        output.error(error.message);
+        return { code: 2, lines };
+      }
+      cli.printError(output, error);
+      return { code: 1, lines };
+    }
   }
 
   // --- Request defaults (each returns a new view of the same app) -------------------

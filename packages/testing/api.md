@@ -9,6 +9,17 @@ Types from other packages: none
 ### Stable
 
 ```ts
+// CommandRun
+export interface CommandRun {
+    readonly code: number;
+    readonly lines: readonly string[];
+}
+// CommandRunOptions
+export interface CommandRunOptions {
+    readonly root?: string;
+    readonly args?: readonly string[];
+    readonly options?: Readonly<Record<string, string | number | boolean | readonly (string | number | boolean)[] | undefined>>;
+}
 // CookieCrypto
 export interface CookieCrypto {
     encrypt(name: string, value: string): Promise<string>;
@@ -125,6 +136,7 @@ export declare class TestApp {
     assertDatabaseMissing<T extends keyof DB & string, DB = Tables>(table: T, where: Partial<RowOf<DB[T]>>): Promise<this>;
     assertDatabaseCount<T extends keyof DB & string, DB = Tables>(table: T, count: number): Promise<this>;
     make<K extends Key<any>>(key: K): Resolve<K>;
+    command(name: string, { args, options, root }?: CommandRunOptions): Promise<CommandRun>;
     withHeaders(headers: Record<string, string>): TestApp;
     withCookie(name: string, value: string): TestApp;
     withSession(data: Record<string, unknown>): TestApp;

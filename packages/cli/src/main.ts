@@ -5,7 +5,7 @@ import { CommandArgumentsError, CommandRegistry, type CommandClass, CommandSetup
 import { BUILT_IN } from './built-in.ts';
 import { printCommandHelp, printCommandList, printCommandListJson } from './commands/list.ts';
 import { loadApplication } from './load.ts';
-import { Output, stdoutToStderr, style } from './output.ts';
+import { Output, printError, stdoutToStderr, style } from './output.ts';
 import { createPrompt, isPromptCancelled } from './prompt.ts';
 import { spawnMarmeon } from './spawn.ts';
 
@@ -198,16 +198,6 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
  */
 function reportFailure(app: Application | undefined, Command: CommandClass, error: unknown): void {
   if (app?.container.has(ErrorReports)) app.container.make(ErrorReports).report(error, { source: 'command', context: { command: Command.command }, log: false });
-}
-
-/** A failed command: its error and where it came from — not Node's dump of every property of every cause. */
-function printError(output: Output, error: unknown): void {
-  if (!(error instanceof Error)) {
-    output.error(String(error));
-    return;
-  }
-  const frames = (error.stack ?? '').split('\n').filter((line) => /^\s+at /.test(line) && !line.includes('node:internal'));
-  output.error([`${error.name}: ${error.message}`, ...frames.slice(0, 5).map((frame) => `  ${frame.trim()}`)].join('\n'));
 }
 
 /**

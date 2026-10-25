@@ -1,15 +1,15 @@
 // Type guarantees of the scheduler — compiled by `pnpm typecheck` / `marmeon build`, never run.
-import { PruneTokensCommand } from '@marmeon/auth';
 import { defineSchedule } from '@marmeon/scheduler';
 import type { TestApp } from '@marmeon/testing';
 import { RebuildMemberStatsJob } from '../user-profile/jobs/RebuildMemberStatsJob.ts';
+import { PruneUnverifiedCommand } from './commands/PruneUnverifiedCommand.ts';
 import { SendWelcomeMailJob } from './jobs/SendWelcomeMailJob.ts';
 
 export const Fine = defineSchedule((s) => {
   s.job(SendWelcomeMailJob, { userId: 7 }).daily().at('03:10').timezone('Europe/Berlin').onOneServer();
   s.job(RebuildMemberStatsJob).hourly(); // an empty schema: no payload needed
   s.command('auth:prune-tokens').weeklyOn('monday', '9:30').withoutOverlapping(30).catchUp('skip');
-  s.command(PruneTokensCommand, ['--hours=24']).cron('*/5 9-17 * * mon-fri').environments('production');
+  s.command(PruneUnverifiedCommand, ['--hours=24']).cron('*/5 9-17 * * mon-fri').environments('production');
   s.command('session:prune').everyFifteenMinutes().weekdays().when(() => true).skip(async () => false);
 });
 
