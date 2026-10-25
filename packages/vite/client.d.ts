@@ -25,3 +25,8 @@ declare module 'virtual:marmeon/routes' {
    */
   export const routes: Readonly<Record<string, { readonly method: string; readonly path: string }>>;
 }
+
+declare module 'virtual:marmeon/fonts.css' {
+  // A stylesheet: a `<family> Fallback` font for each `fonts` entry of `marmeon()` with `family` and `fallback`. Import it
+  // from the client entry. See docs/vite.md#fonts.
+}

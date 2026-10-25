@@ -10,7 +10,7 @@
 :root {
   color-scheme: light dark;
 
-  --font-text: 'IBM Plex Sans Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-text: 'IBM Plex Sans Variable', 'IBM Plex Sans Variable Fallback', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   --space-1: 0.25rem;

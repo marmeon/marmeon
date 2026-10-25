@@ -109,6 +109,35 @@ More than four files log a warning. A named font is never inlined into the style
 the build with its name. A `file` that is not a `.woff2` path of a package stops the config. Nothing is preloaded in development,
 where the dev server loads the font with the stylesheet, and `test: true` checks the entries but adds no preload.
 
+### A fallback with the same size
+
+While the font loads, the browser sets the text in the next font of the stack, and when the font arrives the lines move,
+because every font takes another width and height. With `family` and `fallback`, the plugin reads the font's own metrics
+(`head`, `hhea` and `OS/2`, from the file; no extra package) and writes a fallback that takes the same room:
+
+```ts title="vite.config.ts"
+marmeon({
+  fonts: [{ file: '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2', family: 'IBM Plex Sans Variable', fallback: 'Arial' }],
+});
+```
+
+The fallback is a font named `<family> Fallback`, made from the local font `fallback` with `size-adjust` and the three `*-override`
+descriptors. Import the stylesheet from the client entry and put the fallback after the font in `font-family`:
+
+```ts title="bootstrap/client.tsx"
+import 'virtual:marmeon/fonts.css';
+```
+
+```css title="styles/app.css"
+body { font-family: 'IBM Plex Sans Variable', 'IBM Plex Sans Variable Fallback', system-ui, sans-serif; }
+```
+
+`family` is the name the font's own `@font-face` gives it, with letters, digits, spaces and `-` only: it is written into CSS, so
+anything else stops the config. `fallback` is one of `Arial`, `Helvetica`, `Times New Roman`, `Georgia` and `Courier New`; pick the
+one that looks closest (sans-serif, serif or monospace). Both go together. The font may be `.woff2` only, as for the preload; a
+file the plugin cannot read stops the build with its name. `Helvetica` exists only on Apple systems, and `Arial` or `Times New Roman` are often missing on Linux and Android; there the browser takes the next font of the stack, as it would without a fallback. The stylesheet is bundled with the app's own, so a strict `style-src`
+needs nothing, and it works in development the same way. It exists once `fonts` has an entry.
+
 ## Virtual modules
 
 The plugin serves three modules that your entries import:
@@ -137,7 +166,7 @@ generation](urls.md#which-routes-the-browser-knows) page explains which those ar
 | Option | Default | Effect |
 | --- | --- | --- |
 | `entries` | `{ client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' }` | Where the entries are, relative to the app root. |
-| `fonts` | none | `.woff2` files to preload from `index.html`, as `{ file }`. See [Fonts](#fonts). |
+| `fonts` | none | `.woff2` files to preload from `index.html`, as `{ file }`, and with `family` and `fallback` a fallback font of the same size. See [Fonts](#fonts). |
 | `serverModules` | none | More server modules, as globs. `'!glob'` takes files out of the conventions. |
 | `routeSinks` | none | More places where client code hands the framework a route name, for an adapter of your own. |
 | `test` | `false` | For `vitest.config.ts`. |

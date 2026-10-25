@@ -9,9 +9,12 @@
 
 @import '@fontsource-variable/ibm-plex-sans/wght.css';
 
-/* Font: the file `marmeon({ fonts })` preloads (vite.config.ts) is the Latin subset of this family (docs/vite.md#fonts). */
+/*
+ * Font: the file `marmeon({ fonts })` preloads (vite.config.ts) is the Latin subset of this family. The 'Fallback' family is the
+ * stand-in that `virtual:marmeon/fonts.css` makes, sized to match (docs/vite.md#fonts).
+ */
 body {
-  font-family: 'IBM Plex Sans Variable', system-ui, sans-serif;
+  font-family: 'IBM Plex Sans Variable', 'IBM Plex Sans Variable Fallback', system-ui, sans-serif;
 }
 
 /* Layout */
