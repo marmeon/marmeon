@@ -17,7 +17,6 @@ import type { ShowLlmsController } from '../modules/docs/controllers/ShowLlmsCon
 import type { ShowLlmsFullController } from '../modules/docs/controllers/ShowLlmsFullController.ts';
 import type { ShowPrivacyController } from '../modules/site/controllers/ShowPrivacyController.ts';
 import type { ShowRobotsController } from '../modules/site/controllers/ShowRobotsController.ts';
-import type { ShowSitemapController } from '../modules/site/controllers/ShowSitemapController.ts';
 
 declare module '@marmeon/router' {
   interface Routes {
@@ -36,7 +35,6 @@ declare module '@marmeon/router' {
     'site.imprint': { method: 'get'; path: '/imprint'; controller: typeof ShowImprintController };
     'site.privacy': { method: 'get'; path: '/privacy'; controller: typeof ShowPrivacyController };
     'site.robots': { method: 'get'; path: '/robots.txt'; controller: typeof ShowRobotsController };
-    'site.sitemap': { method: 'get'; path: '/sitemap.xml'; controller: typeof ShowSitemapController };
   }
 }
 

@@ -49,10 +49,10 @@ export default defineRoutes((Route) => {
   // The navigation (a few dozen entries) goes with the docs' pages only, not with the landing.
   open.middleware(ShareNavigation).group((Route) => {
     // Markdown or HTML by `Accept` — caches must keep both apart.
-    Route.middleware(VaryOnAccept).get('/docs', ShowHomeController).name('docs.home');
+    Route.middleware(VaryOnAccept).get('/docs', ShowHomeController).name('docs.home').sitemap();
     // Before `/docs/:page`: the search is a reserved slug (the repository refuses a page of that name).
     Route.middleware(throttle('docs.search')).get('/docs/search', SearchController).name('docs.search');
     // An unknown page is a 404: the binder asks the repository.
-    Route.middleware(VaryOnAccept).bind('page', DocBinding, { public: true }).get('/docs/:page', ShowDocController).name('docs.page');
+    Route.middleware(VaryOnAccept).bind('page', DocBinding, { public: true }).get('/docs/:page', ShowDocController).name('docs.page').sitemap();
   });
 });

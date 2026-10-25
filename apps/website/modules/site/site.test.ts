@@ -120,11 +120,11 @@ describe('the landing page', () => {
 
   it('shares the framework version but not the docs navigation (the navigation belongs to the docs routes)', async () => {
     const props = (await app.navigating().get('/').assertOk().assertPage('site/Landing')).page()!.props;
-    expect(props.site).toEqual({ version: coreVersion, url: 'http://localhost/' });
+    expect(props.site).toEqual({ version: coreVersion });
     expect(props).not.toHaveProperty('nav');
     const docs = (await app.navigating().get('/docs/routing').assertOk()).page()!.props;
     expect(docs).toHaveProperty('nav');
-    expect(docs.site).toEqual({ version: coreVersion, url: 'http://localhost/' });
+    expect(docs.site).toEqual({ version: coreVersion });
   });
 
   it('answers a revalidation with 304', async () => {

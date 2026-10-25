@@ -1,4 +1,4 @@
-import { Controller, type HttpContext } from '@marmeon/http';
+import { Controller, type HttpContext, type SitemapEntries } from '@marmeon/http';
 import { AppConfig } from '../../../config/app.ts';
 import { publicUrl } from '../../site/public-url.ts';
 import { DocsRepository, type DocPage } from '../DocsRepository.ts';
@@ -17,6 +17,11 @@ export class ShowDocController extends Controller {
     super();
     this.#docs = docs;
     this.#app = app;
+  }
+
+  /** The pages of the docs that are written: drafts stay out of the sitemap. */
+  sitemap(): SitemapEntries<{ page: string }> {
+    return this.#docs.pages().filter((page) => !page.pending).map((page) => ({ params: { page: page.name } }));
   }
 
   /** `page` is bound by the route (DocBinding): an unknown page never gets here — it is a 404. */

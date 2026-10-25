@@ -1,9 +1,14 @@
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ENTRIES, fileOf, repo } from '../docs/docs.test-support.ts';
+import { PENDING_MARKER } from '../docs/markdown.ts';
 import docsConfig from '../../docs.config.ts';
 import { expectOriginFromAppUrl } from './origin.test-support.ts';
-import { robotsTxt, sitemapPaths, sitemapXml } from './seo.ts';
+import { robotsTxt } from './seo.ts';
 
 let app: TestApp;
 beforeAll(async () => {
@@ -13,14 +18,13 @@ beforeAll(async () => {
 const locs = (xml: string) => [...xml.matchAll(/<loc>([^<]*)<\/loc>/g)].map((match) => match[1]!);
 
 describe('/sitemap.xml', () => {
-  it('lists the landing, the docs, every page in the navigation’s order, and the legal pages — nothing else', async () => {
+  it('lists the landing, the docs, every written page of the navigation, and the legal pages — nothing else', async () => {
     const response = await app.get('/sitemap.xml').assertOk();
     expect(response.headers.get('content-type')).toBe('application/xml; charset=utf-8');
     expect(response.headers.get('cache-control')).toMatch(/^public, max-age=\d+$/);
-    expect(response.headers.get('etag')).not.toBeNull();
     expect(response.headers.get('set-cookie')).toBeNull();
     const expected = ['/', '/docs', ...docsConfig.sections.flatMap((section) => section.pages.map((entry) => `/docs/${entry.slug}`)), '/imprint', '/privacy'].map((path) => `http://localhost${path}`);
-    expect(locs(response.body)).toEqual(expected);
+    expect(locs(response.body).sort()).toEqual(expected.sort());
     expect(response.body).not.toContain('.md<');
     expect(response.body).not.toContain('/docs/search');
   });
@@ -30,9 +34,23 @@ describe('/sitemap.xml', () => {
     for (const url of urls) await app.get(new URL(url).pathname, { headers: { accept: 'text/html' } }).assertOk();
   }, 60_000); // requests every URL of the sitemap
 
-  it('leaves out a draft and escapes the URLs', () => {
-    expect(sitemapPaths([{ path: '/docs/a', pending: false }, { path: '/docs/b', pending: true }])).toEqual(['/', '/docs', '/docs/a', '/imprint', '/privacy']);
-    expect(sitemapXml(['http://x.test/?a=1&b=2'])).toContain('<loc>http://x.test/?a=1&amp;b=2</loc>');
+  it('leaves out a draft', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'marmeon-website-'));
+    try {
+      mkdirSync(join(dir, 'docs'));
+      for (const entry of ENTRIES) cpSync(join(repo, fileOf(entry)), join(dir, fileOf(entry)));
+      writeFileSync(join(dir, 'docs/middleware.md'), `# Middleware\n${PENDING_MARKER}\n\n> [!NOTE]\n> This page is being written.\n`);
+      const drafts = await createTestApp(application, { env: { DOCS_SOURCE: dir } });
+      try {
+        const urls = locs((await drafts.get('/sitemap.xml').assertOk()).body);
+        expect(urls).not.toContain('http://localhost/docs/middleware');
+        expect(urls).toContain('http://localhost/docs/routing');
+      } finally {
+        await drafts.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('takes its origin from APP_URL, not from the request', async () => {

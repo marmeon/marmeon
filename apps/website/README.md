@@ -71,11 +71,13 @@ pnpm website:image    # the image: built from this checkout, checked, run read-o
   Open Graph (`og:title`, `og:description`, `og:url`, `og:type`, `og:site_name`; no image). A docs page describes itself with whole
   sentences of its first paragraph, up to 160 characters (`modules/docs/description.ts`; when that gives under 110 characters and more
   follows, the paragraph is cut at a word and ends in `…`); the other pages use the fixed texts in `modules/site/descriptions.ts`. The
-  canonical URL is the page's path from its data on the origin of the shared `site.url` (`APP_URL`) — never the request's URL, which
+  canonical URL is the page's path from its data, which the framework makes absolute against `APP_URL` — never the request's URL, which
   may carry a query or a forged host into a cached page. The search has a description only, and an error page names no canonical URL.
-- **Sitemap and robots.txt** (`modules/site/seo.ts`): `/sitemap.xml` lists the landing, `/docs`, every written page of the docs and the legal
-  pages as absolute URLs from `APP_URL` — drafts left out, no `lastmod` (the image has no history; a wrong date does more harm than
-  none). `/robots.txt` is the same in every environment: everything may be crawled but `/docs/search` (an endless URL space behind
+- **Sitemap and robots.txt** (`modules/site/seo.ts`): `/sitemap.xml` is the framework's: the routes marked `.sitemap()` (the landing, `/docs`,
+  the legal pages and `/docs/:page`, whose controller's `sitemap()` lists every written page of the docs) as absolute URLs from `APP_URL` —
+  drafts left out, no `lastmod` (the image has no history; a wrong date does more harm than none). The framework's endpoint runs
+  without the `public` group (no `CachePublicly`, so no ETag) and says `Cache-Control: public, max-age=300`. `/robots.txt` is the site's own
+  route, which wins over the framework's, and the same in every environment: everything may be crawled but `/docs/search` (an endless URL space behind
   a rate limit; `$` and `?` close the rule, a plain prefix would also shut out a later slug starting with `search`), and it names the sitemap.
 - **llms.txt** (`modules/docs/llms.ts`): `/llms.txt` lists the sections and pages of `docs.config.ts` with a link to each page's `.md`
   (link text: the page's title); `/llms-full.txt` joins every page, the Contribution Guide included, each after a
