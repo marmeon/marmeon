@@ -9,6 +9,10 @@ Types from other packages: `vite`
 ### Stable
 
 ```ts
+// MarmeonFont
+export interface MarmeonFont {
+    file: string;
+}
 // MarmeonOptions
 export interface MarmeonOptions {
     entries?: {
@@ -17,6 +21,7 @@ export interface MarmeonOptions {
     };
     routeSinks?: readonly RouteSink[];
     serverModules?: readonly string[];
+    fonts?: readonly MarmeonFont[];
     test?: boolean;
     viteEnv?: boolean;
 }

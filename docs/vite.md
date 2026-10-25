@@ -83,6 +83,32 @@ file that is no Vite manifest stops the start. Nothing is preloaded in developme
 Every script, stylesheet and preload tag of `index.html` gets a nonce placeholder. The server puts each response's nonce in its
 place, or removes the attribute when the response has no policy.
 
+## Fonts
+
+A web font starts to load only when the browser has parsed the stylesheet that names it, so text paints late or swaps. `fonts`
+names the files the first screen sets, and `marmeon build` adds a `<link rel="preload" as="font" crossorigin>` for each to the
+built `index.html`:
+
+```ts title="vite.config.ts"
+export default defineConfig({
+  plugins: [
+    marmeon({ fonts: [{ file: '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2' }] }),
+    react(),
+  ],
+});
+```
+
+The stylesheet still declares the font, for example with `@import '@fontsource-variable/ibm-plex-sans/wght.css'`. `file` is the
+path inside the package, and only `.woff2` is accepted: every browser that preloads fonts reads it, and a `.ttf` or `.woff` would
+be a second download. The URL in the tag is the file's hashed one under `/assets/`, so it caches for good. The option never
+becomes a URL by itself.
+
+Name only what the first screen sets, since a preloaded file competes with the styles and scripts for the first bytes. A font
+package ships many subsets and weights, and the manifest cannot tell which ones your pages use, so the plugin does not guess.
+More than four files log a warning. A named font is never inlined into the stylesheet, whatever its size. A file that the build does not emit, because the name is wrong or no stylesheet loads it, stops
+the build with its name. A `file` that is not a `.woff2` path of a package stops the config. Nothing is preloaded in development,
+where the dev server loads the font with the stylesheet, and `test: true` checks the entries but adds no preload.
+
 ## Virtual modules
 
 The plugin serves three modules that your entries import:
@@ -111,6 +137,7 @@ generation](urls.md#which-routes-the-browser-knows) page explains which those ar
 | Option | Default | Effect |
 | --- | --- | --- |
 | `entries` | `{ client: 'bootstrap/client.tsx', ssr: 'bootstrap/ssr.tsx' }` | Where the entries are, relative to the app root. |
+| `fonts` | none | `.woff2` files to preload from `index.html`, as `{ file }`. See [Fonts](#fonts). |
 | `serverModules` | none | More server modules, as globs. `'!glob'` takes files out of the conventions. |
 | `routeSinks` | none | More places where client code hands the framework a route name, for an adapter of your own. |
 | `test` | `false` | For `vitest.config.ts`. |
