@@ -20,6 +20,8 @@ export interface RouteEntry {
   readonly controller?: unknown;
   /** `false`: kept from the browser (API routes, `.internal()` routes, `clientRoutes.except`). */
   readonly browser?: false;
+  /** `true`: the route lives under `/:locale` (`Route.localized()`); `path` starts with it. */
+  readonly localized?: true;
 }
 
 type Registered = [keyof Routes] extends [never] ? false : true;

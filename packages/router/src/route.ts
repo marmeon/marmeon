@@ -57,6 +57,8 @@ export interface GroupAttributes {
   readonly pending?: readonly RegistrarAudit[];
   /** Every route of the group is internal: never sent to the browser (`RouteDefinition.internal()`). */
   readonly internal?: boolean;
+  /** Every route of the group lives under `/:locale` (`Route.localized()`). */
+  readonly localized?: boolean;
 }
 
 /** Path parameters, with bound ones replaced by what their binder resolves (`Route.bind`). */
@@ -138,6 +140,18 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
 
   prefix<const TPath extends string>(path: TPath): Route<TState, Simplify<TParams & ExtractParams<TPath>>, TBindings> {
     return this.#with({ prefix: joinPaths(this.#attributes.prefix, path) });
+  }
+
+  /**
+   * Puts every route registered through the returned registrar under `/:locale`, which the server limits to the app's locales:
+   * `Route.localized().prefix('/about')` serves `/de/about` and `/en/about`; `/about` redirects to the visitor's language. Only
+   * as the first call: the locale is the first segment of the path. See docs/routing.md#routes-under-a-locale.
+   */
+  localized(): Route<TState, Simplify<TParams & { locale: string }>, TBindings> {
+    if (this.#attributes.localized || this.#attributes.prefix !== '/') {
+      throw new TypeError(`Route.localized() cannot follow ${this.#attributes.localized ? 'Route.localized()' : `Route.prefix('${this.#attributes.prefix}')`}: call localized() first: the locale is the first segment of the path.`);
+    }
+    return this.#with({ prefix: '/:locale', localized: true });
   }
 
   /** Prefix for route names in this group, e.g. `name('admin.')`. */
@@ -312,6 +326,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
       checks: this.#attributes.checks ?? [],
       site: registrationSite(caller),
       internal: this.#attributes.internal ?? false,
+      localized: this.#attributes.localized ?? false,
     });
     for (const entry of this.#attributes.pending ?? []) entry.used = true;
     this.#register(route);

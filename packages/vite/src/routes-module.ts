@@ -12,7 +12,7 @@ const RESOLVED = `\0${ID}`;
 const PLACEHOLDER = '__MARMEON_ROUTE_MANIFEST__';
 const PLACEHOLDER_PATTERN = new RegExp(`(["'\`])${PLACEHOLDER}\\1`, 'g');
 
-type Manifest = Record<string, { readonly method: string; readonly path: string }>;
+type Manifest = Record<string, { readonly method: string; readonly path: string; readonly localized?: true }>;
 
 interface BrowserRoutes {
   readonly routes: Manifest;

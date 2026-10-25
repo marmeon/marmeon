@@ -342,6 +342,7 @@ The attributes combine in any order:
 | `bind(param, binder)` | Resolves a parameter to a record for every route. See [route model binding](#route-model-binding). |
 | `authorize(check)` | Asks `check` before any route answers. See [below](#asking-who-may-call-a-group). |
 | `internal()` | Keeps every route out of the browser. See [above](#routes-the-browser-never-learns). |
+| `localized()` | Puts every route under `/:locale`, limited to the app's locales. Call it first. See [routes under a locale](#routes-under-a-locale). |
 | `group(callback)` | Calls `callback` with the registrar, to write a block of routes with the same attributes. |
 
 `group()` reads well when a block of routes shares its attributes:
@@ -405,6 +406,42 @@ that route provides it. The [middleware](middleware.md) page shows how to write 
 > `authenticate()` lets in every signed-in account, also one whose address is not confirmed yet. Add `verified()` of
 > `@marmeon/auth` after it where a page needs a confirmed address. With the starter kit's private registration that is every
 > page of your own: the [starter kit](starter-kit.md#your-own-pages) page explains why.
+
+## Routes under a locale
+
+`Route.localized()` puts every route of the registrar under `/:locale`, so a page has one URL per language:
+
+```ts title="modules/about/routes.ts"
+export default defineRoutes((Route) => {
+  const about = Route.localized().authorize(everyone).prefix('/about');
+
+  about.get('/', AboutController).name('about'); // GET /en/about, GET /de/about
+  about.get('/features/:feature', FeatureController).name('about.feature'); // GET /de/about/features/:feature
+});
+```
+
+`locale` is a parameter of every route of the registrar: `ctx.params.locale` is a `string`. When the app starts, the
+server limits the segment to the locales of the app, in the spelling the app gives them (`en|de|de-AT`). `/fr/about` and
+`/DE/about` answer 404, with no redirect: a page and a language share one URL.
+
+Call `localized()` first. The locale is the first segment of the path, so it throws a `TypeError` after `prefix()`, a second
+time, and inside `load({ prefix })`.
+
+The same page without the locale, `/about`, answers every `GET` and `HEAD` request with a `302` to the visitor's preferred
+language, such as `/de/about`. The route builds the target from its own pattern and the parameters that matched, and the query
+string stays as it came. The response carries `Cache-Control: private, no-store` and `Vary: accept-language, cookie`, because
+the session and the language header decide where it leads. A route of another method has no such URL.
+
+The start stops, and names both routes, when:
+
+- no locales are bound: `Route.localized()` needs `@marmeon/i18n`;
+- a route that is not localized starts with a locale of the app (`/de/impressum`), in any case: the URL would have two
+  owners;
+- another route of the app answers the URL without the locale: a `GET /` next to a localized `/`;
+- the app supports no locale, or one that is not letters and digits joined by hyphens (`de-AT`): it cannot stand in a URL.
+
+`marmeon route:types` needs no locales: it writes `localized: true` and the path with `/:locale` in front. The
+[localization](localization.md) page covers the languages themselves.
 
 ## Route model binding
 

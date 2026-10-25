@@ -88,6 +88,7 @@ export class RouteTypes {
         `method: ${methods.map(quote).join(' | ')}`,
         `path: ${quote(route.path)}`,
         ...(controller ? [`controller: typeof ${controller}`] : []),
+        ...(route.localized ? ['localized: true'] : []),
         ...(Object.hasOwn(browser.routes, route.routeName) ? [] : ['browser: false']),
       ];
       return `    ${quote(route.routeName)}: { ${fields.join('; ')} };`;

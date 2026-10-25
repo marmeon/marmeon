@@ -2,6 +2,7 @@ import cluster from 'node:cluster';
 import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
 import { heldOnLoopback, shadowedLocalhost } from './loopback.ts';
+import { checkLocalizedRoutes, localizedPath } from './localized-routes.ts';
 import { honoPath } from './route-pattern.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
@@ -65,6 +66,7 @@ import {
   createRequestState,
   describeMiddlewareProblem,
   formatAccessProblems,
+  UrlLocales,
   VALIDATED_HEADER,
   withQueuedCookies,
   type DispatchOptions,
@@ -239,6 +241,9 @@ export function createHttpKernel(
   // The log line's path without secrets in it: `/reset-password/[redacted]` — by the route's sensitive parameters, else token-like segments.
   // Every error line of the kernel masks its text with it too: the names the app's packages add (the session cookie) count.
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
+  // The locales a localized route can name (`@marmeon/i18n`); the start stops without them, and on a route they would shadow.
+  const urlLocales = container.has(UrlLocales) ? container.make(UrlLocales) : undefined;
+  checkLocalizedRoutes(router, urlLocales, (route) => redactor.path(route.path, route.path));
   container.instance(AssetVersion, { value: version });
   // SERVER_TRUSTED_PROXIES: only from these peers `X-Forwarded-For` sets the client's address and `X-Forwarded-Proto`/`-Host` the URL.
   const proxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
@@ -817,13 +822,14 @@ export function createHttpKernel(
             state,
             onTerminable,
             onError: (error) => renderError(error, c.req.raw, scope),
+            urlLocales,
           },
         ),
         islandParent(c.env),
       );
     };
     routeHandlers.set(handler, route);
-    app.on([...route.methods], honoPath(route.path), handler);
+    app.on([...route.methods], honoPath(route.localized && urlLocales ? localizedPath(route.path, urlLocales.supported) : route.path), handler);
   };
 
   // The framework's routes first, then a guard, then the app's: a path under `/_marmeon/` that no framework route answered
