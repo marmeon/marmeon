@@ -4,7 +4,7 @@ import type { Address, Mailable, MailContent, MailMessage } from './message.ts';
 import { fromMjml, Mjml } from './mjml.ts';
 import { toQueued, type QueuedMailPayload } from './queued.ts';
 import { traceMail } from './trace.ts';
-import type { MailTransport } from './transports.ts';
+import type { MailReceipt, MailTransport } from './transports.ts';
 
 /** Where and when a queued mail goes (`mailer.queue(mail, options)`). */
 export interface QueueMailOptions {
@@ -16,6 +16,12 @@ export interface QueueMailOptions {
   readonly connection?: string;
 }
 
+/** A mail that was handed to the transport: the composed message and the message id the provider returned for it. */
+export interface SentMail extends MailMessage {
+  /** The provider's message id; `undefined` when the transport has none (`log`, `array`). */
+  readonly messageId: string | undefined;
+}
+
 /**
  * Sends mailables — `constructor(mailer: Mailer)`, then:
  *
@@ -25,7 +31,7 @@ export interface QueueMailOptions {
  * ```
  */
 export interface Mailer {
-  send(mailable: Mailable): Promise<MailMessage>;
+  send(mailable: Mailable): Promise<SentMail>;
   /**
    * Composes the mail **now** and queues it **encrypted** for a worker to send — inside `connections.transaction()` only
    * once it commits. Resolves with the composed message. Needs @marmeon/queue and APP_KEY. See `docs/mail.md#sending-mails`.
@@ -39,6 +45,11 @@ export type MailQueue = (payload: QueuedMailPayload, options: QueueMailOptions) 
 
 export class MailError extends Error {
   override name = 'MailError';
+}
+
+/** The mail driver cannot be set up: `MAIL_DRIVER` names a transport nobody brought, or a provider's factory breaks the contract. Stops the start. */
+export class MailSetupError extends MailError {
+  override name = 'MailSetupError';
 }
 
 /** A message from a mailable: addresses normalized and checked, the default sender filled in. */
@@ -86,11 +97,12 @@ export class TransportMailer implements Mailer {
     this.#app = app;
   }
 
-  send(mailable: Mailable): Promise<MailMessage> {
+  send(mailable: Mailable): Promise<SentMail> {
     return traceMail(this.#app, mailable.constructor.name, 'send', async () => {
       const message = await compose(mailable, this.#from);
-      await this.#transport().send(message);
-      return message;
+      // After delivery nothing may throw: a retry would send the mail twice. A transport that resolves with nothing has no id.
+      const receipt = (await this.#transport().send(message)) as MailReceipt | undefined;
+      return { ...message, messageId: typeof receipt?.messageId === 'string' ? receipt.messageId : undefined };
     });
   }
 

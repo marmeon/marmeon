@@ -28,7 +28,7 @@ export async function warmUp(): Promise<void> {
     database: 'refresh',
     queue: 'real',
     mail: 'real',
-    override: (container) => container.instance(MailTransport, { send: async () => {} }),
+    override: (container) => container.instance(MailTransport, { send: async () => ({ messageId: undefined }) }),
   });
   try {
     await real.post('/register', { form }).assertRedirect('/register/sent');

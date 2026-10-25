@@ -15,6 +15,7 @@ import {
   Mailer,
   MailServiceProvider,
   MailTransport,
+  type MailReceipt,
   type Mailable,
   type MailMessage,
 } from './index.ts';
@@ -48,9 +49,10 @@ class ResetMail implements Mailable {
 class FlakyTransport implements MailTransport {
   readonly sent: MailMessage[] = [];
   down = true;
-  async send(message: MailMessage): Promise<void> {
+  async send(message: MailMessage): Promise<MailReceipt> {
     if (this.down) throw new Error('connect ECONNREFUSED 127.0.0.1:587');
     this.sent.push(message);
+    return { messageId: undefined };
   }
 }
 

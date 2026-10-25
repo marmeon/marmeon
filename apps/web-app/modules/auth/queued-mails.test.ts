@@ -1,7 +1,7 @@
 import { SignedIn, Registered } from '@marmeon/auth';
 import { EventDispatcher } from '@marmeon/core';
 import { Connections, sql } from '@marmeon/database';
-import { MailTransport, type MailMessage } from '@marmeon/mail';
+import { MailTransport, type MailMessage, type MailReceipt } from '@marmeon/mail';
 import { QueueConnections, QueueRetryCommand } from '@marmeon/queue';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -30,11 +30,12 @@ class TestTransport implements MailTransport {
   hung = false;
   readonly #called = Promise.withResolvers<void>();
   readonly called = this.#called.promise;
-  async send(message: MailMessage): Promise<void> {
+  async send(message: MailMessage): Promise<MailReceipt> {
     this.#called.resolve();
     if (this.hung) await new Promise(() => {});
     if (this.down) throw new Error('connect ECONNREFUSED 127.0.0.1:587');
     this.sent.push(message);
+    return { messageId: undefined };
   }
 }
 

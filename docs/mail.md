@@ -51,7 +51,7 @@ await this.#mailer.queue(new NoteSharedMail(recipient, note.title, url, this.#tr
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `MAIL_DRIVER` | `log` | `log` writes every mail to the log and sends nothing, `smtp` sends it, `array` keeps it in memory. |
+| `MAIL_DRIVER` | `log` | `log` writes every mail to the log and sends nothing, `smtp` sends it, `array` keeps it in memory. A package can bring more (see [Mail transports](drivers.md#mail-transports)); a name nobody brought stops the start. |
 | `MAIL_FROM_ADDRESS` | optional, falls back to `hello@example.com` | The sender of every mail that names none. Set it to an address of your domain; see [The sender address](#the-sender-address). |
 | `MAIL_FROM_NAME` | empty | The sender's name. Empty, the address goes alone. |
 | `MAIL_HOST` | `127.0.0.1` | The SMTP server. |
@@ -142,7 +142,16 @@ export function layout(t: Translator, { preview, body }: { preview: string; body
 | Method | What it does |
 | --- | --- |
 | `mailer.queue(mail, { queue?, delay?, connection? })` | Composes the mail now and queues it. A worker sends it. `delay` is seconds, or a [`Duration`](time.md#spans-of-time). |
-| `mailer.send(mail)` | Composes the mail and sends it now. |
+| `mailer.send(mail)` | Composes the mail and sends it now. Resolves with the message and the `messageId` the provider gave it. |
+
+`messageId` is the id the transport got from the mail server, such as the `Message-ID` that `smtp` sends. It is `undefined` with `log`
+and `array`, where no provider takes part, and with a provider that gives none. `mailer.queue()` has no id to return: the worker
+sends the mail later.
+
+```ts
+const { messageId } = await this.#mailer.send(new ReceiptMail(order, t));
+await this.#orders.update(order.id, { receiptMessageId: messageId });
+```
 
 Queue a mail whenever a request sends it:
 

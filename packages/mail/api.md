@@ -53,7 +53,7 @@ export interface Envelope {
 export { Html } from '@marmeon/core';
 // MailConfig
 export declare const MailConfig: import("@marmeon/core").ConfigDefinition<{
-    mailer: "array" | "log" | "smtp";
+    driver: string;
     from: string | {
         address: string;
         name: string;
@@ -77,6 +77,14 @@ export interface MailContent {
     readonly html: string;
     readonly text: string;
 }
+// MailDriverContext
+export interface MailDriverContext {
+    readonly name: string;
+    readonly container: Resolver;
+    readonly logger: Logger;
+}
+// MailDriverFactory
+export type MailDriverFactory = (context: MailDriverContext) => MailTransport;
 // MailError
 export declare class MailError extends Error {
     name: string;
@@ -114,11 +122,15 @@ export interface MailPreviewContext {
     make<T>(key: Key<T>): T;
     readonly locale: string | undefined;
 }
+// MailReceipt
+export interface MailReceipt {
+    readonly messageId: string | undefined;
+}
 // MailServiceProvider
 export declare class MailServiceProvider implements ServiceProvider {
     #private;
     static config: import("@marmeon/core").ConfigDefinition<{
-        mailer: "array" | "log" | "smtp";
+        driver: string;
         from: string | {
             address: string;
             name: string;
@@ -140,9 +152,14 @@ export declare class MailServiceProvider implements ServiceProvider {
     boot(app: Application): Promise<void>;
     shutdown(): Promise<void>;
 }
+// MailSetupError
+export declare class MailSetupError extends MailError {
+    name: string;
+}
 // MailTransport
 export interface MailTransport {
-    send(message: MailMessage): Promise<void>;
+    send(message: MailMessage): Promise<MailReceipt>;
+    close?(): Promise<void>;
 }
 export declare const MailTransport: import("@marmeon/core").Token<MailTransport>;
 // Mailable
@@ -153,7 +170,7 @@ export interface Mailable {
 }
 // Mailer
 export interface Mailer {
-    send(mailable: Mailable): Promise<MailMessage>;
+    send(mailable: Mailable): Promise<SentMail>;
     queue(mailable: Mailable, options?: QueueMailOptions): Promise<MailMessage>;
 }
 export declare const Mailer: import("@marmeon/core").Token<Mailer>;
@@ -169,6 +186,10 @@ export interface QueueMailOptions {
     readonly queue?: string;
     readonly delay?: Duration;
     readonly connection?: string;
+}
+// SentMail
+export interface SentMail extends MailMessage {
+    readonly messageId: string | undefined;
 }
 // calendarEvent
 export declare function calendarEvent(event: CalendarEvent): Attachment;
@@ -188,6 +209,15 @@ export declare function mjml(strings: TemplateStringsArray, ...values: unknown[]
 export { raw } from '@marmeon/core';
 ```
 
+### Augments
+
+```ts
+// @marmeon/core.ServiceProviderClass
+interface ServiceProviderClass {
+    readonly mailDrivers?: Readonly<Record<string, MailDriverFactory>>;
+}
+```
+
 ## `@marmeon/mail/testing`
 
 Types from other packages: none
@@ -199,7 +229,7 @@ Types from other packages: none
 export declare class MailFake implements Mailer {
     #private;
     constructor(from?: Address, app?: Application);
-    send(mailable: Mailable): Promise<MailMessage>;
+    send(mailable: Mailable): Promise<SentMail>;
     queue(mailable: Mailable, options?: QueueMailOptions): Promise<MailMessage>;
     queued<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage, options: QueueMailOptions) => boolean): {
         mail: M;
@@ -288,7 +318,7 @@ export interface Mailable {
 type MailableClass<M extends Mailable> = abstract new (...args: any[]) => M;
 // Mailer
 export interface Mailer {
-    send(mailable: Mailable): Promise<MailMessage>;
+    send(mailable: Mailable): Promise<SentMail>;
     queue(mailable: Mailable, options?: QueueMailOptions): Promise<MailMessage>;
 }
 export declare const Mailer: import("@marmeon/core").Token<Mailer>;
@@ -297,6 +327,10 @@ export interface QueueMailOptions {
     readonly queue?: string;
     readonly delay?: Duration;
     readonly connection?: string;
+}
+// SentMail
+export interface SentMail extends MailMessage {
+    readonly messageId: string | undefined;
 }
 ```
 

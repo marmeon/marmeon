@@ -1,11 +1,36 @@
-import { Logger, token } from '@marmeon/core';
+import { Logger, token, type Resolver } from '@marmeon/core';
 import type { MailMessage } from './message.ts';
 
-/** Delivers messages — the one thing a transport does. */
+/** What a transport reports about a delivery. */
+export interface MailReceipt {
+  /** The message id the provider gave the mail; `undefined` when it gave none (or no provider took part, as in `log` and `array`). */
+  readonly messageId: string | undefined;
+}
+
+/**
+ * Delivers messages — the one thing a transport does — and returns the provider's message id. A transport a package brings
+ * (`static mailDrivers`) is responsible for its own route to the provider, TLS included. See `docs/drivers.md#mail-transports`.
+ */
 export interface MailTransport {
-  send(message: MailMessage): Promise<void>;
+  send(message: MailMessage): Promise<MailReceipt>;
+  /** Closes connections the transport holds; the framework calls it at shutdown, when the transport was built. */
+  close?(): Promise<void>;
 }
 export const MailTransport = token<MailTransport>('MailTransport');
+
+/** What a {@link MailDriverFactory} is given. */
+export interface MailDriverContext {
+  /** The name the driver was registered under (`MAIL_DRIVER=ses`). */
+  readonly name: string;
+  readonly container: Resolver;
+  /** Writes to the log on the `mail` channel. */
+  readonly logger: Logger;
+}
+
+/** Creates a mail transport: `static mailDrivers = { ses: (context) => … }` on a service provider. */
+export type MailDriverFactory = (context: MailDriverContext) => MailTransport;
+
+const NO_RECEIPT: MailReceipt = Object.freeze({ messageId: undefined });
 
 /** Writes every message to the log instead of sending it (`MAIL_DRIVER=log`, the default). */
 export class LogTransport implements MailTransport {
@@ -15,10 +40,11 @@ export class LogTransport implements MailTransport {
     this.#logger = logger.child({ channel: 'mail' });
   }
 
-  async send(message: MailMessage): Promise<void> {
+  async send(message: MailMessage): Promise<MailReceipt> {
     const to = message.to.map((recipient) => recipient.address).join(', ');
     // The text version in full: in development, links in mails (password reset, verification) are clicked from here.
     this.#logger.info(`Mail to ${to}: ${message.subject}\n\n${message.text}\n`, { to, subject: message.subject });
+    return NO_RECEIPT;
   }
 }
 
@@ -26,8 +52,9 @@ export class LogTransport implements MailTransport {
 export class ArrayTransport implements MailTransport {
   readonly messages: MailMessage[] = [];
 
-  async send(message: MailMessage): Promise<void> {
+  async send(message: MailMessage): Promise<MailReceipt> {
     this.messages.push(message);
+    return NO_RECEIPT;
   }
 
   clear(): void {
@@ -52,7 +79,7 @@ export interface SmtpOptions {
 
 /** The part of nodemailer this transport uses — its own types never reach the API. */
 interface NodemailerTransporter {
-  sendMail(message: Record<string, unknown>): Promise<unknown>;
+  sendMail(message: Record<string, unknown>): Promise<{ messageId?: unknown } | undefined>;
   close(): void;
 }
 
@@ -65,10 +92,10 @@ export class SmtpTransport implements MailTransport {
     this.#options = options;
   }
 
-  async send(message: MailMessage): Promise<void> {
+  async send(message: MailMessage): Promise<MailReceipt> {
     const transporter = await (this.#transporter ??= this.#connect());
     const address = (recipient: { address: string; name?: string }) => (recipient.name ? { name: recipient.name, address: recipient.address } : recipient.address);
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: address(message.from),
       to: message.to.map(address),
       cc: message.cc.map(address),
@@ -84,6 +111,7 @@ export class SmtpTransport implements MailTransport {
         ...(attachment.contentType ? { contentType: attachment.contentType } : {}),
       })),
     });
+    return { messageId: typeof info?.messageId === 'string' ? info.messageId : undefined };
   }
 
   /** Closes pooled connections (the provider calls it on shutdown). */

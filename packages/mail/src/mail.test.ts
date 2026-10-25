@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:net';
-import { ConsoleLogger, createApplication, Logger, type Container, type LogContext } from '@marmeon/core';
+import { ConsoleLogger, createApplication, Logger, type Container, type LogContext, type ServiceProviderClass } from '@marmeon/core';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   compose,
@@ -12,6 +12,9 @@ import {
   MailServiceProvider,
   MailTransport,
   raw,
+  type MailDriverFactory,
+  type MailReceipt,
+  type SentMail,
   type Mailable,
   type MailContent,
   type MailMessage,
@@ -147,17 +150,21 @@ describe('transports', () => {
         return this;
       }
     }
-    await new LogTransport(new Capture()).send(await compose(new WelcomeMail('Ada'), 'hello@app.test'));
+    const receipt = await new LogTransport(new Capture()).send(await compose(new WelcomeMail('Ada'), 'hello@app.test'));
+    expect(receipt, 'no provider took part').toEqual({ messageId: undefined });
     expect(lines).toEqual(['Mail to ada@example.com: Welcome, Ada\n\nHello Ada\n\nStart here: Your profile (https://app.test/start?a=1&b=2)\n']);
   });
 
   it('smtp: hands the message to an SMTP server through nodemailer — text and HTML parts', async () => {
+    let receipt: MailReceipt | undefined;
     const received = await withSmtpServer(async (port) => {
       // The test server has no TLS: the opt-out (a local server like Mailpit).
       const transport = new SmtpTransport({ host: '127.0.0.1', port, secure: false, requireTls: false });
-      await transport.send(await compose(new WelcomeMail('Ada'), { address: 'hello@app.test', name: 'App' }));
+      receipt = await transport.send(await compose(new WelcomeMail('Ada'), { address: 'hello@app.test', name: 'App' }));
       await transport.close();
     });
+    expect(receipt?.messageId, "nodemailer's message id").toMatch(/^<.+@.+>$/);
+    expect(received.data).toContain(`Message-ID: ${receipt?.messageId}`);
     expect(received.envelope).toEqual(['MAIL FROM:<hello@app.test>', 'RCPT TO:<ada@example.com>']);
     expect(received.data).toMatch(/^Subject: Welcome, Ada$/m);
     expect(received.data).toMatch(/^From: App <hello@app\.test>$/m);
@@ -254,8 +261,9 @@ describe('MailServiceProvider', () => {
   it('takes a transport of your own — a class against the neutral message type', async () => {
     class PostcardTransport implements MailTransport {
       readonly postcards: string[] = [];
-      async send(message: MailMessage) {
+      async send(message: MailMessage): Promise<MailReceipt> {
         this.postcards.push(`${message.to[0]!.address}: ${message.subject}`);
+        return { messageId: undefined };
       }
     }
     const postcards = new PostcardTransport();
@@ -263,13 +271,92 @@ describe('MailServiceProvider', () => {
     await app.container.make(Mailer).send(new WelcomeMail('Ada'));
     expect(postcards.postcards).toEqual(['ada@example.com: Welcome, Ada']);
   });
+
+  it('a transport must resolve with a receipt — one that returns nothing is a type error', () => {
+    // @ts-expect-error send() resolves with void, not a MailReceipt
+    const forgetful: MailTransport = { send: async (_message: MailMessage) => {} };
+    expectTypeOf<Awaited<ReturnType<Mailer['send']>>>().toEqualTypeOf<SentMail>();
+    expectTypeOf<SentMail>().toExtend<MailMessage>();
+    expect(forgetful).toBeDefined();
+  });
+});
+
+describe('mail drivers a provider brings', () => {
+  const plugin = (name: string, mailDrivers: Record<string, MailDriverFactory> | undefined): ServiceProviderClass => ({ [name]: class { static mailDrivers = mailDrivers; } })[name]!;
+  const ses: MailDriverFactory = ({ name }) => ({ send: async (message) => ({ messageId: `${name}-${message.subject}` }) });
+  const boot = (providers: ServiceProviderClass[], env: Record<string, string>) =>
+    createApplication({ root: import.meta.dirname, discover: false, providers: [MailServiceProvider, ...providers] }, { env: { LOG_LEVEL: 'silent', ...env } });
+
+  it('Mailer.send() returns the message id of the transport MAIL_DRIVER names', async () => {
+    const app = await boot([plugin('SesProvider', { ses })], { MAIL_DRIVER: 'ses' });
+    const sent = await app.container.make(Mailer).send(new WelcomeMail('Ada'));
+    expect(sent.messageId).toBe('ses-Welcome, Ada');
+    expect(sent.subject).toBe('Welcome, Ada');
+  });
+
+  it('hands the factory its name, the container and a logger', async () => {
+    let seen: Record<string, unknown> = {};
+    const spy: MailDriverFactory = (context) => ((seen = { ...context }), { send: async () => ({ messageId: undefined }) });
+    await boot([plugin('SpyProvider', { spy })], { MAIL_DRIVER: 'spy' });
+    expect(seen.name).toBe('spy');
+    expect(Object.keys(seen).sort()).toEqual(['container', 'logger', 'name']);
+    expect(typeof (seen.logger as { info?: unknown }).info).toBe('function');
+  });
+
+  it('the built-in transports return no id: there is no provider', async () => {
+    const app = await boot([], { MAIL_DRIVER: 'array' });
+    expect((await app.container.make(Mailer).send(new WelcomeMail('Ada'))).messageId).toBeUndefined();
+  });
+
+  it('stops the start for a name nobody brought, and lists the known ones', async () => {
+    const error = await boot([plugin('SesProvider', { ses })], { MAIL_DRIVER: 'nope' }).catch((caught: unknown) => caught);
+    expect(String(error)).toContain('[marmeon:Q8] MAIL_DRIVER=nope is not a mail driver. Known: log, array, smtp, ses.');
+  });
+
+  it('stops the start for a malformed name', async () => {
+    await expect(boot([], { MAIL_DRIVER: 'No Way' })).rejects.toThrow(/MAIL_DRIVER/);
+  });
+
+  it('refuses a built-in name, and leaves no SMTP credentials in the message', async () => {
+    const error = await boot([plugin('EvilProvider', { smtp: ses })], { MAIL_DRIVER: 'smtp', MAIL_PASSWORD: 'hunter2-secret' }).catch((caught: unknown) => caught);
+    expect(String(error)).toContain('EvilProvider brings a mail driver named "smtp", but that name belongs to the built-in one');
+    expect(String(error)).not.toContain('hunter2-secret');
+    await expect(boot([plugin('LogProvider', { log: ses })], {})).rejects.toThrow(/belongs to the built-in one/);
+  });
+
+  it('refuses a name twice and a factory that returns no transport', async () => {
+    await expect(boot([plugin('One', { ses }), plugin('Two', { ses })], { MAIL_DRIVER: 'ses' })).rejects.toThrow(/brought by both One and Two/);
+    const broken = (() => ({})) as unknown as MailDriverFactory;
+    await expect(boot([plugin('BrokenProvider', { broken })], { MAIL_DRIVER: 'broken' })).rejects.toThrow('[marmeon:Q8] The mail driver "broken" must return a MailTransport');
+  });
+
+  it('a transport that resolves with nothing has no message id — and the send still succeeds', async () => {
+    const silent: MailDriverFactory = () => ({ send: (async () => undefined) as unknown as MailTransport['send'] });
+    const app = await boot([plugin('SilentProvider', { silent })], { MAIL_DRIVER: 'silent' });
+    expect((await app.container.make(Mailer).send(new WelcomeMail('Ada'))).messageId).toBeUndefined();
+  });
+
+  it('closes the transport at shutdown, when it has a close()', async () => {
+    let closed = 0;
+    const holding: MailDriverFactory = () => ({ send: async () => ({ messageId: undefined }), close: async () => void closed++ });
+    const app = await boot([plugin('HoldingProvider', { holding })], { MAIL_DRIVER: 'holding' });
+    await app.shutdown();
+    expect(closed).toBe(1);
+  });
+
+  it('builds the transport at the start: a factory that throws stops it', async () => {
+    const down: MailDriverFactory = () => {
+      throw new Error('no credentials for the provider');
+    };
+    await expect(boot([plugin('DownProvider', { down })], { MAIL_DRIVER: 'down' })).rejects.toThrow('no credentials for the provider');
+  });
 });
 
 describe('MailFake', () => {
   it('records mailables, composes them (a broken template fails), and asserts', async () => {
     const mail = new MailFake();
     mail.assertNothingSent();
-    await mail.send(new WelcomeMail('Ada'));
+    expect((await mail.send(new WelcomeMail('Ada'))).messageId).toBeUndefined();
     mail.assertSent(WelcomeMail).assertSent(WelcomeMail, (_mail, message) => message.to[0]!.address === 'ada@example.com').assertSentCount(WelcomeMail, 1);
     expect(() => mail.assertSent(WelcomeMail, (_mail, message) => message.subject === 'nope')).toThrow('Expected a WelcomeMail matching the filter to be sent. Sent: WelcomeMail to ada@example.com.');
     expect(() => mail.assertNothingSent()).toThrow('Expected no mail, sent WelcomeMail.');

@@ -1,21 +1,33 @@
-import { Application, Logger, type Container, type ServiceProvider } from '@marmeon/core';
+import { Application, Logger, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { collectDrivers, withCode } from '@marmeon/core/internal';
 import { devOnly } from '@marmeon/core/dev';
-import { fromDefaultWarning, LOG_MAILER_WARNING, MailConfig } from './config.ts';
-import { MailError, Mailer, TransportMailer, type MailQueue } from './mailer.ts';
+import { BUILT_IN_MAIL_DRIVERS, fromDefaultWarning, LOG_MAILER_WARNING, MailConfig } from './config.ts';
+import { MailError, Mailer, MailSetupError, TransportMailer, type MailQueue } from './mailer.ts';
 import { MailPreviews } from './preview.ts';
 import { SendQueuedMail } from './queued.ts';
-import { ArrayTransport, LogTransport, MailTransport, SmtpTransport } from './transports.ts';
+import { ArrayTransport, LogTransport, MailTransport, SmtpTransport, type MailDriverFactory } from './transports.ts';
 
 export { fromHtml, Html, html, raw } from './html.ts';
 export { fromMjml, Mjml, mjml, MjmlError } from './mjml.ts';
 export type { Address, Attachment, Envelope, Mailable, MailContent, MailMessage } from './message.ts';
 export { MailConfig } from './config.ts';
-export { compose, MailError, Mailer } from './mailer.ts';
-export type { QueueMailOptions } from './mailer.ts';
+export { compose, MailError, Mailer, MailSetupError } from './mailer.ts';
+export type { QueueMailOptions, SentMail } from './mailer.ts';
 export { calendarEvent } from './ics.ts';
 export type { CalendarEvent } from './ics.ts';
 export type { MailPreviewContext } from './preview.ts';
 export { MailTransport } from './transports.ts';
+export type { MailDriverContext, MailDriverFactory, MailReceipt } from './transports.ts';
+
+declare module '@marmeon/core' {
+  interface ServiceProviderClass {
+    /**
+     * Mail transports this provider brings, by name — `MAIL_DRIVER=<name>` selects one. A built-in name (`log`, `array`, `smtp`) or a
+     * name another provider brings stops the start. See `docs/drivers.md#mail-transports`.
+     */
+    readonly mailDrivers?: Readonly<Record<string, MailDriverFactory>>;
+  }
+}
 
 type QueueModule = typeof import('@marmeon/queue');
 
@@ -43,9 +55,10 @@ export class MailServiceProvider implements ServiceProvider {
   register(container: Container): void {
     const config = container.make(MailConfig);
     container.singleton(MailTransport, (c) => {
-      if (config.mailer === 'array') this.#transport = new ArrayTransport();
-      else if (config.mailer === 'smtp') this.#transport = new SmtpTransport(config.smtp);
-      else this.#transport = new LogTransport(c.make(Logger));
+      if (config.driver === 'array') this.#transport = new ArrayTransport();
+      else if (config.driver === 'smtp') this.#transport = new SmtpTransport(config.smtp);
+      else if (config.driver === 'log') this.#transport = new LogTransport(c.make(Logger));
+      else this.#transport = this.#custom(config, c);
       return this.#transport;
     });
     const queue: MailQueue = async (payload, options) => {
@@ -59,19 +72,44 @@ export class MailServiceProvider implements ServiceProvider {
     container.bind(SendQueuedMail, (c) => new SendQueuedMail(c.make(MailTransport), c.make(Application)));
   }
 
+  #factories(container: Resolver): ReadonlyMap<string, MailDriverFactory> {
+    return collectDrivers<MailDriverFactory>(container.make(Application).providers, 'mailDrivers', BUILT_IN_MAIL_DRIVERS, 'mail driver');
+  }
+
+  /** The transport a provider's factory returns for `MAIL_DRIVER`; a name nobody brought is refused (a typo never lands on another transport). */
+  #custom(config: MailConfig, container: Resolver): MailTransport {
+    const factory = this.#factories(container).get(config.driver);
+    if (!factory) throw this.#unknown(config.driver, container);
+    const transport = factory({ name: config.driver, container, logger: container.make(Logger).child({ channel: 'mail' }) });
+    if (typeof (transport as Partial<MailTransport> | undefined)?.send !== 'function') {
+      throw new MailSetupError(withCode('Q8', `The mail driver "${config.driver}" must return a MailTransport: an object with send(message) that resolves with { messageId }.`));
+    }
+    return transport;
+  }
+
+  #unknown(driver: string, container: Resolver): MailSetupError {
+    return new MailSetupError(withCode('Q8', `MAIL_DRIVER=${driver} is not a mail driver. Known: ${[...BUILT_IN_MAIL_DRIVERS, ...this.#factories(container).keys()].join(', ')}.`));
+  }
+
   async boot(app: Application): Promise<void> {
+    const config = app.container.make(MailConfig);
+    // A name nobody brought, a built-in name or a name twice stops the start here; so does a factory that fails.
+    const custom = this.#factories(app.container);
+    if (!(BUILT_IN_MAIL_DRIVERS as readonly string[]).includes(config.driver)) {
+      if (!custom.has(config.driver)) throw this.#unknown(config.driver, app.container);
+      app.container.make(MailTransport);
+    }
     const queue = await importQueue();
     if (queue && app.container.has(queue.JobRegistry)) app.container.make(queue.JobRegistry).add([SendQueuedMail], '@marmeon/mail', { framework: true });
 
-    const config = app.container.make(MailConfig);
     // Production on the log mailer: no mail goes out, and reset links land in the log — said once, at boot.
-    if (config.protected && config.mailer === 'log') app.container.make(Logger).warn(LOG_MAILER_WARNING, { mailer: 'log' });
-    if (config.protected && config.fromDefaulted) app.container.make(Logger).warn(fromDefaultWarning(config.mailer), { mailer: config.mailer });
+    if (config.protected && config.driver === 'log') app.container.make(Logger).warn(LOG_MAILER_WARNING, { driver: 'log' });
+    if (config.protected && config.fromDefaulted) app.container.make(Logger).warn(fromDefaultWarning(config.driver), { driver: config.driver });
     if (config.previews) await registerPreviews(app);
   }
 
   async shutdown(): Promise<void> {
-    if (this.#transport instanceof SmtpTransport) await this.#transport.close();
+    await this.#transport?.close?.();
   }
 }
 

@@ -1,7 +1,7 @@
 import { AssertionError } from 'node:assert';
 import type { Application } from '@marmeon/core';
 import type { Address, Mailable, MailMessage } from './message.ts';
-import { compose, type Mailer, type QueueMailOptions } from './mailer.ts';
+import { compose, type Mailer, type QueueMailOptions, type SentMail } from './mailer.ts';
 import { traceMail } from './trace.ts';
 
 type MailableClass<M extends Mailable> = abstract new (...args: any[]) => M;
@@ -25,10 +25,11 @@ export class MailFake implements Mailer {
     this.#app = app;
   }
 
-  async send(mailable: Mailable): Promise<MailMessage> {
+  /** Resolves with the composed mail; `messageId` is `undefined`, no provider took part. */
+  async send(mailable: Mailable): Promise<SentMail> {
     const message = await traceMail(this.#app, mailable.constructor.name, 'send', () => compose(mailable, this.#from));
     this.#sent.push({ mailable, message });
-    return message;
+    return { ...message, messageId: undefined };
   }
 
   async queue(mailable: Mailable, options: QueueMailOptions = {}): Promise<MailMessage> {

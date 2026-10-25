@@ -38,6 +38,7 @@ A provider lists drivers in a static record, by name. The record's key tells whi
 | `failedJobDrivers` | [Queues](queues.md#queue-drivers-and-failed-job-stores) | `QUEUE_FAILED_DRIVER` |
 | `diskDrivers` | [File storage](storage.md#disk-drivers) | `driver` of a disk in `defineStorage()` |
 | `cacheDrivers` | [Cache](cache.md#cache-drivers) | `CACHE_DRIVER` |
+| `mailDrivers` | [Mail transports](#mail-transports) | `MAIL_DRIVER` |
 
 A driver reads its own settings through a configuration of its own, which its provider lists in `static config`
 ([package development](package-development.md#configuration)). The factory resolves what it needs from the `container` it is given.
@@ -232,3 +233,45 @@ lock is atomic across processes is the driver's to guarantee.
 
 `prune` is optional on both halves. `marmeon cache:prune` calls each one that has it and adds up the counts; when neither has
 it, the command says the entries expire on their own. A store that expires entries itself, as Redis does, leaves it out.
+
+## Mail transports
+
+A mail transport implements `MailTransport` and is a `MailDriverFactory`: it gets the `name` it was registered under, the
+`container` and a `logger` of the `mail` channel, and returns the transport. `MAIL_DRIVER` selects it by name,
+like the built-in `log`, `array` and `smtp`:
+
+```ts title="src/PostmarkServiceProvider.ts"
+import type { MailDriverFactory } from '@marmeon/mail';
+
+const postmark: MailDriverFactory = ({ container }) => new PostmarkTransport(container.make(PostmarkConfig));
+
+export class PostmarkServiceProvider {
+  static config = [PostmarkConfig];
+  static mailDrivers = { postmark };
+}
+```
+
+```sh title=".env"
+MAIL_DRIVER=postmark
+```
+
+`send()` resolves with `{ messageId }`, the id the provider gave the mail, or `{ messageId: undefined }` when it gave none.
+`mailer.send()` hands it on as the `messageId` of the sent mail; it is what a delivery report from the provider refers to:
+
+```ts
+class PostmarkTransport implements MailTransport {
+  async send(message: MailMessage): Promise<MailReceipt> {
+    const response = await this.#client.post('/email', toPostmark(message));
+    return { messageId: response.MessageID };
+  }
+}
+```
+
+The transport is built at the start when `MAIL_DRIVER` selects it, so a factory that throws, or returns something without a
+`send()`, stops the start. A `MAIL_DRIVER` nobody brought stops it too, with the names there are. A transport may have a `close()`: the framework calls it at
+shutdown, to close connections it holds. Mails that are queued reach the
+same transport in the worker.
+
+A transport a package brings is responsible for its own route to the provider. The framework's `MAIL_SECURE` and `MAIL_REQUIRE_TLS`
+apply to `smtp` only: a transport of your own sends over TLS, checks the certificate of the provider and keeps its credentials out
+of the messages it throws and logs. Read your own settings from a configuration of your own, listed in `static config`.

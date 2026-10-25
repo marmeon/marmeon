@@ -5,8 +5,8 @@ import { MailConfig } from './config.ts';
 const resolve = async (env: Record<string, string>) => (await resolveConfig([MailConfig], env)).get(MailConfig) as MailConfig;
 
 describe('MailConfig: variable names', () => {
-  it('selects the mailer by MAIL_DRIVER', async () => {
-    expect((await resolve({ MAIL_DRIVER: 'smtp' })).mailer).toBe('smtp');
+  it('selects the transport by MAIL_DRIVER', async () => {
+    expect((await resolve({ MAIL_DRIVER: 'smtp' })).driver).toBe('smtp');
   });
 
   it('stops the start when MAIL_MAILER is set, instead of falling back to the log', async () => {

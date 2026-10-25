@@ -423,7 +423,7 @@ These are the settings a new app starts with. Each feature's page lists its own 
 | `SESSION_DRIVER` | `file` | Where sessions live: `file`, `database`, `redis` or `memory`. |
 | `CACHE_DRIVER` | `file` | Where the cache lives: `file`, `database`, `redis`, `memory` or a driver a package brings. |
 | `QUEUE_DRIVER` | `database` | Where queued jobs wait: `database`, `redis`, `sync` or a driver a package brings. |
-| `MAIL_DRIVER` | `log` | `log` writes every mail to the log, `smtp` sends it, `array` keeps it in memory. |
+| `MAIL_DRIVER` | `log` | Where mails go: `log` writes every mail to the log, `smtp` sends it, `array` keeps it in memory, or a transport a package brings. |
 
 ## Every variable
 
