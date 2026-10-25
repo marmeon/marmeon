@@ -9,7 +9,7 @@ import { expectTypeOf } from 'vitest';
 import type { ListPeopleController } from './controllers/ListPeopleController.ts';
 
 export function OnThePeoplePage() {
-  const [query, setQuery] = useQueryState('user-profile.people', { only: ['people'], debounce: 300, history: 'replace' });
+  const [query, setQuery] = useQueryState('user-profile.people', { only: ['people'], debounceMs: 300, history: 'replace' });
   // The parsed query, defaults filled in — what the controller's ctx.query is.
   expectTypeOf(query).toEqualTypeOf<QueryOf<ListPeopleController>>();
   expectTypeOf(query).toEqualTypeOf<{ q: string; sort: 'name' | '-name' | 'joined' | '-joined'; page: number; per_page: 10 | 25 | 50 }>();
@@ -24,6 +24,9 @@ export function OnThePeoplePage() {
   // Object literal may only specify known properties, and 'srot' does not exist in type 'QueryUpdate<{ page: number; per_page: 10 | 25 | 50; q: string; sort: …; }>'.
   // @ts-expect-error
   setQuery({ srot: 'name' });
+  // The unit is in the name: Object literal may only specify known properties, and 'debounce' does not exist in type '…'. Did you mean 'debounceMs'?
+  // @ts-expect-error
+  useQueryState('user-profile.people', { only: ['people'], debounce: 300 });
   // Type '"stats"' is not assignable to type '"auth" | "bell" | "errors" | "locales" | "now" | "people"'.
   // @ts-expect-error
   useQueryState('user-profile.people', { only: ['stats'] });

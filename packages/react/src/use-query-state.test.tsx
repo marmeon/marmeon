@@ -20,7 +20,7 @@ const DEFAULTS = { q: '', sort: 'name' };
 const routes: RouteManifest = { people: { method: 'get', path: '/people' }, find: { method: 'get', path: '/people/find' }, show: { method: 'get', path: '/users/:user' } };
 
 function People({ people }: { people: string[] }) {
-  const [query, setQuery] = useQueryState('people', { only: ['people'], debounce: 30, history: 'replace' });
+  const [query, setQuery] = useQueryState('people', { only: ['people'], debounceMs: 30, history: 'replace' });
   return (
     <main>
       <input data-testid="q" value={query.q as string} onChange={(event) => setQuery({ q: event.target.value })} />

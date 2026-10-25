@@ -12,4 +12,4 @@ import { resolvePage } from './pages.ts';
 // `progress`: the progress bar for visits slower than 250 ms (opt-in — an app without it carries none of its code).
 // `viewTransition: 'react'`: each page change renders in a React transition with its direction — the views' <ViewTransition>
 // animate (the avatar from the list into the profile, the page sliding by direction: styles/app.css); none under reduced motion.
-void createMarmeonApp({ resolve: resolvePage, title, routes, layout, layer, messages, progress: progressBar({ delay: 250 }), confirm: Confirm, viewTransition: 'react' });
+void createMarmeonApp({ resolve: resolvePage, title, routes, layout, layer, messages, progress: progressBar({ delayMs: 250 }), confirm: Confirm, viewTransition: 'react' });

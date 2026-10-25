@@ -12,7 +12,7 @@ import { groupByPage } from '../search-groups.ts';
  * results are live, so the layer has no submit button); a shared link or a reload shows the page.
  */
 export default function Search({ results }: PageProps<SearchController>) {
-  const [query, setQuery] = useQueryState('docs.search', { only: ['results'], debounce: 200, history: 'replace' });
+  const [query, setQuery] = useQueryState('docs.search', { only: ['results'], debounceMs: 200, history: 'replace' });
   const route = useRoute();
   const { isLayer } = useLayer<SearchController>();
   const Title = isLayer ? 'h2' : 'h1';

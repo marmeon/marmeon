@@ -20,7 +20,7 @@ function Links() {
       <Link href="/in-view" prefetch="viewport" data-testid="view">
         In view
       </Link>
-      <Link href="/both" prefetch={['hover', 'viewport']} cacheFor={5000} data-testid="both">
+      <Link href="/both" prefetch={['hover', 'viewport']} cacheForMs={5000} data-testid="both">
         Both
       </Link>
       <Link href="/partial" prefetch="viewport" only={['stats']} data-testid="partial">
@@ -142,7 +142,7 @@ describe('<Link prefetch="viewport">', () => {
     expect(requests).toEqual([]);
   });
 
-  it('works next to hover, with the link’s cacheFor', async () => {
+  it('works next to hover, with the link’s cacheForMs', async () => {
     await mount(page('Links', '/a'));
     await scrollTo('both');
     await wait(300);

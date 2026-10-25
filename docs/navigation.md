@@ -117,7 +117,7 @@ is under way gets `data-pending`.
 | `preserveUrl` | Keeps the address bar's URL, for "load more". |
 | `async` | Runs in the background: no progress bar, and it cancels no other visit. |
 | `only`, `except`, `reset` | A partial reload of the page on screen. See [deferred props](deferred-props.md#partial-reloads). |
-| `prefetch`, `cacheFor` | Fetches the page ahead. See [prefetching](#prefetching). |
+| `prefetch`, `cacheForMs` | Fetches the page ahead. See [prefetching](#prefetching). |
 | `preload` | Loads the target's code ahead, without asking the server. See [loading the code only](#loading-the-code-only). |
 | `instant` | Shows the target's placeholder at once. See [instant visits](#instant-visits). |
 | `layer` | Opens the page as a dialog over this one. See [dialogs](dialogs.md). |
@@ -179,12 +179,12 @@ A prefetched page shows at once when the user clicks:
 
 ```tsx
 <Link route="notes.show" params={{ note: note.id }} prefetch>{note.title}</Link>
-<Link route="notes.index" prefetch="mount" cacheFor={60_000}>Notes</Link>
+<Link route="notes.index" prefetch="mount" cacheForMs={60_000}>Notes</Link>
 ```
 
 `prefetch` or `prefetch="hover"` fetches the page when the pointer rests on the link for 75 milliseconds, or presses it.
 `prefetch="mount"` fetches it as soon as the link renders, and `prefetch={['hover', 'mount']}` does both. The page is kept for
-`cacheFor` milliseconds, 30 seconds by default.
+`cacheForMs` milliseconds, 30 seconds by default.
 
 `prefetch="viewport"` fetches the page when its link scrolls into view: a feature list, a footer, the next pages of an article.
 It is the third trigger, and it combines with the others: `prefetch={['hover', 'viewport']}`. The limits are fixed, because a
@@ -198,7 +198,7 @@ page with hundreds of links must not send hundreds of requests while someone scr
 - Nothing is fetched while the document is hidden, with Save-Data on, or on a `2g` or `slow-2g` connection. Without
   `IntersectionObserver` the trigger does nothing.
 
-A viewport prefetch is an ordinary one: `Purpose: prefetch`, `cacheFor`, 30 pages at most, dropped by any write. Data in the
+A viewport prefetch is an ordinary one: `Purpose: prefetch`, `cacheForMs`, 30 pages at most, dropped by any write. Data in the
 viewport stays opt-in for each link and is never a default, since every request runs the route's middleware and controller for
 a click that may never come. Use it for a handful of links that are likely to be clicked, not for a long list of user content.
 
@@ -307,10 +307,10 @@ A new app shows a thin bar at the top of the window for visits slower than 250 m
 `bootstrap/client.tsx`:
 
 ```tsx
-void createMarmeonApp({ resolve: resolvePage, title, routes, messages, progress: progressBar({ delay: 250 }) });
+void createMarmeonApp({ resolve: resolvePage, title, routes, messages, progress: progressBar({ delayMs: 250 }) });
 ```
 
-`progressBar()` takes `delay` and `color`, and the CSS variables `--marmeon-progress-color`, `--marmeon-progress-height` and
+`progressBar()` takes `delayMs` and `color`, and the CSS variables `--marmeon-progress-color`, `--marmeon-progress-height` and
 `--marmeon-progress-z-index` style it. Visits in the background never show it. Leave the option out, and the app carries none of
 its code.
 
@@ -322,7 +322,8 @@ const saving = usePending('notes.update', { delay: 'short' });
 <button disabled={saving} data-pending={saving || undefined}>Save</button>
 ```
 
-`delay: 'short'` waits 150 milliseconds before it says yes, so fast requests do not flicker. An indicator of your own is a
+`delay: 'short'` waits 150 milliseconds before it says yes, so fast requests do not flicker. `delayMs: 300` waits that many
+milliseconds instead; give one of the two. An indicator of your own is a
 function of the visit events that returns its stop:
 
 ```ts title="bootstrap/spinner.ts"

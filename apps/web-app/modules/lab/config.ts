@@ -14,7 +14,7 @@ export const LabConfig = defineConfig('lab', {
   }),
   resolve: (e) => ({
     enabled: e.LAB_PAGES === undefined ? environment.isDevelopment(e) : e.LAB_PAGES === 'true',
-    delay: e.LAB_DELAY,
+    delayMs: e.LAB_DELAY,
   }),
 });
 export type LabConfig = ConfigOf<typeof LabConfig>;

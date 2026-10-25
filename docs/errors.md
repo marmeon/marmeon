@@ -535,7 +535,7 @@ included, gets the code alone.
 | R13 | `<Head>` | `<Head>` inside an island. In production it renders nothing. |
 | R14 | layers, islands | An optimistic update or a reload while rendering on the server. |
 | R15 | `useIsland` | `useIsland()` outside the view of an island. |
-| R16 | `createMarmeonApp` | `progress` is not an indicator: pass `progressBar({ delay })` or your own. |
+| R16 | `createMarmeonApp` | `progress` is not an indicator: pass `progressBar({ delayMs })` or your own. |
 | R17 | `<Pagination>` | A warning: the page's query schema has no field for the page number, so the links would lead to the first page. |
 | R18 | `useTable` | A table changed while rendering on the server. |
 | R19 | layouts | A layout's `error` that is no component. |

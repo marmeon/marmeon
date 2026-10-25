@@ -6,4 +6,4 @@ import { messages } from './i18n.ts';
 import { resolvePage } from './pages.ts';
 
 // `progress`: the progress bar for visits slower than 250 ms (opt-in — leave it out for none, or pass your own indicator).
-void createMarmeonApp({ resolve: resolvePage, title, routes, messages, progress: progressBar({ delay: 250 }) });
+void createMarmeonApp({ resolve: resolvePage, title, routes, messages, progress: progressBar({ delayMs: 250 }) });

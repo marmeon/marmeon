@@ -38,10 +38,10 @@ export type PrefetchTrigger = 'hover' | 'mount' | 'viewport';
 export type PrefetchSetting = boolean | PrefetchTrigger | readonly PrefetchTrigger[] | undefined;
 
 /** How long a prefetched page is used by default: 30 s. */
-export const DEFAULT_PREFETCH_CACHE_FOR = 30_000;
+export const DEFAULT_PREFETCH_CACHE_FOR_MS = 30_000;
 
 /** How long the pointer rests on a link before it prefetches (75 ms): passing over it does not. */
-export const HOVER_PREFETCH_DELAY = 75;
+export const HOVER_PREFETCH_DELAY_MS = 75;
 
 const NONE: ReadonlySet<PrefetchTrigger> = new Set();
 

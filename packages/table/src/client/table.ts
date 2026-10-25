@@ -45,7 +45,7 @@ export interface TableControllerOptions {
   /** The history entry whose selection it is — a layer's (its `entry`), default the page's. */
   entry?: string;
   /** Wait this long (ms) after the last keystroke before searching. Default 300. */
-  searchDebounce?: number;
+  searchDebounceMs?: number;
 }
 
 /**
@@ -198,13 +198,13 @@ export class TableController<T extends AnyTableData = AnyTableData> {
   }
 
   /**
-   * Searches the searchable columns — after a pause in typing (`searchDebounce`, default 300 ms), replacing the current history
+   * Searches the searchable columns — after a pause in typing (`searchDebounceMs`, default 300 ms), replacing the current history
    * entry instead of adding one: Back after a search goes to the entry before it.
    */
   search(value: string): void {
     const data = this.#data;
     if (!data.search) refuse('[marmeon:C10]', data.name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && `The table "${data.name}" cannot search — none of its visible columns is searchable.`);
-    this.#set({ [data.query.search]: value === '' ? undefined : value, ...this.#firstPage() }, { debounce: this.#options.searchDebounce ?? 300, history: 'replace' });
+    this.#set({ [data.query.search]: value === '' ? undefined : value, ...this.#firstPage() }, { debounceMs: this.#options.searchDebounceMs ?? 300, history: 'replace' });
   }
 
   /** Goes to page `page` (pages by number). */
@@ -235,11 +235,11 @@ export class TableController<T extends AnyTableData = AnyTableData> {
     return page.type === 'offset' ? { [query.page]: undefined } : { [query.cursor]: undefined };
   }
 
-  #set(patch: Record<string, unknown>, { debounce = 0, history = 'push' }: { debounce?: number; history?: 'push' | 'replace' } = {}): void {
+  #set(patch: Record<string, unknown>, { debounceMs = 0, history = 'push' }: { debounceMs?: number; history?: 'push' | 'replace' } = {}): void {
     const only = this.#only();
     const state = (this.#query ??= this.#navigator.use(queryState).create());
     // Another sort, filter or page is another list: the table's prop is replaced, never merged (the default of `only`).
-    state.options = { ...(only ? { only } : {}), debounce, history };
+    state.options = { ...(only ? { only } : {}), debounceMs, history };
     state.set(patch);
   }
 

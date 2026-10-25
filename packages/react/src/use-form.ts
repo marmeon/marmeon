@@ -68,11 +68,11 @@ export interface FormOptions<F = Record<string, unknown>> {
 export interface LiveValidationSetting<F> {
   /**
    * When: `blur` (the default) — call `form.validate('email')` in `onBlur`; a field that shows an error is checked again while
-   * it is typed into, so fixing it clears the message. `change` — while typing, after a pause (`debounce`).
+   * it is typed into, so fixing it clears the message. `change` — while typing, after a pause (`debounceMs`).
    */
   on?: 'blur' | 'change';
   /** The pause after typing before a check (ms, default 300). */
-  debounce?: number;
+  debounceMs?: number;
   /** Which fields — default all of them (but passwords). (`LiveField<F>`, spelled out: a message lists the names, not the alias.) */
   fields?: readonly (PasswordNeverLive | (keyof { [K in keyof F & string as Lowercase<K> extends `${string}password${string}` ? never : K]: true } & string))[];
 }
@@ -415,7 +415,7 @@ function useLiveValidation(
       hasError: (field) => errorsRef.current[field] !== undefined,
       on: config.on ?? 'blur',
       // Unset ones stay undefined: the live validation's defaults apply.
-      debounce: config.debounce as number,
+      debounceMs: config.debounceMs as number,
       fields: config.fields as readonly string[],
       onResult: (outcome) =>
         setErrors((current) => {
@@ -425,7 +425,7 @@ function useLiveValidation(
         }),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `config` is a new object each render: the memo follows its URL, method, trigger, debounce and field list
-  }, [navigator, target?.url, method, config === undefined, config?.on, config?.debounce, fieldsKey]);
+  }, [navigator, target?.url, method, config === undefined, config?.on, config?.debounceMs, fieldsKey]);
   // Nothing scheduled or under way outlives the form (a remount gets the same instance back: cancel, never close).
   useEffect(() => () => live?.cancel(), [live]);
   useSyncExternalStore(live?.subscribe ?? noSubscription, () => live?.pending ?? NOTHING_PENDING, () => NOTHING_PENDING);

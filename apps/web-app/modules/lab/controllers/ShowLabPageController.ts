@@ -26,7 +26,7 @@ export abstract class LabController extends Controller {
 export class ShowStreamingLabController extends LabController {
   handle() {
     this.enabled();
-    return this.view('lab/Streaming', { slow: { delay: this.config.delay, text: `Rendered ${this.config.delay} ms after the shell.` }, now: new Date() });
+    return this.view('lab/Streaming', { slow: { delayMs: this.config.delayMs, text: `Rendered ${this.config.delayMs} ms after the shell.` }, now: new Date() });
   }
 }
 
@@ -50,7 +50,7 @@ export class ShowBrowserOnlyLabController extends LabController {
 export class ShowLateErrorLabController extends LabController {
   handle() {
     this.enabled();
-    return this.view('lab/LateError', { late: { delay: Math.min(this.config.delay, 300) } });
+    return this.view('lab/LateError', { late: { delayMs: Math.min(this.config.delayMs, 300) } });
   }
 }
 

@@ -204,7 +204,7 @@ const form = useForm('notes.update', { title: note.title, body: note.body }, { p
 ```
 
 By default a field is checked when the user leaves it: call `form.validate('title')` in `onBlur`. A field that shows an error is
-checked again while it is typed into, so fixing it clears the message. `{ on: 'change', debounce: 300 }` checks while typing, after
+checked again while it is typed into, so fixing it clears the message. `{ on: 'change', debounceMs: 300 }` checks while typing, after
 a pause, and `fields` limits the check to some fields. `form.validating(field)` says that a check is under way. `<Form validate>`
 does the same, and calls the check on blur by itself. A form for a `GET` route has nothing to validate live, so `validate` does
 nothing there.

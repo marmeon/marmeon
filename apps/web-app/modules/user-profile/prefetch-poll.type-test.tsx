@@ -10,7 +10,7 @@ import type { ShowUserProfileController } from './controllers/ShowUserProfileCon
 export function OnTheProfilePage() {
   const router = useRouter<ShowUserProfileController>();
   void router.prefetch('/users/7');
-  void router.prefetch('/users/7', { cacheFor: 60_000, data: { q: 'ada' } });
+  void router.prefetch('/users/7', { cacheForMs: 60_000, data: { q: 'ada' } });
   void router.reload({ data: { tab: 'links' }, only: ['stats'], preserveUrl: true, async: true });
   usePoll<ShowUserProfileController>(15_000, { only: ['activity'] });
   usePoll(15_000, {}, { keepAlive: true, autoStart: false });
@@ -18,6 +18,9 @@ export function OnTheProfilePage() {
   // A prefetch is always a GET: Object literal may only specify known properties, and 'method' does not exist in type 'PrefetchOptions'.
   // @ts-expect-error
   void router.prefetch('/logout', { method: 'post' });
+  // The unit is in the name: Object literal may only specify known properties, and 'cacheFor' does not exist in type 'PrefetchOptions'. Did you mean 'cacheForMs'?
+  // @ts-expect-error
+  void router.prefetch('/users/7', { cacheFor: 60_000 });
   // Type '"activty"' is not assignable to type '"activity" | "auth" | … | "stats"'. Did you mean '"activity"'?
   // @ts-expect-error
   usePoll<ShowUserProfileController>(15_000, { only: ['activty'] });
@@ -27,7 +30,12 @@ export function OnTheProfilePage() {
       <Link route="user-profile.show" params={{ user: 7 }} prefetch>
         Grace
       </Link>
-      <Link route="user-profile.show" params={{ user: 7 }} prefetch={['hover', 'mount']} cacheFor={10_000}>
+      <Link route="user-profile.show" params={{ user: 7 }} prefetch={['hover', 'mount']} cacheForMs={10_000}>
+        Grace
+      </Link>
+      {/* Property 'cacheFor' does not exist on type 'IntrinsicAttributes & …'. Did you mean 'cacheForMs'? */}
+      {/* @ts-expect-error */}
+      <Link href="/users/7" prefetch cacheFor={10_000}>
         Grace
       </Link>
       <Link href="/users/7" prefetch="mount">

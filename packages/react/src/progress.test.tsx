@@ -52,7 +52,7 @@ const bar = () => document.querySelector('[data-marmeon-progress]');
 
 describe('the progress bar is opt-in', () => {
   it('progressBar() shows the core’s bar while a slow visit is under way', async () => {
-    await mount(progressBar({ delay: 0 }));
+    await mount(progressBar({ delayMs: 0 }));
     await act(async () => (container.querySelector('[data-testid="go"]') as HTMLElement).click());
     await wait(20);
     expect(bar()).not.toBeNull();
@@ -87,9 +87,9 @@ describe('the progress bar is opt-in', () => {
   });
 
   it('options or false for progress say what to import instead', () => {
-    // @ts-expect-error — progress takes an indicator: progressBar({ delay: 250 })
+    // @ts-expect-error — progress takes an indicator: progressBar({ delayMs: 250 })
     const before: Parameters<typeof MarmeonApp>[0]['progress'] = { delay: 250 };
-    expect(() => progressIndicator(before)).toThrow("[marmeon:R16] progress takes an indicator: createMarmeonApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@marmeon/react'.");
+    expect(() => progressIndicator(before)).toThrow("[marmeon:R16] progress takes an indicator: createMarmeonApp({ progress: progressBar({ delayMs: 250 }) }) — import { progressBar } from '@marmeon/react'.");
     // @ts-expect-error — leave progress out for none
     const off: Parameters<typeof MarmeonApp>[0]['progress'] = false;
     expect(() => progressIndicator(off)).toThrow('[marmeon:R16]');

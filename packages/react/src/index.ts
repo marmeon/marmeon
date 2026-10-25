@@ -4,7 +4,7 @@
  * and the progress bar come from the core (import `Navigator`, `createPoll` … from there).
  */
 export { useFeature, usePage, useRouter } from './app.tsx';
-// The progress bar (opt-in): `createMarmeonApp({ progress: progressBar({ delay: 250 }) })`.
+// The progress bar (opt-in): `createMarmeonApp({ progress: progressBar({ delayMs: 250 }) })`.
 export { progressBar } from '@marmeon/http/client';
 export type { ProgressIndicator, ViewTransitionOption } from '@marmeon/http/client';
 export type { PageInfo } from '@marmeon/http/page';

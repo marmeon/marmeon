@@ -68,7 +68,7 @@ export type { Feature, FeatureHook, FeatureHooks, FeatureHost, Slot, PendingVisi
 export { markBusy } from './busy.ts';
 export { loadPageMessages, pageLocale } from './messages.ts';
 export type { PageMessages } from './messages.ts';
-export { HOVER_PREFETCH_DELAY, isCurrentLink, prefetchTriggers, prefetchUrlOf, visitUrlOf } from './links.ts';
+export { HOVER_PREFETCH_DELAY_MS, isCurrentLink, prefetchTriggers, prefetchUrlOf, visitUrlOf } from './links.ts';
 export { defaultFormEntries, dirtyPaths, fieldPath, firstErrors, FORM_METHOD_FIELD, FORM_TOKEN_FIELD, formEntries, formObject, isDirtyPath, restoreFormEntries, sameEntries, sensitiveControl } from './forms.ts';
 export { defaultTitle, TitleRegistry } from './title.ts';
 export { Region, regionInitial } from './region.ts';

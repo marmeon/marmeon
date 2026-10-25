@@ -23,9 +23,14 @@ describe('progress bar', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  it('names the unit of its delay', () => {
+    // @ts-expect-error -- the option is delayMs
+    showProgress(events(), { delay: 250 })();
+  });
+
   it('appears only for visits slower than the delay, and goes away when they finish', () => {
     const source = events();
-    const stop = showProgress(source, { delay: 250 });
+    const stop = showProgress(source, { delayMs: 250 });
 
     source.emit('start', visit);
     vi.advanceTimersByTime(200);
@@ -47,7 +52,7 @@ describe('progress bar', () => {
 
   it('stays while any request runs (a cancelled one finishing does not end the newer one)', () => {
     const source = events();
-    const stop = showProgress(source, { delay: 0 });
+    const stop = showProgress(source, { delayMs: 0 });
     source.emit('start', visit);
     source.emit('start', visit);
     vi.advanceTimersByTime(10);

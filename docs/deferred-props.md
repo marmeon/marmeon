@@ -238,7 +238,7 @@ export default function Dashboard(_props: PageProps<ShowDashboardController>) {
     <main>
       <Head title="Dashboard" />
       <Island route="notes.recent" query={{ limit: 3 }} fallback={loading} />
-      <Island route="notes.activity" load="visible" poll={30_000} fallback={loading} unauthorized={<p>Confirm your address to see this.</p>} />
+      <Island route="notes.activity" load="visible" pollMs={30_000} fallback={loading} unauthorized={<p>Confirm your address to see this.</p>} />
     </main>
   );
 }
@@ -252,7 +252,7 @@ export default function Dashboard(_props: PageProps<ShowDashboardController>) {
 | `error` | Shown when it failed. A function gets `retry`. Default: a short notice. |
 | `load` | `'visible'` loads it once it scrolls into view. Default `'eager'`. |
 | `buffer` | With `load="visible"`, starts that many pixels early. |
-| `poll`, `keepAlive` | Reloads it every `poll` milliseconds once it is loaded, paused in a hidden tab unless `keepAlive`. |
+| `pollMs`, `keepAlive` | Reloads it every `pollMs` milliseconds once it is loaded, paused in a hidden tab unless `keepAlive`. |
 | `as`, `className`, `id` | The element around it, a `div` by default. It carries `data-island` and `data-status`. |
 
 ### Inside an island

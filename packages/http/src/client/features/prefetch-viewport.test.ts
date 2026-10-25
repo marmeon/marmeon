@@ -226,10 +226,10 @@ describe('prefetch in the viewport', () => {
     expect(win.watching.size).toBe(0);
   });
 
-  it('keeps the options of the link (cacheFor)', async () => {
+  it('keeps the options of the link (cacheForMs)', async () => {
     const { win, prefetches, answer } = setup();
     const element = link();
-    prefetches.observe(element, '/page', { cacheFor: 1000 });
+    prefetches.observe(element, '/page', { cacheForMs: 1000 });
     win.see(element, 1);
     await vi.advanceTimersByTimeAsync(250);
     await answer();

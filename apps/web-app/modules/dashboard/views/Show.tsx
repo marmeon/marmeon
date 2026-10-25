@@ -42,7 +42,7 @@ export default function Show(_props: Props) {
       {/* Further down on purpose: it loads once it scrolls into view, then polls (paused while the tab is hidden). */}
       <section aria-labelledby="activity" className="below-the-fold">
         <h2 id="activity">{t('activity.title')}</h2>
-        <Island route="dashboard.activity" load="visible" buffer={100} poll={ACTIVITY_POLL} fallback={loading} />
+        <Island route="dashboard.activity" load="visible" buffer={100} pollMs={ACTIVITY_POLL} fallback={loading} />
       </section>
     </main>
   );

@@ -562,7 +562,7 @@ export declare class TableController<T extends AnyTableData = AnyTableData> {
 export interface TableControllerOptions {
     prop?: string;
     entry?: string;
-    searchDebounce?: number;
+    searchDebounceMs?: number;
 }
 // TableData
 export interface TableData<R extends object = Record<string, unknown>, C extends string = string, F extends string = string, A extends string = string, B extends string = string, E extends string = string, S extends string = C> {

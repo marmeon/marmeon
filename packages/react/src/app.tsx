@@ -102,7 +102,7 @@ export interface ClientRouter<T = unknown> {
   /** The current page again from the server, keeping scroll position and component state — `reload({ only: ['stats'] })`. */
   reload(options?: ReloadOptions<T>): Promise<PageInfo | undefined>;
   /**
-   * Fetches a page ahead of the visit — GET only, kept in memory for `cacheFor` ms (default 30 s); a visit of that
+   * Fetches a page ahead of the visit — GET only, kept in memory for `cacheForMs` (default 30 s); a visit of that
    * URL then shows it at once. What `<Link prefetch>` does on hover.
    */
   prefetch(url: string, options?: PrefetchOptions): Promise<void>;
@@ -296,7 +296,7 @@ export function progressIndicator(progress: MarmeonAppProps['progress'] | unknow
   if (typeof progress === 'function') return progress as ProgressIndicator;
   throw new TypeError(
     (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
-      ? `[marmeon:R16] progress takes an indicator: createMarmeonApp({ progress: progressBar({ delay: 250 }) }) — import { progressBar } from '@marmeon/react'. Leave it out for no progress bar.`
+      ? `[marmeon:R16] progress takes an indicator: createMarmeonApp({ progress: progressBar({ delayMs: 250 }) }) — import { progressBar } from '@marmeon/react'. Leave it out for no progress bar.`
       : '[marmeon:R16]',
   );
 }
@@ -312,8 +312,8 @@ export interface MarmeonAppProps {
   /** The layout of pages without their own `layout` — the same on the server and in the browser. */
   layout?: DefaultLayout;
   /**
-   * An indicator of visits under way (opt-in): `progressBar({ delay: 250 })` — the core's bar, shown only for visits slower
-   * than `delay` — or the app's own (`(navigator) => stop`). None by default: `aria-busy` on `<html>`, `data-pending` on links and
+   * An indicator of visits under way (opt-in): `progressBar({ delayMs: 250 })` — the core's bar, shown only for visits slower
+   * than `delayMs` — or the app's own (`(navigator) => stop`). None by default: `aria-busy` on `<html>`, `data-pending` on links and
    * `usePending()` are there either way.
    */
   progress?: ProgressIndicator;

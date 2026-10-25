@@ -32,7 +32,7 @@ describe('collectRouteReferences', () => {
     const { names, problems } = collect(`
       import { useQueryState } from '@marmeon/react';
       export default function People() {
-        const [query, setQuery] = useQueryState('user-profile.show', { only: ['people'], debounce: 300 });
+        const [query, setQuery] = useQueryState('user-profile.show', { only: ['people'], debounceMs: 300 });
         return null;
       }
     `);

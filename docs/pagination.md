@@ -154,7 +154,7 @@ import { Pagination } from '../../../layouts/Pagination.tsx';
 import type { ListNotesController } from '../controllers/ListNotesController.ts';
 
 export default function Index({ notes }: PageProps<ListNotesController>) {
-  const [query, setQuery] = useQueryState('notes.index', { only: ['notes'], debounce: 300, history: 'replace' });
+  const [query, setQuery] = useQueryState('notes.index', { only: ['notes'], debounceMs: 300, history: 'replace' });
 
   return (
     <main>
@@ -181,7 +181,7 @@ have is a compile error.
 | --- | --- | --- |
 | `only`, `except` | every prop | The props the visit reloads. |
 | `reset` | the props of `only` | Props to replace instead of merging. Another query is another list. |
-| `debounce` | `0` | Milliseconds to wait after the last change before asking the server. |
+| `debounceMs` | `0` | Milliseconds to wait after the last change before asking the server. |
 | `history` | `'push'` (always `'replace'` in a layer) | `'push'` adds a history entry per change, so Back undoes a sort. `'replace'` replaces the current entry, for typing, so Back leaves the list. |
 | `preserveScroll` | `true` | Keeps the scroll position. |
 

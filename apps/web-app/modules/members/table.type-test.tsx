@@ -40,6 +40,9 @@ export function Typed({ members }: { members: Members }) {
   table.exportUrl('csv');
   // @ts-expect-error — no such export
   table.exportUrl('xlsx');
+  // @ts-expect-error — the unit is in the name: searchDebounceMs
+  useTable(members, { searchDebounce: 300 });
+  useTable(members, { searchDebounceMs: 300 });
   useTable(members, {
     labels: {
       column: (name) => {

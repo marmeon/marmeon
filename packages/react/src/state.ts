@@ -5,12 +5,10 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { useRouterContext } from './app.tsx';
 
 /** How long `usePending(name, { delay: 'short' })` waits before it says so — a fast request shows nothing (ms). */
-export const SHORT_PENDING_DELAY = 150;
+export const SHORT_PENDING_DELAY_MS = 150;
 
-export interface UsePendingOptions {
-  /** Say so only once it has taken this long: `'short'` (150 ms) or ms — no flicker for a fast request. Default: at once. */
-  delay?: 'short' | number;
-}
+/** Say so only once the request has taken this long, so a fast one shows no flicker: `delay: 'short'` (150 ms) or `delayMs` (ms). Default: at once. Give one of them. */
+export type UsePendingOptions = { delay?: 'short'; delayMs?: never } | { delay?: never; delayMs?: number };
 
 const noSubscription = () => () => {};
 
@@ -23,7 +21,7 @@ const noSubscription = () => () => {};
  * <button disabled={saving} data-pending={saving || undefined}>Save</button>
  * ```
  */
-export function usePending<const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>, { delay = 0 }: UsePendingOptions = {}): boolean {
+export function usePending<const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>, { delay, delayMs = 0 }: UsePendingOptions = {}): boolean {
   const navigator = useRouterContext().navigator();
   const subscribe = useCallback(
     (listener: () => void) => {
@@ -34,7 +32,7 @@ export function usePending<const N extends BrowserRouteNameInput>(name: CheckBro
     [navigator],
   );
   const pending = useSyncExternalStore(navigator ? subscribe : noSubscription, () => navigator?.isPending(name) ?? false, () => false);
-  const wait = delay === 'short' ? SHORT_PENDING_DELAY : delay;
+  const wait = delay === 'short' ? SHORT_PENDING_DELAY_MS : delayMs;
   const [late, setLate] = useState(false);
   useEffect(() => {
     if (!pending || wait <= 0) {

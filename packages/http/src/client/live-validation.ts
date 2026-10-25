@@ -125,13 +125,13 @@ export interface LiveValidationOptions {
   readonly hasError?: (field: string) => boolean;
   readonly on?: LiveValidationTrigger;
   /** The pause after typing before a check (ms) — default 300. */
-  readonly debounce?: number;
+  readonly debounceMs?: number;
   /** The fields that may be checked — default every field (but passwords). */
   readonly fields?: readonly string[];
 }
 
 /** The default pause after typing before a live validation (ms). */
-export const DEFAULT_LIVE_VALIDATION_DEBOUNCE = 300;
+export const DEFAULT_LIVE_VALIDATION_DEBOUNCE_MS = 300;
 
 /**
  * The live validation of one form: which fields were touched, when to check, which check is under way (a newer one aborts it),
@@ -173,7 +173,7 @@ export class LiveValidation {
     if (this.#closed || !this.eligible(field)) return;
     this.#touched.add(field);
     this.#versions.set(field, (this.#versions.get(field) ?? 0) + 1);
-    if (this.#options.on === 'change' || this.#options.hasError?.(field)) this.#schedule(this.#options.debounce ?? DEFAULT_LIVE_VALIDATION_DEBOUNCE);
+    if (this.#options.on === 'change' || this.#options.hasError?.(field)) this.#schedule(this.#options.debounceMs ?? DEFAULT_LIVE_VALIDATION_DEBOUNCE_MS);
   }
 
   /** `field` was left: the touched fields are checked now — when it was touched (tabbing through an empty form asks nothing). */

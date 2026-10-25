@@ -1,6 +1,6 @@
 /**
  * Prefetching: a page fetched ahead of its visit (a hovered link) — GET only, `Purpose: prefetch`, in memory only.
- * Used once, by the visit it was fetched for, within its `cacheFor`; dropped when the document is left (signing out) and
+ * Used once, by the visit it was fetched for, within its `cacheForMs`; dropped when the document is left (signing out) and
  * when a non-GET visit changes what it shows. Its code loads with the first prefetch (`prefetchWith` in `lazy.ts`). A link that
  * prefetches when it scrolls into view (`observe`) goes through a short queue with fixed limits, so a long list is no flood.
  */
@@ -9,13 +9,13 @@ import { LruMap } from '../cache.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature, slot } from '../feature.ts';
 import { takeFlash } from '../flash.ts';
-import { DEFAULT_PREFETCH_CACHE_FOR } from '../links.ts';
+import { DEFAULT_PREFETCH_CACHE_FOR_MS } from '../links.ts';
 import { buildRequest } from '../request.ts';
 
 /** A prefetch: always a GET (`data` goes into the query string). */
 export interface PrefetchOptions {
   /** How long the prefetched page may be shown instead of asking the server, in ms (default 30 000). */
-  cacheFor?: number;
+  cacheForMs?: number;
   data?: Record<string, unknown>;
   /** Fetched as a layer's request — for `<Link layer prefetch>` (the visit that opens it takes it). */
   layer?: boolean;
@@ -135,7 +135,7 @@ export class Prefetches {
 
   /**
    * Fetches the page of `url` ahead of its visit (a hovered link): GET only, with `Purpose: prefetch`, so the server can tell
-   * and leave out side effects. A visit of the same URL within `cacheFor` shows it without asking again — or waits for it,
+   * and leave out side effects. A visit of the same URL within `cacheForMs` shows it without asking again — or waits for it,
    * if it is still under way. No events, no progress bar, no fallback: a prefetch that fails (offline, 5xx, a 409 after a
    * deployment, anything but a page) is forgotten, and the visit asks the server itself.
    */
@@ -146,14 +146,14 @@ export class Prefetches {
     const existing = this.#pages.peek(key);
     if (existing && !existing.expired()) return existing.page.then(() => undefined);
 
-    const cacheFor = options.cacheFor ?? DEFAULT_PREFETCH_CACHE_FOR;
+    const cacheForMs = options.cacheForMs ?? DEFAULT_PREFETCH_CACHE_FOR_MS;
     const controller = new AbortController();
     const entry: Prefetched = {
       controller,
       page: this.#fetchAhead(path, controller.signal, options.layer === true).then((page) => {
         entry.settled = true;
         // Kept from when it arrived; nothing to keep → the visit asks the server.
-        if (page && this.#pages.peek(key) === entry) entry.expiresAt = Date.now() + cacheFor;
+        if (page && this.#pages.peek(key) === entry) entry.expiresAt = Date.now() + cacheForMs;
         else if (this.#pages.peek(key) === entry) this.#pages.delete(key);
         return page;
       }),

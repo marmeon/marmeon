@@ -1,6 +1,6 @@
 /**
- * Polling, UI-free (part of the client core — `usePoll` of @marmeon/react builds on it): runs `run` every `interval` ms — one at a time, the
- * next one `interval` after the last one finished — and pauses while the tab is in the background.
+ * Polling, UI-free (part of the client core — `usePoll` of @marmeon/react builds on it): runs `run` every `intervalMs` ms — one at a time, the
+ * next one `intervalMs` after the last one finished — and pauses while the tab is in the background.
  */
 
 /** The parts of `document` a poll uses (a fake one in tests). */
@@ -27,9 +27,9 @@ export interface Poll {
  * Polls with `run` (a background reload): paused while `document.visibilityState` is `hidden` — nobody looks, and
  * browsers throttle background timers anyway — and on coming back, it polls right away if a turn was missed.
  */
-export function createPoll(run: () => Promise<unknown>, interval: number, { keepAlive = false, document = globalThis.document }: PollOptions = {}): Poll {
-  if (!(interval > 0)) {
-    throw new RangeError(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:C5] A poll needs an interval above 0 ms, got ${interval}.` : `[marmeon:C5] ${interval}`);
+export function createPoll(run: () => Promise<unknown>, intervalMs: number, { keepAlive = false, document = globalThis.document }: PollOptions = {}): Poll {
+  if (!(intervalMs > 0)) {
+    throw new RangeError(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:C5] A poll needs an interval above 0 ms, got ${intervalMs}.` : `[marmeon:C5] ${intervalMs}`);
   }
   let running = false;
   let inFlight = false;
@@ -60,13 +60,13 @@ export function createPoll(run: () => Promise<unknown>, interval: number, { keep
     } finally {
       inFlight = false;
     }
-    if (running && !paused()) schedule(interval);
+    if (running && !paused()) schedule(intervalMs);
   };
 
   const onVisibility = () => {
     if (!running) return;
     if (paused()) clear();
-    else if (timer === undefined && !inFlight) schedule(interval - (Date.now() - last));
+    else if (timer === undefined && !inFlight) schedule(intervalMs - (Date.now() - last));
   };
 
   return {
@@ -78,7 +78,7 @@ export function createPoll(run: () => Promise<unknown>, interval: number, { keep
       running = true;
       last = Date.now();
       document?.addEventListener('visibilitychange', onVisibility);
-      if (!paused()) schedule(interval);
+      if (!paused()) schedule(intervalMs);
     },
     stop() {
       running = false;
