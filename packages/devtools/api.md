@@ -21,14 +21,6 @@ export interface CommandEntryContent {
     readonly durationMs?: number;
     readonly error?: ErrorDetails;
 }
-// DevtoolsClearCommand
-export declare class DevtoolsClearCommand {
-    #private;
-    static command: string;
-    static description: string;
-    constructor(app: Application);
-    handle({ output }: CommandInput): Promise<number>;
-}
 // DevtoolsConfig
 export declare const DevtoolsConfig: import("@marmeon/core").ConfigDefinition<{
     enabled: boolean;
@@ -63,14 +55,6 @@ export interface DevtoolsOptions {
         readonly maxAgeHours?: number;
     };
 }
-// DevtoolsPruneCommand
-export declare class DevtoolsPruneCommand {
-    #private;
-    static command: string;
-    static description: string;
-    constructor(app: Application);
-    handle({ output }: CommandInput): Promise<number>;
-}
 // DevtoolsServiceProvider
 export declare class DevtoolsServiceProvider implements ServiceProvider {
     #private;
@@ -81,7 +65,7 @@ export declare class DevtoolsServiceProvider implements ServiceProvider {
         ineffective: boolean;
         hosts: ReadonlySet<string>;
     }>[];
-    static commands: (typeof DevtoolsClearCommand | typeof DevtoolsPruneCommand)[];
+    static commands: readonly CommandClass[];
     static solutions: readonly import("@marmeon/core").SolutionDefinition<any>[];
     boot(app: Application): Promise<void>;
     shutdown(): Promise<void>;

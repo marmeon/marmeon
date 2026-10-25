@@ -9,7 +9,8 @@ import { Inbox, notificationData } from './inbox.ts';
 import { NotificationFake } from './fake.ts';
 import { SendQueuedNotification } from './job.ts';
 import { NotificationDeliverer, Notifications } from './notifications.ts';
-import { NotificationServiceProvider, PruneNotificationsCommand } from './index.ts';
+import { PruneNotificationsCommand } from './commands.ts';
+import { NotificationServiceProvider } from './index.ts';
 import { NotificationSetupError } from './registry.ts';
 import { NotificationStore } from './store.ts';
 

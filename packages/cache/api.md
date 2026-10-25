@@ -24,14 +24,6 @@ export interface Cache {
     lock(name: string, ttl: Duration, owner?: string): Lock;
 }
 export declare const Cache: import("@marmeon/core").Token<Cache>;
-// CacheClearCommand
-export declare class CacheClearCommand {
-    #private;
-    static command: string;
-    static description: string;
-    constructor(cache: Cache, config: CacheConfig);
-    handle({ output }: CommandInput): Promise<number>;
-}
 // CacheConfig
 export declare const CacheConfig: import("@marmeon/core").ConfigDefinition<{
     driver: string;
@@ -66,14 +58,6 @@ export declare class CacheHealthCheck implements HealthCheck {
     constructor(cache: Cache, config: CacheConfig);
     handle(): Promise<string>;
 }
-// CachePruneCommand
-export declare class CachePruneCommand {
-    #private;
-    static command: string;
-    static description: string;
-    constructor(cache: Cache, config: CacheConfig);
-    handle({ output }: CommandInput): Promise<number>;
-}
 // CacheServiceProvider
 export declare class CacheServiceProvider implements ServiceProvider {
     #private;
@@ -84,7 +68,7 @@ export declare class CacheServiceProvider implements ServiceProvider {
         prefix: string;
     }>[];
     static health: (typeof CacheHealthCheck)[];
-    static commands: (typeof CachePruneCommand | typeof CacheClearCommand | typeof MakeCacheTableCommand)[];
+    static commands: readonly CommandClass[];
     static migrations: {
         from: import("node:url").URL;
         module: string;
@@ -164,21 +148,6 @@ export interface LockStore {
 // LockTimeoutError
 export declare class LockTimeoutError extends Error {
     name: string;
-}
-// MakeCacheTableCommand
-export declare class MakeCacheTableCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly module: {
-            readonly type: 'string';
-            readonly short: 'm';
-        };
-    };
-    constructor(app: Application);
-    handle(input: CommandInput): Promise<number>;
 }
 // RateLimiter
 export declare class RateLimiter {

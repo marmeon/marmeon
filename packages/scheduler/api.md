@@ -76,51 +76,6 @@ export interface ScheduleDefinition {
 export declare class ScheduleError extends Error {
     name: string;
 }
-// ScheduleListCommand
-export declare class ScheduleListCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly json: {
-            readonly type: 'boolean';
-        };
-    };
-    constructor(scheduler: Scheduler, clock: Clock, redactor: Redactor);
-    handle({ options, output }: CommandInput): number;
-}
-// ScheduleRunCommand
-export declare class ScheduleRunCommand {
-    #private;
-    static command: string;
-    static description: string;
-    constructor(scheduler: Scheduler, clock: Clock);
-    handle({ output }: CommandInput): Promise<number>;
-}
-// ScheduleTestCommand
-export declare class ScheduleTestCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    constructor(scheduler: Scheduler);
-    handle({ args, output }: CommandInput): Promise<number>;
-}
-// ScheduleWorkCommand
-export declare class ScheduleWorkCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly 'stop-timeout': {
-            readonly type: 'string';
-        };
-    };
-    constructor(scheduler: Scheduler, clock: Clock, logger: Logger, redactor: Redactor);
-    handle({ options, output }: CommandInput): Promise<number>;
-}
 // ScheduledTask
 export interface ScheduledTask<K extends TaskKind> extends Frequencies<K> {
     at<const T extends string>(time: CheckTime<T>): ScheduledTask<K>;
@@ -199,7 +154,7 @@ export declare class SchedulerServiceProvider implements ServiceProvider {
         timezone: string;
         environment: string;
     }>[];
-    static commands: (typeof ScheduleWorkCommand | typeof ScheduleRunCommand | typeof ScheduleListCommand | typeof ScheduleTestCommand)[];
+    static commands: readonly CommandClass[];
     register(container: Container): void;
     boot(app: Application): Promise<void>;
 }

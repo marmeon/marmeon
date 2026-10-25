@@ -2,6 +2,7 @@ import { Application, Clock, Translator, type Container, type Resolver, type Ser
 import type { ProviderMigrations } from '@marmeon/database';
 import { fillPlaceholders } from '@marmeon/core/internal';
 import { Connections } from '@marmeon/database';
+import type { CommandClass } from 'marmeon';
 import { DatabaseChannel, MailChannel, NotificationChannels } from './channels.ts';
 import { MakeNotificationsTableCommand, PruneNotificationsCommand } from './commands.ts';
 import { NotificationConfig } from './config.ts';
@@ -52,7 +53,6 @@ export { NotificationStore } from './store.ts';
 export type { StoredNotification } from './store.ts';
 export { SendQueuedNotification } from './job.ts';
 export type { QueuedNotificationPayload } from './job.ts';
-export { MakeNotificationsTableCommand, PruneNotificationsCommand } from './commands.ts';
 export { NotificationDataError } from './validate.ts';
 
 declare module '@marmeon/core' {
@@ -93,7 +93,7 @@ async function importOptional<T>(load: () => Promise<T>, name: string): Promise<
  */
 export class NotificationServiceProvider implements ServiceProvider {
   static config = [NotificationConfig];
-  static commands = [PruneNotificationsCommand, MakeNotificationsTableCommand];
+  static commands: readonly CommandClass[] = [PruneNotificationsCommand, MakeNotificationsTableCommand];
   /** The migrations for the notifications table, which `marmeon publish` and the `make:*-table` command copy into the app. */
   static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 

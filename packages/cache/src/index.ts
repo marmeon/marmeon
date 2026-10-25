@@ -16,11 +16,10 @@ import { FileStore } from './stores/file.ts';
 import { MemoryStore } from './stores/memory.ts';
 import { RedisStore } from './stores/redis.ts';
 import { withCode } from '@marmeon/core/internal';
+import type { CommandClass } from 'marmeon';
 
 export { Cache, Lock, LockTimeoutError } from './cache.ts';
 export type { CacheDriver, CacheDriverContext, CacheDriverFactory, CacheEntry, CacheStore, LockStore } from './cache.ts';
-export { MakeCacheTableCommand } from './commands/make-cache-table.ts';
-export { CacheClearCommand, CachePruneCommand } from './commands/prune.ts';
 export { clientKey, Limit, LimitLiveValidation, RateLimiter, throttle } from './rate-limiter.ts';
 export type { LimiterCallback, LimiterContext } from './rate-limiter.ts';
 
@@ -79,7 +78,7 @@ export class CacheServiceProvider implements ServiceProvider {
   static config = [CacheConfig];
   /** The cache takes and frees a key, for `/up/ready`. */
   static health = [CacheHealthCheck];
-  static commands = [MakeCacheTableCommand, CachePruneCommand, CacheClearCommand];
+  static commands: readonly CommandClass[] = [MakeCacheTableCommand, CachePruneCommand, CacheClearCommand];
   /** The migrations for the cache table, which `marmeon publish` and the `make:*-table` command copy into the app. */
   static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 

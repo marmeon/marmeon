@@ -2,6 +2,7 @@ import { hkdfSync } from 'node:crypto';
 import type { ProviderMigrations } from '@marmeon/database';
 import { Application, Clock, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { collectDrivers } from '@marmeon/core/internal';
+import type { CommandClass } from 'marmeon';
 import { DEFAULT_STORAGE, isStorageDefinition, type DiskDriverFactory, type StorageOptions } from './config.ts';
 import type { Disk } from './disk.ts';
 import { loadHttpModules } from './http-modules.ts';
@@ -55,7 +56,7 @@ export { UPLOAD_TYPES } from './uploads/sniff.ts';
 export type { UploadMime } from './uploads/sniff.ts';
 export { UPLOADS_TABLE } from './uploads/service.ts';
 export { UploadsConfig } from './uploads/config.ts';
-export { MakeUploadsTableCommand, PruneUploadsCommand, uploadsTableConnection } from './uploads/commands.ts';
+export { uploadsTableConnection } from './uploads/commands.ts';
 
 declare module '@marmeon/core' {
   interface ServiceProviderClass {
@@ -122,7 +123,7 @@ export function checkS3Sdk(options: StorageOptions, uploadsDisk: string, missing
  */
 export class StorageServiceProvider implements ServiceProvider {
   static config = [UploadsConfig];
-  static commands = [MakeUploadsTableCommand, PruneUploadsCommand];
+  static commands: readonly CommandClass[] = [MakeUploadsTableCommand, PruneUploadsCommand];
   /** The migrations for the uploads table, which `marmeon publish` and the `make:*-table` command copy into the app. */
   static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 

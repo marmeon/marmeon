@@ -123,21 +123,6 @@ export interface LocalDiskOptions extends DiskBase {
     readonly root: string;
     readonly url?: string;
 }
-// MakeUploadsTableCommand
-export declare class MakeUploadsTableCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly module: {
-            readonly type: 'string';
-            readonly short: 'm';
-        };
-    };
-    constructor(app: Application);
-    handle(input: CommandInput): Promise<number>;
-}
 // MemoryDiskOptions
 export interface MemoryDiskOptions extends DiskBase {
     readonly driver: 'memory';
@@ -154,22 +139,6 @@ export interface OpenedFile {
 export type PrivateDisk = Omit<Disk, 'url'> & {
     url(key: 'url() is for public disks — this disk is private: use temporaryUrl(key, { expiresIn })'): never;
 };
-// PruneUploadsCommand
-export declare class PruneUploadsCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly hours: {
-            readonly type: 'string';
-        };
-        readonly force: {
-            readonly type: 'boolean';
-        };
-    };
-    handle({ options, output }: CommandInput): Promise<number>;
-}
 // PublicDisk
 export type PublicDisk = Disk;
 // PutOptions
@@ -232,7 +201,7 @@ export declare class StorageServiceProvider implements ServiceProvider {
         maxOpenBytes: number;
         maxOpenTotalBytes: number;
     }>[];
-    static commands: (typeof MakeUploadsTableCommand | typeof PruneUploadsCommand)[];
+    static commands: readonly CommandClass[];
     static migrations: {
         from: import("node:url").URL;
         module: string;

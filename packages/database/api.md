@@ -178,60 +178,10 @@ export declare class DatabaseServiceProvider implements ServiceProvider {
     static solutions: readonly import("@marmeon/core").SolutionDefinition<any>[];
     static health: (typeof DatabaseHealthCheck)[];
     static checks: readonly AppCheckClass[];
-    static commands: (typeof PublishCommand | typeof DbShowCommand | typeof DbSeedCommand | typeof DbTypesCommand | typeof MigrateCommand | typeof MigrateRollbackCommand | typeof MigrateResetCommand | typeof MigrateFreshCommand | typeof MigrateStatusCommand)[];
+    static commands: readonly CommandClass[];
     register(container: Container): void;
     boot(app: Application): void;
     shutdown(app: Application): Promise<void>;
-}
-// DbSeedCommand
-export declare class DbSeedCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly module: {
-            readonly type: 'string';
-        };
-        readonly class: {
-            readonly type: 'string';
-        };
-        readonly force: {
-            readonly type: 'boolean';
-        };
-    };
-    constructor(seeding: Seeding);
-    handle(input: CommandInput): Promise<number>;
-}
-// DbShowCommand
-export declare class DbShowCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly database: {
-            readonly type: 'string';
-        };
-        readonly json: {
-            readonly type: 'boolean';
-        };
-    };
-    constructor(connections: Connections);
-    handle({ options, output }: CommandInput): Promise<number>;
-}
-// DbTypesCommand
-export declare class DbTypesCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly check: {
-            readonly type: 'boolean';
-        };
-    };
-    handle({ options, output, root }: CommandInput): Promise<number>;
 }
 // Decimal
 export type Decimal = ColumnType<string, string | number, string | number>;
@@ -307,47 +257,6 @@ export interface LockHolder {
 export type MadeAttributes<Row, O> = {
     [K in keyof Row]: K extends keyof O ? Exclude<O[K], undefined> | (undefined extends O[K] ? Attribute<Row[K]> : never) : Attribute<Row[K]>;
 };
-// MigrateCommand
-export declare class MigrateCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly force: {
-            readonly type: 'boolean';
-        };
-        readonly wait: {
-            readonly type: 'string';
-        };
-        readonly 'no-types': {
-            readonly type: 'boolean';
-        };
-    };
-    handle(input: CommandInput): Promise<number>;
-}
-// MigrateFreshCommand
-export declare class MigrateFreshCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly force: {
-            readonly type: 'boolean';
-        };
-        readonly wait: {
-            readonly type: 'string';
-        };
-        readonly 'no-types': {
-            readonly type: 'boolean';
-        };
-        readonly seed: {
-            readonly type: 'boolean';
-        };
-    };
-    handle(input: CommandInput): Promise<number>;
-}
 // MigrateOptions
 export interface MigrateOptions {
     readonly onUnknown?: (connection: string, found: UnknownSchema) => void;
@@ -357,57 +266,6 @@ export interface MigrateOptions {
         readonly unknown: readonly string[];
     }) => void;
     readonly onChanged?: (changed: readonly ChangedMigration[]) => void;
-}
-// MigrateResetCommand
-export declare class MigrateResetCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly force: {
-            readonly type: 'boolean';
-        };
-        readonly wait: {
-            readonly type: 'string';
-        };
-    };
-    constructor(migrator: Migrator);
-    handle(input: CommandInput): Promise<number>;
-}
-// MigrateRollbackCommand
-export declare class MigrateRollbackCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly force: {
-            readonly type: 'boolean';
-        };
-        readonly wait: {
-            readonly type: 'string';
-        };
-        readonly step: {
-            readonly type: 'string';
-        };
-    };
-    constructor(migrator: Migrator);
-    handle(input: CommandInput): Promise<number>;
-}
-// MigrateStatusCommand
-export declare class MigrateStatusCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly json: {
-            readonly type: 'boolean';
-        };
-    };
-    constructor(migrator: Migrator);
-    handle({ options, output }: CommandInput): Promise<number>;
 }
 // Migration
 export interface Migration {
@@ -578,24 +436,6 @@ export interface ProjectedTable {
 export interface ProviderMigrations {
     readonly from: URL;
     readonly module: string;
-}
-// PublishCommand
-export declare class PublishCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly module: {
-            readonly type: 'string';
-            readonly short: 'm';
-        };
-        readonly check: {
-            readonly type: 'boolean';
-        };
-    };
-    constructor(app: Application);
-    handle(raw: CommandInput): Promise<number>;
 }
 // QueryEvent
 export interface QueryEvent {
@@ -1041,10 +881,6 @@ interface ModuleDefinition {
 // @marmeon/core.ModuleDefinition (2)
 interface ModuleDefinition {
     readonly seeders?: readonly SeederClass[];
-}
-// @marmeon/core.ModuleDefinition (3)
-interface ModuleDefinition {
-    readonly exposes?: readonly string[];
 }
 // @marmeon/core.ServiceProviderClass
 interface ServiceProviderClass {

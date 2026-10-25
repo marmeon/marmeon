@@ -6,6 +6,7 @@ import { FileDevtoolsStore } from './file-store.ts';
 import { Recorder } from './recorder.ts';
 import { DevtoolsStore, MemoryDevtoolsStore } from './store.ts';
 import { DevtoolsTestOptIn } from './test-opt-in.ts';
+import type { CommandClass } from 'marmeon';
 
 /** Where the Vite dev server serves the in-page bar's client — never part of a build. */
 export const BAR_SCRIPT = '/@id/@marmeon/devtools/client';
@@ -33,7 +34,7 @@ export const DevtoolsSettings = token<ResolvedDevtoolsOptions>('DevtoolsSettings
  */
 export class DevtoolsServiceProvider implements ServiceProvider {
   static config = [DevtoolsConfig];
-  static commands = [DevtoolsClearCommand, DevtoolsPruneCommand];
+  static commands: readonly CommandClass[] = [DevtoolsClearCommand, DevtoolsPruneCommand];
   /** On the error page and when `marmeon` cannot start the app. */
   static solutions = defineSolutions([
     {

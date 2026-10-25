@@ -220,21 +220,6 @@ export declare class JobStuckError extends Error {
 export declare class JobTimeoutError extends Error {
     name: string;
 }
-// MakeQueueTableCommand
-export declare class MakeQueueTableCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly module: {
-            readonly type: 'string';
-            readonly short: 'm';
-        };
-    };
-    constructor(app: Application);
-    handle(input: CommandInput): Promise<number>;
-}
 // PendingJobs
 export type PendingJobs<J extends readonly JobClass[]> = {
     readonly [K in keyof J]: readonly [job: J[K] & CheckJob<J[K]>, payload: JobInput<J[K]>];
@@ -325,60 +310,12 @@ export type QueueDriverFactory = (context: QueueDriverContext) => QueueConnectio
 export declare class QueueError extends Error {
     name: string;
 }
-// QueueFailedCommand
-export declare class QueueFailedCommand {
-    #private;
-    static command: string;
-    static description: string;
-    constructor(connections: QueueConnections);
-    handle({ output }: CommandInput): Promise<number>;
-}
-// QueueFlushCommand
-export declare class QueueFlushCommand {
-    #private;
-    static command: string;
-    static description: string;
-    constructor(connections: QueueConnections);
-    handle({ output }: CommandInput): Promise<number>;
-}
-// QueueForgetCommand
-export declare class QueueForgetCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    constructor(connections: QueueConnections);
-    handle({ args, output }: CommandInput): Promise<number>;
-}
 // QueueHealthCheck
 export declare class QueueHealthCheck implements HealthCheck {
     #private;
     static check: string;
     constructor(queue: Queue, config: QueueConfig);
     handle(): Promise<string>;
-}
-// QueuePruneFailedCommand
-export declare class QueuePruneFailedCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly hours: {
-            readonly type: 'string';
-        };
-    };
-    constructor(connections: QueueConnections, clock: Clock);
-    handle({ options, output }: CommandInput): Promise<number>;
-}
-// QueueRetryCommand
-export declare class QueueRetryCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    constructor(connections: QueueConnections, clock: Clock);
-    handle({ args, output }: CommandInput): Promise<number>;
 }
 // QueueServiceProvider
 export declare class QueueServiceProvider implements ServiceProvider {
@@ -391,7 +328,7 @@ export declare class QueueServiceProvider implements ServiceProvider {
         };
     }>[];
     static health: (typeof QueueHealthCheck)[];
-    static commands: (typeof QueueWorkCommand | typeof MakeQueueTableCommand | typeof QueueFailedCommand | typeof QueueRetryCommand | typeof QueueForgetCommand | typeof QueueFlushCommand | typeof QueuePruneFailedCommand | typeof QueueSizeCommand)[];
+    static commands: readonly CommandClass[];
     static migrations: {
         from: import("node:url").URL;
         module: string;
@@ -402,52 +339,6 @@ export declare class QueueServiceProvider implements ServiceProvider {
 // QueueSetupError
 export declare class QueueSetupError extends Error {
     name: string;
-}
-// QueueSizeCommand
-export declare class QueueSizeCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly connection: {
-            readonly type: 'string';
-        };
-    };
-    constructor(connections: QueueConnections);
-    handle({ args, options, output }: CommandInput): Promise<number>;
-}
-// QueueWorkCommand
-export declare class QueueWorkCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly connection: {
-            readonly type: 'string';
-        };
-        readonly queue: {
-            readonly type: 'string';
-        };
-        readonly 'max-jobs': {
-            readonly type: 'string';
-        };
-        readonly 'max-time': {
-            readonly type: 'string';
-        };
-        readonly sleep: {
-            readonly type: 'string';
-        };
-        readonly 'stop-timeout': {
-            readonly type: 'string';
-        };
-        readonly 'stop-when-empty': {
-            readonly type: 'boolean';
-        };
-    };
-    constructor(connections: QueueConnections, logger: Logger);
-    handle(input: CommandInput): Promise<number>;
 }
 // QueuedJob
 export interface QueuedJob {
