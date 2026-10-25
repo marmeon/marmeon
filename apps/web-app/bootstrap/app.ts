@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { defineApplication } from '@marmeon/core';
 import { contentSecurityPolicy, NONCE, securityHeaders } from '@marmeon/http';
+import about from '#modules/about';
 import auth from '#modules/auth';
 import dashboard from '#modules/dashboard';
 import lab from '#modules/lab';
@@ -23,7 +24,7 @@ import bookmarks from '#modules/bookmarks';
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig, SystemDatabase, AppStorage],
-  modules: [auth, userProfile, dashboard, members, notifications, locale, lab, system, bookmarks],
+  modules: [about, auth, userProfile, dashboard, members, notifications, locale, lab, system, bookmarks],
   // Added after the framework's own middleware. Module routes run in the `web` group
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
   middleware: {
