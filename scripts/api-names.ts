@@ -19,16 +19,11 @@ export const SAME_VALUE: Readonly<Record<string, string>> = {
  */
 export const KNOWN: readonly string[] = [
   'Action',
-  'Column',
   'ColumnOf',
   'DispatchOptions',
   'Entry',
   'Invokable',
   'RequestInfo',
   'Router',
-  'RowOf',
   'ServeOptions',
-  'Table',
-  'Tables',
-  'Visibility',
 ];
