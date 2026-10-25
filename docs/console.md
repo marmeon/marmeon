@@ -325,6 +325,10 @@ are dropped, so a name taken from a package cannot redraw the terminal. Ctrl-C o
 `false`) and `--no-interaction` is not given. Without a terminal, in CI or with `--no-interaction`, nothing is asked: `choose()` throws
 instead of waiting. An agent without a terminal is never asked. The scheduler runs commands without a terminal.
 
+### Testing a command
+
+A test runs a command by its name with `app.command('queue:retry', { args: ['all'] })`: the exit code and the printed lines come back, and nothing is asked. See [running commands](testing.md#running-commands) in the testing guide.
+
 ## Tinker
 
 `marmeon tinker` opens a REPL with the booted app. It is Node's own REPL: `await` works at the top level, input may span several

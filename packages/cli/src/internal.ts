@@ -5,3 +5,5 @@
  */
 export { CommandRegistry, runCommand } from './command.ts';
 export { spawnMarmeon } from './spawn.ts';
+export { printCommandHelp } from './commands/list.ts';
+export { printError } from './output.ts';

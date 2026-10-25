@@ -50,6 +50,9 @@
     },
     {
       "path": "../devtools"
+    },
+    {
+      "path": "../cli"
     }
   ]
 }

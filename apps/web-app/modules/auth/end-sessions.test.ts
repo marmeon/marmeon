@@ -1,5 +1,4 @@
 import { Logger } from '@marmeon/core';
-import { EndSessionsCommand } from '@marmeon/auth';
 import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,12 +17,7 @@ beforeEach(async () => {
 });
 
 describe('marmeon auth:end-sessions', () => {
-  const run = async (args: string[], options: Record<string, boolean> = { force: true }) => {
-    const lines: string[] = [];
-    const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
-    const code = await app.make(EndSessionsCommand).handle({ args, options, output } as never);
-    return { code, lines };
-  };
+  const run = (args: string[], options: Record<string, boolean> = { force: true }) => app.command('auth:end-sessions', { args, options });
   const signIn = (email: string, extra: Record<string, string> = {}) => app.post('/login', { form: { email, password: 'password', ...extra } });
 
   it('ends a session and a remember-me cookie, and no other account\'s', async () => {
@@ -59,7 +53,7 @@ describe('marmeon auth:end-sessions', () => {
   });
 
   it('says so for an unknown address or none', async () => {
-    expect(await run(['nobody@example.com'])).toEqual({ code: 1, lines: ['No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.'] });
+    expect(await run(['nobody@example.com'])).toEqual({ code: 1, lines: ['✗ No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.'] });
     expect((await run([])).code).toBe(1);
   });
 });
