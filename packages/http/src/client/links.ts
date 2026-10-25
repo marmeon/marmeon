@@ -28,8 +28,11 @@ export function visitUrlOf(click: LinkClick, href: string, target: string | null
   return url.href;
 }
 
-/** When a link fetches its page ahead: on `hover` (and when pressed — touch screens have no hover), or on `mount`. */
-export type PrefetchTrigger = 'hover' | 'mount';
+/**
+ * When a link fetches its page ahead: on `hover` (and when pressed — touch screens have no hover), on `mount`, or in
+ * `viewport` (half in view for 250 ms, a few at a time).
+ */
+export type PrefetchTrigger = 'hover' | 'mount' | 'viewport';
 
 /** A link's `prefetch` option: `true` is `'hover'`. */
 export type PrefetchSetting = boolean | PrefetchTrigger | readonly PrefetchTrigger[] | undefined;

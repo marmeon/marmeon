@@ -1,4 +1,4 @@
-import { FORM_METHOD_FIELD, FORM_TOKEN_FIELD, HOVER_PREFETCH_DELAY, isCurrentLink, linkQuery, loadInstant, prefetchTriggers, prefetchUrlOf, visitUrlOf } from '@marmeon/http/client/adapter';
+import { FORM_METHOD_FIELD, FORM_TOKEN_FIELD, HOVER_PREFETCH_DELAY, isCurrentLink, linkQuery, loadInstant, observeWith, prefetchTriggers, prefetchUrlOf, visitUrlOf } from '@marmeon/http/client/adapter';
 import { resolveRoute, type Confirm, type PrefetchTrigger, type ViewTransitionOption, type VisitMethod, type VisitOptions } from '@marmeon/http/client';
 import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProp, MethodOf, ParamsOf, Query, QueryParams } from '@marmeon/http/page';
 import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
@@ -47,7 +47,8 @@ interface CurrentProps {
 interface PrefetchProps {
   /**
    * Fetch the page ahead, so the click shows it at once: `true`/`'hover'` when the pointer rests on the link
-   * (75 ms) or presses it, `'mount'` as soon as the link is rendered, or both. Kept in memory for `cacheFor`.
+   * (75 ms) or presses it, `'mount'` as soon as the link is rendered, `'viewport'` once it has been half in view for 250 ms
+   * (a few at a time, never more than 20 for a page; nothing with Save-Data), or several. Kept in memory for `cacheFor`.
    */
   prefetch?: boolean | PrefetchTrigger | readonly PrefetchTrigger[];
   /** How long the prefetched page is used, in ms (default 30 000). */
@@ -226,6 +227,15 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     // `href`, not `fetchAhead`: a link that goes elsewhere prefetches again, a re-render does not.
   }, [onMount, href]);
   useEffect(() => () => clearTimeout(hover.current), []);
+  // In view: the prefetch code watches the element (and its limits) — the link only names it, and says when it goes.
+  const anchor = useRef<HTMLAnchorElement | null>(null);
+  const inView = triggers.has('viewport');
+  useEffect(() => {
+    const element = anchor.current;
+    const url = prefetchUrlOf(href);
+    if (!inView || !navigator || !element || url === undefined) return undefined;
+    return observeWith(navigator, element, url, { ...(cacheFor === undefined ? {} : { cacheFor }), ...(layer ? { layer: true } : {}) });
+  }, [inView, navigator, href, cacheFor, layer]);
 
   if (method !== 'get') {
     // A `javascript:` or `data:` address sends nothing — not with JavaScript (the visit refuses it), not without (a button that
@@ -273,6 +283,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
   const current = isCurrentLink(page, href, activeMatch) ? { 'aria-current': 'page' as const, 'data-current': '' } : {};
   return (
     <a
+      ref={anchor}
       href={href}
       {...current}
       {...pending}

@@ -1164,7 +1164,7 @@ export interface PrefetchOptions {
     layer?: boolean;
 }
 // PrefetchTrigger
-export type PrefetchTrigger = 'hover' | 'mount';
+export type PrefetchTrigger = 'hover' | 'mount' | 'viewport';
 // ProgressIndicator
 export type ProgressIndicator = (navigator: ProgressSource) => () => void;
 // ProgressOptions
@@ -1897,6 +1897,17 @@ export interface NavigatorWindow {
     readonly EventSource?: new (url: string) => EventSource;
     readonly BroadcastChannel?: new (name: string) => BroadcastChannel;
     readonly performance?: Pick<Performance, 'getEntriesByType'>;
+    readonly IntersectionObserver?: new (callback: (entries: readonly {
+        readonly target: Element;
+        readonly isIntersecting: boolean;
+        readonly intersectionRatio: number;
+    }[]) => void, options: {
+        threshold: number;
+    }) => {
+        observe(element: Element): void;
+        unobserve(element: Element): void;
+        disconnect(): void;
+    };
     readonly XMLHttpRequest?: new () => XMLHttpRequest;
 }
 // OptimisticUpdate
@@ -1956,13 +1967,15 @@ export interface PrefetchOptions {
 // PrefetchSetting
 export type PrefetchSetting = boolean | PrefetchTrigger | readonly PrefetchTrigger[] | undefined;
 // PrefetchTrigger
-export type PrefetchTrigger = 'hover' | 'mount';
+export type PrefetchTrigger = 'hover' | 'mount' | 'viewport';
 // Prefetches
 // type-only
 export declare class Prefetches {
     #private;
     get size(): number;
     prefetch(url: string, options?: PrefetchOptions): Promise<void>;
+    observe(element: Element, url: string, options?: PrefetchOptions): () => void;
+    landed(): void;
     ready(url: string, layer: boolean): boolean;
     take(url: string, layer: boolean): Promise<PageObject | undefined> | undefined;
     flush(): void;
@@ -2352,6 +2365,8 @@ export declare const loadUploads: () => Promise<Feature<UploadsFeature>>;
 export declare function markBusy(navigator: Pick<Navigator, 'on'>, element?: Pick<Element, 'setAttribute' | 'removeAttribute'>): () => void;
 // matchesPath
 export { matchesPath } from '@marmeon/router/url';
+// observeWith
+export declare function observeWith(navigator: Pick<Navigator, 'load' | 'loaded'>, element: Element, url: string, options?: PrefetchOptions): () => void;
 // optimistic
 export declare const optimistic: import("../feature.ts").Feature<PagePatches>;
 // pageInfo

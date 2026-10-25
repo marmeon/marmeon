@@ -184,6 +184,11 @@ export interface NavigatorWindow {
   readonly BroadcastChannel?: new (name: string) => BroadcastChannel;
   /** How the document was loaded — its protocol (`nextHopProtocol`): a live stream over HTTP/1.1 waits while the tab is hidden. */
   readonly performance?: Pick<Performance, 'getEntriesByType'>;
+  /** Links that prefetch when they scroll into view (`prefetch="viewport"`) — without it, they do nothing. */
+  readonly IntersectionObserver?: new (
+    callback: (entries: readonly { readonly target: Element; readonly isIntersecting: boolean; readonly intersectionRatio: number }[]) => void,
+    options: { threshold: number },
+  ) => { observe(element: Element): void; unobserve(element: Element): void; disconnect(): void };
   /** For the upload progress of `FormData` visits — `fetch` cannot report it (over HTTP/1.1). */
   readonly XMLHttpRequest?: new () => XMLHttpRequest;
 }
