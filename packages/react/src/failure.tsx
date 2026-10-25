@@ -2,7 +2,7 @@ import { ERROR_PAGE, type ErrorPageProps } from '@marmeon/http/client/adapter';
 import { isDevelopment, type VisitError } from '@marmeon/http/client';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorPage } from './error-page.tsx';
-import type { PageComponent, ResolvePage } from './pages.ts';
+import type { ErrorFallback, PageComponent, ResolvePage } from './pages.ts';
 
 /*
  * What a failure shows — a chunk of its own (like the layers): `fallbacks.tsx` loads it when the server answers a visit
@@ -42,6 +42,11 @@ export function LazyPage({ resolve, name, props }: { resolve: ResolvePage; name:
 /** The app's error page (`errors/Error`) for an error thrown while rendering. */
 export function RenderErrorFallback({ resolve, error }: { resolve: ResolvePage; error: unknown }) {
   return <LazyPage resolve={resolve} name={ERROR_PAGE} props={renderErrorProps(error)} />;
+}
+
+/** A layout's `error` for an error thrown while rendering below it — inside the layout, with a retry. */
+export function LayoutErrorFallback({ fallback: Fallback, error, retry }: { fallback: ErrorFallback; error: unknown; retry: () => void }) {
+  return <Fallback {...renderErrorProps(error)} retry={retry} />;
 }
 
 /**

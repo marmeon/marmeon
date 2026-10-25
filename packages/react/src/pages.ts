@@ -1,4 +1,4 @@
-import type { Feature } from '@marmeon/http/client/adapter';
+import type { ErrorPageProps, Feature } from '@marmeon/http/client/adapter';
 import { revalidateOnBack } from '@marmeon/http/client/adapter';
 import type { InstantProps, IslandProps, PageProps } from '@marmeon/http/page';
 import { ERROR_PAGE, LAYER_BACKDROP, pageName } from '@marmeon/http/client/adapter';
@@ -6,11 +6,26 @@ import type { ComponentType, ReactNode } from 'react';
 import { Backdrop } from './backdrop.tsx';
 import type { PageLayer } from './layer.tsx';
 
-/** A layout: a component around pages — `function AppLayout({ children }: LayoutProps) { … }`. Shared data via `usePage()`. */
-export type Layout = ComponentType<LayoutProps>;
+/**
+ * A layout: a component around pages — `function AppLayout({ children }: LayoutProps) { … }`. Shared data via `usePage()`.
+ * `AppLayout.error = AppError` shows what fails below it inside the layout — see {@link ErrorFallback}.
+ */
+export type Layout = ComponentType<LayoutProps> & {
+  /** What the layout shows in place of its children when a page (or a layout inside it) throws while rendering. */
+  error?: ErrorFallback;
+};
 
 export interface LayoutProps {
   children: ReactNode;
+}
+
+/** What a layout with `error` renders inside itself when what it wraps throws: the error page's props, plus a retry. */
+export type ErrorFallback = ComponentType<ErrorFallbackProps>;
+
+/** The props of an {@link ErrorFallback}: those of the error page (the exception only in development), and `retry()`. */
+export interface ErrorFallbackProps extends ErrorPageProps {
+  /** Loads the page again from the server and renders it in place of this fallback — on a click, never by itself. */
+  retry(): void;
 }
 
 /**
@@ -90,6 +105,15 @@ function checkLayout(name: string, layout: unknown): void {
   if (layout === undefined || layout === null) return;
   const layouts: unknown[] = Array.isArray(layout) ? layout : [layout];
   const invalid = layouts.findIndex((entry) => !isComponent(entry));
+  const badError = layouts.findIndex((entry) => isComponent(entry) && (entry as Layout).error !== undefined && !isComponent((entry as Layout).error));
+  if (invalid === -1 && badError !== -1) {
+    const got = String((layouts[badError] as Layout).error);
+    throw new Error(
+      (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
+        ? `[marmeon:R19] Page [${name}] has a layout${Array.isArray(layout) ? ` at index ${badError}` : ''} whose error is no component: expected a component, got ${got}.`
+        : `[marmeon:R19] ${name}`,
+    );
+  }
   if (invalid !== -1) {
     throw new Error(
       (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')

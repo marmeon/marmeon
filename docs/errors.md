@@ -474,7 +474,8 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 What the browser does when something fails:
 
 - **An error while a page renders** shows the app's `errors/Error` page inside its layouts, with details in development only. A
-  layout that throws shows the page without layouts. The next visit tries again.
+  layout that throws shows the page without layouts. The next visit tries again. A layout with `error` shows the failure of what
+  is below it itself, inside the layout, with a `retry()` for a button: [When a page fails](pages.md#when-a-page-fails).
 - **A failed visit** keeps the page and whatever was typed into it. A server that cannot be reached shows a notice, and a 5xx shows
   the server's error page in a dialog over the page.
 - **An island** fails on its own and shows its error, while the rest of the page stays.
@@ -525,6 +526,7 @@ included, gets the code alone.
 | R16 | `createMarmeonApp` | `progress` is not an indicator: pass `progressBar({ delay })` or your own. |
 | R17 | `<Pagination>` | A warning: the page's query schema has no field for the page number, so the links would lead to the first page. |
 | R18 | `useTable` | A table changed while rendering on the server. |
+| R19 | layouts | A layout's `error` that is no component. |
 
 Texts a user sees are never codes: the error pages, the questions before leaving a page. Neither are refusals a production log
 needs to read, such as a request that would go to another site.

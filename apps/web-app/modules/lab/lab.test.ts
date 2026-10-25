@@ -62,6 +62,22 @@ describe('the SSR lab', () => {
     expect(entries.filter((entry) => entry.level === 'error')).toEqual([]);
   });
 
+  it('a page that throws in the browser is sent without markup — broken for the document and its automatic copy, fine on the retry, and a document starts over', async () => {
+    const { app, entries } = await lab();
+    const document = await app.get('/lab/render-error', page).assertOk().assertPage('lab/RenderError');
+    expect(document.page()!.props).toMatchObject({ broken: true });
+    expect(document.body).toMatch(/<div id="app"><\/div>/);
+    expect(entries.filter((entry) => entry.level === 'error')).toEqual([]);
+    const session = app.withCookie('marmeon_session', document.cookie('marmeon_session')!).navigating();
+    const props = async () => (await session.get('/lab/render-error').assertOk()).page()!.props;
+    expect(await props()).toMatchObject({ broken: true });
+    expect(await props()).toMatchObject({ broken: false });
+    expect(await props()).toMatchObject({ broken: false });
+    const again = await app.withCookie('marmeon_session', document.cookie('marmeon_session')!).get('/lab/render-error', page).assertOk();
+    expect(again.page()!.props).toMatchObject({ broken: true });
+    expect((await app.get('/lab/render-error?fixed=1', page).assertOk()).page()!.props).toMatchObject({ broken: false });
+  });
+
   it('a slow Suspense boundary is in the HTML when the page renders completely (tests and bots)', async () => {
     const { app } = await lab();
     await app.get('/lab/streaming', page).assertOk().assertServerRendered().assertSee('<p data-slow-part="true">Rendered 1000 ms after the shell.</p>').assertDontSee('Loading the slow part');

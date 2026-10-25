@@ -21,7 +21,7 @@ import {
   type ComponentType,
   type ReactNode,
 } from 'react';
-import { ErrorBoundary, RenderErrorFallback, VisitFailure } from './fallbacks.tsx';
+import { ErrorBoundary, LayoutError, RenderErrorFallback, Rethrow, VisitFailure } from './fallbacks.tsx';
 import { ConfirmHost, type ConfirmComponent, type PendingQuestion } from './confirm.tsx';
 import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
 import { I18nContext } from './i18n.tsx';
@@ -364,7 +364,8 @@ interface Current {
  * and swap the page component in place — inside its layouts, which stay mounted while the next page has
  * them too. The {@link Navigator} keeps the history — without props — and the scroll positions.
  *
- * A page that throws while rendering shows the app's error page inside its layouts (after one fresh copy of its props);
+ * A page that throws while rendering shows the app's error page inside its layouts (after one fresh copy of its props) — or
+ * the `error` of the nearest layout that has one, inside that layout;
  * a visit that fails (offline, 5xx) leaves the page as it is and shows the failure over it.
  */
 export function MarmeonApp({
@@ -536,6 +537,13 @@ export function MarmeonApp({
     retried.current = page;
     void nav.reload({ preserveState: false });
   }, []);
+  // Reloads the page on a click in a layout's error: this is the retry, so the automatic one does not follow it.
+  const retry = useCallback(() => {
+    const nav = navigator.current;
+    if (!nav) return;
+    retried.current = current.page;
+    void nav.reload({ preserveState: false });
+  }, [current.page]);
   const onPageRendered = useCallback((page: PageObject) => {
     if (retried.current && retried.current !== page) retried.current = null;
   }, []);
@@ -557,19 +565,32 @@ export function MarmeonApp({
   const titles = useMemo(() => (typeof document === 'undefined' ? undefined : new TitleRegistry(title)), [title]);
   const head = useMemo(() => ({ template: title, collector: headCollector, titles }), [title, headCollector, titles]);
 
+  const layouts = placeholder ? layoutsOf(placeholder.View, placeholder.name, layout) : layoutsOf(Component, page.component, layout);
+  const layoutCatches = layouts.some((Layout) => Layout.error);
   const content = placeholder ? (
     // An instant visit's placeholder: what the link gave it — the real view renders only with its page.
     <ErrorBoundary resetKey={placeholder} fallback={() => null}>
       <placeholder.Component {...placeholder.props} />
     </ErrorBoundary>
   ) : (
-    <ErrorBoundary resetKey={page} onError={() => onPageError(page)} onRendered={() => onPageRendered(page)} fallback={(error) => <RenderErrorFallback resolve={resolve} error={error} />}>
+    <ErrorBoundary resetKey={page} onError={() => onPageError(page)} onRendered={() => onPageRendered(page)} fallback={(error) => (layoutCatches ? <Rethrow error={error} /> : <RenderErrorFallback resolve={resolve} error={error} />)}>
       <Component key={key} {...page.props} />
     </ErrorBoundary>
   );
   // Same layout at the same depth → the same element type in the same place: React keeps it mounted (the placeholder's too).
-  const tree = (placeholder ? layoutsOf(placeholder.View, placeholder.name, layout) : layoutsOf(Component, page.component, layout)).reduceRight<ReactNode>(
-    (children, Layout) => <Layout>{children}</Layout>,
+  // A layout with `error` catches what fails below it and shows it inside itself (it stays mounted).
+  const tree = layouts.reduceRight<ReactNode>(
+    (children, Layout) => (
+      <Layout>
+        {Layout.error ? (
+          <ErrorBoundary resetKey={placeholder ?? page} onError={() => onPageError(page)} fallback={(error) => <LayoutError fallback={Layout.error!} error={error} retry={retry} />}>
+            {children}
+          </ErrorBoundary>
+        ) : (
+          children
+        )}
+      </Layout>
+    ),
     content,
   );
 
@@ -580,7 +601,7 @@ export function MarmeonApp({
           <I18nContext.Provider value={i18n}>
             <RouterContext.Provider value={router}>
               <RegionOwnerContext.Provider value={owner}>
-                {/* A layout that throws takes the whole page down — to the error page, without layouts. */}
+                {/* A layout that throws takes the whole page down — to the error page, without layouts — unless a layout above has `error`. */}
                 <ErrorBoundary resetKey={page} fallback={(error) => <RenderErrorFallback resolve={resolve} error={error} />}>
                   {tree}
                 </ErrorBoundary>

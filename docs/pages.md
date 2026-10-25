@@ -134,6 +134,40 @@ A layout that the next page has too, at the same depth, stays mounted while you 
 menu stays open, a scrolled sidebar keeps its position, and the layout does not render from scratch. In the example above, moving
 between two settings pages keeps both `AppLayout` and `SettingsLayout`, and only the page inside them changes.
 
+### When a page fails
+
+A layout with `error` shows what fails below it, in place and without leaving the layout. `error` is a component that gets what
+the [error page](errors.md#your-own-error-page) gets (`status`, `title`, `message`, and `exception` in development only) and a
+`retry()` function:
+
+```tsx
+import type { ErrorFallbackProps, LayoutProps } from '@marmeon/react';
+
+export function SettingsLayout({ children }: LayoutProps) {
+  return <section className="settings">{children}</section>;
+}
+
+SettingsLayout.error = function SettingsError({ title, retry }: ErrorFallbackProps) {
+  return (
+    <div role="alert">
+      <p>{title}</p>
+      <button type="button" onClick={retry}>Try again</button>
+    </div>
+  );
+};
+```
+
+When a page throws while it renders, the nearest layout above it that has `error` shows it in place of its children. The layout
+itself stays mounted, so its menu, its state and the layouts around it stay as they are. A failure of a layout goes the same way to
+the next layout above it with `error`. Without any layout with `error`, nothing changes: the page `errors/Error` shows inside the
+layouts, and a layout that throws shows it without them. Before an `error` shows, the page is loaded once more with fresh props,
+as it always was.
+
+`retry()` loads the page again from the server and renders it in place of the fallback. It runs on a click only and never by
+itself; when the page throws again, the fallback comes back. A value of `error` that is no component throws when the page loads,
+with the code `R19`. Layers and the placeholder of an instant visit keep their own failure handling, and on the server nothing
+changes. Marmeon's code that shows `error` loads when a failure happens, not with the first download; your component loads with its layout.
+
 ## Shared props
 
 Props that a middleware shares with `SharedData` reach every page. Any component reads them with `usePage()`, a layout included:

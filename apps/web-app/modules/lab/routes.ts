@@ -4,6 +4,7 @@ import {
   ShowBrowserOnlyLabController,
   ShowClientOnlyLabController,
   ShowLateErrorLabController,
+  ShowRenderErrorLabController,
   ShowErrorsLabController,
   ShowStreamingLabController,
   TriggerErrorLabController,
@@ -22,6 +23,8 @@ export default defineRoutes((Route) => {
   lab.get('/client-only', ShowClientOnlyLabController);
   lab.get('/browser-only', ShowBrowserOnlyLabController);
   lab.get('/late-error', ShowLateErrorLabController);
+  // A page that throws in the browser, inside a layout with `error` and a retry.
+  lab.get('/render-error', ShowRenderErrorLabController);
   // Errors on purpose, one per kind — the development error page with its solutions.
   lab.get('/errors', ShowErrorsLabController);
   lab.get('/errors/:kind', TriggerErrorLabController);
