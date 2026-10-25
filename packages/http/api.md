@@ -1979,7 +1979,7 @@ export declare class Prefetches {
     #private;
     get size(): number;
     prefetch(url: string, options?: PrefetchOptions): Promise<void>;
-    observe(element: Element, url: string, options?: PrefetchOptions): () => void;
+    observe(element: Element, url: string | undefined, options?: PrefetchOptions, preload?: () => Promise<unknown>): () => void;
     landed(): void;
     ready(url: string, layer: boolean): boolean;
     take(url: string, layer: boolean): Promise<PageObject | undefined> | undefined;
@@ -2371,7 +2371,7 @@ export declare function markBusy(navigator: Pick<Navigator, 'on'>, element?: Pic
 // matchesPath
 export { matchesPath } from '@marmeon/router/url';
 // observeWith
-export declare function observeWith(navigator: Pick<Navigator, 'load' | 'loaded'>, element: Element, url: string, options?: PrefetchOptions): () => void;
+export declare function observeWith(navigator: Pick<Navigator, 'load' | 'loaded'>, element: Element, url: string | undefined, options?: PrefetchOptions, preload?: () => Promise<unknown>): () => void;
 // optimistic
 export declare const optimistic: import("../feature.ts").Feature<PagePatches>;
 // pageInfo

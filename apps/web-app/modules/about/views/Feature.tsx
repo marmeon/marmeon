@@ -28,7 +28,7 @@ export default function Feature({ feature }: PageProps<ShowFeatureController>) {
       <p>{t(`features.${feature.slug}.summary`)}</p>
       <p className="muted">{t('updated', { date: t.format.date(feature.updatedAt, { dateStyle: 'medium', timeZone: 'UTC' }) })}</p>
       <p>
-        <Link route="about.index">{t('back')}</Link>
+        <Link route="about.index" preload="viewport">{t('back')}</Link>
       </p>
     </main>
   );

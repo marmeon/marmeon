@@ -85,13 +85,20 @@ export function prefetchWith(navigator: Pick<Navigator, 'load' | 'loaded'>, url:
 
 /**
  * Prefetches the page of `url` when `element` scrolls into view (`<Link prefetch="viewport">`), loading the prefetch code
- * first. Returns what stops watching — call it when the link unmounts, also before the code is there.
+ * first; `preload` loads the code of the target alike (`<Link preload="viewport">`, with no `url` when that is all the link does).
+ * Returns what stops watching — call it when the link unmounts, also before the code is there.
  */
-export function observeWith(navigator: Pick<Navigator, 'load' | 'loaded'>, element: Element, url: string, options?: PrefetchOptions): () => void {
+export function observeWith(
+  navigator: Pick<Navigator, 'load' | 'loaded'>,
+  element: Element,
+  url: string | undefined,
+  options?: PrefetchOptions,
+  preload?: () => Promise<unknown>,
+): () => void {
   let stop: (() => void) | undefined;
   let gone = false;
   const attach = (prefetches: Prefetches) => {
-    if (!gone) stop = prefetches.observe(element, url, options);
+    if (!gone) stop = prefetches.observe(element, url, options, preload);
   };
   const loaded = navigator.loaded(loadPrefetch);
   if (loaded) attach(loaded);

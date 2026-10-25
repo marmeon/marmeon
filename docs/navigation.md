@@ -118,6 +118,7 @@ is under way gets `data-pending`.
 | `async` | Runs in the background: no progress bar, and it cancels no other visit. |
 | `only`, `except`, `reset` | A partial reload of the page on screen. See [deferred props](deferred-props.md#partial-reloads). |
 | `prefetch`, `cacheFor` | Fetches the page ahead. See [prefetching](#prefetching). |
+| `preload` | Loads the target's code ahead, without asking the server. See [loading the code only](#loading-the-code-only). |
 | `instant` | Shows the target's placeholder at once. See [instant visits](#instant-visits). |
 | `layer` | Opens the page as a dialog over this one. See [dialogs](dialogs.md). |
 | `viewTransition` | Animates this page change. See [view transitions](#view-transitions). |
@@ -211,6 +212,30 @@ are. Any request that writes, and leaving the document, drops every prefetched p
 click asks the server, whose answer brings it. The prefetching code loads with the first prefetch, so an app without `prefetch`
 never downloads it.
 
+### Loading the code only
+
+`preload` loads the code of the target page and asks the server nothing. A click then shows a page whose view is there already, and
+an [instant visit](#instant-visits) shows its placeholder at once:
+
+```tsx
+<Link route="notes.show" params={{ note: note.id }} preload>{note.title}</Link>
+<Link route="notes.index" preload="viewport">Notes</Link>
+<Link route="notes.show" params={{ note: note.id }} instant={{ title: note.title }} preload="viewport">{note.title}</Link>
+```
+
+It takes the same triggers as `prefetch`: `true` or `'hover'`, `'mount'`, `'viewport'`, or several. It combines with `prefetch`, and
+a link with both loads the code and fetches the page. `preload` is its own prop because `prefetch` promises a `GET` of the page,
+and `preload` never sends one: it loads only the static files of the build, the same as any visit does, and nothing runs on the
+server.
+
+- Only a `GET` link with `route` to a page preloads, and `route` must name a route that has a view. A link with `href`, a
+  link with `only` or `except`, an action and an island do nothing; development says so once in the console. An action is a
+  compile error.
+- The `viewport` trigger shares the queue of `prefetch="viewport"`: half visible for 250 milliseconds, two loads or prefetches at
+  once, nothing while the document is hidden, with Save-Data on, or on a `2g` connection. A code load asks the server nothing, so
+  it does not count toward the 20 prefetches for each page on screen; a link with both still loads its code once the 20 are
+  reached. A view that was loaded before costs no request, but its link still takes its turn in the queue. The code that watches loads lazily with the first viewport link.
+
 ## Instant visits
 
 An instant visit shows the target page's placeholder at once, inside the target's layouts, and the page when its answer lands.
@@ -266,7 +291,9 @@ A test renders the placeholder with `app.placeholder('notes.show', { title })` a
 
 The placeholder never gets the page's props, only what the link handed it. The history entry is written when the page lands. A
 visit that fails or is cancelled shows the page on screen again, and Back during the visit cancels it. A page fetched ahead shows
-at once without a placeholder. The code loads when the first instant link renders.
+at once without a placeholder. The code loads when the first instant link renders. To have the target's view there before the click,
+add `preload`: `<Link instant={{ title }} preload="viewport">` loads it when the link scrolls into view
+([loading the code only](#loading-the-code-only)).
 
 Only a plain `GET` visit of a page shows a placeholder. A link with `only` or `except`, a link with `layer` and a visit in the
 background go as usual, without one.

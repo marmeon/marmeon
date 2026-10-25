@@ -45,6 +45,15 @@ export function OnTheProfilePage() {
       <Link href="/logout" method="post" prefetch>
         Sign out
       </Link>
+      <Link route="user-profile.show" params={{ user: 7 }} preload="viewport" prefetch="hover">
+        Grace
+      </Link>
+      {/* A DELETE route is an action, never preloaded either:
+          Type 'true' is not assignable to type '"only links (GET) are preloaded — never an action (POST, PUT, PATCH, DELETE)"'. */}
+      {/* @ts-expect-error */}
+      <Link route="user-profile.links.destroy" params={{ user: 7, link: 1 }} preload>
+        Remove
+      </Link>
       {/* Type '"click"' is not assignable to type 'boolean | readonly PrefetchTrigger[] | PrefetchTrigger | undefined'. */}
       {/* @ts-expect-error */}
       <Link route="user-profile.show" params={{ user: 7 }} prefetch="click">
