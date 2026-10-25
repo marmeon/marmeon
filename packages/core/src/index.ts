@@ -1,7 +1,7 @@
 // The application kernel: container and injection, providers, configuration, events, environment and redaction.
 // HTTP concerns live in @marmeon/http.
 export { Container, ContainerError } from './container.ts';
-export type { ContainerErrorDetails, ContainerErrorReason, Factory, InjectionWarning, Resolver } from './container.ts';
+export type { ContainerErrorDetails, ContainerErrorReason, Factory, Resolver } from './container.ts';
 export { deprecated } from './deprecation.ts';
 export { errorCodeOf } from './error-codes.ts';
 export type { ErrorCode, ErrorCodeArea } from './error-codes.ts';
@@ -22,7 +22,7 @@ export type { HealthCheck, HealthCheckClass, HealthCheckResult, HealthReport } f
 export { Clock, durationToMilliseconds, durationToSeconds, SystemClock } from './clock.ts';
 export type { Duration, DurationParts } from './clock.ts';
 export { Translator } from './translator.ts';
-export { EventDispatcher, EventRegistry, listen, ListenerQueue, missingListenerQueue } from './events.ts';
+export { EventDispatcher, EventRegistry, listen, ListenerQueue } from './events.ts';
 export type {
   EventClass,
   EventDispatcherOptions,
@@ -60,7 +60,7 @@ export { ConfigError, defineConfig, resolveConfig } from './config/config.ts';
 export { env } from './config/env.ts';
 export { EnvironmentConfig } from './config/environment-config.ts';
 export type { EnvBlock, EnvMessage, EnvNumber, EnvRead, EnvSchema, EnvString, EnvVariable, RenamedOptions } from './config/env.ts';
-export { DOTENV_MARKER, environment, NODE_ENVIRONMENTS, readEnvFile, resolveEnvironment } from './environment.ts';
+export { DOTENV_MARKER, environment, NODE_ENVIRONMENTS, resolveEnvironment } from './environment.ts';
 export type { NodeEnvironment, NodeEnvironmentName, ResolvedEnvironment } from './environment.ts';
 export type { ConfigDefinition, ConfigOf } from './config/config.ts';
 export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from './config/standard-schema.ts';

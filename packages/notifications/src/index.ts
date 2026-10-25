@@ -44,9 +44,9 @@ export type {
 export { NotificationConfig } from './config.ts';
 export { NotificationChannels } from './channels.ts';
 export type { ChannelFactory, Delivery, NotificationChannel } from './channels.ts';
-export { NotificationChannelError, NotificationDeliverer, Notifications } from './notifications.ts';
-export type { DelivererDependencies, DeliveryOutcome, PendingDelivery, SendData, SendOptions } from './notifications.ts';
-export { NotificationError, NotificationRegistry, NotificationSetupError, RecipientRegistry } from './registry.ts';
+export { NotificationChannelError, Notifications } from './notifications.ts';
+export type { DeliveryOutcome, SendData, SendOptions } from './notifications.ts';
+export { NotificationError, NotificationSetupError } from './registry.ts';
 export { Inbox, notificationData } from './inbox.ts';
 export { NotificationStore } from './store.ts';
 export type { StoredNotification } from './store.ts';

@@ -51,6 +51,7 @@ export class PruneUploadsCommand {
   readonly #clock: Clock;
   readonly #config: UploadsConfig;
 
+  /** @internal The container builds the command. */
   constructor(uploads: TemporaryUploads, clock: Clock, config: UploadsConfig) {
     this.#uploads = uploads;
     this.#clock = clock;

@@ -15,6 +15,7 @@ export class DbTypesCommand {
 
   readonly #generator: TypeGenerator;
 
+  /** @internal The container builds the command. */
   constructor(generator: TypeGenerator) {
     this.#generator = generator;
   }

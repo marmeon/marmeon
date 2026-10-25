@@ -40,15 +40,6 @@ export type DatabaseData<N extends {
 export type DatabaseInput<N extends {
     readonly database?: StandardSchemaV1;
 }> = SchemaInput<N['database']>;
-// DelivererDependencies
-export interface DelivererDependencies {
-    readonly recipients: RecipientRegistry;
-    readonly channels: NotificationChannels;
-    readonly store: NotificationStore;
-    readonly connections: Connections;
-    readonly translator: (locale: string | null | undefined, container: Resolver) => Translator;
-    readonly app?: Application;
-}
 // Delivery
 export interface Delivery {
     readonly id: string;
@@ -151,12 +142,6 @@ export declare class NotificationDataError extends Error {
     readonly issues: readonly Issue[];
     constructor(message: string, issues?: readonly Issue[]);
 }
-// NotificationDeliverer
-export declare class NotificationDeliverer {
-    #private;
-    constructor(deps: DelivererDependencies);
-    deliver(container: Resolver, pending: PendingDelivery): Promise<DeliveryOutcome>;
-}
 // NotificationError
 export declare class NotificationError extends Error {
     name: string;
@@ -184,14 +169,6 @@ export interface NotificationQueueOptions {
 }
 // NotificationRecipients
 export interface NotificationRecipients {
-}
-// NotificationRegistry
-export declare class NotificationRegistry {
-    #private;
-    add(notifications: readonly NotificationClass[], source: string): this;
-    get(name: string): NotificationClass | undefined;
-    has(notification: NotificationClass): boolean;
-    all(): NotificationClass[];
 }
 // NotificationServiceProvider
 export declare class NotificationServiceProvider implements ServiceProvider {
@@ -255,13 +232,6 @@ export interface Notifications {
     sendNow<const R extends Recipients, N extends abstract new (...args: any[]) => object>(recipient: R, notification: N & CheckNotification<N, RecipientTypeOf<R>>, data: SendData<N>): Promise<SendResult<R>>;
 }
 export declare const Notifications: import("@marmeon/core").Token<Notifications>;
-// PendingDelivery
-export interface PendingDelivery {
-    readonly id: string;
-    readonly notification: NotificationClass;
-    readonly recipient: AnyRecipient;
-    readonly data: unknown;
-}
 // PruneNotificationsCommand
 export declare class PruneNotificationsCommand {
     #private;
@@ -300,13 +270,6 @@ export type RecipientRef<T extends RecipientType = RecipientType> = {
         readonly id: RecipientId<K>;
     };
 }[T];
-// RecipientRegistry
-export declare class RecipientRegistry {
-    #private;
-    add(resolvers: Readonly<Record<string, AnyRecipientResolverClass | undefined>>, source: string): this;
-    get(type: string): AnyRecipientResolverClass | undefined;
-    types(): string[];
-}
 // RecipientResolver
 export interface RecipientResolver<T extends RecipientType = RecipientType> {
     find(id: RecipientId<T>): Promise<NotificationRecipients[T] | undefined>;
@@ -344,7 +307,6 @@ export declare class SendQueuedNotification {
     static readonly encrypted = true;
     static readonly tries = 3;
     static readonly backoff: number[];
-    constructor(resolver: Resolver, deliverer: NotificationDeliverer, registry: NotificationRegistry);
     handle(payload: QueuedNotificationPayload, job: JobContext): Promise<void>;
 }
 // SendResult

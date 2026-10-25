@@ -231,7 +231,6 @@ export declare class DbTypesCommand {
             readonly type: 'boolean';
         };
     };
-    constructor(generator: TypeGenerator);
     handle({ options, output, root }: CommandInput): Promise<number>;
 }
 // Decimal
@@ -325,7 +324,6 @@ export declare class MigrateCommand {
             readonly type: 'boolean';
         };
     };
-    constructor(migrator: Migrator, types: TypeGenerator);
     handle(input: CommandInput): Promise<number>;
 }
 // MigrateFreshCommand
@@ -348,7 +346,6 @@ export declare class MigrateFreshCommand {
             readonly type: 'boolean';
         };
     };
-    constructor(migrator: Migrator, types: TypeGenerator, seeding: Seeding);
     handle(input: CommandInput): Promise<number>;
 }
 // MigrateOptions
@@ -644,11 +641,6 @@ export type RelationWriter<DB, T, N> = RelationOf<T, N> extends infer R ? R exte
 // Relations
 export interface Relations {
 }
-// Rendered
-export interface Rendered {
-    readonly source: string;
-    readonly warnings: string[];
-}
 // Repository
 export declare abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<RowOf<DB[T]>> {
     #private;
@@ -811,18 +803,6 @@ export { TransactionFinishedError } from '@marmeon/core';
 export interface TransactionOptions {
     readonly connection?: string;
     readonly isolationLevel?: IsolationLevel;
-}
-// TypeGenerator
-export declare class TypeGenerator {
-    #private;
-    constructor(app: Application, connections: Connections, migrator: Migrator);
-    get path(): string;
-    render(signal?: AbortSignal): Promise<Rendered>;
-    write(): Promise<{
-        changed: boolean;
-        warnings: string[];
-    }>;
-    isCurrent(signal?: AbortSignal): Promise<boolean>;
 }
 // UnknownSchema
 export interface UnknownSchema {

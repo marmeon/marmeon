@@ -121,11 +121,27 @@ export function argon2Available(): boolean {
   return typeof (crypto as { argon2?: unknown }).argon2 === 'function';
 }
 
-/** Seams of {@link PasswordHasher} for tests; not for apps. */
+/** Seams of {@link PasswordHasher} for the framework's tests; reached only through {@link createPasswordHasher}. */
 export interface PasswordHasherInternals {
   readonly isArgon2Available?: boolean;
   readonly now?: () => number;
   readonly remeasureGapsMs?: readonly number[];
+}
+
+/**
+ * The seams the next `new PasswordHasher()` takes, set for the length of one synchronous call of {@link createPasswordHasher}. The
+ * constructor takes only `options`, so no app can lower the hashing (`isArgon2Available: false` would quietly fall back to scrypt).
+ */
+let pendingInternals: PasswordHasherInternals | undefined;
+
+/** @internal A {@link PasswordHasher} with seams, for the framework's tests: the public constructor takes only `options`. */
+export function createPasswordHasher(options: HasherOptions, internals: PasswordHasherInternals): PasswordHasher {
+  pendingInternals = internals;
+  try {
+    return new PasswordHasher(options);
+  } finally {
+    pendingInternals = undefined;
+  }
 }
 
 /**
@@ -144,11 +160,9 @@ export class PasswordHasher implements Hasher {
   /** The fastest check seen per parameter set: queueing in the thread pool only ever adds time, so the minimum is the cost itself. */
   readonly #minimums = new Map<string, number>();
 
-  /**
-   * `internals` are seams for tests: whether argon2 is available, the clock in milliseconds, and the wait between the
-   * background re-measures of a parameter set (the wait before each). Apps pass nothing.
-   */
-  constructor(options: HasherOptions = DEFAULT_HASHER_OPTIONS, internals: PasswordHasherInternals = {}) {
+  constructor(options: HasherOptions = DEFAULT_HASHER_OPTIONS) {
+    const internals = pendingInternals ?? {};
+    pendingInternals = undefined;
     const isArgon2Available = internals.isArgon2Available ?? argon2Available();
     if (options.driver === 'argon2id' && !isArgon2Available) {
       throw new HashError(

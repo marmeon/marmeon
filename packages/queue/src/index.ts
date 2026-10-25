@@ -56,10 +56,9 @@ export type { CacheSource, WithoutOverlappingOptions } from './locks.ts';
 export { Queue } from './queue.ts';
 export type { PendingJobs, QueueConnectionOptions } from './queue.ts';
 export { JobRegistry, QueueError, QueueSetupError } from './registry.ts';
-export { JobPayloadError, JobRunner } from './runner.ts';
-export type { PayloadCipher, Prepared } from './runner.ts';
+export { JobPayloadError } from './runner.ts';
 export { JobStuckError, JobTimeoutError, Worker } from './worker.ts';
-export type { WorkerDependencies, WorkOptions, WorkResult } from './worker.ts';
+export type { WorkOptions, WorkResult } from './worker.ts';
 export { MakeQueueTableCommand, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './commands/failed.ts';
 export { QueueWorkCommand } from './commands/work.ts';
 

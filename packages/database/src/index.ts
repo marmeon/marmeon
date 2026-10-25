@@ -45,8 +45,6 @@ export type { FactoryContext, FactoryDefinition, MadeAttributes } from './factor
 export { Seeding } from './seeders.ts';
 export type { SeedContext, Seeder, SeederClass } from './seeders.ts';
 export { defineMigration } from './migrations/migration.ts';
-export { TypeGenerator } from './types-gen/generator.ts';
-export type { Rendered } from './types-gen/render.ts';
 export type { Migration } from './migrations/migration.ts';
 export { MigrationLockLostError, MigrationLockTimeoutError } from './migrations/lock.ts';
 export type { LockHolder } from './migrations/lock.ts';

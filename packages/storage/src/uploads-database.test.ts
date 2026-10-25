@@ -4,7 +4,8 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
-import { StorageServiceProvider, TemporaryUploads, UPLOADS_TABLE } from './index.ts';
+import { StorageServiceProvider, UPLOADS_TABLE } from './index.ts';
+import { TemporaryUploads } from './uploads/service.ts';
 
 /** Postgres runs when `MARMEON_TEST_PGSQL_URL` is set (`pnpm test:pgsql`). */
 const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;

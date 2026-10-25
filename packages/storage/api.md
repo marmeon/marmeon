@@ -168,7 +168,6 @@ export declare class PruneUploadsCommand {
             readonly type: 'boolean';
         };
     };
-    constructor(uploads: TemporaryUploads, clock: Clock, config: UploadsConfig);
     handle({ options, output }: CommandInput): Promise<number>;
 }
 // PublicDisk
@@ -180,7 +179,6 @@ export interface PutOptions {
 // RejectedUpload
 export declare class RejectedUpload {
     readonly problem: UploadProblem;
-    constructor(problem: UploadProblem);
     toJSON(): undefined;
 }
 // S3DiskOptions
@@ -250,15 +248,6 @@ export declare class StorageSetupError extends Error {
 // StorageTypes
 export interface StorageTypes {
 }
-// TargetRequest
-export interface TargetRequest {
-    readonly route: string;
-    readonly field: string;
-    readonly rule: UploadRule;
-    readonly session: string;
-    readonly name: string;
-    readonly size: number;
-}
 // TemporaryUpload
 export declare class TemporaryUpload {
     #private;
@@ -268,31 +257,8 @@ export declare class TemporaryUpload {
     readonly size: number;
     readonly mime: string;
     readonly extension: string;
-    constructor(details: {
-        id: string;
-        field: string;
-        name: string;
-        size: number;
-        mime: string;
-        extension: string;
-    }, source: UploadSource);
     store(disk: Disk, directory?: string): Promise<string>;
     toJSON(): undefined;
-}
-// TemporaryUploads
-export declare class TemporaryUploads {
-    #private;
-    constructor(options: UploadsOptions);
-    get disk(): Disk;
-    target(request: TargetRequest): Promise<UploadTarget>;
-    receive(id: string, session: string, body: ReadableStream<Uint8Array> | null, declared: number | undefined): Promise<number>;
-    resolve(value: string, scope: {
-        session: string;
-        route: string;
-        field: string;
-    }): Promise<TemporaryUpload | RejectedUpload>;
-    consume(id: string): Promise<boolean>;
-    prune(before: number): Promise<number>;
 }
 // TemporaryUrlOptions
 export interface TemporaryUrlOptions {
@@ -332,21 +298,6 @@ export interface UploadRule {
 }
 // UploadSchema
 export type UploadSchema = Rule<TemporaryUpload, UploadInput>;
-// UploadSource
-export interface UploadSource {
-    readonly disk: Disk;
-    readonly key: string;
-    consume(): Promise<boolean>;
-}
-// UploadTarget
-export interface UploadTarget {
-    readonly token: string;
-    readonly upload: {
-        readonly method: 'PUT' | 'POST';
-        readonly url: string;
-        readonly fields?: Readonly<Record<string, string>>;
-    };
-}
 // UploadsConfig
 export declare const UploadsConfig: import("@marmeon/core").ConfigDefinition<{
     disk: string;
@@ -358,19 +309,6 @@ export declare const UploadsConfig: import("@marmeon/core").ConfigDefinition<{
     maxOpenTotalBytes: number;
 }>;
 export type UploadsConfig = ConfigOf<typeof UploadsConfig>;
-// UploadsOptions
-export interface UploadsOptions {
-    readonly db: () => Connection<Tables>;
-    readonly disk: () => Disk;
-    readonly clock: Clock;
-    readonly keys: readonly Uint8Array[];
-    readonly lifetimeMilliseconds: number;
-    readonly sendWithinSeconds: number;
-    readonly maxOpen: number;
-    readonly maxOpenBytes: number;
-    readonly maxOpenTotalBytes: number;
-    readonly receiveUrl: (id: string, expiresInSeconds: number) => string;
-}
 // Visibility
 export type Visibility = 'public' | 'private';
 // checkS3Sdk
@@ -428,29 +366,8 @@ declare const NO_ENV: import("@marmeon/core").EnvSchema<{}, {}>;
 type Near<N extends string> = N extends `${infer First}${string}` ? Extract<DiskName, `${First}${string}`> : never;
 // Near (2)
 type Near<M extends string> = M extends `${infer Group}/${string}` ? Extract<UploadMime, `${Group}/${string}`> : never;
-// Tables
-type Tables = {
-    [UPLOADS_TABLE]: UploadRow;
-};
 // UnionToIntersection
 type UnionToIntersection<U> = (U extends unknown ? (x: () => U) => void : never) extends (x: infer I) => void ? I : never;
-// UploadRow
-interface UploadRow {
-    id: string;
-    session: string;
-    route: string;
-    field: string;
-    disk: string;
-    key: string;
-    name: string;
-    max_bytes: number | string;
-    size: number | string | null;
-    created_at: number | string;
-    expires_at: number | string;
-    started_at: number | string | null;
-    uploaded_at: number | string | null;
-    consumed_at: number | string | null;
-}
 ```
 
 ### Augments

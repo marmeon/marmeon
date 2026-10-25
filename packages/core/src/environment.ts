@@ -6,10 +6,9 @@
  * the environment: it never weakens a protection or enables a tool. See docs/configuration.md#the-environment-node_env.
  * No dependencies besides Node: `marmeon` loads this module before the injection hook.
  */
+import { readEnvFile } from './env-file.ts';
 import { withCode } from './error-codes.ts';
-import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseEnv } from 'node:util';
 
 export interface NodeEnvironment {
   readonly NODE_ENV?: string | undefined;
@@ -145,7 +144,8 @@ export const environment = {
  * a missing one, `test`, and a `NODE_ENV=development` **from `.env`** (a developer's, for the commands of this machine) all
  * build for production. Set, not just removed: Vite reads the `.env` files itself and takes their `NODE_ENV=development`
  * whenever the process has none. A `NODE_ENV=development` set in the environment is respected, with a warning. Any other value
- * stops the build ({@link environment.check}). Returns the lines to print.
+ * stops the build ({@link environment.check}). Returns the lines to print. The `marmeon` launcher calls it; see
+ * docs/configuration.md#where-node_env-comes-from.
  */
 export function buildEnvironment(env: Record<string, string | undefined> = process.env): { readonly notes: readonly string[]; readonly warnings: readonly string[] } {
   environment.check(env);
@@ -178,11 +178,6 @@ export interface ResolvedEnvironment {
 
 /** Messages already handed out — the CLI and `createApplication` both resolve; the first one reports. */
 const reported = new Set<string>();
-
-/** The variables of one env file — `{}` when there is none. */
-export function readEnvFile(path: string): Record<string, string | undefined> {
-  return existsSync(path) ? parseEnv(readFileSync(path, 'utf8')) : {};
-}
 
 /**
  * Resolves `NODE_ENV` for the app in `root` and writes it into `env` (`process.env`) — the one place that decides it:

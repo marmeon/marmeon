@@ -13,7 +13,8 @@ import { S3Disk } from './drivers/s3.ts';
 import { MemoryDisk } from './drivers/memory.ts';
 import { NO_TEMPORARY_URLS } from './temporary.ts';
 import { PruneUploadsCommand } from './uploads/commands.ts';
-import { TemporaryUploads, UPLOADS_TABLE, type TargetRequest } from './uploads/service.ts';
+import { UPLOADS_TABLE } from './index.ts';
+import { TemporaryUploads, type TargetRequest } from './uploads/service.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 const silent = Object.assign(new ConsoleLogger(), { debug() {}, info() {}, warn() {}, error() {} });

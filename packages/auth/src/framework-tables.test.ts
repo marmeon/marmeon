@@ -2,8 +2,8 @@ import { copyFileSync, mkdirSync, readdirSync, readFileSync, realpathSync, symli
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Application, ModuleDefinition } from '@marmeon/core';
-import { Migrator, TypeGenerator, type Connections, type ProjectedTable } from '@marmeon/database';
-import { projectApp } from '@marmeon/database/internal';
+import { Migrator, type Connections, type ProjectedTable } from '@marmeon/database';
+import { projectApp, TypeGenerator } from '@marmeon/database/internal';
 import { describe, expect, it } from 'vitest';
 import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { describeTable, kinds, open } from './__fixtures__/schema-compare.ts';

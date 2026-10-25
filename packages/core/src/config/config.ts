@@ -1,6 +1,7 @@
 import { withCode } from '../error-codes.ts';
 import { join } from 'node:path';
-import { ConfigError, readEnvFile } from '../environment.ts';
+import { readEnvFile } from '../env-file.ts';
+import { ConfigError } from '../environment.ts';
 import type { Token } from '../token.ts';
 import { issuePath, type InferOutput, type StandardSchemaV1 } from './standard-schema.ts';
 

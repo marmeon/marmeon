@@ -153,12 +153,25 @@ Besides what the options add, every test app has:
 `app.application` is the booted application, `app.container` its container, and `app.make(Service)` resolves a service from it.
 `app.make(NoteRepository)` hands you the same repository the controllers use.
 
-`app.kernel` answers `fetch(request)` and `request(path, init)`, and `settle()` waits for the work scheduled after a response. A
-request has no peer address unless you give one as the last argument, which then goes through `SERVER_TRUSTED_PROXIES` like a real
-socket's:
+### Your own kernel
+
+The requests of the test app (`app.get()`, `app.post()`, …) wait for the work scheduled after a response. A test that sends requests
+itself, such as a fake browser over `fetch(request)`, builds a kernel of its own from the booted application:
 
 ```ts
-const response = await app.kernel.request('/whoami', { headers: { 'x-forwarded-for': '198.51.100.7' } }, { remoteAddress: '10.1.2.3' });
+import { createHttpKernel } from '@marmeon/server';
+
+const kernel = createHttpKernel(app.application);
+const response = await kernel.request('/whoami');
+```
+
+`createHttpKernel(application, options)` takes `KernelOptions`, among them `maxBodyBytes` for a request body under 1 MB
+(the [requests](requests.md) page has `SERVER_MAX_BODY_MB` for everything above). The kernel builds on the application's
+container, so it sees the test app's fakes. A request has no peer address unless you give one as the last argument, which then goes
+through `SERVER_TRUSTED_PROXIES` like a real socket's:
+
+```ts
+const response = await kernel.request('/whoami', { headers: { 'x-forwarded-for': '198.51.100.7' } }, { remoteAddress: '10.1.2.3' });
 ```
 
 ## Closing the app

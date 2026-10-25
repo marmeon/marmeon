@@ -84,6 +84,7 @@ import { serveAssets } from './assets.ts';
 import { ServerTiming } from './server-timing.ts';
 import { createViteDevRenderer } from './vite.ts';
 
+/** The options of {@link createHttpKernel}; most defaults come from the app's `ServerConfig`. See docs/testing.md#your-own-kernel. */
 export interface KernelOptions {
   /** Override the application's container (tests). Every request gets its own scope of it. */
   container?: Container;
@@ -213,6 +214,8 @@ export function refuseUndecidedRoutes(application: Application): void {
  * Every request gets a request id (from `x-request-id` or generated) that all log
  * entries of the request carry, and every error — thrown, `abort()`ed or an
  * unknown route — goes through the application's `ExceptionHandler`.
+ *
+ * A test builds one of its own from a test app's `application`: docs/testing.md#your-own-kernel.
  */
 export function createHttpKernel(
   application: Application,

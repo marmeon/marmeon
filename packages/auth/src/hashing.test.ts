@@ -3,6 +3,7 @@ import { createApplication } from '@marmeon/core';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { AuthServiceProvider, HashError, Hasher, MAX_PASSWORD_BYTES, PasswordHasher, type HasherOptions, type PasswordHash } from './index.ts';
 import { DEFAULT_HASHER_OPTIONS } from './hashing.ts';
+import { createPasswordHasher } from './hashing.ts';
 
 // Passes through; lets a test count the key derivations that were started.
 vi.mock('node:crypto', async (importOriginal) => {
@@ -145,7 +146,7 @@ describe('PasswordHasher', () => {
         state.flip = !state.flip;
         return state.flip ? 0 : (state.queue.shift() ?? state.took);
       };
-      const hasher = new PasswordHasher(options, { isArgon2Available, remeasureGapsMs: gapsMs, now });
+      const hasher = createPasswordHasher(options, { isArgon2Available, remeasureGapsMs: gapsMs, now });
       return { state, hasher };
     };
 
@@ -266,8 +267,11 @@ describe('PasswordHasher', () => {
   });
 
   it('refuses to start with argon2id when Node lacks it — and says how to fix it', () => {
-    expect(() => new PasswordHasher(DEFAULT_HASHER_OPTIONS, { isArgon2Available: false })).toThrow(/HASH_DRIVER=scrypt/);
-    expect(() => new PasswordHasher({ ...cheap, driver: 'scrypt' }, { isArgon2Available: false })).not.toThrow();
+    expect(() => createPasswordHasher(DEFAULT_HASHER_OPTIONS, { isArgon2Available: false })).toThrow(/HASH_DRIVER=scrypt/);
+    expect(() => createPasswordHasher({ ...cheap, driver: 'scrypt' }, { isArgon2Available: false })).not.toThrow();
+    // The seams are not the constructor's: a second argument does nothing, and a refused hasher leaves nothing behind for the next one.
+    expect(() => new (PasswordHasher as unknown as new (options: HasherOptions, seams: object) => PasswordHasher)(DEFAULT_HASHER_OPTIONS, { isArgon2Available: false })).not.toThrow();
+    expect(() => new PasswordHasher(DEFAULT_HASHER_OPTIONS)).not.toThrow();
     expect(() => new PasswordHasher({ ...cheap, argon2: { memory: 64, time: 1, parallelism: 1 } })).toThrow('argon2 memory (KiB) must be a whole number from 1024');
     expect(() => new PasswordHasher({ ...cheap, driver: 'scrypt', scrypt: { cost: 20, blockSize: 32, parallelism: 1 } })).toThrow('scrypt needs more than 256 MiB');
   });
