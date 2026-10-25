@@ -23,9 +23,9 @@ export function AppLayout({ children }: LayoutProps) {
           {user ? <Link route="user-profile.me">{t('name')}</Link> : <Link route="auth.login">{t('name')}</Link>}
         </strong>
         {/* The link to the page on screen gets aria-current="page" and data-current by itself. */}
-        {!user && (
+        {!user && locale && (
           <nav aria-label={t('main')} className="row">
-            <Link route="about.index" activeMatch="about.*">
+            <Link route="about.index" params={{ locale }} activeMatch="about.*">
               {t('about')}
             </Link>
           </nav>

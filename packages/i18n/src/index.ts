@@ -2,7 +2,9 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, defineConfig, env, Logger, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
-import { editableResponse, MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@marmeon/router';
+import { PreferredLocale } from '@marmeon/core/internal';
+import { editableResponse, fillPath, HttpError, MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@marmeon/router';
+import { PageAlternates, UrlLocales } from '@marmeon/router/internal';
 import { Session } from '@marmeon/session';
 import { Catalog } from './catalog.ts';
 import frameworkDe from './lang/de.ts';
@@ -146,47 +148,114 @@ export interface LocalePreference {
 export const LocalePreference = token<LocalePreference>('LocalePreference');
 
 /**
- * Sets the request's locale — the first supported one of: the session's (`locale`, a language switcher), the
- * signed-in user's ({@link LocalePreference}), the browser's (`Accept-Language`), `APP_LOCALE`. In the `web` group,
- * after the session, before CSRF verification (its 419 page is translated too).
+ * What a request's chain chose, by request: the unprefixed address of a localized route (a redirect) asks the visitor's locale
+ * from the root, where no scoped service is at hand. Keyed by the request object, so it dies with it.
+ */
+const preferredOf = new WeakMap<Request, string>();
+
+/**
+ * What the tab-sync epoch follows, by request (`PreferredLocale`): the visitor's preferred locale, or `null` for a localized page
+ * without a session, which has no epoch. Kept here, not on `CurrentLocale`: it is a contract between framework packages.
+ */
+const epochLocaleOf = new WeakMap<CurrentLocale, string | null>();
+
+/**
+ * Sets the request's locale. On a localized route (`Route.localized()`) it is the one in the URL — nothing else decides, so one
+ * URL is one language and a shared cache needs no `Vary: accept-language`. The session is never written (its locale is only ever
+ * set by the visitor's own switch) and read only for the preferred locale the tab-sync epoch follows; a localized route
+ * in a group without a session reads none, and its page has no epoch. On any other route, the first supported one of: the
+ * session's (`locale`, a language switcher), the signed-in user's ({@link LocalePreference}), the browser's
+ * (`Accept-Language`), `APP_LOCALE`. In the `web` group, after the session, before CSRF verification (its 419 page is
+ * translated too); a group of your own that serves localized routes adds it itself.
  *
  * No value from the request becomes a locale unless it is a supported one ({@link Locales}) — in its spelling: what reaches
  * `<html lang>`, the page's `locale` and the browser's language files is always one of the app's own. With several
- * supported locales the answer depends on `Accept-Language`, so it carries `Vary: accept-language`; with one, nothing
- * is negotiated and no `Vary` is sent (every answer is in that locale).
+ * supported locales the answer of a route that is not localized depends on `Accept-Language`, so it carries
+ * `Vary: accept-language`; with one, nothing is negotiated and no `Vary` is sent (every answer is in that locale).
+ * See `docs/localization.md#the-locale-in-the-url`.
  */
 export class SetLocale {
   readonly #current: CurrentLocale;
-  readonly #session: Session;
+  readonly #session: () => Session;
   readonly #preference: LocalePreference;
   readonly #locales: Locales;
+  readonly #alternates: (paths: Readonly<Record<string, string>>) => void;
 
-  constructor(current: CurrentLocale, session: Session, preference: LocalePreference, locales: Locales) {
+  /** Built by the container: `SetLocale` is attached to a group as a class, never constructed by an app. @internal */
+  constructor(current: CurrentLocale, session: () => Session, preference: LocalePreference, locales: Locales, alternates: (paths: Readonly<Record<string, string>>) => void) {
     this.#current = current;
     this.#session = session;
     this.#preference = preference;
     this.#locales = locales;
+    this.#alternates = alternates;
+  }
+
+  /**
+   * The locale the visitor prefers: the session's (only a started one), the account's, the browser's, else `APP_LOCALE`. A
+   * request without a started session has no choice and no account to ask.
+   */
+  async #preferred(ctx: HttpContext): Promise<string> {
+    const locales = this.#locales;
+    // One supported locale: every answer is in it — nothing to choose, and nothing caches must keep apart.
+    if (locales.supported.length <= 1) return locales.default;
+    const session = this.#session();
+    const chosen = session.started
+      ? (locales.find(session.get('locale')) ?? locales.find(await this.#preference.preferredLocale()))
+      : undefined;
+    return chosen ?? negotiateLocale(ctx.request.headers.get('accept-language'), locales.supported) ?? locales.default;
   }
 
   async handle(ctx: HttpContext, next: Next<{}>): Promise<Response> {
     const locales = this.#locales;
-    // One supported locale: every answer is in it — nothing to choose, and nothing caches must keep apart.
-    const choice = locales.supported.length > 1;
-    const locale = choice
-      ? (locales.find(this.#session.get('locale')) ??
-        locales.find(await this.#preference.preferredLocale()) ??
-        negotiateLocale(ctx.request.headers.get('accept-language'), locales.supported) ??
-        locales.default)
-      : locales.default;
+    // No route: the 404 of a path that matches none runs the global middleware only.
+    const localized = ctx.route?.localized === true;
+    // A route that is localized has its locale in the URL (its constraint admits only supported ones — this is the guard).
+    const fromUrl = localized ? locales.find((ctx.params as Record<string, unknown>).locale) : undefined;
+    if (localized && fromUrl === undefined) throw new HttpError(404);
+    let locale: string;
+    if (fromUrl !== undefined && !this.#session().started) {
+      // Nothing of the visitor decides: the page is one for every cache, and so has no epoch — one that followed the browser's
+      // languages would come out of a shared cache with the wrong visitor's.
+      epochLocaleOf.set(this.#current, null);
+      locale = fromUrl;
+    } else {
+      const preferred = await this.#preferred(ctx);
+      preferredOf.set(ctx.request, preferred);
+      // The epoch follows this: moving between `/de/…` and `/en/…` must not reload the visitor's other tabs.
+      epochLocaleOf.set(this.#current, preferred);
+      locale = fromUrl ?? preferred;
+    }
     this.#current.set(locale);
+    const alternates = fromUrl === undefined ? undefined : alternatesOf(ctx, locales.supported);
+    if (alternates) this.#alternates(alternates);
 
-    const localized = editableResponse(await next());
-    localized.headers.set('content-language', locale);
-    if (!choice) return localized;
+    const response = editableResponse(await next());
+    response.headers.set('content-language', locale);
+    // The URL decides on a localized route, and with one locale nothing is negotiated.
+    if (localized || locales.supported.length <= 1) return response;
     // The answer depends on the browser's languages (for visitors without a choice): caches must keep them apart.
-    const vary = localized.headers.get('vary');
-    if (!vary?.toLowerCase().split(/\s*,\s*/).includes('accept-language')) localized.headers.set('vary', vary ? `${vary}, accept-language` : 'accept-language');
-    return localized;
+    const vary = response.headers.get('vary');
+    if (!vary?.toLowerCase().split(/\s*,\s*/).includes('accept-language')) response.headers.set('vary', vary ? `${vary}, accept-language` : 'accept-language');
+    return response;
+  }
+}
+
+/**
+ * The page of a localized route in every locale: locale to path, the query as it came, plus `x-default` (the path without a
+ * locale, which redirects to the visitor's). Built from the route's pattern and the matched parameters — each encoded — never
+ * from the request's path. Undefined for a parameter that no path can hold (`..`).
+ */
+function alternatesOf(ctx: HttpContext, supported: readonly string[]): Record<string, string> | undefined {
+  const search = new URL(ctx.request.url).search;
+  const name = ctx.route.routeName ?? ctx.route.path;
+  const params = ctx.params as Record<string, string>;
+  try {
+    const alternates: Record<string, string> = {};
+    for (const locale of supported) alternates[locale] = fillPath(name, ctx.route.path, { ...params, locale }).path + search;
+    alternates['x-default'] = fillPath(name, ctx.route.path.replace(/^\/:locale/, '') || '/', params).path + search;
+    return alternates;
+  } catch {
+    return undefined;
   }
 }
 
@@ -254,7 +323,7 @@ async function loadLangFiles(root: string, catalog: Catalog, locales: Locales): 
 
 /**
  * Registers the translations (`Catalog`, loaded at boot), `Translators` (any locale, anywhere), the request's
- * `Translator` and `SetLocale` in the `web` group. Found by `marmeon discover`.
+ * `Translator`, `UrlLocales` (what localized routes need) and `SetLocale` in the `web` group. Found by `marmeon discover`.
  */
 export class I18nServiceProvider implements ServiceProvider {
   static config = [I18nConfig];
@@ -272,6 +341,22 @@ export class I18nServiceProvider implements ServiceProvider {
       return createTranslator(catalog, () => current.value, { locales: () => locales.supported });
     });
     container.scoped(LocalePreference, () => ({ preferredLocale: () => undefined }));
+    container.scoped(PreferredLocale, (c) => ({
+      get value() {
+        return epochLocaleOf.get(c.make(CurrentLocale));
+      },
+    }));
+    container.scoped(PageAlternates);
+    // Resolved when the chain needs it: a localized route in a group without a session never touches one.
+    container.scoped(SetLocale, (c) => new SetLocale(c.make(CurrentLocale), () => c.make(Session), c.make(LocalePreference), locales, (paths) => c.make(PageAlternates).set(paths)));
+    // What `Route.localized()` needs: the locales a URL can name, and where the URL without one leads.
+    container.instance(UrlLocales, {
+      get supported() {
+        return locales.supported;
+      },
+      // `SetLocale` ran in the route's group and chose; a group without it falls back to the browser's languages.
+      preferred: async (ctx) => preferredOf.get(ctx.request) ?? negotiateLocale(ctx.request.headers.get('accept-language'), locales.supported) ?? locales.default,
+    });
   }
 
   async boot(app: Application): Promise<void> {

@@ -1,6 +1,6 @@
 import { token } from '@marmeon/core';
 import { localLocation } from '@marmeon/router/internal';
-import { ownResponse, urlFor, type CheckRouteName, type Param, type Query, type RouteArgs, type RouteLookup, type RouteNameInput } from '@marmeon/router';
+import { ownResponse, urlFor, type CheckRouteName, type Param, type Query, type RedirectRouteArgs, type RouteLookup, type RouteNameInput } from '@marmeon/router';
 import { flashEntry, type FlashEntry } from './flash.ts';
 import type { CheckFlashKey, FlashValue } from './page.ts';
 import { isSensitiveField } from './sensitive-fields.ts';
@@ -68,9 +68,10 @@ export class RedirectResult {
 
   /**
    * Redirects to a named route: `route('user-profile.show', { user: 1 })`, with a query as the third argument.
-   * Name and parameters are checked against the app's routes (`bootstrap/routes.ts`).
+   * Name and parameters are checked against the app's routes (`bootstrap/routes.ts`). A localized route (`Route.localized()`)
+   * without a `locale` parameter is reached in the locale of the request.
    */
-  route<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): this {
+  route<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RedirectRouteArgs<N>): this {
     this.#target = { kind: 'route', name, params, query: query as Query | undefined };
     return this;
   }
@@ -141,7 +142,8 @@ export class RedirectResult {
     return this.with(OLD_INPUT_KEY, flashableInput(input));
   }
 
-  toResponse(request: Request, routes: RouteLookup, flasher?: Flasher): Response {
+  /** `locale`: the request's, for a route of the redirect that is localized and names none. */
+  toResponse(request: Request, routes: RouteLookup, flasher?: Flasher, locale?: string): Response {
     if (this.#flash.size > 0) {
       sessionFor('redirect().with()', request, flasher);
       for (const [key, value] of this.#flash) flasher.flash(key, value);
@@ -156,16 +158,20 @@ export class RedirectResult {
     // Without a session nothing was stored: the fallback.
     const intended = this.#intended && flasher?.started !== false ? flasher?.pull(INTENDED_KEY) : undefined;
     const headers = new Headers(this.#headers);
-    headers.set('location', isLocalPath(intended) ? intended : this.#location(request, routes));
+    headers.set('location', isLocalPath(intended) ? intended : this.#location(request, routes, locale));
     const status = this.#status ?? (request.method === 'GET' || request.method === 'HEAD' ? 302 : 303);
     return ownResponse(new Response(null, { status, headers }));
   }
 
-  #location(request: Request, routes: RouteLookup): string {
+  #location(request: Request, routes: RouteLookup, locale: string | undefined): string {
     const target = this.#target;
     if (!target) throw new Error('redirect() needs a target: redirect(url), redirect().route(name) or back().');
     if (target.kind === 'url') return target.url;
-    if (target.kind === 'route') return urlFor(routes, target.name, target.params, target.query);
+    if (target.kind === 'route') {
+      // The request's locale is one of the app's own (the translator never speaks another).
+      const localized = locale !== undefined && target.params?.locale === undefined && routes.findByName(target.name)?.localized === true;
+      return urlFor(routes, target.name, localized ? { ...target.params, locale } : target.params, target.query);
+    }
     return previousUrl(request) ?? target.fallback;
   }
 }

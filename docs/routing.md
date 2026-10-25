@@ -452,7 +452,8 @@ The start stops, and names both routes, when:
 - the app supports no locale, or one that is not letters and digits joined by hyphens (`de-AT`): it cannot stand in a URL.
 
 `marmeon route:types` needs no locales: it writes `localized: true` and the path with `/:locale` in front. The
-[localization](localization.md) page covers the languages themselves.
+[localization](localization.md#the-locale-in-the-url) page covers the languages themselves: which locale a request speaks, and
+the `alternates` of a page.
 
 ## Route model binding
 

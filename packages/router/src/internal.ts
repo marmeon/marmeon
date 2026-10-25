@@ -7,6 +7,7 @@ export { accessLabel, formatAccessProblems, isEveryone, routeAccess } from './ac
 export { ensuresOf } from './ensures.ts';
 export type { DispatchInput, DispatchOptions, ResponseFactory, RouteCheck } from './router.ts';
 export { defaultToResponse, describeMiddlewareProblem, FRAMEWORK_ROUTES, isControllerClass } from './router.ts';
+export { PageAlternates } from './page-alternates.ts';
 export { UrlLocales } from './url-locales.ts';
 export { localLocation } from './local-location.ts';
 export { addsConflicts, addsOf, isMiddlewareClass, runPipeline } from './middleware.ts';

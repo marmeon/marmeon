@@ -446,6 +446,7 @@ export interface PageObject {
     version?: string | null;
     locale?: string;
     fallbackLocale?: string;
+    alternates?: Record<string, string>;
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
     deepMergeProps?: string[];
@@ -541,7 +542,7 @@ export declare class RedirectResult {
     #private;
     readonly [REDIRECT_RESULT] = true;
     constructor(url?: string);
-    route<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): this;
+    route<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RedirectRouteArgs<N>): this;
     back(fallback?: string): this;
     intended(): this;
     status(status: RedirectStatus): this;
@@ -551,7 +552,7 @@ export declare class RedirectResult {
     flash<const K extends string>(key: CheckFlashKey<K>, data: FlashValue<K>): this;
     withErrors(errors: Record<string, readonly string[]>): this;
     withInput(input: Record<string, unknown>): this;
-    toResponse(request: Request, routes: RouteLookup, flasher?: Flasher): Response;
+    toResponse(request: Request, routes: RouteLookup, flasher?: Flasher, locale?: string): Response;
 }
 // RedirectStatus
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
@@ -560,7 +561,7 @@ export type ReferrerPolicy = 'no-referrer' | 'no-referrer-when-downgrade' | 'ori
 // RegionKind
 export type RegionKind = 'island' | 'layer';
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // RegionOutcomeStatus
 export type RegionOutcomeStatus = 'unauthorized' | 'forbidden' | 'exception';
 // RegionResult
@@ -642,7 +643,7 @@ export interface SessionEpochAnswer {
 // SessionEpochController
 export declare class SessionEpochController {
     #private;
-    constructor(epoch: () => string);
+    constructor(epoch: () => string | undefined);
     handle(): Response;
 }
 // SharedData
@@ -810,7 +811,7 @@ export { describeAccess } from '@marmeon/router';
 // editableResponse
 export { editableResponse } from '@marmeon/router';
 // epochOfResolver
-export declare function epochOfResolver(resolver: Resolver): string;
+export declare function epochOfResolver(resolver: Resolver): string | undefined;
 // everyone
 export { everyone } from '@marmeon/router';
 // flashableInput
@@ -2510,6 +2511,7 @@ export interface PageObject {
     version?: string | null;
     locale?: string;
     fallbackLocale?: string;
+    alternates?: Record<string, string>;
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
     deepMergeProps?: string[];
@@ -2528,7 +2530,7 @@ export interface PageObject {
     live?: LiveSubscription[];
 }
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // RegionResult
 export type RegionResult = {
     readonly status: 'ready';
@@ -3012,6 +3014,7 @@ export interface PageObject {
     version?: string | null;
     locale?: string;
     fallbackLocale?: string;
+    alternates?: Record<string, string>;
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
     deepMergeProps?: string[];
@@ -3045,7 +3048,7 @@ export declare class RedirectResult {
     #private;
     readonly [REDIRECT_RESULT] = true;
     constructor(url?: string);
-    route<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): this;
+    route<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RedirectRouteArgs<N>): this;
     back(fallback?: string): this;
     intended(): this;
     status(status: RedirectStatus): this;
@@ -3055,12 +3058,12 @@ export declare class RedirectResult {
     flash<const K extends string>(key: CheckFlashKey<K>, data: FlashValue<K>): this;
     withErrors(errors: Record<string, readonly string[]>): this;
     withInput(input: Record<string, unknown>): this;
-    toResponse(request: Request, routes: RouteLookup, flasher?: Flasher): Response;
+    toResponse(request: Request, routes: RouteLookup, flasher?: Flasher, locale?: string): Response;
 }
 // RedirectStatus
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // Registered
 type Registered = [keyof Routes] extends [never] ? false : true;
 // SerializeElement
@@ -3164,6 +3167,7 @@ export interface PageObject {
     version?: string | null;
     locale?: string;
     fallbackLocale?: string;
+    alternates?: Record<string, string>;
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
     deepMergeProps?: string[];
@@ -3190,7 +3194,7 @@ export declare const RELOAD_HEADER = "x-marmeon-reload";
 // RegionKind
 export type RegionKind = 'island' | 'layer';
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // RegionOutcomeStatus
 export type RegionOutcomeStatus = 'unauthorized' | 'forbidden' | 'exception';
 // UPLOAD_HEADER

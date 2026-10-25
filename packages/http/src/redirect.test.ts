@@ -9,6 +9,7 @@ import type { PageProps } from './view.ts';
 const router = new Router().load(
   defineRoutes((Route) => {
     Route.get('/users/:id', () => 'user').name('user-profile.show');
+    Route.localized().get('/about/:feature?', () => 'about').name('about');
   }),
 );
 
@@ -21,6 +22,17 @@ describe('RedirectResult', () => {
     expect(new RedirectResult('/login').toResponse(request(), router).headers.get('location')).toBe('/login');
     const toRoute = new RedirectResult().route('user-profile.show', { id: 7 }).toResponse(request(), router);
     expect(toRoute.headers.get('location')).toBe('/users/7');
+  });
+
+  it('takes the request’s locale for a localized route that is given none — and keeps one it is given', () => {
+    const to = (params: Record<string, string>, locale?: string) =>
+      new RedirectResult().route('about' as never, params as never).toResponse(request(), router, undefined, locale).headers.get('location');
+    expect(to({}, 'de')).toBe('/de/about');
+    expect(to({ feature: 'x y' }, 'de')).toBe('/de/about/x%20y');
+    expect(to({ locale: 'en' }, 'de')).toBe('/en/about');
+    expect(() => to({}, undefined)).toThrow('Missing required parameter [locale]');
+    // A route that is not localized takes no locale.
+    expect(new RedirectResult().route('user-profile.show', { id: 7 }).toResponse(request(), router, undefined, 'de').headers.get('location')).toBe('/users/7');
   });
 
   it('answers GET with 302 and other methods with 303, unless told otherwise', () => {

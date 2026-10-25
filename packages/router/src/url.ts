@@ -15,7 +15,7 @@ export type Query = Readonly<Record<string, QueryValue>>;
 
 /** Where a route name leads — the router (`findByName`) or the browser's route manifest. */
 export interface RouteLookup {
-  findByName(name: string): { readonly path: string } | undefined;
+  findByName(name: string): { readonly path: string; readonly localized?: boolean } | undefined;
 }
 
 const PARAMETER = /\/:(\w+)(\{[^}]*\})?(\?)?/g;

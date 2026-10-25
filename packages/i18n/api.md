@@ -119,7 +119,6 @@ export type Namespace = [keyof Translations] extends [never] ? string : keyof Tr
 // SetLocale
 export declare class SetLocale {
     #private;
-    constructor(current: CurrentLocale, session: Session, preference: LocalePreference, locales: Locales);
     handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // Translate
