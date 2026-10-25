@@ -12,10 +12,3 @@ export const SAME_VALUE: Readonly<Record<string, string>> = {
   RevalidateOnBack: 'the typed form of the same option in react',
   Translator: 'the same token; i18n extends the contract of core',
 };
-
-/**
- * The collisions that exist and wait for their rename, alphabetically. A name that no longer collides must be deleted from here:
- * `pnpm api:check` fails on it, so the list only shrinks.
- */
-export const KNOWN: readonly string[] = [
-];

@@ -17,7 +17,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { KNOWN, SAME_VALUE } from './api-names.ts';
+import { SAME_VALUE } from './api-names.ts';
 import { compareSnapshots, parseSnapshot, renderSnapshot, type ApiChanges, type ApiItem } from './api-snapshot.ts';
 import { LIBRARY } from './check-source.ts';
 import { frameworkPackages } from './packages.ts';
@@ -960,16 +960,14 @@ export function stabilityProblems(packages: readonly PackageToSnapshot[], root: 
 export interface NameLists {
   /** Names exported as two declarations on purpose, each with its reason. */
   readonly sameValue: Readonly<Record<string, string>>;
-  /** Names that collide today and wait for their rename. */
-  readonly known: readonly string[];
 }
 
-const NAME_LISTS: NameLists = { sameValue: SAME_VALUE, known: KNOWN };
+const NAME_LISTS: NameLists = { sameValue: SAME_VALUE };
 
 /**
  * One exported name stands for one declaration: two entry points of the framework (stable or experimental, not `./internal`,
  * not `@internal`) that export a name must export the same declaration, by re-export or with the same text. `lists` holds the
- * exceptions; a `known` name that does not collide any more is a problem, so that list shrinks.
+ * exceptions; one that does not collide any more is a problem.
  */
 export function nameProblems(packages: readonly PackageToSnapshot[], lists: NameLists = NAME_LISTS): string[] {
   interface Site {
@@ -1004,13 +1002,11 @@ export function nameProblems(packages: readonly PackageToSnapshot[], lists: Name
     if (distinct.size < 2) continue;
     colliding.add(name);
     if (Object.hasOwn(lists.sameValue, name)) continue;
-    if (lists.known.includes(name)) continue;
     const places = [...distinct.values()].map((site) => `${site.pkg} (${site.where})`);
     const list = places.length === 2 ? places.join(' and ') : `${places.slice(0, -1).join(', ')} and ${places.at(-1)}`;
     problems.push(`\`${name}\` is exported as ${distinct.size === 2 ? 'two' : distinct.size} declarations: ${list} — rename one (CONTRIBUTING › The API snapshot)`);
   }
   for (const name of Object.keys(lists.sameValue)) if (!colliding.has(name)) problems.push(`\`${name}\` is listed in SAME_VALUE but no longer collides — delete the line`);
-  for (const name of lists.known) if (!colliding.has(name)) problems.push(`\`${name}\` is listed in KNOWN but no longer collides — delete the line`);
   return problems;
 }
 
