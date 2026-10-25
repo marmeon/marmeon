@@ -1,9 +1,11 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { PassThrough } from 'node:stream';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createApplication, defineModule, token, type Application } from '@marmeon/core';
 import { defineRoutes, Router } from '@marmeon/router';
-import { completer } from './repl.ts';
+import { TinkerCommand } from '../commands/tinker.ts';
+import { completer, interactive } from './repl.ts';
 import { TinkerSession } from './session.ts';
 import { toJavaScript } from './typescript.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
@@ -98,5 +100,42 @@ describe('a tinker session (in-process)', () => {
   it('refuses --sandbox without @marmeon/database', async () => {
     await expect(new TinkerSession(app, { sandbox: true }).open()).rejects.toThrow('--sandbox needs @marmeon/database');
   });
-});
 
+  describe('the history file', () => {
+    const sit = async (history: string | undefined) => {
+      const input = new PassThrough();
+      const output = new PassThrough();
+      output.resume();
+      const done = interactive(new TinkerSession(app), { history, input, output });
+      input.end("'secret-token'\n.exit\n");
+      await done;
+    };
+    const mode = (file: string) => statSync(file).mode & 0o777;
+
+    it('is owner-only when new, and made owner-only when it exists with wider access', async () => {
+      const fresh = join(tempDir('marmeon-tinker-history-'), 'storage/framework/tinker_history');
+      await sit(fresh);
+      expect(mode(fresh)).toBe(0o600);
+
+      const wide = join(tempDir('marmeon-tinker-history-'), 'tinker_history');
+      writeFileSync(wide, 'old\n', { mode: 0o644 });
+      chmodSync(wide, 0o644);
+      await sit(wide);
+      expect(mode(wide)).toBe(0o600);
+    });
+
+    it('is left alone by --execute', async () => {
+      const root = tempDir('marmeon-tinker-history-');
+      const file = join(root, 'storage/framework/tinker_history');
+      const output = { line() {}, warn() {}, error() {} } as never;
+      const command = new TinkerCommand(app);
+      expect(await command.handle({ options: { execute: '1 + 1' }, output, root } as never)).toBe(0);
+      expect(existsSync(file)).toBe(false);
+
+      mkdirSync(join(root, 'storage/framework'), { recursive: true });
+      writeFileSync(file, 'before\n', { mode: 0o600 });
+      expect(await command.handle({ options: { execute: '1 + 1' }, output, root } as never)).toBe(0);
+      expect(readFileSync(file, 'utf8')).toBe('before\n');
+    });
+  });
+});
