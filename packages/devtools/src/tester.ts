@@ -2,7 +2,7 @@ import { AssertionError } from 'node:assert';
 import type { Container } from '@marmeon/core';
 import type { AnyEntry, Entry, EntryContents, EntryType } from './entry.ts';
 import { Recorder } from './recorder.ts';
-import { MemoryStore } from './store.ts';
+import { MemoryDevtoolsStore } from './store.ts';
 
 /**
  * What a test reads of the devtools — `app.devtools` of `createTestApp(App, { devtools: true })`:
@@ -17,15 +17,16 @@ import { MemoryStore } from './store.ts';
  */
 export class DevtoolsTester {
   readonly #container: Container;
-  readonly #store: MemoryStore;
+  readonly #store: MemoryDevtoolsStore;
 
-  constructor(container: Container, store: MemoryStore) {
+  /** @internal `createTestApp()` makes it. */
+  constructor(container: Container, store: MemoryDevtoolsStore) {
     this.#container = container;
     this.#store = store;
   }
 
   /** The store the recorder writes to. */
-  get store(): MemoryStore {
+  get store(): MemoryDevtoolsStore {
     return this.#store;
   }
 

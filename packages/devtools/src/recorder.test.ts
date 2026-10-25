@@ -15,7 +15,7 @@ import type { HttpContext } from '@marmeon/router';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
-import { DevtoolsStore, FileStore, MemoryStore, type AnyEntry } from './index.ts';
+import { DevtoolsStore, FileDevtoolsStore, MemoryDevtoolsStore, type AnyEntry } from './index.ts';
 import { Recorder } from './recorder.ts';
 import { enableDevtoolsForTests } from './test-opt-in.ts';
 import type { DevtoolsTester } from './tester.ts';
@@ -219,7 +219,7 @@ describe('the gate (fail closed, development only)', () => {
   it('records with NODE_ENV=development — into NDJSON files under storage/framework/devtools', async () => {
     const { app, root, kernel } = await boot({ NODE_ENV: 'development' });
     try {
-      expect(app.container.make(DevtoolsStore)).toBeInstanceOf(FileStore);
+      expect(app.container.make(DevtoolsStore)).toBeInstanceOf(FileDevtoolsStore);
       await kernel.request('/people/1');
       await app.container.make(Recorder).settled();
       const lines = files(root).trim().split('\n');
@@ -270,7 +270,7 @@ describe('the gate (fail closed, development only)', () => {
   it('records in a test only when it opts in — into memory', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
-      expect(app.container.make(DevtoolsStore)).toBeInstanceOf(MemoryStore);
+      expect(app.container.make(DevtoolsStore)).toBeInstanceOf(MemoryDevtoolsStore);
       await kernel.request('/people/1');
       expect(tester!.entries('request')).toHaveLength(1);
     } finally {
@@ -303,6 +303,7 @@ describe('what the recorder keeps', () => {
       const batch = tester!.batch(request.batch);
       expect(batch.map((entry) => entry.type)).toEqual(expect.arrayContaining(['request', 'query', 'job', 'log', 'event']));
       expect(batch.filter((entry) => entry.type === 'job').map((entry) => entry.content.status)).toEqual(['queued', 'queued']);
+      expect(batch.filter((entry) => entry.type === 'job').map((entry) => entry.content.delaySeconds)).toEqual([0, 0]);
       expect(batch.every((entry) => entry.requestId === requestId)).toBe(true);
       // The sync job ran inside the request: its attempt is a batch of its own, tied to the request.
       const attempt = tester!.assertRecorded('job', (job) => job.status === 'done' && job.name === 'test.report');

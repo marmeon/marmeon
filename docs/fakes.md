@@ -24,8 +24,8 @@ app.queue needs @marmeon/queue in the app (and not createTestApp(…, { queue: '
 
 A test reaches the fakes through `app`. The classes behind the mail, queue, notifications, storage and schedule fakes (`MailFake`,
 `QueueFake`, `NotificationFake`, `StorageFake`, `ScheduleTester`) are in the `/testing` subpath of their package, for the one who types a
-variable with them: `import type { QueueFake } from '@marmeon/queue/testing'`. The same holds for `BroadcastTester` and `LiveStreamReader` (`@marmeon/live/testing`). A `*Tester` drives or reads the real
-service (`ScheduleTester`, `BroadcastTester`, and `DevtoolsTester` from `@marmeon/devtools/testing`, which is experimental).
+variable with them: `import type { QueueFake } from '@marmeon/queue/testing'`. The same holds for `BroadcastTester` and `LiveStreamReader` (`@marmeon/live/testing`) and for `DevtoolsTester` (`import type { DevtoolsTester } from '@marmeon/devtools/testing'`). A `*Tester` drives or reads the real
+service: `ScheduleTester`, `BroadcastTester` and `DevtoolsTester`.
 
 The devtools record into memory with `devtools: true`, as the [devtools](devtools.md#testing) page shows, and the clock is the
 subject of the [time](time.md) page.

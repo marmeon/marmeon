@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database, secret } from '@marmeon/database';
-import { DevtoolsStore, FileStore } from '@marmeon/devtools';
+import { DevtoolsStore, FileDevtoolsStore } from '@marmeon/devtools';
 import { createTestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -102,7 +102,7 @@ describe('the devtools', () => {
     // What the store writes, as it writes it: NDJSON files.
     const directory = mkdtempSync(join(tmpdir(), 'marmeon-devtools-plain-'));
     try {
-      await new FileStore({ directory }).write(app.devtools.entries());
+      await new FileDevtoolsStore({ directory }).write(app.devtools.entries());
       const written = readdirSync(directory).map((name) => readFileSync(join(directory, name), 'utf8')).join('');
       expect(written.split('\n').length).toBeGreaterThan(50);
       const secrets = { password, newPassword, resetToken, apiToken, apiSecret: apiToken.slice('marmeon_'.length, -8), csrf, hash: String(hash), ...Object.fromEntries(sessions.map((cookie, i) => [`session${i}`, cookie])) };

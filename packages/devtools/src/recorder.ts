@@ -18,7 +18,7 @@ import {
   type SsrRenderMessage,
 } from '@marmeon/core/diagnostics';
 import { ignoresPath, type ResolvedDevtoolsOptions } from './config.ts';
-import { EntryIds, type AnyEntry, type EntryContents, type EntryType, type ErrorContent, type ExceptionContent, type RequestContent } from './entry.ts';
+import { EntryIds, type AnyEntry, type EntryContents, type EntryType, type ErrorDetails, type ExceptionEntryContent, type RequestEntryContent } from './entry.ts';
 import type { DevtoolsStore } from './store.ts';
 
 /** The most entries one batch keeps — a request running 10 000 queries keeps the first ones and counts the rest. */
@@ -42,7 +42,7 @@ interface Batch {
   dropped: number;
   /** Requests sharing it (an island resolved in-process joins its page's). */
   open: number;
-  ssr?: RequestContent['ssr'];
+  ssr?: RequestEntryContent['ssr'];
 }
 
 export interface RecorderOptions {
@@ -231,7 +231,7 @@ export class Recorder {
     return entry;
   }
 
-  #error(error: unknown): ErrorContent | undefined {
+  #error(error: unknown): ErrorDetails | undefined {
     if (error === undefined) return undefined;
     if (error instanceof Error) return { class: error.name || error.constructor.name, message: this.#redactor.text(error.message), ...(error.stack ? { stack: this.#redactor.text(error.stack) } : {}) };
     return { class: typeof error, message: this.#redactor.text(String(error)) };
@@ -261,7 +261,7 @@ export class Recorder {
     this.#write(batch);
   }
 
-  #requestContent(message: HttpRequestMessage, batch: Batch): RequestContent {
+  #requestContent(message: HttpRequestMessage, batch: Batch): RequestEntryContent {
     const redactor = this.#redactor;
     const url = new URL(message.url, 'http://localhost');
     const query: Record<string, string | string[]> = {};
@@ -372,7 +372,7 @@ export class Recorder {
           queue: message.queue,
           connection: message.connection,
           kind: message.kind,
-          delay: message.delaySeconds,
+          delaySeconds: message.delaySeconds,
           ...(message.unique === undefined ? {} : { unique: message.unique }),
           ...(message.payloads && index < message.payloads.length ? { payload: this.#redactor.payload(message.payloads[index], message.encrypted?.[index] === true) } : {}),
           ...(message.durationMs === undefined ? {} : { durationMs: message.durationMs }),
@@ -529,10 +529,10 @@ export class Recorder {
   }
 
   /** An `exception` entry: the error, where it ended, and the solutions the error page would show — looked up before the batch is written. */
-  #failure(message: MessageBase, error: unknown, where: ExceptionContent['in'], batch?: Batch, request?: { status: number; method: string; path: string; routePath?: string | undefined }): void {
+  #failure(message: MessageBase, error: unknown, where: ExceptionEntryContent['in'], batch?: Batch, request?: { status: number; method: string; path: string; routePath?: string | undefined }): void {
     if (!this.#options.record.has('exceptions')) return;
     const shown = this.#error(error)!;
-    const solutions: ExceptionContent['solutions'][number][] = [];
+    const solutions: ExceptionEntryContent['solutions'][number][] = [];
     const entry = this.#add(
       'exception',
       message,

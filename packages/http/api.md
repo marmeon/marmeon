@@ -1553,34 +1553,6 @@ export interface ConfirmRequest extends ConfirmOptions {
 export type DeclaredOnBack = (component: string) => Promise<ReloadSpec | undefined>;
 // DeclaredRevalidation
 export type DeclaredRevalidation = (component: string) => RevalidateOnBack | undefined | Promise<RevalidateOnBack | undefined>;
-// DevtoolsFeature
-export interface DevtoolsFeature {
-    readonly timeline: readonly TimelineEntry[];
-    readonly snapshots: readonly PatchSnapshot[];
-    readonly hydration: readonly HydrationIssue[];
-    readonly left: boolean;
-    readonly cache: Map<string, unknown>;
-    answerFor(url: string): TimelineEntry | undefined;
-    subscribe(listener: () => void): () => void;
-    onStarted(listener: () => void): () => void;
-    stop(): void;
-    readonly record: Omit<DevtoolsHook, 'navigator'> & {
-        document(url: string, requestId: string | undefined): void;
-    };
-}
-// DevtoolsGlobal
-export interface DevtoolsGlobal {
-    __MARMEON_DEVTOOLS_HOOK__?: Partial<DevtoolsHook>;
-}
-// DevtoolsHook
-export interface DevtoolsHook {
-    navigator(navigator: Navigator): void;
-    patches(ids: readonly number[]): void;
-    patched(id: number, beneath: Readonly<Record<string, unknown>>, changed: Readonly<Record<string, unknown>>): void;
-    committed(ids: Iterable<number>): void;
-    removed(ids: Iterable<number>): void;
-    recoverable(error: unknown, component: string, server: boolean): void;
-}
 // DocumentChange
 // type-only
 export declare class DocumentChange {
@@ -1776,14 +1748,6 @@ export interface HistoryState {
 export interface HookEvents {
     before: (event: BeforeVisit) => void;
     invalid: (event: InvalidAnswer) => void;
-}
-// HydrationIssue
-export interface HydrationIssue {
-    readonly at: number;
-    readonly component: string;
-    readonly server: boolean;
-    readonly message: string;
-    readonly stack?: string;
 }
 // IgnoredGuard
 export interface IgnoredGuard {
@@ -2161,15 +2125,6 @@ export declare class PagePatches {
     get page(): PatchTarget;
     target(key: string): PatchTarget;
 }
-// PatchSnapshot
-export interface PatchSnapshot {
-    readonly id: number;
-    request?: number;
-    readonly at: number;
-    before?: Readonly<Record<string, unknown>>;
-    after?: Readonly<Record<string, unknown>>;
-    state: 'shown' | 'committed' | 'removed';
-}
 // PatchTarget
 export interface PatchTarget {
     add(patch: PropsPatch): number;
@@ -2478,47 +2433,6 @@ export interface TabSync {
     on(event: 'epoch', listener: (change: EpochChange) => void): () => void;
     check(): Promise<void>;
 }
-// TimelineEntry
-export interface TimelineEntry {
-    readonly id: number;
-    readonly kind: TimelineKind;
-    readonly method: string;
-    readonly url: string;
-    readonly at: number;
-    end?: number;
-    status?: number;
-    requestId?: string;
-    answered?: string;
-    outcome?: TimelineOutcome;
-    location?: string;
-    reload?: string;
-    readonly only?: readonly string[];
-    readonly except?: readonly string[];
-    readonly name?: string;
-    component?: string;
-    errors?: ValidationErrors;
-    patches?: readonly number[];
-    readonly channel?: string;
-    readonly hinted?: readonly string[] | null;
-}
-// TimelineKind
-export type TimelineKind =
-'document' | 'visit'
- | 'reload'
- | 'partial'
- | 'background'
- | 'deferred' | 'prefetch'
- | 'restore' | 'layer' | 'island' | 'action'
- | 'validation' | 'upload'
- | 'live';
-// TimelineOutcome
-export type TimelineOutcome = 'ok'
- | 'invalid'
- | 'reload'
- | 'redirect'
- | 'failed'
- | 'cancelled'
- | 'prefetched';
 // TitleRegistry
 export declare class TitleRegistry {
     #private;
@@ -2668,12 +2582,6 @@ export declare function defaultFormEntries(form: {
 export declare const defaultTitle: TitleTemplate;
 // defineFeature
 export declare function defineFeature<API>(name: string, setup: (host: FeatureHost) => API, order?: number): Feature<API>;
-// devtools
-export declare const devtools: import("../feature.ts").Feature<DevtoolsFeature>;
-// devtoolsReports
-export declare function devtoolsReports(api: () => DevtoolsFeature | undefined): Omit<DevtoolsHook, 'navigator'> & {
-    flush(): void;
-};
 // dirtyPaths
 export declare function dirtyPaths(initial: unknown, current: unknown, prefix?: string): string[];
 // fieldPath

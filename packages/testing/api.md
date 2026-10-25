@@ -111,6 +111,7 @@ export declare class TestApp {
         connection?: string;
         lastEventId?: string;
     }): Promise<LiveStreamReader>;
+    get devtools(): DevtoolsTester;
     get events(): EventFake;
     get schedule(): ScheduleTester;
     get clock(): TestClock;
@@ -261,11 +262,4 @@ export type UploadFile = Blob | {
     readonly contents: string | Uint8Array;
     readonly type?: string;
 };
-```
-
-### Experimental
-
-```ts
-// TestApp.devtools
-get devtools(): DevtoolsTester;
 ```

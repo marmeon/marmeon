@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, writeFi
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { EntryIds, type AnyEntry } from './entry.ts';
-import { FileStore } from './file-store.ts';
+import { FileDevtoolsStore } from './file-store.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 function directory(): string {
@@ -21,10 +21,10 @@ function diskBytes(path: string): number {
   return readdirSync(path).reduce((sum, name) => sum + statSync(join(path, name)).size, 0);
 }
 
-describe('FileStore', () => {
+describe('FileDevtoolsStore', () => {
   it('writes NDJSON — one file per process and hour — and reads it back: newest first, by type, batch, request, tag, text and page', async () => {
     const path = directory();
-    const store = new FileStore({ directory: path });
+    const store = new FileDevtoolsStore({ directory: path });
     const now = Date.now();
     await store.write([log('one', now - 3000), log('two', now - 2000, { batch: 'b2', requestId: 'r-2', tags: ['level:warn'] } as Partial<AnyEntry>)]);
     await store.write([log('three', now - 1000, { jobId: 'j-3' } as Partial<AnyEntry>)]);
@@ -49,8 +49,8 @@ describe('FileStore', () => {
 
   it('tails what any process appended — a second store reading the same directory sees the first one’s entries', async () => {
     const path = directory();
-    const writer = new FileStore({ directory: path });
-    const reader = new FileStore({ directory: path });
+    const writer = new FileDevtoolsStore({ directory: path });
+    const reader = new FileDevtoolsStore({ directory: path });
     const { cursor } = await reader.since();
     await writer.write([log('a'), log('b')]);
     const first = await reader.since(cursor);
@@ -66,7 +66,7 @@ describe('FileStore', () => {
     const file = join(path, '2026100412-1-abcdef-0001.ndjson');
     const entry = JSON.stringify(log('half'));
     writeFileSync(file, `${JSON.stringify(log('whole'))}\n${entry.slice(0, 20)}`);
-    const store = new FileStore({ directory: path, now: () => Date.now() });
+    const store = new FileDevtoolsStore({ directory: path, now: () => Date.now() });
     expect((await store.list()).map((e) => (e.type === 'log' ? e.content.message : ''))).toEqual(['whole']);
     appendFileSync(file, `${entry.slice(20)}\n`);
     expect((await store.list()).map((e) => (e.type === 'log' ? e.content.message : ''))).toEqual(['whole', 'half']);
@@ -76,7 +76,7 @@ describe('FileStore', () => {
   it('keeps the ring within maxBytes — after writing twice as much', async () => {
     const path = directory();
     const maxBytes = 256 * 1024;
-    const store = new FileStore({ directory: path, maxBytes });
+    const store = new FileDevtoolsStore({ directory: path, maxBytes });
     const filler = 'z'.repeat(900);
     let written = 0;
     let batch = 0;
@@ -95,7 +95,7 @@ describe('FileStore', () => {
   it('forgets what is older than maxAgeHours — not read, and its files pruned', async () => {
     const path = directory();
     let now = Date.now();
-    const store = new FileStore({ directory: path, maxAgeHours: 1, now: () => now });
+    const store = new FileDevtoolsStore({ directory: path, maxAgeHours: 1, now: () => now });
     await store.write([log('old', now)]);
     now += 2 * 3_600_000;
     await store.write([log('new', now)]);
@@ -107,8 +107,8 @@ describe('FileStore', () => {
 
   it('clears everything — also what another process wrote', async () => {
     const path = directory();
-    const one = new FileStore({ directory: path });
-    const two = new FileStore({ directory: path });
+    const one = new FileDevtoolsStore({ directory: path });
+    const two = new FileDevtoolsStore({ directory: path });
     await one.write([log('a')]);
     await two.write([log('b')]);
     expect(await one.list()).toHaveLength(2);
@@ -124,7 +124,7 @@ describe('FileStore', () => {
     mkdirSync(join(root, '..'), { recursive: true });
     writeFileSync(root, 'a file where the directory should be');
     const failures: string[] = [];
-    const store = new FileStore({ directory: root, onError: (error, during) => failures.push(`${during}: ${(error as { code?: string }).code}`) });
+    const store = new FileDevtoolsStore({ directory: root, onError: (error, during) => failures.push(`${during}: ${(error as { code?: string }).code}`) });
     await expect(store.write([log('lost')])).resolves.toBeUndefined();
     expect(failures).toEqual([expect.stringMatching(/^write: E(EXIST|NOTDIR)$/)]);
     await expect(store.list()).resolves.toEqual([]);
@@ -134,8 +134,8 @@ describe('FileStore', () => {
     const path = directory();
     const source = new URL('./file-store.ts', import.meta.url).href;
     const script = `
-      const { FileStore } = await import(${JSON.stringify(source)});
-      const store = new FileStore({ directory: ${JSON.stringify(path)} });
+      const { FileDevtoolsStore } = await import(${JSON.stringify(source)});
+      const store = new FileDevtoolsStore({ directory: ${JSON.stringify(path)} });
       const name = process.argv[1];
       // Batches of 1.2 MB (a request with many queries): appends to one shared file would interleave at that size.
       const filler = 'q'.repeat(60_000);
@@ -151,7 +151,7 @@ describe('FileStore', () => {
         child.on('error', reject);
         child.on('exit', (code) => resolve(code ?? 1));
       });
-    const reader = new FileStore({ directory: path });
+    const reader = new FileDevtoolsStore({ directory: path });
     let reading = true;
     const reads = (async () => {
       while (reading) {

@@ -27,17 +27,17 @@ export type AnyEntry = { [T in EntryType]: Entry<T> }[EntryType];
 
 /** The kinds of entries and what each holds. */
 export interface EntryContents {
-  request: RequestContent;
-  query: QueryContent;
-  job: JobContent;
-  mail: MailContent;
-  notification: NotificationContent;
-  log: LogContent;
-  exception: ExceptionContent;
-  schedule: ScheduleContent;
-  live: LiveContent;
-  event: EventContent;
-  command: CommandContent;
+  request: RequestEntryContent;
+  query: QueryEntryContent;
+  job: JobEntryContent;
+  mail: MailEntryContent;
+  notification: NotificationEntryContent;
+  log: LogEntryContent;
+  exception: ExceptionEntryContent;
+  schedule: ScheduleEntryContent;
+  live: LiveEntryContent;
+  event: EventEntryContent;
+  command: CommandEntryContent;
 }
 
 export type EntryType = keyof EntryContents;
@@ -45,13 +45,13 @@ export type EntryType = keyof EntryContents;
 export const ENTRY_TYPES: readonly EntryType[] = ['request', 'query', 'job', 'mail', 'notification', 'log', 'exception', 'schedule', 'live', 'event', 'command'];
 
 /** A failure, as shown: never the error object itself. */
-export interface ErrorContent {
+export interface ErrorDetails {
   readonly class: string;
   readonly message: string;
   readonly stack?: string;
 }
 
-export interface RequestContent {
+export interface RequestEntryContent {
   readonly method: string;
   /** The URL as requested: sensitive route parameters (`:token`) and query values replaced. */
   readonly url: string;
@@ -96,10 +96,10 @@ export interface RequestContent {
   readonly ssr?: { readonly component: string; readonly durationMs?: number; readonly streamed?: boolean; readonly complete: boolean; readonly failed?: boolean };
   /** Entries of this batch not kept (more than the recorder keeps per batch). */
   readonly dropped?: number;
-  readonly error?: ErrorContent;
+  readonly error?: ErrorDetails;
 }
 
-export interface QueryContent {
+export interface QueryEntryContent {
   readonly connection: string;
   readonly driver: string;
   readonly sql: string;
@@ -110,10 +110,10 @@ export interface QueryContent {
   readonly durationMs: number;
   /** At or over `slowQueryMs`. */
   readonly slow: boolean;
-  readonly error?: ErrorContent;
+  readonly error?: ErrorDetails;
 }
 
-export interface JobContent {
+export interface JobEntryContent {
   /** `queued` (dispatched), then per attempt: `done`, `failed`, `released`, `discarded`. */
   readonly status: 'queued' | 'done' | 'failed' | 'released' | 'discarded';
   /** `static job`. */
@@ -125,17 +125,17 @@ export interface JobContent {
   /** `dispatch`, `bulk` or `chain` — dispatches only. */
   readonly kind?: 'dispatch' | 'bulk' | 'chain';
   /** Seconds before it may run — dispatches only. */
-  readonly delay?: number;
+  readonly delaySeconds?: number;
   readonly unique?: string;
   /** The payload, redacted — an encrypted job's is `[encrypted]`, never its contents. */
   readonly payload?: unknown;
   /** The request that dispatched it (attempts). */
   readonly originRequestId?: string;
   readonly durationMs?: number;
-  readonly error?: ErrorContent;
+  readonly error?: ErrorDetails;
 }
 
-export interface MailContent {
+export interface MailEntryContent {
   /** The mailable's class. */
   readonly mailable: string;
   /** `send` (now), `queue` (composed now, sent by a worker), `worker` (the queued mail, sent). */
@@ -150,10 +150,10 @@ export interface MailContent {
   readonly text?: string;
   readonly attachments: readonly { readonly filename: string; readonly bytes: number; readonly contentType?: string }[];
   readonly durationMs?: number;
-  readonly error?: ErrorContent;
+  readonly error?: ErrorDetails;
 }
 
-export interface NotificationContent {
+export interface NotificationEntryContent {
   readonly notification: string;
   readonly id: string;
   readonly recipient: { readonly type: string; readonly id: string | number };
@@ -162,17 +162,17 @@ export interface NotificationContent {
   readonly channels?: readonly string[];
   readonly outcome?: 'delivered' | 'gone' | 'delivered-before';
   readonly durationMs?: number;
-  readonly error?: ErrorContent;
+  readonly error?: ErrorDetails;
 }
 
-export interface LogContent {
+export interface LogEntryContent {
   readonly level: 'debug' | 'info' | 'warn' | 'error';
   readonly message: string;
   /** The logger's bindings and the entry's context, redacted. */
   readonly context: Readonly<Record<string, unknown>>;
 }
 
-export interface ExceptionContent extends ErrorContent {
+export interface ExceptionEntryContent extends ErrorDetails {
   /** Where it ended: a request (`status`, `method`, `path`), a job, a scheduled task or a command. */
   readonly in: 'request' | 'job' | 'schedule' | 'command';
   readonly status?: number;
@@ -182,7 +182,7 @@ export interface ExceptionContent extends ErrorContent {
   readonly solutions: readonly { readonly title: string; readonly text: string; readonly command?: string; readonly docs?: string }[];
 }
 
-export interface ScheduleContent {
+export interface ScheduleEntryContent {
   readonly task: string;
   /** The minute it was due (epoch ms). */
   readonly minute: number;
@@ -190,18 +190,18 @@ export interface ScheduleContent {
   readonly outcome?: 'ran' | 'skipped' | 'failed';
   readonly skipped?: string;
   readonly durationMs?: number;
-  readonly error?: ErrorContent;
+  readonly error?: ErrorDetails;
 }
 
-export interface LiveContent {
+export interface LiveEntryContent {
   readonly channel: string;
   /** The props it names; `null`: every prop each follower follows. */
   readonly only: readonly string[] | null;
   readonly durationMs?: number;
-  readonly error?: ErrorContent;
+  readonly error?: ErrorDetails;
 }
 
-export interface EventContent {
+export interface EventEntryContent {
   /** `static event`, else the class name. */
   readonly name: string;
   readonly class: string;
@@ -210,13 +210,13 @@ export interface EventContent {
   readonly listeners: readonly string[];
 }
 
-export interface CommandContent {
+export interface CommandEntryContent {
   readonly command: string;
   /** Its arguments, redacted (`--password=…`). */
   readonly args: readonly string[];
   readonly exitCode?: number;
   readonly durationMs?: number;
-  readonly error?: ErrorContent;
+  readonly error?: ErrorDetails;
 }
 
 /**

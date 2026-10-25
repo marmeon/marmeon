@@ -31,7 +31,7 @@ import { notify } from '../notify.ts';
 /**
  * What kind of request a timeline entry is.
  *
- * @experimental
+ * @internal
  */
 export type TimelineKind =
   /** The document itself (a full load) — seeded by the bar from what the server rendered. */
@@ -60,7 +60,7 @@ export type TimelineKind =
 /**
  * How a request ended.
  *
- * @experimental
+ * @internal
  */
 export type TimelineOutcome =
   | 'ok'
@@ -80,7 +80,7 @@ export type TimelineOutcome =
 /**
  * One request (or hint) of the timeline — oldest first. Fields fill in as its answer comes.
  *
- * @experimental
+ * @internal
  */
 export interface TimelineEntry {
   readonly id: number;
@@ -121,7 +121,7 @@ export interface TimelineEntry {
 /**
  * One optimistic patch as it was shown: the props it changed — before, and as the patch showed them.
  *
- * @experimental
+ * @internal
  */
 export interface PatchSnapshot {
   readonly id: number;
@@ -139,7 +139,7 @@ export interface PatchSnapshot {
 /**
  * An error React recovered from while hydrating — a mismatch, or a part that failed on the server.
  *
- * @experimental
+ * @internal
  */
 export interface HydrationIssue {
   readonly at: number;
@@ -155,7 +155,7 @@ export interface HydrationIssue {
  * The dev hook — `globalThis.__MARMEON_DEVTOOLS_HOOK__`, set by the devtools' client before the app starts. The core and the
  * React adapter call it only under `process.env.NODE_ENV === 'development' || … === 'test'` (gone from a production build), each method optional.
  *
- * @experimental
+ * @internal
  */
 export interface DevtoolsHook {
   /** A navigator was made — the bar attaches {@link devtools} to it. */
@@ -175,7 +175,7 @@ export interface DevtoolsHook {
 /**
  * Where the dev hook is (`globalThis`) — the shape the core reads it with.
  *
- * @experimental
+ * @internal
  */
 export interface DevtoolsGlobal {
   __MARMEON_DEVTOOLS_HOOK__?: Partial<DevtoolsHook>;
@@ -184,7 +184,7 @@ export interface DevtoolsGlobal {
 /**
  * What the bar uses of the feature. Its lists are the slots' — empty again once the document is left.
  *
- * @experimental
+ * @internal
  */
 export interface DevtoolsFeature {
   /** Every request and hint, oldest first (the last {@link TIMELINE_LIMIT}). */
@@ -218,7 +218,7 @@ export interface DevtoolsFeature {
 /**
  * How many timeline entries are kept — the oldest go first.
  *
- * @experimental
+ * @internal
  */
 export const TIMELINE_LIMIT = 300;
 /** How many patches and hydration errors are kept. */
@@ -297,7 +297,7 @@ function errorsOf(body: unknown): ValidationErrors | undefined {
  * the window's `fetch` and `EventSource` (to see every request and live hint), hangs on the visit pipeline (`start`: what a visit
  * asked for), and keeps what it saw in slots of the document only.
  *
- * @experimental
+ * @internal
  */
 export const devtools = /* @__PURE__ */ defineFeature('devtools', (host: FeatureHost): DevtoolsFeature => {
   const win = host.window as { fetch: FeatureHost['window']['fetch']; EventSource?: new (url: string) => EventSource };
@@ -561,7 +561,7 @@ export const devtools = /* @__PURE__ */ defineFeature('devtools', (host: Feature
  * sets as `__MARMEON_DEVTOOLS_HOOK__`, with its own `navigator`. Reports before a navigator (a hydration error while the first
  * page hydrates) wait for it — at most a few.
  *
- * @experimental
+ * @internal
  */
 export function devtoolsReports(api: () => DevtoolsFeature | undefined): Omit<DevtoolsHook, 'navigator'> & { flush(): void } {
   const early: (() => void)[] = [];

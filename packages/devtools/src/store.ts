@@ -42,8 +42,8 @@ export interface StoreUsage {
 }
 
 /**
- * Where entries go: the {@link FileStore} — NDJSON files under `storage/framework/devtools/`, shared by the server, the
- * worker and the scheduler — or the {@link MemoryStore} of tests. Entries come in redacted; a store never sees raw values.
+ * Where entries go: the {@link FileDevtoolsStore} — NDJSON files under `storage/framework/devtools/`, shared by the server, the
+ * worker and the scheduler — or the {@link MemoryDevtoolsStore} of tests. Entries come in redacted; a store never sees raw values.
  * Writing never throws: a failure is reported (`onError`) and the entries are lost — never the request.
  */
 export interface DevtoolsStore {
@@ -101,7 +101,7 @@ export function limitOf(query: EntryQuery): number {
  * process only, gone with it. Writes land at once (synchronously), so a test sees a request's entries when it has its
  * response. Keeps the newest `maxEntries`.
  */
-export class MemoryStore implements DevtoolsStore {
+export class MemoryDevtoolsStore implements DevtoolsStore {
   readonly #entries: AnyEntry[] = [];
   readonly #maxEntries: number;
   #dropped = 0;
