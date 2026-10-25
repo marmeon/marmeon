@@ -103,3 +103,66 @@ describe('<Head> fields in the browser', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('dropped "javascript:alert(1)"'));
   });
 });
+
+describe('<Head jsonLd> in the browser', () => {
+  const blocks = () => [...document.head.querySelectorAll('script[type="application/ld+json"]')] as HTMLElement[];
+
+  it('writes each block as the text of a script, whatever the text says', async () => {
+    const value = { '@type': 'Person', name: '</script><script>alert(1)</script><!--' };
+    await show({ jsonLd: [value, { '@type': 'Article' }] });
+    expect(blocks()).toHaveLength(2);
+    expect(JSON.parse(blocks()[0]!.textContent!)).toEqual(value);
+    expect(blocks()[0]!.children).toHaveLength(0);
+    expect(document.head.querySelectorAll('script')).toHaveLength(2);
+  });
+
+  it('replaces the block on navigation and removes it when the next page has none', async () => {
+    await show({ jsonLd: { '@type': 'Article', headline: 'One' } });
+    const first = blocks()[0];
+    page++;
+    await show({ jsonLd: { '@type': 'Article', headline: 'Two' } });
+    expect(blocks()).toHaveLength(1);
+    expect(blocks()[0]).toBe(first);
+    expect(JSON.parse(blocks()[0]!.textContent!).headline).toBe('Two');
+    page++;
+    await show({ description: 'No data' });
+    expect(blocks()).toHaveLength(0);
+  });
+
+  it('takes over from the block the server rendered', async () => {
+    document.head.innerHTML = '<script type="application/ld+json" data-marmeon-head="ssr">{"@type":"Article"}</script>';
+    await show({ jsonLd: { '@type': 'Article' } });
+    expect(blocks()).toHaveLength(1);
+    expect(blocks()[0]!.getAttribute('data-marmeon-head')).toBe('meta');
+  });
+
+  it('removes the block and warns when Trusted Types refuses its text', async () => {
+    // What a `require-trusted-types-for 'script'` policy does: setting a script's text throws.
+    Object.defineProperty(HTMLScriptElement.prototype, 'textContent', {
+      configurable: true,
+      get: () => '',
+      set() {
+        throw new TypeError('This document requires TrustedScript assignment.');
+      },
+    });
+    try {
+      await show({ description: 'Kept', jsonLd: { '@type': 'Article' } });
+    } finally {
+      delete (HTMLScriptElement.prototype as { textContent?: string }).textContent;
+    }
+    expect(blocks()).toHaveLength(0);
+    expect(meta('meta[name="description"]')).toBe('Kept');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('require-trusted-types-for'));
+  });
+
+  it('names a block that is no JSON in development', async () => {
+    const cycle: Record<string, unknown> = { '@type': 'Article' };
+    cycle.self = cycle;
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(show({ jsonLd: cycle as never })).rejects.toThrow('@type "Article"');
+    } finally {
+      error.mockRestore();
+    }
+  });
+});

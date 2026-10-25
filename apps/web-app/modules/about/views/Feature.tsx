@@ -15,6 +15,14 @@ export default function Feature({ feature }: PageProps<ShowFeatureController>) {
         canonical={path}
         openGraph={{ type: 'article', siteName: 'Marmeon', url: path, article: { modifiedTime: feature.updatedAt } }}
         twitter={{ card: 'summary' }}
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@type': 'TechArticle',
+          headline: t(`features.${feature.slug}.title`),
+          description: t(`features.${feature.slug}.summary`),
+          dateModified: feature.updatedAt,
+          publisher: { '@type': 'Organization', name: 'Marmeon' },
+        }}
       />
       <h1>{t(`features.${feature.slug}.title`)}</h1>
       <p>{t(`features.${feature.slug}.summary`)}</p>

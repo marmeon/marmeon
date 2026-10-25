@@ -1,11 +1,11 @@
-import { defaultTitle, type TitleRegistry } from '@marmeon/http/client/adapter';
+import { defaultTitle, scriptJson, type TitleRegistry } from '@marmeon/http/client/adapter';
 import type { TitleTemplate } from '@marmeon/http/client';
 import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { headTags, mergeHead, type HeadEntry, type HeadFields, type HeadRegistry } from './head-fields.ts';
 
 export { defaultTitle } from '@marmeon/http/client/adapter';
 export type { TitleTemplate } from '@marmeon/http/client';
-export type { OpenGraph, TwitterCard } from './head-fields.ts';
+export type { JsonLd, OpenGraph, TwitterCard } from './head-fields.ts';
 
 /** Server rendering: where `<Head>`s record themselves for the document head. */
 export interface HeadCollector {
@@ -72,7 +72,15 @@ function PageHead({ title, children, ...fields }: HeadProps) {
     else collector.entries.push({ title, ...fields, tags });
   }
 
-  const signature = JSON.stringify([tags.map((tag) => [tag.type, tag.props]), fields]);
+  // A block JSON.stringify cannot write is reported where the head is built (`headTags`), with its @type.
+  const { jsonLd, ...simple } = fields;
+  let blocks: string | undefined;
+  try {
+    blocks = JSON.stringify(jsonLd);
+  } catch {
+    blocks = undefined;
+  }
+  const signature = JSON.stringify([tags.map((tag) => [tag.type, tag.props]), simple, blocks]);
   // `signature` stands in for `tags` and `fields`, whose identity changes on every render.
   useEffect(() => {
     // Server-rendered tags (title included) hand over to the ones managed here — removed first,
@@ -104,14 +112,22 @@ export function renderHead(
   collector: HeadCollector,
   template: TitleTemplate,
   renderTag: (tag: ReactElement) => string,
-  { appUrl, warn }: { appUrl?: string; warn?: (message: string) => void } = {},
+  { appUrl, warn, nonce }: { appUrl?: string; warn?: (message: string) => void; nonce?: string } = {},
 ): string {
   const { entries } = collector;
   const merged = mergeHead(entries);
   const text = template(merged.title ?? '');
   const title = text === '' ? '' : `<title ${MARKER}="ssr">${escapeHtml(text)}</title>`;
   const fields = headTags(merged, appUrl, warn)
-    .map(({ element, attributes }) => `<${element} ${attributes.map(([name, value]) => `${name}="${escapeHtml(value)}"`).join(' ')} ${MARKER}="ssr"/>`)
+    .map(({ element, attributes, json }) => {
+      if (json !== undefined) {
+        // The text is `scriptJson` (`<` escaped), written as a string: never a React child, never `dangerouslySetInnerHTML`.
+        // The nonce is no protection (a data block does not run): it only makes the element like the server's other scripts.
+        const attribute = attributes.map(([name, value]) => ` ${name}="${escapeHtml(value)}"`).join('');
+        return `<script${attribute}${nonce ? ` nonce="${escapeHtml(nonce)}"` : ''} ${MARKER}="ssr">${scriptJson(json)}</script>`;
+      }
+      return `<${element} ${attributes.map(([name, value]) => `${name}="${escapeHtml(value)}"`).join(' ')} ${MARKER}="ssr"/>`;
+    })
     .join('');
   return title + fields + entries.flatMap((entry) => entry.tags.map(renderTag)).join('');
 }

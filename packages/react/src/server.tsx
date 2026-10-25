@@ -38,7 +38,7 @@ export interface SsrOptions {
 export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, routes, layout, messages, layer }: SsrOptions = {}): SsrRender {
   // A `<Head>`'s script or style carries the response's CSP nonce — the rest of its tags need none.
   const head = (collector: HeadCollector, nonce?: string, urls?: { appUrl?: string; warn?: (message: string) => void }) =>
-    renderHead(collector, title, (tag) => renderToStaticMarkup(markServerTag(nonce ? withNonce(tag, nonce) : tag)), urls);
+    renderHead(collector, title, (tag) => renderToStaticMarkup(markServerTag(nonce ? withNonce(tag, nonce) : tag)), { ...urls, nonce });
 
   return async (page, { complete = false, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce, placeholder, appUrl } = {}) => {
     const urls = { ...(appUrl ? { appUrl } : {}), ...(isDevelopment() && onWarning ? { warn: onWarning } : {}) };

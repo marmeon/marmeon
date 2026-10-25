@@ -1,3 +1,5 @@
+import { isDevelopment } from '@marmeon/http/client';
+
 /** The `<meta>` and `<link>` fields of `<Head>`: their types, the merge of layout and page, and the tags they become. */
 
 /** Open Graph: how a link to the page is previewed. See docs/seo.md#the-heads-fields. */
@@ -31,6 +33,14 @@ export interface TwitterCard {
   imageAlt?: string;
 }
 
+/** A value JSON can hold: no `Date`, function, `bigint` or `undefined`. */
+type JsonLdValue = string | number | boolean | null | readonly JsonLdValue[] | { readonly [key: string]: JsonLdValue };
+
+/**
+ * One block of structured data (schema.org): any JSON, with the `@type` every block needs. See docs/seo.md#structured-data.
+ */
+export type JsonLd = { readonly '@context'?: string; readonly '@type': string | readonly string[] } & { readonly [key: string]: JsonLdValue };
+
 /** The fields of `<Head>` besides the title and its children. */
 export interface HeadFields {
   /** The page's summary for search results. */
@@ -41,16 +51,26 @@ export interface HeadFields {
   robots?: { index?: boolean; follow?: boolean };
   openGraph?: OpenGraph;
   twitter?: TwitterCard;
+  /** Structured data for search engines; the blocks of a layout and its page are all written, in render order. */
+  jsonLd?: JsonLd | readonly JsonLd[];
 }
 
 /** What one `<Head>` sets: its title and fields. */
 export type HeadEntry = HeadFields & { title?: string };
 
-/** A `<meta>` or `<link>` the fields stand for. `key` names it among the others, so the browser can update it in place. */
+/**
+ * A `<meta>`, `<link>` or JSON-LD `<script>` the fields stand for. `key` names it among the others, so the browser can update
+ * it in place. A script carries its `json` (what it holds, serialized by whoever writes it) instead of an attribute.
+ */
 export interface HeadTag {
-  readonly element: 'meta' | 'link';
+  readonly element: 'meta' | 'link' | 'script';
   readonly key: string;
   readonly attributes: readonly (readonly [string, string])[];
+  readonly json?: JsonLd;
+}
+
+function blocksOf(jsonLd: JsonLd | readonly JsonLd[] | undefined): readonly JsonLd[] {
+  return jsonLd === undefined ? [] : Array.isArray(jsonLd) ? (jsonLd as readonly JsonLd[]) : [jsonLd as JsonLd];
 }
 
 function defined<T extends object>(value: T | undefined): Partial<T> {
@@ -60,14 +80,17 @@ function defined<T extends object>(value: T | undefined): Partial<T> {
 /** The `<Head>`s in render order as one: the last one sets a simple field, an object merges key by key. */
 export function mergeHead(entries: readonly HeadEntry[]): HeadEntry {
   const merged: HeadEntry = {};
-  for (const { title, description, canonical, robots, openGraph, twitter } of entries) {
+  const blocks: JsonLd[] = [];
+  for (const { title, description, canonical, robots, openGraph, twitter, jsonLd } of entries) {
     if (title !== undefined) merged.title = title;
     if (description !== undefined) merged.description = description;
     if (canonical !== undefined) merged.canonical = canonical;
     if (robots) merged.robots = { ...merged.robots, ...defined(robots) };
     if (openGraph) merged.openGraph = { ...merged.openGraph, ...defined(openGraph) };
     if (twitter) merged.twitter = { ...merged.twitter, ...defined(twitter) };
+    blocks.push(...blocksOf(jsonLd));
   }
+  if (blocks.length > 0) merged.jsonLd = blocks;
   return merged;
 }
 
@@ -147,6 +170,16 @@ export function headTags(head: HeadEntry, base: string | undefined, warn?: (mess
     add('meta', 'name', 'twitter:image', url(twitter.image));
     add('meta', 'name', 'twitter:image:alt', twitter.imageAlt);
   }
+  // A block that cannot be serialized (a cycle, a `bigint`) is an app's bug: development names it, production leaves it out.
+  blocksOf(head.jsonLd).forEach((block, index) => {
+    try {
+      JSON.stringify(block);
+    } catch (cause) {
+      if (!isDevelopment()) return;
+      throw new Error(`[marmeon] <Head jsonLd> block ${index} (@type ${JSON.stringify(block['@type'])}) is not JSON: ${(cause as Error).message}`, { cause });
+    }
+    tags.push({ element: 'script', key: `jsonld:${index}`, attributes: [['type', 'application/ld+json']], json: block });
+  });
   return tags;
 }
 
@@ -189,6 +222,23 @@ export class HeadRegistry {
     });
   }
 
+  /** The text of a JSON-LD script, set as `textContent` (no HTML parser). False when a Trusted Types policy refuses it. */
+  #writeJson(element: HTMLElement, json: JsonLd): boolean {
+    const text = JSON.stringify(json);
+    if (element.textContent === text) return true;
+    try {
+      element.textContent = text;
+      return true;
+    } catch (cause) {
+      if (isDevelopment()) {
+        this.#warn?.(
+          `[marmeon] <Head jsonLd> (@type ${JSON.stringify(json['@type'])}) was removed: the page's Content-Security-Policy (require-trusted-types-for) does not allow setting a script's text (${(cause as Error).message}).`,
+        );
+      }
+      return false;
+    }
+  }
+
   #apply(): void {
     const sorted = [...this.#entries].sort(([a], [b]) => a - b).map(([, entry]) => entry);
     const wanted = new Map(headTags(mergeHead(sorted), this.#origin ?? location.origin, this.#warn).map((tag) => [tag.key, tag]));
@@ -197,15 +247,24 @@ export class HeadRegistry {
       element.remove();
       this.#elements.delete(key);
     }
-    for (const [key, { element: name, attributes }] of wanted) {
+    for (const [key, { element: name, attributes, json }] of wanted) {
       let element = this.#elements.get(key);
+      const created = !element;
       if (!element) {
         element = document.createElement(name);
         element.setAttribute('data-marmeon-head', 'meta');
+      }
+      for (const [attribute, value] of attributes) if (element.getAttribute(attribute) !== value) element.setAttribute(attribute, value);
+      if (json !== undefined && !this.#writeJson(element, json)) {
+        // A Trusted Types policy refused the text: the block is left out.
+        element.remove();
+        this.#elements.delete(key);
+        continue;
+      }
+      if (created) {
         document.head.append(element);
         this.#elements.set(key, element);
       }
-      for (const [attribute, value] of attributes) if (element.getAttribute(attribute) !== value) element.setAttribute(attribute, value);
     }
   }
 }
