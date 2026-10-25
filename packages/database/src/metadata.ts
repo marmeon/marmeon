@@ -5,20 +5,21 @@ import { emptyProjection, factsOf, type SchemaProjection } from './schema/projec
 import type { Driver } from './schema/blueprint.ts';
 
 /** How a column's values must be converted when they arrive inside nested JSON (relations). */
-export type ColumnKind = 'boolean' | 'json' | 'timestamp' | 'uuid' | { decimal: number } | 'other';
+export type ColumnKind = 'boolean' | 'integer' | 'json' | 'timestamp' | 'uuid' | { decimal: number } | 'other';
 
 /** What the metadata holds about the schema, as one value: swapped as a whole when it is loaded or published. */
 interface Facts {
   readonly kinds: ReadonlyMap<string, ReadonlyMap<string, ColumnKind>>;
   readonly secrets: ReadonlyMap<string, ReadonlySet<string>>;
   readonly columns: ReadonlyMap<string, readonly string[]>;
+  readonly primaryKeys: ReadonlyMap<string, readonly string[]>;
   readonly relations: ReadonlyMap<string, ReadonlyMap<string, Relation>>;
   readonly problems: readonly string[];
   readonly softDeletes: ReadonlySet<string>;
   readonly timestamps: ReadonlySet<string>;
 }
 
-const NO_FACTS: Facts = { kinds: new Map(), secrets: new Map(), columns: new Map(), relations: new Map(), problems: [], softDeletes: new Set(), timestamps: new Set() };
+const NO_FACTS: Facts = { kinds: new Map(), secrets: new Map(), columns: new Map(), primaryKeys: new Map(), relations: new Map(), problems: [], softDeletes: new Set(), timestamps: new Set() };
 
 /** The facts of a catalog reading or of a projection (in the form of one), derived by the same code. */
 function factsFrom(found: Introspected): Facts {
@@ -35,6 +36,7 @@ function factsFrom(found: Introspected): Facts {
     kinds,
     secrets,
     columns: new Map([...found.columns].map(([table, columns]) => [table, columns.filter((column) => !secrets.get(table)?.has(column))])),
+    primaryKeys: found.primaryKeys,
     relations: derived.relations,
     problems: derived.problems,
     softDeletes: new Set(found.markers.filter((m) => m.marker === 'soft_deletes').map((m) => m.table)),
@@ -147,6 +149,11 @@ export class SchemaMetadata {
   /** Table → its columns without the secret ones, in their order: what a relation loads unless told otherwise. */
   get columns(): ReadonlyMap<string, readonly string[]> {
     return this.#current.columns;
+  }
+
+  /** Table → the columns of its primary key, in key order; a table without one is missing. */
+  get primaryKeys(): ReadonlyMap<string, readonly string[]> {
+    return this.#current.primaryKeys;
   }
 
   /** Table → relation name → relation, derived from the foreign keys (as `db:types` derives them). */
@@ -376,6 +383,8 @@ export class SchemaMetadata {
   }
 }
 
+const INTEGERS = new Set(['integer', 'int', 'bigint', 'smallint', 'int2', 'int4', 'int8']);
+
 export function kindOf(type: string): ColumnKind {
   const decimal = /^(?:numeric|decimal)\(\s*\d+\s*,\s*(\d+)\s*\)$/.exec(type);
   if (decimal) return { decimal: Number(decimal[1]) };
@@ -383,6 +392,7 @@ export function kindOf(type: string): ColumnKind {
   if (type === 'json' || type === 'jsonb') return 'json';
   if (type === 'datetime' || type.startsWith('timestamp')) return 'timestamp';
   if (type === 'uuid') return 'uuid';
+  if (INTEGERS.has(type)) return 'integer';
   return 'other';
 }
 

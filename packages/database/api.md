@@ -288,10 +288,6 @@ export type Json = null | boolean | number | string | Json[] | {
 };
 // JsonColumn
 export type JsonColumn = ColumnType<Json, string, string>;
-// KeyOf
-export type KeyOf<T extends keyof DB, DB = Tables> = RowOf<DB[T]> extends {
-    id: infer K;
-} ? K : never;
 // LinkWriter
 export interface LinkWriter<K> {
     sync(ids: readonly K[]): Promise<{
@@ -541,6 +537,11 @@ export interface PostgresConnection {
     readonly infrastructurePoolMax?: number | undefined;
     readonly managed?: boolean | undefined;
 }
+// PrimaryKeyOf
+export type PrimaryKeyOf<T extends keyof DB, DB = Tables> = T extends keyof PrimaryKeys ? PrimaryKeys[T] extends infer C extends string ? C extends keyof RowOf<DB[T]> ? RowOf<DB[T]>[C] : never : never : never;
+// PrimaryKeys
+export interface PrimaryKeys {
+}
 // ProjectedColumn
 export interface ProjectedColumn {
     readonly name: string;
@@ -659,30 +660,30 @@ export declare abstract class Repository<T extends keyof DB & string, DB = Table
     transaction<R>(callback: (repository: this) => Promise<R>): Promise<R>;
     query(): SelectQuery<DB, T, {}>;
     paginate<TB extends keyof DB, O, const Q = PageRequest>(query: SelectQuery<DB, TB, O>, request?: CheckPageRequest<Q>): Promise<Paginated<O>>;
-    find(id: KeyOf<T, DB>): Promise<RowOf<DB[T]> | undefined>;
-    findOrFail<const W extends readonly RelationName<DB, T>[] = []>(id: KeyOf<T, DB>, options?: {
+    find(id: PrimaryKeyOf<T, DB>): Promise<RowOf<DB[T]> | undefined>;
+    findOrFail<const W extends readonly RelationName<DB, T>[] = []>(id: PrimaryKeyOf<T, DB>, options?: {
         readonly with?: W;
     }): Promise<WithRelations<DB, T, W[number]>>;
     findBy<C extends keyof RowOf<DB[T]> & string>(column: C, value: RowOf<DB[T]>[C]): Promise<RowOf<DB[T]> | undefined>;
     firstWhere<V extends Partial<RowOf<DB[T]>>>(values: Exact<V, RowOf<DB[T]>>): Promise<RowOf<DB[T]> | undefined>;
     pluck<C extends keyof RowOf<DB[T]> & string>(column: C): Promise<RowOf<DB[T]>[C][]>;
     chunk<O = RowOf<DB[T]>>(size: number, query?: (query: SelectQuery<DB, T, RowOf<DB[T]>>) => SelectQuery<DB, T, O>): AsyncGenerator<O[], void, undefined>;
-    exists(id: KeyOf<T, DB>): Promise<boolean>;
+    exists(id: PrimaryKeyOf<T, DB>): Promise<boolean>;
     count(): Promise<number>;
     insert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<RowOf<DB[T]>>;
     tryInsert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, {
         kind: 'duplicate';
     }>>;
-    tryUpdate<V extends RowUpdateOf<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, {
+    tryUpdate<V extends RowUpdateOf<DB[T]>>(id: PrimaryKeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<Result<RowOf<DB[T]>, {
         kind: 'duplicate';
     } | {
         kind: 'missing';
     }>>;
-    relation<N extends WritableRelationName<DB, T>>(id: KeyOf<T, DB>, name: N): RelationWriter<DB, T, N>;
-    update<V extends RowUpdateOf<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<RowOf<DB[T]> | undefined>;
-    delete(id: KeyOf<T, DB>): Promise<boolean>;
-    forceDelete(id: KeyOf<T, DB>): Promise<boolean>;
-    restore(id: KeyOf<T, DB>): Promise<boolean>;
+    relation<N extends WritableRelationName<DB, T>>(id: PrimaryKeyOf<T, DB>, name: N): RelationWriter<DB, T, N>;
+    update<V extends RowUpdateOf<DB[T]>>(id: PrimaryKeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<RowOf<DB[T]> | undefined>;
+    delete(id: PrimaryKeyOf<T, DB>): Promise<boolean>;
+    forceDelete(id: PrimaryKeyOf<T, DB>): Promise<boolean>;
+    restore(id: PrimaryKeyOf<T, DB>): Promise<boolean>;
     resolveRouteBinding(value: string, binding: RouteBindingContext): Promise<RowOf<DB[T]> | undefined>;
     findByRouteKey(value: string): Promise<RowOf<DB[T]> | undefined>;
 }

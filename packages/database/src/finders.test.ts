@@ -239,7 +239,7 @@ describe.each(drivers)('finders of a repository on %s', (driver) => {
     it('refuses a size that is not a whole number ≥ 1, an order of its own, and a callback that leaves the key out', async () => {
       await expect(users.chunk(0).next()).rejects.toThrow('chunk() takes a size that is a whole number ≥ 1, got 0.');
       await expect(users.chunk(2.5).next()).rejects.toThrow('chunk() takes a size that is a whole number ≥ 1, got 2.5.');
-      await expect(users.chunk(1, (query) => query.orderBy('name')).next()).rejects.toThrow('chunk() reads the rows in the order of their id — leave orderBy() out of its callback.');
+      await expect(users.chunk(1, (query) => query.orderBy('name')).next()).rejects.toThrow('chunk() reads the rows in the order of their primary key — leave orderBy() out of its callback.');
       await expect(users.chunk(1, (query) => query.clearSelect().select('name') as never).next()).rejects.toThrow(
         'chunk() reads the rows by their key "id", but the query does not select it — keep it in the selection.',
       );

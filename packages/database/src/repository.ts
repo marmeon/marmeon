@@ -11,7 +11,7 @@ import { TOUCH_COLUMN } from './placeholders.ts';
 import { relationWriter, type RelationWriter, type WritableRelationName } from './relation-writes.ts';
 import { metadataOf, softDelete, softDeleteFilter } from './schema-resolver.ts';
 import type { ColumnKind, SchemaMetadata } from './metadata.ts';
-import type { Tables } from './types.ts';
+import type { PrimaryKeys, Tables } from './types.ts';
 
 /** `findOrFail` found nothing: answers 404 — without telling the client what was looked up. */
 export class RecordNotFoundError extends HttpError {
@@ -26,8 +26,17 @@ export class RecordNotFoundError extends HttpError {
   }
 }
 
-/** The type of a table's `id` column — or `never` for tables without one. */
-export type KeyOf<T extends keyof DB, DB = Tables> = RowOf<DB[T]> extends { id: infer K } ? K : never;
+/**
+ * The type of a table's primary key column — `never` for a table without a primary key or with a composite one, which no
+ * repository method takes. See `docs/queries.md#table-types`.
+ */
+export type PrimaryKeyOf<T extends keyof DB, DB = Tables> = T extends keyof PrimaryKeys
+  ? PrimaryKeys[T] extends infer C extends string
+    ? C extends keyof RowOf<DB[T]>
+      ? RowOf<DB[T]>[C]
+      : never
+    : never
+  : never;
 
 /** What a repository class declares statically, next to `extends Repository<'users'>`. */
 export interface RepositoryStatics {
@@ -35,11 +44,12 @@ export interface RepositoryStatics {
   readonly table: string;
   /** Default connection name. */
   readonly connection?: string;
-  /** The column a route parameter matches (`Route.bind`) — default `id`. */
+  /** The column a route parameter matches (`Route.bind`) — default the table's primary key. */
   readonly routeKey?: string;
   /**
-   * What a route parameter must look like before it is looked up — default: digits for `id`
-   * (anything else is a 404 without a query; Postgres would fail comparing a bigint with `'abc'`).
+   * What a route parameter must look like before it is looked up — default by the kind of the route key's column: digits for an
+   * integer, a UUID for a uuid, at most 255 characters otherwise (anything else is a 404 without a query; Postgres would fail
+   * comparing a bigint with `'abc'`).
    */
   readonly routeKeyPattern?: RegExp;
 }
@@ -164,20 +174,23 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     return paginate(this.db, query, request as PageRequest | undefined);
   }
 
-  /** The row with this `id`, or `undefined`. On a uuid key, an id that is no UUID finds nothing — without a query. */
-  async find(id: KeyOf<T, DB>): Promise<RowOf<DB[T]> | undefined> {
-    const key = await this.#key('id', id);
+  /**
+   * The row with this primary key, or `undefined`. On a uuid key, a value that is no UUID finds nothing — without a query. A table
+   * without a single-column primary key is refused with a `TypeError`: use `query()`.
+   */
+  async find(id: PrimaryKeyOf<T, DB>): Promise<RowOf<DB[T]> | undefined> {
+    const key = await this.#lookup(id);
     if (key === undefined) return undefined;
-    return (await this.query().selectAll().where('id' as never, '=', key as never).executeTakeFirst()) as RowOf<DB[T]> | undefined;
+    return (await this.query().selectAll().where(key.column as never, '=', key.value as never).executeTakeFirst()) as RowOf<DB[T]> | undefined;
   }
 
   /**
    * The row, or a 404 (`RecordNotFoundError`) — with the relations `with` names loaded in the same query, as `with()` loads them.
    * See `docs/queries.md#reading`.
    */
-  async findOrFail<const W extends readonly RelationName<DB, T>[] = []>(id: KeyOf<T, DB>, options: { readonly with?: W } = {}): Promise<WithRelations<DB, T, W[number]>> {
-    const key = await this.#key('id', id);
-    const row = key === undefined ? undefined : await this.#loading(this.query().selectAll().where('id' as never, '=', key as never), options.with).executeTakeFirst();
+  async findOrFail<const W extends readonly RelationName<DB, T>[] = []>(id: PrimaryKeyOf<T, DB>, options: { readonly with?: W } = {}): Promise<WithRelations<DB, T, W[number]>> {
+    const key = await this.#lookup(id);
+    const row = key === undefined ? undefined : await this.#loading(this.query().selectAll().where(key.column as never, '=', key.value as never), options.with).executeTakeFirst();
     if (!row) throw new RecordNotFoundError(this.table, id);
     return row as WithRelations<DB, T, W[number]>;
   }
@@ -202,7 +215,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /**
-   * The rows in batches of `size`, by their `id` — no offset: rows added or removed meanwhile neither repeat nor go missing. One query
+   * The rows in batches of `size`, by their primary key — no offset: rows added or removed meanwhile neither repeat nor go missing. One query
    * per batch; `query` narrows what is read (conditions, relations). See `docs/queries.md#reading`.
    *
    * ```ts
@@ -216,23 +229,24 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     if (!Number.isSafeInteger(size) || size < 1) throw new RangeError(`chunk() takes a size that is a whole number ≥ 1, got ${size}.`);
     const all = this.query().selectAll() as unknown as SelectQuery<DB, T, RowOf<DB[T]>>;
     const base = query ? query(all) : (all as unknown as SelectQuery<DB, T, O>);
-    // The batches go by id: another order would be dropped without a word.
-    if (base.toOperationNode().orderBy) throw new TypeError('chunk() reads the rows in the order of their id — leave orderBy() out of its callback.');
+    const column = await this.#keyColumn();
+    // The batches go by key: another order would be dropped without a word.
+    if (base.toOperationNode().orderBy) throw new TypeError('chunk() reads the rows in the order of their primary key — leave orderBy() out of its callback.');
     let after: unknown[] | undefined;
     for (;;) {
-      const rows = await keyset(base, [`${this.#name}.id`], after, 'asc', size).execute();
+      const rows = await keyset(base, [`${this.#name}.${column}`], after, 'asc', size).execute();
       const last = rows.at(-1) as Record<string, unknown> | undefined;
-      if (last && !Object.hasOwn(last, 'id')) throw new TypeError('chunk() reads the rows by their key "id", but the query does not select it — keep it in the selection.');
+      if (last && !Object.hasOwn(last, column)) throw new TypeError(`chunk() reads the rows by their key "${column}", but the query does not select it — keep it in the selection.`);
       if (rows.length > 0) yield rows;
       if (!last || rows.length < size) return;
-      after = [last.id];
+      after = [last[column]];
     }
   }
 
-  async exists(id: KeyOf<T, DB>): Promise<boolean> {
-    const key = await this.#key('id', id);
+  async exists(id: PrimaryKeyOf<T, DB>): Promise<boolean> {
+    const key = await this.#lookup(id);
     if (key === undefined) return false;
-    const row = await this.query().select(sql<number>`1`.as('found')).where('id' as never, '=', key as never).executeTakeFirst();
+    const row = await this.query().select(sql<number>`1`.as('found')).where(key.column as never, '=', key.value as never).executeTakeFirst();
     return row !== undefined;
   }
 
@@ -269,7 +283,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * there is no such row (or it is soft-deleted). In a savepoint, like `tryInsert`. See `docs/queries.md#writing`.
    */
   async tryUpdate<V extends RowUpdateOf<DB[T]>>(
-    id: KeyOf<T, DB>,
+    id: PrimaryKeyOf<T, DB>,
     values: Exact<V, RowUpdateOf<DB[T]>>,
   ): Promise<Result<RowOf<DB[T]>, { kind: 'duplicate' } | { kind: 'missing' }>> {
     try {
@@ -287,7 +301,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * is a 404 (`RecordNotFoundError`); a link to a missing or soft-deleted related row is refused. See
    * `docs/queries.md#writing-through-relations`.
    */
-  relation<N extends WritableRelationName<DB, T>>(id: KeyOf<T, DB>, name: N): RelationWriter<DB, T, N> {
+  relation<N extends WritableRelationName<DB, T>>(id: PrimaryKeyOf<T, DB>, name: N): RelationWriter<DB, T, N> {
     return relationWriter({
       table: this.#name,
       name,
@@ -297,9 +311,9 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
           const metadata = await repository.#schema(`relation('${name}')`);
           // The row's key, locked on Postgres: a concurrent soft delete of it waits until the links are written.
           const key = async (column: string) => {
-            const idKey = await repository.#key('id', id);
+            const idKey = await repository.#lookup(id);
             if (idKey === undefined) return undefined;
-            let query = repository.query().select(column as never).where('id' as never, '=', idKey as never);
+            let query = repository.query().select(column as never).where(idKey.column as never, '=', idKey.value as never);
             if (metadata.driver === 'pgsql') query = query.forUpdate();
             const row = (await query.executeTakeFirst()) as Record<string, unknown> | undefined;
             return row && { value: row[column] };
@@ -313,68 +327,78 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * Updates a row and returns it — `undefined` when there is none (or it is soft-deleted). Sets `updated_at` when the
    * table's migration called `timestamps()`, unless `values` set it.
    */
-  async update<V extends RowUpdateOf<DB[T]>>(id: KeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<RowOf<DB[T]> | undefined> {
-    const key = await this.#key('id', id);
+  async update<V extends RowUpdateOf<DB[T]>>(id: PrimaryKeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<RowOf<DB[T]> | undefined> {
+    const key = await this.#lookup(id);
     if (key === undefined) return undefined;
     return (await this.#untyped
       .updateTable(this.#name)
       .set({ ...(values as Record<string, unknown>), [TOUCH_COLUMN]: new Date() })
-      .where('id', '=', key)
+      .where(key.column, '=', key.value)
       .where(softDeleteFilter(this.#name))
       .returningAll()
       .executeTakeFirst()) as RowOf<DB[T]> | undefined;
   }
 
   /** Deletes a row — sets `deleted_at` instead when the table's migration called `softDeletes()`. Returns whether there was one. */
-  async delete(id: KeyOf<T, DB>): Promise<boolean> {
-    const key = await this.#key('id', id);
+  async delete(id: PrimaryKeyOf<T, DB>): Promise<boolean> {
+    const key = await this.#lookup(id);
     if (key === undefined) return false;
-    const result = await this.#untyped.deleteFrom(this.#name).where('id', '=', key).where(softDelete(this.#name)).executeTakeFirst();
+    const result = await this.#untyped.deleteFrom(this.#name).where(key.column, '=', key.value).where(softDelete(this.#name)).executeTakeFirst();
     return result.numDeletedRows > 0n;
   }
 
   /** Deletes a row for real, soft deletes or not. */
-  async forceDelete(id: KeyOf<T, DB>): Promise<boolean> {
-    const key = await this.#key('id', id);
+  async forceDelete(id: PrimaryKeyOf<T, DB>): Promise<boolean> {
+    const key = await this.#lookup(id);
     if (key === undefined) return false;
-    const result = await this.#untyped.deleteFrom(this.#name).where('id', '=', key).executeTakeFirst();
+    const result = await this.#untyped.deleteFrom(this.#name).where(key.column, '=', key.value).executeTakeFirst();
     return result.numDeletedRows > 0n;
   }
 
   /** Brings a soft-deleted row back. */
-  async restore(id: KeyOf<T, DB>): Promise<boolean> {
-    const key = await this.#key('id', id);
+  async restore(id: PrimaryKeyOf<T, DB>): Promise<boolean> {
+    const key = await this.#lookup(id);
     if (key === undefined) return false;
-    const result = await this.#untyped.updateTable(this.#name).set({ deleted_at: null }).where('id', '=', key).executeTakeFirst();
+    const result = await this.#untyped.updateTable(this.#name).set({ deleted_at: null }).where(key.column, '=', key.value).executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
 
   /**
-   * `Route.bind('user', UserRepository)`: the row whose route key (`id`) is `value` — within the parent
-   * for scoped bindings (`scope.column` = the parent's id), so another parent's row is a 404 — with the relations the binding
-   * names (`{ with }`) loaded in the same query. A value that cannot be a key (not digits, not a UUID) is a 404 without a query.
+   * `Route.bind('user', UserRepository)`: the row whose route key (the primary key unless `static routeKey` names another column) is `value` — within the parent
+   * for scoped bindings (`scope.column` = the column of the parent that the foreign key references, its primary key as a rule), so
+   * another parent's row is a 404 — with the relations the binding names (`{ with }`) loaded in the same query. A value that cannot
+   * be a key (not digits on an integer, not a UUID on a uuid, over 255 characters on text) is a 404 without a query. A scope column
+   * without a foreign key, or a route key of a kind that needs a `routeKeyPattern` (timestamp, boolean, json, decimal), is a `TypeError`.
    */
   async resolveRouteBinding(value: string, binding: RouteBindingContext): Promise<RowOf<DB[T]> | undefined> {
-    const key = this.#statics().routeKey ?? 'id';
-    const custom = this.#statics().routeKeyPattern;
+    const key = this.#statics().routeKey ?? (await this.#keyColumn());
     const kind = await this.#kind(key);
-    // The default key is a numeric id: compared as a number (Postgres refuses bigint = text), digits only. A uuid column
-    // is compared as the lower-case text SQLite stores, after the format was checked.
-    const numericId = key === 'id' && !custom && kind !== 'uuid';
-    const pattern = custom ?? (numericId ? /^\d{1,15}$/ : kind === 'uuid' ? UUID : undefined);
-    if (pattern && !pattern.test(value)) return undefined;
-    const compared = numericId ? Number(value) : kind === 'uuid' ? value.toLowerCase() : value;
+    // The pattern follows the column, so a value that cannot be a key never reaches the database: Postgres would throw `22P02`
+    // on text compared with a bigint or a uuid, and a string of any length would go into the index.
+    const custom = this.#statics().routeKeyPattern;
+    if (!custom && kind !== undefined && kind !== 'integer' && kind !== 'uuid' && kind !== 'other') {
+      throw new TypeError(`${this.#name}.${key} is a column that cannot be matched against text unchecked — set a static routeKeyPattern on ${this.constructor.name}.`);
+    }
+    const pattern = custom ?? (kind === 'integer' ? /^\d{1,15}$/ : kind === 'uuid' ? UUID : /^[\s\S]{1,255}$/);
+    if (!pattern.test(value)) return undefined;
+    // An integer is compared as a number (Postgres refuses bigint = text); a uuid as the lower-case text SQLite stores.
+    const compared = kind === 'integer' ? Number(value) : kind === 'uuid' ? value.toLowerCase() : value;
+    if (typeof compared === 'number' && !Number.isSafeInteger(compared)) return undefined;
     let query = this.#loading(this.query().selectAll(), binding.with).where(key as never, '=', compared as never);
     if (binding.scope) {
-      const parent = (binding.scope.parent as { id?: unknown } | undefined)?.id;
+      // The parent's column the foreign key references — its primary key as a rule, a slug for a table keyed by one.
+      const column = binding.scope.column;
+      const relation = [...((await this.#schema('A scoped binding')).relations.get(this.#name)?.values() ?? [])].find((r) => r.kind === 'belongsTo' && r.foreignKey === column);
+      if (!relation) throw new TypeError(`${this.#name}.${column} is not a foreign key (or its relation could not be derived — see marmeon db:types), so a binding scoped by it has no parent column to compare with — scope by a column that references the parent's table.`);
+      const parent = (binding.scope.parent as Record<string, unknown> | undefined)?.[relation.targetKey];
       if (parent === undefined) return undefined;
-      query = query.where(binding.scope.column as never, '=', parent as never);
+      query = query.where(column as never, '=', parent as never);
     }
     return (await query.executeTakeFirst()) as RowOf<DB[T]> | undefined;
   }
 
   /**
-   * The row whose route key (`static routeKey`, default `id`) is `value`, as a route binding finds it, for lookups outside of
+   * The row whose route key (`static routeKey`, default the primary key) is `value`, as a route binding finds it, for lookups outside of
    * routes — `undefined` when there is none, or when `value` cannot be a key. See `docs/queries.md#reading`.
    */
   findByRouteKey(value: string): Promise<RowOf<DB[T]> | undefined> {
@@ -390,6 +414,27 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     if (!metadata) return undefined;
     if (!metadata.fresh) await sql`select 1`.execute(this.#db);
     return metadata.kinds.get(this.#name)?.get(column);
+  }
+
+  /**
+   * The table's primary key column, from the schema metadata. Never a guess: a table without a primary key or with a composite one
+   * cannot be looked up by one value, and a reader that guessed `id` would find another row or none.
+   */
+  async #keyColumn(): Promise<string> {
+    const metadata = await this.#schema('A lookup by primary key');
+    if (!metadata.columns.has(this.#name)) {
+      throw new TypeError(`${this.#name} is not a table the migrations created with schema.create(), so its primary key is unknown — create it with schema.create() or use query() (docs/migrations.md#raw-sql).`);
+    }
+    const key = metadata.primaryKeys.get(this.#name);
+    if (key?.length !== 1) throw new TypeError(`${this.#name} has no single-column primary key — use query().`);
+    return key[0]!;
+  }
+
+  /** The key column and the value to compare it with for `value` — `undefined` when no row can have it, see {@link #key}. */
+  async #lookup(value: unknown): Promise<{ readonly column: string; readonly value: unknown } | undefined> {
+    const column = await this.#keyColumn();
+    const key = await this.#key(column, value);
+    return key === undefined ? undefined : { column, value: key };
   }
 
   /**

@@ -467,10 +467,13 @@ export class NoteRepository extends Repository<'notes'> {
 }
 ```
 
-An `id` is a number, so the repository accepts digits only, up to 15 of them. `/notes/abc` is a 404 without a query to the
-database. A table with a [UUID primary key](migrations.md#uuid-keys) takes UUIDs instead: anything else is a 404 without a
-query, and a UUID in capitals finds its row. To look records up by another column, set `routeKey`, and `routeKeyPattern` for
-the values it accepts. A `routeKey` that names a `uuid` column, such as `public_id`, needs no pattern:
+The route parameter is looked up in the table's primary key. An integer key accepts digits only, up to 15 of them. `/notes/abc` is
+a 404 without a query to the database. A table with a [UUID primary key](migrations.md#uuid-keys) takes UUIDs instead: anything
+else is a 404 without a query, and a UUID in capitals finds its row. Any other column takes at most 255 characters. A table
+without a single-column primary key cannot be bound without a `routeKey`. A route key of a timestamp, boolean, JSON or decimal
+column is refused with a `TypeError` that names the column until you set a `routeKeyPattern`: a value that is not one of those would
+make Postgres throw. To look records up by another column, set `routeKey`, and
+`routeKeyPattern` for the values it accepts. A `routeKey` that names a `uuid` column, such as `public_id`, needs no pattern:
 
 ```ts title="modules/notes/NoteRepository.ts"
 import { Repository } from '@marmeon/database';
@@ -502,7 +505,8 @@ export default defineRoutes((Route) => {
 });
 ```
 
-The attachment is looked up with `note_id` equal to the bound note's `id`. An attachment of another note answers 404, so a
+The attachment is looked up with `note_id` equal to the column of the note that the foreign key references, its primary key (a `slug`
+if that is the note's key). A `column` that is no foreign key is a `TypeError` when the route is called: there is no parent column to compare with. An attachment of another note answers 404, so a
 changed id in the URL cannot reach somebody else's attachment. The column defaults to the parent's name with `_id`. Pass
 `column` when yours is called differently: `{ scopedBy: 'note', column: 'parent_note_id' }`. A `column` without `scopedBy` is a
 compile error, and refused when the routes load: it would look the attachment up without its note.

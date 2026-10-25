@@ -66,6 +66,8 @@ export type CatalogQuery = <R>(sql: string) => Promise<R[]>;
 
 /** Facts plus every column's declared (SQLite) or reported (Postgres) type. */
 export interface Introspected extends SchemaFacts {
+  /** Table → the columns of its primary key, in key order; a table without one is missing. */
+  readonly primaryKeys: ReadonlyMap<string, readonly string[]>;
   readonly types: ReadonlyMap<string, ReadonlyMap<string, string>>;
   /** The columns the migrations marked `.secret()`: the projection knows them, a catalog does not. */
   readonly secretColumns: readonly { readonly table: string; readonly column: string }[];
@@ -93,7 +95,7 @@ export async function introspect(run: CatalogQuery, driver: Driver): Promise<Int
       nullable: nullable.has(`${table}\0${column}`),
     }))
     .sort((a, b) => byCodePoint(a.table, b.table) || byCodePoint(a.column, b.column));
-  return { foreignKeys, uniques, columns, markers: [], types, secretColumns: [] };
+  return { foreignKeys, uniques, columns, markers: [], types, secretColumns: [], primaryKeys: await primaryKeyColumns(run, driver) };
 }
 
 /** Every table's columns with their types, in order, and the nullable ones (`table\0column`). Views are left out on both drivers. */
@@ -202,6 +204,25 @@ async function uniqueSets(run: CatalogQuery, driver: Driver): Promise<Map<string
   }
   for (const list of sets.values()) list.sort((a, b) => byCodePoint(a.join('\0'), b.join('\0')));
   return new Map([...sets].sort(([a], [b]) => byCodePoint(a, b)));
+}
+
+/** Table → the columns of its primary key, in key order, sorted by table. */
+async function primaryKeyColumns(run: CatalogQuery, driver: Driver): Promise<Map<string, string[]>> {
+  const keys = new Map<string, string[]>();
+  if (driver === 'sqlite') {
+    const rows = await run<{ table_name: string; column_name: string }>(
+      `select m.name as table_name, p.name as column_name from sqlite_master m join pragma_table_info(m.name) p where m.type = 'table' and p.pk > 0 order by m.name, p.pk`,
+    );
+    for (const row of rows) keys.set(row.table_name, [...(keys.get(row.table_name) ?? []), row.column_name]);
+  } else {
+    const rows = await run<{ table_name: string; columns: string[] }>(`
+      select i.indrelid::regclass::text as table_name,
+        array(select a.attname::text from unnest(i.indkey) with ordinality k(n, o) join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.n order by k.o) as columns
+      from pg_index i join pg_class t on t.oid = i.indrelid join pg_namespace n on n.oid = t.relnamespace
+      where n.nspname = any(current_schemas(false)) and t.oid = to_regclass(quote_ident(t.relname)) and i.indisprimary`);
+    for (const row of rows) keys.set(unquote(row.table_name), row.columns);
+  }
+  return new Map([...keys].sort(([a], [b]) => byCodePoint(a, b)));
 }
 
 /** `regclass::text` quotes a name that needs it (`"Users"`). */

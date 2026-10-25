@@ -22,6 +22,11 @@ export interface ExposedTables {}
 /** The app's modules — so `Database<'user-profil'>` (a typo) is an error. */
 export interface Modules {}
 /**
+ * The primary key of each table, as the migrations declare it: a column name (`{ users: 'id'; tags: 'slug' }`) or, for a composite
+ * key, the columns (`{ role_user: readonly ['role_id', 'user_id'] }`). A table without a primary key has no entry.
+ */
+export interface PrimaryKeys {}
+/**
  * The relations the foreign keys describe, by table and name: `{ posts: { author: { kind: 'belongsTo'; table: 'users'; … } } }`.
  * A one-relation is `nullable` unless its foreign key is NOT NULL and the related table has no soft deletes.
  * See `docs/migrations.md#relations-from-foreign-keys`.

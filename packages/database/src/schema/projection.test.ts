@@ -356,6 +356,7 @@ const GROUPS: Record<string, string[]> = {
   blog: ['auth', 'blog'],
   plurals: ['plurals'],
   uuids: ['uuids'],
+  'slug-keys': ['slug-keys'],
   system: ['system'],
   elsewhere: ['elsewhere'],
   'lock-lost': ['lock-lost'],
@@ -458,6 +459,7 @@ async function expectParity(driver: TestDriver, modules: ModuleDefinition[]): Pr
           .map(([name, sets]) => [name, sets.filter((set) => !set.some((column) => retired(name, column)))] as const),
       ),
     );
+    expect(Object.fromEntries(mine.primaryKeys)).toEqual(Object.fromEntries([...real.primaryKeys].filter(([name]) => own(name))));
     // What happens to a row of the referenced table, and which columns the database fills in when an insert gives none.
     const deletes = await onDelete(run, driver);
     for (const table of tables.values()) {

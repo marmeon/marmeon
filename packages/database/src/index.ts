@@ -15,6 +15,7 @@ export type {
   ModuleTables,
   Modules,
   NewRow,
+  PrimaryKeys,
   Relations,
   Row,
   RowUpdate,
@@ -65,4 +66,4 @@ export type { LinkWriter, RelatedWriter, RelationWriter, WritableRelationName } 
 export { cursorPaginate, InvalidCursorError, pageQuery, paginate } from './pagination.ts';
 export type { CheckPageRequest, CursorEncrypter, CursorOptions, CursorPaginated, PageMeta, PageRequest, Paginated } from './pagination.ts';
 export { RecordNotFoundError, Repository } from './repository.ts';
-export type { Exact, KeyOf, RepositoryBindingWith } from './repository.ts';
+export type { Exact, PrimaryKeyOf, RepositoryBindingWith } from './repository.ts';
