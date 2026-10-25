@@ -18,12 +18,10 @@ export const SAME_VALUE: Readonly<Record<string, string>> = {
  * `pnpm api:check` fails on it, so the list only shrinks.
  */
 export const KNOWN: readonly string[] = [
-  'Action',
   'ColumnOf',
   'DispatchOptions',
   'Entry',
   'Invokable',
   'RequestInfo',
-  'Router',
   'ServeOptions',
 ];
