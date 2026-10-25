@@ -24,7 +24,6 @@ export const KNOWN: readonly string[] = [
   'DispatchOptions',
   'Entry',
   'Invokable',
-  'pageQuery',
   'RequestInfo',
   'Router',
   'RowOf',
