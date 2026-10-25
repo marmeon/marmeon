@@ -33,6 +33,7 @@ import { NoSecondFactorPasskeys, NoTwoFactorState, SecondFactorPasskeys, TwoFact
 import { TwoFactorStore } from './two-factor/store.ts';
 import { UserProvider } from './user.ts';
 import { authenticationIsSetUp, requireAuthTables, requireSignInFinder, UserProviderNotBound } from './upgrades.ts';
+import type { CommandClass } from 'marmeon';
 
 export { AccountSessions } from './account-sessions.ts';
 export type { EveryoneEnded } from './account-sessions.ts';
@@ -57,14 +58,8 @@ export type { SecondFactor } from './two-factor/state.ts';
 export { TwoFactorStore } from './two-factor/store.ts';
 export { allow, AuthorizationError, can, deny, denyAsNotFound, Gate, PolicyResponse } from './gate.ts';
 export type { Abilities, AbilityOf, PolicyClass, PolicyResult, ProjectableAbility, Projection, ResourcelessAbility, ResourceOf, ResourcesOf, WithAbilities } from './gate.ts';
-export { MakeAuthCommand } from './make-auth.ts';
-export { EndAllSessionsCommand } from './end-all-sessions.ts';
-export { EndSessionsCommand } from './end-sessions.ts';
-export { ResetTwoFactorCommand } from './reset-two-factor.ts';
-export { PruneTokensCommand } from './prune-tokens.ts';
 export { describeDevice } from './device.ts';
 export type { DeviceDescription } from './device.ts';
-export { MakeSignInsTableCommand } from './make-sign-ins-table.ts';
 export { clearPasswordCheck, takePasswordCheck } from './password-throttle.ts';
 export type { PasswordCheckError, PasswordCheckScope, PasswordThrottled } from './password-throttle.ts';
 export { DatabaseSignIns, SIGN_INS_TABLE, SignInStore } from './sign-ins.ts';
@@ -115,7 +110,7 @@ export type HashConfig = ConfigOf<typeof HashConfig>;
  */
 export class AuthServiceProvider implements ServiceProvider {
   static config = [HashConfig, AuthConfig];
-  static commands = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand, EndAllSessionsCommand, EndSessionsCommand, ResetTwoFactorCommand];
+  static commands: readonly CommandClass[] = [MakeAuthCommand, MakeSignInsTableCommand, PruneTokensCommand, EndAllSessionsCommand, EndSessionsCommand, ResetTwoFactorCommand];
   /** The migrations for the sign-ins table, which `marmeon publish` and the `make:*-table` command copy into the app. */
   static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 

@@ -2,6 +2,7 @@ import { Application, Clock, Logger, type Container, type ServiceProvider } from
 import { ScheduleListCommand, ScheduleRunCommand, ScheduleTestCommand, ScheduleWorkCommand } from './commands/schedule.ts';
 import { ScheduleConfig } from './config.ts';
 import { Scheduler } from './scheduler.ts';
+import type { CommandClass } from 'marmeon';
 
 export { ScheduleConfig } from './config.ts';
 export { CronExpression, ScheduleError } from './cron.ts';
@@ -12,7 +13,6 @@ export type { CallableTask, CallableTaskClass, CatchUp, CheckTime, Frequencies, 
 export { Scheduler } from './scheduler.ts';
 export type { RunReason, SkipReason, Task, TaskResult, TaskRun } from './scheduler.ts';
 export { ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting } from './events.ts';
-export { ScheduleListCommand, ScheduleRunCommand, ScheduleTestCommand, ScheduleWorkCommand } from './commands/schedule.ts';
 
 /**
  * Registers the `Scheduler` and the `schedule:*` commands; `marmeon dev` runs `schedule:work` next to the server when
@@ -20,7 +20,7 @@ export { ScheduleListCommand, ScheduleRunCommand, ScheduleTestCommand, ScheduleW
  */
 export class SchedulerServiceProvider implements ServiceProvider {
   static config = [ScheduleConfig];
-  static commands = [ScheduleWorkCommand, ScheduleRunCommand, ScheduleListCommand, ScheduleTestCommand];
+  static commands: readonly CommandClass[] = [ScheduleWorkCommand, ScheduleRunCommand, ScheduleListCommand, ScheduleTestCommand];
 
   register(container: Container): void {
     container.singleton(Scheduler, (c) => new Scheduler(container, c.make(Application), c.make(ScheduleConfig), c.make(Clock), c.make(Logger)));

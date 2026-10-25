@@ -20,6 +20,7 @@ import { FileSessionStore } from './stores/file.ts';
 import { MemorySessionStore } from './stores/memory.ts';
 import { RedisSessionStore } from './stores/redis.ts';
 import { withCode } from '@marmeon/core/internal';
+import type { CommandClass } from 'marmeon';
 
 declare module '@marmeon/core' {
   interface ModuleDefinition {
@@ -34,7 +35,7 @@ declare module '@marmeon/core' {
  */
 export class SessionServiceProvider implements ServiceProvider {
   static config = [SessionConfig, CsrfConfig];
-  static commands = [MakeSessionTableCommand, PruneSessionsCommand];
+  static commands: readonly CommandClass[] = [MakeSessionTableCommand, PruneSessionsCommand];
   /** The migrations for the sessions table, which `marmeon publish` and the `make:*-table` command copy into the app. */
   static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 

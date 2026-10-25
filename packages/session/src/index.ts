@@ -1,8 +1,6 @@
 export { SessionCodec } from './codec.ts';
 export { SessionConfig, sessionCookieName } from './config.ts';
 export { CsrfConfig, CsrfProtection, VerifyCsrfToken } from './csrf.ts';
-export { MakeSessionTableCommand } from './commands/make-session-table.ts';
-export { PruneSessionsCommand } from './commands/prune-sessions.ts';
 export { SessionServiceProvider, SessionSetupError, sessionTableConnection } from './provider.ts';
 export { Session } from './session.ts';
 export { SessionEndings } from './ended.ts';

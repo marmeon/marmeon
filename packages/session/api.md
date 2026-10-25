@@ -23,29 +23,6 @@ export declare class CsrfProtection {
     enable(): this;
     skips(path: string): boolean;
 }
-// MakeSessionTableCommand
-export declare class MakeSessionTableCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly module: {
-            readonly type: 'string';
-            readonly short: 'm';
-        };
-    };
-    constructor(app: Application);
-    handle(input: CommandInput): Promise<number>;
-}
-// PruneSessionsCommand
-export declare class PruneSessionsCommand {
-    #private;
-    static command: string;
-    static description: string;
-    constructor(config: SessionConfig, container: Container);
-    handle({ output }: CommandInput): Promise<number>;
-}
 // SESSION_USER_KEY
 export declare const SESSION_USER_KEY = "_auth_id";
 // Session
@@ -139,7 +116,7 @@ export declare class SessionServiceProvider implements ServiceProvider {
         trustedOrigins: string[];
         appOrigin: string | undefined;
     }>)[];
-    static commands: (typeof MakeSessionTableCommand | typeof PruneSessionsCommand)[];
+    static commands: readonly CommandClass[];
     static migrations: {
         from: import("node:url").URL;
         module: string;

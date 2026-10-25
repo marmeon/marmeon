@@ -1,5 +1,5 @@
 import { Connections } from '@marmeon/database';
-import { ResetTwoFactorCommand, TwoFactorStore } from '@marmeon/auth';
+import { TwoFactorStore } from '@marmeon/auth';
 import { twoFactorCode, cookieNames } from '@marmeon/auth/testing';
 import { Logger } from '@marmeon/core';
 import { createTestApp, type TestApp } from '@marmeon/testing';
@@ -321,18 +321,13 @@ describe('the mail about a wrong code', { timeout: 30_000 }, () => {
 });
 
 describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
-  const reset = async (args: string[], options: Record<string, boolean> = { force: true }) => {
-    const lines: string[] = [];
-    const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
-    const code = await app.make(ResetTwoFactorCommand).handle({ args, options, output } as never);
-    return { code, lines };
-  };
+  const reset = (args: string[], options: Record<string, boolean> = { force: true }) => app.command('auth:reset-two-factor', { args, options });
 
   it('removes the factor and the codes, lets the password alone sign in, and tells the owner', async () => {
     const ada = await app.factory(UserFactory).create();
     await enable(ada);
     const info = vi.spyOn(app.make(Logger), 'info');
-    expect(await reset([` ${ada.email} `])).toEqual({ code: 0, lines: [`Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}, and ended its sessions.`] });
+    expect(await reset([` ${ada.email} `])).toEqual({ code: 0, lines: [`✓ Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}, and ended its sessions.`] });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('second factor'), { userId: ada.id });
     await app.assertDatabaseCount('two_factor_authentications', 0);
     await app.assertDatabaseCount('two_factor_recovery_codes', 0);
@@ -367,7 +362,7 @@ describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
     const factors = vi.spyOn(TwoFactorStore.prototype, 'factors');
     factors.mockImplementationOnce(real).mockImplementationOnce(() => Promise.resolve([{}] as never));
     try {
-      expect(await reset([ada.email])).toEqual({ code: 1, lines: [`A second factor was enrolled for ${ada.email} while the command ran. Run it again.`] });
+      expect(await reset([ada.email])).toEqual({ code: 1, lines: [`✗ A second factor was enrolled for ${ada.email} while the command ran. Run it again.`] });
     } finally {
       factors.mockRestore();
     }
@@ -381,10 +376,10 @@ describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
     expect(refused.lines[0]).toContain('pass --force');
     await app.withCookie(SESSION, cookie).expectingJson().get('/dashboard').assertOk();
     await app.assertDatabaseCount('two_factor_authentications', 1);
-    expect(await reset(['nobody@example.com'])).toEqual({ code: 1, lines: ['No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.'] });
+    expect(await reset(['nobody@example.com'])).toEqual({ code: 1, lines: ['✗ No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.'] });
     expect((await reset([])).code).toBe(1);
     const grace = await app.factory(UserFactory).create();
-    expect(await reset([grace.email])).toEqual({ code: 0, lines: [`${grace.email} has no second factor.`] });
+    expect(await reset([grace.email])).toEqual({ code: 0, lines: [`✓ ${grace.email} has no second factor.`] });
   });
 });
 

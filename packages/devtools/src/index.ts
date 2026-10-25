@@ -1,7 +1,6 @@
 // @marmeon/devtools: the recorder and its store — what a request, job, scheduled run or command
 // did, kept as redacted entries in `storage/framework/devtools/` (development only). The pages under `/_marmeon/devtools`
 // read them through the store.
-export { DevtoolsClearCommand, DevtoolsPruneCommand } from './commands.ts';
 export { defineDevtools, DevtoolsConfig, DevtoolsSetupError } from './config.ts';
 export type { DevtoolsDefinition, DevtoolsOptions, PathPattern, Watcher } from './config.ts';
 export type {

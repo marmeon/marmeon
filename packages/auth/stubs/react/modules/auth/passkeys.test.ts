@@ -1,4 +1,3 @@
-import { ResetTwoFactorCommand } from '@marmeon/auth';
 import { softAuthenticator, twoFactorCode, cookieNames } from '@marmeon/auth/testing';
 import { RateLimiter } from '@marmeon/cache';
 import { Connections } from '@marmeon/database';
@@ -476,10 +475,8 @@ describe('marmeon auth:reset-two-factor and passkeys', { timeout: 30_000 }, () =
   it('removes the passkeys and the recovery codes of an owner who lost every device, and lets the password alone sign in', async () => {
     const ada = await app.factory(UserFactory).create();
     await enrol(ada);
-    const lines: string[] = [];
-    const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
-    const code = await app.make(ResetTwoFactorCommand).handle({ args: [ada.email], options: { force: true }, output } as never);
-    expect({ code, lines }).toEqual({ code: 0, lines: [`Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}, and ended its sessions.`] });
+    const { code, lines } = await app.command('auth:reset-two-factor', { args: [ada.email], options: { force: true } });
+    expect({ code, lines }).toEqual({ code: 0, lines: [`✓ Removed the authenticator app, the passkeys and the recovery codes of ${ada.email}, and ended its sessions.`] });
     await app.assertDatabaseCount('passkeys', 0);
     await app.assertDatabaseCount('two_factor_recovery_codes', 0);
     await app.post('/login', credentialsOf(ada)).assertRedirect('/dashboard').assertAuthenticated(ada);
@@ -488,9 +485,7 @@ describe('marmeon auth:reset-two-factor and passkeys', { timeout: 30_000 }, () =
   it('changes nothing without --force: the passkeys and the recovery codes stay', async () => {
     const ada = await app.factory(UserFactory).create();
     await enrol(ada);
-    const lines: string[] = [];
-    const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
-    const code = await app.make(ResetTwoFactorCommand).handle({ args: [ada.email], options: {}, output } as never);
+    const { code, lines } = await app.command('auth:reset-two-factor', { args: [ada.email] });
     expect(code).toBe(1);
     expect(lines[0]).toContain('pass --force');
     await app.assertDatabaseCount('passkeys', 1);

@@ -184,7 +184,7 @@ export declare class AuthServiceProvider implements ServiceProvider {
             parallelism: number;
         };
     }>)[];
-    static commands: (typeof MakeAuthCommand | typeof EndAllSessionsCommand | typeof EndSessionsCommand | typeof ResetTwoFactorCommand | typeof PruneTokensCommand | typeof MakeSignInsTableCommand)[];
+    static commands: readonly CommandClass[];
     static migrations: {
         from: URL;
         module: string;
@@ -402,48 +402,6 @@ export declare class EmailVerification {
         readonly hash: string;
     }): boolean;
 }
-// EndAllSessionsCommand
-export declare class EndAllSessionsCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly force: {
-            readonly type: 'boolean';
-        };
-        readonly 'keep-api-tokens': {
-            readonly type: 'boolean';
-        };
-        readonly 'keep-reset-tokens': {
-            readonly type: 'boolean';
-        };
-        readonly 'api-tokens': {
-            readonly type: 'boolean';
-        };
-        readonly 'reset-tokens': {
-            readonly type: 'boolean';
-        };
-    };
-    static inject: (import("@marmeon/core").Token<Logger> | typeof AccountSessions)[];
-    constructor(accounts: AccountSessions, logger?: Logger);
-    handle({ args, options, output }: CommandInput): Promise<number>;
-}
-// EndSessionsCommand
-export declare class EndSessionsCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly force: {
-            readonly type: 'boolean';
-        };
-    };
-    static inject: readonly Key[];
-    constructor(users: UserProvider, accounts: AccountSessions, logger: Logger);
-    handle({ args, options, output }: CommandInput): Promise<number>;
-}
 // EndedSessions
 export interface EndedSessions {
     readonly removed: number;
@@ -534,36 +492,6 @@ export interface HasherOptions {
 }
 // MAX_PASSWORD_BYTES
 export declare const MAX_PASSWORD_BYTES = 4096;
-// MakeAuthCommand
-export declare class MakeAuthCommand {
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly force: {
-            readonly type: 'boolean';
-        };
-        readonly adapter: {
-            readonly type: 'string';
-        };
-    };
-    handle(input: CommandInput): Promise<number>;
-}
-// MakeSignInsTableCommand
-export declare class MakeSignInsTableCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly module: {
-            readonly type: 'string';
-            readonly short: 'm';
-        };
-    };
-    constructor(app: Application);
-    handle(input: CommandInput): Promise<number>;
-}
 // NO_STORE
 export declare const NO_STORE = "no-store, private";
 // NoStoreWhenSignedIn
@@ -757,52 +685,6 @@ export type ProjectableAbility<P> = {
 export interface Projection<T> extends PromiseLike<T> {
     (): Promise<T>;
 }
-// PruneTokensCommand
-export declare class PruneTokensCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly hours: {
-            readonly type: 'string';
-        };
-    };
-    static inject: (import("@marmeon/core").ConfigDefinition<{
-        driver: "database" | "file" | "memory" | "redis";
-        secureFrom: 'APP_URL' | 'SESSION_SECURE_COOKIE';
-        protected: boolean;
-        connection: string;
-        lifetime: number;
-        cookie: string;
-        files: string;
-        secure: boolean;
-        sameSite: "lax" | "none" | "strict";
-        encrypt: boolean;
-        lottery: number;
-    }> | import("@marmeon/core").ConfigDefinition<{
-        rememberDays: number;
-        remember: boolean;
-        sessionMaxSeconds: number;
-        rememberCookie: string;
-        appName: string | undefined;
-        loginAttemptsPerMinute: number;
-        accountSignInsPerDay: number;
-        deviceCookieDays: number;
-        passwordTimeout: number;
-        resetExpire: number;
-        resetThrottle: number;
-        emailChangeMinutes: number;
-        emailChangeThrottle: number;
-        tokenPrefix: string;
-        privateRegistration: boolean;
-        unverifiedDays: number;
-        revokeTokensOnPasswordChange: boolean;
-        protected: boolean;
-    }> | import("@marmeon/core").Token<Clock> | typeof Container | typeof SignInStore | typeof AccessTokenStore | typeof PasswordResetTokenStore)[];
-    constructor(resets: PasswordResetTokenStore, access: AccessTokenStore, config: AuthConfig, sessionConfig: SessionConfig, signIns: SignInStore, container?: Pick<Container, 'has' | 'make'>, clock?: Clock);
-    handle({ options, output }: CommandInput): Promise<number>;
-}
 // RecoveryCodeUsed
 export declare class RecoveryCodeUsed {
     #private;
@@ -894,21 +776,6 @@ export interface RememberedDevice {
 export type RequestEmailChangeError = PasswordCheckError | {
     readonly kind: 'duplicate';
 };
-// ResetTwoFactorCommand
-export declare class ResetTwoFactorCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly force: {
-            readonly type: 'boolean';
-        };
-    };
-    static inject: readonly Key[];
-    constructor(users: UserProvider, accounts: AccountSessions, state: TwoFactorState, events: EventDispatcher, logger: Logger);
-    handle({ args, options, output }: CommandInput): Promise<number>;
-}
 // ResourceOf
 export type ResourceOf<P, K extends keyof P> = (K extends unknown ? Contravariant<ResourcesOf<P, K> extends [] ? unknown : ResourcesOf<P, K> extends [(infer R)?] ? R : never> : never) extends (resource: infer R) => void ? R : never;
 // ResourcelessAbility

@@ -6,7 +6,9 @@ import { HttpServiceProvider } from '@marmeon/http';
 import { ServerServiceProvider } from '@marmeon/server';
 import { SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
-import { AuthServiceProvider, EndSessionsCommand, ResetTwoFactorCommand, TwoFactorState, UserProvider, type AuthUser } from './index.ts';
+import { EndSessionsCommand } from './end-sessions.ts';
+import { ResetTwoFactorCommand } from './reset-two-factor.ts';
+import { AuthServiceProvider, TwoFactorState, UserProvider, type AuthUser } from './index.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
 
 const ada: AuthUser = { id: 1, name: 'Ada', email: 'ada@example.com' };

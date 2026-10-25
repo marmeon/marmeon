@@ -79,21 +79,6 @@ export declare class Inbox {
     markAllRead(recipient: RecipientRef): Promise<number>;
     deleteAll(recipient: RecipientRef): Promise<number>;
 }
-// MakeNotificationsTableCommand
-export declare class MakeNotificationsTableCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly module: {
-            readonly type: 'string';
-            readonly short: 'm';
-        };
-    };
-    constructor(app: Application);
-    handle(input: CommandInput): Promise<number>;
-}
 // Notification
 export interface Notification<T extends RecipientType = RecipientType> {
     via(recipient: NotificationRecipients[T], data: any): readonly NotificationChannelName[] | Promise<readonly NotificationChannelName[]>;
@@ -176,7 +161,7 @@ export declare class NotificationServiceProvider implements ServiceProvider {
     static config: import("@marmeon/core").ConfigDefinition<{
         connection: string;
     }>[];
-    static commands: (typeof MakeNotificationsTableCommand | typeof PruneNotificationsCommand)[];
+    static commands: readonly CommandClass[];
     static migrations: {
         from: import("node:url").URL;
         module: string;
@@ -232,23 +217,6 @@ export interface Notifications {
     sendNow<const R extends Recipients, N extends abstract new (...args: any[]) => object>(recipient: R, notification: N & CheckNotification<N, RecipientTypeOf<R>>, data: SendData<N>): Promise<SendResult<R>>;
 }
 export declare const Notifications: import("@marmeon/core").Token<Notifications>;
-// PruneNotificationsCommand
-export declare class PruneNotificationsCommand {
-    #private;
-    static command: string;
-    static description: string;
-    static usage: string;
-    static options: {
-        readonly days: {
-            readonly type: 'string';
-        };
-        readonly 'unread-days': {
-            readonly type: 'string';
-        };
-    };
-    constructor(store: NotificationStore, clock: Clock);
-    handle({ options, output }: CommandInput): Promise<number>;
-}
 // QueuedNotificationPayload
 export interface QueuedNotificationPayload {
     id: string;
