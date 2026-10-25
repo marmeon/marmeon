@@ -1,24 +1,20 @@
-import { Head, usePage } from '@marmeon/react';
+import { Head } from '@marmeon/react';
 import type { ReactNode } from 'react';
 
 /**
- * The head of a page: title, description, canonical URL and Open Graph. The path comes from the page's data and the origin from
- * the shared `site.url` (APP_URL) — never from the request's URL, which may carry a query or a forged host into a cached page.
+ * The head of a page: title, description, canonical URL and Open Graph. `path` is made absolute by the framework against `APP_URL`
+ * — never against the request's URL, which may carry a query or a forged host into a cached page.
  * `noindex` keeps the page out of search engines (a release line's pages, whose `path` names the newest page instead).
  */
 export function SiteHead({ title, description, path, type = 'website', noindex = false, children }: { title: string; description: string; path: string; type?: 'website' | 'article'; noindex?: boolean; children?: ReactNode }) {
-  const site = usePage().props.site;
-  const url = site ? new URL(path, site.url).href : undefined;
   return (
-    <Head title={title}>
-      <meta name="description" content={description} />
-      {noindex && <meta name="robots" content="noindex" />}
-      {url && <link rel="canonical" href={url} />}
-      {url && <meta property="og:url" content={url} />}
-      <meta property="og:title" content={title || 'Marmeon'} />
-      <meta property="og:description" content={description} />
-      <meta property="og:type" content={type} />
-      <meta property="og:site_name" content="Marmeon" />
+    <Head
+      title={title}
+      description={description}
+      canonical={path}
+      robots={noindex ? { index: false } : undefined}
+      openGraph={{ title: title || 'Marmeon', description, url: path, type, siteName: 'Marmeon' }}
+    >
       {children}
     </Head>
   );

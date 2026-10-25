@@ -11,7 +11,12 @@ beforeAll(async () => {
 afterAll(() => server?.close());
 
 const html = { headers: { accept: 'text/html' } };
-const decode = (value: string) => value.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+const named: Record<string, string> = { quot: '"', lt: '<', gt: '>', amp: '&' };
+/** Reads the numeric (`&#39;`, `&#x27;`) and named entities the head's attributes are written with. */
+const decode = (value: string) =>
+  value.replace(/&(?:#(\d+)|#x([\da-f]+)|(quot|lt|gt|amp));/gi, (_, dec, hex, name) =>
+    name ? named[name.toLowerCase()]! : String.fromCodePoint(dec ? Number(dec) : Number.parseInt(hex, 16)),
+  );
 
 /** The `content`/`href` of every `<meta>`/`<link>` tag that matches, entities decoded. */
 function tags(body: string, kind: 'meta' | 'link', key: string, value: string): string[] {
@@ -90,10 +95,5 @@ describe('the head of a page', () => {
   it('takes the origin from APP_URL, not from the request', async () => {
     await expectOriginFromAppUrl('/docs/routing', (response) => canonicalOf(response.body)[0] ?? null, 'https://docs.example/docs/routing', html.headers, server);
     await expectOriginFromAppUrl('/', (response) => canonicalOf(response.body)[0] ?? null, 'https://docs.example/', html.headers, server);
-  });
-
-  it('shares the site root with a Visit', async () => {
-    const props = (await app.navigating().get('/docs/routing').assertOk()).page()!.props;
-    expect((props.site as { url: string }).url).toBe('http://localhost/');
   });
 });
