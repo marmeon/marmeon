@@ -175,8 +175,6 @@ export interface DeferredProp<T> extends PageProp<'defer', T> {
 }
 // DeferredResult
 export type DeferredResult = Pick<PageObject, 'props' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn'>;
-// Duration
-export type Duration = number | `${number}${'s' | 'm' | 'h' | 'd'}`;
 // ERRORS_KEY
 export declare const ERRORS_KEY = "errors";
 // EXPECTS_JSON_VARY
@@ -2571,103 +2569,6 @@ export type ViewProps = Record<string, unknown>;
 type WindowEvent = 'popstate' | 'pageshow' | 'scroll' | 'beforeunload';
 // featureApi
 declare const featureApi: unique symbol;
-```
-
-### Experimental
-
-```ts
-// DevtoolsFeature
-export interface DevtoolsFeature {
-    readonly timeline: readonly TimelineEntry[];
-    readonly snapshots: readonly PatchSnapshot[];
-    readonly hydration: readonly HydrationIssue[];
-    readonly left: boolean;
-    readonly cache: Map<string, unknown>;
-    answerFor(url: string): TimelineEntry | undefined;
-    subscribe(listener: () => void): () => void;
-    onStarted(listener: () => void): () => void;
-    stop(): void;
-    readonly record: Omit<DevtoolsHook, 'navigator'> & {
-        document(url: string, requestId: string | undefined): void;
-    };
-}
-// DevtoolsGlobal
-export interface DevtoolsGlobal {
-    __MARMEON_DEVTOOLS_HOOK__?: Partial<DevtoolsHook>;
-}
-// DevtoolsHook
-export interface DevtoolsHook {
-    navigator(navigator: Navigator): void;
-    patches(ids: readonly number[]): void;
-    patched(id: number, beneath: Readonly<Record<string, unknown>>, changed: Readonly<Record<string, unknown>>): void;
-    committed(ids: Iterable<number>): void;
-    removed(ids: Iterable<number>): void;
-    recoverable(error: unknown, component: string, server: boolean): void;
-}
-// HydrationIssue
-export interface HydrationIssue {
-    readonly at: number;
-    readonly component: string;
-    readonly server: boolean;
-    readonly message: string;
-    readonly stack?: string;
-}
-// PatchSnapshot
-export interface PatchSnapshot {
-    readonly id: number;
-    request?: number;
-    readonly at: number;
-    before?: Readonly<Record<string, unknown>>;
-    after?: Readonly<Record<string, unknown>>;
-    state: 'shown' | 'committed' | 'removed';
-}
-// TimelineEntry
-export interface TimelineEntry {
-    readonly id: number;
-    readonly kind: TimelineKind;
-    readonly method: string;
-    readonly url: string;
-    readonly at: number;
-    end?: number;
-    status?: number;
-    requestId?: string;
-    answered?: string;
-    outcome?: TimelineOutcome;
-    location?: string;
-    reload?: string;
-    readonly only?: readonly string[];
-    readonly except?: readonly string[];
-    readonly name?: string;
-    component?: string;
-    errors?: ValidationErrors;
-    patches?: readonly number[];
-    readonly channel?: string;
-    readonly hinted?: readonly string[] | null;
-}
-// TimelineKind
-export type TimelineKind =
-'document' | 'visit'
- | 'reload'
- | 'partial'
- | 'background'
- | 'deferred' | 'prefetch'
- | 'restore' | 'layer' | 'island' | 'action'
- | 'validation' | 'upload'
- | 'live';
-// TimelineOutcome
-export type TimelineOutcome = 'ok'
- | 'invalid'
- | 'reload'
- | 'redirect'
- | 'failed'
- | 'cancelled'
- | 'prefetched';
-// devtools
-export declare const devtools: import("../feature.ts").Feature<DevtoolsFeature>;
-// devtoolsReports
-export declare function devtoolsReports(api: () => DevtoolsFeature | undefined): Omit<DevtoolsHook, 'navigator'> & {
-    flush(): void;
-};
 ```
 
 ## `@marmeon/http/page`
