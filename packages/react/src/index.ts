@@ -64,6 +64,8 @@ export { resolveModulePages } from './pages.ts';
 export type { DefaultLayout, ErrorFallback, ErrorFallbackProps, Layout, LayoutProps, PageComponent, PageLayout, PageSsr, Placeholder, ResolvePage, RevalidateOnBack } from './pages.ts';
 export { Head } from './head.tsx';
 export type { HeadProps, JsonLd, OpenGraph, TitleTemplate, TwitterCard } from './head.tsx';
+export { Image } from './image.tsx';
+export type { ImageProps } from './image.tsx';
 export { Pagination } from './pagination.tsx';
 export type { PaginationLabels, PaginationProps } from './pagination.tsx';
 export { usePoll } from './use-poll.ts';

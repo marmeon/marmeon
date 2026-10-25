@@ -2686,6 +2686,17 @@ export type FlashMessage<K extends FlashKey = FlashKey> = K extends unknown ? {
 export type FlashValue<K extends string> = K extends keyof FlashData ? FlashData[K] : unknown;
 // FormOf
 export type { FormOf } from '@marmeon/router';
+// ImageSource
+export interface ImageSource {
+    readonly src: string;
+    readonly width: number;
+    readonly height: number;
+    readonly srcset?: string;
+    readonly sources?: readonly {
+        readonly type: 'image/avif' | 'image/webp';
+        readonly srcset: string;
+    }[];
+}
 // InstantProp
 export type InstantProp<N extends string> = [InstantOf<N>] extends [never] ? `'${N}' shows no placeholder — declare what it gets on its controller (\`declare readonly instant: { … }\`) and give its view one (\`View.placeholder = …\`)` : {} extends InstantOf<N> ? true | InstantOf<N> : InstantOf<N>;
 // InstantProps

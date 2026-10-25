@@ -11,6 +11,7 @@ const en = {
   },
   back: 'All features',
   language: 'Language',
+  banner: 'An illustration of the feature list: a square beside two lines of text',
 } as const;
 
 export default en;

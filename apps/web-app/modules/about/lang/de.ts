@@ -13,4 +13,5 @@ export default {
   },
   back: 'Alle Funktionen',
   language: 'Sprache',
+  banner: 'Eine Illustration der Funktionsliste: ein Quadrat neben zwei Textzeilen',
 } satisfies Messages<typeof en>;

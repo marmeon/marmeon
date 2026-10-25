@@ -20,9 +20,9 @@ beforeAll(async () => {
 afterAll(() => app?.close());
 
 describe('the docs: sections of pages under /docs', () => {
-  it('lists the 85 pages in eleven sections, in this order', () => {
+  it('lists the 86 pages in eleven sections, in this order', () => {
     expect(docsConfig.sections.map((section) => section.title)).toEqual(SECTIONS);
-    expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 6, 4, 5, 11, 10, 14, 11, 7, 7, 4]);
+    expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 6, 4, 5, 11, 11, 14, 11, 7, 7, 4]);
     expect(ENTRIES[0]).toEqual({ slug: 'why-marmeon', label: 'Why Marmeon' });
     expect(ENTRIES[1]).toEqual({ slug: 'upgrading', label: 'Upgrade Guide', file: 'UPGRADING.md', changes: true });
     expect(ENTRIES.filter((entry) => entry.file).map((entry) => [entry.slug, entry.file])).toEqual([

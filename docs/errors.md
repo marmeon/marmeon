@@ -539,6 +539,7 @@ included, gets the code alone.
 | R17 | `<Pagination>` | A warning: the page's query schema has no field for the page number, so the links would lead to the first page. |
 | R18 | `useTable` | A table changed while rendering on the server. |
 | R19 | layouts | A layout's `error` that is no component. |
+| R20 | `<Image priority>` | A warning in development: `priority` in an island cannot preload, because an island cannot reach the document head. |
 
 Texts a user sees are never codes: the error pages, the questions before leaving a page. Neither are refusals a production log
 needs to read, such as a request that would go to another site.

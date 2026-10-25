@@ -104,6 +104,7 @@ export default defineDocs({
         { slug: 'vite', label: 'Asset Bundling (Vite)' },
         { slug: 'styling', label: 'Styling' },
         { slug: 'seo', label: 'Search Engines & Sharing' },
+        { slug: 'images', label: 'Images' },
       ],
     },
     {
