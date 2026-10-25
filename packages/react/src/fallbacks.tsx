@@ -1,6 +1,6 @@
 import type { VisitError } from '@marmeon/http/client';
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react';
-import type { ResolvePage } from './pages.ts';
+import type { ErrorFallback, ResolvePage } from './pages.ts';
 
 /** The digest of errors in a Suspense boundary on the server — how the browser tells them from a hydration mismatch. */
 export const SSR_ERROR_DIGEST = 'marmeon:ssr';
@@ -68,12 +68,13 @@ function NetworkNotice({ onDismiss }: { onDismiss: () => void }) {
 }
 
 /** When the failure chunk cannot load: the notice for a visit, nothing for a page that threw — never an error of its own. */
-const unloaded = { RenderErrorFallback: () => null, ServerFailure: NetworkNotice } as unknown as typeof import('./failure.tsx');
+const unloaded = { RenderErrorFallback: () => null, LayoutErrorFallback: () => null, ServerFailure: NetworkNotice } as unknown as typeof import('./failure.tsx');
 
 // The rest of what a failure shows is a chunk of its own (like the layers): the server's error page in a dialog and the
 // app's error page for a page that threw — loaded when it happens.
 const loadFailure = () => import('./failure.tsx').catch(() => unloaded);
 const LazyRenderError = lazy(() => loadFailure().then((module) => ({ default: module.RenderErrorFallback })));
+const LazyLayoutError = lazy(() => loadFailure().then((module) => ({ default: module.LayoutErrorFallback })));
 const LazyServerFailure = lazy(() => loadFailure().then((module) => ({ default: module.ServerFailure })));
 
 /** The app's error page (`errors/Error`) for an error thrown while rendering. */
@@ -83,6 +84,20 @@ export function RenderErrorFallback(props: { resolve: ResolvePage; error: unknow
       <LazyRenderError {...props} />
     </Suspense>
   );
+}
+
+/** A layout's `error` in place of its children: the error page's props and a retry, from the failure chunk. */
+export function LayoutError(props: { fallback: ErrorFallback; error: unknown; retry: () => void }) {
+  return (
+    <Suspense fallback={null}>
+      <LazyLayoutError {...props} />
+    </Suspense>
+  );
+}
+
+/** Hands an error on to the next boundary above — for a page whose layout (with `error`) shows it. */
+export function Rethrow({ error }: { error: unknown }): never {
+  throw error;
 }
 
 /**

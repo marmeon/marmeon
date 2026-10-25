@@ -1,7 +1,9 @@
 import { Container, defineConfig, env, resolveConfig } from '@marmeon/core';
 import { Database } from '@marmeon/database';
 import { abort, Controller, SharedData, type HttpContext } from '@marmeon/http';
+import { PAGE_HEADER } from '@marmeon/http/protocol';
 import { Router } from '@marmeon/router';
+import { Session } from '@marmeon/session';
 import { LabConfig } from '../config.ts';
 import { RecentErrors } from '../RecentErrors.ts';
 import { CheckoutService, LabReport, Money, Orders, ReminderSchedule } from '../errors.ts';
@@ -49,6 +51,28 @@ export class ShowLateErrorLabController extends LabController {
   handle() {
     this.enabled();
     return this.view('lab/LateError', { late: { delay: Math.min(this.config.delay, 300) } });
+  }
+}
+
+/**
+ * A page that throws while the browser renders it: the document and the automatic fresh copy the client then asks for
+ * both send `broken`, so the layout's error shows; the next request — the click on its retry — renders the page. A request
+ * for the whole document starts over (a refresh shows the demo again), and `?fixed=1` renders it at once.
+ */
+export class ShowRenderErrorLabController extends LabController {
+  readonly #session: Session;
+
+  constructor(config: LabConfig, session: Session) {
+    super(config);
+    this.#session = session;
+  }
+
+  handle(ctx: HttpContext) {
+    this.enabled();
+    const visit = ctx.request.headers.has(PAGE_HEADER);
+    const seen = visit ? Number(this.#session.get('lab.render-error') ?? 0) : 0;
+    this.#session.put('lab.render-error', seen + 1);
+    return this.view('lab/RenderError', { broken: seen < 2 && new URL(ctx.request.url).searchParams.get('fixed') !== '1' });
   }
 }
 

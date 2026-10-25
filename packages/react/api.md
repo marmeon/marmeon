@@ -130,6 +130,12 @@ export interface DeferredProps<T = unknown> {
     fallback?: ReactNode;
     children: ReactNode | (() => ReactNode);
 }
+// ErrorFallback
+export type ErrorFallback = ComponentType<ErrorFallbackProps>;
+// ErrorFallbackProps
+export interface ErrorFallbackProps extends ErrorPageProps {
+    retry(): void;
+}
 // FieldName
 export type FieldName<F, Depth extends unknown[] = []> = Depth['length'] extends 4 ? never : {
     [K in keyof F & string]-?: NameOf<K, NonNullable<F[K]>, Depth>;
@@ -317,7 +323,9 @@ export interface LayerState {
 // LayerVariant
 export type LayerVariant = 'modal' | 'slideover';
 // Layout
-export type Layout = ComponentType<LayoutProps>;
+export type Layout = ComponentType<LayoutProps> & {
+    error?: ErrorFallback;
+};
 // LayoutProps
 export interface LayoutProps {
     children: ReactNode;
@@ -773,6 +781,12 @@ export declare function createSsrRenderer(resolve: ResolvePage, { title, routes,
 ```ts
 // DefaultLayout
 export type DefaultLayout = (name: string) => PageLayout | undefined;
+// ErrorFallback
+export type ErrorFallback = ComponentType<ErrorFallbackProps>;
+// ErrorFallbackProps
+export interface ErrorFallbackProps extends ErrorPageProps {
+    retry(): void;
+}
 // LayerFrame
 export type LayerFrame = ComponentType<LayerFrameProps>;
 // LayerFrameProps
@@ -794,7 +808,9 @@ export interface LayerState {
 // LayerVariant
 export type LayerVariant = 'modal' | 'slideover';
 // Layout
-export type Layout = ComponentType<LayoutProps>;
+export type Layout = ComponentType<LayoutProps> & {
+    error?: ErrorFallback;
+};
 // LayoutProps
 export interface LayoutProps {
     children: ReactNode;
