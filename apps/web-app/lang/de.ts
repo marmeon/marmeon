@@ -12,6 +12,7 @@ export default {
   profile: 'Dein Profil',
   settings: 'Einstellungen',
   sign_out: 'Abmelden',
+  about: 'Über',
   sign_in: 'Anmelden',
   register: 'Konto anlegen',
   close: 'Schließen',

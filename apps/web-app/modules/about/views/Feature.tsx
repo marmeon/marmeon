@@ -1,0 +1,19 @@
+import type { PageProps } from '@marmeon/http';
+import { Head, Link, useTranslation } from '@marmeon/react';
+import type { ShowFeatureController } from '../controllers/ShowFeatureController.ts';
+
+/** One feature of the public list. */
+export default function Feature({ feature }: PageProps<ShowFeatureController>) {
+  const t = useTranslation('about');
+  return (
+    <main>
+      <Head title={t(`features.${feature.slug}.title`)} />
+      <h1>{t(`features.${feature.slug}.title`)}</h1>
+      <p>{t(`features.${feature.slug}.summary`)}</p>
+      <p className="muted">{t('updated', { date: t.format.date(feature.updatedAt, { dateStyle: 'medium', timeZone: 'UTC' }) })}</p>
+      <p>
+        <Link route="about.index">{t('back')}</Link>
+      </p>
+    </main>
+  );
+}

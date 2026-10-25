@@ -47,10 +47,12 @@ import type { ResendVerificationController } from '../modules/auth/controllers/R
 import type { ResetPasswordController } from '../modules/auth/controllers/ResetPasswordController.ts';
 import type { RevokeAccessTokenController } from '../modules/auth/controllers/RevokeAccessTokenController.ts';
 import type { SendPasswordResetLinkController } from '../modules/auth/controllers/SendPasswordResetLinkController.ts';
+import type { ShowAboutController } from '../modules/about/controllers/ShowAboutController.ts';
 import type { ShowAccessTokensController } from '../modules/auth/controllers/ShowAccessTokensController.ts';
 import type { ShowConfirmPasswordController } from '../modules/auth/controllers/ShowConfirmPasswordController.ts';
 import type { ShowCreateAccessTokenController } from '../modules/auth/controllers/CreateAccessTokenController.ts';
 import type { ShowDashboardController } from '../modules/dashboard/controllers/ShowDashboardController.ts';
+import type { ShowFeatureController } from '../modules/about/controllers/ShowFeatureController.ts';
 import type { ShowForgotPasswordController } from '../modules/auth/controllers/ShowForgotPasswordController.ts';
 import type { ShowLoginController } from '../modules/auth/controllers/ShowLoginController.ts';
 import type { ShowMemberStatsController } from '../modules/dashboard/controllers/ShowMemberStatsController.ts';
@@ -81,6 +83,8 @@ import type { VerifyEmailController } from '../modules/auth/controllers/VerifyEm
 
 declare module '@marmeon/router' {
   interface Routes {
+    'about.features.show': { method: 'get'; path: '/about/features/:feature{[a-z-]+}'; controller: typeof ShowFeatureController };
+    'about.index': { method: 'get'; path: '/about'; controller: typeof ShowAboutController };
     'api.users.index': { method: 'get'; path: '/api/users'; controller: typeof ListUsersController; browser: false };
     'auth.devices.logout': { method: 'post'; path: '/settings/devices/logout'; controller: typeof LogoutOtherDevicesController };
     'auth.email.confirm': { method: 'get'; path: '/email/change/:id/:token'; controller: typeof ConfirmEmailChangeController; browser: false };
@@ -162,6 +166,8 @@ declare module '@marmeon/router' {
 
 declare module '@marmeon/http/page' {
   interface Views {
+    'about/Feature': true;
+    'about/Index': true;
     'auth/AccessTokens': true;
     'auth/ConfirmPassword': true;
     'auth/CreateAccessToken': true;

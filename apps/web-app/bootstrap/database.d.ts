@@ -355,6 +355,7 @@ declare module '@marmeon/database' {
     users: true;
   }
   interface Modules {
+    about: true;
     auth: true;
     bookmarks: true;
     dashboard: true;

@@ -23,6 +23,13 @@ export function AppLayout({ children }: LayoutProps) {
           {user ? <Link route="user-profile.me">{t('name')}</Link> : <Link route="auth.login">{t('name')}</Link>}
         </strong>
         {/* The link to the page on screen gets aria-current="page" and data-current by itself. */}
+        {!user && (
+          <nav aria-label={t('main')} className="row">
+            <Link route="about.index" activeMatch="about.*">
+              {t('about')}
+            </Link>
+          </nav>
+        )}
         {user && (
           <nav aria-label={t('main')} className="row">
             {/* Instant visits: the page's placeholder shows at once, inside this layout — then the page. */}

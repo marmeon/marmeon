@@ -11,6 +11,7 @@ const en = {
   profile: 'Your profile',
   settings: 'Settings',
   sign_out: 'Sign out',
+  about: 'About',
   sign_in: 'Sign in',
   register: 'Create an account',
   close: 'Close',
