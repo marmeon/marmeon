@@ -66,6 +66,16 @@ function Profile({ links, activity }: { links: Link[]; activity: string }) {
 }
 Profile.revalidateOnBack = ['activity'];
 
+/** A localized page: its action names no locale, the page's is taken. */
+function Notes() {
+  const store = useAction('notes.store');
+  return (
+    <button type="button" data-testid="store" onClick={() => void store.submit({ data: {} })}>
+      store
+    </button>
+  );
+}
+
 type Feed = { data: { id: number }[]; meta: { nextCursor: string | null } };
 
 /** A merge()d list with "load more" — and a delete that reloads it (the reload replaces it, the row stays gone). */
@@ -101,12 +111,13 @@ function People() {
   return <p data-testid="people">People</p>;
 }
 
-const pages: Record<string, PageComponent> = { Profile, People, Inbox };
+const pages: Record<string, PageComponent> = { Profile, People, Inbox, Notes };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const routes: RouteManifest = {
   'links.destroy': { method: 'delete', path: '/links/:link' },
   'links.store': { method: 'post', path: '/links' },
   'inbox.destroy': { method: 'delete', path: '/inbox/:id' },
+  'notes.store': { method: 'post', path: '/:locale/notes', localized: true },
 };
 const page = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null });
 const profile = (labels: string[], activity = 'old') => page('Profile', '/users/1', { links: labels.map((label, index) => ({ id: index + 1, label })), activity });
@@ -257,5 +268,14 @@ describe('useAction', () => {
     await click('delete-appending-4');
     await wait(30);
     expect(shown()).toEqual([1, 2, 4, 5]);
+  });
+});
+
+describe('useAction on a localized page', () => {
+  it('sends to the route in the language of the page', async () => {
+    server = () => respond({});
+    await mount({ ...page('Notes', '/de/notes'), locale: 'de' });
+    await click('store');
+    expect(requests.map(({ url, method }) => ({ url, method }))).toEqual([{ url: '/de/notes', method: 'POST' }]);
   });
 });

@@ -1,6 +1,6 @@
 import { FORM_METHOD_FIELD, FORM_TOKEN_FIELD, HOVER_PREFETCH_DELAY_MS, isCurrentLink, linkQuery, loadInstant, observeWith, prefetchTriggers, prefetchUrlOf, visitUrlOf } from '@marmeon/http/client/adapter';
 import { resolveRoute, type Confirm, type PrefetchTrigger, type ViewTransitionOption, type VisitMethod, type VisitOptions } from '@marmeon/http/client';
-import type { BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProp, MethodOf, ParamsOf, Query, QueryParams } from '@marmeon/http/page';
+import type { BrowserParamsOf, BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProp, MethodOf, Query, QueryParams } from '@marmeon/http/page';
 import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
 import { loadLayers, useRouterContext, type PartialReloadOptions } from './app.tsx';
 import { RoutesContext } from './routes.ts';
@@ -84,8 +84,8 @@ type HrefLinkProps =
         route?: never;
       });
 
-/** The path parameters of the route: required when its path has required ones. */
-type ParamsProp<N extends string> = {} extends ParamsOf<N> ? { params?: ParamsOf<N> } : { params: ParamsOf<N> };
+/** The path parameters of the route: required when its path has required ones — the `locale` of a localized route excepted. */
+type ParamsProp<N extends string> = {} extends BrowserParamsOf<N> ? { params?: BrowserParamsOf<N> } : { params: BrowserParamsOf<N> };
 
 /** A GET route is a link; any other method is a `<button>` in a `<form>` with that method — written out or left to the route. */
 type MethodProps<N extends string> = [MethodOf<N>] extends ['get']
@@ -207,7 +207,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
   const target =
     route === undefined
       ? undefined
-      : resolveRoute(manifest, route, params, query && linkQuery(page, resolveRoute(manifest, route, params).url, query));
+      : resolveRoute(manifest, route, params, query && linkQuery(page, resolveRoute(manifest, route, params, undefined, page).url, query), page);
   const href = target?.url ?? givenHref ?? '';
   const method = (givenMethod ?? target?.method ?? 'get') as VisitMethod;
   // Its visit is under way: `data-pending` — whichever component started a visit of the same URL and method.

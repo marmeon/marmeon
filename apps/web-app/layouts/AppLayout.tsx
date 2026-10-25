@@ -25,7 +25,7 @@ export function AppLayout({ children }: LayoutProps) {
         {/* The link to the page on screen gets aria-current="page" and data-current by itself. */}
         {!user && locale && (
           <nav aria-label={t('main')} className="row">
-            <Link route="about.index" params={{ locale }} activeMatch="about.*">
+            <Link route="about.index" activeMatch="about.*">
               {t('about')}
             </Link>
           </nav>

@@ -10,6 +10,7 @@ const en = {
     translations: { title: 'Translations', summary: 'Texts live in language files per module, in the request’s language.' },
   },
   back: 'All features',
+  language: 'Language',
 } as const;
 
 export default en;

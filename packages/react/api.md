@@ -484,7 +484,7 @@ export interface RouteFormOptions<F> extends Omit<FormOptions<F>, 'remember'> {
     remember?: true | string | RememberFormOptions<F>;
 }
 // RouteFunction
-export type RouteFunction = <const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>, ...args: RouteArgs<N>) => string;
+export type RouteFunction = <const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>, ...args: {} extends BrowserParamsOf<N> ? [params?: BrowserParamsOf<N>, query?: QueryParams<N>] : [params: BrowserParamsOf<N>, query?: QueryParams<N>]) => string;
 // SetQueryState
 export type SetQueryState<Q> = (update: QueryUpdate<Q>) => void;
 // TitleTemplate
@@ -566,8 +566,14 @@ export { progressBar } from '@marmeon/http/client';
 // resolveModulePages
 export declare function resolveModulePages(modules: PageModules): ResolvePage;
 // useAction
-export declare function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>): ClientAction<N, {} extends ParamsOf<N> ? false : true>;
-export declare function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>, params: ParamsOf<N>): ClientAction<N, false>;
+export declare function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>): ClientAction<N, {} extends BrowserParamsOf<N> ? false : true>;
+export declare function useAction<const N extends BrowserRouteNameInput>(name: CheckActionRouteName<N>, params: BrowserParamsOf<N>): ClientAction<N, false>;
+// useAlternates
+export declare function useAlternates(): readonly {
+    locale: string;
+    url: string;
+    current: boolean;
+}[];
 // useBlocker
 export declare function useBlocker({ when, message }: UseBlockerOptions): void;
 // useFeature
@@ -577,7 +583,7 @@ export declare function useFlash<const K extends string>(key: CheckFlashKey<K>, 
 // useForm
 export declare function useForm<T extends object>(initial: FormFields<T> & object, options?: FormOptions<FormFields<T>>): Form<T>;
 export declare function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: RouteFormFields<N>, ...rest: RouteFormRest<N>): RouteForm<RouteFormFields<N>>;
-export declare function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: {} extends ParamsOf<N> ? RouteFormFields<N> : ParamsMissing<N>): RouteForm<RouteFormFields<N>>;
+export declare function useForm<const N extends BrowserRouteNameInput>(name: CheckFormRoute<N>, initial: {} extends BrowserParamsOf<N> ? RouteFormFields<N> : ParamsMissing<N>): RouteForm<RouteFormFields<N>>;
 // useIsland
 export declare function useIsland<C extends IslandAction = IslandAction>(): IslandState<C>;
 // useLayer
@@ -735,27 +741,27 @@ type PageModules = Record<string, () => Promise<unknown>>;
 type ParamsMissing<N extends string> = `'${N}' takes route parameters — pass them as useForm('${N}', initial, { params })`;
 // ParamsOption
 type ParamsOption<N extends string, RequiresParams extends boolean> = RequiresParams extends true ? {
-    params: ParamsOf<N>;
+    params: BrowserParamsOf<N>;
 } : {
-    params?: ParamsOf<N>;
+    params?: BrowserParamsOf<N>;
 };
 // ParamsProp
-type ParamsProp<N extends string> = {} extends ParamsOf<N> ? {
-    params?: ParamsOf<N>;
+type ParamsProp<N extends string> = {} extends BrowserParamsOf<N> ? {
+    params?: BrowserParamsOf<N>;
 } : {
-    params: ParamsOf<N>;
+    params: BrowserParamsOf<N>;
 };
 // ParamsProp (2)
-type ParamsProp<N extends string> = {} extends ParamsOf<N> ? {
-    params?: ParamsOf<N>;
+type ParamsProp<N extends string> = {} extends BrowserParamsOf<N> ? {
+    params?: BrowserParamsOf<N>;
 } : {
-    params: ParamsOf<N>;
+    params: BrowserParamsOf<N>;
 };
 // ParamsProp (3)
-type ParamsProp<N extends string> = {} extends ParamsOf<N> ? {
-    params?: ParamsOf<N>;
+type ParamsProp<N extends string> = {} extends BrowserParamsOf<N> ? {
+    params?: BrowserParamsOf<N>;
 } : {
-    params: ParamsOf<N>;
+    params: BrowserParamsOf<N>;
 };
 // PrefetchProps
 interface PrefetchProps {
@@ -784,10 +790,10 @@ type QueryStateOf<N extends string> = [RouteQueryOf<N>] extends [never] ? Record
 // RouteFormOf
 type RouteFormOf<N extends string> = FormOf<Instance<ControllerOf<N>>>;
 // RouteFormRest
-type RouteFormRest<N extends string> = {} extends ParamsOf<N> ? [options?: RouteFormOptions<RouteFormFields<N>> & {
-    params?: ParamsOf<N>;
+type RouteFormRest<N extends string> = {} extends BrowserParamsOf<N> ? [options?: RouteFormOptions<RouteFormFields<N>> & {
+    params?: BrowserParamsOf<N>;
 }] : [options: RouteFormOptions<RouteFormFields<N>> & {
-    params: ParamsOf<N>;
+    params: BrowserParamsOf<N>;
 }];
 // RouteLinkProps
 type RouteLinkProps<N extends string> = LinkOptions & PartialReloadOptions<Instance<ControllerOf<N>>> & {

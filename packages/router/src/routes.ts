@@ -162,6 +162,26 @@ export type ParamsOf<N extends string> = true extends IsUnion<N>
 
 type ParamValues<T> = { [K in keyof T]: Param } & {};
 
+/** The parameters of an entry's path, the `locale` of a localized entry optional — the rule of redirects and of the browser alike. */
+type LocalizedParamValues<E> = E extends { readonly path: infer P extends string }
+  ? E extends { readonly localized: true }
+    ? Omit<ParamValues<ExtractParams<P>>, 'locale'> & { readonly locale?: Param }
+    : ParamValues<ExtractParams<P>>
+  : never;
+
+/**
+ * The path parameters of route `N` as the browser writes them (`<Link params>`, `route()`, `useRoute()`, `useForm(name)`): those
+ * of {@link ParamsOf}, except that the `locale` of a localized route may be left out — the page on screen's is used. `E` is the
+ * route's entry, what `marmeon route:types` wrote. On the server `Router.url()` keeps `locale` required.
+ */
+export type BrowserParamsOf<N extends string, E = Entry<N>> = true extends IsUnion<N>
+  ? Record<string, Param>
+  : [E] extends [never]
+    ? ParamsOf<N>
+    : E extends { readonly path: string }
+      ? LocalizedParamValues<E>
+      : ParamsOf<N>;
+
 /** The HTTP method of route `N`, lower case (`'put'`). */
 export type MethodOf<N extends string> = Entry<N> extends { readonly method: infer M extends string } ? M : string;
 
@@ -206,13 +226,11 @@ export type RouteArgs<N extends string> = {} extends ParamsOf<N>
  * parameters and a query. A localized entry takes its `locale` as an option, so `redirect().route()` can fill in the request's;
  * any other entry needs every parameter its path names, a `locale` of its own included.
  */
-export type RedirectArgsOf<E, N extends string> = E extends { readonly path: infer P extends string }
-  ? ParamValues<ExtractParams<P>> extends infer All
-    ? (E extends { readonly localized: true } ? Omit<All, 'locale'> & { readonly locale?: Param } : All) extends infer Given
-      ? {} extends Given
-        ? [params?: Given, query?: QueryParams<N>]
-        : [params: Given, query?: QueryParams<N>]
-      : never
+export type RedirectArgsOf<E, N extends string> = E extends { readonly path: string }
+  ? LocalizedParamValues<E> extends infer Given
+    ? {} extends Given
+      ? [params?: Given, query?: QueryParams<N>]
+      : [params: Given, query?: QueryParams<N>]
     : never
   : never;
 

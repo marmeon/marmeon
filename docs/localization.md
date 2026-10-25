@@ -262,7 +262,30 @@ depends on the cookie and the browser's language, so it is `private, no-store`. 
 
 ### A language switcher
 
-A switcher posts the chosen locale, checks it with `Locales` and writes it into the session:
+On a [localized page](#the-locale-in-the-url) the switcher is made of links, because each language has an address of its own.
+`useAlternates()` of `@marmeon/react` lists the page in every language, `x-default` left out, with the language on screen marked:
+
+```tsx title="modules/about/layouts/LanguageSwitch.tsx"
+import { Link, useAlternates } from '@marmeon/react';
+
+export function LanguageSwitch() {
+  return (
+    <nav aria-label="Language">
+      {useAlternates().map(({ locale, url, current }) =>
+        current ? <span key={locale} lang={locale}>{locale}</span> : <Link key={locale} href={url} hrefLang={locale} lang={locale}>{locale}</Link>,
+      )}
+    </nav>
+  );
+}
+```
+
+`url` is a path of this site with the query kept, and the list is empty on a page that is not localized. A click is a visit to
+the other language's page: it loads that locale's language files and changes no stored choice, so the session's `locale` and the
+account's stay as they were. The links on the new page take its language by themselves
+([links to routes](navigation.md#links-to-routes)).
+
+A page that is not localized, or a switcher that is meant to remember the choice, posts the chosen locale, checks it with
+`Locales` and writes it into the session:
 
 ```ts title="modules/locale/controllers/UpdateLocaleController.ts"
 import { ClientHistory, Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
