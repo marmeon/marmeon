@@ -1,6 +1,6 @@
 import type { PageProps } from '@marmeon/http';
 import { Head, Image, Link, useTranslation } from '@marmeon/react';
-import banner from '../images/features.svg';
+import banner from '../images/features.png?image';
 import type { ShowAboutController } from '../controllers/ShowAboutController.ts';
 import { LanguageSwitch } from '../layouts/LanguageSwitch.tsx';
 
@@ -18,7 +18,7 @@ export default function Index({ features }: PageProps<ShowAboutController>) {
       <LanguageSwitch label={t('language')} />
       <h1>{t('title')}</h1>
       <p>{t('intro')}</p>
-      <Image src={banner} width={320} height={80} alt={t('banner')} />
+      <Image src={banner} alt={t('banner')} sizes="(min-width: 40rem) 640px, 100vw" />
       <ul>
         {features.map((feature) => (
           <li key={feature.slug}>

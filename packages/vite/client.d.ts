@@ -30,3 +30,12 @@ declare module 'virtual:marmeon/fonts.css' {
   // A stylesheet: a `<family> Fallback` font for each `fonts` entry of `marmeon()` with `family` and `fallback`. Import it
   // from the client entry. See docs/vite.md#fonts.
 }
+
+declare module '*?image' {
+  /**
+   * The image as an `ImageSource` for `<Image>`: built to several widths and formats by `sharp` in a build, the original with its
+   * size in development. See docs/images.md#images-of-the-app.
+   */
+  const image: import('@marmeon/http/page').ImageSource;
+  export default image;
+}

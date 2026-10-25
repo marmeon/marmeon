@@ -169,6 +169,7 @@ describe('marmeon()', () => {
       'marmeon:virtual-lang',
       'marmeon:routes',
       'marmeon:server-imports',
+      'marmeon:images',
     ]);
     const lang = plugins.find((plugin) => plugin.name === 'marmeon:virtual-lang')!;
     // Lazy: one chunk per language file, the browser loads only its locale's.

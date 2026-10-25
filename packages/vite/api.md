@@ -11,6 +11,14 @@ Types from other packages: `vite`
 ```ts
 // FontFallback
 export type FontFallback = 'Arial' | 'Helvetica' | 'Times New Roman' | 'Georgia' | 'Courier New';
+// ImageFormat
+export type ImageFormat = 'avif' | 'webp';
+// ImageOptions
+export interface ImageOptions {
+    widths?: readonly number[];
+    formats?: readonly ImageFormat[];
+    quality?: number;
+}
 // MarmeonFont
 export interface MarmeonFont {
     file: string;
@@ -24,6 +32,7 @@ export interface MarmeonOptions {
         ssr?: string;
     };
     routeSinks?: readonly RouteSink[];
+    images?: ImageOptions;
     serverModules?: readonly string[];
     fonts?: readonly MarmeonFont[];
     test?: boolean;
@@ -57,6 +66,8 @@ Types from other packages: none
 ### Augments
 
 ```ts
+// *?image.image
+const image: import('@marmeon/http/page').ImageSource;
 // virtual:marmeon/lang.lang
 const lang: Record<string, () => Promise<unknown>>;
 // virtual:marmeon/pages.pages
