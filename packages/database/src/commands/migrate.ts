@@ -109,6 +109,7 @@ export class MigrateCommand {
   readonly #migrator: Migrator;
   readonly #types: TypeGenerator;
 
+  /** @internal The container builds the command. */
   constructor(migrator: Migrator, types: TypeGenerator) {
     this.#migrator = migrator;
     this.#types = types;
@@ -184,6 +185,7 @@ export class MigrateFreshCommand {
   readonly #types: TypeGenerator;
   readonly #seeding: Seeding;
 
+  /** @internal The container builds the command. */
   constructor(migrator: Migrator, types: TypeGenerator, seeding: Seeding) {
     this.#migrator = migrator;
     this.#types = types;

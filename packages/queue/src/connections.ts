@@ -163,6 +163,7 @@ export class QueueConnections {
     }
   }
 
+  /** @internal The worker and the `sync` connection share it. */
   runner(): JobRunner {
     this.#runner ??= new JobRunner(this.#container, this.#container.make(JobRegistry), () => this.cipher(), () => this.cache());
     return this.#runner;
@@ -180,7 +181,7 @@ export class QueueConnections {
   /** Dispatches a job event through the app's `EventDispatcher` (listeners built from the root container). */
   readonly events = (event: JobEvent): Promise<void> => this.#container.make(EventDispatcher).dispatch(event);
 
-  /** The app's `Encrypter`, for `static encrypted` jobs. */
+  /** @internal The app's `Encrypter`, for `static encrypted` jobs. */
   async cipher(): Promise<PayloadCipher> {
     const { Encrypter } = await importEncryption();
     if (!this.#container.has(Encrypter)) throw new QueueSetupError(withCode('Q4', 'An encrypted job (static encrypted) needs the EncryptionServiceProvider of @marmeon/encryption and an APP_KEY.'));

@@ -103,7 +103,7 @@ export class Container implements Resolver {
   }
 
   /**
-   * Hears about the injection warnings of classes this container — or a scope of it — builds: a defaulted or
+   * @internal Hears about the injection warnings of classes this container — or a scope of it — builds: a defaulted or
    * optional constructor parameter of an injectable type, which is never injected. Once per class; returns `off`.
    */
   onWarning(listener: (warning: InjectionWarning) => void): () => void {
@@ -112,7 +112,7 @@ export class Container implements Resolver {
     return () => root.#warningListeners.delete(listener);
   }
 
-  /** The injection warnings of every class built so far — what the development error page lists. */
+  /** @internal The injection warnings of every class built so far — what the development error page lists. */
   get warnings(): readonly InjectionWarning[] {
     return [...this.#root().#warned.values()].flat();
   }

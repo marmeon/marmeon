@@ -7,7 +7,8 @@ import { HttpServiceProvider } from '@marmeon/http';
 import { afterAll, describe, expect, it } from 'vitest';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
 import { defineStorage } from './config.ts';
-import { StorageServiceProvider, TemporaryUploads, UPLOADS_TABLE } from './index.ts';
+import { StorageServiceProvider, UPLOADS_TABLE } from './index.ts';
+import { TemporaryUploads } from './uploads/service.ts';
 
 afterAll(removeDirectories);
 

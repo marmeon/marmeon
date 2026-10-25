@@ -37,6 +37,7 @@ export class SendQueuedNotification {
   readonly #deliverer: NotificationDeliverer;
   readonly #registry: NotificationRegistry;
 
+  /** @internal The container builds the job. */
   constructor(resolver: Resolver, deliverer: NotificationDeliverer, registry: NotificationRegistry) {
     this.#resolver = resolver;
     this.#deliverer = deliverer;

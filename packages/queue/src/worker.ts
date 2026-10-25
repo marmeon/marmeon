@@ -106,6 +106,7 @@ export class Worker {
   /** Jobs this process warned about holding — one line each, not one per pause. */
   readonly #warned = new Set<string>();
 
+  /** @internal `QueueConnections.worker()` builds it. */
   constructor(dependencies: WorkerDependencies) {
     this.#deps = dependencies;
     this.#redactor = dependencies.redactor ?? new Redactor();

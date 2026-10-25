@@ -202,27 +202,6 @@ export declare class JobReleased extends JobEvent {
         ms?: number;
     });
 }
-// JobRunner
-export declare class JobRunner {
-    #private;
-    constructor(container: Container, registry: JobRegistry, cipher: () => Promise<PayloadCipher>, cache?: CacheSource);
-    get cache(): CacheSource;
-    prepare(payload: string): Promise<Prepared>;
-    run(prepared: Extract<Prepared, {
-        kind: 'ready';
-    }>, attempt: {
-        readonly attempt: number;
-        readonly queue: string;
-        readonly connection: string;
-        readonly signal: AbortSignal;
-        readonly retryAfterSeconds?: number;
-    }): Promise<Requested | undefined>;
-    unrunnable<T>(record: JobRecord, attempt: {
-        readonly attempt: number;
-        readonly queue: string;
-        readonly connection: string;
-    }, error: Error, then: () => Promise<T>): Promise<T>;
-}
 // JobStatics
 export interface JobStatics {
     readonly job: string;
@@ -256,34 +235,9 @@ export declare class MakeQueueTableCommand {
     constructor(app: Application);
     handle(input: CommandInput): Promise<number>;
 }
-// PayloadCipher
-export interface PayloadCipher {
-    encrypt(plaintext: string, context: string): Promise<string>;
-    decrypt(ciphertext: string, context: string): Promise<string>;
-}
 // PendingJobs
 export type PendingJobs<J extends readonly JobClass[]> = {
     readonly [K in keyof J]: readonly [job: J[K] & CheckJob<J[K]>, payload: JobInput<J[K]>];
-};
-// Prepared
-export type Prepared = {
-    readonly kind: 'ready';
-    readonly record: JobRecord;
-    readonly job: JobClass;
-    readonly payload: unknown;
-}
- | {
-    readonly kind: 'poison';
-    readonly record: JobRecord | undefined;
-    readonly reason: string;
-    readonly identity?: RecordIdentity;
-}
- | {
-    readonly kind: 'foreign';
-    readonly reason: string;
-    readonly envelope: RecordEnvelope;
-    readonly record: JobRecord | undefined;
-    readonly issues?: readonly StandardIssue[];
 };
 // Queue
 export interface Queue {
@@ -335,10 +289,8 @@ export declare class QueueConnections {
     find(name: string): QueueConnectionOptions | undefined;
     driver(name: string): QueueDriver;
     failed(): FailedJobStore;
-    runner(): JobRunner;
     cache(): Promise<Cache>;
     readonly events: (event: JobEvent) => Promise<void>;
-    cipher(): Promise<PayloadCipher>;
     worker(connection: string, stopTimeout: number): Worker;
 }
 // QueueCounts
@@ -560,22 +512,8 @@ export interface WorkResult {
 // Worker
 export declare class Worker {
     #private;
-    constructor(dependencies: WorkerDependencies);
     run(options: WorkOptions): Promise<WorkResult>;
     process(reserved: ReservedJob, options?: Pick<WorkOptions, 'stopTimeout' | 'signal' | 'onStuck'>): Promise<Outcome>;
-}
-// WorkerDependencies
-export interface WorkerDependencies {
-    readonly driver: QueueDriver;
-    readonly connection: string;
-    readonly runner: JobRunner;
-    readonly failed: FailedJobStore;
-    readonly clock: Clock;
-    readonly logger: Logger;
-    readonly retryAfterSeconds?: number;
-    readonly events?: JobEvents;
-    readonly redactor?: Redactor;
-    readonly errors?: ErrorReports;
 }
 // queueTablesConnection
 export declare function queueTablesConnection(container: Resolver): string;
@@ -592,31 +530,6 @@ export declare function withoutOverlapping<J extends {
 ```ts
 // Outcome
 type Outcome = 'processed' | 'released' | 'failed' | 'interrupted';
-// RecordEnvelope
-export interface RecordEnvelope {
-    readonly v: number;
-    readonly uuid: string | undefined;
-    readonly job: string | undefined;
-    readonly dispatchedAt: number | undefined;
-    readonly availableAt: number | undefined;
-}
-// RecordIdentity
-export interface RecordIdentity {
-    readonly uuid?: string;
-    readonly job?: string;
-    readonly unique?: UniqueRecord;
-}
-// Requested
-export type Requested = {
-    readonly kind: 'discard';
-    readonly reason: string | undefined;
-} | {
-    readonly kind: 'release';
-    readonly delay: number;
-} | {
-    readonly kind: 'fail';
-    readonly reason: string | Error;
-};
 // SchemaInput
 export type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['input'] : never;
 // SchemaOutput

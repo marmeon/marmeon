@@ -70,8 +70,6 @@ export declare class Container implements Resolver {
     constructor(parent?: Container);
     createScope(): Container;
     get isScope(): boolean;
-    onWarning(listener: (warning: InjectionWarning) => void): () => void;
-    get warnings(): readonly InjectionWarning[];
     bind<T, C extends Concrete<NoInfer<T>>>(key: Key<T>, target: Factory<NoInfer<T>> | (C & InjectCheck<C>)): this;
     singleton<C extends Concrete>(concrete: C & InjectCheck<C>): this;
     singleton<T, C extends Concrete<NoInfer<T>>>(key: Key<T>, target: Factory<NoInfer<T>> | (C & InjectCheck<C>)): this;
@@ -357,11 +355,6 @@ export type InjectCheck<C> = C extends {
         inject: ResolveAll<Keys>;
     };
 } : unknown : unknown;
-// InjectionWarning
-export interface InjectionWarning {
-    readonly className: string;
-    readonly message: string;
-}
 // IsJson
 export type IsJson<T> = 0 extends 1 & T ? true : false extends JsonMember<T> ? false : true;
 // Key
@@ -693,10 +686,6 @@ export declare function importedBindings(source: string, filename: string): Read
 export declare function inTransaction(): boolean;
 // listen
 export declare function listen<E extends EventClass, L>(event: E, listener: L & ListenerFor<E, NoInfer<L>>): ListenerBinding;
-// missingListenerQueue
-export declare function missingListenerQueue(listener: {
-    readonly name: string;
-}): string;
 // ok
 export declare function ok(): Ok<void>;
 export declare function ok<T>(value: T): Ok<T>;
@@ -704,8 +693,6 @@ export declare function ok<T>(value: T): Ok<T>;
 export declare function outsideTransaction<R>(fn: () => R): R;
 // raw
 export declare function raw(markup: string): Html;
-// readEnvFile
-export declare function readEnvFile(path: string): Record<string, string | undefined>;
 // redact
 export declare function redact(context: Readonly<Record<string, unknown>>): Record<string, unknown>;
 // redactText
@@ -1115,8 +1102,6 @@ export declare class Container implements Resolver {
     constructor(parent?: Container);
     createScope(): Container;
     get isScope(): boolean;
-    onWarning(listener: (warning: InjectionWarning) => void): () => void;
-    get warnings(): readonly InjectionWarning[];
     bind<T, C extends Concrete<NoInfer<T>>>(key: Key<T>, target: Factory<NoInfer<T>> | (C & InjectCheck<C>)): this;
     singleton<C extends Concrete>(concrete: C & InjectCheck<C>): this;
     singleton<T, C extends Concrete<NoInfer<T>>>(key: Key<T>, target: Factory<NoInfer<T>> | (C & InjectCheck<C>)): this;
@@ -1178,11 +1163,6 @@ export type InjectCheck<C> = C extends {
         inject: ResolveAll<Keys>;
     };
 } : unknown : unknown;
-// InjectionWarning
-export interface InjectionWarning {
-    readonly className: string;
-    readonly message: string;
-}
 // Key
 export type Key<T = unknown> = Token<T> | Constructor<T>;
 // Listener
@@ -1358,8 +1338,6 @@ export declare const environment: {
     readonly check: (env?: NodeEnvironment) => void;
     readonly dotEnvDevelopmentWarning: (command: string, env?: NodeEnvironment) => string | undefined;
 };
-// readEnvFile
-export declare function readEnvFile(path: string): Record<string, string | undefined>;
 // resolveEnvironment
 export declare function resolveEnvironment(root: string, { fallback, env }?: {
     fallback?: string;

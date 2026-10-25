@@ -1,9 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { Connections, InfrastructureTransactionError, Migrator } from '@marmeon/database';
+import { Connections } from '@marmeon/database';
 import { PAGE_HEADER, PROTOCOL_VERSION, UPLOAD_HEADER } from '@marmeon/http/protocol';
-import { PruneUploadsCommand, TemporaryUploads, UPLOADS_TABLE } from '@marmeon/storage';
+import { PruneUploadsCommand, UPLOADS_TABLE } from '@marmeon/storage';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -274,43 +271,19 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
   });
 });
 
-// The table is infrastructure: written on its own connection, never in the app's transaction.
-describe('a used token stays used when the transaction around it rolls back', () => {
-  class Rollback extends Error {}
-  let directory: string | undefined;
-  afterEach(() => {
-    if (directory) rmSync(directory, { recursive: true, force: true });
-    directory = undefined;
-  });
-
-  /** A token of a fresh upload, and consume() of it inside a transaction of the app's connection that rolls back. */
-  async function consumeAndRollBack() {
-    const ada = await app.factory(UserFactory).create();
-    const token = await app.actingAs(ada).upload(ROUTE, 'avatar', png(), { user: ada.public_id });
-    const uploads = app.make(TemporaryUploads);
-    const inside = app.make(Connections).transaction(async () => {
-      expect(await uploads.consume(token.slice(3, 39))).toBe(true);
-      throw new Rollback();
+// The table of uploads is infrastructure: it never joins the app's transaction. In a test app's refreshed database (one isolated
+// connection) a submit inside a transaction of the app fails loudly — never a silent join. A file of its own:
+// packages/storage/src/uploads-sqlite.test.ts.
+describe('a submit inside a transaction of the app', () => {
+  it('in a test app (one isolated connection): a loud error, and the token is not used up', async () => {
+    app = await createTestApp(application, { database: 'refresh', debug: true });
+    const ada = await app.factory(UserFactory).create({ name: 'Ada', email: 'ada@example.com' });
+    const as = app.actingAs(ada);
+    const token = await as.upload(ROUTE, 'avatar', png(), { user: ada.public_id });
+    await app.make(Connections).transaction(async () => {
+      const response = await send(as, ada, token).assertStatus(500);
+      expect(response.body).toContain('InfrastructureTransactionError');
     });
-    return { id: token.slice(3, 39), uploads, inside };
-  }
-
-  // On Postgres (a pool of its own, never the transaction): packages/storage/src/uploads-database.test.ts — a test app's
-  // database is isolated (one physical connection), so there the loud error below applies on both drivers.
-  it('in a test app (one isolated connection) on the app’s database: inside a transaction a loud error — never a silent join', async () => {
-    app = await createTestApp(application, { database: 'refresh' });
-    const { inside } = await consumeAndRollBack();
-    await expect(inside).rejects.toThrow(InfrastructureTransactionError);
-  });
-
-  it('on SQLite with a file of its own (the app’s .env.example: UPLOADS_CONNECTION=system) — after the rollback the token is still used', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'marmeon-web-uploads-'));
-    app = await createTestApp(application, {
-      env: { DB_DRIVER: 'sqlite', DB_DATABASE: join(directory, 'database.sqlite'), SYSTEM_DB_DATABASE: join(directory, 'system.sqlite'), UPLOADS_CONNECTION: 'system' },
-    });
-    await app.make(Migrator).migrate();
-    const { id, uploads, inside } = await consumeAndRollBack();
-    await expect(inside).rejects.toThrow(Rollback);
-    expect(await uploads.consume(id)).toBe(false);
+    expect((await uploadRows()).every((row) => row.consumed_at === null)).toBe(true);
   });
 });

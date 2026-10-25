@@ -687,7 +687,7 @@ export type PasswordHash = string & {
 // PasswordHasher
 export declare class PasswordHasher implements Hasher {
     #private;
-    constructor(options?: HasherOptions, internals?: PasswordHasherInternals);
+    constructor(options?: HasherOptions);
     make(password: string): Promise<PasswordHash>;
     verify(password: string, hash: PasswordHash): Promise<boolean>;
     failureFloorMs(): Promise<number>;
@@ -1264,12 +1264,6 @@ export declare class NewPassword {
         readonly sessionKey: string;
     }>;
     assertReady(): void;
-}
-// PasswordHasherInternals
-export interface PasswordHasherInternals {
-    readonly isArgon2Available?: boolean;
-    readonly now?: () => number;
-    readonly remeasureGapsMs?: readonly number[];
 }
 // PendingSecondFactor
 export interface PendingSecondFactor {

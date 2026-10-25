@@ -52,6 +52,7 @@ export class TemporaryUpload {
   readonly extension: string;
   readonly #source: UploadSource;
 
+  /** @internal The uploads service makes them. */
   constructor(details: { id: string; field: string; name: string; size: number; mime: string; extension: string }, source: UploadSource) {
     this.id = details.id;
     this.field = details.field;
@@ -97,6 +98,7 @@ export class TemporaryUpload {
 export class RejectedUpload {
   readonly problem: UploadProblem;
 
+  /** @internal The uploads service makes them. */
   constructor(problem: UploadProblem) {
     this.problem = problem;
   }

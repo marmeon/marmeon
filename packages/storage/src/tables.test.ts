@@ -7,7 +7,8 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
-import { StorageServiceProvider, TemporaryUploads } from './index.ts';
+import { StorageServiceProvider } from './index.ts';
+import { TemporaryUploads } from './uploads/service.ts';
 import { UPLOADS_MIGRATION } from './uploads/commands.ts';
 
 const silent = { debug() {}, info() {}, warn() {}, error() {}, child: () => silent } as unknown as Logger;
