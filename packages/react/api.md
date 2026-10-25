@@ -823,7 +823,7 @@ export type ResolvePage = ((name: string) => Promise<PageComponent>) & {
 
 Types from other packages: `react`
 
-### Experimental
+### Stable
 
 ```ts
 // ActionOf
@@ -849,8 +849,6 @@ export interface HeaderProps {
     readonly scope: 'col';
     readonly 'aria-sort'?: 'ascending' | 'descending';
 }
-// RowOf
-export type { RowOf } from '@marmeon/table/client';
 // SortableOf
 export type { SortableOf } from '@marmeon/table/client';
 // Table
@@ -858,8 +856,8 @@ export interface Table<T extends AnyTableData> {
     readonly data: T;
     readonly columns: readonly TableColumnView<T>[];
     readonly rows: T['rows'];
-    key(row: RowOf<T>): SelectionKey;
-    label(row: RowOf<T>): string;
+    key(row: TableRowOf<T>): SelectionKey;
+    label(row: TableRowOf<T>): string;
     sort(column: SortableOf<T>, direction?: SortDirection): void;
     readonly filters: T['filters'];
     filter(name: FilterOf<T>, value: string | null): void;
@@ -876,21 +874,21 @@ export interface Table<T extends AnyTableData> {
     readonly matching: boolean;
     readonly selectedCount: number;
     readonly allSelected: boolean;
-    isSelected(row: RowOf<T>): boolean;
-    select(row: RowOf<T>, selected?: boolean): void;
-    toggle(row: RowOf<T>): void;
+    isSelected(row: TableRowOf<T>): boolean;
+    select(row: TableRowOf<T>, selected?: boolean): void;
+    toggle(row: TableRowOf<T>): void;
     selectAll(selected?: boolean): void;
     selectMatching(): void;
     clearSelection(): void;
-    checkboxProps(row: RowOf<T>): CheckboxProps;
+    checkboxProps(row: TableRowOf<T>): CheckboxProps;
     pageCheckboxProps(): CheckboxProps;
     readonly actions: T['actions'];
     readonly bulk: T['bulk'];
     readonly exports: T['exports'];
-    can(action: ActionOf<T>, row: RowOf<T>): boolean;
-    run(action: ActionOf<T>, row: RowOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
+    can(action: ActionOf<T>, row: TableRowOf<T>): boolean;
+    run(action: ActionOf<T>, row: TableRowOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
     runBulk(name: BulkOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
-    actionLabel(action: ActionOf<T>, row: RowOf<T>): string;
+    actionLabel(action: ActionOf<T>, row: TableRowOf<T>): string;
     readonly pending: boolean;
     exportUrl(name: ExportOf<T>): string;
     readonly status: string;
@@ -914,13 +912,15 @@ export interface TableColumnView<T extends AnyTableData> extends Omit<TableColum
 // TableLabels
 export interface TableLabels<T extends AnyTableData> {
     column?(name: ColumnOf<T>): string;
-    row?(row: RowOf<T>): string;
+    row?(row: TableRowOf<T>): string;
     status?(info: TableStatusInfo): string;
     select?(row: string): string;
     selectPage?(): string;
     action?(action: ActionOf<T>, row: string): string;
     confirm?(action: ActionOf<T> | BulkOf<T>, rows: number): string;
 }
+// TableRowOf
+export type { TableRowOf } from '@marmeon/table/client';
 // TableRunOptions
 export type { TableRunOptions } from '@marmeon/table/client';
 // TableRunOutcome
@@ -941,19 +941,19 @@ export declare function useTable<T extends AnyTableData>(data: T, options?: UseT
 
 Types from other packages: `@tanstack/react-table`, `react`
 
-### Experimental
+### Stable
 
 ```ts
 // ToTanStackOptions
 export interface ToTanStackOptions<F extends TableFeatures, T extends AnyTableData> {
     readonly features: F;
-    readonly columns?: readonly ColumnDef<F, RowOf<T>>[];
+    readonly columns?: readonly ColumnDef<F, TableRowOf<T>>[];
 }
 // toTanStack
-export declare function toTanStack<F extends TableFeatures, T extends AnyTableData>(table: Table<T>, { features, columns }: ToTanStackOptions<F, T>): TableOptions<F, RowOf<T>>;
+export declare function toTanStack<F extends TableFeatures, T extends AnyTableData>(table: Table<T>, { features, columns }: ToTanStackOptions<F, T>): TableOptions<F, TableRowOf<T>>;
 ```
 
-### Experimental, referenced (not exported)
+### Referenced, not exported
 
 ```ts
 // CheckboxProps
@@ -974,8 +974,8 @@ export interface Table<T extends AnyTableData> {
     readonly data: T;
     readonly columns: readonly TableColumnView<T>[];
     readonly rows: T['rows'];
-    key(row: RowOf<T>): SelectionKey;
-    label(row: RowOf<T>): string;
+    key(row: TableRowOf<T>): SelectionKey;
+    label(row: TableRowOf<T>): string;
     sort(column: SortableOf<T>, direction?: SortDirection): void;
     readonly filters: T['filters'];
     filter(name: FilterOf<T>, value: string | null): void;
@@ -992,21 +992,21 @@ export interface Table<T extends AnyTableData> {
     readonly matching: boolean;
     readonly selectedCount: number;
     readonly allSelected: boolean;
-    isSelected(row: RowOf<T>): boolean;
-    select(row: RowOf<T>, selected?: boolean): void;
-    toggle(row: RowOf<T>): void;
+    isSelected(row: TableRowOf<T>): boolean;
+    select(row: TableRowOf<T>, selected?: boolean): void;
+    toggle(row: TableRowOf<T>): void;
     selectAll(selected?: boolean): void;
     selectMatching(): void;
     clearSelection(): void;
-    checkboxProps(row: RowOf<T>): CheckboxProps;
+    checkboxProps(row: TableRowOf<T>): CheckboxProps;
     pageCheckboxProps(): CheckboxProps;
     readonly actions: T['actions'];
     readonly bulk: T['bulk'];
     readonly exports: T['exports'];
-    can(action: ActionOf<T>, row: RowOf<T>): boolean;
-    run(action: ActionOf<T>, row: RowOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
+    can(action: ActionOf<T>, row: TableRowOf<T>): boolean;
+    run(action: ActionOf<T>, row: TableRowOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
     runBulk(name: BulkOf<T>, options?: TableRunOptions): Promise<TableRunOutcome>;
-    actionLabel(action: ActionOf<T>, row: RowOf<T>): string;
+    actionLabel(action: ActionOf<T>, row: TableRowOf<T>): string;
     readonly pending: boolean;
     exportUrl(name: ExportOf<T>): string;
     readonly status: string;

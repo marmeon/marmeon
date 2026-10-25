@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { drivers, MEMBERS, MembersTable, tableApp, USERS, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
 import { secret, type Database } from '@marmeon/database';
 import { column, defineTable, filter } from './define.ts';
-import { Tables } from './tables.ts';
+import { DataTables } from './tables.ts';
 import type { TableData } from './client/index.ts';
 
 let open: TableTestApp | undefined;
@@ -126,7 +126,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
 
     it('refuses a value of the base query under another name, or searched — a programming error that says what to do', async () => {
       const application = await app(driver);
-      const tables = application.application.container.createScope().make(Tables);
+      const tables = application.application.container.createScope().make(DataTables);
       const ctx = { request: new Request('http://localhost/teams/1/teams'), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1 };
       const table = (columns: Record<string, unknown>) =>
         defineTable({ name: 'teams', query: (db: Database) => db.selectFrom('teams').withCount('members', { as: 'size' }), key: 'teams.id', columns: columns as never } as never);
@@ -150,7 +150,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
 
     it('never shows a secret column the base query asks for with secret() — a column naming it is refused', async () => {
       const application = await app(driver);
-      const tables = application.application.container.createScope().make(Tables);
+      const tables = application.application.container.createScope().make(DataTables);
       const ctx = { request: new Request('http://localhost/teams/1/members'), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1 };
       const table = defineTable({
         name: 'members',
@@ -539,7 +539,7 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
     it('a page whose route does not parse the table\'s query is a programming error that says what to do', async () => {
       const application = await app(driver);
       expect((await application.request('/teams/1/no-schema', { user: ALAN })).status).toBe(500);
-      const tables = application.application.container.createScope().make(Tables);
+      const tables = application.application.container.createScope().make(DataTables);
       const ctx = { request: new Request('http://localhost/teams/1/members'), query: new URLSearchParams(), user: USERS[ALAN], team: 1 };
       await expect(tables.resolve(MembersTable, ctx as never)).rejects.toThrow('give its request the table\'s schema: defineRequest({ query: membersTable.query })');
     });

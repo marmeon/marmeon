@@ -16,7 +16,7 @@ import type { SortDirection, TableActionResult, TableData } from './index.ts';
 export type AnyTableData = TableData<any, string, string, string, string, string, string>;
 
 /** A row of table `T`, with its `can`. */
-export type RowOf<T extends AnyTableData> = T['rows'][number];
+export type TableRowOf<T extends AnyTableData> = T['rows'][number];
 /** The names of `T`'s columns (the visible ones — a hidden column is in no prop). */
 export type ColumnOf<T extends AnyTableData> = T['columns'][number]['name'];
 /** The names of `T`'s sortable columns. */
@@ -250,16 +250,16 @@ export class TableController<T extends AnyTableData = AnyTableData> {
 
   // --- Selection -----------------------------------------------------------------------------------------------------------------
 
-  isSelected(row: RowOf<T>): boolean {
+  isSelected(row: TableRowOf<T>): boolean {
     return this.selection.has(keyOf(this.#data, row));
   }
 
   /** Ticks (or unticks) a row. */
-  select(row: RowOf<T>, selected = true): void {
+  select(row: TableRowOf<T>, selected = true): void {
     this.selection.set([keyOf(this.#data, row)], selected, this.#keys());
   }
 
-  toggle(row: RowOf<T>): void {
+  toggle(row: TableRowOf<T>): void {
     this.select(row, !this.isSelected(row));
   }
 
@@ -303,7 +303,7 @@ export class TableController<T extends AnyTableData = AnyTableData> {
   confirmText = (action: string, rows: number): string => `Run "${action}" for ${rows} ${rows === 1 ? 'row' : 'rows'}?`;
 
   /** Runs row action `name` for `row` — then the table reloads (replacing what it showed). */
-  run(name: ActionOf<T>, row: RowOf<T>, options: TableRunOptions = {}): Promise<TableRunOutcome> {
+  run(name: ActionOf<T>, row: TableRowOf<T>, options: TableRunOptions = {}): Promise<TableRunOutcome> {
     const data = this.#data;
     const entry = data.actions.find((action) => action.name === name);
     if (!entry) refuse('[marmeon:C12]', data.name, (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && `The table "${data.name}" offers no row action "${String(name)}" to this user — it offers ${list(data.actions.map((action) => action.name))}.`);
