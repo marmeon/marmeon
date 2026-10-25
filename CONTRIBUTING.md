@@ -435,6 +435,8 @@ for the framework, such as a point in time or a field the WebAuthn JSON defines,
 `SPAN_PENDING` lists the spans that do not follow the rule yet, and the change that fixes one deletes its line. A listed name that
 follows the rule fails the check until its line is deleted. The check holds the names; the position of a span (a parameter is a `Duration`, or moves into an options object) is reviewed by hand.
 
+What a package keeps behind `./internal` is for other packages: `pnpm api:check` fails for a name of an `./internal` entry that no file outside its package imports (imported by the code or tests of another package), and for a class that a public signature names but no entry point exports (mark the member that names it `@internal`, or export the class). A name that stands on purpose is in `INTERNAL_EXCEPTIONS` of `scripts/api-internal.ts` with its reason; `INTERNAL_PENDING` lists the names that do not follow the rules yet, and the change that fixes one deletes its line. A listed name that follows the rules fails the check until its line is deleted.
+
 An entry point may only expose the types of the libraries `FOREIGN_TYPES` in `scripts/api.ts` lists for its package (Node's
 built-ins, `@marmeon/*` and `marmeon` are free); `pnpm api:check` fails otherwise. Each entry says why it is there — a peer the
 app installs, or the change that removes it. Add an entry only for a peer, and give a type of your own to anything else.

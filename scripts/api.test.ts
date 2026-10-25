@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { FOREIGN_TYPES, foreignPackage, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, spanProblems, stabilityProblems } from './api.ts';
+import { FOREIGN_TYPES, foreignPackage, internalProblems, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, spanProblems, stabilityProblems } from './api.ts';
+import { INTERNAL_EXCEPTIONS, INTERNAL_PENDING } from './api-internal.ts';
 import { SAME_VALUE } from './api-names.ts';
 import { SPAN_EXCEPTIONS, SPAN_PENDING } from './api-spans.ts';
 import { compareSnapshots, parseSnapshot, type ApiItem } from './api-snapshot.ts';
@@ -14,8 +15,13 @@ const repository = fileURLToPath(new URL('..', import.meta.url));
 
 /** The fixtures are no framework: the real exceptions would be stale in them. */
 const NO_NAMES = { sameValue: {} };
+/** The import specifier of the fixture's `./internal` entry, written so that check:source does not read it as an import of ours. */
+const DEMO_INTERNAL = `@marmeon/demo${INTERNAL}`;
+/** Another package takes `c` from `./internal`, the one name the fixtures export there. */
+const CONSUMER = [{ path: 'packages/other/src/c.ts', text: `import { c } from '${DEMO_INTERNAL}';` }];
+const NO_INTERNAL = { exceptions: {}, pending: new Set<string>() };
 const NO_SPANS = { exceptions: {}, pending: new Set<string>() };
-const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, spans: NO_SPANS, ...options });
+const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, spans: NO_SPANS, internal: NO_INTERNAL, files: CONSUMER, ...options });
 
 /** Writes `dist/<name>` files into a fresh package; `exports` maps subpaths to their `.d.ts` under `dist/`. */
 function demo(files: Record<string, string>, exports: Record<string, string> = { '.': 'index.d.ts' }, extra: Record<string, unknown> = {}) {
@@ -1107,6 +1113,130 @@ describe('spans of time', () => {
   it('gives every exception of the repository a reason and lists no span twice', () => {
     expect(Object.keys(SPAN_EXCEPTIONS).every((key) => SPAN_EXCEPTIONS[key]!.length > 0)).toBe(true);
     expect([...SPAN_PENDING].filter((key) => key in SPAN_EXCEPTIONS)).toEqual([]);
+  });
+});
+
+describe('./internal entries and leaked classes', () => {
+  const ENTRIES = { '.': 'index.d.ts', './internal': 'internal.d.ts' };
+  const internal = (
+    files: Record<string, string>,
+    sources: Record<string, string> = {},
+    lists: Partial<Parameters<typeof internalProblems>[3]> = {},
+    exports: Record<string, string> = ENTRIES,
+  ) => {
+    const { root, dir, manifest } = demo(files, exports);
+    const sourceFiles = Object.entries(sources).map(([path, text]) => ({ path, text }));
+    return internalProblems([{ name: '@marmeon/demo', dir, manifest }], root, () => sourceFiles, { ...NO_INTERNAL, ...lists });
+  };
+  const unused = (name: string) => `@marmeon/demo/internal ${name} is exported from an ./internal entry but no file outside its package imports it — stop exporting it, or use it from the package that needs it`;
+  const leaked = (name: string) => `@marmeon/demo ${name} is a class a public signature names, but no entry exports it — mark the member that names it @internal, or export the class`;
+  const text = { 'index.d.ts': '', 'internal.d.ts': 'export declare const used: 1;\nexport declare const ownOnly: 1;\nexport declare const testOnly: 1;\n' };
+
+  it('names an internal export that only its own package imports', () => {
+    const sources = {
+      'packages/demo/src/a.ts': `import { ownOnly, used } from '${DEMO_INTERNAL}';`,
+      'packages/other/src/a.ts': `import { used, type Missing } from '${DEMO_INTERNAL}';`,
+      'packages/other/src/a.test.ts': `import { testOnly } from '${DEMO_INTERNAL}';`,
+    };
+    expect(internal(text, sources)).toEqual([unused('ownOnly')]);
+  });
+
+  it('counts a multi-line import and a re-export of another package', () => {
+    const sources = {
+      'packages/other/src/a.ts': `import {\n  ownOnly,\n} from '${DEMO_INTERNAL}';`,
+      'packages/another/src/a.ts': `export { used, testOnly } from '${DEMO_INTERNAL}';`,
+    };
+    expect(internal(text, sources)).toEqual([]);
+  });
+
+  it('counts a name in a whole import only as a member or a destructured key, not in a comment or a string', () => {
+    const entry = `const mod = await import('${DEMO_INTERNAL}');\n`;
+    const code = `${entry}// ownOnly testOnly\nconst text = 'mod.ownOnly { testOnly }';\nmod.used;`;
+    expect(internal(text, { 'packages/other/src/a.ts': code })).toEqual([unused('ownOnly'), unused('testOnly')]);
+    expect(internal(text, { 'packages/other/src/a.ts': `${entry}const { ownOnly } = mod;\nmod?.testOnly;\nmod.used;` })).toEqual([]);
+  });
+
+  it('reads a namespace by its members and an import of the entry as a whole by the names the file spells', () => {
+    expect(internal(text, { 'packages/other/src/a.ts': `import * as inner from '${DEMO_INTERNAL}';\ninner.used; inner.ownOnly;` })).toEqual([unused('testOnly')]);
+    expect(internal(text, { 'packages/other/src/a.ts': `const mod = await import('${DEMO_INTERNAL}');\nmod.used; mod.ownOnly; mod.testOnly;` })).toEqual([]);
+    expect(internal(text, { 'packages/other/src/a.ts': `const mod = await import('${DEMO_INTERNAL}');\nmod.used;` })).toEqual([unused('ownOnly'), unused('testOnly')]);
+  });
+
+  it('leaves out build output, dependencies and files that are no code', () => {
+    const sources = { 'packages/other/dist/a.js': `import { used } from '${DEMO_INTERNAL}';`, 'docs/x.md': `import { ownOnly } from '${DEMO_INTERNAL}';` };
+    expect(internal(text, sources)).toEqual([unused('ownOnly'), unused('testOnly'), unused('used')]);
+  });
+
+  it('reads an internal entry of a subpath too', () => {
+    const files = { 'index.d.ts': '', 'tools/internal.d.ts': 'export declare const used: 1;\n' };
+    expect(internal(files, {}, {}, { '.': 'index.d.ts', './tools/internal': 'tools/internal.d.ts' })).toEqual(['@marmeon/demo/tools/internal used is exported from an ./internal entry but no file outside its package imports it — stop exporting it, or use it from the package that needs it']);
+  });
+
+  it('names a class a public signature names but no entry exports', () => {
+    const files = { 'index.d.ts': 'declare class Secret {}\nexport declare class Public {\n    secret(): Secret;\n}\n', 'internal.d.ts': '' };
+    expect(internal(files)).toEqual([leaked('Secret')]);
+  });
+
+  it('follows a helper type to the class it names', () => {
+    const files = { 'index.d.ts': 'declare class Deep {}\ntype Helper = { deep: Deep };\nexport declare function f(): Helper;\n', 'internal.d.ts': '' };
+    expect(internal(files)).toEqual([leaked('Deep')]);
+  });
+
+  it('names a class that is @internal itself when a public signature names it', () => {
+    const files = { 'index.d.ts': '/** @internal */\ndeclare class Secret {}\nexport declare class Public {\n    secret(): Secret;\n}\n', 'internal.d.ts': '' };
+    expect(internal(files)).toEqual([leaked('Secret')]);
+  });
+
+  it('lets a class that an entry exports, an interface, an @internal member and ./internal stand', () => {
+    const files = {
+      'index.d.ts': "import { Exported } from './exported.ts';\ndeclare class Hidden {}\ninterface Shape {}\nexport declare class Public {\n    a(): Exported;\n    b(): Shape;\n    /** @internal */\n    c(): Hidden;\n}\n",
+      'exported.d.ts': 'export declare class Exported {}\n',
+      'other.d.ts': "export { Exported } from './exported.ts';\n",
+      'internal.d.ts': 'declare class Inner {}\nexport declare function g(): Inner;\n',
+    };
+    expect(internal(files, { 'packages/other/src/a.ts': `import { g } from '${DEMO_INTERNAL}';` }, {}, { ...ENTRIES, './other': 'other.d.ts' })).toEqual([]);
+  });
+
+  it('matches a class by its declaration, not its name', () => {
+    const files = {
+      'index.d.ts': "import { Thing } from './a.ts';\nexport declare function f(): Thing;\n",
+      'a.d.ts': 'export declare class Thing {}\n',
+      'other.d.ts': 'export declare class Thing {}\n',
+    };
+    expect(internal({ ...files, 'internal.d.ts': '' }, {}, {}, { ...ENTRIES, './other': 'other.d.ts' })).toEqual([leaked('Thing')]);
+  });
+
+  it('lets an exception and a pending line stand', () => {
+    const lists = { exceptions: { '@marmeon/demo/internal ownOnly': 'the launcher resolves it by path' }, pending: new Set(['@marmeon/demo/internal testOnly', '@marmeon/demo/internal used']) };
+    expect(internal(text, {}, lists)).toEqual([]);
+  });
+
+  it('names a line of either list that follows the rule', () => {
+    const files = { 'index.d.ts': '', 'internal.d.ts': 'export declare const used: 1;\n' };
+    const lists = { exceptions: { '@marmeon/demo Gone': 'was leaked' }, pending: new Set(['@marmeon/demo/internal used']) };
+    expect(internal(files, { 'packages/other/src/a.ts': `import { used } from '${DEMO_INTERNAL}';` }, lists)).toEqual([
+      '@marmeon/demo Gone is listed in INTERNAL_EXCEPTIONS but follows the rule — delete the line',
+      '@marmeon/demo/internal used is listed in INTERNAL_PENDING but follows the rule — delete the line',
+    ]);
+  });
+
+  it('reads no source files for a package without ./internal', () => {
+    const { root, dir, manifest } = demo({ 'index.d.ts': '' });
+    let read = false;
+    expect(internalProblems([{ name: '@marmeon/demo', dir, manifest }], root, () => ((read = true), []), NO_INTERNAL)).toEqual([]);
+    expect(read).toBe(false);
+  });
+
+  it('fails pnpm api:check for an internal name nobody imports', async () => {
+    const { root } = demo({ 'index.d.ts': '', 'internal.d.ts': 'export declare const used: 1;\n' }, ENTRIES);
+    const run = await runApi(root, { files: [] });
+    expect(run.code).toBe(1);
+    expect(run.lines).toContain('internal:');
+  });
+
+  it('gives every exception of the repository a reason and lists no name twice', () => {
+    expect(Object.keys(INTERNAL_EXCEPTIONS).every((key) => INTERNAL_EXCEPTIONS[key]!.length > 0)).toBe(true);
+    expect([...INTERNAL_PENDING].filter((key) => key in INTERNAL_EXCEPTIONS)).toEqual([]);
   });
 });
 

@@ -73,7 +73,7 @@ const DESTRUCTURED = /\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*(?:await\s+)?(?:im
 /** `require('x')`, with the member when it is read directly. */
 const REQUIRE = /\brequire\(\s*(['"])([^'"\n]+)\1\s*\)(?:\.([\w$]+))?/g;
 /** Files that are no source of ours: build output, installed packages, what the framework generates. */
-const NOT_SOURCE = /(^|\/)(?:dist|node_modules|\.marmeon)\//;
+export const NOT_SOURCE = /(^|\/)(?:dist|node_modules|\.marmeon)\//;
 const CODE_FILE = /\.(?:[cm]?[jt]sx?|md)$/;
 
 /** The name a `{ … }` item takes from the module: `type A as B` is `A`. */
