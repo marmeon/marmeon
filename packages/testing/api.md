@@ -106,6 +106,11 @@ export declare class TestApp {
     get queue(): QueueFake;
     get notifications(): NotificationFake;
     get storage(): StorageFake;
+    get broadcast(): BroadcastTester;
+    live(target: string | readonly LiveSubscription[], { connection, lastEventId }?: {
+        connection?: string;
+        lastEventId?: string;
+    }): Promise<LiveStreamReader>;
     get devtools(): DevtoolsTester;
     get events(): EventFake;
     get schedule(): ScheduleTester;
@@ -257,16 +262,4 @@ export type UploadFile = Blob | {
     readonly contents: string | Uint8Array;
     readonly type?: string;
 };
-```
-
-### Experimental
-
-```ts
-// TestApp.broadcast
-get broadcast(): BroadcastRecorder;
-// TestApp.live
-live(target: string | readonly LiveSubscription[], { connection, lastEventId }?: {
-    connection?: string;
-    lastEventId?: string;
-}): Promise<LiveStreamReader>;
 ```
