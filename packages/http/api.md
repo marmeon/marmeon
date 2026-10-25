@@ -673,6 +673,10 @@ export interface SignedRouteOptions {
 }
 // SiteData
 export type SiteData = 'cache' | 'storage';
+// SitemapEntries
+export type { SitemapEntries } from '@marmeon/router';
+// SitemapEntry
+export type { SitemapEntry } from '@marmeon/router';
 // SsrRender
 export type SsrRender = (page: PageObject, options?: SsrRenderOptions) => Promise<SsrResult>;
 // SsrRenderOptions

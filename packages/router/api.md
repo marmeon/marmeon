@@ -448,6 +448,8 @@ export declare class RouteDefinition {
     name(name: string): this;
     get routeName(): string | undefined;
     internal(): this;
+    sitemap(): this;
+    get inSitemap(): boolean;
     get isInternal(): boolean;
     block(lock?: Duration, wait?: Duration): this;
     get blocking(): RouteBlocking | undefined;
@@ -512,6 +514,13 @@ export type SchemaOf<R> = R extends {
 export type Simplify<T> = {
     [K in keyof T]: T[K];
 } & {};
+// SitemapEntries
+export type SitemapEntries<TParams = Record<string, string | number>> = Iterable<SitemapEntry<TParams>> | AsyncIterable<SitemapEntry<TParams>> | Promise<readonly SitemapEntry<TParams>[]>;
+// SitemapEntry
+export interface SitemapEntry<TParams = Record<string, string | number>> {
+    readonly params: TParams;
+    readonly lastModified?: Date;
+}
 // StandardIssue
 export type { StandardIssue } from '@marmeon/core';
 // StandardOptions

@@ -93,6 +93,8 @@ export type {
   RouteBinder,
   RouteBindingContext,
   RouteBindingWith,
+  SitemapEntries,
+  SitemapEntry,
   TextKey,
   Validated,
   ValidationErrors,

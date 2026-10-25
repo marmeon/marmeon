@@ -1,7 +1,8 @@
 import { Redactor } from '@marmeon/core';
+import { withCode } from '@marmeon/core/internal';
 import { formatAccessProblems, isEveryone, isScoped, openBindings, RouteAccessError, routeAccess, type AccessProblem } from './access.ts';
 import { HttpError } from './errors.ts';
-import { addsConflicts, runPipeline, type AddsConflict } from './middleware.ts';
+import { addsConflicts, addsOf, runPipeline, type AddsConflict } from './middleware.ts';
 import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
 import { createRequestState, type RequestState } from './request.ts';
 import { liveValidationFields, VALIDATED_HEADER } from './live-validation.ts';
@@ -283,6 +284,7 @@ export class Router {
       variant.seal();
       this.#unprefixed.set(route, variant);
     }
+    for (const route of this.#routes.slice(before)) if (route.inSitemap) checkSitemapRoute(route);
     this.#indexNames();
     for (const route of this.#routes.slice(before)) for (const check of this.#routeChecks) check(route, this.#resolve);
     return this;
@@ -446,14 +448,23 @@ export class Router {
    * @internal
    */
   dispatchNotFound(request: Request, options: Omit<DispatchOptions, 'toResponse'> = {}): Promise<Response> {
+    return this.dispatchGlobal(request, () => Promise.reject(new HttpError(404)), options);
+  }
+
+  /**
+   * Runs `answer` behind the global middleware only (no group: no session, no CSRF), as the kernel's own endpoints
+   * (`/sitemap.xml`) do.
+   *
+   * @internal
+   */
+  dispatchGlobal(request: Request, answer: (ctx: HttpContext) => Response | Promise<Response>, options: Omit<DispatchOptions, 'toResponse'> = {}): Promise<Response> {
     const state = options.state ?? createRequestState(request);
     const ctx = Object.freeze({ ...state, request, params: Object.freeze({}) }) as unknown as HttpContext;
-    return runPipeline(
-      ctx,
-      this.middleware.get(GLOBAL),
-      () => Promise.reject(new HttpError(404)),
-      { resolve: options.resolve ?? this.#resolve, onTerminable: options.onTerminable, onError: options.onError },
-    );
+    return runPipeline(ctx, this.middleware.get(GLOBAL), async (afterMiddleware) => answer(afterMiddleware), {
+      resolve: options.resolve ?? this.#resolve,
+      onTerminable: options.onTerminable,
+      onError: options.onError,
+    });
   }
 
   /** Names are an API (redirects, links): a name used twice is a boot error, not a silent overwrite. */
@@ -471,6 +482,28 @@ export class Router {
       byName.set(name, route);
     }
     this.#byName = byName;
+  }
+}
+
+/**
+ * Refuses a route marked with `.sitemap()` that cannot be a page anyone opens: a write, a route the browser never learns, an API
+ * route, one behind `user`, a localized one, or one with parameters whose controller does not say which are pages.
+ */
+function checkSitemapRoute(route: RouteDefinition): void {
+  const at = `${route.methods.join('|')} ${showPath(route)}`;
+  const refuse = (reason: string): never => {
+    throw new TypeError(withCode('H10', `sitemap() on ${at}: ${reason}. See docs/seo.md#sitemap-and-robotstxt.`));
+  };
+  if (route.methods.length !== 1 || route.methods[0] !== 'GET') refuse('a sitemap lists GET pages only');
+  if (route.isInternal) refuse('an internal() route is not a public page');
+  if (route.group === 'api') refuse('an API route is not a page');
+  if (route.middleware.some((middleware) => addsOf(middleware).includes('user'))) refuse('a sitemap lists pages anyone can open, and this route sits behind a signed-in user');
+  // Everyone, and said so: a check that asks who the visitor is (a policy, a role, a login middleware without `adds`) is no public page.
+  const checks = routeAccess(route);
+  if (checks.length === 0 || !checks.every(isEveryone)) refuse('a sitemap lists pages anyone can open, and this route asks who may call it (authorize(everyone) says that anyone may)');
+  if (route.localized) refuse('the pages of a localized route are not listed yet: leave sitemap() off, or serve the route without Route.localized()');
+  if (/\/:\w/.test(route.path) && !(isControllerClass(route.action) && typeof route.action.prototype.sitemap === 'function')) {
+    refuse('the path has parameters, so its controller needs a sitemap() method that returns the entries (a closure cannot)');
   }
 }
 
