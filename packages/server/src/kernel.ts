@@ -364,6 +364,7 @@ export function createHttpKernel(
 
   const toResponse = createResponseFactory(renderer, router, version, {
     app: application,
+    appUrl: container.has(ServerConfig) ? container.make(ServerConfig).appUrl : undefined,
     // Prop sizes for the `http.request` message — measured only while something listens.
     onPage: (request, page, kind, origins) => {
       if (requests.hasSubscribers) pages.set(request, pageSummary(request, page, kind, origins()));

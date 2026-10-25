@@ -37,10 +37,11 @@ export interface SsrOptions {
  */
 export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, routes, layout, messages, layer }: SsrOptions = {}): SsrRender {
   // A `<Head>`'s script or style carries the response's CSP nonce — the rest of its tags need none.
-  const head = (collector: HeadCollector, nonce?: string) =>
-    renderHead(collector, title, (tag) => renderToStaticMarkup(markServerTag(nonce ? withNonce(tag, nonce) : tag)));
+  const head = (collector: HeadCollector, nonce?: string, urls?: { appUrl?: string; warn?: (message: string) => void }) =>
+    renderHead(collector, title, (tag) => renderToStaticMarkup(markServerTag(nonce ? withNonce(tag, nonce) : tag)), urls);
 
-  return async (page, { complete = false, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce, placeholder } = {}) => {
+  return async (page, { complete = false, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce, placeholder, appUrl } = {}) => {
+    const urls = { ...(appUrl ? { appUrl } : {}), ...(isDevelopment() && onWarning ? { warn: onWarning } : {}) };
     // A deep link's layers render with the page, in the shell: the layer stack and their views are loaded first.
     const [Component, catalog] = await Promise.all([
       resolve(page.component),
@@ -50,7 +51,7 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
     if (placeholder !== undefined && !Component.placeholder) {
       throw new Error(`[${page.component}] has no placeholder: set \`${viewName(page.component)}.placeholder = …\` on the view (see docs/navigation.md#instant-visits).`);
     }
-    if (Component.ssr === false && placeholder === undefined) return { html: '', head: head(createHeadCollector(), nonce) };
+    if (Component.ssr === false && placeholder === undefined) return { html: '', head: head(createHeadCollector(), nonce, urls) };
     const whole = complete || placeholder !== undefined || Component.ssr === 'complete';
     // Deferred groups stream with the page — not when it is sent whole: they are computed once the headers are out.
     const streamedProps = !whole && resolveDeferred ? Object.entries(page.deferredProps ?? {}).flatMap(([group, props]) => (props.length > 0 ? [group] : [])) : [];
@@ -100,7 +101,7 @@ export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, 
     for (const error of recovered) onError?.(error);
     // What streams in from here on comes after the document head.
     collector.sealed = true;
-    return { html: stream, head: head(collector, nonce), ...(streamedProps.length > 0 ? { streamedProps } : {}) };
+    return { html: stream, head: head(collector, nonce, urls), ...(streamedProps.length > 0 ? { streamedProps } : {}) };
   };
 }
 

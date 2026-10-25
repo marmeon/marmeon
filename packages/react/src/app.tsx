@@ -1,5 +1,5 @@
 import type { FeatureHandle } from '@marmeon/http/client';
-import { loadInstant, loadPageMessages, markBusy, Navigator, laterTarget, loadOptimistic, pageLocale, prefetchWith, RegionOwner, TitleRegistry, type Feature, type Layer, type LayerStack as LayersFeature, type PatchTarget, type RegionOwner as RegionOwnerType } from '@marmeon/http/client/adapter';
+import { loadInstant, loadPageMessages, readAppOrigin, markBusy, Navigator, laterTarget, loadOptimistic, pageLocale, prefetchWith, RegionOwner, TitleRegistry, type Feature, type Layer, type LayerStack as LayersFeature, type PatchTarget, type RegionOwner as RegionOwnerType } from '@marmeon/http/client/adapter';
 import type { ConfirmAnswer, ConfirmRequest, OptimisticUpdate, PrefetchOptions, Reloading, ProgressIndicator, TitleTemplate, ViewTransitionOption, VisitError, VisitEvent, VisitEvents, VisitOptions } from '@marmeon/http/client';
 import type { BrowserRouteNameInput, CheckIslandRouteName, PageInfo, PageProps, RouteManifest, SharedProps } from '@marmeon/http/page';
 import { matchesPath, pageInfo } from '@marmeon/http/client/adapter';
@@ -24,6 +24,7 @@ import {
 import { ErrorBoundary, LayoutError, RenderErrorFallback, Rethrow, VisitFailure } from './fallbacks.tsx';
 import { ConfirmHost, type ConfirmComponent, type PendingQuestion } from './confirm.tsx';
 import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
+import { HeadRegistry } from './head-fields.ts';
 import { I18nContext } from './i18n.tsx';
 import type { LayerEntry, LayerFrame } from './layer.tsx';
 import { loadView } from './views.ts';
@@ -579,7 +580,8 @@ export function MarmeonApp({
   }, [locale]);
 
   const titles = useMemo(() => (typeof document === 'undefined' ? undefined : new TitleRegistry(title)), [title]);
-  const head = useMemo(() => ({ template: title, collector: headCollector, titles }), [title, headCollector, titles]);
+  const fields = useMemo(() => (typeof document === 'undefined' ? undefined : new HeadRegistry(readAppOrigin(), process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? (message) => console.warn(message) : undefined)), []);
+  const head = useMemo(() => ({ template: title, collector: headCollector, titles, fields }), [title, headCollector, titles, fields]);
 
   const layouts = placeholder ? layoutsOf(placeholder.View, placeholder.name, layout) : layoutsOf(Component, page.component, layout);
   const layoutCatches = layouts.some((Layout) => Layout.error);

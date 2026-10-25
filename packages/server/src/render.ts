@@ -43,6 +43,7 @@ import {
   LOCATION_HEADER,
   MAX_LAYER_DEPTH,
   heldOnceProps,
+  APP_ORIGIN_META,
   ONCE_HEADER,
   ONCE_SCOPE_HEADER,
   PAGE_HEADER,
@@ -85,6 +86,8 @@ export interface PageRenderOptions {
    * streamed scripts and styles and `<Head>`'s scripts. Without it, the template's placeholder attributes are taken out.
    */
   nonce?: string;
+  /** The app's `APP_URL`, for the absolute URLs of the document head — `SsrRenderOptions.appUrl`. */
+  appUrl?: string;
 }
 
 /** Turns a page object into a full HTML document. Implemented per environment (Vite in development, the build in production). */
@@ -94,8 +97,8 @@ export interface PageRenderer {
    * finish. Rejects when the page cannot render on the server (an error in the shell).
    */
   render(page: PageObject, request: Request, options: PageRenderOptions): Promise<string | ReadableStream<Uint8Array>>;
-  /** The document without markup: the browser renders the page (server rendering failed, or is off). `nonce`: as for {@link render}. */
-  shell(page: PageObject, request: Request, nonce?: string): Promise<string>;
+  /** The document without markup: the browser renders the page (server rendering failed, or is off). `nonce` and `appUrl`: as for {@link render}. */
+  shell(page: PageObject, request: Request, nonce?: string, appUrl?: string): Promise<string>;
   /** Version of the built assets; undefined in development (no checks while Vite serves sources). */
   readonly version?: string;
   /**
@@ -133,17 +136,31 @@ export interface DocumentRendererOptions {
 
 const renders = channels.tracing('render.ssr');
 
+/**
+ * The app's origin for the browser, once, in the first document: the head's relative URLs resolve against it there as
+ * they did here. Not secret, and not in the page object, which every visit's answer carries.
+ */
+function appOriginTag(appUrl: string | undefined): string {
+  if (!appUrl) return '';
+  try {
+    const { origin, protocol } = new URL(appUrl);
+    return protocol === 'http:' || protocol === 'https:' ? `<meta name="${APP_ORIGIN_META}" content="${origin.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`)}">` : '';
+  } catch {
+    return '';
+  }
+}
+
 /** A renderer from a template and an SSR entry — the one code path of the development and the production renderer. */
 export function createDocumentRenderer({ template, ssr, fixStack, failed, preloads, version }: DocumentRendererOptions): PageRenderer {
   // After `withNonce`, so the tags carry the real nonce and never meet the placeholder.
-  const documentFor = (document: string, page: PageObject, nonce: string | undefined) =>
-    withPreloads(withNonce(document, nonce), preloads ? preloadTags(preloads.forPage(page), nonce) : '');
+  const documentFor = (document: string, page: PageObject, nonce: string | undefined, appUrl: string | undefined) =>
+    withPreloads(withNonce(document, nonce), (preloads ? preloadTags(preloads.forPage(page), nonce) : '') + appOriginTag(appUrl));
   const fixed = (error: unknown) => {
     if (error instanceof Error) fixStack?.(error);
     return error;
   };
   return {
-    async render(page, request, { complete, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce }) {
+    async render(page, request, { complete, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce, appUrl }) {
       const [document, render] = await Promise.all([template(request), ssr()]);
       // Rendering stops when the client goes away — the request aborts, or the server cancels the body. Not an error.
       const stopped = new AbortController();
@@ -156,14 +173,15 @@ export function createDocumentRenderer({ template, ssr, fixStack, failed, preloa
           ...(resolveIsland ? { resolveIsland } : {}),
           ...(resolveDeferred ? { resolveDeferred } : {}),
           ...(nonce ? { nonce } : {}),
+          ...(appUrl ? { appUrl } : {}),
         });
-        return await documentOf(documentFor(document, page, nonce), page, result, (reason) => stopped.abort(reason));
+        return await documentOf(documentFor(document, page, nonce, appUrl), page, result, (reason) => stopped.abort(reason));
       } catch (error) {
         throw fixed(error);
       }
     },
-    async shell(page, request, nonce) {
-      return renderDocument(documentFor(await template(request), page, nonce), page, { html: '' });
+    async shell(page, request, nonce, appUrl) {
+      return renderDocument(documentFor(await template(request), page, nonce, appUrl), page, { html: '' });
     },
     ...(failed ? { failed } : {}),
     version,
@@ -231,6 +249,8 @@ export type ScopedResponseFactory = (...args: [...Parameters<ResponseFactory>, s
 export interface ResponseFactoryOptions {
   /** The app whose pages these are — server rendering is reported on its `render.ssr` channel. */
   app?: Application;
+  /** The app's `APP_URL` (`ServerConfig.appUrl`): the head's relative URLs are resolved against it, never against the request. */
+  appUrl?: string;
   /**
    * Hears each page, layer or island object a response carries, before it is sent — the kernel's, for the `http.request`
    * message's prop sizes (it computes nothing unless something listens).
@@ -278,7 +298,7 @@ export function createResponseFactory(
   renderer: PageRenderer = shellRenderer,
   routes?: RouteLookup,
   version: string | null = null,
-  { app, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000, layerBases, onPage, onDeferredError }: ResponseFactoryOptions = {},
+  { app, appUrl, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000, layerBases, onPage, onDeferredError }: ResponseFactoryOptions = {},
 ): ScopedResponseFactory {
   // What the error lines below mask their text with: the app's (the names its packages add — the session cookie — count too).
   const redactor = app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
@@ -352,7 +372,7 @@ export function createResponseFactory(
   ): Promise<string | ReadableStream<Uint8Array>> => {
     // The response's CSP nonce — when `contentSecurityPolicy()` wants one (or the app made one): made here, read by the header.
     const nonce = scope?.has(RequestNonce) ? scope.make(RequestNonce).forDocument() : undefined;
-    if (!ssr) return renderer.shell(page, request, nonce);
+    if (!ssr) return renderer.shell(page, request, nonce, appUrl);
     const report = (message: string) => (error: unknown) => logger.error(message, { component: page.component, ...describe(error) });
     const complete = isBot(request);
     const render = () =>
@@ -363,6 +383,7 @@ export function createResponseFactory(
         onWarning: (message) => logger.warn(message, { component: page.component }),
         ...resolvers,
         ...(nonce ? { nonce } : {}),
+        ...(appUrl ? { appUrl } : {}),
       });
     try {
       // On the `render.ssr` channel only while something listens.
@@ -375,7 +396,7 @@ export function createResponseFactory(
       return await render();
     } catch (error) {
       report(`Server rendering of [${page.component}] failed — the browser renders the page`)(error);
-      const shell = await renderer.shell(page, request, nonce);
+      const shell = await renderer.shell(page, request, nonce, appUrl);
       // Development: the developer sees it — in Vite's overlay — instead of a page that silently renders in the browser.
       if (debug && app && renderer.failed) {
         try {

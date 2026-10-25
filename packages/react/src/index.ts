@@ -63,7 +63,7 @@ export type { ActiveMatch, LinkProps, PrefetchTrigger } from './link.tsx';
 export { resolveModulePages } from './pages.ts';
 export type { DefaultLayout, ErrorFallback, ErrorFallbackProps, Layout, LayoutProps, PageComponent, PageLayout, PageSsr, Placeholder, ResolvePage, RevalidateOnBack } from './pages.ts';
 export { Head } from './head.tsx';
-export type { HeadProps, TitleTemplate } from './head.tsx';
+export type { HeadProps, OpenGraph, TitleTemplate, TwitterCard } from './head.tsx';
 export { Pagination } from './pagination.tsx';
 export type { PaginationLabels, PaginationProps } from './pagination.tsx';
 export { usePoll } from './use-poll.ts';

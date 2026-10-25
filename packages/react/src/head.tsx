@@ -1,14 +1,16 @@
 import { defaultTitle, type TitleRegistry } from '@marmeon/http/client/adapter';
 import type { TitleTemplate } from '@marmeon/http/client';
 import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { headTags, mergeHead, type HeadEntry, type HeadFields, type HeadRegistry } from './head-fields.ts';
 
 export { defaultTitle } from '@marmeon/http/client/adapter';
 export type { TitleTemplate } from '@marmeon/http/client';
+export type { OpenGraph, TwitterCard } from './head-fields.ts';
 
 /** Server rendering: where `<Head>`s record themselves for the document head. */
 export interface HeadCollector {
   /** The `<Head>`s in render order. */
-  readonly entries: { title: string | undefined; tags: ReactElement[] }[];
+  readonly entries: (HeadEntry & { tags: ReactElement[] })[];
   /** Set once the head is rendered: a `<Head>` after that (in a Suspense boundary that streams in later) misses it. */
   sealed: boolean;
   /** Called for such a late `<Head>` (development: a warning). */
@@ -21,11 +23,13 @@ interface HeadContextValue {
   collector?: HeadCollector;
   /** Only in the browser: who sets the document title. */
   titles?: TitleRegistry;
+  /** Only in the browser: who keeps the fields' tags. */
+  fields?: HeadRegistry;
 }
 
 export const HeadContext = createContext<HeadContextValue>({ template: defaultTitle });
 
-export interface HeadProps {
+export interface HeadProps extends HeadFields {
   /** Page title, passed through the app's title template. */
   title?: string;
   /** `<meta>` and `<link>` elements for this page. */
@@ -55,20 +59,21 @@ export function Head(props: HeadProps) {
  */
 export const IslandHeadContext = createContext<string | null>(null);
 
-function PageHead({ title, children }: HeadProps) {
-  const { template, collector, titles } = useContext(HeadContext);
+function PageHead({ title, children, ...fields }: HeadProps) {
+  const { template, collector, titles, fields: registry } = useContext(HeadContext);
   const [order] = useState(() => titles?.order() ?? 0);
+  const [fieldsOrder] = useState(() => registry?.order() ?? 0);
   const tags = Children.toArray(children).filter(isValidElement) as ReactElement[];
 
   if (collector) {
     // Server render: the last <Head> wins for the title (a page overrides its layout). After the head went out
     // (streaming), it is too late for this one — the browser adds its tags once it hydrates.
     if (collector.sealed) collector.onLate?.(title);
-    else collector.entries.push({ title, tags });
+    else collector.entries.push({ title, ...fields, tags });
   }
 
-  const signature = JSON.stringify(tags.map((tag) => [tag.type, tag.props]));
-  // `signature` stands in for `tags`, whose identity changes on every render.
+  const signature = JSON.stringify([tags.map((tag) => [tag.type, tag.props]), fields]);
+  // `signature` stands in for `tags` and `fields`, whose identity changes on every render.
   useEffect(() => {
     // Server-rendered tags (title included) hand over to the ones managed here — removed first,
     // so the title set next is not removed with them.
@@ -77,26 +82,38 @@ function PageHead({ title, children }: HeadProps) {
       if (titles) titles.set(order, title);
       else document.title = template(title);
     }
+    registry?.set(fieldsOrder, { title, ...fields });
     const elements = tags.map(toElement).filter((element): element is HTMLElement => element !== null);
     for (const element of elements) document.head.append(element);
     return () => {
       if (title !== undefined) titles?.delete(order);
+      registry?.delete(fieldsOrder);
       for (const element of elements) element.remove();
     };
-  }, [title, template, titles, order, signature]);
+  }, [title, template, titles, order, registry, fieldsOrder, signature]);
 
   return null;
 }
 
 /**
- * Server: the collected head as HTML — title (escaped, through the template) and tags. Without a `<Head title>`,
- * the title is `template('')` (as on the client), or the template's own `<title>` when that is empty.
+ * Server: the collected head as HTML — title (escaped, through the template), the fields' tags and the `<Head>`s' own.
+ * Without a `<Head title>`, the title is `template('')` (as on the client), or the template's own `<title>` when that is empty.
+ * `appUrl` is what a relative URL in the fields is resolved against — the app's configuration, never the request.
  */
-export function renderHead(collector: HeadCollector, template: TitleTemplate, renderTag: (tag: ReactElement) => string): string {
+export function renderHead(
+  collector: HeadCollector,
+  template: TitleTemplate,
+  renderTag: (tag: ReactElement) => string,
+  { appUrl, warn }: { appUrl?: string; warn?: (message: string) => void } = {},
+): string {
   const { entries } = collector;
-  const text = template(entries.findLast((entry) => entry.title !== undefined)?.title ?? '');
+  const merged = mergeHead(entries);
+  const text = template(merged.title ?? '');
   const title = text === '' ? '' : `<title ${MARKER}="ssr">${escapeHtml(text)}</title>`;
-  return title + entries.flatMap((entry) => entry.tags.map(renderTag)).join('');
+  const fields = headTags(merged, appUrl, warn)
+    .map(({ element, attributes }) => `<${element} ${attributes.map(([name, value]) => `${name}="${escapeHtml(value)}"`).join(' ')} ${MARKER}="ssr"/>`)
+    .join('');
+  return title + fields + entries.flatMap((entry) => entry.tags.map(renderTag)).join('');
 }
 
 export function createHeadCollector(onLate?: (title: string | undefined) => void): HeadCollector {
