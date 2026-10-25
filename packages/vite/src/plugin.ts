@@ -3,6 +3,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { marmeonInjection, CSP_NONCE_PLACEHOLDER } from '@marmeon/core/internal';
 import { defaultClientConditions, defaultServerConditions, type Plugin, type Rolldown, type UserConfig } from 'vite';
 import { checkFonts, fontFallbacks, preloadFonts, type MarmeonFont } from './fonts.ts';
+import { images, type ImageOptions } from './images.ts';
 import { ROUTE_SINKS, type RouteSink } from './route-references.ts';
 import { routesModule } from './routes-module.ts';
 import { serverImports } from './server-imports.ts';
@@ -60,6 +61,11 @@ export interface MarmeonOptions {
    * reach the browser's route manifest (`virtual:marmeon/routes`).
    */
   routeSinks?: readonly RouteSink[];
+  /**
+   * How `import hero from './hero.jpg?image'` builds its widths and formats (needs `sharp`, loaded only for such an import).
+   * See docs/images.md#images-of-the-app.
+   */
+  images?: ImageOptions;
   /**
    * More server modules — globs relative to the app root — besides the built-in conventions; `'!glob'` takes
    * modules out of them. See docs/vite.md#server-code-in-the-browser.
@@ -212,6 +218,7 @@ export function marmeon(options: MarmeonOptions = {}): Plugin[] {
     ...(options.fonts?.length && !options.test ? [preloadFonts(options.fonts)] : []),
     routesModule({ sinks: [...ROUTE_SINKS, ...(options.routeSinks ?? [])], ...(options.test ? { test: true } : {}) }),
     serverImports({ pages: [PAGES], client: entries.client, ...(options.serverModules ? { serverModules: options.serverModules } : {}) }),
+    images(options.images),
   ];
 }
 

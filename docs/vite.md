@@ -169,6 +169,7 @@ generation](urls.md#which-routes-the-browser-knows) page explains which those ar
 | `fonts` | none | `.woff2` files to preload from `index.html`, as `{ file }`, and with `family` and `fallback` a fallback font of the same size. See [Fonts](#fonts). |
 | `serverModules` | none | More server modules, as globs. `'!glob'` takes files out of the conventions. |
 | `routeSinks` | none | More places where client code hands the framework a route name, for an adapter of your own. |
+| `images` | `{ widths: [640, 960, 1280, 1920, 2560], formats: ['avif', 'webp'], quality: 70 }` | How `?image` imports are built. See [Images of the app](images.md#images-of-the-app). |
 | `test` | `false` | For `vitest.config.ts`. |
 | `viteEnv` | `false` | Keep Vite's own handling of `.env` files and `VITE_*` variables. See [Environment variables](#environment-variables). |
 

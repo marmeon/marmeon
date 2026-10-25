@@ -72,6 +72,54 @@ Use `priority` for one or two images per page, since each one competes with the 
 An island has no access to the head. `<Image priority>` in an island still loads eagerly, but cannot preload; in development it logs
 `[marmeon:R20]` (see [errors](errors.md#error-codes)). Put the image on the page instead.
 
+## Images of the app
+
+An image that is part of the app, like a hero or a logo as a photo, is built in several widths and formats when you import it with
+`?image`:
+
+```tsx title="modules/about/views/Index.tsx"
+import hero from '../images/hero.jpg?image';
+
+<Image src={hero} alt="The harbour at dawn" sizes="(min-width: 60rem) 50vw, 100vw" />;
+```
+
+The import is an `ImageSource`, so `<Image>` takes it as it is, with its size already set. The build writes each width in AVIF, WebP
+and the file's own format into `assets/`; the name carries a hash of the content, so a file is cached for good and the client and
+the server build agree on every URL. The widths are `640`, `960`, `1280`, `1920` and `2560`, but none above the original's: a
+1000 px wide photo is built at 640 and 960, a 300 px wide one at 300. The `<img>` in the `<picture>` is the largest width of the
+original format.
+
+The work is done by [sharp](https://sharp.pixelplumbing.com), which an app installs itself and only when it imports an image with
+`?image`:
+
+```sh
+pnpm add -D sharp
+```
+
+Without it, a build with such an import stops and says so. Change widths, formats and quality in `vite.config.ts`:
+
+```ts
+marmeon({ images: { widths: [480, 960, 1440], formats: ['webp'], quality: 80 } });
+```
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `widths` | `[640, 960, 1280, 1920, 2560]` | The widths to build, in pixels. |
+| `formats` | `['avif', 'webp']` | The formats next to the original's. |
+| `quality` | `70` | Quality of the lossy formats, 1 to 100. |
+
+A build writes each variant once: the result is kept in `node_modules/.cache/marmeon-images/`, keyed by the file's content and
+these options, so the next build, on your machine or on a CI that keeps the folder, encodes only what changed.
+
+In development nothing is resized. The import is the original with its own size, so the page looks the same and starts at once.
+The widths and formats appear in a build (`marmeon build`).
+
+Only the app's own files are read: `.jpg`, `.jpeg`, `.png`, `.webp` and `.avif` inside the app that the dev server's `server.fs`
+rules allow. A file outside the app, a URL, a GIF and an SVG are refused, and an SVG needs no resizing: import it without `?image`.
+The file's first bytes must say it is a JPEG, PNG, WebP or AVIF, whatever its name says. The URLs of the variants are written into
+the code, so `base` in `vite.config.ts` has to be absolute (`/` or a URL), not `./`. A picture of more than 50 million pixels stops the build and names the file, because its decoding would take gigabytes of memory.
+Add `"@marmeon/vite/client"` to `compilerOptions.types` for the type of `*?image`.
+
 ## Images from the server
 
 A controller can send an `ImageSource` as a prop, for example for an image a user uploaded and the app resized:

@@ -152,9 +152,10 @@ describe('the public pages in search results and link previews', () => {
 });
 
 describe('the public list with an image', () => {
-  it('sizes the image and loads it lazily, without a preload', async () => {
+  it('sizes the image from its file and loads it lazily, without a preload', async () => {
     const response = await app.get('/en/about', { headers: { accept: 'text/html' } }).assertServerRendered();
-    expect(response.body).toMatch(/<img [^>]*alt="An illustration of the feature list[^"]*" width="320" height="80" loading="lazy"/);
+    // Development serves the original of `features.png?image` with its own size; a build adds the widths and formats.
+    expect(response.body).toMatch(/<img [^>]*src="\/modules\/about\/images\/features\.png"[^>]*alt="An illustration of the feature list[^"]*" width="1280" height="320" loading="lazy"/);
     expect(response.body).not.toContain('rel="preload" as="image"');
   });
 });
