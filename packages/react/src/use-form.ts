@@ -260,8 +260,7 @@ export function useForm(...args: unknown[]): unknown {
       return;
     }
     store.set(rememberKey, { data, errors }, remember.include.map((field) => `data.${field}`));
-    // `remember` is read by its key and fields.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `remember` is read by its key and fields (`include`), not by identity
   }, [store, rememberKey, include, data, errors, dirty.length]);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState<VisitProgress | null>(null);
@@ -425,8 +424,7 @@ function useLiveValidation(
           return next;
         }),
     });
-    // The setting is read once per URL, method, trigger and field list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `config` is a new object each render: the memo follows its URL, method, trigger, debounce and field list
   }, [navigator, target?.url, method, config === undefined, config?.on, config?.debounce, fieldsKey]);
   // Nothing scheduled or under way outlives the form (a remount gets the same instance back: cancel, never close).
   useEffect(() => () => live?.cancel(), [live]);

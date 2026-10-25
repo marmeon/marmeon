@@ -2,7 +2,7 @@
  * `pnpm check:source` — rules over the repository's own files, a part of `pnpm run ci`. Exit 1 names every hit. The rules: the
  * old name is gone, no Valibot outside a package's `src/`, `NODE_ENV` is checked positively, the old token prefix is gone, the
  * docs and the framework's messages speak to their readers, no reference to the private record, no mutant switched off without
- * a reason, no import of a package's internal subpath outside `packages/<name>/src/`, every deprecation shows the way forward, no import of the query builder outside a package's `src/`.
+ * a reason, no lint rule disabled without one, no import of a package's internal subpath outside `packages/<name>/src/`, every deprecation shows the way forward, no import of the query builder outside a package's `src/`.
  *
  * Each rule in full: CONTRIBUTING.md, "Rules over the source".
  */
@@ -488,6 +488,29 @@ export function mutationCommentHits(files: Iterable<SourceFile>): string[] {
   return hits;
 }
 
+const LINT_DISABLE = /^\s*(?:eslint|oxlint)-disable(?:-next-line|-line)?(?=\s|$)([\s\S]*)$/;
+
+/**
+ * Rule 13: every lint-disable comment in code (`eslint-disable` or `oxlint-disable`, with `-next-line`, `-line` or as a range)
+ * gives its reason after ` -- `, at least three words — why the rule is wrong for this line. `path:line: problem`.
+ */
+export function lintDisableHits(files: Iterable<SourceFile>): string[] {
+  const hits: string[] = [];
+  for (const { path, text } of files) {
+    if (!CODE.test(path) || !/(?:eslint|oxlint)-disable/.test(text)) continue;
+    const { comments, errors } = oxc().parseSync(path, text);
+    if (errors.length > 0) throw new Error(`${path}: oxc-parser cannot read it: ${errors[0]!.message}`);
+    for (const comment of comments) {
+      const found = LINT_DISABLE.exec(comment.value);
+      if (!found) continue;
+      const reason = found[1]!.split(/\s--\s/).slice(1).join(' -- ');
+      if (reason.trim().split(/\s+/).filter(Boolean).length >= MIN_REASON_WORDS) continue;
+      hits.push(`${path}:${text.slice(0, comment.start).split('\n').length}: a lint-disable comment needs a reason of at least ${MIN_REASON_WORDS} words after " -- " — say why the rule is wrong here`);
+    }
+  }
+  return hits;
+}
+
 /** Test files of every kind — the framework's, the stubs and the template, the examples — and the Vite and Vitest configurations. */
 const TEST_FILE = /(?:\.test\.tsx?$|(?:^|\/)vite(?:st)?\.config\.[cm]?[jt]s$)/;
 /** The names a test file starts a test, a suite or a fixture set from. */
@@ -686,6 +709,7 @@ export function checkSource(repository: string = root): string[] {
     ...DOC_TEXT_RULES.flatMap((rule) => textRuleHits(files, rule).map((hit) => `${rule.what} ${textRuleWhere(hit)} (${rule.why}): ${hit}`)),
     ...runtimeStringHits(files).map((hit) => `the framework's messages speak to app developers (say what holds, not its decision or wave): ${hit}`),
     ...mutationCommentHits(files).map((hit) => `mutation testing (a disabled mutant hides the test gap it would show; CONTRIBUTING.md › Rules over the source): ${hit}`),
+    ...lintDisableHits(files).map((hit) => `a disabled lint rule hides what it would show (CONTRIBUTING.md › Rules over the source): ${hit}`),
     ...retriedTestHits(files).map(
       (hit) => `a test that is retried measures noise — prove the property deterministically, or move a measurement of time into a *.timing.test.ts (CONTRIBUTING.md › Rules over the source): ${hit}`,
     ),
@@ -704,7 +728,7 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     console.log(
-      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; no test is retried; nothing outside a package's src/ imports an internal subpath; every deprecation names a replacement, a docs page and the version that removes it; no app, stub, template, doc or generator imports or installs ${LIBRARY}.`,
+      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; every lint-disable comment says why; no test is retried; nothing outside a package's src/ imports an internal subpath; every deprecation names a replacement, a docs page and the version that removes it; no app, stub, template, doc or generator imports or installs ${LIBRARY}.`,
     );
   }
 }
