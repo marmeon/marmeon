@@ -15,4 +15,11 @@ describe('the public list of features, rendered on the server', () => {
     const response = await app.get('/about', { headers: { accept: 'text/html' } }).assertOk().assertServerRendered().assertHydrates();
     for (const { slug } of new FeatureCatalog().all()) expect(response.body).toContain(`href="/about/features/${slug}"`);
   });
+
+  it('renders a feature with its link back, and hydrates', async () => {
+    const slug = new FeatureCatalog().all()[0]!.slug;
+    const app = await createTestApp(application, { ssr: true, ssrServer: server });
+    const response = await app.get(`/about/features/${slug}`, { headers: { accept: 'text/html' } }).assertOk().assertServerRendered().assertHydrates();
+    expect(response.body).toContain('href="/about"');
+  });
 });

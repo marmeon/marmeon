@@ -238,3 +238,110 @@ describe('prefetch in the viewport', () => {
     expect(prefetches.ready('/page', false)).toBe(false);
   });
 });
+
+describe('code loads in the viewport', () => {
+  it('a link that only preloads loads its code after the dwell and sends no request', async () => {
+    const { win, prefetches } = setup();
+    const load = vi.fn(async () => undefined);
+    const element = link();
+    prefetches.observe(element, undefined, {}, load);
+    win.see(element, 1);
+    await vi.advanceTimersByTimeAsync(249);
+    expect(load).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(win.requests).toEqual([]);
+  });
+
+  it('50 visible links: two code loads at once, all 50 load, nothing requested', async () => {
+    const { win, prefetches } = setup();
+    let underWay = 0;
+    let most = 0;
+    const load = vi.fn(async () => {
+      underWay++;
+      most = Math.max(most, underWay);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      underWay--;
+    });
+    const elements = Array.from({ length: 50 }, link);
+    for (const element of elements) prefetches.observe(element, undefined, {}, load);
+    for (const element of elements) win.see(element, 1);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(load).toHaveBeenCalledTimes(50);
+    expect(most).toBe(2);
+    expect(win.requests).toEqual([]);
+  });
+
+  it('code loads take no part of the 20: after 25 links that only preload, a prefetch still goes out', async () => {
+    const { win, prefetches, answer } = setup();
+    const load = vi.fn(async () => undefined);
+    const loaders = Array.from({ length: 25 }, link);
+    for (const element of loaders) prefetches.observe(element, undefined, {}, load);
+    for (const element of loaders) win.see(element, 1);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(load).toHaveBeenCalledTimes(25);
+    const fetching = link();
+    prefetches.observe(fetching, '/page');
+    win.see(fetching, 1);
+    await vi.advanceTimersByTimeAsync(250);
+    await answer();
+    expect(win.requests.map((request) => request.url)).toEqual([`${ORIGIN}/page`]);
+  });
+
+  it('with the 20 reached, a link with both still loads its code, and asks nothing more', async () => {
+    const { win, prefetches, answer } = setup();
+    show(win, prefetches, 20);
+    await vi.advanceTimersByTimeAsync(250);
+    for (let round = 0; round < 30; round++) await answer();
+    expect(win.requests).toHaveLength(20);
+    const load = vi.fn(async () => undefined);
+    const both = link();
+    prefetches.observe(both, '/extra', {}, load);
+    win.see(both, 1);
+    await vi.advanceTimersByTimeAsync(250);
+    await answer();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(win.requests).toHaveLength(20);
+  });
+
+  it('with the 20 reached, a code link behind a prefetch link still loads', async () => {
+    const { win, prefetches, answer } = setup();
+    show(win, prefetches, 20);
+    await vi.advanceTimersByTimeAsync(250);
+    for (let round = 0; round < 30; round++) await answer();
+    const load = vi.fn(async () => undefined);
+    const fetching = link();
+    const loading = link();
+    prefetches.observe(fetching, '/extra');
+    prefetches.observe(loading, undefined, {}, load);
+    win.see(fetching, 1);
+    win.see(loading, 1);
+    await vi.advanceTimersByTimeAsync(250);
+    await answer();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(win.requests).toHaveLength(20);
+  });
+
+  it('a link that prefetches and preloads does both, in one place of the queue', async () => {
+    const { win, prefetches, answer } = setup();
+    const load = vi.fn(async () => undefined);
+    const element = link();
+    prefetches.observe(element, '/page', {}, load);
+    win.see(element, 1);
+    await vi.advanceTimersByTimeAsync(250);
+    await answer();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(win.requests.map((request) => request.url)).toEqual([`${ORIGIN}/page`]);
+  });
+
+  it('nothing loads with Save-Data', async () => {
+    const { win, prefetches } = setup();
+    win.navigator = { connection: { saveData: true } };
+    const load = vi.fn(async () => undefined);
+    const element = link();
+    prefetches.observe(element, undefined, {}, load);
+    win.see(element, 1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(load).not.toHaveBeenCalled();
+  });
+});

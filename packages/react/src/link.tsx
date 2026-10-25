@@ -53,12 +53,18 @@ interface PrefetchProps {
   prefetch?: boolean | PrefetchTrigger | readonly PrefetchTrigger[];
   /** How long the prefetched page is used, in ms (default 30 000). */
   cacheFor?: number;
+  /**
+   * Load the code of the target's view ahead, and ask the server nothing: the same triggers as `prefetch` (`true` is `'hover'`).
+   * Only for links with `route` to a page; it combines with `prefetch`. See docs/navigation.md#loading-the-code-only.
+   */
+  preload?: boolean | PrefetchTrigger | readonly PrefetchTrigger[];
 }
 
 /** Actions (POST, DELETE, …) are never fetched ahead — the type is the message (and ignored at runtime). */
 interface NoPrefetch {
   prefetch?: 'only links (GET) are prefetched — never an action (POST, PUT, PATCH, DELETE)';
   cacheFor?: never;
+  preload?: 'only links (GET) are preloaded — never an action (POST, PUT, PATCH, DELETE)';
 }
 
 type AnchorAttributes = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>;
@@ -144,7 +150,7 @@ type AnyLinkProps = LinkOptions &
  * JavaScript — so never inside a `<p>` or another form. See docs/navigation.md#links-that-send.
  */
 export function Link<const N extends BrowserRouteNameInput = never>(props: LinkProps<N>) {
-  const { visit, prefetch: prefetchPage } = useRouterContext();
+  const { visit, prefetch: prefetchPage, resolve } = useRouterContext();
   const navigator = useRouterContext().navigator();
   const manifest = useContext(RoutesContext);
   const {
@@ -164,6 +170,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     reset,
     prefetch,
     cacheFor,
+    preload,
     layer,
     instant,
     confirm,
@@ -209,7 +216,20 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
 
   // Prefetching: GET links to pages of this site only — and not partial reloads (they are about the page on screen).
   const triggers = method === 'get' && only === undefined && except === undefined ? prefetchTriggers(prefetch) : prefetchTriggers(false);
+  // Preloading: the code of the target's view, from the manifest — a link by `href` has none, and asks the server nothing either way.
+  const view = route === undefined ? undefined : manifest?.[route]?.view;
+  const preloads = method === 'get' && only === undefined && except === undefined && view !== undefined ? prefetchTriggers(preload) : prefetchTriggers(false);
+  const unused = prefetchTriggers(preload).size > 0 && preloads.size === 0;
+  useEffect(() => {
+    if (unused && !warnedPreload && (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')) {
+      warnedPreload = true;
+      console.warn(`[marmeon] <Link preload> does nothing on ${route === undefined ? `href="${href}"` : `route "${route}"`}: it needs a route whose view the manifest names, and a plain GET link — use prefetch for a page's data.`);
+    }
+  }, [unused]);
   const hover = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const loadAhead = () => {
+    if (view !== undefined) resolve(view).catch(() => undefined);
+  };
   const fetchAhead = () => {
     clearTimeout(hover.current);
     const url = prefetchUrlOf(href);
@@ -222,20 +242,25 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
     if (layer && navigator) navigator.load(loadLayers).catch(() => undefined);
   }, [instantly, layer, navigator]);
   const onMount = triggers.has('mount');
+  const preloadOnMount = preloads.has('mount');
   useEffect(() => {
     if (onMount) fetchAhead();
     // `href`, not `fetchAhead`: a link that goes elsewhere prefetches again, a re-render does not.
   }, [onMount, href]);
+  useEffect(() => {
+    if (preloadOnMount) loadAhead();
+  }, [preloadOnMount, view]);
   useEffect(() => () => clearTimeout(hover.current), []);
   // In view: the prefetch code watches the element (and its limits) — the link only names it, and says when it goes.
   const anchor = useRef<HTMLAnchorElement | null>(null);
   const inView = triggers.has('viewport');
+  const preloadInView = preloads.has('viewport');
   useEffect(() => {
     const element = anchor.current;
-    const url = prefetchUrlOf(href);
-    if (!inView || !navigator || !element || url === undefined) return undefined;
-    return observeWith(navigator, element, url, { ...(cacheFor === undefined ? {} : { cacheFor }), ...(layer ? { layer: true } : {}) });
-  }, [inView, navigator, href, cacheFor, layer]);
+    const url = inView ? prefetchUrlOf(href) : undefined;
+    if (!navigator || !element || (url === undefined && !preloadInView)) return undefined;
+    return observeWith(navigator, element, url, { ...(cacheFor === undefined ? {} : { cacheFor }), ...(layer ? { layer: true } : {}) }, preloadInView ? () => resolve(view!) : undefined);
+  }, [inView, preloadInView, navigator, href, cacheFor, layer, view, resolve]);
 
   if (method !== 'get') {
     // A `javascript:` or `data:` address sends nothing — not with JavaScript (the visit refuses it), not without (a button that
@@ -278,6 +303,14 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
   };
 
   const onHover = triggers.has('hover');
+  const preloadOnHover = preloads.has('hover');
+  const ahead = onHover || preloadOnHover;
+  // What the pointer starts: the page (`prefetch`), the code (`preload`), or both.
+  const startAhead = () => {
+    clearTimeout(hover.current);
+    if (onHover) fetchAhead();
+    if (preloadOnHover) loadAhead();
+  };
   const as = (event: MouseEvent<HTMLAnchorElement>) => event as MouseEvent<HTMLAnchorElement & HTMLButtonElement>;
   // The page on screen: `aria-current="page"` for assistive technology, `data-current` for styles — the app's own wins.
   const current = isCurrentLink(page, href, activeMatch) ? { 'aria-current': 'page' as const, 'data-current': '' } : {};
@@ -290,7 +323,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
       onClick={handleClick}
       onMouseEnter={(event) => {
         onMouseEnter?.(as(event));
-        if (onHover) hover.current = setTimeout(fetchAhead, HOVER_PREFETCH_DELAY);
+        if (ahead) hover.current = setTimeout(startAhead, HOVER_PREFETCH_DELAY);
       }}
       onMouseLeave={(event) => {
         onMouseLeave?.(as(event));
@@ -298,16 +331,19 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
       }}
       onMouseDown={(event) => {
         onMouseDown?.(as(event));
-        if (onHover && event.button === 0) fetchAhead();
+        if (ahead && event.button === 0) startAhead();
       }}
       onTouchStart={(event) => {
         onTouchStart?.(event as TouchEvent<HTMLAnchorElement & HTMLButtonElement>);
-        if (onHover) fetchAhead();
+        if (ahead) startAhead();
       }}
       {...(rest as AnchorAttributes)}
     />
   );
 }
+
+/** Development only: `preload` on a link that cannot use it is said once. */
+let warnedPreload = false;
 
 const noSubscription = () => () => {};
 

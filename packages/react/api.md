@@ -711,6 +711,7 @@ type Nested<P extends string, V, Depth extends unknown[]> = {
 interface NoPrefetch {
     prefetch?: 'only links (GET) are prefetched — never an action (POST, PUT, PATCH, DELETE)';
     cacheFor?: never;
+    preload?: 'only links (GET) are preloaded — never an action (POST, PUT, PATCH, DELETE)';
 }
 // PageModules
 type PageModules = Record<string, () => Promise<unknown>>;
@@ -744,6 +745,7 @@ type ParamsProp<N extends string> = {} extends ParamsOf<N> ? {
 interface PrefetchProps {
     prefetch?: boolean | PrefetchTrigger | readonly PrefetchTrigger[];
     cacheFor?: number;
+    preload?: boolean | PrefetchTrigger | readonly PrefetchTrigger[];
 }
 // Primitive
 type Primitive = string | number | boolean | bigint | null | undefined | Date;

@@ -26,17 +26,20 @@ const PREFETCH_LIMIT = 30;
 
 /** How long a link stays half visible before it queues (ms): scrolling past it does not. */
 const VIEWPORT_DWELL_MS = 250;
-/** Viewport prefetches under way at once. */
+/** Viewport prefetches and code loads under way at once. */
 const VIEWPORT_CONCURRENCY = 2;
-/** Viewport prefetches started for one displayed page — a visit that lands starts the count again. */
+/** Viewport prefetches started for one displayed page (code loads do not count); a visit that lands starts the count again. */
 const VIEWPORT_LIMIT = 20;
 /** The share of a link that must be on screen. */
 const VIEWPORT_VISIBLE_RATIO = 0.5;
 
 /** A link in view, or on its way: waiting out its dwell, or in the queue. */
 interface Watched {
-  readonly url: string;
+  /** The page it fetches ahead — none for a link that only loads code. */
+  readonly url: string | undefined;
   readonly options: PrefetchOptions;
+  /** Loads the code of its target (`<Link preload="viewport">`). */
+  readonly preload: (() => Promise<unknown>) | undefined;
   timer: ReturnType<typeof setTimeout> | undefined;
   queued: boolean;
 }
@@ -182,12 +185,15 @@ export class Prefetches {
    * Prefetches `url` once `element` has been half in view for 250 ms — a link with `prefetch="viewport"`. Returns what stops
    * watching (the link unmounts). Never a flood: at most 2 requests at once and 20 for each displayed page, the rest of the
    * links waits in order; nothing while the document is hidden, with Save-Data or on a 2g connection; a link that leaves the
-   * view before its turn drops out. Without an `IntersectionObserver` it does nothing.
+   * view before its turn drops out. Without an `IntersectionObserver` it does nothing. `preload` loads the code of the link's
+   * target the same way (`<Link preload="viewport">`) — it asks the server nothing, and takes its place in the same queue and the
+   * same concurrency, but it counts for none of the 20; with no `url` that is all the link does.
    */
-  observe(element: Element, url: string, options: PrefetchOptions = {}): () => void {
+  observe(element: Element, url: string | undefined, options: PrefetchOptions = {}, preload?: () => Promise<unknown>): () => void {
     const { window } = this.#core;
     const Observer = window.IntersectionObserver;
-    if (this.#core.left || !Observer || new URL(url, window.location.href).origin !== window.location.origin) return () => {};
+    if (this.#core.left || !Observer || (url !== undefined && new URL(url, window.location.href).origin !== window.location.origin)) return () => {};
+    if (url === undefined && !preload) return () => {};
     const viewport = this.#viewport;
     this.#forget(element);
     viewport.observer ??= new Observer((entries) => {
@@ -209,7 +215,7 @@ export class Prefetches {
       doc.addEventListener('visibilitychange', shown);
       viewport.stopVisible = () => doc.removeEventListener?.('visibilitychange', shown);
     }
-    viewport.watched.set(element, { url, options, timer: undefined, queued: false });
+    viewport.watched.set(element, { url, options, preload, timer: undefined, queued: false });
     viewport.observer.observe(element);
     return () => this.#forget(element);
   }
@@ -286,23 +292,35 @@ export class Prefetches {
       }
       return;
     }
-    while (viewport.running < VIEWPORT_CONCURRENCY && viewport.started < VIEWPORT_LIMIT) {
+    // Links that wait for the next page's 20: they keep their place at the front.
+    const waiting: Element[] = [];
+    while (viewport.running < VIEWPORT_CONCURRENCY) {
       const element = viewport.queue.shift();
-      if (!element) return;
+      if (!element) break;
       const watched = viewport.watched.get(element);
       if (!watched) continue;
+      if (viewport.started >= VIEWPORT_LIMIT && !watched.preload) {
+        waiting.push(element);
+        continue;
+      }
       this.#forget(element);
-      // Sends nothing (the page on screen, a page held or under way already, a repeated link): costs no part of the 20.
-      const plan = this.#plan(watched.url, watched.options);
+      // Sends nothing (the page on screen, a page held or under way already, a repeated link): costs no part of the 20. Nor does a
+      // code load, which asks the server nothing; with the 20 reached, a link with both still loads its code, and its fetch is dropped.
+      const plan = watched.url === undefined ? undefined : this.#plan(watched.url, watched.options);
       const held = plan && this.#pages.peek(plan.key);
-      if (!plan || (held && !held.expired())) continue;
-      viewport.started++;
+      const fetching = plan !== undefined && !(held && !held.expired()) && viewport.started < VIEWPORT_LIMIT;
+      if (!fetching && !watched.preload) continue;
+      if (fetching) viewport.started++;
       viewport.running++;
-      void this.prefetch(watched.url, watched.options).finally(() => {
+      const url = watched.url;
+      // A code load that fails is forgotten: the visit loads it itself.
+      const loading = Promise.all([fetching && url !== undefined ? this.prefetch(url, watched.options) : undefined, watched.preload?.().catch(() => undefined)]);
+      void loading.finally(() => {
         viewport.running = Math.max(0, viewport.running - 1);
         this.#pump();
       });
     }
+    viewport.queue.unshift(...waiting);
   }
 
   /** Whether a prefetch of `url` has its page already (and may still be used) — an instant visit then needs no placeholder. */
