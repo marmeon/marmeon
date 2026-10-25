@@ -119,6 +119,9 @@ export const defaultToResponse: ResponseFactory = (result) => {
 const shown = new Redactor();
 const showPath = (route: RouteDefinition): string => shown.path(route.path, route.path);
 
+/** What {@link Router.checkRoutes} runs on a route: it throws to refuse it. */
+export type RouteCheck = (route: RouteDefinition, resolve: ClassResolver) => void;
+
 /** A route whose middleware declares a key twice (see {@link Router.middlewareProblems}). */
 export interface MiddlewareProblem extends AddsConflict {
   readonly route: RouteDefinition;
@@ -146,6 +149,7 @@ export class Router {
   readonly middleware = new MiddlewareGroups();
   readonly #validationHooks: ValidationHook[] = [];
   readonly #interceptors: RouteInterceptor[] = [];
+  readonly #routeChecks: RouteCheck[] = [];
 
   constructor(options: RouterOptions = {}) {
     this.#resolve = options.resolve ?? ((Class) => new Class());
@@ -258,6 +262,19 @@ export class Router {
     // Nothing a request does (`ctx.route`) may change a route for the requests after it.
     for (const route of this.#routes.slice(before)) route.seal();
     this.#indexNames();
+    for (const route of this.#routes.slice(before)) for (const check of this.#routeChecks) check(route, this.#resolve);
+    return this;
+  }
+
+  /**
+   * Runs `check` on every route loaded so far and on each one loaded later, as it loads — what it throws stops the start. For
+   * packages, while booting.
+   *
+   * @internal
+   */
+  checkRoutes(check: RouteCheck): this {
+    this.#routeChecks.push(check);
+    for (const route of this.#routes) check(route, this.#resolve);
     return this;
   }
 

@@ -80,6 +80,41 @@ describe('upload() — the rule of an upload field', () => {
     );
     expect(Object.fromEntries(found)).toEqual({ avatar: rule, cv: rule, 'profile.photo': rule });
   });
+
+  const file = () => upload({ maxBytes: 5 });
+
+  it.each([
+    ['a list of files', r.object({ photos: r.array(file()) }), '`photos` holds a list of files'],
+    ['a comma-separated list of files', r.object({ photos: r.list(file()) }), '`photos` holds a list of files'],
+    ['a list of objects with a file', r.object({ photos: r.array(r.object({ file: file() })) }), '`photos.file` holds a list of files'],
+    ['a list that is optional', r.object({ photos: r.array(file()).optional() }), '`photos` holds a list of files'],
+    ['an optional object with a file', r.object({ profile: r.object({ photo: file() }).optional() }), '`profile.photo` holds a file in an optional or nullable rule'],
+    ['a nullable object with a file', r.object({ profile: r.object({ photo: file() }).nullable() }), '`profile.photo` holds a file in an optional or nullable rule'],
+    ['an object with a default', r.object({ profile: r.object({ photo: file().nullable() }).default({ photo: null }) }), '`profile.photo` holds a file in an optional or nullable rule'],
+    ['an optional object deep in required ones', r.object({ a: r.object({ b: r.object({ c: r.object({ photo: file() }).optional() }) }) }), '`a.b.c.photo` holds'],
+    ['an optional object after custom()', r.object({ profile: r.object({ photo: file() }).custom(() => true).optional() }), '`profile.photo` holds'],
+    ['a union with a file', r.object({ photo: r.union([file(), r.literal('none')]) }), '`photo` holds a file in a union'],
+    ['a union of objects with a file', r.object({ photo: r.union([r.object({ file: file() }), r.object({ url: r.string() })]) }), '`photo.file` holds a file in a union'],
+    ['a file in conditional fields', r.object({ kind: r.in(['a', 'b']) }).when((data) => data.kind === 'b', { photo: file() }), '`photo` holds a file in fields that apply only under a condition'],
+    ['a body that is a list of files', r.array(file()), 'The body holds a list of files'],
+  ])('refuses %s, naming the field', (_name, schema, message) => {
+    expect(() => uploadFields(schema)).toThrow(message);
+    expect(() => uploadFields(schema)).toThrow('docs/storage.md#uploads');
+  });
+
+  it('keeps the supported shapes: a file of its own, optional or nullable, in required objects; lists and unions without files', () => {
+    const found = uploadFields(
+      r.object({
+        cv: file().optional(),
+        avatar: file().nullable(),
+        profile: r.object({ photo: file(), nested: r.object({ scan: file().nullable() }) }),
+        tags: r.array(r.string()),
+        notes: r.object({ text: r.string() }).optional(),
+        kind: r.union([r.literal('a'), r.literal('b')]),
+      }),
+    );
+    expect([...found.keys()]).toEqual(['cv', 'avatar', 'profile.photo', 'profile.nested.scan']);
+  });
 });
 
 /** Against the S3-compatible test container (`pnpm test:s3`): the presigned POST of an upload. */

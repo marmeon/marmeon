@@ -89,6 +89,27 @@ describe('Route registration', () => {
   });
 });
 
+describe('Route checks', () => {
+  const files = (names: string[]) => defineRoutes((Route) => names.forEach((name) => Route.authorize(everyone).get(`/${name}`, () => name)));
+
+  it('runs a check once per route, whether it was registered before the load or after it', () => {
+    const seen: string[] = [];
+    const router = new Router();
+    router.checkRoutes((route) => seen.push(`before ${route.path}`));
+    router.load(files(['a']));
+    router.checkRoutes((route) => seen.push(`after ${route.path}`));
+    router.load(files(['b']));
+    expect(seen).toEqual(['before /a', 'after /a', 'before /b', 'after /b']);
+  });
+
+  it('lets what a check throws come out of load()', () => {
+    const router = new Router().checkRoutes((route) => {
+      if (route.path === '/bad') throw new Error('refused /bad');
+    });
+    expect(() => router.load(files(['good', 'bad']))).toThrow('refused /bad');
+  });
+});
+
 describe('Dispatching', () => {
   const router = new Router().load(routes);
   const route = (name: string) => router.findByName(name)!;

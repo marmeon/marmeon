@@ -170,8 +170,10 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
 
   #modified(modifier: Omit<engine.Modifier, 'keepsEmpty'>): Rule<any, any> {
     const definition = this['~rule'];
+    const base = (context: BuildContext) => engine.modifiedEngine(this['~engine'](context), { ...modifier, keepsEmpty: definition.keepsEmpty }, definition.async);
+    CONTENTS.set(base, { kind: 'modified', rule: this });
     return new Rule({
-      base: (context) => engine.modifiedEngine(this['~engine'](context), { ...modifier, keepsEmpty: definition.keepsEmpty }, definition.async),
+      base,
       steps: [],
       sizes: [],
       async: definition.async,
@@ -507,6 +509,32 @@ export function metaOf(rule: unknown, key: symbol): unknown {
   return definition?.meta?.[key];
 }
 
+/** What a rule holds besides its own checks — the rules inside it. */
+export type RuleContents =
+  | { readonly kind: 'object'; readonly fields: Shape; readonly conditional: readonly Shape[] }
+  | { readonly kind: 'list'; readonly item: Rule<any, any> }
+  | { readonly kind: 'union'; readonly options: readonly Rule<any, any>[] }
+  /** `.optional()`, `.nullable()` or `.default()` of `rule`. */
+  | { readonly kind: 'modified'; readonly rule: Rule<any, any> };
+
+/** The contents of the rules that hold others, by their base (a rule made from it by `.custom()` or `.transform()` keeps the base). */
+const CONTENTS = new WeakMap<object, RuleContents>();
+
+/** Records what the rule of `base` holds — {@link contentsOf} reads it back. */
+export function holding<T extends RuleDefinition>(definition: T, contents: RuleContents): T {
+  CONTENTS.set(definition.base, contents);
+  return definition;
+}
+
+/**
+ * The rules inside `rule` — an object's fields, a list's item, a union's options, what `.optional()`/`.nullable()`/`.default()`
+ * wrap — or undefined for a rule that holds none (and for another library's schema).
+ */
+export function contentsOf(rule: unknown): RuleContents | undefined {
+  const base = (rule as { readonly '~rule'?: RuleDefinition } | null | undefined)?.['~rule']?.base;
+  return base === undefined ? undefined : CONTENTS.get(base);
+}
+
 function objectParts(rule: Rule<any, any>): ObjectParts {
   // The object's parts belong to its base; steps added later (`.custom()`) keep the base.
   const parts = PARTS.get(rule['~rule'].base as never);
@@ -524,6 +552,7 @@ export function objectDefinition(parts: ObjectParts, previous?: RuleDefinition):
     return engine.objectEngine(entries(parts.shape), whens, parts.confirmations, async);
   };
   PARTS.set(base as never, parts);
+  CONTENTS.set(base, { kind: 'object', fields: parts.shape, conditional: parts.whens.map((when) => when.shape) });
   const steps = previous?.steps ?? [];
   return {
     base,

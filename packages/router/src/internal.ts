@@ -5,6 +5,7 @@
  */
 export { accessLabel, formatAccessProblems, isEveryone, routeAccess } from './access.ts';
 export { ensuresOf } from './ensures.ts';
+export type { RouteCheck } from './router.ts';
 export { defaultToResponse, describeMiddlewareProblem, FRAMEWORK_ROUTES, isControllerClass } from './router.ts';
 export { localLocation } from './local-location.ts';
 export { addsConflicts, addsOf, isMiddlewareClass, runPipeline } from './middleware.ts';

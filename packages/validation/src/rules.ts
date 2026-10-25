@@ -1,7 +1,7 @@
 import type { InferInput, InferOutput } from '@marmeon/core';
 import * as engine from './engine.ts';
 import type { RuleMessage } from './engine.ts';
-import { ArrayRule, definition, NumberRule, objectRule, Rule, StringRule, type ObjectRule, type Shape } from './rule.ts';
+import { ArrayRule, definition, holding, NumberRule, objectRule, Rule, StringRule, type ObjectRule, type Shape } from './rule.ts';
 
 /** A number option of `r.in()` as a form or a URL sends it: `25` → `'25'`. */
 type Spelled<T> = T extends number ? `${T}` : never;
@@ -85,13 +85,16 @@ export const rules = {
   union: <const R extends readonly [Rule<any, any>, ...Rule<any, any>[]]>(options: R): Rule<OutputOf<R[number]>, InputOf<R[number]>> => {
     const async = options.some((option) => option['~rule'].async);
     return new Rule(
-      definition((context) => engine.unionEngine(options.map((option) => option['~engine'](context)), async), {
-        async,
-        contextual: options.some((option) => option['~rule'].contextual),
-        container: true,
-        // `''` is a value when one of the rules takes it.
-        keepsEmpty: options.some((option) => option['~rule'].keepsEmpty),
-      }),
+      holding(
+        definition((context) => engine.unionEngine(options.map((option) => option['~engine'](context)), async), {
+          async,
+          contextual: options.some((option) => option['~rule'].contextual),
+          container: true,
+          // `''` is a value when one of the rules takes it.
+          keepsEmpty: options.some((option) => option['~rule'].keepsEmpty),
+        }),
+        { kind: 'union', options },
+      ),
     );
   },
 
@@ -114,11 +117,14 @@ export const rules = {
   /** A list, each item checked by `item`. */
   array: <Item extends Rule<any, any>>(item: Item): ArrayRule<InferOutput<Item>, InferInput<Item>> =>
     new ArrayRule(
-      definition((context, sizes) => engine.arrayEngine(item['~engine'](context), item['~rule'].async, sizes), {
-        async: item['~rule'].async,
-        contextual: item['~rule'].contextual,
-        container: true,
-      }),
+      holding(
+        definition((context, sizes) => engine.arrayEngine(item['~engine'](context), item['~rule'].async, sizes), {
+          async: item['~rule'].async,
+          contextual: item['~rule'].contextual,
+          container: true,
+        }),
+        { kind: 'list', item },
+      ),
     ),
 
   /** An e-mail address — `r.string().email()`. */
@@ -156,10 +162,13 @@ export const rules = {
   /** A comma-separated list (`ada@example.com, alan@example.com`) or a list — each item checked by `item`. */
   list: <Item extends Rule<any, any>>(item: Item): ArrayRule<InferOutput<Item>, InferInput<Item>, string | InferInput<Item>[]> =>
     new ArrayRule(
-      definition((context, sizes) => engine.listEngine(item['~engine'](context), item['~rule'].async, sizes), {
-        async: item['~rule'].async,
-        contextual: item['~rule'].contextual,
-        container: true,
-      }),
+      holding(
+        definition((context, sizes) => engine.listEngine(item['~engine'](context), item['~rule'].async, sizes), {
+          async: item['~rule'].async,
+          contextual: item['~rule'].contextual,
+          container: true,
+        }),
+        { kind: 'list', item },
+      ),
     ),
 };
