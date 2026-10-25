@@ -103,8 +103,6 @@ export type ResolvePage = ((name: string) => Promise<PageComponent>) & {
   /**
    * The client features its views use — `<MarmeonApp>` attaches them to its navigator. `resolveModulePages` brings
    * `revalidateOnBack`: any of its views may declare it, and an app without the resolver carries none of its code.
-   *
-   * @experimental Follows `@marmeon/http/client/adapter`, which exports `Feature`.
    */
   readonly features?: readonly Feature[];
 };

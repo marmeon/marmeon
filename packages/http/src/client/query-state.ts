@@ -11,7 +11,7 @@ import { matchesPath } from '@marmeon/router/url';
 import { toSearchParams } from '../page.ts';
 import type { PageObject } from '../protocol.ts';
 import type { Navigator, VisitOptions } from './navigation.ts';
-import { pageQuery, queryUrl, withoutDefaults } from './query.ts';
+import { pageQueryOf, queryUrl, withoutDefaults } from './query.ts';
 
 /** What query state follows and visits: the navigator (the page on screen), or a layer. */
 export type QueryStateTarget = Pick<Navigator, 'page' | 'visit'> & { subscribe(listener: () => void): () => void };
@@ -101,7 +101,7 @@ export class QueryState<Q extends Record<string, unknown> = Record<string, unkno
 
   /** The state for `page` (the page on screen): the draft, else the page's query with its defaults. */
   value(page: Pick<PageObject, 'query' | 'queryDefaults'> = this.#navigator.page): Q {
-    return this.#draft ?? (pageQuery(page) as Q);
+    return this.#draft ?? (pageQueryOf(page) as Q);
   }
 
   /** Changes the state now and the URL after `debounce` ms. `undefined` takes a field back to its default. */
@@ -175,7 +175,7 @@ export class QueryState<Q extends Record<string, unknown> = Record<string, unkno
     } finally {
       this.#pending--;
     }
-    if (landed) this.#answered = keyOf(pageQuery(landed), landed.queryDefaults);
+    if (landed) this.#answered = keyOf(pageQueryOf(landed), landed.queryDefaults);
     // Cancelled by Back/Forward, say: the page moved on without this state.
     this.#onPage();
   }
@@ -183,7 +183,7 @@ export class QueryState<Q extends Record<string, unknown> = Record<string, unkno
   #onPage(): void {
     if (this.#draft === undefined || this.#timer !== undefined || this.#pending > 0) return;
     const page = this.#navigator.page;
-    if (keyOf(pageQuery(page), page.queryDefaults) === this.#answered) return;
+    if (keyOf(pageQueryOf(page), page.queryDefaults) === this.#answered) return;
     this.#draft = undefined;
     this.#notify();
   }

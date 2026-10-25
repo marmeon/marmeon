@@ -49,6 +49,7 @@ type PrefetchCore = Pick<FeatureHost, 'navigator' | 'window' | 'page' | 'left' |
 export class Prefetches {
   readonly #core: PrefetchCore;
 
+  /** @internal */
   constructor(core: PrefetchCore) {
     this.#core = core;
   }

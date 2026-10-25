@@ -86,6 +86,7 @@ export class LruMap<K, V> {
  * What memory keeps of a history entry: its page (a layer's, for a layer's entry). What features keep of it besides — its
  * islands' region objects, remembered state, a layer's place in the stack — lives in the entry's slots (`host.entry`), which
  * the core empties when memory lets go of the entry.
+ * @internal
  */
 export interface CachedEntry {
   readonly page: PageObject;
@@ -94,6 +95,7 @@ export interface CachedEntry {
 /**
  * History entries by key, least recently used first out — but never an entry on screen, and the entries an entry is used
  * together with (beneath a layer) count as used with it.
+ * @internal
  */
 export type PageCache = LruMap<string, CachedEntry>;
 

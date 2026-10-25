@@ -57,7 +57,10 @@ export function newKey(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-/** Checks the value of one field of a history entry: whether it is a position (never anything a page showed). */
+/**
+ * Checks the value of one field of a history entry: whether it is a position (never anything a page showed).
+ * @internal
+ */
 export type PositionCheck = (value: unknown) => boolean;
 
 const isPosition: PositionCheck = (value) => typeof value === 'object' && value !== null && Object.keys(value).length === 2 && typeof (value as ScrollPosition).x === 'number' && typeof (value as ScrollPosition).y === 'number';
@@ -105,7 +108,10 @@ export interface NavigateEvent {
   preventDefault(): void;
 }
 
-/** How an entry is committed — by the Navigation API (the core's), or with `pushState`/`replaceState` (the History fallback's). */
+/**
+ * How an entry is committed — by the Navigation API (the core's), or with `pushState`/`replaceState` (the History fallback's).
+ * @internal
+ */
 export type Commit = (state: HistoryState, url: string, how: 'push' | 'replace') => void;
 
 /**

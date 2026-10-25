@@ -250,6 +250,14 @@ describe('the headless table on the client core alone', () => {
     expect(app.navigator.page.props.title).toBe('Members');
   });
 
+  it('a bulk run whose page was left before the answer still resolves ok — the selection of the entry that is gone is detached', async () => {
+    const table = new TableController(app.navigator, app.navigator.page.props.members as Members, { entry: app.navigator.regionOwner.entry! });
+    table.select(table.data.rows[1]!);
+    const run = table.runBulk('removeLinks');
+    await app.navigator.visit('/members?page=2');
+    await expect(run).resolves.toMatchObject({ ok: true });
+  });
+
   it('a bulk action sends the keys ticked — and, for every matching row, the table’s state: never a list of keys', async () => {
     const table = app.table();
     table.select(table.data.rows[1]!);

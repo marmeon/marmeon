@@ -27,6 +27,7 @@ export class InstantVisits {
   /** The placeholder of an instant visit on screen — until its page lands, or the visit ends without one. */
   #shown: InstantShown | undefined;
 
+  /** @internal */
   constructor(core: InstantCore) {
     this.#core = core;
   }
@@ -34,6 +35,7 @@ export class InstantVisits {
   /**
    * What an instant visit adds to a visit that starts (the `start` hook): its placeholder once the request goes, gone when it
    * ends without its page. Only for a plain GET visit of a page that is not here already (fetched ahead) — nothing it keeps.
+   * @internal
    */
   start({ options, method, keeps, layer, takes, ready, url }: PendingVisit): VisitPart | undefined {
     const instant = options.instant;

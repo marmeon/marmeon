@@ -40,6 +40,7 @@ import {
   queryState,
   remember,
   revalidateOnBack,
+  selection,
   isHistoryState,
   liveValidationOnFirstUse,
   loadHistoryFallback,
@@ -55,7 +56,7 @@ import {
   showProgress,
   visitUrlOf,
   type PageMessages,
-  type RegionOwner,
+  RegionOwner,
 } from './adapter.ts';
 import { tabSync } from './index.ts';
 import { SESSION_PATH } from '../tab-sync-protocol.ts';
@@ -172,6 +173,43 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     expect(loads).toEqual(['https://app.test/login']);
     expect(navigator.cachedPages).toBe(0);
     stop();
+  });
+
+  it('refuses an owner the navigator did not make: a forged one writes into no entry and loads nothing', async () => {
+    serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
+    window.fetch = (async (input: string, init: RequestInit = {}) => server(input, init)) as typeof fetch;
+    const { navigator, stop } = await createTextApp();
+    const forged = new RegionOwner(navigator.regionOwner.entry);
+    expect(() => navigator.use(islands).region('/islands/sign-ins', { owner: forged })).toThrow(TypeError);
+    expect(forged.live.size).toBe(0);
+    expect(navigator.regionOwner.live.size).toBe(0);
+    expect(requests).toEqual([]);
+    stop();
+  });
+
+  it('takes the owner of its own navigator only: another app on the page makes no region in this one, and a key nothing shows keeps nothing', async () => {
+    serverRenderedDocument(page('users/Show', '/users/1', { user: 'Ada' }));
+    window.fetch = (async (input: string, init: RequestInit = {}) => server(input, init)) as typeof fetch;
+    const mine = await createTextApp();
+    const other = new Navigator({ features: [], initialPage: readInitialPage(), render: async () => undefined });
+    expect(() => mine.navigator.use(islands).region('/islands/sign-ins', { owner: other.regionOwner })).toThrow(TypeError);
+    expect(() => other.use(islands).region('/islands/sign-ins', { owner: mine.navigator.regionOwner })).toThrow(TypeError);
+    expect(requests).toEqual([]);
+    const entry = mine.navigator.regionOwner.entry!;
+    // A key nothing shows gets a detached store: it creates no slot and is empty again on the next ask.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const lost = mine.navigator.use(remember).of('no-such-entry');
+    lost.set('draft', 'x');
+    expect(mine.navigator.use(remember).of('no-such-entry').size).toBe(0);
+    const unselected = mine.navigator.use(selection).of('members', 'no-such-entry');
+    unselected.set([1], true);
+    expect(mine.navigator.use(selection).of('members', 'no-such-entry').keys).toEqual([]);
+    expect(mine.navigator.regionOwner.entry).toBe(entry);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('"no-such-entry" is not on screen'));
+    expect(() => mine.navigator.use(remember).of(entry)).not.toThrow();
+    expect(() => mine.navigator.use(selection).of('members', entry)).not.toThrow();
+    expect(() => mine.navigator.use(selection).of('members')).not.toThrow();
+    mine.stop();
   });
 
   it('renders islands: each a region of the page — loaded after it, kept in its entry, shown again on Back without a request', async () => {

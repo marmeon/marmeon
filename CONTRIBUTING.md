@@ -405,7 +405,7 @@ A retired environment variable (`.renamed()`) is listed under Environment as `OL
 
 Experimental has three forms, one source each: a whole entry point or package through `marmeon.experimental` in the
 `package.json` (`true` for every entry point, variable and command of the package, or a list of subpaths such as
-`["./client/adapter"]`); one option of an options interface through `@experimental` in the JSDoc of the member, which the
+`["./preview"]`); one option of an options interface through `@experimental` in the JSDoc of the member, which the
 snapshot takes out of its declaration and lists as the item `<Declaration>.<member>`; one command through `static experimental
 = true` on its class (`marmeon list` and `--help` say so). Experimental variables and commands stand in a section `## Experimental`
 of the package. `pnpm api:check` fails unless `docs/releases.md` › "What is public API" › "Experimental" names every experimental
@@ -795,10 +795,10 @@ The tests next to the kit's stubs (`packages/auth/stubs/react/modules/*/`) do no
 
 A UI adapter — `@marmeon/react` is the one there is — is a rendering layer. Everything else lives in the UI-free client core,
 `@marmeon/http/client`: the protocol, the history, the in-memory page cache, background requests and every security invariant.
-What an adapter builds on is `@marmeon/http/client/adapter` (experimental as a whole); `@marmeon/http/client` keeps what an app uses —
+What an adapter builds on is `@marmeon/http/client/adapter` (stable, like every entry point); `@marmeon/http/client` keeps what an app uses —
 the `hooks` and `tabSync` handles for `useFeature()` (typed `FeatureHandle`), `xsrfToken` and the types an adapter re-exports. Adapter code and the browser parts of other
 packages import the core from these two entries only, never from `@marmeon/http/internal`; a name an adapter lacks goes into
-`/client/adapter`. `packages/http/src/client/adapter.test.ts` is the proof, written against the two entries: a complete adapter in plain DOM visits, goes back and forward, loads
+`/client/adapter`. A new required member of an interface an adapter implements is a `breaking` change; a new capability comes as an optional member or as a feature of the core (`defineFeature` is the framework's own route and `@internal`). `packages/http/src/client/adapter.test.ts` is the proof, written against the two entries: a complete adapter in plain DOM visits, goes back and forward, loads
 deferred props, reloads partially, follows a 409, and drives islands, layers, actions with their optimistic patches, flash
 messages, the navigation guard, live validation, instant visits, remembered state and tab sync between two tabs — with no UI
 framework anywhere. New protocol, visit, region or cache logic goes into the core first, with its case in that test, then into

@@ -8,8 +8,8 @@
 import { historyFallback } from './features/history-fallback.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, type PageObject, PROTOCOL_VERSION } from '../protocol.ts';
-import { assertQueryPage, linkQuery, Navigator, queryState, queryUrl, withoutDefaults } from './adapter.ts';
-import { pageQuery } from './adapter.ts';
+import { assertQueryPage, linkQuery, Navigator, pageQueryOf, queryState, queryUrl } from './adapter.ts';
+import { withoutDefaults } from './query.ts';
 
 const DEFAULTS = { q: '', sort: 'name' };
 const PEOPLE = ['Ada Lovelace', 'Alan Turing', 'Grace Hopper', 'Hedy Lamarr'];
@@ -51,7 +51,7 @@ describe('query state in the client core (no UI framework)', () => {
   it('builds URLs without the defaults, and reads the parsed query of a page (it never parses one)', () => {
     expect(queryUrl({ url: '/people?q=old', queryDefaults: DEFAULTS }, { q: 'ada', sort: 'name', cursor: undefined })).toBe('/people?q=ada');
     expect(queryUrl({ url: '/people', queryDefaults: DEFAULTS }, { q: '', sort: '-name', tags: ['a', 'b'] })).toBe('/people?sort=-name&tags=a&tags=b');
-    expect(pageQuery({ query: { sort: '-name' }, queryDefaults: DEFAULTS })).toEqual({ q: '', sort: '-name' });
+    expect(pageQueryOf({ query: { sort: '-name' }, queryDefaults: DEFAULTS })).toEqual({ q: '', sort: '-name' });
     expect(linkQuery({ url: '/people?q=a', queryDefaults: DEFAULTS }, '/people', { q: 'a', sort: 'name' })).toEqual({ q: 'a' });
     expect(linkQuery({ url: '/people', queryDefaults: DEFAULTS }, '/users/1', { sort: 'name' })).toEqual({ sort: 'name' }); // another page: as given
   });

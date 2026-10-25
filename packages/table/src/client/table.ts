@@ -5,7 +5,7 @@
  * offer throws before a request goes out.
  */
 import type { ActionOutcome, Confirm, SelectionKey } from '@marmeon/http/client';
-import { pageQuery } from '@marmeon/http/client/adapter';
+import { pageQueryOf } from '@marmeon/http/client/adapter';
 import { queryState, selection, type Selection } from '@marmeon/http/client/adapter';
 import { queryUrl, type Navigator, type QueryState } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';
@@ -370,7 +370,7 @@ export function sortUrl<T extends AnyTableData>(data: T, column: SortableOf<T>, 
 
 /** The page's URL with its query changed by `patch` (`undefined`: back to the default) — defaults left out, the server's own parse. */
 function urlOf(page: Pick<PageObject, 'url' | 'query' | 'queryDefaults'>, patch: Record<string, unknown>): string {
-  const values = pageQuery(page);
+  const values = pageQueryOf(page);
   for (const [key, value] of Object.entries(patch)) {
     if (value !== undefined) values[key] = value;
     else if (page.queryDefaults && Object.hasOwn(page.queryDefaults, key)) values[key] = page.queryDefaults[key];

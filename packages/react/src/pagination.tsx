@@ -1,5 +1,5 @@
 import { queryUrl } from '@marmeon/http/client/adapter';
-import { pageQuery } from '@marmeon/http/client/adapter';
+import { pageQueryOf } from '@marmeon/http/client/adapter';
 import type { PaginationMeta } from '@marmeon/http/page';
 import type { PageObject } from '@marmeon/http/protocol';
 import type { ReactNode } from 'react';
@@ -85,7 +85,7 @@ function pageHref(page: Pick<PageObject, 'url' | 'component' | 'query' | 'queryD
       warned.add(`${page.component} ${param}`);
       console.warn(`[marmeon:R17] <Pagination param="${param}"> on ${page.component}, whose query schema has no "${param}" — its links would lead to the first page: spread pageQuery() into the route's query schema.`);
     }
-    const query = pageQuery(page);
+    const query = pageQueryOf(page);
     return (number) => queryUrl(page, { ...query, [param]: number });
   }
   return (number) => {

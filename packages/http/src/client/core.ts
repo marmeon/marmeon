@@ -21,7 +21,10 @@ import type { RegionOwner } from './owner.ts';
 import type { ReloadSpec } from './optimistic.ts';
 import type { Scroll, ScrollMemory } from './scroll.ts';
 
-/** What a request sends (the page headers come on top). */
+/**
+ * What a request sends (the page headers come on top).
+ * @internal
+ */
 export interface SendInit {
   readonly method: VisitMethod;
   readonly headers: Record<string, string>;
@@ -29,14 +32,20 @@ export interface SendInit {
   readonly signal: AbortSignal;
 }
 
-/** How a response is read: `replace` the entry on a 409, report a 5xx (`failed`), the guards a full load may pass (`consented`). */
+/**
+ * How a response is read: `replace` the entry on a 409, report a 5xx (`failed`), the guards a full load may pass (`consented`).
+ * @internal
+ */
 export interface ReadOptions {
   readonly replace: boolean;
   readonly failed: boolean;
   readonly consented?: true | readonly NavigationGuard[] | undefined;
 }
 
-/** Where a visit's answer goes (see `Navigator.#place`). */
+/**
+ * Where a visit's answer goes (see `Navigator.#place`).
+ * @internal
+ */
 export interface PlaceOptions {
   readonly method: VisitMethod;
   readonly replace: boolean;
@@ -47,12 +56,19 @@ export interface PlaceOptions {
   readonly hash: string;
 }
 
-/** The hooks that are events: they return nothing, all of them run. */
+/**
+ * The hooks that are events: they return nothing, all of them run.
+ * @internal
+ */
 export type FeatureEvent = 'write' | 'send' | 'unload' | 'started' | 'stopped' | 'stale' | 'draw' | 'page' | 'arrive' | 'popped' | 'deferred' | 'restored';
 
-/** A render as the core's modules ask for it: the page's owner and the features' contributions are filled in. */
+/**
+ * A render as the core's modules ask for it: the page's owner and the features' contributions are filled in.
+ * @internal
+ */
 export type DrawOptions = Pick<RenderOptions, 'preserveState'> & Partial<RenderOptions>;
 
+/** @internal What the framework's own features are written against. */
 export interface FeatureHost {
   /** The navigator itself — its public API. */
   readonly navigator: Navigator;

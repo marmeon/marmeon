@@ -9,7 +9,10 @@
 import { defineFeature, slot } from '../feature.ts';
 import type { ViewTransitionLike, ViewTransitionOption } from '../navigation.ts';
 
-/** What the feature tells an app: the view transition animating now (none while none runs, and never in an adapter's). */
+/**
+ * What the feature tells an app: the view transition animating now (none while none runs, and never in an adapter's).
+ * @internal
+ */
 export interface ViewTransitions {
   readonly running: ViewTransitionLike | undefined;
 }

@@ -1,18 +1,18 @@
 /**
  * `@marmeon/http/client/adapter` — the interface a UI adapter builds on: the navigator, regions and layers, the feature
- * wiring, loading the first page, the form helpers and the page helpers. Experimental until a second adapter exists: it can
- * change in any minor version. What an app uses (the `hooks` and `tabSync` handles, `xsrfToken`, the types an adapter re-exports) stays in
- * `@marmeon/http/client`. See docs/package-development.md#writing-a-ui-adapter.
+ * wiring, loading the first page, the form helpers and the page helpers. What an app uses (the `hooks` and `tabSync`
+ * handles, `xsrfToken`, the types an adapter re-exports) stays in `@marmeon/http/client`. See
+ * docs/package-development.md#writing-a-ui-adapter.
  */
 export type { FeatureHandle } from './handle.ts';
-export { xsrfToken, isHistoryState, mergePage, Navigator } from './navigation.ts';
+export { xsrfToken, isHistoryState, Navigator } from './navigation.ts';
 export { createPoll } from './poll.ts';
 export { progressBar, PROGRESS_ATTRIBUTE, showProgress } from './progress.ts';
 export { accepted } from './confirm.ts';
 export { isDevelopment, hasServerMarkup, readInitialPage, rootElement } from './document.ts';
 export { resolveRoute } from './routes.ts';
-export { pageQuery, linkQuery, queryUrl, withoutDefaults } from './query.ts';
-export { isSensitiveRememberField, NEVER_REMEMBERED_FIELD, SENSITIVE_REMEMBER_FIELD, loadSensitiveFields, Remembered } from './remember.ts';
+export { pageQueryOf, linkQuery, queryUrl } from './query.ts';
+export { isSensitiveRememberField, loadSensitiveFields, Remembered } from './remember.ts';
 export type { Confirm, ConfirmAnswer, ConfirmOptions, ConfirmRequest, ConfirmHandler, NativeDialogs } from './confirm.ts';
 export type { ProgressIndicator, ProgressOptions, ProgressSource } from './progress.ts';
 export type { Poll, PollOptions, PollDocument } from './poll.ts';
@@ -76,7 +76,7 @@ export { RegionOwner } from './owner.ts';
 export { loadLive } from './load-live.ts';
 export { Layer } from './layer.ts';
 export { assertQueryPage, QueryState } from './query-state.ts';
-export { liveValidationOnFirstUse, loadInstant, loadLayers, loadHistoryFallback, laterTarget, loadLiveValidation, loadOptimistic, loadPrefetch, loadTabSync, loadViewTransitions, prefetchWith } from './lazy.ts';
+export { liveValidationOnFirstUse, loadInstant, loadLayers, loadHistoryFallback, laterTarget, loadOptimistic, loadTabSync, prefetchWith } from './lazy.ts';
 export { loadUploads } from './load-uploads.ts';
 export type { FormLiveValidation } from './lazy.ts';
 export { ERROR_PAGE, LAYER_BACKDROP, pageInfo, pageName, scriptJson } from '../page-support.ts';
@@ -89,4 +89,3 @@ export type { PlaceOptions, FeatureEvent, DrawOptions, SendInit, ReadOptions } f
 export type { VisitEmitter } from './events.ts';
 export type { DocumentChange, DocumentChangeHow } from './document-change.ts';
 export type { ViewTransitions } from './features/view-transitions.ts';
-export type { ResetProps } from './merge.ts';

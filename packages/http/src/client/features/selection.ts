@@ -9,6 +9,7 @@
  * a bulk action sends the table's state instead, and the server parses it again.
  */
 import { defineFeature, slot } from '../feature.ts';
+import { isHeld } from '../owner.ts';
 import { notify } from '../notify.ts';
 
 /** A row's key, as a table's props carry it. */
@@ -112,6 +113,7 @@ export const selection = /* @__PURE__ */ defineFeature(
   'selection',
   (host): SelectionFeature => ({
     of: (table, entry) => {
+      if (entry !== undefined && !isHeld(host, entry)) return new Selection();
       const tables = host.entry(SELECTIONS, entry);
       let found = tables.get(table);
       if (!found) tables.set(table, (found = new Selection()));

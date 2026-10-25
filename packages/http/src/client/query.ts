@@ -6,7 +6,7 @@ import { toSearchParams, type Query } from '../page.ts';
 import type { PageObject } from '../protocol.ts';
 
 /** The page's query with its defaults filled in — what its controller saw as `ctx.query`. */
-export function pageQuery(page: Pick<PageObject, 'query' | 'queryDefaults'>): Record<string, unknown> {
+export function pageQueryOf(page: Pick<PageObject, 'query' | 'queryDefaults'>): Record<string, unknown> {
   return { ...page.queryDefaults, ...page.query };
 }
 
