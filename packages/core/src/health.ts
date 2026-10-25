@@ -1,4 +1,6 @@
+import { durationToMilliseconds, durationToSeconds, type Duration } from './clock.ts';
 import type { Container } from './container.ts';
+import { withCode } from './error-codes.ts';
 
 /**
  * One readiness check of `/up/ready`: an invokable class whose `handle()` throws (or rejects) when the check fails; what it
@@ -8,10 +10,10 @@ export interface HealthCheck {
   handle(): void | string | Promise<void | string>;
 }
 
-/** A health check's class: `static check` is its name; `static timeout` (ms) overrides the default of 2 s. */
+/** A health check's class: `static check` is its name; `static timeout` (seconds, or a {@link Duration}) overrides the default of 2 s and may be up to a minute. */
 export type HealthCheckClass = (new (...args: any[]) => HealthCheck) & {
   readonly check: string;
-  readonly timeout?: number;
+  readonly timeout?: Duration;
 };
 
 /** What one check said. */
@@ -33,7 +35,10 @@ export interface HealthReport {
 }
 
 /** How long a check may take before it counts as failing (ms), unless its class says `static timeout`. */
-export const DEFAULT_HEALTH_TIMEOUT = 2_000;
+const DEFAULT_HEALTH_TIMEOUT_MS = 2_000;
+
+/** The longest `static timeout` a check may ask for (s); more can only be a value meant as milliseconds. */
+const MAX_HEALTH_TIMEOUT_SECONDS = 60;
 
 /**
  * The readiness checks of an app: those of every provider's `static health` (packages: database, redis, cache,
@@ -54,6 +59,20 @@ export class HealthChecks {
       if (typeof check !== 'function' || typeof check.check !== 'string' || check.check === '') {
         throw new TypeError(`${(check as { name?: string } | undefined)?.name ?? String(check)} is listed as a health check but has no \`static check = '<name>'\`.`);
       }
+      if (check.timeout !== undefined) {
+        let seconds: number;
+        try {
+          seconds = durationToSeconds(check.timeout);
+        } catch (error) {
+          throw new TypeError(`${check.name} has a \`static timeout\` that is no span of time: ${(error as Error).message}`, { cause: error });
+        }
+        if (seconds <= 0) throw new TypeError(withCode('K13', `${check.name} sets a \`static timeout\` of ${seconds} s; it must be above zero.`));
+        if (seconds > MAX_HEALTH_TIMEOUT_SECONDS) {
+          throw new TypeError(
+            withCode('K13', `${check.name} sets a \`static timeout\` of ${seconds} s, over the ${MAX_HEALTH_TIMEOUT_SECONDS} s a health check may take. \`static timeout\` is in seconds — for 5000 ms write \`{ milliseconds: 5000 }\`.`),
+          );
+        }
+      }
       const twin = this.#checks.find((other) => other.check === check.check);
       if (twin) throw new TypeError(`Two health checks are named "${check.check}": ${twin.name} and ${check.name}. Give one another \`static check\`.`);
       this.#checks.push(check);
@@ -67,11 +86,12 @@ export class HealthChecks {
   }
 
   /**
-   * Runs every check at once, each built by `container` (a scope of its own) and given `timeout` ms (or its own
+   * Runs every check at once, each built by `container` (a scope of its own) and given `timeout` (default 2 s, or its own
    * `static timeout`). A check that throws or takes longer fails; the report says which.
    */
-  async run(container: Container, { timeout = DEFAULT_HEALTH_TIMEOUT }: { timeout?: number } = {}): Promise<HealthReport> {
-    const checks = await Promise.all(this.#checks.map((check) => runOne(check, container, check.timeout ?? timeout)));
+  async run(container: Container, options: { timeout?: Duration } = {}): Promise<HealthReport> {
+    const fallback = options.timeout === undefined ? DEFAULT_HEALTH_TIMEOUT_MS : durationToMilliseconds(options.timeout);
+    const checks = await Promise.all(this.#checks.map((check) => runOne(check, container, check.timeout === undefined ? fallback : durationToMilliseconds(check.timeout))));
     return { ok: checks.every((check) => check.status === 'ok'), checks };
   }
 }

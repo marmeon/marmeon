@@ -1,8 +1,9 @@
+import { durationToSeconds, type Duration } from '@marmeon/core';
 import { editableResponse } from './response.ts';
 
 export interface CookieOptions {
-  /** Lifetime in seconds. Without `maxAge` and `expires`, the cookie ends with the browser session. */
-  maxAge?: number;
+  /** Lifetime — seconds, or a duration; written as whole seconds, rounded down. Without `maxAge` and `expires`, the cookie ends with the browser session. */
+  maxAge?: Duration;
   expires?: Date;
   /** Defaults to `/`. */
   path?: string;
@@ -53,7 +54,7 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
 
   const parts = [`${name}=${encodeURIComponent(value)}`, `Path=${path}`];
   if (domain) parts.push(`Domain=${domain}`);
-  if (maxAge !== undefined) parts.push(`Max-Age=${Math.floor(maxAge)}`);
+  if (maxAge !== undefined) parts.push(`Max-Age=${Math.floor(durationToSeconds(maxAge))}`);
   if (expires) parts.push(`Expires=${expires.toUTCString()}`);
   if (httpOnly) parts.push('HttpOnly');
   if (secure) parts.push('Secure');

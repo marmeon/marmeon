@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Duration } from './clock.ts';
 import { createApplication } from './application.ts';
 import { Container } from './container.ts';
 import { HealthChecks, type HealthCheck, type HealthReport } from './health.ts';
@@ -29,7 +30,7 @@ class FailingCheck implements HealthCheck {
 }
 class SlowCheck implements HealthCheck {
   static check = 'slow';
-  static timeout = 20;
+  static timeout = { milliseconds: 20 };
   handle(): Promise<void> {
     // Rejects long after its time ran out: never an unhandled rejection.
     return new Promise((_, reject) => setTimeout(() => reject(new Error('too late')), 100));
@@ -68,6 +69,57 @@ describe('HealthChecks', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('takes static timeout and run({ timeout }) as seconds or parts', async () => {
+    class Seconds implements HealthCheck {
+      static check = 'seconds';
+      static timeout = 0.05;
+      handle = () => new Promise<void>(() => {});
+    }
+    class Parts implements HealthCheck {
+      static check = 'parts';
+      static timeout = { milliseconds: 500 };
+      handle(): void {}
+    }
+    class Default implements HealthCheck {
+      static check = 'default';
+      handle = () => new Promise<void>(() => {});
+    }
+    const report = await new HealthChecks([Seconds, Parts, Default]).run(new Container(), { timeout: { milliseconds: 30 } });
+    expect(report.checks.map(({ name, status, ms }) => ({ name, status, ms: status === 'timeout' ? ms : 0 }))).toEqual([
+      { name: 'seconds', status: 'timeout', ms: 50 },
+      { name: 'parts', status: 'ok', ms: 0 },
+      { name: 'default', status: 'timeout', ms: 30 },
+    ]);
+  });
+
+  it('refuses a static timeout over a minute, which only a value meant as milliseconds can be (K13)', () => {
+    class Old implements HealthCheck {
+      static check = 'old';
+      static timeout = 5000;
+      handle(): void {}
+    }
+    expect(() => new HealthChecks([Old])).toThrow(/\[marmeon:K13\].*static timeout.*is in seconds — for 5000 ms write `\{ milliseconds: 5000 \}`/);
+    class Longest implements HealthCheck {
+      static check = 'longest';
+      static timeout = { minutes: 1 };
+      handle(): void {}
+    }
+    expect(new HealthChecks([Longest]).all()).toHaveLength(1);
+    class Text implements HealthCheck {
+      static check = 'text';
+      // @ts-expect-error a string is no span of time
+      static timeout: Duration = '2s';
+      handle(): void {}
+    }
+    expect(() => new HealthChecks([Text])).toThrow(/Text has a `static timeout` that is no span of time/);
+    class Zero implements HealthCheck {
+      static check = 'zero';
+      static timeout = 0;
+      handle(): void {}
+    }
+    expect(() => new HealthChecks([Zero])).toThrow(/\[marmeon:K13\].*above zero/);
   });
 
   it('every check is built anew in a scope of its own (constructor injection)', async () => {

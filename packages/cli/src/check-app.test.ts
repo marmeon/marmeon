@@ -173,7 +173,7 @@ export class DownCheck { static check = 'cache-down'; handle() { throw new Error
 
   it('gives a readiness check that hangs its time limit', () => {
     const probe = `${PROBE}
-export class SlowCheck { static check = 'slow'; static timeout = 100; handle() { return new Promise(() => {}); } }
+export class SlowCheck { static check = 'slow'; static timeout = { milliseconds: 100 }; handle() { return new Promise(() => {}); } }
 (ProbeProvider as { health?: unknown }).health = [SlowCheck];
 `;
     const { code, stdout } = check(migrated({ probe }), ['--only=readiness', '--json']);
@@ -420,7 +420,7 @@ export class Chatty { static check = 'chatty'; static phase = 'run' as const; ha
 
   it('ends by itself although a check left a timer and a promise that never settles, and says so', () => {
     const probe = `${PROBE}
-export class Hangs { static check = 'hangs'; static phase = 'run' as const; static timeout = 300; handle() { setInterval(() => {}, 1000); return new Promise(() => {}); } }
+export class Hangs { static check = 'hangs'; static phase = 'run' as const; static timeout = { milliseconds: 300 }; handle() { setInterval(() => {}, 1000); return new Promise(() => {}); } }
 (ProbeProvider as { checks?: unknown }).checks = [Hangs];
 `;
     const { code, stdout } = check(app({ probe }), ['--only=hangs,boot', '--json']);
@@ -489,7 +489,7 @@ export class Forger { static check = 'forger'; static phase = 'run' as const; ha
 
   it('puts a failure that arrives after its check ran out of time into the warnings, and never on the check that runs then', () => {
     const probe = `${PROBE}
-export class Late { static check = 'late'; static phase = 'run' as const; static timeout = 200; handle({ signal }: { signal: AbortSignal }) { return new Promise((resolve) => signal.addEventListener('abort', () => { setTimeout(() => void Promise.reject(new Error('left behind password=hunter2')), 100); resolve([]); })); } }
+export class Late { static check = 'late'; static phase = 'run' as const; static timeout = { milliseconds: 200 }; handle({ signal }: { signal: AbortSignal }) { return new Promise((resolve) => signal.addEventListener('abort', () => { setTimeout(() => void Promise.reject(new Error('left behind password=hunter2')), 100); resolve([]); })); } }
 export class Steady { static check = 'steady'; static phase = 'run' as const; async handle() { await new Promise((resolve) => setTimeout(resolve, 600)); return []; } }
 (ProbeProvider as { checks?: unknown }).checks = [Late, Steady];
 `;

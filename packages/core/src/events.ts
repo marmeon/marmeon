@@ -40,8 +40,8 @@ export interface QueuedListenerOptions {
   readonly delay?: Duration;
   /** Attempts in all (default 1: no retry). */
   readonly tries?: number;
-  /** Seconds before the next attempt — one value, or one per retry (the last repeats). */
-  readonly backoff?: number | readonly number[];
+  /** Time before the next attempt — seconds, or a duration; one value, or one per retry (the last repeats). */
+  readonly backoff?: Duration | readonly Duration[];
 }
 
 /**

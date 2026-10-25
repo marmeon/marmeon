@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Duration } from '@marmeon/core';
 import { CheckRegistry, CheckSetupError, type AppCheckClass } from './registry.ts';
 
 const check = (name: string, phase: 'build' | 'run' = 'build', label = 'Check'): AppCheckClass => {
@@ -18,6 +19,27 @@ describe('CheckRegistry', () => {
     const registry = new CheckRegistry().add([check('b', 'run'), check('a')], 'one').add([check('c', 'run')], 'two');
     expect(registry.all('build').map((found) => found.check)).toEqual(['a']);
     expect(registry.all('run').map((found) => found.check)).toEqual(['b', 'c']);
+  });
+
+  it('takes a static timeout as seconds or parts up to ten minutes, and refuses more (K13)', () => {
+    const timed = (timeout: unknown): AppCheckClass => Object.assign(check('timed'), { timeout }) as AppCheckClass;
+    expect(new CheckRegistry().add([timed(0.05)]).all('build')).toHaveLength(1);
+    expect(new CheckRegistry().add([timed({ milliseconds: 500 })]).all('build')).toHaveLength(1);
+    expect(new CheckRegistry().add([timed({ minutes: 10 })]).all('build')).toHaveLength(1);
+    expect(() => new CheckRegistry().add([timed(5000)], 'module blog')).toThrow(/\[marmeon:K13\].*a check of `marmeon check`.*for 5000 ms write `\{ milliseconds: 5000 \}`/);
+    expect(() => new CheckRegistry().add([timed('2s')], 'module blog')).toThrow(/Check \(module blog\) has a .static timeout. that is no span of time/);
+    expect(() => new CheckRegistry().add([timed(0)])).toThrow(/\[marmeon:K13\].*above zero/);
+    expect(() => new CheckRegistry().add([timed({ seconds: -1 })])).toThrow(/\[marmeon:K13\]/);
+    class Typed {
+      static check = 'typed';
+      static phase = 'build' as const;
+      // @ts-expect-error a string is no span of time
+      static timeout: Duration = '2s';
+      handle() {
+        return [];
+      }
+    }
+    expect(() => new CheckRegistry().add([Typed])).toThrow(CheckSetupError);
   });
 
   it('takes the same class twice as one', () => {

@@ -14,7 +14,7 @@ const state = { database: 'ok' as 'ok' | 'down' | 'hang', runs: 0 };
 
 class FakeDatabaseCheck implements HealthCheck {
   static check = 'database';
-  static timeout = 100;
+  static timeout = { milliseconds: 100 };
   async handle(): Promise<string> {
     state.runs++;
     if (state.database === 'down') throw new Error('connect ECONNREFUSED 127.0.0.1:5432, password=hunter2');

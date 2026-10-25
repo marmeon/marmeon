@@ -114,7 +114,7 @@ export declare class CookieJar {
 }
 // CookieOptions
 export interface CookieOptions {
-    maxAge?: number;
+    maxAge?: Duration;
     expires?: Date;
     path?: string;
     domain?: string;

@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { Application, ErrorSolutions, errorCodeOf, HealthChecks, Redactor, type ServiceProviderClass } from '@marmeon/core';
+import { Application, durationToMilliseconds, ErrorSolutions, errorCodeOf, HealthChecks, Redactor, type ServiceProviderClass } from '@marmeon/core';
 import { coreSolutions, loadDiscoveredPackages } from '@marmeon/core/internal';
 import { loadApplication } from '../load.ts';
 import { CheckRegistry, type AppCheckClass } from './registry.ts';
@@ -148,7 +148,8 @@ function silencedOf(problem: unknown, redactor: Redactor, source: string): { sil
 async function runCheck(Check: AppCheckClass, app: Application, root: string): Promise<CheckReport> {
   const started = performance.now();
   const ms = () => Math.round(performance.now() - started);
-  const limit = typeof Check.timeout === 'number' && Check.timeout > 0 ? Check.timeout : CHECK_TIMEOUT;
+  const asked = Check.timeout === undefined ? 0 : durationToMilliseconds(Check.timeout);
+  const limit = asked > 0 ? asked : CHECK_TIMEOUT;
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
