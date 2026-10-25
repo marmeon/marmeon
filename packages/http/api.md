@@ -768,6 +768,26 @@ export interface ViewResult<TProps extends ViewProps = ViewProps, TComponent ext
 // Views
 export interface Views {
 }
+// WebhookContext
+export interface WebhookContext {
+    readonly id: string | undefined;
+    readonly timestamp: Date | undefined;
+    readonly body: string;
+}
+// WebhookDefinition
+export interface WebhookDefinition {
+    readonly scheme: WebhookScheme;
+    readonly secrets: string | readonly string[];
+    readonly tolerance?: Duration;
+}
+// WebhookScheme
+export type WebhookScheme = 'standard' | 'stripe' | 'github';
+// Webhooks
+export declare class Webhooks {
+    #private;
+    define(name: string, definition: WebhookDefinition): this;
+    has(name: string): boolean;
+}
 // WrappedProp
 export type WrappedProp<T = unknown> = OptionalProp<T> | DeferredProp<T> | MergingDeferredProp<T> | AlwaysProp<T> | MergeProp<T> | OnceProp<T>;
 // WritePermit
@@ -871,6 +891,10 @@ export declare function toLayer<TProps extends ViewProps, V extends string>(view
 }): LayerResult<TProps, V>;
 // translatable
 export { translatable } from '@marmeon/router';
+// verifyWebhook
+export declare function verifyWebhook(name: string): MiddlewareClass<{}, {
+    webhook: WebhookContext;
+}>;
 // view
 export declare function view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, options?: ResultOptions): PageResult<TProps, V>;
 // withLiveMethod

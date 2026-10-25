@@ -71,7 +71,7 @@ header decides. Only a client that sends neither needs the session's token, and 
   A guest who only reads leaves no cookie behind, unless the page keeps a session, such as one with an upload field.
 - Browsers send Fetch Metadata to secure origins only. Over plain HTTP the check falls back to `Origin`, then to the token. Serve
   production over HTTPS.
-- Trust other origins with `CSRF_TRUSTED_ORIGINS`, and exclude webhooks that cannot carry a token with a module's `csrfExcept`.
+- Trust other origins with `CSRF_TRUSTED_ORIGINS`, and check webhooks by their signature with [`verifyWebhook()`](webhooks.md), which needs no `csrfExcept`.
 - The `api` group has no session and no CSRF check, since every request proves itself with its [API token](api-tokens.md).
 
 The [CSRF protection](csrf.md) page explains every stage.

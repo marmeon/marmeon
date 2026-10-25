@@ -66,11 +66,12 @@ export function createRequestState(request: Request, { maxBodyBytes = DEFAULT_MA
   const query = new URL(request.url).searchParams;
   let input: Promise<Input> | undefined;
   let read: Input | undefined;
+  limits.set(request, maxBodyBytes);
 
   return {
     query,
     input: () =>
-      (input ??= parseInput(request, maxBodyBytes).then((parsed) => {
+      (input ??= parseInput(request).then((parsed) => {
         read = parsed;
         return parsed;
       })),
@@ -162,14 +163,14 @@ function dropProtoKeys(root: object): void {
   }
 }
 
-async function parseInput(request: Request, maxBodyBytes: number): Promise<Input> {
+async function parseInput(request: Request): Promise<Input> {
   const type = mediaType(request);
   if (request.method === 'GET' || request.method === 'HEAD' || request.body === null || type === undefined) {
     return build([]);
   }
 
   if (type === 'application/json' || type.endsWith('+json')) {
-    const text = new TextDecoder().decode(await readBody(request, maxBodyBytes));
+    const text = new TextDecoder().decode(await requestBytes(request));
     if (text.trim() === '') return build([]);
     let body: unknown;
     try {
@@ -187,12 +188,13 @@ async function parseInput(request: Request, maxBodyBytes: number): Promise<Input
   }
 
   if (type === 'application/x-www-form-urlencoded') {
-    const form = new URLSearchParams(new TextDecoder().decode(await readBody(request, maxBodyBytes)));
+    const form = new URLSearchParams(new TextDecoder().decode(await requestBytes(request)));
     return build(form);
   }
 
   if (type === 'multipart/form-data') {
-    const bytes = await readBody(request, maxBodyBytes);
+    const bytes = await requestBytes(request);
+    bodies.delete(request); // uploads are not kept in memory a second time
     let form: FormData;
     try {
       form = await new Response(bytes, { headers: { 'content-type': request.headers.get('content-type')! } }).formData();
@@ -208,6 +210,24 @@ async function parseInput(request: Request, maxBodyBytes: number): Promise<Input
 
 function mediaType(request: Request): string | undefined {
   return request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() || undefined;
+}
+
+const limits = new WeakMap<Request, number>();
+const bodies = new WeakMap<Request, Promise<Uint8Array<ArrayBuffer>>>();
+
+/**
+ * The request's body as bytes — read once, up to the request state's `maxBodyBytes`, and kept: `input()` parses these same bytes,
+ * so what a signature check saw is what the app reads. A request without a body gives no bytes.
+ *
+ * @internal
+ */
+export function requestBytes(request: Request): Promise<Uint8Array<ArrayBuffer>> {
+  let bytes = bodies.get(request);
+  if (!bytes) {
+    bytes = request.body === null ? Promise.resolve(new Uint8Array(0)) : readBody(request, limits.get(request) ?? DEFAULT_MAX_BODY_BYTES);
+    bodies.set(request, bytes);
+  }
+  return bytes;
 }
 
 /** Reads the body up to `limit` bytes — a lying or missing `Content-Length` changes nothing. */

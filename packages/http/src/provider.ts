@@ -16,6 +16,7 @@ import { SharedData } from './shared-data.ts';
 import { httpSolutions } from './solutions.ts';
 import { ServerClosing } from './server-closing.ts';
 import { UrlSigner } from './signed-urls.ts';
+import { Webhooks } from './webhooks.ts';
 import { SESSION_PATH } from './tab-sync-protocol.ts';
 
 declare module '@marmeon/core' {
@@ -73,6 +74,7 @@ export class HttpServiceProvider implements ServiceProvider {
     // Who sent the request: the kernel binds it per request; outside one (a job, a command) nobody.
     container.scoped(ClientInfo, () => NO_CLIENT_INFO);
     container.singleton(UrlSigner);
+    container.singleton(Webhooks);
     // The session's epoch: on every page object, and what `/_marmeon/session` answers.
     container.singleton(SessionEpoch);
     container.scoped(SessionEpochController, (c) => new SessionEpochController(() => epochOfResolver(c)));

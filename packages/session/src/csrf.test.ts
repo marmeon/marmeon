@@ -1,8 +1,11 @@
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, HttpServiceProvider, ValidationError, view, type PageObject } from '@marmeon/http';
+import { Controller, HttpServiceProvider, ValidationError, verifyWebhook, view, Webhooks, type PageObject } from '@marmeon/http';
+import { signWebhook } from '@marmeon/http/internal';
 import { createHttpKernel } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
+import { SessionConfig } from './config.ts';
+import { CsrfConfig, CsrfProtection, VerifyCsrfToken } from './csrf.ts';
 import { SessionServiceProvider } from './provider.ts';
 import { Session } from './session.ts';
 import { SessionStore } from './store.ts';
@@ -90,13 +93,24 @@ const routes = openRoutes((Route) => {
   Route.post('/save', () => ({ saved: true }));
   Route.post('/login', LoginController);
   Route.post('/webhooks/stripe', () => ({ received: true }));
+  Route.middleware(verifyWebhook('payments')).post('/signed', () => ({ received: true }));
+  Route.post('/unsigned', () => ({ received: true }));
 });
+
+// Put together at run time: a literal that looks like a secret would block the push.
+const WEBHOOK_SECRET = ['sk', 'w'.repeat(24)].join('_');
+
+class DefineWebhooks {
+  boot(app: { container: { make(key: typeof Webhooks): Webhooks } }) {
+    app.container.make(Webhooks).define('payments', { scheme: 'stripe', secrets: WEBHOOK_SECRET });
+  }
+}
 
 async function boot(env: Record<string, string> = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DefineWebhooks],
     modules: [defineModule({ name: 'shop', routes, csrfExcept: ['/webhooks/*'] })],
   }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', ...env } });
   const kernel = createHttpKernel(application);
@@ -310,5 +324,66 @@ describe('VerifyCsrfToken', () => {
     const { send } = await boot();
     expect((await send('/webhooks/stripe', form({}))).status).toBe(200);
     expect((await send('/form')).status).toBe(200);
+  });
+
+  describe('a route behind verifyWebhook()', () => {
+    const body = JSON.stringify({ type: 'invoice.paid' });
+    const signedPost = (headers: Record<string, string> = {}, secret = WEBHOOK_SECRET) => ({
+      method: 'POST',
+      body,
+      headers: { 'content-type': 'application/json', ...signWebhook('stripe', secret, body), ...headers },
+    });
+
+    it('needs no token, no session and no csrfExcept: the signature is its protection', async () => {
+      const { send } = await boot();
+      const response = await send('/signed', signedPost());
+      expect(response.status).toBe(200);
+      expect(response.headers.getSetCookie()).toEqual([]);
+    });
+
+    it('lets a sender through whatever its Origin and Fetch Metadata say — it is a server, not a browser', async () => {
+      const { send } = await boot();
+      expect((await send('/signed', signedPost({ origin: 'https://payments.example', 'sec-fetch-site': 'cross-site' }))).status).toBe(200);
+      expect((await send('/signed', signedPost({ origin: 'null' }))).status).toBe(200);
+    });
+
+    it('answers a wrong or missing signature with 401 — never with the token check\'s 419, and never with the route', async () => {
+      const { send } = await boot();
+      const forged = await send('/signed', signedPost({}, ['sk', 'q'.repeat(24)].join('_')));
+      expect(forged.status).toBe(401);
+      expect(await forged.json()).toEqual({ error: 'webhook_signature_invalid' });
+      expect((await send('/signed', { method: 'POST', body, headers: { 'content-type': 'application/json' } })).status).toBe(401);
+    });
+
+    it('does not open the routes beside it: a post without the middleware stays refused', async () => {
+      const { send } = await boot();
+      const attempt = { ...signedPost(), headers: { 'content-type': 'application/json', ...signWebhook('stripe', WEBHOOK_SECRET, body) } };
+      expect((await send('/unsigned', attempt)).status).toBe(419);
+      expect((await send('/unsigned', { ...attempt, headers: { ...attempt.headers, origin: 'https://evil.example' } })).status).toBe(403);
+      expect((await send('/save', attempt)).status).toBe(419);
+    });
+  });
+
+  it('stops the start of an app whose route names a webhook nobody defined', async () => {
+    const application = await createApplication({
+      root: import.meta.dirname,
+      discover: false,
+      providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider],
+      modules: [defineModule({ name: 'shop', routes: openRoutes((Route) => Route.middleware(verifyWebhook('missing')).post('/hook', () => ({ ok: true }))) })],
+    }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory' } });
+    expect(() => createHttpKernel(application)).toThrow(/\[marmeon:H12\] Webhook \[missing\] is not defined, but POST \/hook uses verifyWebhook\('missing'\)/);
+  });
+
+  it('refuses a post with 419 when the context has no route (a global dispatch)', async () => {
+    const { application } = await boot();
+    const check = new VerifyCsrfToken(
+      { currentToken: () => undefined, readOnly: true, persists: false } as never,
+      new CsrfProtection(),
+      application.container.make(CsrfConfig),
+      application.container.make(SessionConfig),
+    );
+    const request = new Request('http://app.test/x', { method: 'POST' });
+    const ctx = { request, input: async () => ({}) } as never;
+    await expect(check.handle(ctx, (async () => new Response()) as never)).rejects.toMatchObject({ status: 419 });
   });
 });

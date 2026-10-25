@@ -121,6 +121,7 @@ export default defineDocs({
         { slug: 'rate-limiting', label: 'Rate Limiting' },
         { slug: 'realtime', label: 'Real-time Updates' },
         { slug: 'scheduling', label: 'Task Scheduling' },
+        { slug: 'webhooks', label: 'Webhooks' },
         { slug: 'tables', label: 'Data Tables' },
         { slug: 'drivers', label: 'Drivers' },
         { slug: 'package-development', label: 'Package Development' },

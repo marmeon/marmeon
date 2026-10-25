@@ -44,4 +44,5 @@ export { checkedChannel, isLiveChannel, liveOf, signedLive } from './live.ts';
 export { IncomingRequest } from './server-closing.ts';
 export { epochOf } from './session-epoch.ts';
 export { ResponseLifecycle } from './response-lifecycle.ts';
+export { isWebhookMiddleware, signWebhook } from './webhooks.ts';
 export { FRAMEWORK_ROUTES } from '@marmeon/router/internal';

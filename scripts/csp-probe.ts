@@ -85,6 +85,7 @@ function throwaway(app: string, env: Record<string, string>): { env: Record<stri
     APP_NAME: 'csp-probe',
     APP_URL: 'http://127.0.0.1',
     APP_KEY: `base64:${randomBytes(32).toString('base64')}`,
+    PAYMENTS_WEBHOOK_SECRET: randomBytes(24).toString('hex'),
     DB_DATABASE: join(dir, 'database.sqlite'),
     SYSTEM_DB_DATABASE: join(dir, 'system.sqlite'),
     ...env,

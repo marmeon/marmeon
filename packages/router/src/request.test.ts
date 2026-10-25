@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { HttpError } from './errors.ts';
 import { RequestNonce } from './nonce.ts';
-import { addVary, clientIp, createRequestState, EXPECTS_JSON_VARY, expectsJson, type Input } from './request.ts';
+import { addVary, clientIp, createRequestState, EXPECTS_JSON_VARY, expectsJson, requestBytes, type Input } from './request.ts';
 
 const URL_BASE = 'http://app.test';
 
@@ -273,5 +273,43 @@ describe('ctx.nonce() — the response\'s CSP nonce', () => {
     const made = holder.forDocument();
     expect(made).toBeDefined();
     expect(holder.value).toBe(made);
+  });
+});
+
+describe('requestBytes()', () => {
+  const json = (body: string) => post('/', body, { 'content-type': 'application/json' });
+
+  it('gives the body\'s bytes — and input() parses those same bytes, the body being read once', async () => {
+    const request = json('{"name":"Ada"}');
+    const state = createRequestState(request);
+    expect(new TextDecoder().decode(await requestBytes(request))).toBe('{"name":"Ada"}');
+    expect(await state.input()).toEqual({ name: 'Ada' });
+    expect(await requestBytes(request)).toBe(await requestBytes(request));
+  });
+
+  it('serves input() from the cache when the bytes were read first, and the bytes when input() came first', async () => {
+    const first = json('{"a":1}');
+    const state = createRequestState(first);
+    await state.input();
+    expect(new TextDecoder().decode(await requestBytes(first))).toBe('{"a":1}');
+  });
+
+  it('is held to the state\'s maxBodyBytes: a body over it is a 413, however it is read', async () => {
+    const request = json(JSON.stringify({ filler: 'x'.repeat(100) }));
+    const state = createRequestState(request, { maxBodyBytes: 50 });
+    expect((await rejection(requestBytes(request))).status).toBe(413);
+    expect((await rejection(state.input())).status).toBe(413);
+  });
+
+  it('does not keep a multipart body\'s bytes: an upload is held in memory once', async () => {
+    const data = new FormData();
+    data.set('file', new File(['x'.repeat(100)], 'a.txt'));
+    const request = new Request(`${URL_BASE}/`, { method: 'POST', body: data });
+    await createRequestState(request).input();
+    await expect(requestBytes(request)).rejects.toThrow();
+  });
+
+  it('gives no bytes for a request without a body', async () => {
+    expect((await requestBytes(new Request(`${URL_BASE}/`))).byteLength).toBe(0);
   });
 });

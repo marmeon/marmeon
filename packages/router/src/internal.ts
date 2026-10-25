@@ -12,6 +12,6 @@ export { UrlLocales } from './url-locales.ts';
 export { localLocation } from './local-location.ts';
 export { addsConflicts, addsOf, isMiddlewareClass, runPipeline } from './middleware.ts';
 export { withQueuedCookies } from './cookies.ts';
-export { clientIp, createRequestState } from './request.ts';
+export { clientIp, createRequestState, requestBytes } from './request.ts';
 export { authorizeRequest, validateRequest } from './request-definition.ts';
 export { VALIDATE_HEADER, VALIDATED_HEADER } from './live-validation.ts';

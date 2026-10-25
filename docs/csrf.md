@@ -99,8 +99,9 @@ An origin is a scheme, a host and an optional port, without a path. A value with
 
 ## Excluding paths
 
-Some requests cannot carry a token or come from a browser at all, such as the webhook of a payment provider. A module lists such
-paths in `csrfExcept`. A `*` matches any characters, and the pattern covers the whole path:
+A request that another service signs, such as the webhook of a payment provider, needs no entry here: put
+[`verifyWebhook()`](webhooks.md) on its route, and the CSRF check skips that route, and only that route. For the requests that
+cannot carry a token, come from no browser and carry no signature either, a module lists the paths in `csrfExcept`. A `*` matches any characters, and the pattern covers the whole path:
 
 ```ts title="modules/billing/index.ts"
 import { defineModule } from '@marmeon/core';
@@ -114,8 +115,8 @@ export default defineModule({
 ```
 
 > [!WARNING]
-> An excluded route accepts requests from anywhere. Check each request yourself, usually by the signature the sender adds, and
-> never exclude a route that acts on the signed-in user's session.
+> An excluded route accepts requests from anywhere. Check each request yourself, and never exclude a route that acts on the
+> signed-in user's session. A signature is checked by `verifyWebhook()`, not by an exclusion.
 
 A service provider can add paths the same way: `container.make(CsrfProtection).except('/webhooks/*')`, with `CsrfProtection`
 from `@marmeon/session`.
