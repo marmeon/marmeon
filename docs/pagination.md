@@ -85,11 +85,12 @@ A [data table](tables.md#the-url-is-strict) is stricter on purpose: an unknown s
 | --- | --- |
 | `page` | The page that was read. |
 | `perPage` | The page size. |
-| `total` | The rows of every page. |
+| `total` | The rows of every page. A `distinct()` query counts its distinct rows. |
 | `lastPage` | The number of the last page, at least 1. |
 | `from`, `to` | The positions of the first and last row on this page, counting from 1, or `null` when the page is empty. |
 
-The count is a second query on the same filter, without the order and the selection. It runs first, then the page itself with
+The count is a second query on the same filter, without the order and the selection (a `distinct()` query keeps its selection, relations included, because its distinct
+rows depend on it). It runs first, then the page itself with
 `limit` and `offset`. A page past the last one is empty, not an error. Order the query by a unique column last, as the example
 above does with `id`: rows with the same title would otherwise change places between pages, and a row could show twice or not at
 all.

@@ -63,7 +63,8 @@ export type CheckPageRequest<Q> = [keyof Q & keyof PageRequest] extends [never]
 
 /**
  * One page of `query`, and how many rows there are in all (a second, counting query on the same
- * filter — ordering, selections and relations are left out of it). Which page: the route's parsed query
+ * filter — ordering, selections and relations are left out of it; a `distinct()` query keeps its selection, relations
+ * included, because its distinct rows depend on it). Which page: the route's parsed query
  * (`ctx.query`, with {@link pageQuery} in its schema), or `{ page, perPage }`.
  *
  * ```ts
@@ -79,8 +80,12 @@ export async function paginate<DB, TB extends keyof DB, O, const Q = PageRequest
   const { page = 1, perPage = 15 } = pageOf(request as PageRequest | undefined);
   if (!Number.isSafeInteger(page) || page < 1) throw new RangeError(`page must be a whole number ≥ 1, got ${page}.`);
   if (!Number.isSafeInteger(perPage) || perPage < 1) throw new RangeError(`perPage must be a whole number ≥ 1, got ${perPage}.`);
+  // A `distinct()` query counts its distinct rows, so it keeps its selections; any other counts rows only.
+  const node = query.toOperationNode();
+  const distinct = node.frontModifiers?.some((modifier) => modifier.modifier === 'Distinct') === true;
+  const counted: SelectQuery<DB, TB, unknown> = distinct ? query.clearOrderBy() : query.clearSelect().clearOrderBy().select(sql<number>`1`.as('row'));
   const counting = db
-    .selectFrom(query.clearSelect().clearOrderBy().select(sql<number>`1`.as('row')).as('paginated'))
+    .selectFrom(counted.as('paginated'))
     .select(sql<number | string>`count(*)`.as('count'));
   // One after the other: on SQLite (one connection) and in a test's transaction they would queue anyway.
   const { count } = (await counting.executeTakeFirstOrThrow()) as { count: number | string };

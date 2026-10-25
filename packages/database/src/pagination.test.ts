@@ -55,6 +55,19 @@ describe.each(drivers)('pagination on %s', (driver) => {
     await expect(paginate(db, people(), { page: 0 })).rejects.toThrow('page must be a whole number ≥ 1');
   });
 
+  it('counts the pages of a distinct() query by its distinct rows', async () => {
+    // 4 articles by 2 authors: the same author twice is still one row of distinct author ids.
+    const authors = () => db.selectFrom('articles').select('articles.user_id').distinct().orderBy('articles.user_id');
+    const page = await paginate(db, authors(), { perPage: 1 });
+    expect(page.meta).toMatchObject({ total: 2, lastPage: 2 });
+    expect(page.data).toHaveLength(1);
+  });
+
+  it.runIf(driver === 'pgsql')('counts the pages of a distinctOn() query by its distinct rows', async () => {
+    const authors = db.selectFrom('articles').select(['articles.user_id', 'articles.title']).distinctOn('articles.user_id').orderBy('articles.user_id').orderBy('articles.title');
+    expect((await paginate(db, authors, { perPage: 1 })).meta).toMatchObject({ total: 2, lastPage: 2 });
+  });
+
   const encrypter = testEncrypter();
 
   it('pages by cursor through large tables — stable while rows are added', async () => {

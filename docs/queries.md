@@ -207,7 +207,7 @@ same holds for a `routeKey` that names a `uuid` column, `static routeKey = 'publ
 no UUID. For input that was not checked, a request's parameter say, use `findByRouteKey()`.
 
 `findOrFail(id, { with: ['author', 'tags'] })` loads the [relations](#relations) into the same query, as `with()` does, and the
-row's type has them: `RowWith<'notes', 'author' | 'tags'>` names it, for example as the prop type of a page. `chunk()` reads the rows by `id`, each batch after the last one it read, one query per batch. Rows removed
+row's type has them: `RowWith<'notes', 'author' | 'tags'>` names it, for example as the prop type of a page. `chunk()` reads the rows by their primary key, each batch after the last one it read, one query per batch. Rows removed
 during the loop do not make it skip others. Rows added meanwhile come at the end or, when another transaction commits them later
 with a lower id, not at all. Its callback narrows what it reads:
 
@@ -236,7 +236,7 @@ an `insertInto(…).onConflict(…)`.
 | `tryUpdate(id, values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index holds the new values, or `missing` when there is no row. |
 | `delete(id)` | Whether there was a row. With soft deletes, it sets `deleted_at`. |
 | `forceDelete(id)` | Whether there was a row. It deletes for real, soft deletes or not. |
-| `restore(id)` | Whether there was a row to bring back. It clears `deleted_at`. |
+| `restore(id)` | Whether there was a soft-deleted row to bring back (`false` for a row that is not deleted). It clears `deleted_at`. |
 
 The values are exact: a field the table does not have is a compile error, also when the values come from a variable. With soft
 deletes, `update()` leaves a deleted row alone.

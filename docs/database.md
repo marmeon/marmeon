@@ -88,7 +88,10 @@ Its directory must exist, so the app checks it when it starts and stops with the
 ```
 
 A file database runs in WAL mode, so the development server and a command such as `migrate` can work at the same time. A
-statement that finds the file locked waits up to five seconds before it fails. `DB_DATABASE=:memory:` keeps the database in
+statement that finds the file locked waits up to five seconds before it fails. A transaction takes the write lock when it begins
+(`begin immediate`), so a worker, a scheduler and a web process on one file wait for each other instead of failing midway with
+`SQLITE_BUSY`. That lock is taken even by a transaction that only reads, and other processes' writes wait for it, up to the busy
+timeout: keep transactions short, and read outside a transaction when nothing is written. `DB_DATABASE=:memory:` keeps the database in
 memory, which the `.env.test` of a new app does for its tests.
 
 SQLite has one writer at a time, and the app's file has one connection. The [transactions](transactions.md) page explains what

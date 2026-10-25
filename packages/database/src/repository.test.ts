@@ -160,6 +160,14 @@ describe.each(drivers)('Repository on %s', (driver) => {
     expect(await users.query().withTrashed().selectAll().execute()).toEqual([]);
   });
 
+  it('restores only a row that is soft-deleted', async () => {
+    const ada = await users.insert({ name: 'Ada', email: 'ada@example.com' });
+    expect(await users.restore(ada.id)).toBe(false); // alive: nothing to bring back
+    await users.delete(ada.id);
+    expect(await users.restore(ada.id)).toBe(true);
+    expect(await users.restore(ada.id)).toBe(false);
+  });
+
   it('works across repositories in one transaction with using(trx)', async () => {
     await expect(
       connections.get<FixtureTables>().transaction().execute(async (trx) => {
