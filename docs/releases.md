@@ -199,7 +199,7 @@ process](deployment.md#the-upgrade-that-stops-every-process) lists what to do an
 
 Experimental means: it can change or go away in any minor version, without an entry in the [upgrade guide](../UPGRADING.md). It
 is still listed in the package's `api.md`, under **Experimental**, so a change shows in the pull request's diff, but the
-`breaking` label is not required for it. Build on it only when you can follow the releases. What is experimental today:
+`breaking` label is not required for it. Build on it only when you can follow the releases. What is experimental in this release:
 
 - `@marmeon/devtools`
 - `@marmeon/http/client/adapter`: the interface a UI adapter builds on (the navigator, regions and layers, the feature wiring,

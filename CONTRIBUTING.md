@@ -418,6 +418,12 @@ the type and the file that declares it — mark the item or member `@experimenta
 `FOREIGN_TYPES` entry that no entry point of its package uses any more is reported, so it gets deleted with the change that
 made it unnecessary.
 
+One exported name stands for one declaration: when two entry points of the framework (stable or experimental, not `./internal`
+or `@internal`) export the same name, they must export the same declaration — a re-export, or a helper type with the same text such
+as `Simplify` — or `pnpm api:check` names both files and asks for a rename. The only permanent exceptions are a typed view of the
+same value, each with its reason in `SAME_VALUE` of `scripts/api-names.ts`. `KNOWN` there lists the collisions that wait for their
+rename; a name that no longer collides fails the check until its line is deleted, so the list only shrinks.
+
 An entry point may only expose the types of the libraries `FOREIGN_TYPES` in `scripts/api.ts` lists for its package (Node's
 built-ins, `@marmeon/*` and `marmeon` are free); `pnpm api:check` fails otherwise. Each entry says why it is there — a peer the
 app installs, or the change that removes it. Add an entry only for a peer, and give a type of your own to anything else.

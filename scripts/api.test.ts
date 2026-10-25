@@ -2,13 +2,18 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { FOREIGN_TYPES, foreignPackage, runApi, runtimeItems, snapshotPackage, stabilityProblems } from './api.ts';
+import { FOREIGN_TYPES, foreignPackage, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, stabilityProblems } from './api.ts';
+import { KNOWN, SAME_VALUE } from './api-names.ts';
 import { compareSnapshots, parseSnapshot, type ApiItem } from './api-snapshot.ts';
 import { INTERNAL } from './check-source.ts';
 import { frameworkPackages } from './packages.ts';
 import { tempDir } from './test/temp-dir.js';
 
 const repository = fileURLToPath(new URL('..', import.meta.url));
+
+/** The fixtures are no framework: the real exceptions would be stale in them. */
+const NO_NAMES = { sameValue: {}, known: [] };
+const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, ...options });
 
 /** Writes `dist/<name>` files into a fresh package; `exports` maps subpaths to their `.d.ts` under `dist/`. */
 function demo(files: Record<string, string>, exports: Record<string, string> = { '.': 'index.d.ts' }, extra: Record<string, unknown> = {}) {
@@ -773,6 +778,19 @@ describe('what is experimental', () => {
       expect(run.lines.join('\n')).toContain('names @marmeon/demo/b under "### Experimental", but nothing marks it experimental');
     });
 
+    it('accepts an empty list when nothing is experimental, and names a package that is experimental all the same', async () => {
+      const none = '# Releases\n\n## What is public API\n\n### Experimental\n\nNothing in this release is experimental.\n\n## Next\n';
+      const clean = setup(two, undefined);
+      releases(clean, none);
+      expect((await runApi(clean, { write: true })).code).toBe(0);
+      expect((await runApi(clean)).code).toBe(0);
+      const marked = setup(two, ['./b']);
+      releases(marked, none);
+      const run = await runApi(marked, { write: true });
+      expect(run.code).toBe(1);
+      expect(run.lines.join('\n')).toContain('does not name @marmeon/demo/b under "### Experimental"');
+    });
+
     it('needs the page when something is experimental, and no page otherwise', async () => {
       expect((await runApi(setup(two, true), { write: true })).code).toBe(1);
       expect((await runApi(setup(two, undefined), { write: true })).code).toBe(0);
@@ -953,6 +971,62 @@ describe('stable items that name experimental types', () => {
   });
 });
 
+describe('one exported name, one declaration', () => {
+  /** Packages `a`, `b`, … side by side, each with the text of its `dist/index.d.ts`. */
+  const names = (packages: Record<string, string>, lists: Partial<Parameters<typeof nameProblems>[1]> = {}) => {
+    const root = tempDir('marmeon-api-');
+    for (const [directory, text] of Object.entries(packages)) {
+      const dir = join(root, 'packages', directory);
+      mkdirSync(join(dir, 'dist'), { recursive: true });
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: `@x/${directory}`, version: '0.0.0', exports: { '.': { types: './dist/index.d.ts' } } }));
+      writeFileSync(join(dir, 'dist/index.d.ts'), text);
+    }
+    return nameProblems(frameworkPackages(root), { ...NO_NAMES, ...lists });
+  };
+
+  it('names a type that two packages declare apart', () => {
+    expect(names({ a: 'export interface Foo { a: 1 }\n', b: 'export interface Foo { b: 2 }\n' })).toEqual([
+      '`Foo` is exported as two declarations: @x/a (src/index.ts) and @x/b (src/index.ts) — rename one (CONTRIBUTING › The API snapshot)',
+    ]);
+  });
+
+  it('counts a re-export as the same declaration', () => {
+    expect(names({ a: 'export interface Foo { a: 1 }\n', b: "export type { Foo } from '@x/a';\n" })).toEqual([]);
+    expect(names({ a: 'export interface Foo { a: 1 }\n', b: "import type { Foo } from '@x/a';\nexport type { Foo };\n" })).toEqual([]);
+  });
+
+  it('counts a helper type with the same text as one declaration', () => {
+    const simplify = 'export type Simplify<T> = { [K in keyof T]: T[K] } & {};\n';
+    expect(names({ a: simplify, b: `// another file\n${simplify}` })).toEqual([]);
+  });
+
+  it('leaves out a declaration marked @internal', () => {
+    expect(names({ a: 'export interface Foo { a: 1 }\n', b: '/** @internal */\nexport interface Foo { b: 2 }\n' })).toEqual([]);
+  });
+
+  it('lets a name of sameValue differ', () => {
+    const packages = { a: 'export interface Foo { a: 1 }\n', b: 'export interface Foo { b: 2 }\n' };
+    expect(names(packages, { sameValue: { Foo: 'the same value' } })).toEqual([]);
+  });
+
+  it('names a sameValue entry that no longer collides, and does not take a name off the prototype for one', () => {
+    expect(names({ a: 'export interface Foo { a: 1 }\n' }, { sameValue: { Foo: 'the same value' } })).toEqual(['`Foo` is listed in SAME_VALUE but no longer collides — delete the line']);
+    const packages = { a: 'export interface toString { a: 1 }\n', b: 'export interface toString { b: 2 }\n' };
+    expect(names(packages)).toHaveLength(1);
+  });
+
+  it('lets a name of known differ, and names one that no longer does', () => {
+    const packages = { a: 'export interface Foo { a: 1 }\n', b: 'export interface Foo { b: 2 }\n' };
+    expect(names(packages, { known: ['Foo'] })).toEqual([]);
+    expect(names({ a: 'export interface Foo { a: 1 }\n' }, { known: ['Foo'] })).toEqual(['`Foo` is listed in KNOWN but no longer collides — delete the line']);
+  });
+
+  it('keeps the lists of the repository to the agreed exceptions, KNOWN sorted', () => {
+    expect(Object.keys(SAME_VALUE).sort()).toEqual(['CookieDefaults', 'RevalidateOnBack', 'Translator']);
+    expect([...KNOWN]).toEqual([...KNOWN].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })));
+  });
+});
+
 describe('the repository', () => {
   const built = frameworkPackages(repository).every((pkg) => {
     const exports = (pkg.manifest.exports ?? {}) as Record<string, { types?: string }>;
@@ -961,6 +1035,6 @@ describe('the repository', () => {
 
   // Reads the declarations of all packages and imports their built code: 2.3 s alone, 4.1 s with six runs side by side — too close to the default 5 s for a slow runner.
   it.skipIf(!built)('has an api.md for every package that matches the built declarations', async () => {
-    expect((await runApi(repository)).lines).toEqual(['api: every api.md matches the built declarations, environment variables and commands']);
+    expect((await runApiWithLists(repository)).lines).toEqual(['api: every api.md matches the built declarations, environment variables and commands']);
   }, 30_000);
 });

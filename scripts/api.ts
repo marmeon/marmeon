@@ -17,6 +17,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+import { KNOWN, SAME_VALUE } from './api-names.ts';
 import { compareSnapshots, parseSnapshot, renderSnapshot, type ApiChanges, type ApiItem } from './api-snapshot.ts';
 import { LIBRARY } from './check-source.ts';
 import { frameworkPackages } from './packages.ts';
@@ -956,6 +957,63 @@ export function stabilityProblems(packages: readonly PackageToSnapshot[], root: 
   return problems;
 }
 
+export interface NameLists {
+  /** Names exported as two declarations on purpose, each with its reason. */
+  readonly sameValue: Readonly<Record<string, string>>;
+  /** Names that collide today and wait for their rename. */
+  readonly known: readonly string[];
+}
+
+const NAME_LISTS: NameLists = { sameValue: SAME_VALUE, known: KNOWN };
+
+/**
+ * One exported name stands for one declaration: two entry points of the framework (stable or experimental, not `./internal`,
+ * not `@internal`) that export a name must export the same declaration, by re-export or with the same text. `lists` holds the
+ * exceptions; a `known` name that does not collide any more is a problem, so that list shrinks.
+ */
+export function nameProblems(packages: readonly PackageToSnapshot[], lists: NameLists = NAME_LISTS): string[] {
+  interface Site {
+    readonly pkg: string;
+    readonly where: string;
+    readonly text: string;
+  }
+  const declared = new Map<string, Map<string, Site>>();
+  for (const pkg of packages) {
+    const declarations = new Declarations();
+    for (const { path } of entryPoints(pkg)) {
+      for (const [name, target] of declarations.exportsOf(path)) {
+        if (target.kind !== 'declaration' || name === 'default') continue;
+        const statements = exportedStatements(declarations, target);
+        if (!statements) continue;
+        const sites = declared.get(name) ?? new Map<string, Site>();
+        const key = `${target.file}\0${target.local}`;
+        if (!sites.has(key)) {
+          const where = relative(pkg.dir, target.file).split('\\').join('/').replace(/^dist\//, 'src/').replace(/\.d\.ts$/, '.ts');
+          sites.set(key, { pkg: pkg.name, where, text: statements.shown.map((statement) => declarationText(statements.file, statement, true)).join('\n') });
+        }
+        declared.set(name, sites);
+      }
+    }
+  }
+  const colliding = new Set<string>();
+  const problems: string[] = [];
+  for (const [name, sites] of [...declared].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    // The same text in two places is one declaration, like a helper type every package spells out.
+    const distinct = new Map<string, Site>();
+    for (const site of sites.values()) if (!distinct.has(site.text)) distinct.set(site.text, site);
+    if (distinct.size < 2) continue;
+    colliding.add(name);
+    if (Object.hasOwn(lists.sameValue, name)) continue;
+    if (lists.known.includes(name)) continue;
+    const places = [...distinct.values()].map((site) => `${site.pkg} (${site.where})`);
+    const list = places.length === 2 ? places.join(' and ') : `${places.slice(0, -1).join(', ')} and ${places.at(-1)}`;
+    problems.push(`\`${name}\` is exported as ${distinct.size === 2 ? 'two' : distinct.size} declarations: ${list} — rename one (CONTRIBUTING › The API snapshot)`);
+  }
+  for (const name of Object.keys(lists.sameValue)) if (!colliding.has(name)) problems.push(`\`${name}\` is listed in SAME_VALUE but no longer collides — delete the line`);
+  for (const name of lists.known) if (!colliding.has(name)) problems.push(`\`${name}\` is listed in KNOWN but no longer collides — delete the line`);
+  return problems;
+}
+
 /** The api.md of a package, or none when it has no entry point with types; plus the problems met on the way and what is experimental in it. */
 export function snapshotPackage(
   pkg: PackageToSnapshot,
@@ -1039,7 +1097,7 @@ export interface ApiRun {
 }
 
 /** Compares (or, with `write`, rewrites) the `api.md` of every package under `root`. */
-export async function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>> } = {}): Promise<ApiRun> {
+export async function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>>; names?: NameLists } = {}): Promise<ApiRun> {
   const allowed = options.allowed ?? FOREIGN_TYPES;
   const lines: string[] = [];
   let failed = false;
@@ -1085,6 +1143,11 @@ export async function runApi(root: string, options: { write?: boolean; allowed?:
       lines.push(...(changes.length > 0 ? changes : ['    the layout or the packages named under "Types from other packages" differ']));
     }
     lines.push(`  run pnpm api:update and commit ${shown}`);
+  }
+  const names = nameProblems(packages, options.names);
+  if (names.length > 0) {
+    failed = true;
+    lines.push('names:', ...names.map((problem) => `  ${problem}`));
   }
   const docs = experimentalProblems(root, experimental);
   if (docs.length > 0) {
