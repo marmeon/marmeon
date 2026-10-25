@@ -7,11 +7,12 @@ import { createRequestState, type RequestState } from './request.ts';
 import { liveValidationFields, VALIDATED_HEADER } from './live-validation.ts';
 import { authorizeRequest, nothingToValidate, unauthorized, validateRequest, ValidationError, type RequestDefinition, type ValidationHook } from './request-definition.ts';
 import { Route, type RegistrarAudit } from './route.ts';
-import type { RouteDefinition } from './route-definition.ts';
+import { RouteDefinition } from './route-definition.ts';
+import type { UrlLocales } from './url-locales.ts';
 import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
 import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, MiddlewareHandler } from './types.ts';
 import { localLocation } from './local-location.ts';
-import { toSearchParams, urlFor, type Query } from './url.ts';
+import { fillPath, toSearchParams, urlFor, type Query } from './url.ts';
 
 /** A module's route file. Nothing is registered until a `Router` loads it. */
 export interface RouteDefinitions {
@@ -78,6 +79,8 @@ export interface DispatchOptions {
   onTerminable?: (handler: MiddlewareHandler<any, any>, ctx: HttpContext) => void;
   /** Turns errors into responses inside the pipeline, so outer middleware still applies (see `runPipeline`). */
   onError?: (error: unknown, ctx: HttpContext) => Response | Promise<Response>;
+  /** The locales a localized route's URL can name; the route without its locale redirects with them (`Route.localized()`). @internal */
+  urlLocales?: UrlLocales | undefined;
 }
 
 /**
@@ -138,6 +141,8 @@ export function describeMiddlewareProblem({ route, key, first, second }: Middlew
 
 export class Router {
   readonly #routes: RouteDefinition[] = [];
+  /** The route without its locale, for each localized GET route: it redirects to the visitor's language. */
+  readonly #unprefixed = new Map<RouteDefinition, RouteDefinition>();
   #snapshot: readonly RouteDefinition[] | undefined;
   readonly #resolve: ClassResolver;
   /** The routes loaded with {@link FRAMEWORK_ROUTES}. A private set: `RouteDefinition.reserved` is a field an app could write. */
@@ -167,7 +172,8 @@ export class Router {
    * @internal
    */
   get registrationOrder(): readonly RouteDefinition[] {
-    return [...this.#routes.filter((route) => route.reserved), ...this.#routes.filter((route) => !route.reserved)];
+    // The routes without a locale come last: a route of the app always wins, and they answer only what would be a 404 otherwise.
+    return [...this.#routes.filter((route) => route.reserved), ...this.#routes.filter((route) => !route.reserved), ...this.#unprefixed.values()];
   }
 
   /**
@@ -197,7 +203,8 @@ export class Router {
 
   /** What `accessProblems()` says of one route; none for the framework's own. */
   #problemsOf(route: RouteDefinition): AccessProblem[] {
-    if (this.#framework.has(route)) return [];
+    // The route without its locale decides nothing: it only redirects to the localized route, which answers for itself.
+    if (this.#framework.has(route) || route.generatedFrom) return [];
     const checks = routeAccess(route);
     if (checks.length === 0) return [{ kind: 'undecided', route }];
     if (!checks.every(isEveryone)) return [];
@@ -261,6 +268,21 @@ export class Router {
     }
     // Nothing a request does (`ctx.route`) may change a route for the requests after it.
     for (const route of this.#routes.slice(before)) route.seal();
+    for (const route of this.#routes.slice(before)) {
+      if (!route.localized || !route.methods.includes('GET')) continue;
+      const variant = new RouteDefinition({
+        methods: ['GET'],
+        path: route.path.replace(/^\/:locale/, '') || '/',
+        action: unprefixedAction,
+        middleware: [],
+        namePrefix: '',
+        group: route.group,
+        site: route.site,
+        generatedFrom: route,
+      });
+      variant.seal();
+      this.#unprefixed.set(route, variant);
+    }
     this.#indexNames();
     for (const route of this.#routes.slice(before)) for (const check of this.#routeChecks) check(route, this.#resolve);
     return this;
@@ -355,6 +377,8 @@ export class Router {
       ctx,
       this.middlewareFor(route),
       async (afterMiddleware) => {
+        // No bindings, checks or interceptor for the route without its locale: it answers with the redirect and nothing else.
+        if (route.generatedFrom) return redirectToLocale(route.generatedFrom, afterMiddleware, options.urlLocales);
         // Bindings after the middleware (authentication answers before a 404 could tell what exists),
         // before `authorize` (which may look at the bound record).
         const finalCtx: HttpContext = route.bindings.length
@@ -448,6 +472,30 @@ export class Router {
     }
     this.#byName = byName;
   }
+}
+
+/** The action slot of a route without its locale: `dispatch` answers it with the redirect, so this never runs. */
+const unprefixedAction: AnyAction = () => {
+  throw new Error('A route without its locale is answered by Router.dispatch().');
+};
+
+/**
+ * 302 from a localized route's URL without its locale to the same page under the visitor's: the target is the route's own
+ * pattern filled with the matched parameters (every value encoded) and the preferred locale, plus the query as it came —
+ * never the path the request used, so no `//host` or `/\\host` can become the `Location`. The answer depends on the cookie and
+ * the language header, so no shared cache keeps it.
+ */
+async function redirectToLocale(target: RouteDefinition, ctx: HttpContext, urlLocales: UrlLocales | undefined): Promise<Response> {
+  if (!urlLocales) throw new Error(`${target.path} is a localized route: the locales it can name are missing — @marmeon/i18n binds them.`);
+  // Hono decodes the path: `%2E%2E` arrives as `..`, which `fillPath` refuses — such a URL is no page.
+  if (Object.values(ctx.params).some((value) => value === '.' || value === '..')) throw new HttpError(404);
+  const locale = await urlLocales.preferred(ctx);
+  if (!urlLocales.supported.includes(locale)) throw new Error(`The preferred locale [${locale}] is none of the supported ones (${urlLocales.supported.join(', ')}).`);
+  const { path } = fillPath(target.routeName ?? target.path, target.path, { ...(ctx.params as Record<string, string>), locale });
+  return new Response(null, {
+    status: 302,
+    headers: { location: path + new URL(ctx.request.url).search, 'cache-control': 'private, no-store', vary: 'accept-language, cookie' },
+  });
 }
 
 /** 302 to the same path with only the valid, non-default fields of the query. */

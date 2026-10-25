@@ -44,6 +44,7 @@ export interface BrowserRoute {
     readonly method: string;
     readonly path: string;
     readonly view?: string;
+    readonly localized?: true;
 }
 // BrowserRoutes
 export interface BrowserRoutes {

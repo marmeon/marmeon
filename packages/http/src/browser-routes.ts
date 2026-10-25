@@ -33,6 +33,8 @@ export interface BrowserRoute {
    * island or a computed name): an instant visit (`<Link instant>`) shows that view's placeholder before the answer.
    */
   readonly view?: string;
+  /** The route lives under `/:locale` (`Route.localized()`); `path` starts with it. */
+  readonly localized?: true;
 }
 
 /** Which named routes the browser may learn (`clientRoutes` of `defineApplication`). */
@@ -56,7 +58,7 @@ export function browserRoutes(routes: readonly RouteDefinition[], { include = []
     if (reason) hidden[route.routeName] = reason;
     else {
       const view = route.methods.includes('GET') ? staticView(route.action) : undefined;
-      allowed[route.routeName] = { method: route.methods[0]!.toLowerCase(), path: route.path, ...(view ? { view } : {}) };
+      allowed[route.routeName] = { method: route.methods[0]!.toLowerCase(), path: route.path, ...(view ? { view } : {}), ...(route.localized ? { localized: true as const } : {}) };
     }
   }
   return { version: 1, routes: allowed, hidden };

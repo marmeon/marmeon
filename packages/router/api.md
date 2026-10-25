@@ -359,6 +359,9 @@ export declare class Route<TState extends object = EmptyObject, TParams extends 
     #private;
     constructor(register: (route: RouteDefinition) => void, attributes?: GroupAttributes);
     prefix<const TPath extends string>(path: TPath): Route<TState, Simplify<TParams & ExtractParams<TPath>>, TBindings>;
+    localized(): Route<TState, Simplify<TParams & {
+        locale: string;
+    }>, TBindings>;
     name(prefix: string): Route<TState, TParams, TBindings>;
     middleware<TAdds extends object & NoReservedKeys = EmptyObject>(middleware: MiddlewareLike<TState, TAdds>): Route<Merge<TState, Omit<TAdds, ReservedContextKey>>, TParams, TBindings>;
     bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = keyof TBindings & string, const W extends BindingWith<B> = never>(param: TName, binder: B & ConsistentBinder<B>, options?: BindOptions<TScope, [BindingWith<B>] extends [never] ? NoRelations : readonly W[]>): Route<TState, TParams, Merge<TBindings, {
@@ -428,6 +431,7 @@ export declare class RouteDefinition {
     readonly group: string | undefined;
     readonly bindings: readonly RouteBinding[];
     readonly checks: readonly AccessCheck[];
+    readonly localized: boolean;
     constructor(options: {
         methods: readonly HttpMethod[];
         path: string;
@@ -439,6 +443,7 @@ export declare class RouteDefinition {
         checks?: readonly AccessCheck[];
         site?: string | undefined;
         internal?: boolean;
+        localized?: boolean;
     });
     name(name: string): this;
     get routeName(): string | undefined;
@@ -457,6 +462,7 @@ export interface RouteEntry {
     readonly path: string;
     readonly controller?: unknown;
     readonly browser?: false;
+    readonly localized?: true;
 }
 // RouteInterceptor
 export interface RouteInterceptor {
@@ -692,6 +698,7 @@ export interface GroupAttributes {
     readonly audit?: RegistrarAudit[];
     readonly pending?: readonly RegistrarAudit[];
     readonly internal?: boolean;
+    readonly localized?: boolean;
 }
 // Instance
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;

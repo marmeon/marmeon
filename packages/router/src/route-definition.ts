@@ -20,6 +20,10 @@ export class RouteDefinition {
   declare readonly checks: readonly AccessCheck[];
   /** @internal Where the route was registered, as `file:line` — for the messages about routes that do not say who may call them. */
   declare readonly site: string | undefined;
+  /** Whether the route lives under `/:locale` (`Route.localized()`); the server limits the segment to the app's locales. */
+  readonly localized: boolean;
+  /** @internal The localized route this one stands in for: the same page without the locale, which redirects to it. */
+  readonly generatedFrom: RouteDefinition | undefined;
   readonly #namePrefix: string;
   #name: string | undefined;
   /** @internal Set by `Router.load` for a framework route under `/_marmeon/`, which the server registers before all others. */
@@ -39,6 +43,9 @@ export class RouteDefinition {
     checks?: readonly AccessCheck[];
     site?: string | undefined;
     internal?: boolean;
+    localized?: boolean;
+    /** @internal */
+    generatedFrom?: RouteDefinition | undefined;
   }) {
     // Frozen copies: a middleware reaching `ctx.route` cannot add a method or take a middleware out for every later request.
     this.methods = Object.freeze([...options.methods]);
@@ -55,6 +62,8 @@ export class RouteDefinition {
     // Not writable and frozen: a check cannot be removed once the route is registered.
     Object.defineProperty(this, 'checks', { value: Object.freeze([...(options.checks ?? [])]), writable: false, enumerable: true });
     this.site = options.site;
+    this.localized = options.localized ?? false;
+    this.generatedFrom = options.generatedFrom;
     this.#namePrefix = options.namePrefix;
     this.#internal = options.internal ?? false;
   }
