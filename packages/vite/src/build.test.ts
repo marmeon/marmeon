@@ -33,7 +33,7 @@ function app({ vite = true, plugin = true, typescript, files = {} }: { vite?: bo
       "for (const load of Object.values(pages)) void load();",
     ].join('\n'),
     'bootstrap/ssr.ts': "import { origin } from '@marmeon/fake';\nexport const render = async () => ({ html: origin });\n",
-    'modules/demo/views/Home.ts': "export default 'home page';\n",
+    'modules/demo/views/Home.tsx': "export default 'home page';\n",
     'node_modules/@marmeon/fake/package.json': JSON.stringify({
       name: '@marmeon/fake',
       type: 'module',
@@ -44,7 +44,7 @@ function app({ vite = true, plugin = true, typescript, files = {} }: { vite?: bo
     'vite.config.ts': plugin
       ? [
           "import { marmeon } from '@marmeon/vite';",
-          "export default { plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' }, pages: 'modules/*/views/**/*.ts' })] };",
+          "export default { plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' } })] };",
         ].join('\n')
       : 'export default {};',
   });
@@ -101,13 +101,13 @@ describe('marmeon build with the marmeon() plugin', () => {
     expect(html).toMatch(/<script type="module" async crossorigin src="\/assets\/index-[\w-]+\.js" nonce="__marmeon_csp_nonce__"><\/script>/);
     expect(html).toContain('<meta property="csp-nonce" nonce="__marmeon_csp_nonce__">');
     // virtual:marmeon/pages: root-absolute keys, one chunk per page.
-    expect(client).toContain('/modules/demo/views/Home.ts');
+    expect(client).toContain('/modules/demo/views/Home.tsx');
     expect(readdirSync(join(root, 'dist/client/assets')).some((file) => file.startsWith('Home-'))).toBe(true);
 
     // Vite's manifest sits beside index.html (not in assets/, which a CDN may serve); the server preloads from it.
     const manifest = JSON.parse(readFileSync(join(root, 'dist/client/.vite/manifest.json'), 'utf8')) as Record<string, { isEntry?: boolean }>;
     expect(Object.values(manifest).some((chunk) => chunk.isEntry === true)).toBe(true);
-    expect(manifest['modules/demo/views/Home.ts']).toBeDefined();
+    expect(manifest['modules/demo/views/Home.tsx']).toBeDefined();
     expect(readdirSync(join(root, 'dist/client/assets')).some((file) => file.includes('manifest'))).toBe(false);
 
     // The overridden SSR entry still lands at dist/server/ssr.js, and runs as `marmeon start` runs it (no source condition).
@@ -128,7 +128,7 @@ describe('marmeon build with the marmeon() plugin', () => {
       ].join('\n'),
       'vite.config.ts': [
         "import { marmeon } from '@marmeon/vite';",
-        `export default { plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' }, pages: 'modules/*/views/**/*.ts', viteEnv: ${viteEnv} })] };`,
+        `export default { plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' }, viteEnv: ${viteEnv} })] };`,
       ].join('\n'),
     });
 
@@ -159,7 +159,7 @@ describe('marmeon build with the marmeon() plugin', () => {
         ].join('\n'),
         'modules/demo/shared.ts': "export const shared = 'shared-with-a-page';\n",
         // A page (loaded on first use) that shares a module with the first page — without the groups, that module is a chunk of its own.
-        'modules/demo/views/Home.ts': "import { shared } from '../shared.ts';\nexport default `home page ${shared}`;\n",
+        'modules/demo/views/Home.tsx': "import { shared } from '../shared.ts';\nexport default `home page ${shared}`;\n",
         'node_modules/left-pad/package.json': JSON.stringify({ name: 'left-pad', type: 'module', exports: './index.js' }),
         'node_modules/left-pad/index.js': "export const pad = (text) => `third-party ${text}`;\n",
       },
@@ -315,10 +315,10 @@ function serverCodeApp(files: Record<string, string>): string {
 
 describe('server imports in a build', () => {
   it('fails the build for a page that imports a controller as a value — file, line and the fix, no stack', () => {
-    const root = serverCodeApp({ 'modules/demo/views/Home.ts': "import { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport default (page: ShowHomeController) => page;\n" });
+    const root = serverCodeApp({ 'modules/demo/views/Home.tsx': "import { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport default (page: ShowHomeController) => page;\n" });
     const { code, out } = build(root, '--no-typecheck');
     expect(out).toContain(
-      "[marmeon] modules/demo/views/Home.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value: a controller is server code, and a value import bundles it — with everything it imports — into the browser. A class is a value even where only its type is used: write import type { ShowHomeController } from '../controllers/ShowHomeController.ts'.",
+      "[marmeon] modules/demo/views/Home.tsx:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value: a controller is server code, and a value import bundles it — with everything it imports — into the browser. A class is a value even where only its type is used: write import type { ShowHomeController } from '../controllers/ShowHomeController.ts'.",
     );
     expect(out).toContain('✗ Not built: 1 import brings server code into the browser.');
     expect(out).not.toContain('RolldownError');
@@ -329,18 +329,18 @@ describe('server imports in a build', () => {
   it('fails it for an indirect import too (page → helper → controller), naming the helper and the chain', () => {
     const root = serverCodeApp({
       'modules/demo/helpers.ts': "import { ShowHomeController } from './controllers/ShowHomeController.ts';\nexport const label = () => ShowHomeController.name;\n",
-      'modules/demo/views/Home.ts': "import { label } from '../helpers.ts';\nexport default label();\n",
+      'modules/demo/views/Home.tsx': "import { label } from '../helpers.ts';\nexport default label();\n",
     });
     const { code, out } = build(root, '--no-typecheck');
     expect(out).toContain(
-      '[marmeon] modules/demo/helpers.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value (modules/demo/helpers.ts is client code: modules/demo/views/Home.ts → modules/demo/helpers.ts): a controller is server code',
+      '[marmeon] modules/demo/helpers.ts:1:1 — imports modules/demo/controllers/ShowHomeController.ts as a value (modules/demo/helpers.ts is client code: modules/demo/views/Home.tsx → modules/demo/helpers.ts): a controller is server code',
     );
     expect(code).toBe(1);
   }, 60_000);
 
   it('builds a page that imports the controller with import type or re-exports its type — the controller stays on the server, where SSR may import it', () => {
     const root = serverCodeApp({
-      'modules/demo/views/Home.ts': "import type { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport type { ShowHomeController as Page } from '../controllers/ShowHomeController.ts';\nexport default (page?: ShowHomeController) => `home page ${typeof page}`;\n",
+      'modules/demo/views/Home.tsx': "import type { ShowHomeController } from '../controllers/ShowHomeController.ts';\nexport type { ShowHomeController as Page } from '../controllers/ShowHomeController.ts';\nexport default (page?: ShowHomeController) => `home page ${typeof page}`;\n",
     });
     const { code, out } = build(root, '--no-typecheck');
     expect(out).toContain('Built dist/client and dist/server');

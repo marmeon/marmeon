@@ -21,12 +21,12 @@ function app({ vite = true, framework = true, config }: { vite?: boolean; framew
       "import pages from 'virtual:marmeon/pages';",
       'export const render = async (page: { component: string }) => ({ html: `${page.component}: ${Object.keys(pages).join(",")}` });',
     ].join('\n'),
-    'modules/demo/views/Home.ts': "export default 'home';\n",
+    'modules/demo/views/Home.tsx': "export default 'home';\n",
     'vite.config.ts':
       config ??
       [
         "import { marmeon } from '@marmeon/vite';",
-        "export default { plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' }, pages: 'modules/*/views/**/*.ts' })] };",
+        "export default { plugins: [marmeon({ entries: { client: 'bootstrap/client.ts', ssr: 'bootstrap/ssr.ts' } })] };",
       ].join('\n'),
   };
   for (const [path, content] of Object.entries(files)) {
@@ -83,7 +83,7 @@ describe('createViteDevRenderer', () => {
     const { vite, renderer } = await start(app());
     try {
       const html = await renderer.render({ component: 'demo/Home', props: {}, url: '/', version: null }, new Request('http://localhost/'), { complete: false, onError() {}, onWarning() {} });
-      expect(html).toContain('demo/Home: /modules/demo/views/Home.ts');
+      expect(html).toContain('demo/Home: /modules/demo/views/Home.tsx');
       expect(html).toContain('<script type="module" src="/bootstrap/client.ts"></script>');
     } finally {
       await vite.close();
@@ -106,10 +106,10 @@ describe('createViteDevRenderer', () => {
       '  return shown.title;',
       '}',
     ];
-    writeFileSync(join(root, 'modules/demo/views/Broken.ts'), view.join('\n'));
+    writeFileSync(join(root, 'modules/demo/views/Broken.tsx'), view.join('\n'));
     writeFileSync(
       join(root, 'bootstrap/ssr.ts'),
-      "import { renderView } from '../modules/demo/views/Broken.ts';\nexport const render = async () => ({ html: renderView({ title: 'broken' }) });\n",
+      "import { renderView } from '../modules/demo/views/Broken.tsx';\nexport const render = async () => ({ html: renderView({ title: 'broken' }) });\n",
     );
     const { vite, renderer } = await start(root);
     const sent: { type: string; err: { message: string; loc?: { file: string; line: number; column: number }; frame?: string } }[] = [];
@@ -125,7 +125,7 @@ describe('createViteDevRenderer', () => {
       const markup = await renderer.failed!(error, { component: 'demo/Broken', solutions: [{ title: 'Fix the view', text: 'It throws.' }], redactor: new Redactor() });
       const line = view.findIndex((text) => text.includes('throw new Error')) + 1;
       expect(sent).toHaveLength(1);
-      expect(sent[0]).toMatchObject({ type: 'error', err: { loc: { file: join(realpathSync(root), 'modules/demo/views/Broken.ts'), line } } });
+      expect(sent[0]).toMatchObject({ type: 'error', err: { loc: { file: join(realpathSync(root), 'modules/demo/views/Broken.tsx'), line } } });
       expect(sent[0]!.err.frame).toContain(`${line} |   if (shown.title === 'broken') throw new Error('The view failed on purpose');`);
       expect(sent[0]!.err.message).toContain('Fix the view: It throws.');
       // The failed document brings the same error for its own tab (Vite buffers only while no tab is connected).

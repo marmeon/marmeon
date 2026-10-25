@@ -44,7 +44,7 @@ const CLIENT_LAYOUTS = ['layouts/**', 'modules/*/layouts/**'];
 const TEST_FILE = /\.(?:type-)?test\.[cm]?[jt]sx?$/;
 
 export interface ServerImportsOptions {
-  /** The page globs (`marmeon({ pages })`) — client code. */
+  /** The page glob (`modules/*\/views/**\/*.tsx`), client code. */
   readonly pages: readonly string[];
   /** The client entry, relative to the app root — client code. */
   readonly client: string;
