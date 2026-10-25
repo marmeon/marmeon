@@ -2,8 +2,9 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { defineModule, type ApplicationDefinition } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, defineFactory, type Generated, type SeedContext } from '@marmeon/database';
 import { Controller, HttpServiceProvider } from '@marmeon/http';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { threadId } from 'node:worker_threads';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import { workerDatabase } from './database.ts';
@@ -186,8 +187,25 @@ describe('where the worker databases live', () => {
   it('puts the SQLite file inside the app, one per worker — never in the shared temporary directory', async () => {
     const root = workspaceTempDir('marmeon-testing-db-');
     const worker = await workerDatabase(root, env);
-    expect(worker.key).toBe(join(root, 'storage', 'framework', 'testing', `database-${process.env.VITEST_POOL_ID ?? '0'}.sqlite`));
+    expect(worker.key).toBe(join(root, 'storage', 'framework', 'testing', `database-${process.pid}-${threadId}.sqlite`));
     expect(worker.env.DB_DATABASE).toBe(worker.key);
+  });
+
+  it('deletes the files of processes that are gone, and keeps those of live ones and any other name', async () => {
+    const root = workspaceTempDir('marmeon-testing-db-');
+    const folder = join(root, 'storage', 'framework', 'testing');
+    mkdirSync(folder, { recursive: true });
+    // PID 2^22 + 1 is above Linux's default maximum, and macOS's.
+    const gone = ['database-4194305-1.sqlite', 'database-4194305-1.sqlite-wal'].map((name) => join(folder, name));
+    const live = join(folder, `database-${process.ppid}-1.sqlite`);
+    const other = join(folder, 'notes.sqlite');
+    const oldName = join(folder, 'database-3.sqlite');
+    for (const file of [...gone, live, other, oldName]) writeFileSync(file, '');
+    await workerDatabase(root, env);
+    expect(gone.some((file) => existsSync(file))).toBe(false);
+    expect(existsSync(oldName)).toBe(false);
+    expect(existsSync(live)).toBe(true);
+    expect(existsSync(other)).toBe(true);
   });
 
   it('creates the folder in a root that has no storage directory', async () => {

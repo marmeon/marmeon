@@ -27,7 +27,8 @@ The next test starts with an empty database again: everything this test wrote is
 
 Each test worker of Vitest gets a database of its own, so tests that run in parallel never meet:
 
-- **SQLite:** a file in the app's `storage/framework/testing/`, one per worker. The folder is created when it is missing.
+- **SQLite:** a file in the app's `storage/framework/testing/`, one per worker process. The next worker that starts in the app deletes the files of finished ones, so a run leaves at most about one
+  file per worker. The folder is created when it is missing.
 - **Postgres:** a database next to the configured one, named `<database>_test_<app>_<worker>`. The test run drops and creates it,
   so the database's user needs the right to create databases.
 

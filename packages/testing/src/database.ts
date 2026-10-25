@@ -1,5 +1,6 @@
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { threadId } from 'node:worker_threads';
 import { Logger, resolveConfig, type Application } from '@marmeon/core';
 
 type DatabaseModule = typeof import('@marmeon/database');
@@ -24,16 +25,19 @@ export async function workerDatabase(root: string, env: Env): Promise<WorkerData
   const { DatabaseConfig } = await import('@marmeon/database/internal');
   const config = (await resolveConfig([DatabaseConfig], env)).get(DatabaseConfig) as { default: import('@marmeon/database').ConnectionOptions };
   const options = config.default;
-  // Named after the worker slot, not the process: the next run reuses (and first resets) it, so
-  // databases do not pile up. Two runs at once would share them.
+  // Postgres: named after the worker slot, so the next run reuses (and first resets) it and databases do not pile up.
+  // Two runs at once would share them.
   const worker = process.env.VITEST_POOL_ID ?? '0';
 
   if (options.driver === 'sqlite') {
     // A file, not `:memory:`: an in-memory database lives only as long as its connection, and every test app has its own.
     // Inside the app, not the shared temporary directory: there, other users could predict the name and plant a file or link.
-    const file = join(root, 'storage', 'framework', 'testing', `database-${worker}.sqlite`);
+    // Named after the process, not the pool slot: Vitest hands a slot to the next file while the previous file's worker is still
+    // shutting down, and the next file deletes and migrates the file anew — under the old worker's open connection.
+    const file = join(root, 'storage', 'framework', 'testing', `database-${process.pid}-${threadId}.sqlite`);
     // Before the app boots: the connection check wants the folder to exist.
     mkdirSync(dirname(file), { recursive: true });
+    if (!cleaned.has(file)) removeStaleDatabases(dirname(file), file);
     return { key: file, env: { DB_DRIVER: 'sqlite', DB_DATABASE: file } };
   }
   const url = new URL(options.url);
@@ -67,6 +71,34 @@ export function prepareWorkerDatabase(database: DatabaseModule, app: Application
     ready.catch(() => prepared.delete(key));
   }
   return ready;
+}
+
+/**
+ * Deletes the SQLite files (and their WAL files) of worker processes that are gone, and the files named after a pool slot
+ * (`database-<n>.sqlite`), which no live process owns. Vitest ends its workers with a signal, so they cannot clean up
+ * after themselves: the next worker that starts in the app does.
+ */
+function removeStaleDatabases(folder: string, own: string): void {
+  cleaned.add(own);
+  for (const name of readdirSync(folder)) {
+    const match = /^database-(?:(\d+)-\d+|\d+)\.sqlite(?:-wal|-shm)?$/.exec(name);
+    if (!match) continue;
+    const pid = match[1] === undefined ? undefined : Number(match[1]);
+    if (pid !== undefined && (pid === process.pid || alive(pid))) continue;
+    rmSync(join(folder, name), { force: true });
+  }
+}
+
+/** The files of this process the scan has run for. */
+const cleaned = new Set<string>();
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
 }
 
 async function recreatePostgresDatabase(database: DatabaseModule, app: Application, url: string, adminUrl: string): Promise<void> {
