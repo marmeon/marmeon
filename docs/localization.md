@@ -242,7 +242,8 @@ and `x-default` for the path without a locale.
 { "de": "/de/about?tab=1", "en": "/en/about?tab=1", "x-default": "/about?tab=1" }
 ```
 
-A page built for a language switcher or for `hreflang` links reads them from there. The paths come from the route's pattern and the
+A page built for a language switcher reads them from there; the head names them as `hreflang` links by itself (see
+[Pages in several languages](seo.md#pages-in-several-languages)). The paths come from the route's pattern and the
 parameters that matched, each encoded, never from the request's path. A page that is not localized has no `alternates`.
 
 `redirect().route()` to a localized route that names no `locale` takes the locale of the request (the URL's, on a localized page):

@@ -215,6 +215,70 @@ describe('<Head jsonLd> on the server', () => {
   });
 });
 
+describe('hreflang on the server', () => {
+  const alternates = { en: '/en/about', 'de-AT': '/de-AT/about?utm_x=1', 'x-default': '/about?utm_x=1' };
+  const pageIn = (locale: string, extra: Record<string, unknown> = {}) => ({ component: 'seo/Heads', props: { heads: [] }, url: '/', locale, alternates, ...extra });
+  const link = (hreflang: string, href: string) => `<link rel="alternate" hreflang="${hreflang}" href="${href}" data-marmeon-head="ssr"/>`;
+
+  it('names every language and x-default, and is its own canonical', async () => {
+    const result = await (render as SsrRender)(pageIn('de-AT'), { appUrl: APP_URL });
+    expect(result.head).toContain('<link rel="canonical" href="https://app.example/de-AT/about" data-marmeon-head="ssr"/>');
+    expect(result.head).toContain(link('en', 'https://app.example/en/about'));
+    expect(result.head).toContain(link('de-AT', 'https://app.example/de-AT/about'));
+    expect(result.head).toContain(link('x-default', 'https://app.example/about'));
+    expect(result.head?.match(/rel="alternate"/g)).toHaveLength(3);
+    expect(result.head).not.toContain('utm_x');
+  });
+
+  it('lets a <Head canonical> win', async () => {
+    const result = await (render as SsrRender)(pageIn('en', { props: { heads: [{ canonical: '/the-one' }] } }), { appUrl: APP_URL });
+    expect(result.head).toContain('<link rel="canonical" href="https://app.example/the-one" data-marmeon-head="ssr"/>');
+    expect(result.head?.match(/rel="canonical"/g)).toHaveLength(1);
+  });
+
+  it('gives Open Graph the locale as en_US-style, and the other languages as alternates; an explicit locale wins', async () => {
+    const result = await (render as SsrRender)(pageIn('de-AT', { props: { heads: [{ openGraph: { siteName: 'Shop' } }] } }), { appUrl: APP_URL });
+    expect(result.head).toContain('<meta property="og:locale" content="de_AT" data-marmeon-head="ssr"/>');
+    expect(result.head).toContain('<meta property="og:locale:alternate" content="en" data-marmeon-head="ssr"/>');
+    expect(result.head).not.toContain('og:locale:alternate" content="x');
+    expect(result.head?.match(/og:locale:alternate/g)).toHaveLength(1);
+    const explicit = await (render as SsrRender)(pageIn('en', { props: { heads: [{ openGraph: { locale: 'en_GB' } }] } }), { appUrl: APP_URL });
+    expect(explicit.head).toContain('property="og:locale" content="en_GB"');
+  });
+
+  it('gives a page that is not localized nothing, whatever its URL or locale says', async () => {
+    for (const url of ['/about?locale=de', '/de-x/about', '/de/about']) {
+      const result = await (render as SsrRender)({ component: 'seo/Heads', props: { heads: [{ openGraph: { siteName: 'Shop' } }] }, url, locale: 'de' }, { appUrl: APP_URL });
+      expect(result.head).not.toContain('hreflang');
+      expect(result.head).not.toContain('canonical');
+      expect(result.head).not.toContain('og:locale');
+    }
+  });
+
+  it('keeps every address on APP_URL: a path that names another host is dropped, and the request is not asked', async () => {
+    const onWarning = vi.fn();
+    const result = await (render as SsrRender)(
+      pageIn('en', { alternates: { en: '//evil.example/en', de: '/de', 'x-default': '/' }, url: 'https://evil.example/en' }),
+      { appUrl: APP_URL, onWarning },
+    );
+    expect(result.head).not.toContain('evil.example');
+    expect(result.head).not.toContain('hreflang');
+  });
+
+  it('names all the languages or none: one failing address takes the others with it', async () => {
+    const result = await (render as SsrRender)(pageIn('en', { alternates: { en: '/en', de: 'http://[bad', 'x-default': '/' } }), { appUrl: APP_URL });
+    expect(result.head).not.toContain('hreflang');
+    expect(result.head).not.toContain('canonical');
+  });
+
+  it('says once, not per language, that there is no APP_URL', async () => {
+    const onWarning = vi.fn();
+    const result = await (render as SsrRender)(pageIn('en'), { onWarning });
+    expect(result.head).not.toContain('hreflang');
+    expect(onWarning.mock.calls.filter(([message]) => String(message).includes('APP_URL'))).toHaveLength(1);
+  });
+});
+
 describe('mergeHead', () => {
   it('takes the last simple field and merges objects key by key', () => {
     expect(mergeHead([{ title: 'A', canonical: '/a', openGraph: { siteName: 'S', title: 'x' } }, { title: 'B', openGraph: { title: 'y', image: undefined } }])).toEqual({

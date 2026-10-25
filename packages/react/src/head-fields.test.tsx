@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { defaultTitle, Head, HeadContext, type HeadProps } from './head.tsx';
-import { HeadRegistry } from './head-fields.ts';
+import { HeadRegistry, languagesOf } from './head-fields.ts';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -101,6 +101,54 @@ describe('<Head> fields in the browser', () => {
     await show({ openGraph: { image: 'javascript:alert(1)' } });
     expect(document.head.querySelector('meta[property="og:image"]')).toBeNull();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('dropped "javascript:alert(1)"'));
+  });
+
+  it('follows a navigation between languages and to a page that is not localized', async () => {
+    const hreflangs = () => [...document.head.querySelectorAll('link[rel="alternate"]')].map((link) => `${link.getAttribute('hreflang')} ${link.getAttribute('href')}`);
+    await show({ description: 'a' });
+    registry.setLanguages(languagesOf({ locale: 'en', alternates: { en: '/en/a?utm_x=1', de: '/de/a?utm_x=1', 'x-default': '/a?utm_x=1' } }));
+    expect(hreflangs()).toEqual(['en https://app.test/en/a', 'de https://app.test/de/a', 'x-default https://app.test/a']);
+    expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://app.test/en/a');
+    const english = document.head.querySelector('link[rel="alternate"][hreflang="en"]');
+    registry.setLanguages(languagesOf({ locale: 'de', alternates: { en: '/en/b', de: '/de/b', 'x-default': '/b' } }));
+    expect(hreflangs()).toEqual(['en https://app.test/en/b', 'de https://app.test/de/b', 'x-default https://app.test/b']);
+    expect(document.head.querySelector('link[rel="alternate"][hreflang="en"]')).toBe(english);
+    expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://app.test/de/b');
+    registry.setLanguages(languagesOf({ locale: 'de' }));
+    expect(hreflangs()).toEqual([]);
+    expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
+  });
+
+  it('keeps the origin of the app for the alternates and drops a path that names another host', async () => {
+    registry = new HeadRegistry('https://www.example.com', warn);
+    registry.setLanguages(languagesOf({ locale: 'en', alternates: { en: '//evil.example/en', de: '/de' } }));
+    expect(document.head.innerHTML).not.toContain('evil.example');
+    registry.setLanguages(languagesOf({ locale: 'en', alternates: { en: '/en', de: '/de' } }));
+    expect(document.head.querySelector('link[hreflang="de"]')?.getAttribute('href')).toBe('https://www.example.com/de');
+  });
+
+  it('takes over the field tags the server wrote on a page without a <Head>, once each', async () => {
+    document.head.innerHTML =
+      '<title data-marmeon-head="ssr">T</title><link rel="canonical" href="https://app.test/en/a" data-marmeon-head="ssr"/>' +
+      '<link rel="alternate" hreflang="en" href="https://app.test/en/a" data-marmeon-head="ssr"/><link rel="alternate" hreflang="de" href="https://app.test/de/a" data-marmeon-head="ssr"/>';
+    registry.setLanguages(languagesOf({ locale: 'en', alternates: { en: '/en/a', de: '/de/a' } }));
+    expect(document.head.querySelectorAll('link[rel="canonical"]')).toHaveLength(1);
+    expect(document.head.querySelectorAll('link[rel="alternate"]')).toHaveLength(2);
+    expect(document.head.querySelector('title')).not.toBeNull();
+    registry.setLanguages(undefined);
+    expect(document.head.querySelector('link[rel="canonical"], link[rel="alternate"]')).toBeNull();
+  });
+
+  it('leaves the server\'s other field tags to the <Head> that takes them over later', async () => {
+    document.head.innerHTML =
+      '<meta name="description" content="server" data-marmeon-head="ssr"/><link rel="canonical" href="https://app.test/en/a" data-marmeon-head="ssr"/>';
+    registry.setLanguages(languagesOf({ locale: 'en', alternates: { en: '/en/a' } }));
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1);
+    expect(document.head.querySelectorAll('link[rel="canonical"]')).toHaveLength(1);
+    await show({ description: 'client' });
+    expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1);
+    expect(meta('meta[name="description"]')).toBe('client');
+    expect(document.head.querySelectorAll('link[rel="canonical"]')).toHaveLength(1);
   });
 });
 

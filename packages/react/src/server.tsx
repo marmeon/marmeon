@@ -8,6 +8,7 @@ import { isDevelopment, type TitleTemplate } from '@marmeon/http/client';
 import { MarmeonApp, loadLayerStack } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import { createHeadCollector, markServerTag, renderHead, type HeadCollector } from './head.tsx';
+import { languagesOf, type HeadLanguages } from './head-fields.ts';
 import type { LayerFrame } from './layer.tsx';
 import { viewName, type DefaultLayout, type ResolvePage } from './pages.ts';
 import { loadView } from './views.ts';
@@ -37,11 +38,12 @@ export interface SsrOptions {
  */
 export function createSsrRenderer(resolve: ResolvePage, { title = defaultTitle, routes, layout, messages, layer }: SsrOptions = {}): SsrRender {
   // A `<Head>`'s script or style carries the response's CSP nonce — the rest of its tags need none.
-  const head = (collector: HeadCollector, nonce?: string, urls?: { appUrl?: string; warn?: (message: string) => void }) =>
+  const head = (collector: HeadCollector, nonce?: string, urls?: { appUrl?: string; warn?: (message: string) => void; languages?: HeadLanguages }) =>
     renderHead(collector, title, (tag) => renderToStaticMarkup(markServerTag(nonce ? withNonce(tag, nonce) : tag)), { ...urls, nonce });
 
   return async (page, { complete = false, onError, onWarning, signal, resolveIsland, resolveDeferred, nonce, placeholder, appUrl } = {}) => {
-    const urls = { ...(appUrl ? { appUrl } : {}), ...(isDevelopment() && onWarning ? { warn: onWarning } : {}) };
+    const languages = languagesOf(page);
+    const urls = { ...(appUrl ? { appUrl } : {}), ...(languages ? { languages } : {}), ...(isDevelopment() && onWarning ? { warn: onWarning } : {}) };
     // A deep link's layers render with the page, in the shell: the layer stack and their views are loaded first.
     const [Component, catalog] = await Promise.all([
       resolve(viewName(resolve, page.component, page.props)),

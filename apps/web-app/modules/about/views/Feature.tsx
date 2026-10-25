@@ -13,7 +13,6 @@ export default function Feature({ feature }: PageProps<ShowFeatureController>) {
       <Head
         title={t(`features.${feature.slug}.title`)}
         description={t(`features.${feature.slug}.summary`)}
-        canonical={path}
         openGraph={{ type: 'article', siteName: 'Marmeon', url: path, article: { modifiedTime: feature.updatedAt } }}
         twitter={{ card: 'summary' }}
         jsonLd={{

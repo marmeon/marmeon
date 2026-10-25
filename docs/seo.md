@@ -99,6 +99,31 @@ block's `@type`, and production leaves the block out.
 Under `require-trusted-types-for 'script'` a browser refuses to set a script's text. The browser then removes the block
 instead of writing it, and development logs a warning. The first document, as the server sent it, still has the block, and crawlers read that one.
 
+## Pages in several languages
+
+A page on a [localized route](localization.md#the-locale-in-the-url) names all its languages by itself, and you write nothing for
+it. Its head carries one `<link rel="alternate" hreflang>` per locale of the app, and `x-default`, the address without a locale
+that redirects to the visitor's:
+
+```html
+<link rel="canonical" href="https://notes.example/de/about">
+<link rel="alternate" hreflang="en" href="https://notes.example/en/about">
+<link rel="alternate" hreflang="de" href="https://notes.example/de/about">
+<link rel="alternate" hreflang="x-default" href="https://notes.example/about">
+```
+
+- `canonical` is the page's own address in its own language, unless a `<Head canonical>` says otherwise. The addresses in the head
+  have no query string, because a query often only tracks (`?utm_source=…`). A page whose query selects its content (`?page=2`)
+  sets its own `canonical`. The `alternates` of the page object, which a language switcher reads, keep the query.
+- With `openGraph` set, `og:locale` is the page's locale in Open Graph's form (`de-AT` becomes `de_AT`) unless `openGraph.locale` is
+  set, and `og:locale:alternate` names each other locale.
+- The addresses are made absolute like the others (see [Absolute URLs](#absolute-urls)): from `APP_URL`, never from the request. Without
+  `APP_URL` the whole block (the languages and the default `canonical`) is left out, and development says so once.
+- The browser updates them on every visit, also from one language to another.
+
+They come only from the server: the route is localized, so its page object carries `alternates`. A page on another route gets none,
+whatever its URL looks like, and an app that does not use `localized()` has no `hreflang` at all.
+
 ## Sitemap and robots.txt
 
 Mark a route with `.sitemap()` and it appears in `/sitemap.xml`:
