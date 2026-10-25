@@ -383,7 +383,7 @@ the document has no markup, because the page has `ssr = false` or rendering fail
 ## The error page
 
 An error while a page renders shows the page `errors/Error` inside its layouts. A built-in one is there until you write
-`modules/errors/views/Error.tsx`. The [error handling](errors.md#your-own-error-page) page shows how.
+`modules/errors/views/Error.tsx`; a view named for a status, such as `404.tsx` or `500.tsx`, comes first for that status. The [error handling](errors.md#your-own-error-page) page shows how.
 
 ## Testing
 

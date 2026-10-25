@@ -8,7 +8,7 @@ import { MarmeonApp, loadLayerStack } from './app.tsx';
 import { SSR_ERROR_DIGEST } from './fallbacks.tsx';
 import type { LayerFrame } from './layer.tsx';
 import type { ConfirmComponent } from './confirm.tsx';
-import type { DefaultLayout, ResolvePage } from './pages.ts';
+import { viewName, type DefaultLayout, type ResolvePage } from './pages.ts';
 import { loadView } from './views.ts';
 
 export interface CreateMarmeonAppOptions {
@@ -75,7 +75,7 @@ export async function createMarmeonApp({ resolve, rootId = 'app', title, routes,
   // page's locale and a deep link's layers. The history entry holds its key and URL, never the page's props. Tab sync is
   // attached from the start, so no message of another tab is missed; a chunk that cannot load leaves it out.
   const [Component, catalog, root, synced, fallback] = await Promise.all([
-    resolve(page.component),
+    resolve(viewName(resolve, page.component, page.props)),
     loadPageMessages(page, messages),
     rootElement(rootId),
     tabSync === false ? undefined : loadTabSync().catch(() => undefined),

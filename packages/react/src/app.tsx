@@ -27,7 +27,7 @@ import { defaultTitle, HeadContext, type HeadCollector } from './head.tsx';
 import { I18nContext } from './i18n.tsx';
 import type { LayerEntry, LayerFrame } from './layer.tsx';
 import { loadView } from './views.ts';
-import { layoutsOf, type DefaultLayout, type PageComponent, type ResolvePage } from './pages.ts';
+import { layoutsOf, viewName, type DefaultLayout, type PageComponent, type ResolvePage } from './pages.ts';
 import { RoutesContext } from './routes.ts';
 import { SsrContext, StreamedDeferred, type SsrResolvers } from './streamed.tsx';
 
@@ -419,19 +419,19 @@ export function MarmeonApp({
       const turn = ++renders.current;
       if (placeholder) {
         // An instant visit: the target view's placeholder — never the view itself, with props it does not have yet.
-        const View = await resolve(page.component);
+        const View = await resolve(viewName(resolve, page.component, page.props));
         const Placeholder = View.placeholder;
         if (!Placeholder || renders.current !== turn) return;
         await new Promise<void>((done) => {
           committed.current.push(done);
-          setCurrent((previous) => ({ ...previous, placeholder: { Component: Placeholder, View, name: page.component, props: page.props } }));
+          setCurrent((previous) => ({ ...previous, placeholder: { Component: Placeholder, View, name: viewName(resolve, page.component, page.props), props: page.props } }));
         });
         return;
       }
       // The page's component and its locale's messages, both before it renders: a page in another language (another
       // tab switched it) loads that language's files first. The layers' views too — they show at once.
       const [Component, catalog] = await Promise.all([
-        resolve(page.component),
+        resolve(viewName(resolve, page.component, page.props)),
         loadPageMessages(page, messages),
         ...(layers.length > 0 ? [loadLayerStack(), ...layers.map((layer) => loadView(resolve, layer.page.component))] : []),
       ]);
@@ -581,7 +581,7 @@ export function MarmeonApp({
   const titles = useMemo(() => (typeof document === 'undefined' ? undefined : new TitleRegistry(title)), [title]);
   const head = useMemo(() => ({ template: title, collector: headCollector, titles }), [title, headCollector, titles]);
 
-  const layouts = placeholder ? layoutsOf(placeholder.View, placeholder.name, layout) : layoutsOf(Component, page.component, layout);
+  const layouts = placeholder ? layoutsOf(placeholder.View, placeholder.name, layout) : layoutsOf(Component, viewName(resolve, page.component, page.props), layout);
   const layoutCatches = layouts.some((Layout) => Layout.error);
   const content = placeholder ? (
     // An instant visit's placeholder: what the link gave it — the real view renders only with its page.

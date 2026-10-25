@@ -100,6 +100,15 @@ The page renders inside your default layout. A request that matches no route pas
 no shared props: declare them optional, and let the layout render without them. `ErrorPageProps` also has `exception`, which holds
 the error's name, message and stack only in development.
 
+#### A page per status
+
+A view named for a status comes before `errors/Error`: with `modules/errors/views/404.tsx`, a 404 shows that page, and every other
+status still shows `errors/Error` (or the built-in page). The view takes the same `ErrorPageProps`. Only the exact status counts,
+there are no patterns such as `4xx`. The server and the browser choose alike, so the page hydrates, and the page object still
+says `errors/Error`: tests and `PageInfo.component` see no change. What follows the view's name does change: the default layout
+of your app, `layout(name)`, is asked with `errors/404`, not with `errors/Error`. The same goes for an error while a page renders
+(status 500, `errors/500`) and for the dialog that shows a 5xx over the page.
+
 ## Results
 
 An exception is for what should not happen: a bug, a lost connection, a request that stops with a status. An outcome that
@@ -474,7 +483,7 @@ codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 
 What the browser does when something fails:
 
-- **An error while a page renders** shows the app's `errors/Error` page inside its layouts, with details in development only. A
+- **An error while a page renders** shows the app's `errors/Error` page (or `errors/500`, if there is one) inside its layouts, with details in development only. A
   layout that throws shows the page without layouts. The next visit tries again. A layout with `error` shows the failure of what
   is below it itself, inside the layout, with a `retry()` for a button: [When a page fails](pages.md#when-a-page-fails).
 - **A failed visit** keeps the page and whatever was typed into it. A server that cannot be reached shows a notice, and a 5xx shows
