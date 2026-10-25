@@ -84,6 +84,25 @@ export function prefetchWith(navigator: Pick<Navigator, 'load' | 'loaded'>, url:
 }
 
 /**
+ * Prefetches the page of `url` when `element` scrolls into view (`<Link prefetch="viewport">`), loading the prefetch code
+ * first. Returns what stops watching — call it when the link unmounts, also before the code is there.
+ */
+export function observeWith(navigator: Pick<Navigator, 'load' | 'loaded'>, element: Element, url: string, options?: PrefetchOptions): () => void {
+  let stop: (() => void) | undefined;
+  let gone = false;
+  const attach = (prefetches: Prefetches) => {
+    if (!gone) stop = prefetches.observe(element, url, options);
+  };
+  const loaded = navigator.loaded(loadPrefetch);
+  if (loaded) attach(loaded);
+  else navigator.load(loadPrefetch).then(attach, () => undefined);
+  return () => {
+    gone = true;
+    stop?.();
+  };
+}
+
+/**
  * Instant visits — `navigator.load(loadInstant)`: an adapter loads it where a link with a placeholder renders, before
  * anyone clicks it. A visit with `instant` before the code is there goes without its placeholder (the page comes as always).
  */

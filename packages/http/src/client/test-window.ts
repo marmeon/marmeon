@@ -414,6 +414,11 @@ export class FakeWindow implements NavigatorWindow {
   BroadcastChannel?: new (name: string) => BroadcastChannel;
   /** A frozen tab (Page Lifecycle): it hears nothing on the channels. */
   frozen = false;
+  /** An element has `ratio` of itself in view (0: gone) — what the observer reports, if it watches the element. */
+  see(element: Element, ratio: number): void {
+    this.#ratios.set(element, ratio);
+    if (this.watching.has(element)) this.#intersected?.([{ target: element, isIntersecting: ratio > 0, intersectionRatio: ratio }]);
+  }
   /** The user prefers reduced motion (`prefers-reduced-motion: reduce`). */
   reducedMotion = false;
   /** The view transitions the document started — once it has them (`supportViewTransitions()`). */
@@ -421,6 +426,13 @@ export class FakeWindow implements NavigatorWindow {
   /** What happened, in order, for tests that follow a view transition: `transition`, `updated`, `animated`, the scroll. */
   readonly log: string[] = [];
   readonly performance: NonNullable<NavigatorWindow['performance']>;
+  /** The elements the document's `IntersectionObserver` watches — `see(element, ratio)` reports one of them. */
+  readonly watching = new Set<Element>();
+  IntersectionObserver?: NavigatorWindow['IntersectionObserver'];
+  /** `connection` of the browser's `navigator` — Save-Data and the speed of the network. */
+  navigator: { connection?: { saveData?: boolean; effectiveType?: string } } = {};
+  readonly #ratios = new Map<Element, number>();
+  #intersected: ((entries: { target: Element; isIntersecting: boolean; intersectionRatio: number }[]) => void) | undefined;
   readonly #documentListeners = new Map<string, Set<() => void>>();
   readonly #listeners = new Map<string, Set<(event: Event) => void>>();
   handler: Handler = () => new Response('not found', { status: 404 });
@@ -459,6 +471,24 @@ export class FakeWindow implements NavigatorWindow {
         this.#documentListeners.get(type)!.add(listener);
       },
       removeEventListener: (type: string, listener: () => void) => void this.#documentListeners.get(type)?.delete(listener),
+    };
+    const watching = this.watching;
+    this.IntersectionObserver = class {
+      constructor(callback: NonNullable<FakeWindow['IntersectionObserver']> extends new (callback: infer C, ...rest: never) => unknown ? C : never) {
+        self.#intersected = callback as never;
+      }
+      observe(element: Element) {
+        watching.add(element);
+        // As a browser does: the element's state now, once it is watched.
+        const ratio = self.#ratios.get(element);
+        if (ratio !== undefined) queueMicrotask(() => self.see(element, ratio));
+      }
+      unobserve(element: Element) {
+        watching.delete(element);
+      }
+      disconnect() {
+        watching.clear();
+      }
     };
     this.performance = { getEntriesByType: () => [{ nextHopProtocol: self.protocol }] as never };
     const sources = this.sources;

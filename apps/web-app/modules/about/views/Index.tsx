@@ -13,7 +13,7 @@ export default function Index({ features }: PageProps<ShowAboutController>) {
       <ul>
         {features.map((feature) => (
           <li key={feature.slug}>
-            <Link route="about.features.show" params={{ feature: feature.slug }}>
+            <Link route="about.features.show" params={{ feature: feature.slug }} prefetch="viewport">
               {t(`features.${feature.slug}.title`)}
             </Link>
             {' — '}

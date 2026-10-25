@@ -185,6 +185,22 @@ A prefetched page shows at once when the user clicks:
 `prefetch="mount"` fetches it as soon as the link renders, and `prefetch={['hover', 'mount']}` does both. The page is kept for
 `cacheFor` milliseconds, 30 seconds by default.
 
+`prefetch="viewport"` fetches the page when its link scrolls into view: a feature list, a footer, the next pages of an article.
+It is the third trigger, and it combines with the others: `prefetch={['hover', 'viewport']}`. The limits are fixed, because a
+page with hundreds of links must not send hundreds of requests while someone scrolls:
+
+- A link must be at least half visible for 250 milliseconds. Scrolling past it fetches nothing, and a link that leaves the view
+  before its turn drops out of the queue.
+- At most two viewport prefetches run at once, and at most 20 start for each page on screen. The links that are left wait in
+  order. A visit to another page starts the count again; a reload of the same page (a poll, a live update) does not. A link
+  that sends nothing, such as one to the page on screen or to a page already fetched, does not count.
+- Nothing is fetched while the document is hidden, with Save-Data on, or on a `2g` or `slow-2g` connection. Without
+  `IntersectionObserver` the trigger does nothing.
+
+A viewport prefetch is an ordinary one: `Purpose: prefetch`, `cacheFor`, 30 pages at most, dropped by any write. Data in the
+viewport stays opt-in for each link and is never a default, since every request runs the route's middleware and controller for
+a click that may never come. Use it for a handful of links that are likely to be clicked, not for a long list of user content.
+
 A prefetch is an ordinary `GET` of the route: its middleware, its authorization and its controller run, before the user has
 clicked, and maybe without a click ever following. The request carries the header `Purpose: prefetch`, so the server can tell
 it apart. A `GET` route must therefore never change anything, such as counting a view, marking a message read or redeeming a link:
