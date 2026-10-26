@@ -292,6 +292,38 @@ describe('make:auth', () => {
       expect(snapshot(join(root, 'modules/auth'))).toEqual(before);
       expect(readdirSync(outside)).toEqual([]);
     });
+
+    it.each(['modules', 'modules/auth/controllers', 'bootstrap/client.tsx', 'bootstrap/app.ts', 'marmeon-stubs.json'])(
+      'refuses to write through the link %s out of the project, names it, and writes nothing',
+      async (place) => {
+        const root = blankApp();
+        if (place !== 'modules') await new MakeAuthCommand().handle(fakeInput(root).input);
+        const outside = tempDir('marmeon-make-auth-outside-');
+        writeFileSync(join(outside, 'kept.txt'), 'untouched');
+        const link = join(root, place);
+        rmSync(link, { recursive: true, force: true });
+        const isFile = /\.\w+$/.test(place);
+        symlinkSync(isFile ? join(outside, 'kept.txt') : outside, link);
+        if (place !== 'modules') writeFileSync(join(root, 'modules/auth/routes.ts'), '// changed by the app\n');
+        const before = place === 'modules' ? {} : snapshot(join(root, 'modules/auth'));
+        const { input, lines } = fakeInput(root, { force: true });
+        expect(await new MakeAuthCommand().handle(input)).toBe(1);
+        expect(lines).toEqual([`✗ ${place} leads out of the project, and make:auth would write through it. Replace the link with a real file or directory, then run marmeon make:auth again. Nothing was written.`]);
+        expect(readdirSync(outside).sort()).toEqual(['kept.txt']);
+        expect(readFileSync(join(outside, 'kept.txt'), 'utf8')).toBe('untouched');
+        if (place !== 'modules') expect(snapshot(join(root, 'modules/auth'))).toEqual(before);
+      },
+    );
+
+    it('writes through a link that stays inside the project', async () => {
+      const root = blankApp();
+      mkdirSync(join(root, 'shared'));
+      cpSync(join(root, 'modules'), join(root, 'shared'), { recursive: true });
+      rmSync(join(root, 'modules'), { recursive: true });
+      symlinkSync(join(root, 'shared'), join(root, 'modules'), 'dir');
+      expect(await new MakeAuthCommand().handle(fakeInput(root).input)).toBe(0);
+      expect(existsSync(join(root, 'shared/auth/routes.ts'))).toBe(true);
+    });
   });
 
   it('records every copied file but the migrations in marmeon-stubs.json, with the package version and the hash of what was written', async () => {

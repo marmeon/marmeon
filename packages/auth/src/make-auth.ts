@@ -2,7 +2,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, wr
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommandArgumentsError, editDefinitionFile, importedBindings } from '@marmeon/core';
-import { readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
+import { escapesRoot, readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 
 /**
@@ -67,6 +67,22 @@ export class MakeAuthCommand {
       return 1;
     }
 
+    // No write goes through a link out of the project (a cloned repository can carry one): every path the command writes is
+    // checked before the first write.
+    const written = [
+      // The migrations are written exclusively (`wx`, which never follows a link); their directory is checked below.
+      ...(readdirSync(source, { recursive: true }) as string[]).filter((file) => file !== 'migrations' && !file.startsWith(`migrations${sep}`)).map((file) => join(target, file)),
+      join(input.root, 'bootstrap', 'client.tsx'),
+      join(input.root, 'bootstrap', 'app.ts'),
+      join(input.root, STUB_MANIFEST),
+    ];
+    for (const path of written) {
+      const link = escapesRoot(input.root, path);
+      if (link !== undefined) {
+        input.output.error(`${link.split(sep).join('/')} leads out of the project, and make:auth would write through it. Replace the link with a real file or directory, then run marmeon make:auth again. Nothing was written.`);
+        return 1;
+      }
+    }
     // Read before anything is written: a manifest of a newer Marmeon is not ours to overwrite, and then the module is not either.
     const manifest = readStubManifest(input.root);
     if (!manifest.ok) {

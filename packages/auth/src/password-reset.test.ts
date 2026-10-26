@@ -98,6 +98,26 @@ describe.each(drivers)('password reset on %s', (driver) => {
     expect(await hasher.verify('new password', hash)).toBe(true);
   });
 
+  it('keeps the link when the new password cannot be hashed: it throws, and the same link works with a valid password', async () => {
+    const created = must(await broker().createToken('ada@example.com'));
+    for (const unhashable of ['x'.repeat(5000), 'lone \ud800 surrogate']) {
+      await expect(broker().reset('ada@example.com', created.token, unhashable)).rejects.toThrow(/^\[marmeon:A2\]/);
+    }
+    expect(await rows()).toHaveLength(1);
+    expect(await hasher.verify('old password', hash)).toBe(true);
+    expect(await broker().reset('ada@example.com', created.token, 'new password')).toMatchObject({ ok: true, value: ada });
+    expect(await hasher.verify('new password', hash)).toBe(true);
+  });
+
+  it('throws for an unhashable password with an invalid link just as with a valid one, so the error does not tell the link apart', async () => {
+    const created = must(await broker().createToken('ada@example.com'));
+    const throwing = async (email: string, value: string) => broker().reset(email, value, 'x'.repeat(5000)).then(() => 'resolved', (error: Error) => error.message);
+    const valid = await throwing('ada@example.com', created.token);
+    expect(valid).toMatch(/^\[marmeon:A2\]/);
+    expect(await throwing('ada@example.com', 'a-wrong-token')).toBe(valid);
+    expect(await throwing('nobody@example.com', created.token)).toBe(valid);
+  });
+
   it('is no success when the provider writes nothing: it throws A5 and fires no event', async () => {
     const before = hash;
     const created = must(await broker().createToken('ada@example.com'));

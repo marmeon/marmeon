@@ -2,6 +2,7 @@ import { chmodSync, existsSync, readFileSync, statSync, writeFileSync } from 'no
 import { join } from 'node:path';
 import { generateKey } from '@marmeon/encryption';
 import type { CommandInput } from '../command.ts';
+import { leavesProject } from '../write-guard.ts';
 
 /**
  * Writes a new `APP_KEY` into `.env`. Runs without
@@ -27,6 +28,7 @@ export class KeyGenerateCommand {
     }
 
     const file = join(root, '.env');
+    if (leavesProject(input, [file])) return 1;
     const example = join(root, '.env.example');
     // A new file starts as a copy of the example's text — not of its mode.
     const existed = existsSync(file);
