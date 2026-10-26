@@ -55,8 +55,6 @@ export declare class ClientHistory {
     clear(options?: {
         siteData?: boolean | readonly SiteData[];
     }): void;
-    get cleared(): boolean;
-    get siteData(): readonly SiteData[];
 }
 // ClientInfo
 export interface ClientInfo {
@@ -72,7 +70,6 @@ export interface CloseLayerOptions {
 // CloseLayerResult
 export declare class CloseLayerResult extends RedirectResult {
     readonly close: LayerClose;
-    constructor({ layers, reload }?: CloseLayerOptions);
 }
 // ContentSecurityPolicyOptions
 export interface ContentSecurityPolicyOptions extends CspDirectives {
@@ -96,7 +93,6 @@ export declare const CookieDefaults: import("@marmeon/core").Token<CookieDefault
 export declare class CookieEncryption {
     #private;
     except(...names: string[]): this;
-    isEncrypted(name: string): boolean;
 }
 // CookieJar
 export type { CookieJar } from '@marmeon/router';

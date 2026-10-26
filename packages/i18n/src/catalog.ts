@@ -105,7 +105,7 @@ export class Catalog {
     return [...this.#messages.keys()];
   }
 
-  /** The namespaces `locale` has messages for. */
+  /** @internal The namespaces `locale` has messages for. */
   namespaces(locale: string): string[] {
     return [...(this.#messages.get(locale)?.keys() ?? [])];
   }
@@ -161,7 +161,7 @@ export class Catalog {
     }) as unknown as Translate<N>;
   }
 
-  /** Numbers, dates and relative times in `locale`. */
+  /** Numbers, dates and relative times in `locale`. What a UI adapter's hook returns with the translation: as a method, the adapter needs no runtime import of this package (only its types). */
   formatter(locale: string): Formatter {
     let formatter = this.#formatters.get(locale);
     if (!formatter) this.#formatters.set(locale, (formatter = createFormatter(this.#formatsOf(locale))));

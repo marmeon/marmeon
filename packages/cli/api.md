@@ -99,7 +99,6 @@ export interface JsonDocument {
 }
 // Output
 export declare class Output {
-    constructor(write?: (text: string) => void);
     line(text?: string): void;
     info(text: string): void;
     success(text: string): void;

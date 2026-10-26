@@ -19,7 +19,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { SAME_VALUE } from './api-names.ts';
 import { INTERNAL_EXCEPTIONS } from './api-internal.ts';
-import { MEMBER_EXCEPTIONS, MEMBER_PENDING } from './api-members.ts';
+import { MEMBER_EXCEPTIONS } from './api-members.ts';
 import { SPAN_EXCEPTIONS, SPAN_WORDS } from './api-spans.ts';
 import { compareSnapshots, parseSnapshot, renderSnapshot, type ApiChanges, type ApiItem } from './api-snapshot.ts';
 import { NOT_SOURCE, SHIPPED, TEST_FILE, importsOf, namespaceUseOf } from './api-sources.ts';
@@ -1306,11 +1306,9 @@ export function internalProblems(packages: readonly PackageToSnapshot[], root: s
 export interface MemberLists {
   /** Members that stay public on purpose, each with its reason; keys also `<entry> <Class>.*` and `<entry> *`. */
   readonly exceptions: Readonly<Record<string, string>>;
-  /** Members that do not follow the rule yet. */
-  readonly pending: readonly string[];
 }
 
-const MEMBER_LISTS: MemberLists = { exceptions: MEMBER_EXCEPTIONS, pending: MEMBER_PENDING };
+const MEMBER_LISTS: MemberLists = { exceptions: MEMBER_EXCEPTIONS };
 
 /** Members every object has: `toString` and the like are called implicitly, so a text match could not tell. */
 const IMPLICIT_MEMBERS = new Set(['toString', 'toJSON', 'valueOf', 'then']);
@@ -1551,14 +1549,14 @@ export function memberStatus(usage: MemberUsage): 'used' | 'framework only' | 'u
 /**
  * A public constructor or member of a stable class that no docs page, app or the kit uses is a problem: it is `@internal`, or it stands
  * in `lists.exceptions` with the reason an app needs it. So is one that only other framework packages use (they may still call an
- * `@internal` member). A line of the lists that matches no problem any more is a problem too, so the line gets deleted.
+ * `@internal` member). A line of the exceptions that matches no problem any more is a problem too, so the line gets deleted.
  * `files` is read only when a package has a class with members.
  */
 export function memberProblems(packages: readonly PackageToSnapshot[], root: string, files: () => readonly SourceFile[], lists: MemberLists = MEMBER_LISTS): string[] {
   const candidates = memberCandidates(packages, root, []);
   const usage = candidates.length > 0 ? usedBy(candidates, files()) : [];
   const covers = (line: string, item: MemberUsage) => line === item.key || line === `${item.entry} ${item.className}.*` || line === `${item.entry} *`;
-  const listed = (item: MemberUsage) => Object.keys(lists.exceptions).some((line) => covers(line, item)) || lists.pending.some((line) => covers(line, item));
+  const listed = (item: MemberUsage) => Object.keys(lists.exceptions).some((line) => covers(line, item));
   const problems: string[] = [];
   const hits: MemberUsage[] = [];
   for (const item of usage) {
@@ -1573,7 +1571,6 @@ export function memberProblems(packages: readonly PackageToSnapshot[], root: str
     );
   }
   for (const line of Object.keys(lists.exceptions)) if (!hits.some((item) => covers(line, item))) problems.push(`${line} is listed in MEMBER_EXCEPTIONS but follows the rule — delete the line`);
-  for (const line of lists.pending) if (!hits.some((item) => covers(line, item))) problems.push(`${line} is listed in MEMBER_PENDING but follows the rule — delete the line`);
   return problems;
 }
 

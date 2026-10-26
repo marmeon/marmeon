@@ -24,11 +24,12 @@ export class ClientHistory {
     if (siteData !== undefined) this.#siteData = siteData === true ? ['cache', 'storage'] : siteData === false ? [] : [...new Set(siteData)];
   }
 
+  /** @internal Read by the page-protocol middleware. */
   get cleared(): boolean {
     return this.#cleared;
   }
 
-  /** What the response's `Clear-Site-Data` names — empty: no header. */
+  /** @internal What the response's `Clear-Site-Data` names — empty: no header. */
   get siteData(): readonly SiteData[] {
     return this.#siteData;
   }

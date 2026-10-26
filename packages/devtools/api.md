@@ -157,9 +157,7 @@ export interface ExceptionEntryContent extends ErrorDetails {
 // FileDevtoolsStore
 export declare class FileDevtoolsStore implements DevtoolsStore {
     #private;
-    readonly directory: string;
     readonly maxBytes: number;
-    readonly maxAgeMs: number;
     constructor(options: FileDevtoolsStoreOptions);
     write(entries: readonly AnyEntry[]): Promise<void>;
     list(query?: EntryQuery): Promise<AnyEntry[]>;

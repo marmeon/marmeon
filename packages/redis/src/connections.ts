@@ -247,7 +247,7 @@ export class RedisConnections {
     return [...this.#options.keys()];
   }
 
-  /** Names of the connections the app uses — asked for with `get()` by a driver or the app — in that order. */
+  /** @internal Names of the connections the app uses — asked for with `get()` by a driver or the app — in that order. */
   inUse(): string[] {
     return [...this.#instances.keys()];
   }

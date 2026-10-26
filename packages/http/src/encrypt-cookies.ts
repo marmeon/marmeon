@@ -13,6 +13,7 @@ export class CookieEncryption {
     return this;
   }
 
+  /** @internal Asked by the cookie middleware and the test app. */
   isEncrypted(name: string): boolean {
     return !this.#except.has(name);
   }

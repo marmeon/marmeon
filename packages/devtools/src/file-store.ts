@@ -53,8 +53,10 @@ interface FileState {
  * loses its entries, never the request. See docs/devtools.md#where-the-entries-live.
  */
 export class FileDevtoolsStore implements DevtoolsStore {
+  /** @internal The directory the store writes to. */
   readonly directory: string;
   readonly maxBytes: number;
+  /** @internal The age limit in milliseconds, derived from `maxAgeHours`. */
   readonly maxAgeMs: number;
   readonly #now: () => number;
   readonly #onError: (error: unknown, during: 'write' | 'read' | 'prune') => void;

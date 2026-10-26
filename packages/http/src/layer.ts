@@ -94,6 +94,7 @@ export interface CloseLayerOptions {
 export class CloseLayerResult extends RedirectResult {
   readonly close: LayerClose;
 
+  /** @internal Made by `closeLayer()`. */
   constructor({ layers = 1, reload }: CloseLayerOptions = {}) {
     super();
     if (!Number.isInteger(layers) || layers < 1) throw new Error(`closeLayer({ layers }) closes at least one layer, got ${layers}.`);

@@ -18,7 +18,6 @@ export declare class Catalog {
     });
     add(locale: string, namespace: string, messages: unknown, source?: string): this;
     locales(): string[];
-    namespaces(locale: string): string[];
     has(locale: string, key: string): boolean;
     message(locale: string, key: string): string | undefined;
     text(locale: string, key: string, params?: Readonly<Record<string, unknown>>, fallback?: string): string;
@@ -204,7 +203,6 @@ export declare class Catalog {
     });
     add(locale: string, namespace: string, messages: unknown, source?: string): this;
     locales(): string[];
-    namespaces(locale: string): string[];
     has(locale: string, key: string): boolean;
     message(locale: string, key: string): string | undefined;
     text(locale: string, key: string, params?: Readonly<Record<string, unknown>>, fallback?: string): string;

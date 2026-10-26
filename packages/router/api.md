@@ -382,11 +382,6 @@ export interface RouteBindingWith {
     readonly with: readonly string[];
     readonly value: unknown;
 }
-// RouteBlocking
-export interface RouteBlocking {
-    readonly lockSeconds: number;
-    readonly waitSeconds: number;
-}
 // RouteDefinition
 export declare class RouteDefinition {
     #private;
@@ -399,16 +394,12 @@ export declare class RouteDefinition {
     readonly checks: readonly AccessCheck[];
     readonly localized: boolean;
     name(name: string): this;
-    get routeName(): string | undefined;
     internal(): this;
     sitemap(): this;
-    get inSitemap(): boolean;
-    get isInternal(): boolean;
     block(options?: {
         lock?: Duration;
         wait?: Duration;
     }): this;
-    get blocking(): RouteBlocking | undefined;
 }
 // RouteDefinitions
 export interface RouteDefinitions {
@@ -441,7 +432,6 @@ export declare class Router {
     load(options: LoadOptions, ...definitions: RouteDefinitions[]): this;
     beforeValidation(hook: ValidationHook): this;
     intercept(interceptor: RouteInterceptor): this;
-    findByName(name: string): RouteDefinition | undefined;
     middlewareFor(route: RouteDefinition): readonly AnyMiddleware[];
     url<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): string;
 }

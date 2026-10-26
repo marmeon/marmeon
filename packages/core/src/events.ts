@@ -136,12 +136,12 @@ export class EventRegistry {
     return this;
   }
 
-  /** Listeners of the event's class and of every class it extends, most specific first. */
+  /** @internal Listeners of the event's class and of every class it extends, most specific first. */
   listenersFor(event: object): ListenerBinding['listener'][] {
     return this.bindingsFor(event).map((binding) => binding.listener);
   }
 
-  /** Like {@link listenersFor}, with the class each listener was registered for. */
+  /** @internal Like {@link listenersFor}, with the class each listener was registered for. */
   bindingsFor(event: object): ListenerBinding[] {
     const found: ListenerBinding[] = [];
     for (let proto = Object.getPrototypeOf(event); proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {

@@ -77,6 +77,7 @@ export class RouteDefinition {
     return this;
   }
 
+  /** @internal The name the router and the CLI list the route by. */
   get routeName(): string | undefined {
     return this.#name;
   }
@@ -111,12 +112,12 @@ export class RouteDefinition {
     return this;
   }
 
-  /** Whether {@link sitemap} marked the route. */
+  /** @internal Whether {@link sitemap} marked the route. */
   get inSitemap(): boolean {
     return this.#sitemap;
   }
 
-  /** Whether {@link internal} applies, to the route or its group. */
+  /** @internal Whether {@link internal} applies, to the route or its group. */
   get isInternal(): boolean {
     return this.#internal;
   }
@@ -164,7 +165,7 @@ export class RouteDefinition {
     if (this.#sealed) throw new TypeError(`${method}() cannot change a route after its routes were loaded: ${this.path}.`);
   }
 
-  /** The session lock {@link block} asks for — undefined for a route that does not block. */
+  /** @internal The session lock {@link block} asks for — undefined for a route that does not block. */
   get blocking(): RouteBlocking | undefined {
     return this.#blocking;
   }
