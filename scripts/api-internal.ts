@@ -47,10 +47,6 @@ export const INTERNAL_PENDING: ReadonlySet<string> = new Set<string>([
   '@marmeon/router/internal validateRequest',
   '@marmeon/server/internal DevMarkup',
   '@marmeon/server/internal ViteDevOptions',
-  '@marmeon/session/internal SESSION_READERS',
   '@marmeon/validation/internal RuleContents',
-  '@marmeon/auth NewPassword',
-  '@marmeon/auth SessionFingerprints',
-  '@marmeon/auth SignInThrottle',
   '@marmeon/storage StorageManager',
 ]);

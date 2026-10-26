@@ -45,6 +45,7 @@ export class SignInThrottle {
   readonly #clock: Clock;
   readonly #logger: Logger;
 
+  /** @internal Built by the container. */
   constructor(
     limiter: RateLimiter,
     { key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>,

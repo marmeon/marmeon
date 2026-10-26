@@ -598,8 +598,11 @@ describe('Auth (session guard)', () => {
     // What a worker validates again — the same payload.
     expect(await SignedIn.schema['~standard'].validate(json)).toMatchObject({ value: json });
     expect(new SignedIn(ada).via).toBe('app');
+    const at = new Date('2030-01-02T03:04:05Z');
+    expect(new SignedIn(ada, { remember: true }, at)).toMatchObject({ remember: true, at, via: 'app' });
+    expect(new SignedIn(ada).remember).toBe(false);
     expect(SignedIn.event).toBe('auth.signed-in'); // the id every queued listener job carries
-    expect(new SignedIn(ada, false, new Date(), { via: 'remember', ip: '203.0.113.9', userAgent: 'x'.repeat(600) })).toMatchObject({ via: 'remember', ip: '203.0.113.9', userAgent: 'x'.repeat(512) });
+    expect(new SignedIn(ada, { via: 'remember', ip: '203.0.113.9', userAgent: 'x'.repeat(600) })).toMatchObject({ via: 'remember', ip: '203.0.113.9', userAgent: 'x'.repeat(512) });
   });
 });
 

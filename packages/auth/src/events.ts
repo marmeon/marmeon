@@ -64,9 +64,13 @@ export class SignedIn {
   /** The browser's `User-Agent` — the request's, or what the app passed; cut to 512 characters. */
   readonly userAgent: string | null;
 
-  constructor(user: AuthUser, remember = false, at = new Date(), details: { readonly via?: SignInVia; readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {}) {
+  constructor(
+    user: AuthUser,
+    details: { readonly remember?: boolean; readonly via?: SignInVia; readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {},
+    at = new Date(),
+  ) {
     this.user = user;
-    this.remember = remember;
+    this.remember = details.remember ?? false;
     this.at = at;
     this.via = details.via ?? 'app';
     this.ip = details.ip ?? null;
@@ -385,7 +389,7 @@ export class TwoFactorChallengeFailed {
   readonly ip: string | null;
   readonly userAgent: string | null;
 
-  constructor(user: AuthUser, at = new Date(), details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined; readonly during?: 'sign-in' | 'step-up' | 'confirm' } = {}) {
+  constructor(user: AuthUser, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined; readonly during?: 'sign-in' | 'step-up' | 'confirm' } = {}, at = new Date()) {
     this.user = user;
     this.at = at;
     this.during = details.during ?? 'sign-in';

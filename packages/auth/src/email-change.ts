@@ -72,6 +72,7 @@ export class EmailChange {
   readonly #limiter: RateLimiter;
   readonly #events: EventDispatcher;
 
+  /** @internal Built by the container. */
   constructor(auth: Auth, session: Session, state: TwoFactorState, store: EmailChangeStore, config: AuthConfig, clock: Clock, connections: Connections, limiter: RateLimiter, events: EventDispatcher) {
     this.#auth = auth;
     this.#session = session;

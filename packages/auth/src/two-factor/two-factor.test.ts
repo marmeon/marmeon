@@ -298,6 +298,14 @@ afterEach(() => {
   events.length = 0;
 });
 
+describe('TwoFactorChallengeFailed', () => {
+  it('takes the user, the details and the time, in that order', () => {
+    const at = new Date('2030-01-02T03:04:05Z');
+    expect(new TwoFactorChallengeFailed(ada, { during: 'step-up', ip: '203.0.113.9' }, at)).toMatchObject({ during: 'step-up', ip: '203.0.113.9', at });
+    expect(new TwoFactorChallengeFailed(ada)).toMatchObject({ during: 'sign-in', ip: null });
+  });
+});
+
 describe('TwoFactor: setting up', () => {
   it('begins with a key, an otpauth URI for the app\'s name and a QR path — nothing is in force yet', async () => {
     const booted = await boot();

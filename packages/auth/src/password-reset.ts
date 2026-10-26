@@ -133,6 +133,7 @@ export class PasswordBroker {
   readonly #newPassword: NewPassword;
   readonly #signInThrottle: SignInThrottle;
 
+  /** @internal Built by the container. */
   constructor(
     users: UserProvider,
     tokens: PasswordResetTokenStore,

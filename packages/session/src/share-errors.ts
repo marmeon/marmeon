@@ -17,6 +17,7 @@ export class ShareErrorsFromSession {
   readonly #session: Session;
   readonly #shared: SharedData;
 
+  /** @internal Built by the container. */
   constructor(session: Session, shared: SharedData) {
     this.#session = session;
     this.#shared = shared;

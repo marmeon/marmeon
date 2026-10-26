@@ -12,6 +12,7 @@ import { idOf, type Credentials } from './user.ts';
 export class SessionFingerprints {
   readonly #keys: readonly Uint8Array[];
 
+  /** @internal Built by the container. */
   constructor({ key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>) {
     this.#keys = [key, ...previousKeys].map((secret) => new Uint8Array(hkdfSync('sha256', secret, new Uint8Array(0), 'marmeon:auth-session', 32)));
   }
