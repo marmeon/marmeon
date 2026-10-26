@@ -93,6 +93,8 @@ export interface RequestOptions {
 }
 // SignedWebhookOptions
 export interface SignedWebhookOptions {
+    scheme: WebhookScheme;
+    secret: string;
     id?: string;
     timestamp?: Date;
 }
@@ -241,7 +243,7 @@ export declare class TestResponse {
 // createTestApp
 export declare function createTestApp(definition: ApplicationDefinition, options?: TestAppOptions): Promise<TestApp>;
 // signedWebhook
-export declare function signedWebhook(scheme: WebhookScheme, secret: string, body: string, options?: SignedWebhookOptions): Record<string, string>;
+export declare function signedWebhook(body: string, options: SignedWebhookOptions): Record<string, string>;
 // startSsrServer
 export declare function startSsrServer(application: ApplicationDefinition): Promise<SsrServer>;
 ```

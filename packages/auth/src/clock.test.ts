@@ -3,7 +3,7 @@ import { TestClock } from '@marmeon/core/testing';
 import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, HttpServiceProvider } from '@marmeon/http';
+import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
@@ -62,7 +62,7 @@ class StateController extends Controller {
     this.#auth = auth;
   }
   async handle() {
-    return { id: (await this.#auth.user())?.id ?? null, confirmed: this.#auth.passwordRecentlyConfirmed(900) };
+    return { id: (await this.#auth.user())?.id ?? null, confirmed: this.#auth.passwordRecentlyConfirmed({ minutes: 15 }) };
   }
 }
 
@@ -75,6 +75,36 @@ class ConfiguredWindowController extends Controller {
   }
   async handle() {
     return { confirmed: this.#auth.passwordRecentlyConfirmed() };
+  }
+}
+
+/** Asks with the window the request names, and answers with what the call did. */
+class RequestedWindowController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle(ctx: HttpContext) {
+    const raw = ctx.query.get('within') ?? '';
+    const within = raw === 'bad' ? ('5m' as never) : Number(raw);
+    try {
+      return { confirmed: this.#auth.passwordRecentlyConfirmed(within) };
+    } catch (error) {
+      return { error: (error as Error).message };
+    }
+  }
+}
+
+/** Asks with a window of its own, given as a Duration. */
+class NarrowWindowController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle() {
+    return { confirmed: this.#auth.passwordRecentlyConfirmed({ minutes: 5 }) };
   }
 }
 
@@ -126,6 +156,8 @@ const routes = openRoutes((Route) => {
   Route.post('/stamp', StampController);
   Route.get('/state', StateController);
   Route.get('/window', ConfiguredWindowController);
+  Route.get('/narrow', NarrowWindowController);
+  Route.get('/within', RequestedWindowController);
   Route.get('/setup', Page).name('test.setup');
   Route.get('/verify', Page).name('test.verify');
   Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: { minutes: 10 } })).get('/area', Page);
@@ -181,6 +213,30 @@ describe('Auth on the app clock', () => {
     expect(await (await send('/state')).json()).toEqual({ id: 1, confirmed: true });
     clock.travel({ minutes: 2 });
     expect(await (await send('/state')).json()).toEqual({ id: 1, confirmed: false });
+  });
+
+  it('counts the window it is given as a Duration, and is closed without a confirmation', async () => {
+    const { clock, send } = await boot();
+    await send('/login', 'POST');
+    const narrow = async () => ((await (await send('/narrow')).json()) as { confirmed: boolean }).confirmed;
+    expect(await narrow(), 'never confirmed').toBe(false);
+    await send('/confirm', 'POST');
+    clock.travel({ seconds: 299 });
+    expect(await narrow(), 'last second of five minutes').toBe(true);
+    clock.travel({ seconds: 1 });
+    expect(await narrow(), 'five minutes over').toBe(false);
+    expect(await (await send('/window')).json(), 'the configured window is wider').toEqual({ confirmed: true });
+  });
+
+  it('throws on an invalid window and treats a zero or negative one as not confirmed', async () => {
+    const { send } = await boot();
+    await send('/login', 'POST');
+    await send('/confirm', 'POST');
+    const ask = async (within: string) => (await (await send(`/within?within=${within}`)).json()) as { confirmed?: boolean; error?: string };
+    expect((await ask('bad')).error).toMatch(/Not a span of time/);
+    expect(await ask('0')).toEqual({ confirmed: false });
+    expect(await ask('-5')).toEqual({ confirmed: false });
+    expect(await ask('60')).toEqual({ confirmed: true });
   });
 
   it('counts AUTH_PASSWORD_TIMEOUT_SECONDS in seconds — 900 unless set', async () => {

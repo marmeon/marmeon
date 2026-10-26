@@ -16,14 +16,14 @@ const send = (body: string, headers: Record<string, string>) =>
 
 describe('the payment webhook', { timeout: 30_000 }, () => {
   it('takes an event signed with the secret', async () => {
-    await send(event, signedWebhook('stripe', SECRET, event)).assertOk().assertExactJson({ received: 'invoice.paid' });
+    await send(event, signedWebhook(event, { scheme: 'stripe', secret: SECRET })).assertOk().assertExactJson({ received: 'invoice.paid' });
   });
 
   it('refuses an event with no signature, a wrong one, a changed body or an old time', async () => {
     const refused = { error: 'webhook_signature_invalid' };
     await send(event, {}).assertUnauthorized().assertExactJson(refused);
-    await send(event, signedWebhook('stripe', `${SECRET}-other`, event)).assertUnauthorized().assertExactJson(refused);
-    await send(event.replace('paid', 'refunded'), signedWebhook('stripe', SECRET, event)).assertUnauthorized().assertExactJson(refused);
-    await send(event, signedWebhook('stripe', SECRET, event, { timestamp: new Date(Date.now() - 3_600_000) })).assertUnauthorized().assertExactJson(refused);
+    await send(event, signedWebhook(event, { scheme: 'stripe', secret: `${SECRET}-other` })).assertUnauthorized().assertExactJson(refused);
+    await send(event.replace('paid', 'refunded'), signedWebhook(event, { scheme: 'stripe', secret: SECRET })).assertUnauthorized().assertExactJson(refused);
+    await send(event, signedWebhook(event, { scheme: 'stripe', secret: SECRET, timestamp: new Date(Date.now() - 3_600_000) })).assertUnauthorized().assertExactJson(refused);
   });
 });

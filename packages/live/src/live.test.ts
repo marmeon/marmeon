@@ -131,7 +131,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     const reader = new LiveStreamReader(await controller.handle(request(`connection=tab-a-0001&${pair('users.1')}`)));
     cleanups.push(() => reader.close());
     await reader.hello({ milliseconds: 500 });
-    await expect(reader.waitFor(1, { milliseconds: 50 })).rejects.toThrow('within 50 ms');
+    await expect(reader.waitFor(1, { timeout: { milliseconds: 50 } })).rejects.toThrow('within 50 ms');
   });
 
   it('refuses a token rewritten to another channel (users.1 → users.2): 403, no stream', async () => {

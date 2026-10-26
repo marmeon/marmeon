@@ -1026,6 +1026,9 @@ const SPAN_LISTS: SpanLists = { exceptions: SPAN_EXCEPTIONS };
 /** The units a name may end in when it holds a number of them (`expiresAfterMinutes`). */
 const UNIT_SUFFIX = /(Seconds|Ms|Milliseconds|Minutes|Hours|Days)$/;
 
+/** A parameter named for a unit alone (`seconds`) holds a span whose unit the call would not show. Singulars (`minute`, `day`) name a point on a calendar, not a span. */
+const UNIT_NAMES = new Set(['ms', 'milliseconds', 'seconds', 'minutes', 'hours', 'days']);
+
 /** A name that ends in a span word: the whole name, or its last camel-case words (`islandTimeout`). */
 function isSpanName(name: string): boolean {
   return SPAN_WORDS.some((word) => name === word || name.endsWith(word[0]!.toUpperCase() + word.slice(1)));
@@ -1051,7 +1054,7 @@ function isBareNumber(annotation: Node | null | undefined): boolean {
  * A span of time is a `Duration`, or a number with its unit in the name (docs/time.md, "Spans of time"): a member, a parameter
  * or a return value of a stable entry point whose name ends in a span word (`timeout`, `ttl`, `maxAge`, …) and whose type holds
  * a bare `number` is a problem. So is a positional parameter whose name, without its unit (`expiresAfterMinutes`), is a span name
- * and whose type is a bare `number`: a span in parameter position is a `Duration` or goes into an options object. A member that
+ * and whose type is a bare `number`: a span in parameter position is a `Duration` or goes into an options object. A parameter named only for its unit (`seconds`, `ms`, …) with a bare `number` is such a span too. A member that
  * holds a number on purpose stands in `lists.exceptions` with its reason; a listed member that follows the rule is a problem
  * too, so the line gets deleted.
  * `@internal` and `@experimental` members and experimental entry points do not count.
@@ -1073,7 +1076,10 @@ export function spanProblems(packages: readonly PackageToSnapshot[], lists: Span
         walk(fn.typeParameters, where);
         for (const param of (fn.params ?? []) as Node[]) {
           const label = param.type === 'Identifier' ? `${where}(${param.name})` : `${where}(options)`;
-          if (param.type === 'Identifier' && isSpanName(param.name) && isBareNumber(param.typeAnnotation)) report(label);
+          if (param.type === 'Identifier' && UNIT_NAMES.has(param.name) && isBareNumber(param.typeAnnotation) && param.typeAnnotation?.typeAnnotation?.type !== 'TSFunctionType') {
+            report(label);
+            positional.add(`${entry} ${label}`);
+          } else if (param.type === 'Identifier' && isSpanName(param.name) && isBareNumber(param.typeAnnotation)) report(label);
           else if (param.type === 'Identifier' && isSpanName(param.name.replace(UNIT_SUFFIX, '')) && param.name !== param.name.replace(UNIT_SUFFIX, '') && isBareNumber(param.typeAnnotation) && param.typeAnnotation?.typeAnnotation?.type !== 'TSFunctionType') {
             report(label);
             positional.add(`${entry} ${label}`);

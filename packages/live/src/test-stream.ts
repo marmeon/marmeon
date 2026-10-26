@@ -9,6 +9,13 @@ export interface LiveEvent {
   readonly data: unknown;
 }
 
+export interface WaitForOptions {
+  /** How long to wait; a failure after it. Default 2 seconds. */
+  timeout?: Duration;
+  /** What the wait is for, named in the failure. */
+  what?: string;
+}
+
 /**
  * A live stream read as it arrives (tests: `app.live(path)`) — its events (`hello`, `refresh`, `end`), the hints, the heartbeats
  * and `retry:`. `waitFor(…)` waits for what a test expects; `close()` hangs up like a tab that goes away.
@@ -62,12 +69,12 @@ export class LiveStreamReader {
 
   /** The `hello` the stream opened with. */
   async hello(timeout: Duration = { seconds: 2 }): Promise<LiveHello> {
-    await this.waitFor(() => this.events.some((each) => each.event === 'hello'), timeout, 'hello');
+    await this.waitFor(() => this.events.some((each) => each.event === 'hello'), { timeout, what: 'hello' });
     return this.events.find((each) => each.event === 'hello')!.data as LiveHello;
   }
 
-  /** Waits until `count` hints came — or `until` holds — failing after `timeout`. */
-  async waitFor(until: number | (() => boolean), timeout: Duration = { seconds: 2 }, what = typeof until === 'number' ? `${until} hints` : 'the condition'): Promise<void> {
+  /** Waits until `until` hints came — or `until` holds — failing after `timeout` (default 2 seconds); `what` names the wait in the failure. */
+  async waitFor(until: number | (() => boolean), { timeout = { seconds: 2 }, what = typeof until === 'number' ? `${until} hints` : 'the condition' }: WaitForOptions = {}): Promise<void> {
     const timeoutMilliseconds = durationToMilliseconds(timeout);
     const holds = typeof until === 'number' ? () => this.hints.length >= until : until;
     if (holds()) return;
