@@ -32,6 +32,7 @@ export function checkArgs(command: string, argv: readonly string[], name = comma
 /**
  * Runs one `marmeon` invocation in the app root (`cwd`) and returns the exit code. With `--json`, stdout holds the document only:
  * whatever app code writes to stdout meanwhile goes to stderr.
+ * @internal Only for the launcher (`bin/marmeon.js`); not part of the public API.
  */
 export async function run(args: readonly string[], root = process.cwd()): Promise<number> {
   const { argv, noInteraction } = withoutNoInteraction(args, 1);

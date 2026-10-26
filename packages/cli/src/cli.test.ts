@@ -256,7 +256,8 @@ describe('marmeon (in the web app)', () => {
     expect(marmeon(webApp, ['help', 'migrate'], { APP_NAME: '', APP_URL: 'localhost' }).code).toBe(1);
     const help = marmeon(webApp, ['help', 'route:list']);
     expect(help.code).toBe(0);
-    expect(help.stdout).toContain('Usage: marmeon route:list');
+    expect(help.stdout).toContain('Usage: marmeon route:list [--json]');
+    expect(marmeon(webApp, ['key:generate', '--help']).stdout).toContain('Usage: marmeon key:generate [--show] [--force]');
     // Under `node --watch` the launcher would wait for changes: it must end on its own.
     const dev = marmeon(webApp, ['dev', '--nope'], {}, 20_000);
     expect(dev.code).toBe(2);

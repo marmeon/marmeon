@@ -14,6 +14,7 @@ import type { CommandInput } from '../command.ts';
 export class KeyGenerateCommand {
   static command = 'key:generate';
   static description = 'Set the application key (APP_KEY) in .env';
+  static usage = '[--show] [--force]';
   static options = { show: { type: 'boolean' }, force: { type: 'boolean' } } as const;
   static boots = false;
 

@@ -54,10 +54,11 @@ export interface CommandClass {
   readonly experimental?: boolean;
 }
 
-/** Names `main.ts` handles before it looks anything up. */
-const RESERVED = new Set(['list', 'help']);
+/** Names `main.ts` and the launcher (`bin/marmeon.js`) handle before they look anything up. */
+const LAUNCHED = new Set(['dev', 'start']);
+const RESERVED = new Set(['list', 'help', ...LAUNCHED]);
 
-/** A command name is taken twice, or is one marmeon answers itself (`list`, `help`) — the app cannot tell which command `marmeon <name>` means. */
+/** A command name is taken twice, or is one marmeon answers itself (`list`, `help`, `dev`, `start`) — the app cannot tell which command `marmeon <name>` means. */
 export class CommandSetupError extends Error {
   override name = 'CommandSetupError';
 }
@@ -75,7 +76,8 @@ export class CommandRegistry {
   add(commands: readonly CommandClass[], source = 'a package'): this {
     for (const command of commands) {
       if (RESERVED.has(command.command)) {
-        throw new CommandSetupError(withCode('K8', `"${command.command}" is marmeon's own command — ${command.name} (${source}) cannot use it. Rename it.`));
+        const who = LAUNCHED.has(command.command) ? 'is handled by the launcher' : "is marmeon's own command";
+        throw new CommandSetupError(withCode('K8', `"${command.command}" ${who} — ${command.name} (${source}) cannot use it. Rename it.`));
       }
       if (command.options && 'no-interaction' in command.options) {
         throw new CommandSetupError(withCode('K8', `${command.name} (${source}) declares the option "no-interaction", which every command has: marmeon takes it before the command sees it. Rename the option.`));

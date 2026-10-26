@@ -153,13 +153,6 @@ interface ServiceProviderClass {
 
 Types from other packages: none
 
-### Stable
-
-```ts
-// run
-export declare function run(args: readonly string[], root?: string): Promise<number>;
-```
-
 ## Commands
 
 ```ts
@@ -181,7 +174,7 @@ marmeon docs [<page>] [--path] [--json]
 --json (boolean)
 --path (boolean)
 // key:generate
-marmeon key:generate
+marmeon key:generate [--show] [--force]
 --force (boolean)
 --show (boolean)
 // make:command
@@ -263,7 +256,7 @@ marmeon modules:check
 marmeon package:build [package directories…] [--clean]
 --clean (boolean)
 // route:list
-marmeon route:list
+marmeon route:list [--json]
 --json (boolean)
 // route:types
 marmeon route:types [--check]
