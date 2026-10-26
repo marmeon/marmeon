@@ -20,18 +20,21 @@ export const cipherContext = (name: string, version: number = RECORD_VERSION) =>
 
 /**
  * @internal A static method a framework job can have: `(container, payload)` → why this app cannot run the payload's target
- * (a queued listener it has no name for), or `undefined`. The record is then foreign, not failed.
+ * (a queued listener or a notification it has no name for, an event or notification whose data its schema rejects), or
+ * `undefined`; it may be async. The record is then foreign, not failed. The payload is validated twice (here and by the
+ * runner); a schema that throws makes the record foreign too. `@marmeon/notifications` attaches its hook when it registers its job.
  */
 export const TARGET_UNKNOWN: unique symbol = Symbol('marmeon.queue.targetUnknown');
 
 /** The payload does not match the job's schema — at dispatch (a bug) or before it runs (a deploy changed the schema). */
 export class JobPayloadError extends QueueError {
   override name = 'JobPayloadError';
-  readonly issues: readonly StandardIssue[];
+  declare readonly issues: readonly StandardIssue[];
 
   constructor(message: string, issues: readonly StandardIssue[] = []) {
     super(message);
-    this.issues = issues;
+    // Not enumerable: `describeError` writes an error's own properties into `failed_jobs`, and an issue carries the value it rejected.
+    Object.defineProperty(this, 'issues', { value: issues, enumerable: false });
   }
 }
 
@@ -57,12 +60,18 @@ export function schemaMismatch(job: string, issues: readonly StandardIssue[]): E
 }
 
 /** Validates a payload against a job's schema; the schema's output, or a {@link JobPayloadError}. */
-export async function validatePayload(job: JobClass, payload: unknown, when: 'dispatch' | 'run'): Promise<unknown> {
+export async function validatePayload(job: JobClass, payload: unknown, when: 'dispatch' | 'run', encrypted: boolean = job.encrypted === true): Promise<unknown> {
   const result = await job.schema['~standard'].validate(payload);
   if (result.issues) {
-    const detail = describeIssues(result.issues);
+    // The issues quote the values, and the message reaches retries, `failed_jobs` and reporters (a dispatch often runs inside
+    // another job): for an encrypted payload — as stored, or as the class declares it — the message names the fields only.
+    const detail = encrypted ? undefined : describeIssues(result.issues);
     throw new JobPayloadError(
-      when === 'dispatch' ? `The payload of ${job.job} does not match its schema: ${detail}` : `The payload no longer matches the schema of ${job.job}: ${detail}`,
+      detail === undefined
+        ? schemaMismatch(job.job, result.issues).message
+        : when === 'dispatch'
+          ? `The payload of ${job.job} does not match its schema: ${detail}`
+          : `The payload no longer matches the schema of ${job.job}: ${detail}`,
       result.issues,
     );
   }
@@ -176,8 +185,8 @@ export class JobRunner {
       }
     }
     try {
-      const payload = await validatePayload(job, data, 'run');
-      const unknown = (job as { [TARGET_UNKNOWN]?: (container: Container, payload: unknown) => string | undefined })[TARGET_UNKNOWN]?.(this.#container, payload);
+      const payload = await validatePayload(job, data, 'run', job.encrypted === true || record.encrypted === true);
+      const unknown = await (job as { [TARGET_UNKNOWN]?: (container: Container, payload: unknown) => string | undefined | Promise<string | undefined> })[TARGET_UNKNOWN]?.(this.#container, payload);
       if (unknown) return { kind: 'foreign', reason: unknown, envelope: envelopeOf(record), record };
       return { kind: 'ready', record, job, payload };
     } catch (error) {

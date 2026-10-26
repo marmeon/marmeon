@@ -1,4 +1,4 @@
-import { Clock, createApplication, ErrorReports, type Application, type ErrorReport, type ErrorReporter } from '@marmeon/core';
+import { Clock, createApplication, ErrorReports, Logger, type Application, type ErrorReport, type ErrorReporter } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
@@ -7,12 +7,22 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { migrate } from './__fixtures__/targets.ts';
 import { QueueConnections } from './connections.ts';
 import { QueueFake } from './fake.ts';
+import { JobPayloadError } from './runner.ts';
 import { Queue, QueueServiceProvider, type JobContext, type JobPayload } from './index.ts';
 
 const KEY = 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=';
 const SECRET = 'payload-secret-77';
 
 const reports: ErrorReport[] = [];
+/** Every line the app logs, with its fields. */
+const logged: string[] = [];
+const capture: Logger = {
+  debug() {},
+  info() {},
+  warn: (message, context) => void logged.push(`${message} ${JSON.stringify(context ?? {})}`),
+  error: (message, context) => void logged.push(`${message} ${JSON.stringify(context ?? {})}`),
+  child: () => capture,
+};
 /** Set: every report queues an alert job, as a reporter that pages someone through the queue would. */
 let alerting = false;
 
@@ -77,6 +87,28 @@ class SecretJob {
   handle(): void {}
 }
 
+/** An encrypted job that finds its payload wrong while it runs and says so with the schema's own issues. */
+class MismatchJob {
+  static readonly job = 'test.mismatch';
+  static readonly schema = v.object({ token: v.string() });
+  static readonly encrypted = true;
+  async handle(payload: unknown, job: JobContext): Promise<void> {
+    const result = await v.object({ token: v.number() })['~standard'].validate(payload);
+    if (result.issues) return job.fail(new JobPayloadError('The payload does not match.', result.issues));
+  }
+}
+
+let encryptedMode = true;
+/** A job whose class loses `static encrypted` (a release drops it) while encrypted records of it wait. */
+class DroppedJob {
+  static readonly job = 'test.dropped';
+  static readonly schema = v.object({ token: v.lazy(() => (schemaMode === 'dispatch' ? v.string() : v.number())) });
+  static get encrypted(): boolean {
+    return encryptedMode;
+  }
+  handle(): void {}
+}
+
 class Collecting implements ErrorReporter {
   static readonly inject = [Queue];
   readonly #queue: Queue;
@@ -95,8 +127,8 @@ class ReportingProvider {
 async function boot(env: Record<string, string> = {}): Promise<Application & { clock: TestClock }> {
   const clock = new TestClock();
   const application = await createApplication(
-    { root: '/tmp', discover: false, providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider, ReportingProvider], modules: [{ name: 'test', jobs: [BrokenJob, GivesUpJob, AlertJob, FollowUpJob, SecretJob, PrefsJob] }] },
-    { env: { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', LOG_LEVEL: 'silent', ...env }, override: (container) => void container.instance(Clock, clock) },
+    { root: '/tmp', discover: false, providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider, ReportingProvider], modules: [{ name: 'test', jobs: [BrokenJob, GivesUpJob, AlertJob, FollowUpJob, SecretJob, MismatchJob, DroppedJob, PrefsJob] }] },
+    { env: { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test', LOG_LEVEL: 'silent', ...env }, override: (container) => void (container.instance(Clock, clock), container.instance(Logger, capture)) },
   );
   await migrate(application.container.make(Connections));
   return Object.assign(application, { clock });
@@ -111,9 +143,11 @@ async function work(application: Application): Promise<void> {
 
 afterEach(() => {
   reports.length = 0;
+  logged.length = 0;
   alerting = false;
   followUp = false;
   schemaMode = 'dispatch';
+  encryptedMode = true;
 });
 
 describe('failed jobs and the error reporters', () => {
@@ -206,8 +240,49 @@ describe('failed jobs and the error reporters', () => {
     await work(application);
     expect(reports).toMatchObject([{ source: 'job', error: { message: 'The data of test.secret does not match its schema (fields: token).' }, context: { job: 'test.secret' } }]);
     expect(JSON.stringify(reports)).not.toContain(SECRET);
-    // The failed job keeps the full text.
+    // The failed job names the fields, not the values the schema's text quotes — nor does any line logged while it was held.
     const [failed] = await application.container.make(QueueConnections).failed().all();
-    expect(failed!.exception).toContain('Expected number but received');
+    expect(failed!.exception).toContain('fields: token');
+    expect(failed!.exception).not.toContain(SECRET);
+    expect(failed!.exception).not.toContain('received');
+    expect(logged.length).toBeGreaterThan(0);
+    expect(logged.join('\n')).not.toContain(SECRET);
+  });
+
+  it('names fields only for a stored encrypted record whose class no longer says encrypted', async () => {
+    await using application = await boot();
+    await application.container.make(Queue).dispatch(DroppedJob, { token: SECRET });
+    encryptedMode = false;
+    schemaMode = 'run';
+    await work(application);
+    application.clock.travel({ hours: 7 });
+    await work(application);
+    const [failed] = await application.container.make(QueueConnections).failed().all();
+    expect(failed!.exception).toContain('fields: token');
+    expect(failed!.exception).not.toContain(SECRET);
+    expect(JSON.stringify(reports)).not.toContain(SECRET);
+    expect(logged.join('\n')).not.toContain(SECRET);
+  });
+
+  it('names fields only when an encrypted payload is refused at dispatch — the error reaches retries and failed jobs of the dispatching job', async () => {
+    await using application = await boot();
+    schemaMode = 'run';
+    const error = await application.container.make(Queue).dispatch(SecretJob, { token: SECRET } as never).catch((thrown: Error) => thrown);
+    expect(error).toBeInstanceOf(JobPayloadError);
+    expect((error as Error).message).toContain('fields: token');
+    expect((error as Error).message).not.toContain(SECRET);
+  });
+
+  it('keeps the schema issues, which carry the value, out of the failed job of an encrypted payload', async () => {
+    await using application = await boot();
+    await application.container.make(Queue).dispatch(SecretJob, { token: SECRET });
+    schemaMode = 'run';
+    await application.container.make(Queue).dispatch(MismatchJob, { token: SECRET });
+    await work(application);
+    const failed = await application.container.make(QueueConnections).failed().all();
+    expect(failed.map((entry) => entry.job)).toContain('test.mismatch');
+    for (const entry of failed) expect(entry.exception).not.toContain(SECRET);
+    expect(JSON.stringify(reports)).not.toContain(SECRET);
+    expect(logged.join('\n')).not.toContain(SECRET);
   });
 });

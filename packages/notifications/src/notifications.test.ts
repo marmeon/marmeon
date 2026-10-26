@@ -3,6 +3,7 @@ import { createApplication, Logger } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, InvalidCursorError, sql } from '@marmeon/database';
 import { Encrypter } from '@marmeon/encryption';
 import { Queue } from '@marmeon/queue';
+import * as v from 'valibot';
 import { afterEach, describe, expect, it } from 'vitest';
 import { drivers, Faxed, KEY, Members, notificationApp, OrderShipped, ShippedMail, silent, Welcome, type TestApp } from './__fixtures__/app.ts';
 import { Inbox, notificationData } from './inbox.ts';
@@ -99,21 +100,74 @@ describe.each(drivers)('notifications on %s', (driver) => {
       expect((await rows(application))[0]!.data).toEqual({ orderId: 'o-4' });
     });
 
-    it('fails a job whose data no longer matches the schema after a deploy at once — no retries that cannot succeed', async () => {
+    it('holds a job whose data does not match the schema of this worker (a rolling deploy) — it neither fails nor spends a try', async () => {
       const application = await app(driver);
       const queue = application.container.make(Queue);
-      await queue.dispatch(SendQueuedNotification as never, { id: crypto.randomUUID(), notification: 'shop.order-shipped', recipient: { type: 'member', id: 1 }, data: { order: 7 } } as never);
+      await queue.dispatch(SendQueuedNotification as never, { id: crypto.randomUUID(), notification: 'shop.order-shipped', recipient: { type: 'member', id: 1 }, data: { orderId: 'o-7', carrier: 48151623 } } as never);
       const result = await application.queue!.work();
-      expect(result).toMatchObject({ processed: 1, failed: 1, released: 0 });
-      const [failed] = await application.queue!.failed();
-      expect(failed!.exception).toContain('no longer matches its static schema');
+      expect(result).toMatchObject({ processed: 1, failed: 0, released: 1 });
+      expect(await application.queue!.failed()).toEqual([]);
       expect(await rows(application)).toEqual([]);
     });
 
-    it('retries a job of a notification this worker does not know (renamed, or an older worker in a rolling deploy)', async () => {
+    it('holds a job of a notification this worker does not know (renamed, or an older worker in a rolling deploy) instead of failing it', async () => {
       const application = await app(driver);
       await application.container.make(Queue).dispatch(SendQueuedNotification as never, { id: crypto.randomUUID(), notification: 'shop.renamed', recipient: ada, data: {} } as never);
       expect(await application.queue!.work()).toMatchObject({ failed: 0, released: 1 });
+    });
+
+    it('holds data the schema rejects until it fails, and shows no value of it in the log or the failed job', async () => {
+      const secret = 'secret-value-93';
+      const lines: string[] = [];
+      const logger: Logger = { debug() {}, info() {}, warn: (m, c) => void lines.push(`${m} ${JSON.stringify(c ?? {})}`), error: (m, c) => void lines.push(`${m} ${JSON.stringify(c ?? {})}`), child: () => logger };
+      const application = await app(driver, { logger });
+      await application.container.make(Queue).dispatch(SendQueuedNotification as never, { id: crypto.randomUUID(), notification: 'shop.order-shipped', recipient: ada, data: { orderId: 1, carrier: secret, extra: { [secret]: 1 } } } as never);
+      expect(await application.queue!.work()).toMatchObject({ failed: 0, released: 1 });
+      application.clock.travel({ hours: 7 });
+      expect(await application.queue!.work()).toMatchObject({ failed: 1 });
+      const [failed] = await application.queue!.failed();
+      expect(failed!.exception).toContain('fields: orderId');
+      expect(failed!.exception).not.toContain(secret);
+      expect(lines.length).toBeGreaterThan(0);
+      expect(lines.join('\n')).not.toContain(secret);
+    });
+
+    it('keeps the value out of the failure of a toDatabase() that static database rejects', async () => {
+      const secret = 'secret-value-95';
+      class Leaky {
+        static readonly notification = 'shop.leaky-row';
+        static readonly schema = v.object({ code: v.string() });
+        static readonly database = v.object({ code: v.picklist(['ok']) });
+        via() {
+          return ['database'] as const;
+        }
+        toDatabase(data: { code: string }) {
+          return { code: data.code };
+        }
+      }
+      const lines: string[] = [];
+      const logger: Logger = { debug() {}, info() {}, warn: (m, c) => void lines.push(`${m} ${JSON.stringify(c ?? {})}`), error: (m, c) => void lines.push(`${m} ${JSON.stringify(c ?? {})}`), child: () => logger };
+      const application = await app(driver, { notifications: [Leaky as never], logger });
+      await application.container.make(Notifications).send(ada, Leaky as never, { code: secret } as never);
+      for (let round = 0; round < 4; round++) {
+        await application.queue!.work();
+        application.clock.travel({ minutes: 10 });
+      }
+      const failed = await application.queue!.failed();
+      expect(failed).toHaveLength(1);
+      expect(failed[0]!.exception).toContain('fields: code');
+      expect(failed[0]!.exception).not.toContain(secret);
+      expect(lines.join('\n')).not.toContain(secret);
+    });
+
+    it('keeps a notification this worker does not know past its tries and their backoff — a rolling deploy outlasts them', async () => {
+      const application = await app(driver);
+      await application.container.make(Queue).dispatch(SendQueuedNotification as never, { id: crypto.randomUUID(), notification: 'shop.renamed', recipient: ada, data: {} } as never);
+      for (let round = 0; round < 6; round++) {
+        expect(await application.queue!.work()).toMatchObject({ failed: 0 });
+        application.clock.travel({ minutes: 5 });
+      }
+      expect(await application.queue!.failed()).toEqual([]);
     });
 
     it('fails a delivery through a channel the app does not have, at once', async () => {
@@ -188,7 +242,7 @@ describe.each(drivers)('notifications on %s', (driver) => {
     it('refuses data its schema rejects, a kind of recipient nobody finds, and an unregistered notification', async () => {
       const application = await app(driver, { notifications: [OrderShipped] });
       const notifications = application.container.make(Notifications);
-      await expect(notifications.send(ada, OrderShipped, { orderId: 7 } as never)).rejects.toThrow(/OrderShipped \(shop.order-shipped\) cannot be sent: its static schema rejects the data: orderId: /);
+      await expect(notifications.send(ada, OrderShipped, { orderId: 7 } as never)).rejects.toThrow(/OrderShipped \(shop.order-shipped\) cannot be sent: its static schema rejects the data \(fields: orderId\)/);
       await expect(notifications.send({ type: 'team', id: 'core' }, OrderShipped as never, { orderId: 'x' } as never)).rejects.toThrow(/sent to a "team" recipient, but no module finds those/);
       await expect(notifications.send(ada, Welcome, { code: 'x' })).rejects.toThrow(/Welcome is not a registered notification — list it in its module: notifications: \[Welcome\]/);
       application.queue!.assertNothingDispatched();

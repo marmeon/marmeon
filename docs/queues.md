@@ -138,7 +138,9 @@ export class SendPasswordResetLinkJob {
 `@marmeon/encryption`, which every new app has; without it the start fails. A plain payload for an encrypted job is never run:
 the job fails at once. The framework's own jobs are always encrypted: queued mails with their links, queued listeners and queued
 notifications. The error text in `failed_jobs` and the worker's log lines are [redacted](logging.md#keeping-secrets-out-of-the-log)
-like any log entry.
+like any log entry. A schema's own error text quotes the value it rejected, so when the payload of an encrypted job does not match its
+schema, at dispatch or in a worker, the error, the retries, `failed_jobs`, the log line and the error reporters name the fields
+only (`fields: token`), never the values. The full issues stay on the error's non-enumerable `issues` property.
 
 ## Writing jobs
 
@@ -373,6 +375,8 @@ Some jobs can never succeed, and they fail at once, after one attempt:
 
 A job the worker cannot read, but a worker of another release perhaps can, does not fail: it waits. That is a record of a newer
 version, a job whose name the worker does not know, and a payload the job's schema rejects, as after a deploy that widened it.
+The framework's own jobs are held the same way: a queued listener or notification this app has no name for, and an event or
+notification whose data its schema rejects.
 See [Deploying while jobs wait](#deploying-while-jobs-wait). A job claimed more often than its `tries`, because its worker died
 each time, fails instead of coming back forever.
 

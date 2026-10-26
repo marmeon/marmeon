@@ -201,9 +201,10 @@ notification's id is the row's id. A job that runs again after a delivery that c
 delivered twice. Without the `database` channel, a repeated job can send again. On a queue other than the database's, a crash
 right after the commit can lose a mail that waited for it.
 
-After a deploy, data that no longer matches the schema fails its job at once, without retries that cannot succeed. A notification
-the worker does not know, renamed or from a newer version during a rolling deploy, retries by its tries. A channel the app does
-not have fails at once.
+After a deploy, a job the worker cannot read does not fail: it waits, like any [job](queues.md#deploying-while-jobs-wait) this
+worker cannot run, for a worker that can. That is a notification the worker does not know, renamed or from a newer version
+during a rolling deploy, and data that no longer matches the schema. It fails only after six hours, and its error names the
+fields of the data, never the values. A channel the app does not have fails at once.
 
 ## Channels
 

@@ -2,7 +2,7 @@ import type { Resolver, Translator } from '@marmeon/core';
 import type { AnyRecipient, NotificationClass, NotificationInstance, NotificationMail } from './notification.ts';
 import { NotificationError, NotificationSetupError } from './registry.ts';
 import type { NotificationStore } from './store.ts';
-import { describeIssues } from './validate.ts';
+import { describeFields, NotificationDataError } from './validate.ts';
 import { withCode } from '@marmeon/core/internal';
 
 /**
@@ -87,7 +87,7 @@ export class DatabaseChannel implements NotificationChannel {
     if (!Class.database) throw new NotificationError(`${Class.name} (${delivery.type}) goes through the database channel and needs static database — the schema of what toDatabase() returns.`);
     const value = await toDatabase.call(notification, delivery.data, delivery.record);
     const result = await Class.database['~standard'].validate(value);
-    if (result.issues) throw new NotificationError(`${Class.name} (${delivery.type}): toDatabase() returned what static database rejects — ${describeIssues(result.issues)}`);
+    if (result.issues) throw new NotificationDataError(`${Class.name} (${delivery.type}): toDatabase() returned what static database rejects (fields: ${describeFields(result.issues)}).`, result.issues);
     // Only what the schema let through is stored (a field it does not know stays out).
     await this.#store.insert({ id: delivery.id, recipient: delivery.recipient, type: delivery.type, data: result.value });
   }
