@@ -1,4 +1,6 @@
 import { createRequire } from 'node:module';
+import { Readable } from 'node:stream';
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import type * as S3 from '@aws-sdk/client-s3';
 import type * as Presigner from '@aws-sdk/s3-request-presigner';
 import type * as PresignedPost from '@aws-sdk/s3-presigned-post';
@@ -100,6 +102,16 @@ export function s3BaseUrl(options: S3DiskOptions): string {
   return root === '' ? base : `${base}/${encodeKey(root)}`;
 }
 
+/** An object is not the one that was checked any more (the store answered 412 to a conditional request on its ETag). */
+export class ObjectChangedError extends StorageError {
+  override name = 'ObjectChangedError';
+}
+
+function isPreconditionFailed(error: unknown): boolean {
+  const { name, $metadata } = (error ?? {}) as { name?: unknown; $metadata?: { httpStatusCode?: number } };
+  return name === 'PreconditionFailed' || $metadata?.httpStatusCode === 412;
+}
+
 function isNotFound(error: unknown): boolean {
   const { name, $metadata } = (error ?? {}) as { name?: unknown; $metadata?: { httpStatusCode?: number } };
   return name === 'NoSuchKey' || name === 'NotFound' || $metadata?.httpStatusCode === 404;
@@ -142,6 +154,57 @@ export class S3Disk implements Disk {
     // A stream of unknown length cannot be one PutObject; it is read first (multipart uploads: later).
     const body = typeof contents === 'string' || contents instanceof Uint8Array ? contents : await toBytes(contents);
     await client.send(new modules.client.PutObjectCommand({ Bucket: this.#bucket, Key: this.#key(key), Body: body, ContentType: options.contentType ?? mimeTypeOf(key) }));
+  }
+
+  /**
+   * The ETag and size of an object as it is now — what an upload check pins: the conditional methods below refuse (412) any
+   * other object under the key. Not part of {@link Disk}; the uploads service uses it.
+   */
+  async fingerprint(key: string): Promise<{ etag: string | undefined; size: number }> {
+    const head = await this.#head(key);
+    return { etag: head.ETag, size: head.ContentLength ?? 0 };
+  }
+
+  /** The object's bytes, only if it still has `etag` — otherwise {@link ObjectChangedError}. */
+  async streamIfMatch(key: string, etag: string): Promise<ReadableStream<Uint8Array>> {
+    const { modules, client } = await this.#client();
+    try {
+      const object = await client.send(new modules.client.GetObjectCommand({ Bucket: this.#bucket, Key: this.#key(key), IfMatch: etag }));
+      return object.Body!.transformToWebStream() as ReadableStream<Uint8Array>;
+    } catch (error) {
+      throw this.#conditional(error, key);
+    }
+  }
+
+  /** Whether `other` is in the same store under the same credentials — one `CopyObject` reaches both. */
+  sharesStoreWith(other: S3Disk): boolean {
+    const [a, b] = [this.#options, other.#options];
+    return a.endpoint === b.endpoint && (a.region ?? 'us-east-1') === (b.region ?? 'us-east-1') && JSON.stringify(a.credentials ?? null) === JSON.stringify(b.credentials ?? null);
+  }
+
+  /** Copies `from` of `source` (same store) to `to` here, only if the source still has `etag`; the copy is stored as `contentType`. */
+  async copyIfMatch(source: S3Disk, from: string, to: string, { etag, contentType }: { etag: string; contentType: string }): Promise<void> {
+    const { modules, client } = await this.#client();
+    try {
+      await client.send(
+        new modules.client.CopyObjectCommand({
+          Bucket: this.#bucket,
+          Key: this.#key(to),
+          CopySource: `${source.#bucket}/${encodeKey(source.#key(from))}`,
+          CopySourceIfMatch: etag,
+          MetadataDirective: 'REPLACE',
+          ContentType: contentType,
+        }),
+      );
+    } catch (error) {
+      throw this.#conditional(error, from);
+    }
+  }
+
+  /** Stores a stream of known length without reading it whole: `PutObject` with `ContentLength`. */
+  async putStream(key: string, body: ReadableStream<Uint8Array>, { size, contentType }: { size: number; contentType: string }): Promise<void> {
+    const { modules, client } = await this.#client();
+    await client.send(new modules.client.PutObjectCommand({ Bucket: this.#bucket, Key: this.#key(key), Body: Readable.fromWeb(body as NodeReadableStream<Uint8Array>), ContentLength: size, ContentType: contentType }));
   }
 
   async get(key: string): Promise<Uint8Array> {
@@ -291,6 +354,12 @@ export class S3Disk implements Disk {
       if (isNotFound(error)) throw new FileNotFoundError(this.name, key);
       throw error;
     }
+  }
+
+  #conditional(error: unknown, key: string): unknown {
+    if (isPreconditionFailed(error)) return new ObjectChangedError(`The file "${key}" on the disk "${this.name}" is not the one that was checked.`, { cause: error });
+    if (isNotFound(error)) return new FileNotFoundError(this.name, key);
+    return error;
   }
 
   async #getObject(key: string): Promise<S3.GetObjectCommandOutput> {

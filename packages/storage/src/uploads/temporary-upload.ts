@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { ValidationError } from '@marmeon/router';
 import type { Disk } from '../disk.ts';
+import { ObjectChangedError, S3Disk } from '../drivers/s3.ts';
 import { normalizeDirectory } from '../keys.ts';
 
 /** Why an upload token was refused — the user sees one message per kind, never which check failed in detail. */
@@ -11,6 +12,8 @@ export interface UploadSource {
   /** The private disk of temporary uploads, and the file's key there. */
   readonly disk: Disk;
   readonly key: string;
+  /** An S3 object's ETag as the check saw it: the file is stored only if it still has it. */
+  readonly etag?: string | undefined;
   /** Marks the upload used — once: `false` when it was used already (or expired meanwhile). Atomic across processes. */
   consume(): Promise<boolean>;
 }
@@ -78,6 +81,32 @@ export class TemporaryUpload {
     const dir = normalizeDirectory(directory);
     const key = `${dir === '' ? '' : `${dir}/`}${randomName()}.${this.extension}`;
     const source = this.#source.disk;
+    const { etag } = this.#source;
+    if (source instanceof S3Disk && etag !== undefined) {
+      // The file the check saw, or nothing: a second POST to the same policy changes the object, and with it the ETag.
+      let body: ReadableStream<Uint8Array> | undefined;
+      try {
+        if (disk instanceof S3Disk && source.sharesStoreWith(disk)) {
+          await disk.copyIfMatch(source, this.#source.key, key, { etag, contentType: this.mime });
+        } else {
+          body = await source.streamIfMatch(this.#source.key, etag);
+          if (disk instanceof S3Disk) await disk.putStream(key, body, { size: this.size, contentType: this.mime });
+          else await disk.put(key, body, { contentType: this.mime });
+        }
+      } catch (error) {
+        await body?.cancel().catch(() => {});
+        await source.delete(this.#source.key).catch(() => false);
+        if (error instanceof ObjectChangedError) {
+          throw ValidationError.fromIssues(
+            [Object.assign({ message: 'The file did not arrive — choose it again.', path: this.field.split('.') }, { [TRANSLATION]: { key: 'marmeon.validation.upload.invalid' } })],
+            {},
+          );
+        }
+        throw error;
+      }
+      await source.delete(this.#source.key).catch(() => false);
+      return key;
+    }
     if (source === disk) {
       await source.move(this.#source.key, key);
     } else {
