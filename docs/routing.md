@@ -174,6 +174,22 @@ Route.get('/notes/archive/:year/:month?', (ctx) => ({ year: ctx.params.year, mon
 
 `/notes/archive/2026` and `/notes/archive/2026/10` both reach this route.
 
+### Parameter names
+
+A parameter name is made of letters, digits and `_`, and starts with a letter or `_`: `:user_id`, not `:user-id`. The name is the
+key in `ctx.params`, so it has to be a name the code can use. A parameter fills a whole segment: `/files/:name` takes
+everything up to the next `/`, and text next to it (`/files/:name.json`) belongs into its constraint,
+`/files/:name{[a-z]+\.json}`. Only the last parameter of a path may be optional.
+
+The router refuses a pattern it could not read the same way everywhere, and the app stops at start-up with
+[H13](errors.md#server-error-codes), naming the pattern:
+
+- a name that is not a valid one (`/users/:user-id`);
+- a name used twice in a pattern (`/a/:id/b/:id`);
+- a constraint that is never closed (`/a/:year{[0-9]`), or one that names a group (`(?<year>…)`);
+- text right after a parameter in its segment (`/a/:x.json`);
+- an optional parameter followed by more path (`/a/:x?/b`).
+
 ### Constraints
 
 A regular expression in braces after the name restricts what the parameter matches. A path whose value does not fit does not
@@ -188,6 +204,9 @@ ends in a 404.
 
 A constraint with alternatives, such as `/notes/:note{new|edit}`, matches as a whole: `/notes/edit` reaches the route,
 `/notes/editor` and `/notes/xedit` do not.
+
+A constraint runs to the brace that closes it, so it may hold braces of its own: `/archive/:year{[0-9]{4}}` takes four digits.
+Links, the browser, the sitemap and the server read a path this way alike.
 
 ### Route order
 

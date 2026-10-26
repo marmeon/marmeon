@@ -1,3 +1,5 @@
+import { tokenizePattern } from '@marmeon/router/internal';
+
 /**
  * The path as Hono compiles it. A constraint (`:id{new|edit}`) is a regular expression Hono anchors with `^…$` — but the trie
  * router puts it between the anchors unwrapped, so a top-level `|` splits the anchors too: `new|edit` then matches `/new…`
@@ -6,29 +8,15 @@
  */
 export function honoPath(path: string): string {
   let out = '';
-  let i = 0;
-  while (i < path.length) {
-    const open = /:[^/{}]+\{/y;
-    open.lastIndex = i;
-    const head = open.exec(path);
-    if (!head) {
-      out += path[i++];
+  for (const token of tokenizePattern(path)) {
+    if ('text' in token) {
+      out += token.text;
       continue;
     }
-    const start = i + head[0].length;
-    let end = start;
-    let inClass = false;
-    for (let depth = 1; end < path.length; end++) {
-      const char = path[end];
-      if (char === '\\') end++;
-      else if (inClass) inClass = char !== ']';
-      else if (char === '[') inClass = true;
-      else if (char === '{') depth++;
-      else if (char === '}' && --depth === 0) break;
-    }
-    const body = path.slice(start, end);
-    out += `${head[0]}${hasTopLevelAlternative(body) ? `(?:${body})` : body}`;
-    i = end;
+    const { constraint } = token;
+    out += `/:${token.name}`;
+    if (constraint !== undefined) out += `{${hasTopLevelAlternative(constraint) ? `(?:${constraint})` : constraint}}`;
+    if (token.optional) out += '?';
   }
   return out;
 }

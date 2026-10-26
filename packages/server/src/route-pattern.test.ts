@@ -115,3 +115,22 @@ describe('a constraint with alternatives in the HTTP kernel', () => {
     expect(router.routes.map((route) => route.path)).toContain('/b/:id{new|edit}');
   });
 });
+
+// The router's fixture table, loaded by path: a package may not import another package's sources, and the build would refuse it.
+const { ROUTE_PATTERNS } = (await import(new URL('../../router/src/__fixtures__/route-patterns.ts', import.meta.url).href)) as {
+  ROUTE_PATTERNS: readonly { pattern: string; matches: readonly { path: string; params: Record<string, string> }[]; misses: readonly string[] }[];
+};
+
+describe('the patterns every place reads', () => {
+  it.each(['reg-exp', 'trie'] as const)('are matched by the %s router as the fixture says', async (kind) => {
+    for (const { pattern, matches, misses } of ROUTE_PATTERNS) {
+      const app = new Hono({ router: kind === 'trie' ? new TrieRouter() : new RegExpRouter() });
+      app.get(honoPath(pattern), (c) => c.text(JSON.stringify(c.req.param())));
+      for (const { path, params } of matches) {
+        const response = await app.request(path);
+        expect([pattern, path, response.status, response.status === 200 ? JSON.parse(await response.text()) : null]).toEqual([pattern, path, 200, params]);
+      }
+      for (const path of misses) expect([pattern, path, (await app.request(path)).status]).toEqual([pattern, path, 404]);
+    }
+  });
+});

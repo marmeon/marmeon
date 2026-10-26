@@ -43,7 +43,7 @@ async function bundled(entry: string, external: RegExp[] = []): Promise<{ module
 }
 
 /** The shared page contract and the router's URL builder — the only code outside `client/` the browser core may run. */
-const SHARED = ['http/src/page.ts', 'http/src/page-support.ts', 'http/src/protocol.ts', 'http/src/sensitive-fields.ts','http/src/upload-header.ts', 'http/src/live-protocol.ts', 'http/src/tab-sync-protocol.ts', 'router/src/url.ts'];
+const SHARED = ['http/src/page.ts', 'http/src/page-support.ts', 'http/src/protocol.ts', 'http/src/sensitive-fields.ts','http/src/upload-header.ts', 'http/src/live-protocol.ts', 'http/src/tab-sync-protocol.ts', 'router/src/url.ts', 'router/src/pattern.ts'];
 
 describe('@marmeon/http/client is browser-safe', () => {
   it('bundles nothing but the client core, the page contract and URL building — no server code, no Node built-ins', async () => {

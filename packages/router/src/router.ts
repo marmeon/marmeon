@@ -13,6 +13,7 @@ import type { UrlLocales } from './url-locales.ts';
 import type { CheckRouteName, RouteArgs, RouteNameInput } from './routes.ts';
 import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpContext, MiddlewareHandler } from './types.ts';
 import { localLocation } from './local-location.ts';
+import { tokenizePattern } from './pattern.ts';
 import { fillPath, toSearchParams, urlFor, type Query } from './url.ts';
 
 /** A module's route file. Nothing is registered until a `Router` loads it. */
@@ -509,7 +510,7 @@ function checkSitemapRoute(route: RouteDefinition): void {
   const checks = routeAccess(route);
   if (checks.length === 0 || !checks.every(isEveryone)) refuse('a sitemap lists pages anyone can open, and this route asks who may call it (authorize(everyone) says that anyone may)');
   // The `/:locale` of a localized route is not one of its parameters: the sitemap fills it for every language.
-  if (/\/:\w/.test(route.localized ? route.path.replace(/^\/:locale/, '') : route.path) && !(isControllerClass(route.action) && typeof route.action.prototype.sitemap === 'function')) {
+  if (tokenizePattern(route.localized ? route.path.replace(/^\/:locale/, '') : route.path).some((token) => 'name' in token) && !(isControllerClass(route.action) && typeof route.action.prototype.sitemap === 'function')) {
     refuse('the path has parameters, so its controller needs a sitemap() method that returns the entries (a closure cannot)');
   }
 }

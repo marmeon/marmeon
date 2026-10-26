@@ -174,6 +174,17 @@ describe('/sitemap.xml', () => {
     }
   });
 
+  it('writes a constrained parameter whole, and leaves out a value the braces of its constraint would not hold', async () => {
+    state.slugs = [{ params: { slug: '2026' } }, { params: { slug: '26' } }, { params: { slug: '2026}/x' } }];
+    const routes = openRoutes((Route) => void Route.get('/archive/:slug{[0-9]{4}}', PostController).sitemap());
+    const { application, create } = await boot({ routes });
+    try {
+      expect(locs(await (await create().request('/sitemap.xml')).text())).toEqual([`${url}/archive/2026`]);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
   it('writes APP_URL into every address, whatever Host or X-Forwarded-Host says', async () => {
     state.slugs = [{ params: { slug: 'x' } }];
     const { application, create } = await boot({ routes: marked, env: { APP_URL: url, SERVER_TRUSTED_PROXIES: '*' } });

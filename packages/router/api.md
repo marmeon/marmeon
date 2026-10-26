@@ -131,7 +131,7 @@ export declare const EXPECTS_JSON_VARY: readonly ['Accept', 'X-Requested-With'];
 // EmptyObject
 export type EmptyObject = {};
 // ExtractParams
-export type ExtractParams<Path extends string> = Path extends `${string}:${infer Segment}/${infer Rest}` ? ParamEntry<Segment> & ExtractParams<`/${Rest}`> : Path extends `${string}:${infer Segment}` ? ParamEntry<Segment> : EmptyObject;
+export type ExtractParams<Path extends string> = Path extends `:${string}` ? ExtractParams<`/${Path}`> : Path extends `${string}/:${infer Segment}/${infer Rest}` ? ParamEntry<Segment> & ExtractParams<`/${Rest}`> : Path extends `${string}/:${infer Segment}` ? ParamEntry<Segment> : EmptyObject;
 // FormOf
 export type FormOf<C> = InferInput<SchemaOf<RequestOf<C>>>;
 // GET_HAS_NO_BODY
