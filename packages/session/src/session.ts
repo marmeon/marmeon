@@ -81,6 +81,7 @@ export class Session {
   /** The ids the last `save()` destroyed — a sign-in or sign-out ended them (their live streams close). */
   #ended: string[] = [];
 
+  /** @internal Built by the container. */
   constructor(store: SessionStore, config: SessionConfig, codec: SessionCodec) {
     this.#store = store;
     this.#config = config;

@@ -1964,7 +1964,7 @@ describe('Passkeys: the events', () => {
     const payload = { userId: 1, remember: false, via: 'passkey', at: new Date().toISOString(), ip: null, userAgent: null };
     expect(await validate(SignedIn, payload)).toEqual(payload);
     expect(await validate(SignedIn, { ...payload, via: 'telepathy' })).toBeUndefined();
-    const event = new SignedIn(ada, false, new Date(), { via: 'passkey' });
+    const event = new SignedIn(ada, { via: 'passkey' });
     expect(JSON.parse(JSON.stringify(await validate(SignedIn, event)))).toMatchObject({ via: 'passkey' });
   });
 

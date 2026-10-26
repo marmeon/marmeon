@@ -77,6 +77,7 @@ export class VerifyCsrfToken {
   readonly #config: CsrfConfig;
   readonly #sessionConfig: SessionConfig;
 
+  /** @internal Built by the container. */
   constructor(session: Session, protection: CsrfProtection, config: CsrfConfig, sessionConfig: SessionConfig) {
     this.#session = session;
     this.#protection = protection;

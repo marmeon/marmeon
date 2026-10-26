@@ -114,6 +114,7 @@ export class Passkeys implements SecondFactorPasskeys {
   readonly #clock: Clock;
   readonly #logger: Logger;
 
+  /** @internal Built by the container. */
   constructor(
     auth: Auth,
     session: Session,
@@ -359,7 +360,7 @@ export class Passkeys implements SecondFactorPasskeys {
     if (!checked.ok) {
       // An answer that was given and failed: the owner may want to know. The client learns nothing more.
       if (checked.error.kind === 'invalid' || checked.error.kind === 'clone-suspected') {
-        await this.#events.dispatch(new TwoFactorChallengeFailed(user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'confirm' }));
+        await this.#events.dispatch(new TwoFactorChallengeFailed(user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'confirm' }, new Date(this.#clock.now())));
       }
       return err(checked.error);
     }

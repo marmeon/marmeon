@@ -40,7 +40,9 @@ export class NewPassword {
   readonly #changes: (() => EmailChangeStore | undefined) | undefined;
   #warnedUnknownVerification = false;
 
-  /** `changes` hands back the change-of-address store the app bound, or `undefined`: a new password drops the account's pending change. */
+  /**
+   * @internal Built by the container. `changes` hands back the change-of-address store the app bound, or `undefined`: a new password drops the account's pending change.
+   */
   constructor(
     tokens: () => AccessTokenStore,
     connections: () => Connections,

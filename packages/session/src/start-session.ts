@@ -35,6 +35,7 @@ export class StartSession {
   readonly #endings: SessionEndings;
   readonly #container: Container;
 
+  /** @internal Built by the container. */
   constructor(
     session: Session,
     config: SessionConfig,

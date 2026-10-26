@@ -212,6 +212,7 @@ export class Auth {
   #verified: Credentials | undefined;
   readonly #fingerprints: SessionFingerprints;
 
+  /** @internal Built by the container. */
   constructor(
     session: Session,
     users: UserProvider,
@@ -886,7 +887,7 @@ export class Auth {
     // The owner is in (their password, a passkey or a second factor): the account's count and notice start over. A remember-me cookie is not that proof.
     if (!viaRemember) await this.#signInThrottle.clearAccount(idOf(user));
     const at = new Date(this.#clock.now());
-    return { token, signIn, announce: () => this.#events.dispatch(new SignedIn(user, token !== undefined || viaRemember, at, { via, ip, userAgent })) };
+    return { token, signIn, announce: () => this.#events.dispatch(new SignedIn(user, { remember: token !== undefined || viaRemember, via, ip, userAgent }, at)) };
   }
 
   /**

@@ -89,7 +89,6 @@ export type AttemptError = {
 // Auth
 export declare class Auth {
     #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: ClientInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
     attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
     deviceCookie(): Promise<DeviceCookie | undefined>;
     signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
@@ -341,7 +340,6 @@ export declare const EMAIL_CHANGES_TABLE = "email_changes";
 // EmailChange
 export declare class EmailChange {
     #private;
-    constructor(auth: Auth, session: Session, state: TwoFactorState, store: EmailChangeStore, config: AuthConfig, clock: Clock, connections: Connections, limiter: RateLimiter, events: EventDispatcher);
     request<U>(email: string, currentPassword: string, handlers: EmailChangeHandlers<U>): Promise<Result<EmailChangeRequested<U>, RequestEmailChangeError>>;
     cancel(): Promise<void>;
     waiting(): Promise<{
@@ -579,7 +577,6 @@ export interface PasskeySignInFailedPayload {
 // PasswordBroker
 export declare class PasswordBroker {
     #private;
-    constructor(users: UserProvider, tokens: PasswordResetTokenStore, hasher: Hasher, events: EventDispatcher, config: AuthConfig, newPassword: NewPassword, signInThrottle: SignInThrottle);
     createToken(email: string): Promise<Result<{
         user: AuthUser;
         token: string;
@@ -877,11 +874,12 @@ export declare class SignedIn {
     readonly via: SignInVia;
     readonly ip: string | null;
     readonly userAgent: string | null;
-    constructor(user: AuthUser, remember?: boolean, at?: Date, details?: {
+    constructor(user: AuthUser, details?: {
+        readonly remember?: boolean;
         readonly via?: SignInVia;
         readonly ip?: string | undefined;
         readonly userAgent?: string | undefined;
-    });
+    }, at?: Date);
     get userId(): AuthUserId;
 }
 // SignedInInput
@@ -913,11 +911,11 @@ export declare class TwoFactorChallengeFailed {
     readonly during: 'sign-in' | 'step-up' | 'confirm';
     readonly ip: string | null;
     readonly userAgent: string | null;
-    constructor(user: AuthUser, at?: Date, details?: {
+    constructor(user: AuthUser, details?: {
         readonly ip?: string | undefined;
         readonly userAgent?: string | undefined;
         readonly during?: 'sign-in' | 'step-up' | 'confirm';
-    });
+    }, at?: Date);
     get userId(): AuthUserId;
 }
 // TwoFactorChallengeFailedInput
@@ -1101,11 +1099,6 @@ export declare function verified<const N extends RouteNameInput = never>(options
 export declare const ACCOUNT_STILL_CLAIMED: unique symbol;
 // ANNOUNCE_ENDED
 export declare const ANNOUNCE_ENDED: unique symbol;
-// AccountHeld
-export interface AccountHeld {
-    readonly retryAfterSeconds: number;
-    readonly first: boolean;
-}
 // CLAIM_ACCOUNT
 export declare const CLAIM_ACCOUNT: unique symbol;
 // COMPLETE_PENDING
@@ -1118,19 +1111,6 @@ type Contravariant<T> = T extends unknown ? (resource: T) => void : never;
 declare const DROP_EXPIRED: unique symbol;
 // DROP_REMEMBER_TOKEN
 export declare const DROP_REMEMBER_TOKEN: unique symbol;
-// NewPassword
-export declare class NewPassword {
-    #private;
-    constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: () => SignInStore, endings?: SessionEndings, factors?: () => {
-        readonly state: TwoFactorState;
-        readonly events: EventDispatcher;
-    }, changes?: () => EmailChangeStore | undefined);
-    store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{
-        readonly revoked: number;
-        readonly sessionKey: string;
-    }>;
-    assertReady(): void;
-}
 // PendingSecondFactor
 export interface PendingSecondFactor {
     readonly id: string | number;
@@ -1157,26 +1137,6 @@ export declare const READ_PENDING: unique symbol;
 export declare const RECORD_PENDING_FAILURE: unique symbol;
 // SIGN_IN_VERIFIED
 export declare const SIGN_IN_VERIFIED: unique symbol;
-// SessionFingerprints
-export declare class SessionFingerprints {
-    #private;
-    constructor({ key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>);
-    of(credentials: Credentials): string;
-    matches(stored: unknown, credentials: Credentials): boolean;
-}
-// SignInThrottle
-export declare class SignInThrottle {
-    #private;
-    constructor(limiter: RateLimiter, { key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>, config: Pick<AuthConfig, 'loginAttemptsPerMinute' | 'accountSignInsPerDay' | 'deviceCookieDays'>, session: Pick<SessionConfig, 'secure' | 'sameSite'>, clock: Clock, logger: Logger);
-    takeClient(identifier: string, ip: string | undefined): Promise<number | undefined>;
-    takeAccount(identifier: string, userId: string | number | undefined): Promise<AccountHeld | undefined>;
-    takeDevice(nonce: string): Promise<boolean>;
-    clearClient(identifier: string, ip: string | undefined): Promise<void>;
-    clearAccount(userId: string | number): Promise<void>;
-    get deviceCookieName(): string;
-    issueDevice(credentials: Credentials): DeviceCookie | undefined;
-    deviceNonce(value: unknown, credentials: Credentials): string | undefined;
-}
 // VERIFIED_SESSION_KEY
 export declare const VERIFIED_SESSION_KEY: unique symbol;
 // missing
@@ -1331,7 +1291,6 @@ export interface PasskeyTable {
 // Passkeys
 export declare class Passkeys implements SecondFactorPasskeys {
     #private;
-    constructor(auth: Auth, session: Session, store: PasskeyStore, twoFactorStore: TwoFactorStore, state: TwoFactorState, config: PasskeyConfig, authConfig: AuthConfig, connections: Connections, limiter: RateLimiter, events: EventDispatcher, request: ClientInfo, users: UserProvider, cookies: CookieJar, clock: Clock, logger: Logger, sessionConfig: SessionConfig, accountSessions: AccountSessions);
     registrationOptions(): Promise<PublicKeyCredentialCreationOptionsJSON>;
     register(response: RegistrationResponseJSON, name: string, password?: string): Promise<Result<{
         recoveryCodes: readonly string[] | null;
@@ -1420,140 +1379,8 @@ export interface RegistrationResponseJSON {
 ### Referenced, not exported
 
 ```ts
-// ACCOUNT_STILL_CLAIMED
-export declare const ACCOUNT_STILL_CLAIMED: unique symbol;
-// ANNOUNCE_ENDED
-export declare const ANNOUNCE_ENDED: unique symbol;
-// AccessToken
-export interface AccessToken {
-    readonly id: AccessTokenId;
-    readonly userId: AuthUserId;
-    readonly name: string;
-    readonly abilities: readonly string[];
-    readonly lastUsedAt: string | null;
-    readonly expiresAt: string | null;
-    readonly createdAt: string;
-}
-// AccessTokenId
-export type AccessTokenId = number | string;
-// AccessTokenOptions
-export interface AccessTokenOptions {
-    readonly abilities: readonly string[];
-    readonly expiresIn: Duration | null;
-}
-// AccessTokenStore
-export declare abstract class AccessTokenStore {
-    #private;
-    constructor();
-    abstract create(userId: AuthUserId, name: string, options: AccessTokenOptions): Promise<{
-        plainText: string;
-        token: AccessToken;
-    }>;
-    abstract find(plainText: string): Promise<AccessToken | undefined>;
-    abstract touch(token: AccessToken): Promise<void>;
-    abstract list(userId: AuthUserId): Promise<AccessToken[]>;
-    abstract revoke(userId: AuthUserId, id: AccessTokenId): Promise<boolean>;
-    abstract revokeAll(userId: AuthUserId): Promise<number>;
-    abstract prune(graceSeconds?: number): Promise<number>;
-    abstract revokeEveryone(): Promise<number>;
-}
-// AccountHeld
-export interface AccountHeld {
-    readonly retryAfterSeconds: number;
-    readonly first: boolean;
-}
-// AccountSessions
-export declare class AccountSessions {
-    #private;
-    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings, changes?: () => EmailChangeStore | undefined);
-    [ANNOUNCE_ENDED](userId: string | number): Promise<void>;
-    end(userId: AuthUserId): Promise<Result<EndedSessions, {
-        readonly kind: 'missing';
-    }>>;
-    endEveryone({ accessTokens, resetTokens }?: {
-        readonly accessTokens?: boolean;
-        readonly resetTokens?: boolean;
-    }): Promise<EveryoneEnded>;
-}
-// AttemptError
-export type AttemptError = {
-    readonly kind: 'invalid-credentials';
-} | {
-    readonly kind: 'two-factor-required';
-    readonly factors: readonly SecondFactor[];
-} | {
-    readonly kind: 'throttled';
-    readonly retryAfterSeconds: number;
-    readonly account?: true;
-};
 // AttestationConveyancePreference
 export type AttestationConveyancePreference = 'none' | 'indirect' | 'direct' | 'enterprise';
-// Auth
-export declare class Auth {
-    #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: ClientInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
-    attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
-    deviceCookie(): Promise<DeviceCookie | undefined>;
-    signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
-    pendingSecondFactor(): {
-        readonly factors: readonly SecondFactor[];
-    } | undefined;
-    [READ_PENDING](): Promise<PendingView | 'expired' | undefined>;
-    [DROP_EXPIRED](): 'expired';
-    [RECORD_PENDING_FAILURE](): number | undefined;
-    [COMPLETE_PENDING](verifiedUserId: AuthUserId | string | number): Promise<Result<AuthUser, {
-        readonly kind: 'no-challenge';
-    } | {
-        readonly kind: 'expired';
-    }>>;
-    [SIGN_IN_VERIFIED](verifiedUserId: AuthUserId | string | number, options?: {
-        readonly remember?: boolean;
-    }, checkedAgainst?: Credentials): Promise<Result<AuthUser, {
-        readonly kind: 'expired';
-    }>>;
-    signOut(): Promise<void>;
-    user(): Promise<AuthUser | undefined>;
-    check(): Promise<boolean>;
-    id(): Promise<AuthUserId | undefined>;
-    viaRemember(): boolean;
-    checkPassword(password: string): Promise<Result<void, PasswordCheckError>>;
-    passwordCheckScope(): PasswordCheckScope;
-    passwordRecentlyConfirmed(seconds?: number): boolean;
-    signIns(): Promise<readonly SignIn[]>;
-    endSignIn(id: string): Promise<Result<void, {
-        readonly kind: 'missing';
-    } | {
-        readonly kind: 'current';
-    }>>;
-    updatePassword(password: string): Promise<void>;
-    updateSessionKey(): Promise<boolean>;
-    [DROP_REMEMBER_TOKEN](): Promise<void>;
-    [CLAIM_ACCOUNT](): Promise<boolean>;
-    [VERIFIED_SESSION_KEY](): string | null;
-    [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
-}
-// AuthConfig
-export declare const AuthConfig: import("@marmeon/core").ConfigDefinition<{
-    rememberDays: number;
-    remember: boolean;
-    sessionMaxSeconds: number;
-    rememberCookie: string;
-    appName: string | undefined;
-    loginAttemptsPerMinute: number;
-    accountSignInsPerDay: number;
-    deviceCookieDays: number;
-    passwordTimeoutSeconds: number;
-    resetMinutes: number;
-    resetThrottleSeconds: number;
-    emailChangeMinutes: number;
-    emailChangeThrottleSeconds: number;
-    tokenPrefix: string;
-    privateRegistration: boolean;
-    unverifiedDays: number;
-    revokeTokensOnPasswordChange: boolean;
-    protected: boolean;
-}>;
-export type AuthConfig = ConfigOf<typeof AuthConfig>;
 // AuthTypes
 export interface AuthTypes {
 }
@@ -1621,72 +1448,6 @@ export interface AuthenticatorSelectionCriteria {
 }
 // Base64URLString
 export type Base64URLString = string;
-// CLAIM_ACCOUNT
-export declare const CLAIM_ACCOUNT: unique symbol;
-// COMPLETE_PENDING
-export declare const COMPLETE_PENDING: unique symbol;
-// Credentials
-export interface Credentials<U = AuthUser> {
-    readonly user: U;
-    readonly passwordHash: PasswordHash | null;
-    readonly sessionKey: string | null;
-}
-// DROP_EXPIRED
-declare const DROP_EXPIRED: unique symbol;
-// DROP_REMEMBER_TOKEN
-export declare const DROP_REMEMBER_TOKEN: unique symbol;
-// DeviceCookie
-export interface DeviceCookie {
-    readonly name: string;
-    readonly value: string;
-    readonly options: {
-        readonly httpOnly: true;
-        readonly secure: boolean;
-        readonly sameSite: SessionConfig['sameSite'];
-        readonly path: '/';
-        readonly maxAge: number;
-    };
-}
-// DeviceDescription
-export interface DeviceDescription {
-    readonly browser: string | undefined;
-    readonly system: string | undefined;
-}
-// EmailChangeStore
-export declare abstract class EmailChangeStore {
-    #private;
-    constructor();
-    abstract create(userId: AuthUserId, email: string, expiresAt: Date, sessionKey: string | null): Promise<string | undefined>;
-    abstract pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined>;
-    abstract waiting(userId: AuthUserId): Promise<{
-        readonly email: string;
-        readonly expiresAt: Date;
-    } | undefined>;
-    abstract claim(userId: AuthUserId, token: string, now: Date): Promise<string | undefined>;
-    abstract forget(userId: AuthUserId): Promise<void>;
-    abstract prune(now: Date): Promise<number>;
-    abstract forgetEveryone(): Promise<number>;
-}
-// EndedSessions
-export interface EndedSessions {
-    readonly removed: number;
-}
-// EveryoneEnded
-export interface EveryoneEnded {
-    readonly accounts: number;
-    readonly resetTokens: number;
-    readonly accessTokens: number;
-    readonly signIns: number;
-}
-// Hasher
-export interface Hasher {
-    make(password: string): Promise<PasswordHash>;
-    verify(password: string, hash: PasswordHash): Promise<boolean>;
-    needsRehash(hash: PasswordHash): boolean;
-    dummyVerify(password: string): Promise<false>;
-    failureFloorMs(): number | Promise<number>;
-}
-export declare const Hasher: import("@marmeon/core").Token<Hasher>;
 // NewPasskey
 export interface NewPasskey {
     readonly userId: AuthUserId;
@@ -1701,62 +1462,15 @@ export interface NewPasskey {
     readonly backedUp: boolean;
     readonly name: string;
 }
-// NewPassword
-export declare class NewPassword {
-    #private;
-    constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: () => SignInStore, endings?: SessionEndings, factors?: () => {
-        readonly state: TwoFactorState;
-        readonly events: EventDispatcher;
-    }, changes?: () => EmailChangeStore | undefined);
-    store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{
-        readonly revoked: number;
-        readonly sessionKey: string;
-    }>;
-    assertReady(): void;
-}
 // PasskeyAssertion
 export type PasskeyAssertion = object;
 // PasskeyVerdict
 export type PasskeyVerdict = 'valid' | 'wrong' | 'stale';
-// PasswordCheckError
-export type PasswordCheckError = {
-    readonly kind: 'invalid-password';
-} | PasswordThrottled;
-// PasswordCheckScope
-export interface PasswordCheckScope {
-    readonly session: string;
-    readonly typed: boolean;
-}
-// PasswordHash
-export type PasswordHash = string & {
-    readonly [passwordHash]: true;
-};
-// PasswordResetTokenStore
-export declare abstract class PasswordResetTokenStore {
-    #private;
-    constructor();
-    abstract create(email: string, throttleSeconds: number): Promise<Result<string, {
-        readonly kind: 'throttled';
-    }>>;
-    abstract consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, {
-        readonly kind: 'invalid-token';
-    }>>;
-    abstract forget(email: string): Promise<void>;
-    abstract prune(maxAgeSeconds: number): Promise<number>;
-    abstract forgetEveryone(): Promise<number>;
-}
 // PasswordThrottled
 export interface PasswordThrottled {
     readonly kind: 'throttled';
     readonly retryAfterSeconds: number;
     readonly account?: true;
-}
-// PendingView
-export interface PendingView {
-    readonly userId: AuthUserId;
-    readonly factors: readonly SecondFactor[];
-    readonly failures: number;
-    readonly remember: boolean;
 }
 // PublicKeyCredentialDescriptorJSON
 export interface PublicKeyCredentialDescriptorJSON {
@@ -1784,36 +1498,13 @@ export interface PublicKeyCredentialUserEntityJSON {
     name: string;
     displayName: string;
 }
-// READ_PENDING
-export declare const READ_PENDING: unique symbol;
-// RECORD_PENDING_FAILURE
-export declare const RECORD_PENDING_FAILURE: unique symbol;
 // RelyingParty
 export interface RelyingParty {
     readonly rpId: string;
     readonly origins: readonly string[];
 }
-// RememberTokenError
-export type RememberTokenError = {
-    readonly kind: 'invalid';
-} | {
-    readonly kind: 'stolen';
-    readonly userId: AuthUserId;
-    readonly reused?: boolean;
-};
-// RememberedDevice
-export interface RememberedDevice {
-    readonly userId: AuthUserId;
-    readonly signIn: string;
-    readonly cookie: string | undefined;
-    readonly expiresAt: Date;
-    readonly createdAt: Date;
-    readonly fingerprint: string | undefined;
-}
 // ResidentKeyRequirement
 export type ResidentKeyRequirement = 'discouraged' | 'preferred' | 'required';
-// SIGN_IN_VERIFIED
-export declare const SIGN_IN_VERIFIED: unique symbol;
 // SecondFactor
 export type SecondFactor = 'totp' | 'passkey';
 // SecondFactorPasskeys
@@ -1821,82 +1512,6 @@ export interface SecondFactorPasskeys {
     [VERIFY_SECOND_FACTOR](userId: AuthUserId, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
 }
 export declare const SecondFactorPasskeys: import("@marmeon/core").Token<SecondFactorPasskeys>;
-// SessionFingerprints
-export declare class SessionFingerprints {
-    #private;
-    constructor({ key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>);
-    of(credentials: Credentials): string;
-    matches(stored: unknown, credentials: Credentials): boolean;
-}
-// SignIn
-export interface SignIn {
-    readonly id: string;
-    readonly current: boolean;
-    readonly remembered: boolean;
-    readonly signedInAt: Date;
-    readonly lastSeenAt: Date;
-    readonly createdAt: Date;
-    readonly userAgent: string | undefined;
-    readonly device: DeviceDescription;
-}
-// SignInOptions
-export interface SignInOptions {
-    readonly remember?: boolean;
-    readonly ip?: string | undefined;
-    readonly userAgent?: string | undefined;
-}
-// SignInRecord
-export interface SignInRecord {
-    readonly id: string;
-    readonly userId: AuthUserId;
-    readonly userAgent: string | undefined;
-    readonly remembered: boolean;
-    readonly signedInAt: Date;
-    readonly lastSeenAt: Date;
-    readonly createdAt: Date;
-}
-// SignInStore
-export declare abstract class SignInStore {
-    #private;
-    constructor();
-    abstract create(input: {
-        userId: AuthUserId;
-        userAgent: string | undefined;
-    }): Promise<string>;
-    abstract seen(userId: AuthUserId, id: string, touch: boolean): Promise<boolean>;
-    abstract list(userId: AuthUserId, window: SignInWindow): Promise<readonly SignInRecord[]>;
-    abstract end(userId: AuthUserId, id: string): Promise<boolean>;
-    abstract endAll(userId: AuthUserId, except?: string): Promise<number>;
-    abstract endEveryone(): Promise<number>;
-    abstract prune(window: SignInWindow, rememberMaxAgeDays: number): Promise<number>;
-    abstract issueToken(userId: AuthUserId, id: string, token: {
-        until: Date;
-        fingerprint: string;
-    }): Promise<string>;
-    abstract dropToken(userId: AuthUserId, id: string): Promise<void>;
-    abstract consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
-    abstract remembered(cookie: string): Promise<boolean>;
-    abstract forgetToken(cookie: string): Promise<void>;
-    abstract rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
-}
-// SignInThrottle
-export declare class SignInThrottle {
-    #private;
-    constructor(limiter: RateLimiter, { key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>, config: Pick<AuthConfig, 'loginAttemptsPerMinute' | 'accountSignInsPerDay' | 'deviceCookieDays'>, session: Pick<SessionConfig, 'secure' | 'sameSite'>, clock: Clock, logger: Logger);
-    takeClient(identifier: string, ip: string | undefined): Promise<number | undefined>;
-    takeAccount(identifier: string, userId: string | number | undefined): Promise<AccountHeld | undefined>;
-    takeDevice(nonce: string): Promise<boolean>;
-    clearClient(identifier: string, ip: string | undefined): Promise<void>;
-    clearAccount(userId: string | number): Promise<void>;
-    get deviceCookieName(): string;
-    issueDevice(credentials: Credentials): DeviceCookie | undefined;
-    deviceNonce(value: unknown, credentials: Credentials): string | undefined;
-}
-// SignInWindow
-export interface SignInWindow {
-    readonly idleSeconds: number;
-    readonly maxSeconds: number;
-}
 // TwoFactorState
 export declare abstract class TwoFactorState {
     #private;
@@ -1905,63 +1520,18 @@ export declare abstract class TwoFactorState {
     abstract enabledSince(userId: AuthUserId): Promise<Date | undefined>;
     abstract removeAll(userId: AuthUserId): Promise<void>;
 }
-// TwoFactorStore
-export declare class TwoFactorStore extends TwoFactorState {
-    #private;
-    constructor(connections: Connections, clock: Clock);
-    factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
-    enabledSince(userId: AuthUserId): Promise<Date | undefined>;
-    startSetup(userId: AuthUserId, encryptedSecret: string): Promise<void>;
-    confirm(userId: AuthUserId, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean>;
-    useStep(userId: AuthUserId, step: number, reencryptedSecret: string): Promise<boolean>;
-    consumeRecoveryCode(userId: AuthUserId, codeHash: string): Promise<number | undefined>;
-    replaceRecoveryCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void>;
-    remainingRecoveryCodes(userId: AuthUserId): Promise<number>;
-    removeTotp(userId: AuthUserId, { lastFactor }: {
-        lastFactor: boolean;
-    }): Promise<void>;
-    removeAll(userId: AuthUserId): Promise<void>;
-}
 // UserOf
 export type UserOf<Types> = Types extends {
     user: infer U extends {
         readonly id: string | number;
     };
 } ? U : AuthTypesNotDeclared;
-// UserProvider
-export interface UserProvider<U = AuthUser> {
-    findById(id: U extends {
-        readonly id: infer Id;
-    } ? Id : never): Promise<Credentials<U> | undefined>;
-    findForSignIn(identifier: string): Promise<Credentials<U> | undefined>;
-    updatePasswordHash(id: U extends {
-        readonly id: infer Id;
-    } ? Id : never, hash: PasswordHash, options?: {
-        readonly expected?: PasswordHash;
-        readonly sessionKey?: string;
-        readonly expectedSessionKey?: string | null;
-    }): Promise<boolean>;
-    updateSessionKey(id: U extends {
-        readonly id: infer Id;
-    } ? Id : never, key: string, expected: string | null | undefined): Promise<boolean>;
-    updateEverySessionKey(key: string): Promise<{
-        readonly accounts: number;
-        readonly sampleId: (U extends {
-            readonly id: infer Id;
-        } ? Id : never) | undefined;
-    }>;
-}
-export declare const UserProvider: Token<UserProvider>;
 // UserVerificationRequirement
 export type UserVerificationRequirement = 'discouraged' | 'preferred' | 'required';
-// VERIFIED_SESSION_KEY
-export declare const VERIFIED_SESSION_KEY: unique symbol;
 // VERIFY_SECOND_FACTOR
 export declare const VERIFY_SECOND_FACTOR: unique symbol;
 // missing
 declare const missing: unique symbol;
-// passwordHash
-declare const passwordHash: unique symbol;
 ```
 
 ## `@marmeon/auth/passkeys/browser`
@@ -2175,7 +1745,6 @@ export interface TotpSetup {
 // TwoFactor
 export declare class TwoFactor {
     #private;
-    constructor(auth: Auth, session: Session, state: TwoFactorState, store: TwoFactorStore, encrypter: Encrypter, limiter: RateLimiter, events: EventDispatcher, request: ClientInfo, users: UserProvider, cookies: CookieJar, config: AuthConfig, clock: Clock, logger: Logger, passkeys: SecondFactorPasskeys, connections: Connections, sessionConfig: SessionConfig);
     challenge(input: SecondFactorInput): Promise<Result<AuthUser, ChallengeError>>;
     stepUp(input: SecondFactorInput): Promise<Result<void, ChallengeError>>;
     status(): Promise<{
@@ -2208,138 +1777,6 @@ export declare function twoFactor<const S extends RouteNameInput = never, const 
 ### Referenced, not exported
 
 ```ts
-// ACCOUNT_STILL_CLAIMED
-export declare const ACCOUNT_STILL_CLAIMED: unique symbol;
-// ANNOUNCE_ENDED
-export declare const ANNOUNCE_ENDED: unique symbol;
-// AccessToken
-export interface AccessToken {
-    readonly id: AccessTokenId;
-    readonly userId: AuthUserId;
-    readonly name: string;
-    readonly abilities: readonly string[];
-    readonly lastUsedAt: string | null;
-    readonly expiresAt: string | null;
-    readonly createdAt: string;
-}
-// AccessTokenId
-export type AccessTokenId = number | string;
-// AccessTokenOptions
-export interface AccessTokenOptions {
-    readonly abilities: readonly string[];
-    readonly expiresIn: Duration | null;
-}
-// AccessTokenStore
-export declare abstract class AccessTokenStore {
-    #private;
-    constructor();
-    abstract create(userId: AuthUserId, name: string, options: AccessTokenOptions): Promise<{
-        plainText: string;
-        token: AccessToken;
-    }>;
-    abstract find(plainText: string): Promise<AccessToken | undefined>;
-    abstract touch(token: AccessToken): Promise<void>;
-    abstract list(userId: AuthUserId): Promise<AccessToken[]>;
-    abstract revoke(userId: AuthUserId, id: AccessTokenId): Promise<boolean>;
-    abstract revokeAll(userId: AuthUserId): Promise<number>;
-    abstract prune(graceSeconds?: number): Promise<number>;
-    abstract revokeEveryone(): Promise<number>;
-}
-// AccountHeld
-export interface AccountHeld {
-    readonly retryAfterSeconds: number;
-    readonly first: boolean;
-}
-// AccountSessions
-export declare class AccountSessions {
-    #private;
-    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings, changes?: () => EmailChangeStore | undefined);
-    [ANNOUNCE_ENDED](userId: string | number): Promise<void>;
-    end(userId: AuthUserId): Promise<Result<EndedSessions, {
-        readonly kind: 'missing';
-    }>>;
-    endEveryone({ accessTokens, resetTokens }?: {
-        readonly accessTokens?: boolean;
-        readonly resetTokens?: boolean;
-    }): Promise<EveryoneEnded>;
-}
-// AttemptError
-export type AttemptError = {
-    readonly kind: 'invalid-credentials';
-} | {
-    readonly kind: 'two-factor-required';
-    readonly factors: readonly SecondFactor[];
-} | {
-    readonly kind: 'throttled';
-    readonly retryAfterSeconds: number;
-    readonly account?: true;
-};
-// Auth
-export declare class Auth {
-    #private;
-    constructor(session: Session, users: UserProvider, hasher: Hasher, events: EventDispatcher, cookies: CookieJar, config: AuthConfig, sessionConfig: SessionConfig, logger: Logger, history: ClientHistory, request: ClientInfo, newPassword: NewPassword, twoFactor: TwoFactorState, accountSessions: AccountSessions, signIns: SignInStore, clock: Clock, fingerprints: SessionFingerprints, limiter: RateLimiter, signInThrottle: SignInThrottle);
-    attempt(identifier: string, password: string, options?: SignInOptions): Promise<Result<AuthUser, AttemptError>>;
-    deviceCookie(): Promise<DeviceCookie | undefined>;
-    signIn(user: AuthUser, options?: SignInOptions): Promise<'signed-in' | 'two-factor-required'>;
-    pendingSecondFactor(): {
-        readonly factors: readonly SecondFactor[];
-    } | undefined;
-    [READ_PENDING](): Promise<PendingView | 'expired' | undefined>;
-    [DROP_EXPIRED](): 'expired';
-    [RECORD_PENDING_FAILURE](): number | undefined;
-    [COMPLETE_PENDING](verifiedUserId: AuthUserId | string | number): Promise<Result<AuthUser, {
-        readonly kind: 'no-challenge';
-    } | {
-        readonly kind: 'expired';
-    }>>;
-    [SIGN_IN_VERIFIED](verifiedUserId: AuthUserId | string | number, options?: {
-        readonly remember?: boolean;
-    }, checkedAgainst?: Credentials): Promise<Result<AuthUser, {
-        readonly kind: 'expired';
-    }>>;
-    signOut(): Promise<void>;
-    user(): Promise<AuthUser | undefined>;
-    check(): Promise<boolean>;
-    id(): Promise<AuthUserId | undefined>;
-    viaRemember(): boolean;
-    checkPassword(password: string): Promise<Result<void, PasswordCheckError>>;
-    passwordCheckScope(): PasswordCheckScope;
-    passwordRecentlyConfirmed(seconds?: number): boolean;
-    signIns(): Promise<readonly SignIn[]>;
-    endSignIn(id: string): Promise<Result<void, {
-        readonly kind: 'missing';
-    } | {
-        readonly kind: 'current';
-    }>>;
-    updatePassword(password: string): Promise<void>;
-    updateSessionKey(): Promise<boolean>;
-    [DROP_REMEMBER_TOKEN](): Promise<void>;
-    [CLAIM_ACCOUNT](): Promise<boolean>;
-    [VERIFIED_SESSION_KEY](): string | null;
-    [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
-}
-// AuthConfig
-export declare const AuthConfig: import("@marmeon/core").ConfigDefinition<{
-    rememberDays: number;
-    remember: boolean;
-    sessionMaxSeconds: number;
-    rememberCookie: string;
-    appName: string | undefined;
-    loginAttemptsPerMinute: number;
-    accountSignInsPerDay: number;
-    deviceCookieDays: number;
-    passwordTimeoutSeconds: number;
-    resetMinutes: number;
-    resetThrottleSeconds: number;
-    emailChangeMinutes: number;
-    emailChangeThrottleSeconds: number;
-    tokenPrefix: string;
-    privateRegistration: boolean;
-    unverifiedDays: number;
-    revokeTokensOnPasswordChange: boolean;
-    protected: boolean;
-}>;
-export type AuthConfig = ConfigOf<typeof AuthConfig>;
 // AuthTypes
 export interface AuthTypes {
 }
@@ -2349,306 +1786,32 @@ export interface AuthTypesNotDeclared {
 }
 // AuthUser
 export type AuthUser = UserOf<AuthTypes>;
-// AuthUserId
-export type AuthUserId = AuthUser extends {
-    readonly id: infer Id;
-} ? Id : string | number;
 // Authenticated
 export interface Authenticated {
     readonly user: AuthUser;
 }
-// CLAIM_ACCOUNT
-export declare const CLAIM_ACCOUNT: unique symbol;
-// COMPLETE_PENDING
-export declare const COMPLETE_PENDING: unique symbol;
-// Credentials
-export interface Credentials<U = AuthUser> {
-    readonly user: U;
-    readonly passwordHash: PasswordHash | null;
-    readonly sessionKey: string | null;
-}
-// DROP_EXPIRED
-declare const DROP_EXPIRED: unique symbol;
-// DROP_REMEMBER_TOKEN
-export declare const DROP_REMEMBER_TOKEN: unique symbol;
-// DeviceCookie
-export interface DeviceCookie {
-    readonly name: string;
-    readonly value: string;
-    readonly options: {
-        readonly httpOnly: true;
-        readonly secure: boolean;
-        readonly sameSite: SessionConfig['sameSite'];
-        readonly path: '/';
-        readonly maxAge: number;
-    };
-}
-// DeviceDescription
-export interface DeviceDescription {
-    readonly browser: string | undefined;
-    readonly system: string | undefined;
-}
-// EmailChangeStore
-export declare abstract class EmailChangeStore {
-    #private;
-    constructor();
-    abstract create(userId: AuthUserId, email: string, expiresAt: Date, sessionKey: string | null): Promise<string | undefined>;
-    abstract pending(userId: AuthUserId, email: string, token: string): Promise<Date | undefined>;
-    abstract waiting(userId: AuthUserId): Promise<{
-        readonly email: string;
-        readonly expiresAt: Date;
-    } | undefined>;
-    abstract claim(userId: AuthUserId, token: string, now: Date): Promise<string | undefined>;
-    abstract forget(userId: AuthUserId): Promise<void>;
-    abstract prune(now: Date): Promise<number>;
-    abstract forgetEveryone(): Promise<number>;
-}
-// EndedSessions
-export interface EndedSessions {
-    readonly removed: number;
-}
-// EveryoneEnded
-export interface EveryoneEnded {
-    readonly accounts: number;
-    readonly resetTokens: number;
-    readonly accessTokens: number;
-    readonly signIns: number;
-}
-// Hasher
-export interface Hasher {
-    make(password: string): Promise<PasswordHash>;
-    verify(password: string, hash: PasswordHash): Promise<boolean>;
-    needsRehash(hash: PasswordHash): boolean;
-    dummyVerify(password: string): Promise<false>;
-    failureFloorMs(): number | Promise<number>;
-}
-export declare const Hasher: import("@marmeon/core").Token<Hasher>;
-// NewPassword
-export declare class NewPassword {
-    #private;
-    constructor(tokens: () => AccessTokenStore, connections: () => Connections, config: AuthConfig, logger: Logger, signIns: () => SignInStore, endings?: SessionEndings, factors?: () => {
-        readonly state: TwoFactorState;
-        readonly events: EventDispatcher;
-    }, changes?: () => EmailChangeStore | undefined);
-    store(users: UserProvider, id: AuthUserId, hash: PasswordHash, via: 'change' | 'reset', user?: AuthUser, read?: string | null, keep?: string): Promise<{
-        readonly revoked: number;
-        readonly sessionKey: string;
-    }>;
-    assertReady(): void;
-}
 // PasskeyAssertion
 export type PasskeyAssertion = object;
-// PasskeyVerdict
-export type PasskeyVerdict = 'valid' | 'wrong' | 'stale';
 // PasswordCheckError
 export type PasswordCheckError = {
     readonly kind: 'invalid-password';
 } | PasswordThrottled;
-// PasswordCheckScope
-export interface PasswordCheckScope {
-    readonly session: string;
-    readonly typed: boolean;
-}
-// PasswordHash
-export type PasswordHash = string & {
-    readonly [passwordHash]: true;
-};
-// PasswordResetTokenStore
-export declare abstract class PasswordResetTokenStore {
-    #private;
-    constructor();
-    abstract create(email: string, throttleSeconds: number): Promise<Result<string, {
-        readonly kind: 'throttled';
-    }>>;
-    abstract consume(email: string, token: string, maxAgeSeconds: number): Promise<Result<void, {
-        readonly kind: 'invalid-token';
-    }>>;
-    abstract forget(email: string): Promise<void>;
-    abstract prune(maxAgeSeconds: number): Promise<number>;
-    abstract forgetEveryone(): Promise<number>;
-}
 // PasswordThrottled
 export interface PasswordThrottled {
     readonly kind: 'throttled';
     readonly retryAfterSeconds: number;
     readonly account?: true;
 }
-// PendingView
-export interface PendingView {
-    readonly userId: AuthUserId;
-    readonly factors: readonly SecondFactor[];
-    readonly failures: number;
-    readonly remember: boolean;
-}
-// READ_PENDING
-export declare const READ_PENDING: unique symbol;
-// RECORD_PENDING_FAILURE
-export declare const RECORD_PENDING_FAILURE: unique symbol;
-// RememberTokenError
-export type RememberTokenError = {
-    readonly kind: 'invalid';
-} | {
-    readonly kind: 'stolen';
-    readonly userId: AuthUserId;
-    readonly reused?: boolean;
-};
-// RememberedDevice
-export interface RememberedDevice {
-    readonly userId: AuthUserId;
-    readonly signIn: string;
-    readonly cookie: string | undefined;
-    readonly expiresAt: Date;
-    readonly createdAt: Date;
-    readonly fingerprint: string | undefined;
-}
-// SIGN_IN_VERIFIED
-export declare const SIGN_IN_VERIFIED: unique symbol;
 // SecondFactor
 export type SecondFactor = 'totp' | 'passkey';
-// SecondFactorPasskeys
-export interface SecondFactorPasskeys {
-    [VERIFY_SECOND_FACTOR](userId: AuthUserId, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
-}
-export declare const SecondFactorPasskeys: import("@marmeon/core").Token<SecondFactorPasskeys>;
-// SessionFingerprints
-export declare class SessionFingerprints {
-    #private;
-    constructor({ key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>);
-    of(credentials: Credentials): string;
-    matches(stored: unknown, credentials: Credentials): boolean;
-}
-// SignIn
-export interface SignIn {
-    readonly id: string;
-    readonly current: boolean;
-    readonly remembered: boolean;
-    readonly signedInAt: Date;
-    readonly lastSeenAt: Date;
-    readonly createdAt: Date;
-    readonly userAgent: string | undefined;
-    readonly device: DeviceDescription;
-}
-// SignInOptions
-export interface SignInOptions {
-    readonly remember?: boolean;
-    readonly ip?: string | undefined;
-    readonly userAgent?: string | undefined;
-}
-// SignInRecord
-export interface SignInRecord {
-    readonly id: string;
-    readonly userId: AuthUserId;
-    readonly userAgent: string | undefined;
-    readonly remembered: boolean;
-    readonly signedInAt: Date;
-    readonly lastSeenAt: Date;
-    readonly createdAt: Date;
-}
-// SignInStore
-export declare abstract class SignInStore {
-    #private;
-    constructor();
-    abstract create(input: {
-        userId: AuthUserId;
-        userAgent: string | undefined;
-    }): Promise<string>;
-    abstract seen(userId: AuthUserId, id: string, touch: boolean): Promise<boolean>;
-    abstract list(userId: AuthUserId, window: SignInWindow): Promise<readonly SignInRecord[]>;
-    abstract end(userId: AuthUserId, id: string): Promise<boolean>;
-    abstract endAll(userId: AuthUserId, except?: string): Promise<number>;
-    abstract endEveryone(): Promise<number>;
-    abstract prune(window: SignInWindow, rememberMaxAgeDays: number): Promise<number>;
-    abstract issueToken(userId: AuthUserId, id: string, token: {
-        until: Date;
-        fingerprint: string;
-    }): Promise<string>;
-    abstract dropToken(userId: AuthUserId, id: string): Promise<void>;
-    abstract consume(cookie: string): Promise<Result<RememberedDevice, RememberTokenError>>;
-    abstract remembered(cookie: string): Promise<boolean>;
-    abstract forgetToken(cookie: string): Promise<void>;
-    abstract rebind(userId: AuthUserId, cookie: string, fingerprint: string): Promise<Result<void, RememberTokenError>>;
-}
-// SignInThrottle
-export declare class SignInThrottle {
-    #private;
-    constructor(limiter: RateLimiter, { key, previousKeys }: Pick<EncryptionConfig, 'key' | 'previousKeys'>, config: Pick<AuthConfig, 'loginAttemptsPerMinute' | 'accountSignInsPerDay' | 'deviceCookieDays'>, session: Pick<SessionConfig, 'secure' | 'sameSite'>, clock: Clock, logger: Logger);
-    takeClient(identifier: string, ip: string | undefined): Promise<number | undefined>;
-    takeAccount(identifier: string, userId: string | number | undefined): Promise<AccountHeld | undefined>;
-    takeDevice(nonce: string): Promise<boolean>;
-    clearClient(identifier: string, ip: string | undefined): Promise<void>;
-    clearAccount(userId: string | number): Promise<void>;
-    get deviceCookieName(): string;
-    issueDevice(credentials: Credentials): DeviceCookie | undefined;
-    deviceNonce(value: unknown, credentials: Credentials): string | undefined;
-}
-// SignInWindow
-export interface SignInWindow {
-    readonly idleSeconds: number;
-    readonly maxSeconds: number;
-}
-// TwoFactorState
-export declare abstract class TwoFactorState {
-    #private;
-    constructor();
-    abstract factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
-    abstract enabledSince(userId: AuthUserId): Promise<Date | undefined>;
-    abstract removeAll(userId: AuthUserId): Promise<void>;
-}
-// TwoFactorStore
-export declare class TwoFactorStore extends TwoFactorState {
-    #private;
-    constructor(connections: Connections, clock: Clock);
-    factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
-    enabledSince(userId: AuthUserId): Promise<Date | undefined>;
-    startSetup(userId: AuthUserId, encryptedSecret: string): Promise<void>;
-    confirm(userId: AuthUserId, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean>;
-    useStep(userId: AuthUserId, step: number, reencryptedSecret: string): Promise<boolean>;
-    consumeRecoveryCode(userId: AuthUserId, codeHash: string): Promise<number | undefined>;
-    replaceRecoveryCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void>;
-    remainingRecoveryCodes(userId: AuthUserId): Promise<number>;
-    removeTotp(userId: AuthUserId, { lastFactor }: {
-        lastFactor: boolean;
-    }): Promise<void>;
-    removeAll(userId: AuthUserId): Promise<void>;
-}
 // UserOf
 export type UserOf<Types> = Types extends {
     user: infer U extends {
         readonly id: string | number;
     };
 } ? U : AuthTypesNotDeclared;
-// UserProvider
-export interface UserProvider<U = AuthUser> {
-    findById(id: U extends {
-        readonly id: infer Id;
-    } ? Id : never): Promise<Credentials<U> | undefined>;
-    findForSignIn(identifier: string): Promise<Credentials<U> | undefined>;
-    updatePasswordHash(id: U extends {
-        readonly id: infer Id;
-    } ? Id : never, hash: PasswordHash, options?: {
-        readonly expected?: PasswordHash;
-        readonly sessionKey?: string;
-        readonly expectedSessionKey?: string | null;
-    }): Promise<boolean>;
-    updateSessionKey(id: U extends {
-        readonly id: infer Id;
-    } ? Id : never, key: string, expected: string | null | undefined): Promise<boolean>;
-    updateEverySessionKey(key: string): Promise<{
-        readonly accounts: number;
-        readonly sampleId: (U extends {
-            readonly id: infer Id;
-        } ? Id : never) | undefined;
-    }>;
-}
-export declare const UserProvider: Token<UserProvider>;
-// VERIFIED_SESSION_KEY
-export declare const VERIFIED_SESSION_KEY: unique symbol;
-// VERIFY_SECOND_FACTOR
-export declare const VERIFY_SECOND_FACTOR: unique symbol;
 // missing
 declare const missing: unique symbol;
-// passwordHash
-declare const passwordHash: unique symbol;
 ```
 
 ## Environment

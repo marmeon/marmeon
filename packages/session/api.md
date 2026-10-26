@@ -28,7 +28,6 @@ export declare const SESSION_USER_KEY = "_auth_id";
 // Session
 export declare class Session {
     #private;
-    constructor(store: SessionStore, config: SessionConfig, codec: SessionCodec);
     get started(): boolean;
     get readOnly(): boolean;
     get id(): string;
@@ -147,13 +146,11 @@ export type SessionWriteResult = 'written' | 'conflict' | 'gone';
 // ShareErrorsFromSession
 export declare class ShareErrorsFromSession {
     #private;
-    constructor(session: Session, shared: SharedData);
     handle(_ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // StartSession
 export declare class StartSession {
     #private;
-    constructor(session: Session, config: SessionConfig, store: SessionStore, logger: Logger, readOnly: ReadOnly, parent: ParentRequest, lottery: SessionLottery, endings: SessionEndings, container: Container);
     handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
     terminate(): Promise<void>;
 }
@@ -172,7 +169,6 @@ export declare class UserSessions {
 // VerifyCsrfToken
 export declare class VerifyCsrfToken {
     #private;
-    constructor(session: Session, protection: CsrfProtection, config: CsrfConfig, sessionConfig: SessionConfig);
     handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // sessionCookieName

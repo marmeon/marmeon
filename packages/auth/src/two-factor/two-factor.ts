@@ -83,6 +83,7 @@ export class TwoFactor {
   readonly #logger: Logger;
   readonly #connections: Connections;
 
+  /** @internal Built by the container. */
   constructor(
     auth: Auth,
     session: Session,
@@ -140,7 +141,7 @@ export class TwoFactor {
       const failures = this.#auth[RECORD_PENDING_FAILURE]() ?? PENDING_MAX_FAILURES;
       const found = await this.#users.findById(userId as never);
       // The owner is told of a wrong answer only, not of a challenge that timed out or was sent twice: the client sees `invalid-code` either way.
-      if (found && verdict === 'wrong') await this.#events.dispatch(new TwoFactorChallengeFailed(found.user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'sign-in' }));
+      if (found && verdict === 'wrong') await this.#events.dispatch(new TwoFactorChallengeFailed(found.user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'sign-in' }, new Date(this.#clock.now())));
       return err({ kind: 'invalid-code', attemptsLeft: Math.max(0, PENDING_MAX_FAILURES - failures) });
     }
     // Only the minute counter: hour and day keep the attempts that guessing used up.
@@ -169,7 +170,7 @@ export class TwoFactor {
     const minute = recovery ? this.#recoveryKey(userId) : this.#codeKey('minute', userId);
     const verdict = await this.#verify(userId, input, 'step-up');
     if (verdict !== 'valid') {
-      if (verdict === 'wrong') await this.#events.dispatch(new TwoFactorChallengeFailed(user, new Date(this.#clock.now()), { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'step-up' }));
+      if (verdict === 'wrong') await this.#events.dispatch(new TwoFactorChallengeFailed(user, { ip: this.#request.ip, userAgent: this.#request.userAgent, during: 'step-up' }, new Date(this.#clock.now())));
       const budget = recovery ? RECOVERY_WINDOW.attempts : TOTP_WINDOWS[0].attempts;
       return err({ kind: 'invalid-code', attemptsLeft: Math.max(0, budget - (await this.#limiter.attempts(minute))) });
     }

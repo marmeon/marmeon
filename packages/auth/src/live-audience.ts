@@ -13,6 +13,7 @@ export class SignInAudience implements LiveAudience {
   readonly #auth: () => Auth;
   readonly #session: Session;
 
+  /** @internal Built by the container. */
   constructor(auth: () => Auth, session: Session) {
     this.#auth = auth;
     this.#session = session;
