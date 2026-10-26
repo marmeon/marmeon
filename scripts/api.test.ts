@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { FOREIGN_TYPES, foreignPackage, internalProblems, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, spanProblems, stabilityProblems } from './api.ts';
+import { FOREIGN_TYPES, foreignPackage, internalProblems, memberProblems, memberStatus, memberUsage, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, spanProblems, stabilityProblems } from './api.ts';
 import { INTERNAL_EXCEPTIONS } from './api-internal.ts';
 import { SAME_VALUE } from './api-names.ts';
 import { SPAN_EXCEPTIONS } from './api-spans.ts';
@@ -21,7 +21,8 @@ const DEMO_INTERNAL = `@marmeon/demo${INTERNAL}`;
 const CONSUMER = [{ path: 'packages/other/src/c.ts', text: `import { c } from '${DEMO_INTERNAL}';` }];
 const NO_INTERNAL = { exceptions: {} };
 const NO_SPANS = { exceptions: {} };
-const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, spans: NO_SPANS, internal: NO_INTERNAL, files: CONSUMER, ...options });
+const NO_MEMBERS = { exceptions: {}, pending: [] };
+const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, spans: NO_SPANS, internal: NO_INTERNAL, members: NO_MEMBERS, files: CONSUMER, ...options });
 
 /** Writes `dist/<name>` files into a fresh package; `exports` maps subpaths to their `.d.ts` under `dist/`. */
 function demo(files: Record<string, string>, exports: Record<string, string> = { '.': 'index.d.ts' }, extra: Record<string, unknown> = {}) {
@@ -1286,4 +1287,185 @@ describe('the repository', () => {
   it.skipIf(!built)('has an api.md for every package that matches the built declarations', async () => {
     expect((await runApiWithLists(repository)).lines).toEqual(['api: every api.md matches the built declarations, environment variables and commands']);
   }, 30_000);
+});
+
+describe('constructors and members that only their own package uses', () => {
+  const CLASSES = [
+    'export declare class Box {',
+    '    constructor();',
+    '    open(): void;',
+    '    close(): void;',
+    '    get size(): number;',
+    '    static make(): Box;',
+    '}',
+    '',
+  ].join('\n');
+  const members = (declaration: string, sources: Record<string, string> = {}, lists: Partial<Parameters<typeof memberProblems>[3]> = {}) => {
+    const { root, dir, manifest } = demo({ 'index.d.ts': declaration });
+    const sourceFiles = Object.entries(sources).map(([path, text]) => ({ path, text }));
+    return memberProblems([{ name: '@marmeon/demo', dir, manifest }], root, () => sourceFiles, { ...NO_MEMBERS, ...lists });
+  };
+  const nowhere = (key: string) => `@marmeon/demo ${key} is used nowhere outside @marmeon/demo (docs, apps, the kit) — mark it @internal, or list it in MEMBER_EXCEPTIONS with the reason an app needs it; see \`pnpm api:usage @marmeon/demo --members --files\``;
+  const siblingsOnly = (key: string) => `@marmeon/demo ${key} is used only by other framework packages — mark it @internal (they may still call it); see \`pnpm api:usage @marmeon/demo --members --files\``;
+  const own = { 'packages/demo/src/a.ts': 'new Box(); box.open(); box.close(); box.size; Box.make();' };
+  const ALL = ['Box.close', 'Box.constructor', 'Box.make', 'Box.open', 'Box.size'];
+
+  it('reports a constructor and members that only their own package uses', () => {
+    expect(members(CLASSES, own)).toEqual(ALL.map(nowhere));
+  });
+
+  it('counts a use in the docs, even in prose, and `new` in a code block', () => {
+    const sources = { 'docs/box.md': 'Call `box.open()` and `box.close()`; read `box.size`.\n\n```ts\nconst box = new Box();\nBox.make();\n```\n' };
+    expect(members(CLASSES, { ...own, ...sources })).toEqual([]);
+  });
+
+  it('counts the apps with their tests and the kit, not the tests of a framework package', () => {
+    const sources = {
+      'apps/shop/modules/a.test.ts': 'box.open(); new Box();',
+      'packages/demo/stubs/a.ts': 'box.close();',
+      'packages/other/src/a.test.ts': 'box.size; Box.make();',
+      'packages/other/src/__fixtures__/a.ts': 'box.size; Box.make();',
+    };
+    expect(members(CLASSES, sources)).toEqual([nowhere('Box.make'), nowhere('Box.size')]);
+  });
+
+  it('names a member that only the code of another framework package uses', () => {
+    const sources = { 'packages/other/src/a.ts': 'box.open(); new Box();', 'packages/other/src/a.test.ts': 'box.close();' };
+    expect(members(CLASSES, sources)).toEqual([nowhere('Box.close'), siblingsOnly('Box.constructor'), nowhere('Box.make'), siblingsOnly('Box.open'), nowhere('Box.size')]);
+  });
+
+  it('does not read a name in a comment or a string as a use', () => {
+    const sources = { 'apps/shop/a.ts': "// box.open()\nconst text = 'box.close() new Box()';" };
+    expect(members(CLASSES, sources)).toEqual(ALL.map(nowhere));
+  });
+
+  it('keeps every member of a class that an app, the docs or the kit extends', () => {
+    expect(members(CLASSES, { 'apps/shop/a.ts': 'class Mine extends Box {}' })).toEqual([]);
+    expect(members(CLASSES, { 'docs/a.md': '```ts\nclass Mine extends Box {}\n```' })).toEqual([]);
+    expect(members(CLASSES, { 'packages/other/src/a.ts': 'class Mine extends Box {}' })).toHaveLength(5);
+  });
+
+  it('never checks error classes, abstract classes, hidden members and implicit names', () => {
+    const declaration = [
+      'export declare class FooError extends Error {',
+      '    constructor(message: string);',
+      '    detail(): void;',
+      '}',
+      'export declare class Failure extends FooError {',
+      '    reason(): void;',
+      '}',
+      'export declare abstract class Base {',
+      '    run(): void;',
+      '}',
+      'export declare class Box {',
+      '    #private;',
+      '    private hidden;',
+      '    protected guarded(): void;',
+      '    /** @internal */',
+      '    plumbing(): void;',
+      '    /** @experimental */',
+      '    trial(): void;',
+      '    [Symbol.iterator](): Iterator<number>;',
+      '    toString(): string;',
+      '    toJSON(): unknown;',
+      '    valueOf(): number;',
+      '    then(): void;',
+      '}',
+      '',
+    ].join('\n');
+    expect(members(declaration)).toEqual([]);
+  });
+
+  it('checks a class once, under the first entry that exports it', () => {
+    const { root, dir, manifest } = demo({ 'index.d.ts': "export * from './box.js';\n", 'box.d.ts': CLASSES, 'other.d.ts': "export { Box as Crate } from './box.js';\n" }, { '.': 'index.d.ts', './other': 'other.d.ts' });
+    const problems = memberProblems([{ name: '@marmeon/demo', dir, manifest }], root, () => [], NO_MEMBERS);
+    expect(problems).toHaveLength(5);
+    expect(problems.every((problem) => problem.startsWith('@marmeon/demo Box.'))).toBe(true);
+  });
+
+  it('suppresses a member, a class or an entry that stands in a list', () => {
+    const pending = ['@marmeon/demo Box.open', '@marmeon/demo Box.close'];
+    expect(members(CLASSES, own, { pending })).toEqual(['Box.constructor', 'Box.make', 'Box.size'].map(nowhere));
+    expect(members(CLASSES, own, { exceptions: { '@marmeon/demo Box.*': 'a base class' } })).toEqual([]);
+    expect(members(CLASSES, own, { exceptions: { '@marmeon/demo *': 'the contract of an adapter' } })).toEqual([]);
+  });
+
+  it('names a listed line that matches nothing any more', () => {
+    const sources = { 'docs/box.md': '`box.open()` `box.close()` `box.size` `Box.make()` `new Box()`' };
+    expect(members(CLASSES, sources, { pending: ['@marmeon/demo Box.open'], exceptions: { '@marmeon/demo Gone.*': 'y' } })).toEqual([
+      '@marmeon/demo Gone.* is listed in MEMBER_EXCEPTIONS but follows the rule — delete the line',
+      '@marmeon/demo Box.open is listed in MEMBER_PENDING but follows the rule — delete the line',
+    ]);
+  });
+
+  it('counts a bare code span or a table cell in the docs as a use', () => {
+    const sources = { 'docs/box.md': '| Method | |\n| `open(key)` | opens |\n\nUse `close(...keys)` or `size`.\n\n`make<T>()` and `new Box<T>()`\n' };
+    expect(members(CLASSES, sources)).toEqual([]);
+  });
+
+  it('counts a call inside the `${…}` of a template literal', () => {
+    const sources = { 'apps/shop/a.ts': 'const text = `${box.open()} and ${`${box.close()}`}`;\nbox.size; Box.make(); new Box();' };
+    expect(members(CLASSES, sources)).toEqual([]);
+  });
+
+  it('skips a member that a base class or an interface declares', () => {
+    const declaration = [
+      'export interface Provider {',
+      '    boot(): void;',
+      '}',
+      'export declare class Base implements Provider {',
+      '    boot(): void;',
+      '    shared(): void;',
+      '}',
+      'export declare class Box extends Base {',
+      '    boot(): void;',
+      '    shared(): void;',
+      '    own(): void;',
+      '}',
+      'export declare class Plugin implements Provider {',
+      '    boot(): void;',
+      '}',
+      '',
+    ].join('\n');
+    expect(members(declaration)).toEqual([nowhere('Base.shared'), nowhere('Box.own')]);
+    // A base that no entry exports is no contract an app can see.
+    expect(members(declaration.replace('export declare class Base', 'declare class Base'))).toEqual([nowhere('Box.boot'), nowhere('Box.own'), nowhere('Box.shared')]);
+  });
+
+  it('does not look for a key that is no identifier', () => {
+    const declaration = "export declare class Box {\n    readonly '~standard': number;\n    open(): void;\n}\n";
+    expect(members(declaration, { 'apps/shop/a.ts': 'box["~standard"];' })).toEqual([nowhere('Box.open')]);
+  });
+
+  it('counts the launchers of a package, not its test helpers', () => {
+    expect(members(CLASSES, { 'packages/other/bin/run.ts': 'box.open();' })).toContain(siblingsOnly('Box.open'));
+    expect(members(CLASSES, { 'packages/other/src/test-helpers/a.ts': 'box.open();' })).toContain(nowhere('Box.open'));
+  });
+
+  it('gives usage per file group and a status', () => {
+    const { root, dir, manifest } = demo({ 'index.d.ts': CLASSES });
+    const files = [
+      { path: 'docs/a.md', text: '`box.open()`' },
+      { path: 'apps/shop/a.ts', text: 'box.close();' },
+      { path: 'packages/other/src/a.ts', text: 'box.size;' },
+    ];
+    const usage = memberUsage([{ name: '@marmeon/demo', dir, manifest }], root, files);
+    const by = Object.fromEntries(usage.map((item) => [item.member, item]));
+    expect(by.open!.docs).toEqual(['docs/a.md']);
+    expect(by.close!.apps).toEqual(['apps/shop/a.ts']);
+    expect(by.size!.siblings).toEqual(['packages/other/src/a.ts']);
+    expect(usage.map((item) => [item.member, memberStatus(item)])).toEqual([
+      ['close', 'used'],
+      ['constructor', 'unused'],
+      ['make', 'unused'],
+      ['open', 'used'],
+      ['size', 'framework only'],
+    ]);
+  });
+
+  it('reports the problems through api:check with a line of their own', async () => {
+    const { root } = demo({ 'index.d.ts': CLASSES });
+    const run = await runApi(root, { allowed: {}, files: [] });
+    expect(run.lines).toContain('members:');
+  });
 });

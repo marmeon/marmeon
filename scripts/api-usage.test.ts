@@ -1,7 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { importsOf, knownEntries, mentionsOf, main, renderUsage, usageOf } from './api-usage.ts';
+import { importsOf } from './api-sources.ts';
+import { knownEntries, membersOf, mentionsOf, main, renderMembers, renderUsage, usageOf } from './api-usage.ts';
 import { renderSnapshot, type ApiItem } from './api-snapshot.ts';
 import type { SourceFile } from './source-files.ts';
 import { tempDir } from './test/temp-dir.js';
@@ -417,5 +418,56 @@ describe('the command', () => {
 
   it('refuses an entry no api.md lists', () => {
     expect(main(['@marmeon/nope'])).toBe(1);
+  });
+});
+
+describe('--members', () => {
+  /** A `@marmeon/demo` with one class; its declarations are built unless `withDeclarations` is off. */
+  function built(withDeclarations = true) {
+    const root = repository();
+    const dir = join(root, 'packages/demo');
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@marmeon/demo', exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } } }));
+    if (withDeclarations) {
+      mkdirSync(join(dir, 'dist'), { recursive: true });
+      writeFileSync(join(dir, 'dist/index.d.ts'), 'export declare class Box {\n    open(): void;\n    close(): void;\n    size(): number;\n}\n');
+    }
+    return root;
+  }
+  const files = [file('docs/box.md', '`box.open()`'), file('packages/other/src/a.ts', 'box.close();')];
+
+  it('lists the members by who uses them', () => {
+    const report = membersOf('@marmeon/demo', built(), files);
+    expect(report.problems).toEqual([]);
+    expect(report.members.map((member) => [member.member, member.status])).toEqual([
+      ['close', 'framework only'],
+      ['open', 'used'],
+      ['size', 'unused'],
+    ]);
+    expect(renderMembers(report, true)).toBe(
+      [
+        '@marmeon/demo: 3 constructors and members (1 unused, 1 framework only, 1 used)',
+        '',
+        'unused (1)',
+        '  Box.size',
+        '',
+        'framework only (1)',
+        '  Box.close  — frameworks 1',
+        '      packages/other/src/a.ts',
+        '',
+        'used (1)',
+        '  Box.open  — docs 1',
+        '      docs/box.md',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('says to build first when the declarations are missing', () => {
+    expect(membersOf('@marmeon/demo', built(false), files).problems.join('\n')).toContain('run pnpm build first');
+  });
+
+  it('is a flag of the command', () => {
+    expect(main(['--members'])).toBe(2);
+    expect(main(['@marmeon/nope', '--members'])).toBe(1);
   });
 });
