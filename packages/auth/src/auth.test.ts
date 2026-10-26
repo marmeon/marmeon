@@ -2,7 +2,7 @@ import { createApplication, defineModule, err, inTransaction, listen, Logger, ok
 import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { ClientHistory, Controller, NO_CLIENT_INFO, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
+import { ClientHistory, Controller, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
@@ -29,6 +29,7 @@ import {
   type PasswordHash,
   type UserOf,
 } from './index.ts';
+import { NO_CLIENT } from './test-helpers/client.ts';
 import { AUTH_SESSION_KEYS, MAX_FLOOR_MS, paddedTo } from './auth.ts';
 import { COMPLETE_PENDING, READ_PENDING } from './auth.ts';
 import { SessionFingerprints } from './fingerprint.ts';
@@ -397,7 +398,7 @@ describe('Auth (session guard)', () => {
       users.rows.set(1, { user: ada, hash: await real.make('secret'), key: null });
       const hasher = { make: vi.fn(real.make.bind(real)), verify: vi.fn(real.verify.bind(real)), needsRehash: vi.fn(real.needsRehash.bind(real)), dummyVerify: vi.fn(real.dummyVerify.bind(real)), failureFloorMs: vi.fn(real.failureFloorMs.bind(real)) };
       const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-      const auth = new Auth(session, users as UserProvider, hasher as unknown as Hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
+      const auth = new Auth(session, users as UserProvider, hasher as unknown as Hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
       return { auth, hasher };
     };
 
@@ -426,7 +427,7 @@ describe('Auth (session guard)', () => {
       const failureFloorMs = vi.fn(() => floor);
       const hasher = { make: real.make.bind(real), verify: real.verify.bind(real), needsRehash: () => false, dummyVerify: async () => false as const, ...(floor === undefined ? {} : { failureFloorMs }) } as unknown as Hasher;
       const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-      const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
+      const auth = new Auth(session, users as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
       return { users, hasher, auth, failureFloorMs };
     };
     const timed = async (run: () => Promise<unknown>) => {
@@ -489,7 +490,7 @@ describe('Auth (session guard)', () => {
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
     const dispatched: unknown[] = [];
     const events = { dispatch: async (event: unknown) => void dispatched.push(event) } as never;
-    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
+    const auth = new Auth(session, users as UserProvider, hasher, events, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
     const answers = [
       await auth.attempt('ada@example.com', 'wrong'),
       await auth.attempt('nobody@example.com', 'secret'),

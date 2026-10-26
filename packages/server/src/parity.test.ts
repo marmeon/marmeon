@@ -1,20 +1,17 @@
 import { createApplication, defineModule, Translator } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import {
-  browserRoutes,
   ClientHistory,
   Controller,
   HttpServiceProvider,
   once,
-  PageSession,
   SharedData,
-  staticView,
   view,
   type HttpContext,
   type Next,
   type PageObject,
 } from '@marmeon/http';
-import { LOCATION_HEADER, RELOAD_HEADER } from '@marmeon/http/internal';
+import { LOCATION_HEADER, RELOAD_HEADER, browserRoutes, PageSession, staticView } from '@marmeon/http/internal';
 import { Router } from '@marmeon/router';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';

@@ -42,9 +42,7 @@ export declare class Session {
     flush(): void;
     flash<K extends string>(key: K, value: Value<K>): void;
     reflash(): void;
-    queueFlash(message: FlashEntry): void;
     hasFlash(document?: string): boolean;
-    takeFlash(document?: string): FlashEntry[];
     keep(...keys: string[]): void;
     flashInput(input: Record<string, unknown>): void;
     old(): Record<string, unknown>;

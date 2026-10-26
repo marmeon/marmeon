@@ -40,7 +40,7 @@ describe('DefaultExceptionHandler Vary', () => {
   it('names what expectsJson reads on the redirect back', () => {
     const result = handler.render(new ValidationError({ name: ['Required'] }), request({ accept: 'text/html' }), options);
     expect(result).toBeInstanceOf(RedirectResult);
-    const response = (result as RedirectResult).toResponse(request({ accept: 'text/html' }), router, flasher);
+    const response = (result as RedirectResult).toResponse(request({ accept: 'text/html' }), { routes: router, flasher: flasher });
     expect(varyOf(response.headers)).toEqual(['accept', 'x-requested-with']);
   });
 

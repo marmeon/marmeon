@@ -1,5 +1,5 @@
 import { UserFactory, UserRepository } from '#modules/auth';
-import { browserRoutes, Router, type PageObject } from '@marmeon/http';
+import type { PageObject } from '@marmeon/http';
 import { LOCATION_HEADER, ONCE_HEADER, ONCE_SCOPE_HEADER, RELOAD_HEADER, VERSION_HEADER } from '@marmeon/http/protocol';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -8,7 +8,7 @@ import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
 
 beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
 
-/** Once props, `<Form>` without JavaScript, instant visits and the two 409s — in the web app. */
+/** Once props, `<Form>` without JavaScript and the two 409s — in the web app. */
 
 let app: TestApp;
 afterEach(async () => {
@@ -110,18 +110,5 @@ describe('<Form>: the token form as a browser sends it', () => {
     expect((created.page()!.props as { plainText: string }).plainText).toMatch(/^marmeon_/);
     const none = await app.withCookie('marmeon_session', created.cookie('marmeon_session')!).expectingJson().post('/settings/tokens', { form: { current_password: 'password', name: 'CI' } }).assertStatus(422);
     expect(none.json()).toMatchObject({ errors: { abilities: ['Pick what the token may do.'] } });
-  });
-});
-
-describe('instant visits: the view a route renders', () => {
-  it('the browser’s routes name the view of a page — not of a layer, an island or an action', async () => {
-    app = await createTestApp(application, { database: 'refresh' });
-    const routes = browserRoutes(app.make(Router).routes).routes;
-    expect(routes['user-profile.show']?.view).toBe('user-profile/Show');
-    expect(routes['user-profile.people']?.view).toBe('user-profile/People');
-    expect(routes['dashboard.show']?.view).toBe('dashboard/Show');
-    expect(routes['user-profile.edit']?.view).toBeUndefined();
-    expect(routes['dashboard.sign-ins']?.view).toBeUndefined();
-    expect(routes['user-profile.update']?.view).toBeUndefined();
   });
 });

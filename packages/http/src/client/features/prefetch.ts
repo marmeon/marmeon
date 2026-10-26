@@ -128,7 +128,7 @@ export class Prefetches {
     return this.#core.document(VIEWPORT);
   }
 
-  /** How many prefetched pages are kept (tests). */
+  /** @internal — how many prefetched pages are kept (tests). */
   get size(): number {
     return this.#pages.size;
   }
@@ -224,6 +224,7 @@ export class Prefetches {
    * A page landed. When it is another page than the one the count belongs to, it starts its own 20 — a reload of the same page
    * (a poll, a live update, "load more", a form with errors) does not. The hook fires before the page is set, so this looks one
    * microtask later.
+   * @internal — the feature calls it when a page lands.
    */
   landed(): void {
     queueMicrotask(() => this.#pump());

@@ -1,8 +1,8 @@
 import { withCode } from '@marmeon/core/internal';
 
 /** A write a read-only request tried — thrown in development and tests, so the mistake shows where it is made. */
-export class ReadOnlyViolation extends Error {
-  override name = 'ReadOnlyViolation';
+export class ReadOnlyError extends Error {
+  override name = 'ReadOnlyError';
 }
 
 /** What engages a request's {@link ReadOnly} guard. */
@@ -26,7 +26,7 @@ const ISLAND_RULE =
  * requests, or, streamed with the page, never reach the browser. Every writer — the session, the cookie jar, `AfterResponse` —
  * asks {@link permit} first.
  *
- * In development and tests a write throws a {@link ReadOnlyViolation}; in production it is dropped and logged.
+ * In development and tests a write throws a {@link ReadOnlyError}; in production it is dropped and logged.
  */
 export class ReadOnly {
   #options: ReadOnlyOptions | undefined;
@@ -49,7 +49,7 @@ export class ReadOnly {
     const options = this.#options;
     if (!options) return true;
     const message = `${what} in ${options.reason}: ${options.rule ?? ISLAND_RULE}`;
-    if (options.strict) throw new ReadOnlyViolation(withCode('H6', message));
+    if (options.strict) throw new ReadOnlyError(withCode('H6', message));
     options.report(`${message} (dropped)`);
     return false;
   }

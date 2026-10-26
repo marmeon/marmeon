@@ -1,5 +1,4 @@
 import { NO_STORE } from '@marmeon/auth';
-import { INTENDED_KEY } from '@marmeon/http';
 import { createTestApp, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -7,6 +6,9 @@ import { UserFactory } from '../auth/factories/UserFactory.ts';
 import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
 
 beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
+
+/** Where the session keeps the page a guest wanted. */
+const INTENDED_KEY = '_intended_url';
 
 let app: TestApp;
 beforeEach(async () => {

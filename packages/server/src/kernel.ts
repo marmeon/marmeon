@@ -12,21 +12,17 @@ import { messageBase, runWithRequest, trace, withCode } from '@marmeon/core/inte
 import { channels, type HttpRequestMessage, type PageSummary } from '@marmeon/core/diagnostics';
 import {
   AfterResponse,
-  AssetVersion,
   ClientInfo,
   CookieDefaults,
   ExceptionHandler,
   HttpError,
   isActionRequest,
-  LIVE_PATH,
   ParentRequest,
   ReadOnly,
   regionOf,
   ServerClosing,
-  SESSION_PATH,
   isPageObject,
   type PageObject,
-  type PropOrigins,
   type RegionObject,
   type RegionResult,
 } from '@marmeon/http';
@@ -46,6 +42,10 @@ import {
   speaksProtocol,
   VERSION_HEADER,
   partialReloadOf,
+  AssetVersion,
+  LIVE_PATH,
+  SESSION_PATH,
+  type PropOrigins,
 } from '@marmeon/http/internal';
 import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import {
