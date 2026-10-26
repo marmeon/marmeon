@@ -60,7 +60,7 @@ before it runs. The [configuration](configuration.md#where-node_env-comes-from) 
 |---|---|
 | `0` | The command succeeded. |
 | `1` | The command ran and failed: the app could not start, or the command reported an error or threw. |
-| `2` | `marmeon` was called wrongly: an unknown command, an unknown option, an option without its value, or a value an option does not take. |
+| `2` | `marmeon` was called wrongly: an unknown command, an unknown option, an option without its value, a value an option does not take, or an argument the command itself refuses (a name that is no `PascalCase`, `--workers=abc`, `schedule:test` without a task). |
 | `130` | The person cancelled a question the command asked (Ctrl-C). |
 
 [`marmeon check`](check.md#exit-codes) adds a `3` for a check that could not run.
@@ -73,7 +73,16 @@ When the reader of a pipe stops early, as in `marmeon docs | head -5`, the comma
 
 A script can tell a typo from a failure this way. A built-in's options are checked before the app boots; an app's own command is looked
 up once the app has booted, so a failed boot (1) comes first. A few commands have codes of their own: [`docs`](#reading-the-documentation) ends with 2 for an unknown page or options that do not go together, [`tinker`](#running-code-from-a-script) ends with
-130 on a signal, and [`queue:work`](queues.md#timeouts-and-retryafterseconds) with 70 when a job does not stop in time. A command that checks its own arguments, such as `schedule:test` without a name, still exits with 1.
+130 on a signal, and [`queue:work`](queues.md#timeouts-and-retryafterseconds) with 70 when a job does not stop in time. A command that checks its own arguments, such as `schedule:test` without a name, exits with 2 as well: it throws a `CommandArgumentsError`, and `marmeon` prints its message and exits with 2. The state of the app or of the machine is a failure (1), whatever the arguments:
+
+| Wrong call (2) | Failure (1) |
+|---|---|
+| `make:event` without a name, or with a name that is no `PascalCase`; `make:controller` without `--module` | `make:event --module=billing` when the module does not exist; a file the generator would write exists and `--force` is missing |
+| `make:docker --caddy --nginx` | `make:docker` when its files exist, without `--force` |
+| `start --workers=abc`, `schedule:work --stop-timeout=x`, `queue:work --sleep=x` | A server that cannot start, a job that fails |
+| `schedule:test` without a task name or with an unknown one | `schedule:test` of a task that fails |
+| `migrate --wait=soon`, `publish` with two packages, `uploads:prune --hours=soon` | `migrate` that cannot take the lock |
+| `auth:end-sessions` without an identifier | `auth:end-sessions <identifier>` without `--force`, `migrate:fresh` without `--force` on a protected environment, `uploads:prune --hours=0` without `--force`: the arguments are well formed, the state decides |
 
 ## Machine-readable output
 
@@ -293,7 +302,7 @@ are dropped when the output is no terminal.
 
 Each run gets a scope of its own, as a request does. A scoped service, such as the `Translator`, is fresh for each command and
 speaks `APP_LOCALE`. The app shuts down after the command, so open connections never keep the process alive. An error the command
-throws prints its message and the first lines of its stack, and the exit code is 1.
+throws prints its message and the first lines of its stack, and the exit code is 1. To say that the arguments are wrong, throw a `CommandArgumentsError` (from `marmeon`) with the message: `marmeon` prints it without a stack, does not hand it to the error reporters and exits with 2.
 
 The scheduler runs a command as a task: `s.command('notes:prune-archived', ['--days=60']).daily()`. Each run again gets a scope of
 its own. The [task scheduling](scheduling.md#commands) page covers the schedule.

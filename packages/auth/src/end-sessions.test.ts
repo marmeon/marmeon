@@ -55,12 +55,12 @@ describe('auth:end-sessions', () => {
     expect(await signInRows()).toBe(1);
   });
 
-  it('exits 1 for an unknown identifier or none, and ends nothing', async () => {
+  it('exits 1 for an unknown identifier and refuses none as a wrong call (exit 2), and ends nothing', async () => {
     const { run, lines, key, signInRows } = await setup();
     expect(await run(['nobody@example.com'])).toBe(1);
-    expect(await run([])).toBe(1);
-    expect(await run(['   '])).toBe(1);
-    expect(lines).toEqual(['✗ No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.', '✗ Usage: marmeon auth:end-sessions <identifier> --force', '✗ Usage: marmeon auth:end-sessions <identifier> --force']);
+    await expect(run([])).rejects.toMatchObject({ name: 'CommandArgumentsError', message: 'Usage: marmeon auth:end-sessions <identifier> --force' });
+    await expect(run(['   '])).rejects.toMatchObject({ name: 'CommandArgumentsError' });
+    expect(lines).toEqual(['✗ No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.']);
     expect(key()).toBeNull();
     expect(await signInRows()).toBe(1);
   });

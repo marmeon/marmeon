@@ -1,4 +1,4 @@
-import { EventDispatcher, Logger, type Key } from '@marmeon/core';
+import { CommandArgumentsError, EventDispatcher, Logger, type Key } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { AccountSessions } from './account-sessions.ts';
 import { TwoFactorDisabled } from './events.ts';
@@ -41,8 +41,7 @@ export class ResetTwoFactorCommand {
   async handle({ args, options, output }: CommandInput): Promise<number> {
     const identifier = args[0]?.trim();
     if (!identifier) {
-      output.error('Usage: marmeon auth:reset-two-factor <identifier> --force');
-      return 1;
+      throw new CommandArgumentsError('Usage: marmeon auth:reset-two-factor <identifier> --force');
     }
     assertSignInFinder(this.#users);
     const found = await this.#users.findForSignIn(identifier);

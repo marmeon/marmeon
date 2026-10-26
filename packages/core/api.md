@@ -39,6 +39,10 @@ export interface Clock {
     now(): number;
 }
 export declare const Clock: import("./token.ts").Token<Clock>;
+// CommandArgumentsError
+export declare class CommandArgumentsError extends Error {
+    name: string;
+}
 // Concrete
 export type Concrete<T = unknown> = new (...args: any[]) => T;
 // ConfigDefinition

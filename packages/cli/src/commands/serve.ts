@@ -9,7 +9,7 @@ import { CLUSTER_WORKER } from '@marmeon/core/internal';
 import { ServerConfig, startServer, ViteSetupError } from '@marmeon/server';
 import { refuseUndecidedRoutes, heldOnLoopback, shadowedLocalhost, startLastError } from '@marmeon/server/internal';
 import { RouteAccessError } from '@marmeon/router';
-import type { CommandInput } from '../command.ts';
+import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
 import { startMarmeon } from '../spawn.ts';
 import { RouteTypes } from '../route-types.ts';
@@ -47,14 +47,8 @@ export class ServeCommand {
     // NODE_ENV=development only (`marmeon dev` sets it), never with "anything but production" (test, unset).
     const development = environment.isDevelopment();
     const workers = workerCount(options.workers);
-    if (typeof workers === 'string') {
-      output.error(workers);
-      return 1;
-    }
-    if (workers !== undefined && development) {
-      output.error('--workers is for marmeon start (the build): marmeon dev runs one server, with Vite in front of it.');
-      return 1;
-    }
+    if (typeof workers === 'string') throw new CommandArgumentsError(workers);
+    if (workers !== undefined && development) throw new CommandArgumentsError('--workers is for marmeon start (the build): marmeon dev runs one server, with Vite in front of it.');
     if (workers !== undefined && cluster.isPrimary) {
       // Said once, here, not by each of the workers that would refuse the same start.
       try {

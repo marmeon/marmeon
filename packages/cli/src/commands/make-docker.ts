@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, normalize, relative } from 'node:path';
-import type { CommandInput } from '../command.ts';
+import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { caddyfile, compose, dockerfile, dockerignore, nginxConf, systemdUnits, TESTED_PNPM, type DockerApp, type PackageManager, type Proxy } from '../docker.ts';
 import { style } from '../output.ts';
 
@@ -20,8 +20,7 @@ export class MakeDockerCommand {
 
   handle({ options, output, root }: CommandInput): number {
     if (options.caddy === true && options.nginx === true) {
-      output.error('Choose one proxy: --caddy or --nginx.');
-      return 1;
+      throw new CommandArgumentsError('Choose one proxy: --caddy or --nginx.');
     }
     const app = inspectApp(root);
     if (typeof app === 'string') {

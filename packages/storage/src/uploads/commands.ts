@@ -1,5 +1,5 @@
 import type { Resolver } from '@marmeon/core';
-import { Application, Clock } from '@marmeon/core';
+import { Application, Clock, CommandArgumentsError } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { UploadsConfig } from './config.ts';
 import { TemporaryUploads } from './service.ts';
@@ -61,8 +61,7 @@ export class PruneUploadsCommand {
   async handle({ options, output }: CommandInput): Promise<number> {
     const hours = options.hours === undefined ? 24 : Number(options.hours);
     if (!Number.isFinite(hours) || hours < 0) {
-      output.error(`--hours must be a number ≥ 0 (uploads made longer ago than that are deleted), not ${String(options.hours)}.`);
-      return 1;
+      throw new CommandArgumentsError(`--hours must be a number ≥ 0 (uploads made longer ago than that are deleted), not ${String(options.hours)}.`);
     }
     const lifetime = this.#config.lifetimeMinutes; // minutes
     if (hours * 60 < lifetime && options.force !== true) {

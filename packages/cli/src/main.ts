@@ -185,6 +185,11 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
       output.error('\nmarmeon: cancelled.');
       return EXIT_CANCELLED;
     }
+    // An argument the command itself refuses is a wrong call, like one `parseCommandArgs` refuses: exit 2, not an error to report.
+    if (error instanceof CommandArgumentsError) {
+      output.error(error.message);
+      return EXIT_USAGE;
+    }
     printError(output, error);
     reportFailure(app, Command, error);
     return 1;

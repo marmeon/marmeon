@@ -398,8 +398,11 @@ describe('make:auth', () => {
 
   it('knows its adapters', async () => {
     const { input, lines } = fakeInput(blankApp(), { adapter: 'vue' });
-    expect(await new MakeAuthCommand().handle(input)).toBe(1);
-    expect(lines[0]).toBe('✗ There are no auth templates for the UI adapter "vue". Known: react.');
+    await expect(new MakeAuthCommand().handle(input)).rejects.toMatchObject({
+      name: 'CommandArgumentsError',
+      message: 'There are no auth templates for the UI adapter "vue". Known: react.',
+    });
+    expect(lines).toEqual([]);
   });
 
   it('makes one module, private by default — AUTH_PRIVATE_REGISTRATION=false turns it off, no flag of the command', async () => {

@@ -378,7 +378,7 @@ describe('marmeon auth:reset-two-factor', { timeout: 30_000 }, () => {
     await app.withCookie(SESSION, cookie).expectingJson().get('/dashboard').assertOk();
     await app.assertDatabaseCount('two_factor_authentications', 1);
     expect(await reset(['nobody@example.com'])).toEqual({ code: 1, lines: ['✗ No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.'] });
-    expect((await reset([])).code).toBe(1);
+    expect((await reset([])).code).toBe(2); // no identifier: a wrong call
     const grace = await app.factory(UserFactory).create();
     expect(await reset([grace.email])).toEqual({ code: 0, lines: [`✓ ${grace.email} has no second factor.`] });
   });

@@ -54,6 +54,6 @@ describe('marmeon auth:end-sessions', () => {
 
   it('says so for an unknown address or none', async () => {
     expect(await run(['nobody@example.com'])).toEqual({ code: 1, lines: ['✗ No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.'] });
-    expect((await run([])).code).toBe(1);
+    expect((await run([])).code).toBe(2); // no identifier: a wrong call
   });
 });

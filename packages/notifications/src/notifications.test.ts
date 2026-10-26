@@ -388,7 +388,8 @@ describe.each(drivers)('notifications on %s', (driver) => {
       const second = output();
       expect(await command.handle({ args: [], options: { days: '30', 'unread-days': '30' }, output: second.output } as never)).toBe(0);
       expect((await rows(application)).map((row) => row.id).sort()).toEqual([lateRead, recentRead, unread].sort());
-      expect(await command.handle({ args: [], options: { days: 'x' }, output: output().output } as never)).toBe(1);
+      await expect(command.handle({ args: [], options: { days: 'x' }, output: output().output } as never)).rejects.toMatchObject({ name: 'CommandArgumentsError' });
+      await expect(command.handle({ args: [], options: { 'unread-days': 'x' }, output: output().output } as never)).rejects.toMatchObject({ name: 'CommandArgumentsError' });
     });
   });
 });

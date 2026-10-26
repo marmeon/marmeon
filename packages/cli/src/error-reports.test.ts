@@ -17,6 +17,7 @@ describe('marmeon commands and the error reporters', { timeout: 60_000 }, () => 
       join(app, 'modules/system/Reports.ts'),
       [
         "import { appendFileSync } from 'node:fs';",
+        "import { CommandArgumentsError } from 'marmeon';",
         'export class FileReporter {',
         '  report(report: unknown) {',
         "    appendFileSync(process.env.REPORTS_FILE!, JSON.stringify(report) + '\\n');",
@@ -33,6 +34,13 @@ describe('marmeon commands and the error reporters', { timeout: 60_000 }, () => 
         "    throw new Error('the export service is down');",
         '  }',
         '}',
+        'export class WrongCallCommand {',
+        "  static command = 'wrong-call';",
+        "  static description = 'Refuses its arguments';",
+        '  handle() {',
+        "    throw new CommandArgumentsError('Pass a name: marmeon wrong-call <name>');",
+        '  }',
+        '}',
         'export class QuietFailCommand {',
         "  static command = 'quiet-fail';",
         "  static description = 'Ends with exit code 1 and no error';",
@@ -45,7 +53,7 @@ describe('marmeon commands and the error reporters', { timeout: 60_000 }, () => 
     );
     writeFileSync(
       join(app, 'modules/system/index.ts'),
-      "import { defineModule } from '@marmeon/core';\nimport { BoomCommand, QuietFailCommand, ReportingProvider } from './Reports.ts';\nexport default defineModule({ name: 'system', providers: [ReportingProvider], commands: [BoomCommand, QuietFailCommand], migrations: new URL('./migrations/', import.meta.url) });\n",
+      "import { defineModule } from '@marmeon/core';\nimport { BoomCommand, QuietFailCommand, ReportingProvider, WrongCallCommand } from './Reports.ts';\nexport default defineModule({ name: 'system', providers: [ReportingProvider], commands: [BoomCommand, QuietFailCommand, WrongCallCommand], migrations: new URL('./migrations/', import.meta.url) });\n",
     );
     return app;
   }
@@ -73,6 +81,12 @@ describe('marmeon commands and the error reporters', { timeout: 60_000 }, () => 
     const env = { REPORTS_FILE: join(app, 'storage/reports.jsonl') };
     expect(marmeon(app, ['boom', '--bogus'], env).code).toBe(2);
     expect(marmeon(app, ['quiet-fail'], env).code).toBe(1);
+    // An app's own command that throws a CommandArgumentsError: exit 2, the message alone on stderr, no stack, nothing on stdout.
+    const wrong = marmeon(app, ['wrong-call'], env);
+    expect(wrong.code).toBe(2);
+    expect(wrong.stdout).toBe('');
+    expect(wrong.stderr).toContain('Pass a name: marmeon wrong-call <name>');
+    expect(wrong.stderr).not.toMatch(/\n\s+at /);
     expect(marmeon(app, ['boom', '--help'], env).code).toBe(0);
     expect(reportsOf(app)).toEqual([]);
   });

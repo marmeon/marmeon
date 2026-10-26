@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import type { CommandInput } from '../command.ts';
+import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 import { dependsOn, KEBAB, migrationStamp, PASCAL, registerModule } from './make.ts';
 import { resourceFiles, type ResourceNames } from './make-resource-templates.ts';
@@ -62,27 +62,23 @@ export class MakeResourceCommand {
   handle(input: CommandInput): number {
     const [name] = input.args;
     if (!name || !PASCAL.test(name)) {
-      input.output.error('Pass a PascalCase singular name, e.g. marmeon make:resource Bookmark');
-      return 1;
+      throw new CommandArgumentsError('Pass a PascalCase singular name, e.g. marmeon make:resource Bookmark');
     }
     const words = wordsOf(name);
     const plural = pluralOf(name);
     const pluralWords = wordsOf(plural);
     const requested = input.options.module;
     if (requested !== undefined && (typeof requested !== 'string' || !KEBAB.test(requested))) {
-      input.output.error('Pass the module as --module=<kebab-case-name>');
-      return 1;
+      throw new CommandArgumentsError('Pass the module as --module=<kebab-case-name>');
     }
     const module = requested ?? pluralWords.join('-');
     if (!KEBAB.test(module)) {
-      input.output.error(`${name} gives no module name (${module}); pass one: --module=<kebab-case-name>`);
-      return 1;
+      throw new CommandArgumentsError(`${name} gives no module name (${module}); pass one: --module=<kebab-case-name>`);
     }
     const param = camel(words);
     const list = camel(pluralWords);
     if (RESERVED.has(param) || RESERVED.has(list)) {
-      input.output.error(`${name} is a word the generated code uses itself (${param}): name the record more precisely, e.g. a Task of a project as ProjectTask.`);
-      return 1;
+      throw new CommandArgumentsError(`${name} is a word the generated code uses itself (${param}): name the record more precisely, e.g. a Task of a project as ProjectTask.`);
     }
 
     // Every precondition before the first byte is written.

@@ -1,4 +1,4 @@
-import { Application, Clock } from '@marmeon/core';
+import { Application, Clock, CommandArgumentsError } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { QueueConnections } from '../connections.ts';
 import type { FailedJob } from '../driver.ts';
@@ -74,8 +74,7 @@ export class QueueRetryCommand {
 
   async handle({ args, output }: CommandInput): Promise<number> {
     if (args.length === 0) {
-      output.error('Pass the ids of the failed jobs (marmeon queue:failed lists them), or all.');
-      return 1;
+      throw new CommandArgumentsError('Pass the ids of the failed jobs (marmeon queue:failed lists them), or all.');
     }
     const store = this.#connections.failed();
     // `all`: oldest first, so the queue keeps their order.
@@ -127,8 +126,7 @@ export class QueueForgetCommand {
   async handle({ args, output }: CommandInput): Promise<number> {
     const [id] = args;
     if (!id) {
-      output.error('Pass the id of the failed job (marmeon queue:failed lists them).');
-      return 1;
+      throw new CommandArgumentsError('Pass the id of the failed job (marmeon queue:failed lists them).');
     }
     if (!(await this.#connections.failed().forget(id))) {
       output.error(`No failed job with the id ${id}.`);
@@ -175,8 +173,7 @@ export class QueuePruneFailedCommand {
   async handle({ options, output }: CommandInput): Promise<number> {
     const hours = options.hours === undefined ? 168 : Number(options.hours);
     if (!Number.isFinite(hours) || hours < 0) {
-      output.error('--hours must be a number ≥ 0.');
-      return 1;
+      throw new CommandArgumentsError('--hours must be a number ≥ 0.');
     }
     const removed = await this.#connections.failed().prune(this.#clock.now() - hours * 3_600_000);
     output.success(`Pruned ${removed} failed ${removed === 1 ? 'job' : 'jobs'} older than ${hours} hours.`);

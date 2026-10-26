@@ -1,4 +1,4 @@
-import { Clock, Container, SystemClock } from '@marmeon/core';
+import { Clock, CommandArgumentsError, Container, SystemClock } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { AuthConfig } from './config.ts';
 import { EmailChangeStore } from './email-changes.ts';
@@ -41,8 +41,7 @@ export class PruneTokensCommand {
   async handle({ options, output }: CommandInput): Promise<number> {
     const hours = options.hours === undefined ? 0 : Number(options.hours);
     if (!Number.isFinite(hours) || hours < 0) {
-      output.error(`--hours must be a number ≥ 0 (API tokens expired longer ago than that are deleted), not ${String(options.hours)}.`);
-      return 1;
+      throw new CommandArgumentsError(`--hours must be a number ≥ 0 (API tokens expired longer ago than that are deleted), not ${String(options.hours)}.`);
     }
     const resets = await this.#resets.prune(this.#config.resetExpire * 60);
     const access = await this.#access.prune(hours * 3600);

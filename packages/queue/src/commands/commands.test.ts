@@ -138,9 +138,8 @@ describe('the queue commands', () => {
       [' , ', '✗ --queue names no queue — leave it out to take every queue.'],
       ['*,mail,*', '✗ --queue names * more than once.'],
     ] as const) {
-      const { input: run, lines } = input('/tmp', [], { queue: value, 'stop-when-empty': true });
-      expect(await application.container.make(QueueWorkCommand).handle(run)).toBe(1);
-      expect(lines).toEqual([message]);
+      const { input: run } = input('/tmp', [], { queue: value, 'stop-when-empty': true });
+      await expect(application.container.make(QueueWorkCommand).handle(run)).rejects.toMatchObject({ name: 'CommandArgumentsError', message: message.slice(2) });
     }
   });
 
@@ -191,6 +190,14 @@ describe('the queue commands', () => {
     const flushed = input('/tmp');
     await application.container.make(QueueFlushCommand).handle(flushed.input);
     expect(flushed.lines).toEqual(['✓ Deleted 1 failed job.']);
+  });
+
+  it('refuses a missing id and an --hours that is no number as a wrong call, not a failure', async () => {
+    await using application = await app();
+    const refused = { name: 'CommandArgumentsError' };
+    await expect(application.container.make(QueueRetryCommand).handle(input('/tmp').input)).rejects.toMatchObject({ ...refused, message: expect.stringContaining('Pass the ids') });
+    await expect(application.container.make(QueueForgetCommand).handle(input('/tmp').input)).rejects.toMatchObject({ ...refused, message: expect.stringContaining('Pass the id') });
+    await expect(application.container.make(QueuePruneFailedCommand).handle(input('/tmp', [], { hours: 'x' }).input)).rejects.toMatchObject({ ...refused, message: '--hours must be a number ≥ 0.' });
   });
 
   it('refuses to retry a failed job of a record without a version, and keeps it for reading', async () => {

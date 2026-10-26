@@ -36,10 +36,10 @@ describe('app.command()', () => {
     await app.close();
   });
 
-  it("returns the command's own non-zero exit instead of throwing", async () => {
+  it('returns exit 2 for arguments the command refuses instead of throwing', async () => {
     const app = await createTestApp(application, { database: 'refresh' });
     const run = await app.command('queue:retry');
-    expect(run.code).toBe(1);
+    expect(run.code).toBe(2);
     expect(run.lines.join('\n')).toContain('Pass the ids of the failed jobs');
     await app.close();
   });

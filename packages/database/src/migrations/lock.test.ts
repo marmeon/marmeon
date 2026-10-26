@@ -128,9 +128,12 @@ describe.each(drivers)('the migration lock on %s', (driver) => {
   });
 
   it('rejects a --wait that is not a number of seconds', async () => {
-    const { printed, input: given } = input({ wait: 'soon', force: true });
-    expect(await new MigrateCommand(migrator(connections), {} as TypeGenerator).handle(given)).toBe(1);
-    expect(printed.at(-1)).toBe('error: --wait must be a whole number of seconds, 0 or more.');
+    const { input: given } = input({ wait: 'soon', force: true });
+    // A wrong call: `marmeon` ends with 2 for this error.
+    await expect(new MigrateCommand(migrator(connections), {} as TypeGenerator).handle(given)).rejects.toMatchObject({
+      name: 'CommandArgumentsError',
+      message: '--wait must be a whole number of seconds, 0 or more.',
+    });
   });
 
   it('keeps the lock across migrate:fresh and lets go at the end', async () => {
