@@ -132,6 +132,34 @@ async function boot(env: Record<string, string> = {}) {
 
 const form = (fields: Record<string, string>) => ({ method: 'POST', body: new URLSearchParams(fields) });
 
+describe('CsrfProtection.disable()', () => {
+  it.each<Record<string, string>>([{ NODE_ENV: 'production' }, {}])('throws in a protected environment %j and leaves the protection on', async (env) => {
+    const { application, send } = await boot(env);
+    expect(() => application.container.make(CsrfProtection).disable()).toThrow('createTestApp(app, { csrf: true })');
+    await send('/form');
+    expect((await send('/save', form({}))).status).toBe(419);
+  });
+
+  it.each(['test', 'development'])('turns the check off with NODE_ENV %s', async (value) => {
+    const { application, send } = await boot({ NODE_ENV: value });
+    application.container.make(CsrfProtection).disable();
+    await send('/form');
+    expect((await send('/save', form({}))).status).not.toBe(419);
+  });
+});
+
+describe('CsrfProtection.except()', () => {
+  it.each(['*', '/*', '**'])('refuses %j, which matches every path', (pattern) => {
+    expect(() => new CsrfProtection().except(pattern)).toThrow(TypeError);
+  });
+
+  it('takes a path, a prefix and an empty pattern', () => {
+    const protection = new CsrfProtection().except('/webhooks/*', '');
+    expect(protection.skips('/webhooks/stripe')).toBe(true);
+    expect(protection.skips('/save')).toBe(false);
+  });
+});
+
 describe('VerifyCsrfToken', () => {
   it('hands the browser a readable XSRF-TOKEN cookie (not HttpOnly, not encrypted)', async () => {
     const { send, token } = await boot();

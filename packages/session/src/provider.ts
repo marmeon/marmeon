@@ -41,7 +41,7 @@ export class SessionServiceProvider implements ServiceProvider {
   static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 
   register(container: Container): void {
-    container.singleton(CsrfProtection);
+    container.singleton(CsrfProtection, (c) => new CsrfProtection(c.make(SessionConfig).protected));
     container.singleton(SessionEndings);
     container.scoped(Session);
     // `redirect().with(…)` flashes into the request's session.

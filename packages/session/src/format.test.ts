@@ -117,7 +117,7 @@ describe('the session payload format', () => {
     expect(guest.get('_auth_id')).toBeUndefined();
     expect(guest.id).not.toBe(id);
     guest.put('theme', 'light');
-    guest.flash('status', 'x');
+    guest.flashData('status', 'x');
     guest.token();
     expect(guest.persists).toBe(false);
     expect(await guest.save()).toBe(false);

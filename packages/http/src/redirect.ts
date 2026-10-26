@@ -26,7 +26,7 @@ export interface RedirectContext {
 export interface Flasher {
   /** False while the request's session has not started — a route without `StartSession` (outside the `web` group). */
   readonly started?: boolean;
-  flash(key: string, value: unknown): void;
+  flashData(key: string, value: unknown): void;
   /** Returns a stored value and removes it. */
   pull(key: string): unknown;
   /**
@@ -156,7 +156,7 @@ export class RedirectResult {
   toResponse(request: Request, { routes, flasher, locale }: RedirectContext): Response {
     if (this.#flash.size > 0) {
       sessionFor('redirect().with()', request, flasher);
-      for (const [key, value] of this.#flash) flasher.flash(key, value);
+      for (const [key, value] of this.#flash) flasher.flashData(key, value);
     }
     if (this.#messages.length > 0) {
       sessionFor('redirect().flash()', request, flasher);

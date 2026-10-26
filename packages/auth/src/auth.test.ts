@@ -279,7 +279,7 @@ async function boot(options: { env?: Record<string, string>; users?: MemoryUsers
       }),
     ],
   }, {
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:', ...CHEAP, ...options.env },
+    env: { NODE_ENV: 'test', APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', DB_DATABASE: ':memory:', ...CHEAP, ...options.env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users as UserProvider);
@@ -647,7 +647,7 @@ describe('authenticate() and guest()', () => {
       discover: false,
       providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, DatabaseServiceProvider, CacheServiceProvider, AuthServiceProvider],
       modules: [defineModule({ name: 'auth-test', routes })], // boots: make:auth must run in apps without an auth module
-    }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', DB_DATABASE: ':memory:', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', ...CHEAP } });
+    }, { env: { NODE_ENV: 'test', APP_KEY: generateKey(), SESSION_DRIVER: 'memory', DB_DATABASE: ':memory:', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', ...CHEAP } });
     const response = await createHttpKernel(application).request('/me', { headers: { accept: 'application/json' } });
     expect(response.status).toBe(500);
     expect(() => application.container.make(UserProvider)).toThrow('container.bind(UserProvider, UserRepository)');

@@ -1,4 +1,4 @@
-import { Application, Clock, createApplication, EventRegistry, type ApplicationDefinition, type Container, type Duration, type EventClass, type Key, type Resolve } from '@marmeon/core';
+import { Application, Clock, createApplication, environment, EventRegistry, type ApplicationDefinition, type Container, type Duration, type EventClass, type Key, type Resolve } from '@marmeon/core';
 import { loadEnv } from '@marmeon/core/internal';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { Encrypter } from '@marmeon/encryption';
@@ -207,7 +207,8 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
     override: (container) => {
       // The time, movable from the test: app.travel({ minutes: 5 }), app.freeze().
       container.instance(Clock, clock);
-      if (session && options.csrf !== true && container.has(session.CsrfProtection)) container.make(session.CsrfProtection).disable();
+      // A test app that runs as production keeps every protection, CSRF too.
+      if (session && options.csrf !== true && !environment.isProtected(env) && container.has(session.CsrfProtection)) container.make(session.CsrfProtection).disable();
       if (mail && container.has(mail.Mailer)) {
         mailFake = new mail.MailFake(container.make(mail.MailConfig).from, container.make(Application));
         container.instance(mail.Mailer, mailFake);

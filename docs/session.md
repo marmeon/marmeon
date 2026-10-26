@@ -62,7 +62,7 @@ not declare holds `unknown`.
 Flash data lives for the current and the next request, then it is gone:
 
 ```ts
-this.#session.flash('importedCount', 12);
+this.#session.flashData('importedCount', 12);
 ```
 
 `keep(...keys)` keeps flash data for one more request, and `reflash()` keeps all of it. A redirect flashes data with
@@ -73,8 +73,9 @@ explains both.
 A failed form flashes its errors and its input. The session's `ShareErrorsFromSession` middleware then shares the errors as the
 `errors` prop with every page of the `web` group, `{}` when there are none, so a form shows them next to its fields. `old(key)`
 returns the flashed input. The failed form, `redirect().withInput(input)` and `session.flashInput(input)` all leave out every
-field whose name contains "password", the `_token` and every file, also inside nested objects and lists. So a password never
-reaches the session store through flashed input.
+field whose name looks like a secret (a password, a token, a card number, a one-time code, an API key; the same names that keep
+them out of [remembered input](forms.md#remembering-input)), the `_token` and every file, also inside nested objects and lists.
+So a password never reaches the session store through flashed input.
 
 ### Signing in and out
 
@@ -166,7 +167,8 @@ pnpm marmeon migrate
 ```
 
 The migration goes into the `system` module, or the module that `--module=<name>` names. It creates the table on the connection
-`SESSION_CONNECTION` names. The command is `marmeon publish @marmeon/session`: when your app has the migration already, it writes
+`SESSION_CONNECTION` names. A migration of your own for the table asks `sessionTableConnection(container)` from `@marmeon/session`
+for it: that is `SESSION_CONNECTION` with this driver and `default` with any other. The command is `marmeon publish @marmeon/session`: when your app has the migration already, it writes
 nothing and ends with exit code 0 ([the framework's tables](migrations.md#the-frameworks-tables)).
 
 The store writes through a connection of its own, never inside your app's transactions, so a session written while a transaction
@@ -205,6 +207,13 @@ SHA-256 hash. Whoever reads the store, from a leaked backup or a shared Redis, g
 copied into another session's place does not open there. Keys in `APP_PREVIOUS_KEYS` still decrypt older data. It is off by
 default: with hashed keys, the data alone signs nobody in. Turn it on when the store is shared, or backed up where the data should
 not be read. Turning it on or off signs everybody out once.
+
+**Your own format.** The store keeps what a `SessionCodec` returns. The default codec writes the JSON as it is, and
+`SESSION_ENCRYPT=true` swaps in the encrypting one. An app that needs another format binds its own `SessionCodec` in a service
+provider: `seal(json, key)` turns a session's JSON into what the store keeps, and `open(data, key)` turns it back, or returns
+`undefined` for a payload it cannot read. Bind the key into the payload, as the encrypting codec does, so data copied into another
+session's place does not open. A session that signed a user in holds the user's id under `SESSION_USER_KEY` (`_auth_id`), both
+from `@marmeon/session`: the stores index sessions by it, which is how a user's other devices are listed and ended.
 
 **Concurrent requests.** A browser often has several requests of one session in flight, a page and its deferred props. Each write
 compares the version the request read. When another request wrote the session in between, the store reads it again and applies
