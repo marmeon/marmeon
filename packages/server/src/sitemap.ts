@@ -1,6 +1,6 @@
 import { Clock, type Container, type Logger } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
-import { addsOf } from '@marmeon/router/internal';
+import { addsOf, tokenizePattern } from '@marmeon/router/internal';
 import { fillPath, matchesPath, type Router, type RouteDefinition } from '@marmeon/router';
 import type { SitemapEntries, SitemapEntry } from '@marmeon/router';
 
@@ -20,7 +20,7 @@ export interface SitemapEndpoints {
 }
 
 /** Whether the path has parameters of its own: the `/:locale` of a localized route is the framework's, not the hook's. */
-const hasParameters = (route: RouteDefinition): boolean => /\/:\w/.test(route.localized ? route.path.replace(/^\/:locale/, '') : route.path);
+const hasParameters = (route: RouteDefinition): boolean => tokenizePattern(route.localized ? route.path.replace(/^\/:locale/, '') : route.path).some((token) => 'name' in token);
 
 const hookOf = (route: RouteDefinition): boolean =>
   typeof (route.action as { prototype?: { sitemap?: unknown } }).prototype?.sitemap === 'function';

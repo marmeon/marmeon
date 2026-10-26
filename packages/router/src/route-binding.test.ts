@@ -83,7 +83,7 @@ function router() {
       Route.bind('team', Teams).get('/teams/:team', (ctx) => ({ name: ctx.params.team.name }));
       Route.bind('team', Teams).put('/teams/:team', UpdateTeamController);
       // The parent is optional: a request without it must be a 404 before the binder is asked.
-      Route.bind('team', Teams).bind('member', Members, { scopedBy: 'team' }).get('/optional/:team?/members/:member', ShowMemberController);
+      Route.bind('team', Teams).bind('member', Members, { scopedBy: 'team' }).get('/optional/:member/:team?', ShowMemberController);
       Route.bind('member', Members).get('/members/:member?', (ctx) => ({ member: ctx.params.member?.name ?? null }));
       Route.bind('team', TeamsWith, { with: ['members'] }).get('/rosters/:team', (ctx) => ({ team: ctx.params.team.name, members: ctx.params.team.members.map((m) => m.name) }));
       Route.bind('team', TeamsWith)
@@ -127,9 +127,9 @@ describe('Route.bind', () => {
 
   it('answers 404 without calling the binder when the parent of a scoped binding is missing', async () => {
     lookups.length = 0;
-    expect((await call('/optional/members/10')).status).toBe(404);
+    expect((await call('/optional/10')).status).toBe(404);
     expect(lookups).toEqual([]);
-    expect((await call('/optional/1/members/10')).status).toBe(200);
+    expect((await call('/optional/10/1')).status).toBe(200);
   });
 
   it('refuses at load a scoped binding whose binder does not say it scopes (it would find a record of another parent)', () => {

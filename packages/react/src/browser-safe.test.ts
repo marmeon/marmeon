@@ -38,13 +38,13 @@ describe('@marmeon/react in the browser', () => {
   it('is a rendering layer on the client core: no server code, no i18n at runtime — React itself from the app', async () => {
     const { modules, externals } = await bundled(fileURLToPath(new URL('./index.ts', import.meta.url)));
     expect(externals.filter((id) => !/^react(-dom)?(\/|$)/.test(id))).toEqual([]);
-    const allowed = (id: string) => id.startsWith('react/src/') || id.startsWith('http/src/client/') || id === 'http/src/page.ts' || id === 'http/src/page-support.ts' || id === 'http/src/protocol.ts' || id === 'http/src/sensitive-fields.ts' || id === 'http/src/upload-header.ts' || id === 'http/src/live-protocol.ts' || id === 'http/src/tab-sync-protocol.ts' || id === 'router/src/url.ts';
+    const allowed = (id: string) => id.startsWith('react/src/') || id.startsWith('http/src/client/') || id === 'http/src/page.ts' || id === 'http/src/page-support.ts' || id === 'http/src/protocol.ts' || id === 'http/src/sensitive-fields.ts' || id === 'http/src/upload-header.ts' || id === 'http/src/live-protocol.ts' || id === 'http/src/tab-sync-protocol.ts' || id === 'router/src/url.ts' || id === 'router/src/pattern.ts';
     expect(modules.filter((id) => !allowed(id))).toEqual([]);
     expect(modules).toEqual(expect.arrayContaining(['react/src/app.tsx', 'http/src/client/navigation.ts']));
   }, 30_000);
 
   it('the table subpaths: the table’s browser half and the client core, no server code — TanStack only in the bridge, and only as an import', async () => {
-    const core = (id: string) => id.startsWith('http/src/client/') || id === 'http/src/page.ts' || id === 'http/src/page-support.ts' || id === 'http/src/protocol.ts' || id === 'http/src/sensitive-fields.ts' || id === 'http/src/upload-header.ts' || id === 'http/src/live-protocol.ts' || id === 'http/src/tab-sync-protocol.ts' || id === 'router/src/url.ts';
+    const core = (id: string) => id.startsWith('http/src/client/') || id === 'http/src/page.ts' || id === 'http/src/page-support.ts' || id === 'http/src/protocol.ts' || id === 'http/src/sensitive-fields.ts' || id === 'http/src/upload-header.ts' || id === 'http/src/live-protocol.ts' || id === 'http/src/tab-sync-protocol.ts' || id === 'router/src/url.ts' || id === 'router/src/pattern.ts';
     const table = await bundled(fileURLToPath(new URL('./table.ts', import.meta.url)));
     expect(table.modules.filter((id) => !id.startsWith('react/src/') && !id.startsWith('table/src/client/') && !core(id))).toEqual([]);
     expect(table.modules).toEqual(expect.arrayContaining(['react/src/table.ts', 'table/src/client/table.ts']));

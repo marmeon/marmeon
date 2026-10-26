@@ -25,15 +25,18 @@ type ParamEntry<Segment extends string> = Segment extends `${infer Name}{${strin
     : { [K in Segment]: string };
 
 /**
- * Extracts typed parameters from a Hono-style path.
+ * Extracts typed parameters from a Hono-style path. A parameter is a whole segment (`/:name`); a `:` inside a segment is text,
+ * as everywhere else a pattern is read.
  *
  * @example ExtractParams<'/teams/:team/users/:id?'> // { team: string; id?: string }
  */
-export type ExtractParams<Path extends string> = Path extends `${string}:${infer Segment}/${infer Rest}`
-  ? ParamEntry<Segment> & ExtractParams<`/${Rest}`>
-  : Path extends `${string}:${infer Segment}`
-    ? ParamEntry<Segment>
-    : EmptyObject;
+export type ExtractParams<Path extends string> = Path extends `:${string}`
+  ? ExtractParams<`/${Path}`>
+  : Path extends `${string}/:${infer Segment}/${infer Rest}`
+    ? ParamEntry<Segment> & ExtractParams<`/${Rest}`>
+    : Path extends `${string}/:${infer Segment}`
+      ? ParamEntry<Segment>
+      : EmptyObject;
 
 // ---------------------------------------------------------------------------
 // Context & middleware

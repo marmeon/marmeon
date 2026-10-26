@@ -1,3 +1,4 @@
+import { withCode } from '@marmeon/core/internal';
 import { isScoped, registrationSite, siteOf, type AccessCheck } from './access.ts';
 import { assertMiddleware } from './middleware.ts';
 import type { NoReservedKeys, ReservedContextKey } from './middleware.ts';
@@ -22,6 +23,7 @@ import type {
   RouteBinding,
   Simplify,
 } from './types.ts';
+import { patternProblem, tokenizePattern } from './pattern.ts';
 
 /** What `with` takes for a binder that loads nothing besides the record — the message the compiler shows. */
 type NoRelations = 'this binder loads nothing with the record — only one with a routeBindingWith does, such as a repository';
@@ -329,10 +331,13 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
     if (request?.schema && methods.every((method) => method === 'GET' || method === 'HEAD')) {
       throw new Error(`Route GET ${fullPath}: ${GET_HAS_NO_BODY} — ${(action as { name?: string }).name || 'its controller'} has a body schema.`);
     }
+    const problem = patternProblem(fullPath);
+    if (problem) throw new Error(withCode('H13', `${problem} See docs/routing.md#parameter-names.`));
+    const names = new Set(tokenizePattern(fullPath).flatMap((token) => ('name' in token ? [token.name] : [])));
     const bindings = this.#attributes.bindings ?? [];
     for (const { param } of bindings) {
       // The types already refuse this; a route built without them (plain JS) fails here, at boot.
-      if (!new RegExp(`/:${param}(\\{[^}]*\\})?\\??(/|$)`).test(fullPath)) throw new Error(`Route.bind('${param}') needs a :${param} parameter in ${fullPath}.`);
+      if (!names.has(param)) throw new Error(`Route.bind('${param}') needs a :${param} parameter in ${fullPath}.`);
     }
     const route = new RouteDefinition({
       methods,

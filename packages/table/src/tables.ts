@@ -5,6 +5,7 @@ import { isSecretSelection } from '@marmeon/database/internal';
 import { json, RedirectResult, type JsonResult } from '@marmeon/http';
 import { ACTION_HEADER, isJsonResult, isRedirectResult, PAGE_HEADER } from '@marmeon/http/internal';
 import { addVary, expectsJson, EXPECTS_JSON_VARY, fillPath, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@marmeon/router';
+import { matchParams } from '@marmeon/router/internal';
 import { AliasNode, IdentifierNode, type KyselyPlugin, type RootOperationNode } from 'kysely';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
@@ -617,22 +618,7 @@ function answer(ctx: HttpContext, result: unknown, counts: Omit<TableActionResul
 
 /** The raw path parameters of a request: its route's pattern laid over its path (`/teams/:team` + `/teams/7` → `{ team: '7' }`). */
 function rawParams(pattern: string, pathname: string): Record<string, string> {
-  const names: string[] = [];
-  let source = '';
-  let last = 0;
-  for (const match of pattern.matchAll(/\/:(\w+)(\{[^}]*\})?(\?)?/g)) {
-    source += pattern.slice(last, match.index).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    names.push(match[1]!);
-    const segment = `/(${match[2] ? match[2].slice(1, -1) : '[^/]+'})`;
-    source += match[3] ? `(?:${segment})?` : segment;
-    last = match.index + match[0].length;
-  }
-  source += pattern.slice(last).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const found = new RegExp(`^${source}/?$`).exec(pathname);
   const params: Record<string, string> = {};
-  if (found) names.forEach((name, index) => {
-    const value = found[index + 1];
-    if (value !== undefined) params[name] = decodeURIComponent(value);
-  });
+  for (const [name, value] of Object.entries(matchParams(pattern, pathname) ?? {})) params[name] = decodeURIComponent(value);
   return params;
 }
