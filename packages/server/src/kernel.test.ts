@@ -630,7 +630,7 @@ describe('createHttpKernel — asset versioning', async () => {
     app.request(path, { method, headers: { [PAGE_HEADER]: PROTOCOL_VERSION, ...(version ? { 'x-marmeon-version': version } : {}) } });
 
   it('answers a client-side visit from an older build with 409 and the URL to load fully', async () => {
-    const app = createHttpKernel(application, { version: 'v2' });
+    const app = createHttpKernel(application, { assetVersion: 'v2' });
     const stale = await visit(app, 'v1');
     expect(stale.status).toBe(409);
     expect(stale.headers.get('x-marmeon-location')).toBe('http://localhost/page');
@@ -641,8 +641,8 @@ describe('createHttpKernel — asset versioning', async () => {
   });
 
   it('never throws away a form submit, and does not check without a version (development)', async () => {
-    expect((await visit(createHttpKernel(application, { version: 'v2' }), 'v1', 'POST', '/save')).status).not.toBe(409);
-    expect((await visit(createHttpKernel(application, { version: 'v2' }))).status).toBe(200); // header missing
+    expect((await visit(createHttpKernel(application, { assetVersion: 'v2' }), 'v1', 'POST', '/save')).status).not.toBe(409);
+    expect((await visit(createHttpKernel(application, { assetVersion: 'v2' }))).status).toBe(200); // header missing
     expect((await visit(createHttpKernel(application), 'v1')).status).toBe(200); // no version known
   });
 });

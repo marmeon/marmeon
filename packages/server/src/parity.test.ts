@@ -160,7 +160,7 @@ describe('the two kinds of 409 — a new build may wait, signing in or out never
     modules: [defineModule({ name: 'pages', routes: openRoutes((Route) => void Route.get('/a', () => view('pages/A', {}))) })],
   }, { env: { APP_KEY: generateKey() } });
   application.container.make(Router).middleware.append('web', SignsInEarly, 220);
-  const app = createHttpKernel(application, { version: 'build-2' });
+  const app = createHttpKernel(application, { assetVersion: 'build-2' });
   const stale = (path: string) => app.request(path, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-version': 'build-1' } });
 
   it('a new build: 409 with `x-marmeon-reload: version` — the one the client may postpone', async () => {

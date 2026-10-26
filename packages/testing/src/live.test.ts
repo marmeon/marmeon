@@ -128,7 +128,7 @@ describe('live props through the app — the page declares, the stream hints', (
     const app = await createTestApp(definition, { env: { ...env, LIVE_RETRY_MILLISECONDS: '4321' } });
     const stream = await app.withSession({ who: 'ada' }).live('/boards/7');
     await stream.hello();
-    expect(stream.retryMilliseconds).toBe(4321);
+    expect(stream.retryMs).toBe(4321);
     await stream.close();
   });
 

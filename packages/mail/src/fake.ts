@@ -19,7 +19,10 @@ export class MailFake implements Mailer {
 
   readonly #app: Application | undefined;
 
-  /** `app`: its mails are reported on the `mail.send` channel like real ones — the devtools record them in tests. */
+  /**
+   * @internal createTestApp() makes it. `app`: its mails are reported on the `mail.send` channel like real ones — the devtools
+   * record them in tests.
+   */
   constructor(from: Address = 'test@example.com', app?: Application) {
     this.#from = from;
     this.#app = app;

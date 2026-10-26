@@ -29,7 +29,7 @@ export interface KernelOptions {
     clientDir?: string;
     debug?: boolean;
     maxBodyBytes?: number;
-    version?: string | null;
+    assetVersion?: string | null;
     ssr?: boolean;
     strictReadOnly?: boolean;
     islandTimeoutMs?: number;

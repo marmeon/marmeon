@@ -126,6 +126,13 @@ describe('createHttpKernel — what its error lines write', async () => {
     expect(() => createHttpKernel(application, options)).toThrow(/islandTimeoutMs/);
   });
 
+  it('refuses the old version, which no type check may have seen', () => {
+    const options = { renderer, version: 'x' };
+    expect(() => createHttpKernel(application, options)).toThrow(/assetVersion/);
+    // @ts-expect-error the option is called assetVersion
+    expect(() => createHttpKernel(application, { renderer, version: 'x' })).toThrow(/assetVersion/);
+  });
+
   it('masks the URL of an island from another site', async () => {
     await logsMasked(
       () => text(islandsPage(`https://other.example/reset-password/${PATH_SECRET}?token=${QUERY_SECRET}`)),

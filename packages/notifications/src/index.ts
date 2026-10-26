@@ -48,7 +48,6 @@ export { NotificationChannelError, Notifications } from './notifications.ts';
 export type { DeliveryOutcome, SendData, SendOptions } from './notifications.ts';
 export { NotificationError, NotificationSetupError } from './registry.ts';
 export { Inbox, notificationData } from './inbox.ts';
-export { NotificationStore } from './store.ts';
 export type { StoredNotification } from './store.ts';
 export { SendQueuedNotification } from './job.ts';
 export type { QueuedNotificationPayload } from './job.ts';

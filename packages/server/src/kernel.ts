@@ -105,7 +105,7 @@ export interface KernelOptions {
   /** Largest accepted request body in bytes. Defaults to `ServerConfig.maxBodyBytes` (env `SERVER_MAX_BODY_MB`), else 8 MiB. */
   maxBodyBytes?: number;
   /** Asset version for 409 reloads. Defaults to `SERVER_ASSET_VERSION`, else the renderer's (the build's), else none. */
-  version?: string | null;
+  assetVersion?: string | null;
   /** Server rendering (default: `ServerConfig.ssr`, env `SERVER_SSR_ENABLED`, on). Off: every page goes out without markup, the browser renders it. */
   ssr?: boolean;
   /**
@@ -229,13 +229,16 @@ export function createHttpKernel(
   if (Object.hasOwn(kernelOptions, 'islandTimeout')) {
     throw new TypeError('createHttpKernel(): `islandTimeout` was renamed `islandTimeoutMs` — the value stays milliseconds.');
   }
+  if (Object.hasOwn(kernelOptions, 'version')) {
+    throw new TypeError('createHttpKernel(): `version` was renamed `assetVersion` — it is still the asset version of the build.');
+  }
   const {
     container = application.container,
     renderer,
     clientDir,
     debug = container.has(ServerConfig) ? container.make(ServerConfig).debug : false,
     maxBodyBytes = container.has(ServerConfig) ? container.make(ServerConfig).maxBodyBytes : undefined,
-    version = (container.has(ServerConfig) ? container.make(ServerConfig).assetVersion : undefined) ?? renderer?.version ?? null,
+    assetVersion = (container.has(ServerConfig) ? container.make(ServerConfig).assetVersion : undefined) ?? renderer?.version ?? null,
     ssr = container.has(ServerConfig) ? container.make(ServerConfig).ssr : true,
     strictReadOnly = !environment.isProtected(),
     islandTimeoutMs = 10_000,
@@ -254,7 +257,7 @@ export function createHttpKernel(
   // The routes marked with `.sitemap()`: the start stops here when their sitemap could not be written.
   const appUrl = container.has(ServerConfig) ? container.make(ServerConfig).appUrl : undefined;
   const listed = sitemapRoutes(router, appUrl, (route) => redactor.path(route.path, route.path));
-  container.instance(AssetVersion, { value: version });
+  container.instance(AssetVersion, { value: assetVersion });
   // SERVER_TRUSTED_PROXIES: only from these peers `X-Forwarded-For` sets the client's address and `X-Forwarded-Proto`/`-Host` the URL.
   const proxies = container.has(ServerConfig) ? container.make(ServerConfig).trustedProxies : [];
   const trusts = proxyMatcher(proxies);
@@ -323,7 +326,7 @@ export function createHttpKernel(
       if (value !== null) headers.set(name, value);
     }
     headers.set(REGION_HEADER, 'island');
-    if (version) headers.set(VERSION_HEADER, version);
+    if (assetVersion) headers.set(VERSION_HEADER, assetVersion);
     if (parent.requestId) headers.set('x-request-id', parent.requestId);
     const timeout = AbortSignal.timeout(islandTimeoutMs);
     const signal = AbortSignal.any([parent.request.signal, timeout]);
@@ -358,7 +361,7 @@ export function createHttpKernel(
       if (value !== null) headers.set(name, value);
     }
     headers.set(REGION_HEADER, 'layer');
-    if (version) headers.set(VERSION_HEADER, version);
+    if (assetVersion) headers.set(VERSION_HEADER, assetVersion);
     if (parent.requestId) headers.set('x-request-id', parent.requestId);
     const request = new Request(target, { method: 'GET', headers, signal: parent.request.signal });
     try {
@@ -376,7 +379,7 @@ export function createHttpKernel(
     }
   };
 
-  const toResponse = createResponseFactory(renderer, router, version, {
+  const toResponse = createResponseFactory(renderer, router, assetVersion, {
     app: application,
     appUrl: container.has(ServerConfig) ? container.make(ServerConfig).appUrl : undefined,
     // Prop sizes for the `http.request` message — measured only while something listens.

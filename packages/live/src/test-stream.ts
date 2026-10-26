@@ -26,7 +26,7 @@ export class LiveStreamReader {
   readonly closed: Promise<void>;
   readonly #events: LiveEvent[] = [];
   #heartbeats = 0;
-  #retryMilliseconds: number | undefined;
+  #retryMs: number | undefined;
   #ended = false;
   readonly #waiters = new Set<() => void>();
   readonly #reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
@@ -49,8 +49,8 @@ export class LiveStreamReader {
   }
 
   /** The `retry:` the server asked for, in milliseconds. */
-  get retryMilliseconds(): number | undefined {
-    return this.#retryMilliseconds;
+  get retryMs(): number | undefined {
+    return this.#retryMs;
   }
 
   get status(): number {
@@ -135,7 +135,7 @@ export class LiveStreamReader {
       else if (line.startsWith('event: ')) event = line.slice(7);
       else if (line.startsWith('id: ')) id = line.slice(4);
       else if (line.startsWith('data: ')) data.push(line.slice(6));
-      else if (line.startsWith('retry: ')) this.#retryMilliseconds = Number(line.slice(7));
+      else if (line.startsWith('retry: ')) this.#retryMs = Number(line.slice(7));
     }
     if (data.length > 0) this.#events.push({ event, id, data: JSON.parse(data.join('\n')) });
   }

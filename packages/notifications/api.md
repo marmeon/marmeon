@@ -174,36 +174,6 @@ export interface NotificationStatics {
     readonly database?: StandardSchemaV1;
     readonly queue?: NotificationQueueOptions;
 }
-// NotificationStore
-export declare class NotificationStore {
-    #private;
-    get connection(): string;
-    insert(row: {
-        readonly id: string;
-        readonly recipient: AnyRecipient;
-        readonly type: string;
-        readonly data: unknown;
-    }): Promise<void>;
-    exists(id: string): Promise<boolean>;
-    list(recipient: AnyRecipient, { unread, limit }?: {
-        unread?: boolean;
-        limit?: number;
-    }): Promise<StoredNotification[]>;
-    page(recipient: AnyRecipient, { cursor, perPage, encrypter }: {
-        cursor?: string | null | undefined;
-        perPage?: number;
-        encrypter: CursorEncrypter;
-    }): Promise<CursorPaginated<StoredNotification>>;
-    delete(recipient: AnyRecipient, id: string): Promise<boolean>;
-    deleteAll(recipient: AnyRecipient): Promise<number>;
-    count(recipient: AnyRecipient): Promise<number>;
-    markRead(recipient: AnyRecipient, id: string): Promise<boolean>;
-    markAllRead(recipient: AnyRecipient): Promise<number>;
-    prune({ readBefore, unreadBefore }: {
-        readBefore: Date;
-        unreadBefore?: Date | undefined;
-    }): Promise<number>;
-}
 // Notifications
 export interface Notifications {
     send<const R extends Recipients, N extends abstract new (...args: any[]) => object>(recipient: R, notification: N & CheckNotification<N, RecipientTypeOf<R>>, data: SendData<N>, options?: SendOptions): Promise<SendResult<R>>;

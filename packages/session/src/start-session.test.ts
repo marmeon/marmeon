@@ -76,7 +76,7 @@ const apiRoutes = openRoutes((Route) => {
 
 const sessionCookie = (response: Response) => response.headers.getSetCookie().find((header) => header.startsWith('marmeon_session='));
 
-async function boot(env: Record<string, string> = {}, kernelOptions: { version?: string } = {}, extra: { providers?: ServiceProviderClass[]; schedule?: ModuleDefinition['schedule'] } = {}) {
+async function boot(env: Record<string, string> = {}, kernelOptions: { assetVersion?: string } = {}, extra: { providers?: ServiceProviderClass[]; schedule?: ModuleDefinition['schedule'] } = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
@@ -208,7 +208,7 @@ describe('StartSession', () => {
   });
 
   it('keeps flash data through an asset-version reload (409)', async () => {
-    const { send } = await boot({ SERVER_ASSET_VERSION: 'v2' }, { version: 'v2' });
+    const { send } = await boot({ SERVER_ASSET_VERSION: 'v2' }, { assetVersion: 'v2' });
     await send('/save', { method: 'POST' });
     const stale = await send('/count', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-version': 'v1' } });
     expect(stale.status).toBe(409);
