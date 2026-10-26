@@ -42,7 +42,7 @@ describe('OpenTelemetry in the web app', () => {
     const app = await createTestApp(application, {
       database: 'refresh',
       mail: 'real',
-      override: (container) => container.instance(Logger, createPinoLogger({ level: 'info', format: 'json' }, stream, container.make(Application))),
+      override: (container) => container.instance(Logger, createPinoLogger({ level: 'info', format: 'json' }, { destination: stream, app: container.make(Application) })),
     });
     exporter.reset();
     const password = 'correct horse battery staple';

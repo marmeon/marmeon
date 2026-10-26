@@ -197,7 +197,7 @@ it('logs one line per request', async () => {
   const lines: Record<string, unknown>[] = [];
   const stream = new Writable({ write: (chunk, _encoding, done) => (lines.push(JSON.parse(String(chunk))), done()) });
   const app = await createTestApp(application, {
-    override: (container) => container.instance(Logger, createPinoLogger({ level: 'info', format: 'json' }, stream, container.make(Application))),
+    override: (container) => container.instance(Logger, createPinoLogger({ level: 'info', format: 'json' }, { destination: stream, app: container.make(Application) })),
   });
   await app.get('/nothing-here').assertNotFound();
   expect(lines.some((line) => line.channel === 'http')).toBe(true);

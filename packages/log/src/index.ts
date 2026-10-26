@@ -127,8 +127,21 @@ function terminalSafe(value: unknown, key?: string): unknown {
   return value;
 }
 
-/** `app`: its entries also go to the `log` channel while something listens. */
-export function createPinoLogger(config: LogOptions, destination?: NodeJS.WritableStream, app?: Application): Logger {
+/** Where `createPinoLogger` writes and whose entries it also publishes. */
+export interface PinoLoggerOptions {
+  /** The stream the entries go to; default: stdout (stderr while a command prints JSON), pretty-printed for `format: 'pretty'`. */
+  destination?: NodeJS.WritableStream;
+  /** Its entries also go to the `log` channel while something listens; its `Redactor` and log-context sources apply. */
+  app?: Application;
+}
+
+/** A pino-backed `Logger`: JSON lines, or pretty-printed for `format: 'pretty'`. */
+export function createPinoLogger(config: LogOptions, options: PinoLoggerOptions = {}): Logger {
+  // An untyped caller of the positional form (`config, stream, app`) would otherwise get a logger without its stream or app.
+  if (arguments.length > 2 || options === null || typeof options !== 'object' || typeof (options as { write?: unknown }).write === 'function') {
+    throw new TypeError('createPinoLogger(config, { destination, app }) takes the stream and the app in its options.');
+  }
+  const { destination, app } = options;
   // A command that prints JSON keeps stdout for its document: its log lines go to stderr (fd 2).
   const fd = consoleLogsGoToStderr() ? 2 : 1;
   const stream =
@@ -172,6 +185,6 @@ export class LogServiceProvider implements ServiceProvider {
   static config = [LogConfig];
 
   register(container: Container): void {
-    container.singleton(Logger, (c) => createPinoLogger(c.make(LogConfig), undefined, c.make(Application)));
+    container.singleton(Logger, (c) => createPinoLogger(c.make(LogConfig), { app: c.make(Application) }));
   }
 }

@@ -69,7 +69,6 @@ export declare class Locales {
     readonly explicit: boolean;
     get supported(): readonly string[];
     find(value: unknown): string | undefined;
-    add(locale: string): string | undefined;
 }
 // MessageAt
 export type MessageAt<T, P extends string> = P extends `${infer Head}.${infer Rest}` ? MessageAt<Prop<T, Head>, Rest> : Prop<T, P>;

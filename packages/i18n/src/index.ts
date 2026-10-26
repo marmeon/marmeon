@@ -58,6 +58,9 @@ export const I18nConfig = defineConfig('i18n', {
 });
 export type I18nConfig = ConfigOf<typeof I18nConfig>;
 
+/** At boot: a locale the app has language files for (ignored when `APP_LOCALES` names them). */
+let addLocale: (locales: Locales, locale: string) => string | undefined;
+
 /**
  * The app's locales: the default (`APP_LOCALE`), the fallback and the supported ones — `APP_LOCALES`, else every locale
  * the app has language files for. The allow-list every value from a request is checked against. Fixed once booted.
@@ -67,14 +70,14 @@ export class Locales {
   readonly fallback: string;
   /** Whether `APP_LOCALES` names them (else the language files do). */
   readonly explicit: boolean;
-  #supported: string[];
+  #supported: readonly string[];
 
   /** @internal Built by the container. */
   constructor(config: I18nConfig) {
     this.default = config.locale;
     this.fallback = config.fallback;
     this.explicit = config.locales !== undefined;
-    this.#supported = [...new Set([config.locale, ...(config.locales ?? [config.fallback])])];
+    this.#supported = Object.freeze([...new Set([config.locale, ...(config.locales ?? [config.fallback])])]);
   }
 
   /** The default first. */
@@ -87,13 +90,16 @@ export class Locales {
     return supportedLocale(value, this.#supported);
   }
 
-  /** At boot: a locale the app has language files for (ignored when `APP_LOCALES` names them). */
-  add(locale: string): string | undefined {
-    if (this.explicit) return this.find(locale);
-    const known = this.find(locale);
-    if (known) return known;
-    this.#supported = [...this.#supported, locale];
-    return locale;
+  static {
+    // Module-local, and the lists are frozen: no code of an app can widen the allow-list once the app is booted.
+    addLocale = (locales, locale) => {
+      if (!isLanguageTag(locale)) return undefined;
+      if (locales.explicit) return locales.find(locale);
+      const known = locales.find(locale);
+      if (known) return known;
+      locales.#supported = Object.freeze([...locales.#supported, locale]);
+      return locale;
+    };
   }
 }
 
@@ -311,7 +317,7 @@ async function loadLangFiles(root: string, catalog: Catalog, locales: Locales): 
     const file = langFileOf(path.slice(root.length));
     if (!file || /\.(test|type-test)\.[jt]s$/.test(path) || path.endsWith('.d.ts')) continue;
     if (file.namespace === 'marmeon') throw new Error(`${path}: the namespace "marmeon" belongs to the framework — rename the module.`);
-    const locale = locales.add(file.locale);
+    const locale = addLocale(locales, file.locale);
     if (!locale) {
       skipped.push(path);
       continue;
