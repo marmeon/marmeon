@@ -73,6 +73,7 @@ export function toLayer<TProps extends ViewProps, V extends string>(
 /** The view's `.layer()` — on every result of `view()` (see `PageResult`). */
 export type LayerMethod<TProps extends ViewProps, V extends string> = <const N extends RouteNameInput>(options: LayerOptions<N>) => LayerResult<TProps, V>;
 
+/** What `closeLayer()` takes: how many layers close and what is reloaded beneath them. See docs/dialogs.md. */
 export interface CloseLayerOptions {
   /** How many layers close, from the one that sent the request down (default 1 — just that one). */
   layers?: number;

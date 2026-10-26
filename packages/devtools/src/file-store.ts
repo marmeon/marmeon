@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import type { AnyEntry } from './entry.ts';
 import { limitOf, matchesHead, type DevtoolsStore, type EntryHead, type EntryQuery, type EntryTail, type PruneResult, type StoreUsage } from './store.ts';
 
+/** What the file store takes: its directory and its size and age limits. See docs/devtools.md#where-the-entries-live. */
 export interface FileDevtoolsStoreOptions {
   /** The directory — absolute; `storage/framework/devtools` of the app by default. */
   readonly directory: string;

@@ -46,6 +46,7 @@ export interface CspDirectives {
   upgradeInsecureRequests?: boolean;
 }
 
+/** The policy `contentSecurityPolicy()` sends: its directives, plus `reportOnly`. See docs/csp.md. */
 export interface ContentSecurityPolicyOptions extends CspDirectives {
   /** `Content-Security-Policy-Report-Only`: the browser reports what the policy would block (`reportUri`/`reportTo`), and blocks nothing. */
   reportOnly?: boolean;

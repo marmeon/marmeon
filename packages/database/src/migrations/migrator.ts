@@ -20,6 +20,7 @@ import type { Migration } from './migration.ts';
 
 export type { MigrationFile };
 
+/** A migration file with the batch it ran in, if it ran. See docs/migrations.md#status. */
 export interface MigrationStatus extends MigrationFile {
   /** The batch it ran in, or undefined while pending. */
   readonly batch: number | undefined;

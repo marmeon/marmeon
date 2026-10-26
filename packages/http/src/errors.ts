@@ -21,6 +21,10 @@ export interface ExceptionHandler {
   render(error: unknown, request: Request, options: ExceptionRenderOptions): unknown;
 }
 
+/**
+ * What the kernel hands an {@link ExceptionHandler} besides the error: `debug` (show details) and the request's
+ * `translator`.
+ */
 export interface ExceptionRenderOptions {
   debug: boolean;
   /** The request's translator (`Translator` of @marmeon/core); without one, texts stay in English. */

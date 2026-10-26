@@ -148,6 +148,7 @@ export class Filter<R extends string = string, T extends 'select' | 'dateRange' 
   }
 }
 
+/** The filters a table offers: `filter.select()` and `filter.dateRange()`. See docs/tables.md#filters. */
 export const filter = {
   /** One of `options`: `?filter[role]=admin` → `role = 'admin'`. Anything else is a 400. */
   select<const R extends string, const O extends string>(ref: R, options: readonly [O, ...O[]]): Filter<R, 'select', O> {
@@ -329,9 +330,13 @@ export function exportCsv(): TableExport {
 
 // --- The definition --------------------------------------------------------------------------------------------------------
 
+/** Any column definition. */
 export type AnyColumn = ColumnDefinition<string, boolean, boolean, boolean>;
+/** Any filter. */
 export type AnyFilter = Filter<string, 'select' | 'dateRange', string>;
+/** Any row action. */
 export type AnyRowAction = RowAction<RowActionClass, any, string>;
+/** Any bulk action. */
 export type AnyBulkAction = BulkAction<BulkActionClass, any, string>;
 
 /** How a table pages: by number (default, with a total) or by an encrypted cursor (`cursor: true`, "load more"). */

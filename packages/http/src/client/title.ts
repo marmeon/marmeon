@@ -1,6 +1,7 @@
 /** Turns a page's title into the document title, e.g. `(title) => title ? `${title} — Shop` : 'Shop'`. */
 export type TitleTemplate = (title: string) => string;
 
+/** The title template when an app sets none: the page's title as it is. */
 export const defaultTitle: TitleTemplate = (title) => title;
 
 /**

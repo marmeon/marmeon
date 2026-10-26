@@ -6,6 +6,7 @@ import type { Feature } from './feature.ts';
 import type { LiveFeature } from './features/live.ts';
 import type { Navigator } from './navigation.ts';
 
+/** Loads the live feature in a chunk of its own, on first use. See docs/client-features.md#what-loads-when. */
 export const loadLive = (): Promise<Feature<LiveFeature>> => import('./features/live.ts').then((module) => module.live);
 
 /**

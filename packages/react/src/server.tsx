@@ -14,6 +14,10 @@ import { viewName, type DefaultLayout, type ResolvePage } from './pages.ts';
 import { loadView } from './views.ts';
 import { ssrResolvers } from './streamed.tsx';
 
+/**
+ * What `createSsrRenderer()` takes: the same `title`, `routes`, `layout`, `messages` and `layer` as the client's
+ * `createMarmeonApp()`, so server and browser render alike.
+ */
 export interface SsrOptions {
   /** The same title template as the client's (`createMarmeonApp({ title })`). */
   title?: TitleTemplate;

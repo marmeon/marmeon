@@ -26,6 +26,10 @@ export type MadeAttributes<Row, O> = {
 /** An override for a column the table does not have is a compile error (at its key), also next to columns it has. */
 type KnownColumns<O, Row> = { [K in Exclude<keyof O, keyof Row>]: never };
 
+/**
+ * What `defineFactory()` returns: the table, its default attributes and its named states.
+ * See docs/seeding.md#defining-factories.
+ */
 export interface FactoryDefinition<T extends keyof DB & string, DB = Tables, S extends string = never> {
   readonly table: T;
   readonly definition: (context: FactoryContext) => Attributes<NewRowOf<DB[T]>>;

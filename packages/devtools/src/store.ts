@@ -43,7 +43,7 @@ export interface StoreUsage {
 
 /**
  * Where entries go: the {@link FileDevtoolsStore} — NDJSON files under `storage/framework/devtools/`, shared by the server, the
- * worker and the scheduler — or the {@link MemoryDevtoolsStore} of tests. Entries come in redacted; a store never sees raw values.
+ * worker and the scheduler — or an in-memory store in tests. Entries come in redacted; a store never sees raw values.
  * Writing never throws: a failure is reported (`onError`) and the entries are lost — never the request.
  */
 export interface DevtoolsStore {

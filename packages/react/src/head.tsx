@@ -29,6 +29,7 @@ interface HeadContextValue {
 
 export const HeadContext = createContext<HeadContextValue>({ template: defaultTitle });
 
+/** The props of {@link Head}: the page's title and meta fields, and extra head elements as `children`. */
 export interface HeadProps extends HeadFields {
   /** Page title, passed through the app's title template. */
   title?: string;

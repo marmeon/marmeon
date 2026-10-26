@@ -49,7 +49,9 @@ export type JsonColumn = ColumnType<Json, string, string>;
 
 /** A row as read, as inserted, as updated. */
 export type Row<T extends keyof Tables> = RowOf<Tables[T]>;
+/** A row of table `T` as inserted: columns with a default are optional. */
 export type NewRow<T extends keyof Tables> = NewRowOf<Tables[T]>;
+/** A row of table `T` as updated: every column is optional. */
 export type RowUpdate<T extends keyof Tables> = RowUpdateOf<Tables[T]>;
 /**
  * A row of table `T` with the relations `N` loaded, as `findOrFail(id, { with })` gives it: `RowWith<'posts', 'author' | 'tags'>`,
@@ -85,6 +87,10 @@ type DeclaredTables<T> = 0 extends 1 & T ? [never] : [T] extends [never] ? [neve
 
 /** Tables Marmeon does not know, declared with `withTables<…>()` on a module's database — readable, never writable. */
 export type ForeignTables<Foreign> = 0 extends 1 & Foreign ? {} : [Foreign] extends [never] ? {} : { [T in keyof Foreign]: ReadOnlyTable<Foreign[T]> };
+/**
+ * The tables a module's database sees: its own, other modules' `exposes` tables (for reading) and `Foreign` ones (for
+ * reading).
+ */
 export type ModuleTables<All, Owners, Exposed, M extends string, Foreign = {}> = OwnedTables<All, Owners, M> &
   ExposedToOthers<All, Owners, Exposed, M> &
   ForeignTables<Foreign>;

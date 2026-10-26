@@ -19,6 +19,7 @@ export interface SeedContext {
 export interface Seeder {
   handle(context: SeedContext): void | Promise<void>;
 }
+/** A class that implements {@link Seeder}. See docs/seeding.md#writing-seeders. */
 export type SeederClass = new (...args: any[]) => Seeder;
 
 declare module '@marmeon/core' {

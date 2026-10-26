@@ -15,6 +15,10 @@ import { pageQueryOf, queryUrl, withoutDefaults } from './query.ts';
 /** What query state follows and visits: the navigator (the page on screen), or a layer. */
 export type QueryStateTarget = Pick<Navigator, 'page' | 'visit'> & { subscribe(listener: () => void): () => void };
 
+/**
+ * What query state reloads when the query changes: which props, which ones replace instead of merge. See
+ * docs/pagination.md#searching-and-sorting.
+ */
 export interface QueryStateOptions {
   /** A partial reload of these props (the rest of the page stays as it is). Without: every prop comes again. */
   only?: readonly string[];

@@ -77,6 +77,7 @@ async function failure(response: Response, field: string): Promise<string> {
   }
 }
 
+/** The uploads feature: sends a file ahead of its form and holds an `Upload` for the field. See docs/forms.md#uploads. */
 export const uploads = /* @__PURE__ */ defineFeature('uploads', (host): UploadsFeature => {
   let next = 0;
   const all = () => host.document(UPLOADS);

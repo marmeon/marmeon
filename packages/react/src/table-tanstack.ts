@@ -7,6 +7,10 @@ import type { ColumnDef, OnChangeFn, PaginationState, RowSelectionState, Sorting
 import type { AnyTableData, TableRowOf, SortableOf } from '@marmeon/table/client';
 import type { Table } from './table.ts';
 
+/**
+ * What `toTanStack()` takes: TanStack's `features`, and optionally columns of your own.
+ * See docs/tables.md#tanstack-table.
+ */
 export interface ToTanStackOptions<F extends TableFeatures, T extends AnyTableData> {
   /** TanStack's features — `tableFeatures({ rowSortingFeature, rowPaginationFeature, rowSelectionFeature })`, at module scope. */
   readonly features: F;

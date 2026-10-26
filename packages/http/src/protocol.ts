@@ -346,6 +346,7 @@ export const PAGE_SCRIPT_ID = 'marmeon-page';
  */
 export const APP_ORIGIN_META = 'marmeon-app-origin';
 
+/** Whether `value` has the shape of a {@link PageObject}: a `component`, `props` and a `url`. */
 export function isPageObject(value: unknown): value is PageObject {
   return typeof value === 'object' && value !== null && 'component' in value && 'props' in value && 'url' in value;
 }

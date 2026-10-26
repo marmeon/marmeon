@@ -71,6 +71,7 @@ export function useGuard(when: boolean, message: string | undefined): Navigation
   return handle;
 }
 
+/** What `useBlocker()` takes: when to guard and what to ask. See docs/navigation.md#leaving-with-unsaved-changes. */
 export interface UseBlockerOptions {
   /** Guard while this holds — unsaved changes: `when: form.isDirty()`. */
   when: boolean;

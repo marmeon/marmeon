@@ -18,6 +18,10 @@ export interface LiveValidationFeature {
   form(url: string, options: Omit<LiveValidationOptions, 'send'>): LiveValidation;
 }
 
+/**
+ * The live-validation feature: checks a form's fields against the server's request schema while they are filled in. See
+ * docs/validation.md#live-validation.
+ */
 export const liveValidation = /* @__PURE__ */ defineFeature('liveValidation', (host): LiveValidationFeature => {
   const actions = actionHost(host);
   const validate = (url: string, request: LiveValidationRequest) => sendLiveValidation(actions, url, request);

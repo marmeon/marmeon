@@ -11,6 +11,7 @@
  */
 import type { VisitEvents } from './events.ts';
 
+/** The progress bar's options: the delay before it shows and its color. See docs/navigation.md#showing-that-a-visit-runs. */
 export interface ProgressOptions {
   /** Milliseconds before the bar shows — fast visits never show it. Default 250. */
   delayMs?: number;

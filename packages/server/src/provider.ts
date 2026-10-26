@@ -6,6 +6,7 @@ import { ServerTiming } from './server-timing.ts';
 
 const BODY_UNIT_CONVERSION = 'in whole MB now: `8m` → `8`, bytes ÷ 1,048,576; under 1 MB use `createHttpKernel({ maxBodyBytes })`';
 
+/** The server's configuration: `PORT`, `HOST` and the `SERVER_*` variables. See docs/deployment.md#configuration. */
 export const ServerConfig = defineConfig('server', {
   env: env({
     /** The port to listen on; `0` asks the system for a free one (the start line names the port it got). */

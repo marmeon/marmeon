@@ -63,8 +63,13 @@ const MANUAL = { scroll: 'manual', focusReset: 'manual' } as const;
 /** A visit that takes longer than this with nothing new on screen draws a development warning (C14). */
 const SLOW_VISIT_MS = 1000;
 
+/** The HTTP methods a visit may use. */
 export type VisitMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
+/**
+ * What a visit takes: method, data, history and scroll behaviour, and the callbacks.
+ * See docs/navigation.md#visiting-from-code.
+ */
 export interface VisitOptions extends VisitCallbacks {
   /** Default `get`. Other methods send `data` and the CSRF token (`X-XSRF-TOKEN`). */
   method?: VisitMethod;
@@ -226,6 +231,7 @@ export interface ViewTransitionLike {
   skipTransition(): void;
 }
 
+/** What a navigator is built from: the first page and how an adapter renders one. Adapters only; apps use their adapter. */
 export interface NavigatorOptions {
   /** The page the server rendered (from `#marmeon-page`) — always fresh: a full load asks the server. */
   initialPage: PageObject;

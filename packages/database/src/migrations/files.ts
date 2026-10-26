@@ -9,6 +9,7 @@ import { workspaceRoot } from '../workspace.ts';
 /** `2026_10_01_120000_create_users_table.ts` — the timestamp orders migrations across all modules. */
 const FILE = /^\d{4}_\d\d_\d\d_\d{6}_[a-z0-9_]+\.(ts|js|mts|mjs)$/;
 
+/** A migration file of a module. */
 export interface MigrationFile {
   /** File name without extension — unique across the app. */
   readonly name: string;

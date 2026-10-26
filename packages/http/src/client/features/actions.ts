@@ -15,6 +15,7 @@ export interface ActionsFeature {
   submissions(): Submissions;
 }
 
+/** The actions feature: runs actions and lists the submissions under way. See docs/actions.md. */
 export const actions = /* @__PURE__ */ defineFeature('actions', (host): ActionsFeature => {
   const actionsHost = actionHost(host);
   // The actions and route forms under way — a slot of the document. Whether one of a route is under way is `isPending`'s too.

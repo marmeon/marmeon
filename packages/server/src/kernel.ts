@@ -970,6 +970,10 @@ function remoteAddress(env: unknown): string | undefined {
   return (env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket?.remoteAddress;
 }
 
+/**
+ * What {@link startServer} takes: the app, where it listens and how it shuts down. Unset values come from {@link ServerConfig};
+ * the mode follows `NODE_ENV`, the SSR entry that of the `marmeon()` Vite plugin, and `drainTimeoutMs` defaults to 8 s.
+ */
 export interface ServeOptions {
   app: Application;
   /** Development: SSR entry relative to `root`. Defaults to the entry of the `marmeon()` Vite plugin. */
@@ -1003,6 +1007,7 @@ export interface ServeOptions {
   shutdownDelayMs?: number;
 }
 
+/** What `close()` of a {@link RunningServer} takes. */
 export interface CloseOptions {
   /** Skip the shutdown delay (`SERVER_SHUTDOWN_DELAY_SECONDS`) — `marmeon serve` on Ctrl+C (SIGINT): nobody routes to a terminal. */
   readonly immediately?: boolean;
@@ -1020,6 +1025,10 @@ export interface RunningServer {
   close(options?: CloseOptions): Promise<void>;
 }
 
+/**
+ * Starts serving `app` — behind Vite's dev server in development, the build in production — and returns the running
+ * server. See docs/deployment.md#building-and-starting.
+ */
 export async function startServer({
   app,
   ssrEntry,

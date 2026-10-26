@@ -7,11 +7,13 @@ export type Visibility = 'public' | 'private';
 /** What `put()` takes: text (UTF-8), bytes, a web or Node stream, or a `Blob`/`File`. */
 export type FileContents = string | Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array> | Readable;
 
+/** What `put()` takes besides the contents. See docs/storage.md#using-a-disk. */
 export interface PutOptions {
   /** The content type to store with the file (S3, memory). Default: by the key's extension. */
   readonly contentType?: string;
 }
 
+/** What `list()` takes. See docs/storage.md#using-a-disk. */
 export interface ListOptions {
   /** Files in subdirectories too (default `false`: only the directory's own files). */
   readonly recursive?: boolean;

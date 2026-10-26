@@ -1,6 +1,7 @@
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePage, useRouterContext, type PropName, type ReloadOptions } from './app.tsx';
 
+/** The props of {@link WhenVisible}: which props to load, when, and what to show meanwhile. */
 export interface WhenVisibleProps<T = unknown> {
   /** The prop(s) to load once this is scrolled into view (`optional()` or `defer()` ones) — of page `T`, when given. */
   data?: PropName<T> | readonly PropName<T>[];

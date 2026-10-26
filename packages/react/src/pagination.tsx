@@ -19,6 +19,10 @@ export interface PaginationLabels {
 /** Its texts without `labels`: English. Every other language comes from the app's messages — `labels={{ next: t('next') }}`. */
 const ENGLISH: PaginationLabels = { navigation: 'Pagination', previous: '‹ Previous', next: 'Next ›', page: (page) => `Page ${page}` };
 
+/**
+ * The props of {@link Pagination}: the list's `meta`, how many pages show around the current one, the query field and
+ * the texts.
+ */
 export interface PaginationProps {
   meta: PaginationMeta;
   /** Pages shown on each side of the current one (default 2): `1 … 4 5 [6] 7 8 … 20`. */

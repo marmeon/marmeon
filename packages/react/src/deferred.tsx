@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { usePage, type PropName } from './app.tsx';
 
+/** The props of {@link Deferred}: the deferred props to wait for, a `fallback` and the `children`. */
 export interface DeferredProps<T = unknown> {
   /** The deferred prop(s) to wait for — names of props of page `T` (its controller), when given. */
   data: PropName<T> | readonly PropName<T>[];

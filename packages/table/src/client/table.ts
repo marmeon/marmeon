@@ -21,9 +21,13 @@ export type TableRowOf<T extends AnyTableData> = T['rows'][number];
 export type ColumnOf<T extends AnyTableData> = T['columns'][number]['name'];
 /** The names of `T`'s sortable columns. */
 export type SortableOf<T extends AnyTableData> = T extends TableData<infer _R, infer _C, infer _F, infer _A, infer _B, infer _E, infer S> ? S : string;
+/** The names of `T`'s filters. */
 export type FilterOf<T extends AnyTableData> = T['filters'][number]['name'];
+/** The names of `T`'s row actions. */
 export type ActionOf<T extends AnyTableData> = T['actions'][number]['name'];
+/** The names of `T`'s bulk actions. */
 export type BulkOf<T extends AnyTableData> = T['bulk'][number]['name'];
+/** The names of `T`'s exports. */
 export type ExportOf<T extends AnyTableData> = T['exports'][number]['name'];
 
 /** How a row or bulk action ended — an action's outcome, its data what the table's endpoint answers. */
@@ -39,6 +43,7 @@ export interface TableRunOptions {
   signal?: AbortSignal;
 }
 
+/** What a table controller takes besides the props. See docs/tables.md#in-the-browser. */
 export interface TableControllerOptions {
   /** The page prop the table is — what a run reloads (`only`). Default: found on the page by name; without one the whole page reloads. */
   prop?: string;
