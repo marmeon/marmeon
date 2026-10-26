@@ -123,7 +123,7 @@ export default defineRoutes((Root) => {
 });
 ```
 
-A string becomes an HTML response, an object or an array becomes JSON, and `null` or `undefined` becomes an empty `204`. A
+A string becomes a text response, an `html` template (from `@marmeon/core`) an HTML one, an object or an array becomes JSON, and `null` or `undefined` becomes an empty `204`. A
 `Response` you return goes out as it is. Closures suit tiny answers. Anything with dependencies, validation or a page belongs in
 a controller, which the container builds for each request. The [controllers](controllers.md) page covers them.
 

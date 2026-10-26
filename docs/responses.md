@@ -269,13 +269,14 @@ An API client gets the same JSON, and the [actions](actions.md) page shows how a
 | Result | Response |
 | --- | --- |
 | A `Response` | Goes out as it is. |
-| A string | HTML: `text/html; charset=utf-8`. |
+| A string | Text: `text/plain; charset=utf-8`, the body as written. |
+| An `Html`, from the `html` template | HTML: `text/html; charset=utf-8`. |
 | An object or an array | JSON. |
 | `null` or `undefined` | An empty 204. |
 
 > [!WARNING]
-> A string goes out as HTML. Never put the visitor's input into it unescaped: build HTML with the `html` template below, or
-> answer with JSON.
+> A string is never markup: the browser shows `<script>` in it as text. To send HTML, return the `html` template below or a
+> page.
 
 ### HTML you write yourself
 
@@ -289,12 +290,12 @@ import { Controller, type HttpContext } from '@marmeon/http';
 export class ShowNoteSnippetController extends Controller {
   handle(ctx: HttpContext<{}, { note: Row<'notes'> }>) {
     const { note } = ctx.params;
-    return String(html`<article><h1>${note.title}</h1><p>${note.body}</p></article>`);
+    return html`<article><h1>${note.title}</h1><p>${note.body}</p></article>`;
   }
 }
 ```
 
-Nested templates and lists of them stay markup, and `null`, `undefined` and `false` vanish. `raw(markup)` marks markup you trust,
+Its result goes out as `text/html`; a plain string with the same characters goes out as text. Nested templates and lists of them stay markup, and `null`, `undefined` and `false` vanish. `raw(markup)` marks markup you trust,
 never input. The escaping covers text and quoted attributes, not URLs: put only links you built yourself into an `href`. A script
 tag in such HTML needs the response's nonce, `ctx.nonce()`, under a Content-Security-Policy.
 

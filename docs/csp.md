@@ -61,7 +61,7 @@ import { Controller, type HttpContext } from '@marmeon/http';
 
 export class ShowNoteEmbedController extends Controller {
   handle(ctx: HttpContext) {
-    return String(html`<!doctype html><title>Note</title><div id="note"></div><script nonce="${ctx.nonce()}" src="/embed.js"></script>`);
+    return html`<!doctype html><title>Note</title><div id="note"></div><script nonce="${ctx.nonce()}" src="/embed.js"></script>`;
   }
 }
 ```
