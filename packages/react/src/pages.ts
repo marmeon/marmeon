@@ -59,7 +59,7 @@ export type RevalidateOnBack<C extends ViewAction> = boolean | readonly (keyof V
 // Page props are validated at the controller boundary (PageProps<...>), not here.
 /**
  * A page's component, with the statics a page may declare: `layout`, `ssr`, `layer`, `revalidateOnBack` and an instant
- * visit's `placeholder`. See docs/pages.md.
+ * visit's `placeholder`. See docs/pages.md#writing-pages.
  */
 export type PageComponent = ComponentType<any> & {
   layout?: PageLayout;

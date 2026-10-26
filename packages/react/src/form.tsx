@@ -101,7 +101,7 @@ type ParamsProp<N extends string> = {} extends BrowserParamsOf<N> ? { params?: B
 
 /**
  * The props of {@link Form}: the `route` it sends to, its `children`, and the options for a confirmation, live
- * validation, the guard and remembered input. See docs/forms.md.
+ * validation, the guard and remembered input. See docs/forms.md#forms-without-state.
  */
 export type FormProps<N extends string> = {
   /** The route it sends to — method and URL from it; a GET route writes its query. */

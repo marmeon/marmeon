@@ -12,7 +12,7 @@ declare const TYPE: unique symbol;
 
 /**
  * How a response treats a page prop: `optional`, `defer`, `always`, `merge`, `deepMerge` or `once`.
- * See docs/deferred-props.md.
+ * See docs/deferred-props.md#props-that-load-later.
  */
 export type PropKind = 'optional' | 'defer' | 'always' | 'merge' | 'deepMerge' | 'once';
 
