@@ -43,6 +43,7 @@ import {
   LOCATION_HEADER,
   MAX_LAYER_DEPTH,
   heldOnceProps,
+  onceScopeOf,
   APP_ORIGIN_META,
   ONCE_HEADER,
   ONCE_SCOPE_HEADER,
@@ -513,17 +514,18 @@ export function createResponseFactory(
     const shared = scope?.has(SharedData) ? scope.make(SharedData) : undefined;
     // Who the page is for: the session's scope for once props, its CSRF token for forms without JavaScript.
     const session = scope?.has(PageSession) ? scope.make(PageSession) : undefined;
-    const onceScope = session?.scope();
-    // Once props the browser holds — under this session's scope only (another tab may have signed someone else in).
+    // The page's language — the request's translator speaks one of the app's locales (never a raw header value).
+    const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
+    // Who it is for and in which language, as a hash: a guest has a scope too, and a switch of language sends translated values again.
+    const onceScope = onceScopeOf(session?.scope(), translator?.locale);
+    // Once props the browser holds — under this scope only (another tab may have signed someone else in, or switched the language).
     const once = { component: result.component, held: heldOnceProps(ctx.request, onceScope) };
     // Shared props and the controller's (which win), resolved as far as this response sends them.
     const resolved = await resolvePageProps(result.props, shared, partialReloadOf(ctx.request, result.component), once);
     const csrf = session?.csrfToken();
     // The session's epoch: the tabs of the browser compare it — on every page, a partial reload's too.
     const epoch = epochOf(scope);
-    const pageSession = { ...(resolved.onceProps && onceScope !== undefined ? { onceScope } : {}), ...(csrf !== undefined ? { csrf } : {}), ...(epoch !== undefined ? { epoch } : {}) };
-    // The page's language — the request's translator speaks one of the app's locales (never a raw header value).
-    const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
+    const pageSession = { ...(resolved.onceProps ? { onceScope } : {}), ...(csrf !== undefined ? { csrf } : {}), ...(epoch !== undefined ? { epoch } : {}) };
     const language = translator ? { locale: translator.locale, ...(translator.fallbackLocale ? { fallbackLocale: translator.fallbackLocale } : {}) } : {};
     // The parsed query, for `useQueryState`: what the URL set validly, and the defaults — never parsed again in the browser.
     const query = ctx.pageQuery ? { query: { ...ctx.pageQuery.values }, queryDefaults: { ...ctx.pageQuery.defaults } } : {};

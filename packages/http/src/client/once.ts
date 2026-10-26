@@ -5,8 +5,8 @@
  * here before anything renders.
  *
  * Scoped to who they were sent to (`PageObject.onceScope`): a page of another scope — someone else signed in in another tab,
- * the session cookie changed under this one — drops everything kept, and the server, seeing a scope that is not the
- * session's, sends them anyway. A full load (sign-in, sign-out, a new build, a language switch) starts with nothing.
+ * the session cookie changed under this one, the page's language changed — drops everything kept, and the server, seeing a scope that is not the
+ * one now, sends them anyway. A full load (sign-in, sign-out, a new build) starts with nothing.
  */
 import { ONCE_HEADER, ONCE_SCOPE_HEADER, type PageObject } from '../protocol.ts';
 import { slot } from './feature.ts';

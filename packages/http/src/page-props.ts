@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ONCE_HEADER, ONCE_SCOPE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, speaksProtocol, type OnceInfo, type PageObject } from './protocol.ts';
 import { mergeOf, propKind, resolveProp, type OnceProp } from './props.ts';
 import type { SharedData } from './shared-data.ts';
@@ -41,11 +42,20 @@ export interface OnceContext {
 }
 
 /**
- * The once props the browser of `request` holds — only when it names the scope they were sent under and that is the
- * request's scope now (`current`: the session's, see `PageSession.scope`). A browser that kept them for someone else — another
- * tab signed in as another user, the cookie changed under this tab — holds nothing as far as the server is concerned.
+ * The scope once props are sent under (`PageObject.onceScope`): who the page is for (the session's `PageSession.scope`, none for
+ * a guest) and in which language. An opaque hash of both — the page object and the browser's memory never hold the session's
+ * scope itself — so a switch of language, like a switch of user, sends the props again.
  */
-export function heldOnceProps(request: Request, current: string | undefined): ReadonlySet<string> {
+export function onceScopeOf(sessionScope: string | undefined, locale: string | undefined): string {
+  return createHash('sha256').update(`${sessionScope ?? ''}\0${locale ?? ''}`).digest().subarray(0, 16).toString('base64url');
+}
+
+/**
+ * The once props the browser of `request` holds — only when it names the scope they were sent under and that is the
+ * request's scope now (`current`, see {@link onceScopeOf}). A browser that kept them for someone else — another
+ * tab signed in as another user, the cookie changed under this tab, another language — holds nothing as far as the server is concerned.
+ */
+export function heldOnceProps(request: Request, current: string): ReadonlySet<string> {
   const { headers } = request;
   if (!speaksProtocol(headers)) return new Set();
   if ((headers.get(ONCE_SCOPE_HEADER) ?? undefined) !== current) return new Set();
