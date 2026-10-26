@@ -490,7 +490,7 @@ export class Navigator {
     return this.#core.layers;
   }
 
-  /** How many pages are kept in memory (tests). */
+  /** @internal how many pages are kept in memory (tests). */
   get cachedPages(): number {
     return this.#core.cache.size;
   }

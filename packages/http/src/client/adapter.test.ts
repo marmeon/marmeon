@@ -266,6 +266,22 @@ describe('a UI adapter on the client core alone (no UI framework)', () => {
     stop();
   });
 
+  it('shows the exception of an island whose answer speaks another protocol version', async () => {
+    window.fetch = (async (input: string, init: RequestInit = {}) => {
+      const headers = { ...(init.headers as Record<string, string>) };
+      if (headers[REGION_HEADER] !== 'island') return server(input, init);
+      const body = { component: 'dashboard/SignIns', props: {}, url: '/islands/sign-ins', version: 'v1' };
+      return new Response(JSON.stringify(body), { headers: { [PAGE_HEADER]: '2', [REGION_HEADER]: 'island', 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    serverRenderedDocument(page('users/Show', '/users/1', {}));
+    const navigator = new Navigator({ features: [historyFallback], initialPage: readInitialPage(), render: async () => undefined });
+    const stop = navigator.start();
+    const region = navigator.use(islands).region('/islands/sign-ins');
+    await region.load();
+    expect(region.snapshot.status).toBe('exception');
+    stop();
+  });
+
   it('renders layers: each over the page in an element of its own — Back closes the top one, the page untouched; the core loads their code', async () => {
     window.fetch = (async (input: string, init: RequestInit = {}) => {
       const url = new URL(input, 'https://app.test');

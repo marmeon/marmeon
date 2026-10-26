@@ -207,7 +207,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
   const target =
     route === undefined
       ? undefined
-      : resolveRoute(manifest, route, params, query && linkQuery(page, resolveRoute(manifest, route, params, undefined, page).url, query), page);
+      : resolveRoute(manifest, route, { params, query: query && linkQuery(page, resolveRoute(manifest, route, { params, pageLocale: page.locale }).url, query), pageLocale: page.locale });
   const href = target?.url ?? givenHref ?? '';
   const method = (givenMethod ?? target?.method ?? 'get') as VisitMethod;
   // Its visit is under way: `data-pending` — whichever component started a visit of the same URL and method.

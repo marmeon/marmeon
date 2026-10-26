@@ -13,7 +13,7 @@ export { createPoll } from './poll.ts';
 export { progressBar } from './progress.ts';
 export { accepted } from './confirm.ts';
 export { isDevelopment } from './document.ts';
-export { resolveRoute } from './routes.ts';
+export { resolveRoute, type ResolveRouteOptions } from './routes.ts';
 export { isSensitiveRememberField } from './remember.ts';
 export type { Confirm, ConfirmAnswer, ConfirmOptions, ConfirmRequest } from './confirm.ts';
 export type { ProgressIndicator, ProgressOptions, ProgressSource } from './progress.ts';

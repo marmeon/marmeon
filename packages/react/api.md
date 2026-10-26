@@ -563,11 +563,11 @@ export type { VisitOptions } from '@marmeon/http/client';
 // VisitProgress
 export type { VisitProgress } from '@marmeon/http/client';
 // WhenVisible
-export declare function WhenVisible<T = unknown>({ data, params, buffer, always, as, fallback, children }: WhenVisibleProps<T>): import("react").DOMElement<import("react").DOMAttributes<Element>, Element>;
+export declare function WhenVisible<T = unknown>(props: WhenVisibleProps<T>): import("react").DOMElement<import("react").DOMAttributes<Element>, Element>;
 // WhenVisibleProps
 export interface WhenVisibleProps<T = unknown> {
     data?: PropName<T> | readonly PropName<T>[];
-    params?: ReloadOptions<T>;
+    reload?: ReloadOptions<T>;
     buffer?: number;
     always?: boolean;
     as?: string;

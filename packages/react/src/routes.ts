@@ -27,7 +27,7 @@ export function useRoute(): RouteFunction {
   const manifest = useContext(RoutesContext);
   const locale = useContext(RouterContext)?.page.locale;
   return useMemo(
-    () => ((name: string, params?: Readonly<Record<string, Param>>, query?: Query) => resolveRoute(manifest, name, params, query, { locale }).url) as RouteFunction,
+    () => ((name: string, params?: Readonly<Record<string, Param>>, query?: Query) => resolveRoute(manifest, name, { params, query, pageLocale: locale }).url) as RouteFunction,
     [manifest, locale],
   );
 }

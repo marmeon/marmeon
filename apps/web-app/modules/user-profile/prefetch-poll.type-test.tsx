@@ -73,13 +73,16 @@ export function OnTheProfilePage() {
       <WhenVisible<ShowUserProfileController> data="stats" buffer={100} fallback="…">
         {() => 'ready'}
       </WhenVisible>
-      <WhenVisible<ShowUserProfileController> always params={{ data: { tab: 'links' }, only: ['stats'], preserveUrl: true }} />
+      <WhenVisible<ShowUserProfileController> always reload={{ data: { tab: 'links' }, only: ['stats'], preserveUrl: true }} />
       {/* Type '"stat"' is not assignable to type '"activity" | … | "stats" | readonly (…)[] | undefined'. Did you mean '"stats"'? */}
       {/* @ts-expect-error */}
       <WhenVisible<ShowUserProfileController> data="stat">ready</WhenVisible>
       {/* Type '"activty"' is not assignable to type '…'. Did you mean '"activity"'? */}
       {/* @ts-expect-error */}
-      <WhenVisible<ShowUserProfileController> params={{ only: ['activty'] }} />
+      <WhenVisible<ShowUserProfileController> reload={{ only: ['activty'] }} />
+      {/* `params` is no prop of <WhenVisible>: its reload is `reload`. */}
+      {/* @ts-expect-error */}
+      <WhenVisible<ShowUserProfileController> params={{ only: ['activity'] }} />
     </>
   );
 }

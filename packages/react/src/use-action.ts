@@ -153,7 +153,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
       if (!navigator) {
         throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:R7] useAction('${name}'): actions run in the browser, not while rendering on the server.` : `[marmeon:R7] ${name}`);
       }
-      const target = resolveRoute(manifest, name, { ...boundParams.current, ...options.params }, options.query, router.page);
+      const target = resolveRoute(manifest, name, { params: { ...boundParams.current, ...options.params }, query: options.query, pageLocale: router.page.locale });
       const method = target.method.split(',')[0]!.toLowerCase() as ActionMethod;
       const body = options.data as Record<string, unknown> | undefined;
       const id = ++nextCall.current;

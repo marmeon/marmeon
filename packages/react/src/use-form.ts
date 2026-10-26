@@ -233,7 +233,7 @@ export function useForm(...args: unknown[]): unknown {
 
   const { visit, page } = useRouterContext();
   const manifest = useContext(RoutesContext);
-  const target = name === undefined ? undefined : resolveRoute(manifest, name, params, undefined, page);
+  const target = name === undefined ? undefined : resolveRoute(manifest, name, { params, pageLocale: page.locale });
   // Remembered input: what this history entry kept of the form, back where it was typed — sensitive fields never were.
   const remember = rememberSetting(options.remember, name);
   const { store, key: rememberKey } = useRememberStore(remember?.key ?? '');

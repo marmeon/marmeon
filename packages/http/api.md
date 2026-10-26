@@ -1024,6 +1024,12 @@ export interface Reloading {
     readonly target: PatchTarget;
     readonly spec: ReloadSpec;
 }
+// ResolveRouteOptions
+export interface ResolveRouteOptions {
+    readonly params?: Readonly<Record<string, Param>> | undefined;
+    readonly query?: Query | undefined;
+    readonly pageLocale?: string | undefined;
+}
 // SelectionKey
 export type SelectionKey = string | number;
 // TabSync
@@ -1131,9 +1137,7 @@ export declare function isSensitiveRememberField(field: string, include?: readon
 // progressBar
 export declare function progressBar(options?: ProgressOptions): ProgressIndicator;
 // resolveRoute
-export declare function resolveRoute(manifest: RouteManifest | undefined, name: string, params?: Readonly<Record<string, Param>>, query?: Query, defaults?: {
-    readonly locale?: string | undefined;
-}): {
+export declare function resolveRoute(manifest: RouteManifest | undefined, name: string, options?: ResolveRouteOptions): {
     url: string;
     method: string;
 };
@@ -1644,7 +1648,6 @@ export declare class Navigator {
     loaded<API>(loader: () => Promise<Feature<API>>): API | undefined;
     get page(): PageObject;
     get layers(): readonly Layer[];
-    get cachedPages(): number;
     get regionOwner(): RegionOwner;
     receiveStreamed(group: string, streamed: DeferredResult | null): Promise<void>;
     start(): () => void;
@@ -1924,6 +1927,12 @@ export interface RenderOptions {
     readonly layers: readonly Layer[];
     readonly placeholder?: boolean;
     readonly transition?: readonly string[];
+}
+// ResolveRouteOptions
+export interface ResolveRouteOptions {
+    readonly params?: Readonly<Record<string, Param>> | undefined;
+    readonly query?: Query | undefined;
+    readonly pageLocale?: string | undefined;
 }
 // RevalidateOnBack
 export type RevalidateOnBack = boolean | readonly string[];
@@ -2213,9 +2222,7 @@ export declare function regionInitial(result: RegionResult): RegionInitial | und
 // remember
 export declare const remember: import("../feature.ts").Feature<RememberFeature>;
 // resolveRoute
-export declare function resolveRoute(manifest: RouteManifest | undefined, name: string, params?: Readonly<Record<string, Param>>, query?: Query, defaults?: {
-    readonly locale?: string | undefined;
-}): {
+export declare function resolveRoute(manifest: RouteManifest | undefined, name: string, options?: ResolveRouteOptions): {
     url: string;
     method: string;
 };
