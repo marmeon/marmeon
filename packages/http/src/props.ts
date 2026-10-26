@@ -95,9 +95,6 @@ export interface OnceProp<T> extends PageProp<'once', T> {
   readonly expiresInMs: number | undefined;
 }
 
-/** Any wrapped prop. */
-export type WrappedProp<T = unknown> = OptionalProp<T> | DeferredProp<T> | MergingDeferredProp<T> | AlwaysProp<T> | MergeProp<T> | OnceProp<T>;
-
 /**
  * A prop the page gets only when it asks: `reload({ only: ['stats'] })`. Never computed for a full response —
  * for data that is expensive and rarely looked at.

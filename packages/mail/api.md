@@ -193,8 +193,6 @@ export interface SentMail extends MailMessage {
 }
 // calendarEvent
 export declare function calendarEvent(event: CalendarEvent): Attachment;
-// compose
-export declare function compose(mailable: Mailable, defaultFrom: Address): Promise<MailMessage>;
 // fromHtml
 export declare function fromHtml(body: Html, text?: string): MailContent;
 // fromMjml

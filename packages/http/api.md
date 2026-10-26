@@ -19,10 +19,6 @@ export type ActionAnswerOf<N extends string> = [ControllerOf<N>] extends [never]
 export type ActionBodyOf<N extends string> = N extends keyof Routes ? (MethodOf<N> extends 'get' ? never : FormOf<Instance<ControllerOf<N>>>) : Record<string, unknown>;
 // ActionDataOf
 export type ActionDataOf<N extends string> = DataOf<ActionAnswerOf<N>>;
-// ActionParamsOf
-export type ActionParamsOf<N extends string> = ParamsOf<N>;
-// ActionQueryOf
-export type ActionQueryOf<N extends string> = QueryParams<N>;
 // ActionRedirects
 export type ActionRedirects<N extends string> = unknown extends ActionAnswerOf<N> ? true : [Extract<ActionAnswerOf<N>, RedirectResult>] extends [never] ? false : true;
 // AfterResponse
@@ -69,11 +65,6 @@ export interface ClientInfo {
     readonly userAgent: string | undefined;
 }
 export declare const ClientInfo: import("@marmeon/core").Token<ClientInfo>;
-// ClientRoutesOptions
-export interface ClientRoutesOptions {
-    readonly include?: readonly string[];
-    readonly except?: readonly string[];
-}
 // CloseLayerOptions
 export interface CloseLayerOptions {
     layers?: number;
@@ -664,8 +655,6 @@ export declare class Webhooks {
     define(name: string, definition: WebhookDefinition): this;
     has(name: string): boolean;
 }
-// WrappedProp
-export type WrappedProp<T = unknown> = OptionalProp<T> | DeferredProp<T> | MergingDeferredProp<T> | AlwaysProp<T> | MergeProp<T> | OnceProp<T>;
 // abort
 export { abort } from '@marmeon/router';
 // addVary
@@ -694,8 +683,6 @@ export { editableResponse } from '@marmeon/router';
 export { everyone } from '@marmeon/router';
 // isActionRequest
 export declare function isActionRequest(request: Request): boolean;
-// isLiveValidation
-export { isLiveValidation } from '@marmeon/router';
 // isLocalPath
 export declare function isLocalPath(value: unknown): value is string;
 // isPageObject
@@ -706,8 +693,6 @@ export declare function isPrefetch(request: Request): boolean;
 export declare function island<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps): IslandResult<TProps, V>;
 // json
 export declare function json<T>(data: T, options?: ResultOptions): JsonResult<T>;
-// liveValidationFields
-export { liveValidationFields } from '@marmeon/router';
 // merge
 export declare function merge<V>(value: V): MergeProp<Unlazy<V>, 'merge'>;
 // once
@@ -2473,10 +2458,6 @@ export type ActionAnswerOf<N extends string> = [ControllerOf<N>] extends [never]
 export type ActionBodyOf<N extends string> = N extends keyof Routes ? (MethodOf<N> extends 'get' ? never : FormOf<Instance<ControllerOf<N>>>) : Record<string, unknown>;
 // ActionDataOf
 export type ActionDataOf<N extends string> = DataOf<ActionAnswerOf<N>>;
-// ActionParamsOf
-export type ActionParamsOf<N extends string> = ParamsOf<N>;
-// ActionQueryOf
-export type ActionQueryOf<N extends string> = QueryParams<N>;
 // ActionRedirects
 export type ActionRedirects<N extends string> = unknown extends ActionAnswerOf<N> ? true : [Extract<ActionAnswerOf<N>, RedirectResult>] extends [never] ? false : true;
 // AlwaysProp
@@ -2772,10 +2753,6 @@ export interface ViewResult<TProps extends ViewProps = ViewProps, TComponent ext
 // Views
 export interface Views {
 }
-// WrappedProp
-export type WrappedProp<T = unknown> = OptionalProp<T> | DeferredProp<T> | MergingDeferredProp<T> | AlwaysProp<T> | MergeProp<T> | OnceProp<T>;
-// toSearchParams
-export { toSearchParams } from '@marmeon/router/url';
 // urlFor
 export { urlFor } from '@marmeon/router/url';
 ```

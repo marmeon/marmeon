@@ -36,7 +36,6 @@ export type {
   UniqueRecord,
 } from './driver.ts';
 export { JobEvent, JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased } from './events.ts';
-export type { JobEvents } from './events.ts';
 export type {
   BatchOptions,
   CheckJob,
@@ -53,7 +52,7 @@ export type {
   UniqueDispatchOptions,
 } from './job.ts';
 export { JobOnceBusyError, withoutOverlapping } from './locks.ts';
-export type { CacheSource, WithoutOverlappingOptions } from './locks.ts';
+export type { WithoutOverlappingOptions } from './locks.ts';
 export { Queue } from './queue.ts';
 export type { PendingJobs, QueueConnectionOptions } from './queue.ts';
 export { JobRegistry, QueueError, QueueSetupError } from './registry.ts';

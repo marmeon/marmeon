@@ -1,6 +1,6 @@
 /**
  * Helpers for an app's tests: the code of an authenticator app (`docs/two-factor-authentication.md#testing`) and a software
- * passkey authenticator (`docs/passkeys.md#testing`). `actingAs()` of `@marmeon/testing` uses the session and token helpers.
+ * passkey authenticator (`docs/passkeys.md#testing`). `actingAs()` of `@marmeon/testing` uses the session helper.
  */
 import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } from 'node:crypto';
 import { cbor } from './cbor.ts';
@@ -9,7 +9,6 @@ import { SessionConfig, sessionCookieName } from '@marmeon/session';
 import { AUTH_SESSION_KEYS } from './auth.ts';
 import { SessionFingerprints } from './fingerprint.ts';
 import { AuthConfig, rememberCookieName } from './config.ts';
-import { AccessTokenStore } from './tokens.ts';
 import { TwoFactorState } from './two-factor/state.ts';
 import { hotp, base32Decode, totpStep } from './two-factor/totp.ts';
 import { idOf, UserProvider, type AuthUser } from './user.ts';
@@ -36,12 +35,6 @@ export async function authenticatedSession(container: Container, user: AuthUser)
 export function cookieNames(app: { container: Container }): { session: string; remember: string } {
   const session = app.container.make(SessionConfig);
   return { session: sessionCookieName(session), remember: rememberCookieName(app.container.make(AuthConfig), session) };
-}
-
-/** A real API token for `user` with `abilities` — what `actingAs(user, { guard: 'api' })` sends as `Authorization: Bearer …`. */
-export async function authenticatedToken(container: Container, user: AuthUser, abilities: readonly string[] = ['*']): Promise<string> {
-  const { plainText } = await container.createScope().make(AccessTokenStore).create(idOf(user), 'test', { abilities, expiresIn: null });
-  return plainText;
 }
 
 /** The code an authenticator app shows for `secret` (the key `TwoFactor.begin()` hands out) at `at` — for tests that sign in with a second factor. */

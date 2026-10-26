@@ -2,7 +2,7 @@
  * The browser-safe core of `@marmeon/i18n` — the message catalog, translating one namespace and the loader of language
  * files. No server code: UI adapters (`useTranslation` in @marmeon/react) build on this.
  */
-import { Catalog, type Formatter } from './catalog.ts';
+import type { Formatter } from './catalog.ts';
 import type { CheckMessageKey, MessageKeyOf, MessageAt, MessageTree, Namespace, TranslateArgs, Translations } from './types.ts';
 
 export { Catalog, MessageError } from './catalog.ts';
@@ -28,9 +28,4 @@ export interface Translate<N extends string = Namespace> {
   readonly format: Formatter;
   /** Whether the namespace has `key` (in the locale or the fallback locale). */
   has(key: string): boolean;
-}
-
-/** A {@link Translate} for `namespace` in `locale` — `catalog.translate(locale, namespace)`, what a UI adapter's hook returns. */
-export function createTranslate<N extends string>(catalog: Catalog, locale: string, namespace: N): Translate<N> {
-  return catalog.translate(locale, namespace);
 }

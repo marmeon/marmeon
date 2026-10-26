@@ -10,8 +10,8 @@ import { Session, SessionServiceProvider } from '@marmeon/session';
 import * as v from 'valibot';
 import { rules as r } from '@marmeon/validation';
 import { describe, expect, it, vi } from 'vitest';
-import { Catalog, CurrentLocale, I18nServiceProvider, LocalePreference, Locales, trans, Translator, Translators } from './index.ts';
-import { createTranslator } from './translator.ts';
+import { Catalog, I18nServiceProvider, LocalePreference, Locales, trans, Translator, Translators } from './index.ts';
+import { createTranslator, CurrentLocale } from './translator.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 // Counts the translators made (only for a request that asks for one).

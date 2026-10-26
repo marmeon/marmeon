@@ -42,21 +42,10 @@ export interface CheckProblem {
     readonly fix?: string;
     readonly docs?: string;
 }
-// CheckReport
-export interface CheckReport {
-    readonly name: string;
-    readonly status: CheckStatus;
-    readonly ms: number;
-    readonly reason?: string;
-    readonly problems: readonly CheckProblem[];
-    readonly silenced?: readonly SilencedProblem[];
-}
 // CheckSetupError
 export declare class CheckSetupError extends CommandSetupError {
     name: string;
 }
-// CheckStatus
-export type CheckStatus = 'passed' | 'warning' | 'failed' | 'skipped' | 'error';
 // CliServiceProvider
 export declare class CliServiceProvider implements ServiceProvider {
     static checks: readonly AppCheckClass[];

@@ -11,7 +11,7 @@ export { fromHtml, Html, html, raw } from './html.ts';
 export { fromMjml, Mjml, mjml, MjmlError } from './mjml.ts';
 export type { Address, Attachment, Envelope, Mailable, MailContent, MailMessage } from './message.ts';
 export { MailConfig } from './config.ts';
-export { compose, MailError, Mailer, MailSetupError } from './mailer.ts';
+export { MailError, Mailer, MailSetupError } from './mailer.ts';
 export type { QueueMailOptions, SentMail } from './mailer.ts';
 export { calendarEvent } from './ics.ts';
 export type { CalendarEvent } from './ics.ts';

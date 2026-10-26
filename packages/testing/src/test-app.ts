@@ -400,12 +400,12 @@ export interface SessionAccess {
   read(id: string): Promise<Record<string, unknown> | undefined>;
 }
 
-type DatabaseModule = typeof import('@marmeon/database');
+type DatabaseModule = typeof import('@marmeon/database') & typeof import('@marmeon/database/internal');
 
 /** @marmeon/database is an optional peer, like the session. */
 async function importDatabase(): Promise<DatabaseModule | undefined> {
   try {
-    return await import('@marmeon/database');
+    return { ...(await import('@marmeon/database')), ...(await import('@marmeon/database/internal')) };
   } catch {
     return undefined;
   }
@@ -500,9 +500,9 @@ function commandFlags(options: CommandRunOptions['options'] = {}): string[] {
 }
 
 /** @marmeon/auth is an optional peer, like the session. */
-async function importAuth(): Promise<typeof import('@marmeon/auth/testing') | undefined> {
+async function importAuth(): Promise<(typeof import('@marmeon/auth/testing') & typeof import('@marmeon/auth/internal')) | undefined> {
   try {
-    return await import('@marmeon/auth/testing');
+    return { ...(await import('@marmeon/auth/testing')), ...(await import('@marmeon/auth/internal')) };
   } catch {
     return undefined;
   }
@@ -1116,7 +1116,8 @@ export class TestApp {
       const auth = await importAuth();
       if (!auth) throw new Error("actingAs(…, { guard: 'api' }) needs @marmeon/auth in the app.");
       const { user, abilities } = this.#defaults.token;
-      tokenHeader.authorization = `Bearer ${await auth.authenticatedToken(this.application.container, user, abilities)}`;
+      const token = await auth.authenticatedToken(this.application.container, user, abilities);
+      tokenHeader.authorization = `Bearer ${token}`;
     }
     if (this.#defaults.user !== undefined) {
       const auth = await importAuth();

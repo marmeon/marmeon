@@ -37,7 +37,6 @@ export type { ProviderMigrations } from './package-migrations.ts';
 export type { TableRequirement } from './schema-requirements.ts';
 export { defineFactory, Factories, PendingFactory } from './factories.ts';
 export type { FactoryContext, FactoryDefinition, MadeAttributes } from './factories.ts';
-export { Seeding } from './seeders.ts';
 export type { SeedContext, Seeder, SeederClass } from './seeders.ts';
 export { defineMigration } from './migrations/migration.ts';
 export type { Migration } from './migrations/migration.ts';

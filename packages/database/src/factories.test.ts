@@ -3,7 +3,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } f
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import { ArticleFactory, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Connections, Factories, Migrator, PendingFactory, Repository, Seeding, type SeedContext } from './index.ts';
+import { Connections, Factories, Migrator, PendingFactory, Repository, type SeedContext } from './index.ts';
+import { Seeding } from './seeders.ts';
 
 class UserRepository extends Repository<'users', FixtureTables> {
   static table = 'users' as const;

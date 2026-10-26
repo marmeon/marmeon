@@ -619,8 +619,6 @@ export declare function defineSolutions<const Classes extends readonly ErrorClas
         readonly for: Classes[I];
     };
 }): readonly SolutionDefinition<any>[];
-// deprecated
-export declare function deprecated(id: string, message: string, removeIn: `${number}.${number}`): void;
 // durationToMilliseconds
 export declare function durationToMilliseconds(duration: Duration): number;
 // durationToSeconds
@@ -804,28 +802,16 @@ Types from other packages: none
 ### Stable
 
 ```ts
-// LOOPBACK_HOSTS
-export declare const LOOPBACK_HOSTS: readonly string[];
-// devEnvironment
-export declare function devEnvironment(env?: {
-    readonly NODE_ENV?: string | undefined;
-}): boolean;
 // devHosts
 export declare function devHosts(appUrl: string | undefined): ReadonlySet<string>;
 // devOnly
 export declare function devOnly<TArgs extends readonly [{
     readonly request: Request;
 }, ...unknown[]]>(hosts: ReadonlySet<string>, handler: (...args: TArgs) => Response | Promise<Response>): (...args: TArgs) => Promise<Response>;
-// devSecured
-export declare function devSecured(response: Response): Response;
-// forbiddenDevHost
-export declare function forbiddenDevHost(): Response;
 // hostAllowed
 export declare function hostAllowed(request: Request, hosts: ReadonlySet<string>): boolean;
 // hostNameAllowed
 export declare function hostNameAllowed(host: string, hosts: ReadonlySet<string>): boolean;
-// notInDevelopment
-export declare function notInDevelopment(): Response;
 ```
 
 ## `@marmeon/core/diagnostics`

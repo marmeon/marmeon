@@ -541,25 +541,6 @@ export interface Seeder {
 }
 // SeederClass
 export type SeederClass = new (...args: any[]) => Seeder;
-// Seeding
-export declare class Seeding {
-    #private;
-    seeders(filter?: {
-        module?: string;
-        seeder?: string;
-    }): {
-        module: string;
-        seeder: SeederClass;
-    }[];
-    run(filter?: {
-        module?: string;
-        seeder?: string;
-    }, onRun?: (run: {
-        module: string;
-        seeder: string;
-        ms: number;
-    }) => void): Promise<void>;
-}
 // SelectQuery
 export type SelectQuery<DB, TB extends keyof DB, O> = SelectQueryBuilder<DB, TB, O>;
 // TableOwners

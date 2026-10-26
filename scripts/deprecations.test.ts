@@ -97,7 +97,7 @@ describe('deprecated() calls', () => {
     const bad = (text: string) => problems(text);
     expect(bad(`deprecated ('http.x', ${body});`)).toHaveLength(1);
     expect(bad(`deprecated?.('http.x', ${body});`)).toHaveLength(1);
-    expect(bad(`import { deprecated as warn } from '@marmeon/core';\nwarn('http.x', m, '9.0');`)).toEqual([expect.stringContaining('string literals')]);
+    expect(bad(`import { deprecated as warn } from '@marmeon/core/deprecation';\nwarn('http.x', m, '9.0');`)).toEqual([expect.stringContaining('string literals')]);
     expect(bad(`import { deprecated as warn } from './deprecation.ts';\nwarn('http.x', 'Use y.', '0.1');`)).toEqual([expect.stringContaining('not after')]);
     expect(bad(`import * as core from '@marmeon/core/deprecation';\ncore.deprecated('http.x', ${body});`)).toHaveLength(2);
     expect(bad(`ns.deprecated('http.x', ${body});`)).toHaveLength(1);

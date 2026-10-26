@@ -1,4 +1,5 @@
-import { editableResponse, HttpError, isLiveValidation, type HttpContext, type MiddlewareClass, type Next, type RouteDefinition } from '@marmeon/router';
+import { editableResponse, HttpError, type HttpContext, type MiddlewareClass, type Next, type RouteDefinition } from '@marmeon/router';
+import { isLiveValidation } from '@marmeon/router/internal';
 import { Clock, durationToSeconds, type Duration, type Resolver } from '@marmeon/core';
 import { isIP } from 'node:net';
 import { Cache } from './cache.ts';

@@ -23,6 +23,7 @@ export interface RouteLookup {
 /**
  * Fills a route pattern (`/users/:user/links/:link?`) with `params`. Parameters the path does not take
  * come back as `rest` — callers put them into the query.
+ * @internal
  */
 export function fillPath(name: string, pattern: string, params: Readonly<Record<string, Param | undefined>> = {}): { path: string; rest: Record<string, Param> } {
   const used = new Set<string>();

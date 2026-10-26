@@ -16,7 +16,6 @@ import { withCode } from '@marmeon/core/internal';
 
 export type {
   AnyRecipient,
-  AnyRecipientResolverClass,
   ChannelsOf,
   CheckNotification,
   DatabaseData,

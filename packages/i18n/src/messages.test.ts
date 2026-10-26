@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { formatMessage, parseMessage } from './format.ts';
 import { langFileOf } from './loader.ts';
 import { negotiateLocale, supportedLocale } from './locale.ts';
-import { Catalog, createMessageLoader, createTranslate } from './messages.ts';
+import { Catalog, createMessageLoader } from './messages.ts';
 
 describe('formatMessage (ICU subset)', () => {
   it('fills placeholders, formats numbers and dates for the locale', () => {
@@ -103,14 +103,6 @@ describe('Catalog', () => {
     expect(format.relative('2026-09-30T12:00:00Z', '2026-10-01T12:00:00Z')).toBe('gestern');
     expect(catalog.formatter('en').relative('2026-10-03T12:00:00Z', '2026-10-01T12:00:00Z')).toBe('in 2 days');
     expect(format.date('2026-10-01T12:00:00Z', { dateStyle: 'medium', timeZone: 'UTC' })).toBe('01.10.2026');
-  });
-
-  it('createTranslate translates one namespace', () => {
-    const t = createTranslate(catalog, 'de', 'shop');
-    expect(t('greeting' as never, { name: 'Ada' } as never)).toBe('Hallo Ada');
-    expect(t.locale).toBe('de');
-    expect(t.has('greeting')).toBe(true);
-    expect(t.format.number(2.5)).toBe('2,5');
   });
 });
 
