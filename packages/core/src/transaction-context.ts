@@ -21,6 +21,7 @@ export class TransactionFrame {
   /** A transaction opened inside this one on the same connection (a savepoint), while it has not finished. */
   #child: TransactionFrame | undefined;
 
+  /** @internal Built by runTransaction(). */
   constructor(owner: object, label: string, parent: TransactionFrame | undefined) {
     this.owner = owner;
     this.label = label;

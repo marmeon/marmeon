@@ -26,6 +26,7 @@ export class EncryptCookies {
   readonly #encrypter: Encrypter;
   readonly #settings: CookieEncryption;
 
+  /** @internal Built by the container. */
   constructor(encrypter: Encrypter, settings: CookieEncryption) {
     this.#encrypter = encrypter;
     this.#settings = settings;

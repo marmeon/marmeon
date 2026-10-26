@@ -53,6 +53,7 @@ export class QueueConnections {
   #failed: FailedJobStore | undefined;
   #runner: JobRunner | undefined;
 
+  /** @internal Built by the container. */
   constructor(container: Container, config: QueueConfig) {
     this.#container = container;
     this.#config = config;

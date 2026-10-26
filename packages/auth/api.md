@@ -53,8 +53,6 @@ export declare abstract class AccessTokenStore {
 // AccountSessions
 export declare class AccountSessions {
     #private;
-    constructor(users: UserProvider, signIns: SignInStore, sessions: UserSessions | undefined, events?: EventDispatcher, clock?: Clock, resets?: () => PasswordResetTokenStore, access?: () => AccessTokenStore, logger?: Logger, endings?: SessionEndings, changes?: () => EmailChangeStore | undefined);
-    [ANNOUNCE_ENDED](userId: string | number): Promise<void>;
     end(userId: AuthUserId): Promise<Result<EndedSessions, {
         readonly kind: 'missing';
     }>>;
@@ -95,19 +93,6 @@ export declare class Auth {
     pendingSecondFactor(): {
         readonly factors: readonly SecondFactor[];
     } | undefined;
-    [READ_PENDING](): Promise<PendingView | 'expired' | undefined>;
-    [DROP_EXPIRED](): 'expired';
-    [RECORD_PENDING_FAILURE](): number | undefined;
-    [COMPLETE_PENDING](verifiedUserId: AuthUserId | string | number): Promise<Result<AuthUser, {
-        readonly kind: 'no-challenge';
-    } | {
-        readonly kind: 'expired';
-    }>>;
-    [SIGN_IN_VERIFIED](verifiedUserId: AuthUserId | string | number, options?: {
-        readonly remember?: boolean;
-    }, checkedAgainst?: Credentials): Promise<Result<AuthUser, {
-        readonly kind: 'expired';
-    }>>;
     signOut(): Promise<void>;
     user(): Promise<AuthUser | undefined>;
     check(): Promise<boolean>;
@@ -124,10 +109,6 @@ export declare class Auth {
     }>>;
     updatePassword(password: string): Promise<void>;
     updateSessionKey(): Promise<boolean>;
-    [DROP_REMEMBER_TOKEN](): Promise<void>;
-    [CLAIM_ACCOUNT](): Promise<boolean>;
-    [VERIFIED_SESSION_KEY](): string | null;
-    [ACCOUNT_STILL_CLAIMED](): Promise<boolean>;
 }
 // AuthConfig
 export declare const AuthConfig: import("@marmeon/core").ConfigDefinition<{
@@ -250,7 +231,6 @@ export interface Credentials<U = AuthUser> {
 // DatabaseAccessTokens
 export declare class DatabaseAccessTokens extends AccessTokenStore {
     #private;
-    constructor(connections: Connections, config: AuthConfig, clock: Clock);
     create(userId: AuthUserId, name: string, options: AccessTokenOptions): Promise<{
         plainText: string;
         token: AccessToken;
@@ -283,7 +263,6 @@ export declare class DatabaseEmailChanges extends EmailChangeStore {
 // DatabasePasswordResetTokens
 export declare class DatabasePasswordResetTokens extends PasswordResetTokenStore {
     #private;
-    constructor(connections: Connections, clock: Clock);
     create(email: string, throttleSeconds: number): Promise<Result<string, {
         readonly kind: 'throttled';
     }>>;
@@ -297,7 +276,6 @@ export declare class DatabasePasswordResetTokens extends PasswordResetTokenStore
 // DatabaseSignIns
 export declare class DatabaseSignIns extends SignInStore {
     #private;
-    constructor(connections: Connections, clock: Clock);
     create(input: {
         userId: AuthUserId;
         userAgent: string | undefined;
@@ -386,7 +364,6 @@ export declare class EmailChanged {
 // EmailVerification
 export declare class EmailVerification {
     #private;
-    constructor(signer: UrlSigner);
     link<const N extends RouteNameInput = never>(user: {
         readonly id: string | number;
         readonly email: string;
@@ -442,7 +419,6 @@ export interface EveryoneEnded {
 // Gate
 export declare class Gate {
     #private;
-    constructor(auth: Auth, resolve: ClassResolver);
     allows<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<boolean>;
     denies<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<boolean>;
     authorize<P extends object, K extends AbilityOf<P>>(policy: PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K>): Promise<void>;
@@ -494,7 +470,6 @@ export declare const NO_STORE = "no-store, private";
 // NoStoreWhenSignedIn
 export declare class NoStoreWhenSignedIn {
     #private;
-    constructor(session: Session);
     handle(_ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // PASSWORD_RESET_TABLE
@@ -971,7 +946,6 @@ export declare abstract class TwoFactorState {
 // TwoFactorStore
 export declare class TwoFactorStore extends TwoFactorState {
     #private;
-    constructor(connections: Connections, clock: Clock);
     factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
     enabledSince(userId: AuthUserId): Promise<Date | undefined>;
     startSetup(userId: AuthUserId, encryptedSecret: string): Promise<void>;
@@ -1095,22 +1069,10 @@ export declare function verified<const N extends RouteNameInput = never>(options
 ### Referenced, not exported
 
 ```ts
-// ACCOUNT_STILL_CLAIMED
-export declare const ACCOUNT_STILL_CLAIMED: unique symbol;
-// ANNOUNCE_ENDED
-export declare const ANNOUNCE_ENDED: unique symbol;
-// CLAIM_ACCOUNT
-export declare const CLAIM_ACCOUNT: unique symbol;
-// COMPLETE_PENDING
-export declare const COMPLETE_PENDING: unique symbol;
 // CheckAbility
 export type CheckAbility<P, K extends string, Allowed extends string, Missing extends string> = string extends K ? Allowed : K extends Allowed ? K : K extends AbilityOf<P> ? K extends ProjectableAbility<P> ? `'${K}' ${Missing}` : `'${K}' takes more than one resource — a projection asks one; use gate.allows(Policy, '${K}', …)` : `'${K}' is not an ability of this policy — it has ${JoinNames<AbilityOf<P>>}`;
 // Contravariant
 type Contravariant<T> = T extends unknown ? (resource: T) => void : never;
-// DROP_EXPIRED
-declare const DROP_EXPIRED: unique symbol;
-// DROP_REMEMBER_TOKEN
-export declare const DROP_REMEMBER_TOKEN: unique symbol;
 // PendingSecondFactor
 export interface PendingSecondFactor {
     readonly id: string | number;
@@ -1122,23 +1084,8 @@ export interface PendingSecondFactor {
     readonly failures: number;
     readonly factors: readonly SecondFactor[];
 }
-// PendingView
-export interface PendingView {
-    readonly userId: AuthUserId;
-    readonly factors: readonly SecondFactor[];
-    readonly failures: number;
-    readonly remember: boolean;
-}
 // Projectable
 type Projectable<P, K> = Extract<K, ProjectableAbility<P>>;
-// READ_PENDING
-export declare const READ_PENDING: unique symbol;
-// RECORD_PENDING_FAILURE
-export declare const RECORD_PENDING_FAILURE: unique symbol;
-// SIGN_IN_VERIFIED
-export declare const SIGN_IN_VERIFIED: unique symbol;
-// VERIFIED_SESSION_KEY
-export declare const VERIFIED_SESSION_KEY: unique symbol;
 // missing
 declare const missing: unique symbol;
 // passwordHash
@@ -1237,7 +1184,6 @@ export declare class PasskeySetupError extends Error {
 // PasskeyStore
 export declare class PasskeyStore extends TwoFactorState {
     #private;
-    constructor(connections: Connections, clock: Clock);
     factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
     enabledSince(userId: AuthUserId): Promise<Date | undefined>;
     userHandle(userId: AuthUserId): Promise<string>;

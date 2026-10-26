@@ -16,6 +16,7 @@ export const AssetVersion = token<AssetVersion>('AssetVersion');
 export class CheckAssetVersion {
   readonly #version: AssetVersion;
 
+  /** @internal Built by the container. */
   constructor(version: AssetVersion) {
     this.#version = version;
   }

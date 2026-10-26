@@ -151,6 +151,7 @@ export class Scheduler {
   /** Overlap locks of runs in progress — freed when the process must stop before they end. */
   readonly #held = new Set<Lock>();
 
+  /** @internal Built by the container. */
   constructor(container: Container, app: Application, config: ScheduleConfig, clock: Clock, logger: Logger) {
     this.#container = container;
     this.#app = app;
@@ -239,7 +240,7 @@ export class Scheduler {
   }
 
   /**
-   * What a scheduler process checks before its first tick (`schedule:work`, `schedule:run`), on top of the checks at
+   * @internal What a scheduler process checks before its first tick (`schedule:work`, `schedule:run`), on top of the checks at
    * boot: the app has a cache (`ScheduleError` without one), every `s.command()` names a known command, every `s.job()` a
    * registered job. Locks in a cache that is not shared are no error — see {@link lockWarning}.
    */
@@ -275,7 +276,7 @@ export class Scheduler {
   }
 
   /**
-   * The warning a scheduler shows at its start, in every environment, when tasks lock with
+   * @internal The warning a scheduler shows at its start, in every environment, when tasks lock with
    * `onOneServer()` or `withoutOverlapping()` in a cache that is not shared: `file` locks hold on this machine only, `memory`
    * locks in this process only. A single scheduler runs correctly with them — a production with one instance included —
    * so it is a warning, not an error. `undefined` when there is nothing to warn about. `schedule:list` shows it too.
@@ -297,7 +298,7 @@ export class Scheduler {
     return `${kinds.join('/')} ${kinds.length === 1 ? 'locks' : 'lock'} in CACHE_DRIVER=${driver}: ${scope} Tasks: ${locking.map((task) => task.name).join(', ')}`;
   }
 
-  /** Frees the overlap locks of runs still going — when the process stops before they end (they end with it). */
+  /** @internal Frees the overlap locks of runs still going — when the process stops before they end (they end with it). */
   async releaseHeld(): Promise<void> {
     const locks = [...this.#held];
     this.#held.clear();

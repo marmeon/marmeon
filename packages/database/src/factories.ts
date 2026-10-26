@@ -53,6 +53,7 @@ export class Factories {
   readonly #connections: Connections;
   readonly #sequences = new Map<FactoryDefinition<any, any, any>, number>();
 
+  /** @internal Built by the container. */
   constructor(connections: Connections) {
     this.#connections = connections;
   }

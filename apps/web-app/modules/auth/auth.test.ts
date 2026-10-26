@@ -1,5 +1,5 @@
 import { AccessTokenStore, Auth, authenticate, Hasher, PasswordHasher, TwoFactorState, type PasswordHash } from '@marmeon/auth';
-import { ConsoleLogger, defineModule, Logger, type LogContext } from '@marmeon/core';
+import { defineModule, Logger, type LogContext } from '@marmeon/core';
 import { Controller, defineRoutes, everyone } from '@marmeon/http';
 import { Connections } from '@marmeon/database';
 import { Database, secret } from '@marmeon/database';
@@ -734,18 +734,11 @@ describe('password reset', () => {
   it('the token is only in the mail — not in the database, not in the request log', async () => {
     await app.close();
     const lines: string[] = [];
-    class Capture extends ConsoleLogger {
-      override info(message: string, context?: LogContext) {
-        lines.push(`${message} ${JSON.stringify(context ?? {})}`);
-      }
-      override debug(message: string, context?: LogContext) {
-        lines.push(`${message} ${JSON.stringify(context ?? {})}`);
-      }
-      override child(): Logger {
-        return this;
-      }
-    }
-    app = await createTestApp(application, { database: 'refresh', override: (c) => c.instance(Logger, new Capture()) });
+    const record = (message: string, context?: LogContext) => {
+      lines.push(`${message} ${JSON.stringify(context ?? {})}`);
+    };
+    const capture: Logger = { debug: record, info: record, warn: () => {}, error: () => {}, child: () => capture };
+    app = await createTestApp(application, { database: 'refresh', override: (c) => c.instance(Logger, capture) });
     ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     await ask('ada@example.com');

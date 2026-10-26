@@ -69,6 +69,7 @@ export class Locales {
   readonly explicit: boolean;
   #supported: string[];
 
+  /** @internal Built by the container. */
   constructor(config: I18nConfig) {
     this.default = config.locale;
     this.fallback = config.fallback;
@@ -107,6 +108,7 @@ export class Translators {
   readonly #locales: Locales;
   readonly #cache = new Map<string, Translator>();
 
+  /** @internal Built by the container. */
   constructor(catalog: Catalog, locales: Locales) {
     this.#catalog = catalog;
     this.#locales = locales;

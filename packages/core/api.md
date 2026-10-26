@@ -59,7 +59,6 @@ export type ConfigOf<Definition> = Definition extends ConfigDefinition<infer T> 
 // ConsoleLogger
 export declare class ConsoleLogger implements Logger {
     #private;
-    constructor(bindings?: LogContext, app?: Application);
     debug(message: string, context?: LogContext): void;
     info(message: string, context?: LogContext): void;
     warn(message: string, context?: LogContext): void;
@@ -247,7 +246,6 @@ export type ErrorReporterClass = new (...args: any[]) => ErrorReporter;
 // ErrorReports
 export declare class ErrorReports {
     #private;
-    constructor(logger: Logger, redactor: Redactor, container: Container, reporters?: readonly ErrorReporterClass[], owners?: ReadonlyMap<ErrorReporterClass, string>);
     report(error: unknown, { source, context, log }: {
         source: ErrorReport['source'];
         context?: Readonly<Record<string, string>>;
@@ -270,7 +268,6 @@ export type EventClass<TEvent extends object = object> = abstract new (...args: 
 // EventDispatcher
 export declare class EventDispatcher {
     #private;
-    constructor(registry: EventRegistry, resolver: Resolver, options?: EventDispatcherOptions);
     dispatch<TEvent extends object>(event: TEvent): Promise<void>;
 }
 // EventDispatcherOptions
@@ -580,7 +577,6 @@ export declare class TransactionFrame {
     readonly owner: object;
     readonly label: string;
     resource: unknown;
-    constructor(owner: object, label: string, parent: TransactionFrame | undefined);
     get state(): 'open' | 'committed' | 'rolled back';
     get open(): boolean;
 }

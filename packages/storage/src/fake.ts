@@ -35,6 +35,7 @@ class FakeManager extends StorageManager {
 export class StorageFake implements Storage {
   readonly #manager: FakeManager;
 
+  /** @internal Built by the container. */
   constructor(container: Container) {
     const setup = container.make(StorageSetup);
     this.#manager = new FakeManager(setup.options, setup.dependencies);

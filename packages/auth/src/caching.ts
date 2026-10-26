@@ -14,6 +14,7 @@ export const NO_STORE = 'no-store, private';
 export class NoStoreWhenSignedIn {
   readonly #session: Session;
 
+  /** @internal Built by the container. */
   constructor(session: Session) {
     this.#session = session;
   }

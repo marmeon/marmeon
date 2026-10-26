@@ -52,6 +52,7 @@ export class UrlSigner {
   readonly #keys: readonly Buffer[];
   readonly #clock: Clock;
 
+  /** @internal Built by the container. */
   constructor(router: Router, config: EncryptionConfig, clock: Clock) {
     this.#router = router;
     this.#keys = [config.key, ...config.previousKeys].map((key) => derive(key, 'signed-url'));
@@ -147,11 +148,12 @@ export class ValidateSignature {
 
   readonly #signer: UrlSigner;
 
+  /** @internal Built by the container. */
   constructor(signer: UrlSigner) {
     this.#signer = signer;
   }
 
-  /** Whether a link without `expires` passes; `signed({ forever: true })` sets it. */
+  /** @internal Whether a link without `expires` passes; `signed({ forever: true })` sets it. */
   protected readonly forever: boolean = false;
 
   handle(ctx: HttpContext, next: Next<{}>) {

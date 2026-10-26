@@ -221,6 +221,7 @@ export class DatabaseSignIns extends SignInStore {
   readonly #connections: Connections;
   readonly #clock: Clock;
 
+  /** @internal Built by the container. */
   constructor(connections: Connections, clock: Clock) {
     super();
     this.#connections = connections;

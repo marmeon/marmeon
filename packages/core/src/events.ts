@@ -211,6 +211,7 @@ export class EventDispatcher {
   readonly #resolver: Resolver;
   readonly #options: EventDispatcherOptions;
 
+  /** @internal Built by the container. */
   constructor(registry: EventRegistry, resolver: Resolver, options: EventDispatcherOptions = {}) {
     this.#registry = registry;
     this.#resolver = resolver;

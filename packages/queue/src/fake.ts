@@ -63,6 +63,7 @@ export class QueueFake implements Queue {
   /** The transaction of `using(trx)`. */
   readonly #transaction: Transaction<any> | undefined;
 
+  /** @internal Built by the container. */
   constructor(container: Container, root?: QueueFake, transaction?: Transaction<any>) {
     this.#container = container;
     this.#root = root;

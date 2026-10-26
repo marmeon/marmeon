@@ -47,6 +47,7 @@ export class NotificationStore {
   readonly #connection: string;
   readonly #clock: Clock;
 
+  /** @internal Built by the container. */
   constructor(connections: Connections, connection: string, clock: Clock) {
     this.#connections = connections;
     this.#connection = connection;

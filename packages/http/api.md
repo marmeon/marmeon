@@ -39,7 +39,6 @@ export type CheckActionRouteName<N extends string> = string extends N ? BrowserR
 // CheckAssetVersion
 export declare class CheckAssetVersion {
     #private;
-    constructor(version: AssetVersion);
     handle(ctx: HttpContext, next: Next<{}>): Response | Promise<Response>;
 }
 // CheckFlashKey
@@ -53,7 +52,6 @@ export type CheckViewName<V extends string> = string extends V ? ViewName : V ex
 // ClearClientHistory
 export declare class ClearClientHistory {
     #private;
-    constructor(history: ClientHistory);
     handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // ClientHistory
@@ -166,7 +164,6 @@ export type { EmptyObject } from '@marmeon/router';
 // EncryptCookies
 export declare class EncryptCookies {
     #private;
-    constructor(encrypter: Encrypter, settings: CookieEncryption);
     handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // ErrorPageProps
@@ -613,7 +610,6 @@ export type UploadToken = string & {
 // UrlSigner
 export declare class UrlSigner {
     #private;
-    constructor(router: Router, config: EncryptionConfig, clock: Clock);
     signedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, params: SignedParams<N>, options: SignedRouteOptions): string;
     foreverSignedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, params: SignedParams<N>, options?: ForeverSignedRouteOptions): string;
     signedPath(path: string, options: SignedPathOptions): string;
@@ -623,8 +619,6 @@ export declare class UrlSigner {
 export declare class ValidateSignature {
     #private;
     static readonly ensures: readonly ['authenticated'];
-    constructor(signer: UrlSigner);
-    protected readonly forever: boolean;
     handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // Validated
@@ -745,11 +739,6 @@ export declare function view<const V extends string, const TProps extends ViewPr
 type ActionResult<TAction extends PageAction> = TAction extends {
     handle: (...args: never[]) => infer R;
 } ? R : TAction extends (...args: never[]) => infer R ? R : never;
-// AssetVersion
-export interface AssetVersion {
-    readonly value: string | null;
-}
-export declare const AssetVersion: import("@marmeon/core").Token<AssetVersion>;
 // BaseParams
 type BaseParams<N extends string> = {} extends ParamsOf<N> ? {
     params?: ParamsOf<N>;

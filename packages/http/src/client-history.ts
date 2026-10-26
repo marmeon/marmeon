@@ -48,6 +48,7 @@ const DROPPED = ['location', 'content-type', 'content-length', PAGE_HEADER];
 export class ClearClientHistory {
   readonly #history: ClientHistory;
 
+  /** @internal Built by the container. */
   constructor(history: ClientHistory) {
     this.#history = history;
   }

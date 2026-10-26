@@ -91,6 +91,8 @@ export class ErrorReports {
   #dropSince: number | undefined;
 
   /**
+   * @internal Built by the container.
+   *
    * Builds the reporters now, so what their constructors start (timers, sockets) does not belong to the request that happens to report
    * first. One that cannot be built stops the start (K12): reporting silently off is worse. `owners` names the provider of each class.
    */

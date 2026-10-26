@@ -66,6 +66,7 @@ export class RedisConnection {
   #client: Promise<Client> | undefined;
   #closed = false;
 
+  /** @internal Built by `RedisConnections`. */
   constructor(
     name: string,
     options: RedisConnectionOptions,

@@ -14,6 +14,7 @@ import { SESSION_ID, sessionKey, SessionStore } from './store.ts';
 export class SessionLottery {
   chance: number;
 
+  /** @internal Built by the container. */
   constructor(chance: number) {
     this.chance = chance;
   }
