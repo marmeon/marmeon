@@ -1,6 +1,6 @@
 import { Limit, RateLimiter } from '@marmeon/cache';
 import { cookieNames } from '@marmeon/auth/testing';
-import { createTestApp, type TestApp } from '@marmeon/testing';
+import { createTestApp, type PendingTestResponse, type RequestOptions, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
@@ -17,10 +17,33 @@ beforeEach(async () => {
   ({ session: SESSION } = cookieNames(app));
 });
 
-type Session = ReturnType<TestApp['withCookie']>;
+/** A browser: it sends the session cookie the server set last — `checkPassword()` hands out a new session id — as a real one does. */
+class Session {
+  readonly #box: { cookie: string };
+  readonly #view: (app: TestApp) => TestApp;
+  constructor(cookie: string, box: { cookie: string } = { cookie }, view: (app: TestApp) => TestApp = (view) => view) {
+    this.#box = box;
+    this.#view = view;
+  }
+  navigating = () => new Session(this.#box.cookie, this.#box, (app) => this.#view(app).navigating());
+  expectingJson = () => new Session(this.#box.cookie, this.#box, (app) => this.#view(app).expectingJson());
+  get = (path: string, options?: RequestOptions) => this.#send('get', path, options);
+  post = (path: string, options?: RequestOptions) => this.#send('post', path, options);
+  put = (path: string, options?: RequestOptions) => this.#send('put', path, options);
+  #send(verb: 'get' | 'post' | 'put', path: string, options?: RequestOptions): PendingTestResponse {
+    const pending = this.#view(app.withCookie(SESSION, this.#box.cookie))[verb](path, options);
+    pending.then(
+      (response) => {
+        this.#box.cookie = response.cookie(SESSION) ?? this.#box.cookie;
+      },
+      () => {},
+    );
+    return pending;
+  }
+}
 const signIn = async (user: User): Promise<Session> => {
   const login = await app.post('/login', { form: { email: user.email, password: 'password' } }).assertRedirect('/users/me');
-  return app.withCookie(SESSION, login.cookie(SESSION)!);
+  return new Session(login.cookie(SESSION)!);
 };
 const change = (session: Session, email: string) => session.put('/settings/email', { form: { current_password: 'password', email }, headers: { referer: 'http://localhost/settings/security' } });
 

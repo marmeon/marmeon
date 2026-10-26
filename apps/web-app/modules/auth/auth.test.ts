@@ -551,7 +551,7 @@ describe('security settings', () => {
     await app.post('/login', { form: { email: ada.email, password: 'a new password' } }).assertAuthenticated(ada);
   });
 
-  it('two password changes of one session at once run one after the other (block()): the second finds the password changed', async () => {
+  it('two password changes of one session at once run one after the other (block()): the second finds its session replaced', async () => {
     const ada = await app.factory(UserFactory).create();
     const laptop = await app.post('/login', credentialsOf(ada));
     const here = app.withCookie(SESSION, laptop.cookie(SESSION)!).expectingJson();
@@ -559,8 +559,11 @@ describe('security settings', () => {
     const responses = await Promise.all([change('the first new one'), change('the second new one')]);
     // Without the lock both would check the old password and both would write — the session then keeps whichever fingerprint saved
     // last, the database whichever hash it got last: a mismatch signs the session out.
-    expect(responses.map((response) => response.status).toSorted()).toEqual([303, 422]);
-    await here.get('/users/me').assertRedirect(`/users/${ada.public_id}`); // still signed in: hash and fingerprint are a pair
+    // The right password of the first gave the session a new id: the second still sends the old one and is a guest.
+    expect(responses.map((response) => response.status).toSorted()).toEqual([303, 401]);
+    // The winner's session has a new id (typing the password gives it one) and a new key: it is still signed in — hash and fingerprint are a pair.
+    const kept = responses.find((response) => response.status === 303)!.cookie(SESSION)!;
+    await app.withCookie(SESSION, kept).expectingJson().get('/users/me').assertRedirect(`/users/${ada.public_id}`);
     const winner = responses[0]!.status === 303 ? 'the first new one' : 'the second new one';
     await app.post('/login', { form: { email: ada.email, password: winner } }).assertAuthenticated(ada);
   });
@@ -579,13 +582,14 @@ describe('security settings', () => {
   it('also stops a slow guesser: twenty checks an hour, though the minute is cleared by a right password', async () => {
     const ada = await app.factory(UserFactory).create();
     const login = await app.post('/login', credentialsOf(ada));
-    const session = app.withCookie(SESSION, login.cookie(SESSION)!);
+    let cookie = login.cookie(SESSION)!;
+    const session = () => app.withCookie(SESSION, cookie);
     // Four wrong and one right, four times: the right one clears the minute each time, the hour counts all twenty.
     for (let round = 0; round < 4; round++) {
-      for (let attempt = 0; attempt < 4; attempt++) await session.post('/confirm-password', { form: { password: 'wrong' } });
-      await session.post('/confirm-password', { form: { password: 'password' } });
+      for (let attempt = 0; attempt < 4; attempt++) await session().post('/confirm-password', { form: { password: 'wrong' } });
+      cookie = (await session().post('/confirm-password', { form: { password: 'password' } })).cookie(SESSION) ?? cookie; // a right password gives the session a new id
     }
-    await session.post('/confirm-password', { form: { password: 'password' } }).assertInvalid<ConfirmPasswordController>({ password: /^Too many attempts/ });
+    await session().post('/confirm-password', { form: { password: 'password' } }).assertInvalid<ConfirmPasswordController>({ password: /^Too many attempts/ });
   });
 
   it('throttles password checks of a signed-in user — a stolen session is no guessing oracle', async () => {
@@ -895,7 +899,8 @@ describe('API tokens', () => {
     expect(plainText).toMatch(/^marmeon_[A-Za-z0-9]{40}[0-9a-f]{8}$/);
     expect(JSON.stringify(created.session())).not.toContain(plainText); // not flashed
     expect(created.headers.get('cache-control')).toContain('no-store');
-    await session.navigating().get('/settings/tokens').assertPage('auth/AccessTokens', (props) => {
+    // Typing the password gave the session a new id: the list is asked with that one.
+    await app.withCookie(SESSION, created.cookie(SESSION)!).navigating().get('/settings/tokens').assertPage('auth/AccessTokens', (props) => {
       expect(JSON.stringify(props)).not.toContain(plainText.slice(-48));
       expect((props as { tokens: { name: string }[] }).tokens.map((token) => token.name)).toEqual(['Backup script']);
     });

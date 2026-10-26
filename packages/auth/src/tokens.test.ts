@@ -28,8 +28,26 @@ describe.each(drivers)('API tokens on %s', (driver) => {
   beforeEach(() => connections.get<any>().deleteFrom(ACCESS_TOKEN_TABLE).execute());
   afterEach(() => vi.useRealTimers());
 
+  it('refuses a token without abilities or without an expiry, even from code the types do not check', async () => {
+    await expect((tokens.create as (...args: unknown[]) => Promise<unknown>)(1, 'CLI')).rejects.toThrow(/abilities.*expiresIn/s);
+    await expect((tokens.create as (...args: unknown[]) => Promise<unknown>)(1, 'CLI', {})).rejects.toThrow(/abilities.*expiresIn/s);
+    await expect((tokens.create as (...args: unknown[]) => Promise<unknown>)(1, 'CLI', { abilities: ['*'] })).rejects.toThrow(/expiresIn/);
+    await expect((tokens.create as (...args: unknown[]) => Promise<unknown>)(1, 'CLI', { expiresIn: { days: 1 } })).rejects.toThrow(/abilities/);
+    await expect((tokens.create as (...args: unknown[]) => Promise<unknown>)(1, 'CLI', { abilities: 'users:read', expiresIn: null })).rejects.toThrow(/abilities/);
+    expect(await tokens.list(1)).toEqual([]);
+  });
+
+  it('expires a token with expiresIn 0 at once, and a token with no abilities allows nothing', async () => {
+    const { plainText, token } = await tokens.create(1, 'CLI', { abilities: [], expiresIn: 0 });
+    expect(await tokens.find(plainText)).toBeUndefined();
+    expect(token.abilities).toEqual([]);
+    expect(tokenCan(token, 'users:read')).toBe(false);
+    const forever = await tokens.create(1, 'CLI', { abilities: [], expiresIn: null });
+    expect(tokenCan((await tokens.find(forever.plainText))!, 'users:read')).toBe(false);
+  });
+
   it('hands out marmeon_<40 characters><crc32> once — the database keeps only a hash of the secret under a prefix of its own', async () => {
-    const { plainText, token } = await tokens.create(1, 'CLI', { abilities: ['users:read'] });
+    const { plainText, token } = await tokens.create(1, 'CLI', { abilities: ['users:read'], expiresIn: null });
     expect(plainText).toMatch(/^marmeon_[A-Za-z0-9]{40}[0-9a-f]{8}$/);
     expect(plainText).not.toContain('|');
     expect(token).toMatchObject({ userId: 1, name: 'CLI', abilities: ['users:read'], lastUsedAt: null, expiresAt: null });
@@ -42,14 +60,14 @@ describe.each(drivers)('API tokens on %s', (driver) => {
   });
 
   it('expires in a duration object as in seconds, rounded down, and refuses a string', async () => {
-    const days = await tokens.create(1, 'ninety days', { expiresIn: { days: 90 } });
-    const seconds = await tokens.create(1, 'the same', { expiresIn: 90 * 86_400 });
+    const days = await tokens.create(1, 'ninety days', { abilities: ['*'], expiresIn: { days: 90 } });
+    const seconds = await tokens.create(1, 'the same', { abilities: ['*'], expiresIn: 90 * 86_400 });
     const spread = Math.abs(new Date(days.token.expiresAt!).getTime() - new Date(seconds.token.expiresAt!).getTime());
     expect(spread).toBeLessThan(2000);
     expect(new Date(days.token.expiresAt!).getTime() - Date.now()).toBeGreaterThan(90 * 86_400_000 - 2000);
     expect(new Date(days.token.expiresAt!).getTime() - Date.now()).toBeLessThanOrEqual(90 * 86_400_000);
     const before = (await tokens.list(1)).length;
-    await expect(tokens.create(1, 'text', { expiresIn: '90d' as never })).rejects.toThrow('write `{ days: 90 }`');
+    await expect(tokens.create(1, 'text', { abilities: ['*'], expiresIn: '90d' as never })).rejects.toThrow('write `{ days: 90 }`');
     expect((await tokens.list(1)).length).toBe(before);
   });
 
@@ -69,7 +87,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
   const lookups = () => queries.filter((sql) => /token_hash/.test(sql));
 
   it('a token of the first form, a wrong checksum, a wrong length and an unknown token all run the same one query and get the same answer', async () => {
-    const { plainText } = await tokens.create(1, 'CLI');
+    const { plainText } = await tokens.create(1, 'CLI', { abilities: ['*'], expiresIn: null });
     const secret = plainText.slice('marmeon_'.length, -8);
     const typo = plainText.slice(0, 10) + (plainText[10] === 'a' ? 'b' : 'a') + plainText.slice(11);
     const unknown = `marmeon_${'A'.repeat(40)}${checksumOf(`marmeon_${'A'.repeat(40)}`)}`;
@@ -97,7 +115,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
 
   it('with an empty prefix, the bare secret is no token, and costs the same one query', async () => {
     const bare = new DatabaseAccessTokens(connections, { tokenPrefix: '' } as never, new SystemClock());
-    const { plainText } = await bare.create(1, 'CLI');
+    const { plainText } = await bare.create(1, 'CLI', { abilities: ['*'], expiresIn: null });
     expect(plainText).toMatch(/^[A-Za-z0-9]{48}$/);
     expect(await bare.find(plainText)).toBeDefined();
     const secret = plainText.slice(0, 40);
@@ -109,7 +127,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
   });
 
   it('a string without the app’s prefix costs no query', async () => {
-    const { plainText } = await tokens.create(1, 'CLI');
+    const { plainText } = await tokens.create(1, 'CLI', { abilities: ['*'], expiresIn: null });
     queries.length = 0;
     for (const presented of [plainText.replace('marmeon_', 'gh_'), '', 'Bearer x', 'marmeon', 'MARMEON_x']) {
       expect(await tokens.find(presented), presented).toBeUndefined();
@@ -131,7 +149,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
   });
 
   it('refuses an expired token whose hash matches, and does not tell it from an unknown one', async () => {
-    const expiring = await tokens.create(1, 'short', { expiresIn: { hours: 1 } });
+    const expiring = await tokens.create(1, 'short', { abilities: ['*'], expiresIn: { hours: 1 } });
     expect(await tokens.find(expiring.plainText)).toBeDefined();
     await connections.get<any>().updateTable(ACCESS_TOKEN_TABLE).set({ expires_at: new Date(Date.now() - 1000) }).execute();
     queries.length = 0;
@@ -140,7 +158,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
   });
 
   it('refuses two rows with one hash', async () => {
-    const { plainText } = await tokens.create(1, 'CLI');
+    const { plainText } = await tokens.create(1, 'CLI', { abilities: ['*'], expiresIn: null });
     const secret = plainText.slice('marmeon_'.length, -8);
     const now = new Date();
     await expect(
@@ -149,11 +167,11 @@ describe.each(drivers)('API tokens on %s', (driver) => {
   });
 
   it('refuses expired and revoked tokens; revokes only the user’s own', async () => {
-    const expiring = await tokens.create(1, 'short', { expiresIn: { hours: 1 } });
+    const expiring = await tokens.create(1, 'short', { abilities: ['*'], expiresIn: { hours: 1 } });
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_601_000 });
     expect(await tokens.find(expiring.plainText)).toBeUndefined();
     vi.useRealTimers();
-    const { plainText, token } = await tokens.create(1, 'CLI');
+    const { plainText, token } = await tokens.create(1, 'CLI', { abilities: ['*'], expiresIn: null });
     expect(await tokens.revoke(2, token.id)).toBe(false); // someone else's
     expect(await tokens.find(plainText)).toBeDefined();
     expect(await tokens.revoke(1, token.id)).toBe(true);
@@ -166,7 +184,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
     try {
       const store = new DatabaseAccessTokens(own.connections, { tokenPrefix: 'marmeon_' } as never, new SystemClock());
       const owner = '11111111-1111-4111-8111-111111111111' as unknown as AuthUserId;
-      const { plainText, token } = await store.create(owner, 'CLI');
+      const { plainText, token } = await store.create(owner, 'CLI', { abilities: ['*'], expiresIn: null });
       expect(typeof token.id).toBe('string');
       expect((await store.find(plainText))!.id).toBe(token.id);
       expect(await store.revoke(owner, token.id)).toBe(true);
@@ -177,7 +195,7 @@ describe.each(drivers)('API tokens on %s', (driver) => {
   });
 
   it('notes the last use at most once a minute', async () => {
-    const { plainText } = await tokens.create(1, 'CLI');
+    const { plainText } = await tokens.create(1, 'CLI', { abilities: ['*'], expiresIn: null });
     const first = (await tokens.find(plainText))!;
     queries.length = 0;
     await tokens.touch(first);

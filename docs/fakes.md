@@ -281,8 +281,8 @@ it('prunes expired tokens at night and keeps valid ones', async () => {
   const app = await createTestApp(application, { database: 'refresh' });
   const ada = await app.factory(UserFactory).create();
   app.freeze(Date.parse('2026-10-04T12:00:00Z'));
-  await app.make(AccessTokenStore).create(ada.id, 'one hour', { expiresIn: { hours: 1 } });
-  const valid = await app.make(AccessTokenStore).create(ada.id, 'a year', { expiresIn: { days: 365 } });
+  await app.make(AccessTokenStore).create(ada.id, 'one hour', { abilities: ['*'], expiresIn: { hours: 1 } });
+  const valid = await app.make(AccessTokenStore).create(ada.id, 'a year', { abilities: ['*'], expiresIn: { days: 365 } });
 
   expect(app.schedule.due('2026-10-05T03:10:00Z')).toContain('auth:prune-tokens');
   const results = await app.schedule.run('2026-10-05T03:10:00Z');

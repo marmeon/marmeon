@@ -71,7 +71,7 @@ describe('pruning accounts whose address was never confirmed — the default', {
     for (const user of [old, confirmed]) {
       const signIns = app.make(SignInStore);
       await signIns.issueToken(user.id, await signIns.create({ userId: user.id, userAgent: undefined }), { until: new Date(app.clock.now() + 30 * DAY), fingerprint: 'fingerprint' });
-      await app.make(AccessTokenStore).create(user.id, 'cli', { expiresIn: { days: 365 } });
+      await app.make(AccessTokenStore).create(user.id, 'cli', { abilities: ['*'], expiresIn: { days: 365 } });
       await app.make(PasswordResetTokenStore).create(user.email, 0);
     }
 
@@ -172,8 +172,8 @@ describe('pruning accounts whose address was never confirmed with AUTH_PRIVATE_R
     const link = new URL(/https?:\/\/\S+\/email\/verify\/\S+(?=\))/.exec(sent.message.text)![0]);
     await session.get(link.pathname + link.search).assertRedirect('/dashboard');
     // Changing the address asks for the password (sudo mode) — a sign-up signed in without typing it again.
-    await session.post('/confirm-password', { form: { password: 'orbital mechanics' } }).assertRedirect();
-    await session.put('/settings/email', { form: { current_password: 'orbital mechanics', email: 'katherine@nasa.example' }, headers: { referer: 'http://localhost/settings/security' } }).assertRedirect();
+    const confirmed = await session.post('/confirm-password', { form: { password: 'orbital mechanics' } }).assertRedirect();
+    await app.withCookie(SESSION, confirmed.cookie(SESSION)!).put('/settings/email', { form: { current_password: 'orbital mechanics', email: 'katherine@nasa.example' }, headers: { referer: 'http://localhost/settings/security' } }).assertRedirect();
     const kj = await app.make(UserRepository).findByEmail('katherine@nasa.example');
     if (!kj) throw new Error('the address did not change');
     expect(kj).toMatchObject({ email_verified_at: null });

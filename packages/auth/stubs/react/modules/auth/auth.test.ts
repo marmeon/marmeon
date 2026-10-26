@@ -324,13 +324,14 @@ describe('the session key', { timeout: 30_000 }, () => {
 describe('password checks of a signed-in user', () => {
   it('stop at twenty an hour, though a right password clears the minute', async () => {
     const ada = await app.factory(UserFactory).create();
-    const session = continuing(await app.post('/login', credentials(ada)));
+    let cookie = (await app.post('/login', credentials(ada))).cookie(SESSION)!;
+    const session = () => app.withCookie(SESSION, cookie);
     // Four wrong and one right, four times: the right one clears the minute each time, the hour counts all twenty.
     for (let round = 0; round < 4; round++) {
-      for (let attempt = 0; attempt < 4; attempt++) await session.post('/confirm-password', { form: { password: 'wrong' } });
-      await session.post('/confirm-password', { form: { password: 'password' } });
+      for (let attempt = 0; attempt < 4; attempt++) await session().post('/confirm-password', { form: { password: 'wrong' } });
+      cookie = (await session().post('/confirm-password', { form: { password: 'password' } })).cookie(SESSION) ?? cookie; // a right password gives the session a new id
     }
-    await session.post('/confirm-password', { form: { password: 'password' } }).assertInvalid({ password: /^Too many attempts/ });
+    await session().post('/confirm-password', { form: { password: 'password' } }).assertInvalid({ password: /^Too many attempts/ });
   });
 
   // Each form checks the password through `auth.checkPassword()`: the sixth try of a minute shows the wait, whatever the password.
@@ -362,15 +363,15 @@ describe('API tokens', { timeout: 30_000 }, () => {
     await api(plainText).get('/api/user').assertOk().assertExactJson({ id: ada.id, name: ada.name, email: ada.email });
     await api(plainText.slice(0, -1) + (plainText.endsWith('a') ? 'b' : 'a')).get('/api/user').assertUnauthorized(); // checksum
     await app.expectingJson().get('/api/user').assertUnauthorized();
-    await sudo.delete(`/settings/tokens/${(await app.make(AccessTokenStore).list(ada.id))[0]!.id}`).assertRedirect('/settings/tokens');
+    await continuing(page).delete(`/settings/tokens/${(await app.make(AccessTokenStore).list(ada.id))[0]!.id}`).assertRedirect('/settings/tokens');
     await api(plainText).get('/api/user').assertUnauthorized();
   });
 
   it('are pruned by the nightly schedule once expired — valid ones stay', async () => {
     const ada = await app.factory(UserFactory).create();
     app.freeze(Date.parse('2026-10-04T12:00:00Z'));
-    const expired = await app.make(AccessTokenStore).create(ada.id, 'one hour', { expiresIn: { hours: 1 } });
-    const valid = await app.make(AccessTokenStore).create(ada.id, 'a year', { expiresIn: { days: 365 } });
+    const expired = await app.make(AccessTokenStore).create(ada.id, 'one hour', { abilities: ['*'], expiresIn: { hours: 1 } });
+    const valid = await app.make(AccessTokenStore).create(ada.id, 'a year', { abilities: ['*'], expiresIn: { days: 365 } });
     expect(app.schedule.due('2026-10-05T03:10:00Z')).toContain('auth:prune-tokens');
     expect((await app.schedule.run('2026-10-05T03:10:00Z')).find((result) => result.task === 'auth:prune-tokens')).toMatchObject({ outcome: 'ran' });
     expect((await app.make(AccessTokenStore).list(ada.id)).map((token) => token.id)).toEqual([valid.token.id]);

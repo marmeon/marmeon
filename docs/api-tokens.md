@@ -76,9 +76,11 @@ export class CreateAccessTokenController extends Controller {
 The form sends one ability or several, one value per ticked checkbox, so the schema takes both and makes a list.
 
 `create(userId, name, { abilities, expiresIn })` returns `{ plainText, token }`. The table keeps only a SHA-256 hash of the token's
-secret, so the plain text exists only in this one response. Without `abilities` a token may do everything, `['*']`. Without
-`expiresIn` it lives until it is revoked; the starter kit gives every token 90 days. `expiresIn` takes seconds, or a
-[`Duration`](time.md#spans-of-time) such as `{ days: 90 }`; a string such as `'90d'` is refused.
+secret, so the plain text exists only in this one response. Both options are required, so a token never gets every right and an
+unlimited life by accident: `abilities: ['*']` lets it do everything, and `expiresIn: null` lets it live until it is revoked.
+Without either, `create()` is a type error, and a call that skips the types throws a `TypeError` before it writes anything. The
+starter kit gives every token 90 days. `expiresIn` takes seconds, or a [`Duration`](time.md#spans-of-time) such as `{ days: 90 }`; a
+string such as `'90d'` is refused.
 
 The controller renders the page with the plain text instead of redirecting. A redirect would have to carry the token through the
 session as flash data, and so write it into the session store.
@@ -233,7 +235,7 @@ export const schedule = defineSchedule((s) => {
 ## A store of your own
 
 Tokens live in the `personal_access_tokens` table by default, through `DatabaseAccessTokens`. To keep them elsewhere, bind your own
-`AccessTokenStore` in a provider. It extends that abstract class (see [your own stores](authentication.md#your-own-stores)) and implements `create`, `find`, `touch`, `list`, `revoke`, `revokeAll`, `prune` and `revokeEveryone`, and keeps a
+`AccessTokenStore` in a provider. It extends that abstract class (see [your own stores](authentication.md#your-own-stores)) and implements `create` (the type requires `abilities` and `expiresIn`; `DatabaseAccessTokens` also throws for an untyped call that leaves one out, and a store of your own may do the same), `find`, `touch`, `list`, `revoke`, `revokeAll`, `prune` and `revokeEveryone`, and keeps a
 hash of each secret, never the secret. `revokeAll(userId)` deletes every token of the user and returns how many; a new password
 calls it inside its transaction, so a store on the database joins it. `revokeEveryone()` deletes the tokens of every user in one statement: `AccountSessions.endEveryone()` calls it, and a store without it does not compile.
 

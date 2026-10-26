@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { clientKey, RateLimiter } from '@marmeon/cache';
-import { Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
+import { afterCommit, afterRollback, Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
@@ -487,16 +487,10 @@ export class Passkeys implements SecondFactorPasskeys {
         // The counter is not written: the stored one stays the last that was honest. The passkey is suspended — it signs nobody in until
         // its owner releases it with the password — and the owner is told.
         await this.#store.suspend(record.id);
-        // Every session of the account ends, this one too, before the owner is told: whatever the copy started must not outlive the suspicion.
+        // Every session of the account ends, this one too, whatever the copy started must not outlive the suspicion: at once, or — inside an app
+        // transaction — after it, so the owner is told first.
         this.#logger.warn('A passkey answered with a sign count that did not move forward: it may have been copied, and is suspended', { user: record.userId, passkey: record.id });
-        // Never throws: the suspension, the event and the refusal must stand even when ending the sessions fails (inside an app's transaction a throw
-        // would roll the suspension back and leave the clone open).
-        try {
-          const ended = await this.#accountSessions.end(record.userId as never);
-          if (!ended.ok) this.#logger.warn('A passkey looked copied, but its account is gone, so no sessions were ended', { user: record.userId, passkey: record.id });
-        } catch (error) {
-          this.#logger.error('A passkey looked copied and was suspended, but the sessions of its account could not be ended', { user: record.userId, passkey: record.id, error: error instanceof Error ? error.message : String(error) });
-        }
+        await this.#endSessionsOfClone(record);
         if (found) await this.#events.dispatch(new PasskeyCloneSuspected(found.user, record.id));
       } else if (purposeIsSignIn && found) {
         // A passkey that exists answered wrongly (signature, user handle): the owner may want to know. The client learns nothing.
@@ -506,6 +500,31 @@ export class Passkeys implements SecondFactorPasskeys {
     }
     if (!(await this.#store.updateCounter(record.id, record.signCount, verified.value.signCount, verified.value.backedUp))) return err({ kind: 'invalid' });
     return ok(record);
+  }
+
+  /**
+   * `AccountSessions.end()` must run outside a database transaction, and an app may call this inside one. In a transaction it runs once the
+   * transaction has finished, committed or rolled back. A rollback also takes the suspension back (a returned `err` rolls back), so it is
+   * written again first: a copy was seen all the same. Never throws: the event and the refusal must stand even when this fails.
+   */
+  async #endSessionsOfClone(record: PasskeyRecord): Promise<void> {
+    const end = async () => {
+      try {
+        const ended = await this.#accountSessions.end(record.userId as never);
+        if (!ended.ok) this.#logger.warn('A passkey looked copied, but its account is gone, so no sessions were ended', { user: record.userId, passkey: record.id });
+      } catch (error) {
+        this.#logger.error('A passkey looked copied and was suspended, but the sessions of its account could not be ended', { user: record.userId, passkey: record.id, error: error instanceof Error ? error.message : String(error) });
+      }
+    };
+    await afterRollback(async () => {
+      try {
+        await this.#store.suspend(record.id);
+      } catch (error) {
+        this.#logger.error('A passkey looked copied, but its suspension could not be written again after a rollback', { user: record.userId, passkey: record.id, error: error instanceof Error ? error.message : String(error) });
+      }
+      await end();
+    });
+    await afterCommit(end);
   }
 
   /** The seconds to wait when this address failed too often a minute ago, else `undefined`. */

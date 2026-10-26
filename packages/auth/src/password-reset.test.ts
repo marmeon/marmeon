@@ -108,7 +108,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
   });
 
   it('keeps the API tokens when the provider writes nothing: the revocation rolls back with the refused write', async () => {
-    const token = await apiTokens.create(1, 'cli');
+    const token = await apiTokens.create(1, 'cli', { abilities: ['*'], expiresIn: null });
     const created = must(await broker(true).createToken('ada@example.com'));
     refuseWrites = true;
     await expect(broker(true).reset('ada@example.com', created.token, 'new password')).rejects.toThrow(/^\[marmeon:A5\] NewPassword/);
@@ -117,8 +117,8 @@ describe.each(drivers)('password reset on %s', (driver) => {
   });
 
   it('revokes every API token of the user with AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true — in the transaction of the new hash, and says so', async () => {
-    const adas = [await apiTokens.create(1, 'cli'), await apiTokens.create(1, 'ci')];
-    const alans = await apiTokens.create(2, 'cli');
+    const adas = [await apiTokens.create(1, 'cli', { abilities: ['*'], expiresIn: null }), await apiTokens.create(1, 'ci', { abilities: ['*'], expiresIn: null })];
+    const alans = await apiTokens.create(2, 'cli', { abilities: ['*'], expiresIn: null });
     const created = must(await broker(true).createToken('ada@example.com'));
     expect(await broker(true).reset('ada@example.com', created.token, 'new password')).toMatchObject({ ok: true, value: ada });
     const valid = await Promise.all(adas.map(async ({ plainText }) => (await apiTokens.find(plainText)) !== undefined));
@@ -129,14 +129,14 @@ describe.each(drivers)('password reset on %s', (driver) => {
     expect(logged).toEqual([{ message: expect.stringContaining('API tokens'), context: { user: 1, tokens: 2, via: 'reset' } }]);
 
     // Without the option, the tokens stay valid.
-    const kept = await apiTokens.create(1, 'kept');
+    const kept = await apiTokens.create(1, 'kept', { abilities: ['*'], expiresIn: null });
     const again = must(await tokens.create('ada@example.com', 0));
     expect(await broker().reset('ada@example.com', again, 'newer password')).toMatchObject({ ok: true, value: ada });
     expect(await apiTokens.find(kept.plainText), 'revoked without the option').toBeDefined();
   });
 
   it('a failed revocation rolls the transaction back — every token stays valid', async () => {
-    const adas = [await apiTokens.create(1, 'cli')];
+    const adas = [await apiTokens.create(1, 'cli', { abilities: ['*'], expiresIn: null })];
     const failing: AccessTokenStore = Object.assign(Object.create(apiTokens) as AccessTokenStore, {
       revokeAll: async (userId: AuthUserId) => {
         await apiTokens.revokeAll(userId);

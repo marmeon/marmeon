@@ -50,6 +50,7 @@ class ChangePasswordController extends Controller {
   }
   async handle() {
     try {
+      await this.#auth.checkPassword('secret');
       await this.#auth.updatePassword('another secret');
       return { done: true };
     } catch (error) {

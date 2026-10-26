@@ -57,8 +57,9 @@ describe('the two-factor settings page, rendered on the server', () => {
     expect(formTags(setup.body).some((tag) => tag.includes('method="post"') && tag.includes('action="/settings/two-factor/confirm"'))).toBe(true);
 
     const secret = /<code>([A-Z2-7]+)<\/code>/.exec(setup.body)![1]!;
-    await session.post('/settings/two-factor/confirm', { form: { code: twoFactorCode(secret), password: 'password' } }).assertOk();
-    const enabled = await session.get('/settings/two-factor', html).assertServerRendered();
+    const confirmed = await session.post('/settings/two-factor/confirm', { form: { code: twoFactorCode(secret), password: 'password' } }).assertOk();
+    // Typing the password gave the session a new id.
+    const enabled = await app.withCookie(cookieNames(app).session, confirmed.cookie(cookieNames(app).session)!).get('/settings/two-factor', html).assertServerRendered();
     expect(formTags(enabled.body).some((tag) => tag.includes('method="post"') && tag.includes('action="/settings/two-factor/disable"'))).toBe(true);
   });
 });

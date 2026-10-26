@@ -29,14 +29,16 @@ export interface AccessToken {
 }
 // AccessTokenId
 export type AccessTokenId = number | string;
+// AccessTokenOptions
+export interface AccessTokenOptions {
+    readonly abilities: readonly string[];
+    readonly expiresIn: Duration | null;
+}
 // AccessTokenStore
 export declare abstract class AccessTokenStore {
     #private;
     constructor();
-    abstract create(userId: AuthUserId, name: string, options?: {
-        abilities?: readonly string[];
-        expiresIn?: Duration;
-    }): Promise<{
+    abstract create(userId: AuthUserId, name: string, options: AccessTokenOptions): Promise<{
         plainText: string;
         token: AccessToken;
     }>;
@@ -250,10 +252,7 @@ export interface Credentials<U = AuthUser> {
 export declare class DatabaseAccessTokens extends AccessTokenStore {
     #private;
     constructor(connections: Connections, config: AuthConfig, clock: Clock);
-    create(userId: AuthUserId, name: string, { abilities, expiresIn }?: {
-        abilities?: readonly string[];
-        expiresIn?: Duration;
-    }): Promise<{
+    create(userId: AuthUserId, name: string, options: AccessTokenOptions): Promise<{
         plainText: string;
         token: AccessToken;
     }>;
@@ -1437,14 +1436,16 @@ export interface AccessToken {
 }
 // AccessTokenId
 export type AccessTokenId = number | string;
+// AccessTokenOptions
+export interface AccessTokenOptions {
+    readonly abilities: readonly string[];
+    readonly expiresIn: Duration | null;
+}
 // AccessTokenStore
 export declare abstract class AccessTokenStore {
     #private;
     constructor();
-    abstract create(userId: AuthUserId, name: string, options?: {
-        abilities?: readonly string[];
-        expiresIn?: Duration;
-    }): Promise<{
+    abstract create(userId: AuthUserId, name: string, options: AccessTokenOptions): Promise<{
         plainText: string;
         token: AccessToken;
     }>;
@@ -2225,14 +2226,16 @@ export interface AccessToken {
 }
 // AccessTokenId
 export type AccessTokenId = number | string;
+// AccessTokenOptions
+export interface AccessTokenOptions {
+    readonly abilities: readonly string[];
+    readonly expiresIn: Duration | null;
+}
 // AccessTokenStore
 export declare abstract class AccessTokenStore {
     #private;
     constructor();
-    abstract create(userId: AuthUserId, name: string, options?: {
-        abilities?: readonly string[];
-        expiresIn?: Duration;
-    }): Promise<{
+    abstract create(userId: AuthUserId, name: string, options: AccessTokenOptions): Promise<{
         plainText: string;
         token: AccessToken;
     }>;

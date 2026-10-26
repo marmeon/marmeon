@@ -34,7 +34,7 @@ async function enable(user: User) {
   const page = await app.withCookie(SESSION, cookie).navigating().get('/settings/two-factor').assertPage('auth/TwoFactor');
   const setup = page.page()!.props.setup as { secret: string; qr: { size: number; path: string } };
   const confirmed = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } }).assertLayer('auth/RecoveryCodes');
-  return { cookie, secret: setup.secret, recoveryCodes: confirmed.page()!.props.codes as string[], qr: setup.qr };
+  return { cookie: confirmed.cookie(SESSION) ?? cookie, secret: setup.secret, recoveryCodes: confirmed.page()!.props.codes as string[], qr: setup.qr };
 }
 
 /** The cookie of a session that typed the password and now waits for the code. */
@@ -63,8 +63,9 @@ describe('two-factor authentication', () => {
     const ada = await app.factory(UserFactory).create();
     const other = (await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me')).cookie(SESSION)!;
     await app.withCookie(SESSION, other).get('/users/me').assertAuthenticated(ada);
-    const cookie = (await app.post('/login', credentialsOf(ada))).cookie(SESSION)!;
-    await app.withCookie(SESSION, cookie).post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } });
+    const login = (await app.post('/login', credentialsOf(ada))).cookie(SESSION)!;
+    const minted = await app.withCookie(SESSION, login).post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } });
+    const cookie = minted.cookie(SESSION) ?? login; // typing the password gives the session a new id
     await app.withCookie(SESSION, cookie).post('/settings/two-factor/setup');
     const setup = (await app.withCookie(SESSION, cookie).navigating().get('/settings/two-factor')).page()!.props.setup as { secret: string };
     const done = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } }).assertLayer('auth/RecoveryCodes');
@@ -207,12 +208,13 @@ describe('two-factor authentication', () => {
     /** A session that signed in before the account had a factor, and typed the password just now: all that a stolen session plus a phished password has. */
     async function passwordOnly() {
       const ada = await app.factory(UserFactory).create();
-      const cookie = (await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me')).cookie(SESSION)!;
+      const login = (await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me')).cookie(SESSION)!;
       const encrypted = await app.make(Encrypter).encrypt(KEY, `marmeon-auth:two-factor:${ada.id}`);
       const store = app.make(TwoFactorStore);
       await store.startSetup(ada.id, encrypted);
       expect(await store.confirm(ada.id, 0, encrypted, null)).toBe(true);
-      await app.withCookie(SESSION, cookie).post('/confirm-password', { form: { password: 'password' } });
+      const confirmed = await app.withCookie(SESSION, login).post('/confirm-password', { form: { password: 'password' } });
+      const cookie = confirmed.cookie(SESSION) ?? login; // typing the password gives the session a new id
       return { ada, as: () => app.withCookie(SESSION, cookie), cookie };
     }
 
@@ -293,8 +295,8 @@ describe('two-factor authentication', () => {
       const ada = await app.factory(UserFactory).create();
       const cookie = (await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me')).cookie(SESSION)!;
       await addFactorQuietly(ada);
-      await app.withCookie(SESSION, cookie).post('/confirm-password', { form: { password: 'password' } });
-      await app.withCookie(SESSION, cookie).get('/settings/sensitive').assertRedirect('/settings/two-factor/verify');
+      const confirmed = await app.withCookie(SESSION, cookie).post('/confirm-password', { form: { password: 'password' } });
+      await app.withCookie(SESSION, confirmed.cookie(SESSION)!).get('/settings/sensitive').assertRedirect('/settings/two-factor/verify');
       await app.withCookie(SESSION, await waiting(ada)).get('/settings/sensitive').assertRedirect('/login');
     });
 

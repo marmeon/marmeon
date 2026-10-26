@@ -23,9 +23,16 @@ afterEach(() => vi.useRealTimers());
 /** Signs `user` in from a browser with this user agent; the returned client keeps that session. */
 async function browser(user: User, userAgent: string, extra: Record<string, string> = {}) {
   const login = await app.withHeaders({ 'user-agent': userAgent }).post('/login', { form: { email: user.email, password: 'password', ...extra } }).assertRedirect('/dashboard');
+  let cookie = login.cookie(SESSION)!;
   return {
-    cookie: login.cookie(SESSION)!,
-    as: () => app.withCookie(SESSION, login.cookie(SESSION)!).withHeaders({ 'user-agent': userAgent }),
+    get cookie() {
+      return cookie;
+    },
+    as: () => app.withCookie(SESSION, cookie).withHeaders({ 'user-agent': userAgent }),
+    /** Typing the password gives the session a new id: the browser sends that one from now on. */
+    follow: (response: { cookie(name: string): string | undefined }) => {
+      cookie = response.cookie(SESSION) ?? cookie;
+    },
   };
 }
 
@@ -109,7 +116,7 @@ describe('the sign-ins on the security page', { timeout: 30_000 }, () => {
     await phone.as().get('/dashboard').assertAuthenticated(ada);
 
     // After typing it again the same request works.
-    await laptop.as().post('/confirm-password', { form: { password: 'password' } });
+    laptop.follow(await laptop.as().post('/confirm-password', { form: { password: 'password' } }));
     await laptop.as().post(`/settings/sign-ins/${other.id}/end`).assertRedirect('/settings/security');
     await phone.as().expectingJson().get('/dashboard').assertUnauthorized();
   });

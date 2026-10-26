@@ -28,12 +28,12 @@ describe('the schedule', () => {
     // Yesterday: tokens that expire long before tonight.
     await app.make(PasswordResetTokenStore).create(ada!.email, 0);
     await rememberedSignIn(app, ada!.id, new Date(app.clock.now() + 3_600_000));
-    const expired = await app.make(AccessTokenStore).create(ada!.id, 'one hour', { expiresIn: { hours: 1 } });
+    const expired = await app.make(AccessTokenStore).create(ada!.id, 'one hour', { abilities: ['*'], expiresIn: { hours: 1 } });
     // Tonight, shortly before the prune: valid ones.
     app.travelTo(Date.parse('2026-10-05T00:50:00Z'));
     await app.make(PasswordResetTokenStore).create(alan!.email, 0);
     await rememberedSignIn(app, alan!.id, new Date(app.clock.now() + 30 * 86_400_000));
-    const valid = await app.make(AccessTokenStore).create(alan!.id, 'a year', { expiresIn: { days: 365 } });
+    const valid = await app.make(AccessTokenStore).create(alan!.id, 'a year', { abilities: ['*'], expiresIn: { days: 365 } });
 
     // (The data exports are cleared every ten minutes.)
     // (`auth:prune-tokens` also clears the changes of address nobody confirmed — email-change.test.ts.)

@@ -57,7 +57,7 @@ describe('pruning accounts whose address was never confirmed', () => {
     for (const user of [old, kept]) {
       // Signed in (a row in sessions with its user_id), "remember me", an API token, an avatar, a link, a notification.
       await app.post('/login', { form: { email: user.email, password: 'password', remember: 'on' } }).assertRedirect();
-      await app.make(AccessTokenStore).create(user.id, 'cli', { expiresIn: { days: 365 } });
+      await app.make(AccessTokenStore).create(user.id, 'cli', { abilities: ['*'], expiresIn: { days: 365 } });
       await app.make(PasswordResetTokenStore).create(user.email, 0);
       await disk.put(user.avatar_path!, new Uint8Array([137, 80, 78, 71]));
       await app.factory(ProfileLinkFactory).create({ user_id: user.id });

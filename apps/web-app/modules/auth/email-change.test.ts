@@ -5,7 +5,7 @@ import { UrlSigner } from '@marmeon/http';
 import type { Mailable } from '@marmeon/mail';
 import { Session as SessionService } from '@marmeon/session';
 import { cookieNames } from '@marmeon/auth/testing';
-import { createTestApp, type TestApp } from '@marmeon/testing';
+import { createTestApp, type PendingTestResponse, type RequestOptions, type TestApp } from '@marmeon/testing';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
 import { UserFactory } from './factories/UserFactory.ts';
@@ -36,11 +36,34 @@ beforeEach(async () => {
 // AUTH_PRIVATE_REGISTRATION=false it changes at once and says "taken". The security decisions (the factor, the password's throttle, the single
 // use of the link) are @marmeon/auth's `EmailChange`, tested there; these tests show that this module is wired to it.
 
-type Session = ReturnType<TestApp['withCookie']>;
+/** A browser: it sends the session cookie the server set last — `checkPassword()` hands out a new session id — as a real one does. */
+class Session {
+  readonly #box: { cookie: string };
+  readonly #view: (app: TestApp) => TestApp;
+  constructor(cookie: string, box: { cookie: string } = { cookie }, view: (app: TestApp) => TestApp = (view) => view) {
+    this.#box = box;
+    this.#view = view;
+  }
+  navigating = () => new Session(this.#box.cookie, this.#box, (app) => this.#view(app).navigating());
+  expectingJson = () => new Session(this.#box.cookie, this.#box, (app) => this.#view(app).expectingJson());
+  get = (path: string, options?: RequestOptions) => this.#send('get', path, options);
+  post = (path: string, options?: RequestOptions) => this.#send('post', path, options);
+  put = (path: string, options?: RequestOptions) => this.#send('put', path, options);
+  #send(verb: 'get' | 'post' | 'put', path: string, options?: RequestOptions): PendingTestResponse {
+    const pending = this.#view(app.withCookie(SESSION, this.#box.cookie))[verb](path, options);
+    pending.then(
+      (response) => {
+        this.#box.cookie = response.cookie(SESSION) ?? this.#box.cookie;
+      },
+      () => {},
+    );
+    return pending;
+  }
+}
 /** Signed in with the password — which also confirms it: the security settings' sudo mode. */
 const signIn = async (user: User): Promise<Session> => {
   const login = await app.post('/login', { form: { email: user.email, password: 'password' } }).assertRedirect('/users/me');
-  return app.withCookie(SESSION, login.cookie(SESSION)!);
+  return new Session(login.cookie(SESSION)!);
 };
 const change = (session: Session, email: string) => session.put('/settings/email', { form: { current_password: 'password', email }, headers: { referer: 'http://localhost/settings/security' } });
 const reload = (user: User) => app.make(UserRepository).find(user.id) as Promise<User>;
@@ -96,12 +119,12 @@ describe('changing the address (private registration)', () => {
     const session = await signIn(await app.factory(UserFactory).create({ email: 'kj@example.com' }));
     /**
      * The answer to a change, and the security page after it (its toast, its errors) — with the typed address (shown as pending) and
-     * the flash message's id (random for every message) put aside.
+     * the flash message's id (random for every message) and what belongs to the session (every change gives it a new id) put aside.
      */
     const outcome = async (client: Session, email: string) => {
       const response = answer(await client.put('/settings/email', { form: { current_password: 'password', email }, headers: { referer: 'http://localhost/settings/security' } }));
       const page = answer(await session.navigating().get('/settings/security'));
-      return { response, page: { ...page, body: page.body.replaceAll(email, '<typed>').replace(/"id":"[0-9a-f-]{36}","key"/g, '"id":"…","key"') } };
+      return { response, page: { ...page, body: page.body.replaceAll(email, '<typed>').replace(/"id":"[0-9a-f-]{36}","key"/g, '"id":"…","key"').replace(/"(onceScope|csrf|epoch|token)":"[^"]*"/g, '"$1":"…"') } };
     };
     // Free addresses as long as the taken one: a page that shows what was typed is then as long for both.
     for (const [client, free] of [[session, 'bob@example.com'], [session.navigating(), 'eve@example.com'], [session.expectingJson(), 'joe@example.com']] as const) {

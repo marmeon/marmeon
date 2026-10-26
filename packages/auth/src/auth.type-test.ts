@@ -395,6 +395,18 @@ export async function userIdIsTheApps() {
   await tokens.revokeAll('1');
 }
 
+// A token names its abilities and its expiry; `expiresIn: null` is the explicit "never".
+export async function tokensNameAbilitiesAndExpiry() {
+  await tokens.create(1, 'CLI', { abilities: ['users:read'], expiresIn: { days: 90 } });
+  await tokens.create(1, 'CLI', { abilities: ['*'], expiresIn: null });
+  // @ts-expect-error a token without options has no abilities and no expiry
+  await tokens.create(1, 'CLI');
+  // @ts-expect-error a token without an expiry would live forever by accident
+  await tokens.create(1, 'CLI', { abilities: ['*'] });
+  // @ts-expect-error a token without abilities would be allowed to do anything by accident
+  await tokens.create(1, 'CLI', { expiresIn: { days: 90 } });
+}
+
 // A hasher states how long a failed sign-in is padded to.
 declare const hasherParts: Omit<Hasher, 'failureFloorMs'>;
 export const fullHasher: Hasher = { ...hasherParts, failureFloorMs: () => 0 };

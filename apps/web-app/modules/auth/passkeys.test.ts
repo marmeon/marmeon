@@ -34,7 +34,7 @@ async function enrol(user: User, authenticator = device()) {
     .withCookie(SESSION, cookie)
     .post('/settings/passkeys', { json: { response: authenticator.register(options.json() as never), name: 'Laptop', password: 'password' } })
     .assertOk();
-  return { cookie, authenticator, recoveryCodes: (registered.json() as { recoveryCodes: string[] }).recoveryCodes };
+  return { cookie: registered.cookie(SESSION) ?? cookie, authenticator, recoveryCodes: (registered.json() as { recoveryCodes: string[] }).recoveryCodes };
 }
 
 describe('passkeys', () => {
@@ -60,7 +60,8 @@ describe('passkeys', () => {
     const options = await app.post('/passkeys/sign-in/options', { json: {} }).assertOk();
     const guest = options.cookie(SESSION)!;
     const signedIn = await app.withCookie(SESSION, guest).post('/passkeys/sign-in', { json: { response: authenticator.authenticate(options.json() as never) } }).assertRedirect('/users/me');
-    const as = () => app.withCookie(SESSION, signedIn.cookie(SESSION) ?? guest).expectingJson();
+    let cookie = signedIn.cookie(SESSION) ?? guest;
+    const as = () => app.withCookie(SESSION, cookie).expectingJson();
     const token = { name: 'CI', abilities: ['users:read'] };
 
     // Sudo mode is open (the passkey confirmed it), and the form still asks for the password.
@@ -72,8 +73,9 @@ describe('passkeys', () => {
     await app.assertDatabaseCount('passkeys', 1);
     await app.assertDatabaseCount('personal_access_tokens', 0);
 
-    await as().put('/settings/email', { json: { email: 'new@example.com', current_password: 'password' } }).assertStatus(303);
-    await as().post('/settings/tokens', { json: { ...token, current_password: 'password' } }).assertOk();
+    // Each right password gives the session a new id.
+    cookie = (await as().put('/settings/email', { json: { email: 'new@example.com', current_password: 'password' } }).assertStatus(303)).cookie(SESSION) ?? cookie;
+    cookie = (await as().post('/settings/tokens', { json: { ...token, current_password: 'password' } }).assertOk()).cookie(SESSION) ?? cookie;
     // Another device that signed in with the same passkey: removing the passkey signs it out (a thief with a clone would keep it otherwise).
     const secondOptions = await app.post('/passkeys/sign-in/options', { json: {} }).assertOk();
     const secondGuest = secondOptions.cookie(SESSION)!;
@@ -205,8 +207,8 @@ describe('passkeys', () => {
     const { cookie } = await enrol(ada);
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 1800_000 });
     try {
-      const as = () => app.withCookie(SESSION, cookie);
-      await as().post('/confirm-password', { form: { password: 'password' } });
+      const confirmed = await app.withCookie(SESSION, cookie).post('/confirm-password', { form: { password: 'password' } });
+      const as = () => app.withCookie(SESSION, confirmed.cookie(SESSION) ?? cookie);
       const json = { accept: 'application/json' };
       await as().get('/settings/passkeys').assertRedirect('/settings/two-factor/verify');
       await as().post('/settings/passkeys/options', { json: {}, headers: json }).assertForbidden().assertJson({ error: 'two_factor_unverified' });
@@ -370,13 +372,15 @@ describe('passkeys', () => {
 
   it('removing the authenticator app of an account with a passkey leaves the passkeys, and the page says so', async () => {
     const ada = await app.factory(UserFactory).create();
-    const { cookie } = await enrol(ada);
+    let { cookie } = await enrol(ada);
     const as = () => app.withCookie(SESSION, cookie);
     await as().post('/settings/two-factor/setup');
     const setup = (await as().navigating().get('/settings/two-factor')).page()!.props.setup as { secret: string };
-    await as().layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } });
+    const confirmed = await as().layering().post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } });
+    cookie = confirmed.cookie(SESSION) ?? cookie; // typing the password gives the session a new id
     await as().navigating().get('/settings/two-factor').assertPage('auth/TwoFactor', { enabled: true, passkey: true });
     const done = await as().post('/settings/two-factor/disable', { form: { password: 'password' } }).assertRedirect('/settings/two-factor');
+    cookie = done.cookie(SESSION) ?? cookie;
     expect(done.flashed().map((message) => JSON.stringify(message.data))).toEqual([expect.stringContaining('Your passkeys still protect the account')]);
     await as().navigating().get('/settings/two-factor').assertPage('auth/TwoFactor', { enabled: false, secured: true, passkey: true });
   });
@@ -391,7 +395,7 @@ describe('passkeys', () => {
     await app.withCookie(SESSION, second.cookie(SESSION)!).post('/passkeys/sign-in', { json: { response: authenticator.authenticate(second.json() as never, { signCount: 1 }) } }).assertStatus(422);
     await app.withCookie(SESSION, ownerCookie).get('/users/me').assertGuest();
     const waiting = (await app.post('/login', credentialsOf(ada)).assertRedirect('/two-factor-challenge')).cookie(SESSION)!;
-    const cookie = (await app.withCookie(SESSION, waiting).post('/two-factor-challenge', { form: { recovery_code: recoveryCodes[0]! } }).assertRedirect('/users/me')).cookie(SESSION) ?? waiting;
+    let cookie = (await app.withCookie(SESSION, waiting).post('/two-factor-challenge', { form: { recovery_code: recoveryCodes[0]! } }).assertRedirect('/users/me')).cookie(SESSION) ?? waiting;
     const [{ id }] = (await app.make(Connections).get<any>().selectFrom('passkeys').select('id').execute()) as [{ id: number }];
     const page = () => app.withCookie(SESSION, cookie).navigating().get('/settings/passkeys');
     await page().assertPage('auth/Passkeys', { passkeys: [{ suspended: true }] });
@@ -399,7 +403,7 @@ describe('passkeys', () => {
     const release = (json: Record<string, unknown>) => app.withCookie(SESSION, cookie).post(`/settings/passkeys/${id}/release`, { json, headers: { accept: 'application/json' } });
     await release({}).assertStatus(422);
     expect((await release({ password: 'wrong' }).assertStatus(422)).json()).toMatchObject({ field: 'password' });
-    await release({ password: 'password' }).assertOk();
+    cookie = (await release({ password: 'password' }).assertOk()).cookie(SESSION) ?? cookie; // the right password gives the session a new id
     await page().assertPage('auth/Passkeys', { passkeys: [{ suspended: false }] });
   });
 

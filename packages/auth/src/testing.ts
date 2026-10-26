@@ -40,7 +40,7 @@ export function cookieNames(app: { container: Container }): { session: string; r
 
 /** A real API token for `user` with `abilities` — what `actingAs(user, { guard: 'api' })` sends as `Authorization: Bearer …`. */
 export async function authenticatedToken(container: Container, user: AuthUser, abilities: readonly string[] = ['*']): Promise<string> {
-  const { plainText } = await container.createScope().make(AccessTokenStore).create(idOf(user), 'test', { abilities });
+  const { plainText } = await container.createScope().make(AccessTokenStore).create(idOf(user), 'test', { abilities, expiresIn: null });
   return plainText;
 }
 
