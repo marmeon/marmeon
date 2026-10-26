@@ -212,6 +212,8 @@ export class LineBinding implements RouteBinder<DocsLine> {
 
 /** `/docs/:line/:page` → the line's page, or a 404: asked within the line the route bound before (`scopedBy`). */
 export class LinePageBinding implements RouteBinder<DocPage> {
+  static readonly routeBindingScoped = true;
+
   resolveRouteBinding(value: string, binding: RouteBindingContext): DocPage | undefined {
     return (binding.scope?.parent as DocsLine | undefined)?.repository.doc(value);
   }
@@ -219,6 +221,8 @@ export class LinePageBinding implements RouteBinder<DocPage> {
 
 /** `/docs/:line/:file` (`routing.md`) → the line's page, or a 404. */
 export class LineSourceBinding implements RouteBinder<DocPage> {
+  static readonly routeBindingScoped = true;
+
   resolveRouteBinding(value: string, binding: RouteBindingContext): DocPage | undefined {
     return value.endsWith('.md') ? (binding.scope?.parent as DocsLine | undefined)?.repository.doc(value.slice(0, -3)) : undefined;
   }

@@ -171,7 +171,13 @@ export interface RouteBindingContext {
 }
 
 /** A class that binds route parameters — built per request from the container. */
-export type RouteBinderClass<T = unknown> = new (...args: any[]) => RouteBinder<T>;
+export type RouteBinderClass<T = unknown> = (new (...args: any[]) => RouteBinder<T>) & {
+  /**
+   * `true` on a binder that reads `binding.scope` and finds the record only within its parent (a repository does). Only such a binder
+   * takes `scopedBy`; see docs/routing.md#your-own-binder.
+   */
+  readonly routeBindingScoped?: true;
+};
 
 /** The binder's {@link RouteBindingWith} — never for one that declares none. */
 type WithOf<B> = B extends new (...args: any[]) => infer I

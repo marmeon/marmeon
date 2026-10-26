@@ -267,6 +267,11 @@ export class Router {
         }
       }
     }
+    // A binder that ignores `binding.scope` would find a record of another parent; untyped code gets past the type that refuses it.
+    for (const route of this.#routes.slice(before)) {
+      const unscoped = unscopedBinder(route);
+      if (unscoped) throw unscoped;
+    }
     // Nothing a request does (`ctx.route`) may change a route for the requests after it.
     for (const route of this.#routes.slice(before)) route.seal();
     for (const route of this.#routes.slice(before)) {
@@ -365,7 +370,9 @@ export class Router {
    */
   dispatch(route: RouteDefinition, input: DispatchInput, options: DispatchOptions = {}): Promise<Response> {
     const state = options.state ?? createRequestState(input.request);
-    // Whoever calls dispatch directly (a custom server) gets no way around the rule the kernel enforces at start.
+    // Whoever calls dispatch directly (a custom server) gets no way around the rules the kernel enforces at start.
+    const unscoped = unscopedBinder(route);
+    if (unscoped) return Promise.reject(unscoped);
     // Judged once per route: a route's checks and bindings are frozen when it is registered.
     let problems = this.#judged.get(route);
     if (problems === undefined) this.#judged.set(route, (problems = this.#problemsOf(route)));
@@ -538,12 +545,29 @@ function canonicalRedirect(request: Request, canonical: Readonly<Record<string, 
   return new Response(null, { status: 302, headers: { location: localLocation(pathname, search ? `?${search}` : '') } });
 }
 
+/** H11 for the first scoped binding of `route` whose binder does not say it reads `binding.scope`; none when all do. */
+function unscopedBinder(route: RouteDefinition): Error | undefined {
+  for (const binding of route.bindings) {
+    if (isScoped(binding) && binding.binder.routeBindingScoped !== true) {
+      return new Error(
+        withCode(
+          'H11',
+          `${route.methods.join('|')} ${showPath(route)}: ${binding.binder.name || 'the binder'} of \`${binding.param}\` is scoped by \`${binding.scopedBy}\` but does not say it reads binding.scope — declare static readonly routeBindingScoped = true on it and look the record up within its parent. See docs/routing.md#your-own-binder.`,
+        ),
+      );
+    }
+  }
+  return undefined;
+}
+
 /** Resolves the route's bound parameters in order — a scoped one within its already resolved parent. */
 async function bindParams(route: RouteDefinition, ctx: HttpContext, resolve: ClassResolver): Promise<Record<string, unknown>> {
   const params: Record<string, unknown> = { ...(ctx.params as Record<string, string>) };
   for (const binding of route.bindings) {
     const value = params[binding.param];
     if (value === undefined) continue; // an optional parameter that is absent stays absent
+    // Without the parent there is nothing to look within: the binder is not asked.
+    if (isScoped(binding) && params[binding.scopedBy] === undefined) throw new HttpError(404);
     const scope = isScoped(binding)
       ? { param: binding.scopedBy, parent: params[binding.scopedBy], column: binding.column ?? `${binding.scopedBy}_id` }
       : undefined;

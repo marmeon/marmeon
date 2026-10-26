@@ -484,6 +484,7 @@ export interface Relations {
 // Repository
 export declare abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<RowOf<DB[T]>> {
     #private;
+    static readonly routeBindingScoped = true;
     readonly routeBindingWith?: RepositoryBindingWith<DB, T>;
     constructor(connections: Connections);
     get table(): T;

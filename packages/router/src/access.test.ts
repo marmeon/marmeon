@@ -23,6 +23,9 @@ interface Note {
 const notes = new Map<string, Note>([['1', { id: '1', ownerId: 'ada' }]]);
 
 class NoteBinder implements RouteBinder<Note> {
+  // Marked so the fixture may stand in a scoped binding: these tests judge access, not what the binder finds.
+  static readonly routeBindingScoped = true;
+
   resolveRouteBinding(value: string) {
     return notes.get(value);
   }
@@ -339,6 +342,7 @@ describe('Router.accessProblems()', () => {
 
   it('reports only the parent of a scoped binding', () => {
     class AttachmentBinder implements RouteBinder<Note> {
+      static readonly routeBindingScoped = true;
       resolveRouteBinding() {
         return undefined;
       }
@@ -386,6 +390,7 @@ describe('Router.accessProblems()', () => {
 
   it('reports a binding scoped by a public parent, until it is public itself', () => {
     class InvoiceBinder implements RouteBinder<Note> {
+      static readonly routeBindingScoped = true;
       resolveRouteBinding() {
         return undefined;
       }
@@ -448,6 +453,25 @@ describe('Router.accessProblems()', () => {
       checks: [everyone],
     });
     expect(openBindings(route).map((binding) => binding.param)).toEqual(['child']);
+  });
+
+  it('refuses to dispatch a hand-built route whose scoped binder does not say it scopes', async () => {
+    class Unmarked implements RouteBinder<Note> {
+      resolveRouteBinding(value: string) {
+        return notes.get(value);
+      }
+    }
+    const route = new RouteDefinition({
+      methods: ['GET'],
+      path: '/x/:note/:child',
+      action: () => 'x',
+      middleware: [],
+      namePrefix: '',
+      bindings: [{ param: 'note', binder: NoteBinder }, { param: 'child', binder: Unmarked, scopedBy: 'note' }],
+      checks: [everyone],
+    });
+    const request = new Request('http://localhost/x/1/1');
+    await expect(new Router().dispatch(route, { request, params: { note: '1', child: '1' } })).rejects.toThrow(/\[marmeon:H11\]/);
   });
 
   it('refuses an async group callback right away', () => {

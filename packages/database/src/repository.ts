@@ -73,6 +73,8 @@ export type Exact<V, Shape> = V & { [K in Exclude<keyof V, keyof Shape>]: never 
  * `timestamps()`). See `docs/queries.md#repositories`.
  */
 export abstract class Repository<T extends keyof DB & string, DB = Tables> implements RouteBinder<RowOf<DB[T]>> {
+  /** Says a route binding scoped by a parent (`scopedBy`) is looked up within it: see `resolveRouteBinding`. */
+  static readonly routeBindingScoped = true;
   /** Types only: `Route.bind('post', PostRepository, { with: ['author'] })` takes the table's relations and types them on the row. */
   declare readonly routeBindingWith?: RepositoryBindingWith<DB, T>;
   readonly #db: Connection<DB>;
