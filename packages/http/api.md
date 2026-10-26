@@ -34,26 +34,6 @@ export declare class AfterResponse {
 export interface AlwaysProp<T> extends PageProp<'always', T> {
     readonly value: unknown;
 }
-// AssetVersion
-export interface AssetVersion {
-    readonly value: string | null;
-}
-export declare const AssetVersion: import("@marmeon/core").Token<AssetVersion>;
-// BrowserRoute
-export interface BrowserRoute {
-    readonly method: string;
-    readonly path: string;
-    readonly view?: string;
-    readonly localized?: true;
-}
-// BrowserRoutes
-export interface BrowserRoutes {
-    readonly version: 1;
-    readonly routes: Readonly<Record<string, BrowserRoute>>;
-    readonly hidden: Readonly<Record<string, HiddenReason>>;
-}
-// CONNECTION_HEADER
-export declare const CONNECTION_HEADER = "x-marmeon-connection";
 // CheckActionRouteName
 export type CheckActionRouteName<N extends string> = string extends N ? BrowserRouteName : Registered extends false ? N : CheckBrowserRouteName<N> extends N ? N extends IslandRouteName ? `'${N}' is an island — embed it with <Island route="${N}">; an action calls a route that answers this.json(…) or a redirect` : [ActionDataOf<N>] extends [never] ? ActionRedirects<N> extends true ? N : `'${N}' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…) or a redirect` : N : CheckBrowserRouteName<N>;
 // CheckAssetVersion
@@ -105,7 +85,6 @@ export interface CloseLayerOptions {
 export declare class CloseLayerResult extends RedirectResult {
     readonly close: LayerClose;
     constructor({ layers, reload }?: CloseLayerOptions);
-    toResponse(request: Request, routes: RouteLookup, flasher?: Flasher, locale?: string): Response;
 }
 // ContentSecurityPolicyOptions
 export interface ContentSecurityPolicyOptions extends CspDirectives {
@@ -167,8 +146,6 @@ export interface CspDirectives {
 export type CspSource = string | typeof NONCE;
 // DEFAULT_CSP
 export declare const DEFAULT_CSP: Readonly<CspDirectives>;
-// DOCUMENT_HEADER
-export declare const DOCUMENT_HEADER = "x-marmeon-document";
 // DefaultExceptionHandler
 export declare class DefaultExceptionHandler implements ExceptionHandler {
     render(error: unknown, request: Request, { debug, translator }: ExceptionRenderOptions): unknown;
@@ -182,8 +159,6 @@ export interface DeferredProp<T> extends PageProp<'defer', T> {
 }
 // DeferredResult
 export type DeferredResult = Pick<PageObject, 'props' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn'>;
-// ERRORS_KEY
-export declare const ERRORS_KEY = "errors";
 // EXPECTS_JSON_VARY
 export { EXPECTS_JSON_VARY } from '@marmeon/router';
 // EmptyObject
@@ -218,13 +193,6 @@ export interface ExceptionRenderOptions {
 // FlashData
 export interface FlashData {
 }
-// FlashEntry
-export interface FlashEntry {
-    readonly id: string;
-    readonly key: string;
-    readonly data: unknown;
-    readonly document?: string;
-}
 // FlashKey
 export type FlashKey = [keyof FlashData] extends [never] ? string : keyof FlashData & string;
 // FlashMessage
@@ -237,24 +205,12 @@ export type FlashMessage<K extends FlashKey = FlashKey> = K extends unknown ? {
 export type FlashMethod<R> = <const K extends string>(key: CheckFlashKey<K>, data: FlashValue<K>) => R;
 // FlashValue
 export type FlashValue<K extends string> = K extends keyof FlashData ? FlashData[K] : unknown;
-// Flasher
-export interface Flasher {
-    readonly started?: boolean;
-    flash(key: string, value: unknown): void;
-    pull(key: string): unknown;
-    queueFlash(message: FlashEntry): void;
-    takeFlash(document?: string): FlashEntry[];
-    hasFlash(document?: string): boolean;
-}
-export declare const Flasher: import("@marmeon/core").Token<Flasher>;
 // ForeverSignedRouteOptions
 export interface ForeverSignedRouteOptions {
     readonly base?: string;
 }
 // FormOf
 export type { FormOf } from '@marmeon/router';
-// HiddenReason
-export type HiddenReason = 'internal' | 'api' | 'except';
 // HstsOptions
 export interface HstsOptions {
     maxAge: Duration;
@@ -271,8 +227,6 @@ export declare class HttpServiceProvider implements ServiceProvider {
     register(container: Container): void;
     boot(app: Application): void;
 }
-// INTENDED_KEY
-export declare const INTENDED_KEY = "_intended_url";
 // Input
 export type { Input } from '@marmeon/router';
 // InstantProp
@@ -302,10 +256,6 @@ export interface JsonResult<T = unknown> {
     readonly headers?: Readonly<Record<string, string>>;
     readonly flash: FlashMethod<JsonResult<T>>;
 }
-// LIVE_CHANNEL
-export declare const LIVE_CHANNEL: RegExp;
-// LIVE_PATH
-export declare const LIVE_PATH = "/_marmeon/live";
 // LayerBaseRoute
 export interface LayerBaseRoute {
     readonly name: string;
@@ -354,11 +304,6 @@ export interface LiveAudience {
     }>;
 }
 export declare const LiveAudience: import("@marmeon/core").Token<LiveAudience>;
-// LiveDeclaration
-export interface LiveDeclaration {
-    readonly channel: string | (() => string | undefined | Promise<string | undefined>);
-    readonly only?: readonly string[] | undefined;
-}
 // LiveHint
 export interface LiveHint {
     readonly channel: string;
@@ -373,11 +318,6 @@ export type LiveMethod<R, Names extends string, What extends string = 'this page
 export type LiveOnly<O extends readonly string[], Names extends string, What extends string = 'this page'> = {
     readonly [I in keyof O]: O[I] extends Names ? O[I] : `'${O[I] & string}' is not a prop of ${What} — its props: ${JoinNames<Names>}`;
 };
-// LiveSigner
-export interface LiveSigner {
-    sign(channel: string): string | undefined;
-}
-export declare const LiveSigner: import("@marmeon/core").Token<LiveSigner>;
 // LiveSubscription
 export interface LiveSubscription {
     readonly channel: string;
@@ -410,18 +350,8 @@ export type { Middleware } from '@marmeon/router';
 export type { MiddlewareClass } from '@marmeon/router';
 // NONCE
 export declare const NONCE: unique symbol;
-// NO_CLIENT_INFO
-export declare const NO_CLIENT_INFO: ClientInfo;
 // Next
 export type { Next } from '@marmeon/router';
-// OLD_INPUT_KEY
-export declare const OLD_INPUT_KEY = "_old_input";
-// OnceContext
-export interface OnceContext {
-    readonly component: string;
-    readonly held: ReadonlySet<string>;
-    readonly now?: number;
-}
 // OnceInfo
 export interface OnceInfo {
     readonly key: string;
@@ -478,15 +408,6 @@ export interface PageResult<TProps extends ViewProps = ViewProps, TComponent ext
     readonly flash: FlashMethod<PageResult<TProps, TComponent>>;
     readonly live: LiveMethod<PageResult<TProps, TComponent>, PagePropNames<TProps>>;
 }
-// PageSession
-export interface PageSession {
-    csrfToken(): string | undefined;
-    scope(options?: {
-        readonly keep?: boolean;
-    }): string | undefined;
-    generation(): string | undefined;
-}
-export declare const PageSession: import("@marmeon/core").Token<PageSession>;
 // PaginationMeta
 export interface PaginationMeta {
     readonly page: number;
@@ -506,18 +427,8 @@ export declare class ParentRequest {
     get request(): Request | undefined;
     resolve<T>(token: Key<T>): T | undefined;
 }
-// PartialReload
-export interface PartialReload {
-    readonly only: readonly string[] | undefined;
-    readonly except: readonly string[];
-}
 // PropKind
 export type PropKind = 'optional' | 'defer' | 'always' | 'merge' | 'deepMerge' | 'once';
-// PropOrigins
-export interface PropOrigins {
-    readonly shared: readonly string[];
-    readonly optional: readonly string[];
-}
 // Query
 export type { Query } from '@marmeon/router';
 // QueryOf
@@ -530,15 +441,8 @@ export declare class ReadOnly {
     get active(): boolean;
     permit(what: string): boolean;
 }
-// ReadOnlyOptions
-export interface ReadOnlyOptions {
-    readonly reason: string;
-    readonly strict: boolean;
-    readonly report: (message: string) => void;
-    readonly rule?: string;
-}
-// ReadOnlyViolation
-export declare class ReadOnlyViolation extends Error {
+// ReadOnlyError
+export declare class ReadOnlyError extends Error {
     name: string;
 }
 // RedirectResult
@@ -556,7 +460,6 @@ export declare class RedirectResult {
     flash<const K extends string>(key: CheckFlashKey<K>, data: FlashValue<K>): this;
     withErrors(errors: Record<string, readonly string[]>): this;
     withInput(input: Record<string, unknown>): this;
-    toResponse(request: Request, routes: RouteLookup, flasher?: Flasher, locale?: string): Response;
 }
 // RedirectStatus
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
@@ -587,8 +490,6 @@ export type RegionResult = {
 export type { RequestDefinition } from '@marmeon/router';
 // RequestNonce
 export { RequestNonce } from '@marmeon/router';
-// ResolvedPage
-export type ResolvedPage = Pick<PageObject, 'props' | 'deferredProps' | 'mergeProps' | 'deepMergeProps' | 'matchPropsOn' | 'onceProps'>;
 // ResolvedProp
 export type ResolvedProp<V> = V extends PageProp<infer K, infer T> ? (K extends 'optional' | 'defer' ? T | undefined : T) : V extends () => infer R ? Awaited<R> : V;
 // ResolvedProps
@@ -619,8 +520,6 @@ export type { RouteName } from '@marmeon/router';
 export { Router } from '@marmeon/router';
 // Routes
 export type { Routes } from '@marmeon/router';
-// SESSION_PATH
-export declare const SESSION_PATH = "/_marmeon/session";
 // SecurityHeadersOptions
 export interface SecurityHeadersOptions {
     hsts?: false | HstsOptions;
@@ -635,22 +534,6 @@ export declare class ServerClosing {
     get signal(): AbortSignal;
     get draining(): AbortSignal;
 }
-// SessionEpoch
-export declare class SessionEpoch {
-    #private;
-    constructor(config: EncryptionConfig);
-    of(generation: string | undefined, locale: string | undefined): string;
-}
-// SessionEpochAnswer
-export interface SessionEpochAnswer {
-    readonly epoch: string;
-}
-// SessionEpochController
-export declare class SessionEpochController {
-    #private;
-    constructor(epoch: () => string | undefined);
-    handle(): Response;
-}
 // SharedData
 export declare class SharedData {
     #private;
@@ -658,10 +541,7 @@ export declare class SharedData {
     live<const O extends readonly string[] = readonly []>(channel: string | (() => string | undefined | Promise<string | undefined>), options?: {
         readonly only?: LiveOnly<O, keyof SharedProps & string, 'the shared props'>;
     }): this;
-    liveChannels(): readonly LiveDeclaration[];
     has(key: string): boolean;
-    entries(): IterableIterator<[string, unknown]>;
-    resolve(keys?: Iterable<string>): Promise<Record<string, unknown>>;
 }
 // SharedProps
 export interface SharedProps {
@@ -705,13 +585,6 @@ export interface SsrResult {
     html: string | ReadableStream<Uint8Array>;
     head?: string;
     streamedProps?: string[];
-}
-// TAB_SYNC_CHANNEL
-export declare const TAB_SYNC_CHANNEL = "marmeon";
-// TabSyncMessage
-export interface TabSyncMessage {
-    readonly v: 1;
-    readonly epoch: string;
 }
 // TextKey
 export type { TextKey } from '@marmeon/router';
@@ -799,31 +672,14 @@ export declare class Webhooks {
 }
 // WrappedProp
 export type WrappedProp<T = unknown> = OptionalProp<T> | DeferredProp<T> | MergingDeferredProp<T> | AlwaysProp<T> | MergeProp<T> | OnceProp<T>;
-// WritePermit
-export type WritePermit = (what: string) => boolean;
 // abort
 export { abort } from '@marmeon/router';
-// addFlash
-export declare function addFlash<R extends object>(result: R, key: string, data: unknown): R;
-// addLive
-export declare function addLive<R extends object>(result: R, channel: unknown, options?: {
-    only?: unknown;
-}): R;
 // addVary
 export { addVary } from '@marmeon/router';
 // always
 export declare function always<V>(value: V): AlwaysProp<Unlazy<V>>;
-// browserRoutes
-export declare function browserRoutes(routes: readonly RouteDefinition[], { include, except }?: ClientRoutesOptions): BrowserRoutes;
 // cacheControl
 export declare function cacheControl(value: string): MiddlewareClass<{}, {}>;
-// carryLive
-export declare function carryLive(from: object, to: object): void;
-// compilePolicy
-export declare function compilePolicy(directives: CspDirectives): {
-    pieces: readonly string[];
-    usesNonce: boolean;
-};
 // contentSecurityPolicy
 export declare function contentSecurityPolicy(options?: ContentSecurityPolicyOptions): MiddlewareClass<{}, {}>;
 // deepMerge
@@ -840,14 +696,8 @@ export { defineRoutes } from '@marmeon/router';
 export { describeAccess } from '@marmeon/router';
 // editableResponse
 export { editableResponse } from '@marmeon/router';
-// epochOfResolver
-export declare function epochOfResolver(resolver: Resolver): string | undefined;
 // everyone
 export { everyone } from '@marmeon/router';
-// flashableInput
-export declare function flashableInput(input: Record<string, unknown>): Record<string, unknown>;
-// httpSolutions
-export declare const httpSolutions: readonly import("@marmeon/core").SolutionDefinition<any>[];
 // isActionRequest
 export declare function isActionRequest(request: Request): boolean;
 // isLiveValidation
@@ -862,42 +712,22 @@ export declare function isPrefetch(request: Request): boolean;
 export declare function island<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps): IslandResult<TProps, V>;
 // json
 export declare function json<T>(data: T, options?: ResultOptions): JsonResult<T>;
-// jsonResponse
-export declare function jsonResponse(result: JsonResult): Response;
 // liveValidationFields
 export { liveValidationFields } from '@marmeon/router';
 // merge
 export declare function merge<V>(value: V): MergeProp<Unlazy<V>, 'merge'>;
-// mergeOf
-export declare function mergeOf(value: unknown): {
-    strategy: MergeStrategy;
-    match: readonly string[];
-} | undefined;
 // once
 export declare function once<R>(resolve: () => R & CheckOnceValue<Awaited<R>>, options?: OnceOptions): OnceProp<Awaited<R>>;
 // optional
 export declare function optional<R>(resolve: () => R): OptionalProp<Awaited<R>>;
 // ownResponse
 export { ownResponse } from '@marmeon/router';
-// propKind
-export declare function propKind(value: unknown): PropKind | undefined;
 // regionOf
 export declare function regionOf(request: Request): RegionKind | undefined;
-// resolveProp
-export declare function resolveProp(value: unknown): Promise<unknown>;
 // securityHeaders
 export declare function securityHeaders(options?: SecurityHeadersOptions): MiddlewareClass<{}, {}>;
 // signed
 export declare function signed(options?: SignatureCheckOptions): typeof ValidateSignature;
-// staticView
-export declare function staticView(action: unknown): string | undefined;
-// toLayer
-export declare function toLayer<TProps extends ViewProps, V extends string>(view: ViewResult<TProps, V>, { base, params, query, key }: {
-    base: string;
-    params?: Readonly<Record<string, Param>> | undefined;
-    query?: unknown;
-    key?: string | undefined;
-}): LayerResult<TProps, V>;
 // translatable
 export { translatable } from '@marmeon/router';
 // verifyWebhook
@@ -906,8 +736,6 @@ export declare function verifyWebhook(name: string): MiddlewareClass<{}, {
 }>;
 // view
 export declare function view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps, options?: ResultOptions): PageResult<TProps, V>;
-// withLiveMethod
-export declare function withLiveMethod<R extends object>(result: R): R;
 ```
 
 ### Referenced, not exported
@@ -917,6 +745,11 @@ export declare function withLiveMethod<R extends object>(result: R): R;
 type ActionResult<TAction extends PageAction> = TAction extends {
     handle: (...args: never[]) => infer R;
 } ? R : TAction extends (...args: never[]) => infer R ? R : never;
+// AssetVersion
+export interface AssetVersion {
+    readonly value: string | null;
+}
+export declare const AssetVersion: import("@marmeon/core").Token<AssetVersion>;
 // BaseParams
 type BaseParams<N extends string> = {} extends ParamsOf<N> ? {
     params?: ParamsOf<N>;
@@ -2007,10 +1840,8 @@ export type PrefetchTrigger = 'hover' | 'mount' | 'viewport';
 // type-only
 export declare class Prefetches {
     #private;
-    get size(): number;
     prefetch(url: string, options?: PrefetchOptions): Promise<void>;
     observe(element: Element, url: string | undefined, options?: PrefetchOptions, preload?: () => Promise<unknown>): () => void;
-    landed(): void;
     ready(url: string, layer: boolean): boolean;
     take(url: string, layer: boolean): Promise<PageObject | undefined> | undefined;
     flush(): void;
@@ -2969,25 +2800,8 @@ type DataOf<R> = R extends JsonResult<infer T> ? Serialize<T> : R extends Redire
 type DeepItemKey<T, Depth extends unknown[]> = Depth['length'] extends 4 ? never : T extends readonly unknown[] ? ItemKey<T> : T extends Date | ((...args: never) => unknown) ? never : T extends object ? {
     [K in keyof T & string]: `${K}.${DeepItemKey<T[K], [...Depth, unknown]>}`;
 }[keyof T & string] : never;
-// FlashEntry
-export interface FlashEntry {
-    readonly id: string;
-    readonly key: string;
-    readonly data: unknown;
-    readonly document?: string;
-}
 // FlashMethod
 export type FlashMethod<R> = <const K extends string>(key: CheckFlashKey<K>, data: FlashValue<K>) => R;
-// Flasher
-export interface Flasher {
-    readonly started?: boolean;
-    flash(key: string, value: unknown): void;
-    pull(key: string): unknown;
-    queueFlash(message: FlashEntry): void;
-    takeFlash(document?: string): FlashEntry[];
-    hasFlash(document?: string): boolean;
-}
-export declare const Flasher: import("@marmeon/core").Token<Flasher>;
 // ISLAND_RESULT
 declare const ISLAND_RESULT: unique symbol;
 // Instance
@@ -3104,7 +2918,6 @@ export declare class RedirectResult {
     flash<const K extends string>(key: CheckFlashKey<K>, data: FlashValue<K>): this;
     withErrors(errors: Record<string, readonly string[]>): this;
     withInput(input: Record<string, unknown>): this;
-    toResponse(request: Request, routes: RouteLookup, flasher?: Flasher, locale?: string): Response;
 }
 // RedirectStatus
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;

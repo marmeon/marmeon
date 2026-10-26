@@ -2,25 +2,17 @@ import { ConsoleLogger, currentRequest, ErrorSolutions, Redactor, Translator, ty
 import { channels, type SsrRenderMessage } from '@marmeon/core/diagnostics';
 import { messageBase, trace } from '@marmeon/core/internal';
 import {
-  Flasher,
   HttpError,
   isActionRequest,
   isPrefetch,
-  jsonResponse,
-  DOCUMENT_HEADER,
-  LiveSigner,
-  PageSession,
   ReadOnly,
   regionOf,
   SharedData,
-  type LiveDeclaration,
-  type FlashEntry,
   type FlashMessage,
   type DeferredResult,
   type IslandResult,
   type LayerResult,
   type PageObject,
-  type PropOrigins,
   type RegionObject,
   type RegionOutcomeStatus,
   type RegionResult,
@@ -62,6 +54,14 @@ import {
   serializedFlash,
   signedLive,
   isVisit,
+  Flasher,
+  jsonResponse,
+  DOCUMENT_HEADER,
+  LiveSigner,
+  PageSession,
+  type LiveDeclaration,
+  type FlashEntry,
+  type PropOrigins,
 } from '@marmeon/http/internal';
 import { UPLOAD_HEADER } from '@marmeon/http/protocol';
 import { ownResponse, RequestNonce, urlFor, type ResponseContext, type RouteLookup } from '@marmeon/router';
@@ -490,7 +490,7 @@ export function createResponseFactory(
     if (isRedirectResult(result)) {
       const flasher = scope?.has(Flasher) ? scope.make(Flasher) : undefined;
       const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
-      const response = result.toResponse(ctx.request, routes ?? noRouter, flasher, translator?.locale);
+      const response = result.toResponse(ctx.request, { routes: routes ?? noRouter, flasher, locale: translator?.locale });
       // An action's redirect is not followed: its answer is what the user is shown, so it takes the flash messages.
       return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope)) : response;
     }

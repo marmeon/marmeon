@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
-import { flashableInput, OLD_INPUT_KEY, type FlashEntry, type ValidationErrors } from '@marmeon/http';
+import type { ValidationErrors } from '@marmeon/http';
+import { flashableInput, OLD_INPUT_KEY, type FlashEntry } from '@marmeon/http/internal';
 import { SessionCodec } from './codec.ts';
 import { SessionConfig } from './config.ts';
 import { EMPTY_PAYLOAD, openPayload, sealPayload } from './format.ts';
@@ -235,6 +236,7 @@ export class Session {
   /**
    * Keeps a flash message (`redirect().flash()`) until a response the user is shown takes it — not aged by the
    * requests in between (a prefetch, an island, an API call).
+   * @internal
    */
   queueFlash(message: FlashEntry): void {
     const data = this.#ensureStarted();
@@ -253,6 +255,7 @@ export class Session {
   /**
    * `document`: the document the request names — a message bound to another one (another tab's request flashed it) stays;
    * without one (a full page load), every message is taken.
+   * @internal
    */
   takeFlash(document?: string): FlashEntry[] {
     if (!this.#started || this.#permit) return [];

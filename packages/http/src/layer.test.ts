@@ -16,21 +16,21 @@ function request(headers: Record<string, string> = {}): Request {
 
 describe('CloseLayerResult', () => {
   it('redirects to a localized route in the request’s locale when no layer asks for the close', () => {
-    const response = new CloseLayerResult().route('about' as never, {} as never).toResponse(request(), router, undefined, 'de');
+    const response = new CloseLayerResult().route('about' as never, {} as never).toResponse(request(), { routes: router, locale: 'de' });
     expect(response.status).toBe(303);
     expect(response.headers.get('location')).toBe('/de/about');
   });
 
   it('answers a layer’s request with the close, also when its fallback target is localized', async () => {
     const layer = request({ [PAGE_HEADER]: PROTOCOL_VERSION, [REGION_HEADER]: 'layer' });
-    const response = new CloseLayerResult({ layers: 2 }).route('about' as never, {} as never).toResponse(layer, router, undefined, 'de');
+    const response = new CloseLayerResult({ layers: 2 }).route('about' as never, {} as never).toResponse(layer, { routes: router, locale: 'de' });
     expect(response.status).toBe(200);
     expect(response.headers.get(LAYER_CLOSE_HEADER)).toBe('true');
     expect(await response.json()).toEqual({ close: { layers: 2 } });
   });
 
   it('redirects to a route that is not localized without a locale prefix', () => {
-    const response = new CloseLayerResult().route('user-profile.show', { id: 7 }).toResponse(request(), router, undefined, 'de');
+    const response = new CloseLayerResult().route('user-profile.show', { id: 7 }).toResponse(request(), { routes: router, locale: 'de' });
     expect(response.headers.get('location')).toBe('/users/7');
   });
 });

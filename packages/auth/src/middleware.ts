@@ -1,4 +1,5 @@
-import { INTENDED_KEY, isPrefetch } from '@marmeon/http';
+import { isPrefetch } from '@marmeon/http';
+import { INTENDED_KEY } from '@marmeon/http/internal';
 import { addVary, EXPECTS_JSON_VARY, Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
 import { Session } from '@marmeon/session';
 import { Auth } from './auth.ts';

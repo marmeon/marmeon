@@ -19,35 +19,35 @@ function request(method = 'GET', headers: Record<string, string> = {}): Request 
 
 describe('RedirectResult', () => {
   it('redirects to a URL or a named route', () => {
-    expect(new RedirectResult('/login').toResponse(request(), router).headers.get('location')).toBe('/login');
-    const toRoute = new RedirectResult().route('user-profile.show', { id: 7 }).toResponse(request(), router);
+    expect(new RedirectResult('/login').toResponse(request(), { routes: router }).headers.get('location')).toBe('/login');
+    const toRoute = new RedirectResult().route('user-profile.show', { id: 7 }).toResponse(request(), { routes: router });
     expect(toRoute.headers.get('location')).toBe('/users/7');
   });
 
   it('takes the request’s locale for a localized route that is given none — and keeps one it is given', () => {
     const to = (params: Record<string, string>, locale?: string) =>
-      new RedirectResult().route('about' as never, params as never).toResponse(request(), router, undefined, locale).headers.get('location');
+      new RedirectResult().route('about' as never, params as never).toResponse(request(), { routes: router, locale: locale }).headers.get('location');
     expect(to({}, 'de')).toBe('/de/about');
     expect(to({ feature: 'x y' }, 'de')).toBe('/de/about/x%20y');
     expect(to({ locale: 'en' }, 'de')).toBe('/en/about');
     expect(() => to({}, undefined)).toThrow('Missing required parameter [locale]');
     // A route that is not localized takes no locale.
-    expect(new RedirectResult().route('user-profile.show', { id: 7 }).toResponse(request(), router, undefined, 'de').headers.get('location')).toBe('/users/7');
+    expect(new RedirectResult().route('user-profile.show', { id: 7 }).toResponse(request(), { routes: router, locale: 'de' }).headers.get('location')).toBe('/users/7');
   });
 
   it('answers GET with 302 and other methods with 303, unless told otherwise', () => {
-    expect(new RedirectResult('/').toResponse(request('GET'), router).status).toBe(302);
-    expect(new RedirectResult('/').toResponse(request('PUT'), router).status).toBe(303);
-    expect(new RedirectResult('/').toResponse(request('POST'), router).status).toBe(303);
-    expect(new RedirectResult('/').status(301).toResponse(request('POST'), router).status).toBe(301);
-    expect(new RedirectResult('/').status(307).toResponse(request('DELETE'), router).status).toBe(307);
+    expect(new RedirectResult('/').toResponse(request('GET'), { routes: router }).status).toBe(302);
+    expect(new RedirectResult('/').toResponse(request('PUT'), { routes: router }).status).toBe(303);
+    expect(new RedirectResult('/').toResponse(request('POST'), { routes: router }).status).toBe(303);
+    expect(new RedirectResult('/').status(301).toResponse(request('POST'), { routes: router }).status).toBe(301);
+    expect(new RedirectResult('/').status(307).toResponse(request('DELETE'), { routes: router }).status).toBe(307);
   });
 
   it('goes back to the referring page of this site only — never to another host', () => {
     const back = (referer?: string) =>
       new RedirectResult()
         .back('/dashboard')
-        .toResponse(request('POST', referer ? { referer } : {}), router)
+        .toResponse(request('POST', referer ? { referer } : {}), { routes: router })
         .headers.get('location');
 
     expect(back('http://app.test/users/1?tab=bio')).toBe('/users/1?tab=bio');
@@ -57,7 +57,7 @@ describe('RedirectResult', () => {
   });
 
   it('never turns the referring page into a location on another host', () => {
-    const back = (referer: string) => new RedirectResult().back('/dashboard').toResponse(request('POST', { referer }), router).headers.get('location');
+    const back = (referer: string) => new RedirectResult().back('/dashboard').toResponse(request('POST', { referer }), { routes: router }).headers.get('location');
     for (const referer of ['https://app.test//evil.example', 'http://app.test/\\evil.example', 'http://app.test\\\\evil.example', 'http://app.test/\t/evil.example']) {
       expect(back(referer), referer).toBe('/evil.example');
     }
@@ -67,18 +67,18 @@ describe('RedirectResult', () => {
   });
 
   it('carries extra headers and fails loudly without a target', () => {
-    expect(new RedirectResult('/').header('x-reason', 'moved').toResponse(request(), router).headers.get('x-reason')).toBe('moved');
-    expect(() => new RedirectResult().toResponse(request(), router)).toThrow('redirect() needs a target');
-    expect(() => new RedirectResult().route('nope').toResponse(request(), router)).toThrow('Route [nope] is not defined.');
+    expect(new RedirectResult('/').header('x-reason', 'moved').toResponse(request(), { routes: router }).headers.get('x-reason')).toBe('moved');
+    expect(() => new RedirectResult().toResponse(request(), { routes: router })).toThrow('redirect() needs a target');
+    expect(() => new RedirectResult().route('nope').toResponse(request(), { routes: router })).toThrow('Route [nope] is not defined.');
   });
 
   it('flashes with() data through the Flasher — and refuses to drop it silently without one', () => {
     const flashed: Record<string, unknown> = {};
     const flasher = { flash: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
-    new RedirectResult('/').with('status', 'Saved.').with({ count: 2 }).toResponse(request(), router, flasher);
+    new RedirectResult('/').with('status', 'Saved.').with({ count: 2 }).toResponse(request(), { routes: router, flasher: flasher });
     expect(flashed).toEqual({ status: 'Saved.', count: 2 });
 
-    expect(() => new RedirectResult('/').with('status', 'x').toResponse(request(), router)).toThrow(
+    expect(() => new RedirectResult('/').with('status', 'x').toResponse(request(), { routes: router })).toThrow(
       'redirect().with() needs a session: install @marmeon/session and start it for this route.',
     );
   });
@@ -87,26 +87,26 @@ describe('RedirectResult', () => {
     const queued: { id: string; key: string; data: unknown }[] = [];
     const flasher = { flash: () => {}, pull: () => undefined, queueFlash: (message: { id: string; key: string; data: unknown }) => void queued.push(message), takeFlash: () => [], hasFlash: () => false };
     const saved = { kind: 'success', message: 'Saved.' };
-    new RedirectResult('/').flash('toast', saved).flash('toast', saved).toResponse(request('POST'), router, flasher);
+    new RedirectResult('/').flash('toast', saved).flash('toast', saved).toResponse(request('POST'), { routes: router, flasher: flasher });
     expect(queued.map(({ key, data }) => ({ key, data }))).toEqual([{ key: 'toast', data: saved }, { key: 'toast', data: saved }]);
     expect(new Set(queued.map((message) => message.id)).size).toBe(2);
-    expect(() => new RedirectResult('/').flash('toast', saved).toResponse(request(), router)).toThrow('redirect().flash() needs a session');
+    expect(() => new RedirectResult('/').flash('toast', saved).toResponse(request(), { routes: router })).toThrow('redirect().flash() needs a session');
   });
 
   it('goes to the intended page once (authenticate() stored it), else to the fallback target', () => {
     const stored: Record<string, unknown> = { [INTENDED_KEY]: '/users/7/edit?tab=links' };
     const flasher = { flash: () => {}, pull: (key: string) => { const value = stored[key]; delete stored[key]; return value; }, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
-    const intended = () => new RedirectResult().intended().route('user-profile.show', { id: 1 }).toResponse(request('POST'), router, flasher);
+    const intended = () => new RedirectResult().intended().route('user-profile.show', { id: 1 }).toResponse(request('POST'), { routes: router, flasher: flasher });
     expect(intended().headers.get('location')).toBe('/users/7/edit?tab=links');
     expect(intended().headers.get('location')).toBe('/users/1'); // pulled: used once
-    expect(new RedirectResult('/home').intended().toResponse(request(), router).headers.get('location')).toBe('/home'); // no session
+    expect(new RedirectResult('/home').intended().toResponse(request(), { routes: router }).headers.get('location')).toBe('/home'); // no session
   });
 
   it('an intended URL pointing elsewhere is never followed (open redirect)', () => {
     for (const evil of ['//evil.test/phish', '/\\evil.test', 'https://evil.test/', '/\tevil', 'javascript:alert(1)', '', 42]) {
       expect(isLocalPath(evil), String(evil)).toBe(false);
       const flasher = { flash: () => {}, pull: () => evil, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
-      expect(new RedirectResult('/home').intended().toResponse(request(), router, flasher).headers.get('location')).toBe('/home');
+      expect(new RedirectResult('/home').intended().toResponse(request(), { routes: router, flasher: flasher }).headers.get('location')).toBe('/home');
     }
     expect(isLocalPath('/users/1?q=a//b')).toBe(true);
     expect(isLocalPath('/a/..//evil.example')).toBe(false);
@@ -129,7 +129,7 @@ describe('RedirectResult', () => {
       avatar: new File(['x'], 'a.png'),
       nested: { password: 'deep', name: 'n' },
     };
-    new RedirectResult('/').withInput(input).toResponse(request('POST'), router, flasher);
+    new RedirectResult('/').withInput(input).toResponse(request('POST'), { routes: router, flasher: flasher });
     expect(flashed._old_input).toEqual({ email: 'ada@example.com', nested: { name: 'n' } });
   });
 
@@ -158,7 +158,7 @@ describe('RedirectResult', () => {
       coupon_code: 'SAVE',
       payment: { card_number: '4242', city: 'Berlin' },
     };
-    new RedirectResult('/').withInput(input).toResponse(request('POST'), router, flasher);
+    new RedirectResult('/').withInput(input).toResponse(request('POST'), { routes: router, flasher: flasher });
     expect(flashed._old_input).toEqual({ email: 'ada@example.com', zip_code: '10115', footprint: 'f', rootPath: '/', language_code: 'de', promoCode: 'P', postalCode: '10115', country_code: 'DE', coupon_code: 'SAVE', payment: { city: 'Berlin' } });
   });
 

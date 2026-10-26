@@ -299,7 +299,7 @@ request. Islands with `load="visible"` always load in the browser.
 > An island's request only reads, and so does a deferred prop streamed with the first page. Neither may write the session, set a
 > cookie or queue work after the response, and neither takes a flash message: the page itself takes its flash messages as usual,
 > also when its deferred props stream with it. In development and in tests such a write throws a
-> `ReadOnlyViolation` that names the island or the streamed prop and where the write belongs. In production it is dropped and logged. An island's request is read-only wherever it runs. A deferred group
+> `ReadOnlyError` that names the island or the streamed prop and where the write belongs. In production it is dropped and logged. An island's request is read-only wherever it runs. A deferred group
 > that the browser loads later is an ordinary request of the page's route, so a deferred prop that writes works after a visit
 > inside the app and loses the write on a first visit. Keep writes in the page's controller or in an action.
 

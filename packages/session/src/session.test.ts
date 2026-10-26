@@ -313,10 +313,10 @@ describe('Session', () => {
     const api = new Request('http://app.test/api/notes', { method: 'POST' });
     const message = (what: string) =>
       `${what} needs a session, and POST /api/notes runs without one: StartSession is not among its middleware. Put the route in the web group (an API route has none), or add StartSession to its group.`;
-    expect(() => new RedirectResult('/').with('status', 'Saved.').toResponse(api, new Router(), session)).toThrow(message('redirect().with()'));
-    expect(() => new RedirectResult('/').flash('toast', 'Saved.' as never).toResponse(api, new Router(), session)).toThrow(message('redirect().flash()'));
+    expect(() => new RedirectResult('/').with('status', 'Saved.').toResponse(api, { routes: new Router(), flasher: session })).toThrow(message('redirect().with()'));
+    expect(() => new RedirectResult('/').flash('toast', 'Saved.' as never).toResponse(api, { routes: new Router(), flasher: session })).toThrow(message('redirect().flash()'));
     // Without data to keep it needs none: intended() goes to its fallback.
-    expect(new RedirectResult('/notes').intended().toResponse(api, new Router(), session).headers.get('location')).toBe('/notes');
+    expect(new RedirectResult('/notes').intended().toResponse(api, { routes: new Router(), flasher: session }).headers.get('location')).toBe('/notes');
   });
 
   it('types declared keys and leaves the rest unknown', async () => {

@@ -1,8 +1,9 @@
 import { err } from '@marmeon/core';
-import { ClientHistory, NO_CLIENT_INFO } from '@marmeon/http';
+import { ClientHistory } from '@marmeon/http';
 import type { Session } from '@marmeon/session';
 import { describe, expect, it } from 'vitest';
 import { Auth, PasswordHasher, type UserProvider } from './index.ts';
+import { NO_CLIENT } from './test-helpers/client.ts';
 import { SessionFingerprints } from './fingerprint.ts';
 import { NoTwoFactorState } from './two-factor/state.ts';
 import { NO_LOGIN_LIMITS } from './test-helpers/login-limits.ts';
@@ -19,7 +20,7 @@ describe('the time of a failed sign-in', () => {
     const hasher = new PasswordHasher(); // real costs, so the hash dominates the time
     users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
     const session = { started: true, get: () => undefined, regenerate() {}, put() {}, forget() {} } as unknown as Session;
-    const auth = new Auth(session, users as unknown as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT_INFO, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
+    const auth = new Auth(session, users as unknown as UserProvider, hasher, { dispatch: async () => {} } as never, { get: () => undefined } as never, {} as never, {} as never, {} as never, new ClientHistory(), NO_CLIENT, {} as never, new NoTwoFactorState(), {} as never, signInStore(), { now: () => Date.now() } as never, new SessionFingerprints({ key: new Uint8Array(32), previousKeys: [] }), {} as never, NO_LOGIN_LIMITS);
     await auth.attempt('nobody@example.com', 'x'); // makes dummyVerify's reference hash
     const time = async (email: string) => {
       const started = performance.now();

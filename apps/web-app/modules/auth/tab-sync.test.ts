@@ -1,4 +1,3 @@
-import { DOCUMENT_HEADER, SESSION_PATH } from '@marmeon/http';
 import { PAGE_HEADER, PAGE_SCRIPT_ID, PROTOCOL_VERSION, type PageObject } from '@marmeon/http/protocol';
 import { tabSync } from '@marmeon/http/client';
 import { loadHistoryFallback, Navigator, type NavigatorWindow } from '@marmeon/http/client/adapter';
@@ -22,6 +21,9 @@ const HISTORY = await loadHistoryFallback();
  */
 
 const ORIGIN = 'http://localhost';
+/** The header that names the document a request comes from, and the path that answers the session's epoch. */
+const DOCUMENT_HEADER = 'x-marmeon-document';
+const SESSION_PATH = '/_marmeon/session';
 type Kernel = ReturnType<typeof createHttpKernel>;
 
 let app: TestApp;

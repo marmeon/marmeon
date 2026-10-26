@@ -1,5 +1,5 @@
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
-import type { LiveSigner } from '@marmeon/http';
+import type { LiveSigner } from '@marmeon/http/internal';
 
 /** The keys of live tokens: from `APP_KEY` (and the previous keys, still accepted) by HKDF, context `live`. */
 export function liveKeys(key: Uint8Array, previousKeys: readonly Uint8Array[] = []): readonly Uint8Array[] {

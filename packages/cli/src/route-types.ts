@@ -3,8 +3,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
-import { browserRoutes, type BrowserRoutes } from '@marmeon/http';
-import { BROWSER_ROUTES_FILE, ERROR_PAGE, matchesRoutePatterns, pageName, writeBrowserRoutes } from '@marmeon/http/internal';
+import { BROWSER_ROUTES_FILE, ERROR_PAGE, matchesRoutePatterns, pageName, writeBrowserRoutes, browserRoutes, type BrowserRoutes } from '@marmeon/http/internal';
 import { Router, type RouteDefinition } from '@marmeon/router';
 import { isControllerClass } from '@marmeon/router/internal';
 

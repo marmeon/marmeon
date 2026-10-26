@@ -29,4 +29,11 @@ describe('app.placeholder(): what an instant visit shows first', () => {
   it('says why a route has no placeholder to render', async () => {
     await expect(app.placeholder('auth.login' as never, {} as never)).rejects.toThrow(/app\.placeholder\('auth\.login'\): \[auth\/Login\] has no placeholder/);
   });
+
+  it('names the view of a page — not of a layer, an island or an action', async () => {
+    await app.placeholder('user-profile.people', true);
+    for (const route of ['user-profile.edit', 'dashboard.sign-ins', 'user-profile.update']) {
+      await expect(app.placeholder(route as never, {} as never)).rejects.toThrow(/does not name its view once/);
+    }
+  });
 });

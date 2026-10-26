@@ -6,6 +6,7 @@ import { uploadFields } from './rule.ts';
 import type { TemporaryUploads } from './service.ts';
 
 type Http = typeof import('@marmeon/http');
+type Internal = typeof import('@marmeon/http/internal');
 
 /** Where the bytes of a local (or memory) upload go: `PUT /_marmeon/uploads/<id>?expires=…&signature=…`. */
 export const UPLOADS_PREFIX = '/_marmeon/uploads';
@@ -14,9 +15,9 @@ export const UPLOADS_PREFIX = '/_marmeon/uploads';
 const FIELD = /^[\w-]{1,100}(?:\.[\w-]{1,100}){0,9}$/;
 
 /** The session's scope (a hash of its id) — what an upload belongs to; undefined without a session. */
-function sessionScope(http: Http, resolve: (key: unknown) => unknown): string | undefined {
+function sessionScope(internal: Internal, resolve: (key: unknown) => unknown): string | undefined {
   try {
-    return (resolve(http.PageSession) as { scope(): string | undefined }).scope();
+    return (resolve(internal.PageSession) as { scope(): string | undefined }).scope();
   } catch {
     return undefined; // no session in this app (or on this route)
   }
@@ -49,7 +50,7 @@ function locate(input: Record<string, unknown>, path: string): { holder: Record<
  * 3. **The submit** — before the body schema runs, every upload field's token is replaced by the verified upload (or why it
  *    is refused), which the `upload()` rule then checks.
  */
-export function registerUploads(http: Http, uploadHeader: string, container: Container, uploads: () => TemporaryUploads): void {
+export function registerUploads(http: Http, internal: Internal, uploadHeader: string, container: Container, uploads: () => TemporaryUploads): void {
   const router = container.make(http.Router);
 
   // The routes are read now, not at the first submit: a static body schema with an upload no form could send stops the start.
@@ -67,7 +68,7 @@ export function registerUploads(http: Http, uploadHeader: string, container: Con
       const route = ctx.route.routeName;
       const rule = FIELD.test(field) && method !== 'GET' && method !== 'HEAD' && route ? uploadFields(bodySchema(request, resolve)).get(field) : undefined;
       if (!rule || !route) throw new HttpError(404);
-      const session = sessionScope(http, resolve as (key: unknown) => unknown);
+      const session = sessionScope(internal, resolve as (key: unknown) => unknown);
       // A guest's page that lets them upload keeps its session (`session.persist()` in its controller): an upload belongs to one.
       if (!session) throw new HttpError(419, 'Page Expired', {}, { key: 'marmeon.status.419' });
       const input = await ctx.input();
@@ -84,7 +85,7 @@ export function registerUploads(http: Http, uploadHeader: string, container: Con
     const fields = uploadFields(schema);
     if (fields.size === 0) return;
     const route = ctx.route.routeName;
-    const session = sessionScope(http, resolve as (key: unknown) => unknown);
+    const session = sessionScope(internal, resolve as (key: unknown) => unknown);
     for (const field of fields.keys()) {
       const place = locate(input, field);
       if (!place || !Object.hasOwn(place.holder, place.key)) continue;
@@ -114,7 +115,7 @@ export function registerUploads(http: Http, uploadHeader: string, container: Con
       return Response.json({ size }, { headers: { 'cache-control': 'no-store' } });
     }
   }
-  container.scoped(ReceiveUploadController, (scope: Resolver) => new ReceiveUploadController(() => sessionScope(http, (key) => scope.make(key as never))));
+  container.scoped(ReceiveUploadController, (scope: Resolver) => new ReceiveUploadController(() => sessionScope(internal, (key) => scope.make(key as never))));
 
   router.load(
     { group: 'web', framework: FRAMEWORK_ROUTES },

@@ -8,6 +8,15 @@ import { DOCUMENT_HEADER } from './tab-sync-protocol.ts';
 
 const REDIRECT_RESULT = Symbol.for('marmeon.redirect-result');
 
+/** What a redirect needs of the request it answers. */
+export interface RedirectContext {
+  readonly routes: RouteLookup;
+  /** The request's session; without it `with()`, `flash()` and `intended()` throw. */
+  readonly flasher?: Flasher;
+  /** The request's, for a route of the redirect that is localized and names none. */
+  readonly locale?: string;
+}
+
 /**
  * Keeps data for the next request only — what `redirect().with()` needs — and hands out values
  * stored earlier (`redirect().intended()`). Bound by `@marmeon/session` (to the request's
@@ -142,8 +151,8 @@ export class RedirectResult {
     return this.with(OLD_INPUT_KEY, flashableInput(input));
   }
 
-  /** `locale`: the request's, for a route of the redirect that is localized and names none. */
-  toResponse(request: Request, routes: RouteLookup, flasher?: Flasher, locale?: string): Response {
+  /** @internal — the kernel turns the result into the redirect. */
+  toResponse(request: Request, { routes, flasher, locale }: RedirectContext): Response {
     if (this.#flash.size > 0) {
       sessionFor('redirect().with()', request, flasher);
       for (const [key, value] of this.#flash) flasher.flash(key, value);

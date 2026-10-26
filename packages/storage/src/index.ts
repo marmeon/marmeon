@@ -197,12 +197,13 @@ export class StorageServiceProvider implements ServiceProvider {
 
     let http: typeof import('@marmeon/http') | undefined;
     let page: typeof import('@marmeon/http/protocol') | undefined;
+    let internal: typeof import('@marmeon/http/internal') | undefined;
     try {
-      ({ http, page } = await loadHttpModules());
+      ({ http, page, internal } = await loadHttpModules());
     } catch (error) {
       if ((error as { code?: unknown }).code !== 'ERR_MODULE_NOT_FOUND') throw error;
     }
-    if (!http || !page || !container.has(http.Router)) return;
+    if (!http || !page || !internal || !container.has(http.Router)) return;
     const signer = container.make(http.UrlSigner);
     this.#temporaryUrls = {
       sign: (disk, key, { expiresInSeconds, filename, base }) =>
@@ -228,7 +229,7 @@ export class StorageServiceProvider implements ServiceProvider {
       // /up/ready is red when the table lacks a column the service writes; an app that made no table has no uploads to keep.
       const { SchemaRequirements } = await import('@marmeon/database');
       container.make(SchemaRequirements).require({ connection: uploads.connection, table: UPLOADS_TABLE, columns: UPLOADS_COLUMNS, whenPresent: true });
-      registerUploads(http, page.UPLOAD_HEADER, container, () => container.make(TemporaryUploads));
+      registerUploads(http, internal, page.UPLOAD_HEADER, container, () => container.make(TemporaryUploads));
     }
   }
 

@@ -42,7 +42,7 @@ export class SharedData {
     return this;
   }
 
-  /** The live channels shared with every page, as declared. */
+  /** @internal — the live channels shared with every page, as declared. */
   liveChannels(): readonly LiveDeclaration[] {
     return this.#live;
   }
@@ -51,12 +51,12 @@ export class SharedData {
     return this.#values.has(key);
   }
 
-  /** The shared props as given — lazy and wrapped ones unresolved (what a page's response picks from). */
+  /** @internal — the shared props as given: lazy and wrapped ones unresolved (what a page's response picks from). */
   entries(): IterableIterator<[string, unknown]> {
     return this.#values.entries();
   }
 
-  /** Resolves the given keys — all of them by default; lazy ones now, each at most once per request. */
+  /** @internal — resolves the given keys, all of them by default; lazy ones now, each at most once per request. */
   async resolve(keys: Iterable<string> = this.#values.keys()): Promise<Record<string, unknown>> {
     const entries = await Promise.all(
       [...keys]

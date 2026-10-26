@@ -1,7 +1,7 @@
-import type { CheckLayerBase, Param, ParamsOf, Query, QueryParams, RouteLookup, RouteNameInput } from '@marmeon/router';
+import type { CheckLayerBase, Param, ParamsOf, Query, QueryParams, RouteNameInput } from '@marmeon/router';
 import type { LayerClose } from './protocol.ts';
 import { LAYER_CLOSE_HEADER, regionOf } from './protocol.ts';
-import { RedirectResult, type Flasher } from './redirect.ts';
+import { RedirectResult, type RedirectContext } from './redirect.ts';
 import { DOCUMENT_HEADER } from './tab-sync-protocol.ts';
 import { carryFlash, serializedFlash, withFlashMethod, type FlashMethod } from './flash.ts';
 import { carryLive, withLiveMethod, type LiveMethod, type PagePropNames } from './live.ts';
@@ -102,19 +102,16 @@ export class CloseLayerResult extends RedirectResult {
     this.back();
   }
 
-  override toResponse(request: Request, routes: RouteLookup, flasher?: Flasher, locale?: string): Response {
+  /** @internal */
+  override toResponse(request: Request, context: RedirectContext): Response {
     // Flash data and the target as for the redirect — `with()` data goes with the request that follows (the reload).
-    const redirect = super.toResponse(request, routes, flasher, locale);
+    const redirect = super.toResponse(request, context);
     if (regionOf(request) !== 'layer') return redirect;
     // The client is shown the close: it takes the flash messages — they fire with it, not with whatever loads next.
-    const flash = serializedFlash(flasher?.takeFlash(request.headers.get(DOCUMENT_HEADER) ?? undefined) ?? []);
+    const flash = serializedFlash(context.flasher?.takeFlash(request.headers.get(DOCUMENT_HEADER) ?? undefined) ?? []);
     return new Response(JSON.stringify({ close: this.close, ...(flash.length > 0 ? { flash } : {}) }), {
       status: 200,
       headers: { 'content-type': 'application/json', 'cache-control': 'no-store', [LAYER_CLOSE_HEADER]: 'true', vary: 'x-marmeon, x-marmeon-region' },
     });
   }
-}
-
-export function isCloseLayerResult(value: unknown): value is CloseLayerResult {
-  return value instanceof CloseLayerResult;
 }
