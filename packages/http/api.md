@@ -247,6 +247,10 @@ export interface Flasher {
     hasFlash(document?: string): boolean;
 }
 export declare const Flasher: import("@marmeon/core").Token<Flasher>;
+// ForeverSignedRouteOptions
+export interface ForeverSignedRouteOptions {
+    readonly base?: string;
+}
 // FormOf
 export type { FormOf } from '@marmeon/router';
 // HiddenReason
@@ -667,10 +671,10 @@ export type SharedValue<T> = Lazy<T> | AlwaysProp<T> | MergeProp<T> | OnceProp<T
 // SignedPathOptions
 export interface SignedPathOptions extends SignedRouteOptions {
     readonly query?: Readonly<Record<string, string>>;
-    readonly expiresIn?: Duration;
 }
 // SignedRouteOptions
 export interface SignedRouteOptions {
+    readonly expiresIn: Duration;
     readonly base?: string;
 }
 // SiteData
@@ -733,9 +737,9 @@ export type UploadToken = string & {
 export declare class UrlSigner {
     #private;
     constructor(router: Router, config: EncryptionConfig, clock: Clock);
-    signedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, options]: SignedArgs<N>): string;
-    temporarySignedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, params: SignedParams<N>, expiresIn: Duration, options?: SignedRouteOptions): string;
-    signedPath(path: string, options?: SignedPathOptions): string;
+    signedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, params: SignedParams<N>, options: SignedRouteOptions): string;
+    foreverSignedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, params: SignedParams<N>, options?: ForeverSignedRouteOptions): string;
+    signedPath(path: string, options: SignedPathOptions): string;
     hasValidSignature(url: string | URL): boolean;
 }
 // ValidateSignature
@@ -978,8 +982,6 @@ type SerializeObject<T> = Simplify<{
 } & {
     [K in keyof T as K extends symbol ? never : undefined extends T[K] ? ([Exclude<T[K], undefined>] extends [never] ? never : K) : never]?: Serialize<Exclude<T[K], undefined>>;
 }>;
-// SignedArgs
-type SignedArgs<N extends string> = {} extends ParamsOf<N> ? [params?: SignedParams<N>, options?: SignedRouteOptions] : [params: SignedParams<N>, options?: SignedRouteOptions];
 // SignedParams
 export type SignedParams<N extends string> = ParamsOf<N> & Readonly<Record<string, Param>>;
 // Simplify

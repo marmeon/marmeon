@@ -42,7 +42,7 @@ export class EmailVerification {
     const { base, expiresIn = { minutes: 60 } } = options;
     // A configurable name is only known at runtime: checked there (`Route [...] is not defined`).
     const route = (options.route ?? 'auth.verification.verify') as RouteName;
-    return this.#signer.temporarySignedRoute(route, { id: user.id, hash: emailHash(user.email) }, expiresIn, { base });
+    return this.#signer.signedRoute(route, { id: user.id, hash: emailHash(user.email) }, { expiresIn, base });
   }
 
   /**

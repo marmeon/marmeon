@@ -198,21 +198,25 @@ export class ShareLinks {
   }
 
   share(noteId: number): string {
-    return this.#signer.temporarySignedRoute('notes.shared', { note: noteId }, { days: 7 }, { base: this.#app.url });
+    return this.#signer.signedRoute('notes.shared', { note: noteId }, { expiresIn: { days: 7 }, base: this.#app.url });
   }
 }
 ```
 
 | Method | What it signs |
 | --- | --- |
-| `signedRoute(name, params, { base })` | A named route, valid forever. |
-| `temporarySignedRoute(name, params, expiresIn, { base })` | A named route, valid for `expiresIn`: seconds, or a [`Duration`](time.md#spans-of-time) such as `{ days: 7 }`. |
-| `signedPath(path, { query, expiresIn, base })` | A path without a route name, such as a file's. |
+| `signedRoute(name, params, { expiresIn, base })` | A named route, valid for `expiresIn`: seconds, or a [`Duration`](time.md#spans-of-time) such as `{ days: 7 }`. |
+| `foreverSignedRoute(name, params, { base })` | A named route that never expires. |
+| `signedPath(path, { query, expiresIn, base })` | A path without a route name, such as a file's, valid for `expiresIn`. |
 | `hasValidSignature(url)` | Checks a URL yourself. |
 
 The signature is an HMAC-SHA-256 over the path and the sorted query, with the expiry in it. Parameters the path does not take go
 into the query and are signed with it. `signature` and `expires` are reserved and throw as parameter names. `base` puts your
 address in front, for an absolute link.
+
+`expiresIn` is required: `signedRoute()` and `signedPath()` refuse a call without it, in the types and at run time. A link that
+must work for good, such as an unsubscribe link in a mail already sent, says so with `foreverSignedRoute()`; its URL has no
+`expires`, and the name is the one place to find every such link.
 
 `signed()` answers 403, "Invalid signature.", for a missing, changed or expired signature. The comparison takes constant time.
 
@@ -223,7 +227,8 @@ clock, so a test can travel past it.
 
 > [!WARNING]
 > A signed URL is a key in itself: whoever has it may use it until it expires, and it ends up in browser histories and mail
-> archives. Give every link an `expiresIn` as short as its purpose allows. A route that acts on an account needs
+> archives. Give every link an `expiresIn` as short as its purpose allows, and reach for `foreverSignedRoute()` only when a link
+> truly has to outlive its mail. A route that acts on an account needs
 > `authenticate()` as well, as the starter kit's address confirmation does.
 
 ## Testing
@@ -242,7 +247,7 @@ beforeEach(async () => {
 });
 
 it('refuses an expired link', async () => {
-  const link = app.make(UrlSigner).temporarySignedRoute('notes.shared', { note: 1 }, { days: 7 });
+  const link = app.make(UrlSigner).signedRoute('notes.shared', { note: 1 }, { expiresIn: { days: 7 } });
   app.travel({ days: 8 });
   await app.get(link).assertForbidden();
 });

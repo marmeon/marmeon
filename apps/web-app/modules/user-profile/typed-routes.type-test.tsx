@@ -126,11 +126,11 @@ export class OnTheServer extends Controller {
     void this.redirect().route('user-profile.show');
     // The server knows every route — API ones and .internal() ones too.
     void this.redirect().route('api.users.index');
-    signer.temporarySignedRoute('auth.verification.verify', { id: 1, hash: 'x' }, { minutes: 60 });
+    signer.signedRoute('auth.verification.verify', { id: 1, hash: 'x' }, { expiresIn: { minutes: 60 } });
     // Argument of type '{ id: number; }' is not assignable to parameter of type 'SignedParams<"auth.verification.verify">'.
     //   Property 'hash' is missing in type '{ id: number; }' but required in type '{ hash: Param; id: Param; }'.
     // @ts-expect-error
-    signer.temporarySignedRoute('auth.verification.verify', { id: 1 }, { minutes: 60 });
+    signer.signedRoute('auth.verification.verify', { id: 1 }, { expiresIn: { minutes: 60 } });
     // No overload matches this call. The last overload gave the following error.
     //   Type '"auth.lgin"' is not assignable to type '"'auth.lgin' is not a route name — did you mean auth.login, auth.logout?"'.
     // @ts-expect-error
