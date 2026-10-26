@@ -28,7 +28,6 @@ export declare class AfterResponse {
 }
 // AlwaysProp
 export interface AlwaysProp<T> extends PageProp<'always', T> {
-    readonly value: unknown;
 }
 // CheckActionRouteName
 export type CheckActionRouteName<N extends string> = string extends N ? BrowserRouteName : Registered extends false ? N : CheckBrowserRouteName<N> extends N ? N extends IslandRouteName ? `'${N}' is an island — embed it with <Island route="${N}">; an action calls a route that answers this.json(…) or a redirect` : [ActionDataOf<N>] extends [never] ? ActionRedirects<N> extends true ? N : `'${N}' answers with a page — visit it (<Link>, useForm); an action's controller returns this.json(…) or a redirect` : N : CheckBrowserRouteName<N>;
@@ -141,8 +140,6 @@ export declare class DefaultExceptionHandler implements ExceptionHandler {
 }
 // DeferredProp
 export interface DeferredProp<T> extends PageProp<'defer', T> {
-    readonly group: string;
-    readonly resolve: () => unknown;
     merge(): MergingDeferredProp<T, 'merge'>;
     deepMerge(): MergingDeferredProp<T, 'deepMerge'>;
 }
@@ -318,18 +315,12 @@ export type MatchKey<T, S extends MergeStrategy> = S extends 'deepMerge' ? DeepI
 } ? `data.${ItemKey<T['data']>}` : ItemKey<T>;
 // MergeProp
 export interface MergeProp<T, S extends MergeStrategy = MergeStrategy> extends PageProp<S, T> {
-    readonly value: unknown;
-    readonly match: readonly string[];
     matchOn(...keys: MatchKey<T, S>[]): MergeProp<T, S>;
 }
 // MergeStrategy
 export type MergeStrategy = 'merge' | 'deepMerge';
 // MergingDeferredProp
 export interface MergingDeferredProp<T, S extends MergeStrategy = MergeStrategy> extends PageProp<'defer', T> {
-    readonly group: string;
-    readonly resolve: () => unknown;
-    readonly strategy: S;
-    readonly match: readonly string[];
     matchOn(...keys: MatchKey<T, S>[]): MergingDeferredProp<T, S>;
 }
 // Middleware
@@ -352,13 +343,9 @@ export interface OnceOptions {
 }
 // OnceProp
 export interface OnceProp<T> extends PageProp<'once', T> {
-    readonly resolve: () => unknown;
-    readonly key: string | undefined;
-    readonly expiresInMs: number | undefined;
 }
 // OptionalProp
 export interface OptionalProp<T> extends PageProp<'optional', T> {
-    readonly resolve: () => unknown;
 }
 // PageObject
 export interface PageObject {
@@ -409,12 +396,6 @@ export interface PaginationMeta {
 export type { Param } from '@marmeon/router';
 // ParamsOf
 export type { ParamsOf } from '@marmeon/router';
-// ParentRequest
-export declare class ParentRequest {
-    #private;
-    get request(): Request | undefined;
-    resolve<T>(token: Key<T>): T | undefined;
-}
 // PropKind
 export type PropKind = 'optional' | 'defer' | 'always' | 'merge' | 'deepMerge' | 'once';
 // Query
@@ -423,12 +404,6 @@ export type { Query } from '@marmeon/router';
 export type { QueryOf } from '@marmeon/router';
 // QueryOptions
 export type { QueryOptions } from '@marmeon/router';
-// ReadOnly
-export declare class ReadOnly {
-    #private;
-    get active(): boolean;
-    permit(what: string): boolean;
-}
 // ReadOnlyError
 export declare class ReadOnlyError extends Error {
     name: string;
@@ -516,12 +491,6 @@ export interface SecurityHeadersOptions {
 }
 // Serialize
 export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : SerializeKnown<T>;
-// ServerClosing
-export declare class ServerClosing {
-    #private;
-    get signal(): AbortSignal;
-    get draining(): AbortSignal;
-}
 // SharedData
 export declare class SharedData {
     #private;
@@ -2462,7 +2431,6 @@ export type ActionDataOf<N extends string> = DataOf<ActionAnswerOf<N>>;
 export type ActionRedirects<N extends string> = unknown extends ActionAnswerOf<N> ? true : [Extract<ActionAnswerOf<N>, RedirectResult>] extends [never] ? false : true;
 // AlwaysProp
 export interface AlwaysProp<T> extends PageProp<'always', T> {
-    readonly value: unknown;
 }
 // BrowserParamsOf
 export type { BrowserParamsOf } from '@marmeon/router';
@@ -2496,8 +2464,6 @@ export type CheckViewName<V extends string> = string extends V ? ViewName : V ex
 export type { ControllerOf } from '@marmeon/router';
 // DeferredProp
 export interface DeferredProp<T> extends PageProp<'defer', T> {
-    readonly group: string;
-    readonly resolve: () => unknown;
     merge(): MergingDeferredProp<T, 'merge'>;
     deepMerge(): MergingDeferredProp<T, 'deepMerge'>;
 }
@@ -2583,31 +2549,21 @@ export type MatchKey<T, S extends MergeStrategy> = S extends 'deepMerge' ? DeepI
 } ? `data.${ItemKey<T['data']>}` : ItemKey<T>;
 // MergeProp
 export interface MergeProp<T, S extends MergeStrategy = MergeStrategy> extends PageProp<S, T> {
-    readonly value: unknown;
-    readonly match: readonly string[];
     matchOn(...keys: MatchKey<T, S>[]): MergeProp<T, S>;
 }
 // MergeStrategy
 export type MergeStrategy = 'merge' | 'deepMerge';
 // MergingDeferredProp
 export interface MergingDeferredProp<T, S extends MergeStrategy = MergeStrategy> extends PageProp<'defer', T> {
-    readonly group: string;
-    readonly resolve: () => unknown;
-    readonly strategy: S;
-    readonly match: readonly string[];
     matchOn(...keys: MatchKey<T, S>[]): MergingDeferredProp<T, S>;
 }
 // MethodOf
 export type { MethodOf } from '@marmeon/router';
 // OnceProp
 export interface OnceProp<T> extends PageProp<'once', T> {
-    readonly resolve: () => unknown;
-    readonly key: string | undefined;
-    readonly expiresInMs: number | undefined;
 }
 // OptionalProp
 export interface OptionalProp<T> extends PageProp<'optional', T> {
-    readonly resolve: () => unknown;
 }
 // PageInfo
 export interface PageInfo<TProps = ViewProps> {

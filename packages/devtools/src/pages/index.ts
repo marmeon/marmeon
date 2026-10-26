@@ -49,8 +49,8 @@ export async function registerDevtoolsPages(options: PagesOptions): Promise<bool
   }
   const { app } = options;
   if (!app.container.has(router.Router)) return false;
-  // A stream ends when the server closes (`ServerClosing` of @marmeon/http — every app with routes has it).
-  const http = await import('@marmeon/http').catch(() => undefined);
+  // A stream ends when the server closes (`ServerClosing` of @marmeon/http/internal — every app with routes has it).
+  const http = await import('@marmeon/http/internal').catch(() => undefined);
   const closing = () => (http && app.container.has(http.ServerClosing) ? app.container.make(http.ServerClosing).signal : undefined);
   const pages = new DevtoolsPages(options, () => app.container.make(router.Router).routes.some((route) => route.path === '/_marmeon/mail'), closing);
   // The guard of every development route (`@marmeon/core/dev`): 403 for another host, the dev headers on every answer.

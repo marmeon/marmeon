@@ -3,7 +3,8 @@ import { Clock, createApplication, defineModule, Logger, type HealthCheck } from
 import { TestClock } from '@marmeon/core/testing';
 import { channels } from '@marmeon/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { HttpServiceProvider, ServerClosing } from '@marmeon/http';
+import { HttpServiceProvider } from '@marmeon/http';
+import { ServerClosing } from '@marmeon/http/internal';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';

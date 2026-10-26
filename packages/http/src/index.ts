@@ -43,11 +43,9 @@ export type { OnceInfo, LayerClose, LayerInfo, PageObject, RegionKind, RegionObj
 export { SharedData } from './shared-data.ts';
 export { LiveAudience } from './live.ts';
 export type { LiveMethod, LiveOnly, PagePropNames } from './live.ts';
-export { ServerClosing } from './server-closing.ts';
 export { ClientInfo } from './client-info.ts';
 export { AfterResponse } from './after-response.ts';
-export { ReadOnly, ReadOnlyError } from './read-only.ts';
-export { ParentRequest } from './parent-request.ts';
+export { ReadOnlyError } from './read-only.ts';
 export { cacheControl, ClearClientHistory, ClientHistory } from './client-history.ts';
 export type { SiteData } from './client-history.ts';
 export { contentSecurityPolicy, CookieDefaults, DEFAULT_CSP, NONCE } from './csp.ts';

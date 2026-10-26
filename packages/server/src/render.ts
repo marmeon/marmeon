@@ -5,7 +5,6 @@ import {
   HttpError,
   isActionRequest,
   isPrefetch,
-  ReadOnly,
   regionOf,
   SharedData,
   type FlashMessage,
@@ -18,6 +17,7 @@ import {
   type RegionResult,
   type SsrRender,
 } from '@marmeon/http';
+import { ReadOnly } from '@marmeon/http/internal';
 import {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,

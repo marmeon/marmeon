@@ -25,12 +25,15 @@ type Unlazy<V> = V extends () => infer R ? Awaited<R> : V;
 
 /** Never in a full response — only when a partial reload names it (`only`). In the view: `T | undefined`. */
 export interface OptionalProp<T> extends PageProp<'optional', T> {
+  /** @internal */
   readonly resolve: () => unknown;
 }
 
 /** Not in the first response: the browser loads its `group` right after showing the page. In the view: `T | undefined`. */
 export interface DeferredProp<T> extends PageProp<'defer', T> {
+  /** @internal */
   readonly group: string;
+  /** @internal */
   readonly resolve: () => unknown;
   /** Once loaded, a partial reload of it (a poll, "load more") is merged into what the browser has — see {@link merge}. */
   merge(): MergingDeferredProp<T, 'merge'>;
@@ -40,6 +43,7 @@ export interface DeferredProp<T> extends PageProp<'defer', T> {
 
 /** In every response — also in partial reloads that ask for other props. */
 export interface AlwaysProp<T> extends PageProp<'always', T> {
+  /** @internal */
   readonly value: unknown;
 }
 
@@ -48,8 +52,9 @@ export type MergeStrategy = 'merge' | 'deepMerge';
 
 /** Merged into the value the browser has on a partial reload — arrays appended, objects shallowly merged. */
 export interface MergeProp<T, S extends MergeStrategy = MergeStrategy> extends PageProp<S, T> {
+  /** @internal */
   readonly value: unknown;
-  /** Keys that identify an item of a merged array (`matchOn`). */
+  /** Keys that identify an item of a merged array (`matchOn`). @internal */
   readonly match: readonly string[];
   /**
    * Items of the merged array with the same value of `key` replace each other instead of appearing twice — the
@@ -88,10 +93,11 @@ type DeepItemKey<T, Depth extends unknown[]> = Depth['length'] extends 4
  * while the browser says it holds it (under the same session). In the view: `T`.
  */
 export interface OnceProp<T> extends PageProp<'once', T> {
+  /** @internal */
   readonly resolve: () => unknown;
-  /** Where the browser keeps it — undefined: the prop's name (a shared prop) or `<view>:<prop>` (a page's own). */
+  /** Where the browser keeps it — undefined: the prop's name (a shared prop) or `<view>:<prop>` (a page's own). @internal */
   readonly key: string | undefined;
-  /** How long the browser may keep it, in milliseconds — undefined: for the life of the document (until a full load). */
+  /** How long the browser may keep it, in milliseconds — undefined: for the life of the document (until a full load). @internal */
   readonly expiresInMs: number | undefined;
 }
 
@@ -105,9 +111,13 @@ export function optional<R>(resolve: () => R): OptionalProp<Awaited<R>> {
 
 /** A deferred prop that is merged into what the browser has when it is loaded again — `defer(fn).merge()`. */
 export interface MergingDeferredProp<T, S extends MergeStrategy = MergeStrategy> extends PageProp<'defer', T> {
+  /** @internal */
   readonly group: string;
+  /** @internal */
   readonly resolve: () => unknown;
+  /** @internal */
   readonly strategy: S;
+  /** @internal */
   readonly match: readonly string[];
   /** As {@link MergeProp.matchOn}. */
   matchOn(...keys: MatchKey<T, S>[]): MergingDeferredProp<T, S>;
