@@ -38,11 +38,6 @@ export interface RedisConnectionOptions {
 // RedisConnections
 export declare class RedisConnections {
     #private;
-    constructor(options: {
-        connections: Readonly<Record<string, RedisConnectionOptions>>;
-        logger: Logger;
-        redactor?: Redactor;
-    });
     get(name?: string): RedisConnection;
     options(name?: string): RedisConnectionOptions;
     names(): string[];
@@ -54,7 +49,6 @@ export declare class RedisConnections {
 export declare class RedisHealthCheck implements HealthCheck {
     #private;
     static check: string;
-    constructor(redis: RedisConnections);
     handle(): Promise<string>;
 }
 // RedisScript

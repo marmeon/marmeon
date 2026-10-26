@@ -50,7 +50,6 @@ promise of either:
 | `Limit.perHour(max, hours = 1)` | `max` attempts per `hours` hours. |
 | `Limit.perDay(max, days = 1)` | `max` attempts per `days` days. |
 | `Limit.none()` | No limit. |
-| `new Limit(max, decay)` | `max` attempts per `decay`: seconds, or a [`Duration`](time.md#spans-of-time) such as `{ minutes: 10 }`. A window of a fraction of a second is a `RangeError`. |
 
 `.by(key)` says whose attempts count together. Use the client's address for guests and the user's id for signed-in users. A list
 of limits counts each one on its own, and the first one that is used up refuses the request:
@@ -194,7 +193,7 @@ export class LoginController extends Controller {
   async handle(ctx: ContextOf<typeof LoginRequest>) {
     const { email, password } = ctx.body;
     const key = `login:${email}|${clientKey(ctx.ip)}`;
-    if (!(await this.#limiter.attempt(key, 5, 60))) {
+    if (!(await this.#limiter.attempt(key, { maxAttempts: 5, decay: 60 }))) {
       const seconds = await this.#limiter.availableInSeconds(key);
       throw new ValidationError({ email: [`Too many attempts. Try again in ${seconds} seconds.`] }, { email });
     }
@@ -214,7 +213,7 @@ at many accounts from one client share no count, and one account guessed from ma
 
 | Method | What it does |
 | --- | --- |
-| `attempt(key, max, decay)` | Counts one attempt and says whether it is within `max`, in one atomic step. A refused attempt counts too. |
+| `attempt(key, { maxAttempts, decay })` | Counts one attempt and says whether it is within `maxAttempts`, in one atomic step. A refused attempt counts too. A `maxAttempts` that is not a positive finite number, a missing `decay`, or the numbers passed one after the other (`attempt(key, 5, 60)`) throw a `TypeError` before anything is counted. |
 | `hit(key, decay)` | Counts one attempt and returns the count of the window, this one included. |
 | `attempts(key)` | The count of the window. |
 | `tooManyAttempts(key, max)` | Whether `max` is used up. For showing a state, never for letting an attempt through. |

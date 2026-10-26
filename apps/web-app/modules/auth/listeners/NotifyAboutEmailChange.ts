@@ -28,7 +28,7 @@ export class NotifyAboutEmailChange {
     const user = await this.#users.find(event.userId);
     if (!user) return;
     // At most one note an hour to an address: without private registration an account could swap between two addresses and fill an inbox.
-    if (!(await this.#limiter.attempt(`email-changed-note:${createHash('sha256').update(event.previousEmail).digest('hex')}`, 1, 3600))) return;
+    if (!(await this.#limiter.attempt(`email-changed-note:${createHash('sha256').update(event.previousEmail).digest('hex')}`, { maxAttempts: 1, decay: 3600 }))) return;
     await this.#mailer.queue(new EmailChangedMail(user.name, event.previousEmail, event.email, this.#translators.for(user.locale)), { queue: 'mail' });
   }
 }

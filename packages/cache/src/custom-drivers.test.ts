@@ -115,9 +115,9 @@ describe('a cache driver of a provider', () => {
     expect([...store.entries.keys()]).toEqual(['app:user']);
 
     const limiter = app.container.make(RateLimiter);
-    expect(await limiter.attempt('login', 2, 60)).toBe(true);
-    expect(await limiter.attempt('login', 2, 60)).toBe(true);
-    expect(await limiter.attempt('login', 2, 60)).toBe(false);
+    expect(await limiter.attempt('login', { maxAttempts: 2, decay: 60 })).toBe(true);
+    expect(await limiter.attempt('login', { maxAttempts: 2, decay: 60 })).toBe(true);
+    expect(await limiter.attempt('login', { maxAttempts: 2, decay: 60 })).toBe(false);
 
     const lock = cache.lock('report', 30);
     expect(await lock.get()).toBe(true);

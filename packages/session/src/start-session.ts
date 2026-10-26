@@ -115,10 +115,8 @@ export class StartSession {
       throw new Error(`Route ${ctx.route.path} uses block(): that needs the cache's atomic locks — install @marmeon/cache (pnpm add @marmeon/cache).`);
     }
     const lock = this.#container.make(cache.Cache).lock(`session:${sessionKey(id)}`, blocking.lockSeconds);
-    try {
-      await lock.block(blocking.waitSeconds);
-    } catch (error) {
-      if (!(error instanceof cache.LockTimeoutError)) throw error;
+    const internal = await import('@marmeon/cache/internal');
+    if (!(await internal.waitForLock(lock, blocking.waitSeconds))) {
       // Busy longer than the route waits: 423 Locked — the browser may try again. The error page may read the session (who is
       // signed in), never write it.
       await this.#session.start(id);

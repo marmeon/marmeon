@@ -111,11 +111,6 @@ export interface CacheDriverContext {
 /** Creates a cache driver: `static cacheDrivers = { dynamo: (context) => … }` on a service provider. */
 export type CacheDriverFactory = (context: CacheDriverContext) => CacheDriver;
 
-/** The lock was not free within the time `block()` waited. */
-export class LockTimeoutError extends Error {
-  override name = 'LockTimeoutError';
-}
-
 /**
  * One atomic lock, made by `cache.lock(name, ttl)`. Its owner token is random per lock object:
  * only the object that took the lock (or one restored with the same `owner`) can release it.
@@ -128,6 +123,7 @@ export class Lock {
   readonly #key: string;
   readonly #clock: Clock;
 
+  /** @internal Made by `cache.lock()`. */
   constructor(store: LockStore, options: { name: string; key: string; seconds: number; owner?: string; clock: Clock }) {
     if (!(options.seconds > 0) || !Number.isFinite(options.seconds)) {
       throw new TypeError(`A lock needs a positive number of seconds after which it expires (got ${options.seconds} for "${options.name}").`);
@@ -158,21 +154,15 @@ export class Lock {
   }
 
   /**
-   * Waits up to `wait` (real time, polled every 250 ms) for the lock, then throws {@link LockTimeoutError}. With
-   * `callback`: runs it while holding the lock and releases it afterwards; returns its result.
+   * Waits up to `wait` (real time, polled every 250 ms) for the lock, runs `callback` while holding it, releases it afterwards and
+   * returns `ok(its result)`. A lock that stays held gives `err({ kind: 'timeout' })` and the callback never runs. To try once, use `get()`.
+   * See `docs/cache.md#locks`.
    */
-  block(wait: Duration): Promise<true>;
-  block<T>(wait: Duration, callback: () => T | Promise<T>): Promise<T>;
-  async block<T>(wait: Duration, callback?: () => T | Promise<T>): Promise<T | true> {
-    const seconds = durationToSeconds(wait);
-    const deadline = performance.now() + seconds * 1000;
-    while (!(await this.get())) {
-      if (performance.now() + 250 > deadline) throw new LockTimeoutError(`Could not take the lock "${this.name}" within ${seconds} s.`);
-      await sleep(250);
-    }
-    if (!callback) return true;
+  async block<T>(wait: Duration, callback: () => T | Promise<T>): Promise<Result<Awaited<T>, { kind: 'timeout' }>> {
+    if (typeof callback !== 'function') throw new TypeError(`block() takes a callback — to try once, use get() (lock "${this.name}").`);
+    if (!(await waitForLock(this, wait))) return err({ kind: 'timeout' });
     try {
-      return await callback();
+      return ok(await callback());
     } finally {
       await this.release();
     }
@@ -192,6 +182,19 @@ export class Lock {
   async owned(): Promise<boolean> {
     return (await this.#store.lockOwner(this.#key)) === this.owner;
   }
+}
+
+/**
+ * Waits up to `wait` (real time, polled every 250 ms) until `lock` is taken, and says whether it was. The caller holds the lock
+ * when this is `true` and has to release it.
+ */
+export async function waitForLock(lock: Lock, wait: Duration): Promise<boolean> {
+  const deadline = performance.now() + durationToSeconds(wait) * 1000;
+  while (!(await lock.get())) {
+    if (performance.now() + 250 > deadline) return false;
+    await sleep(250);
+  }
+  return true;
 }
 
 /** A span → an expiry by `clock`; undefined = never. */

@@ -22,7 +22,7 @@ export class NotifyAboutFailedPasskeySignIn {
 
   async handle(payload: EventPayload<typeof PasskeySignInFailed>): Promise<void> {
     const key = `passkey-failed-mail:${payload.userId}`;
-    if (!(await this.#limiter.attempt(key, 1, 3600))) return;
+    if (!(await this.#limiter.attempt(key, { maxAttempts: 1, decay: 3600 }))) return;
     try {
       await this.#notices.send(payload.userId, { kind: 'sign_in_failed', ip: payload.ip });
     } catch (error) {

@@ -16,9 +16,6 @@ export const MEMBER_EXCEPTIONS: Readonly<Record<string, string>> = {
  * Members that do not follow the rule yet. Each change that fixes one deletes its line; the list is empty before a release.
  */
 export const MEMBER_PENDING: readonly string[] = [
-  '@marmeon/cache Limit.decaySeconds',
-  '@marmeon/cache Limit.maxAttempts',
-  '@marmeon/cache Lock.constructor',
   '@marmeon/core Container.constructor',
   '@marmeon/core Container.isScope',
   '@marmeon/core EnvBlock.constructor',
@@ -37,9 +34,7 @@ export const MEMBER_PENDING: readonly string[] = [
   '@marmeon/i18n Catalog.translate',
   '@marmeon/live/testing LiveStreamReader.heartbeats',
   '@marmeon/live/testing LiveStreamReader.retryMs',
-  '@marmeon/redis RedisConnections.constructor',
   '@marmeon/redis RedisConnections.inUse',
-  '@marmeon/redis RedisHealthCheck.constructor',
   '@marmeon/router RouteDefinition.blocking',
   '@marmeon/router RouteDefinition.inSitemap',
   '@marmeon/router RouteDefinition.isInternal',

@@ -11,6 +11,7 @@ export class RedisHealthCheck implements HealthCheck {
 
   readonly #redis: RedisConnections;
 
+  /** @internal Built by the container. */
   constructor(redis: RedisConnections) {
     this.#redis = redis;
   }

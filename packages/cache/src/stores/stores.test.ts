@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { err, ok } from '@marmeon/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LockTimeoutError, StoreCache, type CacheStore, type LockStore } from '../cache.ts';
+import { StoreCache, type CacheStore, type LockStore } from '../cache.ts';
 import { RateLimiter } from '../rate-limiter.ts';
 import { FileStore } from './file.ts';
 import { storeKinds, storeUnderTest, type StoreUnderTest } from '../__fixtures__/stores.ts';
@@ -97,9 +97,40 @@ describe.each(storeKinds)('the %s store', (kind) => {
   it('lets exactly 10 of 100 concurrent attempts through a limit of 10 (RateLimiter)', async () => {
     const { cache } = await open();
     const limiter = new RateLimiter(cache);
-    const allowed = await Promise.all(Array.from({ length: 100 }, () => limiter.attempt('login:ada', 10, 60)));
+    const allowed = await Promise.all(Array.from({ length: 100 }, () => limiter.attempt('login:ada', { maxAttempts: 10, decay: 60 })));
     expect(allowed.filter(Boolean)).toHaveLength(10);
     expect(await limiter.tooManyAttempts('login:ada', 10)).toBe(true);
+  });
+
+  it('refuses an attempt() whose limit is not named, positive and finite, and counts nothing', async () => {
+    const { cache } = await open();
+    const limiter = new RateLimiter(cache);
+    const attempt = limiter.attempt.bind(limiter) as (...args: unknown[]) => Promise<boolean>;
+    const refused: unknown[][] = [
+      ['guarded', 5, 60],
+      ['guarded', 60, 5],
+      ['guarded'],
+      ['guarded', undefined],
+      ['guarded', null],
+      ['guarded', [5, 60]],
+      ['guarded', { maxAttempts: 5 }],
+      ['guarded', { decay: 60 }],
+      ['guarded', { maxAttempts: 0, decay: 60 }],
+      ['guarded', { maxAttempts: -1, decay: 60 }],
+      ['guarded', { maxAttempts: Number.NaN, decay: 60 }],
+      ['guarded', { maxAttempts: Number.POSITIVE_INFINITY, decay: 60 }],
+      ['guarded', { maxAttempts: '5', decay: 60 }],
+      ['guarded', { maxAttempts: 5, decay: 0 }],
+      ['guarded', { maxAttempts: 5, decay: -60 }],
+      ['guarded', { maxAttempts: 5, decay: Number.NaN }],
+      ['guarded', { maxAttempts: 5, decay: '60' }],
+      ['guarded', { maxAttempts: 5, decay: null }],
+    ];
+    for (const args of refused) await expect(attempt(...args), JSON.stringify(args)).rejects.toThrow(/^RateLimiter\.attempt\(\)[^]*attempt\(key, \{ maxAttempts: 5, decay: 60 \}\)/);
+    for (const args of refused) await expect(attempt(...args)).rejects.toBeInstanceOf(TypeError);
+    expect(await limiter.attempts('guarded')).toBe(0);
+    expect(await limiter.attempt('guarded', { maxAttempts: 1, decay: 60 })).toBe(true);
+    expect(await limiter.attempts('guarded')).toBe(1);
   });
 
   it('keeps apps sharing a store apart with a prefix, and flushes entries but never locks', async () => {
@@ -199,16 +230,43 @@ describe.each(storeKinds)('the %s store', (kind) => {
       expect(await cache.lock('flag', 10).get(() => false)).toStrictEqual(ok(false));
     });
 
-    it('waits with block() until the lock is free, or throws LockTimeoutError', async () => {
+    it('waits with block() until the lock is free and returns ok, or err timeout', async () => {
       const { cache } = await open();
       const holder = cache.lock('report', 10);
       await holder.get();
       setTimeout(() => void holder.release(), 300);
-      expect(await cache.lock('report', 10).block(2, () => 'waited')).toBe('waited');
+      expect(await cache.lock('report', 10).block(2, () => 'waited')).toStrictEqual(ok('waited'));
       await holder.get();
-      await expect(cache.lock('report', 10).block(0.3)).rejects.toThrow(LockTimeoutError);
+      expect(await cache.lock('report', 10).block(0.3, () => 'waited')).toStrictEqual(err({ kind: 'timeout' }));
       await holder.forceRelease();
-      expect(await cache.lock('report', 10).block(1)).toBe(true);
+      expect(await cache.lock('report', 10).block(1, () => 'free')).toStrictEqual(ok('free'));
+      expect(await cache.lock('report', 10).get()).toBe(true);
+    });
+
+    it('never runs the callback of block() while the lock is held by someone else', async () => {
+      const { cache } = await open();
+      await cache.lock('held', 10).get();
+      const callback = vi.fn(() => 'ran');
+      expect(await cache.lock('held', 10).block(0.3, callback)).toStrictEqual(err({ kind: 'timeout' }));
+      expect(await cache.lock('held', { milliseconds: 10_000 }).block({ milliseconds: 300 }, callback)).toStrictEqual(err({ kind: 'timeout' }));
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('throws a TypeError from block() without a callback, pointing to get(), and takes no lock', async () => {
+      const { cache } = await open();
+      const lock = cache.lock('no-callback', 10);
+      await expect((lock.block as (wait: number) => Promise<unknown>)(1)).rejects.toThrow(new TypeError('block() takes a callback — to try once, use get() (lock "no-callback").'));
+      expect(await cache.lock('no-callback', 10).get()).toBe(true);
+    });
+
+    it('releases the lock after a callback of block() that throws', async () => {
+      const { cache } = await open();
+      await expect(
+        cache.lock('throws', 10).block(1, () => {
+          throw new Error('boom');
+        }),
+      ).rejects.toThrow('boom');
+      expect(await cache.lock('throws', 10).get()).toBe(true);
     });
 
     it('refuses a lock that never expires', async () => {
@@ -224,7 +282,7 @@ describe.each(storeKinds)('the %s store', (kind) => {
       expect(await cache.lock('timed', { seconds: 1 }).get()).toBe(false);
       await pass(1_100);
       expect(await cache.lock('timed', { seconds: 1 }).get()).toBe(true);
-      expect(await cache.lock('waits', 10).block({ milliseconds: 500 })).toBe(true);
+      expect(await cache.lock('waits', 10).block({ milliseconds: 500 }, () => true)).toStrictEqual(ok(true));
     });
   });
 

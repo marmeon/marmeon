@@ -18,7 +18,7 @@ import { RedisStore } from './stores/redis.ts';
 import { withCode } from '@marmeon/core/internal';
 import type { CommandClass } from 'marmeon';
 
-export { Cache, Lock, LockTimeoutError } from './cache.ts';
+export { Cache, Lock } from './cache.ts';
 export type { CacheDriver, CacheDriverContext, CacheDriverFactory, CacheEntry, CacheStore, LockStore } from './cache.ts';
 export { clientKey, Limit, LimitLiveValidation, RateLimiter, throttle } from './rate-limiter.ts';
 export type { LimiterCallback, LimiterContext } from './rate-limiter.ts';

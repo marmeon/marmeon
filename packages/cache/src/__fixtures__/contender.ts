@@ -20,7 +20,7 @@ process.stdout.write('ready\n');
 for await (const line of createInterface({ input: process.stdin })) if (line === 'go') break;
 
 const results = await Promise.all(
-  Array.from({ length: count }, () => (operation === 'hit' ? limiter.attempt(key!, 10, 60) : cache.add(key!, process.pid, 60))),
+  Array.from({ length: count }, () => (operation === 'hit' ? limiter.attempt(key!, { maxAttempts: 10, decay: 60 }) : cache.add(key!, process.pid, 60))),
 );
 process.stdout.write(`${results.filter(Boolean).length}\n`);
 await close();

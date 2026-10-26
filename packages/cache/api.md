@@ -91,10 +91,7 @@ export interface CacheStore {
 }
 // Limit
 export declare class Limit {
-    readonly maxAttempts: number;
-    readonly decaySeconds: number;
     readonly key: string;
-    constructor(maxAttempts: number, decay: Duration, key?: string);
     static perSecond(maxAttempts: number, seconds?: number): Limit;
     static perMinute(maxAttempts: number, minutes?: number): Limit;
     static perHour(maxAttempts: number, hours?: number): Limit;
@@ -118,19 +115,13 @@ export declare class Lock {
     readonly name: string;
     readonly seconds: number;
     readonly owner: string;
-    constructor(store: LockStore, options: {
-        name: string;
-        key: string;
-        seconds: number;
-        owner?: string;
-        clock: Clock;
-    });
     get(): Promise<boolean>;
     get<T>(callback: () => T | Promise<T>): Promise<Result<Awaited<T>, {
         kind: 'locked';
     }>>;
-    block(wait: Duration): Promise<true>;
-    block<T>(wait: Duration, callback: () => T | Promise<T>): Promise<T>;
+    block<T>(wait: Duration, callback: () => T | Promise<T>): Promise<Result<Awaited<T>, {
+        kind: 'timeout';
+    }>>;
     release(): Promise<boolean>;
     forceRelease(): Promise<void>;
     owned(): Promise<boolean>;
@@ -143,17 +134,16 @@ export interface LockStore {
     lockOwner(name: string): Promise<string | undefined>;
     prune?(): Promise<number>;
 }
-// LockTimeoutError
-export declare class LockTimeoutError extends Error {
-    name: string;
-}
 // RateLimiter
 export declare class RateLimiter {
     #private;
     for(name: string, callback: LimiterCallback): this;
     limiter(name: string): LimiterCallback | undefined;
     hit(key: string, decay: Duration): Promise<number>;
-    attempt(key: string, maxAttempts: number, decay: Duration): Promise<boolean>;
+    attempt(key: string, limit: {
+        maxAttempts: number;
+        decay: Duration;
+    }): Promise<boolean>;
     attempts(key: string): Promise<number>;
     tooManyAttempts(key: string, maxAttempts: number): Promise<boolean>;
     availableInSeconds(key: string): Promise<number>;

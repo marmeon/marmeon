@@ -13,7 +13,8 @@ class LoginLimits {
       .make(RateLimiter)
       .for('login', async (ctx) => Limit.perMinute(3).by(`${String((await ctx.input()).email)}|${ctx.ip ?? ''}`))
       .for('client', (ctx) => Limit.perMinute(3).by(clientKey(ctx.ip)))
-      .for('api', () => [Limit.perSecond(2), Limit.perMinute(100)]);
+      .for('api', () => [Limit.perSecond(2), Limit.perMinute(100)])
+      .for('unset', () => Limit.perMinute(Number(undefined)));
   }
 }
 
@@ -38,6 +39,7 @@ async function boot({ broken = false } = {}) {
           Route.middleware(throttle('login')).post('/login', () => ({ ok: true }));
           Route.middleware(throttle('client')).post('/client', () => ({ ok: true }));
           Route.middleware(throttle('api')).get('/items', () => []);
+          Route.middleware(throttle('unset')).get('/unset', () => []);
           if (broken) Route.middleware(throttle('nope')).get('/broken', () => []);
           // An app's middleware with a `static verify` of its own: the server's start check never calls it.
           Route.middleware(OwnVerify).get('/own', () => []);
@@ -60,6 +62,24 @@ const peer = (remoteAddress: string, headers: Record<string, string> = {}) => ({
 });
 
 describe('Limit', () => {
+  it('refuses a number of attempts that is not positive and finite, so a limit never counts as none', () => {
+    expect(() => Limit.perMinute(Number.NaN)).toThrow(TypeError);
+    expect(() => Limit.perMinute('5' as never)).toThrow(TypeError);
+    expect(() => Limit.perMinute(undefined as never)).toThrow(TypeError);
+    expect(() => Limit.perMinute(0)).toThrow(TypeError);
+    expect(() => Limit.perHour(-1)).toThrow(TypeError);
+    expect(() => Limit.perSecond(Number.NEGATIVE_INFINITY)).toThrow(TypeError);
+    expect(() => Limit.perDay(Number.NaN)).toThrow(TypeError);
+    expect(Limit.none().maxAttempts).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('refuses a window that is not a positive whole number of seconds', () => {
+    expect(() => Limit.perMinute(5, Number.NaN)).toThrow();
+    expect(() => Limit.perMinute(5, 0)).toThrow(RangeError);
+    expect(() => new Limit(5, '60' as never)).toThrow(TypeError);
+    expect(() => new Limit(5, undefined as never)).toThrow(TypeError);
+  });
+
   it('takes its window as seconds or as a duration object, and keeps the seconds', () => {
     expect(new Limit(5, { minutes: 1 }).decaySeconds).toBe(60);
     expect(new Limit(5, 60).decaySeconds).toBe(60);
@@ -165,6 +185,11 @@ describe('throttle() by the client', () => {
 });
 
 describe('throttle()', () => {
+  it('never lets a route run unlimited because the limit came out of a missing setting', async () => {
+    const app = await boot();
+    for (let i = 0; i < 3; i++) expect((await app.request('/api/unset')).status).toBe(500);
+  });
+
   it('lets the allowed attempts through, then answers 429 with Retry-After', async () => {
     const app = await boot();
     const statuses: number[] = [];
