@@ -113,7 +113,7 @@ how to keep it.
 | `size(key)`, `mimeType(key)`, `lastModified(key)` | What they say. |
 | `list(directory?, { recursive }?)` | The keys in a directory, sorted. |
 | `url(key)` | The public URL of a file on a public disk. |
-| `temporaryUrl(key, { expiresIn, filename?, base? })` | A signed link that expires. `expiresIn` is seconds, or a [`Duration`](time.md#spans-of-time) such as `{ minutes: 5 }`. |
+| `temporaryUrl(key, { expiresIn, filename?, base? })` | A signed link that expires. `expiresIn` is seconds, or a [`Duration`](time.md#spans-of-time) such as `{ minutes: 5 }`, and at most seven days on every disk. |
 
 A missing file throws `FileNotFoundError`. A reader never sees half a file: the local driver writes to a temporary file and
 renames it into place. The content type comes from the key's extension on a local disk, and from what was stored on S3 and in
@@ -129,7 +129,7 @@ route.
 `/_marmeon/storage/<disk>/<key>?expires=…&signature=…`, signed with a key derived from `APP_KEY`, and the signature covers the
 path, the file name and the expiry. A changed or expired link answers 403. `base` makes it absolute, for a mail: pass the `url` of
 the injected `AppConfig`, which is `APP_URL`. An S3
-disk presigns a link to the bucket instead.
+disk presigns a link to the bucket instead. A link lasts at most seven days on every disk (the limit of S3's presigned URLs); `expiresIn` beyond that throws a `RangeError`. For a link that lasts, serve the file through a route of your own with `serveFile()`.
 
 Every file the app serves goes out with:
 
@@ -277,7 +277,7 @@ export default defineMigration({
 | `UPLOADS_DISK` | `uploads` | The private disk where uploads wait. A public disk fails the start. |
 | `UPLOADS_CONNECTION` | `default` | The database connection of the uploads table. |
 | `UPLOADS_LIFETIME_MINUTES` | `120` | Minutes a token works after its target was handed out, at most 1440. |
-| `UPLOADS_SEND_WITHIN_MINUTES` | `15` | Minutes the browser has to send the file to its target. |
+| `UPLOADS_SEND_WITHIN_MINUTES` | `15` | Minutes the browser has to send the file to its target, at most 1440. |
 | `UPLOADS_MAX_OPEN` | `20` | Open uploads one session may hold. |
 | `UPLOADS_MAX_OPEN_MB` | `1024` | Megabytes the open uploads of one session may announce together. |
 | `UPLOADS_MAX_OPEN_TOTAL_MB` | `10240` | Megabytes the open uploads of all sessions together may announce. `0` turns the limit off. |

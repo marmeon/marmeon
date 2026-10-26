@@ -69,6 +69,13 @@ describe.skipIf(!S3_ENDPOINT)('the s3 disk against an S3-compatible store', () =
     }
   });
 
+  it('temporaryUrl(): seven days at most', async () => {
+    const disk = await make();
+    expect(await disk.temporaryUrl('a.txt', { expiresIn: 604_800 })).toContain('X-Amz-Expires=604800');
+    await expect(disk.temporaryUrl('a.txt', { expiresIn: 604_801 })).rejects.toThrow(RangeError);
+    await expect(disk.temporaryUrl('a.txt', { expiresIn: { days: 8 } })).rejects.toThrow('at most 7 days');
+  });
+
   it('the store refuses requests without the disk’s credentials', async () => {
     const disk = await make();
     await disk.put('a.txt', 'a');

@@ -149,6 +149,8 @@ describe.skipIf(!S3_ENDPOINT)('uploads straight to S3: a presigned POST with a s
     expect((await post(target, new Uint8Array(10))).status).toBeLessThan(300);
     await expect(disk.presignedPost('tmp/5', { maxBytes: 100, expiresIn: '15m' as never })).rejects.toThrow('write `{ minutes: 15 }`');
     await expect(disk.presignedPost('tmp/6', { maxBytes: 100, expiresIn: 0.2 })).rejects.toThrow(RangeError);
+    await expect(disk.presignedPost('tmp/7', { maxBytes: 100, expiresIn: 604_801 })).rejects.toThrow(RangeError);
+    await expect(disk.presignedPost('tmp/8', { maxBytes: 100, expiresIn: { days: 7 } })).resolves.toHaveProperty('url');
   });
 
   it('one byte over content-length-range — the store refuses it, nothing lands', async () => {

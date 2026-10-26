@@ -99,7 +99,5 @@ export const MEMBER_PENDING: readonly string[] = [
   '@marmeon/session Session.regenerateToken',
   '@marmeon/session Session.started',
   '@marmeon/storage TemporaryUpload.extension',
-  '@marmeon/storage/testing StorageFake.defaultDisk',
-  '@marmeon/storage/testing StorageFake.named',
   'marmeon Output.constructor',
 ];

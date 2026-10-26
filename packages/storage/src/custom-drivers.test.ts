@@ -171,6 +171,16 @@ describe('disk drivers of providers', () => {
     expect(seen).toHaveLength(3);
   });
 
+  it('never hands a driver more than seven days', async () => {
+    const seen: DiskDriverTemporaryUrlOptions[] = [];
+    const watching = providing((_: unknown, { name }: { name: string }) => asDriver(memory(name), seen));
+    const disk = (await boot(disks(), [watching])).container.make(Storage).disk('media') as unknown as Disk;
+    await disk.temporaryUrl('a.txt', { expiresIn: { days: 7 } });
+    await expect(disk.temporaryUrl('a.txt', { expiresIn: 604_801 })).rejects.toThrow(RangeError);
+    await expect(disk.temporaryUrl('a.txt', { expiresIn: { days: 8 } })).rejects.toThrow('at most 7 days');
+    expect(seen).toEqual([{ expiresInSeconds: 604_800 }]);
+  });
+
   it('a public disk of a driver keeps its url()', async () => {
     const app = await boot(disks({ cdn: { driver: 'crate', bucket: 'x', visibility: 'public', url: 'https://cdn.example' } }), [Crate]);
     expect((app.container.make(Storage).disk('cdn') as unknown as Disk).url('a.png')).toBe('https://cdn.example/a.png');

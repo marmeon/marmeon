@@ -134,4 +134,12 @@ describe.each(DISK_KINDS.map((kind) => [kind.name, kind] as const))('the %s disk
     expect(await disk.temporaryUrl('exports/7.json', { expiresIn: { minutes: 5 }, filename: 'export.json' })).toBe('/signed/files/exports/7.json');
     expect(recordingUrls.last).toEqual({ disk: 'files', key: 'exports/7.json', options: { expiresInSeconds: 300, filename: 'export.json' } });
   });
+
+  it.skipIf(kind.skip)('temporaryUrl(): seven days at most — one second more, or eight days, throws a RangeError', async () => {
+    const disk = await make();
+    await expect(disk.temporaryUrl('a.txt', { expiresIn: 604_800 })).resolves.toEqual(expect.any(String));
+    await expect(disk.temporaryUrl('a.txt', { expiresIn: { days: 7 } })).resolves.toEqual(expect.any(String));
+    await expect(disk.temporaryUrl('a.txt', { expiresIn: 604_801 })).rejects.toThrow(RangeError);
+    await expect(disk.temporaryUrl('a.txt', { expiresIn: { days: 8 } })).rejects.toThrow(/at most 7 days.*route of your own/);
+  });
 });
