@@ -34,8 +34,8 @@ This page covers the fields of `<Head>` and the sitemap and `robots.txt`, which 
 
 `openGraph` takes `title`, `description`, `type` (`'website'`, `'article'` or `'profile'`), `url`, `siteName`, `locale`,
 `image` (a URL, or `{ url, width, height, alt }`) and `article` (`publishedTime`, `modifiedTime`, `authors`, `tags`).
-`twitter` takes `card` (`'summary'` or `'summary_large_image'`; a layout sets it once), `site`, `creator`, `title`, `description`, `image` and
-`imageAlt`.
+`twitter` takes `card` (`'summary'` or `'summary_large_image'`; a layout sets it once), `site`, `creator`, `title`, `description` and `image` (a URL, or
+`{ url, alt }`). The alt text is written only with an image.
 
 `openGraph.url` has no default: set it, or leave it out (`canonical` is a separate field). `openGraph.article.authors` are written as
 given, so pass what the preview should show, such as a profile URL. `twitter` takes the page's title and description when it

@@ -36,7 +36,7 @@ describe('<Head> fields on the server', () => {
         canonical: '/people/ada',
         robots: { index: false, follow: true },
         openGraph: { type: 'profile', url: '/people/ada', siteName: 'Shop', locale: 'en', image: { url: '/ada.png', width: 600, height: 400, alt: 'Ada' } },
-        twitter: { card: 'summary_large_image', site: '@shop', creator: '@ada', image: '/ada.png', imageAlt: 'Ada' },
+        twitter: { card: 'summary_large_image', site: '@shop', creator: '@ada', image: { url: '/ada.png', alt: 'Ada' } },
       },
     ]);
     expect(head).toBe(
@@ -126,6 +126,25 @@ describe('<Head> fields on the server', () => {
     );
     expect(head).not.toContain('evil.example');
     expect(onWarning).toHaveBeenCalledTimes(4);
+  });
+
+  it('writes twitter:image from a URL or from the URL with its text, and the text only with an image', async () => {
+    const plain = await headOf([{ twitter: { card: 'summary', image: 'cover.png' } }]);
+    expect(plain).toContain('name="twitter:image" content="https://app.example/cover.png"');
+    expect(plain).not.toContain('twitter:image:alt');
+    const withAlt = await headOf([{ twitter: { image: { url: '/cover.png', alt: 'A cover' } } }]);
+    expect(withAlt).toContain('name="twitter:image" content="https://app.example/cover.png"');
+    expect(withAlt).toContain('name="twitter:image:alt" content="A cover"');
+    expect(await headOf([{ twitter: { image: { url: 'https://cdn.example/x.png' } } }])).toContain('content="https://cdn.example/x.png"');
+    expect(await headOf([{ twitter: { card: 'summary' } }])).not.toContain('twitter:image');
+    const dropped = await headOf([{ twitter: { image: { url: 'javascript:alert(1)', alt: 'A cover' } } }], { appUrl: APP_URL, onWarning: vi.fn() });
+    expect(dropped).not.toContain('twitter:image');
+  });
+
+  it('does not take the former imageAlt', () => {
+    // @ts-expect-error `imageAlt` is the `alt` of `image: { url, alt }`.
+    const card: NonNullable<HeadProps['twitter']> = { image: '/a.png', imageAlt: 'A' };
+    expect(card.image).toBe('/a.png');
   });
 
   it('writes twitter:card only when a card is set — a layout sets it once', async () => {

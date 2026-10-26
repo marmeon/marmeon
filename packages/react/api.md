@@ -508,8 +508,10 @@ export interface TwitterCard {
     creator?: string;
     title?: string;
     description?: string;
-    image?: string;
-    imageAlt?: string;
+    image?: string | {
+        url: string;
+        alt?: string;
+    };
 }
 // TypedVisitOptions
 export type TypedVisitOptions<T = unknown> = Omit<VisitOptions, keyof PartialReloadOptions> & PartialReloadOptions<T>;
