@@ -33,7 +33,8 @@ declare module '@marmeon/core' {
     readonly migrations?: ProviderMigrations;
   }
 }
-import { DatabaseConfig, isConnectionDefinition, type ConnectionOptions } from './config.ts';
+import { DatabaseConfig, isConnectionDefinition, type ConnectionDefinition, type ConnectionOptions } from './config.ts';
+import { withCode } from '@marmeon/core/internal';
 import { Connections, Database } from './connections.ts';
 
 /**
@@ -55,9 +56,22 @@ export class DatabaseServiceProvider implements ServiceProvider {
     container.singleton(Connections, (c) => {
       const app = c.make(Application);
       // Named connections are config definitions listed by the app or a module (`defineConnection`).
-      const named = [...(app.definition.config ?? []), ...app.modules.flatMap((module) => module.config ?? [])].filter(isConnectionDefinition);
+      const named = [
+        ...(app.definition.config ?? []).map((definition) => ({ definition, source: 'the application' })),
+        ...app.modules.flatMap((module) => (module.config ?? []).map((definition) => ({ definition, source: `module "${module.name}"` }))),
+      ].filter((entry): entry is { definition: ConnectionDefinition; source: string } => isConnectionDefinition(entry.definition));
       const connections: Record<string, ConnectionOptions> = { default: c.make(DatabaseConfig).default };
-      for (const definition of named) connections[definition.connection] = c.make(definition);
+      const seen = new Map<string, { definition: ConnectionDefinition; source: string }>();
+      for (const entry of named) {
+        const first = seen.get(entry.definition.connection);
+        // One definition listed by the app and by a module that needs it is one connection.
+        if (first?.definition === entry.definition) continue;
+        if (first !== undefined) {
+          throw new Error(withCode('D23', `The database connection "${entry.definition.connection}" is defined twice, by two different definitions: in ${first.source} and in ${entry.source}. Rename one of them.`));
+        }
+        seen.set(entry.definition.connection, entry);
+        connections[entry.definition.connection] = c.make(entry.definition);
+      }
       return new Connections({ connections, root: app.root, logger: c.make(Logger), app });
     });
     container.singleton(Database, (c) => c.make(Connections).get());

@@ -1,0 +1,6 @@
+{
+  "name": "a/b",
+  "context": "marmeon:cursor@a%2Fb:asc:email,id",
+  "columns": ["email", "id"],
+  "payload": "[\"u5@example.com\",5]"
+}
