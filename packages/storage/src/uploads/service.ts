@@ -4,7 +4,7 @@ import { sql, type Connection } from '@marmeon/database';
 import { HttpError, ValidationError } from '@marmeon/router';
 import type { Disk } from '../disk.ts';
 import { FileNotFoundError, StorageSetupError } from '../errors.ts';
-import { S3Disk } from '../drivers/s3.ts';
+import { ObjectChangedError, S3Disk } from '../drivers/s3.ts';
 import { formatBytes, type UploadRule } from './rule.ts';
 import { SNIFF_BYTES, sniff } from './sniff.ts';
 import { RejectedUpload, TemporaryUpload } from './temporary-upload.ts';
@@ -224,17 +224,28 @@ export class TemporaryUploads {
     const disk = this.#named(row.disk);
     let size: number;
     let head: Uint8Array;
+    let etag: string | undefined;
     try {
-      // A local upload knows its size once complete; an S3 one is asked (its POST policy capped it).
-      if (row.uploaded_at === null && !(disk instanceof S3Disk)) return new RejectedUpload('invalid');
-      size = row.uploaded_at === null ? await disk.size(row.key) : Number(row.size);
-      head = await firstBytes(disk, row.key, SNIFF_BYTES);
+      if (disk instanceof S3Disk) {
+        // The ETag of the object as it is now: what is read here, and later stored, must be this object — the POST policy lets
+        // the browser send to the key again until it expires.
+        const found = await disk.fingerprint(row.key);
+        if (found.etag === undefined) return new RejectedUpload('invalid');
+        etag = found.etag;
+        size = found.size;
+        head = await firstBytes(await disk.streamIfMatch(row.key, found.etag), SNIFF_BYTES);
+      } else {
+        // A local upload knows its size once complete.
+        if (row.uploaded_at === null) return new RejectedUpload('invalid');
+        size = Number(row.size);
+        head = await firstBytes(await disk.stream(row.key), SNIFF_BYTES);
+      }
     } catch (error) {
-      if (error instanceof FileNotFoundError) return new RejectedUpload('invalid');
+      if (error instanceof FileNotFoundError || error instanceof ObjectChangedError) return new RejectedUpload('invalid');
       throw error;
     }
     const { mime, extension } = sniff(head);
-    return new TemporaryUpload({ id, field: row.field, name: row.name, size, mime, extension }, { disk, key: row.key, consume: () => this.consume(id) });
+    return new TemporaryUpload({ id, field: row.field, name: row.name, size, mime, extension }, { disk, key: row.key, etag, consume: () => this.consume(id) });
   }
 
   /** Uses upload `id` up — `false` when it was used already or has expired. One statement: of two at once, one wins. */
@@ -344,8 +355,8 @@ export class TemporaryUploads {
 }
 
 /** The first `count` bytes of a file (fewer when it is shorter). */
-async function firstBytes(disk: Disk, key: string, count: number): Promise<Uint8Array> {
-  const reader = (await disk.stream(key)).getReader();
+async function firstBytes(stream: ReadableStream<Uint8Array>, count: number): Promise<Uint8Array> {
+  const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
   try {

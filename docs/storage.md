@@ -197,11 +197,11 @@ then sends a token in the file's place:
 1. **A target for the field.** The browser asks the form's own route for a target, with the file's name, size and type. The
    route's middleware, bindings and `authorize` run, so whoever may send the form may upload its files, and the field's `upload()`
    rule decides the limit. The controller does not run. A field without the rule is a 404, a file that is too large a 422.
-2. **The bytes** stream onto the private `uploads` disk, never into memory, and are cut off after the rule's `maxBytes`, whatever
-   the browser announced. A file that is cut off leaves nothing behind.
+2. **The bytes** stream onto the private `uploads` disk, never into memory, and are cut off at the size the browser announced (never
+   above the rule's `maxBytes`), whatever its `Content-Length` says. A file that is cut off leaves nothing behind.
 3. **The token in the form.** On submit, before the schema runs, the token is checked: its signature, the session it was made
    for, the route and the field, its expiry, and that it was not used yet. The file's type is read from its first bytes, never
-   from its name or the type the browser sent, and the rule checks the size and the type.
+   from its name or the type the browser sent (that one is sent, not trusted), and the rule checks the size and the type.
 
 The controller gets a `TemporaryUpload` and stores it where it belongs. The [requests](requests.md#files) page shows the
 controller, the [validation](validation.md#uploads) page the rule, and the [forms](forms.md#uploads) page the browser's side.
@@ -225,6 +225,12 @@ controller, the [validation](validation.md#uploads) page the rule, and the [form
 
 On S3, the browser sends the file straight to the bucket with a presigned POST that limits its size. The bucket then needs CORS
 for your app's origin, and the app one more package: `pnpm add @aws-sdk/s3-presigned-post@^3`.
+
+A presigned POST can be used again until it expires, so a second POST could replace a file after its type was read. The check
+therefore pins the object by its ETag: the first bytes are read only if the object still has it, and `store()` copies or reads
+the file only if it still has it too. A file that changed in between is refused like one that never arrived (a 422 at its field). The store must honour conditional reads and copies (`If-Match`, `x-amz-copy-source-if-match`); AWS S3
+does, and so does the S3-compatible store the tests run against.
+Storing does not read the file into memory: on the same S3 store the bucket copies it, elsewhere it is streamed with its length.
 
 ### The uploads table
 
