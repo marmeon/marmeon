@@ -1,4 +1,5 @@
 import { Clock, HealthChecks, Redactor, type Application, type Container, type HealthReport } from '@marmeon/core';
+import { hostAllowed } from '@marmeon/core/dev';
 import { ServerClosing } from '@marmeon/http';
 import type { RouteDefinition } from '@marmeon/router';
 
@@ -6,14 +7,14 @@ import type { RouteDefinition } from '@marmeon/router';
  * The health endpoints, answered by the kernel before anything else runs for a request (no request id, session, CSRF,
  * middleware, log line or `http.request` message). `/up` is liveness and checks nothing else; `/up/ready` runs every
  * `HealthCheck`, answers 503 from the stop signal on, and keeps its result for {@link READY_CACHE_MS} (the path is public);
- * its details only with `NODE_ENV=development`. See docs/health.md#liveness-and-readiness.
+ * its details only with `NODE_ENV=development`, and then only for a request to a host the development routes answer. See docs/health.md#liveness-and-readiness.
  */
 export interface HealthEndpoints {
   /** `/up` — or what `SERVER_HEALTH_PATH` says. */
   readonly path: string;
   readonly readyPath: string;
   live(): Response;
-  ready(): Promise<Response>;
+  ready(request: Request): Promise<Response>;
 }
 
 const NO_STORE = { 'cache-control': 'no-store' } as const;
@@ -21,8 +22,15 @@ const NO_STORE = { 'cache-control': 'no-store' } as const;
 /** How long `/up/ready` answers with the result of its last run — failing results too. */
 export const READY_CACHE_MS = 1000;
 
-/** The endpoints for `application`, under `path`. `debug`: the details of each check in the answer. */
-export function createHealthEndpoints(application: Application, container: Container, { path, debug }: { path: string; debug: boolean }): HealthEndpoints {
+/**
+ * The endpoints for `application`, under `path`. `debug`: the details of each check in the answer — to a request for one of
+ * `hosts` only (the path is public; a foreign `Host` is a page re-pointed at this machine).
+ */
+export function createHealthEndpoints(
+  application: Application,
+  container: Container,
+  { path, debug, hosts }: { path: string; debug: boolean; hosts: ReadonlySet<string> },
+): HealthEndpoints {
   const closing = container.has(ServerClosing) ? container.make(ServerClosing) : undefined;
   const checks = application.container.has(HealthChecks) ? application.container.make(HealthChecks) : new HealthChecks();
   const clock = application.container.has(Clock) ? application.container.make(Clock) : { now: () => Date.now() };
@@ -54,11 +62,11 @@ export function createHealthEndpoints(application: Application, container: Conta
       closed()
         ? new Response('Service Unavailable', { status: 503, headers: { ...NO_STORE, 'content-type': 'text/plain; charset=utf-8' } })
         : new Response('OK', { status: 200, headers: { ...NO_STORE, 'content-type': 'text/plain; charset=utf-8' } }),
-    ready: async () => {
+    ready: async (request) => {
       if (draining()) return Response.json({ status: 'draining' }, { status: 503, headers: NO_STORE });
       const result = await report();
       const status = result.ok ? 'ok' : 'failing';
-      if (!debug) return Response.json({ status }, { status: result.ok ? 200 : 503, headers: NO_STORE });
+      if (!debug || !hostAllowed(request, hosts)) return Response.json({ status }, { status: result.ok ? 200 : 503, headers: NO_STORE });
       const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
       return Response.json(
         {

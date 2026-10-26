@@ -37,6 +37,17 @@ describe('SERVER_TRUSTED_PROXIES', async () => {
     ).rejects.toThrow('server: SERVER_TRUSTED_PROXIES — Expected addresses or ranges like 10.0.0.0/8, or *: proxy.internal is not one');
   });
 
+  it('refuses a range that is every peer — /0 in any spelling, and an IPv4-mapped range that covers all of IPv4 — and points to *', async () => {
+    const everyone = ['0.0.0.0/0', '::/0', '0.0.0.0/00', '0.0.0.0/000', '10.0.0.0/0', '::ffff:0.0.0.0/96', '::ffff:0:0/96', '::ffff:0.0.0.0/80', '::/80'];
+    expect(everyone.some(isProxyEntry)).toBe(false);
+    expect(['0.0.0.0/1', '10.0.0.0/8', '::ffff:10.0.0.0/104', '::ffff:0.0.0.0/97', 'fd00::/8', '2001:db8::/32'].every(isProxyEntry)).toBe(true);
+    for (const entry of everyone) {
+      await expect(
+        createApplication({ root: import.meta.dirname, discover: false, providers: [ServerServiceProvider] }, { env: { SERVER_TRUSTED_PROXIES: `10.0.0.1, ${entry}` } }),
+      ).rejects.toThrow('use * if every peer is your proxy');
+    }
+  });
+
   it('rewrites the URL only from a trusted peer: X-Forwarded-Proto and -Host — the nearest proxy\'s value, a valid one', () => {
     const request = (headers: Record<string, string>) => new Request('http://10.0.0.5:3000/users?page=2', { headers });
     const trusts = proxyMatcher(['10.0.0.0/8']);

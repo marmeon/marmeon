@@ -263,8 +263,11 @@ export interface ResponseFactoryOptions {
   logger?: Logger;
   /** Server rendering at all (`SERVER_SSR_ENABLED=false` turns it off for every page: the browser renders them). Default: on. */
   ssr?: boolean;
-  /** Development: say why an island (or a page) is a 404 where it was asked for the other. */
-  debug?: boolean;
+  /**
+   * Development: whether a request gets the details — why an island (or a page) is a 404 where it was asked for the other, the
+   * overlay of a failed server rendering. A function, so a request for a foreign host can be refused them.
+   */
+  debug?: (request: Request) => boolean;
   /**
    * Resolves an island of a page in-process while the page renders — the kernel's: through the island route's own
    * middleware, read-only. Without it, islands load in the browser.
@@ -299,7 +302,7 @@ export function createResponseFactory(
   renderer: PageRenderer = shellRenderer,
   routes?: RouteLookup,
   version: string | null = null,
-  { app, appUrl, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = false, islands, deferredTimeout = 10_000, layerBases, onPage, onDeferredError }: ResponseFactoryOptions = {},
+  { app, appUrl, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = () => false, islands, deferredTimeout = 10_000, layerBases, onPage, onDeferredError }: ResponseFactoryOptions = {},
 ): ScopedResponseFactory {
   // What the error lines below mask their text with: the app's (the names its packages add — the session cookie — count too).
   const redactor = app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
@@ -399,7 +402,7 @@ export function createResponseFactory(
       report(`Server rendering of [${page.component}] failed — the browser renders the page`)(error);
       const shell = await renderer.shell(page, request, nonce, appUrl);
       // Development: the developer sees it — in Vite's overlay — instead of a page that silently renders in the browser.
-      if (debug && app && renderer.failed) {
+      if (debug(request) && app && renderer.failed) {
         try {
           const solutions = app.container.has(ErrorSolutions) ? await app.container.make(ErrorSolutions).find(error, { app }) : [];
           const markup = await renderer.failed(error, { component: page.component, solutions, redactor, ...(nonce ? { nonce } : {}) });
@@ -491,7 +494,7 @@ export function createResponseFactory(
       // An action's redirect is not followed: its answer is what the user is shown, so it takes the flash messages.
       return isActionRequest(ctx.request) ? withFlash(response, deliver(ctx.request, scope)) : response;
     }
-    if (isIslandResult(result)) return islandResponse(result, ctx, version, debug, scope, onPage);
+    if (isIslandResult(result)) return islandResponse(result, ctx, version, debug(ctx.request), scope, onPage);
     if (isJsonResult(result)) {
       const response = jsonResponse(result);
       // An action's data: with the messages its controller flashed — an API client's JSON leaves them for a page.
@@ -502,12 +505,12 @@ export function createResponseFactory(
       // An action gets data, never a page: the types refuse such a route for `useAction` — a page here is a mistake.
       throw new HttpError(
         406,
-        debug ? `[${result.component}] is a page — an action (useAction) gets data: its controller returns this.json(…) or a redirect, not this.view(…).` : undefined,
+        debug(ctx.request) ? `[${result.component}] is a page — an action (useAction) gets data: its controller returns this.json(…) or a redirect, not this.view(…).` : undefined,
       );
     }
     if (regionOf(ctx.request) === 'island') {
       // `<Island route>` takes island routes only (a type error otherwise) — at runtime a page is not one either.
-      throw new HttpError(404, debug ? `[${result.component}] is a page, not an island — its controller returns this.view(…); an island's returns this.island(…).` : undefined);
+      throw new HttpError(404, debug(ctx.request) ? `[${result.component}] is a page, not an island — its controller returns this.view(…); an island's returns this.island(…).` : undefined);
     }
 
     const url = new URL(ctx.request.url);

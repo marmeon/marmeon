@@ -30,7 +30,7 @@ export const ServerConfig = defineConfig('server', {
       .list(env.string())
       .check(
         (entries) => entries.every(isProxyEntry),
-        (entries) => `Expected addresses or ranges like 10.0.0.0/8, or *: ${entries.filter((entry) => !isProxyEntry(entry)).join(', ')} is not one`,
+        (entries) => `Expected addresses or ranges like 10.0.0.0/8, or *: ${entries.filter((entry) => !isProxyEntry(entry)).join(', ')} is not one (use * if every peer is your proxy)`,
       )
       .default([]),
     /** Overrides the asset version derived from the build — e.g. the git commit of the deployment. */

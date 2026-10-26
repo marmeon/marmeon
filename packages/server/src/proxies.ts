@@ -2,7 +2,8 @@ import { BlockList, isIP } from 'node:net';
 
 /**
  * Whether an entry of `SERVER_TRUSTED_PROXIES` is one: `*`, an address (`127.0.0.1`, `::1`) or a range (`10.0.0.0/8`, `fd00::/8`).
- * The config refuses anything else at boot — a typo must not silently trust nobody (or everybody).
+ * The config refuses anything else at boot — a typo must not silently trust nobody (or everybody): a range of every address
+ * (`0.0.0.0/0`, `::/0`, or an IPv6 range holding all of IPv4 as `::ffff:0.0.0.0/96`) is none either — `*` says that.
  */
 export function isProxyEntry(entry: string): boolean {
   if (entry === '*') return true;
@@ -11,7 +12,17 @@ export function isProxyEntry(entry: string): boolean {
   if (family === 0 || extra !== undefined) return false;
   if (prefix === undefined) return true;
   if (!/^\d{1,3}$/.test(prefix)) return false;
-  return Number(prefix) <= (family === 4 ? 32 : 128);
+  if (Number(prefix) > (family === 4 ? 32 : 128)) return false;
+  return !coversEveryPeer(address!, Number(prefix), family);
+}
+
+/** Whether a range holds every IPv4 peer (an IPv6 one: every IPv4-mapped address too) — what `*` is for. */
+function coversEveryPeer(address: string, prefix: number, family: number): boolean {
+  if (prefix === 0) return true;
+  if (family === 4) return false;
+  const list = new BlockList();
+  list.addSubnet(address, prefix, 'ipv6');
+  return list.check('::ffff:0.0.0.0', 'ipv6') && list.check('::ffff:255.255.255.255', 'ipv6');
 }
 
 /**

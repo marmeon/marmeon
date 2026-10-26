@@ -372,7 +372,8 @@ The peer's address is the socket's. An adapter that runs the kernel outside `sta
 | A CDN in front of nginx | both ranges. With `*`, the app would take the CDN's address for the client's. |
 
 `*` trusts the direct peer only: whoever connects is the proxy, and the client's address is the last entry that proxy added.
-A value that is no address, range or `*` stops the start.
+A value that is no address, range or `*` stops the start, and so does a range of every address (`0.0.0.0/0`, `::/0`, or
+`::ffff:0.0.0.0/96`, which holds all of IPv4): write `*` if every peer is your proxy.
 
 > [!WARNING]
 > Never set `SERVER_TRUSTED_PROXIES=*` on a port anybody can reach: every client would then be the trusted proxy, and could choose its

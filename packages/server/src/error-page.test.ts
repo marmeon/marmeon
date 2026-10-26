@@ -367,6 +367,68 @@ describe('the development error page — only in development', () => {
   }
 });
 
+describe('the development error page — only for the hosts the development routes answer', () => {
+  it('a foreign Host gets the plain error: no source, path, query or body; localhost and APP_URL keep the page', async () => {
+    const { application, kernel } = await boot({ env: { NODE_ENV: 'development', APP_URL: 'https://app.example' } });
+    try {
+      for (const host of ['evil.example', 'localhost.evil.example', 'localhost@evil.example']) {
+        const html = await kernel.request('/explode/7?secret=q1', { headers: { ...page.headers, host } });
+        expect(html.status).toBe(500);
+        const body = await html.text();
+        expect(body).not.toContain('marmeon-markdown');
+        for (const leak of ['The controller failed', 'select * from users', 'error-page.test.ts', 'throw new Error', 'class="snippet"', 'frame app']) expect(body).not.toContain(leak);
+        const json = await kernel.request('/explode/7', { headers: { accept: 'application/json', host } });
+        expect(json.status).toBe(500);
+        const text = await json.text();
+        for (const leak of ['The controller failed', 'error-page.test.ts', 'solution', 'trace']) expect(text).not.toContain(leak);
+      }
+      for (const host of ['localhost:3000', '127.0.0.1', 'app.example']) {
+        const shown = await kernel.request('/explode/7', { headers: { ...page.headers, host } });
+        expect(await shown.text()).toContain('The controller failed on purpose');
+      }
+    } finally {
+      await application.shutdown();
+    }
+  });
+});
+
+describe('the development details of an island and of server rendering — only for the hosts the development routes answer', () => {
+  it('an island request for a foreign Host carries no exception text; localhost does', async () => {
+    const { application, kernel } = await boot();
+    try {
+      const island = { headers: { accept: 'application/json', 'x-marmeon-region': 'island', [PAGE_HEADER]: PROTOCOL_VERSION } };
+      const own = await (await kernel.request('/unrouted/1', { headers: { ...island.headers, host: 'localhost:3000' } })).text();
+      expect(own).toContain('The middleware failed');
+      const foreign = await kernel.request('/unrouted/1', { headers: { ...island.headers, host: 'evil.example' } });
+      expect(foreign.status).toBe(500);
+      const text = await foreign.text();
+      for (const leak of ['The middleware failed', 'error-page.test.ts', 'trace']) expect(text).not.toContain(leak);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('a view that throws while rendering shows the overlay on localhost only', async () => {
+    const renderer: PageRenderer = {
+      render: () => Promise.reject(new Error('The view failed on purpose')),
+      shell: async () => '<html><body><div id="app"></div></body></html>',
+      failed: async (error) => `<script data-overlay>${(error as Error).message}</script>`,
+    };
+    const { application, kernel } = await boot({ renderer });
+    try {
+      const own = await (await kernel.request('/home', { headers: { ...page.headers, host: 'localhost:3000' } })).text();
+      expect(own).toContain('data-overlay');
+      const foreign = await kernel.request('/home', { headers: { ...page.headers, host: 'evil.example' } });
+      expect(foreign.status).toBe(200);
+      const body = await foreign.text();
+      expect(body).toBe('<html><body><div id="app"></div></body></html>');
+      expect(body).not.toContain('The view failed');
+    } finally {
+      await application.shutdown();
+    }
+  });
+});
+
 describe('server-rendering errors in development', () => {
   it('go to the renderer’s overlay hook with their solutions — the page still renders in the browser', async () => {
     const reported: { error: unknown; component: string; titles: string[] }[] = [];
