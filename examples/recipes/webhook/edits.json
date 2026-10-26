@@ -1,0 +1,12 @@
+[
+  {
+    "file": ".env.example",
+    "find": "NODE_ENV=development",
+    "replace": "NODE_ENV=development\n# The secret your payment provider signs its webhook requests with (modules/payments): `verifyWebhook('payments')` refuses anything else.\nPAYMENTS_WEBHOOK_SECRET=replace-with-the-secret-the-provider-shows"
+  },
+  {
+    "file": ".env",
+    "find": "NODE_ENV=development",
+    "replace": "NODE_ENV=development\n# The secret your payment provider signs its webhook requests with (modules/payments): `verifyWebhook('payments')` refuses anything else.\nPAYMENTS_WEBHOOK_SECRET=replace-with-the-secret-the-provider-shows"
+  }
+]

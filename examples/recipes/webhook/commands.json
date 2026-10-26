@@ -1,0 +1,13 @@
+{
+  "beforeCopy": [
+    "marmeon make:module payments",
+    "marmeon make:controller ReceivePaymentEvent --module=payments --request",
+    "marmeon make:job IssueReceipt --module=payments",
+    "marmeon make:test payments --module=payments --path=/webhooks/payments"
+  ],
+  "afterCopy": [
+    "marmeon migrate",
+    "marmeon db:types",
+    "marmeon route:types"
+  ]
+}
