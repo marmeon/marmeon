@@ -159,7 +159,7 @@ export class PasswordBroker {
     assertSignInFinder(this.#users);
     const found = await this.#users.findForSignIn(email);
     if (!found) return err({ kind: 'unavailable' });
-    const created = await this.#tokens.create(email, this.#config.resetThrottle);
+    const created = await this.#tokens.create(email, this.#config.resetThrottleSeconds);
     return created.ok ? ok({ user: found.user, token: created.value }) : err({ kind: 'unavailable' });
   }
 
@@ -182,7 +182,7 @@ export class PasswordBroker {
   async reset(email: string, value: string, password: string): Promise<Result<AuthUser, { readonly kind: 'invalid-token' }>> {
     this.#newPassword.assertReady(); // before the token is spent
     assertSignInFinder(this.#users);
-    const consumed = await this.#tokens.consume(email, value, this.#config.resetExpire * 60);
+    const consumed = await this.#tokens.consume(email, value, this.#config.resetMinutes * 60);
     if (!consumed.ok) return consumed; // as the store made it: an expired token's deletion keeps its commitAnyway
     const found = await this.#users.findForSignIn(email);
     if (!found) return commitAnyway(err({ kind: 'invalid-token' })); // the token is used up for good

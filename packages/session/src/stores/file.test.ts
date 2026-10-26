@@ -15,7 +15,7 @@ import { FileSessionStore } from './file.ts';
 const NEW = { expectedVersion: undefined, lifetimeSeconds: 60 } satisfies SessionWrite;
 const over = (version: number): SessionWrite => ({ expectedVersion: version, lifetimeSeconds: 60 });
 const KEY = sessionKey('a'.repeat(43));
-const config = { lifetime: 1 } as SessionConfig;
+const config = { lifetimeMinutes: 1 } as SessionConfig;
 
 /**
  * A writer in the middle of its in-place write: it holds the guard and leaves `torn` in the file, then finishes with `whole`

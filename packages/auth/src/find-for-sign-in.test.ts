@@ -90,7 +90,7 @@ describe('a UserProvider with the old name findForLogin()', () => {
       { consume } as never,
       {} as never,
       {} as never,
-      { resetExpire: 60 } as never,
+      { resetMinutes: 60 } as never,
       { assertReady() {} } as never,
       {} as never,
     );

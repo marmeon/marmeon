@@ -500,7 +500,7 @@ export class Auth {
   }
 
   /** Whether a password was typed or a passkey proven (`passkeys.confirm()`, a passwordless sign-in) within `seconds` (default `AUTH_PASSWORD_TIMEOUT_SECONDS`). */
-  passwordRecentlyConfirmed(seconds = this.#config.passwordTimeout): boolean {
+  passwordRecentlyConfirmed(seconds = this.#config.passwordTimeoutSeconds): boolean {
     const at = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.confirmedAt) : undefined;
     // A confirmation counts only inside the sign-in it was typed for: one dated before the sign-in began is not its own.
     const signedInAt = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.signedInAt) : undefined;
@@ -526,7 +526,7 @@ export class Auth {
   async signIns(): Promise<readonly SignIn[]> {
     const user = await this.#requireUser('signIns');
     const current = this.#ownSignIn()?.id;
-    const records = await this.#signIns.list(idOf(user), { idleSeconds: this.#sessionConfig.lifetime * 60, maxSeconds: this.#config.sessionMaxSeconds });
+    const records = await this.#signIns.list(idOf(user), { idleSeconds: this.#sessionConfig.lifetimeMinutes * 60, maxSeconds: this.#config.sessionMaxSeconds });
     const list = records.map((record): SignIn => ({
       id: record.id,
       current: record.id === current,

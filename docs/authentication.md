@@ -538,8 +538,9 @@ needs a confirmed address as well as the password, because a token outlives a pa
 The password alone does not change the factors of an account that has [a second factor](two-factor-authentication.md#changing-the-factors): that needs a factor proven within 15 minutes as well ([how long](#how-long-a-sign-in-lasts)).
 
 Everyone else goes to `auth.password.confirm`, and after the confirmation back to the page they asked for. A JSON client gets
-`423 {"message":"Password confirmation required."}`. `confirmedPassword({ confirmRoute, seconds })` names another page or another
-time.
+`423 {"message":"Password confirmation required."}`. `confirmedPassword({ confirmRoute, maxAge })` names another page or another
+time, a [`Duration`](time.md#spans-of-time) (`{ minutes: 5 }`; a number is seconds). The resolved `AuthConfig` carries the
+variables as `passwordTimeoutSeconds`, `resetMinutes`, `resetThrottleSeconds` and `emailChangeThrottleSeconds`; the unit is in the name.
 
 The confirmation page posts the password to `auth.checkPassword(password)`, which checks it and notes the time. A right password also
 gives the session a new id (its data stays, and so do the counts of the password checks): a session id that leaked before the

@@ -178,8 +178,8 @@ const routes = openRoutes((Route) => {
   const signedIn = Route.middleware(authenticate());
   signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' })).get('/area', Page);
   signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' })).post('/area', Page);
-  signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: 60 })).get('/area-fresh', Page);
-  signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: 7 * 86_400 })).get('/area-week', Page);
+  signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: { minutes: 1 } })).get('/area-fresh', Page);
+  signedIn.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: { days: 7 } })).get('/area-week', Page);
   // Without authenticate() before it, which the types ask for: whoever is not signed in must still be refused.
   Route.middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' }) as never).get('/area-bare', Page);
   Route.post('/login-as', LoginAsController);
@@ -1362,7 +1362,8 @@ describe('twoFactor() middleware', () => {
   });
 
   it('takes only a positive maxAge', () => {
-    for (const maxAge of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) expect(() => twoFactor({ setup: 'a', verify: 'b', maxAge })).toThrow('seconds above zero');
+    for (const maxAge of [0, -1, { minutes: 0 }]) expect(() => twoFactor({ setup: 'a', verify: 'b', maxAge })).toThrow('Duration above zero');
+    for (const maxAge of [Number.NaN, Number.POSITIVE_INFINITY]) expect(() => twoFactor({ setup: 'a', verify: 'b', maxAge })).toThrow(TypeError);
   });
 
   it('is installed nowhere by the framework: neither the package nor its starter kit mention it outside docs and tests', () => {

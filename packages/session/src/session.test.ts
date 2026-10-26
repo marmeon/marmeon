@@ -19,7 +19,7 @@ declare module './session.ts' {
   }
 }
 
-const config = { lifetime: 120 } as SessionConfig;
+const config = { lifetimeMinutes: 120 } as SessionConfig;
 
 /** One request: start the session from `id`, run `use`, save. Returns the id for the next request. */
 async function request(store: SessionStore, id: string | undefined, use: (session: Session) => void = () => {}): Promise<Session> {

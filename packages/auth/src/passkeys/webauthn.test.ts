@@ -224,7 +224,7 @@ describe('a sign-in is refused when', () => {
 });
 
 describe('the challenge in the session', () => {
-  const config = { lifetime: 120 } as SessionConfig;
+  const config = { lifetimeMinutes: 120 } as SessionConfig;
   const startSession = async () => {
     const session = new Session(new MemorySessionStore(), config, plainSessionCodec);
     await session.start();

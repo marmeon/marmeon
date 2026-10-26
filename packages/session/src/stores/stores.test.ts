@@ -8,7 +8,7 @@ import { wrapped } from '../test-helpers/wrapped-store.ts';
 import { UserSessions } from '../user-sessions.ts';
 import { LIFETIME, storeKinds, storeUnderTest, type StoreUnderTest } from '../__fixtures__/stores.ts';
 
-const config = { lifetime: LIFETIME / 60 } as SessionConfig;
+const config = { lifetimeMinutes: LIFETIME / 60 } as SessionConfig;
 const NEW = { expectedVersion: undefined, lifetimeSeconds: LIFETIME } satisfies SessionWrite;
 const over = (version: number, lifetimeSeconds = LIFETIME): SessionWrite => ({ expectedVersion: version, lifetimeSeconds });
 

@@ -39,7 +39,7 @@ describe.each(storeKinds.filter((kind): kind is Exclude<StoreKind, 'memory'> => 
     const { target, drop } = await freshTarget(kind);
     try {
       const { store, close } = openStore(target, new SystemClock());
-      const config = { lifetime: LIFETIME / 60 } as SessionConfig;
+      const config = { lifetimeMinutes: LIFETIME / 60 } as SessionConfig;
       const signedIn = new Session(store, config, plainSessionCodec);
       await signedIn.start(undefined);
       signedIn.put(SESSION_USER_KEY, '7');

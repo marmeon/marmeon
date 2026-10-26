@@ -82,7 +82,7 @@ export const AuthConfig = defineConfig('auth', {
     .renamed('AUTH_RESET_EXPIRE', 'AUTH_RESET_MINUTES')
     .renamed('AUTH_RESET_THROTTLE', 'AUTH_RESET_THROTTLE_SECONDS')
     .renamed('AUTH_EMAIL_CHANGE_THROTTLE', 'AUTH_EMAIL_CHANGE_THROTTLE_SECONDS'),
-  resolve: (e) => ({
+  resolve: (e) => refuseOldKeys({
     rememberDays: e.AUTH_REMEMBER_DAYS,
     /** Whether "Keep me signed in" is on (`AUTH_REMEMBER_DAYS` above 0). */
     remember: e.AUTH_REMEMBER_DAYS > 0,
@@ -92,11 +92,11 @@ export const AuthConfig = defineConfig('auth', {
     loginAttemptsPerMinute: e.AUTH_LOGIN_ATTEMPTS_PER_MINUTE,
     accountSignInsPerDay: e.AUTH_ACCOUNT_SIGN_INS_PER_DAY,
     deviceCookieDays: e.AUTH_DEVICE_COOKIE_DAYS,
-    passwordTimeout: e.AUTH_PASSWORD_TIMEOUT_SECONDS,
-    resetExpire: e.AUTH_RESET_MINUTES,
-    resetThrottle: e.AUTH_RESET_THROTTLE_SECONDS,
+    passwordTimeoutSeconds: e.AUTH_PASSWORD_TIMEOUT_SECONDS,
+    resetMinutes: e.AUTH_RESET_MINUTES,
+    resetThrottleSeconds: e.AUTH_RESET_THROTTLE_SECONDS,
     emailChangeMinutes: e.AUTH_EMAIL_CHANGE_MINUTES,
-    emailChangeThrottle: e.AUTH_EMAIL_CHANGE_THROTTLE_SECONDS,
+    emailChangeThrottleSeconds: e.AUTH_EMAIL_CHANGE_THROTTLE_SECONDS,
     tokenPrefix: e.AUTH_TOKEN_PREFIX,
     privateRegistration: e.AUTH_PRIVATE_REGISTRATION,
     /** Days before `auth:prune-unverified` deletes an account without a confirmed address — 0: it deletes none. */
@@ -108,6 +108,26 @@ export const AuthConfig = defineConfig('auth', {
   }),
 });
 export type AuthConfig = ConfigOf<typeof AuthConfig>;
+
+const RENAMED_KEYS: Readonly<Record<string, string>> = {
+  passwordTimeout: 'passwordTimeoutSeconds',
+  resetExpire: 'resetMinutes',
+  resetThrottle: 'resetThrottleSeconds',
+  emailChangeThrottle: 'emailChangeThrottleSeconds',
+};
+
+/** The keys of the AuthConfig that changed their name: an untyped read of one throws instead of answering `undefined`. */
+function refuseOldKeys<T extends object>(config: T): T {
+  for (const [old, now] of Object.entries(RENAMED_KEYS)) {
+    Object.defineProperty(config, old, {
+      enumerable: false,
+      get() {
+        throw new TypeError(`AuthConfig.${old} was renamed AuthConfig.${now} — the value is the same number, now with its unit in the name.`);
+      },
+    });
+  }
+  return config;
+}
 
 /**
  * The name the remember-me cookie goes by: `AUTH_REMEMBER_COOKIE`, with the `__Host-` prefix when the session's cookies are

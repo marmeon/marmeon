@@ -6,7 +6,7 @@ const resolve = async (env: Record<string, string>) => (await resolveConfig([Aut
 
 describe('AuthConfig: variable names', () => {
   it('keeps the defaults of the durations under their new names', async () => {
-    expect(await resolve({})).toMatchObject({ passwordTimeout: 900, resetExpire: 60, resetThrottle: 60, emailChangeThrottle: 60 });
+    expect(await resolve({})).toMatchObject({ passwordTimeoutSeconds: 900, resetMinutes: 60, resetThrottleSeconds: 60, emailChangeThrottleSeconds: 60 });
   });
 
   it('reads the durations by their new names, in the unit the name says', async () => {
@@ -16,7 +16,15 @@ describe('AuthConfig: variable names', () => {
       AUTH_RESET_THROTTLE_SECONDS: '10',
       AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: '0',
     });
-    expect(config).toMatchObject({ passwordTimeout: 300, resetExpire: 30, resetThrottle: 10, emailChangeThrottle: 0 });
+    expect(config).toMatchObject({ passwordTimeoutSeconds: 300, resetMinutes: 30, resetThrottleSeconds: 10, emailChangeThrottleSeconds: 0 });
+  });
+
+  it('refuses a read of a key by its old name, at the read', async () => {
+    const config = (await resolve({})) as Record<string, unknown>;
+    for (const [old, now] of [['passwordTimeout', 'passwordTimeoutSeconds'], ['resetExpire', 'resetMinutes'], ['resetThrottle', 'resetThrottleSeconds'], ['emailChangeThrottle', 'emailChangeThrottleSeconds']]) {
+      expect(() => config[old!], old).toThrow(`was renamed AuthConfig.${now}`);
+    }
+    expect(Object.keys(config)).not.toContain('resetExpire');
   });
 
   it('keeps the bounds of the durations', async () => {
@@ -27,7 +35,7 @@ describe('AuthConfig: variable names', () => {
   });
 
   it('stops the start for a reset link that lives longer than a day, or no time at all', async () => {
-    expect((await resolve({ AUTH_RESET_MINUTES: '1440' })).resetExpire).toBe(1440);
+    expect((await resolve({ AUTH_RESET_MINUTES: '1440' })).resetMinutes).toBe(1440);
     for (const value of ['0', '1441', '525600']) await expect(resolve({ AUTH_RESET_MINUTES: value })).rejects.toThrow(/AUTH_RESET_MINUTES/);
   });
 

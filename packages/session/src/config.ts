@@ -40,14 +40,14 @@ export const SessionConfig = defineConfig('session', {
     SESSION_LOTTERY: env.string().regex(/^\d+\/[1-9]\d*$/, 'Expected a chance like 2/100').default('2/100'),
   })
     .renamed('SESSION_LIFETIME', 'SESSION_LIFETIME_MINUTES'),
-  resolve: (e) => ({
+  resolve: (e) => refuseOldKeys({
     driver: e.SESSION_DRIVER,
     /** Where `secure` comes from: `SESSION_SECURE_COOKIE`, or `APP_URL`'s protocol. */
     secureFrom: (e.SESSION_SECURE_COOKIE === undefined ? 'APP_URL' : 'SESSION_SECURE_COOKIE') as 'APP_URL' | 'SESSION_SECURE_COOKIE',
     /** Protected environment (not development, not test) — cookies without `Secure` there are warned about at boot. */
     protected: environment.isProtected(e),
     connection: e.SESSION_CONNECTION,
-    lifetime: e.SESSION_LIFETIME_MINUTES,
+    lifetimeMinutes: e.SESSION_LIFETIME_MINUTES,
     cookie: e.SESSION_COOKIE,
     files: e.SESSION_FILES,
     secure: e.SESSION_SECURE_COOKIE === undefined ? isHttps(e.APP_URL) : e.SESSION_SECURE_COOKIE,
@@ -57,6 +57,21 @@ export const SessionConfig = defineConfig('session', {
   }),
 });
 export type SessionConfig = ConfigOf<typeof SessionConfig>;
+
+const RENAMED_KEYS: Readonly<Record<string, string>> = { lifetime: 'lifetimeMinutes' };
+
+/** The keys of the SessionConfig that changed their name: an untyped read of one throws instead of answering `undefined`. */
+function refuseOldKeys<T extends object>(config: T): T {
+  for (const [old, now] of Object.entries(RENAMED_KEYS)) {
+    Object.defineProperty(config, old, {
+      enumerable: false,
+      get() {
+        throw new TypeError(`SessionConfig.${old} was renamed SessionConfig.${now} — the value is the same number, now with its unit in the name.`);
+      },
+    });
+  }
+  return config;
+}
 
 /**
  * The name the session cookie goes by: `SESSION_COOKIE`, with the `__Host-` prefix when cookies are `Secure`. Over plain HTTP

@@ -180,7 +180,7 @@ when it closes, and a guest's session data, such as a chosen language, goes with
 may keep them; then the server's lifetimes below decide. A user who wants to stay signed in across a restart ticks "Keep me
 signed in" ([remember me](authentication.md#remember-me)).
 
-A session expires `SESSION_LIFETIME_MINUTES` minutes after its last request, whatever the cookie says. A sign-in also ends `AUTH_SESSION_MAX_HOURS` hours after it began, however active the user is; [how long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists every lifetime, and [sign-ins](authentication.md#sign-ins) lists the browsers a user is signed in on, with any session driver. Expired sessions of the `file` and `database` drivers are
+A session expires `SESSION_LIFETIME_MINUTES` minutes after its last request, whatever the cookie says (`SessionConfig.lifetimeMinutes`). A sign-in also ends `AUTH_SESSION_MAX_HOURS` hours after it began, however active the user is; [how long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists every lifetime, and [sign-ins](authentication.md#sign-ins) lists the browsers a user is signed in on, with any session driver. Expired sessions of the `file` and `database` drivers are
 deleted after the response of 2 in 100 requests, as `SESSION_LOTTERY` says. The `redis` driver needs no clean-up.
 
 On a busy app, run the clean-up on a schedule instead. When the app's scheduler runs `session:prune`, requests stop drawing the

@@ -30,7 +30,7 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     const resets = new DatabasePasswordResetTokens(connections, clock);
     const signIns = new DatabaseSignIns(connections, clock);
     const access = new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock);
-    const config = { resetExpire: 60, rememberDays: 30, sessionMaxSeconds: 86_400 } as never;
+    const config = { resetMinutes: 60, rememberDays: 30, sessionMaxSeconds: 86_400 } as never;
 
     // Two hours ago: a reset token (expired after 60 minutes), a remember-me token for one hour, API tokens for one hour.
     clock.travel({ hours: -2 });
@@ -49,7 +49,7 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
     const prune = (hours?: string) =>
-      new PruneTokensCommand(resets, access, config, { lifetime: 120 } as never, signIns).handle({ args: [], options: hours === undefined ? {} : { hours }, output, root: '/', spawn: async () => 0 } as never);
+      new PruneTokensCommand(resets, access, config, { lifetimeMinutes: 120 } as never, signIns).handle({ args: [], options: hours === undefined ? {} : { hours }, output, root: '/', spawn: async () => 0 } as never);
 
     // With --hours=1: only API tokens expired more than an hour ago. The old sign-in is still within its idle time, so it stays: without its token.
     expect(await prune('1')).toBe(0);
@@ -84,7 +84,7 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     clock.travel({ minutes: 1 });
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
-    const command = new PruneTokensCommand(new DatabasePasswordResetTokens(connections, clock), new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock), { resetExpire: 60, rememberDays: 0, sessionMaxSeconds: 86_400 } as never, { lifetime: 120 } as never, signIns);
+    const command = new PruneTokensCommand(new DatabasePasswordResetTokens(connections, clock), new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock), { resetMinutes: 60, rememberDays: 0, sessionMaxSeconds: 86_400 } as never, { lifetimeMinutes: 120 } as never, signIns);
     await command.handle({ args: [], options: {}, output, root: '/', spawn: async () => 0 } as never);
     expect(lines.pop()).toBe('Pruned 0 password reset tokens, 0 API tokens and 0 sign-ins.');
     expect(await withToken()).toEqual([]);
@@ -104,8 +104,8 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     const command = new PruneTokensCommand(
       new DatabasePasswordResetTokens(connections, clock),
       new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock),
-      { resetExpire: 60, rememberDays: 30, sessionMaxSeconds: 86_400 } as never,
-      { lifetime: 120 } as never,
+      { resetMinutes: 60, rememberDays: 30, sessionMaxSeconds: 86_400 } as never,
+      { lifetimeMinutes: 120 } as never,
       signIns,
     );
     await command.handle({ args: [], options: {}, output, root: '/', spawn: async () => 0 } as never);
@@ -126,7 +126,7 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     const signIns = new DatabaseSignIns(connections, clock);
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(line) };
-    const command = new PruneTokensCommand(resets, new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock), config, { lifetime: 120 } as never, signIns);
+    const command = new PruneTokensCommand(resets, new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock), config, { lifetimeMinutes: 120 } as never, signIns);
     await command.handle({ args: [], options: {}, output, root: '/', spawn: async () => 0 } as never);
     expect(lines.pop()).toMatch(/^Pruned 1 password reset token,/);
     expect((await connections.get<any>().selectFrom(PASSWORD_RESET_TABLE).select('email').execute()).map((row: { email: string }) => row.email)).toEqual(['younger@example.com']);

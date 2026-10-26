@@ -142,7 +142,7 @@ const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marme
 /** The store of `SESSION_DRIVER`. Database and Redis connections are looked up on first use, through their packages. */
 function storeFor(config: SessionConfig, container: Resolver): SessionStore {
   const clock = container.make(Clock);
-  const lifetime = config.lifetime * 60;
+  const lifetime = config.lifetimeMinutes * 60;
   switch (config.driver) {
     case 'memory':
       return new MemorySessionStore(clock);

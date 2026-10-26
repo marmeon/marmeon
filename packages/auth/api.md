@@ -140,11 +140,11 @@ export declare const AuthConfig: import("@marmeon/core").ConfigDefinition<{
     loginAttemptsPerMinute: number;
     accountSignInsPerDay: number;
     deviceCookieDays: number;
-    passwordTimeout: number;
-    resetExpire: number;
-    resetThrottle: number;
+    passwordTimeoutSeconds: number;
+    resetMinutes: number;
+    resetThrottleSeconds: number;
     emailChangeMinutes: number;
-    emailChangeThrottle: number;
+    emailChangeThrottleSeconds: number;
     tokenPrefix: string;
     privateRegistration: boolean;
     unverifiedDays: number;
@@ -163,11 +163,11 @@ export declare class AuthServiceProvider implements ServiceProvider {
         loginAttemptsPerMinute: number;
         accountSignInsPerDay: number;
         deviceCookieDays: number;
-        passwordTimeout: number;
-        resetExpire: number;
-        resetThrottle: number;
+        passwordTimeoutSeconds: number;
+        resetMinutes: number;
+        resetThrottleSeconds: number;
         emailChangeMinutes: number;
-        emailChangeThrottle: number;
+        emailChangeThrottleSeconds: number;
         tokenPrefix: string;
         privateRegistration: boolean;
         unverifiedDays: number;
@@ -238,7 +238,7 @@ export type ConfirmEmailChangeError =
 // ConfirmedPasswordOptions
 export interface ConfirmedPasswordOptions<N extends string = string> {
     readonly confirmRoute?: CheckRouteName<N>;
-    readonly seconds?: number;
+    readonly maxAge?: Duration;
 }
 // CredentialWriter
 export type CredentialWriter = Pick<UserProvider, 'updatePasswordHash' | 'updateSessionKey' | 'updateEverySessionKey'>;
@@ -1542,11 +1542,11 @@ export declare const AuthConfig: import("@marmeon/core").ConfigDefinition<{
     loginAttemptsPerMinute: number;
     accountSignInsPerDay: number;
     deviceCookieDays: number;
-    passwordTimeout: number;
-    resetExpire: number;
-    resetThrottle: number;
+    passwordTimeoutSeconds: number;
+    resetMinutes: number;
+    resetThrottleSeconds: number;
     emailChangeMinutes: number;
-    emailChangeThrottle: number;
+    emailChangeThrottleSeconds: number;
     tokenPrefix: string;
     privateRegistration: boolean;
     unverifiedDays: number;
@@ -2166,8 +2166,6 @@ export type SecondFactorInput = {
 } | {
     readonly passkey: PasskeyAssertion;
 };
-// TWO_FACTOR_MAX_AGE
-export declare const TWO_FACTOR_MAX_AGE = 86400;
 // TotpSetup
 export interface TotpSetup {
     readonly secret: string;
@@ -2198,7 +2196,7 @@ export declare class TwoFactor {
 export interface TwoFactorMiddlewareOptions<S extends string = string, V extends string = string, L extends string = string> {
     readonly setup: CheckRouteName<S>;
     readonly verify: CheckRouteName<V>;
-    readonly maxAge?: number;
+    readonly maxAge?: Duration;
     readonly loginRoute?: CheckRouteName<L>;
 }
 // confirmedSecondFactor
@@ -2330,11 +2328,11 @@ export declare const AuthConfig: import("@marmeon/core").ConfigDefinition<{
     loginAttemptsPerMinute: number;
     accountSignInsPerDay: number;
     deviceCookieDays: number;
-    passwordTimeout: number;
-    resetExpire: number;
-    resetThrottle: number;
+    passwordTimeoutSeconds: number;
+    resetMinutes: number;
+    resetThrottleSeconds: number;
     emailChangeMinutes: number;
-    emailChangeThrottle: number;
+    emailChangeThrottleSeconds: number;
     tokenPrefix: string;
     privateRegistration: boolean;
     unverifiedDays: number;

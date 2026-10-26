@@ -80,7 +80,7 @@ export class SendPasswordResetLinkJob {
     const reset = created.value;
     const url = new URL(this.#router.url('auth.password.reset', {}, { token: reset.token, email: payload.email }), this.#app.url);
     const t = this.#translators.for(reset.user.locale ?? payload.locale);
-    await this.#mailer.queue(new ResetPasswordMail(reset.user, url.href, this.#auth.resetExpire, t), { queue: 'mail' });
+    await this.#mailer.queue(new ResetPasswordMail(reset.user, url.href, this.#auth.resetMinutes, t), { queue: 'mail' });
   }
 }
 ```
@@ -240,7 +240,7 @@ address never has two rows, and `token_hash` as a 64-character `secret()` column
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `AUTH_RESET_MINUTES` | `60` | Minutes a reset link works: 1 to 1440 (a day). A larger value stops the start. |
+| `AUTH_RESET_MINUTES` | `60` | Minutes a reset link works (`AuthConfig.resetMinutes`): 1 to 1440 (a day). A larger value stops the start. |
 | `AUTH_RESET_THROTTLE_SECONDS` | `60` | Seconds before another link goes to the same address. `0` sends one for every request. |
 | `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a reset, and every other new password, revokes every API token of the user. |
 

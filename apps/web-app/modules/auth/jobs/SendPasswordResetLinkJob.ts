@@ -46,6 +46,6 @@ export class SendPasswordResetLinkJob {
     // In the account's language (whoever asked for the link, and in whatever language): the recipient's — for an account
     // without one, the language the link was asked for in.
     const t = this.#translators.for(reset.user.locale ?? payload.locale);
-    await this.#mailer.queue(new ResetPasswordMail(reset.user, url.href, this.#auth.resetExpire, t), { queue: 'mail' });
+    await this.#mailer.queue(new ResetPasswordMail(reset.user, url.href, this.#auth.resetMinutes, t), { queue: 'mail' });
   }
 }

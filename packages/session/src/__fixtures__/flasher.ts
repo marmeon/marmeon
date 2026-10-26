@@ -12,7 +12,7 @@ import { LIFETIME, openStore, type StoreTarget } from './stores.ts';
 
 const [targetJson, id, countText, prefix] = process.argv.slice(2);
 const { store, close } = openStore(JSON.parse(targetJson!) as StoreTarget, new SystemClock());
-const config = { lifetime: LIFETIME / 60 } as SessionConfig;
+const config = { lifetimeMinutes: LIFETIME / 60 } as SessionConfig;
 
 // Warm up (connection, client import), so the race starts with everything open.
 await store.read(sessionKey(id!));

@@ -131,7 +131,7 @@ export class StartSession {
   async terminate(): Promise<void> {
     if (Math.random() >= this.#lottery.chance) return;
     try {
-      await this.#store.gc(this.#config.lifetime * 60);
+      await this.#store.gc(this.#config.lifetimeMinutes * 60);
     } catch (error) {
       // Masked by the app's Redactor: the names its packages add (this one's cookie) count too.
       const redactor = this.#container.has(Redactor) ? this.#container.make(Redactor) : new Redactor();
