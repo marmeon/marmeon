@@ -7,6 +7,7 @@ import type { ParamsOf } from './index.ts';
 import type { CheckKey } from './index.ts';
 // @ts-expect-error — `KeyOf` is not exported by the browser-safe core either
 import type { KeyOf as CoreKeyOf } from './messages.ts';
+import type { Locales } from './index.ts';
 import type { MessageKeyOf, MessageAt, Messages, MessageParamsOf, TranslateArgs } from './types.ts';
 
 const en = {
@@ -83,3 +84,7 @@ export function translations() {
 }
 
 export type Unused = [KeyOf<string>, ParamsOf<string>, CheckKey<'a', {}, 'b'>, CoreKeyOf<string>];
+
+declare const locales: Locales;
+// @ts-expect-error — the allow-list is fixed once booted: `Locales` has no `add`
+locales.add('xx');

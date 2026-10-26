@@ -306,6 +306,14 @@ describe('I18nConfig', () => {
     expect((await page(await send('/hello', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'accept-language': 'it' } }))).locale).toBe('de');
   });
 
+  it('Locales has no method that extends the allow-list after boot', async () => {
+    const { application } = await boot({ env: { APP_LOCALES: '' } });
+    const locales = application.container.make(Locales);
+    expect('add' in locales).toBe(false);
+    expect(() => (locales.supported as string[]).push('xx')).toThrow(TypeError);
+    expect(locales.find('xx')).toBeUndefined();
+  });
+
   it('APP_LOCALE must be a supported locale', async () => {
     await expect(boot({ env: { APP_LOCALE: 'fr' } })).rejects.toThrow(ConfigError);
     await expect(boot({ env: { APP_LOCALE: 'fr' } })).rejects.toThrow(/APP_LOCALE must be one of APP_LOCALES/);

@@ -17,10 +17,20 @@ function capture(level: 'info' | 'warn' = 'info') {
       done();
     },
   });
-  return { lines, raw, logger: createPinoLogger({ level, format: 'json' }, stream) };
+  return { lines, raw, logger: createPinoLogger({ level, format: 'json' }, { destination: stream }) };
 }
 
 describe('@marmeon/log', () => {
+  it('takes the stream and the app in its options — the positional form of an untyped caller throws', () => {
+    const stream = new Writable({ write: (_chunk, _encoding, done) => done() });
+    const untyped = createPinoLogger as unknown as (...args: unknown[]) => unknown;
+    expect(() => untyped({ level: 'info', format: 'json' }, stream)).toThrow(TypeError);
+    expect(() => untyped({ level: 'info', format: 'json' }, stream)).toThrow('createPinoLogger(config, { destination, app }) takes the stream and the app in its options');
+    expect(() => untyped({ level: 'info', format: 'json' }, null)).toThrow('takes the stream and the app in its options');
+    expect(() => untyped({ level: 'info', format: 'json' }, {}, undefined)).toThrow(TypeError);
+    expect(() => untyped({ level: 'info', format: 'json' }, { destination: stream })).not.toThrow();
+  });
+
   it('logs pretty lines with NODE_ENV=development only — JSON everywhere else, a missing NODE_ENV included', () => {
     const format = (NODE_ENV: string | undefined, LOG_FORMAT?: 'pretty' | 'json') => LogConfig.resolve({ LOG_LEVEL: 'info', NODE_ENV, LOG_FORMAT }).format;
     expect(format('development')).toBe('pretty');
@@ -42,7 +52,7 @@ describe('@marmeon/log', () => {
         done();
       },
     });
-    const logger = createPinoLogger({ level: 'info', format: 'json', environment: 'staging' }, stream);
+    const logger = createPinoLogger({ level: 'info', format: 'json', environment: 'staging' }, { destination: stream });
     logger.info('Started');
     logger.child({ channel: 'http' }).warn('Slow');
     expect(lines).toEqual([
@@ -84,7 +94,7 @@ describe('@marmeon/log', () => {
         done();
       },
     });
-    const logger = createPinoLogger({ level: 'info', format: 'json' }, stream, app);
+    const logger = createPinoLogger({ level: 'info', format: 'json' }, { destination: stream, app });
     const span = new AsyncLocalStorage<string>();
     logger.info('Before');
     const off = app.container.make(LogContextSources).add(() => (span.getStore() ? { trace_id: span.getStore() } : undefined));
@@ -134,7 +144,7 @@ describe('@marmeon/log', () => {
         done();
       },
     });
-    const logger = createPinoLogger({ level: 'info', format: 'pretty' }, pinoPretty({ colorize: false, sync: true, destination }));
+    const logger = createPinoLogger({ level: 'info', format: 'pretty' }, { destination: pinoPretty({ colorize: false, sync: true, destination }) });
     const failure = new Error('boom\nWARN: forged\u001b[31m');
     logger.error('Failed', { err: failure });
     const text = lines.join('');
@@ -208,7 +218,7 @@ describe('@marmeon/log', () => {
     app.container.make(Redactor).addKeys('marmeon_session', 'X-Tenant-Key');
     const raw: string[] = [];
     const stream = new Writable({ write: (chunk, _encoding, done) => (raw.push(String(chunk)), done()) });
-    const logger = createPinoLogger({ level: 'info', format: 'json' }, stream, app);
+    const logger = createPinoLogger({ level: 'info', format: 'json' }, { destination: stream, app });
     logger.child({ marmeon_session: 'bound-s3ss' }).info('Visit', { headers: { 'x-tenant-key': 'tenant-k3y' }, list: [{ MARMEON_SESSION: 'listed-s3ss' }] });
     logger.error('Failed', { err: new Error('cookie marmeon_session=err-s3ss rejected') });
     const all = raw.join('');
@@ -277,8 +287,8 @@ describe('the log channel', () => {
     const other = await createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
     const lines: Record<string, unknown>[] = [];
     const stream = new Writable({ write: (chunk, _encoding, done) => (lines.push(JSON.parse(String(chunk))), done()) });
-    const logger = createPinoLogger({ level: 'warn', format: 'json' }, stream, app);
-    const foreign = createPinoLogger({ level: 'warn', format: 'json' }, stream, other);
+    const logger = createPinoLogger({ level: 'warn', format: 'json' }, { destination: stream, app });
+    const foreign = createPinoLogger({ level: 'warn', format: 'json' }, { destination: stream, app: other });
     logger.info('before anyone listens');
     expect(channels.built(app)).toBe(0);
 
@@ -305,8 +315,8 @@ describe('enabled(level) — asked before an entry is built', () => {
   it('follows the level — silent lets nothing through — and says yes while the log channel listens', async () => {
     const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: { NODE_ENV: 'test' } });
     const sink = new Writable({ write: (_chunk, _encoding, done) => done() });
-    const silent = createPinoLogger({ level: 'silent', format: 'json' }, sink, app);
-    const warn = createPinoLogger({ level: 'warn', format: 'json' }, sink, app);
+    const silent = createPinoLogger({ level: 'silent', format: 'json' }, { destination: sink, app });
+    const warn = createPinoLogger({ level: 'warn', format: 'json' }, { destination: sink, app });
     expect((['debug', 'info', 'warn', 'error'] as const).map((level) => silent.enabled?.(level))).toEqual([false, false, false, false]);
     expect((['debug', 'info', 'warn', 'error'] as const).map((level) => warn.enabled?.(level))).toEqual([false, false, true, true]);
     expect(silent.child({ channel: 'http' }).enabled?.('info')).toBe(false);

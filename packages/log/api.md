@@ -31,8 +31,13 @@ export declare class LogServiceProvider implements ServiceProvider {
     }>[];
     register(container: Container): void;
 }
+// PinoLoggerOptions
+export interface PinoLoggerOptions {
+    destination?: NodeJS.WritableStream;
+    app?: Application;
+}
 // createPinoLogger
-export declare function createPinoLogger(config: LogOptions, destination?: NodeJS.WritableStream, app?: Application): Logger;
+export declare function createPinoLogger(config: LogOptions, options?: PinoLoggerOptions): Logger;
 ```
 
 ## Environment
