@@ -4,12 +4,14 @@ import { editDefinition, editDefinitionFile, importedBindings, type DefinitionEd
 import { bindingNameOf } from '@marmeon/core/internal';
 import { CommandArgumentsError, CommandRegistry, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
+import { leavesProject } from '../write-guard.ts';
 
 export const PASCAL = /^[A-Z][A-Za-z0-9]*$/;
 export const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 /** Shared checks and file writing for the `make:*` generators. */
 function write(input: CommandInput, file: string, contents: string): boolean {
+  if (leavesProject(input, [file])) return false;
   if (existsSync(file) && input.options.force !== true) {
     input.output.error(`${relative(input.root, file)} already exists (use --force to overwrite).`);
     return false;
@@ -30,6 +32,8 @@ function moduleDir(input: CommandInput): string | undefined {
     input.output.error(`Module "${module}" does not exist. Create it first: marmeon make:module ${module}`);
     return undefined;
   }
+  // Registering edits the module's entry at its real location: a link out of the project is not followed.
+  if (input.options['no-register'] !== true && leavesProject(input, [join(dir, 'index.ts')])) return undefined;
   return dir;
 }
 
@@ -89,6 +93,7 @@ export function registerInModule(
     notRegistered(messages.unregistrable);
     return 'manual';
   }
+  if (leavesProject(input, [file])) return 'printed';
   const outcome = editDefinitionFile(file, edit, shown);
   if (outcome.status === 'added') {
     if (messages.added !== undefined) {
@@ -140,6 +145,7 @@ export class MakeModuleCommand {
       throw new CommandArgumentsError('Pass a kebab-case name, e.g. marmeon make:module billing');
     }
     const dir = join(input.root, 'modules', name);
+    if (input.options['no-register'] !== true && leavesProject(input, [join(input.root, 'bootstrap', 'app.ts')])) return 1;
     const ok =
       write(input, join(dir, 'index.ts'), MODULE(name)) && write(input, join(dir, 'routes.ts'), ROUTES);
     if (!ok) return 1;

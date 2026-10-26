@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, normalize, relative } from 'node:path';
 import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { caddyfile, compose, dockerfile, dockerignore, nginxConf, systemdUnits, TESTED_PNPM, type DockerApp, type PackageManager, type Proxy } from '../docker.ts';
 import { style } from '../output.ts';
+import { leavesProject } from '../write-guard.ts';
 
 /**
  * `marmeon make:docker [--caddy|--nginx] [--systemd] [--force]`: the files to run the app in production — a
@@ -37,6 +38,7 @@ export class MakeDockerCommand {
       ...(proxy === 'nginx' ? { 'deploy/nginx.conf': nginxConf({ systemd }) } : {}),
       ...(systemd ? Object.fromEntries(Object.entries(systemdUnits(app.docker)).map(([role, unit]) => [`deploy/systemd/${role}.service`, unit])) : {}),
     };
+    if (leavesProject({ root, output }, Object.keys(files).map((file) => join(root, file)))) return 1;
     const existing = Object.keys(files).filter((file) => existsSync(join(root, file)));
     if (existing.length > 0 && options.force !== true) {
       output.error(`${existing.join(', ')} already exist${existing.length === 1 ? 's' : ''} (use --force to overwrite).`);

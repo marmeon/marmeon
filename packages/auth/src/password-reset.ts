@@ -3,7 +3,7 @@ import { Clock, commitAnyway, ContainerError, err, EventDispatcher, ok, type Res
 import { Connections, secret, sql, type Secret } from '@marmeon/database';
 import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
-import { Hasher } from './hashing.ts';
+import { assertHashable, Hasher } from './hashing.ts';
 import { SignInThrottle, type DeviceCookie } from './sign-in-throttle.ts';
 import { NewPassword } from './new-password.ts';
 import { assertSignInFinder, idOf, UserProvider, type AuthUser } from './user.ts';
@@ -184,6 +184,7 @@ export class PasswordBroker {
   async reset(email: string, value: string, password: string): Promise<Result<AuthUser, { readonly kind: 'invalid-token' }>> {
     this.#newPassword.assertReady(); // before the token is spent
     assertSignInFinder(this.#users);
+    assertHashable(password); // before the token is spent, for every request alike: a password that cannot be hashed must not use the link up
     const consumed = await this.#tokens.consume(email, value, this.#config.resetMinutes * 60);
     if (!consumed.ok) return consumed; // as the store made it: an expired token's deletion keeps its commitAnyway
     const found = await this.#users.findForSignIn(email);

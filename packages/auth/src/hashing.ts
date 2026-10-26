@@ -17,7 +17,8 @@ export type PasswordHash = string & { readonly [passwordHash]: true };
  * Hashes and checks passwords. Passwords are never trimmed, but **Unicode-normalized
  * (NFKC)** before hashing, as NIST SP 800-63B asks: `é` typed as one code point (Windows) or as `e` plus
  * a combining accent (macOS) is the same password. Strings with lone surrogates are refused (they
- * would encode as U+FFFD and collide). At most {@link MAX_PASSWORD_BYTES} long, after normalizing.
+ * would encode as U+FFFD and collide). At most {@link MAX_PASSWORD_BYTES} long, after normalizing. A password reset checks
+ * these limits before it spends the link.
  */
 export interface Hasher {
   /** A new hash with a fresh salt, by the configured driver and costs. */
@@ -182,9 +183,7 @@ export class PasswordHasher implements Hasher {
   }
 
   async make(password: string): Promise<PasswordHash> {
-    const bytes = encode(password);
-    if (!bytes) throw new HashError(withCode('A2', 'A password must be a well-formed string (no lone surrogates).'));
-    if (bytes.byteLength > MAX_PASSWORD_BYTES) throw new HashError(withCode('A2', `Passwords are limited to ${MAX_PASSWORD_BYTES} bytes.`));
+    const bytes = assertHashable(password);
     const salt = crypto.randomBytes(SALT_BYTES);
     const parsed: Parsed =
       this.#options.driver === 'argon2id'
@@ -289,6 +288,17 @@ export class PasswordHasher implements Hasher {
 /** The driver and costs of a hash — its PHC string without salt and hash. */
 function setOf(parsed: Parsed): string {
   return format({ ...parsed, salt: Buffer.alloc(0), hash: Buffer.alloc(0) });
+}
+
+/**
+ * The checks `make()` starts with, for a caller that must know before it acts that a password can be hashed: the encoded
+ * password, or a {@link HashError}. Independent of any account or token, so it tells nothing about either.
+ */
+export function assertHashable(password: string): Buffer {
+  const bytes = encode(password);
+  if (!bytes) throw new HashError(withCode('A2', 'A password must be a well-formed string (no lone surrogates).'));
+  if (bytes.byteLength > MAX_PASSWORD_BYTES) throw new HashError(withCode('A2', `Passwords are limited to ${MAX_PASSWORD_BYTES} bytes.`));
+  return bytes;
 }
 
 /** NFKC, as UTF-8 — or undefined for strings with lone surrogates. */

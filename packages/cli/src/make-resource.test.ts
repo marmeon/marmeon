@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
@@ -72,6 +72,22 @@ function tree(dir: string): Map<string, string> {
 function snapshot(root: string): Map<string, string> {
   return tree(root);
 }
+
+describe('make:resource and links out of the project', () => {
+  it('writes nothing when bootstrap/app.ts is a link out', () => {
+    const root = app();
+    const outside = tempDir('marmeon-make-resource-outside-');
+    writeFileSync(join(outside, 'app.ts'), APP);
+    rmSync(join(root, 'bootstrap/app.ts'));
+    symlinkSync(join(outside, 'app.ts'), join(root, 'bootstrap/app.ts'));
+    const { code, lines } = run(root, ['Bookmark']);
+    expect(code).toBe(1);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('bootstrap/app.ts leads out of the project');
+    expect(readdirSync(join(root, 'modules'))).toEqual(['auth']);
+    expect(readFileSync(join(outside, 'app.ts'), 'utf8')).toBe(APP);
+  });
+});
 
 describe('make:resource', () => {
   it('is a built-in command that does not boot the app', () => {
