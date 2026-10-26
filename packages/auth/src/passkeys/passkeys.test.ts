@@ -135,6 +135,18 @@ class PasskeyController extends Controller {
           return await this.#passkeys.signInOptions();
         case 'sign-in':
           return result(await this.#passkeys.signIn(body.response, { remember: body.remember === true }));
+        // The same call inside an app's transaction, which commits or — with `rollback` — rolls back after the call.
+        case 'sign-in-in-transaction':
+          try {
+            return await connectionsOfTest.transaction(async () => {
+              const done = result(await this.#passkeys.signIn(body.response, { remember: false }));
+              if (body.rollback === true) throw new RolledBack(done);
+              return done;
+            });
+          } catch (error) {
+            if (error instanceof RolledBack) return error.answer;
+            throw error;
+          }
         case 'challenge-options':
           return result(await this.#passkeys.challengeOptions());
         case 'challenge': {
@@ -194,6 +206,15 @@ class PasskeyController extends Controller {
     }
   }
 }
+
+/** Thrown to roll a transaction back after the action ran in it. */
+class RolledBack {
+  readonly answer: Record<string, unknown>;
+  constructor(answer: Record<string, unknown>) {
+    this.answer = answer;
+  }
+}
+let connectionsOfTest: Connections;
 
 class Page extends Controller {
   handle() {
@@ -287,6 +308,7 @@ async function boot(env: Record<string, string> = {}, options: { passkeys?: bool
   };
 
   const connections = application.container.make(Connections);
+  connectionsOfTest = connections;
   return { application, users, browser, connections };
 }
 
@@ -1885,6 +1907,24 @@ describe('Passkeys: ending sessions', () => {
     const options = await owner.pk('confirm-options');
     expect(await owner.pk('confirm', { response: authenticator.authenticate(options.value, { signCount: 1 }) })).toMatchObject({ ok: false, kind: 'clone-suspected' });
     expect(await owner.pk('who')).toEqual({ id: null });
+  });
+
+  it.each([false, true])('a copy found inside an app transaction ends the sessions after it ends (rolled back: %s)', async (rollback) => {
+    const booted = await boot();
+    const authenticator = device();
+    const { b: owner } = await enrolled(booted, authenticator);
+    const b = booted.browser();
+    await b.pk('sign-in', { response: authenticator.authenticate(await b.pk('sign-in-options')) });
+    const c = booted.browser();
+    const response = authenticator.authenticate(await c.pk('sign-in-options'), { signCount: 1 });
+    expect(await c.pk('sign-in-in-transaction', { response, rollback })).toEqual({ ok: false, kind: 'clone-suspected' });
+    expect(await owner.pk('who')).toEqual({ id: null });
+    expect(await b.pk('who')).toEqual({ id: null });
+    // The suspension stands, rolled back or not: a higher count from the copy signs nobody in.
+    expect(await booted.connections.get<any>().selectFrom(PASSKEYS_TABLE).select('suspended_at').execute()).toEqual([{ suspended_at: expect.anything() }]);
+    const d = booted.browser();
+    expect(await d.pk('sign-in', { response: authenticator.authenticate(await d.pk('sign-in-options'), { signCount: 5 }) })).toMatchObject({ ok: false });
+    expect(await d.pk('who')).toEqual({ id: null });
   });
 
   it('an invalid signature is no suspicion of a copy and ends nothing', async () => {

@@ -61,9 +61,9 @@ describe('the reset of an account whose address was never confirmed', { timeout:
   /** The account gets a passkey, an authenticator, recovery codes and an API token — as the squatter could before the address had to be confirmed. */
   async function holdingEverything(user: User) {
     const authenticator = device();
-    const cookie = (await app.post('/login', credentialsOf(user)).assertStatus(303)).cookie(SESSION)!;
+    let cookie = (await app.post('/login', credentialsOf(user)).assertStatus(303)).cookie(SESSION)!;
     const session = () => app.withCookie(SESSION, cookie);
-    await session().post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } });
+    cookie = (await session().post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } })).cookie(SESSION) ?? cookie; // typing the password gives the session a new id
     await session().post('/settings/two-factor/setup');
     const page = await session().navigating().get('/settings/two-factor').assertPage('auth/TwoFactor');
     const setup = page.page()!.props.setup as { secret: string };

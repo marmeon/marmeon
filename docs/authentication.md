@@ -541,7 +541,12 @@ Everyone else goes to `auth.password.confirm`, and after the confirmation back t
 `423 {"message":"Password confirmation required."}`. `confirmedPassword({ confirmRoute, seconds })` names another page or another
 time.
 
-The confirmation page posts the password to `auth.checkPassword(password)`, which checks it and notes the time. It answers a
+The confirmation page posts the password to `auth.checkPassword(password)`, which checks it and notes the time. A right password also
+gives the session a new id (its data stays, and so do the counts of the password checks): a session id that leaked before the
+confirmation does not reach the window it opens. A client that sends cookies back, as a browser does, follows on its own; a test
+that holds a session cookie in a variable takes the new one from the response (`response.cookie(...)`). What an app notices: live
+streams that other tabs of the browser hold end until the tab navigates, and a request that still carries the old cookie (a double
+submit, a parallel `fetch`) is a guest. It answers a
 `Result`: `ok`, or `invalid-password`, or `throttled` ([below](#how-password-checks-are-counted)). For a user without a password it takes as long and answers
 `invalid-password`. A user with a passkey can confirm with it instead:
 [`passkeys.confirm()`](passkeys.md#confirming-sudo-mode) notes the time the same way, and a [passwordless sign-in](passkeys.md#passwordless-sign-in)
@@ -585,8 +590,10 @@ next request, every other sign-in of the user is deleted and this device's remem
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token of the user is revoked as well, in the same transaction as the new
 hash, and the log says how many.
 
-`updatePassword()` does not check the current password. The controller does that first, as the starter kit's does, with
-`checkPassword()`:
+`updatePassword()` does not check the current password itself, but it throws without a recent confirmation, a password or a passkey
+(`passwordRecentlyConfirmed()`, as `endSignIn()` does): a stolen session cookie behind a route with only `authenticate()` cannot
+take the account over by choosing a password. The controller checks the current password first, as the starter kit's does, with
+`checkPassword()`, which is that confirmation; a route behind [`confirmedPassword()`](#sudo-mode) has it already, as long as the confirmation is within `AUTH_PASSWORD_TIMEOUT_SECONDS` (`updatePassword()` checks that window, not a longer `seconds` of the middleware):
 
 ```ts title="modules/auth/controllers/UpdatePasswordController.ts"
 import { Auth, password, type Authenticated } from '@marmeon/auth';
@@ -646,6 +653,10 @@ An account that signs in by a link or through another provider has no password t
 devices all the same: it draws a new random session key, stores it with `updateSessionKey(id, key, expected)` of your `UserProvider`, and
 gives this session the new fingerprint. The other sessions end at their next request with every session driver, and the
 remember-me tokens of the other devices are deleted. It works for accounts with a password too.
+
+`updateSessionKey()` asks for no recent confirmation, because the app may have confirmed the user its own way (a link, OAuth). Where
+the account has a password, call it after `checkPassword()` or behind `confirmedPassword()`; behind `authenticate()` alone, a stolen
+session cookie could sign its owner out everywhere else.
 
 The key is a column of the account. Mark it secret, so that `Row<'users'>` and every query that selects all columns leave it out:
 
@@ -1089,7 +1100,7 @@ The rows of the other devices are deleted wherever the other devices are signed 
 been signed out already:
 
 - `signOut()` ends the row of this browser, and a sign-in over another sign-in ends the row it replaces.
-- A new password with `updatePassword()` and `updateSessionKey()` end the rows of every other device, tokens with them, and keep the
+- A new password with `updatePassword()` (which needs a recent confirmation) and `updateSessionKey()` end the rows of every other device, tokens with them, and keep the
   current one (a new password takes its token off, since the user typed the password again). The rows go before the new key or hash is stored, in the same transaction for a password: if a store
   cannot end them, nothing is changed and the call throws, because a token that survives would sign the other device in again.
 - A password reset ends every row of the user, since it has no session of its own to keep.
@@ -1387,7 +1398,7 @@ listeners.
 | `AUTH_ACCOUNT_SIGN_INS_PER_DAY` | `100` | Password sign-ins a day for one account, from all clients: 10 to 100000. |
 | `AUTH_DEVICE_COOKIE_DAYS` | `90` | Days the device cookie lasts that a password sign-in or a completed reset hands the browser: 0 to 365, `0` turns it off. |
 | `AUTH_PASSWORD_TIMEOUT_SECONDS` | `900` | Seconds a typed password or a proven passkey counts for `confirmedPassword()`. |
-| `AUTH_RESET_MINUTES` | `60` | Minutes a password reset link works. See [password reset](passwords.md#configuration). |
+| `AUTH_RESET_MINUTES` | `60` | Minutes a password reset link works: 1 to 1440. See [password reset](passwords.md#configuration). |
 | `AUTH_RESET_THROTTLE_SECONDS` | `60` | Seconds before another reset link goes to the same address. |
 | `AUTH_EMAIL_CHANGE_MINUTES` | `60` | Minutes the link of a change of address works: 5 to 1440. See [changing the address](#changing-the-address). |
 | `AUTH_EMAIL_CHANGE_THROTTLE_SECONDS` | `60` | Seconds an account waits after a request for a new address that sent a link; `0` turns the pause off. See [changing the address](#changing-the-address). |

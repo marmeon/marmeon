@@ -31,6 +31,14 @@ export const ACCESS_TOKEN_COLUMNS = ['id', 'user_id', 'name', 'token_hash', 'abi
 /** The primary key of a token row: a number in the starter kit's table, a string in one with UUID keys. */
 export type AccessTokenId = number | string;
 
+/** What a new token may do and for how long: both are named, so a token never gets everything and forever by accident. */
+export interface AccessTokenOptions {
+  /** The abilities the token grants (`tokenCan()`, `abilities()`); `['*']` grants everything. */
+  readonly abilities: readonly string[];
+  /** How long the token works (a {@link Duration}), or `null` for a token that never expires. */
+  readonly expiresIn: Duration | null;
+}
+
 /** A token as the app sees it — never with its secret. */
 export interface AccessToken {
   readonly id: AccessTokenId;
@@ -64,8 +72,12 @@ export abstract class AccessTokenStore {
     if (new.target === AccessTokenStore) throw new ContainerError(withCode('K1', `AccessTokenStore is abstract: bind a store with container.singleton(AccessTokenStore, YourStore).`), { reason: 'unbound', key: 'AccessTokenStore', path: [] });
   }
 
-  /** A new token — the plain text is returned once and never stored. */
-  abstract create(userId: AuthUserId, name: string, options?: { abilities?: readonly string[]; expiresIn?: Duration }): Promise<{ plainText: string; token: AccessToken }>;
+  /**
+   * A new token — the plain text is returned once and never stored. `abilities` and `expiresIn` are required: `['*']` grants everything,
+   * `expiresIn: null` never expires. `DatabaseAccessTokens` throws a `TypeError` for options that lack either (untyped callers), before it writes anything.
+   * See `docs/api-tokens.md#creating-tokens`.
+   */
+  abstract create(userId: AuthUserId, name: string, options: AccessTokenOptions): Promise<{ plainText: string; token: AccessToken }>;
   /** The token for a presented plain text — `undefined` for malformed, unknown, wrong, revoked or expired ones, all alike. */
   abstract find(plainText: string): Promise<AccessToken | undefined>;
   /** Notes the use (at most once a minute, not a write per request). */
@@ -121,7 +133,8 @@ export class DatabaseAccessTokens extends AccessTokenStore {
     this.#clock = clock;
   }
 
-  async create(userId: AuthUserId, name: string, { abilities = ['*'], expiresIn }: { abilities?: readonly string[]; expiresIn?: Duration } = {}) {
+  async create(userId: AuthUserId, name: string, options: AccessTokenOptions) {
+    const { abilities, expiresIn } = checkOptions(options);
     const secret = Array.from({ length: 40 }, () => ALPHABET[randomInt(ALPHABET.length)]).join('');
     const now = new Date(this.#clock.now());
     const row = await this.#db()
@@ -132,7 +145,7 @@ export class DatabaseAccessTokens extends AccessTokenStore {
         token_hash: hashToken(secret),
         abilities: JSON.stringify(abilities),
         last_used_at: null,
-        expires_at: expiresIn === undefined ? null : new Date(now.getTime() + Math.floor(durationToSeconds(expiresIn)) * 1000),
+        expires_at: expiresIn === null ? null : new Date(now.getTime() + Math.floor(durationToSeconds(expiresIn)) * 1000),
         created_at: now,
         updated_at: now,
       })
@@ -200,6 +213,16 @@ export class DatabaseAccessTokens extends AccessTokenStore {
   #db() {
     return this.#connections.get<{ [ACCESS_TOKEN_TABLE]: AccessTokenTable }>();
   }
+}
+
+/** Refuses options an untyped caller left out: a token without them would be allowed everything, or live forever. */
+function checkOptions(options: unknown): AccessTokenOptions {
+  const given = (typeof options === 'object' && options !== null ? options : {}) as Partial<Record<keyof AccessTokenOptions, unknown>>;
+  if (!Array.isArray(given.abilities) || !given.abilities.every((ability) => typeof ability === 'string')) {
+    throw new TypeError("tokens.create() needs { abilities, expiresIn }: abilities is a list of strings (['*'] grants everything).");
+  }
+  if (given.expiresIn === undefined) throw new TypeError('tokens.create() needs { abilities, expiresIn }: expiresIn is a Duration, or null for a token that never expires.');
+  return given as unknown as AccessTokenOptions;
 }
 
 function toToken(row: { id: AccessTokenId; user_id: number | string; name: string; abilities: unknown; last_used_at: string | Date | null; expires_at: string | Date | null; created_at: string | Date }): AccessToken {

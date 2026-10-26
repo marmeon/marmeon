@@ -195,13 +195,14 @@ describe('a live stream that is open when its account\'s sign-ins end', () => {
     const phoneChannels = await followed(phone, ada.public_id);
     const onPhone = await open(phone, ada, 'tab-p-0001');
     const onLaptop = await open(laptop, ada, 'tab-l-0001');
-    await browser(laptop).post('/settings/devices/logout', { form: { password: 'password' } }).assertRedirect('/settings/security');
+    const out = await browser(laptop).post('/settings/devices/logout', { form: { password: 'password' } }).assertRedirect('/settings/security');
+    const here = out.cookie(SESSION) ?? laptop; // typing the password gave this browser's session a new id
     await Promise.all([onPhone.closed, onLaptop.closed]);
     expect(eventsOf(onPhone)).toEqual(['hello']);
     const again = await browser(phone).live(phoneChannels, { connection: 'tab-p-0002' });
     await again.closed;
     expect(eventsOf(again)).toEqual(['end']);
-    const mine = await browser(laptop).live(await followed(laptop, ada.public_id), { connection: 'tab-l-0002' });
+    const mine = await browser(here).live(await followed(here, ada.public_id), { connection: 'tab-l-0002' });
     await mine.hello();
   });
 

@@ -243,7 +243,9 @@ An authenticator counts its uses. A sign-in whose count is not above the stored 
 and is refused with `clone-suspected`: the stored count stays as it was, the passkey is **suspended**, a `PasskeyCloneSuspected` event is dispatched
 and a warning is logged. **Every session of the account ends**, the session that met the suspicion included, with its remember-me sign-ins
 (`AccountSessions.end()`), before the event is dispatched: whatever the copy started must not outlive the suspicion, and the owner signs in again with
-the password and another factor. A response that fails for any other reason, such as a bad signature, ends nothing. A suspended passkey signs nobody in, neither on its own nor as a second factor, and the list shows it as suspended.
+the password and another factor. Inside your own database transaction the event comes first and the sessions end once the transaction is over,
+whether it committed or rolled back. A rollback (a returned `err` rolls back too) also takes the suspension back, so it is written again
+before the sessions end: the copy was seen all the same. A response that fails for any other reason, such as a bad signature, ends nothing. A suspended passkey signs nobody in, neither on its own nor as a second factor, and the list shows it as suspended.
 Only its owner can lift that: `release()` and `remove()` of a suspended passkey need the password typed now, so someone who holds a stolen
 session cannot tidy the evidence away. Synchronised passkeys report 0 every time, which is allowed. The new count is written with a conditional `UPDATE`, so two
 sign-ins with one count cannot both succeed. The challenge makes a replay of a response impossible in the first place.

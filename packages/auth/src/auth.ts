@@ -464,7 +464,8 @@ export class Auth {
    * The check is counted before it is made, in one atomic step, per sign-in and per account (see `takePasswordCheck()`), and a right
    * password clears the sign-in's minute: a stolen session cannot guess the password at the speed of the hasher. `throttled` is
    * answered without hashing, also for the right password. An empty password is `invalid-password` and counts nothing: there is
-   * nothing to guess. Takes as long when there is no password. Throws without a signed-in user.
+   * nothing to guess. Takes as long when there is no password. A right password gives the session a new id (the data stays): an id
+   * that leaked earlier does not reach the confirmation. Throws without a signed-in user.
    */
   async checkPassword(password: string): Promise<Result<void, PasswordCheckError>> {
     const user = await this.#requireUser('checkPassword');
@@ -476,6 +477,8 @@ export class Auth {
     const right = credentials?.passwordHash ? await this.#hasher.verify(password, credentials.passwordHash) : await this.#hasher.dummyVerify(password);
     if (!right) return err({ kind: 'invalid-password' });
     await clearPasswordCheck(this.#limiter, scope);
+    // A session id leaked before the confirmation must not ride into the window it opens (`throttleKey` stays, so the counts do).
+    this.#session.regenerate();
     this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
     return ok();
   }
@@ -557,9 +560,12 @@ export class Auth {
    * Sets a new password for the signed-in user, together with a new session key. Every other session ends (their fingerprint no
    * longer matches) and every remember-me token is dropped — this device's too; this session stays.
    * With `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token of the user is revoked in the transaction of the new hash.
+   * Throws without a recent confirmation, a password or a passkey (put the route behind `confirmedPassword()`): a stolen session
+   * cookie must not be able to take the account over by choosing a password.
    */
   async updatePassword(password: string): Promise<void> {
     const user = await this.#requireUser('updatePassword');
+    if (!this.passwordRecentlyConfirmed()) throw new Error('auth.updatePassword() needs a recent confirmation (a password or a passkey) — put the route behind confirmedPassword().');
     const verified = this.#requireVerified();
     const hash = await this.#hasher.make(password);
     // The hash took its time: an `AccountSessions.end()` that landed meanwhile must not be written over — a session it ended stays ended.
@@ -585,6 +591,9 @@ export class Auth {
    * `false`: this session was ended meanwhile (another device or `AccountSessions.end()` replaced the key) — it is signed out now. Also `false` when this device's remember-me cookie turns out to be a copy
    * (its validator is stale: somebody else holds a newer one): then every token and session of the account is ended, like at a copied
    * cookie, and this device is signed out too.
+   *
+   * Does not ask for a recent confirmation, because the app may have confirmed the user its own way: call it after `checkPassword()` or
+   * behind `confirmedPassword()`, or a stolen session cookie can sign its owner out everywhere else.
    */
   async updateSessionKey(): Promise<boolean> {
     const user = await this.#requireUser('updateSessionKey');

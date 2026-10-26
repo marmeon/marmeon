@@ -1166,8 +1166,8 @@ describe('password changes and confirmation', () => {
       await add(ada);
       await add(alan);
       const tokens = application.container.make(AccessTokenStore);
-      const adas = [await tokens.create(1, 'cli'), await tokens.create(1, 'ci')];
-      const alans = await tokens.create(2, 'cli');
+      const adas = [await tokens.create(1, 'cli', { abilities: ['*'], expiresIn: null }), await tokens.create(1, 'ci', { abilities: ['*'], expiresIn: null })];
+      const alans = await tokens.create(2, 'cli', { abilities: ['*'], expiresIn: null });
       const laptop = browser();
       await login(laptop.send);
       events.length = 0;

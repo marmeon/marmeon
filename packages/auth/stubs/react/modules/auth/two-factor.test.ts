@@ -41,7 +41,7 @@ async function enable(user: User) {
     .layering()
     .post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } })
     .assertLayer('auth/RecoveryCodes');
-  return { cookie, secret: setup.secret, recoveryCodes: confirmed.page()!.props.codes as string[] };
+  return { cookie: confirmed.cookie(SESSION) ?? cookie, secret: setup.secret, recoveryCodes: confirmed.page()!.props.codes as string[] };
 }
 
 /** The cookie of a session that typed the password and now waits for the code. */
@@ -69,8 +69,9 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
     const ada = await app.factory(UserFactory).create();
     const other = (await app.post('/login', credentialsOf(ada)).assertRedirect('/dashboard')).cookie(SESSION)!;
     await app.withCookie(SESSION, other).get('/dashboard').assertAuthenticated(ada);
-    const cookie = (await app.post('/login', credentialsOf(ada))).cookie(SESSION)!;
-    await app.withCookie(SESSION, cookie).post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } });
+    const login = (await app.post('/login', credentialsOf(ada))).cookie(SESSION)!;
+    const minted = await app.withCookie(SESSION, login).post('/settings/tokens', { form: { current_password: 'password', name: 'CI', abilities: 'users:read' } });
+    const cookie = minted.cookie(SESSION) ?? login; // typing the password gives the session a new id
     await app.withCookie(SESSION, cookie).post('/settings/two-factor/setup');
     const setup = (await app.withCookie(SESSION, cookie).navigating().get('/settings/two-factor')).page()!.props.setup as { secret: string };
     const done = await app
@@ -390,9 +391,10 @@ describe('changing the factors of an account that has one', { timeout: 30_000 },
     const { cookie, secret } = await enable(ada);
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 1800_000 });
     try {
-      const as = () => app.withCookie(SESSION, cookie);
-      await as().post('/confirm-password', { form: { password: 'password' } });
-      await run(as, secret, cookie);
+      const confirmed = await app.withCookie(SESSION, cookie).post('/confirm-password', { form: { password: 'password' } });
+      const confirmedCookie = confirmed.cookie(SESSION) ?? cookie; // typing the password gives the session a new id
+      const as = () => app.withCookie(SESSION, confirmedCookie);
+      await run(as, secret, confirmedCookie);
     } finally {
       vi.useRealTimers();
     }

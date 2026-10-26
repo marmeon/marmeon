@@ -69,7 +69,7 @@ export { EmailVerification, verified } from './verification.ts';
 export type { VerifiableUser, VerificationLinkOptions, VerifiedOptions } from './verification.ts';
 export type { PasswordRuleOptions } from './rules.ts';
 export { AccessTokenStore, DatabaseAccessTokens, parseAccessToken, tokenCan } from './tokens.ts';
-export type { AccessToken, AccessTokenId, WithToken } from './tokens.ts';
+export type { AccessToken, AccessTokenId, AccessTokenOptions, WithToken } from './tokens.ts';
 export { UserProvider } from './user.ts';
 export type { AuthTypes, AuthTypesNotDeclared, AuthUser, AuthUserId, Authenticated, Credentials, UserOf } from './user.ts';
 export { HashError, Hasher, MAX_PASSWORD_BYTES, PasswordHasher } from './hashing.ts';

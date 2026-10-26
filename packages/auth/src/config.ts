@@ -5,6 +5,7 @@ const whole = (fallback: number, min: number) => env.integer().min(min).default(
 const DAYS = 'a whole number of days (0 keeps unconfirmed accounts)';
 const REMEMBER = 'a whole number of days from 0 (off) to 30';
 const MINUTES = 'a whole number of minutes from 5 to 1440';
+const RESET_MINUTES = 'a whole number of minutes from 1 to 1440';
 const HOURS = 'a whole number of hours from 1 to 720';
 const PER_MINUTE = 'a whole number from 1 to 60';
 const DEVICE_DAYS = 'a whole number of days from 0 (off) to 365';
@@ -28,8 +29,8 @@ export const AuthConfig = defineConfig('auth', {
     AUTH_REMEMBER_COOKIE: env.string().regex(/^(?!__(host|secure)-)[\w-]+$/i, 'Expected letters, digits, _ and -, without a __Host- or __Secure- prefix: the framework adds __Host- itself').default('marmeon_remember'),
     /** How long a password confirmation counts for `confirmedPassword()` routes, in seconds (default 15 minutes). */
     AUTH_PASSWORD_TIMEOUT_SECONDS: whole(900, 1),
-    /** How long a password reset link works, in minutes. */
-    AUTH_RESET_MINUTES: whole(60, 1),
+    /** How long a password reset link works, in minutes (1 to 1440: a link in a mail archive must not stay good for long). See `docs/passwords.md#configuration`. */
+    AUTH_RESET_MINUTES: env.integer(RESET_MINUTES).min(1, RESET_MINUTES).max(1440, RESET_MINUTES).default(60),
     /** Seconds before another reset link is sent to the same e-mail. */
     AUTH_RESET_THROTTLE_SECONDS: whole(60, 0),
     /** How long the link of a change of address works, in minutes (5 to 1440). See `docs/authentication.md#changing-the-address`. */

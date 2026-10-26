@@ -108,7 +108,7 @@ describe('<Form>: the token form as a browser sends it', () => {
     const ada = await signIn('ada@example.com');
     const created = await ada.layering().post('/settings/tokens', { form: { current_password: 'password', name: 'CI', 'abilities[]': 'users:read' } }).assertOk().assertLayer('auth/NewAccessToken');
     expect((created.page()!.props as { plainText: string }).plainText).toMatch(/^marmeon_/);
-    const none = await ada.expectingJson().post('/settings/tokens', { form: { current_password: 'password', name: 'CI' } }).assertStatus(422);
+    const none = await app.withCookie('marmeon_session', created.cookie('marmeon_session')!).expectingJson().post('/settings/tokens', { form: { current_password: 'password', name: 'CI' } }).assertStatus(422);
     expect(none.json()).toMatchObject({ errors: { abilities: ['Pick what the token may do.'] } });
   });
 });

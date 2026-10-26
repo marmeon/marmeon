@@ -286,8 +286,8 @@ describe('AccountSessions.endEveryone()', () => {
   it('revokes every API token by default, and keeps them when asked', async () => {
     const { accounts, container } = await boot(memory, new Users());
     const tokens = container.make(AccessTokenStore);
-    const first = await tokens.create(1, 'ci');
-    const second = await tokens.create(2, 'cli');
+    const first = await tokens.create(1, 'ci', { abilities: ['*'], expiresIn: null });
+    const second = await tokens.create(2, 'cli', { abilities: ['*'], expiresIn: null });
 
     expect(await accounts.endEveryone({ accessTokens: false })).toMatchObject({ accessTokens: 0 });
     expect(await tokens.find(first.plainText), 'kept when asked').toBeDefined();
@@ -437,7 +437,7 @@ describe('AccountSessions.endEveryone()', () => {
     const api = await boot(memory, new Users(), {
       override: (c) => {
         const real = c.make(AccessTokenStore);
-        c.instance(AccessTokenStore, { create: (...a: [never, never]) => real.create(...a), find: (t: never) => real.find(t), touch: (t: never) => real.touch(t), list: (i: never) => real.list(i), revoke: (u: never, i: never) => real.revoke(u, i), revokeAll: (i: never) => real.revokeAll(i), prune: (g: never) => real.prune(g), revokeEveryone: async () => Promise.reject(new Error('no table')) } as never);
+        c.instance(AccessTokenStore, { create: (...a: [never, never, never]) => real.create(...a), find: (t: never) => real.find(t), touch: (t: never) => real.touch(t), list: (i: never) => real.list(i), revoke: (u: never, i: never) => real.revoke(u, i), revokeAll: (i: never) => real.revokeAll(i), prune: (g: never) => real.prune(g), revokeEveryone: async () => Promise.reject(new Error('no table')) } as never);
       },
     });
     await expect(api.accounts.endEveryone()).rejects.toThrow(/failed at "API tokens".*--keep-api-tokens/s);

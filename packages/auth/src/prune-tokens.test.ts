@@ -36,15 +36,15 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     clock.travel({ hours: -2 });
     await resets.create('old@example.com', 0);
     const oldCookie = await signIns.issueToken(1, await signIns.create({ userId: 1, userAgent: 'old' }), { until: new Date(clock.now() + 3_600_000), fingerprint: 'fp' });
-    const expired = await access.create(1, 'expired an hour ago', { expiresIn: { hours: 1 } });
-    const justExpired = await access.create(1, 'expired a minute ago', { expiresIn: { minutes: 119 } });
+    const expired = await access.create(1, 'expired an hour ago', { abilities: ['*'], expiresIn: { hours: 1 } });
+    const justExpired = await access.create(1, 'expired a minute ago', { abilities: ['*'], expiresIn: { minutes: 119 } });
     clock.travel({ hours: 2 });
     // Valid now: a fresh reset token, a remember-me token for 30 days, API tokens with and without expiry.
     const fresh = await resets.create('fresh@example.com', 0);
     const freshToken = fresh.ok ? fresh.value : '';
     const cookie = await signIns.issueToken(2, await signIns.create({ userId: 2, userAgent: 'fresh' }), { until: new Date(clock.now() + 30 * 86_400_000), fingerprint: 'fp' });
-    const valid = await access.create(2, 'valid', { expiresIn: { hours: 1 } });
-    const forever = await access.create(2, 'no expiry');
+    const valid = await access.create(2, 'valid', { abilities: ['*'], expiresIn: { hours: 1 } });
+    const forever = await access.create(2, 'no expiry', { abilities: ['*'], expiresIn: null });
 
     const lines: string[] = [];
     const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };

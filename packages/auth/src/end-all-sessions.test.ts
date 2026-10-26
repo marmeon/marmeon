@@ -43,7 +43,7 @@ describe('auth:end-all-sessions', () => {
     const access = new DatabaseAccessTokens(connections, { tokenPrefix: 'marmeon_' } as never, clock);
     await signIns.issueToken(1, await signIns.create({ userId: 1, userAgent: undefined }), { until: new Date(clock.now() + 3_600_000), fingerprint: 'fingerprint' });
     await resets.create('ada@example.com', 0);
-    const token = await access.create(1, 'ci');
+    const token = await access.create(1, 'ci', { abilities: ['*'], expiresIn: null });
     const accounts = new AccountSessions(users, signIns, undefined, undefined, clock, () => resets, () => access);
     const lines: string[] = [];
     const output = { line: (line: string) => lines.push(line), success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };

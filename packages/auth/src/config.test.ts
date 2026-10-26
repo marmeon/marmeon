@@ -26,6 +26,11 @@ describe('AuthConfig: variable names', () => {
     await expect(resolve({ AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: '-1' })).rejects.toThrow(/AUTH_EMAIL_CHANGE_THROTTLE_SECONDS/);
   });
 
+  it('stops the start for a reset link that lives longer than a day, or no time at all', async () => {
+    expect((await resolve({ AUTH_RESET_MINUTES: '1440' })).resetExpire).toBe(1440);
+    for (const value of ['0', '1441', '525600']) await expect(resolve({ AUTH_RESET_MINUTES: value })).rejects.toThrow(/AUTH_RESET_MINUTES/);
+  });
+
   it.each([
     ['AUTH_PASSWORD_TIMEOUT', 'AUTH_PASSWORD_TIMEOUT_SECONDS', '300'],
     ['AUTH_RESET_EXPIRE', 'AUTH_RESET_MINUTES', '30'],
