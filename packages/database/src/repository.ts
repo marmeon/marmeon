@@ -355,11 +355,11 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     return result.numDeletedRows > 0n;
   }
 
-  /** Brings a soft-deleted row back. */
+  /** Brings a soft-deleted row back. Returns whether there was one: `false` for a row that is not deleted, or missing. */
   async restore(id: PrimaryKeyOf<T, DB>): Promise<boolean> {
     const key = await this.#lookup(id);
     if (key === undefined) return false;
-    const result = await this.#untyped.updateTable(this.#name).set({ deleted_at: null }).where(key.column, '=', key.value).executeTakeFirst();
+    const result = await this.#untyped.updateTable(this.#name).set({ deleted_at: null }).where(key.column, '=', key.value).where('deleted_at', 'is not', null).executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
 

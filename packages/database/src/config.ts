@@ -89,7 +89,7 @@ export const DatabaseConfig = defineConfig('database', {
     DB_PASSWORD: env.string().default(''),
     /** Largest number of pooled Postgres connections. */
     DB_POOL_MAX: env.integer().min(1).default(10),
-    /** Postgres: largest number of connections of the infrastructure's own pool (cache, rate limits, locks, sessions). */
+    /** Postgres: largest number of connections of the infrastructure's own pool (cache, rate limits, locks, sessions, uploads). */
     DB_INFRA_POOL_MAX: env.integer().min(1).default(DEFAULT_INFRASTRUCTURE_POOL_MAX),
     /** `false`: another tool manages the database, so Marmeon neither migrates it nor takes a schema from migrations for it. */
     DB_MANAGED: env.boolean().default(true),

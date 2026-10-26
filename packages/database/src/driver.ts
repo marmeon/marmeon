@@ -246,7 +246,10 @@ export class MarmeonDriver implements Driver {
   async beginTransaction(connection: DatabaseConnection, settings: TransactionSettings): Promise<void> {
     const depth = this.#depth.get(connection) ?? 0;
     // Isolation level and access mode belong to the outermost transaction; a savepoint has neither.
-    if (depth === 0) await this.#driver.beginTransaction(connection, settings);
+    // SQLite upgrades a deferred transaction to a write lock at its first write — and fails at once with SQLITE_BUSY when another
+    // connection (the worker, the scheduler) wrote in between. `begin immediate` takes the lock first and waits under the busy timeout.
+    if (depth === 0 && this.#single && settings.accessMode !== 'read only') await connection.executeQuery(CompiledQuery.raw('begin immediate'));
+    else if (depth === 0) await this.#driver.beginTransaction(connection, settings);
     else await connection.executeQuery(CompiledQuery.raw(`savepoint ${savepoint(depth)}`));
     this.#depth.set(connection, depth + 1);
   }
