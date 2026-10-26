@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { randomBytes } from 'node:crypto';
-import { afterCommit, afterRollback, Clock, err, EventDispatcher, Logger, ok, type Result } from '@marmeon/core';
+import { afterCommit, afterRollback, Clock, durationToSeconds, err, EventDispatcher, Logger, ok, type Duration, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { ClientHistory, ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
@@ -500,8 +500,9 @@ export class Auth {
     return { session: key, typed: this.#session.get(AUTH_SESSION_KEYS.typedPassword) === true };
   }
 
-  /** Whether a password was typed or a passkey proven (`passkeys.confirm()`, a passwordless sign-in) within `seconds` (default `AUTH_PASSWORD_TIMEOUT_SECONDS`). */
-  passwordRecentlyConfirmed(seconds = this.#config.passwordTimeoutSeconds): boolean {
+  /** Whether a password was typed or a passkey proven (`passkeys.confirm()`, a passwordless sign-in) within `within`, a {@link Duration} (a number is seconds; default `AUTH_PASSWORD_TIMEOUT_SECONDS`). An invalid `within` throws; a missing or implausible confirmation time is `false`. */
+  passwordRecentlyConfirmed(within?: Duration): boolean {
+    const seconds = within === undefined ? this.#config.passwordTimeoutSeconds : durationToSeconds(within);
     const at = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.confirmedAt) : undefined;
     // A confirmation counts only inside the sign-in it was typed for: one dated before the sign-in began is not its own.
     const signedInAt = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.signedInAt) : undefined;

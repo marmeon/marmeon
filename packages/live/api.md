@@ -109,7 +109,7 @@ export declare class LiveStreamReader {
     get ended(): boolean;
     get hints(): LiveHint[];
     hello(timeout?: Duration): Promise<LiveHello>;
-    waitFor(until: number | (() => boolean), timeout?: Duration, what?: string): Promise<void>;
+    waitFor(until: number | (() => boolean), { timeout, what }?: WaitForOptions): Promise<void>;
     close(): Promise<void>;
 }
 // RecordedRefresh
@@ -117,6 +117,11 @@ export interface RecordedRefresh {
     readonly channel: string;
     readonly only: readonly string[] | null;
     readonly connection: string | undefined;
+}
+// WaitForOptions
+export interface WaitForOptions {
+    timeout?: Duration;
+    what?: string;
 }
 ```
 

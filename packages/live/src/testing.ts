@@ -5,4 +5,4 @@
 export { BroadcastTester } from './recorder.ts';
 export type { RecordedRefresh } from './recorder.ts';
 export { LiveStreamReader } from './test-stream.ts';
-export type { LiveEvent } from './test-stream.ts';
+export type { LiveEvent, WaitForOptions } from './test-stream.ts';

@@ -115,7 +115,7 @@ export declare class Auth {
     viaRemember(): boolean;
     checkPassword(password: string): Promise<Result<void, PasswordCheckError>>;
     passwordCheckScope(): PasswordCheckScope;
-    passwordRecentlyConfirmed(seconds?: number): boolean;
+    passwordRecentlyConfirmed(within?: Duration): boolean;
     signIns(): Promise<readonly SignIn[]>;
     endSignIn(id: string): Promise<Result<void, {
         readonly kind: 'missing';

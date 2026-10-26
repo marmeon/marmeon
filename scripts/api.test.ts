@@ -1116,8 +1116,19 @@ describe('spans of time', () => {
       ]);
     });
 
+    it('names a parameter that is only a unit (`seconds?: number`)', () => {
+      const text = 'export declare class Auth {\n    passwordRecentlyConfirmed(seconds?: number): boolean;\n    later(minutes: number | undefined, ms: number): void;\n}\nexport declare function pause(hours: number, days: number): void;\n';
+      expect(spans(text)).toEqual([
+        positional('Auth.later(minutes)'),
+        positional('Auth.later(ms)'),
+        positional('Auth.passwordRecentlyConfirmed(seconds)'),
+        positional('pause(days)'),
+        positional('pause(hours)'),
+      ]);
+    });
+
     it('lets a Duration, an options object, a callback and a name that is no span be', () => {
-      const text = "import type { Duration } from '@marmeon/core';\nexport declare function a(grace: Duration, options: { graceSeconds?: number }): void;\nexport declare function b(retryDelayMs: (attempt: number) => number, countDays: number, seconds: number): void;\n";
+      const text = "import type { Duration } from '@marmeon/core';\nexport declare function a(grace: Duration, options: { graceSeconds?: number }): void;\nexport declare function b(retryDelayMs: (attempt: number) => number, countDays: number, seconds: Duration): void;\n";
       expect(spans(text)).toEqual([]);
     });
 

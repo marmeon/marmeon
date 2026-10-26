@@ -136,7 +136,7 @@ describe('live props through the app — the page declares, the stream hints', (
     const app = await createTestApp(definition, { env });
     const opened = performance.now();
     const stream = await app.withSession({ who: 'ada' }).live('/boards/7');
-    await stream.waitFor(() => stream.heartbeats >= 1, { seconds: 3 }, 'a heartbeat');
+    await stream.waitFor(() => stream.heartbeats >= 1, { timeout: { seconds: 3 }, what: 'a heartbeat' });
     expect(performance.now() - opened).toBeGreaterThanOrEqual(900); // a load only makes it later
     await stream.close();
   });

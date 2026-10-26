@@ -263,7 +263,7 @@ it('tells the other tabs on the profile, and only after a valid change', async (
 `assertRefreshed(channel, { only, times })` passes when the channel was refreshed, with exactly those props and that many times
 when given. `assertNotRefreshed(channel)` and `assertNothingRefreshed()` check the opposite, and `refreshed(channel)` returns the
 records. `app.live(path)` opens the stream of the page at `path` as a tab does, signed for the view's session. `hello()` waits
-for the stream's first message, `waitFor(n)` for `n` hints, and `hints` holds them. The [real-time updates](realtime.md) page
+for the stream's first message, `waitFor(n)` for `n` hints (it fails after two seconds; `waitFor(n, { timeout: { seconds: 5 }, what: 'the profile hint' })` changes the wait and names it in the failure), and `hints` holds them. The [real-time updates](realtime.md) page
 explains hints.
 
 ## The schedule

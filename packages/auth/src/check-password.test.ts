@@ -44,7 +44,7 @@ class CheckController extends Controller {
   async handle(ctx: HttpContext) {
     const { password } = (await ctx.input()) as { password: string };
     const checked = await this.#auth.checkPassword(password);
-    return { checked: checked.ok ? 'ok' : checked.error, confirmed: this.#auth.passwordRecentlyConfirmed(900) };
+    return { checked: checked.ok ? 'ok' : checked.error, confirmed: this.#auth.passwordRecentlyConfirmed({ minutes: 15 }) };
   }
 }
 

@@ -410,7 +410,7 @@ beforeEach(async () => {
 
 const paid = (id: string, invoice = 'inv_1001') => JSON.stringify({ id, type: 'invoice.paid', data: { invoice } });
 /** Sends `body` as the provider would, signed with `SECRET` unless the test passes other headers. */
-const send = (body: string, headers: Record<string, string> = signedWebhook('stripe', SECRET, body)) =>
+const send = (body: string, headers: Record<string, string> = signedWebhook(body, { scheme: 'stripe', secret: SECRET })) =>
   app.expectingJson().post('/webhooks/payments', { body, headers: { 'content-type': 'application/json', ...headers } });
 const invoice = async () => (await app.make(InvoiceRepository).findBy('reference', 'inv_1001'))!;
 
@@ -435,7 +435,7 @@ describe('the payment webhook', { timeout: 30_000 }, () => {
     const first = (await invoice()).paid_at;
 
     app.travel({ seconds: 60 });
-    await send(body, signedWebhook('stripe', SECRET, body, { timestamp: new Date(app.clock.now()) })).assertOk().assertExactJson({ received: true });
+    await send(body, signedWebhook(body, { scheme: 'stripe', secret: SECRET, timestamp: new Date(app.clock.now()) })).assertOk().assertExactJson({ received: true });
 
     app.queue.assertDispatchedTimes(IssueReceiptJob, 1);
     expect((await invoice()).paid_at).toBe(first);
@@ -499,9 +499,9 @@ describe('the payment webhook', { timeout: 30_000 }, () => {
     const refused = { error: 'webhook_signature_invalid' };
     const body = paid('evt_1');
     await send(body, {}).assertUnauthorized().assertExactJson(refused);
-    await send(body, signedWebhook('stripe', `${SECRET}-other`, body)).assertUnauthorized().assertExactJson(refused);
-    await send(paid('evt_1', 'inv_2'), signedWebhook('stripe', SECRET, body)).assertUnauthorized().assertExactJson(refused);
-    await send(body, signedWebhook('stripe', SECRET, body, { timestamp: new Date(app.clock.now() - 3_600_000) })).assertUnauthorized().assertExactJson(refused);
+    await send(body, signedWebhook(body, { scheme: 'stripe', secret: `${SECRET}-other` })).assertUnauthorized().assertExactJson(refused);
+    await send(paid('evt_1', 'inv_2'), signedWebhook(body, { scheme: 'stripe', secret: SECRET })).assertUnauthorized().assertExactJson(refused);
+    await send(body, signedWebhook(body, { scheme: 'stripe', secret: SECRET, timestamp: new Date(app.clock.now() - 3_600_000) })).assertUnauthorized().assertExactJson(refused);
 
     expect((await invoice()).paid_at).toBeNull();
     app.queue.assertNothingDispatched();

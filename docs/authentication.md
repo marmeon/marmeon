@@ -542,6 +542,8 @@ Everyone else goes to `auth.password.confirm`, and after the confirmation back t
 time, a [`Duration`](time.md#spans-of-time) (`{ minutes: 5 }`; a number is seconds). The resolved `AuthConfig` carries the
 variables as `passwordTimeoutSeconds`, `resetMinutes`, `resetThrottleSeconds` and `emailChangeThrottleSeconds`; the unit is in the name.
 
+In your own code, `auth.passwordRecentlyConfirmed(within?)` answers the same question for the current session: `true` when a password or a passkey was confirmed inside the sign-in and within `within`, a [`Duration`](time.md#spans-of-time) (default `AUTH_PASSWORD_TIMEOUT_SECONDS`). A session with no usable confirmation time is `false`, never `true`.
+
 The confirmation page posts the password to `auth.checkPassword(password)`, which checks it and notes the time. A right password also
 gives the session a new id (its data stays, and so do the counts of the password checks): a session id that leaked before the
 confirmation does not reach the window it opens. A client that sends cookies back, as a browser does, follows on its own; a test

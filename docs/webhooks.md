@@ -133,11 +133,11 @@ import { signedWebhook } from '@marmeon/testing';
 
 const body = JSON.stringify({ id: 'evt_1', type: 'invoice.paid' });
 await app
-  .post('/webhooks/payments', { body, headers: { 'content-type': 'application/json', ...signedWebhook('standard', secret, body) } })
+  .post('/webhooks/payments', { body, headers: { 'content-type': 'application/json', ...signedWebhook(body, { scheme: 'standard', secret }) } })
   .assertOk();
 ```
 
-The options `id` and `timestamp` (a `Date`) set the delivery id and the time; the defaults are a random id and now. Test the refusal
+The body comes first and the options name the rest: `scheme` and `secret` are required, `id` and `timestamp` (a `Date`) set the delivery id and the time, and the defaults are a random id and now. Test the refusal
 too: send the body with no headers, with another secret's signature, and with `timestamp` an hour in the past, and assert `401`.
 Build the secret in the test (`['whsec', Buffer.from(bytes).toString('base64')].join('_')`) rather than writing one as a literal:
 a literal that looks like a real secret is refused by code hosts that scan for them.
