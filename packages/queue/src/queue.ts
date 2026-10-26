@@ -1,6 +1,6 @@
 import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, Redactor, token, type Application, type Clock, type Logger } from '@marmeon/core';
 import { channels, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
-import { messageBase, startedByReporter, trace } from '@marmeon/core/internal';
+import { followsTransaction, messageBase, startedByReporter, trace } from '@marmeon/core/internal';
 import type { Transaction } from '@marmeon/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type JobEvents } from './events.ts';
@@ -58,7 +58,9 @@ export interface Queue {
   chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
   /**
    * The queue, writing through a database transaction you control yourself — like `repository.using(trx)`. Inside
-   * `connections.transaction()` no `using()` is needed: a dispatch joins the transaction by itself.
+   * `connections.transaction()` no `using()` is needed: a dispatch joins the transaction by itself. Through a transaction you
+   * began yourself, nothing reports its commit: `JobQueued` is never fired, and a `sync` or unique job throws a `QueueError`. See
+   * `docs/queues.md#inside-a-transaction`.
    *
    * ```ts
    * const trx = await db.startTransaction().execute();
@@ -201,6 +203,15 @@ export class QueueManager implements Queue {
     return this.#driver(connection).size(queue ?? options.queue);
   }
 
+  /**
+   * Writing through a transaction the call chain's hooks do not follow — one the app began itself (`db.startTransaction()`,
+   * `db.transaction()`), a second connection's, or a savepoint of another connection: nothing reports its commit or
+   * rollback, so work that must follow it (a sync job, a unique lock, the event) has nothing to hang on.
+   */
+  #detached(): boolean {
+    return this.#transaction !== undefined && !followsTransaction(this.#transaction);
+  }
+
   /** The connection's driver — writing and reading through the transaction, if this queue has one. */
   #driver(name: string): QueueDriver {
     const driver = this.#deps.driver(name);
@@ -221,6 +232,9 @@ export class QueueManager implements Queue {
    */
   async #pushUnique(prepared: Prepared & { record: { unique: UniqueRecord } }, options: DispatchOptions | UniqueDispatchOptions): Promise<string | undefined> {
     const { record } = prepared;
+    if (this.#detached()) {
+      throw new QueueError('A unique job cannot follow a transaction you began yourself (Kysely\'s db.transaction() or db.startTransaction()): its lock could not be freed when the transaction rolls back. Dispatch it inside connections.transaction() instead.');
+    }
     const lock = uniqueLock(await this.#cache(), record);
     if (!(await lock.get())) {
       this.#deps.logger.debug(`Not queued: ${record.job} with the unique key "${record.unique.key}" is queued already`, { job: record.job, unique: record.unique.key });
@@ -246,6 +260,9 @@ export class QueueManager implements Queue {
     const queued = () => Promise.all(prepared.map(({ record }) => this.#emit(new JobQueued({ connection: name, queue, job: record.job, jobId: record.uuid, delaySeconds: delay }))));
 
     if (connection.driver === 'sync') {
+      if (this.#detached()) {
+        throw new QueueError('The sync queue cannot run a job for a transaction you began yourself (Kysely\'s db.transaction() or db.startTransaction()): it could not tell when the transaction commits. Dispatch inside connections.transaction() instead.');
+      }
       // Held until the commit inside a transaction: a sync job must never act on data that is rolled back.
       await afterCommit(async () => {
         await queued();
@@ -273,9 +290,8 @@ export class QueueManager implements Queue {
       });
     } else {
       await push();
-      // Joined a transaction: queued once it commits.
-      if (this.#transaction === undefined) await afterCommit(queued);
-      else await queued();
+      // Part of a transaction: queued once it commits. A transaction the app began itself has no hook to wait for — no event.
+      if (!this.#detached()) await afterCommit(queued);
     }
     return ids;
   }

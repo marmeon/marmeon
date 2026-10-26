@@ -2,7 +2,7 @@ import { AssertionError } from 'node:assert';
 import { isDeepStrictEqual } from 'node:util';
 import { afterCommit, afterRollback, Application, Clock, ErrorReports, inTransaction, Logger, Redactor, type Container, type QueuedListenerClass } from '@marmeon/core';
 import { channels, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
-import { messageBase, trace } from '@marmeon/core/internal';
+import { followsTransaction, messageBase, trace } from '@marmeon/core/internal';
 import type { Transaction } from '@marmeon/database';
 import { QueueConnections } from './connections.ts';
 import type { FailedJob, JobRecord, UniqueRecord } from './driver.ts';
@@ -60,10 +60,13 @@ export class QueueFake implements Queue {
   readonly #failed = new MemoryFailedJobStore();
   readonly #inTransaction: boolean;
   readonly #root: QueueFake | undefined;
+  /** The transaction of `using(trx)`. */
+  readonly #transaction: Transaction<any> | undefined;
 
-  constructor(container: Container, root?: QueueFake) {
+  constructor(container: Container, root?: QueueFake, transaction?: Transaction<any>) {
     this.#container = container;
     this.#root = root;
+    this.#transaction = transaction;
     this.#inTransaction = root !== undefined;
   }
 
@@ -120,8 +123,8 @@ export class QueueFake implements Queue {
     });
   }
 
-  using(_transaction: Transaction<any>): Queue {
-    return new QueueFake(this.#container, this.#owner);
+  using(transaction: Transaction<any>): Queue {
+    return new QueueFake(this.#container, this.#owner, transaction);
   }
 
   async size(queue = 'default'): Promise<number> {
@@ -276,6 +279,16 @@ export class QueueFake implements Queue {
 
   async #record(jobs: readonly PendingJob[], options: DispatchOptions | UniqueDispatchOptions, traceparent?: string): Promise<(string | undefined)[]> {
     const deps = this.#deps();
+    // Like the real queue: a transaction nothing reports on cannot carry a sync or unique job.
+    if (this.#transaction !== undefined && !followsTransaction(this.#transaction)) {
+      const connections = this.#owner.#container.make(QueueConnections);
+      if (connections.options(options.connection ?? connections.default).driver === 'sync') {
+        throw new QueueError('The sync queue cannot run a job for a transaction you began yourself (Kysely\'s db.transaction() or db.startTransaction()): it could not tell when the transaction commits. Dispatch inside connections.transaction() instead.');
+      }
+      if (options.unique !== undefined) {
+        throw new QueueError('A unique job cannot follow a transaction you began yourself (Kysely\'s db.transaction() or db.startTransaction()): its lock could not be freed when the transaction rolls back. Dispatch it inside connections.transaction() instead.');
+      }
+    }
     const unique = options.unique === undefined ? undefined : uniqueRecord(jobs[0]![0], options as UniqueDispatchOptions);
     // Checked like a real dispatch — registered, JSON, the schema — before any is recorded.
     const prepared = await Promise.all(

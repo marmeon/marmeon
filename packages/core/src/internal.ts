@@ -32,7 +32,7 @@ export { parseSync } from './oxc.ts';
 export { sourceComments, stringLiterals } from './string-literals.ts';
 export type { SourceComment, StringLiteral } from './string-literals.ts';
 export type { StaticName } from './static-names.ts';
-export { errOfRollback, leftTransactionOf, openTransactionOf, transactionOf } from './transaction-context.ts';
+export { bindTransaction, errOfRollback, followsTransaction, leftTransactionOf, openTransactionOf, transactionOf } from './transaction-context.ts';
 export { fillPlaceholders, PreferredLocale } from './translator.ts';
 export { marmeonInjection } from './vite.ts';
 export type { InjectionPlugin } from './vite.ts';

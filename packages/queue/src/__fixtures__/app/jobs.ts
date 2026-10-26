@@ -26,10 +26,10 @@ export class RecordJob {
   }
 }
 
-/** Takes `ms` (ignoring its signal), then records itself. */
+/** Takes `ms` (ignoring its signal), then records itself; started again, it takes `againMs` if given. */
 export class SlowJob {
   static readonly job = 'fixture.slow';
-  static readonly schema = v.object({ n: v.number(), ms: v.number() });
+  static readonly schema = v.object({ n: v.number(), ms: v.number(), againMs: v.optional(v.number()) });
   static readonly timeout = 1;
 
   readonly #db: Database;
@@ -39,8 +39,10 @@ export class SlowJob {
   }
 
   async handle(payload: JobPayload<typeof SlowJob>, job: JobContext): Promise<void> {
+    const { rows } = await sql<{ n: unknown }>`select count(*) as n from handled where uuid = ${job.id}`.execute(this.#db);
+    const again = Number(rows[0]!.n) > 0;
     await sql`insert into handled (uuid, n, attempt, pid, event) values (${job.id}, ${payload.n}, ${job.attempt}, ${process.pid}, 'started')`.execute(this.#db);
-    await sleep(payload.ms);
+    await sleep(again ? (payload.againMs ?? payload.ms) : payload.ms);
     await sql`insert into handled (uuid, n, attempt, pid, event) values (${job.id}, ${payload.n}, ${job.attempt}, ${process.pid}, 'done')`.execute(this.#db);
   }
 }

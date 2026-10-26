@@ -103,8 +103,15 @@ A dispatch inside `connections.transaction()` belongs to the transaction. You wr
 | `redis`, `sync`, or `database` on another connection | Held until the outermost commit, dropped on a rollback. A `sync` job then runs after the commit, outside the transaction, and its error is thrown by the `transaction()` call. |
 
 So a registration that rolls back sends no welcome mail, and a worker never reads an account that is not committed yet. A worker
-runs every job **outside** any transaction, and so do the `sync` connection and the test fake. For a transaction you start
-yourself with Kysely, `queue.using(trx).dispatch(…)` writes through it. The
+runs every job **outside** any transaction, and so do the `sync` connection and the test fake. Inside
+`connections.transaction()`, `queue.using(trx).dispatch(…)` writes through the `trx` it hands you and follows the transaction like
+`queue.dispatch()` does: `JobQueued` fires after the commit and not at all after a rollback, a `sync` job runs after the commit, and a
+unique job's lock is freed when the transaction rolls back.
+
+A transaction you begin yourself with Kysely (`db.transaction().execute(…)` or `db.startTransaction()`), or one of a second connection, reports neither its commit nor its rollback. A job
+written through it with the `database` driver is a row of that transaction, but `JobQueued` is not fired (nothing says when it
+commits), and a `sync` job or a unique job is refused with a `QueueError` — dispatch those inside `connections.transaction()`. Pass the `trx` itself: a handle derived from it (`trx.withSchema()`,
+`trx.withPlugin()`) is not bound, so it counts as a transaction you began yourself. The
 [transactions](transactions.md#what-joins-a-transaction) page explains the transaction context.
 
 ### Secrets in payloads
@@ -284,7 +291,9 @@ must be longer than every job's `timeout` plus `--stop-timeout`, or a second wor
 ### Stopping a worker
 
 On `SIGTERM` or `SIGINT` a worker takes no new job. The running job gets `--stop-timeout` seconds to finish, then it goes back to
-the queue for another worker, and the worker ends with exit code 0. A second signal does not cut this short. A shutdown that hangs
+the queue for another worker with its attempt given back (a stop is not the job's failure, so a job with a single try still runs on
+the next worker), and the worker ends with exit code 0. The same goes for a job whose own load gets its worker stopped (a liveness
+probe, memory pressure): each stop gives the attempt back, so such a job comes back until it fits. A second signal does not cut this short. A shutdown that hangs
 anyway ends the process with exit code 1, `--stop-timeout` plus ten seconds after the signal. Give the supervisor a longer grace
 period than `--stop-timeout`, and raise both together for long jobs.
 
@@ -497,7 +506,7 @@ Every step of a job is an event of the app's event dispatcher:
 
 | Event | When | Fields besides `connection`, `queue`, `job` and `jobId` |
 | --- | --- | --- |
-| `JobQueued` | The job was queued, after the commit when it was dispatched in a transaction. | `delaySeconds` |
+| `JobQueued` | The job was queued, after the commit when it was dispatched in a transaction; never for a transaction you began yourself. | `delaySeconds` |
 | `JobProcessing` | An attempt starts. | `attempt` |
 | `JobProcessed` | An attempt ran to its end. | `attempt`, `ms`, `discarded` |
 | `JobReleased` | An attempt ended and the job went back to the queue, to run again after `delaySeconds`. | `attempt`, `delaySeconds`, `reason`, `ms` |

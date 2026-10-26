@@ -227,17 +227,32 @@ describe.each(processKinds)('queue:work processes on %s', (kind) => {
     });
   });
 
-  it('on SIGTERM releases a job that does not finish within the stop timeout, and exits with 0', { timeout: 60_000 }, async () => {
+  it('on SIGTERM releases a job that does not finish within the stop timeout with its attempt back, and exits with 0', { timeout: 60_000 }, async () => {
     await withFixture(kind, async (fixture) => {
-      // A minute of work that ignores its signal (and keeps the process busy): the worker still ends, with 0, in seconds.
-      await fixture.driver.push('default', record('fixture.slow', { n: 1, ms: 60_000 }), 0);
-      const worker = fixture.worker(['--stop-timeout=0.3', '--sleep=0.05'], fixture.retryAfterSeconds(30));
+      // A minute of work that ignores its signal (and keeps the process busy): the worker still ends, with 0, in seconds. Run
+      // again, the job is quick.
+      await fixture.driver.push('default', record('fixture.slow', { n: 1, ms: 60_000, againMs: 50 }, { tries: 1 }), 0);
+      const env = fixture.retryAfterSeconds(30);
+      const worker = fixture.worker(['--stop-timeout=0.1', '--sleep=0.05'], env);
       await fixture.until(async () => (await fixture.handled('started')).length > 0);
       worker.child.kill('SIGTERM');
       expect(await worker.exited(8000)).toBe(0);
-      // Back in the queue for the next worker, the attempt counted.
-      expect(await fixture.jobs()).toEqual([{ attempts: 1, reserved: false }]);
+      // Back in the queue for the next worker, the attempt given back: the stop was not the job's failure.
+      expect(await fixture.jobs()).toEqual([{ attempts: 0, reserved: false }]);
+      expect(await fixture.failed()).toEqual([]);
       expect(worker.lines.join('\n')).toMatch(/Released fixture\.slow: the worker is stopping/);
+
+      // The next worker runs it as its first attempt — a job with a single try is not lost to a deploy.
+      const next = fixture.worker(['--stop-timeout=1', '--sleep=0.05'], env);
+      const done = await fixture.until(async () => {
+        const rows = await fixture.handled('done');
+        return rows.length > 0 && rows;
+      });
+      expect(done).toMatchObject([{ attempt: 1, pid: next.child.pid }]);
+      await fixture.until(async () => (await fixture.jobs()).length === 0);
+      expect(await fixture.failed()).toEqual([]);
+      next.child.kill('SIGTERM');
+      expect(await next.exited()).toBe(0);
     });
   });
 

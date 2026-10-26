@@ -471,11 +471,11 @@ export interface DispatchedJob<J extends JobClass = JobClass> {
 // QueueFake
 export declare class QueueFake implements Queue {
     #private;
-    constructor(container: Container, root?: QueueFake);
+    constructor(container: Container, root?: QueueFake, transaction?: Transaction<any>);
     dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
     bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
     chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
-    using(_transaction: Transaction<any>): Queue;
+    using(transaction: Transaction<any>): Queue;
     size(queue?: string): Promise<number>;
     dispatched<J extends JobClass>(job: J, match?: DispatchMatch<J>): DispatchedJob<J>[];
     assertDispatched<J extends JobClass>(job: J, match?: DispatchMatch<J>, options?: {
