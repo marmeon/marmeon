@@ -46,7 +46,7 @@ export { BROWSER_ROUTES_FILE, browserRoutes, matchesRoutePatterns, staticView, w
 export type { BrowserRoutes } from './browser-routes.ts';
 export { checkedChannel, isLiveChannel, liveOf, LiveSigner, signedLive } from './live.ts';
 export type { LiveDeclaration } from './live.ts';
-export { CONNECTION_HEADER, LIVE_PATH } from './live-protocol.ts';
+export { CONNECTION_HEADER, LIVE_PATH, LIVE_VERSION } from './live-protocol.ts';
 export { DOCUMENT_HEADER, SESSION_PATH } from './tab-sync-protocol.ts';
 export { IncomingRequest } from './server-closing.ts';
 export { epochOf } from './session-epoch.ts';

@@ -118,10 +118,14 @@ export class MemoryLiveBackend implements LiveBackend {
   }
 }
 
+/** The version of the message between nodes, the first field of its JSON: a reader takes only this one. */
+export const LIVE_MESSAGE_VERSION = 1;
+
 /** A message as JSON — refused (undefined) when it is not one this package sends. */
 export function parseMessage(text: string): LiveMessage | undefined {
   try {
-    const message = JSON.parse(text) as Partial<{ kind: string; channel: unknown; only: unknown; seq: unknown; except: unknown; scope: unknown }>;
+    const message = JSON.parse(text) as Partial<{ v: unknown; kind: string; channel: unknown; only: unknown; seq: unknown; except: unknown; scope: unknown }>;
+    if (message.v !== LIVE_MESSAGE_VERSION) return undefined;
     if (message.kind === 'end' && typeof message.scope === 'string') return { kind: 'end', scope: message.scope };
     if (
       message.kind === 'refresh' &&

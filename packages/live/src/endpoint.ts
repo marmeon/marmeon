@@ -1,5 +1,5 @@
 import type { HttpContext, LiveAudience } from '@marmeon/http';
-import { isLiveChannel } from '@marmeon/http/internal';
+import { isLiveChannel, LIVE_VERSION } from '@marmeon/http/internal';
 import { Redactor, type Logger } from '@marmeon/core';
 import { CONNECTION_ID } from './broadcaster.ts';
 import { END_FRAME, STREAM_HEADERS, type LiveHub } from './hub.ts';
@@ -10,6 +10,9 @@ import type { LiveTokens } from './signer.ts';
 const refuse = (status: number, message: string) =>
   new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
 
+/** The answer to a stream of another protocol version: nothing, so the browser stops its own reconnecting (the tab still asks again later). */
+const unversioned = () => new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
+
 /** When a failed sign-in check was last logged. Per process, not per controller: the controller is built per request, and every reconnecting tab would log. */
 let lastCheckLog = 0;
 
@@ -17,8 +20,9 @@ let lastCheckLog = 0;
 const ended = () => new Response(END_FRAME, { status: 200, headers: STREAM_HEADERS });
 
 /**
- * `GET /_marmeon/live?connection=<id>&c=<token>.<channel>&…` — a tab's stream: every channel its page, islands and layers
- * follow, each with the token the page was signed with. Runs in the `web` group, read-only (on its path the kernel never
+ * `GET /_marmeon/live?v=1&connection=<id>&c=<token>.<channel>&…` — a tab's stream: every channel its page, islands and layers
+ * follow, each with the token the page was signed with. A request whose `v` is not exactly one `1` gets `204` before anything
+ * else is read: no token is looked at, no stream opens, and the browser stops reconnecting by itself (the tab asks again every 30 s until its next visit reloads it). Runs in the `web` group, read-only (on its path the kernel never
  * saves the session or sets a cookie): the session is read only to know whose stream it is. One invalid token — a channel
  * rewritten, a token of another session or of one that ended — and there is no stream (403). The hub counts what is open:
  * 429 beyond the session's streams, 503 beyond the process's or while the server closes. With a {@link LiveAudience} bound
@@ -45,6 +49,8 @@ export class LiveStreamController {
 
   async handle(ctx: HttpContext): Promise<Response> {
     const query = new URL(ctx.request.url).searchParams;
+    const versions = query.getAll('v');
+    if (versions.length !== 1 || versions[0] !== LIVE_VERSION) return unversioned();
     const connection = query.get('connection') ?? '';
     if (!CONNECTION_ID.test(connection)) return refuse(400, 'A live stream names its connection: ?connection=<id>.');
     const given = query.getAll('c');

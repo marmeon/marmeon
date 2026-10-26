@@ -3,7 +3,7 @@ import { loadEnv } from '@marmeon/core/internal';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { Encrypter } from '@marmeon/encryption';
 import { CookieEncryption, Router } from '@marmeon/http';
-import { protocolHeaders, writeAppBrowserRoutes, browserRoutes, CONNECTION_HEADER, LIVE_PATH } from '@marmeon/http/internal';
+import { protocolHeaders, writeAppBrowserRoutes, browserRoutes, CONNECTION_HEADER, LIVE_PATH, LIVE_VERSION } from '@marmeon/http/internal';
 import {
   urlFor,
   type CheckIslandRouteName,
@@ -687,7 +687,7 @@ export class TestApp {
       if (!page?.live?.length) throw new AssertionError({ message: `app.live(${JSON.stringify(target)}): the page answered ${answer.status} and follows no live channel (.live()).` });
       subscriptions = page.live;
     }
-    const query = new URLSearchParams({ connection });
+    const query = new URLSearchParams({ v: LIVE_VERSION, connection });
     const channels = new Map((subscriptions as readonly LiveSubscription[]).map((subscription) => [subscription.channel, subscription.token]));
     for (const [channel, token] of channels) query.append('c', `${token}.${channel}`);
     const response = await this.stream(`${LIVE_PATH}?${query}`, {

@@ -171,6 +171,7 @@ A reader never guesses and never falls back to a default.
 | --- | --- | --- | --- |
 | [Page protocol](navigation.md#a-tab-of-another-protocol-version) | the header `x-marmeon: 1` on every request of the client | answered with `409` before routing, whatever the method | the same: an old tab sends `true`, or nothing |
 | Page object and region object (JSON) | none; new fields are optional | carried along; without `component`, `props` and `url` it is no page | read as they are |
+| [Live stream](realtime.md#a-stream-of-another-version) | `v=1` in the query of `GET /_marmeon/live`; the frames are frozen with it; the message between nodes carries `"v":1` | answered with `204` and no stream, so the browser stops reconnecting; the tab asks again every 30 s until its next visit reloads it | the same: a tab of the release before sends no `v` |
 | [Job record](queues.md#deploying-while-jobs-wait) | `v` in the payload | put back untouched until a worker reads it; after six hours it fails and leaves the queue | failed at once with the reason, never run |
 | [Queued listener](events.md#queued-listeners) | the listener's `static listener` name, within its event | put back like an unknown job | failed like any record without a version |
 | [Session](session.md#what-a-session-stores) | `_v` in the payload | the request is a guest's; the stored session stays as it is | dropped, a new session starts |
