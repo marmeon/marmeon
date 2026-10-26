@@ -75,7 +75,7 @@ export interface JobContext {
     release(delay?: Duration): void;
     fail(reason: string | Error): void;
     once(key: string, fn: () => unknown, options?: {
-        readonly for?: number;
+        readonly for?: Duration;
     }): Promise<boolean>;
 }
 // JobEvent
@@ -117,7 +117,7 @@ export interface JobMiddleware<P = any> {
 export interface JobMiddlewareContext<P = unknown> {
     readonly payload: P;
     readonly job: JobContext;
-    readonly timeout: number;
+    readonly timeoutSeconds: number;
     readonly retryAfterSeconds: number | undefined;
     cache(): Promise<Cache>;
 }
@@ -207,8 +207,8 @@ export interface JobStatics {
     readonly job: string;
     readonly schema: StandardSchemaV1;
     readonly tries?: number;
-    readonly backoff?: number | readonly number[];
-    readonly timeout?: number;
+    readonly backoff?: Duration | readonly Duration[];
+    readonly timeout?: Duration;
     readonly encrypted?: boolean;
     readonly middleware?: readonly JobMiddleware[];
 }
@@ -276,7 +276,7 @@ export declare class QueueConnections {
     failed(): FailedJobStore;
     cache(): Promise<Cache>;
     readonly events: (event: JobEvent) => Promise<void>;
-    worker(connection: string, stopTimeout: number): Worker;
+    worker(connection: string, stopTimeout: Duration): Worker;
 }
 // QueueCounts
 export interface QueueCounts {
@@ -377,20 +377,20 @@ export interface UniqueRecord {
 }
 // WithoutOverlappingOptions
 export interface WithoutOverlappingOptions {
-    readonly releaseAfter?: number;
-    readonly expiresAfter?: number;
+    readonly releaseAfter?: Duration;
+    readonly expiresAfter?: Duration;
     readonly shared?: boolean;
 }
 // WorkOptions
 export interface WorkOptions {
     readonly queues?: readonly string[];
-    readonly sleep?: number;
+    readonly sleep?: Duration;
     readonly maxJobs?: number;
-    readonly maxTime?: number;
+    readonly maxTime?: Duration;
     readonly stopWhenEmpty?: boolean;
-    readonly stopTimeout?: number;
+    readonly stopTimeout?: Duration;
     readonly signal?: AbortSignal;
-    readonly watchOtherQueues?: number | false;
+    readonly watchOtherQueues?: Duration | false;
     readonly onStuck?: (job: ReservedJob, error: JobStuckError) => void;
 }
 // WorkResult
@@ -554,7 +554,7 @@ export interface JobContext {
     release(delay?: Duration): void;
     fail(reason: string | Error): void;
     once(key: string, fn: () => unknown, options?: {
-        readonly for?: number;
+        readonly for?: Duration;
     }): Promise<boolean>;
 }
 // JobInput
@@ -571,7 +571,7 @@ export interface JobMiddleware<P = any> {
 export interface JobMiddlewareContext<P = unknown> {
     readonly payload: P;
     readonly job: JobContext;
-    readonly timeout: number;
+    readonly timeoutSeconds: number;
     readonly retryAfterSeconds: number | undefined;
     cache(): Promise<Cache>;
 }
@@ -582,8 +582,8 @@ export interface JobStatics {
     readonly job: string;
     readonly schema: StandardSchemaV1;
     readonly tries?: number;
-    readonly backoff?: number | readonly number[];
-    readonly timeout?: number;
+    readonly backoff?: Duration | readonly Duration[];
+    readonly timeout?: Duration;
     readonly encrypted?: boolean;
     readonly middleware?: readonly JobMiddleware[];
 }
@@ -635,13 +635,13 @@ export interface UniqueRecord {
 // WorkOptions
 export interface WorkOptions {
     readonly queues?: readonly string[];
-    readonly sleep?: number;
+    readonly sleep?: Duration;
     readonly maxJobs?: number;
-    readonly maxTime?: number;
+    readonly maxTime?: Duration;
     readonly stopWhenEmpty?: boolean;
-    readonly stopTimeout?: number;
+    readonly stopTimeout?: Duration;
     readonly signal?: AbortSignal;
-    readonly watchOtherQueues?: number | false;
+    readonly watchOtherQueues?: Duration | false;
     readonly onStuck?: (job: ReservedJob, error: JobStuckError) => void;
 }
 // WorkResult

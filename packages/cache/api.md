@@ -18,7 +18,7 @@ export interface Cache {
     forget(key: string): Promise<void>;
     increment(key: string, by?: number, ttl?: Duration): Promise<number>;
     remember<T>(key: string, ttl: Duration | undefined, compute: () => T | Promise<T>): Promise<T>;
-    ttl(key: string): Promise<number | undefined>;
+    ttlSeconds(key: string): Promise<number | undefined>;
     flush(): Promise<void>;
     prune(): Promise<number | undefined>;
     lock(name: string, ttl: Duration, owner?: string): Lock;
@@ -159,7 +159,7 @@ export declare class RateLimiter {
     attempt(key: string, maxAttempts: number, decay: Duration): Promise<boolean>;
     attempts(key: string): Promise<number>;
     tooManyAttempts(key: string, maxAttempts: number): Promise<boolean>;
-    availableIn(key: string): Promise<number>;
+    availableInSeconds(key: string): Promise<number>;
     clear(key: string): Promise<void>;
 }
 // cacheTablesConnection

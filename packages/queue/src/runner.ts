@@ -2,7 +2,7 @@ import { Application, durationToSeconds, outsideTransaction, type Container, typ
 import { messageBase, runWithJob, trace, withCode, withoutCode } from '@marmeon/core/internal';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import type { JobRecord, UniqueRecord } from './driver.ts';
-import type { JobClass, JobContext, JobMiddleware } from './job.ts';
+import type { JobClass, JobContext, JobMiddleware, JobMiddlewareContext } from './job.ts';
 import { runOnce, type CacheSource } from './locks.ts';
 import { QueueError, timeoutOf, type JobRegistry } from './registry.ts';
 
@@ -297,8 +297,15 @@ export class JobRunner {
           return;
         }
         let called = false;
+        const middlewareContext: JobMiddlewareContext = { payload, job: context, timeoutSeconds: timeoutOf(job), retryAfterSeconds: attempt.retryAfterSeconds, cache: this.#cache };
+        // `timeout` is `timeoutSeconds`: reading it throws instead of giving undefined.
+        Object.defineProperty(middlewareContext, 'timeout', {
+          get() {
+            throw new QueueError('context.timeout is context.timeoutSeconds: a middleware reads the job timeout in seconds.');
+          },
+        });
         await layer.handle(
-          { payload, job: context, timeout: timeoutOf(job), retryAfterSeconds: attempt.retryAfterSeconds, cache: this.#cache },
+          middlewareContext,
           () => {
             if (called) throw new QueueError(`A middleware of ${record.job} called next() twice — the job would run twice.`);
             called = true;

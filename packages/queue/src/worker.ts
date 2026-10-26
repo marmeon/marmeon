@@ -1,10 +1,10 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { outsideTransaction, Redactor, type Clock, type ErrorReports, type Logger } from '@marmeon/core';
+import { durationToSeconds, outsideTransaction, Redactor, type Clock, type Duration, type ErrorReports, type Logger } from '@marmeon/core';
 import { describeError, withCode, withoutCode } from '@marmeon/core/internal';
 import { backoffDelay, type FailedJobStore, type JobRecord, type QueueDriver, type ReservedJob } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, type JobEvent, type JobEvents } from './events.ts';
 import { JobOnceBusyError, ONCE_BUSY_DELAY, releaseUnique } from './locks.ts';
-import { timeoutOf } from './registry.ts';
+import { QueueError, timeoutOf } from './registry.ts';
 import { CLOCK_SKEW_MS, FOREIGN_LIMIT_SECONDS, nextInChain, parseRecord, schemaMismatch, type JobRunner, type Prepared, type RecordIdentity, type Requested } from './runner.ts';
 
 /** A job did not stop within its timeout plus the grace period: Node cannot cancel it, so its worker must end. */
@@ -25,28 +25,28 @@ export interface WorkOptions {
    * at its place: `['mail', '*']` takes `mail` first, then the rest.
    */
   readonly queues?: readonly string[];
-  /** Seconds to wait when no job is available (default 1). */
-  readonly sleep?: number;
+  /** How long to wait when no job is available (seconds or a duration, default 1). */
+  readonly sleep?: Duration;
   /** Stop after this many jobs (each processed attempt counts). */
   readonly maxJobs?: number;
-  /** Stop after this many seconds (finishing the running job first). */
-  readonly maxTime?: number;
+  /** Stop after this long (seconds or a duration; the running job finishes first). */
+  readonly maxTime?: Duration;
   /** Stop as soon as no job is available. */
   readonly stopWhenEmpty?: boolean;
   /**
-   * Seconds a running job may still take after a stop was asked for (SIGTERM) — then it is released and the worker
+   * How long a running job may still take after a stop was asked for (SIGTERM; seconds or a duration) — then it is released and the worker
    * stops — and the grace period after a job's timeout before the worker gives up on it (default 10).
    */
-  readonly stopTimeout?: number;
+  readonly stopTimeout?: Duration;
   /** Aborted: no new claim; the running job gets `stopTimeout` to finish. */
   readonly signal?: AbortSignal;
   /**
-   * Seconds between two looks, while idle, at the queues this worker does not take (default 60; `false`: never). Jobs ready
+   * How long between two looks (seconds or a duration), while idle, at the queues this worker does not take (default 60; `false`: never). Jobs ready
    * on one of them at two looks in a row — and none of them running — are logged once as a warning: a worker started with
    * `--queue=default` would otherwise leave the mails of the auth module waiting without a word. Only for a list without `*` —
    * a worker on every queue has nothing to look for.
    */
-  readonly watchOtherQueues?: number | false;
+  readonly watchOtherQueues?: Duration | false;
   /**
    * A job ignored its timeout and the grace period: the worker cannot go on (the job keeps running). `queue:work` logs
    * and exits the process — the supervisor restarts it, the job returns after `retryAfterSeconds`. Default: throw {@link JobStuckError}.
@@ -89,6 +89,40 @@ type Outcome = 'processed' | 'released' | 'failed' | 'interrupted';
 
 const DEFAULT_STOP_TIMEOUT = 10;
 
+/** The spans of {@link WorkOptions} in seconds. */
+interface WorkSpans {
+  readonly sleep: number;
+  readonly maxTime: number | undefined;
+  readonly stopTimeout: number;
+  readonly watchOtherQueues: number | false;
+}
+
+function span(value: Duration, name: string, minimum: 'zero' | 'positive'): number {
+  let seconds: number;
+  try {
+    seconds = durationToSeconds(value);
+  } catch {
+    seconds = Number.NaN;
+  }
+  if (!Number.isFinite(seconds) || (minimum === 'zero' ? seconds < 0 : seconds <= 0)) {
+    throw new QueueError(`${name} must be seconds ${minimum === 'zero' ? '≥' : '>'} 0 (or a duration), not ${JSON.stringify(value)}.`);
+  }
+  return seconds;
+}
+
+function stopTimeoutOf(options: Pick<WorkOptions, 'stopTimeout'>): number {
+  return options.stopTimeout === undefined ? DEFAULT_STOP_TIMEOUT : span(options.stopTimeout, 'stopTimeout', 'zero');
+}
+
+function workSpans(options: WorkOptions): WorkSpans {
+  return {
+    sleep: options.sleep === undefined ? 1 : span(options.sleep, 'sleep', 'zero'),
+    maxTime: options.maxTime === undefined ? undefined : span(options.maxTime, 'maxTime', 'zero'),
+    stopTimeout: stopTimeoutOf(options),
+    watchOtherQueues: options.watchOtherQueues === undefined ? 60 : options.watchOtherQueues === false ? false : span(options.watchOtherQueues, 'watchOtherQueues', 'positive'),
+  };
+}
+
 /**
  * Takes jobs off a queue and runs them, one at a time: each attempt in its own container scope, with its log context,
  * `job.signal` aborting at the job's timeout. Errors release the job with its backoff until its tries are used up, then
@@ -112,28 +146,29 @@ export class Worker {
     this.#redactor = dependencies.redactor ?? new Redactor();
   }
 
-  run(options: WorkOptions): Promise<WorkResult> {
+  async run(options: WorkOptions): Promise<WorkResult> {
+    const spans = workSpans(options);
     // A boundary: claims, acks and jobs never run inside a transaction of whoever started the worker.
-    return outsideTransaction(() => this.#loop(options));
+    return outsideTransaction(() => this.#loop(options, spans));
   }
 
-  async #loop(options: WorkOptions): Promise<WorkResult> {
+  async #loop(options: WorkOptions, spans: WorkSpans): Promise<WorkResult> {
     const started = performance.now();
     const counts = { processed: 0, failed: 0, released: 0 };
     const result = (reason: WorkResult['reason']): WorkResult => ({ ...counts, reason });
     const claims = this.#claims(options.queues);
-    const others = this.#others(options);
+    const others = this.#others(options, spans.watchOtherQueues);
     for (;;) {
       if (options.signal?.aborted) return result('stopped');
       if (options.maxJobs !== undefined && counts.processed >= options.maxJobs) return result('max-jobs');
-      if (options.maxTime !== undefined && performance.now() - started >= options.maxTime * 1000) return result('max-time');
+      if (spans.maxTime !== undefined && performance.now() - started >= spans.maxTime * 1000) return result('max-time');
 
       const job = await claims.next();
       if (!job) {
         if (options.stopWhenEmpty) return result('empty');
         await others.look();
         try {
-          await sleep((options.sleep ?? 1) * 1000, undefined, { signal: options.signal });
+          await sleep(spans.sleep * 1000, undefined, { signal: options.signal });
         } catch {
           return result('stopped');
         }
@@ -149,6 +184,7 @@ export class Worker {
 
   /** Runs one claimed job to its outcome. */
   async process(reserved: ReservedJob, options: Pick<WorkOptions, 'stopTimeout' | 'signal' | 'onStuck'> = {}): Promise<Outcome> {
+    const stopTimeout = stopTimeoutOf(options);
     const { runner, logger } = this.#deps;
     const prepared = await runner.prepare(reserved.payload).catch((error: unknown): Prepared => ({ kind: 'poison', record: undefined, reason: `The record could not be prepared: ${this.#message(error)}` }));
     const attempt = { attempt: reserved.attempts, queue: reserved.queue, connection: this.#deps.connection };
@@ -172,7 +208,7 @@ export class Worker {
     // A job unique until processing: a new one with its key may be queued from now on.
     await this.#releaseUnique(record, 'processing');
     const started = performance.now();
-    const settled = await this.#attempt(reserved, prepared, options);
+    const settled = await this.#attempt(reserved, prepared, options, stopTimeout);
     const ms = Math.round(performance.now() - started);
     const context = { ...base, ms };
 
@@ -299,8 +335,7 @@ export class Worker {
    * running — nobody takes it — is named once in a warning. Two looks, because another worker that takes it may simply not
    * have claimed a job pushed a moment ago.
    */
-  #others(options: WorkOptions): { look(): Promise<void> } {
-    const every = options.watchOtherQueues ?? 60;
+  #others(options: WorkOptions, every: number | false): { look(): Promise<void> } {
     const list = options.queues ?? [];
     if (every === false || list.length === 0 || list.includes('*')) return { look: async () => {} };
     const taken = new Set(list);
@@ -368,10 +403,10 @@ export class Worker {
   async #attempt(
     reserved: ReservedJob,
     prepared: Extract<Prepared, { kind: 'ready' }>,
-    options: Pick<WorkOptions, 'stopTimeout' | 'signal' | 'onStuck'>,
+    options: Pick<WorkOptions, 'signal' | 'onStuck'>,
+    grace: number,
   ): Promise<{ kind: 'done'; requested: Requested | undefined } | { kind: 'error'; error: unknown } | { kind: 'interrupted' }> {
     const timeout = timeoutOf(prepared.job);
-    const grace = options.stopTimeout ?? DEFAULT_STOP_TIMEOUT;
     const abort = new AbortController();
     const timers = new AbortController();
     const running = this.#deps.runner

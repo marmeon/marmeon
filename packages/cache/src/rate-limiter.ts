@@ -157,8 +157,8 @@ export class RateLimiter {
   }
 
   /** Seconds until `key` may try again. */
-  async availableIn(key: string): Promise<number> {
-    return (await this.#cache.ttl(`limiter:${key}`)) ?? 0;
+  async availableInSeconds(key: string): Promise<number> {
+    return (await this.#cache.ttlSeconds(`limiter:${key}`)) ?? 0;
   }
 
   clear(key: string): Promise<void> {
@@ -209,7 +209,7 @@ export function throttle(name: string): MiddlewareClass<{}, {}> {
         // Every other request counts and is decided on its own count, in one atomic step (`hit`).
         const attempts = live ? await this.#limiter.attempts(key) : await this.#limiter.hit(key, limit.decaySeconds);
         if (live ? attempts >= limit.maxAttempts : attempts > limit.maxAttempts) {
-          const retryAfterSeconds = await this.#limiter.availableIn(key);
+          const retryAfterSeconds = await this.#limiter.availableInSeconds(key);
           throw new HttpError(
             429,
             'Too Many Attempts.',
@@ -277,7 +277,7 @@ export class LimitLiveValidation {
     for (const limit of limits) {
       const key = `${LIVE_VALIDATION_LIMITER}:${name}:${limit.decaySeconds}:${limit.key}`;
       if (!(await this.#limiter.attempt(key, limit.maxAttempts, limit.decaySeconds))) {
-        const retryAfterSeconds = await this.#limiter.availableIn(key);
+        const retryAfterSeconds = await this.#limiter.availableInSeconds(key);
         throw new HttpError(429, 'Too Many Attempts.', { 'retry-after': String(retryAfterSeconds) }, { key: 'marmeon.errors.throttled', params: { seconds: retryAfterSeconds } });
       }
     }

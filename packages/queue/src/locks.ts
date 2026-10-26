@@ -15,8 +15,17 @@ export const DEFAULT_ONCE_FOR = 86_400;
 /** The app's cache, for the queue's locks — or an error saying how to get one. */
 export type CacheSource = () => Promise<Cache>;
 
+/** The seconds of a span, or NaN when it is neither seconds nor a duration. */
+function spanOf(value: Duration): number {
+  try {
+    return durationToSeconds(value);
+  } catch {
+    return Number.NaN;
+  }
+}
+
 function seconds(value: Duration, what: string): number {
-  const result = durationToSeconds(value);
+  const result = spanOf(value);
   if (!Number.isFinite(result) || result <= 0) throw new QueueError(`${what} must be seconds > 0 (or a duration), not ${JSON.stringify(value)}.`);
   return result;
 }
@@ -59,10 +68,9 @@ export class JobOnceBusyError extends Error {
 }
 
 /** `job.once(key, fn)`: `fn` only without a marker for `key`; the marker after `fn` succeeded (see `JobContext.once`). */
-export async function runOnce(cache: CacheSource, key: string, fn: () => unknown, options: { for?: number; lockSeconds: number }): Promise<boolean> {
+export async function runOnce(cache: CacheSource, key: string, fn: () => unknown, options: { for?: Duration; lockSeconds: number }): Promise<boolean> {
   if (typeof key !== 'string' || key === '') throw new QueueError('job.once() needs a key, like `welcome-mail:${user.id}`.');
-  const ttl = options.for ?? DEFAULT_ONCE_FOR;
-  if (!(ttl > 0)) throw new QueueError(`job.once(): { for } must be seconds > 0, not ${String(options.for)}.`);
+  const ttl = options.for === undefined ? DEFAULT_ONCE_FOR : seconds(options.for, 'job.once(): { for }');
   const store = await cache();
   const marker = `queue:once:${key}`;
   if (await store.has(marker)) return false;
@@ -82,17 +90,17 @@ export async function runOnce(cache: CacheSource, key: string, fn: () => unknown
 
 /** Options of {@link withoutOverlapping}. */
 export interface WithoutOverlappingOptions {
-  /** Seconds until the job runs again when another holds the key (default 5). Each wait is an attempt: give the job `tries`. */
-  readonly releaseAfter?: number;
-  /** Seconds the lock holds at most (default: the connection's `retryAfterSeconds` — as long as a claim may run). */
-  readonly expiresAfter?: number;
+  /** How long until the job runs again when another holds the key (seconds or a duration, default 5). Each wait is an attempt: give the job `tries`. */
+  readonly releaseAfter?: Duration;
+  /** How long the lock holds at most (seconds or a duration; default: the connection's `retryAfterSeconds` — as long as a claim may run). */
+  readonly expiresAfter?: Duration;
   /** Share the key with other jobs (default: per job — `stats:1` of one job does not block `stats:1` of another). */
   readonly shared?: boolean;
 }
 
 /**
  * Job middleware: never two attempts with the same key at once — on any worker (a lock in the app's cache). An attempt
- * that finds the key taken does not run; it goes back to the queue for `releaseAfter` seconds (an attempt counts). See
+ * that finds the key taken does not run; it goes back to the queue for `releaseAfter` (an attempt counts). See
  * `docs/queues.md#job-middleware`.
  *
  * The type argument types the payload (the class is not known yet where its own static field is written). Only its
@@ -102,14 +110,15 @@ export function withoutOverlapping<J extends { readonly schema: StandardSchemaV1
   key: string | ((payload: SchemaOutput<J['schema']>) => string),
   options: WithoutOverlappingOptions = {},
 ): JobMiddleware<SchemaOutput<J['schema']>> {
-  const releaseAfter = options.releaseAfter ?? 5;
-  if (!(releaseAfter >= 0)) throw new QueueError(`withoutOverlapping(): releaseAfter must be seconds ≥ 0, not ${String(options.releaseAfter)}.`);
+  const releaseAfter = options.releaseAfter === undefined ? 5 : spanOf(options.releaseAfter);
+  if (!(releaseAfter >= 0)) throw new QueueError(`withoutOverlapping(): releaseAfter must be seconds ≥ 0 (or a duration), not ${JSON.stringify(options.releaseAfter)}.`);
+  const expiresAfter = options.expiresAfter === undefined ? undefined : seconds(options.expiresAfter, 'withoutOverlapping(): expiresAfter');
   return {
     async handle(context, next) {
       const name = typeof key === 'string' ? key : key(context.payload);
       if (typeof name !== 'string' || name === '') throw new QueueError(`withoutOverlapping() of ${context.job.name} needs a key, not ${JSON.stringify(name)}.`);
       const lockName = options.shared ? `queue:overlap:${name}` : `queue:overlap:${context.job.name}:${name}`;
-      const lock = (await context.cache()).lock(lockName, options.expiresAfter ?? context.retryAfterSeconds ?? context.timeout + 60);
+      const lock = (await context.cache()).lock(lockName, expiresAfter ?? context.retryAfterSeconds ?? context.timeoutSeconds + 60);
       if (!(await lock.get())) {
         context.job.release(releaseAfter);
         return;

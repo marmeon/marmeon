@@ -97,7 +97,7 @@ export class NoteSharedNotification implements Notification<'user'> {
 - **`via(recipient, data)`** returns the channels for this recipient, and may be `async`.
 - **A method per channel**: `toDatabase()` for `database` and `toMail()` for `mail`.
 - **`static database`** checks what the database channel stores. Only the fields it describes are kept.
-- **`static queue`** picks the queue, `connection`, `delay`, `tries` and `backoff` of the notification's job. Its mail goes to
+- **`static queue`** picks the queue, `connection`, `delay`, `tries` and `backoff` of the notification's job. A `backoff` is seconds or a duration, or a list of them: `[10, { minutes: 1 }]`. Its mail goes to
   the same queue and connection, with the mail's own retries. Without `tries` the job tries three times, 10 seconds and then a
   minute apart.
 

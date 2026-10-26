@@ -1,5 +1,5 @@
 import type { Cache } from '@marmeon/cache';
-import { Application, Clock, ErrorReports, EventDispatcher, Logger, Redactor, type Container } from '@marmeon/core';
+import { Application, Clock, durationToSeconds, ErrorReports, EventDispatcher, Logger, Redactor, type Container, type Duration } from '@marmeon/core';
 import { collectDrivers } from '@marmeon/core/internal';
 import { QueueConfig } from './config.ts';
 import type { FailedJobStore, FailedJobStoreFactory, QueueConnection, QueueDriver, QueueDriverFactory } from './driver.ts';
@@ -193,10 +193,10 @@ export class QueueConnections {
    * hold its claim for `timeout` plus `stopTimeout` (the grace before its worker gives up), and must be done before
    * another worker may claim it again.
    */
-  worker(connection: string, stopTimeout: number): Worker {
+  worker(connection: string, stopTimeout: Duration): Worker {
     const options = this.options(connection);
     if (options.driver === 'sync') throw new QueueSetupError(withCode('Q4', 'The sync queue connection runs each job when it is dispatched — there is nothing for a worker to do. Use --connection=database (or redis).'));
-    checkTimeouts(this.#container.make(JobRegistry), connection, options.retryAfterSeconds, stopTimeout);
+    checkTimeouts(this.#container.make(JobRegistry), connection, options.retryAfterSeconds, durationToSeconds(stopTimeout));
     return new Worker({
       driver: this.driver(connection),
       connection,

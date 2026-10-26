@@ -384,14 +384,14 @@ export class TwoFactor {
     const waits: number[] = [];
     for (const window of TOTP_WINDOWS) {
       const key = this.#codeKey(window.name, userId);
-      if (!(await this.#limiter.attempt(key, window.attempts, window.seconds))) waits.push(await this.#limiter.availableIn(key));
+      if (!(await this.#limiter.attempt(key, window.attempts, window.seconds))) waits.push(await this.#limiter.availableInSeconds(key));
     }
     return waits.length === 0 ? undefined : Math.max(1, ...waits);
   }
 
   async #throttleRecovery(userId: AuthUserId): Promise<number | undefined> {
     const key = this.#recoveryKey(userId);
-    return (await this.#limiter.attempt(key, RECOVERY_WINDOW.attempts, RECOVERY_WINDOW.seconds)) ? undefined : Math.max(1, await this.#limiter.availableIn(key));
+    return (await this.#limiter.attempt(key, RECOVERY_WINDOW.attempts, RECOVERY_WINDOW.seconds)) ? undefined : Math.max(1, await this.#limiter.availableInSeconds(key));
   }
 
   /** The secret is bound to its account: a row copied to another account does not decrypt there. */

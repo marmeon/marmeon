@@ -1,4 +1,4 @@
-import type { Container, Resolver, StandardSchemaV1 } from '@marmeon/core';
+import type { Container, Duration, Resolver, StandardSchemaV1 } from '@marmeon/core';
 import type { JobContext } from '@marmeon/queue';
 import * as v from 'valibot';
 import { NotificationChannelError, type NotificationDeliverer } from './notifications.ts';
@@ -32,7 +32,7 @@ export class SendQueuedNotification {
   static readonly schema: StandardSchemaV1<QueuedNotificationPayload> = queuedNotificationSchema;
   static readonly encrypted = true;
   static readonly tries = 3;
-  static readonly backoff = [10, 60, 300];
+  static readonly backoff: readonly Duration[] = [10, 60, 300];
 
   readonly #resolver: Resolver;
   readonly #deliverer: NotificationDeliverer;

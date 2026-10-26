@@ -348,7 +348,7 @@ export class Passkeys implements SecondFactorPasskeys {
     const user = await this.#requireUser('confirm');
     const id = idOf(user);
     const key = `passkey-confirm:${id}`;
-    if (!(await this.#limiter.attempt(key, CONFIRM_WINDOW.attempts, CONFIRM_WINDOW.seconds))) return err({ kind: 'throttled', retryAfterSeconds: Math.max(1, await this.#limiter.availableIn(key)) });
+    if (!(await this.#limiter.attempt(key, CONFIRM_WINDOW.attempts, CONFIRM_WINDOW.seconds))) return err({ kind: 'throttled', retryAfterSeconds: Math.max(1, await this.#limiter.availableInSeconds(key)) });
     // No open challenge, or an answer signed for another one (a second tab, a double click), is not judged: the owner's own correct passkey can meet it.
     const challenge = await this.#takeChallenge('confirm', id);
     if (!challenge.ok) return err(challenge.error);
@@ -530,7 +530,7 @@ export class Passkeys implements SecondFactorPasskeys {
   /** The seconds to wait when this address failed too often a minute ago, else `undefined`. */
   async #waitForSignIn(): Promise<number | undefined> {
     const key = this.#signInKey();
-    return (await this.#limiter.tooManyAttempts(key, SIGN_IN_WINDOW.attempts)) ? Math.max(1, await this.#limiter.availableIn(key)) : undefined;
+    return (await this.#limiter.tooManyAttempts(key, SIGN_IN_WINDOW.attempts)) ? Math.max(1, await this.#limiter.availableInSeconds(key)) : undefined;
   }
 
   /** Uses a challenge up, atomically: `false` when another request already did. */

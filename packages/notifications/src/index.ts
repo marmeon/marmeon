@@ -10,7 +10,7 @@ import { Inbox } from './inbox.ts';
 import { heldReason, SendQueuedNotification } from './job.ts';
 import type { NotificationClass, RecipientResolvers } from './notification.ts';
 import { NotificationDeliverer, Notifications, NotificationSender, type QueueNotification } from './notifications.ts';
-import { NotificationRegistry, NotificationSetupError, RecipientRegistry } from './registry.ts';
+import { backoffSeconds, NotificationRegistry, NotificationSetupError, RecipientRegistry } from './registry.ts';
 import { NOTIFICATIONS_COLUMNS, NOTIFICATIONS_TABLE, NotificationStore } from './store.ts';
 import { withCode } from '@marmeon/core/internal';
 
@@ -138,7 +138,7 @@ export class NotificationServiceProvider implements ServiceProvider {
         ...(connection === undefined ? {} : { connection }),
         ...(when === undefined ? {} : { delay: when }),
         // The notification's own tries and backoff, for its job (like a queued listener's).
-        [module.RECORD_OPTIONS]: { ...(tries === undefined ? {} : { tries }), ...(backoff === undefined ? {} : { backoff: typeof backoff === 'number' ? [backoff] : backoff }) },
+        [module.RECORD_OPTIONS]: { ...(tries === undefined ? {} : { tries }), ...(backoff === undefined ? {} : { backoff: backoffSeconds(backoff) }) },
       };
       // Like any dispatch: inside a transaction it exists with the commit — a database queue writes it into it.
       await container

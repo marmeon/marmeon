@@ -12,7 +12,7 @@ import { SendQueuedNotification } from './job.ts';
 import { NotificationDeliverer, Notifications } from './notifications.ts';
 import { PruneNotificationsCommand } from './commands.ts';
 import { NotificationServiceProvider } from './index.ts';
-import { NotificationSetupError } from './registry.ts';
+import { backoffSeconds, NotificationSetupError } from './registry.ts';
 import { NotificationStore } from './store.ts';
 
 const ada = { type: 'member', id: 1 } as const;
@@ -264,6 +264,24 @@ describe.each(drivers)('notifications on %s', (driver) => {
       await expect(start([{ name: 'a', notifications: [Welcome, Twin] }])).rejects.toThrow(/Two notifications are named "shop.welcome": Welcome \(module a\) and Twin \(module a\)/);
       class OtherMembers extends Members {}
       await expect(start([{ name: 'a', recipients: { member: Members } }, { name: 'b', recipients: { member: OtherMembers } }])).rejects.toThrow(/Two resolvers find "member" recipients: Members \(module a\) and OtherMembers \(module b\)/);
+    });
+
+    it('takes the backoff of a notification as seconds or durations, and fails the start for anything else', async () => {
+      const start = (queue: unknown) => {
+        class Backed extends Welcome {
+          static readonly queue = queue as never;
+        }
+        return createApplication(
+          { root: '/tmp', discover: false, providers: [DatabaseServiceProvider, NotificationServiceProvider], modules: [{ name: 'a', notifications: [Backed] }] },
+          { env: { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY }, override: (c) => c.instance(Logger, silent) },
+        );
+      };
+      await (await start({ backoff: [5, { minutes: 1 }] })).shutdown();
+      await (await start({ backoff: { seconds: 30 } })).shutdown();
+      await expect(start({ backoff: '1m' })).rejects.toThrow('backoff must be seconds ≥ 0 — a number, a duration like { minutes: 1 }');
+      await expect(start({ backoff: [10, -1] })).rejects.toThrow('[marmeon:Q6] ');
+      expect(backoffSeconds([5, { minutes: 1 }])).toEqual([5, 60]);
+      expect(backoffSeconds({ seconds: 30 })).toEqual([30]);
     });
   });
 

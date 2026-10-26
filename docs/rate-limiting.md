@@ -195,7 +195,7 @@ export class LoginController extends Controller {
     const { email, password } = ctx.body;
     const key = `login:${email}|${clientKey(ctx.ip)}`;
     if (!(await this.#limiter.attempt(key, 5, 60))) {
-      const seconds = await this.#limiter.availableIn(key);
+      const seconds = await this.#limiter.availableInSeconds(key);
       throw new ValidationError({ email: [`Too many attempts. Try again in ${seconds} seconds.`] }, { email });
     }
     const signedIn = await this.#auth.attempt(email, password);
@@ -218,7 +218,7 @@ at many accounts from one client share no count, and one account guessed from ma
 | `hit(key, decay)` | Counts one attempt and returns the count of the window, this one included. |
 | `attempts(key)` | The count of the window. |
 | `tooManyAttempts(key, max)` | Whether `max` is used up. For showing a state, never for letting an attempt through. |
-| `availableIn(key)` | Seconds until the window ends. |
+| `availableInSeconds(key)` | Seconds until the window ends. |
 | `clear(key)` | Forgets the count. |
 
 A second key can count the same sign-ins per account instead of per client: `login-account:` and a hash of the normalised address, 100
