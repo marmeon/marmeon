@@ -241,7 +241,7 @@ const routes = openRoutes((Route) => {
   Route.get('/account/two-factor', Page).name('test.setup');
   Route.get('/account/verify', Page).name('test.verify');
   Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify' })).post('/area', Page);
-  Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: 60 })).post('/area-fresh', Page);
+  Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: { minutes: 1 } })).post('/area-fresh', Page);
   Route.middleware(authenticate()).middleware(confirmedPassword()).post('/sudo', Page);
   Route.post('/tf/challenge', ChallengeController);
 });

@@ -43,9 +43,9 @@ export class PruneTokensCommand {
     if (!Number.isFinite(hours) || hours < 0) {
       throw new CommandArgumentsError(`--hours must be a number ≥ 0 (API tokens expired longer ago than that are deleted), not ${String(options.hours)}.`);
     }
-    const resets = await this.#resets.prune(this.#config.resetExpire * 60);
+    const resets = await this.#resets.prune(this.#config.resetMinutes * 60);
     const access = await this.#access.prune(hours * 3600);
-    const signIns = await this.#signIns.prune({ idleSeconds: this.#sessionConfig.lifetime * 60, maxSeconds: this.#config.sessionMaxSeconds }, this.#config.rememberDays);
+    const signIns = await this.#signIns.prune({ idleSeconds: this.#sessionConfig.lifetimeMinutes * 60, maxSeconds: this.#config.sessionMaxSeconds }, this.#config.rememberDays);
     // Opt-in: the store exists only where the app bound one.
     const changes = this.#container?.has(EmailChangeStore) ? await this.#container.make(EmailChangeStore).prune(new Date(this.#clock.now())) : undefined;
     const count = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'}`;

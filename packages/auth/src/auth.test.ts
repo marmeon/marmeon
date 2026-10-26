@@ -257,7 +257,7 @@ const routes = openRoutes((Route) => {
   Route.post('/confirm-password', ConfirmPasswordController);
   const signedIn = Route.middleware(authenticate());
   signedIn.middleware(confirmedPassword()).get('/sensitive', () => 'sensitive');
-  signedIn.middleware(confirmedPassword({ seconds: 60 })).get('/very-sensitive', () => 'very sensitive');
+  signedIn.middleware(confirmedPassword({ maxAge: { minutes: 1 } })).get('/very-sensitive', () => 'very sensitive');
   signedIn.post('/password', UpdatePasswordController);
   signedIn.post('/logout-others', LogoutOtherDevicesController);
 });

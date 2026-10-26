@@ -48,7 +48,7 @@ describe.each(drivers)('password reset on %s', (driver) => {
       tokens,
       hasher,
       { dispatch: async (event: object) => void events.push(event) } as never,
-      { resetExpire: 60, resetThrottle: 60 } as never,
+      { resetMinutes: 60, resetThrottleSeconds: 60 } as never,
       new NewPassword(() => accessTokens, () => connections, { revokeTokensOnPasswordChange } as never, logger, () => signIns),
       { ...NO_LOGIN_LIMITS, clearAccount: async (id: number | string) => void cleared.push(id) } as never,
     );

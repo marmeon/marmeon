@@ -1,4 +1,4 @@
-import { Clock } from '@marmeon/core';
+import { Clock, durationToSeconds, type Duration } from '@marmeon/core';
 import { isPrefetch } from '@marmeon/http';
 import { INTENDED_KEY } from '@marmeon/http/internal';
 import { addVary, EXPECTS_JSON_VARY, Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
@@ -10,16 +10,16 @@ import { TwoFactorState } from './state.ts';
 
 const VARY = addVary(undefined, EXPECTS_JSON_VARY);
 
-/** How long a proven second factor counts when `twoFactor()` gets no `maxAge`, in seconds (24 hours). */
-export const TWO_FACTOR_MAX_AGE = 86_400;
+/** How long a proven second factor counts when `twoFactor()` gets no `maxAge`. */
+const DEFAULT_MAX_AGE: Duration = { hours: 24 };
 
 export interface TwoFactorMiddlewareOptions<S extends string = string, V extends string = string, L extends string = string> {
   /** Named route of the page where a user without a second factor sets one up. */
   readonly setup: CheckRouteName<S>;
   /** Named route of the page that asks this session for its second factor (a form calling `TwoFactor.stepUp()`). */
   readonly verify: CheckRouteName<V>;
-  /** How long a proven second factor counts, in seconds; after that the session is asked again. Default: 24 hours (`TWO_FACTOR_MAX_AGE`). */
-  readonly maxAge?: number;
+  /** How long a proven second factor counts, a {@link Duration} above zero (a number is seconds); after that the session is asked again. Default: 24 hours. */
+  readonly maxAge?: Duration;
   /** Named route of the login page for a request without a user (default `auth.login`) — put `authenticate()` before this middleware, which makes it unreachable. */
   readonly loginRoute?: CheckRouteName<L>;
 }
@@ -36,8 +36,8 @@ export interface TwoFactorMiddlewareOptions<S extends string = string, V extends
 export function twoFactor<const S extends RouteNameInput = never, const V extends RouteNameInput = never, const L extends RouteNameInput = never>(
   options: TwoFactorMiddlewareOptions<S, V, L>,
 ): MiddlewareClass<Authenticated, {}> {
-  const { maxAge } = options;
-  if (maxAge !== undefined && !(Number.isFinite(maxAge) && maxAge > 0)) throw new Error('twoFactor({ maxAge }) takes a number of seconds above zero.');
+  const maxAgeSeconds = durationToSeconds(options.maxAge ?? DEFAULT_MAX_AGE);
+  if (!(Number.isFinite(maxAgeSeconds) && maxAgeSeconds > 0)) throw new Error('twoFactor({ maxAge }) takes a Duration above zero.');
   const loginRoute: string = options.loginRoute ?? 'auth.login';
   const RequireTwoFactor = class {
     readonly #auth: Auth;
@@ -62,7 +62,7 @@ export function twoFactor<const S extends RouteNameInput = never, const V extend
         return this.#redirect(ctx, loginRoute);
       }
       if ((await this.#state.factors(idOf(user))).length === 0) return this.#refuse(ctx, 'two_factor_required', options.setup);
-      if (!secondFactorProvenWithin(this.#session, maxAge ?? TWO_FACTOR_MAX_AGE, Math.floor(this.#clock.now() / 1000))) return this.#refuse(ctx, 'two_factor_unverified', options.verify);
+      if (!secondFactorProvenWithin(this.#session, maxAgeSeconds, Math.floor(this.#clock.now() / 1000))) return this.#refuse(ctx, 'two_factor_unverified', options.verify);
       return next();
     }
 

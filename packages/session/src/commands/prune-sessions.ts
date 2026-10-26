@@ -20,12 +20,12 @@ export class PruneSessionsCommand {
   }
 
   async handle({ output }: CommandInput): Promise<number> {
-    const { driver, lifetime } = this.#config;
+    const { driver, lifetimeMinutes } = this.#config;
     if (driver === 'redis') {
       output.line(`Nothing to prune: ${driver} sessions expire on their own.`);
       return 0;
     }
-    const removed = await this.#container.make(SessionStore).gc(lifetime * 60);
+    const removed = await this.#container.make(SessionStore).gc(lifetimeMinutes * 60);
     output.success(`Pruned ${removed} expired ${removed === 1 ? 'session' : 'sessions'} (${driver}).`);
     return 0;
   }

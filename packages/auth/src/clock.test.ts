@@ -128,7 +128,7 @@ const routes = openRoutes((Route) => {
   Route.get('/window', ConfiguredWindowController);
   Route.get('/setup', Page).name('test.setup');
   Route.get('/verify', Page).name('test.verify');
-  Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: 600 })).get('/area', Page);
+  Route.middleware(authenticate()).middleware(twoFactor({ setup: 'test.setup', verify: 'test.verify', maxAge: { minutes: 10 } })).get('/area', Page);
   Route.middleware(authenticate()).middleware(confirmedSecondFactor({ verify: 'test.verify' })).get('/factors', Page);
 });
 
@@ -208,8 +208,10 @@ describe('Auth on the app clock', () => {
     expect((await send('/area')).status, 'no proof yet').toBe(403);
     await send('/prove', 'POST');
     expect((await send('/area')).status).toBe(200);
-    clock.travel({ minutes: 11 });
-    expect((await send('/area')).status, 'past maxAge').toBe(403);
+    clock.travel({ seconds: 599 });
+    expect((await send('/area')).status, 'inside maxAge').toBe(200);
+    clock.travel({ seconds: 2 });
+    expect((await send('/area')).status, 'past maxAge, 601 s after the proof').toBe(403);
   });
 
   it('ages the proof that confirmedSecondFactor() asks for', async () => {

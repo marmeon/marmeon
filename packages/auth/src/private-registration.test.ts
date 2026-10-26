@@ -95,8 +95,8 @@ describe('AUTH_EMAIL_CHANGE_MINUTES and AUTH_EMAIL_CHANGE_THROTTLE_SECONDS', () 
   });
 
   it('pauses between two links of an account for 60 seconds unless set, 0 turns the pause off', async () => {
-    expect((await config({})).emailChangeThrottle).toBe(60);
-    expect((await config({ AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: '0' })).emailChangeThrottle).toBe(0);
+    expect((await config({})).emailChangeThrottleSeconds).toBe(60);
+    expect((await config({ AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: '0' })).emailChangeThrottleSeconds).toBe(0);
     await expect(boot({ NODE_ENV: 'test', AUTH_EMAIL_CHANGE_THROTTLE_SECONDS: '-1' })).rejects.toThrow(/auth: AUTH_EMAIL_CHANGE_THROTTLE_SECONDS/);
   });
 });

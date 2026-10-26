@@ -71,7 +71,7 @@ export declare const SessionConfig: import("@marmeon/core").ConfigDefinition<{
     secureFrom: 'APP_URL' | 'SESSION_SECURE_COOKIE';
     protected: boolean;
     connection: string;
-    lifetime: number;
+    lifetimeMinutes: number;
     cookie: string;
     files: string;
     secure: boolean;
@@ -103,7 +103,7 @@ export declare class SessionServiceProvider implements ServiceProvider {
         secureFrom: 'APP_URL' | 'SESSION_SECURE_COOKIE';
         protected: boolean;
         connection: string;
-        lifetime: number;
+        lifetimeMinutes: number;
         cookie: string;
         files: string;
         secure: boolean;

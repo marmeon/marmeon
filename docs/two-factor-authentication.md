@@ -261,7 +261,7 @@ import { twoFactor } from '@marmeon/auth/two-factor';
 import { everyone } from '@marmeon/http';
 
 const protectedArea = Route.middleware(authenticate())
-  .middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify', maxAge: 900 }))
+  .middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify', maxAge: { minutes: 15 } }))
   .authorize(everyone); // the user's own settings
 protectedArea.get('/settings/sensitive', ShowSensitiveController);
 ```
@@ -281,8 +281,8 @@ passing the code step of the sign-in, by turning the factor on, or by `stepUp()`
 a factor counts as proven at the time its cookie was made (after a code, and kept when the cookie rotates), so an old cookie
 (older than `maxAge`, 24 hours by default) sends the session to `verify` too. That holds when `AUTH_SESSION_MAX_HOURS` ends a
 sign-in and the cookie signs the user in anew: the new session inherits the cookie's proof time, not the time of the new
-sign-in. A session that was open before the factor was added has not proven it, so it is sent to `verify`. The proof stays for 24 hours (`TWO_FACTOR_MAX_AGE` from
-`@marmeon/auth/two-factor`), or for `maxAge` seconds when you give one, longer or shorter; then the user is asked again. There
+sign-in. A session that was open before the factor was added has not proven it, so it is sent to `verify`. The proof stays for 24 hours, or for the `maxAge` you give, longer or shorter, a [`Duration`](time.md#spans-of-time)
+(`{ minutes: 15 }`; a number is seconds); then the user is asked again. There
 is no setting for "never". [How long a sign-in lasts](authentication.md#how-long-a-sign-in-lasts) lists it with the other lifetimes. Typing the password again ([sudo mode](authentication.md#sudo-mode)) is a different thing and proves nothing
 about the second factor.
 

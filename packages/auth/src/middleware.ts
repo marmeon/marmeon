@@ -1,3 +1,4 @@
+import { durationToSeconds, type Duration } from '@marmeon/core';
 import { isPrefetch } from '@marmeon/http';
 import { INTENDED_KEY } from '@marmeon/http/internal';
 import { addVary, EXPECTS_JSON_VARY, Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
@@ -85,8 +86,8 @@ export function guest(home = '/'): MiddlewareClass<{}, {}> {
 export interface ConfirmedPasswordOptions<N extends string = string> {
   /** Named route of the confirmation page (default `auth.password.confirm`). */
   readonly confirmRoute?: CheckRouteName<N>;
-  /** How long a confirmation counts, in seconds (default `AUTH_PASSWORD_TIMEOUT_SECONDS`, 15 minutes). */
-  readonly seconds?: number;
+  /** How long a confirmation counts, a {@link Duration} above zero (a number is seconds; default `AUTH_PASSWORD_TIMEOUT_SECONDS`, 15 minutes). */
+  readonly maxAge?: Duration;
 }
 
 /**
@@ -95,7 +96,11 @@ export interface ConfirmedPasswordOptions<N extends string = string> {
  * JSON clients get 423, browsers the confirmation page (and come back afterwards).
  */
 export function confirmedPassword<const N extends RouteNameInput = never>(options: ConfirmedPasswordOptions<N> = {}): MiddlewareClass<Authenticated, {}> {
+  // An untyped caller passing `seconds` would silently get the default window.
+  if (Object.hasOwn(options, 'seconds')) throw new TypeError('confirmedPassword(): `seconds` was renamed `maxAge`, a Duration where a number is seconds — `{ seconds: 60 }` is `{ maxAge: { minutes: 1 } }`.');
   const confirmRoute: string = options.confirmRoute ?? 'auth.password.confirm';
+  const maxAgeSeconds = options.maxAge === undefined ? undefined : durationToSeconds(options.maxAge);
+  if (maxAgeSeconds !== undefined && !(Number.isFinite(maxAgeSeconds) && maxAgeSeconds > 0)) throw new TypeError('confirmedPassword({ maxAge }) takes a Duration above zero.');
   const RequirePassword = class {
     readonly #auth: Auth;
     readonly #session: Session;
@@ -108,7 +113,7 @@ export function confirmedPassword<const N extends RouteNameInput = never>(option
     }
 
     async handle(ctx: HttpContext<Authenticated>, next: Next<{}>): Promise<Response> {
-      if (this.#auth.passwordRecentlyConfirmed(options.seconds)) return next();
+      if (this.#auth.passwordRecentlyConfirmed(maxAgeSeconds)) return next();
       if (ctx.expectsJson()) return Response.json({ message: 'Password confirmation required.' }, { status: 423, headers: VARY });
       if (ctx.request.method === 'GET' && !this.#session.readOnly && !isPrefetch(ctx.request)) {
         const url = new URL(ctx.request.url);

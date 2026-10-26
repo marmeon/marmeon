@@ -538,7 +538,7 @@ async function sessionAccess(container: Container): Promise<SessionAccess | unde
       // reading it right now).
       for (;;) {
         const current = await store().read(key);
-        const written = await store().write(key, sealed, { expectedVersion: current?.version, lifetimeSeconds: config.lifetime * 60, userId });
+        const written = await store().write(key, sealed, { expectedVersion: current?.version, lifetimeSeconds: config.lifetimeMinutes * 60, userId });
         if (written === 'written') break;
         if (!current && written === 'conflict') await store().destroy(key); // an expired session under the key
       }

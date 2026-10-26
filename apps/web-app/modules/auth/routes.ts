@@ -136,7 +136,7 @@ export default defineRoutes((Route) => {
   confirmed.post('/settings/two-factor/verify/passkey', PasskeyStepUpController).name('auth.passkeys.step-up').block();
   // Only for sessions that proved a second factor within 15 minutes — an example of `twoFactor()`. An app chooses where to put it; nothing else
   // here requires a factor, and the framework never installs it by itself.
-  confirmed.middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify', maxAge: 900 })).get('/settings/sensitive', ShowSensitiveController).name('auth.sensitive');
+  confirmed.middleware(twoFactor({ setup: 'auth.two-factor', verify: 'auth.two-factor.verify', maxAge: { minutes: 15 } })).get('/settings/sensitive', ShowSensitiveController).name('auth.sensitive');
   // Passkeys: sudo mode and a recently proven factor for all of it but renaming; adding one asks for the password again, removing the last factor too.
   factors.get('/settings/passkeys', ShowPasskeysController).name('auth.passkeys');
   confirmedFactors.post('/settings/passkeys/options', PasskeyRegistrationOptionsController).name('auth.passkeys.options');

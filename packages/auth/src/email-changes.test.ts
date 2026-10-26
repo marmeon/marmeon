@@ -307,7 +307,7 @@ describe.each(drivers)('changes of address on %s', (driver) => {
     it('refuses a reset over a store that lacks forget() before the reset token is spent', async () => {
       const resets = new DatabasePasswordResetTokens(connections, clock);
       const memory = users();
-      const broker = new PasswordBroker(memory, resets, { make: async () => hash } as never, { dispatch: async () => {} } as never, { resetExpire: 60, resetThrottle: 0 } as never, newPassword({} as unknown as EmailChangeStore), NO_LOGIN_LIMITS as never);
+      const broker = new PasswordBroker(memory, resets, { make: async () => hash } as never, { dispatch: async () => {} } as never, { resetMinutes: 60, resetThrottleSeconds: 0 } as never, newPassword({} as unknown as EmailChangeStore), NO_LOGIN_LIMITS as never);
       const created = await broker.createToken(ada.email!);
       if (!created.ok) throw new Error('no token');
       await expect(broker.reset(ada.email!, created.value.token, 'a new password')).rejects.toThrow(/^\[marmeon:A6\] NewPassword needs EmailChangeStore\.forget\(\)/);
@@ -321,7 +321,7 @@ describe.each(drivers)('changes of address on %s', (driver) => {
       const output = { success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
       const none = { prune: async () => 0, create: async () => ({ ok: false }) } as never;
       const command = (container?: object) =>
-        new PruneTokensCommand(none, { prune: async () => 0 } as never, { resetExpire: 60, rememberDays: 30, sessionMaxSeconds: 86_400 } as never, { lifetime: 120 } as never, { prune: async () => 0 } as never, container as never, clock);
+        new PruneTokensCommand(none, { prune: async () => 0 } as never, { resetMinutes: 60, rememberDays: 30, sessionMaxSeconds: 86_400 } as never, { lifetimeMinutes: 120 } as never, { prune: async () => 0 } as never, container as never, clock);
       const run = (container?: object) => command(container).handle({ args: [], options: {}, output, root: '/', spawn: async () => 0 } as never);
       await run();
       expect(lines.pop()).toBe('Pruned 0 password reset tokens, 0 API tokens and 0 sign-ins.');

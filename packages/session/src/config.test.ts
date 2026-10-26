@@ -6,11 +6,11 @@ const resolve = async (env: Record<string, string>) => (await resolveConfig([Ses
 
 describe('SessionConfig: variable names', () => {
   it('keeps the default of the lifetime under its new name', async () => {
-    expect(await resolve({})).toMatchObject({ lifetime: 120 });
+    expect(await resolve({})).toMatchObject({ lifetimeMinutes: 120 });
   });
 
   it('reads the lifetime in minutes by its new name, at least 1', async () => {
-    expect(await resolve({ SESSION_LIFETIME_MINUTES: '30' })).toMatchObject({ lifetime: 30 });
+    expect(await resolve({ SESSION_LIFETIME_MINUTES: '30' })).toMatchObject({ lifetimeMinutes: 30 });
     await expect(resolve({ SESSION_LIFETIME_MINUTES: '0' })).rejects.toThrow(/SESSION_LIFETIME_MINUTES/);
   });
 
@@ -44,5 +44,13 @@ describe('SessionConfig: switches', () => {
     expect(await resolve({ SESSION_ENCRYPT: '0' })).toMatchObject({ encrypt: false });
     expect(await resolve({ SESSION_ENCRYPT: '' })).toMatchObject({ encrypt: false });
     for (const value of ['yes', 'on', 'no']) await expect(resolve({ SESSION_ENCRYPT: value }), value).rejects.toThrow(/SESSION_ENCRYPT/);
+  });
+});
+
+describe('SessionConfig: the old name of the lifetime', () => {
+  it('throws at a read of lifetime instead of answering undefined', async () => {
+    const config = (await resolve({})) as Record<string, unknown>;
+    expect(() => config.lifetime).toThrow('was renamed SessionConfig.lifetimeMinutes');
+    expect(Object.keys(config)).not.toContain('lifetime');
   });
 });

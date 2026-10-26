@@ -409,7 +409,7 @@ export class Session {
     flash.new = [];
     if (flash.old.length === 0) delete this.#data[FLASH]; // nothing to age: no bookkeeping stored
 
-    const lifetime = this.#config.lifetime * 60;
+    const lifetime = this.#config.lifetimeMinutes * 60;
     // The session this request loaded, under its key: written back over the version it was loaded at.
     if (this.#loaded && this.#obsolete.length === 0) return this.#writeBack(lifetime);
     // New, or regenerated (a new id): the old id goes, the new one is written — unless a new session holds nothing.

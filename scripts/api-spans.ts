@@ -36,6 +36,7 @@ export const SPAN_WORDS: readonly string[] = [
 export const SPAN_EXCEPTIONS: Readonly<Record<string, string>> = {
   '@marmeon/auth/passkeys PublicKeyCredentialCreationOptionsJSON.timeout': 'milliseconds, as the WebAuthn JSON defines them',
   '@marmeon/auth/passkeys PublicKeyCredentialRequestOptionsJSON.timeout': 'milliseconds, as the WebAuthn JSON defines them',
+  '@marmeon/auth DeviceCookie.options.maxAge': "seconds, the cookie's Max-Age; handed to cookies.set as it is",
   '@marmeon/cache CacheEntry.expires': 'a point in time, epoch milliseconds',
   '@marmeon/cache CacheStore.increment(expires)': 'a point in time, epoch milliseconds',
   '@marmeon/cache LockStore.lock(expires)': 'a point in time, epoch milliseconds',
@@ -47,16 +48,4 @@ export const SPAN_EXCEPTIONS: Readonly<Record<string, string>> = {
  * Spans that do not follow the rule yet. Each change that fixes one deletes its line; the list is empty before a release.
  */
 export const SPAN_PENDING: ReadonlySet<string> = new Set<string>([
-  '@marmeon/auth DeviceCookie.options.maxAge',
-  '@marmeon/auth/two-factor TwoFactorMiddlewareOptions.maxAge',
-  '@marmeon/auth AuthConfig.emailChangeThrottle',
-  '@marmeon/auth AuthConfig.passwordTimeout',
-  '@marmeon/auth AuthConfig.resetExpire',
-  '@marmeon/auth AuthConfig.resetThrottle',
-  '@marmeon/auth AuthServiceProvider.config.emailChangeThrottle',
-  '@marmeon/auth AuthServiceProvider.config.passwordTimeout',
-  '@marmeon/auth AuthServiceProvider.config.resetExpire',
-  '@marmeon/auth AuthServiceProvider.config.resetThrottle',
-  '@marmeon/session SessionConfig.lifetime',
-  '@marmeon/session SessionServiceProvider.config.lifetime',
 ]);

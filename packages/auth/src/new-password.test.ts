@@ -293,7 +293,7 @@ describe('a TwoFactorState without removeAll', () => {
     const old = { factors: async () => [], enabledSince: async () => undefined } as unknown as TwoFactorState; // a source without removeAll() (a cast)
     const { newPassword } = setup({ state: old });
     let consumed = 0;
-    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, { resetExpire: 60 } as never, newPassword, NO_LOGIN_LIMITS);
+    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, { resetMinutes: 60 } as never, newPassword, NO_LOGIN_LIMITS);
     await expect(broker.reset('a@example.com', 'x', 'pw')).rejects.toThrow(/^\[marmeon:A6\] .*removeAll/);
     expect(consumed).toBe(0);
   });
@@ -303,7 +303,7 @@ describe('a TwoFactorState without removeAll', () => {
     const { newPassword } = setup({ state: combineFactors(twoFactorState(), inner) });
     (inner as unknown as { removeAll: unknown }).removeAll = undefined;
     let consumed = 0;
-    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, { resetExpire: 60 } as never, newPassword, NO_LOGIN_LIMITS);
+    const broker = new PasswordBroker({} as never, { consume: async () => (consumed++, { ok: true }) } as never, {} as never, {} as never, { resetMinutes: 60 } as never, newPassword, NO_LOGIN_LIMITS);
     await expect(broker.reset('a@example.com', 'x', 'pw')).rejects.toThrow(/^\[marmeon:A6\] .*removeAll/);
     expect(consumed).toBe(0);
   });

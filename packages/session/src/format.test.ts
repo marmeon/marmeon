@@ -7,7 +7,7 @@ import { Session } from './session.ts';
 import { createSessionId, sessionKey, type SessionStore } from './store.ts';
 import { MemorySessionStore } from './stores/memory.ts';
 
-const config = { lifetime: 120 } as SessionConfig;
+const config = { lifetimeMinutes: 120 } as SessionConfig;
 const NEW = { expectedVersion: undefined, lifetimeSeconds: 600 };
 const FIXTURES = new URL('./__fixtures__/formats/session-payload/', import.meta.url);
 
