@@ -1,6 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import { connect, createServer as createTcpServer, type AddressInfo, type Server as TcpServer } from 'node:net';
-import { runTransaction, type Logger } from '@marmeon/core';
+import type { Logger } from '@marmeon/core';
+import { runTransaction } from '@marmeon/core/internal';
 import { RedisConnections, defineRedisScript } from '@marmeon/redis';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryLiveBackend, type LiveBackend, type LiveMessage } from './backend.ts';

@@ -1,7 +1,8 @@
 // The engine under the rules: Valibot — inside this package only. Nothing here is public: no exported type names a
 // Valibot type (an app's `.d.ts` would need `valibot` then — TS2742), so schemas leave this module as the opaque `Engine`.
 import type { StandardIssue, StandardOptions, StandardResult } from '@marmeon/core';
-import { messageOf, NOT_LIVE, translatable, type ValidationContext } from '@marmeon/router';
+import { translatable, type ValidationContext } from '@marmeon/router';
+import { messageOf, NOT_LIVE } from '@marmeon/router/internal';
 import * as v from 'valibot';
 import { englishText, type TextKey } from './texts.ts';
 

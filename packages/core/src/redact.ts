@@ -37,8 +37,7 @@ const BEARER = /\b(Bearer|Basic)\s+(?!\[redacted\])[\w.~+/=-]+/g;
 const URL_PASSWORD = /(?<![\w+.-])([a-z][\w+.-]*:\/\/[^:\s/@]*:)(?:(?:(?!:\/\/)[^\s?#"'<>])*@|[^@\s/]+@)/gi;
 // A password hash as a PHC string — `$argon2id$v=19$m=…$salt$hash`, `$scrypt$…`: never shown, wherever it appears.
 const PHC_HASH = /\$(?:argon2(?:id|i|d)|scrypt|pbkdf2(?:-sha\d+)?|bcrypt|2[abxy])\$[\w+/=,.$-]*[\w+/=$-]/g;
-// The form with a `|` (`marmeon_12|<secret>`): kept for one release so tokens of the old form do not show in clear while apps roll
-// over; it goes with the next release.
+// A token of the form `<id>|<secret>` (`marmeon_12|<secret>`): masked like any other token.
 const API_TOKEN_WITH_BAR = /\b([a-z0-9_]{0,16}?\d+)\|[A-Za-z0-9]{32,}/g;
 // An API token (`marmeon_<40 letters and digits><8 hex>`) under any prefix that ends in `_`: the prefix stays, the rest goes. A
 // prefix without `_` is not told from a long word; `Bearer …` and the keys above still catch those in their usual places.

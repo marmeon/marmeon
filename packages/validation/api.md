@@ -22,12 +22,6 @@ export declare class ArrayRule<Item, ItemInput, In = ItemInput[]> extends Rule<I
 }
 // BooleanInput
 export type BooleanInput = boolean | 0 | 1 | '0' | '1' | 'true' | 'false' | 'on' | 'off' | 'yes' | 'no';
-// BuildContext
-export interface BuildContext {
-    readonly request: ValidationContext | undefined;
-    readonly live: boolean;
-    readonly liveOptIn: boolean;
-}
 // CheckAnswer
 export type CheckAnswer = boolean | string | void | undefined;
 // CheckQueryFields
@@ -39,10 +33,6 @@ export type CustomCheck<T> = (value: T, context: CustomContext) => MaybePromise<
 // CustomContext
 export interface CustomContext {
     readonly request: ValidationContext | undefined;
-}
-// Engine
-export interface Engine {
-    readonly '~engine': true;
 }
 // ExistsOptions
 export interface ExistsOptions<Ctx = any> {
@@ -75,10 +65,6 @@ export interface RepositoryLike {
 export declare class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<Input, Output> {
     #private;
     readonly '~standard': StandardSchemaV1<Input, Output>['~standard'];
-    readonly '~rule': RuleDefinition;
-    constructor(definition: RuleDefinition);
-    '~engine'(context: BuildContext): Engine;
-    protected with(step: RuleStep, change?: Partial<RuleDefinition>): this;
     optional(): Rule<Output | undefined, Input | undefined>;
     nullable(): Rule<Output | null, Input | null>;
     default(value: Exclude<Output, undefined>): Rule<Exclude<Output, undefined>, Input | undefined>;
@@ -90,26 +76,8 @@ export declare class Rule<Output = unknown, Input = Output> implements StandardS
     exists<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options?: ExistsOptions<Ctx>): this;
     live(): this;
 }
-// RuleDefinition
-export interface RuleDefinition {
-    readonly base: (context: BuildContext, sizes: readonly engine.SizeGate[]) => Engine;
-    readonly steps: readonly RuleStep[];
-    readonly sizes: readonly engine.SizeGate[];
-    readonly async: boolean;
-    readonly contextual: boolean;
-    readonly live: boolean;
-    readonly container: boolean;
-    readonly keepsEmpty: boolean;
-    readonly meta: Readonly<Record<symbol, unknown>>;
-}
 // RuleMessage
 export type RuleMessage = string | Message;
-// RuleStep
-export interface RuleStep {
-    readonly build: (context: BuildContext) => Engine | undefined;
-    readonly async: boolean;
-    readonly contextual: boolean;
-}
 // Shape
 export type Shape = {
     readonly [field: string]: Rule<any, any>;
@@ -201,11 +169,6 @@ type OutputOf<R> = R extends Rule<any, any> ? InferOutput<R> : never;
 type Simplify<T> = {
     [K in keyof T]: T[K];
 } & {};
-// SizeGate
-export interface SizeGate {
-    readonly test: (size: number) => boolean;
-    readonly message: Message;
-}
 // Spelled
 type Spelled<T> = T extends number ? `${T}` : never;
 // numberRule

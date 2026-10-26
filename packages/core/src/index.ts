@@ -42,11 +42,8 @@ export type { CurrentJob, CurrentRequest, CurrentTask } from './request-context.
 export {
   afterCommit,
   afterRollback,
-  currentTransaction,
   inTransaction,
   outsideTransaction,
-  rollBackOnErr,
-  runTransaction,
   TransactionError,
   TransactionFinishedError,
   TransactionFrame,
@@ -54,13 +51,13 @@ export {
 export { commitAnyway, err, ok } from './result.ts';
 export type { Err, Ok, Result } from './result.ts';
 export { escapeHtml, Html, html, raw } from './html.ts';
-export { ENCRYPTED, MAX_ENTRY_BYTES, redact, REDACTED, REDACTED_KEYS, redactText, Redactor } from './redact.ts';
+export { redact, REDACTED, redactText, Redactor } from './redact.ts';
 export type { RedactableQuery } from './redact.ts';
 export { ConfigError, defineConfig, resolveConfig } from './config/config.ts';
 export { env } from './config/env.ts';
 export { EnvironmentConfig } from './config/environment-config.ts';
 export type { EnvBlock, EnvMessage, EnvNumber, EnvRead, EnvSchema, EnvString, EnvVariable, RenamedOptions } from './config/env.ts';
-export { DOTENV_MARKER, environment, NODE_ENVIRONMENTS, resolveEnvironment } from './environment.ts';
+export { environment } from './environment.ts';
 export type { NodeEnvironment, NodeEnvironmentName, ResolvedEnvironment } from './environment.ts';
 export type { ConfigDefinition, ConfigOf } from './config/config.ts';
 export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from './config/standard-schema.ts';

@@ -1,4 +1,4 @@
-import { REDACTED_KEYS } from '@marmeon/core';
+import { REDACTED_KEYS } from '@marmeon/core/internal';
 import { defineRoutes, Router, type HttpContext } from '@marmeon/router';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { Controller } from './controller.ts';

@@ -247,8 +247,6 @@ export declare const MiddlewarePriority: {
 export interface MiddlewareProblem extends AddsConflict {
     readonly route: RouteDefinition;
 }
-// NOT_LIVE
-export declare const NOT_LIVE: unique symbol;
 // Next
 export type Next<TAdd extends object> = unknown extends TAdd ? (extension?: TAdd) => Promise<Response> : [TAdd] extends [never] ? (extension: TAdd) => Promise<Response> : [AddedKeys<TAdd>] extends [never] ? (extension?: TAdd) => Promise<Response> : (extension: TAdd) => Promise<Response>;
 // NoReservedKeys
@@ -367,7 +365,6 @@ export interface ResponseContext {
 // Route
 export declare class Route<TState extends object = EmptyObject, TParams extends object = EmptyObject, TBindings extends object = EmptyObject> {
     #private;
-    constructor(register: (route: RouteDefinition) => void, attributes?: GroupAttributes);
     prefix<const TPath extends string>(path: TPath): Route<TState, Simplify<TParams & ExtractParams<TPath>>, TBindings>;
     localized(): Route<TState, Simplify<TParams & {
         locale: string;
@@ -446,19 +443,6 @@ export declare class RouteDefinition {
     readonly bindings: readonly RouteBinding[];
     readonly checks: readonly AccessCheck[];
     readonly localized: boolean;
-    constructor(options: {
-        methods: readonly HttpMethod[];
-        path: string;
-        action: AnyAction;
-        middleware: readonly AnyMiddleware[];
-        namePrefix: string;
-        group?: string | undefined;
-        bindings?: readonly RouteBinding[];
-        checks?: readonly AccessCheck[];
-        site?: string | undefined;
-        internal?: boolean;
-        localized?: boolean;
-    });
     name(name: string): this;
     get routeName(): string | undefined;
     internal(): this;
@@ -607,10 +591,6 @@ export declare function abort(status: number, message?: string, headers?: Record
 export declare function addVary(headers: Readonly<Record<string, string>> | undefined, names: readonly string[]): Record<string, string> & {
     vary: string;
 };
-// attributeName
-export declare function attributeName(field: string): string;
-// createNonce
-export declare function createNonce(): string;
 // defineMiddleware
 export declare function defineMiddleware<TAdds extends object & NoReservedKeys = EmptyObject, TRequires extends object = EmptyObject>(name: string, handle: Middleware<TRequires, TAdds>['handle'], options?: DefineMiddlewareOptions<TAdds>): Middleware<TRequires, TAdds>;
 // defineRequest
@@ -640,28 +620,14 @@ export declare function fillPath(name: string, pattern: string, params?: Readonl
 };
 // isLiveValidation
 export declare function isLiveValidation(request: Request): boolean;
-// issueOfFields
-export declare function issueOfFields(issue: StandardIssue, fields: readonly string[]): boolean;
-// joinPaths
-export declare function joinPaths(...segments: string[]): string;
 // liveValidationFields
 export declare function liveValidationFields(request: Request): readonly string[] | undefined;
 // matchesPath
 export declare function matchesPath(pattern: string, pathname: string): boolean;
-// messageOf
-export declare function messageOf(issue: StandardIssue, { translator, labels }?: MessageOptions): string;
-// nothingToValidate
-export declare function nothingToValidate(): HttpError;
 // ownResponse
 export declare function ownResponse<R extends Response>(response: R): R;
-// parseCookies
-export declare function parseCookies(header: string | null): Map<string, string>;
 // parseQuery
 export declare function parseQuery(schema: StandardSchemaV1, search: URLSearchParams): Promise<ParsedQuery>;
-// queryInput
-export declare function queryInput(search: URLSearchParams): Record<string, string | string[]>;
-// serializeCookie
-export declare function serializeCookie(name: string, value: string, options?: CookieOptions): string;
 // statusText
 export declare function statusText(status: number): string;
 // toSearchParams
@@ -711,19 +677,6 @@ type Entry<N> = N extends keyof Routes ? Routes[N] : never;
 type First<U> = (U extends unknown ? (x: () => U) => void : never) extends (x: infer I) => void ? (I extends () => infer R ? R : never) : never;
 // GetRouteAction
 type GetRouteAction<TState extends object, TParams extends object, TBindings extends object, TPath extends string, TSchema extends StandardSchemaV1, TQuery extends StandardSchemaV1> = [TSchema] extends [never] ? RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery> : typeof GET_HAS_NO_BODY;
-// GroupAttributes
-export interface GroupAttributes {
-    readonly prefix: string;
-    readonly namePrefix: string;
-    readonly middleware: readonly AnyMiddleware[];
-    readonly group?: string | undefined;
-    readonly bindings?: readonly RouteBinding[];
-    readonly checks?: readonly AccessCheck[];
-    readonly audit?: RegistrarAudit[];
-    readonly pending?: readonly RegistrarAudit[];
-    readonly internal?: boolean;
-    readonly localized?: boolean;
-}
 // Instance
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
 // IsIsland
@@ -784,11 +737,6 @@ declare const REQUEST: unique symbol;
 declare const RESERVED: readonly ['request', 'params', 'route', 'query', 'input', 'inputRead', 'cookies', 'ip', 'nonce', 'expectsJson', 'body', 'pageQuery'];
 // Registered
 type Registered = [keyof Routes] extends [never] ? false : true;
-// RegistrarAudit
-export interface RegistrarAudit {
-    used: boolean;
-    readonly site: string | undefined;
-}
 // RequiredKeys
 type RequiredKeys<T> = {
     [K in keyof T]-?: {} extends Pick<T, K> ? never : K;

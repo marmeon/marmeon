@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@marmeon/core';
-import { issueOfFields, parseQuery, translatable } from '@marmeon/router';
+import { parseQuery, translatable } from '@marmeon/router';
 import { describe, expect, it } from 'vitest';
 import { metaOf, rules as r, type Rule } from './index.ts';
 import { contentsOf } from './internal.ts';
@@ -250,16 +250,11 @@ describe('what a missing value is — the rest', () => {
 });
 
 describe('objects', () => {
-  it('nested paths (users.1.email) — the live validation finds them by field (issueOfFields)', async () => {
+  it('nested paths (users.1.email) — the issues carry their path and field in the message', async () => {
     const form = r.object({ users: r.array(r.object({ email: r.email() })), address: r.object({ city: r.string().required() }) });
     const result = await check(form, { users: [{ email: 'ada@example.com' }, { email: 'nope' }], address: { city: '' } });
     expect(result.issues?.map((issue) => issue.path)).toEqual([['users', 1, 'email'], ['address', 'city']]);
     expect(result.issues?.map((issue) => issue.message)).toEqual(['The users.1.email field must be a valid email address.', 'The address.city field is required.']);
-    const [email, city] = result.issues!;
-    expect(issueOfFields(email!, ['users.1.email'])).toBe(true);
-    expect(issueOfFields(email!, ['users'])).toBe(true);
-    expect(issueOfFields(email!, ['users.0.email'])).toBe(false);
-    expect(issueOfFields(city!, ['address.city'])).toBe(true);
   });
 
   it('when: fields checked only while their condition holds — else left out — alongside the other fields\' problems', async () => {

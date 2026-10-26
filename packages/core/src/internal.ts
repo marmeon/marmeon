@@ -3,12 +3,12 @@
  * frames and the context of a request, job or task. Not API, can change in any release — an app imports from `@marmeon/core`.
  * @internal
  */
-export { CLUSTER_WORKER, PROVIDER_STATICS } from './application.ts';
+export { CLUSTER_WORKER } from './application.ts';
 export { messageBase, publishEnded, trace } from './channels.ts';
 export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
 export { coreSolutions } from './core-solutions.ts';
 export { withCode, withoutCode } from './error-codes.ts';
-export { describeError, maskUrlPasswords } from './redact.ts';
+export { describeError, maskUrlPasswords, REDACTED_KEYS } from './redact.ts';
 export { collectDrivers } from './drivers.ts';
 export { bindingNameOf } from './definition-edit.ts';
 export { loadDiscoveredPackages, writeManifest } from './discovery/discover.ts';
@@ -32,7 +32,7 @@ export { parseSync } from './oxc.ts';
 export { sourceComments, stringLiterals } from './string-literals.ts';
 export type { SourceComment, StringLiteral } from './string-literals.ts';
 export type { StaticName } from './static-names.ts';
-export { bindTransaction, errOfRollback, followsTransaction, leftTransactionOf, openTransactionOf, transactionOf } from './transaction-context.ts';
+export { bindTransaction, errOfRollback, followsTransaction, leftTransactionOf, openTransactionOf, rollBackOnErr, runTransaction, transactionOf } from './transaction-context.ts';
 export { fillPlaceholders, PreferredLocale } from './translator.ts';
 export { marmeonInjection } from './vite.ts';
 export type { InjectionPlugin } from './vite.ts';
