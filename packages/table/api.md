@@ -23,10 +23,6 @@ export declare class BulkAction<H extends BulkActionClass = BulkActionClass, P =
     readonly '~policy': P;
     readonly '~ability': K;
     readonly handler: H;
-    readonly authorization: RowAuthorization | undefined;
-    readonly visibility: TableVisibility | undefined;
-    readonly confirms: boolean;
-    readonly limit: number;
     authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): BulkAction<H, P2, K2>;
     visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): BulkAction<H, P, K>;
     visible(check: TableVisibilityCheck): BulkAction<H, P, K>;
@@ -68,10 +64,6 @@ export declare class ColumnDefinition<R extends string = string, S extends boole
     readonly '~searchable': Q;
     readonly '~conditional': V;
     readonly ref: R;
-    readonly isSortable: boolean;
-    readonly isSearchable: boolean;
-    readonly text: string | null;
-    readonly visibility: TableVisibility | undefined;
     sortable(): ColumnDefinition<R, true, Q, V>;
     searchable(): ColumnDefinition<R, S, true, V>;
     label(text: string): ColumnDefinition<R, S, Q, V>;
@@ -99,7 +91,6 @@ export interface DataTable<Row extends object = any, Ctx = any, C extends string
         readonly bulk: B;
         readonly exports: E;
     };
-    readonly definition: TableDefinition;
     readonly query: TableQuerySchema<QV>;
 }
 // DataTableRow
@@ -108,16 +99,12 @@ export type DataTableRow<T> = T extends DataTable<infer Row> ? Row : never;
 export declare class DataTables {
     #private;
     resolve<T extends DataTable>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>>;
-    runAction(definition: TableDefinition, name: string, ctx: HttpContext): Promise<unknown>;
-    runBulk(definition: TableDefinition, name: string, ctx: HttpContext): Promise<unknown>;
-    export(definition: TableDefinition, name: string, ctx: HttpContext): Promise<Response>;
 }
 // Filter
 export declare class Filter<R extends string = string, T extends 'select' | 'dateRange' = 'select' | 'dateRange', O extends string = string> {
     readonly ref: R;
     readonly type: T;
     readonly options: readonly O[];
-    readonly visibility: TableVisibility | undefined;
     visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): Filter<R, T, O>;
     visible(check: TableVisibilityCheck): Filter<R, T, O>;
 }
@@ -138,9 +125,6 @@ export declare class RowAction<H extends RowActionClass = RowActionClass, P = un
     readonly '~policy': P;
     readonly '~ability': K;
     readonly handler: H;
-    readonly authorization: RowAuthorization | undefined;
-    readonly visibility: TableVisibility | undefined;
-    readonly confirms: boolean;
     authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): RowAction<H, P2, K2>;
     visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): RowAction<H, P, K>;
     visible(check: TableVisibilityCheck): RowAction<H, P, K>;
@@ -150,11 +134,6 @@ export declare class RowAction<H extends RowActionClass = RowActionClass, P = un
 export type RowActionClass<R = any, C = any> = new (...args: any[]) => {
     handle(row: R, ctx: C): unknown;
 };
-// RowAuthorization
-export interface RowAuthorization {
-    readonly policy: PolicyClass;
-    readonly ability: string;
-}
 // SortDirection
 export type SortDirection = 'asc' | 'desc';
 // TableActionEntry
@@ -205,28 +184,9 @@ export interface TableData<R extends object = Record<string, unknown>, C extends
     readonly bulk: readonly TableBulkEntry<B>[];
     readonly exports: readonly TableExportEntry<E>[];
 }
-// TableDefinition
-export interface TableDefinition {
-    readonly name: string;
-    readonly prefix: string | undefined;
-    readonly authorize: ((ctx: any, resolve: ClassResolver) => boolean | Promise<boolean>) | undefined;
-    readonly query: (db: any, ctx: any) => SelectQuery<any, any, any>;
-    readonly key: string;
-    readonly keyType: KeyType;
-    readonly columns: Readonly<Record<string, AnyColumn>>;
-    readonly filters: Readonly<Record<string, AnyFilter>>;
-    readonly defaultSort: string | undefined;
-    readonly perPage: readonly [number, ...number[]];
-    readonly cursor: boolean;
-    readonly actions: Readonly<Record<string, AnyRowAction>>;
-    readonly bulk: Readonly<Record<string, AnyBulkAction>>;
-    readonly exports: Readonly<Record<string, TableExport>>;
-}
 // TableExport
 export declare class TableExport {
     readonly format: 'csv';
-    readonly visibility: TableVisibility | undefined;
-    readonly limit: number;
     max(rows: number): TableExport;
     authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
     authorize(check: TableVisibilityCheck): TableExport;
@@ -305,15 +265,6 @@ export interface TableQuerySchema<QV extends object = TableQueryValues> extends 
 export declare class TableServiceProvider implements ServiceProvider {
     register(container: Container): void;
 }
-// TableVisibility
-export type TableVisibility = {
-    readonly kind: 'policy';
-    readonly policy: PolicyClass;
-    readonly ability: string;
-} | {
-    readonly kind: 'check';
-    readonly check: TableVisibilityCheck;
-};
 // TableVisibilityCheck
 export type TableVisibilityCheck = (ctx: any, resolve: ClassResolver) => boolean | Promise<boolean>;
 // action

@@ -3,6 +3,12 @@ import { describe, expectTypeOf, it } from 'vitest';
 import './__fixtures__/schema.ts';
 import { MemberPolicy } from './__fixtures__/policies.ts';
 import { defineMiddleware, defineRequest, defineRoutes } from '@marmeon/router';
+// @ts-expect-error — `RowAuthorization` is not exported
+import type { RowAuthorization } from './index.ts';
+// @ts-expect-error — `TableDefinition` is not exported
+import type { TableDefinition } from './index.ts';
+// @ts-expect-error — `TableVisibility` is not exported
+import type { TableVisibility } from './index.ts';
 import { action, bulk, column, defineTable, exportCsv, filter, tableRoutes, type TableContext, type TableProps } from './index.ts';
 
 class Deactivate {
@@ -197,3 +203,5 @@ describe('the query schema and the routes', () => {
     });
   });
 });
+
+export type Hidden = [RowAuthorization, TableDefinition, TableVisibility];
