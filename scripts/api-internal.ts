@@ -19,7 +19,6 @@ export const INTERNAL_PENDING: ReadonlySet<string> = new Set<string>([
   '@marmeon/core/internal FileGuardOptions',
   '@marmeon/core/internal InjectionPlugin',
   '@marmeon/core/internal Manifest',
-  '@marmeon/core/internal PROVIDER_STATICS',
   '@marmeon/core/internal SourceComment',
   '@marmeon/core/internal StaticName',
   '@marmeon/core/internal StringLiteral',

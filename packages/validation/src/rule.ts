@@ -47,10 +47,11 @@ const isAsyncFunction = (fn: unknown): boolean => typeof fn === 'function' && fn
  */
 export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<Input, Output> {
   readonly '~standard': StandardSchemaV1<Input, Output>['~standard'];
-  /** How the rule is built — internal. */
+  /** @internal — how the rule is built. */
   readonly '~rule': RuleDefinition;
   readonly #built: [Engine | undefined, Engine | undefined] = [undefined, undefined];
 
+  /** @internal — built by `r`; an app writes `r.string()`, not `new Rule(…)`. */
   constructor(definition: RuleDefinition) {
     this['~rule'] = definition;
     this['~standard'] = {
@@ -60,7 +61,7 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
     };
   }
 
-  /** The engine's schema for one validation — built once, unless it depends on the request (internal). */
+  /** @internal — the engine's schema for one validation, built once unless it depends on the request. */
   '~engine'(context: BuildContext): Engine {
     const definition = this['~rule'];
     const own = definition.live && !context.liveOptIn ? { ...context, liveOptIn: true } : context;
@@ -71,7 +72,7 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
     return build(definition, own);
   }
 
-  /** The same rule plus `step` — of the same class, so a string's rules stay at hand. */
+  /** @internal — the same rule plus `step`, of the same class, so a string's rules stay at hand. */
   protected with(step: RuleStep, change: Partial<RuleDefinition> = {}): this {
     const definition = this['~rule'];
     const Class = this.constructor as new (definition: RuleDefinition) => this;

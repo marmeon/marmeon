@@ -122,8 +122,6 @@ export interface CurrentRequest {
 export interface CurrentTask {
     readonly task: string;
 }
-// DOTENV_MARKER
-export declare const DOTENV_MARKER = "MARMEON_NODE_ENV_FROM_DOTENV";
 // DefinitionEdit
 export interface DefinitionEdit {
     readonly define: {
@@ -166,8 +164,6 @@ export interface DurationParts {
     readonly seconds?: number;
     readonly milliseconds?: number;
 }
-// ENCRYPTED
-export declare const ENCRYPTED = "[encrypted]";
 // EnvBlock
 // type-only
 export declare class EnvBlock<T> implements EnvVariable<T> {
@@ -391,8 +387,6 @@ export interface Logger {
     enabled?(level: 'debug' | 'info' | 'warn' | 'error'): boolean;
 }
 export declare const Logger: import("./token.ts").Token<Logger>;
-// MAX_ENTRY_BYTES
-export declare const MAX_ENTRY_BYTES: number;
 // ModuleDefinition
 export interface ModuleDefinition {
     readonly name: string;
@@ -401,8 +395,6 @@ export interface ModuleDefinition {
     readonly listeners?: readonly ListenerBinding[];
     readonly health?: readonly HealthCheckClass[];
 }
-// NODE_ENVIRONMENTS
-export declare const NODE_ENVIRONMENTS: readonly ['development', 'test', 'production'];
 // NodeEnvironment
 export interface NodeEnvironment {
     readonly NODE_ENV?: string | undefined;
@@ -438,8 +430,6 @@ export interface QueuedListenerOptions {
 }
 // REDACTED
 export declare const REDACTED = "[redacted]";
-// REDACTED_KEYS
-export declare const REDACTED_KEYS: RegExp;
 // RedactableQuery
 export interface RedactableQuery {
     readonly sql: string;
@@ -614,8 +604,6 @@ export declare function currentLogContext(): Readonly<Record<string, unknown>>;
 export declare function currentRequest(): CurrentRequest | undefined;
 // currentTask
 export declare function currentTask(): CurrentTask | undefined;
-// currentTransaction
-export declare function currentTransaction(): TransactionFrame | undefined;
 // defineApplication
 export declare function defineApplication(definition: ApplicationDefinition): ApplicationDefinition;
 // defineConfig
@@ -697,11 +685,6 @@ export declare function redact(context: Readonly<Record<string, unknown>>): Reco
 export declare function redactText(text: string): string;
 // resolveConfig
 export declare function resolveConfig(definitions: readonly ConfigDefinition<unknown>[], env: Env): Promise<Map<ConfigDefinition<unknown>, unknown>>;
-// resolveEnvironment
-export declare function resolveEnvironment(root: string, { fallback, env }?: {
-    fallback?: string;
-    env?: Record<string, string | undefined>;
-}): ResolvedEnvironment;
 // token
 export declare function token<T>(name: string): Token<T>;
 ```
@@ -721,6 +704,8 @@ interface CrossCheck<Out> {
     readonly test: (values: Out) => boolean;
     readonly message: EnvMessage<Out>;
 }
+// DOTENV_MARKER
+export declare const DOTENV_MARKER = "MARMEON_NODE_ENV_FROM_DOTENV";
 // Env
 type Env = Readonly<Record<string, string | undefined>>;
 // ErrorClass
@@ -743,6 +728,8 @@ type JsonMember<T> = T extends string | number | boolean | null ? true : T exten
 type ListenerFor<E extends EventClass, L> = L extends {
     readonly queue: unknown;
 } ? QueuedListenerFor<E, L> : ListenerLike<InstanceType<E>>;
+// NODE_ENVIRONMENTS
+export declare const NODE_ENVIRONMENTS: readonly ['development', 'test', 'production'];
 // QueuedListenerFor
 type QueuedListenerFor<E extends EventClass, L> = L extends {
     readonly queue: {

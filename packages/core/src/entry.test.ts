@@ -6,7 +6,7 @@ import * as testing from './testing.ts';
 
 describe('the entry points of the core', () => {
   it('keeps the framework plumbing out of the main entry and in ./internal', () => {
-    for (const name of ['embedPackageInjections', 'withFileGuard', 'openTransactionOf', 'writeManifest', 'runWithRequest', 'staticNames', 'stringLiterals']) {
+    for (const name of ['embedPackageInjections', 'withFileGuard', 'openTransactionOf', 'writeManifest', 'runWithRequest', 'staticNames', 'stringLiterals', 'runTransaction', 'rollBackOnErr']) {
       expect(core, name).not.toHaveProperty(name);
       expect(internal, name).toHaveProperty(name);
     }
@@ -20,7 +20,11 @@ describe('the entry points of the core', () => {
   });
 
   it('keeps what an app documents in the main entry', () => {
-    for (const name of ['createApplication', 'defineApplication', 'editDefinition', 'editDefinitionFile', 'importedBindings', 'escapeControls', 'runTransaction', 'afterCommit']) expect(core, name).toHaveProperty(name);
+    for (const name of ['createApplication', 'defineApplication', 'editDefinition', 'editDefinitionFile', 'importedBindings', 'escapeControls', 'afterCommit']) expect(core, name).toHaveProperty(name);
+  });
+
+  it('does not export the redaction limits and the helpers of the environment entry', () => {
+    for (const name of ['MAX_ENTRY_BYTES', 'ENCRYPTED', 'REDACTED_KEYS', 'currentTransaction', 'NODE_ENVIRONMENTS', 'DOTENV_MARKER', 'resolveEnvironment']) expect(core, name).not.toHaveProperty(name);
   });
 
   it('puts the test doubles in ./testing only', () => {

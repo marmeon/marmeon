@@ -33,6 +33,7 @@ export class RouteDefinition {
   #blocking: RouteBlocking | undefined;
   #sealed = false;
 
+  /** @internal — built by `Route` when a route file registers a route. */
   constructor(options: {
     methods: readonly HttpMethod[];
     path: string;

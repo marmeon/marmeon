@@ -139,6 +139,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
   readonly #register: (route: RouteDefinition) => void;
   readonly #attributes: GroupAttributes;
 
+  /** @internal — `defineRoutes()` hands a route file its `Route`. */
   constructor(
     register: (route: RouteDefinition) => void,
     attributes: GroupAttributes = { prefix: '/', namePrefix: '', middleware: [] },

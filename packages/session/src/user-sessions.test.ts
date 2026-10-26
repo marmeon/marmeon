@@ -1,4 +1,4 @@
-import { runTransaction } from '@marmeon/core';
+import { runTransaction } from '@marmeon/core/internal';
 import { describe, expect, it, vi } from 'vitest';
 import { accountScope, SessionEndings } from './ended.ts';
 import type { SessionStore } from './store.ts';
