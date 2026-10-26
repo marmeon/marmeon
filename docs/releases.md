@@ -130,8 +130,20 @@ The promise of a version covers the public API. These are part of it:
   [listed below](#stored-and-wire-formats).
 - Translation keys, `@marmeon/react/styles.css` (its classes and custom properties) and the names of diagnostics channels and the
   shape of their messages.
+- The span names and the attribute names `@marmeon/otel` records ([listed here](observability.md#what-it-records)): the
+  `{method} {route}`, `send <job>`, `process <job>`, `schedule <task>`, `mail <Mailable>`, `notify <notification>`, `live refresh`
+  and `render <View>` names, the attributes under `marmeon.`, and the ones of OpenTelemetry's semantic conventions the framework sets
+  (`http.*`, `url.*`, `db.*`, `messaging.*`, `error.type`, `deployment.environment.name`). Dashboards and alerts are built on them, so
+  a rename or a removal is a break. A new attribute or a new value of one is not.
+- The keys of a table's state in the URL ([listed here](tables.md#the-url-is-strict)): `sort` (a column alias, `-` for descending),
+  `page` or `cursor`, `per_page`, `search` and `filter[<name>]` (a day range as `YYYY-MM-DD..YYYY-MM-DD`), each with the table's
+  prefix (`members_sort`). People bookmark and share these URLs. A key does not change its name or its meaning, and a value that
+  was valid stays valid.
 
 Not part of it are `./internal` subpaths, anything marked `@internal` or [experimental](#experimental), and the wording of messages and logs.
+The JSON API of the [devtools](devtools.md#for-other-tools) is covered only through its `version`: the answer of
+`/_marmeon/devtools/api` names the version of the API, and a tool reads the other answers by it. The other routes and the shape of
+the entries change only together with a new `version`. The devtools exist only in development.
 
 The same list decides, already in 0.x, whether a pull request is a `breaking` one.
 
@@ -180,8 +192,13 @@ Some formats have no version of their own and are kept stable another way:
   serves as its version.
 - **Messages between nodes** (live updates over Redis, the tab sync) carry a `kind` or a `v`. A reader drops a message it does not
   know. Such a message never carries data: it tells a tab to ask the server, which answers through the route and its authorisation.
+- **The envelopes of cache entries and the values the framework stores in them** have no mark and are frozen: the file store's
+  `{ value, expires }`, the rows of the `cache` and `cache_locks` tables, and the Redis value, a JSON text with a millisecond expiry
+  (`PX`). So are the values the framework puts there itself, such as a rate limiter's counter (a whole number) and the marker of
+  `job.once` (`1`). Two nodes of a rolling deploy read each other's entries. A change of one arrives as a new key name, never as
+  a new meaning under the old one.
 - **`history.state`** holds the URL, component, a key and the scroll position. An entry that does not match loads from the server.
-- **The names of keys** in the cache and the lock store (`limiter:…`, `queue:unique:…`, the scheduler's locks) and the names of
+- **The names of keys** in the cache and the lock store (`limiter:…`, `queue:unique:…`, `queue:once-lock:…`, the scheduler's locks) and the names of
   [encryption contexts](encryption.md#what-the-key-protects) are format: two nodes must agree on them. A release that renames one
   does so with the same care as a renamed column.
 

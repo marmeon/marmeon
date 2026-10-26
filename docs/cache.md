@@ -180,7 +180,7 @@ The framework keeps its own counters and locks in the same cache:
 | --- | --- | --- |
 | Rate limits | The counters of `throttle()` and the `RateLimiter`. | [Rate limiting](rate-limiting.md#where-the-counts-live) |
 | Live validations | Their own limit, 30 a minute per route and address. | [Validation](validation.md#live-validation) |
-| Unique jobs, `withoutOverlapping` and `job.once` | `queue:unique:…`, `queue:overlap:…`, `queue:once:…` | [Queues](queues.md#unique-jobs) |
+| Unique jobs, `withoutOverlapping` and `job.once` | `queue:unique:…`, `queue:overlap:…`, `queue:once:…`, `queue:once-lock:…` | [Queues](queues.md#unique-jobs) |
 | Routes that `block()` | `session:<key>`, the session's store key, never its id. | [Session](session.md#requests-that-must-not-overlap) |
 | `onOneServer()`, `withoutOverlapping()` and missed runs of the scheduler | `schedule:…` | [Task scheduling](scheduling.md#several-servers-and-long-runs) |
 
