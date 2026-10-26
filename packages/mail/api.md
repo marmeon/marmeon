@@ -176,6 +176,7 @@ export interface Mailer {
 export declare const Mailer: import("@marmeon/core").Token<Mailer>;
 // Mjml
 export declare class Mjml extends Html {
+    private constructor();
 }
 // MjmlError
 export declare class MjmlError extends Error {

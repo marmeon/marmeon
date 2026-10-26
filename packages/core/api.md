@@ -115,7 +115,6 @@ export interface CurrentJob {
     readonly jobId: string;
     readonly attempt: number;
     readonly requestId?: string;
-    readonly fromReporter?: true;
 }
 // CurrentRequest
 export interface CurrentRequest {
@@ -259,7 +258,6 @@ export declare class ErrorReports {
 // ErrorSolutions
 export declare class ErrorSolutions {
     #private;
-    constructor(definitions?: Iterable<SolutionDefinition<any>>);
     add(definitions: Iterable<SolutionDefinition<any>>): this;
     find(error: unknown, context?: SolutionContext): Promise<Solution[]>;
 }
@@ -269,12 +267,6 @@ export type EventClass<TEvent extends object = object> = abstract new (...args: 
 export declare class EventDispatcher {
     #private;
     dispatch<TEvent extends object>(event: TEvent): Promise<void>;
-}
-// EventDispatcherOptions
-export interface EventDispatcherOptions {
-    readonly queue?: () => ListenerQueue | undefined;
-    readonly observer?: EventObserver;
-    readonly app?: Application;
 }
 // EventObserver
 export interface EventObserver {
@@ -313,7 +305,6 @@ export interface HealthCheckResult {
 // HealthChecks
 export declare class HealthChecks {
     #private;
-    constructor(checks?: Iterable<HealthCheckClass>);
     add(checks: Iterable<HealthCheckClass>): this;
     all(): readonly HealthCheckClass[];
     run(container: Container, options?: {
@@ -328,7 +319,6 @@ export interface HealthReport {
 // Html
 export declare class Html {
     #private;
-    constructor(html: string);
     toString(): string;
 }
 // ImportedBinding
@@ -440,7 +430,6 @@ export interface RedactableQuery {
 // Redactor
 export declare class Redactor {
     #private;
-    constructor(keys?: Iterable<string>);
     addKeys(...keys: string[]): this;
     isSensitive(key: string): boolean;
     log(context: Readonly<Record<string, unknown>>): Record<string, unknown>;
@@ -451,10 +440,8 @@ export declare class Redactor {
         sql: string;
         parameters: unknown[];
     };
-    payload(payload: unknown, encrypted: boolean): unknown;
     path(path: string, pattern?: string): string;
     url(url: string, pattern?: string): string;
-    fit(value: unknown, maxBytes?: number): unknown;
 }
 // RenamedOptions
 export interface RenamedOptions {
@@ -568,17 +555,6 @@ export declare class TransactionError extends Error {
 export declare class TransactionFinishedError extends TransactionError {
     name: string;
     readonly connection: string;
-    constructor(frame: TransactionFrame);
-}
-// TransactionFrame
-export declare class TransactionFrame {
-    #private;
-    readonly parent: TransactionFrame | undefined;
-    readonly owner: object;
-    readonly label: string;
-    resource: unknown;
-    get state(): 'open' | 'committed' | 'rolled back';
-    get open(): boolean;
 }
 // Translator
 export interface Translator {
@@ -646,11 +622,7 @@ export declare const environment: {
     readonly isTest: (env?: NodeEnvironment) => boolean;
     readonly isProtected: (env?: NodeEnvironment) => boolean;
     readonly app: (env?: NodeEnvironment) => string;
-    readonly fromDotEnv: (env?: NodeEnvironment) => boolean;
     readonly describe: (env?: NodeEnvironment, app?: string) => string;
-    readonly problem: (env?: NodeEnvironment) => string | undefined;
-    readonly check: (env?: NodeEnvironment) => void;
-    readonly dotEnvDevelopmentWarning: (command: string, env?: NodeEnvironment) => string | undefined;
 };
 // err
 export declare function err<K extends string, E extends {
@@ -1303,11 +1275,7 @@ export declare const environment: {
     readonly isTest: (env?: NodeEnvironment) => boolean;
     readonly isProtected: (env?: NodeEnvironment) => boolean;
     readonly app: (env?: NodeEnvironment) => string;
-    readonly fromDotEnv: (env?: NodeEnvironment) => boolean;
     readonly describe: (env?: NodeEnvironment, app?: string) => string;
-    readonly problem: (env?: NodeEnvironment) => string | undefined;
-    readonly check: (env?: NodeEnvironment) => void;
-    readonly dotEnvDevelopmentWarning: (command: string, env?: NodeEnvironment) => string | undefined;
 };
 // resolveEnvironment
 export declare function resolveEnvironment(root: string, { fallback, env }?: {
@@ -1330,7 +1298,6 @@ Types from other packages: none
 // EventFake
 export declare class EventFake implements EventObserver {
     #private;
-    constructor(registry: EventRegistry, faked?: 'all' | readonly EventClass[]);
     observe(event: object): boolean;
     isFaked(event: object): boolean;
     dispatched<E extends object>(Class: EventClass<E>, match?: EventMatch<E>): E[];
@@ -1377,29 +1344,6 @@ export type EventClass<TEvent extends object = object> = abstract new (...args: 
 export interface EventObserver {
     observe(event: object): boolean;
 }
-// EventPayload
-export type EventPayload<E extends QueueableEvent> = InferOutput<E['schema']>;
-// EventRegistry
-export declare class EventRegistry {
-    #private;
-    listen<E extends EventClass, L>(event: E, listener: L & ListenerFor<E, NoInfer<L>>): this;
-    add(bindings: readonly ListenerBinding[]): this;
-    listenersFor(event: object): ListenerBinding['listener'][];
-    bindingsFor(event: object): ListenerBinding[];
-    all(): ListenerBinding[];
-}
-// HandleParameter
-type HandleParameter<L> = L extends new (...args: any[]) => {
-    readonly handle: (payload: infer P) => unknown;
-} ? P : never;
-// InferOutput
-export type InferOutput<Schema extends StandardSchemaV1> = NonNullable<Schema['~standard']['types']>['output'];
-// IsJson
-export type IsJson<T> = 0 extends 1 & T ? true : false extends JsonMember<T> ? false : true;
-// JsonMember
-type JsonMember<T> = T extends string | number | boolean | null ? true : T extends readonly (infer E)[] ? IsJson<E> : T extends Date | RegExp | Map<any, any> | Set<any> | ((...args: any[]) => any) | bigint | symbol | undefined ? false : T extends object ? false extends {
-    [K in keyof T]-?: IsJson<Exclude<T[K], undefined>>;
-}[keyof T] ? false : true : false;
 // Listener
 export interface Listener<TEvent> {
     readonly handle: (event: TEvent) => void | Promise<void>;
@@ -1409,17 +1353,8 @@ export interface ListenerBinding {
     readonly event: EventClass;
     readonly listener: ListenerLike<any> | QueuedListenerClass;
 }
-// ListenerFor
-type ListenerFor<E extends EventClass, L> = L extends {
-    readonly queue: unknown;
-} ? QueuedListenerFor<E, L> : ListenerLike<InstanceType<E>>;
 // ListenerLike
 export type ListenerLike<TEvent> = (new (...args: any[]) => Listener<TEvent>) | ((event: TEvent) => void | Promise<void>);
-// QueueableEvent
-export interface QueueableEvent {
-    readonly event: string;
-    readonly schema: StandardSchemaV1;
-}
 // QueuedListenerClass
 export type QueuedListenerClass<P = any> = {
     readonly queue: QueuedListenerOptions;
@@ -1427,27 +1362,6 @@ export type QueuedListenerClass<P = any> = {
 } & (new (...args: any[]) => {
     readonly handle: (payload: P) => void | Promise<void>;
 });
-// QueuedListenerFor
-type QueuedListenerFor<E extends EventClass, L> = L extends {
-    readonly queue: {
-        readonly afterCommit: unknown;
-    };
-} ? {
-    readonly queue: {
-        readonly afterCommit: 'afterCommit is always on: queued listeners join the transaction — remove it';
-    };
-} : E extends QueueableEvent ? IsJson<EventPayload<E>> extends false ? {
-    readonly 'The static schema of a queued event describes JSON (strings, numbers, booleans, null, arrays, plain objects) — queue IDs, not records, Dates or Maps': EventPayload<E>;
-} : InstanceType<E> extends SchemaInput<E['schema']> ? EventPayload<E> extends HandleParameter<L> ? {
-    readonly queue: QueuedListenerOptions;
-    readonly listener: string;
-} : {
-    readonly 'handle() of a queued listener gets the event payload (its static schema), not the event: type it as EventPayload<typeof YourEvent>': EventPayload<E>;
-} : {
-    readonly 'The static schema of a queued event reads the event object itself — the event class lacks a field the schema wants': SchemaInput<E['schema']>;
-} : {
-    readonly queue: 'A queued listener (static queue) needs an event that can be queued — give the event class static event = "module.what-happened" and static schema. Job events (JobQueued …) never can: listen to them without static queue.';
-};
 // QueuedListenerOptions
 export interface QueuedListenerOptions {
     readonly queue?: string;
@@ -1455,38 +1369,6 @@ export interface QueuedListenerOptions {
     readonly delay?: Duration;
     readonly tries?: number;
     readonly backoff?: Duration | readonly Duration[];
-}
-// SchemaInput
-type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['input'] : never;
-// StandardIssue
-export interface StandardIssue {
-    readonly message: string;
-    readonly path?: readonly (PropertyKey | {
-        readonly key: PropertyKey;
-    })[] | undefined;
-}
-// StandardOptions
-export interface StandardOptions {
-    readonly libraryOptions?: Record<string, unknown> | undefined;
-}
-// StandardResult
-export type StandardResult<Output> = {
-    readonly value: Output;
-    readonly issues?: undefined;
-} | {
-    readonly issues: readonly StandardIssue[];
-};
-// StandardSchemaV1
-export interface StandardSchemaV1<Input = unknown, Output = Input> {
-    readonly '~standard': {
-        readonly version: 1;
-        readonly vendor: string;
-        readonly validate: (value: unknown, options?: StandardOptions | undefined) => StandardResult<Output> | Promise<StandardResult<Output>>;
-        readonly types?: {
-            readonly input: Input;
-            readonly output: Output;
-        } | undefined;
-    };
 }
 // Token
 export interface Token<T> {

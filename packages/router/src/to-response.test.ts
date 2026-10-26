@@ -1,4 +1,4 @@
-import { html, raw } from '@marmeon/core';
+import { Html, html, raw } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { defaultToResponse } from './internal.ts';
 
@@ -20,6 +20,11 @@ describe('defaultToResponse — strings and Html', () => {
 
   it('keeps objects as JSON', async () => {
     expect((await respond({ a: 1 })).headers.get('content-type')).toContain('application/json');
+  });
+
+  it('refuses an object that has the prototype of Html but was not made by it', () => {
+    const forged = Object.assign(Object.create(Html.prototype), { toString: () => '<script>x</script>' });
+    expect(() => respond(forged)).toThrow(TypeError);
   });
 
   it('sends an object that only looks like Html as JSON, also after a JSON round trip', async () => {

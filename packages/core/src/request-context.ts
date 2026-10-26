@@ -18,6 +18,7 @@ export interface CurrentJob {
   /**
    * The job was queued by an error reporter, or by a job that was: its failure is logged, never reported — a reporter that queues
    * an alert job would otherwise be told about the alert's failure, and queue another, without end. Not in the log context.
+   * @internal
    */
   readonly fromReporter?: true;
 }

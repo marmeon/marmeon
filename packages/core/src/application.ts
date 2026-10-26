@@ -7,7 +7,7 @@ import { coreSolutions } from './core-solutions.ts';
 import { Redactor } from './redact.ts';
 import { ErrorSolutions } from './solutions.ts';
 import { loadDiscoveredPackages } from './discovery/discover.ts';
-import { environment, resolveEnvironment } from './environment.ts';
+import { environment, environmentChecks, resolveEnvironment } from './environment.ts';
 import { EventDispatcher, EventRegistry, isQueuedListener, ListenerQueue, missingListenerQueue, type ListenerBinding } from './events.ts';
 import { EventFake } from './events-fake.ts';
 import { Clock, SystemClock } from './clock.ts';
@@ -257,7 +257,7 @@ export async function createApplication(definition: ApplicationDefinition, optio
   const resolved = options.env ? undefined : resolveEnvironment(definition.root);
   const env = options.env ?? loadEnv(definition.root);
   // An unknown NODE_ENV stops the start before anything asks it — also for an app given its own `env`.
-  environment.check(env);
+  environmentChecks.check(env);
   const phase = options.phase ?? 'run';
   const { resolved: config, problems } = await validateConfig([...definitions], env);
   if (problems.size > 0 && phase === 'run') throw invalidConfiguration(problems);

@@ -54,6 +54,7 @@ export function defineSolutions<const Classes extends readonly ErrorClass<unknow
 export class ErrorSolutions {
   readonly #definitions: SolutionDefinition<any>[] = [];
 
+  /** @internal Built by the container. */
   constructor(definitions: Iterable<SolutionDefinition<any>> = []) {
     this.add(definitions);
   }

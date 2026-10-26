@@ -157,6 +157,7 @@ export class Redactor {
   readonly #keys = new Set<string>();
   #text: RegExp | undefined;
 
+  /** @internal Built by the container. */
   constructor(keys: Iterable<string> = []) {
     this.addKeys(...keys);
   }
@@ -308,6 +309,7 @@ export class Redactor {
   /**
    * A queued payload that may be shown: an encrypted one (a job with `static encrypted`, a queued mail or listener — it may
    * carry tokens or signed links) only as {@link ENCRYPTED}, never its contents; any other masked like a value.
+   * @internal
    */
   payload(payload: unknown, encrypted: boolean): unknown {
     return encrypted ? ENCRYPTED : this.value(payload);
@@ -363,6 +365,7 @@ export class Redactor {
   /**
    * `value` (plain data, as {@link value} gives it) made to fit `maxBytes` of JSON — what one recorded entry may take:
    * long strings and lists are shortened step by step; if even that is too much, a preview of its JSON is all that stays.
+   * @internal
    */
   fit(value: unknown, maxBytes = MAX_ENTRY_BYTES): unknown {
     const json = JSON.stringify(value) ?? 'null';
