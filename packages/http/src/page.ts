@@ -3,6 +3,7 @@
  * browser as `@marmeon/http/page`, so it must stay free of server code.
  */
 import type { PageObject, RegionObject } from './protocol.ts';
+import type { LooksSensitive } from './sensitive-fields.ts';
 import type { Serialize, ViewProps } from './view.ts';
 
 import type { ControllerOf, JoinNames, Suggest } from '@marmeon/router';
@@ -210,23 +211,20 @@ export type CheckUploadField<F, K extends string> = string extends K
       ? `'${K}' is no upload field — this form has none (give a field upload({ maxBytes, mime }) in its request schema)`
       : `'${K}' is no upload field of this form — its upload fields: ${JoinNames<UploadField<F>>}`;
 
-/** What a password field's name looks like to live validation (`/password/i`): it is never sent for a check. */
-type PasswordLike<K extends string> = Lowercase<K> extends `${string}password${string}` ? true : false;
+/** The fields of form data `F` that live validation may check: every top-level field but those named like a secret (`isSensitiveField`). */
+export type LiveField<F> = keyof { [K in keyof F & string as LooksSensitive<K> extends true ? never : K]: true } & string;
 
-/** The fields of form data `F` that live validation may check: every top-level field but passwords. */
-export type LiveField<F> = keyof { [K in keyof F & string as PasswordLike<K> extends true ? never : K]: true } & string;
-
-/** The explanation when a password field is named for a live validation — shown by the compiler as the expected type. */
-export type PasswordNeverLive = 'password fields are never validated live — they are checked when the form is sent';
+/** The explanation when a sensitive field is named for a live validation — shown by the compiler as the expected type. */
+export type SensitiveNeverLive = 'fields that look like a secret (a password, a card detail, a one-time code, a token) are never validated live — they are checked when the form is sent';
 
 /**
- * `K` when live validation may check it in form data `F`; otherwise the message the compiler shows: a password field, or a
+ * `K` when live validation may check it in form data `F`; otherwise the message the compiler shows: a sensitive field, or a
  * field the form does not have (with the ones it has).
  */
 export type CheckLiveField<F, K extends string> = K extends LiveField<F>
   ? K
   : K extends keyof F
-    ? `'${K}' — ${PasswordNeverLive}`
+    ? `'${K}' — ${SensitiveNeverLive}`
     : `'${K}' is not a field of this form — it has ${JoinNames<LiveField<F>>}`;
 
 /**

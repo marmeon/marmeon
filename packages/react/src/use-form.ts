@@ -1,6 +1,6 @@
 import { dirtyPaths, firstErrors, isDirtyPath, liveValidationOnFirstUse, type FormLiveValidation } from '@marmeon/http/client/adapter';
 import { resolveRoute, type LooksLikePassword, type LooksSensitive, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
-import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, PasswordNeverLive, Routes } from '@marmeon/http/page';
+import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, Routes, SensitiveNeverLive } from '@marmeon/http/page';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 import { useRememberStore } from './remember.ts';
@@ -63,7 +63,7 @@ export interface FormOptions<F = Record<string, unknown>> {
 
 /**
  * Live validation of a route form: its touched fields checked against the server's request schema while they are filled
- * in. Password fields are never sent. See docs/forms.md#validating-while-typing.
+ * in. Password, card, one-time-code and token fields are never sent. See docs/forms.md#validating-while-typing.
  */
 export interface LiveValidationSetting<F> {
   /**
@@ -73,8 +73,8 @@ export interface LiveValidationSetting<F> {
   on?: 'blur' | 'change';
   /** The pause after typing before a check (ms, default 300). */
   debounceMs?: number;
-  /** Which fields — default all of them (but passwords). (`LiveField<F>`, spelled out: a message lists the names, not the alias.) */
-  fields?: readonly (PasswordNeverLive | (keyof { [K in keyof F & string as Lowercase<K> extends `${string}password${string}` ? never : K]: true } & string))[];
+  /** Which fields — default all of them (but those named like a secret). (`LiveField<F>`, spelled out: a message lists the names, not the alias.) */
+  fields?: readonly (SensitiveNeverLive | (keyof { [K in keyof F & string as LooksSensitive<K> extends true ? never : K]: true } & string))[];
 }
 
 /** How a route form behaves beyond its data: the guard — and live validation, which needs its route's URL. */
