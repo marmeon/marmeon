@@ -26,7 +26,6 @@ export interface KernelConnection {
 // KernelOptions
 export interface KernelOptions {
     container?: Container;
-    renderer?: PageRenderer;
     clientDir?: string;
     debug?: boolean;
     maxBodyBytes?: number;
@@ -35,31 +34,6 @@ export interface KernelOptions {
     strictReadOnly?: boolean;
     islandTimeoutMs?: number;
     health?: string | false;
-}
-// PageRenderOptions
-export interface PageRenderOptions {
-    complete: boolean;
-    onError(error: unknown): void;
-    onWarning(message: string): void;
-    signal?: AbortSignal;
-    resolveIsland?: (url: string) => Promise<RegionResult>;
-    resolveDeferred?: (group: string) => Promise<DeferredResult | null>;
-    nonce?: string;
-    appUrl?: string;
-}
-// PageRenderer
-export interface PageRenderer {
-    render(page: PageObject, request: Request, options: PageRenderOptions): Promise<string | ReadableStream<Uint8Array>>;
-    shell(page: PageObject, request: Request, nonce?: string, appUrl?: string): Promise<string>;
-    readonly version?: string;
-    failed?(error: unknown, details: RenderFailureDetails): Promise<string | undefined>;
-}
-// RenderFailureDetails
-export interface RenderFailureDetails {
-    readonly component: string;
-    readonly solutions: readonly Solution[];
-    readonly redactor: Redactor;
-    readonly nonce?: string;
 }
 // RunningServer
 export interface RunningServer {

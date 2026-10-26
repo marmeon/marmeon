@@ -322,8 +322,7 @@ describe('configuration', () => {
   });
 
   it('an S3 default disk (or UPLOADS_DISK) without the AWS SDK fails the start with the exact command — another S3 disk on first use', async () => {
-    const { checkS3Sdk } = await import('./index.ts');
-    const { missingPackages } = await import('./drivers/s3.ts');
+    const { checkS3Sdk, missingPackages } = await import('./drivers/s3.ts');
     const s3 = { driver: 's3', bucket: 'b' } as const;
     const local = { driver: 'local', root: 'x' } as const;
     const gone = (names: readonly string[]) => [...names];

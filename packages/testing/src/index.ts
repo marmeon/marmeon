@@ -1,5 +1,5 @@
 export { createTestApp, TestApp } from './test-app.ts';
-export type { CommandRun, CommandRunOptions, CookieCrypto, RequestOptions, SessionAccess, TestAppOptions } from './test-app.ts';
+export type { CommandRun, CommandRunOptions, RequestOptions, TestAppOptions } from './test-app.ts';
 export { TestMarkup } from './markup.ts';
 export { PendingTestResponse } from './pending.ts';
 export { TestResponse } from './response.ts';

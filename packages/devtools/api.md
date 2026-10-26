@@ -224,21 +224,6 @@ export interface MailEntryContent {
     readonly durationMs?: number;
     readonly error?: ErrorDetails;
 }
-// MemoryDevtoolsStore
-export declare class MemoryDevtoolsStore implements DevtoolsStore {
-    #private;
-    constructor(options?: {
-        maxEntries?: number;
-    });
-    all(): readonly AnyEntry[];
-    write(entries: readonly AnyEntry[]): Promise<void>;
-    list(query?: EntryQuery): Promise<AnyEntry[]>;
-    get(id: string): Promise<AnyEntry | undefined>;
-    since(cursor?: number): Promise<EntryTail>;
-    clear(): Promise<void>;
-    prune(): Promise<PruneResult>;
-    usage(): Promise<StoreUsage>;
-}
 // NotificationEntryContent
 export interface NotificationEntryContent {
     readonly notification: string;
@@ -353,7 +338,6 @@ Types from other packages: none
 // type-only
 export declare class DevtoolsTester {
     #private;
-    get store(): MemoryDevtoolsStore;
     entries<T extends EntryType>(type: T): Entry<T>[];
     entries(): AnyEntry[];
     batch(id: string): AnyEntry[];
@@ -379,17 +363,6 @@ export interface CommandEntryContent {
     readonly durationMs?: number;
     readonly error?: ErrorDetails;
 }
-// DevtoolsStore
-export interface DevtoolsStore {
-    write(entries: readonly AnyEntry[]): Promise<void>;
-    list(query?: EntryQuery): Promise<AnyEntry[]>;
-    get(id: string): Promise<AnyEntry | undefined>;
-    since(cursor?: number): Promise<EntryTail>;
-    clear(): Promise<void>;
-    prune(): Promise<PruneResult>;
-    usage(): Promise<StoreUsage>;
-}
-export declare const DevtoolsStore: import("@marmeon/core").Token<DevtoolsStore>;
 // Entry
 export interface Entry<T extends EntryType = EntryType> {
     readonly id: string;
@@ -414,22 +387,6 @@ export interface EntryContents {
     live: LiveEntryContent;
     event: EventEntryContent;
     command: CommandEntryContent;
-}
-// EntryQuery
-export interface EntryQuery {
-    readonly type?: EntryType | readonly EntryType[];
-    readonly batch?: string;
-    readonly requestId?: string;
-    readonly jobId?: string;
-    readonly tag?: string | readonly string[];
-    readonly search?: string;
-    readonly before?: string;
-    readonly limit?: number;
-}
-// EntryTail
-export interface EntryTail {
-    readonly entries: AnyEntry[];
-    readonly cursor: number;
 }
 // EntryType
 export type EntryType = keyof EntryContents;
@@ -506,21 +463,6 @@ export interface MailEntryContent {
     readonly durationMs?: number;
     readonly error?: ErrorDetails;
 }
-// MemoryDevtoolsStore
-export declare class MemoryDevtoolsStore implements DevtoolsStore {
-    #private;
-    constructor(options?: {
-        maxEntries?: number;
-    });
-    all(): readonly AnyEntry[];
-    write(entries: readonly AnyEntry[]): Promise<void>;
-    list(query?: EntryQuery): Promise<AnyEntry[]>;
-    get(id: string): Promise<AnyEntry | undefined>;
-    since(cursor?: number): Promise<EntryTail>;
-    clear(): Promise<void>;
-    prune(): Promise<PruneResult>;
-    usage(): Promise<StoreUsage>;
-}
 // NotificationEntryContent
 export interface NotificationEntryContent {
     readonly notification: string;
@@ -534,11 +476,6 @@ export interface NotificationEntryContent {
     readonly outcome?: 'delivered' | 'gone' | 'delivered-before';
     readonly durationMs?: number;
     readonly error?: ErrorDetails;
-}
-// PruneResult
-export interface PruneResult {
-    readonly files: number;
-    readonly bytes: number;
 }
 // QueryEntryContent
 export interface QueryEntryContent {
@@ -598,12 +535,6 @@ export interface ScheduleEntryContent {
     readonly skipped?: string;
     readonly durationMs?: number;
     readonly error?: ErrorDetails;
-}
-// StoreUsage
-export interface StoreUsage {
-    readonly bytes: number;
-    readonly files: number;
-    readonly entries: number;
 }
 ```
 

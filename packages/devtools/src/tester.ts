@@ -25,7 +25,7 @@ export class DevtoolsTester {
     this.#store = store;
   }
 
-  /** The store the recorder writes to. */
+  /** @internal The store the recorder writes to. */
   get store(): MemoryDevtoolsStore {
     return this.#store;
   }

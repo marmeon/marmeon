@@ -10,7 +10,7 @@ import { registerStorageRoutes } from './routes.ts';
 import { StorageSetup } from './setup.ts';
 import { BUILT_IN_DISK_DRIVERS, checkStorage, Storage, StorageManager, visibilityOf } from './storage.ts';
 import { StorageSetupError } from './errors.ts';
-import { missingPackages, S3_INSTALL, S3_UPLOADS_INSTALL } from './drivers/s3.ts';
+import { checkS3Sdk } from './drivers/s3.ts';
 import { MakeUploadsTableCommand, PruneUploadsCommand } from './uploads/commands.ts';
 import { UploadsConfig } from './uploads/config.ts';
 import { registerUploads, UPLOADS_PREFIX } from './uploads/http.ts';
@@ -96,23 +96,6 @@ function storageOptions(container: Resolver): StorageOptions {
   const definitions = [...(app.definition.config ?? []), ...app.modules.flatMap((module) => module.config ?? [])].filter(isStorageDefinition);
   if (definitions.length > 1) throw new Error('The app has more than one defineStorage(…) in its config — keep one.');
   return definitions[0] ? container.make(definitions[0]) : DEFAULT_STORAGE;
-}
-
-/**
- * The disks the app is sure to use — the default disk and the uploads' (UPLOADS_DISK) — fail the start when they are on S3 and
- * the AWS SDK is missing (optional peers): the exact command at the start, not an error on the first request. Uploads on S3
- * go straight to the store (a presigned POST) and need `@aws-sdk/s3-presigned-post` too. Other S3 disks say it when first used.
- */
-export function checkS3Sdk(options: StorageOptions, uploadsDisk: string, missing: (names: readonly string[]) => string[] = missingPackages): void {
-  const used = [...new Set([options.default, uploadsDisk])].filter((name) => options.disks[name]?.driver === 's3');
-  if (used.length === 0) return;
-  if (missing(['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner']).length > 0) {
-    const what = used.map((name) => `"${name}"${name === options.default ? ' (the default disk)' : ' (UPLOADS_DISK)'}`).join(' and ');
-    throw new StorageSetupError(withCode('S2', `The disk ${what} is on S3, which needs the AWS SDK — not installed in this app: ${S3_INSTALL}`));
-  }
-  if (used.includes(uploadsDisk) && missing(['@aws-sdk/s3-presigned-post']).length > 0) {
-    throw new StorageSetupError(withCode('S2', `The disk "${uploadsDisk}" (UPLOADS_DISK) is on S3: uploads go straight to it and need @aws-sdk/s3-presigned-post — not installed in this app: ${S3_UPLOADS_INSTALL}`));
-  }
 }
 
 /**

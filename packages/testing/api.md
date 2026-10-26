@@ -20,11 +20,6 @@ export interface CommandRunOptions {
     readonly args?: readonly string[];
     readonly options?: Readonly<Record<string, string | number | boolean | readonly (string | number | boolean)[] | undefined>>;
 }
-// CookieCrypto
-export interface CookieCrypto {
-    encrypt(name: string, value: string): Promise<string>;
-    decrypt(name: string, value: string): Promise<string>;
-}
 // DeepPartial
 export type DeepPartial<T> = T extends object ? {
     [K in keyof T]?: DeepPartial<T[K]>;
@@ -44,7 +39,6 @@ export type PageSource = {
 // PendingTestResponse
 export declare class PendingTestResponse implements PromiseLike<TestResponse> {
     #private;
-    constructor(response: Promise<TestResponse>);
     then<TResult1 = TestResponse, TResult2 = never>(onfulfilled?: ((value: TestResponse) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null): Promise<TResult1 | TResult2>;
     assertStatus(...args: Parameters<Assertions['assertStatus']>): this;
     assertOk(): this;
@@ -96,12 +90,6 @@ export interface RequestOptions {
     multipart?: Record<string, MultipartValue>;
     json?: unknown;
     body?: RequestInit['body'];
-}
-// SessionAccess
-export interface SessionAccess {
-    readonly cookie: string;
-    create(data: Readonly<Record<string, unknown>>, id?: string): Promise<string>;
-    read(id: string): Promise<Record<string, unknown> | undefined>;
 }
 // SignedWebhookOptions
 export interface SignedWebhookOptions {
@@ -205,8 +193,6 @@ export declare class TestResponse {
     readonly status: number;
     readonly headers: Headers;
     readonly body: string;
-    constructor(response: Response, body: string, label: string, cookies?: ReadonlyMap<string, string>, session?: Record<string, unknown>, ssr?: SsrOutcome);
-    static from(response: Response, label: string, crypto?: CookieCrypto, sessions?: SessionAccess, ssr?: (page: PageObject | undefined) => Promise<SsrOutcome | undefined>): Promise<TestResponse>;
     session(): Record<string, unknown>;
     json<T = unknown>(): T;
     page(): PageObject | undefined;
@@ -277,12 +263,6 @@ type IslandSource = {
 };
 // MultipartValue
 type MultipartValue = string | Blob | readonly (string | Blob)[];
-// SsrOutcome
-export interface SsrOutcome {
-    readonly errors: readonly unknown[];
-    readonly rerendered: string | undefined;
-    readonly rendered?: string | undefined;
-}
 // UploadFile
 export type UploadFile = Blob | {
     readonly name: string;
