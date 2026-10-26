@@ -173,6 +173,10 @@ describe.each(drivers)('the migration lock on %s', (driver) => {
   });
 });
 
+it('carries the code D22 and says what to do', () => {
+  expect(new MigrationLockLostError('the connection ended').message).toMatch(/^\[marmeon:D22\] .*look at the database before migrating again/);
+});
+
 describe('the SQLite lock row', () => {
   let connections: Connections;
   let close: () => Promise<void>;
@@ -319,6 +323,7 @@ describe.skipIf(PGSQL_URL === undefined)('the Postgres lock', () => {
       error = await lock.heartbeat().then(() => undefined, (e: unknown) => e);
     }
     expect(error).toBeInstanceOf(MigrationLockLostError);
+    expect((error as Error).message).toMatch(/^\[marmeon:D22\] /);
     expect((error as Error).message).toContain('its database connection ended');
     await lock.release(); // nothing to let go of, and no throw
   });

@@ -80,6 +80,7 @@ export class Connections {
   #published: SchemaProjection | undefined;
   #destroyed = false;
 
+  /** @internal — the service provider builds it; an app gets it from the container. */
   constructor(options: { connections: Readonly<Record<string, ConnectionOptions>>; root: string; logger: Logger; app?: Application }) {
     this.#options = new Map(Object.entries(options.connections));
     this.#root = options.root;
@@ -184,8 +185,8 @@ export class Connections {
   }
 
   /**
-   * Runs every query of a connection inside one transaction until `rollback()` undoes all of it;
-   * transactions opened meanwhile become savepoints. The basis of per-test isolation.
+   * @internal — runs every query of a connection inside one transaction until `rollback()` undoes all of it;
+   * transactions opened meanwhile become savepoints. The basis of per-test isolation (`createTestApp({ database: 'refresh' })`).
    */
   isolate(name = 'default'): Promise<{ rollback(): Promise<void> }> {
     return this.#instance(name).driver.isolate();
@@ -196,6 +197,7 @@ export class Connections {
     return [...this.#options.keys()];
   }
 
+  /** The options of a connection as its definition resolved them. Throws for a name that is not configured. */
   options(name = 'default'): ConnectionOptions {
     const options = this.#options.get(name);
     if (!options) {
@@ -208,7 +210,7 @@ export class Connections {
   }
 
   /**
-   * The connections this process uses — `default`, and every one asked for since: a query, an infrastructure connection, or a
+   * @internal — the connections this process uses — `default`, and every one asked for since: a query, an infrastructure connection, or a
    * package that checks its connection when it boots (the cache, sessions, the queue, notifications). Readiness asks these only,
    * so a connection the app configures and nothing uses is never opened (a SQLite file never created).
    */
@@ -225,7 +227,7 @@ export class Connections {
   }
 
   /**
-   * Checks what can be checked without connecting: that the directory of each SQLite file exists
+   * @internal — checks what can be checked without connecting: that the directory of each SQLite file exists
    * (SQLite creates the file, not its directory). Postgres is reached lazily, on the first query —
    * otherwise every CLI command would need a running database.
    */

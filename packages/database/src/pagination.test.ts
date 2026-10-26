@@ -1,5 +1,6 @@
 import type { Application, InferOutput, ModuleDefinition } from '@marmeon/core';
 import type { Kysely } from 'kysely';
+import { readdirSync, readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
@@ -182,6 +183,27 @@ describe.each(drivers)('pagination on %s', (driver) => {
 
   it('needs the key selected — it orders by it last', async () => {
     await expect(cursorPaginate(db.selectFrom('users').select(['name']), { column: 'name', perPage: 1, encrypter })).rejects.toThrow('does not select it');
+  });
+
+  it('reads every fixture of the cursor: the plain payload and the context it is sealed under', async () => {
+    const directory = new URL('./__fixtures__/formats/cursor/', import.meta.url);
+    const names = readdirSync(directory).filter((name) => name.endsWith('.json'));
+    expect(names).toEqual(expect.arrayContaining(['v1.json', 'v1-named.json']));
+    for (const name of names) {
+      const fixture = JSON.parse(readFileSync(new URL(name, directory), 'utf8')) as { name?: string; context: string; columns: string[]; payload: string };
+      // The encrypter hands back the payload only for the context the fixture was sealed under, as the real one does.
+      const sealed: CursorEncrypter = {
+        encrypt: async (plaintext) => plaintext,
+        decrypt: async (_cursor, context) => {
+          if (context !== fixture.context) throw new Error('The payload is invalid.');
+          return fixture.payload;
+        },
+      };
+      const page = await cursorPaginate(db.selectFrom('users').select(['id', 'email']).where('email', 'like', 'u%@example.com'), { column: fixture.columns[0] as 'email', perPage: 2, cursor: 'sealed', encrypter: sealed, ...(fixture.name === undefined ? {} : { name: fixture.name }) });
+      expect(page.data.map((user) => user.email), name).toEqual(['u6@example.com', 'u7@example.com']);
+      // What the code writes for the same page is the payload's form again.
+      expect(page.meta.nextCursor, name).toBe('["u7@example.com",7]');
+    }
   });
 
   it('pages by ctx.query: what pageQuery() parses', async () => {

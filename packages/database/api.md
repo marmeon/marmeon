@@ -71,7 +71,7 @@ export type ConnectionDefinitionOptions = {
     readonly driver: 'sqlite';
     readonly database: string;
     readonly managed?: boolean | undefined;
-} | PostgresConnection;
+} | PostgresConnectionOptions;
 // ConnectionOptions
 export type ConnectionOptions = {
     readonly driver: 'sqlite';
@@ -87,24 +87,13 @@ export type ConnectionOptions = {
 // Connections
 export declare class Connections {
     #private;
-    constructor(options: {
-        connections: Readonly<Record<string, ConnectionOptions>>;
-        root: string;
-        logger: Logger;
-        app?: Application;
-    });
     get<DB = Tables>(name?: string): Connection<DB>;
     transaction<R>(callback: (trx: Transaction<Tables>) => R | PromiseLike<R>, options?: TransactionOptions): Promise<R>;
     infrastructure<DB = any>(name?: string, usage?: InfrastructureUsage): Connection<DB>;
     inTransaction(name?: string): boolean;
-    isolate(name?: string): Promise<{
-        rollback(): Promise<void>;
-    }>;
     names(): string[];
     options(name?: string): ConnectionOptions;
-    used(): string[];
     onQuery(listener: (query: QueryEvent) => void): () => void;
-    verify(): void;
     destroy(): Promise<void>;
 }
 // ConstrainedColumn
@@ -335,8 +324,8 @@ export declare class PendingFactory<T extends keyof DB & string, DB = Tables, Ma
     make<O extends Partial<NewRowOf<DB[T]>> = {}>(overrides?: O & KnownColumns<O, NewRowOf<DB[T]>>): Many extends true ? MadeAttributes<NewRowOf<DB[T]>, O>[] : MadeAttributes<NewRowOf<DB[T]>, O>;
     create(overrides?: Partial<NewRowOf<DB[T]>>): Promise<Many extends true ? RowOf<DB[T]>[] : RowOf<DB[T]>>;
 }
-// PostgresConnection
-export interface PostgresConnection {
+// PostgresConnectionOptions
+export interface PostgresConnectionOptions {
     readonly driver: 'pgsql';
     readonly url?: string | undefined;
     readonly host?: string | undefined;

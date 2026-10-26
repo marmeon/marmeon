@@ -198,13 +198,16 @@ Some formats have no version of their own and are kept stable another way:
   (`PX`). So are the values the framework puts there itself, such as a rate limiter's counter (a whole number) and the marker of
   `job.once` (`1`). Two nodes of a rolling deploy read each other's entries. A change of one arrives as a new key name, never as
   a new meaning under the old one.
+- **Pagination cursors** carry no mark: the values of the last row as JSON, encrypted with `APP_KEY` under a context that names the
+  list's order (and its `name`, when given). A cursor stays valid while the key that made it is `APP_KEY` or in `APP_PREVIOUS_KEYS`
+  and the list's order stays the same; its payload is frozen, and one that no longer decrypts or fits answers 400.
 - **`history.state`** holds the URL, component, a key and the scroll position. An entry that does not match loads from the server.
 - **The names of keys** in the cache and the lock store (`limiter:…`, `queue:unique:…`, `queue:once-lock:…`, the scheduler's locks) and the names of
   [encryption contexts](encryption.md#what-the-key-protects) are format: two nodes must agree on them. A release that renames one
   does so with the same care as a renamed column.
 
 Fixtures sit under `__fixtures__/formats/`, one per version: the page and region object, the job record, the Redis member, queued
-listeners, mails and notifications, the session payload, the record of migrations, the encrypted value, API tokens, the manifest of copied files and the `--json` documents. A test reads each
+listeners, mails and notifications, the session payload, the pagination cursor, the record of migrations, the encrypted value, API tokens, the manifest of copied files and the `--json` documents. A test reads each
 directory with the current code. A pull request that changes or deletes a fixture is a `breaking` one. [Changing a stored or wire format](../CONTRIBUTING.md#changing-a-stored-or-wire-format)
 says how a format moves on.
 

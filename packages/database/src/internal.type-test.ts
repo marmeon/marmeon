@@ -4,3 +4,8 @@ import type { Migrator } from './index.ts';
 import type { TypeGenerator } from './index.ts';
 
 export type Moved = [Migrator, TypeGenerator];
+
+// @ts-expect-error — the Postgres options are `PostgresConnectionOptions`
+import type { PostgresConnection } from './index.ts';
+
+export type Renamed = PostgresConnection;

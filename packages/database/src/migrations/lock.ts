@@ -75,7 +75,7 @@ export class MigrationLockTimeoutError extends Error {
  */
 export class MigrationLockLostError extends Error {
   constructor(reason: string) {
-    super(`The migration lock was lost: ${reason}. The run stops here; look at the database before migrating again.`);
+    super(withCode('D22', `The migration lock was lost: ${reason}. The run stops here; look at the database before migrating again.`));
     this.name = 'MigrationLockLostError';
   }
 }

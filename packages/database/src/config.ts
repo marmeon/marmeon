@@ -16,7 +16,7 @@ export type ConnectionOptions =
  * parts make the URL: `host` (default `127.0.0.1`), `port` (`5432`), `database` (required), `username` (`postgres`) and
  * `password` (none).
  */
-export interface PostgresConnection {
+export interface PostgresConnectionOptions {
   readonly driver: 'pgsql';
   readonly url?: string | undefined;
   readonly host?: string | undefined;
@@ -33,12 +33,12 @@ export interface PostgresConnection {
 }
 
 /**
- * What a connection's `resolve` returns: a SQLite file, or a Postgres server in parts or as a URL ({@link PostgresConnection}).
+ * What a connection's `resolve` returns: a SQLite file, or a Postgres server in parts or as a URL ({@link PostgresConnectionOptions}).
  * `managed: false` says that another tool owns the database's tables: Marmeon takes no schema from migrations for it (no secret columns, no
  * soft deletes, no timestamps), `marmeon migrate` does not touch it, and its queries are not refused for pending migrations. The default is
  * `true`. See `docs/database.md#a-database-another-tool-manages`.
  */
-export type ConnectionDefinitionOptions = { readonly driver: 'sqlite'; readonly database: string; readonly managed?: boolean | undefined } | PostgresConnection;
+export type ConnectionDefinitionOptions = { readonly driver: 'sqlite'; readonly database: string; readonly managed?: boolean | undefined } | PostgresConnectionOptions;
 
 /** Whether a Postgres URL names a database: without one `pg` reads `PGDATABASE`, then the user name — a default shared between apps. */
 function hasDatabaseName(url: string): boolean {
@@ -146,7 +146,7 @@ export interface ConnectionDefinition extends ConfigDefinition<ConnectionOptions
 /**
  * Another connection, e.g. a reporting database: list it in the app's (or a module's) `config` and get it with
  * `connections.get(name)`. A Postgres connection takes the server and the account in parts or one URL
- * ({@link PostgresConnection}) — the URL wins when both are given. See `docs/database.md#more-connections`.
+ * ({@link PostgresConnectionOptions}) — the URL wins when both are given. See `docs/database.md#more-connections`.
  */
 export function defineConnection<const Schema extends StandardSchemaV1>(
   name: string,

@@ -242,6 +242,34 @@ describe('DatabaseServiceProvider', () => {
     expect(() => connections.get()).toThrow('The database connections are closed');
   });
 
+  it('starts when one definition is listed by the application and by a module — one connection', async () => {
+    const app = await createApplication({
+      root,
+      discover: false,
+      config: [Reporting],
+      modules: [{ name: 'analytics', config: [Reporting] }],
+      providers: [DatabaseServiceProvider],
+    }, { env: { DB_DATABASE: 'app.sqlite', REPORTING_DB: ':memory:' } });
+    expect(app.container.make(Connections).names()).toEqual(['default', 'reporting']);
+    await app.shutdown();
+  });
+
+  it('stops the start when two different definitions have the same connection name, naming both sources', async () => {
+    const again = defineConnection('reporting', { env: env({}), resolve: () => ({ driver: 'sqlite', database: ':memory:' }) });
+    const app = await createApplication({
+      root,
+      discover: false,
+      config: [Reporting],
+      modules: [{ name: 'analytics', config: [again] }],
+      providers: [DatabaseServiceProvider],
+    }, { env: { DB_DATABASE: 'app.sqlite', REPORTING_DB: ':memory:' } }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(app).toBeInstanceOf(Error);
+    expect((app as Error).message).toMatch(/^\[marmeon:D23\] .*"reporting" is defined twice, by two different definitions: in the application and in module "analytics"/);
+  });
+
   it('builds a Postgres URL from DB_HOST & co., and validates DB_URL at startup', async () => {
     const pgsql = await createApplication({
       root,

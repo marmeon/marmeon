@@ -25,7 +25,7 @@ export type {
   Timestamp,
 } from './types.ts';
 export { defineConnection } from './config.ts';
-export type { ConnectionDefinition, ConnectionDefinitionOptions, ConnectionOptions, PostgresConnection } from './config.ts';
+export type { ConnectionDefinition, ConnectionDefinitionOptions, ConnectionOptions, PostgresConnectionOptions } from './config.ts';
 export { DatabaseConnectionError } from './driver.ts';
 export { InfrastructureTransactionError } from './infrastructure.ts';
 export type { InfrastructureUsage } from './infrastructure.ts';
