@@ -4,7 +4,7 @@ import { warnUnlisted } from '../unlisted.ts';
 
 /**
  * Warns about job and notification classes under `modules/` that no module lists. Only a warning, exit 0; the files are
- * parsed, never imported. `marmeon build` runs it, `marmeon dev` does the same at its start. See docs/console.md#built-in-commands.
+ * parsed, never imported. A step of `marmeon build`, which runs it; `marmeon dev` does the same at its start.
  */
 export class ModulesCheckCommand {
   static command = 'modules:check';

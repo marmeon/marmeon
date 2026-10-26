@@ -150,6 +150,7 @@ start`, and `marmeon dev` refuses it.
 | `dev` | The development server, with a worker and the scheduler next to it. |
 | `build [--no-typecheck]` | Builds the app for production. See [deployment](deployment.md#building-and-starting). |
 | `check [--only=<names>] [--skip=<names>] [--json]` | Runs the type check, the lint, the scan for imports of framework internals and the checks of the app (route and database types, boot, readiness), and exits with a code a script can read. See [checking an app](check.md). |
+| `serve [--workers=N]` | The command behind `dev` and `start`; hidden from `marmeon list`, but its name and options are API. Run `marmeon start` rather than it. |
 | `start [--workers=N]` | Starts the production server on the build. It refuses to run when `NODE_ENV=development` or `test` comes from `.env` alone: use `marmeon dev`, set `NODE_ENV=production` to try the build, or set `NODE_ENV=development` in the shell to start the development stack on purpose. |
 | `route:list [--json]` | Every route with its method, path, name, group, middleware, who may call it (`ACCESS`) and action. See [listing routes](routing.md#listing-routes). |
 | `route:types [--check]` | Writes `bootstrap/routes.ts`. `--check` fails when it is out of date, for CI. It also exits with 1 and lists every route that does not say who may call it, so `marmeon build` stops on one. See [typed route names](routing.md#typed-route-names) and [every route decides](authorization.md#every-route-decides). |
@@ -239,7 +240,7 @@ constructor gets what it asks for:
 
 ```ts title="modules/notes/commands/PruneArchivedNotesCommand.ts"
 import { Clock } from '@marmeon/core';
-import type { CommandInput } from 'marmeon';
+import { CommandArgumentsError, type CommandInput } from 'marmeon';
 import { NoteRepository } from '../NoteRepository.ts';
 
 const DAY = 86_400_000;
@@ -261,8 +262,7 @@ export class PruneArchivedNotesCommand {
   async handle({ options, output }: CommandInput): Promise<number> {
     const days = Number(options.days ?? 30);
     if (!Number.isInteger(days) || days < 1) {
-      output.error(`--days must be a whole number of days, not ${String(options.days)}.`);
-      return 1;
+      throw new CommandArgumentsError(`--days must be a whole number of days, not ${String(options.days)}.`);
     }
     const deleted = await this.#notes.deleteArchivedBefore(new Date(this.#clock.now() - days * DAY));
     output.success(`Deleted ${deleted} archived notes.`);
@@ -290,7 +290,7 @@ export default defineModule({
 - **`static usage`** is shown in errors, after the name: `Usage: marmeon notes:prune-archived [--days=30]`.
 - **`static options`** declares the options in the format of Node's `parseArgs`: `{ type: 'string' }` or `{ type: 'boolean' }`,
   with `short: 'd'` for a one-letter form. An option the command does not declare is an error before the command runs.
-- **`static hidden = true`** keeps a command out of `marmeon list`.
+- **`static hidden = true`** keeps a command out of `marmeon list`. A hidden command is a step of another command, not API: its name and options may change in any release (`serve` is the exception). See [what is public API](releases.md#what-is-public-api).
 - **`static experimental = true`** marks a command that may change in any minor version. `marmeon list` and `--help` add
   "(experimental)". See [experimental](releases.md#experimental).
 - **`handle(input)`** gets the positional arguments as `args`, the options as `options`, the console as `output` and the app's
@@ -334,6 +334,8 @@ are dropped, so a name taken from a package cannot redraw the terminal. Ctrl-C o
 `prompt.interactive` is true only when stdin and stdout are both a terminal, the environment variable `CI` is unset (or empty, `0` or
 `false`) and `--no-interaction` is not given. Without a terminal, in CI or with `--no-interaction`, nothing is asked: `choose()` throws
 instead of waiting. An agent without a terminal is never asked. The scheduler runs commands without a terminal.
+
+`prompt` and `output` are given to a command and are not meant to be implemented: a later release may add a member. A test runs the command with `app.command()` instead of building them.
 
 ### Testing a command
 

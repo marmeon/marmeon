@@ -12,7 +12,7 @@ interface DatabaseInternals {
 
 /**
  * Computes the schema the app's migrations describe and keeps it in `.marmeon/schema.json` (`@marmeon/database`; an app without it
- * has nothing to do unless a module has migrations). `marmeon build` runs it, so a migration whose plan cannot be projected stops the build instead of the deploy.
+ * has nothing to do unless a module has migrations). A step of `marmeon build`, which runs it, so a migration whose plan cannot be projected stops the build instead of the deploy.
  * See docs/deployment.md#building-and-starting.
  */
 export class SchemaProjectCommand {

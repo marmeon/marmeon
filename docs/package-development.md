@@ -106,7 +106,7 @@ reads them, and are known once that package is installed.
 | any class the container builds | `inject` | The list of what the constructor needs, in the order of its parameters. Without it, the build or the app's start derives it from the `.d.ts` files ([injected classes](#injected-classes)). |
 | a health check | `check`, `timeout` | The check's name, unique among the checks, and how long it may take in milliseconds ([health](health.md#writing-a-health-check)). |
 | a check of `marmeon check` | `check`, `phase`, `timeout` | The check's name in kebab-case, `'build'` or `'run'`, and how long it may take ([checks](#checks)). |
-| a command | `command`, `description`, `usage`, `options`, `hidden`, `experimental` | The name one types and what `marmeon list` shows ([writing commands](console.md#writing-commands)). |
+| a command | `command`, `description`, `usage`, `options`, `hidden`, `experimental` | The name one types and what `marmeon list` shows ([writing commands](console.md#writing-commands)). A `hidden` command is a step of another command and no API, unlike the package's other commands. |
 | a controller | `request` | The request schema that validates the route's input and types its context ([controllers](controllers.md)). |
 | a repository | `table`, `connection`, `routeKey`, `routeKeyPattern` | The table, the default connection, and the column and pattern a route parameter is bound by ([repositories](queries.md#defining-a-repository)). |
 | an event that queued listeners listen to | `event`, `schema` | Its stable name and the schema of what is queued ([queued listeners](events.md#queued-listeners)). |
