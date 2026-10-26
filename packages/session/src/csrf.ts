@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { defineConfig, env, type ConfigOf } from '@marmeon/core';
+import { isWebhookMiddleware } from '@marmeon/http/internal';
 import { HttpError, type HttpContext, type Next } from '@marmeon/router';
 import { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
@@ -85,7 +86,10 @@ export class VerifyCsrfToken {
 
   async handle(ctx: HttpContext, next: Next<{}>) {
     const { request } = ctx;
-    if (!READING.has(request.method) && !this.#protection.skips(new URL(request.url).pathname)) {
+    // A route behind `verifyWebhook()` is signed by its sender, who has no session: the signature is its protection, and only a route
+    // that names the middleware skips the check.
+    const signed = ctx.route?.middleware.some(isWebhookMiddleware) === true;
+    if (!signed && !READING.has(request.method) && !this.#protection.skips(new URL(request.url).pathname)) {
       const from = this.#origin(request);
       if (from === 'foreign') throw new HttpError(403, 'Cross-site request refused.', {}, { key: 'marmeon.errors.cross_site' });
       if (from === 'unknown' && !(await this.#tokenMatches(ctx))) throw new HttpError(419, 'CSRF token mismatch.', {}, { key: 'marmeon.errors.csrf' });

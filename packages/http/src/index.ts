@@ -69,6 +69,8 @@ export { securityHeaders } from './security-headers.ts';
 export type { HstsOptions, ReferrerPolicy, SecurityHeadersOptions } from './security-headers.ts';
 export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
 export type { SignedPathOptions, SignedRouteOptions } from './signed-urls.ts';
+export { verifyWebhook, Webhooks } from './webhooks.ts';
+export type { WebhookContext, WebhookDefinition, WebhookScheme } from './webhooks.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
 export { addVary, defineMiddleware, defineRequest, defineRoutes, describeAccess, editableResponse, everyone, EXPECTS_JSON_VARY, isLiveValidation, liveValidationFields, ownResponse, RequestNonce, Router, translatable, ValidationError } from '@marmeon/router';

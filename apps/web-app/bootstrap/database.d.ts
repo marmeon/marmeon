@@ -365,5 +365,6 @@ declare module '@marmeon/database' {
     notifications: true;
     system: true;
     'user-profile': true;
+    webhooks: true;
   }
 }

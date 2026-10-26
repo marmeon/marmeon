@@ -98,7 +98,7 @@ describe('marmeon tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
 
   it('shows the environment and the database in the banner — in production as a warning, never a secret', async () => {
     // Outside NODE_ENV=test the app reads .env, which a fresh checkout (CI) does not have: the test brings its configuration.
-    const config = { APP_NAME: 'Marmeon', APP_URL: 'http://localhost', APP_KEY: `base64:${Buffer.alloc(32, 7).toString('base64')}`, SYSTEM_DB_DATABASE: ':memory:', LOG_LEVEL: 'silent' };
+    const config = { APP_NAME: 'Marmeon', APP_URL: 'http://localhost', APP_KEY: `base64:${Buffer.alloc(32, 7).toString('base64')}`, SYSTEM_DB_DATABASE: ':memory:', LOG_LEVEL: 'silent', PAYMENTS_WEBHOOK_SECRET: Buffer.alloc(24, 5).toString('hex') };
     const production = { ...env, ...config, NODE_ENV: 'production' };
     const development = await session(['--no-history'], { ...env, ...config, NODE_ENV: 'development', DEVTOOLS_ENABLED: 'false' }, '.exit\n');
     expect(development.stdout).toContain(`Marmeon tinker · @marmeon/web-app · NODE_ENV=development · APP_ENV=local · db sqlite (${env.DB_DATABASE}) · .ls lists helpers`);

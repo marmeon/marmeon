@@ -100,8 +100,8 @@ export class LimitImports {
 ```
 
 - `'rate-limited'` — the middleware answers 429 when too many requests come. `throttle()` declares it.
-- `'authenticated'` — only a known user, or the holder of a link the app signed, gets past. `authenticate()`, `authenticate('api')`
-  and `signed()` declare it.
+- `'authenticated'` — only a known user, the holder of a link the app signed or the holder of a webhook's secret gets past.
+  `authenticate()`, `authenticate('api')`, `signed()` and `verifyWebhook()` declare it.
 
 It is the middleware's word, which the check does not test, and nothing reads it while the app runs; a class that extends one of
 these inherits the word, so one that changes `handle()` must change `ensures` too. Only an array counts, and only the two names
@@ -392,6 +392,7 @@ These middleware come with the framework's packages. Add them to routes with `Ro
 | `abilities(...names)` | `@marmeon/auth` | The API token must grant every ability. Needs `authenticate('api')` before it. |
 | `throttle(name)` | `@marmeon/cache` | A rate limit of a named limiter. Answers 429 once it is used up. |
 | `signed()` | `@marmeon/http` | Only URLs with a valid signature. Answers 403 otherwise. |
+| `verifyWebhook(name)` | `@marmeon/http` | Only requests a defined [webhook sender](webhooks.md) signed. Answers 401 otherwise, skips the CSRF check and adds `ctx.webhook`. |
 | `cacheControl(value)` | `@marmeon/http` | Sets `Cache-Control` on responses that do not set it themselves. |
 
 The [authentication](authentication.md), [API tokens](api-tokens.md), [rate limiting](rate-limiting.md),

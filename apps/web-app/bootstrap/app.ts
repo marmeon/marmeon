@@ -10,6 +10,7 @@ import members from '#modules/members';
 import notifications from '#modules/notifications';
 import system from '#modules/system';
 import userProfile from '#modules/user-profile';
+import webhooks from '#modules/webhooks';
 import { AppConfig } from '../config/app.ts';
 import { SystemDatabase } from '../config/database.ts';
 import { AppStorage } from '../config/storage.ts';
@@ -24,7 +25,7 @@ import bookmarks from '#modules/bookmarks';
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig, SystemDatabase, AppStorage],
-  modules: [about, auth, userProfile, dashboard, members, notifications, locale, lab, system, bookmarks],
+  modules: [about, auth, userProfile, dashboard, members, notifications, locale, lab, system, bookmarks, webhooks],
   // Added after the framework's own middleware. Module routes run in the `web` group
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
   middleware: {

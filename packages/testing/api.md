@@ -103,6 +103,11 @@ export interface SessionAccess {
     create(data: Readonly<Record<string, unknown>>, id?: string): Promise<string>;
     read(id: string): Promise<Record<string, unknown> | undefined>;
 }
+// SignedWebhookOptions
+export interface SignedWebhookOptions {
+    id?: string;
+    timestamp?: Date;
+}
 // SsrServer
 export interface SsrServer {
     readonly root: string;
@@ -249,6 +254,8 @@ export declare class TestResponse {
 }
 // createTestApp
 export declare function createTestApp(definition: ApplicationDefinition, options?: TestAppOptions): Promise<TestApp>;
+// signedWebhook
+export declare function signedWebhook(scheme: WebhookScheme, secret: string, body: string, options?: SignedWebhookOptions): Record<string, string>;
 // startSsrServer
 export declare function startSsrServer(application: ApplicationDefinition): Promise<SsrServer>;
 ```

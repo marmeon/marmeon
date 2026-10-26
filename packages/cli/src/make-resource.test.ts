@@ -86,7 +86,7 @@ describe('make:resource', () => {
     expect(entry).toMatch(/modules: \[auth, bookmarks\]/);
     const shownEntry = readFileSync(join(webApp, 'bootstrap/app.ts'), 'utf8');
     expect(shownEntry).toContain("import bookmarks from '#modules/bookmarks';");
-    expect(shownEntry).toMatch(/modules: \[[^\]]*, bookmarks\]/);
+    expect(shownEntry).toMatch(/modules: \[[^\]]*, bookmarks[,\]]/);
     const text = lines.join('\n');
     expect(text).toContain('Created modules/bookmarks/controllers/ListBookmarksController.ts');
     expect(text).toContain('marmeon migrate');
