@@ -117,12 +117,32 @@ describe('UrlSigner', () => {
     const url = signer(KEY).foreverSignedRoute('verify', { id: 7, hash: 'abc', ref: 'mail' });
     expect(url).toMatch(/^\/email\/verify\/7\/abc\?ref=mail&signature=[0-9a-f]{64}$/);
     expect(new URL(url, 'http://x').searchParams.has('expires')).toBe(false);
-    expect(signer(KEY).hasValidSignature(url)).toBe(true);
+    expect(signer(KEY).hasValidSignature(url, { forever: true })).toBe(true);
     clock.travel({ days: 3650 });
-    expect(signer(KEY).hasValidSignature(url)).toBe(true);
+    expect(signer(KEY).hasValidSignature(url, { forever: true })).toBe(true);
     expect(signer(KEY).foreverSignedRoute('verify', { id: 7, hash: 'abc' }, { base: 'https://app.example' })).toMatch(/^https:\/\/app\.example\/email\/verify\/7\/abc\?signature=/);
     expect(() => signer(KEY).foreverSignedRoute('nope', {})).toThrow('[marmeon:H4]');
     expect(() => signer(KEY).foreverSignedRoute('verify', { id: 7, hash: 'abc', expires: 1 })).toThrow('"expires" is reserved');
+  });
+
+  it('hasValidSignature() refuses a link without expires unless forever is set; an expired link never passes', () => {
+    clock.freeze();
+    const forever = signer(KEY).foreverSignedRoute('verify', { id: 7, hash: 'abc' });
+    const expiring = signer(KEY).signedRoute('verify', { id: 7, hash: 'abc' }, { expiresIn: 60 });
+    expect(signer(KEY).hasValidSignature(forever)).toBe(false);
+    expect(signer(KEY).hasValidSignature(forever, {})).toBe(false);
+    expect(signer(KEY).hasValidSignature(forever, { forever: false })).toBe(false);
+    expect(signer(KEY).hasValidSignature(forever, { forever: true })).toBe(true);
+    expect(signer(KEY).hasValidSignature(expiring)).toBe(true);
+    expect(signer(KEY).hasValidSignature(expiring, { forever: true })).toBe(true);
+    clock.travel({ seconds: 61 });
+    expect(signer(KEY).hasValidSignature(expiring)).toBe(false);
+    expect(signer(KEY).hasValidSignature(expiring, { forever: true })).toBe(false);
+    expect(signer(KEY).hasValidSignature(forever, { forever: true })).toBe(true);
+    // @ts-expect-error — forever is a boolean
+    expect(signer(KEY).hasValidSignature(forever, { forever: 'yes' })).toBe(false);
+    // @ts-expect-error — forever is a boolean
+    expect(signed({ forever: 1 })).toBe(ValidateSignature);
   });
 
   it('keeps verifying links signed before: the signature and the query are unchanged', () => {
@@ -132,7 +152,7 @@ describe('UrlSigner', () => {
     const withExpiry = '/email/verify/7/abc?ref=mail&expires=1900000000&signature=94b1b886e19ca3c1f3405f5b5e6d67dfba7df886bd0a2e87bc4b5a46b2137593';
     const forever = '/email/verify/7/abc?signature=9922f45ba375c7653f06ff1747985ef21ecde5d0af26ae74f075748dc3e59bbb';
     expect(fixture.hasValidSignature(withExpiry)).toBe(true);
-    expect(fixture.hasValidSignature(forever)).toBe(true);
+    expect(fixture.hasValidSignature(forever, { forever: true })).toBe(true);
     // The new API writes the very same bytes.
     expect(fixture.signedRoute('verify', { id: 7, hash: 'abc', ref: 'mail' }, { expiresIn: 100_000_000 })).toBe(withExpiry);
     expect(fixture.foreverSignedRoute('verify', { id: 7, hash: 'abc' })).toBe(forever);
@@ -188,5 +208,26 @@ describe('signed() middleware', () => {
     expect(await run(url.replace('/7/', '/8/'))).toBe('403 Invalid signature.');
     expect(await run(url.replace(/\?.*/, ''))).toBe('403 Invalid signature.');
     expect(signed()).toBe(ValidateSignature);
+  });
+
+  it('refuses a link without expires, unless the route says signed({ forever: true }); an expired link never passes', async () => {
+    const appSigner = signer(KEY);
+    const strict = new (signed())(appSigner);
+    const lenient = new (signed({ forever: true }))(appSigner);
+    const run = (middleware: ValidateSignature, href: string) =>
+      Promise.resolve()
+        .then(() => middleware.handle({ request: new Request(href) } as never, async () => new Response('ok')))
+        .then((response) => response.status, (error: { status: number }) => error.status);
+    clock.freeze();
+    const forever = appSigner.foreverSignedRoute('unsubscribe', { id: 7 }, { base: 'https://app.example' });
+    const expiring = appSigner.signedRoute('unsubscribe', { id: 7 }, { expiresIn: 60, base: 'https://app.example' });
+    expect(await run(strict, forever)).toBe(403);
+    expect(await run(lenient, forever)).toBe(200);
+    expect(await run(strict, expiring)).toBe(200);
+    expect(await run(lenient, expiring)).toBe(200);
+    clock.travel({ seconds: 61 });
+    expect(await run(strict, expiring)).toBe(403);
+    expect(await run(lenient, expiring)).toBe(403);
+    expect(await run(lenient, forever)).toBe(200);
   });
 });

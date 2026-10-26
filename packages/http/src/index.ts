@@ -68,7 +68,7 @@ export type { ContentSecurityPolicyOptions, CspDirectives, CspSource } from './c
 export { securityHeaders } from './security-headers.ts';
 export type { HstsOptions, ReferrerPolicy, SecurityHeadersOptions } from './security-headers.ts';
 export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
-export type { ForeverSignedRouteOptions, SignedPathOptions, SignedRouteOptions } from './signed-urls.ts';
+export type { ForeverSignedRouteOptions, SignatureCheckOptions, SignedPathOptions, SignedRouteOptions } from './signed-urls.ts';
 export { verifyWebhook, Webhooks } from './webhooks.ts';
 export type { WebhookContext, WebhookDefinition, WebhookScheme } from './webhooks.ts';
 

@@ -391,7 +391,7 @@ These middleware come with the framework's packages. Add them to routes with `Ro
 | `twoFactor({ setup, verify, maxAge? })` | `@marmeon/auth/two-factor` | Only sessions that proved a second factor. Needs `authenticate()` before it; the framework never installs it. A browser goes to `setup` or `verify`, a JSON client gets 403. See [two-factor authentication](two-factor-authentication.md#requiring-it). |
 | `abilities(...names)` | `@marmeon/auth` | The API token must grant every ability. Needs `authenticate('api')` before it. |
 | `throttle(name)` | `@marmeon/cache` | A rate limit of a named limiter. Answers 429 once it is used up. |
-| `signed()` | `@marmeon/http` | Only URLs with a valid signature. Answers 403 otherwise. |
+| `signed()` | `@marmeon/http` | Only URLs with a valid signature that have not expired. Answers 403 otherwise, also for a link without `expires`; `signed({ forever: true })` accepts one ([urls](urls.md#signed-urls)). |
 | `verifyWebhook(name)` | `@marmeon/http` | Only requests a defined [webhook sender](webhooks.md) signed. Answers 401 otherwise, skips the CSRF check and adds `ctx.webhook`. |
 | `cacheControl(value)` | `@marmeon/http` | Sets `Cache-Control` on responses that do not set it themselves. |
 

@@ -668,6 +668,10 @@ export interface SharedProps {
 }
 // SharedValue
 export type SharedValue<T> = Lazy<T> | AlwaysProp<T> | MergeProp<T> | OnceProp<T> | (undefined extends T ? OptionalProp<Exclude<T, undefined>> | DeferredProp<Exclude<T, undefined>> | MergingDeferredProp<Exclude<T, undefined>> : NotOptional);
+// SignatureCheckOptions
+export interface SignatureCheckOptions {
+    readonly forever?: boolean;
+}
 // SignedPathOptions
 export interface SignedPathOptions extends SignedRouteOptions {
     readonly query?: Readonly<Record<string, string>>;
@@ -740,13 +744,14 @@ export declare class UrlSigner {
     signedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, params: SignedParams<N>, options: SignedRouteOptions): string;
     foreverSignedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, params: SignedParams<N>, options?: ForeverSignedRouteOptions): string;
     signedPath(path: string, options: SignedPathOptions): string;
-    hasValidSignature(url: string | URL): boolean;
+    hasValidSignature(url: string | URL, options?: SignatureCheckOptions): boolean;
 }
 // ValidateSignature
 export declare class ValidateSignature {
     #private;
     static readonly ensures: readonly ['authenticated'];
     constructor(signer: UrlSigner);
+    protected readonly forever: boolean;
     handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // Validated
@@ -883,7 +888,7 @@ export declare function resolveProp(value: unknown): Promise<unknown>;
 // securityHeaders
 export declare function securityHeaders(options?: SecurityHeadersOptions): MiddlewareClass<{}, {}>;
 // signed
-export declare function signed(): typeof ValidateSignature;
+export declare function signed(options?: SignatureCheckOptions): typeof ValidateSignature;
 // staticView
 export declare function staticView(action: unknown): string | undefined;
 // toLayer

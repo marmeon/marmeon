@@ -208,7 +208,7 @@ export class ShareLinks {
 | `signedRoute(name, params, { expiresIn, base })` | A named route, valid for `expiresIn`: seconds, or a [`Duration`](time.md#spans-of-time) such as `{ days: 7 }`. |
 | `foreverSignedRoute(name, params, { base })` | A named route that never expires. |
 | `signedPath(path, { query, expiresIn, base })` | A path without a route name, such as a file's, valid for `expiresIn`. |
-| `hasValidSignature(url)` | Checks a URL yourself. |
+| `hasValidSignature(url, { forever })` | Checks a URL yourself; a link without `expires` passes only with `forever: true`. |
 
 The signature is an HMAC-SHA-256 over the path and the sorted query, with the expiry in it. Parameters the path does not take go
 into the query and are signed with it. `signature` and `expires` are reserved and throw as parameter names. `base` puts your
@@ -218,7 +218,11 @@ address in front, for an absolute link.
 must work for good, such as an unsubscribe link in a mail already sent, says so with `foreverSignedRoute()`; its URL has no
 `expires`, and the name is the one place to find every such link.
 
-`signed()` answers 403, "Invalid signature.", for a missing, changed or expired signature. The comparison takes constant time.
+`signed()` answers 403, "Invalid signature.", for a missing, changed or expired signature, and for a link without `expires`. The
+comparison takes constant time. A route whose links come from `foreverSignedRoute()` says so itself: `signed({ forever: true })`.
+So the policy sits on the route, and a forever link opens no route that did not ask for one. An expired link is refused in both
+modes. `hasValidSignature(url)` refuses a link without `expires` the same way; `hasValidSignature(url, { forever: true })`
+accepts one, for code that checks without the middleware, such as the `describeAccess()` above.
 
 The signing key is derived from `APP_KEY`, a key of its own that signs nothing else. Links signed with a key in
 `APP_PREVIOUS_KEYS` stay valid, so rotating the key does not break the links in sent mails. The host is not signed: a link works
