@@ -1,6 +1,6 @@
 import { Clock, HealthChecks, Redactor, type Application, type Container, type HealthReport } from '@marmeon/core';
 import { hostAllowed } from '@marmeon/core/dev';
-import { ServerClosing } from '@marmeon/http';
+import { ServerClosing } from '@marmeon/http/internal';
 import type { RouteDefinition } from '@marmeon/router';
 
 /**

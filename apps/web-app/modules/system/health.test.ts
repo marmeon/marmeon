@@ -1,6 +1,5 @@
 import { HealthChecks } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
-import { ServerClosing } from '@marmeon/http';
 import { createTestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -54,13 +53,5 @@ describe('health in the web app', () => {
     expect(ready.status).toBe(503);
     expect(JSON.parse(ready.body)).toEqual({ status: 'failing' });
     expect((await app.get('/up')).status).toBe(200);
-  });
-
-  it('while the server drains: 503', async () => {
-    const app = await createTestApp(application, { database: 'refresh' });
-    app.make(ServerClosing).close();
-    expect((await app.get('/up')).status).toBe(503);
-    expect((await app.get('/up/ready')).status).toBe(503);
-    await app.close();
   });
 });
