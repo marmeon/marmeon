@@ -16,11 +16,13 @@ describe('api.md format', () => {
       item('page', 'export declare const page: 1;', 'stable', '@marmeon/demo/page'),
       item('APP_URL', 'string, default http://localhost', 'environment', ''),
       item('demo:run', 'Runs the demo.', 'commands', ''),
+      item('demo:step', 'marmeon demo:step', 'hidden', ''),
     ];
     const markdown = renderSnapshot('@marmeon/demo', items, new Map([['@marmeon/demo', ['valibot']], ['@marmeon/demo/page', []]]));
     const parsed = parseSnapshot(markdown);
     expect(parsed).toHaveLength(items.length);
     for (const original of items) expect(parsed).toContainEqual(original);
+    expect(markdown).toMatch(/## Commands\n\n```ts\n\/\/ demo:run[^`]*```\n\n## Hidden commands \(not API\)\n\n```ts\n\/\/ demo:step\n/);
     expect(markdown).toContain('Types from other packages: `valibot`');
     expect(markdown).toContain('Types from other packages: none');
   });

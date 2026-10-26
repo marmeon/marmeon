@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { formatProblems, isShippedMigration, labelProblems, migrationDirectoryProblems, migrationProblems } from './api-label.ts';
+import { formatProblems, isShippedMigration, labelProblems, migrationDirectoryProblems, migrationProblems, stable } from './api-label.ts';
 import { compareSnapshots, renderSnapshot, type ApiItem, type ApiSection } from './api-snapshot.ts';
 import { tempDir } from './test/temp-dir.js';
 
@@ -53,6 +53,15 @@ describe('labelProblems', () => {
       item('demo:run', 'x', 'commands', ''),
     ];
     for (const removal of removals) expect(problems([removal], [], 'fix', 'api-compatible'), removal.section).toHaveLength(1);
+  });
+
+  it('asks no "breaking" for a hidden command that changes or goes', () => {
+    const step = item('demo:step', 'marmeon demo:step\n--a (boolean)', 'hidden', '');
+    const owed = (before: ApiItem[], after: ApiItem[]) => labelProblems(compareSnapshots(stable(before), stable(after)), ['fix']);
+    expect(owed([step], [])).toEqual([]);
+    expect(owed([step], [{ ...step, text: 'marmeon demo:step' }])).toEqual([]);
+    expect(owed([{ ...step, section: 'commands' }], [step])).toHaveLength(1);
+    expect(owed([item('demo:run', 'x', 'commands', '')], [])).toHaveLength(1);
   });
 
   it('refuses a new entry under "docs" and "internal", whatever else is on the pull request', () => {

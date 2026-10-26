@@ -130,7 +130,8 @@ export function migrationDirectoryProblems(added: readonly string[], shippedDire
   return problems;
 }
 
-const stable = (items: readonly ApiItem[]) => items.filter((item) => item.section !== 'experimental' && item.section !== 'experimentalReferenced');
+/** The items a label is owed for: not the experimental and not the hidden ones. */
+export const stable = (items: readonly ApiItem[]) => items.filter((item) => item.section !== 'experimental' && item.section !== 'experimentalReferenced' && item.section !== 'hidden');
 
 function git(...args: string[]): string {
   return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });

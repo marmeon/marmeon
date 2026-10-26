@@ -34,7 +34,7 @@ export function stdoutToStderr(): { readonly restore: () => void; readonly write
 /** The writers of the `Output`s that were given one: kept outside the class, so the class stays what its structure says (commands of other packages take an `Output`-shaped value). */
 const writers = new WeakMap<object, (text: string) => void>();
 
-/** Console output for commands. Colours are dropped automatically when not writing to a terminal. */
+/** Console output for commands. Colours are dropped automatically when not writing to a terminal. Given to a command and not meant to be implemented — tests use `app.command()`. */
 export class Output {
   /** `write` replaces `process.stdout.write` as the way to stdout: `run()` gives its own `Output` the original one while the process is kept off stdout. */
   constructor(write?: (text: string) => void) {

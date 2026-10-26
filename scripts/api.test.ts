@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { FOREIGN_TYPES, foreignPackage, internalProblems, memberProblems, memberStatus, memberUsage, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, spanProblems, stabilityProblems } from './api.ts';
+import { FOREIGN_TYPES, foreignPackage, internalProblems, memberProblems, memberStatus, memberUsage, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, spanProblems, stabilityProblems, staleHiddenInApi } from './api.ts';
 import { INTERNAL_EXCEPTIONS } from './api-internal.ts';
 import { SAME_VALUE } from './api-names.ts';
 import { SPAN_EXCEPTIONS } from './api-spans.ts';
@@ -623,6 +623,24 @@ describe('environment variables and commands', () => {
     expect(items).toEqual([
       { entry: '', section: 'commands', name: 'demo:run', text: 'marmeon demo:run <Name>\n--alpha (boolean)\n--many (string, multiple)\n--zeta (string, short z)' },
     ]);
+  });
+
+  it('lists a hidden command apart from the API, except those in HIDDEN_COMMANDS_IN_API', async () => {
+    const hidden = (name: string) => `class C${name.replace(/\W/g, '')} { static command = '${name}'; static hidden = true; static options = {}; }`;
+    const { items } = await read('', `[${hidden('demo:build-step')}, ${hidden('serve')}, class Plain { static command = 'demo:plain'; static options = {}; }]`);
+    expect(items.map((item) => `${item.section}:${item.name}`)).toEqual(['hidden:demo:build-step', 'commands:serve', 'commands:demo:plain']);
+  });
+
+  it('reports through runtimeItems a serve of the CLI that is not hidden', async () => {
+    const { dir, manifest } = demo({ 'index.d.ts': 'export declare const a: 1;\n', 'built-in.js': "export const BUILT_IN = [class Serve { static command = 'serve'; static options = {}; }];" });
+    const { problems } = await runtimeItems({ name: 'marmeon', dir, manifest });
+    expect(problems.join('\n')).toContain('marmeon: HIDDEN_COMMANDS_IN_API lists serve, which is no hidden command');
+  });
+
+  it('reports a line of HIDDEN_COMMANDS_IN_API that names no hidden command', () => {
+    expect(staleHiddenInApi([{ command: 'serve', hidden: true }])).toEqual([]);
+    expect(staleHiddenInApi([{ command: 'serve' }])).toHaveLength(1);
+    expect(staleHiddenInApi([])[0]).toContain('serve');
   });
 
   it('shows a removed option as changed, and a new description as no change', async () => {

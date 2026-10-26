@@ -449,6 +449,8 @@ The same file ends with the package's **Environment** and **Commands**, read fro
 `package.json` lists under `marmeon.providers` (`static config`, `static commands`) and, for the CLI, its built-in commands.
 A variable shows its default as JSON, or `required`, or `optional`; a default that only a config's `resolve` sets is not
 seen. A command shows its usage and its sorted options with their types — never its description, whose wording is no API.
+A command with `static hidden` is listed apart under **Hidden commands (not API)** and is no API, except those in
+`HIDDEN_COMMANDS_IN_API` of `scripts/api.ts`, each with its reason; a key that names no hidden command fails `pnpm api:check`.
 Exit codes cannot be read from the code; tests secure them. A config whose `env` is not made by `env({ … })` fails
 `pnpm api:check`, because its variables cannot be listed.
 
@@ -460,11 +462,11 @@ otherwise meet it as a type it cannot import.
 
 A pull request that changes an `api.md` needs matching labels. The check "api label" (`.github/workflows/api-label.yml`,
 `scripts/api-label.ts`) compares the merge commit GitHub builds for the pull request with its first parent, `Experimental`
-items left out — so what merged into the base meanwhile is not counted as its change. A **removed** entry needs `breaking`; a
+and hidden-command items left out — so what merged into the base meanwhile is not counted as its change. A **removed** entry needs `breaking`; a
 removed `Referenced, not exported` item counts as a change, since an app cannot import it by name. A **changed** entry needs
 `breaking`, or `api-compatible` when no app breaks — a loosened parameter, or a constructor that is only exported as a type
 (core's `EnvString` and its kin), which no app can call anyway; `api-compatible` never covers a removal. A **new** entry needs
-a release label other than `docs` and `internal`. Environment variables and commands are entries like any other. The check
+a release label other than `docs` and `internal`. Environment variables and commands are entries like any other; hiding a command moves it out of Commands, so it counts as a removal and needs `breaking`. The check
 reminds and does not protect — a pull request runs its own copy of the workflow, the review is the protection — and it runs on
 untrusted code, so it holds no token and installs nothing: `pnpm check-release` keeps that shape, down to the files the script
 may import.

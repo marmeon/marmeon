@@ -2,7 +2,7 @@ import { createInterface } from 'node:readline/promises';
 import type { Readable, Writable } from 'node:stream';
 import { isatty } from 'node:tty';
 
-/** A question a command may put to the person at the terminal. See docs/console.md#asking-a-question. */
+/** A question a command may put to the person at the terminal. Given to a command and not meant to be implemented — tests use `app.command()`. See docs/console.md#asking-a-question. */
 export interface Prompt {
   /** Whether a question reaches a person: a terminal on both ends, no `CI` and no `--no-interaction`. */
   readonly interactive: boolean;

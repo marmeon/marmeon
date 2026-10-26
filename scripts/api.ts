@@ -629,10 +629,11 @@ const ENV_RENAMED = Symbol.for('marmeon.env.renamed');
 interface EnvField {
   readonly '~env': (raw: string | undefined, name: string) => { readonly value?: unknown; readonly problem?: string };
 }
-interface CommandShape {
+export interface CommandShape {
   readonly command: string;
   readonly usage?: string;
   readonly experimental?: boolean;
+  readonly hidden?: boolean;
   readonly options?: Readonly<Record<string, { readonly type?: string; readonly short?: string; readonly multiple?: boolean }>>;
 }
 
@@ -659,6 +660,21 @@ function defaultOf(name: string, field: EnvField): string {
   return readsSwitch(name, field) ? '— optional (boolean)' : '— optional';
 }
 
+/**
+ * The commands marked `static hidden` that are API all the same, each with the reason. Every other hidden command is listed apart
+ * and no part of the API (`docs/releases.md`).
+ */
+export const HIDDEN_COMMANDS_IN_API: Readonly<Record<string, string>> = {
+  serve: 'the command behind marmeon start and marmeon dev; docs/deployment.md names it',
+};
+
+/** The keys of `listed` that name no hidden command among `commands`: a line to remove. */
+export function staleHiddenInApi(commands: readonly CommandShape[], listed: Readonly<Record<string, string>> = HIDDEN_COMMANDS_IN_API): string[] {
+  return Object.keys(listed)
+    .filter((name) => !commands.some((Command) => Command.command === name && Command.hidden === true))
+    .map((name) => `HIDDEN_COMMANDS_IN_API lists ${name}, which is no hidden command — remove the line`);
+}
+
 /** One `--option (type)` line per option, sorted. The description is no part of it: its wording is no API. */
 function commandItem(Command: CommandShape): ApiItem {
   const options = Object.entries(Command.options ?? {})
@@ -668,7 +684,8 @@ function commandItem(Command: CommandShape): ApiItem {
       return `--${name} (${more.join(', ')})`;
     });
   const head = `marmeon ${Command.command}${Command.usage ? ` ${Command.usage}` : ''}`;
-  return { entry: '', section: Command.experimental === true ? 'experimental' : 'commands', name: Command.command, text: [head, ...options].join('\n') };
+  const section = Command.experimental === true ? 'experimental' : Command.hidden === true && !(Command.command in HIDDEN_COMMANDS_IN_API) ? 'hidden' : 'commands';
+  return { entry: '', section, name: Command.command, text: [head, ...options].join('\n') };
 }
 
 /**
@@ -772,6 +789,7 @@ export async function runtimeItems(pkg: PackageToSnapshot): Promise<{ items: Api
     }
     for (const [from, to] of renamed) items.push({ entry: '', section: 'environment', name: from, text: `\`${from}\` → \`${to}\` (renamed)` });
     for (const Command of commands) items.push(commandItem(Command));
+    if (isCli) problems.push(...staleHiddenInApi(commands).map((problem) => `${pkg.name}: ${problem}`));
   } finally {
     if (before === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = before;

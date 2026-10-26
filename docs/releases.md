@@ -140,7 +140,7 @@ The promise of a version covers the public API. These are part of it:
   prefix (`members_sort`). People bookmark and share these URLs. A key does not change its name or its meaning, and a value that
   was valid stays valid.
 
-Not part of it are `./internal` subpaths, anything marked `@internal` or [experimental](#experimental), and the wording of messages and logs.
+Not part of it are `./internal` subpaths, anything marked `@internal` or [experimental](#experimental), a command marked `static hidden` (the snapshot lists those apart as "Hidden commands (not API)") except `serve`, which `marmeon start` runs, and the wording of messages and logs.
 The JSON API of the [devtools](devtools.md#for-other-tools) is covered only through its `version`: the answer of
 `/_marmeon/devtools/api` names the version of the API, and a tool reads the other answers by it. The other routes and the shape of
 the entries change only together with a new `version`. The devtools exist only in development.

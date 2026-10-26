@@ -237,8 +237,6 @@ marmeon make:test <name> --module=<module> [--path=/…]
 --force (boolean)
 --module (string, short m)
 --path (string)
-// modules:check
-marmeon modules:check
 // package:build
 marmeon package:build [package directories…] [--clean]
 --clean (boolean)
@@ -248,8 +246,6 @@ marmeon route:list [--json]
 // route:types
 marmeon route:types [--check]
 --check (boolean)
-// schema:project
-marmeon schema:project
 // serve
 marmeon serve [--workers=N]
 --workers (string)
@@ -258,4 +254,13 @@ marmeon tinker [--sandbox] [--execute "<code>"] [--no-history]
 --execute (string, short e)
 --no-history (boolean)
 --sandbox (boolean)
+```
+
+## Hidden commands (not API)
+
+```ts
+// modules:check
+marmeon modules:check
+// schema:project
+marmeon schema:project
 ```
