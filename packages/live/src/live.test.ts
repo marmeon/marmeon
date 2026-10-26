@@ -72,7 +72,8 @@ describe('live tokens — the answer that declares a channel signs it for its se
 });
 
 describe('the stream endpoint — GET /_marmeon/live', () => {
-  const request = (query: string, headers: Record<string, string> = {}) => ({ request: new Request(`http://app.test/_marmeon/live?${query}`, { headers }) }) as never;
+  const raw = (query: string, headers: Record<string, string> = {}) => ({ request: new Request(`http://app.test/_marmeon/live?${query}`, { headers }) }) as never;
+  const request = (query: string, headers: Record<string, string> = {}) => raw(`v=1&${query}`, headers);
   const pair = (channel: string, scope = ADA) => `c=${encodeURIComponent(`${tokens.sign(scope, channel)}.${channel}`)}`;
 
   it('opens a stream for channels signed for this session — with the stream headers', async () => {
@@ -90,6 +91,38 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     expect(await reader.hello()).toEqual({ seq: { 'users.1': 0, 'dashboard.sign-ins': 0 } });
     expect(reader.retryMilliseconds).toBe(3000);
     expect(hub.streams()).toEqual([{ scope: ADA, connection: 'tab-a-0001', channels: ['users.1', 'dashboard.sign-ins'] }]);
+  });
+
+  it.each([['no version', ''], ['another version', 'v=2&'], ['an empty version', 'v=&'], ['the version twice', 'v=1&v=1&'], ['a version beside another', 'v=1&v=2&'], ['a version in other letters', 'V=1&']])(
+    'ends the stream with 204 and opens none for %s — before the tokens, the session or the sign-in are looked at',
+    async (_name, mark) => {
+      const hub = hubOf();
+      let asked = 0;
+      const scope = () => (asked++, ADA);
+      let checked = 0;
+      const audience = { check: async () => (checked++, { kind: 'guest' as const }) };
+      const controller = new LiveStreamController(hub, tokens, 20, scope, audience);
+      // A forged token, a missing connection and a missing session would each be refused later; the version comes first.
+      const forged = `c=${encodeURIComponent(`${tokens.sign(ADA, 'users.1')}.users.2`)}`;
+      for (const query of [`connection=tab-a-0001&${pair('users.1')}`, `connection=tab-a-0001&${forged}`, pair('users.1'), '']) {
+        const response = await controller.handle(raw(`${mark}${query}`));
+        expect(response.status).toBe(204);
+        expect(response.headers.get('content-type')).not.toBe('text/event-stream; charset=utf-8');
+        expect(await response.text()).toBe('');
+      }
+      expect(hub.size).toBe(0);
+      expect(asked).toBe(0);
+      expect(checked).toBe(0);
+    },
+  );
+
+  it('with the version, a forged token is still a 403 and no stream', async () => {
+    const hub = hubOf();
+    const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
+    const forged = `c=${encodeURIComponent(`${tokens.sign(ADA, 'users.1')}.users.2`)}`;
+    expect((await controller.handle(raw(`v=1&connection=tab-a-0001&${forged}`))).status).toBe(403);
+    expect((await controller.handle(raw(`connection=tab-a-0001&${forged}&v=1`))).status).toBe(403);
+    expect(hub.size).toBe(0);
   });
 
   it('takes the timeout of waitFor() as a duration', async () => {
@@ -432,7 +465,7 @@ describe('the stream — hints, never data', () => {
       const hub = hubOf(backend);
       const process = new LiveTokens(to);
       const reader = new LiveStreamController(hub, process, 20, () => ADA, { check: async () => ({ kind: 'account', scope: 'acct-1' }) });
-      const stream = new LiveStreamReader(await reader.handle({ request: new Request(`http://app.test/_marmeon/live?connection=tab-a-0001&c=${encodeURIComponent(`${process.sign(ADA, 'users.1')}.users.1`)}`) } as never));
+      const stream = new LiveStreamReader(await reader.handle({ request: new Request(`http://app.test/_marmeon/live?v=1&connection=tab-a-0001&c=${encodeURIComponent(`${process.sign(ADA, 'users.1')}.users.1`)}`) } as never));
       cleanups.push(() => stream.close());
       await stream.hello();
       for (const keyed of new LiveTokens(from).accountScopes('acct-1')) await backend.end(keyed);

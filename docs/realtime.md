@@ -259,6 +259,16 @@ A number that starts again, because its Redis key expired or was flushed, never 
 hint whatever its number, and a reconnect that finds another number than it knew reloads that channel once. When the server stops,
 it closes every stream, and the browsers connect to the next server and catch up.
 
+## A stream of another version
+
+The tab opens its stream with `v=1` in the query (`GET /_marmeon/live?v=1&connection=…&c=…`), and the frames of the stream and
+the messages between processes are fixed with that version. The server answers a request whose `v` is missing, is another one, or
+is given twice with `204` and no stream, before it reads a token or asks who the session is. The browser
+stops its own reconnecting after a `204`, so a tab left open across a deploy that changed the version stops its live updates. The
+tab asks again every 30 seconds and gets the same cheap `204` (the session is read, no stream opens) until its next visit meets
+the new build's asset-version `409` and reloads ([a new version of the app](navigation.md#a-new-version-of-the-app)). The mark is
+part of the [list of formats](releases.md#stored-and-wire-formats); an app does nothing for it.
+
 ## Behind a proxy
 
 A stream holds a connection open for each tab. Over HTTP/1.1 a browser opens at most six connections per host, so on such a page

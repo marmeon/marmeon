@@ -1,6 +1,6 @@
 import type { Logger } from '@marmeon/core';
 import type { RedisConnection, RedisScript } from '@marmeon/redis';
-import { parseMessage, type LiveBackend, type LiveMessage } from './backend.ts';
+import { LIVE_MESSAGE_VERSION, parseMessage, type LiveBackend, type LiveMessage } from './backend.ts';
 
 /** How long Redis keeps a channel's sequence after its last hint — a stream away longer reloads once (unknown = changed). */
 const SEQ_TTL_SECONDS = 86_400;
@@ -47,12 +47,12 @@ export class RedisLiveBackend implements LiveBackend {
   }
 
   async refresh(channel: string, only: readonly string[] | null, except: string | undefined): Promise<number> {
-    const head = JSON.stringify({ kind: 'refresh', channel, only, ...(except === undefined ? {} : { except }) }).slice(0, -1) + ',"seq":';
+    const head = JSON.stringify({ v: LIVE_MESSAGE_VERSION, kind: 'refresh', channel, only, ...(except === undefined ? {} : { except }) }).slice(0, -1) + ',"seq":';
     return Number(await this.#connection.run(this.#refresh, [this.#seqKey(channel), this.#channel], [SEQ_TTL_SECONDS, head]));
   }
 
   async end(scope: string): Promise<void> {
-    await this.#connection.command(['PUBLISH', this.#channel, JSON.stringify({ kind: 'end', scope })]);
+    await this.#connection.command(['PUBLISH', this.#channel, JSON.stringify({ v: LIVE_MESSAGE_VERSION, kind: 'end', scope })]);
   }
 
   async seqs(channels: readonly string[]): Promise<number[]> {

@@ -8,7 +8,7 @@
  * for the old one. Only a running navigator (`start()` → `stop()`) opens a stream; the second navigator React builds after a
  * hydration mismatch opens none.
  */
-import { CONNECTION_HEADER, LIVE_PATH } from '../../live-protocol.ts';
+import { CONNECTION_HEADER, LIVE_PATH, LIVE_VERSION } from '../../live-protocol.ts';
 import type { LiveHint, LiveSubscription } from '../../protocol.ts';
 import { defineFeature, slot } from '../feature.ts';
 import { notify } from '../notify.ts';
@@ -129,7 +129,7 @@ export const live = /* @__PURE__ */ defineFeature('live', (host): LiveFeature =>
     if (current.paused) return void (current.source && close(current));
     const channels = new Map<string, string>();
     for (const target of targets()) for (const { channel, token } of target.live ?? []) channels.set(channel, token);
-    const query = new URLSearchParams({ connection });
+    const query = new URLSearchParams({ v: LIVE_VERSION, connection });
     for (const channel of [...channels.keys()].sort()) query.append('c', `${channels.get(channel)}.${channel}`);
     const url = channels.size > 0 ? `${LIVE_PATH}?${query}` : undefined;
     const hidden = h1 && doc?.visibilityState === 'hidden';

@@ -48,6 +48,9 @@ describe('live props in the client core — server-driven, one stream per docume
     const source = win.source!;
     const url = new URL(source.url, ORIGIN);
     expect(url.pathname).toBe('/_marmeon/live');
+    // The version leads: a server that speaks another one refuses the stream before it reads anything else.
+    expect(url.searchParams.getAll('v')).toEqual(['1']);
+    expect(url.search.startsWith('?v=1&connection=')).toBe(true);
     expect(url.searchParams.get('connection')).toMatch(/^[0-9a-f]{24}$/);
     expect(url.searchParams.getAll('c')).toEqual(['t-notifications_user_1.notifications.user.1', 't-users_1.users.1']);
     // An island that follows a channel of its own joins the same stream (one connection: the old one closes).

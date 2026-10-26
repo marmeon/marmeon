@@ -45,7 +45,7 @@ describe('a live stream and the server', () => {
     const cookie = answer.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
     const { channel, token } = page.live![0]!;
     const stream = new LiveStreamReader(
-      await fetch(`http://127.0.0.1:${port}/_marmeon/live?connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } }),
+      await fetch(`http://127.0.0.1:${port}/_marmeon/live?v=1&connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } }),
     );
     expect(await stream.hello()).toEqual({ seq: { 'board.1': 0 } });
     // Read-only: the stream sets no cookie.
@@ -88,7 +88,7 @@ describe('a live stream and the server', () => {
     const page = (await answer.json()) as PageObject;
     const cookie = answer.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
     const { channel, token } = page.live![0]!;
-    const stream = fetch(`http://127.0.0.1:${port}/_marmeon/live?connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } });
+    const stream = fetch(`http://127.0.0.1:${port}/_marmeon/live?v=1&connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`, { headers: { accept: 'text/event-stream', cookie } });
     await waiting;
     const closed = running.close();
     release();

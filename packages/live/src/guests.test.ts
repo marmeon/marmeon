@@ -36,7 +36,7 @@ describe('a guest without a session follows a channel (no guest sessions)', asyn
     const answer = await kernel.request('/board', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     const cookie = answer.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
     const { channel, token } = ((await answer.json()) as PageObject).live![0]!;
-    const query = `connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`;
+    const query = `v=1&connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`;
     // A script or a proxy that leaves the header out: the same stream — and nothing written (strict: a write would throw).
     for (const headers of [{ cookie }, { cookie, accept: '*/*' }]) {
       const stream = await kernel.request(`/_marmeon/live?${query}`, { headers });
@@ -50,7 +50,7 @@ describe('a guest without a session follows a channel (no guest sessions)', asyn
     const answer = await kernel.request('/board', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     const cookie = answer.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
     const { channel, token } = ((await answer.json()) as PageObject).live![0]!;
-    const query = `connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`;
+    const query = `v=1&connection=tab-a-0001&c=${encodeURIComponent(`${token}.${channel}`)}`;
     for (const path of ['/%5Fmarmeon/live', '/%5fmarmeon/live']) {
       const stream = await kernel.request(`${path}?${query}`, { headers: { cookie } });
       expect(stream.status).toBe(200);

@@ -450,6 +450,11 @@ With old and new nodes side by side, from the release that marks them on:
   their attempt given back and run on a newer worker. After six hours they fail with the reason and leave the queue. Keep a worker of the newer release
   running until the queue has drained ([deploying while jobs wait](queues.md#deploying-while-jobs-wait)). A queued listener is found
   by its `static listener` name, so renaming its class changes nothing for jobs that wait.
+- **Live streams** open with a version in the query. A tab of the release before sends none and gets `204`: it stops its live updates
+  until its next visit reloads it ([a stream of another version](realtime.md#a-stream-of-another-version)).
+- **Live hints** between nodes carry a version. Hints published by a node of the release before are ignored by a new one, and the
+  other way round, so during the rollout a hint can miss tabs on the other side (a tab catches up when its stream reconnects). An end
+  that is lost is bounded by `LIVE_MAX_STREAM_SECONDS`.
 - **The database** is shared, and a release that changes a table changes it for every node. Run `marmeon migrate --force` first, then
   roll the nodes. A migration that drops or renames a column or table breaks the previous release's `selectAll()`, `returningAll()`,
   relations and finders on that table for the rollout: stop its processes before `migrate`

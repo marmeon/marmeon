@@ -1,0 +1,15 @@
+retry: 3000
+
+event: hello
+id: users.1=2
+data: {"seq":{"users.1":2}}
+
+event: refresh
+id: users.1=3
+data: {"channel":"users.1","only":["posts"],"seq":3}
+
+: heartbeat
+
+event: end
+data: {}
+
