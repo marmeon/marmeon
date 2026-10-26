@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import { appendFile, mkdir, open, readdir, rm, stat, type FileHandle } from 'node:fs/promises';
-import { join } from 'node:path';
+import { appendFile, chmod, mkdir, open, readdir, rm, stat, type FileHandle } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { AnyEntry } from './entry.ts';
 import { limitOf, matchesHead, type DevtoolsStore, type EntryHead, type EntryQuery, type EntryTail, type PruneResult, type StoreUsage } from './store.ts';
 
@@ -35,6 +36,8 @@ interface Segment {
   readonly name: string;
   readonly hour: string;
   bytes: number;
+  /** Whether the file was made by this store (owner-only); later writes append. */
+  created: boolean;
 }
 
 /** How far a file was read, and which file it was (a file of the same name written anew starts over). */
@@ -101,21 +104,44 @@ export class FileDevtoolsStore implements DevtoolsStore {
     this.#writes = this.#writes.then(async () => {
       try {
         if (!this.#directoryMade) {
-          await mkdir(this.directory, { recursive: true });
+          await this.#makeDirectory();
           this.#directoryMade = true;
         }
         const { target, rotated } = this.#target(bytes);
-        await appendFile(target.path, data);
+        if (!target.created) {
+          // `ax` fails on an existing path (a planted symlink included); the entries hold mail bodies and job payloads, so owner-only.
+          const handle = await open(target.path, 'ax', 0o600);
+          await handle.close();
+          target.created = true;
+        }
+        // Created again owner-only when another process removed the file meanwhile; never through a symlink.
+        await appendFile(target.path, data, { flag: constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, mode: 0o600 });
         target.bytes += bytes;
         this.#since += bytes;
         if (rotated || this.#checked + this.#since > this.maxBytes) await this.#prune();
       } catch (error) {
         // A directory removed under us (`rm -rf storage`): made again with the next write.
         this.#directoryMade = false;
+        this.#current = undefined;
         this.#onError(error, 'write');
       }
     });
     return this.#writes;
+  }
+
+  /** The directory owner-only, and a directory or files an older version left wider closed to others. */
+  async #makeDirectory(): Promise<void> {
+    await mkdir(dirname(this.directory), { recursive: true });
+    await mkdir(this.directory, { mode: 0o700 }).catch(async (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EEXIST' || !(await stat(this.directory)).isDirectory()) throw error;
+    });
+    try {
+      await chmod(this.directory, 0o700);
+      for (const file of await readdir(this.directory)) if (file.endsWith('.ndjson')) await closeToOthers(join(this.directory, file));
+    } catch (error) {
+      // A directory of another owner (EPERM): the entries still work, only the mode stays as it is.
+      this.#onError(error, 'write');
+    }
   }
 
   /** The file the next `bytes` go to: this process's file of this hour, a new one when it is full. */
@@ -125,7 +151,7 @@ export class FileDevtoolsStore implements DevtoolsStore {
     if (current && current.hour === hour && (current.bytes === 0 || current.bytes + bytes <= this.#segmentMax)) return { target: current, rotated: false };
     this.#segment++;
     const name = `${hour}-${this.#process}-${String(this.#segment).padStart(4, '0')}.ndjson`;
-    this.#current = { path: join(this.directory, name), name, hour, bytes: 0 };
+    this.#current = { path: join(this.directory, name), name, hour, bytes: 0, created: false };
     return { target: this.#current, rotated: current === undefined || current.hour !== hour };
   }
 
@@ -359,6 +385,19 @@ export class FileDevtoolsStore implements DevtoolsStore {
 /** Oldest first: by start, then by id. */
 function compare(a: EntryHead, b: EntryHead): number {
   return a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/** Makes a regular file owner-only through a handle that does not follow links; anything else (a symlink, a pipe) stays as it is. */
+async function closeToOthers(path: string): Promise<void> {
+  let handle: FileHandle | undefined;
+  try {
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    if ((await handle.stat()).isFile()) await handle.chmod(0o600);
+  } catch {
+    // Not ours or not a file: left alone.
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
 }
 
 /** `2026100414` — the UTC hour of `ms`. */

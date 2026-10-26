@@ -134,7 +134,7 @@ start, and so does an unknown name in `record`.
 
 The entries are files in `storage/framework/devtools/`, one file per process and hour. The server, the worker and the scheduler
 of `marmeon dev` write into the same directory, and the pages show them together. The files form a ring: by default 50 MB and 24
-hours. The files are a cache of the version that wrote them, so after an update older entries may show incompletely
+hours. The directory and its files are readable by their owner only (`0o700` and `0o600`), because entries hold mail bodies and job payloads. The files are a cache of the version that wrote them, so after an update older entries may show incompletely
 (`devtools:clear` empties them). Each process that writes keeps the ring within its limits, and two commands help:
 
 ```sh
