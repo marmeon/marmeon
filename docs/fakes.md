@@ -113,7 +113,7 @@ a dispatch is recorded with the commit, and a rollback records nothing.
 | `assertListenerQueued(Listener, match)` | A [queued listener](events.md#queued-listeners) was queued. |
 | `assertListenerNotQueued(Listener, match)` | It was not. |
 
-`dispatched(Job, match)` returns the dispatches themselves, with their payload, id, queue, `delaySeconds` and unique key. `pending()` lists
+`dispatched(Job, match)` returns the dispatches themselves, with their payload, id, queue, `delaySeconds` and unique key (`unique.key`, `unique.forSeconds`, `unique.until`). `pending()` lists
 the jobs still waiting, `failed()` the jobs `work()` recorded as failed, and `size(queue)` counts a queue. A unique job takes its
 lock in the app's cache as on a real queue, so a second dispatch with the same key is not recorded until `work()` ran the first.
 The [queues](queues.md) page covers jobs.

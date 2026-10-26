@@ -288,14 +288,14 @@ was never confirmed, as a line that is commented out: deleting accounts is your 
 
 Every run says what became of it through the app's event dispatcher:
 
-| Event | When | Fields besides `task`, `minute` and `reason` |
+| Event | When | Fields besides `task`, `dueAt` and `reason` |
 | --- | --- | --- |
 | `ScheduledTaskStarting` | The run passed its filters and locks and starts. | none |
 | `ScheduledTaskFinished` | The run ended. | `ms` |
 | `ScheduledTaskFailed` | The run threw, or its command ended with another exit code than 0. | `error`, `ms` |
 | `ScheduledTaskSkipped` | The task was due and did not run. With `job-waiting` it comes after `ScheduledTaskStarting`, because the queue says no only when the task tries to queue its job. | `skipped`: `filter`, `other-server`, `overlapping` or `job-waiting` |
 
-`reason` says why it ran: `due`, `catch-up` or `test`. All of them extend `ScheduledTaskEvent`. A listener runs in the scheduler's
+`dueAt` is the time the task was due (epoch ms; for a catch-up, the last time it was missed). `reason` says why it ran: `due`, `catch-up` or `test`. All of them extend `ScheduledTaskEvent`. A listener runs in the scheduler's
 process, and its error is logged and changes nothing about the run. This one raises an alert for every failed task:
 
 ```ts title="modules/system/listeners/AlertOnFailedTask.ts"

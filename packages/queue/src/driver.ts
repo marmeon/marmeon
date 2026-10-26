@@ -26,9 +26,9 @@ export interface ReleaseOptions {
    */
   readonly refund?: boolean;
   /**
-   * When the job can be claimed again (epoch ms). A driver that keeps the payload writes it into the stored record's `availableAt`
-   * (see {@link withAvailableAt}), so a worker that cannot read the record yet counts how long it waited from here. Optional:
-   * a driver that ignores it leaves the payload as it was.
+   * When the job can be claimed again (epoch ms). A driver that keeps the payload writes it into the stored payload's `availableAt`
+   * field, so a worker that cannot read the record yet counts how long it waited from here. Optional: a driver that ignores it
+   * leaves the payload as it was.
    */
   readonly availableAt?: number;
 }

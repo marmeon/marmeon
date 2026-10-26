@@ -29,6 +29,7 @@ export class JobQueued extends JobEvent {
   /** Seconds before it may run. */
   readonly delaySeconds: number;
 
+  /** @internal Built by the worker and the queue. */
   constructor(data: ConstructorParameters<typeof JobEvent>[0] & { delaySeconds: number }) {
     super(data);
     this.delaySeconds = data.delaySeconds;
@@ -41,6 +42,7 @@ export class JobProcessing extends JobEvent {
   /** The attempt, from 1. */
   readonly attempt: number;
 
+  /** @internal Built by the worker and the queue. */
   constructor(data: ConstructorParameters<typeof JobEvent>[0] & { attempt: number }) {
     super(data);
     this.attempt = data.attempt;
@@ -56,6 +58,7 @@ export class JobProcessed extends JobEvent {
   /** The job ended itself with `job.discard()`. */
   readonly discarded: boolean;
 
+  /** @internal Built by the worker and the queue. */
   constructor(data: ConstructorParameters<typeof JobEvent>[0] & { attempt: number; ms: number; discarded: boolean }) {
     super(data);
     this.attempt = data.attempt;
@@ -76,6 +79,7 @@ export class JobReleased extends JobEvent {
   readonly reason: 'error' | 'job' | 'unknown' | 'stopping' | 'busy';
   readonly ms: number | undefined;
 
+  /** @internal Built by the worker and the queue. */
   constructor(data: ConstructorParameters<typeof JobEvent>[0] & { attempt: number; delaySeconds: number; reason: JobReleased['reason']; ms?: number }) {
     super(data);
     this.attempt = data.attempt;
@@ -92,6 +96,7 @@ export class JobFailed extends JobEvent {
   /** Why — as thrown (stored redacted in the failed jobs; a listener that logs it should redact it too). */
   readonly error: Error;
 
+  /** @internal Built by the worker and the queue. */
   constructor(data: ConstructorParameters<typeof JobEvent>[0] & { attempt: number; error: Error }) {
     super(data);
     this.attempt = data.attempt;

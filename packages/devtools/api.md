@@ -297,7 +297,7 @@ export interface RequestEntryContent {
 // ScheduleEntryContent
 export interface ScheduleEntryContent {
     readonly task: string;
-    readonly minute: number;
+    readonly dueAt: number;
     readonly reason: 'due' | 'catch-up' | 'test';
     readonly outcome?: 'ran' | 'skipped' | 'failed';
     readonly skipped?: string;
@@ -529,7 +529,7 @@ export interface RequestEntryContent {
 // ScheduleEntryContent
 export interface ScheduleEntryContent {
     readonly task: string;
-    readonly minute: number;
+    readonly dueAt: number;
     readonly reason: 'due' | 'catch-up' | 'test';
     readonly outcome?: 'ran' | 'skipped' | 'failed';
     readonly skipped?: string;

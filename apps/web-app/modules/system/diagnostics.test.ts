@@ -138,7 +138,7 @@ describe('a failed scheduled task', () => {
     };
     const app = await createTestApp(application, { override: (container) => container.instance(Logger, recording) });
     await app.make(EventDispatcher).dispatch(
-      new ScheduledTaskFailed({ task: 'user-profile.prune-data-exports', minute: Date.parse('2026-10-03T12:10:00Z'), reason: 'due', error: new Error('disk full, token=abc123, Cookie: a=1; marmeon_session=s3ss10nvalue'), ms: 12 }),
+      new ScheduledTaskFailed({ task: 'user-profile.prune-data-exports', dueAt: Date.parse('2026-10-03T12:10:00Z'), reason: 'due', error: new Error('disk full, token=abc123, Cookie: a=1; marmeon_session=s3ss10nvalue'), ms: 12 }),
     );
     app.events.assertDispatched(ScheduledTaskFailed);
     expect(entries).toEqual([

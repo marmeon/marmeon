@@ -182,7 +182,7 @@ export class Worker {
     }
   }
 
-  /** Runs one claimed job to its outcome. */
+  /** @internal Runs one claimed job to its outcome; `work()` and the test queue call it. */
   async process(reserved: ReservedJob, options: Pick<WorkOptions, 'stopTimeout' | 'signal' | 'onStuck'> = {}): Promise<Outcome> {
     const stopTimeout = stopTimeoutOf(options);
     const { runner, logger } = this.#deps;

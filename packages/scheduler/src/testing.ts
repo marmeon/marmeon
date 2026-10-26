@@ -34,6 +34,7 @@ export class ScheduleTester {
   readonly #travelTo: (time: number) => unknown;
   readonly #now: () => number;
 
+  /** @internal `createTestApp()` makes it. */
   constructor(scheduler: Scheduler, clock: { travelTo(time: number): unknown; now(): number }) {
     this.#scheduler = scheduler;
     this.#travelTo = (time) => clock.travelTo(time);

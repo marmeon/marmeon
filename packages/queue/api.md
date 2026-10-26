@@ -94,10 +94,6 @@ export declare class JobFailed extends JobEvent {
     #private;
     readonly attempt: number;
     readonly error: Error;
-    constructor(data: ConstructorParameters<typeof JobEvent>[0] & {
-        attempt: number;
-        error: Error;
-    });
 }
 // JobInput
 export type JobInput<J extends JobStatics> = SchemaInput<J['schema']>;
@@ -135,27 +131,16 @@ export declare class JobProcessed extends JobEvent {
     readonly attempt: number;
     readonly ms: number;
     readonly discarded: boolean;
-    constructor(data: ConstructorParameters<typeof JobEvent>[0] & {
-        attempt: number;
-        ms: number;
-        discarded: boolean;
-    });
 }
 // JobProcessing
 export declare class JobProcessing extends JobEvent {
     #private;
     readonly attempt: number;
-    constructor(data: ConstructorParameters<typeof JobEvent>[0] & {
-        attempt: number;
-    });
 }
 // JobQueued
 export declare class JobQueued extends JobEvent {
     #private;
     readonly delaySeconds: number;
-    constructor(data: ConstructorParameters<typeof JobEvent>[0] & {
-        delaySeconds: number;
-    });
 }
 // JobRecord
 export interface JobRecord {
@@ -177,9 +162,6 @@ export interface JobRecord {
 // JobRegistry
 export declare class JobRegistry {
     #private;
-    add(jobs: readonly JobClass[], source: string, options?: {
-        framework?: boolean;
-    }): this;
     get(name: string): JobClass | undefined;
     has(job: JobClass): boolean;
     all(): JobClass[];
@@ -191,12 +173,6 @@ export declare class JobReleased extends JobEvent {
     readonly delaySeconds: number;
     readonly reason: 'error' | 'job' | 'unknown' | 'stopping' | 'busy';
     readonly ms: number | undefined;
-    constructor(data: ConstructorParameters<typeof JobEvent>[0] & {
-        attempt: number;
-        delaySeconds: number;
-        reason: JobReleased['reason'];
-        ms?: number;
-    });
 }
 // JobStatics
 export interface JobStatics {
@@ -226,7 +202,9 @@ export interface Queue {
     bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
     chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
     using(transaction: Transaction<any>): Queue;
-    size(queue?: string, connection?: string): Promise<number>;
+    size(queue?: string, options?: {
+        readonly connection?: string;
+    }): Promise<number>;
 }
 export declare const Queue: import("@marmeon/core").Token<Queue>;
 // QueueConfig
@@ -262,15 +240,12 @@ export type QueueConnectionOptions = {
 // QueueConnections
 export declare class QueueConnections {
     #private;
-    verify(): void;
     get default(): string;
     names(): string[];
     options(name: string): QueueConnectionOptions;
     find(name: string): QueueConnectionOptions | undefined;
     driver(name: string): QueueDriver;
     failed(): FailedJobStore;
-    cache(): Promise<Cache>;
-    readonly events: (event: JobEvent) => Promise<void>;
     worker(connection: string, stopTimeout: Duration): Worker;
 }
 // QueueCounts
@@ -398,7 +373,6 @@ export interface WorkResult {
 export declare class Worker {
     #private;
     run(options: WorkOptions): Promise<WorkResult>;
-    process(reserved: ReservedJob, options?: Pick<WorkOptions, 'stopTimeout' | 'signal' | 'onStuck'>): Promise<Outcome>;
 }
 // queueTablesConnection
 export declare function queueTablesConnection(container: Resolver): string;
@@ -413,8 +387,6 @@ export declare function withoutOverlapping<J extends {
 ### Referenced, not exported
 
 ```ts
-// Outcome
-type Outcome = 'processed' | 'released' | 'failed' | 'interrupted';
 // SchemaInput
 export type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['input'] : never;
 // SchemaOutput
@@ -455,12 +427,18 @@ export interface DispatchedJob<J extends JobClass = JobClass> {
     readonly connection: string | undefined;
     readonly delaySeconds: number;
     readonly inTransaction: boolean;
-    readonly unique: (Pick<UniqueRecord, 'key' | 'for' | 'until'>) | undefined;
+    readonly unique: DispatchedUnique | undefined;
     readonly chain: readonly {
         readonly job: JobClass;
         readonly payload: unknown;
         readonly id: string;
     }[];
+}
+// DispatchedUnique
+export interface DispatchedUnique {
+    readonly key: string;
+    readonly forSeconds: number;
+    readonly until: 'processing' | 'done';
 }
 // QueueFake
 export declare class QueueFake implements Queue {
@@ -469,16 +447,14 @@ export declare class QueueFake implements Queue {
     bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
     chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
     using(transaction: Transaction<any>): Queue;
-    size(queue?: string): Promise<number>;
+    size(queue?: string, options?: {
+        readonly connection?: string;
+    }): Promise<number>;
     dispatched<J extends JobClass>(job: J, match?: DispatchMatch<J>): DispatchedJob<J>[];
     assertDispatched<J extends JobClass>(job: J, match?: DispatchMatch<J>, options?: {
         readonly unique?: string;
     }): this;
     assertChained(expected: readonly ChainMatch[]): this;
-    listenerQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): {
-        readonly payload: P;
-        readonly dispatched: DispatchedJob;
-    }[];
     assertListenerQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): this;
     assertListenerNotQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): this;
     assertDispatchedTimes<J extends JobClass>(job: J, times: number, match?: DispatchMatch<J>): this;
@@ -594,7 +570,9 @@ export interface Queue {
     bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
     chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
     using(transaction: Transaction<any>): Queue;
-    size(queue?: string, connection?: string): Promise<number>;
+    size(queue?: string, options?: {
+        readonly connection?: string;
+    }): Promise<number>;
 }
 export declare const Queue: import("@marmeon/core").Token<Queue>;
 // QueuedJob
@@ -617,13 +595,6 @@ export interface UniqueDispatchOptions extends Omit<DispatchOptions, 'unique'> {
     readonly unique: string;
     readonly uniqueFor?: Duration;
     readonly uniqueUntil?: 'processing' | 'done';
-}
-// UniqueRecord
-export interface UniqueRecord {
-    readonly lock: string;
-    readonly key: string;
-    readonly for: number;
-    readonly until: 'processing' | 'done';
 }
 // WorkOptions
 export interface WorkOptions {

@@ -42,7 +42,7 @@ channel, the framework builds no report for it at all, so the channels cost noth
 | `db.query` | Every statement, on every connection, once it ran. | Connection, driver, SQL, parameters, and `secret`. |
 | `queue.dispatch` | `dispatch()`, `bulk()` and `chain()`. | The jobs, their ids, connection, queue, delay, unique key, payloads. |
 | `queue.job` | Each attempt of a job, in a worker or in a test. | The job, its id, queue, attempt, the id of the request that dispatched it, payload, outcome. |
-| `schedule.task` | Each run of a scheduled task. | Task, minute, reason, outcome. |
+| `schedule.task` | Each run of a scheduled task. | Task, due time, reason, outcome. |
 | `mail.send` | Each mail sent, queued, or sent later by a worker. | The mailable, the mode, the addresses, subject, text, HTML, attachments. |
 | `notification.send` | Each send and each delivery. | Notification, id, recipient, channels, outcome. |
 | `live.refresh` | Each live hint, after its commit. | Channel and the props it names. |

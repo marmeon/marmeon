@@ -45,8 +45,8 @@ export type SkipReason = 'filter' | 'other-server' | 'overlapping' | 'job-waitin
 /** What became of one run. */
 export interface TaskResult {
   readonly task: string;
-  /** The minute it was due (for a catch-up: the last minute it was missed). */
-  readonly minute: number;
+  /** The time it was due (for a catch-up: the last time it was missed). */
+  readonly dueAt: number;
   readonly reason: RunReason;
   readonly outcome: 'ran' | 'skipped' | 'failed';
   readonly skipped?: SkipReason;
@@ -57,7 +57,7 @@ export interface TaskResult {
 /** A run that started: its task, and its result once done (never rejects). */
 export interface TaskRun {
   readonly task: Task;
-  readonly minute: number;
+  readonly dueAt: number;
   readonly reason: RunReason;
   readonly done: Promise<TaskResult>;
 }
@@ -180,14 +180,14 @@ export class Scheduler {
     );
   }
 
-  /** Whether a task runs the command `name` — e.g. the session asks for `session:prune` (then its lottery stays off). */
+  /** @internal Whether a task runs the command `name` — e.g. the session asks for `session:prune` (then its lottery stays off). */
   schedules(command: string): boolean {
     return this.tasks.some(
       (task) => task.definition.kind === 'command' && (typeof task.definition.target === 'string' ? task.definition.target.trim() : (task.definition.target as CommandClass).command) === command,
     );
   }
 
-  /** The tasks due in the minute of `time` (in this environment) — before their `when`/`skip` filters, which are asked when they run. */
+  /** @internal The tasks due in the minute of `time` (in this environment) — before their `when`/`skip` filters, which are asked when they run. */
   due(time: number): Task[] {
     const minute = minuteOf(time);
     return this.tasks.filter((task) => this.#inEnvironment(task) && isDue(task.expression, minute, task.timeZone));
@@ -199,7 +199,7 @@ export class Scheduler {
   }
 
   /**
-   * One tick, for the minute of `time`: starts every task due then — and, for a task with `catchUp('once')` (the
+   * @internal One tick, for the minute of `time`: starts every task due then — and, for a task with `catchUp('once')` (the
    * default), one run if it was due while the scheduler was down (since its last tick, at most {@link CATCH_UP_DAYS}
    * back), however many times it was missed. Resolves once the runs started; each run's `done` resolves when it ends.
    *
@@ -234,7 +234,7 @@ export class Scheduler {
     return runs;
   }
 
-  /** Runs `task` now (`schedule:test`): without its frequency, filters, environments and `onOneServer` — its overlap lock still counts. */
+  /** @internal Runs `task` now (`schedule:test`): without its frequency, filters, environments and `onOneServer` — its overlap lock still counts. */
   runNow(task: Task): TaskRun {
     return this.#start(task, minuteOf(this.#clock.now()), 'test');
   }
@@ -345,26 +345,26 @@ export class Scheduler {
     return this.#container.make(Cache);
   }
 
-  #start(task: Task, minute: number, reason: RunReason): TaskRun {
-    return { task, minute, reason, done: this.#execute(task, minute, reason) };
+  #start(task: Task, dueAt: number, reason: RunReason): TaskRun {
+    return { task, dueAt, reason, done: this.#execute(task, dueAt, reason) };
   }
 
   /** One run — never rejects: a failure is logged and reported in the result, the scheduler goes on. Traced on `schedule.task` while something listens. */
-  #execute(task: Task, minute: number, reason: RunReason): Promise<TaskResult> {
-    if (!runs.hasSubscribers) return this.#run(task, minute, reason);
-    const message: ScheduleTaskMessage = { ...messageBase(this.#app), task: task.name, minute, reason };
-    return trace(runs, message, () => this.#run(task, minute, reason), (ended, result) => {
+  #execute(task: Task, dueAt: number, reason: RunReason): Promise<TaskResult> {
+    if (!runs.hasSubscribers) return this.#run(task, dueAt, reason);
+    const message: ScheduleTaskMessage = { ...messageBase(this.#app), task: task.name, dueAt, reason };
+    return trace(runs, message, () => this.#run(task, dueAt, reason), (ended, result) => {
       ended.outcome = result.outcome;
       if (result.skipped) ended.skipped = result.skipped;
       if (result.outcome === 'failed') ended.error = result.error;
     });
   }
 
-  async #run(task: Task, minute: number, reason: RunReason): Promise<TaskResult> {
+  async #run(task: Task, dueAt: number, reason: RunReason): Promise<TaskResult> {
     const started = performance.now();
     const result = (outcome: TaskResult['outcome'], extra: Partial<TaskResult> = {}): TaskResult => ({
       task: task.name,
-      minute,
+      dueAt,
       reason,
       outcome,
       ms: Math.round(performance.now() - started),
@@ -375,7 +375,7 @@ export class Scheduler {
       runWithTask({ task: task.name }, async () => {
         const scope = this.#container.createScope();
         const logger = this.#logger.child({ task: task.name });
-        const about = { task: task.name, minute, reason };
+        const about = { task: task.name, dueAt, reason };
         // The events go through the app's dispatcher; a listener's error is logged, never the run's.
         const emit = async (event: ScheduledTaskEvent) => {
           try {
@@ -396,7 +396,7 @@ export class Scheduler {
           }
           const cache = this.#cache();
           if (reason !== 'test' && task.definition.onOneServer) {
-            const lock = cache.lock(`schedule:${task.name}:${new Date(minute).toISOString().slice(0, 16)}`, ONE_SERVER_SECONDS);
+            const lock = cache.lock(`schedule:${task.name}:${new Date(dueAt).toISOString().slice(0, 16)}`, ONE_SERVER_SECONDS);
             if (!(await lock.get())) {
               logger.debug(`Skipped ${task.name}: another server runs it`);
               return await skip('other-server');
@@ -414,7 +414,7 @@ export class Scheduler {
           try {
             logger.info(reason === 'catch-up' ? `Running ${task.name} — missed while the scheduler was down` : `Running ${task.name}`);
             await emit(new ScheduledTaskStarting(about));
-            const queued = await this.#perform(task, minute, scope, logger);
+            const queued = await this.#perform(task, dueAt, scope, logger);
             if (queued === false) {
               logger.info(`Skipped ${task.name}: the job queued last time still waits for a worker`);
               outcome = result('skipped', { skipped: 'job-waiting' });
@@ -453,7 +453,7 @@ export class Scheduler {
   }
 
   /** Does the work; `false` when a job was not queued because the last one still waits. */
-  async #perform(task: Task, minute: number, scope: Container, logger: Logger): Promise<boolean | void> {
+  async #perform(task: Task, dueAt: number, scope: Container, logger: Logger): Promise<boolean | void> {
     const { definition } = task;
     switch (definition.kind) {
       case 'job': {
@@ -461,11 +461,11 @@ export class Scheduler {
         // Unique until a worker starts it: while the last one still waits, no second one — workers that are behind
         // or down find one waiting job, not one per tick. The lock outlives the next due time (by JOB_UNIQUE_FOR), so a
         // job lost on its way never blocks the task for longer than that.
-        const next = nextDue(task.expression, minute, task.timeZone);
+        const next = nextDue(task.expression, dueAt, task.timeZone);
         const id = await scope.make(Queue).dispatch(definition.target as JobClass, definition.payload as never, {
           unique: `schedule:${task.name}`,
           uniqueUntil: 'processing',
-          uniqueFor: (next === undefined ? 0 : (next - minute) / 1000) + JOB_UNIQUE_FOR,
+          uniqueFor: (next === undefined ? 0 : (next - dueAt) / 1000) + JOB_UNIQUE_FOR,
         });
         return id !== undefined;
       }

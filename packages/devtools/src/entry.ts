@@ -184,8 +184,8 @@ export interface ExceptionEntryContent extends ErrorDetails {
 
 export interface ScheduleEntryContent {
   readonly task: string;
-  /** The minute it was due (epoch ms). */
-  readonly minute: number;
+  /** The time it was due (epoch ms). */
+  readonly dueAt: number;
   readonly reason: 'due' | 'catch-up' | 'test';
   readonly outcome?: 'ran' | 'skipped' | 'failed';
   readonly skipped?: string;

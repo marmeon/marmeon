@@ -229,7 +229,7 @@ export class SendRemindersController extends Controller {
 | `connection` | The queue connection. Without it `QUEUE_DRIVER`. |
 
 `bulk([[Job, payload], [Job, payload]])` queues several jobs and resolves with their ids. Every payload is checked before the
-first is queued, so one bad payload queues none. `size(queue?)` counts the jobs that wait or run on a queue.
+first is queued, so one bad payload queues none. `size(queue?, { connection? })` counts the jobs that wait or run on a queue.
 
 ## Running workers
 

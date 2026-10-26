@@ -24,7 +24,7 @@ describe('the member numbers snapshot', () => {
     await register(app, 'two@example.com');
     await register(app, 'three@example.com');
     app.queue.assertDispatchedTimes(RebuildMemberStatsJob, 1).assertDispatched(RebuildMemberStatsJob, undefined, { unique: 'members' });
-    expect(app.queue.dispatched(RebuildMemberStatsJob)[0]!.unique).toEqual({ key: 'members', for: 600, until: 'processing' });
+    expect(app.queue.dispatched(RebuildMemberStatsJob)[0]!.unique).toEqual({ key: 'members', forSeconds: 600, until: 'processing' });
     // Until the job ran, the island reads the snapshot (no count per request).
     expect((await stats.current()).members).toBe(before);
 

@@ -25,7 +25,7 @@ export const FRAMEWORK_PREFIX = 'marmeon.';
 export class JobRegistry {
   readonly #jobs = new Map<string, { readonly job: JobClass; readonly source: string }>();
 
-  /** Registers job classes; `source` names where they come from in errors (`module auth`). */
+  /** @internal Registers job classes; `source` names where they come from in errors (`module auth`). */
   add(jobs: readonly JobClass[], source: string, options: { framework?: boolean } = {}): this {
     for (const job of jobs) {
       const name = checkJobClass(job, source);
