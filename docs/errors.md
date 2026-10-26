@@ -518,7 +518,7 @@ included, gets the code alone.
 | C2 | `resolveRoute` | A route name the browser does not know. API routes, `.internal()` routes and `clientRoutes.except` never ship. |
 | C3 | query state | The query state of a route, used on the page of another route. |
 | C4 | query state | The query state of a route without a query schema. |
-| C5 | `createPoll` | A poll interval of 0 ms or less. |
+| C5 | `createPoll` | A poll interval that is not a number from above 0 up to 2147483647 ms. |
 | C6 | layers | A layer depth outside 1 to 10. |
 | C7 | layers | A hint in development: the server answered with a layer before any code loaded the layers. They load now. |
 | C8 | layers | A warning in development: a deep link's document has layers, but they were not attached before the first render. |

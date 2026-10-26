@@ -1022,6 +1022,7 @@ export interface PollDocument {
 }
 // PollOptions
 export interface PollOptions {
+    intervalMs: number;
     keepAlive?: boolean;
     document?: PollDocument;
 }
@@ -1177,7 +1178,7 @@ export interface VisitProgress {
 // accepted
 export declare function accepted(request: ConfirmRequest, answer: ConfirmAnswer): boolean;
 // createPoll
-export declare function createPoll(run: () => Promise<unknown>, intervalMs: number, { keepAlive, document }?: PollOptions): Poll;
+export declare function createPoll(run: () => Promise<unknown>, options: PollOptions): Poll;
 // hooks
 export declare const hooksHandle: FeatureHandle<ClientHooks>;
 // isDevelopment
@@ -1825,6 +1826,7 @@ export interface PollDocument {
 }
 // PollOptions
 export interface PollOptions {
+    intervalMs: number;
     keepAlive?: boolean;
     document?: PollDocument;
 }
@@ -2161,7 +2163,7 @@ export declare const actions: import("../feature.ts").Feature<ActionsFeature>;
 // assertQueryPage
 export declare function assertQueryPage(name: string, path: string, page: Pick<PageObject, 'url' | 'queryDefaults'>): void;
 // createPoll
-export declare function createPoll(run: () => Promise<unknown>, intervalMs: number, { keepAlive, document }?: PollOptions): Poll;
+export declare function createPoll(run: () => Promise<unknown>, options: PollOptions): Poll;
 // defaultFormEntries
 export declare function defaultFormEntries(form: {
     readonly elements: ArrayLike<unknown>;

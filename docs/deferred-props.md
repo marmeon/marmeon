@@ -112,12 +112,12 @@ called only when the answer includes it, so a partial reload of other props neve
 `usePoll()` reloads the page in the background at an interval:
 
 ```tsx
-usePoll<ShowNoteController>(15_000, { only: ['revisions'] });
+usePoll<ShowNoteController>({ intervalMs: 15_000 }, { only: ['revisions'] });
 ```
 
 The poll shows no progress bar and cancels no visit. It pauses while the tab is hidden and catches up when the tab is shown again.
-It stops when the component unmounts. The third argument takes `keepAlive: true` to poll in a hidden tab too, and
-`autoStart: false` to start later. `usePoll()` returns `{ start, stop }`.
+It stops when the component unmounts. The first argument sets the interval as `intervalMs` and takes `keepAlive: true` to poll in a hidden tab too, and
+`autoStart: false` to start later; the second is the reload options (`only`, `except` …), optional. `usePoll()` returns `{ start, stop }`.
 
 ## Merged props
 

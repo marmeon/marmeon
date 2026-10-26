@@ -11,6 +11,8 @@ export interface PollDocument {
 }
 
 export interface PollOptions {
+  /** Milliseconds between two turns: above 0, up to 2147483647 (the longest a timer holds). */
+  intervalMs: number;
   /** Keep polling while the tab is hidden (default: pause, and catch up when it is shown again). */
   keepAlive?: boolean;
   /** Default: the browser's `document`. */
@@ -27,9 +29,11 @@ export interface Poll {
  * Polls with `run` (a background reload): paused while `document.visibilityState` is `hidden` — nobody looks, and
  * browsers throttle background timers anyway — and on coming back, it polls right away if a turn was missed.
  */
-export function createPoll(run: () => Promise<unknown>, intervalMs: number, { keepAlive = false, document = globalThis.document }: PollOptions = {}): Poll {
-  if (!(intervalMs > 0)) {
-    throw new RangeError(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:C5] A poll needs an interval above 0 ms, got ${intervalMs}.` : `[marmeon:C5] ${intervalMs}`);
+export function createPoll(run: () => Promise<unknown>, options: PollOptions): Poll {
+  if (typeof options !== 'object' || options === null) throw new TypeError('createPoll(run, { intervalMs }) takes its interval in the options object.');
+  const { intervalMs, keepAlive = false, document = globalThis.document } = options;
+  if (!(Number.isFinite(intervalMs) && intervalMs > 0 && intervalMs <= 2_147_483_647)) {
+    throw new RangeError(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:C5] A poll needs an interval above 0 and up to 2147483647 ms, got ${intervalMs}.` : `[marmeon:C5] ${intervalMs}`);
   }
   let running = false;
   let inFlight = false;

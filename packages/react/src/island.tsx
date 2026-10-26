@@ -221,7 +221,7 @@ function BrowserIsland({ url, streamed, scriptId, onShown, ...props }: BodyProps
   const ready = snapshot.status === 'ready';
   useEffect(() => {
     if (!region || !visible || !ready || !pollMs) return undefined;
-    const polling = createPoll(() => region.reload(), pollMs, { keepAlive });
+    const polling = createPoll(() => region.reload(), { intervalMs: pollMs, keepAlive });
     polling.start();
     return () => polling.stop();
   }, [region, visible, ready, pollMs, keepAlive]);

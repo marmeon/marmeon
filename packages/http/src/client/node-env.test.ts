@@ -34,7 +34,7 @@ function observe(value: string | undefined) {
     development: isDevelopment(),
     c1: message(() => resolveRoute(undefined, 'people.show')),
     c2: message(() => resolveRoute({}, 'people.show')),
-    c5: message(() => createPoll(async () => {}, 0)),
+    c5: message(() => createPoll(async () => {}, { intervalMs: 0 })),
     hook: patched.mock.calls.length,
   };
 }
@@ -51,7 +51,7 @@ describe('NODE_ENV is checked positively in the client core', () => {
     expect(seen.development).toBe(true);
     expect(seen.c1).toMatch(/^\[marmeon:C1\] Route \[people\.show\]: the browser has no route manifest/);
     expect(seen.c2).toMatch(/^\[marmeon:C2\] Route \[people\.show\] is not defined in the browser/);
-    expect(seen.c5).toBe('[marmeon:C5] A poll needs an interval above 0 ms, got 0.');
+    expect(seen.c5).toBe('[marmeon:C5] A poll needs an interval above 0 and up to 2147483647 ms, got 0.');
     expect(seen.hook).toBe(1);
   });
 });
