@@ -4,7 +4,7 @@ import { style } from '../output.ts';
 /** `marmeon` without arguments: every command, grouped by namespace. */
 export function printCommandList({ output }: Pick<CommandInput, 'output'>, commands: readonly CommandClass[]): void {
   output.line(`${style('bold', 'Marmeon')}  ${style('dim', 'usage: marmeon <command> [arguments] [--options]')}`);
-  const visible = [...LAUNCHER, ...commands.filter((command) => !command.hidden)];
+  const visible = [...LAUNCHER, ...commands.filter((command) => !command.hidden && !launcher.has(command.command))];
   const width = Math.max(...visible.map((command) => command.command.length));
   let group: string | undefined;
   for (const command of visible.sort((a, b) => namespace(a).localeCompare(namespace(b)) || a.command.localeCompare(b.command))) {
@@ -34,13 +34,14 @@ const LAUNCHER = [
   { command: 'start', description: 'Start the production server (after marmeon build)' },
 ] as unknown as CommandClass[];
 
+const launcher = new Set(LAUNCHER.map((command) => command.command));
+
 /**
  * `marmeon list --json`: the commands `printCommandList` shows, with their options. `complete` is false when the app did not
  * load and only the built-ins are known; why is in `warnings`.
  */
 export function printCommandListJson({ output }: Pick<CommandInput, 'output'>, commands: readonly CommandClass[], complete = true, warnings: readonly string[] = []): void {
-  const launcher = new Set(LAUNCHER.map((command) => command.command));
-  const visible = [...LAUNCHER, ...commands.filter((command) => !command.hidden)];
+  const visible = [...LAUNCHER, ...commands.filter((command) => !command.hidden && !launcher.has(command.command))];
   output.json({
     format: 1,
     complete,

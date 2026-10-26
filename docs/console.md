@@ -33,8 +33,9 @@ Set these variables in the environment or in .env (see .env.example).
   $ marmeon key:generate
 ```
 
-The generators, `build`, `discover`, `key:generate`, `make:lint-config` and `make:docker` work without booting, so they run
-before the app has a valid `.env`. `route:types` and `make:command` register the app's providers without booting them, as the
+The `make:*` generators of the framework itself (`make:module`, `make:controller` …), `build`, `discover`, `key:generate`,
+`make:lint-config` and `make:docker` work without booting, so they run before the app has a valid `.env`. The generators of
+packages (`make:auth`, `publish`, `make:*-table`) boot the app. `route:types` and `make:command` register the app's providers without booting them, as the
 build does, and need no secret either.
 
 A command's options are checked before it runs. An unknown option, an option without its value or a value an option does not take (`--force=x`) is an error that prints
@@ -276,7 +277,7 @@ export default defineModule({
 });
 ```
 
-- **`static command`** is the name you type. A part before a colon groups it in the list. A name used twice by different commands — two modules, a module and a package, or a module and a built-in — fails `marmeon build` and the start with an error naming both classes and where they come from (a built-in that runs without booting, such as `make:*` or `key:generate`, still runs, but `marmeon build`, `marmeon list` and every command that loads the app report the clash); the same class listed twice is fine. `list` and `help` are marmeon's own and refused as command names.
+- **`static command`** is the name you type. A part before a colon groups it in the list. A name used twice by different commands — two modules, a module and a package, or a module and a built-in — fails `marmeon build` and the start with an error naming both classes and where they come from (a built-in that runs without booting, such as `make:*` or `key:generate`, still runs, but `marmeon build`, `marmeon list` and every command that loads the app report the clash); the same class listed twice is fine. `list`, `help`, `dev` and `start` are marmeon's own (the last two are handled by the launcher before any command is looked up) and refused as command names with K8.
 - **`static usage`** is shown in errors, after the name: `Usage: marmeon notes:prune-archived [--days=30]`.
 - **`static options`** declares the options in the format of Node's `parseArgs`: `{ type: 'string' }` or `{ type: 'boolean' }`,
   with `short: 'd'` for a one-letter form. An option the command does not declare is an error before the command runs.

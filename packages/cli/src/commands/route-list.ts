@@ -6,6 +6,7 @@ import type { CommandInput } from '../command.ts';
 export class RouteListCommand {
   static command = 'route:list';
   static description = 'List all registered routes';
+  static usage = '[--json]';
   static options = { json: { type: 'boolean' } } as const;
 
   readonly #router: Router;

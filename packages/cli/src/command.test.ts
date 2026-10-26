@@ -77,6 +77,11 @@ describe('CommandRegistry reserved names', () => {
   it.each(['list', 'help'])('refuses %s, which marmeon answers itself', (name) => {
     expect(() => new CommandRegistry().add([named(name, 'ours')], 'module x')).toThrow(`"${name}" is marmeon's own command`);
   });
+
+  it.each(['dev', 'start'])('refuses %s, which the launcher handles before any command is looked up', (name) => {
+    expect(() => new CommandRegistry().add([named(name, 'ours')], 'module x')).toThrow(`"${name}" is handled by the launcher`);
+    expect(() => new CommandRegistry().add([named(name, 'ours')], 'module x')).toThrow('K8');
+  });
 });
 
 describe('parseCommandArgs', () => {
