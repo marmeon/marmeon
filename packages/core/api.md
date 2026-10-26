@@ -122,8 +122,6 @@ export interface CurrentRequest {
 export interface CurrentTask {
     readonly task: string;
 }
-// DEFAULT_HEALTH_TIMEOUT
-export declare const DEFAULT_HEALTH_TIMEOUT = 2000;
 // DOTENV_MARKER
 export declare const DOTENV_MARKER = "MARMEON_NODE_ENV_FROM_DOTENV";
 // DefinitionEdit
@@ -305,7 +303,7 @@ export interface HealthCheck {
 // HealthCheckClass
 export type HealthCheckClass = (new (...args: any[]) => HealthCheck) & {
     readonly check: string;
-    readonly timeout?: number;
+    readonly timeout?: Duration;
 };
 // HealthCheckResult
 export interface HealthCheckResult {
@@ -321,8 +319,8 @@ export declare class HealthChecks {
     constructor(checks?: Iterable<HealthCheckClass>);
     add(checks: Iterable<HealthCheckClass>): this;
     all(): readonly HealthCheckClass[];
-    run(container: Container, { timeout }?: {
-        timeout?: number;
+    run(container: Container, options?: {
+        timeout?: Duration;
     }): Promise<HealthReport>;
 }
 // HealthReport
@@ -436,7 +434,7 @@ export interface QueuedListenerOptions {
     readonly connection?: string;
     readonly delay?: Duration;
     readonly tries?: number;
-    readonly backoff?: number | readonly number[];
+    readonly backoff?: Duration | readonly Duration[];
 }
 // REDACTED
 export declare const REDACTED = "[redacted]";
@@ -1152,7 +1150,7 @@ export interface HealthCheck {
 // HealthCheckClass
 export type HealthCheckClass = (new (...args: any[]) => HealthCheck) & {
     readonly check: string;
-    readonly timeout?: number;
+    readonly timeout?: Duration;
 };
 // InjectCheck
 export type InjectCheck<C> = C extends {
@@ -1197,7 +1195,7 @@ export interface QueuedListenerOptions {
     readonly connection?: string;
     readonly delay?: Duration;
     readonly tries?: number;
-    readonly backoff?: number | readonly number[];
+    readonly backoff?: Duration | readonly Duration[];
 }
 // ReportedError
 export interface ReportedError {
@@ -1483,7 +1481,7 @@ export interface QueuedListenerOptions {
     readonly connection?: string;
     readonly delay?: Duration;
     readonly tries?: number;
-    readonly backoff?: number | readonly number[];
+    readonly backoff?: Duration | readonly Duration[];
 }
 // SchemaInput
 type SchemaInput<S> = S extends StandardSchemaV1 ? NonNullable<S['~standard']['types']>['input'] : never;

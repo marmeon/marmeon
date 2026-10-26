@@ -68,14 +68,14 @@ A health check is an invokable class:
 - `handle()` throws or rejects when the check fails. What it returns, a short note such as `local`, shows in the development
   details.
 - Its dependencies arrive through the constructor, built in a scope of its own for each run.
-- `static timeout` gives it more or less than the default of 2 seconds, in milliseconds. A check that takes longer fails as
-  `timeout`.
+- `static timeout` gives it more or less than the default of 2 seconds: a number of seconds, or a [`Duration`](time.md#spans-of-time) such as `{ milliseconds: 500 }`, at most a minute. A check that takes longer fails as
+  `timeout`. A longer value stops the start (`K13`): `static timeout = 5000` is over an hour, not 5 seconds; write `{ milliseconds: 5000 }`.
 
 A class without `static check` or without `handle()` does not compile where it is listed:
 
 ```text
 Type 'typeof DiskSpace' is not assignable to type 'HealthCheckClass'.
-  Property 'check' is missing in type 'typeof DiskSpace' but required in type '{ readonly check: string; readonly timeout?: number | undefined; }'.
+  Property 'check' is missing in type 'typeof DiskSpace' but required in type '{ readonly check: string; readonly timeout?: Duration | undefined; }'.
 ```
 
 A module lists its checks in its definition, and the app can list more in `bootstrap/app.ts` with `defineApplication({ health })`:

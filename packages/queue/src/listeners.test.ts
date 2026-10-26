@@ -41,7 +41,7 @@ class OrderShipped {
 
 export class SendShippingMail {
   static readonly listener = 'shop.send-shipping-mail';
-  static readonly queue = { queue: 'mail', tries: 3, backoff: [10, 60] };
+  static readonly queue = { queue: 'mail', tries: 3, backoff: [10, { minutes: 1 }] };
   readonly #seen: Seen;
   readonly #unit: UnitOfWork;
   constructor(seen: Seen, unit: UnitOfWork) {

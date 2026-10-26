@@ -1,4 +1,5 @@
 import type { Container, EventClass, EventRegistry, ListenerQueue, QueueableEvent, QueuedListenerClass, QueuedListenerOptions, Resolver, StandardSchemaV1 } from '@marmeon/core';
+import { durationToSeconds, type Duration } from '@marmeon/core';
 import { isQueuedListener, withCode } from '@marmeon/core/internal';
 import * as v from 'valibot';
 import type { JobContext } from './job.ts';
@@ -111,9 +112,19 @@ function checkListenerOptions(listener: QueuedListenerClass): void {
   }
   const { tries, backoff } = options;
   if (tries !== undefined && (!Number.isInteger(tries) || tries < 1)) throw new QueueSetupError(withCode('Q4', `${label}: tries must be a whole number ≥ 1, not ${String(tries)}.`));
-  const delays = backoff === undefined ? [] : typeof backoff === 'number' ? [backoff] : backoff;
-  if (!Array.isArray(delays) || delays.some((delay) => !(typeof delay === 'number' && delay >= 0))) {
-    throw new QueueSetupError(withCode('Q4', `${label}: backoff must be seconds ≥ 0 — a number or a list like [10, 60, 300].`));
+  if (backoff !== undefined && backoffSeconds(backoff) === undefined) {
+    throw new QueueSetupError(withCode('Q4', `${label}: backoff must be seconds ≥ 0 — a number, a duration like { minutes: 1 }, or a list like [10, { minutes: 1 }, 300].`));
+  }
+}
+
+/** The seconds before each retry, or `undefined` when `backoff` is not a duration or a list of them (or one is negative). */
+function backoffSeconds(backoff: unknown): number[] | undefined {
+  const list: unknown[] = Array.isArray(backoff) ? backoff : [backoff];
+  try {
+    const seconds = list.map((delay) => durationToSeconds(delay as Duration));
+    return seconds.every((value) => value >= 0) ? seconds : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -193,7 +204,7 @@ export class QueueListenerDispatcher implements ListenerQueue {
       ...(queue === undefined ? {} : { queue }),
       ...(connection === undefined ? {} : { connection }),
       ...(delay === undefined ? {} : { delay }),
-      [RECORD_OPTIONS]: { ...(tries === undefined ? {} : { tries }), ...(backoff === undefined ? {} : { backoff: typeof backoff === 'number' ? [backoff] : backoff }) },
+      [RECORD_OPTIONS]: { ...(tries === undefined ? {} : { tries }), ...(backoff === undefined ? {} : { backoff: backoffSeconds(backoff) }) },
     };
     // The normal dispatch path: in a transaction, part of it — atomic with a database queue.
     await this.#queue().dispatch(CallQueuedListener as never, { event: queueable.event, listener: listener.listener, payload } as never, options);

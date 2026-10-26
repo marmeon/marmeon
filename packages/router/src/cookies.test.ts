@@ -16,6 +16,14 @@ describe('cookies', () => {
     );
   });
 
+  it('writes maxAge as whole seconds, rounded down, from seconds or parts', () => {
+    expect(serializeCookie('x', '1', { maxAge: { days: 1 } })).toContain('Max-Age=86400;');
+    expect(serializeCookie('x', '1', { maxAge: { seconds: 1, milliseconds: 900 } })).toContain('Max-Age=1;');
+    expect(serializeCookie('x', '1', { maxAge: 90.7 })).toContain('Max-Age=90;');
+    // @ts-expect-error a string is no span of time
+    expect(() => serializeCookie('x', '1', { maxAge: '1d' })).toThrow(TypeError);
+  });
+
   it('gives every cookie the jar\'s defaults (Secure from the session config) — unless set says otherwise', async () => {
     const jar = new CookieJar(null, { secure: true });
     jar.set('plain', '1');

@@ -17,7 +17,7 @@ export interface AppCheck {
 export type AppCheckClass = (new (...args: any[]) => AppCheck) & {
     readonly check: string;
     readonly phase: 'build' | 'run';
-    readonly timeout?: number;
+    readonly timeout?: Duration;
 };
 // AppCheckContext
 export interface AppCheckContext {

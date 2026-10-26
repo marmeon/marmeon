@@ -231,7 +231,7 @@ Pass `delete` the same `path` and `domain` the cookie was set with. Incoming coo
 | `httpOnly` | `true`: scripts cannot read the cookie. |
 | `sameSite` | `lax`. `none` requires `secure`, and throws without it. |
 | `secure` | `true` when `APP_URL` starts with `https://`, or as `SESSION_SECURE_COOKIE` says. `secure: false` turns it off for one cookie. |
-| `maxAge`, `expires` | none: a session cookie, which ends when the browser session does. |
+| `maxAge`, `expires` | none: a session cookie, which ends when the browser session does. `maxAge` is a number of seconds or a [`Duration`](time.md#spans-of-time) (`{ days: 365 }`), written as whole seconds, rounded down. |
 | `domain` | none: the cookie belongs to the host that set it. |
 
 A name that starts with `__Host-` is only set with `secure`, `path: '/'` and no `domain`, as a browser demands; anything else throws, also for `delete`. A name that starts with `__Secure-` needs `secure`. Both prefixes match in any case. The session and remember-me cookies carry `__Host-` when cookies are `Secure` ([details](session.md#the-__host--prefix)).

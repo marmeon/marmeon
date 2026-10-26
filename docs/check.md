@@ -91,7 +91,7 @@ Each check ends in one status:
 | `warning` | It found problems of the level warning only. |
 | `failed` | It found at least one error. |
 | `skipped` | It was not run, said in `reason`: no `tsconfig.json`, no `AGENTS.md`, oxlint is not installed (lint is the app's choice), or the app did not load ("the app did not load"). |
-| `error` | It could not run, said in `reason`: TypeScript is not installed, a tool crashed, a check of a package threw or took longer than its time limit (a minute unless the check says `static timeout`), or the app did not load and `boot` was not selected. |
+| `error` | It could not run, said in `reason`: TypeScript is not installed, a tool crashed, a check of a package threw or took longer than its time limit (a minute unless the check says `static timeout`, in seconds), or the app did not load and `boot` was not selected. |
 
 ## Exit codes
 

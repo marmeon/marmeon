@@ -1,3 +1,4 @@
+import { durationToSeconds, type Duration } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { CommandSetupError } from '../command.ts';
 import type { CheckProblem, SilencedProblem } from './report.ts';
@@ -30,12 +31,15 @@ export type AppCheckResult =
 export type AppCheckClass = (new (...args: any[]) => AppCheck) & {
   readonly check: string;
   readonly phase: 'build' | 'run';
-  /** How long `handle()` may take, in ms. Default 60 000; past it the check is `error`. */
-  readonly timeout?: number;
+  /** How long `handle()` may take — seconds, or a duration. Default 60 s, at most 10 minutes; past it the check is `error`. */
+  readonly timeout?: Duration;
 };
 
 /** The names `marmeon check` uses itself. */
 export const BUILT_IN_CHECKS = ['types', 'lint', 'internal-imports', 'raw-sql', 'inner-html', 'agents', 'boot', 'readiness'] as const;
+
+/** The longest `static timeout` a check may ask for (s); more can only be a value meant as milliseconds. */
+const MAX_CHECK_TIMEOUT_SECONDS = 600;
 
 const NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
@@ -64,6 +68,20 @@ export class CheckRegistry {
       }
       if ((BUILT_IN_CHECKS as readonly string[]).includes(check.check)) {
         throw new CheckSetupError(withCode('K11', `"${check.check}" is one of marmeon's own checks — ${label} cannot use it. Rename it.`));
+      }
+      if (check.timeout !== undefined) {
+        let seconds: number;
+        try {
+          seconds = durationToSeconds(check.timeout);
+        } catch (error) {
+          throw new CheckSetupError(`${label} has a \`static timeout\` that is no span of time: ${(error as Error).message}`, { cause: error });
+        }
+        if (seconds <= 0) throw new CheckSetupError(withCode('K13', `${label} sets a \`static timeout\` of ${seconds} s; it must be above zero.`));
+        if (seconds > MAX_CHECK_TIMEOUT_SECONDS) {
+          throw new CheckSetupError(
+            withCode('K13', `${label} sets a \`static timeout\` of ${seconds} s, over the ${MAX_CHECK_TIMEOUT_SECONDS} s a check of \`marmeon check\` may take. \`static timeout\` is in seconds — for 5000 ms write \`{ milliseconds: 5000 }\`.`),
+          );
+        }
       }
       const taken = this.#checks.get(check.check);
       if (!taken) this.#checks.set(check.check, { check, source });
