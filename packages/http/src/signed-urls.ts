@@ -1,8 +1,9 @@
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { Clock, durationToSeconds, type Duration } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
+import { fillPath } from '@marmeon/router/internal';
 import { EncryptionConfig } from '@marmeon/encryption';
-import { fillPath, HttpError, Router, toSearchParams, type CheckRouteName, type HttpContext, type Next, type Param, type ParamsOf, type RouteNameInput } from '@marmeon/router';
+import { HttpError, Router, toSearchParams, type CheckRouteName, type HttpContext, type Next, type Param, type ParamsOf, type RouteNameInput } from '@marmeon/router';
 
 /** The route's path parameters, plus any others — those are signed into the query. */
 export type SignedParams<N extends string> = ParamsOf<N> & Readonly<Record<string, Param>>;

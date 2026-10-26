@@ -3,7 +3,7 @@
  * (its controller's request schema) and what it gets back (its controller's answer). Types only: erased, so the browser
  * bundle stays free of server code.
  */
-import type { BrowserRouteName, CheckBrowserRouteName, ControllerOf, FormOf, IslandRouteName, MethodOf, ParamsOf, QueryParams, Routes } from '@marmeon/router';
+import type { BrowserRouteName, CheckBrowserRouteName, ControllerOf, FormOf, IslandRouteName, MethodOf, Routes } from '@marmeon/router';
 import type { JsonResult } from './json.ts';
 import type { RedirectResult } from './redirect.ts';
 import type { Serialize, ViewResult } from './view.ts';
@@ -48,12 +48,6 @@ export type ActionRedirects<N extends string> = unknown extends ActionAnswerOf<N
  * GET); any fields for a name the app's routes do not have (no routes generated, a package's own tests).
  */
 export type ActionBodyOf<N extends string> = N extends keyof Routes ? (MethodOf<N> extends 'get' ? never : FormOf<Instance<ControllerOf<N>>>) : Record<string, unknown>;
-
-/** The query an action of route `N` may carry — typed by its query schema (a GET action). */
-export type ActionQueryOf<N extends string> = QueryParams<N>;
-
-/** The path parameters of route `N`. */
-export type ActionParamsOf<N extends string> = ParamsOf<N>;
 
 /**
  * `N` when an action may call it: a route the browser may know that answers with data or a redirect; otherwise a

@@ -10,20 +10,6 @@ import type { Param, Query } from './url.ts';
  */
 export interface Routes {}
 
-/** What `marmeon route:types` writes per route. Grows only by optional members. */
-export interface RouteEntry {
-  /** Lower case; a union for routes with several methods (`Route.match`). */
-  readonly method: string;
-  /** The full pattern, e.g. `/users/:user/links/:link?`. */
-  readonly path: string;
-  /** The controller class (`typeof …`) — absent for closures. Gives `useForm(name)` its fields. */
-  readonly controller?: unknown;
-  /** `false`: kept from the browser (API routes, `.internal()` routes, `clientRoutes.except`). */
-  readonly browser?: false;
-  /** `true`: the route lives under `/:locale` (`Route.localized()`); `path` starts with it. */
-  readonly localized?: true;
-}
-
 type Registered = [keyof Routes] extends [never] ? false : true;
 
 /** A route name of the app — any string while no routes are generated. */

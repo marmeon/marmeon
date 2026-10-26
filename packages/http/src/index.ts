@@ -2,7 +2,7 @@ export { Controller } from './controller.ts';
 export { view } from './view.ts';
 export { json } from './json.ts';
 export type { JsonResult } from './json.ts';
-export type { ActionAnswerOf, ActionBodyOf, ActionDataOf, ActionParamsOf, ActionQueryOf, ActionRedirects, CheckActionRouteName } from './action.ts';
+export type { ActionAnswerOf, ActionBodyOf, ActionDataOf, ActionRedirects, CheckActionRouteName } from './action.ts';
 export { island } from './island.ts';
 export type { IslandOf, IslandProps, IslandResult } from './island.ts';
 export { CloseLayerResult } from './layer.ts';
@@ -32,7 +32,6 @@ export type {
   ResolvedProp,
   ResolvedProps,
   SharedValue,
-  WrappedProp,
 } from './props.ts';
 export { CheckAssetVersion } from './asset-version.ts';
 export type { FlashMethod } from './flash.ts';
@@ -41,7 +40,6 @@ export type { LiveHint, LiveSubscription } from './protocol.ts';
 export type { CheckViewName, DeferredResult, InstantProp, InstantProps, RegionResult, PaginationMeta, RouteManifest, SharedProps, SsrRender, SsrRenderOptions, SsrResult, ViewName, Views } from './page.ts';
 export type { ErrorPageProps } from './page-support.ts';
 export type { OnceInfo, LayerClose, LayerInfo, PageObject, RegionKind, RegionObject, RegionOutcomeStatus } from './protocol.ts';
-export type { ClientRoutesOptions } from './browser-routes.ts';
 export { SharedData } from './shared-data.ts';
 export { LiveAudience } from './live.ts';
 export type { LiveMethod, LiveOnly, PagePropNames } from './live.ts';
@@ -62,7 +60,7 @@ export { verifyWebhook, Webhooks } from './webhooks.ts';
 export type { WebhookContext, WebhookDefinition, WebhookScheme } from './webhooks.ts';
 
 // Re-exported so application code has a single import for the HTTP surface.
-export { addVary, defineMiddleware, defineRequest, defineRoutes, describeAccess, editableResponse, everyone, EXPECTS_JSON_VARY, isLiveValidation, liveValidationFields, ownResponse, RequestNonce, Router, translatable, ValidationError } from '@marmeon/router';
+export { addVary, defineMiddleware, defineRequest, defineRoutes, describeAccess, editableResponse, everyone, EXPECTS_JSON_VARY, ownResponse, RequestNonce, Router, translatable, ValidationError } from '@marmeon/router';
 export type {
   AccessCheck,
   ContextOf,

@@ -12,7 +12,7 @@ export type { PageProps, Serialize, ViewOf, ViewProps, ViewResult } from './view
 export type { IslandOf, IslandProps, IslandResult } from './island.ts';
 export type { LayerResult } from './layer.ts';
 export type { JsonResult } from './json.ts';
-export type { ActionAnswerOf, ActionBodyOf, ActionDataOf, ActionParamsOf, ActionQueryOf, ActionRedirects, CheckActionRouteName } from './action.ts';
+export type { ActionAnswerOf, ActionBodyOf, ActionDataOf, ActionRedirects, CheckActionRouteName } from './action.ts';
 export type {
   AlwaysProp,
   DeferredProp,
@@ -26,7 +26,6 @@ export type {
   ResolvedProp,
   ResolvedProps,
   SharedValue,
-  WrappedProp,
 } from './props.ts';
 // Types — erased, so the browser bundle stays free of router code.
 export type {
@@ -60,7 +59,7 @@ export type {
   ValidationErrors,
 } from '@marmeon/router';
 // The one runtime piece of the router the browser needs: URL building, import-free (`route()` uses it).
-export { toSearchParams, urlFor } from '@marmeon/router/url';
+export { urlFor } from '@marmeon/router/url';
 /**
  * An image as plain JSON: what a controller sends as a prop and `<Image>` renders — its file, its size (no layout shift) and,
  * optionally, the widths and formats it exists in. See docs/images.md#images-from-the-server.

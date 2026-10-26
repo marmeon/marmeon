@@ -145,11 +145,6 @@ export type PublicDisk = Disk;
 export interface PutOptions {
     readonly contentType?: string;
 }
-// RejectedUpload
-export declare class RejectedUpload {
-    readonly problem: UploadProblem;
-    toJSON(): undefined;
-}
 // S3DiskOptions
 export interface S3DiskOptions extends DiskBase {
     readonly driver: 's3';
@@ -235,10 +230,6 @@ export interface TemporaryUrlOptions {
     readonly filename?: string;
     readonly base?: string;
 }
-// TemporaryUrls
-export interface TemporaryUrls {
-    sign(disk: string, key: string, options: DiskDriverTemporaryUrlOptions): string;
-}
 // UPLOADS_TABLE
 export declare const UPLOADS_TABLE = "temporary_uploads";
 // UPLOAD_TYPES
@@ -260,11 +251,6 @@ export type UploadInput = Upload | null;
 export type UploadMime = Exclude<keyof typeof UPLOAD_TYPES, 'application/octet-stream'>;
 // UploadProblem
 export type UploadProblem = 'invalid' | 'expired' | 'used';
-// UploadRule
-export interface UploadRule {
-    readonly maxBytes: number;
-    readonly mime: readonly UploadMime[] | undefined;
-}
 // UploadSchema
 export type UploadSchema = Rule<TemporaryUpload, UploadInput>;
 // UploadsConfig

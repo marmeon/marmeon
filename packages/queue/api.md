@@ -13,8 +13,6 @@ Types from other packages: none
 export interface BatchOptions extends Omit<DispatchOptions, 'unique'> {
     readonly unique?: 'bulk() and chain() queue no unique jobs — dispatch them one by one';
 }
-// CacheSource
-export type CacheSource = () => Promise<Cache>;
 // CheckJob
 export type CheckJob<J extends JobClass> = unknown extends JobInput<J> ? unknown : IsJson<JobInput<J>> extends false ? {
     readonly 'A job payload is stored as JSON — its schema must describe JSON (strings, numbers, booleans, null, arrays, plain objects); pass IDs, not records, Dates or Maps': JobInput<J>;
@@ -91,8 +89,6 @@ export declare abstract class JobEvent {
         jobId: string;
     });
 }
-// JobEvents
-export type JobEvents = (event: JobEvent) => Promise<void>;
 // JobFailed
 export declare class JobFailed extends JobEvent {
     #private;

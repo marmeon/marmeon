@@ -44,13 +44,12 @@ export { FileNotFoundError, InvalidKeyError, StorageError, StorageSetupError } f
 export { Storage } from './storage.ts';
 export { serveFile } from './serve.ts';
 export type { ServeFileOptions } from './serve.ts';
-export type { TemporaryUrls } from './temporary.ts';
 export { normalizeDirectory, normalizeKey } from './keys.ts';
 
 // Uploads: a target per route field, the bytes to a private disk, a token in the form, verified on submit.
 export { upload } from './uploads/rule.ts';
-export type { CheckUploadMime, UploadInput, UploadRule, UploadSchema } from './uploads/rule.ts';
-export { RejectedUpload, TemporaryUpload } from './uploads/temporary-upload.ts';
+export type { CheckUploadMime, UploadInput, UploadSchema } from './uploads/rule.ts';
+export { TemporaryUpload } from './uploads/temporary-upload.ts';
 export type { UploadProblem } from './uploads/temporary-upload.ts';
 export { UPLOAD_TYPES } from './uploads/sniff.ts';
 export type { UploadMime } from './uploads/sniff.ts';

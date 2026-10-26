@@ -29,13 +29,6 @@ export declare class Catalog {
 export type CheckMessageKey<K extends string, T, N extends string> = K extends MessageKeyOf<T> ? K : `'${K}' is not a key of the ${N} messages${Suggest<K, MessageKeyOf<T> & string>}`;
 // CheckTranslationKey
 export type CheckTranslationKey<K extends string> = string extends TranslationKey ? K : K extends TranslationKey ? K : K extends `${infer N}.${infer P}` ? N extends keyof Translations ? `'${P}' is not a key of the ${N} messages${Suggest<P, MessageKeyOf<Translations[N]> & string>}` : `'${N}' is not a namespace of messages — namespaces are module names (modules/<module>/lang/en.ts) and 'app' (lang/en.ts)` : `'${K}' is not a translation key — keys are '<namespace>.<path>', e.g. 'auth.login.title'`;
-// CurrentLocale
-export declare class CurrentLocale {
-    #private;
-    constructor(locale: string);
-    get value(): string;
-    set(locale: string): void;
-}
 // Formatter
 export interface Formatter {
     readonly locale: string;
@@ -107,10 +100,6 @@ export declare class MessageSyntaxError extends SyntaxError {
 export type MessageTree = {
     readonly [key: string]: string | MessageTree;
 };
-// Messages
-export type Messages<T> = {
-    readonly [K in keyof T]: T[K] extends string ? (string extends T[K] ? string : Keeps<keyof MessageParamsOf<T[K]> & string>) : Messages<T[K]>;
-};
 // MessagesOf
 export type MessagesOf<N extends string> = N extends keyof Translations ? Translations[N] : MessageTree;
 // Namespace
@@ -156,8 +145,6 @@ export declare class Translators {
 export declare function createMessageLoader(files: LangFiles, { fallback }?: {
     fallback?: string;
 }): MessageLoader;
-// createTranslate
-export declare function createTranslate<N extends string>(catalog: Catalog, locale: string, namespace: N): Translate<N>;
 // trans
 export declare function trans<K extends TranslationKey | (string & {})>(key: CheckTranslationKey<K>, params?: Partial<MessageParamsOf<MessageOf<K>>>): (issue: object) => string;
 ```
@@ -175,8 +162,6 @@ type Branches<S extends string, Depth extends 0[], Out> = S extends `${infer Bef
 type Close<S extends string, Depth extends 0[], Out> = Depth extends [0, ...infer Outer extends 0[]] ? Branches<S, Outer, Out> : Text<S, Depth, Out>;
 // FirstPart
 type FirstPart<S extends string> = S extends `${infer First},${string}` ? First : S;
-// Keeps
-type Keeps<Names extends string> = [Names] extends [never] ? string : UnionToIntersection<Names extends string ? `${string}{${Names}${string}` : never>;
 // Placeholder
 type Placeholder<S extends string, Depth extends 0[], Out> = S extends `${infer Head}}${infer Rest}` ? Head extends `${infer Start}{${string}` ? Start extends `${infer Name},${infer Type},${string}` ? Branches<S extends `${Name},${Type},${infer Body}` ? Body : never, Depth, Add<Out, Name, Type>> : Out : Head extends `${infer Name},${infer Type}` ? Text<Rest, Depth, Add<Out, Name, FirstPart<Type>>> : Text<Rest, Depth, Add<Out, Head, ''>> : Out;
 // Prop
@@ -191,8 +176,6 @@ type Simplify<T> = {
 type Text<S extends string, Depth extends 0[], Out> = S extends `${infer Before}{${infer After}` ? Before extends `${string}}${infer Rest}` ? Close<`${Rest}{${After}`, Depth, Out> : Placeholder<After, Depth, Out> : S extends `${string}}${infer Rest}` ? Close<Rest, Depth, Out> : Out;
 // Trim
 type Trim<S extends string> = S extends ` ${infer R}` ? Trim<R> : S extends `${infer R} ` ? Trim<R> : S;
-// UnionToIntersection
-type UnionToIntersection<U> = (U extends unknown ? (value: U) => void : never) extends (value: infer I) => void ? I : never;
 // ValueOf
 type ValueOf<Type extends string> = Type extends 'plural' | 'selectordinal' | 'number' ? number : Type extends 'date' | 'time' ? Date | number | string : Type extends 'select' ? string : string | number;
 ```
@@ -293,8 +276,6 @@ export interface Translations {
 export declare function createMessageLoader(files: LangFiles, { fallback }?: {
     fallback?: string;
 }): MessageLoader;
-// createTranslate
-export declare function createTranslate<N extends string>(catalog: Catalog, locale: string, namespace: N): Translate<N>;
 ```
 
 ### Referenced, not exported

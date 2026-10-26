@@ -14,11 +14,6 @@ export interface AnyRecipient {
     readonly type: string;
     readonly id: string | number;
 }
-// AnyRecipientResolverClass
-export type AnyRecipientResolverClass = new (...args: any[]) => {
-    find(id: any): Promise<unknown>;
-    locale?(recipient: any): string | null | undefined;
-};
 // ChannelFactory
 export type ChannelFactory = (container: Resolver) => NotificationChannel;
 // ChannelsOf

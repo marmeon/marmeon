@@ -2,7 +2,6 @@ import { createServer, type Server } from 'node:net';
 import { ConsoleLogger, createApplication, Logger, type Container, type LogContext, type ServiceProviderClass } from '@marmeon/core';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
-  compose,
   fromHtml,
   html,
   MailError,
@@ -19,6 +18,7 @@ import {
   type MailContent,
   type MailMessage,
 } from './index.ts';
+import { compose } from './mailer.ts';
 import { ArrayTransport, LogTransport, SmtpTransport } from './transports.ts';
 import { fromDefaultWarning, LOG_MAILER_WARNING } from './config.ts';
 import { MailFake } from './fake.ts';

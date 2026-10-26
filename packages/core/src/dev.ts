@@ -7,7 +7,7 @@
  * skipped under HTTPS, and an app's routes must not rely on what runs in front of them.
  */
 
-/** The loopback names — development routes always answer them. */
+/** The loopback names — development routes always answer them. @internal */
 export const LOOPBACK_HOSTS: readonly string[] = ['localhost', '127.0.0.1', '[::1]'];
 
 /** The host names development routes answer: the loopback ones and the host of `appUrl` (lower case, no port). */
@@ -56,6 +56,7 @@ const DEV_HEADERS: Readonly<Record<string, string>> = {
 /**
  * A development route's answer as it leaves: never cached, never sniffed, never framed by another origin (its own CSP, or
  * `frame-ancestors 'self'` when it has none), never shared with another origin (every CORS header is taken out).
+ * @internal
  */
 export function devSecured(response: Response): Response {
   const out = new Response(response.body, response);
@@ -66,7 +67,7 @@ export function devSecured(response: Response): Response {
 }
 
 /** The answer for a request from a host development routes do not answer. */
-export function forbiddenDevHost(): Response {
+function forbiddenDevHost(): Response {
   return devSecured(
     new Response(
       'Development routes answer only on localhost, 127.0.0.1, [::1] and the host of APP_URL (DNS rebinding). Open this page through one of them.\n',
@@ -76,12 +77,12 @@ export function forbiddenDevHost(): Response {
 }
 
 /** Whether development routes answer at all: `NODE_ENV` is `development` (or `test`) — asked positively, per request. */
-export function devEnvironment(env: { readonly NODE_ENV?: string | undefined } = process.env): boolean {
+function devEnvironment(env: { readonly NODE_ENV?: string | undefined } = process.env): boolean {
   return env.NODE_ENV === 'development' || env.NODE_ENV === 'test';
 }
 
 /** The answer of a development route outside development: as if there were none. */
-export function notInDevelopment(): Response {
+function notInDevelopment(): Response {
   return devSecured(new Response('Not Found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } }));
 }
 

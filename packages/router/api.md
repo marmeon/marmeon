@@ -11,17 +11,6 @@ Types from other packages: none
 ```ts
 // AccessCheck
 export type AccessCheck<TCtx = any> = (ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>;
-// AccessProblem
-export type AccessProblem = {
-    readonly kind: 'undecided';
-    readonly route: RouteDefinition;
-} | {
-    readonly kind: 'open-binding';
-    readonly route: RouteDefinition;
-    readonly param: string;
-    readonly binder: string;
-    readonly write: boolean;
-};
 // Action
 export type Action<TCtx, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never, TResult = unknown> = Handler<TCtx, TResult> | ControllerClass<TCtx, TSchema, TQuery, TResult>;
 // AnyAction
@@ -191,11 +180,6 @@ export interface LoadOptions {
 }
 // Merge
 export type Merge<A, B> = Simplify<Omit<A, keyof B> & B>;
-// MessageOptions
-export interface MessageOptions {
-    readonly translator?: MessageTranslator | undefined;
-    readonly labels?: ValidationLabels | undefined;
-}
 // MessageTranslator
 export interface MessageTranslator {
     has(key: string): boolean;
@@ -243,10 +227,6 @@ export declare const MiddlewarePriority: {
     readonly app: 1000;
     readonly limitLiveValidation: 1100;
 };
-// MiddlewareProblem
-export interface MiddlewareProblem extends AddsConflict {
-    readonly route: RouteDefinition;
-}
 // Next
 export type Next<TAdd extends object> = unknown extends TAdd ? (extension?: TAdd) => Promise<Response> : [TAdd] extends [never] ? (extension: TAdd) => Promise<Response> : [AddedKeys<TAdd>] extends [never] ? (extension?: TAdd) => Promise<Response> : (extension: TAdd) => Promise<Response>;
 // NoReservedKeys
@@ -270,12 +250,6 @@ export interface ParsedQuery {
     readonly canonical: Record<string, unknown>;
     readonly defaults: Record<string, unknown>;
     readonly dropped: readonly string[];
-}
-// PipelineOptions
-export interface PipelineOptions<TCtx> {
-    resolve?: ClassResolver;
-    onTerminable?: (handler: MiddlewareHandler<any, any>, ctx: TCtx) => void;
-    onError?: (error: unknown, ctx: TCtx) => Response | Promise<Response>;
 }
 // Query
 export type Query = Readonly<Record<string, QueryValue>>;
@@ -347,13 +321,6 @@ export interface RequestState {
     readonly ip: string | undefined;
     nonce(): string;
     expectsJson(): boolean;
-}
-// RequestStateOptions
-export interface RequestStateOptions {
-    maxBodyBytes?: number;
-    ip?: string | undefined;
-    nonce?: RequestNonce;
-    cookies?: CookieDefaults;
 }
 // ReservedContextKey
 export type ReservedContextKey = (typeof RESERVED)[number];
@@ -456,14 +423,6 @@ export declare class RouteDefinition {
 export interface RouteDefinitions {
     readonly register: (Route: Route) => void;
 }
-// RouteEntry
-export interface RouteEntry {
-    readonly method: string;
-    readonly path: string;
-    readonly controller?: unknown;
-    readonly browser?: false;
-    readonly localized?: true;
-}
 // RouteInterceptor
 export interface RouteInterceptor {
     claims(request: Request): boolean;
@@ -535,20 +494,10 @@ export interface TextKey {
     readonly key: string;
     readonly params?: Readonly<Record<string, unknown>>;
 }
-// ValidateOptions
-export interface ValidateOptions {
-    readonly only?: readonly string[] | undefined;
-    readonly hooks?: readonly ValidationHook[] | undefined;
-}
 // Validated
 export type Validated<R extends RequestDefinition> = BodyOf<SchemaOf<R>> & {
     readonly [REQUEST]?: R;
 };
-// ValidatedRequest
-export interface ValidatedRequest {
-    readonly body?: unknown;
-    readonly query?: ParsedQuery;
-}
 // ValidationContext
 export interface ValidationContext {
     readonly resolve: ClassResolver;
@@ -613,15 +562,6 @@ export declare function editableResponse(response: Response): Response;
 export declare const everyone: () => true;
 // expectsJson
 export declare function expectsJson(request: Request): boolean;
-// fillPath
-export declare function fillPath(name: string, pattern: string, params?: Readonly<Record<string, Param | undefined>>): {
-    path: string;
-    rest: Record<string, Param>;
-};
-// isLiveValidation
-export declare function isLiveValidation(request: Request): boolean;
-// liveValidationFields
-export declare function liveValidationFields(request: Request): readonly string[] | undefined;
 // matchesPath
 export declare function matchesPath(pattern: string, pathname: string): boolean;
 // ownResponse
@@ -643,12 +583,6 @@ export declare function urlFor(routes: RouteLookup, name: string, params?: Reado
 ```ts
 // AddedKeys
 type AddedKeys<T> = T extends unknown ? Exclude<keyof T, ReservedContextKey> : never;
-// AddsConflict
-export interface AddsConflict {
-    readonly key: string;
-    readonly first: AnyMiddleware;
-    readonly second: AnyMiddleware;
-}
 // AnswerOf
 type AnswerOf<N> = Instance<Entry<N> extends {
     readonly controller: infer C;
@@ -779,11 +713,6 @@ export interface RouteLookup {
         readonly localized?: boolean;
     } | undefined;
 }
-// fillPath
-export declare function fillPath(name: string, pattern: string, params?: Readonly<Record<string, Param | undefined>>): {
-    path: string;
-    rest: Record<string, Param>;
-};
 // matchesPath
 export declare function matchesPath(pattern: string, pathname: string): boolean;
 // toSearchParams

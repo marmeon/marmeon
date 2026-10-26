@@ -2,7 +2,8 @@
  * The query of the page on screen as links and islands need it: its defaults filled in, a URL without them. The state that
  * follows and changes it (`QueryState`) is `query-state.ts`.
  */
-import { toSearchParams, type Query } from '../page.ts';
+import { toSearchParams } from '@marmeon/router/url';
+import type { Query } from '../page.ts';
 import type { PageObject } from '../protocol.ts';
 
 /** The page's query with its defaults filled in — what its controller saw as `ctx.query`. */

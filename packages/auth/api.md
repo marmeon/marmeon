@@ -1588,8 +1588,6 @@ export interface SoftRegistration {
 }
 // authenticatedSession
 export declare function authenticatedSession(container: Container, user: AuthUser): Promise<Record<string, unknown>>;
-// authenticatedToken
-export declare function authenticatedToken(container: Container, user: AuthUser, abilities?: readonly string[]): Promise<string>;
 // cookieNames
 export declare function cookieNames(app: {
     container: Container;

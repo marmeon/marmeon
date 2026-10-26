@@ -4,6 +4,7 @@
  */
 export { DatabaseConfig } from './config.ts';
 export { publishOwnMigrations } from './commands/publish.ts';
+export { Seeding } from './seeders.ts';
 export { isSecretSelection } from './secret-guard.ts';
 export { TypeGenerator } from './types-gen/generator.ts';
 export { runMigration } from './migrations/run.ts';
