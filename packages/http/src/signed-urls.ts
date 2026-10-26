@@ -21,6 +21,12 @@ export interface ForeverSignedRouteOptions {
   readonly base?: string;
 }
 
+/** What a check accepts besides an unexpired link. */
+export interface SignatureCheckOptions {
+  /** Accept a link without `expires` (a `foreverSignedRoute()` link). Default `false`: such a link is refused. An expired link is refused either way. */
+  readonly forever?: boolean;
+}
+
 /** A signed path (not a named route): its query, its expiry, its base. */
 export interface SignedPathOptions extends SignedRouteOptions {
   /** Signed with the path (`signature` and `expires` are reserved). */
@@ -80,12 +86,16 @@ export class UrlSigner {
     return this.#sign({ path, query }, expires, options);
   }
 
-  /** Whether `url` (absolute, or path and query) carries a valid, unexpired signature. */
-  hasValidSignature(url: string | URL): boolean {
+  /**
+   * Whether `url` (absolute, or path and query) carries a valid, unexpired signature. A link without `expires` is valid only
+   * with `{ forever: true }`, the way a route says it with `signed({ forever: true })`.
+   */
+  hasValidSignature(url: string | URL, options: SignatureCheckOptions = {}): boolean {
     const parsed = new URL(url, 'http://signed.invalid');
     const signature = parsed.searchParams.get('signature');
     if (!signature || !/^[0-9a-f]{64}$/.test(signature)) return false;
     const expires = parsed.searchParams.get('expires');
+    if (expires === null && options.forever !== true) return false;
     if (expires !== null && (!/^\d{1,12}$/.test(expires) || Number(expires) <= Math.floor(this.#clock.now() / 1000))) return false;
     const payload = canonical(parsed.pathname, parsed.searchParams);
     const given = Buffer.from(signature, 'hex');
@@ -130,7 +140,7 @@ function canonical(path: string, query: URLSearchParams): string {
   return `${path}?${new URLSearchParams(pairs).toString()}`;
 }
 
-/** Middleware that lets only signed links through: a missing, wrong or expired signature answers 403. */
+/** Middleware that lets only signed links through: a missing, wrong or expired signature, or a link without `expires`, answers 403. */
 export class ValidateSignature {
   /** Read by `marmeon check`: only the holder of a link this app signed gets past. See docs/middleware.md#declaring-what-a-middleware-ensures. */
   static readonly ensures = ['authenticated'] as const;
@@ -141,13 +151,25 @@ export class ValidateSignature {
     this.#signer = signer;
   }
 
+  /** Whether a link without `expires` passes; `signed({ forever: true })` sets it. */
+  protected readonly forever: boolean = false;
+
   handle(ctx: HttpContext, next: Next<{}>) {
-    if (!this.#signer.hasValidSignature(ctx.request.url)) throw new HttpError(403, 'Invalid signature.', {}, { key: 'marmeon.errors.signature' });
+    if (!this.#signer.hasValidSignature(ctx.request.url, { forever: this.forever })) throw new HttpError(403, 'Invalid signature.', {}, { key: 'marmeon.errors.signature' });
     return next();
   }
 }
 
-/** `Route.middleware(signed()).get('/email/verify/:id/:hash', …)` */
-export function signed(): typeof ValidateSignature {
-  return ValidateSignature;
+/** The middleware of `signed({ forever: true })`: it also lets through a link without `expires`. */
+class ForeverValidateSignature extends ValidateSignature {
+  protected override readonly forever: boolean = true;
+}
+
+/**
+ * `Route.middleware(signed()).get('/email/verify/:id/:hash', …)` lets through links with a valid signature that have not expired;
+ * a link without `expires` is refused. A route whose links are made by `foreverSignedRoute()` says so with
+ * `signed({ forever: true })`. See docs/urls.md#signed-urls.
+ */
+export function signed(options: SignatureCheckOptions = {}): typeof ValidateSignature {
+  return options.forever === true ? ForeverValidateSignature : ValidateSignature;
 }
