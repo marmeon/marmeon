@@ -92,8 +92,8 @@ export class LiveServiceProvider implements ServiceProvider {
       return new RedisLiveBackend({ connection: c.make(redis.RedisConnections).get(config.redisConnection), script: redis.defineRedisScript, logger: c.make(Logger).child({ channel: 'live' }) });
     });
     container.singleton(LiveHub, (c) => {
-      const { heartbeatSeconds, retryMilliseconds, maxStreams, maxStreamsPerSession, maxStreamSeconds } = c.make(LiveConfig);
-      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeatSeconds, retryMilliseconds, maxStreams, maxStreamsPerSession, maxStreamSeconds }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal, c.make(Redactor));
+      const { heartbeatSeconds, retryMs, maxStreams, maxStreamsPerSession, maxStreamSeconds } = c.make(LiveConfig);
+      this.#hub = new LiveHub(c.make(LiveBackend), { heartbeatSeconds, retryMs, maxStreams, maxStreamsPerSession, maxStreamSeconds }, c.make(Logger).child({ channel: 'live' }), c.make(ServerClosing).signal, c.make(Redactor));
       return this.#hub;
     });
     // Signs the channels a page follows for the session of its request.

@@ -3,8 +3,7 @@ import { defineModule, Logger, type LogContext } from '@marmeon/core';
 import { Controller, defineRoutes, everyone } from '@marmeon/http';
 import { Connections } from '@marmeon/database';
 import { Database, secret } from '@marmeon/database';
-import { Mailer, type Mailable, type MailMessage } from '@marmeon/mail';
-import { MailFake } from '@marmeon/mail/testing';
+import { Mailer } from '@marmeon/mail';
 import { createHttpKernel } from '@marmeon/server';
 import { cookieNames } from '@marmeon/auth/testing';
 import { createTestApp, type TestApp } from '@marmeon/testing';
@@ -690,14 +689,13 @@ describe('password reset', () => {
     await app.close(); // one database app per test
     let mailed = 0;
     const mailer = Promise.withResolvers<void>(); // sending is held back: a request that waited for it would never answer
-    class SlowMailer extends MailFake {
-      override async queue(mailable: Mailable): Promise<MailMessage> {
-        await mailer.promise; // slow work for a known address
-        mailed++;
-        return super.queue(mailable);
-      }
-    }
-    app = await createTestApp(application, { database: 'refresh', mail: 'real', override: (c) => c.instance(Mailer, new SlowMailer()) });
+    app = await createTestApp(application, { database: 'refresh' });
+    const queue = app.mail!.queue.bind(app.mail);
+    vi.spyOn(app.mail!, 'queue').mockImplementation(async (mailable, options) => {
+      await mailer.promise; // slow work for a known address
+      mailed++;
+      return queue(mailable, options);
+    });
     ({ session: SESSION, remember: REMEMBER } = cookieNames(app));
     await app.factory(UserFactory).create({ email: 'ada@example.com' });
     const kernel = createHttpKernel(app.application); // its own kernel: TestApp waits for deferred work, a browser does not

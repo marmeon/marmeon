@@ -30,7 +30,7 @@ export interface LiveHubOptions {
   /** Seconds between heartbeats. */
   readonly heartbeatSeconds: number;
   /** Milliseconds a browser waits before reconnecting (`retry:`). */
-  readonly retryMilliseconds: number;
+  readonly retryMs: number;
   /** Streams this process holds at most. */
   readonly maxStreams: number;
   /**
@@ -119,14 +119,14 @@ export class OpenStream {
   }
 
   /** Opens with `retry:` and `hello` (the channels' sequences), then the hints that came meanwhile; heartbeats from now on. */
-  hello(seqs: readonly number[], lastEventId: string | null | undefined, { retryMilliseconds, heartbeatSeconds, maxStreamSeconds = MAX_STREAM_SECONDS }: Pick<LiveHubOptions, 'retryMilliseconds' | 'heartbeatSeconds' | 'maxStreamSeconds'>): void {
+  hello(seqs: readonly number[], lastEventId: string | null | undefined, { retryMs, heartbeatSeconds, maxStreamSeconds = MAX_STREAM_SECONDS }: Pick<LiveHubOptions, 'retryMs' | 'heartbeatSeconds' | 'maxStreamSeconds'>): void {
     // Closed while `hello` was prepared (the tab went away, the server closes): no heartbeat for a stream nobody reads.
     if (this.#closed) return;
     const channels = [...this.channels];
     channels.forEach((channel, index) => this.#seqs.set(channel, seqs[index] ?? 0));
     const seen = seenIn(lastEventId);
     const missed = channels.filter((channel) => seen.has(channel) && seen.get(channel) !== this.#seqs.get(channel));
-    this.#write(`retry: ${retryMilliseconds}\n\n` + event('hello', { seq: Object.fromEntries(this.#seqs), ...(seen.size > 0 ? { missed } : {}) } satisfies LiveHello, eventId(this.#seqs)));
+    this.#write(`retry: ${retryMs}\n\n` + event('hello', { seq: Object.fromEntries(this.#seqs), ...(seen.size > 0 ? { missed } : {}) } satisfies LiveHello, eventId(this.#seqs)));
     const waiting = this.#waiting ?? [];
     this.#waiting = undefined;
     // Hints that came while `hello` was prepared: those it counted already are not told again (their sequence is at most its).

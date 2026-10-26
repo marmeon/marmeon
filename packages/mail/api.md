@@ -227,7 +227,6 @@ Types from other packages: none
 // MailFake
 export declare class MailFake implements Mailer {
     #private;
-    constructor(from?: Address, app?: Application);
     send(mailable: Mailable): Promise<SentMail>;
     queue(mailable: Mailable, options?: QueueMailOptions): Promise<MailMessage>;
     queued<M extends Mailable>(Class: MailableClass<M>, filter?: (mail: M, message: MailMessage, options: QueueMailOptions) => boolean): {

@@ -23,7 +23,7 @@ export const LiveConfig = defineConfig('live', {
     driver: e.LIVE_DRIVER,
     redisConnection: e.LIVE_CONNECTION,
     heartbeatSeconds: e.LIVE_HEARTBEAT_SECONDS,
-    retryMilliseconds: e.LIVE_RETRY_MILLISECONDS,
+    retryMs: e.LIVE_RETRY_MILLISECONDS,
     maxStreams: e.LIVE_MAX_STREAMS,
     maxStreamsPerSession: e.LIVE_MAX_STREAMS_PER_SESSION,
     maxStreamSeconds: e.LIVE_MAX_STREAM_SECONDS,

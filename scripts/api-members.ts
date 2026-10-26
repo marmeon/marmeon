@@ -36,7 +36,7 @@ export const MEMBER_PENDING: readonly string[] = [
   '@marmeon/i18n Catalog.namespaces',
   '@marmeon/i18n Catalog.translate',
   '@marmeon/live/testing LiveStreamReader.heartbeats',
-  '@marmeon/live/testing LiveStreamReader.retryMilliseconds',
+  '@marmeon/live/testing LiveStreamReader.retryMs',
   '@marmeon/redis RedisConnections.constructor',
   '@marmeon/redis RedisConnections.inUse',
   '@marmeon/redis RedisHealthCheck.constructor',

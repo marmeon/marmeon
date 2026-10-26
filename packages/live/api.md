@@ -19,7 +19,7 @@ export declare const LiveConfig: import("@marmeon/core").ConfigDefinition<{
     driver: "memory" | "redis";
     redisConnection: string;
     heartbeatSeconds: number;
-    retryMilliseconds: number;
+    retryMs: number;
     maxStreams: number;
     maxStreamsPerSession: number;
     maxStreamSeconds: number;
@@ -38,7 +38,7 @@ export declare class LiveServiceProvider implements ServiceProvider {
         driver: "memory" | "redis";
         redisConnection: string;
         heartbeatSeconds: number;
-        retryMilliseconds: number;
+        retryMs: number;
         maxStreams: number;
         maxStreamsPerSession: number;
         maxStreamSeconds: number;
@@ -104,7 +104,7 @@ export declare class LiveStreamReader {
     readonly closed: Promise<void>;
     get events(): readonly LiveEvent[];
     get heartbeats(): number;
-    get retryMilliseconds(): number | undefined;
+    get retryMs(): number | undefined;
     get status(): number;
     get ended(): boolean;
     get hints(): LiveHint[];

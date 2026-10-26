@@ -30,7 +30,7 @@ afterEach(async () => {
 const everyHint: unknown[] = [];
 
 function hubOf(backend: LiveBackend = new MemoryLiveBackend(), options: Partial<LiveHubOptions> = {}, closing?: AbortSignal): LiveHub {
-  const hub = new LiveHub(backend, { heartbeatSeconds: 20, retryMilliseconds: 3000, maxStreams: 100, ...options }, silent, closing);
+  const hub = new LiveHub(backend, { heartbeatSeconds: 20, retryMs: 3000, maxStreams: 100, ...options }, silent, closing);
   cleanups.push(() => hub.close());
   return hub;
 }
@@ -89,7 +89,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     const reader = new LiveStreamReader(response);
     cleanups.push(() => reader.close());
     expect(await reader.hello()).toEqual({ seq: { 'users.1': 0, 'dashboard.sign-ins': 0 } });
-    expect(reader.retryMilliseconds).toBe(3000);
+    expect(reader.retryMs).toBe(3000);
     expect(hub.streams()).toEqual([{ scope: ADA, connection: 'tab-a-0001', channels: ['users.1', 'dashboard.sign-ins'] }]);
   });
 
@@ -243,7 +243,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
   it('holds at most LIVE_MAX_STREAMS_PER_SESSION streams of one session (16): the 17th → 429 with its own log line — other sessions still open', async () => {
     const warnings: string[] = [];
     const logger: Logger = { ...silent, warn: (message) => void warnings.push(message), child: () => logger };
-    const hub = new LiveHub(new MemoryLiveBackend(), { heartbeatSeconds: 20, retryMilliseconds: 3000, maxStreams: 100 }, logger);
+    const hub = new LiveHub(new MemoryLiveBackend(), { heartbeatSeconds: 20, retryMs: 3000, maxStreams: 100 }, logger);
     cleanups.push(() => hub.close());
     const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
     const opened: LiveStreamReader[] = [];
@@ -448,8 +448,8 @@ describe('the stream — hints, never data', () => {
     await Promise.all([adaA.closed, adaB.closed]);
     for (const reader of [adaA, adaB]) {
       expect(reader.events.map((each) => each.event)).toEqual(['hello']);
-      expect(reader.retryMilliseconds).toBeGreaterThanOrEqual(1000);
-      expect(reader.retryMilliseconds).toBeLessThanOrEqual(10_000);
+      expect(reader.retryMs).toBeGreaterThanOrEqual(1000);
+      expect(reader.retryMs).toBeLessThanOrEqual(10_000);
     }
     expect(hub.size).toBe(2);
     await backend.refresh('users.1', null, undefined);

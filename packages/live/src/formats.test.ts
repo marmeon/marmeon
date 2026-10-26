@@ -21,7 +21,7 @@ const silent = { debug() {}, info() {}, warn() {}, error() {}, child: () => sile
 const ADA = 'scope-of-adas-session';
 const CONNECTION = '0123456789abcdef01234567';
 const tokens = new LiveTokens(liveKeys(new Uint8Array(32).fill(7)));
-const options = { heartbeatSeconds: 20, retryMilliseconds: 3000, maxStreams: 10 };
+const options = { heartbeatSeconds: 20, retryMs: 3000, maxStreams: 10 };
 
 describe('the live stream: the fixtures of every version it once spoke', () => {
   it('speaks the version its fixtures are of', () => {
@@ -50,7 +50,7 @@ describe('the live stream: the fixtures of every version it once spoke', () => {
     expect(more).toEqual([]);
     const reader = new LiveStreamReader(new Response(fixture!.text));
     await reader.closed;
-    expect(reader.retryMilliseconds).toBe(3000);
+    expect(reader.retryMs).toBe(3000);
     expect(reader.heartbeats).toBe(1);
     expect(reader.events).toEqual([
       { event: 'hello', id: 'users.1=2', data: { seq: { 'users.1': 2 } } },

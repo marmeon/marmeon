@@ -131,7 +131,7 @@ describe('createHttpKernel — islands', async () => {
   });
 
   it('a 409 (a new build) passes as it is — the client loads the whole page again', async () => {
-    const versioned = createHttpKernel(application, { version: 'v2' });
+    const versioned = createHttpKernel(application, { assetVersion: 'v2' });
     const stale = await versioned.request('/islands/feed', { headers: { ...ISLAND, 'x-marmeon-version': 'v1' } });
     expect(stale.status).toBe(409);
     expect(stale.headers.get('x-marmeon-location')).toBe('http://localhost/islands/feed');
