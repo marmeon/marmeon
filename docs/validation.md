@@ -286,8 +286,8 @@ validations is generous enough for typing. So database rules and `async` `custom
 and a taken value get the same answer there, and only the submit tells, where the request's own rules and limits apply.
 
 `.live()` opts a rule in, for a value whose being taken is no secret, such as a slug among one user's own notes. Never use it for
-anything that tells whether an account exists. It goes on the field: on an object, a list or a union it is a compile error, and it
-throws, since it would open every rule inside, the address next to the slug:
+anything that tells whether an account exists. It goes on the field. On an object or a list it is a compile error. On a union it compiles, because a union is typed as any rule,
+but it throws a `TypeError` when the rule is built. An object or a list wrapped in `.optional()` or `.nullable()` compiles the same way and throws the same way. All of them would open every rule inside, the address next to the slug:
 
 ```ts
 r.object({ slug: r.string().unique(NoteRepository, 'slug').live(), email: r.email().unique(UserRepository, 'email') }); // slug live, email not

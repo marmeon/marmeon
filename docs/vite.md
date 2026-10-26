@@ -140,13 +140,14 @@ needs nothing, and it works in development the same way. It exists once `fonts` 
 
 ## Virtual modules
 
-The plugin serves three modules that your entries import:
+The plugin serves four modules that your entries import:
 
 | Module | What it exports | Used by |
 | --- | --- | --- |
 | `virtual:marmeon/pages` | Every page, each loaded on its own, keyed by its path | `resolveModulePages(pages)` |
 | `virtual:marmeon/lang` | Every language file, each loaded on its own | `createMessageLoader(lang)` of `@marmeon/i18n/messages` |
 | `virtual:marmeon/routes` | `routes`: the named routes the browser knows | `createMarmeonApp({ routes })`, `createSsrRenderer(…, { routes })` |
+| `virtual:marmeon/fonts.css` | The stylesheet of the fallback fonts, once `fonts` has an entry | the client entry, `import 'virtual:marmeon/fonts.css'` ([fonts](#fonts)) |
 
 ```ts title="bootstrap/pages.ts"
 import { resolveModulePages } from '@marmeon/react';

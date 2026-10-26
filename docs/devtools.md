@@ -132,6 +132,9 @@ start, and so does an unknown name in `record`.
 
 ## Where the entries live
 
+The store is the `DevtoolsStore` the package binds. A tool or a test takes it from the container and reads; an app does not
+implement it, because a later release may add a member.
+
 The entries are files in `storage/framework/devtools/`, one file per process and hour. The server, the worker and the scheduler
 of `marmeon dev` write into the same directory, and the pages show them together. The files form a ring: by default 50 MB and 24
 hours. The directory and its files are readable by their owner only (`0o700` and `0o600`), because entries hold mail bodies and job payloads. The files are a cache of the version that wrote them, so after an update older entries may show incompletely

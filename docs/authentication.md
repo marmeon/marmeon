@@ -596,7 +596,7 @@ hash, and the log says how many.
 `updatePassword()` does not check the current password itself, but it throws without a recent confirmation, a password or a passkey
 (`passwordRecentlyConfirmed()`, as `endSignIn()` does): a stolen session cookie behind a route with only `authenticate()` cannot
 take the account over by choosing a password. The controller checks the current password first, as the starter kit's does, with
-`checkPassword()`, which is that confirmation; a route behind [`confirmedPassword()`](#sudo-mode) has it already, as long as the confirmation is within `AUTH_PASSWORD_TIMEOUT_SECONDS` (`updatePassword()` checks that window, not a longer `seconds` of the middleware):
+`checkPassword()`, which is that confirmation; a route behind [`confirmedPassword()`](#sudo-mode) has it already, as long as the confirmation is within `AUTH_PASSWORD_TIMEOUT_SECONDS` (`updatePassword()` checks that window, not a longer `maxAge` of the middleware):
 
 ```ts title="modules/auth/controllers/UpdatePasswordController.ts"
 import { Auth, password, type Authenticated } from '@marmeon/auth';

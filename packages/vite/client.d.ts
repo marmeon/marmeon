@@ -2,7 +2,7 @@
 
 declare module 'virtual:marmeon/pages' {
   /**
-   * Every page component (the `pages` glob of `marmeon()`), keyed by its path from the app root
+   * Every page component (the `.tsx` files under `modules/<module>/views`), keyed by its path from the app root
    * (`/modules/user-profile/views/Show.tsx`) and loaded lazily. Hand it to `resolveModulePages(pages)` of `@marmeon/react`.
    */
   const pages: Record<string, () => Promise<unknown>>;
@@ -11,7 +11,7 @@ declare module 'virtual:marmeon/pages' {
 
 declare module 'virtual:marmeon/lang' {
   /**
-   * Every language file (the `lang` glob of `marmeon()`), keyed by its path from the app root and loaded lazily, one chunk
+   * Every language file (`modules/<module>/lang/<locale>.ts` and `lang/<locale>.ts`), keyed by its path from the app root and loaded lazily, one chunk
    * per file, so the browser loads only the locale it shows. Hand it to `createMessageLoader(lang)` of `@marmeon/i18n/messages`.
    */
   const lang: Record<string, () => Promise<unknown>>;

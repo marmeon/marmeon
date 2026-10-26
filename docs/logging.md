@@ -67,8 +67,25 @@ message as `msg`:
 that collects several environments tells them apart by it. The
 [configuration](configuration.md#app_env-the-environments-name) page explains the name.
 
-The levels are numbers: 20 for `debug`, 30 for `info`, 40 for `warn`, 50 for `error`. Neither format writes the process id or the
+The levels are numbers: 20 for `debug`, 30 for `info`, 40 for `warn`, 50 for `error`. The framework writes entries from `debug` to `error`; `trace` and `fatal` are for loggers of your own. Neither format writes the process id or the
 host name.
+
+### The fields of a JSON line
+
+These field names and their meaning are [public API](releases.md#what-is-public-api); a new field is not a break, and the text of a
+message is not part of it.
+
+| Field | Meaning |
+| --- | --- |
+| `level` | Pino's number for the level. |
+| `time` | When the entry was written, in epoch milliseconds. |
+| `msg` | The message. |
+| `appEnv` | The environment's name, see above. Absent when the app has none. |
+| `requestId` | The id of the request the entry was written in, the one `x-request-id` carries. |
+| `job`, `jobId`, `attempt` | The job that was running, its id and its attempt. |
+| `task` | The scheduled task that was running. |
+| `trace_id`, `span_id` | The active span, with `@marmeon/otel`. |
+| `err` | An error the app logs as `{ err: error }`: `type`, `message` and `stack`. The fields the framework writes for its own errors (`exception`, `stack` and sometimes `message`) are not part of the frozen set yet. |
 
 ## The log context
 

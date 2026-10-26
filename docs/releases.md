@@ -139,11 +139,22 @@ The promise of a version covers the public API. These are part of it:
   `page` or `cursor`, `per_page`, `search` and `filter[<name>]` (a day range as `YYYY-MM-DD..YYYY-MM-DD`), each with the table's
   prefix (`members_sort`). People bookmark and share these URLs. A key does not change its name or its meaning, and a value that
   was valid stays valid.
+- The field names of the JSON log line ([listed here](logging.md#the-fields-of-a-json-line)): `level`, `time`, `msg`, `appEnv`,
+  `requestId`, `job`, `jobId`, `attempt`, `task`, `trace_id`, `span_id` and `err` with its `type`, `message` and `stack`, for an error the app logs as `{ err: error }`. The fields the framework writes for its own errors (`exception`, `stack` and sometimes `message`) are not part of this set yet. Log
+  shippers parse them, so the name and the meaning of a field stay; a new field is not a break. The text of a message is not part of it.
+- The health endpoints ([health.md](health.md#liveness-and-readiness)): the path `SERVER_HEALTH_PATH` names and `/ready` below it,
+  their status codes (`200`, `503`), and the `status` of `/up/ready`: `ok`, `failing` or `draining`. The details a check adds
+  in development are not part of it.
+- The framework's data attributes that [Styling state](styling.md#styling-state) lists, plus `data-marmeon-failure` and the progress
+  bar's `data-marmeon-progress`, and the custom properties an app sets on `:root`: the three `--marmeon-progress-*` and the four
+  `--marmeon-failure-*` ([the framework's look](styling.md#the-frameworks-look)). A stylesheet selects on them. A new attribute or a
+  new value of one is not a break. Any other `data-marmeon-*` attribute the components render is internal.
+- The entry types of `@marmeon/devtools`: a field may come to an entry, and in 1.x none is renamed or removed.
 
 Not part of it are `./internal` subpaths, anything marked `@internal` or [experimental](#experimental), a command marked `static hidden` (the snapshot lists those apart as "Hidden commands (not API)") except `serve`, which `marmeon start` runs, and the wording of messages and logs.
-The JSON API of the [devtools](devtools.md#for-other-tools) is covered only through its `version`: the answer of
-`/_marmeon/devtools/api` names the version of the API, and a tool reads the other answers by it. The other routes and the shape of
-the entries change only together with a new `version`. The devtools exist only in development.
+The JSON API of the [devtools](devtools.md#for-other-tools) is covered through its `version`: the answer of
+`/_marmeon/devtools/api` names the version of the API, and a tool reads the other answers by it. The routes and the envelopes of the
+answers change only together with a new `version`; the entries inside them follow the rule of their types above. The devtools exist only in development.
 
 The same list decides, already in 0.x, whether a pull request is a `breaking` one.
 
@@ -176,6 +187,7 @@ A reader never guesses and never falls back to a default.
 | [Queued listener](events.md#queued-listeners) | the listener's `static listener` name, within its event | put back like an unknown job | failed like any record without a version |
 | [Session](session.md#what-a-session-stores) | `_v` in the payload | the request is a guest's; the stored session stays as it is | dropped, a new session starts |
 | [Session and remember-me cookies](session.md#the-__host--prefix) | the name, with `__Host-` when cookies are `Secure` | n/a | a cookie under another name is never read |
+| [`XSRF-TOKEN` cookie](csrf.md#the-token) | the name; the value is the session's CSRF token, unencrypted, and `xsrfToken()` of `@marmeon/http/client` reads it | n/a | a request of the client core without the cookie sends no token, and a write that needs one fails with `419`; a `<Form>` without JavaScript sends `_token` from the page data |
 | [Record of migrations](migrations.md#how-the-migrator-keeps-track) | the columns of `migrations` (and of `migration_lock`) | `migrate` refuses; every query on the connection fails and `/up/ready` is red | `migrate` adds `checksum` and records each file as it is then; until it ran, every query fails (D2) and `/up/ready` is red |
 | [Encrypted values](encryption.md#what-the-key-protects) | a version byte, and a context per use (`cookie:<name>`, `session:<key>`, `queue:v1:<job>`) | `DecryptError` | `DecryptError` |
 | [API tokens](api-tokens.md#the-token-format) | the prefix, and a hash under its own domain | not a token: 401, like an unknown one | no longer valid: 401, like an unknown one |
@@ -195,8 +207,8 @@ Some formats have no version of their own and are kept stable another way:
   know. Such a message never carries data: it tells a tab to ask the server, which answers through the route and its authorisation.
 - **The envelopes of cache entries and the values the framework stores in them** have no mark and are frozen: the file store's
   `{ value, expires }`, the rows of the `cache` and `cache_locks` tables, and the Redis value, a JSON text with a millisecond expiry
-  (`PX`). So are the values the framework puts there itself, such as a rate limiter's counter (a whole number) and the marker of
-  `job.once` (`1`). Two nodes of a rolling deploy read each other's entries. A change of one arrives as a new key name, never as
+  (`PX`). So are the values the framework puts there itself, such as a rate limiter's counter (a whole number), the marker of
+  `job.once` (`1`) and the scheduler's last tick (`schedule:last-tick` for tasks that run on one server and `schedule:last-tick:<host>` for the others, each the start of the minute in epoch milliseconds). Two nodes of a rolling deploy read each other's entries. A change of one arrives as a new key name, never as
   a new meaning under the old one.
 - **Pagination cursors** carry no mark: the values of the last row as JSON, encrypted with `APP_KEY` under a context that names the
   list's order (and its `name`, when given). A cursor stays valid while the key that made it is `APP_KEY` or in `APP_PREVIOUS_KEYS`
@@ -207,7 +219,7 @@ Some formats have no version of their own and are kept stable another way:
   does so with the same care as a renamed column.
 
 Fixtures sit under `__fixtures__/formats/`, one per version: the page and region object, the job record, the Redis member, queued
-listeners, mails and notifications, the session payload, the pagination cursor, the record of migrations, the encrypted value, API tokens, the manifest of copied files and the `--json` documents. A test reads each
+listeners, mails and notifications, the session payload, the pagination cursor, the record of migrations, the encrypted value, API tokens, the live stream, its query and the messages between nodes, the manifest of copied files and the `--json` documents. A test reads each
 directory with the current code. A pull request that changes or deletes a fixture is a `breaking` one. [Changing a stored or wire format](../CONTRIBUTING.md#changing-a-stored-or-wire-format)
 says how a format moves on.
 

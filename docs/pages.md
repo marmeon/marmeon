@@ -243,8 +243,8 @@ export const title: TitleTemplate = (page) => (page ? `${page} — ${APP}` : APP
 
 `create-marmeon` writes the app's name into the `APP` line (and into `index.html`); change it there.
 
-`<Head>` also takes the fields search engines and link previews read: `description`, `canonical`, `robots`, `openGraph` and
-`twitter`. A layout and a page merge them, and relative URLs become absolute from `APP_URL`; see
+`<Head>` also takes the fields search engines and link previews read: `description`, `canonical`, `robots`, `openGraph`,
+`twitter` and `jsonLd`. A layout and a page merge them, and relative URLs become absolute from the origin of `APP_URL`; see
 [search engines & sharing](seo.md#the-heads-fields).
 
 A page without a `<Head title>` gets `title('')`. When that is empty, the `<title>` of `index.html` stays. An island cannot change
