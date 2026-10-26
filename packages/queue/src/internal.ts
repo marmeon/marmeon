@@ -4,5 +4,4 @@
  */
 export { QUEUE_MIGRATION } from './commands/failed.ts';
 export { RECORD_OPTIONS } from './queue.ts';
-export { parseRecord, TARGET_UNKNOWN, type ParsedRecord } from './runner.ts';
-export { withAvailableAt } from './driver.ts';
+export { parseRecord, TARGET_UNKNOWN } from './runner.ts';

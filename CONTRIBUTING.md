@@ -431,11 +431,13 @@ until its line is deleted.
 A span of time is a `Duration`, or a number with its unit in its name ([docs/time.md](docs/time.md#spans-of-time)): a member, a
 parameter or a return value of a stable entry whose name ends in a span word (`timeout`, `ttl`, `delay`, `maxAge`, … — the list is
 `SPAN_WORDS` in `scripts/api-spans.ts`) and whose type holds a bare `number` fails `pnpm api:check`. A number that is no span
-for the framework, such as a point in time or a field the WebAuthn JSON defines, stands in `SPAN_EXCEPTIONS` with its reason;
-`SPAN_PENDING` lists the spans that do not follow the rule yet, and the change that fixes one deletes its line. A listed name that
-follows the rule fails the check until its line is deleted. The check holds the names; the position of a span (a parameter is a `Duration`, or moves into an options object) is reviewed by hand.
+for the framework, such as a point in time or a field the WebAuthn JSON defines, or a parameter of a contract an app implements
+([docs/time.md](docs/time.md#spans-of-time), rule 4), stands in `SPAN_EXCEPTIONS` with its reason. A listed name that follows the
+rule fails the check until its line is deleted. The check holds the position too: a positional parameter whose name, without a
+unit (`Seconds`, `Ms`, `Milliseconds`, `Minutes`, `Hours`, `Days`), is a span name and whose type is a bare `number` fails,
+because a span in a position of a parameter is a `Duration` or moves into an options object.
 
-What a package keeps behind `./internal` is for other packages: `pnpm api:check` fails for a name of an `./internal` entry that no file outside its package imports (imported by the code or tests of another package), and for a class that a public signature names but no entry point exports (mark the member that names it `@internal`, or export the class). A name that stands on purpose is in `INTERNAL_EXCEPTIONS` of `scripts/api-internal.ts` with its reason; `INTERNAL_PENDING` lists the names that do not follow the rules yet, and the change that fixes one deletes its line. A listed name that follows the rules fails the check until its line is deleted.
+What a package keeps behind `./internal` is for other packages: `pnpm api:check` fails for a name of an `./internal` entry that no file outside its package imports (imported by the code or tests of another package), and for a class that a public signature names but no entry point exports (mark the member that names it `@internal`, or export the class). A name that stands on purpose is in `INTERNAL_EXCEPTIONS` of `scripts/api-internal.ts` with its reason. A listed name that follows the rules fails the check until its line is deleted.
 
 An entry point may only expose the types of the libraries `FOREIGN_TYPES` in `scripts/api.ts` lists for its package (Node's
 built-ins, `@marmeon/*` and `marmeon` are free); `pnpm api:check` fails otherwise. Each entry says why it is there — a peer the

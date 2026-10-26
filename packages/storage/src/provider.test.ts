@@ -369,7 +369,7 @@ describe('the fake', () => {
     const base = freshDirectory();
     const { storage, kernel } = await boot(storageConfig(base), { fake: true });
     expect(storage).toBeInstanceOf(StorageFake);
-    const fake = storage as StorageFake;
+    const fake = storage as unknown as StorageFake;
     expect(fake.disk('public')).toBeInstanceOf(MemoryDisk);
     expect(fake.disk('bucket')).toBeInstanceOf(MemoryDisk); // S3 too — no SDK, no network
     await fake.disk('public').put('a.png', 'png');

@@ -42,10 +42,19 @@ export const SPAN_EXCEPTIONS: Readonly<Record<string, string>> = {
   '@marmeon/cache LockStore.lock(expires)': 'a point in time, epoch milliseconds',
   '@marmeon/queue JobRecord.backoff': 'a field of the stored job record: seconds, and it changes only with a format version',
   '@marmeon/queue UniqueRecord.for': 'a field of the stored job record: seconds, and it changes only with a format version',
+  '@marmeon/auth AccessTokenStore.prune(graceSeconds)': 'a store contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
+  '@marmeon/auth DatabaseAccessTokens.prune(graceSeconds)': "implements a store contract, so it takes the contract's number with its unit in the name (docs/time.md, rule 4)",
+  '@marmeon/auth DatabasePasswordResetTokens.consume(maxAgeSeconds)': "implements a store contract, so it takes the contract's number with its unit in the name (docs/time.md, rule 4)",
+  '@marmeon/auth DatabasePasswordResetTokens.create(throttleSeconds)': "implements a store contract, so it takes the contract's number with its unit in the name (docs/time.md, rule 4)",
+  '@marmeon/auth DatabasePasswordResetTokens.prune(maxAgeSeconds)': "implements a store contract, so it takes the contract's number with its unit in the name (docs/time.md, rule 4)",
+  '@marmeon/auth DatabaseSignIns.prune(rememberMaxAgeDays)': "implements a store contract, so it takes the contract's number with its unit in the name (docs/time.md, rule 4)",
+  '@marmeon/auth PasswordResetTokenStore.consume(maxAgeSeconds)': 'a store contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
+  '@marmeon/auth PasswordResetTokenStore.create(throttleSeconds)': 'a store contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
+  '@marmeon/auth PasswordResetTokenStore.prune(maxAgeSeconds)': 'a store contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
+  '@marmeon/auth SignInStore.prune(rememberMaxAgeDays)': 'a store contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
+  '@marmeon/http/client createPoll(intervalMs)': 'positional by decision; the unit is in the name, as for every client time',
+  '@marmeon/queue QueueDriver.push(delaySeconds)': 'a driver contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
+  '@marmeon/queue QueueDriver.release(delaySeconds)': 'a driver contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
+  '@marmeon/react usePoll(intervalMs)': 'positional by decision; the unit is in the name, as for every client time',
+  '@marmeon/session SessionStore.gc(lifetimeSeconds)': 'a store contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
 };
-
-/**
- * Spans that do not follow the rule yet. Each change that fixes one deletes its line; the list is empty before a release.
- */
-export const SPAN_PENDING: ReadonlySet<string> = new Set<string>([
-]);

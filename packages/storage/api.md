@@ -367,10 +367,16 @@ export interface FakeDiskAssertions {
     assertCount(count: number, directory?: string): this;
 }
 // StorageFake
-export declare class StorageFake extends StorageManager {
+export declare class StorageFake implements Storage {
+    #private;
     constructor(container: Container);
+    get names(): readonly string[];
+    get defaultDisk(): string;
     disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): FakeDisk<N>;
-    protected build(name: string, options: DiskOptions): Disk;
+    named(name: string): Disk;
+    options(name: string): DiskOptions;
+    verify(): void;
+    close(): Promise<void>;
 }
 ```
 
@@ -414,41 +420,6 @@ export interface Disk {
 // DiskBase
 interface DiskBase {
     readonly visibility?: Visibility;
-}
-// DiskDriver
-export interface DiskDriver {
-    readonly name: string;
-    readonly visibility: Visibility;
-    put(key: string, contents: FileContents, options?: PutOptions): Promise<void>;
-    get(key: string): Promise<Uint8Array>;
-    text(key: string): Promise<string>;
-    stream(key: string): Promise<ReadableStream<Uint8Array>>;
-    open(key: string): Promise<OpenedFile>;
-    exists(key: string): Promise<boolean>;
-    delete(key: string): Promise<boolean>;
-    move(from: string, to: string): Promise<void>;
-    copy(from: string, to: string): Promise<void>;
-    size(key: string): Promise<number>;
-    mimeType(key: string): Promise<string>;
-    lastModified(key: string): Promise<Date>;
-    list(directory?: string, options?: ListOptions): Promise<string[]>;
-    url(key: string): string;
-    temporaryUrl(key: string, options: DiskDriverTemporaryUrlOptions): Promise<string>;
-    close?(): Promise<void>;
-}
-// DiskDriverContext
-export interface DiskDriverContext {
-    readonly name: string;
-    readonly root: string;
-    readonly container: Resolver;
-}
-// DiskDriverFactory
-export type DiskDriverFactory<O = any> = (options: O, context: DiskDriverContext) => DiskDriver;
-// DiskDriverTemporaryUrlOptions
-export interface DiskDriverTemporaryUrlOptions {
-    readonly expiresInSeconds: number;
-    readonly filename?: string;
-    readonly base?: string;
 }
 // DiskDrivers
 export interface DiskDrivers {
@@ -540,28 +511,6 @@ export declare const Storage: import("@marmeon/core").Token<Storage>;
 export interface StorageDefinition<D extends Readonly<Record<string, DiskOptions>> = Readonly<Record<string, DiskOptions>>, Default extends string = string> extends ConfigDefinition<StorageOptions<D, Default>> {
     readonly storage: true;
 }
-// StorageDependencies
-export interface StorageDependencies {
-    readonly root: string;
-    readonly clock: Clock;
-    readonly temporaryUrls: TemporaryUrls;
-    readonly drivers?: ReadonlyMap<string, DiskDriverFactory>;
-    readonly container?: Resolver;
-}
-// StorageManager
-export declare class StorageManager implements Storage {
-    #private;
-    constructor(options: StorageOptions, dependencies: StorageDependencies);
-    get names(): readonly string[];
-    get defaultDisk(): string;
-    disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): DiskFor<N>;
-    named(name: string): Disk;
-    verify(): void;
-    options(name: string): DiskOptions;
-    protected build(name: string, options: DiskOptions): Disk;
-    protected memory(name: string, options: DiskOptions): Disk;
-    close(): Promise<void>;
-}
 // StorageOptions
 export interface StorageOptions<D extends Readonly<Record<string, DiskOptions>> = Readonly<Record<string, DiskOptions>>, Default extends string = string> {
     readonly default: Default;
@@ -575,10 +524,6 @@ export interface TemporaryUrlOptions {
     readonly expiresIn: Duration;
     readonly filename?: string;
     readonly base?: string;
-}
-// TemporaryUrls
-export interface TemporaryUrls {
-    sign(disk: string, key: string, options: DiskDriverTemporaryUrlOptions): string;
 }
 // UnionToIntersection
 type UnionToIntersection<U> = (U extends unknown ? (x: () => U) => void : never) extends (x: infer I) => void ? I : never;

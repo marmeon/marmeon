@@ -3,9 +3,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { FOREIGN_TYPES, foreignPackage, internalProblems, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, spanProblems, stabilityProblems } from './api.ts';
-import { INTERNAL_EXCEPTIONS, INTERNAL_PENDING } from './api-internal.ts';
+import { INTERNAL_EXCEPTIONS } from './api-internal.ts';
 import { SAME_VALUE } from './api-names.ts';
-import { SPAN_EXCEPTIONS, SPAN_PENDING } from './api-spans.ts';
+import { SPAN_EXCEPTIONS } from './api-spans.ts';
 import { compareSnapshots, parseSnapshot, type ApiItem } from './api-snapshot.ts';
 import { INTERNAL } from './check-source.ts';
 import { frameworkPackages } from './packages.ts';
@@ -19,8 +19,8 @@ const NO_NAMES = { sameValue: {} };
 const DEMO_INTERNAL = `@marmeon/demo${INTERNAL}`;
 /** Another package takes `c` from `./internal`, the one name the fixtures export there. */
 const CONSUMER = [{ path: 'packages/other/src/c.ts', text: `import { c } from '${DEMO_INTERNAL}';` }];
-const NO_INTERNAL = { exceptions: {}, pending: new Set<string>() };
-const NO_SPANS = { exceptions: {}, pending: new Set<string>() };
+const NO_INTERNAL = { exceptions: {} };
+const NO_SPANS = { exceptions: {} };
 const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, spans: NO_SPANS, internal: NO_INTERNAL, files: CONSUMER, ...options });
 
 /** Writes `dist/<name>` files into a fresh package; `exports` maps subpaths to their `.d.ts` under `dist/`. */
@@ -1090,17 +1090,44 @@ describe('spans of time', () => {
     expect(spans('type Overlapping = { expiresAfter: number };\nexport declare function f(a: Overlapping): void;\n')).toEqual([message('Overlapping.expiresAfter')]);
   });
 
-  it('lets an exception and a pending line stand', () => {
-    const text = 'export interface Options {\n    timeout: number;\n    ttl: number;\n}\n';
-    expect(spans(text, { exceptions: { '@marmeon/demo Options.timeout': 'milliseconds' }, pending: new Set(['@marmeon/demo Options.ttl']) })).toEqual([]);
+  it('lets an exception stand', () => {
+    const text = 'export interface Options {\n    timeout: number;\n}\n';
+    expect(spans(text, { exceptions: { '@marmeon/demo Options.timeout': 'milliseconds' } })).toEqual([]);
   });
 
-  it('names a line of either list that follows the rule', () => {
+  it('names an exception that follows the rule', () => {
     const text = 'export interface Options {\n    timeoutMs: number;\n}\n';
-    expect(spans(text, { exceptions: { '@marmeon/demo Options.timeout': 'milliseconds' }, pending: new Set(['@marmeon/demo Options.ttl']) })).toEqual([
+    expect(spans(text, { exceptions: { '@marmeon/demo Options.timeout': 'milliseconds' } })).toEqual([
       '@marmeon/demo Options.timeout is listed in SPAN_EXCEPTIONS but is no bare number span any more — delete the line',
-      '@marmeon/demo Options.ttl is listed in SPAN_PENDING but follows the rule — delete the line',
     ]);
+  });
+
+  describe('a span in the position of a parameter', () => {
+    const positional = (where: string) => `@marmeon/demo ${where} is a span of time as a positional number — move it into an options object, or take a Duration (docs/time.md › Spans of time)`;
+
+    it('names a positional number whose name, without its unit, is a span name', () => {
+      const text = 'export declare class Locks {\n    prune(graceSeconds: number): void;\n    run(lifetimeMinutes?: number): void;\n    poll(everyDays: number | undefined, intervalMs: number): void;\n}\nexport declare function wait(delayMilliseconds: number, ttlHours: number): void;\n';
+      expect(spans(text)).toEqual([
+        positional('Locks.poll(intervalMs)'),
+        positional('Locks.prune(graceSeconds)'),
+        positional('Locks.run(lifetimeMinutes)'),
+        positional('wait(delayMilliseconds)'),
+        positional('wait(ttlHours)'),
+      ]);
+    });
+
+    it('lets a Duration, an options object, a callback and a name that is no span be', () => {
+      const text = "import type { Duration } from '@marmeon/core';\nexport declare function a(grace: Duration, options: { graceSeconds?: number }): void;\nexport declare function b(retryDelayMs: (attempt: number) => number, countDays: number, seconds: number): void;\n";
+      expect(spans(text)).toEqual([]);
+    });
+
+    it('lets an exception stand and names one that follows the rule', () => {
+      const text = 'export declare function prune(graceSeconds: number): void;\n';
+      expect(spans(text, { exceptions: { '@marmeon/demo prune(graceSeconds)': 'a store contract' } })).toEqual([]);
+      expect(spans('export declare function prune(options: { graceSeconds?: number }): void;\n', { exceptions: { '@marmeon/demo prune(graceSeconds)': 'a store contract' } })).toEqual([
+        '@marmeon/demo prune(graceSeconds) is listed in SPAN_EXCEPTIONS but is no bare number span any more — delete the line',
+      ]);
+    });
   });
 
   it('fails pnpm api:check for a bare number span', async () => {
@@ -1110,9 +1137,8 @@ describe('spans of time', () => {
     expect(run.lines).toContain('spans of time:');
   });
 
-  it('gives every exception of the repository a reason and lists no span twice', () => {
+  it('gives every exception of the repository a reason', () => {
     expect(Object.keys(SPAN_EXCEPTIONS).every((key) => SPAN_EXCEPTIONS[key]!.length > 0)).toBe(true);
-    expect([...SPAN_PENDING].filter((key) => key in SPAN_EXCEPTIONS)).toEqual([]);
   });
 });
 
@@ -1206,17 +1232,17 @@ describe('./internal entries and leaked classes', () => {
     expect(internal({ ...files, 'internal.d.ts': '' }, {}, {}, { ...ENTRIES, './other': 'other.d.ts' })).toEqual([leaked('Thing')]);
   });
 
-  it('lets an exception and a pending line stand', () => {
-    const lists = { exceptions: { '@marmeon/demo/internal ownOnly': 'the launcher resolves it by path' }, pending: new Set(['@marmeon/demo/internal testOnly', '@marmeon/demo/internal used']) };
+  it('lets an exception stand', () => {
+    const lists = { exceptions: { '@marmeon/demo/internal ownOnly': 'the launcher resolves it by path', '@marmeon/demo/internal testOnly': 'a test reads it', '@marmeon/demo/internal used': 'a test reads it' } };
     expect(internal(text, {}, lists)).toEqual([]);
   });
 
-  it('names a line of either list that follows the rule', () => {
+  it('names an exception that follows the rule', () => {
     const files = { 'index.d.ts': '', 'internal.d.ts': 'export declare const used: 1;\n' };
-    const lists = { exceptions: { '@marmeon/demo Gone': 'was leaked' }, pending: new Set(['@marmeon/demo/internal used']) };
+    const lists = { exceptions: { '@marmeon/demo Gone': 'was leaked', '@marmeon/demo/internal used': 'a test reads it' } };
     expect(internal(files, { 'packages/other/src/a.ts': `import { used } from '${DEMO_INTERNAL}';` }, lists)).toEqual([
       '@marmeon/demo Gone is listed in INTERNAL_EXCEPTIONS but follows the rule — delete the line',
-      '@marmeon/demo/internal used is listed in INTERNAL_PENDING but follows the rule — delete the line',
+      '@marmeon/demo/internal used is listed in INTERNAL_EXCEPTIONS but follows the rule — delete the line',
     ]);
   });
 
@@ -1234,9 +1260,8 @@ describe('./internal entries and leaked classes', () => {
     expect(run.lines).toContain('internal:');
   });
 
-  it('gives every exception of the repository a reason and lists no name twice', () => {
+  it('gives every exception of the repository a reason', () => {
     expect(Object.keys(INTERNAL_EXCEPTIONS).every((key) => INTERNAL_EXCEPTIONS[key]!.length > 0)).toBe(true);
-    expect([...INTERNAL_PENDING].filter((key) => key in INTERNAL_EXCEPTIONS)).toEqual([]);
   });
 });
 
