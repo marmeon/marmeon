@@ -6,6 +6,7 @@ import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp, useRouter } from './app.tsx';
+import { flush, until } from './test-helpers/settle.ts';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useAction, usePendingSubmissions } from './use-action.ts';
 import { Link } from './link.tsx';
@@ -85,6 +86,7 @@ function Inbox({ inbox }: { inbox: Feed }) {
   const keep = useAction('inbox.destroy');
   return (
     <main>
+      <p data-testid="keeping">{String(keep.pending)}</p>
       <ul data-testid="inbox">
         {inbox.data.map((row) => (
           <li key={row.id}>
@@ -151,7 +153,6 @@ async function mount(initial: PageObject) {
 }
 
 const $ = (testId: string) => container.querySelector(`[data-testid="${testId}"]`)!;
-const wait = (ms = 10) => act(async () => void (await new Promise((resolve) => setTimeout(resolve, ms))));
 const click = (testId: string) => act(async () => ($(testId) as HTMLElement).click());
 const labels = () => [...$('links').querySelectorAll('li')].map((item) => item.firstChild?.textContent);
 
@@ -173,7 +174,7 @@ describe('useAction', () => {
     expect(location.pathname).toBe('/users/1');
 
     await act(async () => answer.open(respond({ message: 'Not found.' }, 404)));
-    await wait();
+    await until(() => expect($('exception').textContent).toBe('404'));
     expect(labels()).toEqual(['Notes', 'Blog']);
     expect($('pending').textContent).toBe('false');
     expect($('exception').textContent).toBe('404');
@@ -195,18 +196,17 @@ describe('useAction', () => {
     expect($('ghost').textContent).toBe('Blog');
 
     await act(async () => post.open(new Response(null, { status: 204, headers: { [ACTION_REDIRECT_HEADER]: '/users/1' } })));
-    await wait();
+    await until(() => expect(requests.at(-1)!.headers).toMatchObject({ [PAGE_HEADER]: PROTOCOL_VERSION, [PARTIAL_DATA_HEADER]: 'links' }));
+    await flush();
     // Still the ghost: the reload of `links` has not landed.
     expect(container.querySelectorAll('[data-testid="ghost"]')).toHaveLength(1);
-    expect(requests.at(-1)!.headers).toMatchObject({ [PAGE_HEADER]: PROTOCOL_VERSION, [PARTIAL_DATA_HEADER]: 'links' });
     await act(async () => reload.open(new Response(JSON.stringify({ ...profile(['Notes', 'Blog']), props: { links: [{ id: 1, label: 'Notes' }, { id: 2, label: 'Blog' }] } }), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })));
-    await wait();
-    expect(labels()).toEqual(['Notes', 'Blog']);
+    await until(() => expect(labels()).toEqual(['Notes', 'Blog']));
     expect(container.querySelectorAll('[data-testid="ghost"]')).toHaveLength(0);
 
     server = () => respond({ message: 'The given data was invalid.', errors: { label: ['Taken.', 'Too short.'] } }, 422);
     await click('add');
-    await wait();
+    await until(() => expect($('errors').textContent).toBe('{"label":"Taken."}'));
     expect($('errors').textContent).toBe('{"label":"Taken."}');
     expect(container.querySelectorAll('[data-testid="ghost"]')).toHaveLength(0);
   });
@@ -219,11 +219,12 @@ describe('useAction', () => {
     };
     await mount(profile(['Notes']));
     await click('to-people');
-    await wait();
+    await until(() => expect($('people')).not.toBeNull());
     expect($('people').textContent).toBe('People');
     const before = requests.length;
     await act(async () => history.back());
-    await wait(30);
+    await until(() => expect($('activity').textContent).toBe('fresh'));
+    await flush();
     expect(requests.slice(before)).toEqual([expect.objectContaining({ url: '/users/1', method: 'GET', headers: expect.objectContaining({ [PARTIAL_DATA_HEADER]: 'activity' }) })]);
     expect($('activity').textContent).toBe('fresh');
     expect(labels()).toEqual(['Notes']);
@@ -250,23 +251,24 @@ describe('useAction', () => {
     await mount(feed('/inbox', [1, 2], '2'));
     const shown = () => [...$('inbox').querySelectorAll('li')].map((item) => Number(item.firstChild?.textContent));
     await click('more');
-    await wait();
-    expect(shown()).toEqual([1, 2, 3, 4]);
+    await until(() => expect(shown()).toEqual([1, 2, 3, 4]));
 
     await click('delete-3');
-    await wait(30);
+    await until(() => expect(shown()).toEqual([1, 2]));
+    await flush();
     expect(requests.at(-1)!.headers).toMatchObject({ [PARTIAL_DATA_HEADER]: 'inbox' });
     // The first page again, without the deleted row — not the old list with the first page merged over it (3 came back then).
     expect(shown(), 'the deleted row came back').toEqual([1, 2]);
 
     await click('more');
-    await wait();
-    expect(shown()).toEqual([1, 2, 4, 5]);
+    await until(() => expect(shown()).toEqual([1, 2, 4, 5]));
     expect(location.pathname + location.search).toBe('/inbox');
 
     // reset: [] — the way back: merged into what is shown (the deleted row stays until a reload starts the list over).
+    const sent = requests.length;
     await click('delete-appending-4');
-    await wait(30);
+    await until(() => expect(requests.length).toBe(sent + 2)); // the delete, then the reload of `inbox`
+    await until(() => expect($('keeping').textContent).toBe('false')); // the reload's response is handled
     expect(shown()).toEqual([1, 2, 4, 5]);
   });
 });

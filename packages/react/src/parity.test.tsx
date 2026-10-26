@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp, RegionOwnerContext, useRouterContext } from './app.tsx';
 import { Form } from './form.tsx';
 import { Link } from './link.tsx';
+import { until } from './test-helpers/settle.ts';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useRemember } from './remember.ts';
 import { useNewVersion } from './state.ts';
@@ -161,7 +162,6 @@ async function mount(initial: PageObject) {
 }
 
 const $ = (testId: string) => container.querySelector(`[data-testid="${testId}"]`) as HTMLElement | null;
-const wait = (ms = 10) => act(async () => void (await new Promise((resolve) => setTimeout(resolve, ms))));
 const click = (testId: string) => act(async () => $(testId)!.click());
 const type = (testId: string, value: string) =>
   act(async () => {
@@ -169,11 +169,7 @@ const type = (testId: string, value: string) =>
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(element, value);
     element.dispatchEvent(new Event('input', { bubbles: true }));
   });
-const back = () =>
-  act(async () => {
-    history.back();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
+const back = () => act(async () => history.back());
 
 /** Everything the browser keeps beyond this document's memory: history states, both storages, cookies. */
 const persisted = () => [...states, JSON.stringify(history.state), JSON.stringify({ ...sessionStorage }), JSON.stringify({ ...localStorage }), document.cookie].join('\n');
@@ -187,10 +183,9 @@ describe('useRemember and useForm({ remember })', () => {
     expect(navigator!.isGuarded()).toBe(true);
     // Leave (the guard asks — the browser's confirm says yes), then come back.
     await click('to-people');
-    await wait();
-    expect($('people')).not.toBeNull();
+    await until(() => expect($('people')).not.toBeNull());
     await back();
-    expect($('tab')!.textContent).toBe('activity');
+    await until(() => expect($('tab')?.textContent).toBe('activity'));
     expect(($('name') as HTMLInputElement).value).toBe('Ada MARKER');
     // Still dirty after Back: the guard still holds the remembered input.
     expect(navigator!.isGuarded()).toBe(true);
@@ -208,8 +203,9 @@ describe('useRemember and useForm({ remember })', () => {
     // What memory holds — inspected directly.
     expect(JSON.stringify(kept.keys().map((key) => kept.get(key)))).not.toContain('MARKER');
     await click('to-people');
-    await wait();
+    await until(() => expect($('people')).not.toBeNull());
     await back();
+    await until(() => expect($('name')).not.toBeNull());
     expect(($('name') as HTMLInputElement).value).toBe('Ada L.');
     expect(($('password') as HTMLInputElement).value).toBe('');
     expect(($('card') as HTMLInputElement).value).toBe('');
@@ -251,8 +247,7 @@ describe('<Form> — uncontrolled, typed by its route', () => {
     expect($('token-form')!.hasAttribute('data-pending')).toBe(true);
     expect(requests).toEqual([{ url: '/tokens', method: 'POST', body: { name: 'CI', secret: '', pin: '', plain: '', recovery_code: '', zip_code: '', abilities: ['users:read'] } }]);
     await act(async () => open(json(page('Tokens', '/tokens', { errors: { name: ['Taken.'] } }))));
-    await wait();
-    expect($('token-error')!.textContent).toBe('Taken.');
+    await until(() => expect($('token-error')?.textContent).toBe('Taken.'));
     expect($('token-name')!.getAttribute('aria-invalid')).toBe('true');
     expect($('token-form')!.hasAttribute('data-pending')).toBe(false);
   });
@@ -262,7 +257,7 @@ describe('<Form> — uncontrolled, typed by its route', () => {
     await mount(page('Tokens', '/tokens'));
     await type('q', 'ada');
     await act(async () => ($('search-form') as HTMLFormElement).requestSubmit());
-    await wait();
+    await until(() => expect(requests).toHaveLength(1));
     expect(requests.map((request) => `${request.method} ${request.url}`)).toEqual(['GET /people?q=ada']);
   });
 
@@ -280,8 +275,9 @@ describe('<Form> — uncontrolled, typed by its route', () => {
     await type('token-zip', '10115');
     await click('write');
     await click('to-people');
-    await wait();
+    await until(() => expect($('people')).not.toBeNull());
     await back();
+    await until(() => expect($('token-name')).not.toBeNull());
     expect(($('token-name') as HTMLInputElement).value).toBe('Deploy');
     expect(($('write') as HTMLInputElement).checked).toBe(true);
     expect(($('read') as HTMLInputElement).checked).toBe(false);
@@ -302,13 +298,13 @@ describe('instant visits', () => {
     history.replaceState(null, '', '/people');
     await mount(page('People', '/people'));
     await click('to-grace');
-    await wait();
+    await until(() => expect($('placeholder')).not.toBeNull());
     expect($('placeholder')!.textContent).toBe('Grace …');
     expect($('people')).toBeNull();
     expect(location.pathname).toBe('/people');
     expect(rendered).toEqual([]);
     await act(async () => open(json(page('Show', '/users/2', { profile: { name: 'Grace Hopper' } }))));
-    await wait();
+    await until(() => expect($('profile')).not.toBeNull());
     expect($('profile')!.textContent).toBe('Grace Hopper');
     expect($('placeholder')).toBeNull();
     expect(location.pathname).toBe('/users/2');

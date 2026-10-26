@@ -18,6 +18,8 @@ import { resolveModulePages, type PageComponent } from './pages.ts';
 import { useBlocker } from './state.ts';
 
 // happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
+import { untilOutsideAct } from './test-helpers/settle.ts';
+
 const HISTORY = [await loadHistoryFallback()];
 
 // Not in act(): React starts no view transition inside an act scope — these tests wait for real tasks instead.
@@ -143,28 +145,25 @@ async function mount(initial: PageObject, props: Partial<MarmeonAppProps> = {}) 
   const Component = await resolve(initial.component);
   root = createRoot(container);
   root.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} {...props} />);
-  await settle();
+  await until(() => expect($('[data-page]')).not.toBeNull());
 }
 
 const $ = (selector: string) => container.querySelector(selector);
 /** What is on screen: the page's marker (not one Suspense hid while its fallback shows). */
 const onScreen = () => [...container.querySelectorAll<HTMLElement>('[data-page]')].find((element) => element.style.display !== 'none')?.getAttribute('data-page');
-const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
-/** A visit to its end — the fetch, the render (and its transition), the history entry. */
-const visit = async (url: string, options?: Parameters<Navigator['visit']>[1]) => {
-  await navigator.visit(url, options);
-  await settle();
-};
+const until = untilOutsideAct;
+/** A deliberate wait: proves that a page which suspends keeps the old one on screen for a while. */
+const quiet = () => new Promise((resolve) => setTimeout(resolve, 30));
+const visit = (url: string, options?: Parameters<Navigator['visit']>[1]) => navigator.visit(url, options);
 
 describe('view transitions in the React adapter', () => {
   it("'react': the page changes in startTransition with its types — React starts the one transition, the core none", async () => {
     await mount(page('People', '/people'), { viewTransition: 'react' });
     await visit('/people/1');
-    await settle();
-    expect(onScreen()).toBe('person');
+    await until(() => expect(onScreen()).toBe('person'));
     expect(started, 'not exactly one view transition, React’s — the core’s and React’s both, or none').toEqual(['react:forward']);
     await visit('/people', { viewTransition: { types: ['slide'] } });
-    await settle();
+    await until(() => expect(onScreen()).toBe('people'));
     expect(started).toEqual(['react:forward', 'react:slide forward']);
   });
 
@@ -175,7 +174,7 @@ describe('view transitions in the React adapter', () => {
     const scrolled: (string | null | undefined)[] = [];
     vi.spyOn(window, 'scrollTo').mockImplementation(() => void scrolled.push(onScreen()));
     await visit('/people/2');
-    await settle();
+    await until(() => expect(scrolled).toHaveLength(1));
     expect(seen, 'the page event came before the page was committed').toEqual(['person']);
     expect(scrolled, 'scrolled before the page was committed').toEqual(['person']);
     expect(location.pathname).toBe('/people/2');
@@ -184,15 +183,14 @@ describe('view transitions in the React adapter', () => {
   it('true: the core starts the transition — React none beside it (no transition lane)', async () => {
     await mount(page('People', '/people'), { viewTransition: true });
     await visit('/people/1');
-    await settle();
-    expect(onScreen()).toBe('person');
+    await until(() => expect(onScreen()).toBe('person'));
     expect(started, 'not exactly one view transition, the core’s').toEqual(['core:forward']);
   });
 
   it('without the option: no transition at all — the page change is the plain update it was, a <ViewTransition> animates nothing', async () => {
     await mount(page('People', '/people'));
     await visit('/people/1');
-    expect(onScreen()).toBe('person');
+    await until(() => expect(onScreen()).toBe('person'));
     expect(started, 'a view transition without the option — the page changed in a React transition').toEqual([]);
   });
 
@@ -202,13 +200,10 @@ describe('view transitions in the React adapter', () => {
     history.replaceState(null, '', '/calm');
     await mount(page('Calm', '/calm'));
     void navigator.visit('/slow');
-    await settle();
-    expect(onScreen(), 'the old page stayed while the new one suspended — the page change ran in a transition').toBe('fallback');
+    await until(() => expect(onScreen(), 'the old page stayed while the new one suspended — the page change ran in a transition').toBe('fallback'));
     open();
     gate = undefined;
-    // React reveals a boundary at most every 300 ms.
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    expect(onScreen()).toBe('slow');
+    await until(() => expect(onScreen()).toBe('slow'));
   });
 
   it("'react': a page that suspends keeps the old page until it is ready — React's transition (the documented difference)", async () => {
@@ -217,14 +212,14 @@ describe('view transitions in the React adapter', () => {
     history.replaceState(null, '', '/calm');
     await mount(page('Calm', '/calm'), { viewTransition: 'react' });
     const landed = navigator.visit('/slow');
-    await settle();
+    await until(() => expect(vi.mocked(window.fetch)).toHaveBeenCalledWith(expect.stringContaining('/slow'), expect.anything()));
+    await quiet();
     expect(onScreen()).toBe('calm');
     expect(location.pathname, 'the history entry before the page was committed').toBe('/calm');
     open();
     gate = undefined;
     await landed;
-    await settle();
-    expect(onScreen()).toBe('slow');
+    await until(() => expect(onScreen()).toBe('slow'));
     expect(location.pathname).toBe('/slow');
   });
 
@@ -234,16 +229,14 @@ describe('view transitions in the React adapter', () => {
     let answer!: () => void;
     server = (url) => new Promise((resolve) => (answer = () => resolve(respond(page('Person', new URL(url, location.href).pathname, { id: 1 })))));
     const landed = navigator.visit('/people/1', { instant: { component: 'app/Person' } });
-    await settle();
-    expect(onScreen()).toBe('person-placeholder');
+    await until(() => expect(onScreen()).toBe('person-placeholder'));
     answer();
     await landed;
-    await settle();
-    expect(onScreen()).toBe('person');
+    await until(() => expect(onScreen()).toBe('person'));
   });
 
   it("'react' keeps Suspense and deferred props: the fallback first, then the prop the browser loads after the page is in", async () => {
-    let items!: () => void;
+    let items: (() => void) | undefined;
     server = (url, init) => {
       const { pathname } = new URL(url, location.href);
       return pathname === '/activity' && !(init?.headers as Record<string, string> | undefined)?.[PARTIAL_DATA_HEADER]
@@ -252,11 +245,11 @@ describe('view transitions in the React adapter', () => {
     };
     await mount(page('People', '/people'), { viewTransition: 'react' });
     await visit('/activity');
-    expect(onScreen()).toBe('activity');
+    await until(() => expect(onScreen()).toBe('activity'));
+    await until(() => expect(items).toBeDefined()); // the browser asks for the deferred prop once the page is in
     expect($('[data-testid="loading"]')).not.toBeNull();
-    items();
-    await settle();
-    expect($('[data-testid="items"]')?.textContent).toBe('ab');
+    items!();
+    await until(() => expect($('[data-testid="items"]')?.textContent).toBe('ab'));
   });
 
   it("'react' keeps the guard first: a page change it stops renders nothing and starts no transition", async () => {
@@ -264,7 +257,7 @@ describe('view transitions in the React adapter', () => {
     await mount(page('Dirty', '/dirty'), { viewTransition: 'react', confirm: undefined });
     Object.assign(window, { confirm: () => false });
     await visit('/people/1');
-    await settle();
+    await quiet();
     expect(onScreen()).toBe('dirty');
     expect(started).toEqual([]);
   });

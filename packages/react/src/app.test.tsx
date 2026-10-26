@@ -5,6 +5,7 @@ import { act, StrictMode, useState, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp, usePage, useRouter } from './app.tsx';
+import { flush, until } from './test-helpers/settle.ts';
 import { Deferred } from './deferred.tsx';
 import { Head } from './head.tsx';
 import { resolveModulePages, type DefaultLayout, type PageComponent } from './pages.ts';
@@ -148,17 +149,13 @@ async function mount(initial: PageObject, options: { layout?: DefaultLayout; tit
 
 const $ = (selector: string) => container.querySelector(selector);
 const click = (testId: string) => act(async () => ($(`[data-testid="${testId}"]`) as HTMLButtonElement).click());
-/** Lets fetches, renders and effects finish. */
-const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 10))));
 /** What a failure shows is a chunk of its own: under a busy test run it may take more than a tick to load. */
 const shown = async (selector: string) => {
-  for (let tries = 0; tries < 200 && !$(selector); tries++) await settle();
+  await until(() => expect($(selector)).not.toBeNull());
   return $(selector);
 };
 /** The deferred request goes out only after its loader chunk has arrived. */
-const requested = async (requests: unknown[]) => {
-  for (let tries = 0; tries < 200 && requests.length === 0; tries++) await settle();
-};
+const requested = (requests: unknown[]) => until(() => expect(requests.length).toBeGreaterThan(0));
 
 describe('persistent layouts', () => {
   it('keeps the layout mounted across navigations: its state survives', async () => {
@@ -169,14 +166,12 @@ describe('persistent layouts', () => {
     expect($('[data-testid="count"]')!.textContent).toBe('2');
 
     await click('to-b');
-    await settle();
-    expect($('[data-page="b"]')).not.toBeNull();
+    await until(() => expect($('[data-page="b"]')).not.toBeNull());
     expect($('[data-testid="count"]')!.textContent).toBe('2');
 
     // Back: the page from memory — and still the same layout.
     await act(async () => history.back());
-    await settle();
-    expect($('[data-page="a"]')).not.toBeNull();
+    await until(() => expect($('[data-page="a"]')).not.toBeNull());
     expect($('[data-testid="count"]')!.textContent).toBe('2');
   });
 
@@ -185,16 +180,15 @@ describe('persistent layouts', () => {
     await mount(page('A', '/a'));
     await click('count');
     await click('to-settings');
-    await settle();
-    expect($('[data-layout="app"] [data-layout="settings"] [data-page="settings"]')).not.toBeNull();
+    await until(() => expect($('[data-layout="app"] [data-layout="settings"] [data-page="settings"]')).not.toBeNull());
     const mounts = settingsMounts;
 
     await click('to-b');
-    await settle();
+    await until(() => expect($('[data-page="b"]')).not.toBeNull());
     expect($('[data-layout="settings"]')).toBeNull();
     expect($('[data-testid="count"]')!.textContent).toBe('1');
     await click('to-settings');
-    await settle();
+    await until(() => expect($('[data-layout="settings"]')).not.toBeNull());
     expect(Number($('[data-layout="settings"]')!.getAttribute('data-mount'))).toBe(mounts + 1);
   });
 
@@ -221,8 +215,7 @@ describe('persistent layouts', () => {
     await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={{ component: 'app/Inline', props: { name: 'a' }, url: '/a' }} initialComponent={Inline} resolve={inline} />));
     await click('count');
     await click('to-b');
-    await settle();
-    expect($('[data-page="b"]')).not.toBeNull();
+    await until(() => expect($('[data-page="b"]')).not.toBeNull());
     expect($('[data-testid="count"]')!.textContent).toBe('0'); // the state is gone
   });
 });
@@ -233,8 +226,7 @@ describe('document title', () => {
     await mount(page('A', '/a'), { title: (title) => (title ? `${title} — Shop` : 'Shop') });
     expect(document.title).toBe('Page A — Shop');
     await click('to-b');
-    await settle();
-    expect(document.title).toBe('Shop');
+    await until(() => expect(document.title).toBe('Shop'));
   });
 });
 
@@ -247,11 +239,10 @@ describe('tags of <Head> the server wrote', () => {
     document.head.innerHTML = SERVER_TAG;
     server = () => respond(page('B', '/b'));
     await mount(page('A', '/a'));
-    await settle();
+    await flush();
     expect(left()).toBe(1);
     await click('to-b');
-    await settle();
-    expect(left()).toBe(0);
+    await until(() => expect(left()).toBe(0));
   });
 
   it('stay through the double run of effects in StrictMode', async () => {
@@ -266,11 +257,10 @@ describe('tags of <Head> the server wrote', () => {
         </StrictMode>,
       );
     });
-    await settle();
+    await flush();
     expect(left()).toBe(1);
     await click('to-b');
-    await settle();
-    expect(left()).toBe(0);
+    await until(() => expect(left()).toBe(0));
   });
 });
 
@@ -279,11 +269,12 @@ describe('error boundaries', () => {
     let requests = 0;
     server = () => (requests++, respond(page('Fragile', '/fragile', { items: ['still', 'old'] })));
     await mount(page('Fragile', '/fragile', { items: ['old', 'shape'] }));
-    await settle();
+    const heading = await shown('[data-layout="app"] h1');
+    await flush();
 
     expect(requests).toBe(1); // one retry, not a loop
     expect($('[data-layout="app"]')).not.toBeNull(); // the layout stands
-    expect((await shown('[data-layout="app"] h1'))!.textContent).toBe('Something went wrong');
+    expect(heading!.textContent).toBe('Something went wrong');
     await click('count'); // and still works
     expect($('[data-testid="count"]')!.textContent).toBe('1');
   });
@@ -291,15 +282,14 @@ describe('error boundaries', () => {
   it('renders the page with fresh props from the server when those fit (a hot update changed their shape)', async () => {
     server = () => respond(page('Fragile', '/fragile', { items: { data: ['new', 'shape'] } }));
     await mount(page('Fragile', '/fragile', { items: ['old', 'shape'] }));
-    await settle();
-    expect([...container.querySelectorAll('[data-page="fragile"] li')].map((li) => li.textContent)).toEqual(['new', 'shape']);
+    await until(() => expect([...container.querySelectorAll('[data-page="fragile"] li')].map((li) => li.textContent)).toEqual(['new', 'shape']));
   });
 
   it('a page that renders fine is never fetched again', async () => {
     let requests = 0;
     server = () => (requests++, respond(page('B', '/b')));
     await mount(page('Fragile', '/fragile', { items: { data: ['fine'] } }));
-    await settle();
+    await flush();
     expect(requests).toBe(0);
   });
 });
@@ -312,7 +302,7 @@ describe('failed visits', () => {
     await mount(page('A', '/a'));
     await click('count');
     await click('to-b');
-    await settle();
+    await shown('[data-marmeon-failure="network"]');
     expect($('[data-marmeon-failure="network"]')!.textContent).toContain('could not be reached');
     expect($('[data-page="a"]')).not.toBeNull();
     expect($('[data-testid="count"]')!.textContent).toBe('1');
@@ -324,7 +314,6 @@ describe('failed visits', () => {
     server = () => respond({ component: 'errors/Error', props: { status: 500, title: 'Internal Server Error', message: 'boom', exception }, url: '/b', version: null }, 500);
     await mount(page('A', '/a'));
     await click('to-b');
-    await settle();
     const dialog = (await shown('dialog[data-marmeon-failure="server"] pre'))!.closest('dialog')!;
     expect(dialog.querySelector('h1')!.textContent).toBe('Internal Server Error');
     expect(dialog.querySelector('pre')!.textContent).toContain('at ShowController.handle');
@@ -333,7 +322,7 @@ describe('failed visits', () => {
     // A visit that works clears it.
     server = () => respond(page('B', '/b'));
     await click('to-b');
-    await settle();
+    await until(() => expect($('[data-page="b"]')).not.toBeNull());
     expect($('[data-marmeon-failure]')).toBeNull();
   });
 });
@@ -344,22 +333,19 @@ describe('form callbacks', () => {
     server = () => respond(page('Form', '/form', { errors: { name: ['The name is required.', 'Too short.'] } }));
     await mount(page('Form', '/form'));
     await click('submit');
-    await settle();
-    expect(calls).toEqual([{ error: { name: 'The name is required.' } }, 'finish']);
+    await until(() => expect(calls).toEqual([{ error: { name: 'The name is required.' } }, 'finish']));
 
     calls.length = 0;
     server = () => respond(page('Form', '/form', { errors: {} }));
     await click('submit');
-    await settle();
-    expect(calls).toEqual(['success', 'finish']);
+    await until(() => expect(calls).toEqual(['success', 'finish']));
 
     calls.length = 0;
     server = () => {
       throw new TypeError('Failed to fetch');
     };
     await click('submit');
-    await settle();
-    expect(calls).toEqual([{ exception: 'network' }, 'finish']);
+    await until(() => expect(calls).toEqual([{ exception: 'network' }, 'finish']));
   });
 });
 
@@ -477,10 +463,9 @@ describe('useRouter resolves with the page info', () => {
     server = (url) => respond({ ...page('Plain', new URL(url, location.href).pathname, { name: 'Ada' }), route: 'b', locale: 'de', csrf: 'token', epoch: 'e1' });
     await mount(page('Plain', '/plain'), { layout: () => Navigation });
     await click('go');
-    await settle();
+    await until(() => expect(results).toHaveLength(1));
     await click('again');
-    await settle();
-    expect(results).toHaveLength(2);
+    await until(() => expect(results).toHaveLength(2));
     for (const result of results) {
       expect(Object.keys(result as object).sort()).toEqual(['component', 'locale', 'props', 'route', 'url']);
     }
@@ -507,9 +492,8 @@ describe('deferred and optional props', () => {
     expect(requests).toEqual([expect.objectContaining({ 'x-marmeon-partial-component': 'app/Profile', 'x-marmeon-partial-data': 'activity' })]);
 
     release();
-    await settle();
+    await until(() => expect($('[data-testid="activity"]')?.textContent).toBe('signed in'));
     expect($('[data-testid="loading"]')).toBeNull();
-    expect($('[data-testid="activity"]')!.textContent).toBe('signed in');
     expect($('[data-testid="count"]')!.textContent).toBe('1'); // layout and page state kept
   });
 
@@ -517,8 +501,7 @@ describe('deferred and optional props', () => {
     server = () => respond(page('Profile', '/a', { stats: { links: 3 } }));
     await mount(page('Profile', '/a', { name: 'Ada', activity: ['joined'] }));
     await click('show-stats');
-    await settle();
-    expect($('[data-testid="stats"]')!.textContent).toBe('3');
+    await until(() => expect($('[data-testid="stats"]')?.textContent).toBe('3'));
     expect($('h1')!.textContent).toBe('Ada');
     expect($('[data-testid="activity"]')!.textContent).toBe('joined');
   });

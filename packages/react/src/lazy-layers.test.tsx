@@ -5,6 +5,7 @@ import { PAGE_HEADER, PAGE_SCRIPT_ID, type PageObject, PROTOCOL_VERSION } from '
 import { act } from 'react';
 import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { until } from './test-helpers/settle.ts';
 
 // happy-dom has no Navigation API: the History fallback — as createMarmeonApp loads it in such a browser.
 
@@ -87,7 +88,6 @@ afterEach(async () => {
 
 const $ = (selector: string) => document.querySelector(selector);
 const dialogs = () => [...document.querySelectorAll('dialog[data-marmeon-layer]')];
-const wait = (ms = 20) => act(async () => void (await new Promise((done) => setTimeout(done, ms))));
 const click = (selector: string) => act(async () => ($(selector) as HTMLElement).click());
 /** The development hint that the layers loaded only once the server answered with one. */
 const loadedLate = () => info.mock.calls.filter(([message]) => String(message).includes('[marmeon:C7]'));
@@ -109,7 +109,7 @@ describe('layers loaded on demand in React', () => {
     const heading = $('[data-testid="name"]');
     await click('[data-testid="plain"]');
     // The layers' code loads now (fresh modules) — under a busy test run, that may take more than a tick.
-    for (let tries = 0; tries < 100 && dialogs().length === 0; tries++) await wait(10);
+    await until(() => expect(dialogs()).toHaveLength(1));
     expect(loadedLate()).toHaveLength(1);
     expect(dialogs()).toHaveLength(1);
     expect($('[data-testid="depth"]')!.textContent).toBe('1');
@@ -118,20 +118,17 @@ describe('layers loaded on demand in React', () => {
     expect(location.pathname).toBe('/users/1/edit');
 
     await act(async () => history.back());
-    await wait(40);
-    expect(dialogs()).toEqual([]);
+    await until(() => expect(dialogs()).toEqual([]));
     expect(location.pathname).toBe('/users/1');
   });
 
   it('<Link layer> loads them where it renders — they are here before the click, which waits for nothing', async () => {
     await mount(page('Linked', '/users/1'));
-    await wait();
     // Here before the click: the stack (with the core's layers) has loaded already — asking for it again finds it settled.
-    const stack = (await import('./app.tsx')).loadLayerStack() as Promise<unknown> & { status?: string };
-    expect(stack.status).toBe('fulfilled');
+    const { loadLayerStack } = await import('./app.tsx');
+    await until(() => expect((loadLayerStack() as Promise<unknown> & { status?: string }).status).toBe('fulfilled'));
     await click('[data-testid="edit"]');
-    await wait();
-    expect(dialogs()).toHaveLength(1);
+    await until(() => expect(dialogs()).toHaveLength(1));
     expect(loadedLate()).toEqual([]);
   });
 
@@ -153,16 +150,15 @@ describe('layers loaded on demand in React', () => {
     const dialog = $('dialog');
     await act(async () => {
       await browser.createMarmeonApp({ resolve: browser.resolve, routes });
-      await new Promise((done) => setTimeout(done, 20));
     });
+    // Hydrated, not rendered again: the server's dialog element is the one on screen.
+    expect($('dialog')).toBe(dialog);
+    // Closing works only once the page has hydrated.
+    await click('[data-testid="close"]');
+    await until(() => expect(dialogs()).toEqual([]));
     expect(errors.mock.calls.filter(([message]) => !String(message).includes('multiple renderers'))).toEqual([]);
     expect($('[data-marmeon-hydration]')).toBeNull();
-    // Hydrated, not rendered again: the server's dialog element is the one on screen — and it is the layer's.
-    expect($('dialog')).toBe(dialog);
     expect(loadedLate()).toEqual([]);
-    await click('[data-testid="close"]');
-    await wait();
-    expect(dialogs()).toEqual([]);
     expect(location.pathname).toBe('/users/1');
   });
 });

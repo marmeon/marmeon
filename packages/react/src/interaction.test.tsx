@@ -6,6 +6,7 @@ import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp } from './app.tsx';
+import { until } from './test-helpers/settle.ts';
 import { ConfirmDialog } from './confirm.tsx';
 import { useFlash } from './flash.ts';
 import { Link } from './link.tsx';
@@ -139,7 +140,6 @@ async function mount(initial: PageObject) {
 }
 
 const $ = (selector: string) => container.querySelector(selector.startsWith('[') || selector.includes(' ') ? selector : `[data-testid="${selector}"]`)! as HTMLElement;
-const wait = (ms = 10) => act(async () => void (await new Promise((resolve) => setTimeout(resolve, ms))));
 const click = (testId: string) => act(async () => $(testId).click());
 const type = (element: HTMLInputElement, value: string) =>
   act(async () => {
@@ -155,7 +155,7 @@ describe('toasts: useFlash', () => {
     await mount(page('Edit', '/users/1/edit', { name: 'Ada' }, { flash: [toast('a', 'Saved.')] }));
     expect(toasts).toEqual(['Saved.']);
     await click('nav-people');
-    await wait();
+    await until(() => expect(toasts).toEqual(['Saved.', 'Moved.']));
     expect($('people')).not.toBeNull();
     expect(toasts).toEqual(['Saved.', 'Moved.']);
   });
@@ -178,8 +178,7 @@ describe('state attributes', () => {
     expect($('nav-edit').hasAttribute('data-pending')).toBe(false);
     expect(document.documentElement.getAttribute('aria-busy')).toBe('true');
     await act(async () => open(json(page('People', '/people', {}, { route: 'people' }))));
-    await wait();
-    expect($('nav-people-exact').getAttribute('aria-current')).toBe('page');
+    await until(() => expect($('nav-people-exact').getAttribute('aria-current')).toBe('page'));
     expect($('nav-people-exact').hasAttribute('data-pending')).toBe(false);
     expect(document.documentElement.hasAttribute('aria-busy')).toBe(false);
   });
@@ -195,8 +194,7 @@ describe('state attributes', () => {
     await click('save');
     expect($('saving').textContent).toBe('true');
     await act(async () => open(json(page('Edit', '/users/1/edit', { name: 'Ada King' }))));
-    await wait();
-    expect($('saving').textContent).toBe('false');
+    await until(() => expect($('saving').textContent).toBe('false'));
     // Saved: where the form starts over — not dirty.
     expect($('form').hasAttribute('data-dirty')).toBe(false);
   });
@@ -209,7 +207,7 @@ describe('reset() in a submit callback', () => {
     await type($('name') as HTMLInputElement, 'Ada King');
     await type($('password') as HTMLInputElement, 'secret password');
     await click('save');
-    await wait();
+    await until(() => expect(($('password') as HTMLInputElement).value).toBe('')); // the response is handled: onFinish has reset it
     expect(requests).toEqual(['PUT /users/1']);
     // The password is empty again, the name stays as sent — and that is where the form starts over.
     expect(($('password') as HTMLInputElement).value).toBe('');
@@ -224,9 +222,8 @@ describe('reset() in a submit callback', () => {
     expect(($('name') as HTMLInputElement).value).toBe('Ada King');
     expect($('form').hasAttribute('data-dirty')).toBe(false);
     await click('nav-people-exact');
-    await wait();
+    await until(() => expect($('people')).not.toBeNull());
     expect(dialog()).toBeNull();
-    expect($('people')).not.toBeNull();
   });
 
   it('after a failed submit the reset field is back, the rest stays dirty', async () => {
@@ -235,7 +232,7 @@ describe('reset() in a submit callback', () => {
     await type($('name') as HTMLInputElement, 'Ada King');
     await type($('password') as HTMLInputElement, 'secret password');
     await click('save');
-    await wait();
+    await until(() => expect(($('password') as HTMLInputElement).value).toBe(''));
     expect(($('password') as HTMLInputElement).value).toBe('');
     expect(($('name') as HTMLInputElement).value).toBe('Ada King');
     expect($('form').hasAttribute('data-dirty')).toBe(true);
@@ -257,12 +254,11 @@ describe('the navigation guard', () => {
 
     // Its own submit passes its guard, and afterwards the form is not dirty: the link goes without asking.
     await click('save');
-    await wait();
+    await until(() => expect($('form').hasAttribute('data-dirty')).toBe(false));
     expect(requests).toEqual(['PUT /users/1']);
     await click('nav-people-exact');
-    await wait();
+    await until(() => expect($('people')).not.toBeNull());
     expect(dialog()).toBeNull();
-    expect($('people')).not.toBeNull();
   });
 
   it('Leave goes, and closing the tab while dirty gets the browser’s question', async () => {
@@ -274,8 +270,7 @@ describe('the navigation guard', () => {
     expect(unload.defaultPrevented).toBe(true);
     await click('nav-people-exact');
     await answer('confirm');
-    await wait();
-    expect($('people')).not.toBeNull();
+    await until(() => expect($('people')).not.toBeNull());
   });
 });
 
@@ -292,15 +287,13 @@ describe('confirm', () => {
     await act(async () => dialog()!.querySelector('form')!.requestSubmit());
     expect(dialog()).not.toBeNull(); // no answer yet
     await answer('cancel');
-    await wait();
-    expect($('outcome').textContent).toBe('cancelled');
+    await until(() => expect($('outcome').textContent).toBe('cancelled'));
     expect(requests).toEqual([]);
 
     await click('delete');
     await type(dialog()!.querySelector('input')!, 'DELETE');
     await answer('confirm');
-    await wait();
+    await until(() => expect($('outcome').textContent).toBe('redirect'));
     expect(requests).toEqual(['DELETE /projects/1']);
-    expect($('outcome').textContent).toBe('redirect');
   });
 });

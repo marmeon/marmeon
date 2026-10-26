@@ -10,6 +10,7 @@ import { createMarmeonApp } from './client.tsx';
 import { Deferred } from './deferred.tsx';
 import { Head } from './head.tsx';
 import { Island, useIsland } from './island.tsx';
+import { until } from './test-helpers/settle.ts';
 import { resolveModulePages } from './pages.ts';
 import { createSsrRenderer } from './server.tsx';
 import { PAGE_HEADER, PROTOCOL_VERSION } from '@marmeon/http/protocol';
@@ -143,15 +144,15 @@ afterEach(() => vi.restoreAllMocks());
 const reported = (spy: { mock: { calls: unknown[][] } }) => spy.mock.calls.filter(([message]) => !String(message).includes('multiple renderers'));
 const $ = (selector: string) => document.querySelector(selector);
 
+/** React reveals streamed boundaries in batches (up to ~300 ms after the last one), and nothing in the DOM says when it is done — a deliberate wait on React's own throttle. */
+const revealed = () => act(async () => void (await new Promise((done) => setTimeout(done, 350))));
+
 async function start() {
   await act(async () => {
     await createMarmeonApp({ resolve, routes });
-    await new Promise((done) => setTimeout(done, 30));
   });
 }
 
-/** React reveals streamed boundaries in batches (up to ~300 ms after the last one) — wait for that, then for what follows. */
-const revealed = () => act(async () => void (await new Promise((done) => setTimeout(done, 350))));
 
 describe('islands in the SSR stream', () => {
   it('renders each island in the HTML with its data — the outcome only for a refused one', async () => {
@@ -174,12 +175,12 @@ describe('islands in the SSR stream', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     await serve({ component: 'app/Dashboard', props: {}, url: '/dashboard', version: null });
     await start();
+    await until(() => expect($('[data-island="stale"]')!.getAttribute('data-status')).toBe('ready'));
     expect(reported(errors)).toEqual([]);
     expect($('[data-marmeon-hydration]')).toBeNull();
     expect($('[data-testid="entries"]')!.textContent).toBe('ada,alan');
     expect($('[data-testid="hidden"]')).not.toBeNull();
     expect(requests).toEqual(['/islands/stale']);
-    expect($('[data-island="stale"]')!.getAttribute('data-status')).toBe('ready');
   });
 
   it('without the data blocks every island is a request of its own after hydrating', async () => {
@@ -187,6 +188,7 @@ describe('islands in the SSR stream', () => {
     await serve({ component: 'app/Dashboard', props: {}, url: '/dashboard', version: null });
     for (const script of [...document.querySelectorAll('script[id^="marmeon-island-"]')]) script.remove();
     await start();
+    await until(() => expect(requests).toHaveLength(4));
     expect(requests.map((url) => url.split('?')[0]).sort()).toEqual(['/islands/broken', '/islands/members', '/islands/sign-ins', '/islands/stale']);
   });
 
@@ -229,8 +231,8 @@ describe('islands in the SSR stream', () => {
     readyState = 'interactive';
     document.dispatchEvent(new Event('DOMContentLoaded'));
     await revealed();
+    await until(() => expect($('[data-testid="entries"]')?.textContent).toBe('ada,alan'));
     delete (document as { readyState?: unknown }).readyState;
-    expect($('[data-testid="entries"]')?.textContent).toBe('ada,alan');
     expect(requests).toEqual([]);
     expect(reported(errors)).toEqual([]);
   });
@@ -239,7 +241,7 @@ describe('islands in the SSR stream', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     await serve({ component: 'app/WithHead', props: {}, url: '/dashboard', version: null });
     await start();
-    expect($('[data-testid="refused"]')).not.toBeNull();
+    await until(() => expect($('[data-testid="refused"]')).not.toBeNull());
     expect(document.title).not.toContain('From an island');
     expect(errors.mock.calls.flat().map(String).join('\n')).toContain('<Head> in island [app/Titled] — islands cannot change the document head; set it on the page.');
   });
@@ -254,7 +256,7 @@ describe('deferred props in the SSR stream', () => {
     expect(JSON.parse($(`#${PAGE_SCRIPT_ID}`)!.textContent!).streamedProps).toEqual(['default']);
     await start();
     await revealed();
-    expect($('[data-testid="activity"]')?.textContent).toBe('signed in');
+    await until(() => expect($('[data-testid="activity"]')?.textContent).toBe('signed in'));
     expect(requests).toEqual([]);
     expect(reported(errors)).toEqual([]);
   });
@@ -264,8 +266,8 @@ describe('deferred props in the SSR stream', () => {
     await serve(profile, { complete: false });
     expect(JSON.parse($(`#${PAGE_SCRIPT_ID}`)!.textContent!).streamedProps).toBeUndefined();
     await start();
+    await until(() => expect($('[data-testid="activity"]')?.textContent).toBe('fetched'));
     expect(requests).toEqual(['/users/1']);
-    expect($('[data-testid="activity"]')?.textContent).toBe('fetched');
   });
 
   it('asks for a group the server could not stream', async () => {
@@ -273,7 +275,7 @@ describe('deferred props in the SSR stream', () => {
     await serve(profile, { complete: false, resolveDeferred: async () => null });
     await start();
     await revealed();
+    await until(() => expect($('[data-testid="activity"]')?.textContent).toBe('fetched'));
     expect(requests).toEqual(['/users/1']);
-    expect($('[data-testid="activity"]')?.textContent).toBe('fetched');
   });
 });
