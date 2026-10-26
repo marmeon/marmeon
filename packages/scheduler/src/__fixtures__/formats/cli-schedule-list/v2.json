@@ -1,0 +1,51 @@
+{
+  "format": 2,
+  "tasks": [
+    {
+      "name": "plain",
+      "expression": "* * * * *",
+      "timeZone": "UTC",
+      "next": "2026-10-05T10:01+00:00",
+      "does": "call CountRun",
+      "description": null,
+      "options": { "oneServer": false, "overlapSeconds": null, "catchUp": "once", "environments": null, "filtered": false }
+    },
+    {
+      "name": "berlin",
+      "expression": "10 3 * * *",
+      "timeZone": "Europe/Berlin",
+      "next": "2026-10-06T03:10+02:00",
+      "does": "call CountRun",
+      "description": "Rebuilds the night report",
+      "options": { "oneServer": true, "overlapSeconds": 1800, "catchUp": "skip", "environments": ["production", "local"], "filtered": true }
+    },
+    {
+      "name": "never",
+      "expression": "0 0 30 2 *",
+      "timeZone": "UTC",
+      "next": null,
+      "does": "call CountRun",
+      "description": null,
+      "options": { "oneServer": false, "overlapSeconds": null, "catchUp": "once", "environments": null, "filtered": false }
+    },
+    {
+      "name": "stats",
+      "expression": "0 * * * *",
+      "timeZone": "UTC",
+      "next": "2026-10-05T11:00+00:00",
+      "does": "job fixture.stats {\"scope\":\"all\"}",
+      "description": null,
+      "options": { "oneServer": false, "overlapSeconds": null, "catchUp": "once", "environments": null, "filtered": false }
+    },
+    {
+      "name": "prune",
+      "expression": "0 0 * * *",
+      "timeZone": "UTC",
+      "next": "2026-10-06T00:00+00:00",
+      "does": "command fixture:prune --days=30",
+      "description": null,
+      "options": { "oneServer": false, "overlapSeconds": null, "catchUp": "once", "environments": null, "filtered": false }
+    }
+  ],
+  "warnings": []
+}

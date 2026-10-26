@@ -119,7 +119,7 @@ export declare class Output {
     warn(text: string): void;
     error(text: string): void;
     json(document: JsonDocument): void;
-    table(header: readonly string[], rows: readonly (readonly string[])[]): void;
+    table(header: readonly string[], rows: readonly (readonly string[] | string)[]): void;
 }
 // Prompt
 export interface Prompt {

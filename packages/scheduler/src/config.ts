@@ -20,6 +20,6 @@ export const ScheduleConfig = defineConfig('schedule', {
     NODE_ENV: env.string().optional(),
     APP_ENV: env.string().optional(),
   }),
-  resolve: (e) => ({ timezone: e.SCHEDULE_TIMEZONE, environment: environment.app(e) }),
+  resolve: (e) => ({ timeZone: e.SCHEDULE_TIMEZONE, environment: environment.app(e) }),
 });
 export type ScheduleConfig = ConfigOf<typeof ScheduleConfig>;

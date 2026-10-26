@@ -64,7 +64,7 @@ export interface Schedule {
 }
 // ScheduleConfig
 export declare const ScheduleConfig: import("@marmeon/core").ConfigDefinition<{
-    timezone: string;
+    timeZone: string;
     environment: string;
 }>;
 export type ScheduleConfig = ConfigOf<typeof ScheduleConfig>;
@@ -82,7 +82,7 @@ export interface ScheduledTask<K extends TaskKind> extends Frequencies<K> {
     weekdays(): ScheduledTask<K>;
     weekends(): ScheduledTask<K>;
     days(...days: [Weekday, ...Weekday[]]): ScheduledTask<K>;
-    timezone(timeZone: string): ScheduledTask<K>;
+    timeZone(timeZone: string): ScheduledTask<K>;
     when(filter: TaskFilter): ScheduledTask<K>;
     skip(filter: TaskFilter): ScheduledTask<K>;
     environments(...names: [string, ...string[]]): ScheduledTask<K>;
@@ -151,7 +151,7 @@ export declare class Scheduler {
 // SchedulerServiceProvider
 export declare class SchedulerServiceProvider implements ServiceProvider {
     static config: import("@marmeon/core").ConfigDefinition<{
-        timezone: string;
+        timeZone: string;
         environment: string;
     }>[];
     static commands: readonly CommandClass[];
@@ -175,22 +175,26 @@ export interface TaskDefinition {
     readonly payload: unknown;
     readonly args: readonly string[];
     readonly module: string;
-    fields: [minute: string, hour: string, day: string, month: string, weekday: string] | undefined;
-    expression: string | undefined;
-    timezone: string | undefined;
-    readonly when: TaskFilter[];
-    readonly skip: TaskFilter[];
-    environments: readonly string[] | undefined;
-    onOneServer: boolean;
-    overlapMinutes: number | undefined;
-    catchUp: CatchUp;
-    name: string | undefined;
-    description: string | undefined;
+    readonly fields: readonly [minute: string, hour: string, day: string, month: string, weekday: string] | undefined;
+    readonly expression: string | undefined;
+    readonly timeZone: string | undefined;
+    readonly when: readonly TaskFilter[];
+    readonly skip: readonly TaskFilter[];
+    readonly environments: readonly string[] | undefined;
+    readonly onOneServer: boolean;
+    readonly overlapSeconds: number | undefined;
+    readonly catchUp: CatchUp;
+    readonly name: string | undefined;
+    readonly description: string | undefined;
 }
 // TaskFilter
 export type TaskFilter = (scope: Container) => boolean | Promise<boolean>;
 // TaskKind
 export type TaskKind = 'job' | 'command' | 'call';
+// TaskOverlapOptions
+export interface TaskOverlapOptions {
+    readonly expiresAfter?: Duration;
+}
 // TaskResult
 export interface TaskResult {
     readonly task: string;
@@ -245,7 +249,7 @@ type Hour = Digit | `${'0' | '1'}${Digit}` | `2${'0' | '1' | '2' | '3'}`;
 // Minute
 type Minute = `${'0' | '1' | '2' | '3' | '4' | '5'}${Digit}`;
 // Overlapping
-type Overlapping<K extends TaskKind> = K extends 'job' ? (this: 's.job() only queues the job — that never overlaps, and the next one is not queued while it still waits. Overlapping runs of the job itself: withoutOverlapping() middleware on the job class') => never : (expiresAfterMinutes?: number) => ScheduledTask<K>;
+type Overlapping<K extends TaskKind> = K extends 'job' ? (this: 's.job() only queues the job — that never overlaps, and the next one is not queued while it still waits. Overlapping runs of the job itself: withoutOverlapping() middleware on the job class') => never : (options?: TaskOverlapOptions) => ScheduledTask<K>;
 ```
 
 ### Augments
@@ -305,7 +309,7 @@ export declare class CronExpression {
 export type RunReason = 'due' | 'catch-up' | 'test';
 // ScheduleConfig
 export declare const ScheduleConfig: import("@marmeon/core").ConfigDefinition<{
-    timezone: string;
+    timeZone: string;
     environment: string;
 }>;
 export type ScheduleConfig = ConfigOf<typeof ScheduleConfig>;
@@ -341,17 +345,17 @@ export interface TaskDefinition {
     readonly payload: unknown;
     readonly args: readonly string[];
     readonly module: string;
-    fields: [minute: string, hour: string, day: string, month: string, weekday: string] | undefined;
-    expression: string | undefined;
-    timezone: string | undefined;
-    readonly when: TaskFilter[];
-    readonly skip: TaskFilter[];
-    environments: readonly string[] | undefined;
-    onOneServer: boolean;
-    overlapMinutes: number | undefined;
-    catchUp: CatchUp;
-    name: string | undefined;
-    description: string | undefined;
+    readonly fields: readonly [minute: string, hour: string, day: string, month: string, weekday: string] | undefined;
+    readonly expression: string | undefined;
+    readonly timeZone: string | undefined;
+    readonly when: readonly TaskFilter[];
+    readonly skip: readonly TaskFilter[];
+    readonly environments: readonly string[] | undefined;
+    readonly onOneServer: boolean;
+    readonly overlapSeconds: number | undefined;
+    readonly catchUp: CatchUp;
+    readonly name: string | undefined;
+    readonly description: string | undefined;
 }
 // TaskFilter
 export type TaskFilter = (scope: Container) => boolean | Promise<boolean>;

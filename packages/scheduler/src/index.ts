@@ -9,7 +9,7 @@ export { CronExpression, ScheduleError } from './cron.ts';
 export type { WallTime } from './cron.ts';
 export { defineSchedule } from './schedule.ts';
 export type { JobPayloadArgument, Schedule, ScheduleDefinition } from './schedule.ts';
-export type { CallableTask, CallableTaskClass, CatchUp, CheckTime, Frequencies, ScheduledTask, TaskDefinition, TaskFilter, TaskKind, TimeOfDay, UnscheduledTask, Weekday } from './task.ts';
+export type { CallableTask, CallableTaskClass, CatchUp, CheckTime, Frequencies, ScheduledTask, TaskDefinition, TaskFilter, TaskKind, TaskOverlapOptions, TimeOfDay, UnscheduledTask, Weekday } from './task.ts';
 export { Scheduler } from './scheduler.ts';
 export type { RunReason, SkipReason, Task, TaskResult, TaskRun } from './scheduler.ts';
 export { ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting } from './events.ts';

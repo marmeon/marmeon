@@ -158,7 +158,7 @@ export async function scheduleSnapshot(app: Application): Promise<ScheduleSnapsh
     const next = scheduler.next(task);
     const options = [
       definition.onOneServer ? 'one server' : '',
-      definition.overlapMinutes !== undefined ? 'no overlap' : '',
+      definition.overlapSeconds !== undefined ? 'no overlap' : '',
       definition.catchUp === 'skip' ? 'no catch-up' : '',
       definition.environments ? `only ${definition.environments.join('/')}` : '',
       definition.when.length + definition.skip.length > 0 ? 'filtered' : '',

@@ -63,12 +63,13 @@ export class Output {
     const { format, ...rest } = document;
     this.line(JSON.stringify({ format, ...rest }, null, 2));
   }
-  /** Aligned columns; the header row is dimmed. */
-  table(header: readonly string[], rows: readonly (readonly string[])[]): void {
-    const widths = header.map((cell, i) => Math.max(cell.length, ...rows.map((row) => (row[i] ?? '').length)));
+  /** Aligned columns; the header row is dimmed. A row that is a string is a note: printed as it is under the row before, outside the column widths. */
+  table(header: readonly string[], rows: readonly (readonly string[] | string)[]): void {
+    const cells = rows.filter((row): row is readonly string[] => typeof row !== 'string');
+    const widths = header.map((cell, i) => Math.max(cell.length, ...cells.map((row) => row[i] ?? '').map((cell) => cell.length)));
     const format = (row: readonly string[]) => row.map((cell, i) => cell.padEnd(widths[i]!)).join('  ').trimEnd();
     this.line(style('dim', format(header)));
-    for (const row of rows) this.line(format(row));
+    for (const row of rows) this.line(typeof row === 'string' ? row : format(row));
   }
 }
 

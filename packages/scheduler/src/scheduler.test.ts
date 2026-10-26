@@ -12,9 +12,10 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Queue, QueueConnections, QueueServiceProvider, type JobPayload } from '@marmeon/queue';
 import { QUEUE_MIGRATION } from '@marmeon/queue/internal';
 import * as v from 'valibot';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { Output } from 'marmeon';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { collectTasks } from './schedule.ts';
 import { defineSchedule, ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, Scheduler, SchedulerServiceProvider, type TaskResult } from './index.ts';
 import { ScheduleTester } from './testing.ts';
 import { MINUTE } from './time.ts';
@@ -196,7 +197,7 @@ describe('the schedule', () => {
     const { schedule, app } = await boot(
       defineSchedule((s) => {
         s.call(CountRun).everyMinute().name('every-minute');
-        s.call(CountRun).daily().at('03:10').timezone('Europe/Berlin').name('berlin-night');
+        s.call(CountRun).daily().at('03:10').timeZone('Europe/Berlin').name('berlin-night');
         s.command('fixture:prune', ['--hours=168']).weekly();
         s.call(CountRun).hourly().environments('production').name('production-only');
       }),
@@ -342,6 +343,44 @@ describe('withoutOverlapping', () => {
     expect(gate.most).toBe(1);
     expect(runs.count('slow')).toBe(2);
     await app.shutdown();
+  });
+
+  it('holds the lock for the span given as a Duration, 24 hours by default', async () => {
+    const store = new MemoryStore();
+    const cache = new StoreCache({ store, locks: store });
+    const lock = vi.spyOn(cache, 'lock');
+    const { scheduler, clock, gate, app } = await boot(
+      defineSchedule((s) => {
+        s.call(SlowTask).everyMinute().name('half-hour').withoutOverlapping({ expiresAfter: { minutes: 30 } });
+        s.call(CountRun).everyMinute().name('default').withoutOverlapping();
+      }),
+      { cache },
+    );
+    expect(scheduler.tasks.map((task) => task.definition.overlapSeconds)).toEqual([1800, 86_400]);
+    const runs = await scheduler.tick(clock.now());
+    gate.open();
+    await Promise.all(runs.map((run) => run.done));
+    expect(lock.mock.calls.filter(([name]) => name.startsWith('schedule:overlap:')).map(([name, ttl]) => [name, ttl])).toEqual([
+      ['schedule:overlap:half-hour', 1800],
+      ['schedule:overlap:default', 86_400],
+    ]);
+    await app.shutdown();
+  });
+
+  it('refuses a bare number, an unknown option and a span of zero, saying what to write', () => {
+    const define = (overlapping: (task: { withoutOverlapping(...args: never[]): unknown }) => unknown) =>
+      collectTasks(defineSchedule((s) => void overlapping(s.call(CountRun).hourly() as never)), 'fixture');
+    expect(() => define((task) => task.withoutOverlapping(30 as never))).toThrow(new TypeError('withoutOverlapping(30) takes an options object — withoutOverlapping({ expiresAfter: { minutes: 30 } }).'));
+    expect(() => define((task) => task.withoutOverlapping({ expiresAfterMinutes: 30 } as never))).toThrow('the only option is expiresAfter');
+    expect(() => define((task) => task.withoutOverlapping({ expiresAfter: 0 } as never))).toThrow('the lock needs a span above zero');
+    expect(() => define((task) => task.withoutOverlapping({ expiresAfter: '30' } as never))).toThrow(/^withoutOverlapping\(\{ expiresAfter \}\): /);
+    expect(() => define((task) => task.withoutOverlapping({ expiresAfter: { weeks: 1 } } as never))).toThrow(TypeError);
+  });
+
+  it('takes one line of text as a description', () => {
+    const describe = (text: unknown) => collectTasks(defineSchedule((s) => void s.call(CountRun).hourly().description(text as string)), 'fixture');
+    expect(describe('Rebuilds the report')[0]!.description).toBe('Rebuilds the report');
+    for (const text of [42, 'two\nlines', 'bell\u0007']) expect(() => describe(text)).toThrow('description() takes one line of text.');
   });
 
   it('frees the lock of runs a stopping scheduler leaves behind', async () => {
@@ -643,7 +682,7 @@ describe('a schedule set up wrongly', () => {
       'Two scheduled tasks are named "CountRun" (modules fixture and fixture) — the name keys their locks: give one a name of its own with .name(\'…\').',
     );
     await expect(boot(defineSchedule((s) => void s.call(CountRun).cron('*/5 25 * * *')))).rejects.toThrow('The task "CountRun" (schedule of module fixture): Invalid cron expression "*/5 25 * * *": the hour field "25" has 25, outside 0–23.');
-    await expect(boot(defineSchedule((s) => void s.call(CountRun).daily().timezone('Europe/Berln')))).rejects.toThrow('"Europe/Berln" is not a time zone');
+    await expect(boot(defineSchedule((s) => void s.call(CountRun).daily().timeZone('Europe/Berln')))).rejects.toThrow('"Europe/Berln" is not a time zone');
     await expect(boot(defineSchedule((s) => void s.call(CountRun).daily().at('24:00' as string)))).rejects.toThrow("at(): \"24:00\" is not a time of day — use HH:MM, like '03:10'");
     await expect(boot(defineSchedule(() => {}), { env: { SCHEDULE_TIMEZONE: 'Mars/Olympus' } })).rejects.toThrow(/SCHEDULE_TIMEZONE/);
   });
@@ -712,7 +751,7 @@ describe('schedule:list --json', () => {
 
   const tasks = defineSchedule((s) => {
     s.call(CountRun).everyMinute().name('plain');
-    s.call(CountRun).daily().at('03:10').timezone('Europe/Berlin').name('berlin').onOneServer().withoutOverlapping(30).catchUp('skip').environments('production', 'local').when(() => true);
+    s.call(CountRun).daily().at('03:10').timeZone('Europe/Berlin').name('berlin').description('Rebuilds the night report').onOneServer().withoutOverlapping({ expiresAfter: { minutes: 30 } }).catchUp('skip').environments('production', 'local').when(() => true);
     s.call(CountRun).cron('0 0 30 2 *').name('never');
     s.job(StatsJob, { scope: 'all' }).hourly().name('stats');
     s.command('fixture:prune', ['--days=30']).daily().name('prune');
@@ -725,11 +764,34 @@ describe('schedule:list --json', () => {
     expect(stdout.endsWith('\n')).toBe(true);
     const document = JSON.parse(stdout) as Record<string, unknown>;
     expect(Object.keys(document)[0]).toBe('format');
-    const fixture = JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-schedule-list/v1.json', import.meta.url), 'utf8'));
+    const fixture = JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-schedule-list/v2.json', import.meta.url), 'utf8'));
     expect(document).toMatchObject(fixture);
     // toMatchObject ignores extra keys: the lists and the options of each task are exactly these.
-    expect((document.tasks as Record<string, unknown>[]).map((task) => Object.keys(task))).toEqual(Array(5).fill(['name', 'expression', 'timeZone', 'next', 'does', 'options']));
-    expect((document.tasks as { options: object }[]).map((task) => Object.keys(task.options))).toEqual(Array(5).fill(['oneServer', 'overlapMinutes', 'catchUp', 'environments', 'filtered']));
+    expect((document.tasks as Record<string, unknown>[]).map((task) => Object.keys(task))).toEqual(Array(5).fill(['name', 'expression', 'timeZone', 'next', 'does', 'description', 'options']));
+    expect((document.tasks as { options: object }[]).map((task) => Object.keys(task.options))).toEqual(Array(5).fill(['oneServer', 'overlapSeconds', 'catchUp', 'environments', 'filtered']));
+  });
+
+  it('keeps every older format in the directory: version 1 named the lock in minutes and had no description', () => {
+    const directory = new URL('./__fixtures__/formats/cli-schedule-list/', import.meta.url);
+    expect(readdirSync(directory).sort()).toEqual(['v1.json', 'v2.json']);
+    const v1 = JSON.parse(readFileSync(new URL('v1.json', directory), 'utf8')) as { format: number; tasks: { description?: unknown; options: Record<string, unknown> }[] };
+    expect(v1.format).toBe(1);
+    expect(v1.tasks.map((task) => Object.keys(task.options)[1])).toEqual(Array(5).fill('overlapMinutes'));
+    expect(v1.tasks.some((task) => 'description' in task)).toBe(false);
+    // Version 1 reads as version 2: minutes become seconds, and a missing description reads as null.
+    const v2 = JSON.parse(readFileSync(new URL('v2.json', directory), 'utf8')) as { tasks: { description: string | null; options: Record<string, unknown> }[] };
+    const asV2 = v1.tasks.map((task) => (task.options.overlapMinutes === null ? null : (task.options.overlapMinutes as number) * 60));
+    expect(asV2).toEqual(v2.tasks.map((task) => task.options.overlapSeconds));
+  });
+
+  it('shows .description() under the task in the table', async () => {
+    const table = await list(tasks, {}, true);
+    const lines = table.stdout.split('\n');
+    const berlin = lines.findIndex((line) => line.startsWith('berlin'));
+    expect(lines[berlin + 1]).toMatch(/^ {2}Rebuilds the night report\s*$/);
+    expect(lines.filter((line) => line.includes('Rebuilds the night report'))).toHaveLength(1);
+    // The note is outside the columns: a long description does not widen the Task column.
+    expect(lines.find((line) => line.startsWith('plain'))).toMatch(/^plain {3}\* \* \* \* \*/);
   });
 
   it('puts the lock warning in warnings, and keeps it off stdout apart from that', async () => {
@@ -740,7 +802,7 @@ describe('schedule:list --json', () => {
 
   it('prints an empty list as a document, and the table without --json', async () => {
     const empty = await list(defineSchedule(() => {}), { json: true });
-    expect(JSON.parse(empty.stdout)).toEqual({ format: 1, tasks: [], warnings: [] });
+    expect(JSON.parse(empty.stdout)).toEqual({ format: 2, tasks: [], warnings: [] });
     const table = await list(tasks, {}, true);
     expect(table.stdout).toMatch(/^Task\s+Schedule\s+Next run/);
     expect(table.stdout).toContain('one server, no overlap, no catch-up, only production/local, filtered');

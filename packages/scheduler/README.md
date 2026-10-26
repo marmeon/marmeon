@@ -15,7 +15,7 @@ import { defineSchedule } from '@marmeon/scheduler';
 export const schedule = defineSchedule((s) => {
   s.command('session:prune').everyFifteenMinutes().withoutOverlapping().onOneServer();
   s.command('cache:prune').hourlyAt(25).withoutOverlapping().onOneServer();
-  s.command('queue:prune-failed', ['--hours=168']).daily().at('03:20').timezone('Europe/Berlin').onOneServer();
+  s.command('queue:prune-failed', ['--hours=168']).daily().at('03:20').timeZone('Europe/Berlin').onOneServer();
 });
 ```
 
