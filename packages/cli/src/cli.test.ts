@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { generateKey } from '@marmeon/encryption';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -164,7 +165,7 @@ describe('marmeon (in the web app)', () => {
     const memory = { DB_DATABASE: ':memory:' };
     // Outside NODE_ENV=test the app reads .env, which CI does not have: what it needs to boot comes from here.
     const key = generateKey(); // not .env.test's: that key is public and production refuses it
-    const config = { ...memory, SYSTEM_DB_DATABASE: ':memory:', APP_NAME: 'Marmeon', APP_URL: 'http://localhost', APP_KEY: key, DEVTOOLS_ENABLED: 'false' };
+    const config = { ...memory, SYSTEM_DB_DATABASE: ':memory:', APP_NAME: 'Marmeon', APP_URL: 'http://localhost', APP_KEY: key, PAYMENTS_WEBHOOK_SECRET: randomBytes(24).toString('hex'), DEVTOOLS_ENABLED: 'false' };
     // Development regenerates the table types (already committed, so unchanged) — in a copy: other tests read the app's.
     const development = marmeon(webAppCopy(), ['migrate'], { ...config, NODE_ENV: 'development' });
     expect(development.stdout).toMatch(/ℹ bootstrap\/database\.d\.ts is up to date\.\n$/);
