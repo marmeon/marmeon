@@ -128,11 +128,11 @@ until they expire. The [encryption](encryption.md#rotating-the-key) page explain
 ## Strict-Transport-Security
 
 The first visit to `http://your-site` is open to an attacker on the path, who can keep the browser on plain HTTP (SSL stripping).
-`Strict-Transport-Security` tells a browser that has seen it to use HTTPS alone for the next `max-age` seconds. It is off until you
+`Strict-Transport-Security` tells a browser that has seen it to use HTTPS alone for the `maxAge` you give. It is off until you
 turn it on, because browsers hold on to it: switch it on once the site answers over HTTPS only, with a short `max-age` first.
 
 ```ts
-securityHeaders({ hsts: { maxAge: 31_536_000, includeSubDomains: true } })
+securityHeaders({ hsts: { maxAge: { days: 365 }, includeSubDomains: true } })
 ```
 
 `maxAge: 0` withdraws it from the browsers that have seen it. The header is sent on HTTPS responses only; behind a proxy that

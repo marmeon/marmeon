@@ -37,7 +37,7 @@ export interface OnceContext {
   readonly component: string;
   /** The keys the browser holds under the current scope (see {@link heldOnceProps}) — not computed again. */
   readonly held: ReadonlySet<string>;
-  /** Now, by the server's clock (for `ttl`). Default `Date.now()`. */
+  /** Now, by the server's clock (for the expiry of a once prop). Default `Date.now()`. */
   readonly now?: number;
 }
 
@@ -101,7 +101,7 @@ export async function resolvePageProps(
     if (kind === 'once' && once) {
       // A once prop: announced with its key — and not computed while the browser holds it, unless asked for by name.
       const prop = value as OnceProp<unknown>;
-      const info: OnceInfo = { key: onceKey(prop, key, !Object.hasOwn(props, key), once.component), ...(prop.ttl !== undefined ? { expiresAt: (once.now ?? Date.now()) + prop.ttl } : {}) };
+      const info: OnceInfo = { key: onceKey(prop, key, !Object.hasOwn(props, key), once.component), ...(prop.expiresInMs !== undefined ? { expiresAt: (once.now ?? Date.now()) + prop.expiresInMs } : {}) };
       onceProps[key] = info;
       if (once.held.has(info.key) && !partial?.only?.includes(key)) continue;
     }

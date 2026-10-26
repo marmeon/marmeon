@@ -273,8 +273,8 @@ export interface ResponseFactoryOptions {
    * middleware, read-only. Without it, islands load in the browser.
    */
   islands?: (url: string, parent: { request: Request; scope: Container; requestId: string | undefined }) => Promise<RegionResult>;
-  /** How long a deferred group streamed with its page may take before the browser loads it instead (ms, default 10 s). */
-  deferredTimeout?: number;
+  /** How long a deferred group streamed with its page may take before the browser loads it instead (in milliseconds, default 10 000). */
+  deferredTimeoutMs?: number;
   /**
    * Resolves the base of a layer whose URL was loaded as a document — a deep link or a reload: the kernel's, a GET of
    * `url` in-process through the base route's own middleware and authorization, read-only. Without it, a layer's document
@@ -302,7 +302,7 @@ export function createResponseFactory(
   renderer: PageRenderer = shellRenderer,
   routes?: RouteLookup,
   version: string | null = null,
-  { app, appUrl, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = () => false, islands, deferredTimeout = 10_000, layerBases, onPage, onDeferredError }: ResponseFactoryOptions = {},
+  { app, appUrl, logger = new ConsoleLogger({ channel: 'ssr' }), ssr = true, debug = () => false, islands, deferredTimeoutMs = 10_000, layerBases, onPage, onDeferredError }: ResponseFactoryOptions = {},
 ): ScopedResponseFactory {
   // What the error lines below mask their text with: the app's (the names its packages add — the session cookie — count too).
   const redactor = app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
@@ -336,7 +336,7 @@ export function createResponseFactory(
             const names = page.deferredProps?.[group];
             if (!names || names.length === 0) return null;
             let timer: ReturnType<typeof setTimeout> | undefined;
-            const late = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), deferredTimeout)));
+            const late = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), deferredTimeoutMs)));
             try {
               const computed = (async () => {
                 // After the headers: the session is saved, the request read-only — a write throws (development) or is dropped.
@@ -350,7 +350,7 @@ export function createResponseFactory(
                 return JSON.parse(JSON.stringify(resolved)) as DeferredResult;
               })();
               const result = await Promise.race([computed, late]);
-              if (result === null) logger.error(`The deferred group [${group}] of [${page.component}] took longer than ${deferredTimeout} ms — the browser loads it`, { component: page.component });
+              if (result === null) logger.error(`The deferred group [${group}] of [${page.component}] took longer than ${deferredTimeoutMs} ms — the browser loads it`, { component: page.component });
               return result;
             } catch (error) {
               logger.error(`The deferred group [${group}] of [${page.component}] failed while streaming — the browser loads it`, { component: page.component, ...describe(error) });

@@ -70,6 +70,8 @@ describe('securityHeaders()', () => {
     expect(plain.headers.get('strict-transport-security')).toBeNull();
     const short = await run({ hsts: { maxAge: 600 } }, () => new Response('x'));
     expect(short.headers.get('strict-transport-security')).toBe('max-age=600');
+    const year = await run({ hsts: { maxAge: { days: 365 }, includeSubDomains: true, preload: true } }, () => new Response('x'));
+    expect(year.headers.get('strict-transport-security')).toBe('max-age=31536000; includeSubDomains; preload');
   });
 
   it("overwrites a route's own Strict-Transport-Security — a route cannot weaken it", async () => {
@@ -90,5 +92,9 @@ describe('securityHeaders()', () => {
     expect(() => securityHeaders({ hsts: { maxAge: 31_536_000, preload: true } })).toThrow(TypeError);
     expect(() => securityHeaders({ hsts: { maxAge: 600, includeSubDomains: true, preload: true } })).toThrow(TypeError);
     expect(() => securityHeaders({ hsts: { maxAge: 31_536_000, includeSubDomains: true, preload: true } })).not.toThrow();
+    expect(() => securityHeaders({ hsts: { maxAge: { days: 364 }, includeSubDomains: true, preload: true } })).toThrow(TypeError);
+    expect(() => securityHeaders({ hsts: { maxAge: { milliseconds: 1500 } } })).toThrow(TypeError);
+    // @ts-expect-error -- a string is no span of time
+    expect(() => securityHeaders({ hsts: { maxAge: '1y' } })).toThrow(TypeError);
   });
 });

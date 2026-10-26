@@ -257,7 +257,7 @@ export type { FormOf } from '@marmeon/router';
 export type HiddenReason = 'internal' | 'api' | 'except';
 // HstsOptions
 export interface HstsOptions {
-    maxAge: number;
+    maxAge: Duration;
     includeSubDomains?: boolean;
     preload?: boolean;
 }
@@ -430,13 +430,13 @@ export interface OnceInfo {
 // OnceOptions
 export interface OnceOptions {
     readonly key?: string;
-    readonly ttl?: number;
+    readonly for?: Duration;
 }
 // OnceProp
 export interface OnceProp<T> extends PageProp<'once', T> {
     readonly resolve: () => unknown;
     readonly key: string | undefined;
-    readonly ttl: number | undefined;
+    readonly expiresInMs: number | undefined;
 }
 // OptionalProp
 export interface OptionalProp<T> extends PageProp<'optional', T> {
@@ -2791,7 +2791,7 @@ export type { MethodOf } from '@marmeon/router';
 export interface OnceProp<T> extends PageProp<'once', T> {
     readonly resolve: () => unknown;
     readonly key: string | undefined;
-    readonly ttl: number | undefined;
+    readonly expiresInMs: number | undefined;
 }
 // OptionalProp
 export interface OptionalProp<T> extends PageProp<'optional', T> {

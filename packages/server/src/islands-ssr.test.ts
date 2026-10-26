@@ -148,8 +148,8 @@ describe('islands resolved in-process while the page streams', async () => {
     middleware: { web: [ExposesLifecycle] },
   }, { env: { APP_KEY: generateKey() } });
   const renderer = createDocumentRenderer({ template: () => FALLBACK_TEMPLATE, ssr: () => render });
-  const app = createHttpKernel(application, { renderer, debug: true, islandTimeout: 100 });
-  const production = createHttpKernel(application, { renderer, strictReadOnly: false, islandTimeout: 100 });
+  const app = createHttpKernel(application, { renderer, debug: true, islandTimeoutMs: 100 });
+  const production = createHttpKernel(application, { renderer, strictReadOnly: false, islandTimeoutMs: 100 });
   const page = (islands: string[], init: RequestInit = {}) => app.request(`/page?islands=${islands.join(',')}`, init);
 
   it('runs each island through its own route’s middleware, in-process — with the page request’s cookies, languages and request id', async () => {
@@ -202,7 +202,7 @@ describe('islands resolved in-process while the page streams', async () => {
 
   it('a slow island never holds the headers back — the shell is out, the island follows in the same response', async () => {
     slow.gate = later();
-    // The gate is still shut: a server that held the headers for the island would send it timed out (504, islandTimeout), not ready.
+    // The gate is still shut: a server that held the headers for the island would send it timed out (504, islandTimeoutMs), not ready.
     const response = await page(['/islands/slow', '/islands/echo']);
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
