@@ -79,11 +79,6 @@ export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any, 
 export type ControllerOf<N extends string> = Entry<N> extends {
     readonly controller: infer C;
 } ? C : never;
-// CookieCodec
-export interface CookieCodec {
-    decode(name: string, value: string): Promise<string | undefined>;
-    encode(name: string, value: string): Promise<string>;
-}
 // CookieDefaults
 export interface CookieDefaults {
     readonly secure?: boolean;
@@ -91,15 +86,11 @@ export interface CookieDefaults {
 // CookieJar
 export declare class CookieJar {
     #private;
-    constructor(header: string | null, defaults?: CookieDefaults);
     get(name: string): string | undefined;
     has(name: string): boolean;
     all(): Record<string, string>;
     set(name: string, value: string, given?: CookieOptions): void;
-    lock(permit: (what: string) => boolean): void;
     delete(name: string, options?: Pick<CookieOptions, 'path' | 'domain'>): void;
-    useCodec(codec: CookieCodec): Promise<void>;
-    queued(): Promise<string[]>;
 }
 // CookieOptions
 export interface CookieOptions {
@@ -204,7 +195,6 @@ export declare class MiddlewareGroups {
     append(group: string, middleware: AnyMiddleware, priority?: number): this;
     remove(group: string, middleware: AnyMiddleware): this;
     get(group: string): readonly AnyMiddleware[];
-    get version(): number;
     names(): string[];
 }
 // MiddlewareHandler
@@ -303,8 +293,6 @@ export interface RequestDefinition<TSchema extends StandardSchemaV1 = any, TCtx 
 export declare class RequestNonce {
     #private;
     get value(): string;
-    want(): void;
-    forDocument(): string | undefined;
 }
 // RequestOf
 export type RequestOf<C> = C extends {
@@ -416,7 +404,10 @@ export declare class RouteDefinition {
     sitemap(): this;
     get inSitemap(): boolean;
     get isInternal(): boolean;
-    block(lock?: Duration, wait?: Duration): this;
+    block(options?: {
+        lock?: Duration;
+        wait?: Duration;
+    }): this;
     get blocking(): RouteBlocking | undefined;
 }
 // RouteDefinitions
@@ -445,7 +436,6 @@ export type RouteQueryOf<N extends string> = true extends IsUnion<N> ? never : C
 export declare class Router {
     #private;
     readonly middleware: MiddlewareGroups;
-    constructor(options?: RouterOptions);
     get routes(): readonly RouteDefinition[];
     load(...definitions: RouteDefinitions[]): this;
     load(options: LoadOptions, ...definitions: RouteDefinitions[]): this;
@@ -454,10 +444,6 @@ export declare class Router {
     findByName(name: string): RouteDefinition | undefined;
     middlewareFor(route: RouteDefinition): readonly AnyMiddleware[];
     url<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, query]: RouteArgs<N>): string;
-}
-// RouterOptions
-export interface RouterOptions {
-    resolve?: ClassResolver;
 }
 // Routes
 export interface Routes {
@@ -562,8 +548,6 @@ export declare function editableResponse(response: Response): Response;
 export declare const everyone: () => true;
 // expectsJson
 export declare function expectsJson(request: Request): boolean;
-// matchesPath
-export declare function matchesPath(pattern: string, pathname: string): boolean;
 // ownResponse
 export declare function ownResponse<R extends Response>(response: R): R;
 // parseQuery
@@ -574,8 +558,6 @@ export declare function statusText(status: number): string;
 export declare function toSearchParams(...queries: Query[]): URLSearchParams;
 // translatable
 export declare function translatable(key: string, params?: Readonly<Record<string, unknown>>, fallback?: string): (issue: object) => string;
-// urlFor
-export declare function urlFor(routes: RouteLookup, name: string, params?: Readonly<Record<string, Param | undefined>>, query?: Query): string;
 ```
 
 ### Referenced, not exported
@@ -713,10 +695,6 @@ export interface RouteLookup {
         readonly localized?: boolean;
     } | undefined;
 }
-// matchesPath
-export declare function matchesPath(pattern: string, pathname: string): boolean;
 // toSearchParams
 export declare function toSearchParams(...queries: Query[]): URLSearchParams;
-// urlFor
-export declare function urlFor(routes: RouteLookup, name: string, params?: Readonly<Record<string, Param | undefined>>, query?: Query): string;
 ```

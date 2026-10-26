@@ -1,7 +1,8 @@
 import { durationToSeconds, type Duration } from '@marmeon/core';
 import { isPrefetch } from '@marmeon/http';
 import { INTENDED_KEY } from '@marmeon/http/internal';
-import { addVary, EXPECTS_JSON_VARY, Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
+import { addVary, EXPECTS_JSON_VARY, Router, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteNameInput } from '@marmeon/router';
+import { urlFor } from '@marmeon/router/url';
 import { Session } from '@marmeon/session';
 import { Auth } from './auth.ts';
 import { authenticatedByToken, Gate } from './gate.ts';

@@ -40,7 +40,7 @@ export interface RouteInterceptor {
   answer(ctx: HttpContext, request: RequestDefinition | undefined, resolve: ClassResolver): Response | Promise<Response>;
 }
 
-export interface RouterOptions {
+interface RouterOptions {
   /** Default class resolution when `dispatch` gets none. Defaults to `new Class()`. */
   resolve?: ClassResolver;
 }
@@ -158,6 +158,7 @@ export class Router {
   readonly #interceptors: RouteInterceptor[] = [];
   readonly #routeChecks: RouteCheck[] = [];
 
+  /** @internal Built by the container. */
   constructor(options: RouterOptions = {}) {
     this.#resolve = options.resolve ?? ((Class) => new Class());
   }

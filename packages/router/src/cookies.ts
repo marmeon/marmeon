@@ -104,7 +104,7 @@ export class CookieJar {
   #permit: ((what: string) => boolean) | undefined;
   readonly #defaults: CookieDefaults;
 
-  /** `defaults`: what every cookie set through this jar gets unless `set` says otherwise ({@link CookieDefaults}). */
+  /** @internal Built for each request; `defaults`: what every cookie set through this jar gets unless `set` says otherwise ({@link CookieDefaults}). */
   constructor(header: string | null, defaults: CookieDefaults = {}) {
     this.#incoming = parseCookies(header);
     this.#defaults = defaults;
@@ -131,6 +131,7 @@ export class CookieJar {
   }
 
   /**
+   * @internal The kernel's.
    * Locks the jar for a read-only request (an island): every `set`/`delete` asks `permit` first, which throws or
    * answers false — then nothing is queued.
    */
@@ -144,6 +145,7 @@ export class CookieJar {
   }
 
   /**
+   * @internal `EncryptCookies` installs one.
    * Installs a codec: decodes the incoming cookies now (so `get` stays synchronous)
    * and encodes queued ones when they are written. Cookies it cannot decode vanish.
    */
@@ -157,7 +159,7 @@ export class CookieJar {
     this.#codec = codec;
   }
 
-  /** `Set-Cookie` values queued so far, one per cookie name (the last `set` wins). Deletions are not encoded. */
+  /** @internal The response writes these. `Set-Cookie` values queued so far, one per cookie name (the last `set` wins). Deletions are not encoded. */
   async queued(): Promise<string[]> {
     const headers: string[] = [];
     for (const [name, { value, options }] of this.#queued) {

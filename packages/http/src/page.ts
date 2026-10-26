@@ -58,8 +58,6 @@ export type {
   Routes,
   ValidationErrors,
 } from '@marmeon/router';
-// The one runtime piece of the router the browser needs: URL building, import-free (`route()` uses it).
-export { urlFor } from '@marmeon/router/url';
 /**
  * An image as plain JSON: what a controller sends as a prop and `<Image>` renders — its file, its size (no layout shift) and,
  * optionally, the widths and formats it exists in. See docs/images.md#images-from-the-server.

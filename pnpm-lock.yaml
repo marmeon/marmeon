@@ -1148,6 +1148,9 @@ importers:
       '@marmeon/http':
         specifier: workspace:*
         version: link:../http
+      '@marmeon/router':
+        specifier: workspace:*
+        version: link:../router
       '@marmeon/server':
         specifier: workspace:*
         version: link:../server

@@ -59,6 +59,7 @@
     "@marmeon/core": "workspace:*",
     "@marmeon/encryption": "workspace:*",
     "@marmeon/http": "workspace:*",
+    "@marmeon/router": "workspace:*",
     "@marmeon/server": "workspace:*"
   },
   "peerDependencies": {

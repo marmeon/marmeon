@@ -124,15 +124,22 @@ export class RouteDefinition {
   /**
    * Runs the route's requests one at a time per session: `StartSession` holds an atomic lock (needs
    * `@marmeon/cache`) from loading the session until it is saved. A second request of the same browser waits up to
-   * `wait` (then 423); a crashed request's lock expires after `lock`. Both are seconds, or `{ seconds: 5 }`. See docs/routing.md#one-request-at-a-time.
+   * `wait` (then 423, default: as long as `lock`); a crashed request's lock expires after `lock` (default 10 s). Both are seconds, or
+   * `{ seconds: 5 }`. See docs/routing.md#one-request-at-a-time.
    *
    * ```ts
    * Route.post('/cart/checkout', CheckoutController).name('cart.checkout').block();       // 10 s lock, waits up to 10 s
-   * Route.post('/wizard/step', WizardStepController).block(5, { seconds: 2 });
+   * Route.post('/wizard/step', WizardStepController).block({ lock: 5, wait: { seconds: 2 } });
    * ```
    */
-  block(lock: Duration = 10, wait: Duration = lock): this {
+  block(options: { lock?: Duration; wait?: Duration } = {}): this {
     this.#assertOpen('block');
+    // Not a type error to an untyped caller: `block(5, 2)` would otherwise read as the defaults.
+    const keys = typeof options === 'object' && options !== null && !Array.isArray(options) ? Object.keys(options) : undefined;
+    if (arguments.length > 1 || keys === undefined || keys.some((key) => key !== 'lock' && key !== 'wait')) {
+      throw new TypeError(`block() takes { lock, wait } — e.g. block({ lock: 5, wait: 2 }) (got ${JSON.stringify(options)}) — ${this.path}.`);
+    }
+    const { lock = 10, wait = lock } = options;
     const [lockSeconds, waitSeconds] = [lock, wait].map((value, i) => {
       const seconds = durationToSeconds(value);
       if (seconds <= 0) throw new TypeError(`block(): ${i === 0 ? 'lock' : 'wait'} must be a positive span of time (got ${JSON.stringify(value)}) — ${this.path}.`);

@@ -2753,8 +2753,6 @@ export interface ViewResult<TProps extends ViewProps = ViewProps, TComponent ext
 // Views
 export interface Views {
 }
-// urlFor
-export { urlFor } from '@marmeon/router/url';
 ```
 
 ### Referenced, not exported

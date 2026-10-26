@@ -68,6 +68,8 @@ export function toSearchParams(...queries: Query[]): URLSearchParams {
  * ```ts
  * urlFor(router, 'user-profile.show', { user: 7 }, { tab: 'links' })   // → /users/7?tab=links
  * ```
+ *
+ * @internal The framework's; an app uses `Router.url` and `redirect().route()`.
  */
 export function urlFor(routes: RouteLookup, name: string, params: Readonly<Record<string, Param | undefined>> = {}, query: Query = {}): string {
   const route = routes.findByName(name);
@@ -82,6 +84,8 @@ export function urlFor(routes: RouteLookup, name: string, params: Readonly<Recor
  * Whether `pathname` is a path of route pattern `pattern` (`/users/:user/links/:link?`, constraints like `:id{[0-9]+}`
  * included) — how the browser tells which route the page on screen belongs to, without the server naming it. A trailing slash
  * is ignored, which the server's own matching is not.
+ *
+ * @internal The framework's.
  */
 export function matchesPath(pattern: string, pathname: string): boolean {
   return matchParams(pattern, pathname) !== undefined;
