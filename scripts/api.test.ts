@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { FOREIGN_TYPES, foreignPackage, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, stabilityProblems } from './api.ts';
+import { FOREIGN_TYPES, foreignPackage, nameProblems, runApi as runApiWithLists, runtimeItems, snapshotPackage, spanProblems, stabilityProblems } from './api.ts';
 import { SAME_VALUE } from './api-names.ts';
+import { SPAN_EXCEPTIONS, SPAN_PENDING } from './api-spans.ts';
 import { compareSnapshots, parseSnapshot, type ApiItem } from './api-snapshot.ts';
 import { INTERNAL } from './check-source.ts';
 import { frameworkPackages } from './packages.ts';
@@ -13,7 +14,8 @@ const repository = fileURLToPath(new URL('..', import.meta.url));
 
 /** The fixtures are no framework: the real exceptions would be stale in them. */
 const NO_NAMES = { sameValue: {} };
-const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, ...options });
+const NO_SPANS = { exceptions: {}, pending: new Set<string>() };
+const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, spans: NO_SPANS, ...options });
 
 /** Writes `dist/<name>` files into a fresh package; `exports` maps subpaths to their `.d.ts` under `dist/`. */
 function demo(files: Record<string, string>, exports: Record<string, string> = { '.': 'index.d.ts' }, extra: Record<string, unknown> = {}) {
@@ -1026,6 +1028,85 @@ describe('one exported name, one declaration', () => {
 
   it('keeps the list of the repository to the agreed exceptions', () => {
     expect(Object.keys(SAME_VALUE).sort()).toEqual(['CookieDefaults', 'RevalidateOnBack', 'Translator']);
+  });
+});
+
+describe('spans of time', () => {
+  const spans = (text: string, lists: Partial<Parameters<typeof spanProblems>[1]> = {}, extra: Record<string, unknown> = {}, files: Record<string, string> = {}) => {
+    const { dir, manifest } = demo({ 'index.d.ts': text, ...files }, undefined, extra);
+    return spanProblems([{ name: '@marmeon/demo', dir, manifest }], { ...NO_SPANS, ...lists });
+  };
+  const message = (where: string) => `@marmeon/demo ${where} is a span of time as a bare number — take a Duration, or name its unit (docs/time.md › Spans of time)`;
+
+  it('names a bare number whose name ends in a span word', () => {
+    expect(spans('export interface Options {\n    timeout: number;\n    readonly islandTimeout?: number;\n}\n')).toEqual([message('Options.islandTimeout'), message('Options.timeout')]);
+  });
+
+  it('lets a Duration, a name with its unit and other names be', () => {
+    const text = "import type { Duration } from '@marmeon/core';\nexport interface Options {\n    ttl?: Duration;\n    delay?: number | Duration;\n    timeoutMs: number;\n    retryAfterSeconds: number;\n    before: number;\n    await: number;\n}\n";
+    expect(spans(text)).toEqual([]);
+  });
+
+  it('names a method, a getter and a function that returns a bare number', () => {
+    const text = 'export declare class Cache {\n    ttl(key: string): Promise<number>;\n    get lifetime(): number;\n    static readonly backoff: number[];\n}\nexport declare function sleep(): number;\n';
+    expect(spans(text)).toEqual([message('Cache.backoff'), message('Cache.lifetime'), message('Cache.ttl'), message('sleep')]);
+  });
+
+  it('names a parameter, also in an options object', () => {
+    const text = 'export declare function wait(timeout: number, options: { delay?: number }): void;\nexport declare class Q {\n    worker(stopTimeout: number): void;\n    run({ a }: { a: 1 }, wait?: number): void;\n}\n';
+    expect(spans(text)).toEqual([message('Q.run(wait)'), message('Q.worker(stopTimeout)'), message('wait(options).delay'), message('wait(timeout)')]);
+  });
+
+  it('reads a function type by what it returns', () => {
+    expect(spans('export interface Hooks {\n    delay: (attempt: number) => void;\n    sleep: (ms: Duration) => number;\n}\n')).toEqual([message('Hooks.sleep')]);
+  });
+
+  it('leaves out @internal and @experimental members and experimental entry points', () => {
+    const text = 'export interface Options {\n    /** @internal */\n    timeout: number;\n    /** @experimental */\n    ttl: number;\n}\n';
+    expect(spans(text)).toEqual([]);
+    expect(spans('export interface Options {\n    timeout: number;\n}\n', {}, { marmeon: { experimental: true } })).toEqual([]);
+  });
+
+  it('leaves out ./internal and counts a declaration once', () => {
+    const { dir, manifest } = demo(
+      { 'index.d.ts': "export * from './a.ts';\n", 'a.d.ts': 'export interface Options {\n    timeout: number;\n}\n', 'internal.d.ts': 'export interface Hidden {\n    timeout: number;\n}\n', 'other.d.ts': "export * from './a.ts';\n" },
+      { '.': 'index.d.ts', './other': 'other.d.ts', './internal': 'internal.d.ts' },
+    );
+    expect(spanProblems([{ name: '@marmeon/demo', dir, manifest }], NO_SPANS)).toEqual([message('Options.timeout')]);
+  });
+
+  it('reads a span inside a type argument, a call signature and a type parameter', () => {
+    const text = "export interface Def<T> { value: T }\nexport interface Options extends Def<{ lifetime: number }> {\n    later: Promise<{ ttl: number }>;\n    (timeout: number): void;\n    g<T extends { delay: number }>(a: T): void;\n}\n";
+    expect(spans(text)).toEqual([message('Options(timeout)'), message('Options.g.delay'), message('Options.later.ttl'), message('Options.lifetime')]);
+  });
+
+  it('reads a helper type that no entry exports but a signature names', () => {
+    expect(spans('type Overlapping = { expiresAfter: number };\nexport declare function f(a: Overlapping): void;\n')).toEqual([message('Overlapping.expiresAfter')]);
+  });
+
+  it('lets an exception and a pending line stand', () => {
+    const text = 'export interface Options {\n    timeout: number;\n    ttl: number;\n}\n';
+    expect(spans(text, { exceptions: { '@marmeon/demo Options.timeout': 'milliseconds' }, pending: new Set(['@marmeon/demo Options.ttl']) })).toEqual([]);
+  });
+
+  it('names a line of either list that follows the rule', () => {
+    const text = 'export interface Options {\n    timeoutMs: number;\n}\n';
+    expect(spans(text, { exceptions: { '@marmeon/demo Options.timeout': 'milliseconds' }, pending: new Set(['@marmeon/demo Options.ttl']) })).toEqual([
+      '@marmeon/demo Options.timeout is listed in SPAN_EXCEPTIONS but is no bare number span any more — delete the line',
+      '@marmeon/demo Options.ttl is listed in SPAN_PENDING but follows the rule — delete the line',
+    ]);
+  });
+
+  it('fails pnpm api:check for a bare number span', async () => {
+    const { root } = demo({ 'index.d.ts': 'export interface Options {\n    timeout: number;\n}\n' });
+    const run = await runApi(root);
+    expect(run.code).toBe(1);
+    expect(run.lines).toContain('spans of time:');
+  });
+
+  it('gives every exception of the repository a reason and lists no span twice', () => {
+    expect(Object.keys(SPAN_EXCEPTIONS).every((key) => SPAN_EXCEPTIONS[key]!.length > 0)).toBe(true);
+    expect([...SPAN_PENDING].filter((key) => key in SPAN_EXCEPTIONS)).toEqual([]);
   });
 });
 

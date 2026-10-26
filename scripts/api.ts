@@ -18,6 +18,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { SAME_VALUE } from './api-names.ts';
+import { SPAN_EXCEPTIONS, SPAN_PENDING, SPAN_WORDS } from './api-spans.ts';
 import { compareSnapshots, parseSnapshot, renderSnapshot, type ApiChanges, type ApiItem } from './api-snapshot.ts';
 import { LIBRARY } from './check-source.ts';
 import { frameworkPackages } from './packages.ts';
@@ -1010,6 +1011,129 @@ export function nameProblems(packages: readonly PackageToSnapshot[], lists: Name
   return problems;
 }
 
+export interface SpanLists {
+  /** Members that hold a bare number on purpose, each with its reason. */
+  readonly exceptions: Readonly<Record<string, string>>;
+  /** Members that do not follow the rule yet. */
+  readonly pending: ReadonlySet<string>;
+}
+
+const SPAN_LISTS: SpanLists = { exceptions: SPAN_EXCEPTIONS, pending: SPAN_PENDING };
+
+/** A name that ends in a span word: the whole name, or its last camel-case words (`islandTimeout`). */
+function isSpanName(name: string): boolean {
+  return SPAN_WORDS.some((word) => name === word || name.endsWith(word[0]!.toUpperCase() + word.slice(1)));
+}
+
+/** Whether a type holds a bare `number` and no `Duration`. A function type counts by what it returns. */
+function isBareNumber(annotation: Node | null | undefined): boolean {
+  let type: Node | null | undefined = annotation?.type === 'TSTypeAnnotation' ? annotation.typeAnnotation : annotation;
+  if (type?.type === 'TSFunctionType') type = type.returnType?.typeAnnotation;
+  if (!type) return false;
+  let number = false;
+  let duration = false;
+  const visit = (node: Node) => {
+    if (node.type === 'TSNumberKeyword') number = true;
+    if (node.type === 'TSTypeReference' && pathOf(node.typeName).at(-1) === 'Duration') duration = true;
+    for (const child of children(node)) visit(child);
+  };
+  visit(type);
+  return number && !duration;
+}
+
+/**
+ * A span of time is a `Duration`, or a number with its unit in the name (docs/time.md, "Spans of time"): a member, a parameter
+ * or a return value of a stable entry point whose name ends in a span word (`timeout`, `ttl`, `maxAge`, …) and whose type holds
+ * a bare `number` is a problem. A member that holds a number on purpose stands in `lists.exceptions` with its reason, one that
+ * waits for a change in `lists.pending`; a listed member that follows the rule is a problem too, so the line gets deleted.
+ * `@internal` and `@experimental` members and experimental entry points do not count.
+ */
+export function spanProblems(packages: readonly PackageToSnapshot[], lists: SpanLists = SPAN_LISTS): string[] {
+  const hits = new Set<string>();
+  const seen = new Set<string>();
+  const FUNCTION_LIKE = new Set(['TSFunctionType', 'TSConstructorType', 'TSEmptyBodyFunctionExpression', 'TSCallSignatureDeclaration', 'TSConstructSignatureDeclaration']);
+  for (const pkg of packages) {
+    const declarations = new Declarations();
+    const scope = experimentalScope(pkg, []);
+    // Helper types that no entry exports but a public signature names: api.md shows them, so they count.
+    const helpers: { entry: string; file: DtsFile; statement: Statement; name: string }[] = [];
+    const scan = (entry: string, name: string, file: DtsFile, statement: Statement) => {
+      const hidden = new Set<Node>([...internalMembers(file, statement.node), ...experimentalMembers(file, statement.node).map(({ node }) => node)]);
+      const report = (where: string) => hits.add(`${entry} ${where}`);
+      const params = (fn: Node, where: string) => {
+        walk(fn.typeParameters, where);
+        for (const param of (fn.params ?? []) as Node[]) {
+          const label = param.type === 'Identifier' ? `${where}(${param.name})` : `${where}(options)`;
+          if (param.type === 'Identifier' && isSpanName(param.name) && isBareNumber(param.typeAnnotation)) report(label);
+          walk(param.typeAnnotation, label);
+        }
+        walk(fn.returnType, where);
+      };
+      const walk = (node: Node | null | undefined, where: string): void => {
+        if (!node || hidden.has(node)) return;
+        if (node.type === 'TSDeclareFunction' || node.type === 'FunctionDeclaration') {
+          if (isSpanName(node.id.name) && isBareNumber(node.returnType)) report(where);
+          params(node, where);
+          return;
+        }
+        if (node.type === 'MethodDefinition' || node.type === 'TSAbstractMethodDefinition') {
+          const at = `${where}.${memberName(file, node)}`;
+          if (isSpanName(memberName(file, node)) && node.kind !== 'constructor' && isBareNumber(node.value.returnType)) report(at);
+          params(node.value, at);
+          return;
+        }
+        if (node.type === 'TSMethodSignature') {
+          const at = `${where}.${memberName(file, node)}`;
+          if (isSpanName(memberName(file, node)) && isBareNumber(node.returnType)) report(at);
+          params(node, at);
+          return;
+        }
+        if (MEMBER_TYPES.has(node.type) && !FUNCTION_LIKE.has(node.type) && node.type !== 'TSIndexSignature') {
+          const at = `${where}.${memberName(file, node)}`;
+          if (isSpanName(memberName(file, node)) && isBareNumber(node.typeAnnotation)) report(at);
+          walk(node.typeAnnotation, at);
+          return;
+        }
+        if (FUNCTION_LIKE.has(node.type)) params(node, where);
+        else for (const child of children(node)) walk(child, where);
+      };
+      walk(statement.node, name);
+      for (const reference of referencesOf(file, statement, true)) {
+        const found = resolveReference(declarations, reference);
+        if (found?.kind !== 'declaration') continue;
+        const local = declarations.file(found.file);
+        const shown = local?.declarations.get(found.local)?.filter((candidate) => !hasTag(commentBefore(local, candidate.wrapper), 'internal'));
+        if (local && shown) for (const candidate of shown) helpers.push({ entry, file: local, statement: candidate, name: found.local });
+      }
+    };
+    for (const { entry, path } of entryPoints(pkg)) {
+      if (scope === true || scope?.has(entry)) continue;
+      for (const [name, target] of declarations.exportsOf(path)) {
+        if (target.kind !== 'declaration' || name === 'default') continue;
+        const statements = exportedStatements(declarations, target);
+        const id = `${target.file}\0${target.local}`;
+        if (!statements || statements.experimental || seen.has(id)) continue;
+        seen.add(id);
+        for (const statement of statements.shown) scan(entry, name, statements.file, statement);
+      }
+    }
+    for (let i = 0; i < helpers.length; i++) {
+      const { entry, file, statement, name } = helpers[i]!;
+      const id = `${file.path}\0${name}`;
+      if (seen.has(id) || hasTag(commentBefore(file, statement.wrapper), 'experimental')) continue;
+      seen.add(id);
+      scan(entry, name, file, statement);
+    }
+  }
+  const problems: string[] = [];
+  for (const hit of [...hits].sort()) {
+    if (!Object.hasOwn(lists.exceptions, hit) && !lists.pending.has(hit)) problems.push(`${hit} is a span of time as a bare number — take a Duration, or name its unit (docs/time.md › Spans of time)`);
+  }
+  for (const key of Object.keys(lists.exceptions)) if (!hits.has(key)) problems.push(`${key} is listed in SPAN_EXCEPTIONS but is no bare number span any more — delete the line`);
+  for (const key of lists.pending) if (!hits.has(key)) problems.push(`${key} is listed in SPAN_PENDING but follows the rule — delete the line`);
+  return problems;
+}
+
 /** The api.md of a package, or none when it has no entry point with types; plus the problems met on the way and what is experimental in it. */
 export function snapshotPackage(
   pkg: PackageToSnapshot,
@@ -1093,7 +1217,7 @@ export interface ApiRun {
 }
 
 /** Compares (or, with `write`, rewrites) the `api.md` of every package under `root`. */
-export async function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>>; names?: NameLists } = {}): Promise<ApiRun> {
+export async function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>>; names?: NameLists; spans?: SpanLists } = {}): Promise<ApiRun> {
   const allowed = options.allowed ?? FOREIGN_TYPES;
   const lines: string[] = [];
   let failed = false;
@@ -1144,6 +1268,11 @@ export async function runApi(root: string, options: { write?: boolean; allowed?:
   if (names.length > 0) {
     failed = true;
     lines.push('names:', ...names.map((problem) => `  ${problem}`));
+  }
+  const spans = spanProblems(packages, options.spans);
+  if (spans.length > 0) {
+    failed = true;
+    lines.push('spans of time:', ...spans.map((problem) => `  ${problem}`));
   }
   const docs = experimentalProblems(root, experimental);
   if (docs.length > 0) {

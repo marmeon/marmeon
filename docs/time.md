@@ -64,7 +64,7 @@ fits too. There are no strings: `'60m'` is a `TypeError` that names the object t
 a link without an expiry. The parts `years`, `months` and `weeks` are refused as well, because their length depends on the calendar, and so are `microseconds` and `nanoseconds`, which a millisecond clock cannot keep.
 `durationToSeconds(duration)` and `durationToMilliseconds(duration)` turn one into a number, and refuse anything else.
 
-Four rules say where a span is a `Duration`:
+Five rules say where a span is a `Duration`:
 
 1. An option or a parameter that takes a span and has no unit in its name is a `Duration`: `delay`, `release()`, `expiresIn`,
    `uniqueFor`, the `ttl` of the cache, `lock()` and `block()` of a lock, the window of a `Limit`, and `Route.block()`.
@@ -72,6 +72,12 @@ Four rules say where a span is a `Duration`:
 3. A name without a unit never holds a bare number that means something else than seconds. A `Duration` is seconds when it is a number.
 4. A contract that your app implements, such as a cache store or a lock store, gets normalised numbers with the unit in the name,
    never a `Duration`.
+5. What the framework returns or lays out for you to read, such as a return value, a field of a resolved config, the context of a
+   middleware or a field of an event, is a normalised number with the unit in its name: `retryAfterSeconds`, `sessionMaxSeconds`.
+   A `Duration` is an input only.
+
+A span in a position of a parameter is a `Duration`, or it moves into an options object; the unit in a parameter name would never
+show at the call.
 
 An expiry is rounded down to a whole second, so a link or a token never lives longer than you asked: `{ seconds: 1, milliseconds: 900 }`
 expires after one second. A `Limit` takes only whole seconds, because its window is part of the key its count is stored under.

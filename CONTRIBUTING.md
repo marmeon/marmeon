@@ -428,6 +428,13 @@ as `Simplify` — or `pnpm api:check` names both files and asks for a rename. Th
 same value, each with its reason in `SAME_VALUE` of `scripts/api-names.ts`; an entry whose name no longer collides fails the check
 until its line is deleted.
 
+A span of time is a `Duration`, or a number with its unit in its name ([docs/time.md](docs/time.md#spans-of-time)): a member, a
+parameter or a return value of a stable entry whose name ends in a span word (`timeout`, `ttl`, `delay`, `maxAge`, … — the list is
+`SPAN_WORDS` in `scripts/api-spans.ts`) and whose type holds a bare `number` fails `pnpm api:check`. A number that is no span
+for the framework, such as a point in time or a field the WebAuthn JSON defines, stands in `SPAN_EXCEPTIONS` with its reason;
+`SPAN_PENDING` lists the spans that do not follow the rule yet, and the change that fixes one deletes its line. A listed name that
+follows the rule fails the check until its line is deleted. The check holds the names; the position of a span (a parameter is a `Duration`, or moves into an options object) is reviewed by hand.
+
 An entry point may only expose the types of the libraries `FOREIGN_TYPES` in `scripts/api.ts` lists for its package (Node's
 built-ins, `@marmeon/*` and `marmeon` are free); `pnpm api:check` fails otherwise. Each entry says why it is there — a peer the
 app installs, or the change that removes it. Add an entry only for a peer, and give a type of your own to anything else.
