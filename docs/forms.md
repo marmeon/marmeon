@@ -210,7 +210,7 @@ does the same, and calls the check on blur by itself. A form for a `GET` route h
 nothing there.
 
 The check is the form's own request with a header that names the fields. The route's middleware, its bindings, `authorize` and the
-schema run, but never the controller. Password fields are never sent, and neither are files. Database rules such as `unique()` and
+schema run, but never the controller. Fields that look like a secret are never sent, in the body or in the header: passwords, card numbers and security codes, one-time codes, tokens, secrets and keys, by the same names that keep them out of flashed and remembered input. Naming one in `fields` or in `form.validate()` is a type error, so check it when the form is sent. Files are not sent either. Database rules such as `unique()` and
 your own async rules never answer while typing, so a form cannot be used to find out which addresses have an account. The
 [validation](validation.md#live-validation) page covers the server's side and the rate limit. The checking code loads with a
 form's first change, so an app that never validates live never downloads it.

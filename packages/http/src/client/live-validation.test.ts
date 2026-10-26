@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ACTION_HEADER, ACTION_REDIRECT_HEADER, LOCATION_HEADER, PAGE_HEADER, PROTOCOL_VERSION, RELOAD_HEADER, VALIDATE_HEADER, VALIDATED_HEADER } from '../protocol.ts';
 import { liveValidation } from './features/live-validation.ts';
 import { liveValidationOnFirstUse, loadLiveValidation } from './lazy.ts';
-import { isSensitiveField, liveValidationData, type LiveValidationOutcome } from './live-validation.ts';
+import { liveValidationData, type LiveValidationOutcome } from './live-validation.ts';
 import { boot, FakeWindow, ORIGIN, page } from './test-window.ts';
 
 const valid = (fields: string) => new Response(null, { status: 204, headers: { [VALIDATED_HEADER]: fields } });
@@ -63,10 +63,39 @@ describe('live validation in the core', () => {
     expect(win.requests).toHaveLength(1);
   });
 
-  it('knows password fields by name, and leaves files out (they go with the submit)', () => {
-    expect(['password', 'password_confirmation', 'currentPassword', 'NEW_PASSWORD', 'account.password'].every(isSensitiveField)).toBe(true);
-    expect(['name', 'email', 'passport'].some(isSensitiveField)).toBe(false);
+  it('leaves files out of the body (they go with the submit)', () => {
     expect(liveValidationData({ avatar: new Blob(['x']), tags: ['a', new Blob(['y'])], at: new Date(0), name: 'Ada' })).toEqual({ tags: ['a'], at: new Date(0), name: 'Ada' });
+  });
+
+  const secrets = ['password', 'passcode', 'cardNumber', 'cvc', 'otpCode', 'account.passphrase', 'user_totp', 'userOTP', 'userTOTP', 'api_token', 'recovery_code', 'cards[0].cvc', 'payment.card.number'];
+
+  it.each(secrets)('never names %s, and a check of only secrets is not sent', async (field) => {
+    const { win, live } = setup();
+    win.handler = () => valid('name');
+    expect(await live.validate('/register', { method: 'post', data: {}, fields: [field] })).toEqual({ kind: 'cancelled' });
+    expect(win.requests).toHaveLength(0);
+    await live.validate('/register', { method: 'post', data: {}, fields: ['name', field] });
+    expect(win.requests[0]!.headers[VALIDATE_HEADER]).toBe('name');
+  });
+
+  it('sends no secret in the body, at any depth, and keeps every other field', async () => {
+    const { win, live, bodies, record } = setup();
+    win.handler = (_url, request) => {
+      record(request);
+      return valid('name,email,zip_code');
+    };
+    const value = 'sw0rdfish-value';
+    const data: Record<string, unknown> = { name: 'Ada', email: 'a@b.c', zip_code: '10115', promoCode: 'SPRING' };
+    data.items = [{ cvc: value }];
+    data.payment = { card: { number: value } };
+    for (const field of secrets.filter((name) => name.split('.').length < 3 && !name.includes('['))) {
+      const [head, tail] = field.split('.');
+      data[head!] = tail === undefined ? value : { [tail]: value, handle: 'ada' };
+    }
+    await live.validate('/register', { method: 'post', data, fields: ['name', 'email', 'zip_code'] });
+    expect(JSON.stringify(bodies)).not.toContain(value);
+    expect(bodies[0]).toEqual({ name: 'Ada', email: 'a@b.c', zip_code: '10115', promoCode: 'SPRING', account: { handle: 'ada' }, items: [{}], payment: {} });
+    expect(win.requests[0]!.headers[VALIDATE_HEADER]).toBe('name,email,zip_code');
   });
 
   it('a 422 gives the errors of the named fields only; anything that is not its answer is an exception, never errors', async () => {

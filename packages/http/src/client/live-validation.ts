@@ -4,24 +4,18 @@
  * the server runs the route's middleware, `authorize` and schema — never its controller — and answers `204` or `422` with the
  * errors of the named fields only. Read-only on the server, never cached, held to its own rate limit.
  *
- * Only fields the user touched are named, so nobody sees "required" for a field they have not reached. Password fields
- * (`/password/i`) are never sent — not even in the body: a strength rule or a confirmation is checked when the form is sent.
+ * Only fields the user touched are named, so nobody sees "required" for a field they have not reached. Fields that look like
+ * a secret — a password, a card detail, a one-time code, a token (`isSensitiveField`, the rule flashed and remembered input
+ * follow too) — are never sent, not even in the body: a strength rule or a confirmation is checked when the form is sent.
  * Files neither (they go with the submit).
  */
 import type { ValidationErrors } from '../page.ts';
 import { ACTION_REDIRECT_HEADER, LOCATION_HEADER, protocolHeaders, VALIDATE_HEADER, VALIDATED_HEADER } from '../protocol.ts';
+import { isSensitiveField } from '../sensitive-fields.ts';
 import type { ActionError, ActionHost, ActionMethod } from './action.ts';
 import { notify } from './notify.ts';
 
-/** Field names live validation never sends: passwords, their confirmations, current passwords (`/password/i`). */
-export const SENSITIVE_FIELD = /password/i;
-
-/** Whether `field` (a name or a path: `account.password`) is never sent for live validation. */
-export function isSensitiveField(field: string): boolean {
-  return field.split('.').some((segment) => SENSITIVE_FIELD.test(segment));
-}
-
-/** What a live validation sends of a form's data: everything but password fields (at any depth) and files. */
+/** What a live validation sends of a form's data: everything but sensitive fields (at any depth) and files. */
 export function liveValidationData(data: Record<string, unknown>): Record<string, unknown> {
   const strip = (value: unknown): unknown => {
     if (value instanceof Blob) return undefined;
@@ -29,7 +23,7 @@ export function liveValidationData(data: Record<string, unknown>): Record<string
     if (typeof value === 'object' && value !== null && !(value instanceof Date)) {
       const result: Record<string, unknown> = {};
       for (const [key, item] of Object.entries(value)) {
-        if (SENSITIVE_FIELD.test(key)) continue;
+        if (isSensitiveField(key)) continue;
         const kept = strip(item);
         if (kept !== undefined) result[key] = kept;
       }
@@ -45,7 +39,7 @@ export interface LiveValidationRequest {
   /** The form's method — a live validation of a GET (a filter form) does not exist. */
   readonly method: Exclude<ActionMethod, 'get'>;
   readonly data: Record<string, unknown>;
-  /** The fields to check — password fields are left out. */
+  /** The fields to check — sensitive fields are left out. */
   readonly fields: readonly string[];
   readonly signal?: AbortSignal;
 }
@@ -126,7 +120,7 @@ export interface LiveValidationOptions {
   readonly on?: LiveValidationTrigger;
   /** The pause after typing before a check (ms) — default 300. */
   readonly debounceMs?: number;
-  /** The fields that may be checked — default every field (but passwords). */
+  /** The fields that may be checked — default every field (but those named like a secret). */
   readonly fields?: readonly string[];
 }
 
@@ -153,7 +147,7 @@ export class LiveValidation {
     this.#options = options;
   }
 
-  /** Whether `field` may be checked live: allowed by `fields`, and no password. */
+  /** Whether `field` may be checked live: allowed by `fields`, and not sensitive. */
   eligible(field: string): boolean {
     if (isSensitiveField(field)) return false;
     const allowed = this.#options.fields;

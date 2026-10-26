@@ -362,8 +362,8 @@ export interface LiveUpdatesState {
 export interface LiveValidationSetting<F> {
     on?: 'blur' | 'change';
     debounceMs?: number;
-    fields?: readonly (PasswordNeverLive | (keyof {
-        [K in keyof F & string as Lowercase<K> extends `${string}password${string}` ? never : K]: true;
+    fields?: readonly (SensitiveNeverLive | (keyof {
+        [K in keyof F & string as LooksSensitive<K> extends true ? never : K]: true;
     } & string))[];
 }
 // NewVersion

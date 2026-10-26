@@ -255,7 +255,7 @@ filled in yet, and so are errors of the body as a whole.
 - Live validations have a rate limit of their own, from the cache package that every new app has: 30 a minute per route and
   address. A `throttle()` on the route holds them to its limit without counting them. The
   [rate limiting](rate-limiting.md#live-validations) page shows how to change it.
-- Password fields and files are never sent.
+- Files are never sent, and neither is any field that looks like a secret: a password or passphrase, a card number or security code, a one-time code, a token, a secret or a key (the [forms](forms.md#remembering-input) page lists the names). A strength rule or a confirmation of such a field is checked when the form is sent.
 
 ## Database rules, and why they never run live
 

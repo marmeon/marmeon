@@ -20,6 +20,11 @@ describe('isSensitiveField', () => {
     expect(isSensitiveField('xTotp')).toBe(true);
     expect(isSensitiveField('1Otp')).toBe(false);
   });
+
+  it('knows the acronym in capitals after a lower-case letter: userOTP, userTOTP, xOTP', () => {
+    for (const field of ['userOTP', 'userTOTP', 'xOTP', 'account.userOTP']) expect(isSensitiveField(field), field).toBe(true);
+    for (const field of ['FOOTPRINT', 'ROOTPATH']) expect(isSensitiveField(field), field).toBe(false);
+  });
 });
 
 describe('isPasswordField', () => {

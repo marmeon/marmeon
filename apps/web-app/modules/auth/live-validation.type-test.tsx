@@ -16,13 +16,14 @@ export function Registration() {
   // Argument of type '"emial"' is not assignable to parameter of type '"'emial' is not a field of this form — it has email, name"'.
   // @ts-expect-error
   form.validate('emial');
-  // Argument of type '"password"' is not assignable to parameter of type '"'password' — password fields are never validated live —
-  // they are checked when the form is sent"'.
+  // Argument of type '"password"' is not assignable to parameter of type '"'password' — fields that look like a secret (a
+  // password, a card detail, a one-time code, a token) are never validated live — they are checked when the form is sent"'.
   // @ts-expect-error
   form.validating('password');
 
   // No overload matches this call. The last overload gave the following error. Type '"password_confirmation"' is not assignable
-  // to type '"email" | "name" | "password fields are never validated live — they are checked when the form is sent"'.
+  // to type '"email" | "name" | "fields that look like a secret (a password, a card detail, a one-time code, a token) are never
+  // validated live — they are checked when the form is sent"'.
   // @ts-expect-error
   useForm('auth.register.store', { name: '', email: '', password: '', password_confirmation: '' }, { validate: { fields: ['name', 'password_confirmation'] } });
 

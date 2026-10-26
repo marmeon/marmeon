@@ -1161,7 +1161,7 @@ export interface LayerCloseOptions {
 // LooksLikePassword
 export type LooksLikePassword<K extends string> = Lowercase<K> extends `${string}${Split<typeof PASSWORD_TERMS>}${string}` | 'pass' ? true : false;
 // LooksSensitive
-export type LooksSensitive<K extends string> = Lowercase<K> extends SensitivePattern ? true : K extends `${string}${'Otp' | 'Totp'}${string}` ? true : false;
+export type LooksSensitive<K extends string> = Lowercase<K> extends SensitivePattern ? true : K extends `${string}${Lower}${'Otp' | 'Totp' | 'OTP' | 'TOTP'}${string}` ? true : false;
 // OptimisticUpdate
 export interface OptimisticUpdate {
     readonly target: PatchTarget;
@@ -1393,6 +1393,8 @@ export interface LayerClose {
     readonly layers: number;
     readonly reload?: readonly string[] | true;
 }
+// Lower
+type Lower = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z';
 // NAME_TERMS
 declare const NAME_TERMS = "password|passcode|passphrase|secret|token|credential|signature|jwt|recovery|cvv|cvc|card|iban|dsn";
 // PASSWORD_TERMS
@@ -1806,7 +1808,7 @@ export type LiveValidationTrigger = 'blur' | 'change';
 // LooksLikePassword
 export type LooksLikePassword<K extends string> = Lowercase<K> extends `${string}${Split<typeof PASSWORD_TERMS>}${string}` | 'pass' ? true : false;
 // LooksSensitive
-export type LooksSensitive<K extends string> = Lowercase<K> extends SensitivePattern ? true : K extends `${string}${'Otp' | 'Totp'}${string}` ? true : false;
+export type LooksSensitive<K extends string> = Lowercase<K> extends SensitivePattern ? true : K extends `${string}${Lower}${'Otp' | 'Totp' | 'OTP' | 'TOTP'}${string}` ? true : false;
 // NativeDialogs
 export interface NativeDialogs {
     confirm?(message?: string): boolean;
@@ -2515,6 +2517,8 @@ export interface LiveSubscription {
     readonly only?: readonly string[];
     readonly token: string;
 }
+// Lower
+type Lower = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z';
 // NAME_TERMS
 declare const NAME_TERMS = "password|passcode|passphrase|secret|token|credential|signature|jwt|recovery|cvv|cvc|card|iban|dsn";
 // OnceInfo
@@ -2676,7 +2680,7 @@ export type { CheckLayerBase } from '@marmeon/router';
 // CheckLayerRouteName
 export type { CheckLayerRouteName } from '@marmeon/router';
 // CheckLiveField
-export type CheckLiveField<F, K extends string> = K extends LiveField<F> ? K : K extends keyof F ? `'${K}' — ${PasswordNeverLive}` : `'${K}' is not a field of this form — it has ${JoinNames<LiveField<F>>}`;
+export type CheckLiveField<F, K extends string> = K extends LiveField<F> ? K : K extends keyof F ? `'${K}' — ${SensitiveNeverLive}` : `'${K}' is not a field of this form — it has ${JoinNames<LiveField<F>>}`;
 // CheckPageRouteName
 export type { CheckPageRouteName } from '@marmeon/router';
 // CheckRouteName
@@ -2768,7 +2772,7 @@ export interface LayerResult<TProps extends ViewProps = ViewProps, TComponent ex
 export type { LayerRouteName } from '@marmeon/router';
 // LiveField
 export type LiveField<F> = keyof {
-    [K in keyof F & string as PasswordLike<K> extends true ? never : K]: true;
+    [K in keyof F & string as LooksSensitive<K> extends true ? never : K]: true;
 } & string;
 // MatchKey
 export type MatchKey<T, S extends MergeStrategy> = S extends 'deepMerge' ? DeepItemKey<T, []> : T extends {
@@ -2827,8 +2831,6 @@ export interface PaginationMeta {
 export type { Param } from '@marmeon/router';
 // ParamsOf
 export type { ParamsOf } from '@marmeon/router';
-// PasswordNeverLive
-export type PasswordNeverLive = 'password fields are never validated live — they are checked when the form is sent';
 // PropKind
 export type PropKind = 'optional' | 'defer' | 'always' | 'merge' | 'deepMerge' | 'once';
 // Query
@@ -2879,6 +2881,8 @@ export type { RouteNameInput } from '@marmeon/router';
 export type { RouteQueryOf } from '@marmeon/router';
 // Routes
 export type { Routes } from '@marmeon/router';
+// SensitiveNeverLive
+export type SensitiveNeverLive = 'fields that look like a secret (a password, a card detail, a one-time code, a token) are never validated live — they are checked when the form is sent';
 // Serialize
 export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : SerializeKnown<T>;
 // SharedProps
@@ -2961,6 +2965,10 @@ export { urlFor } from '@marmeon/router/url';
 type ActionResult<TAction extends PageAction> = TAction extends {
     handle: (...args: never[]) => infer R;
 } ? R : TAction extends (...args: never[]) => infer R ? R : never;
+// Boundary
+type Boundary = `${string}${'_' | '-' | '.'}`;
+// CODE_PREFIXES
+declare const CODE_PREFIXES = "verification|sms|mfa|2fa|two_factor|auth|backup|security";
 // DataOf
 type DataOf<R> = R extends JsonResult<infer T> ? Serialize<T> : R extends RedirectResult ? never : R extends ViewResult ? never : R extends {
     readonly region: 'island';
@@ -3006,6 +3014,8 @@ type ItemPath<E> = {
 }[keyof E & string];
 // JSON_RESULT
 declare const JSON_RESULT: unique symbol;
+// KEY_PREFIXES
+declare const KEY_PREFIXES = "api|app|private|encryption";
 // LAYER_RESULT
 declare const LAYER_RESULT: unique symbol;
 // LayerBaseRoute
@@ -3036,6 +3046,12 @@ export interface LiveSubscription {
     readonly only?: readonly string[];
     readonly token: string;
 }
+// LooksSensitive
+export type LooksSensitive<K extends string> = Lowercase<K> extends SensitivePattern ? true : K extends `${string}${Lower}${'Otp' | 'Totp' | 'OTP' | 'TOTP'}${string}` ? true : false;
+// Lower
+type Lower = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z';
+// NAME_TERMS
+declare const NAME_TERMS = "password|passcode|passphrase|secret|token|credential|signature|jwt|recovery|cvv|cvc|card|iban|dsn";
 // NotOptional
 interface NotOptional {
     readonly [PROP]: 'optional' | 'defer';
@@ -3085,8 +3101,6 @@ interface PageProp<K extends PropKind, T> {
 }
 // PagePropNames
 export type PagePropNames<TProps> = (keyof TProps & string) | (keyof SharedProps & string);
-// PasswordLike
-type PasswordLike<K extends string> = Lowercase<K> extends `${string}password${string}` ? true : false;
 // REDIRECT_RESULT
 declare const REDIRECT_RESULT: unique symbol;
 // RedirectResult
@@ -3112,6 +3126,8 @@ export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
 export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // Registered
 type Registered = [keyof Routes] extends [never] ? false : true;
+// SensitivePattern
+type SensitivePattern = `${string}${Split<typeof NAME_TERMS>}${string}` | `${string}${Split<typeof KEY_PREFIXES>}${'' | '_' | '-'}key${string}` | `${string}session${'' | '_' | '-'}id${string}` | `${string}${Split<typeof CODE_PREFIXES>}${'' | '_' | '-'}code${string}` | `${'' | `${string}.`}${'code' | 'codes' | 'pass' | 'auth'}` | `${'' | Boundary}${'otp' | 'totp'}${string}`;
 // SerializeElement
 type SerializeElement<E> = E extends Unserializable ? null : Serialize<E>;
 // SerializeKnown
@@ -3130,6 +3146,8 @@ type SerializeObject<T> = Simplify<{
 type Simplify<T> = {
     [K in keyof T]: T[K];
 } & {};
+// Split
+type Split<S extends string> = S extends `${infer Head}|${infer Rest}` ? Head | Split<Rest> : S;
 // TYPE
 declare const TYPE: unique symbol;
 // Unserializable
