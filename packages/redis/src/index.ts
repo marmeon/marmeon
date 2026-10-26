@@ -50,14 +50,29 @@ export interface RedisConnectionDefinition extends ConfigDefinition<RedisConnect
 
 /**
  * Another Redis connection, e.g. a separate instance for the queue: list it in the app's (or a module's) `config` and get it
- * with `redis.get(name)`. Throws for the name `default`. See `docs/redis.md#more-connections`.
+ * with `redis.get(name)`. Throws for the name `default`; a `resolve` that returns an empty prefix stops the start. `resolve`
+ * also runs while the variables are checked, so keep it free of side effects. See `docs/redis.md#more-connections`.
  */
 export function defineRedisConnection<const Schema extends StandardSchemaV1>(
   name: string,
   definition: { env: Schema; resolve: (env: InferOutput<Schema>) => RedisConnectionOptions },
 ): RedisConnectionDefinition {
   if (name === 'default') throw new TypeError('"default" is the connection from REDIS_URL; give this one another name.');
-  return Object.freeze({ ...defineConfig(`redis.${name}`, definition), redisConnection: name });
+  // The empty prefix is an issue of the env schema, so it lands in the start's list of problems (and, in the build phase,
+  // makes the connection unavailable) like any other invalid setting.
+  const inner = definition.env['~standard'];
+  const checked: StandardSchemaV1 = {
+    '~standard': {
+      version: 1,
+      vendor: inner.vendor,
+      validate: async (value, options) => {
+        const result = await inner.validate(value, options);
+        if (result.issues || definition.resolve(result.value as InferOutput<Schema>).prefix !== '') return result;
+        return { issues: [{ message: `the prefix is empty — set one in its resolve, e.g. 'myapp:' — apps on one Redis share their keys otherwise (docs/redis.md#more-connections)` }] };
+      },
+    },
+  };
+  return Object.freeze({ ...defineConfig(`redis.${name}`, { env: checked, resolve: definition.resolve as (env: unknown) => RedisConnectionOptions }), redisConnection: name });
 }
 
 function isRedisConnectionDefinition(value: unknown): value is RedisConnectionDefinition {
