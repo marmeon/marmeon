@@ -7,6 +7,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { until } from './test-helpers/settle.ts';
 import { MarmeonApp, useRouter } from './app.tsx';
 import { useLocale, useTranslation } from './i18n.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
@@ -66,15 +67,13 @@ describe('useTranslation', () => {
 
     // Another tab switched the language: the next page comes in German.
     await act(async () => (container.querySelector('[data-testid="next"]') as HTMLButtonElement).click());
-    await act(async () => void (await new Promise((resolve) => setTimeout(resolve, 10))));
-    expect(container.textContent).toBe('Hallo Ada · 1.234,5');
+    await until(() => expect(container.textContent).toBe('Hallo Ada · 1.234,5'));
     expect(document.documentElement.lang).toBe('de');
     expect(loads).toEqual(['/modules/shop/lang/en.ts', '/modules/shop/lang/de.ts']);
 
     // Back: the page in memory is in its own language — each page renders as one, never mixed.
     await act(async () => history.back());
-    await act(async () => void (await new Promise((resolve) => setTimeout(resolve, 10))));
-    expect(container.textContent).toBe('Hello Ada · 1,234.5');
+    await until(() => expect(container.textContent).toBe('Hello Ada · 1,234.5'));
     expect(document.documentElement.lang).toBe('en');
   });
 

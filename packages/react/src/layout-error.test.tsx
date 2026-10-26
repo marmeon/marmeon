@@ -5,6 +5,7 @@ import { loadHistoryFallback, loadInstant, type Navigator } from '@marmeon/http/
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flush, until } from './test-helpers/settle.ts';
 import { MarmeonApp, useRouterContext } from './app.tsx';
 import { layoutsOf, resolveModulePages, type ErrorFallbackProps, type PageComponent } from './pages.ts';
 
@@ -31,7 +32,9 @@ Outer.error = OuterError;
 function Inner({ children }: { children: ReactNode }) {
   return <section data-layout="inner">{children}</section>;
 }
+let innerErrorRenders = 0;
 function InnerError(props: ErrorFallbackProps) {
+  innerErrorRenders++;
   return (
     <p data-fallback="inner">
       {props.title} · {props.message} · {props.exception ? 'details' : 'no details'}
@@ -80,10 +83,10 @@ let server: () => Response | Promise<Response>;
 let root: Root;
 let container: HTMLElement;
 const $ = (selector: string) => container.querySelector(selector);
-const settle = () => act(async () => void (await new Promise((done) => setTimeout(done, 10))));
 const click = (testId: string) => act(async () => ($(`[data-testid="${testId}"]`) as HTMLButtonElement).click());
 
 beforeEach(() => {
+  innerErrorRenders = 0;
   history.replaceState(null, '', '/a');
   container = document.createElement('div');
   document.body.replaceChildren(container);
@@ -102,7 +105,6 @@ async function mount(initial: PageObject) {
   await act(async () => {
     root.render(<MarmeonApp features={HISTORY} initialPage={initial} initialComponent={Component} resolve={resolve} />);
   });
-  await settle();
 }
 
 describe('a layout with error', () => {
@@ -114,18 +116,27 @@ describe('a layout with error', () => {
     };
     await mount(page('Boom', '/a', { broken: true }));
 
-    expect(requests).toBe(1); // the one automatic fresh copy, which fails again
+    await until(() => {
+      expect(requests).toBe(1); // the one automatic fresh copy, which fails again
+      expect($('[data-fallback="inner"]')).not.toBeNull();
+    });
     expect($('[data-layout="outer"] [data-layout="inner"] [data-fallback="inner"]')!.textContent).toContain('Something went wrong');
     expect($('[data-fallback="inner"]')!.textContent).toContain('the page broke · details'); // development: the exception
     expect($('[data-fallback="outer"]')).toBeNull(); // the nearest layout with error, not the outer one
 
+    const rendered = innerErrorRenders;
     await click('retry-inner');
-    await settle();
+    await until(() => {
+      expect(requests).toBe(2);
+      expect(innerErrorRenders).toBeGreaterThan(rendered); // the second failure rendered
+    });
+    await flush();
     expect(requests).toBe(2); // one reload per click, no loop
     expect($('[data-fallback="inner"]')).not.toBeNull();
 
     await click('retry-inner');
-    await settle();
+    await until(() => expect($('[data-layout="inner"] [data-page="boom"]')).not.toBeNull());
+    await flush();
     expect(requests).toBe(3);
     expect($('[data-fallback]')).toBeNull();
     expect($('[data-layout="inner"] [data-page="boom"]')!.textContent).toBe('Fine');
@@ -134,25 +145,24 @@ describe('a layout with error', () => {
   it('shows the placeholder of an instant visit over a fallback that stays from the page before', async () => {
     server = () => respond(page('Boom', '/a', { broken: true }));
     await mount(page('Boom', '/a', { broken: true }));
-    expect($('[data-fallback="inner"]')).not.toBeNull();
+    await until(() => expect($('[data-fallback="inner"]')).not.toBeNull());
 
     let answer!: () => void;
     server = () => new Promise((done) => (answer = () => done(respond(page('Slow', '/slow')))));
     await navigator!.load(loadInstant);
     const landed = navigator!.visit('/slow', { instant: { component: 'app/Slow' } });
-    await settle();
-    expect($('[data-placeholder="slow"]')).not.toBeNull();
+    await until(() => expect($('[data-placeholder="slow"]')).not.toBeNull());
     expect($('[data-fallback]')).toBeNull();
 
     answer();
     await landed;
-    await settle();
-    expect($('[data-page="slow"]')).not.toBeNull();
+    await until(() => expect($('[data-page="slow"]')).not.toBeNull());
   });
 
   it('hands the failure of a layout inside it to the layout above that has error', async () => {
     server = () => respond(page('Nested', '/a'));
     await mount(page('Nested', '/a'));
+    await until(() => expect($('[data-layout="outer"] [data-fallback="outer"]')).not.toBeNull());
     expect($('[data-layout="outer"] [data-fallback="outer"]')!.textContent).toContain('Something went wrong');
     expect($('[data-page="nested"]')).toBeNull();
   });
@@ -160,6 +170,7 @@ describe('a layout with error', () => {
   it('leaves layouts without error as they are: the error page inside them', async () => {
     server = () => respond(page('Broken', '/a', { broken: true }));
     await mount(page('Broken', '/a', { broken: true }));
+    await until(() => expect($('[data-layout="plain"] h1')).not.toBeNull());
     expect($('[data-layout="plain"] h1')!.textContent).toBe('Something went wrong');
     expect($('[data-fallback]')).toBeNull();
   });

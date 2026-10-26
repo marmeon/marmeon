@@ -5,6 +5,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp, progressIndicator, useRouter } from './app.tsx';
+import { until } from './test-helpers/settle.ts';
 import { progressBar, type ProgressIndicator } from './index.ts';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 import { loadHistoryFallback } from '@marmeon/http/client/adapter';
@@ -47,30 +48,28 @@ async function mount(progress?: ProgressIndicator) {
   const Component = await resolve('app/A');
   await act(async () => root.render(<MarmeonApp features={HISTORY} initialPage={page('A', '/a')} initialComponent={Component} resolve={resolve} {...(progress ? { progress } : {})} />));
 }
-const wait = (ms: number) => act(async () => void (await new Promise((resolve) => setTimeout(resolve, ms))));
 const bar = () => document.querySelector('[data-marmeon-progress]');
 
 describe('the progress bar is opt-in', () => {
   it('progressBar() shows the core’s bar while a slow visit is under way', async () => {
     await mount(progressBar({ delayMs: 0 }));
     await act(async () => (container.querySelector('[data-testid="go"]') as HTMLElement).click());
-    await wait(20);
-    expect(bar()).not.toBeNull();
+    await until(() => expect(bar()).not.toBeNull());
     expect(document.documentElement.getAttribute('aria-busy')).toBe('true');
     await act(async () => answer());
-    await wait(600);
-    expect(bar()).toBeNull();
+    await until(() => expect(bar()).toBeNull());
     expect(document.documentElement.hasAttribute('aria-busy')).toBe(false);
   });
 
   it('without it, a slow visit shows no bar — aria-busy still says a visit runs', async () => {
     await mount();
     await act(async () => (container.querySelector('[data-testid="go"]') as HTMLElement).click());
-    await wait(300);
+    // A deliberate wait: past the bar's show delay, nothing may have appeared.
+    await act(async () => void (await new Promise((resolve) => setTimeout(resolve, 300))));
     expect(bar()).toBeNull();
     expect(document.documentElement.getAttribute('aria-busy')).toBe('true');
     await act(async () => answer());
-    await wait(10);
+    await until(() => expect(container.querySelector('[data-page="b"]')).not.toBeNull());
   });
 
   it('takes the app’s own indicator — started with the navigator, stopped with the app', async () => {

@@ -7,6 +7,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarmeonApp } from './app.tsx';
+import { flush, until } from './test-helpers/settle.ts';
 import { Link } from './link.tsx';
 import { resolveModulePages, type PageComponent } from './pages.ts';
 
@@ -100,48 +101,48 @@ async function mount() {
 }
 
 const $ = (testId: string) => container.querySelector(`[data-testid="${testId}"]`)!;
-const wait = (ms: number) => act(async () => void (await new Promise((done) => setTimeout(done, ms))));
+// A deliberate wait: it proves that nothing happens inside the observer's dwell.
+const dwell = (ms: number) => act(async () => void (await new Promise((done) => setTimeout(done, ms))));
 
 describe('<Link preload>', () => {
   it('says once in development that a link by href has nothing to preload (the first render of the file)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await mount();
-    await wait(10);
+    await until(() => expect(resolved('app/Feature')).toBe(1));
+    await flush();
     expect(warn.mock.calls.filter(([message]) => String(message).includes('<Link preload> does nothing'))).toHaveLength(1);
   });
 
   it('mount loads the code of the target view once, and asks the server nothing', async () => {
     await mount();
-    await wait(10);
+    await until(() => expect(resolved('app/Feature')).toBe(1));
+    await flush();
     expect(resolved('app/Feature')).toBe(1);
     expect(fetches()).toBe(0);
   });
 
   it('hover loads the code after the pointer rests, never before, and asks nothing', async () => {
     await mount();
-    await wait(10);
+    await until(() => expect(resolved('app/Feature')).toBe(1));
     expect(resolved('app/Other')).toBe(0);
     await act(async () => $('hover').dispatchEvent(new MouseEvent('mouseover', { bubbles: true })));
-    await wait(120);
-    expect(resolved('app/Other')).toBe(1);
+    await until(() => expect(resolved('app/Other')).toBe(1));
     expect(fetches()).toBe(0);
   });
 
   it('viewport waits out the dwell of the observer, then loads the code and asks nothing', async () => {
     await mount();
-    await wait(10);
-    expect(watching.size).toBe(1);
+    await until(() => expect(watching.size).toBe(1));
     await act(async () => report($('viewport'), 1));
-    await wait(100);
+    await dwell(100);
     expect(resolved('app/Other')).toBe(0);
-    await wait(250);
-    expect(resolved('app/Other')).toBe(1);
+    await until(() => expect(resolved('app/Other')).toBe(1));
     expect(fetches()).toBe(0);
   });
 
   it('does nothing for a link by href or an action', async () => {
     await mount();
-    await wait(10);
+    await until(() => expect(resolved('app/Feature')).toBe(1));
     // Only the link by route loads `app/Feature`; the one that is watched is the link in view.
     expect(resolved('app/Feature')).toBe(1);
     expect([...watching].map((element) => element.getAttribute('data-testid'))).toEqual(['viewport']);

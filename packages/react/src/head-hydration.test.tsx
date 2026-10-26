@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
+import { untilOutsideAct } from './test-helpers/settle.ts';
 import { defaultTitle, Head, HeadContext, sweepServerTags } from './head.tsx';
 import { HeadRegistry } from './head-fields.ts';
 
@@ -39,8 +40,8 @@ describe('<Head> hydrating after the first pass', () => {
     const container = document.body.appendChild(document.createElement('div'));
     container.innerHTML = renderToString(tree());
     hydrateRoot(container, tree());
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect([...document.head.querySelectorAll('[data-marmeon-head="client"]')].slice(1)).toEqual(inner);
+    // Not in `act`: the test hydrates outside the act environment, so it polls for the Suspense boundary to hydrate.
+    await untilOutsideAct(() => expect([...document.head.querySelectorAll('[data-marmeon-head="client"]')].slice(1)).toEqual(inner));
     expect(document.head.querySelectorAll('script[src="/inner.js"]')).toHaveLength(1);
     expect(document.head.querySelectorAll('[data-marmeon-head="ssr-tag"]')).toHaveLength(0);
   });
