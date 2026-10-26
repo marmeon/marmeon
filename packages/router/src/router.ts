@@ -1,4 +1,4 @@
-import { Redactor } from '@marmeon/core';
+import { Html, Redactor } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { formatAccessProblems, isEveryone, isScoped, openBindings, RouteAccessError, routeAccess, type AccessProblem } from './access.ts';
 import { HttpError } from './errors.ts';
@@ -109,13 +109,13 @@ export interface LoadOptions {
   framework?: typeof FRAMEWORK_ROUTES;
 }
 
-/** Turns an action's result into a response: a `Response` as it is, nothing as 204, strings as HTML, everything else as JSON. */
+/** Turns an action's result into a response: a `Response` as it is, nothing as 204, a string as text, an `Html` as HTML, everything else as JSON. */
 export const defaultToResponse: ResponseFactory = (result) => {
   if (result instanceof Response) return result;
   if (result === undefined || result === null) return new Response(null, { status: 204 });
-  if (typeof result === 'string') {
-    return new Response(result, { headers: { 'content-type': 'text/html; charset=utf-8' } });
-  }
+  // A string is text, never markup: a route that echoes input must not become reflected XSS. Markup is an `Html`.
+  if (typeof result === 'string') return new Response(result, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+  if (result instanceof Html) return new Response(result.toString(), { headers: { 'content-type': 'text/html; charset=utf-8' } });
   return Response.json(result);
 };
 
