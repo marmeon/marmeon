@@ -12,8 +12,8 @@ export function OnTheProfilePage() {
   void router.prefetch('/users/7');
   void router.prefetch('/users/7', { cacheForMs: 60_000, data: { q: 'ada' } });
   void router.reload({ data: { tab: 'links' }, only: ['stats'], preserveUrl: true, async: true });
-  usePoll<ShowUserProfileController>(15_000, { only: ['activity'] });
-  usePoll(15_000, {}, { keepAlive: true, autoStart: false });
+  usePoll<ShowUserProfileController>({ intervalMs: 15_000 }, { only: ['activity'] });
+  usePoll({ intervalMs: 15_000, keepAlive: true, autoStart: false });
 
   // A prefetch is always a GET: Object literal may only specify known properties, and 'method' does not exist in type 'PrefetchOptions'.
   // @ts-expect-error
@@ -23,7 +23,10 @@ export function OnTheProfilePage() {
   void router.prefetch('/users/7', { cacheFor: 60_000 });
   // Type '"activty"' is not assignable to type '"activity" | "auth" | … | "stats"'. Did you mean '"activity"'?
   // @ts-expect-error
-  usePoll<ShowUserProfileController>(15_000, { only: ['activty'] });
+  usePoll<ShowUserProfileController>({ intervalMs: 15_000 }, { only: ['activty'] });
+  // The interval moved into the options: Argument of type 'number' is not assignable to parameter of type 'UsePollOptions'.
+  // @ts-expect-error
+  usePoll(15_000, { only: ['activity'] });
 
   return (
     <>

@@ -26,7 +26,7 @@ type Props = PageProps<ShowUserProfileController>;
 
 export default function Show({ profile, email, isOwnProfile, abilities, lastLoginAt, activity, stats, now, auth }: Props) {
   // The activity panel keeps itself current: a background reload of just `activity`, paused while the tab is hidden.
-  usePoll<ShowUserProfileController>(ACTIVITY_POLL, { only: ['activity'] });
+  usePoll<ShowUserProfileController>({ intervalMs: ACTIVITY_POLL }, { only: ['activity'] });
   const t = useTranslation('user-profile');
   // "3 minutes ago", "gestern" — against the server's `now`, so server and browser render the same; the date in UTC alike.
   const ago = (iso: string) => t.format.relative(iso, now);

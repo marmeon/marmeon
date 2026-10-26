@@ -52,9 +52,7 @@ export const SPAN_EXCEPTIONS: Readonly<Record<string, string>> = {
   '@marmeon/auth PasswordResetTokenStore.create(throttleSeconds)': 'a store contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
   '@marmeon/auth PasswordResetTokenStore.prune(maxAgeSeconds)': 'a store contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
   '@marmeon/auth SignInStore.prune(rememberMaxAgeDays)': 'a store contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
-  '@marmeon/http/client createPoll(intervalMs)': 'positional by decision; the unit is in the name, as for every client time',
   '@marmeon/queue QueueDriver.push(delaySeconds)': 'a driver contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
   '@marmeon/queue QueueDriver.release(delaySeconds)': 'a driver contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
-  '@marmeon/react usePoll(intervalMs)': 'positional by decision; the unit is in the name, as for every client time',
   '@marmeon/session SessionStore.gc(lifetimeSeconds)': 'a store contract an app can implement: it gets normalised numbers with the unit in the name (docs/time.md, rule 4)',
 };

@@ -46,7 +46,7 @@ function B({ name }: { name: string }) {
 
 let polls = 0;
 function Polling({ count }: { count: number }) {
-  usePoll<{ count: number }>(40, { only: ['count'] });
+  usePoll<{ count: number }>({ intervalMs: 40 }, { only: ['count'] });
   return <p data-testid="count">{count}</p>;
 }
 
@@ -165,6 +165,17 @@ function visibility(state: DocumentVisibilityState) {
 }
 
 describe('usePoll', () => {
+  it('refuses the positional interval of the old form with a TypeError naming { intervalMs }', () => {
+    // @ts-expect-error the interval is an option now
+    expect(() => usePoll(40, { only: ['count'] })).toThrow(TypeError);
+    // @ts-expect-error the interval is an option now
+    expect(() => usePoll(40, { only: ['count'] })).toThrow('{ intervalMs }');
+    // @ts-expect-error the poll options are required
+    expect(() => usePoll()).toThrow('{ intervalMs }');
+    expect(() => usePoll({ intervalMs: Infinity })).toThrow('[marmeon:C5]');
+    expect(() => usePoll({ intervalMs: 2_147_483_648 })).toThrow('[marmeon:C5]');
+  });
+
   beforeEach(() => {
     polls = 0;
     server = () => respond(page('Polling', '/a', { count: ++polls }));

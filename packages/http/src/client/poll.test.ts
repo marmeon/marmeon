@@ -32,7 +32,7 @@ describe('createPoll', () => {
     const document = new FakeDocument();
     let finish!: () => void;
     const run = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
-    const poll = createPoll(run, 1000, { document });
+    const poll = createPoll(run, { intervalMs: 1000, document });
     poll.start();
     await vi.advanceTimersByTimeAsync(999);
     expect(run).toHaveBeenCalledTimes(0);
@@ -49,7 +49,7 @@ describe('createPoll', () => {
   it('pauses while the tab is hidden — and catches up when it is shown again', async () => {
     const document = new FakeDocument();
     const run = vi.fn(async () => {});
-    const poll = createPoll(run, 1000, { document });
+    const poll = createPoll(run, { intervalMs: 1000, document });
     poll.start();
     await vi.advanceTimersByTimeAsync(1000);
     expect(run).toHaveBeenCalledTimes(1);
@@ -79,13 +79,13 @@ describe('createPoll', () => {
     const document = new FakeDocument();
     document.visibilityState = 'hidden';
     const run = vi.fn(async () => {});
-    const paused = createPoll(run, 1000, { document });
+    const paused = createPoll(run, { intervalMs: 1000, document });
     paused.start();
     await vi.advanceTimersByTimeAsync(5000);
     expect(run).not.toHaveBeenCalled();
     paused.stop();
 
-    const alive = createPoll(run, 1000, { document, keepAlive: true });
+    const alive = createPoll(run, { intervalMs: 1000, document, keepAlive: true });
     alive.start();
     await vi.advanceTimersByTimeAsync(3000);
     expect(run).toHaveBeenCalledTimes(3);
@@ -97,7 +97,7 @@ describe('createPoll', () => {
     const run = vi.fn(async () => {
       throw new Error('offline');
     });
-    const poll = createPoll(run, 1000, { document });
+    const poll = createPoll(run, { intervalMs: 1000, document });
     poll.start();
     expect(document.listeners).toBe(1);
     await vi.advanceTimersByTimeAsync(2000);
@@ -107,6 +107,18 @@ describe('createPoll', () => {
     expect(document.listeners).toBe(0);
     await vi.advanceTimersByTimeAsync(5000);
     expect(run).toHaveBeenCalledTimes(2);
-    expect(() => createPoll(run, 0)).toThrow('A poll needs an interval above 0 ms, got 0.');
+    expect(() => createPoll(run, { intervalMs: 0 })).toThrow('A poll needs an interval above 0 and up to 2147483647 ms, got 0.');
+    for (const bad of [Infinity, -1, NaN, 2_147_483_648, '1000' as never]) expect(() => createPoll(run, { intervalMs: bad })).toThrow('[marmeon:C5]');
+  });
+
+  it('refuses the positional interval of the old form with a TypeError naming { intervalMs }', () => {
+    const run = async () => {};
+    const document = undefined as never;
+    // @ts-expect-error the interval is an option now
+    expect(() => createPoll(run, 1000, { document })).toThrow(TypeError);
+    // @ts-expect-error the interval is an option now
+    expect(() => createPoll(run, 1000, { document })).toThrow('{ intervalMs }');
+    // @ts-expect-error the options are required
+    expect(() => createPoll(run)).toThrow('{ intervalMs }');
   });
 });

@@ -534,6 +534,7 @@ export type UsePendingOptions = {
 };
 // UsePollOptions
 export interface UsePollOptions {
+    intervalMs: number;
     keepAlive?: boolean;
     autoStart?: boolean;
 }
@@ -618,7 +619,7 @@ export declare function usePending<const N extends BrowserRouteNameInput>(name: 
 // usePendingSubmissions
 export declare function usePendingSubmissions<const N extends BrowserRouteNameInput>(name: CheckBrowserRouteName<N>): readonly PendingSubmission<N>[];
 // usePoll
-export declare function usePoll<T = unknown>(intervalMs: number, options?: ReloadOptions<T>, { keepAlive, autoStart }?: UsePollOptions): Pick<Poll, 'start' | 'stop'>;
+export declare function usePoll<T = unknown>(pollOptions: UsePollOptions, options?: ReloadOptions<T>): Pick<Poll, 'start' | 'stop'>;
 // useQueryState
 export declare function useQueryState<const N extends BrowserRouteNameInput>(name: CheckQueryRoute<N>, options?: UseQueryStateOptions<N>): [QueryStateOf<N>, SetQueryState<QueryStateOf<N>>];
 // useRemember
