@@ -1131,9 +1131,6 @@ export interface LayerCloseOptions {
 export type LooksLikePassword<K extends string> = Lowercase<K> extends `${string}${Split<typeof PASSWORD_TERMS>}${string}` | 'pass' ? true : false;
 // LooksSensitive
 export type LooksSensitive<K extends string> = Lowercase<K> extends SensitivePattern ? true : K extends `${string}${'Otp' | 'Totp'}${string}` ? true : false;
-// NEVER_REMEMBERED_FIELD
-// @deprecated
-export declare const NEVER_REMEMBERED_FIELD: RegExp;
 // OptimisticUpdate
 export interface OptimisticUpdate {
     readonly target: PatchTarget;
@@ -1219,9 +1216,6 @@ export interface Reloading {
     readonly target: PatchTarget;
     readonly spec: ReloadSpec;
 }
-// SENSITIVE_REMEMBER_FIELD
-// @deprecated
-export declare const SENSITIVE_REMEMBER_FIELD: RegExp;
 // SelectionKey
 export type SelectionKey = string | number;
 // TabSync

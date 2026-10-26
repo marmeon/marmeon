@@ -40,7 +40,7 @@ describe('the entries of the client core', () => {
   });
 
   it('keeps the lazy loaders and constants only the core itself uses out of the adapter entry', () => {
-    for (const name of ['loadLiveValidation', 'loadPrefetch', 'loadViewTransitions', 'withoutDefaults', 'NEVER_REMEMBERED_FIELD', 'SENSITIVE_REMEMBER_FIELD']) {
+    for (const name of ['loadLiveValidation', 'loadPrefetch', 'loadViewTransitions', 'withoutDefaults']) {
       expect(adapter, name).not.toHaveProperty(name);
     }
   });

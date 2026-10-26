@@ -23,12 +23,6 @@ export function loadSensitiveFields(): Promise<void> {
   ));
 }
 
-/** @deprecated Use {@link isSensitiveRememberField} — it also knows codes, keys and one-time passwords. Removed in 0.5; docs/forms.md#remembering-input. */
-export const SENSITIVE_REMEMBER_FIELD = /password|secret|token|card|cvc/i;
-
-/** @deprecated Use {@link isSensitiveRememberField}, which says so for a password and for a path through one. Removed in 0.5; docs/forms.md#remembering-input. */
-export const NEVER_REMEMBERED_FIELD = /password/i;
-
 /**
  * Whether a field (a name or a path: `payment.card_number`) is left out of remembered state — `include` lets in all but
  * passwords. `true` for everything until {@link loadSensitiveFields} has resolved.
