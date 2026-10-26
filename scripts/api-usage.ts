@@ -5,16 +5,21 @@
  *   pnpm api:usage @marmeon/core             # one section per suggestion: keep, testing, internal, drop
  *   pnpm api:usage @marmeon/core --files     # and the files that import each name
  *   pnpm api:usage @marmeon/core --json      # the same as JSON
+ *   pnpm api:usage @marmeon/core --members   # who uses each constructor and member of its classes: unused, framework only, used
  *
  * The names come from the checked-in `api.md` (no build needed), the imports from the repository's files (`.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.md`).
  * The suggestion is only a first guess: whether a public signature names an export, or an app implements it, the reader checks.
+ * `--members` reads the built declarations instead (`pnpm build` first), because the members of a class are not in `api.md` as items of their own.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { memberStatus, memberUsage, type MemberUsage } from './api.ts';
+import { NOT_SOURCE, SHIPPED, TEST_FILE, importedName, importsOf, namespaceUseOf } from './api-sources.ts';
 import { parseSnapshot, type ApiItem } from './api-snapshot.ts';
 import { repositoryFiles } from './check-source.ts';
+import { frameworkPackages } from './packages.ts';
 import type { SourceFile } from './source-files.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -55,95 +60,7 @@ export interface EntryUsage {
   readonly wholeImports: string[];
 }
 
-export interface Import {
-  readonly specifier: string;
-  /** The exported names the statement takes; `undefined` for the entry as a whole. */
-  readonly names: readonly string[] | undefined;
-  /** The local name of `import * as ns from 'x'` and `const ns = await import('x')`: its uses show which names are taken. */
-  readonly namespace?: string;
-}
-
-/** `import … from 'x'` and `export … from 'x'`, over several lines too. The clause has no `=`, quote or bracket: prose and code in between do not match. */
-const STATEMENT = /\b(?:import|export)\s+(?:type\s+)?([\w$\s{},*]*?)\s*\bfrom\s*(['"])([^'"\n]+)\2/g;
-/** `import('x')`, with the member when it is read directly: `import('x').Foo`. */
-const DYNAMIC = /\bimport\(\s*(['"])([^'"\n]+)\1\s*\)(?:\.([\w$]+))?/g;
-
-/** `const { a, b: c } = await import('x')` and `= require('x')`: the names are taken from the module like a named import. */
-const DESTRUCTURED = /\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*(?:await\s+)?(?:import|require)\(\s*(['"])([^'"\n]+)\2\s*\)/g;
-/** `require('x')`, with the member when it is read directly. */
-const REQUIRE = /\brequire\(\s*(['"])([^'"\n]+)\1\s*\)(?:\.([\w$]+))?/g;
-/** Files that are no source of ours: build output, installed packages, what the framework generates. */
-export const NOT_SOURCE = /(^|\/)(?:dist|node_modules|\.marmeon)\//;
 const CODE_FILE = /\.(?:[cm]?[jt]sx?|md)$/;
-
-/** The name a `{ … }` item takes from the module: `type A as B` is `A`. */
-function importedName(part: string): string {
-  return part.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]!.trim();
-}
-
-/** The imports and re-exports in a file's text (a Markdown page's code blocks included). */
-export function importsOf(text: string): Import[] {
-  const found: Import[] = [];
-  for (const match of text.matchAll(STATEMENT)) {
-    const clause = match[1]!.trim();
-    const specifier = match[3]!;
-    const braces = /\{([^}]*)\}/.exec(clause);
-    const names = braces ? braces[1]!.split(',').map(importedName).filter((name) => name !== '') : [];
-    const outside = clause.replace(/\{[^}]*\}/, '').replace(/,/g, ' ').trim();
-    const namespace = match[0].startsWith('import') ? /^\*\s*as\s+([\w$]+)$/.exec(outside)?.[1] : undefined;
-    if (outside.startsWith('*')) found.push({ specifier, names: undefined, ...(namespace !== undefined && { namespace }) });
-    else if (/^[\w$]+$/.test(outside)) names.push('default');
-    if (names.length > 0) found.push({ specifier, names });
-  }
-  // A destructured import is read as names; what is left of the text is checked for whole and member imports.
-  const rest = text.replace(DESTRUCTURED, (_, clause: string, _quote: string, specifier: string) => {
-    // `a: b` and `a = 1` take `a`; a `...rest` or a computed key takes the module as a whole.
-    const parts = clause.split(',').map((part) => part.trim().split(/\s*[:=]\s*/)[0]!.trim()).filter((part) => part !== '');
-    const whole = parts.some((part) => !/^[\w$]+$/.test(part));
-    found.push({ specifier, names: whole || parts.length === 0 ? undefined : parts });
-    return '';
-  });
-  for (const regexp of [DYNAMIC, REQUIRE]) {
-    for (const match of rest.matchAll(regexp)) {
-      const namespace = match[3] ? undefined : /\b(?:const|let|var)\s+([\w$]+)\s*=\s*(?:await\s+)?$/.exec(rest.slice(0, match.index))?.[1];
-      found.push({ specifier: match[2]!, names: match[3] ? [match[3]] : undefined, ...(namespace !== undefined && { namespace }) });
-    }
-  }
-  return found;
-}
-
-export interface NamespaceUse {
-  /** The members read as `ns.Name` and the names taken by `const { A } = ns`. */
-  readonly names: ReadonlySet<string>;
-  /** `ns` is used in another way (passed on, spread, `ns[expr]`): the names it provides are not known. */
-  readonly whole: boolean;
-}
-
-/** How a file uses the namespace `ns` it imported: named members, or as a whole. Any other occurrence of `ns` counts as a whole use. */
-export function namespaceUseOf(source: string, ns: string): NamespaceUse {
-  const text = source.replace(/(['"])[^'"\n]*\1/g, "''"); // a module specifier may contain the name: '@marmeon/demo'
-  const names = new Set<string>();
-  // Not a member of something else (`a.ns`), but a spread (`...ns`) is the namespace itself.
-  const standalone = `(?<![\\w$])(?<!(?<!\\.)\\.)${ns.replaceAll('$', '\\$')}(?![\\w$])`;
-  let accounted = 1; // the declaration
-  let whole = false;
-  for (const match of text.matchAll(new RegExp(`${standalone}\\??\\.([\\w$]+)`, 'g'))) {
-    names.add(match[1]!);
-    accounted += 1;
-  }
-  for (const match of text.matchAll(new RegExp(`\\{([^}]*)\\}\\s*=\\s*${standalone}`, 'g'))) {
-    // `a: b` and `a = 1` take `a`; a `...rest` or a computed key takes the namespace as a whole.
-    const parts = match[1]!.split(',').map((part) => part.trim().split(/\s*[:=]\s*/)[0]!.trim()).filter((part) => part !== '');
-    if (parts.some((part) => !/^[\w$]+$/.test(part))) whole = true;
-    for (const part of parts) names.add(part);
-    accounted += 1;
-  }
-  const occurrences = [...text.matchAll(new RegExp(standalone, 'g'))].length;
-  return { names, whole: whole || names.size === 0 || occurrences > accounted };
-}
-
-const TEST_FILE = /\.test\.|\.type-test\.|(^|\/)__fixtures__\//;
-const SHIPPED = /^packages\/[^/]+\/(?:stubs|template)\//;
 
 type Kind = { kind: 'docs' | 'apps' | 'kit' | 'test' } | { kind: 'sibling' | 'launcher'; directory: string };
 
@@ -443,8 +360,46 @@ export function renderUsage(usage: EntryUsage, withFiles = false): string {
   return `${lines.join('\n')}\n`;
 }
 
+export interface MembersReport {
+  readonly entry: string;
+  readonly members: (MemberUsage & { readonly status: ReturnType<typeof memberStatus> })[];
+  /** What kept the declarations from being read (a package that is not built). */
+  readonly problems: string[];
+}
+
+/** Who uses each public constructor and member of the stable classes of `entry`: the input for marking them `@internal`. */
+export function membersOf(entry: string, repository: string = root, files: readonly SourceFile[] = repositoryFiles(repository)): MembersReport {
+  const problems: string[] = [];
+  const members = memberUsage(frameworkPackages(repository), repository, files, problems).filter((item) => item.entry === entry);
+  return { entry, members: members.map((item) => ({ ...item, status: memberStatus(item) })), problems: [...new Set(problems)] };
+}
+
+const MEMBER_ORDER = ['unused', 'framework only', 'used'] as const;
+
+/** The report as text: `unused`, `framework only` and `used` members, a line per member with the number of files per group. */
+export function renderMembers(report: MembersReport, withFiles = false): string {
+  const count = (status: string) => report.members.filter((item) => item.status === status).length;
+  const lines = [`${report.entry}: ${report.members.length} constructors and members (${MEMBER_ORDER.map((status) => `${count(status)} ${status}`).join(', ')})`];
+  for (const status of MEMBER_ORDER) {
+    const items = report.members.filter((item) => item.status === status);
+    if (items.length === 0) continue;
+    lines.push('', `${status} (${items.length})`);
+    for (const item of items) {
+      const parts: string[] = [];
+      if (item.docs.length > 0) parts.push(`docs ${item.docs.length}`);
+      if (item.apps.length > 0) parts.push(`apps ${item.apps.length}`);
+      if (item.kit.length > 0) parts.push(`kit ${item.kit.length}`);
+      if (item.siblings.length > 0) parts.push(`frameworks ${item.siblings.length}`);
+      if (item.extendedBy.length > 0) parts.push(`class extended by ${item.extendedBy.length}`);
+      lines.push(`  ${item.className}.${item.member}${parts.length > 0 ? `  — ${parts.join(' · ')}` : ''}`);
+      if (withFiles) for (const path of [...item.docs, ...item.apps, ...item.kit, ...item.siblings, ...item.extendedBy]) lines.push(`      ${path}`);
+    }
+  }
+  return `${lines.join('\n')}\n`;
+}
+
 export function main(argv: readonly string[]): number {
-  const options = { json: { type: 'boolean' }, files: { type: 'boolean' } } as const;
+  const options = { json: { type: 'boolean' }, files: { type: 'boolean' }, members: { type: 'boolean' } } as const;
   let parsed;
   try {
     parsed = parseArgs({ args: [...argv], options, allowPositionals: true });
@@ -454,13 +409,22 @@ export function main(argv: readonly string[]): number {
   }
   const entry = parsed.positionals[0];
   if (entry === undefined || parsed.positionals.length > 1) {
-    console.error('usage: pnpm api:usage <entry> [--files] [--json]   e.g. pnpm api:usage @marmeon/core');
+    console.error('usage: pnpm api:usage <entry> [--members] [--files] [--json]   e.g. pnpm api:usage @marmeon/core');
     return 2;
   }
   const usage = usageOf(entry);
   if (!usage) {
     console.error(`api:usage: no api.md lists ${entry} — the entry points are:\n  ${knownEntries().join('\n  ')}`);
     return 1;
+  }
+  if (parsed.values.members) {
+    const report = membersOf(entry);
+    if (report.problems.length > 0) {
+      console.error(`api:usage: the declarations cannot be read — run pnpm build first\n  ${report.problems.join('\n  ')}`);
+      return 1;
+    }
+    console.log(parsed.values.json ? JSON.stringify(report.members, null, 2) : renderMembers(report, parsed.values.files));
+    return 0;
   }
   console.log(parsed.values.json ? JSON.stringify(usage, null, 2) : renderUsage(usage, parsed.values.files));
   return 0;

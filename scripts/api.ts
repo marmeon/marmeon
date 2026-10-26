@@ -19,9 +19,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { SAME_VALUE } from './api-names.ts';
 import { INTERNAL_EXCEPTIONS } from './api-internal.ts';
+import { MEMBER_EXCEPTIONS, MEMBER_PENDING } from './api-members.ts';
 import { SPAN_EXCEPTIONS, SPAN_WORDS } from './api-spans.ts';
 import { compareSnapshots, parseSnapshot, renderSnapshot, type ApiChanges, type ApiItem } from './api-snapshot.ts';
-import { NOT_SOURCE, importsOf, namespaceUseOf } from './api-usage.ts';
+import { NOT_SOURCE, SHIPPED, TEST_FILE, importsOf, namespaceUseOf } from './api-sources.ts';
 import { LIBRARY, repositoryFiles } from './check-source.ts';
 import { frameworkPackages } from './packages.ts';
 import { oxc, type SourceFile } from './source-files.ts';
@@ -1284,6 +1285,280 @@ export function internalProblems(packages: readonly PackageToSnapshot[], root: s
   return problems;
 }
 
+export interface MemberLists {
+  /** Members that stay public on purpose, each with its reason; keys also `<entry> <Class>.*` and `<entry> *`. */
+  readonly exceptions: Readonly<Record<string, string>>;
+  /** Members that do not follow the rule yet. */
+  readonly pending: readonly string[];
+}
+
+const MEMBER_LISTS: MemberLists = { exceptions: MEMBER_EXCEPTIONS, pending: MEMBER_PENDING };
+
+/** Members every object has: `toString` and the like are called implicitly, so a text match could not tell. */
+const IMPLICIT_MEMBERS = new Set(['toString', 'toJSON', 'valueOf', 'then']);
+
+export interface MemberUsage {
+  /** `<entry> <Class>.<member>`, or `<entry> <Class>.constructor`. */
+  readonly key: string;
+  readonly entry: string;
+  /** The package the class belongs to. */
+  readonly package: string;
+  readonly className: string;
+  readonly member: string;
+  /** `docs/` and READMEs. */
+  readonly docs: string[];
+  /** `apps/` and `examples/`, tests included. */
+  readonly apps: string[];
+  /** The starter's template and the packages' `stubs/`. */
+  readonly kit: string[];
+  /** The code of other framework packages (not their tests). */
+  readonly siblings: string[];
+  /** Files of the docs, apps or the kit that derive from the class: its members are the contract of a base class. */
+  readonly extendedBy: string[];
+}
+
+type MemberGroup = 'docs' | 'apps' | 'kit' | 'siblings';
+
+/** Which group a file counts for when it uses a class of a package; `undefined` for what is no use at all. */
+function memberGroup(path: string): { group: MemberGroup; directory?: string } | undefined {
+  if (path.startsWith('scripts/') || NOT_SOURCE.test(path)) return undefined;
+  const directory = /^(packages\/[^/]+)\//.exec(path)?.[1];
+  if (SHIPPED.test(path)) return { group: 'kit' };
+  if (path.endsWith('.md')) return path.startsWith('docs/') || /(^|\/)README\.md$/.test(path) ? { group: 'docs' } : undefined;
+  if (!/\.[cm]?[jt]sx?$/.test(path) || /\.d\.[cm]?ts$/.test(path)) return undefined;
+  if (path.startsWith('apps/') || path.startsWith('examples/')) return { group: 'apps' };
+  // Tests of a framework package may use what is `@internal`; so may its fixtures and test helpers.
+  if (directory === undefined || TEST_FILE.test(path) || /(^|\/)test-helpers\//.test(path) || !/^packages\/[^/]+\/(?:src|bin)\//.test(path)) return undefined;
+  return { group: 'siblings', directory };
+}
+
+/** The text with comments and the text of strings blanked, but the code of a template literal's `${…}` kept: a call in it is a use. */
+function codeWithInterpolations(text: string): string {
+  let at = 0;
+  const template = (): string => {
+    let out = '';
+    while (at < text.length) {
+      const char = text[at]!;
+      if (char === '\\') at += 2;
+      else if (char === '`') {
+        at += 1;
+        break;
+      } else if (char === '$' && text[at + 1] === '{') {
+        at += 2;
+        out += ` ${code(true)} `;
+        at += 1;
+      } else at += 1;
+    }
+    return out;
+  };
+  const code = (nested: boolean): string => {
+    let out = '';
+    let depth = 0;
+    while (at < text.length) {
+      const char = text[at]!;
+      if (char === '/' && text[at + 1] === '/') {
+        while (at < text.length && text[at] !== '\n') at += 1;
+        out += ' ';
+      } else if (char === '/' && text[at + 1] === '*') {
+        const end = text.indexOf('*/', at + 2);
+        at = end < 0 ? text.length : end + 2;
+        out += ' ';
+      } else if (char === '"' || char === "'") {
+        at += 1;
+        while (at < text.length && text[at] !== char && text[at] !== '\n') at += text[at] === '\\' ? 2 : 1;
+        at += 1;
+        out += '""';
+      } else if (char === '`') {
+        at += 1;
+        out += `""${template()}`;
+      } else {
+        if (char === '{') depth += 1;
+        if (char === '}') {
+          if (nested && depth === 0) return out;
+          depth -= 1;
+        }
+        out += char;
+        at += 1;
+      }
+    }
+    return out;
+  };
+  return code(false);
+}
+
+/**
+ * The names the class's base class and interfaces declare (and theirs, in turn): a member of that name implements a contract the
+ * framework calls through, so no app has to call it. Only a base that a stable entry exports counts, and only its public members;
+ * types of other packages are not followed.
+ */
+function contractMembers(declarations: Declarations, exported: ReadonlySet<string>, file: DtsFile, node: Node, seen = new Set<Node>()): Set<string> {
+  const names = new Set<string>();
+  if (seen.has(node)) return names;
+  seen.add(node);
+  const bases = [node.superClass, ...((node.implements ?? []) as Node[]).map((clause) => clause.expression), ...((node.extends ?? []) as Node[]).map((clause) => clause.expression)];
+  for (const base of bases) {
+    const path = pathOf(base);
+    if (path.length === 0) continue;
+    const found = resolveReference(declarations, { file, path, member: [] });
+    if (found?.kind !== 'declaration') continue;
+    const baseFile = declarations.file(found.file);
+    // A contract an app cannot see is no reason to keep the member public.
+    if (!exported.has(`${found.file}\0${found.local}`)) continue;
+    for (const { node: declaration } of baseFile?.declarations.get(found.local) ?? []) {
+      if (declaration.type !== 'ClassDeclaration' && declaration.type !== 'TSInterfaceDeclaration') continue;
+      const hidden = new Set(internalMembers(baseFile!, declaration));
+      for (const member of (declaration.body?.body ?? []) as Node[]) {
+        if (member.key && !member.computed && member.kind !== 'constructor' && !hidden.has(member) && !(member.accessibility && member.accessibility !== 'public')) names.add(memberName(baseFile!, member));
+      }
+      for (const name of contractMembers(declarations, exported, baseFile!, declaration, seen)) names.add(name);
+    }
+  }
+  return names;
+}
+
+/** What each file reads: the members it names (`.x`, `?.x`), the classes it constructs and the ones it extends. */
+function tokenIndex(files: readonly SourceFile[]) {
+  const members = new Map<string, Set<string>>();
+  const constructed = new Map<string, Set<string>>();
+  const extended = new Map<string, Set<string>>();
+  const add = (index: Map<string, Set<string>>, name: string, path: string) => index.set(name, (index.get(name) ?? new Set()).add(path));
+  for (const { path, text } of files) {
+    if (memberGroup(path) === undefined) continue;
+    // Markdown is read whole: `session.flash()` in prose is a use, and so is a bare `flash()` or `flash` in a code span or a table.
+    const markdown = path.endsWith('.md');
+    const code = markdown ? text : codeWithInterpolations(text);
+    for (const match of code.matchAll(/(?:\?\.|\.)([A-Za-z_$][\w$]*)/g)) add(members, match[1]!, path);
+    if (markdown) for (const match of code.matchAll(/`(?:new\s+)?(?:[\w$]+(?:\?\.|\.))*([A-Za-z_$][\w$]*)(?=[(`<])/g)) add(members, match[1]!, path);
+    for (const match of code.matchAll(/\bnew\s+(?:[\w$]+\.)?([A-Z][\w$]*)\s*[(<]/g)) add(constructed, match[1]!, path);
+    for (const match of code.matchAll(/\bextends\s+(?:[\w$]+\.)?([A-Z][\w$]*)/g)) add(extended, match[1]!, path);
+  }
+  return { members, constructed, extended };
+}
+
+/** The stable classes of the packages with their public constructor and members, once each, under the first stable entry that exports them. */
+function memberCandidates(packages: readonly PackageToSnapshot[], root: string, problems: string[]) {
+  const out: { entry: string; pkg: PackageToSnapshot; prefix: string; names: string[]; members: string[] }[] = [];
+  for (const pkg of packages) {
+    const declarations = new Declarations();
+    const scope = experimentalScope(pkg, []);
+    const seen = new Set<string>();
+    const exported = new Set<string>();
+    for (const { entry, path } of entryPoints(pkg)) {
+      if (scope === true || scope?.has(entry)) continue;
+      for (const [, target] of declarations.exportsOf(path)) {
+        if (target.kind === 'declaration' && exportedStatements(declarations, target)) exported.add(`${target.file}\0${target.local}`);
+      }
+    }
+    const prefix = `${relative(root, pkg.dir).split('\\').join('/')}/`;
+    for (const { entry, path } of entryPoints(pkg)) {
+      if (scope === true || scope?.has(entry)) continue;
+      for (const [name, target] of declarations.exportsOf(path)) {
+        if (target.kind !== 'declaration' || name === 'default') continue;
+        const statements = exportedStatements(declarations, target);
+        const id = `${target.file}\0${target.local}`;
+        if (!statements || statements.experimental || seen.has(id)) continue;
+        seen.add(id);
+        for (const { node } of statements.shown) {
+          if (node.type !== 'ClassDeclaration' || node.abstract) continue;
+          // An error class carries its message and cause: errors stay public whole.
+          if (name.endsWith('Error') || (pathOf(node.superClass).at(-1) ?? '').endsWith('Error')) continue;
+          const file = statements.file;
+          const hidden = new Set<Node>([...internalMembers(file, node), ...experimentalMembers(file, node).map(({ node: member }) => member)]);
+          const members = new Set<string>();
+          const contract = contractMembers(declarations, exported, file, node);
+          for (const member of (node.body?.body ?? []) as Node[]) {
+            if (member.type !== 'MethodDefinition' && member.type !== 'PropertyDefinition' && member.type !== 'AccessorProperty') continue;
+            if (hidden.has(member) || member.computed || member.key?.type === 'PrivateIdentifier' || (member.accessibility && member.accessibility !== 'public')) continue;
+            const label = member.kind === 'constructor' ? 'constructor' : memberName(file, member);
+            if (!IMPLICIT_MEMBERS.has(label) && !contract.has(label) && /^[A-Za-z_$][\w$]*$/.test(label)) members.add(label);
+          }
+          if (members.size > 0) out.push({ entry: `${entry} ${name}`, pkg, prefix, names: [...new Set([name, target.local])], members: [...members] });
+        }
+      }
+    }
+    problems.push(...declarations.problems);
+  }
+  return out;
+}
+
+/**
+ * Where each public constructor and member of a stable class is used outside its package. A use is a `.member` in a file of the
+ * docs, an app (tests included), the kit or another framework package's code, and `new Class(` for the constructor. The code of
+ * other framework packages is listed apart: it is no use by an app, since the member could be `@internal` for them. A class that
+ * a file of the docs, an app or the kit extends keeps its members (`extendedBy`). Not a candidate: `private`, `protected` and `#`
+ * members, `@internal` and `@experimental` ones, computed keys and keys that are no identifier (`~standard`), members a base class or interface declares (the framework calls through the contract), `toString`/`toJSON`/`valueOf`/`then`, error classes and abstract
+ * classes. A name that occurs anywhere else (`get`, `size`) matches too often to say anything: the check misses, never accuses.
+ * The problems met on the way (a missing build) go to `problems`.
+ */
+export function memberUsage(packages: readonly PackageToSnapshot[], root: string, files: readonly SourceFile[], problems: string[] = []): MemberUsage[] {
+  return usedBy(memberCandidates(packages, root, problems), files);
+}
+
+function usedBy(candidates: ReturnType<typeof memberCandidates>, files: readonly SourceFile[]): MemberUsage[] {
+  if (candidates.length === 0) return [];
+  const index = tokenIndex(files);
+  const groups = new Map<string, ReturnType<typeof memberGroup>>();
+  const groupOf = (path: string) => {
+    if (!groups.has(path)) groups.set(path, memberGroup(path));
+    return groups.get(path);
+  };
+  const usage: MemberUsage[] = [];
+  for (const { entry, pkg, prefix, names, members } of candidates) {
+    const split = (paths: Iterable<string>) => {
+      const by: Record<MemberGroup, string[]> = { docs: [], apps: [], kit: [], siblings: [] };
+      for (const path of paths) {
+        const found = groupOf(path);
+        if (found && !(found.group === 'siblings' && path.startsWith(prefix))) by[found.group].push(path);
+      }
+      for (const list of Object.values(by)) list.sort();
+      return by;
+    };
+    const extendedBy = split(names.flatMap((name) => [...(index.extended.get(name) ?? [])]));
+    const derived = [...extendedBy.docs, ...extendedBy.apps, ...extendedBy.kit];
+    const [specifier, className] = entry.split(' ') as [string, string];
+    for (const member of members) {
+      const by = member === 'constructor' ? split(names.flatMap((name) => [...(index.constructed.get(name) ?? [])])) : split(index.members.get(member) ?? []);
+      usage.push({ key: `${entry}.${member}`, entry: specifier, package: pkg.name, className, member, docs: by.docs, apps: by.apps, kit: by.kit, siblings: by.siblings, extendedBy: derived });
+    }
+  }
+  return usage.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}
+
+/** How a member is used: by docs, an app or the kit (or by being a base class's), only by other framework packages, or by nobody. */
+export function memberStatus(usage: MemberUsage): 'used' | 'framework only' | 'unused' {
+  if (usage.docs.length + usage.apps.length + usage.kit.length + usage.extendedBy.length > 0) return 'used';
+  return usage.siblings.length > 0 ? 'framework only' : 'unused';
+}
+
+/**
+ * A public constructor or member of a stable class that no docs page, app or the kit uses is a problem: it is `@internal`, or it stands
+ * in `lists.exceptions` with the reason an app needs it. So is one that only other framework packages use (they may still call an
+ * `@internal` member). A line of the lists that matches no problem any more is a problem too, so the line gets deleted.
+ * `files` is read only when a package has a class with members.
+ */
+export function memberProblems(packages: readonly PackageToSnapshot[], root: string, files: () => readonly SourceFile[], lists: MemberLists = MEMBER_LISTS): string[] {
+  const candidates = memberCandidates(packages, root, []);
+  const usage = candidates.length > 0 ? usedBy(candidates, files()) : [];
+  const covers = (line: string, item: MemberUsage) => line === item.key || line === `${item.entry} ${item.className}.*` || line === `${item.entry} *`;
+  const listed = (item: MemberUsage) => Object.keys(lists.exceptions).some((line) => covers(line, item)) || lists.pending.some((line) => covers(line, item));
+  const problems: string[] = [];
+  const hits: MemberUsage[] = [];
+  for (const item of usage) {
+    const status = memberStatus(item);
+    if (status === 'used') continue;
+    hits.push(item);
+    if (listed(item)) continue;
+    problems.push(
+      status === 'unused'
+        ? `${item.key} is used nowhere outside ${item.package} (docs, apps, the kit) — mark it @internal, or list it in MEMBER_EXCEPTIONS with the reason an app needs it; see \`pnpm api:usage ${item.entry} --members --files\``
+        : `${item.key} is used only by other framework packages — mark it @internal (they may still call it); see \`pnpm api:usage ${item.entry} --members --files\``,
+    );
+  }
+  for (const line of Object.keys(lists.exceptions)) if (!hits.some((item) => covers(line, item))) problems.push(`${line} is listed in MEMBER_EXCEPTIONS but follows the rule — delete the line`);
+  for (const line of lists.pending) if (!hits.some((item) => covers(line, item))) problems.push(`${line} is listed in MEMBER_PENDING but follows the rule — delete the line`);
+  return problems;
+}
+
 /** The api.md of a package, or none when it has no entry point with types; plus the problems met on the way and what is experimental in it. */
 export function snapshotPackage(
   pkg: PackageToSnapshot,
@@ -1367,7 +1642,7 @@ export interface ApiRun {
 }
 
 /** Compares (or, with `write`, rewrites) the `api.md` of every package under `root`. */
-export async function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>>; names?: NameLists; spans?: SpanLists; internal?: InternalLists; files?: readonly SourceFile[] } = {}): Promise<ApiRun> {
+export async function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>>; names?: NameLists; spans?: SpanLists; internal?: InternalLists; members?: MemberLists; files?: readonly SourceFile[] } = {}): Promise<ApiRun> {
   const allowed = options.allowed ?? FOREIGN_TYPES;
   const lines: string[] = [];
   let failed = false;
@@ -1424,10 +1699,17 @@ export async function runApi(root: string, options: { write?: boolean; allowed?:
     failed = true;
     lines.push('spans of time:', ...spans.map((problem) => `  ${problem}`));
   }
-  const internal = internalProblems(packages, root, () => options.files ?? repositoryFiles(root), options.internal);
+  let read: readonly SourceFile[] | undefined;
+  const repository = () => (read ??= options.files ?? repositoryFiles(root));
+  const internal = internalProblems(packages, root, repository, options.internal);
   if (internal.length > 0) {
     failed = true;
     lines.push('internal:', ...internal.map((problem) => `  ${problem}`));
+  }
+  const members = memberProblems(packages, root, repository, options.members);
+  if (members.length > 0) {
+    failed = true;
+    lines.push('members:', ...members.map((problem) => `  ${problem}`));
   }
   const docs = experimentalProblems(root, experimental);
   if (docs.length > 0) {
