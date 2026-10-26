@@ -1,7 +1,7 @@
 export { sql } from './builder.ts';
 export type { Connection, NewRowOf, RowOf, RowUpdateOf, SelectQuery, Transaction } from './builder.ts';
 export { Connections, Database } from './connections.ts';
-export type { QueryEvent, TransactionOptions } from './connections.ts';
+export type { IsolationLevel, QueryEvent, TransactionOptions } from './connections.ts';
 // The ambient transaction context lives in core — the queue, events and the HTTP kernel use it without depending
 // on the database; apps import it from here, next to `connections.transaction()`.
 export { afterCommit, afterRollback, inTransaction, outsideTransaction, TransactionError, TransactionFinishedError } from '@marmeon/core';
@@ -46,8 +46,7 @@ export type { LockHolder } from './migrations/lock.ts';
 export { Migrator } from './migrations/migrator.ts';
 export { secret } from './secrets.ts';
 export type { Secret, SecretReference } from './secrets.ts';
-export type { ChangedMigration, MigrateOptions, MigrationFile, MigrationRun, MigrationStatus, UnknownSchema } from './migrations/migrator.ts';
-export type { SchemaMarker } from './introspection.ts';
+export type { ChangedMigration, MigrationFile, MigrationStatus } from './migrations/migrator.ts';
 export type { ProjectedColumn, ProjectedForeignKey, ProjectedIndex, ProjectedTable, SchemaProjection } from './schema/projection.ts';
 export { Blueprint, Column, ConstrainedColumn, ForeignIdColumn, TimestampColumn, UuidColumn } from './schema/blueprint.ts';
 export { Schema, SchemaError } from './schema/schema.ts';

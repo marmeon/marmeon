@@ -86,6 +86,7 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
   readonly #definition: FactoryDefinition<T, DB, S>;
   readonly #pending: Pending;
 
+  /** @internal — made by `factories.for(definition)`. */
   constructor(definition: FactoryDefinition<T, DB, S>, pending: Pending) {
     this.#definition = definition;
     this.#pending = pending;

@@ -2,7 +2,7 @@ import { withCode } from '@marmeon/core/internal';
 import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { noMigratorWrites, noSchemaChanges } from '../migrator-connection.ts';
-import { Blueprint, compileColumn, type Driver } from './blueprint.ts';
+import { Blueprint, blueprintParts, compileColumn, type Driver } from './blueprint.ts';
 import { schemaSteps, sealSchema, Schema } from './schema.ts';
 import { SchemaError } from './schema-error.ts';
 
@@ -85,8 +85,9 @@ function check(driver: Driver, steps: readonly PlanStep[]): void {
   for (const step of steps) {
     if (step.kind !== 'create' && step.kind !== 'alter') continue;
     for (const index of step.blueprint.allIndexes()) fits(driver, index.name, 'index name');
-    if (step.kind === 'alter' && driver === 'sqlite' && step.blueprint.nullability.length) {
-      const { column, nullable } = step.blueprint.nullability[0]!;
+    const parts = blueprintParts(step.blueprint);
+    if (step.kind === 'alter' && driver === 'sqlite' && parts.nullability.length) {
+      const { column, nullable } = parts.nullability[0]!;
       throw new SchemaError(
         withCode(
           'D18',
@@ -97,7 +98,7 @@ function check(driver: Driver, steps: readonly PlanStep[]): void {
       );
     }
     if (step.kind === 'alter' && driver === 'sqlite') {
-      const generated = step.blueprint.columns.find((spec) => spec.default && 'uuidv7' in spec.default);
+      const generated = parts.columns.find((spec) => spec.default && 'uuidv7' in spec.default);
       if (generated) {
         throw new SchemaError(
           withCode(
@@ -137,25 +138,27 @@ async function run(db: Kysely<any>, driver: Driver, step: PlanStep): Promise<voi
 }
 
 async function create(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Promise<void> {
+  const parts = blueprintParts(blueprint);
   let builder = db.schema.createTable(blueprint.table);
-  for (const spec of blueprint.columns) builder = builder.addColumn(spec.name, ...compileColumn(spec, driver));
+  for (const spec of parts.columns) builder = builder.addColumn(spec.name, ...compileColumn(spec, driver));
   await builder.execute();
   await createIndexes(db, blueprint);
 }
 
 /** Every change runs as its own statement, because SQLite's ALTER TABLE takes one change at a time. */
 async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint): Promise<void> {
+  const parts = blueprintParts(blueprint);
   const table = blueprint.table;
-  for (const name of blueprint.dropIndexes) await db.schema.dropIndex(name).execute();
-  for (const { from, to } of blueprint.renames) {
+  for (const name of parts.dropIndexes) await db.schema.dropIndex(name).execute();
+  for (const { from, to } of parts.renames) {
     await db.schema.alterTable(table).renameColumn(from, to).execute();
   }
-  for (const spec of blueprint.columns) await db.schema.alterTable(table).addColumn(spec.name, ...compileColumn(spec, driver)).execute();
-  for (const { column, nullable } of blueprint.nullability) {
+  for (const spec of parts.columns) await db.schema.alterTable(table).addColumn(spec.name, ...compileColumn(spec, driver)).execute();
+  for (const { column, nullable } of parts.nullability) {
     await db.schema.alterTable(table).alterColumn(column, (change) => (nullable ? change.dropNotNull() : change.setNotNull())).execute();
   }
   await createIndexes(db, blueprint);
-  for (const column of blueprint.drops) await db.schema.alterTable(table).dropColumn(column).execute();
+  for (const column of parts.drops) await db.schema.alterTable(table).dropColumn(column).execute();
 }
 
 async function createIndexes(db: Kysely<any>, blueprint: Blueprint): Promise<void> {

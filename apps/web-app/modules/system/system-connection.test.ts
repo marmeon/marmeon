@@ -37,6 +37,7 @@ describe('the system connection', () => {
         SESSION_CONNECTION: 'system',
       },
     });
+    // This repository test drives the framework's internal migrator for its own database env.
     await app.make(Migrator).migrate();
     return app;
   };

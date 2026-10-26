@@ -1,7 +1,7 @@
 import { withCode } from '@marmeon/core/internal';
 import { byCodePoint, type ForeignKey, type Introspected, type SchemaMarker } from '../introspection.ts';
 import { loadMigration, type MigrationSource } from '../migrations/load.ts';
-import type { Blueprint, ColumnSpec, Driver, TableMarker } from './blueprint.ts';
+import { blueprintParts, type Blueprint, type ColumnSpec, type Driver, type TableMarker } from './blueprint.ts';
 import { planOf, type PlanStep } from './plan.ts';
 import { SchemaError } from './schema-error.ts';
 
@@ -207,7 +207,8 @@ export function factsOf(projection: SchemaProjection, driver: Driver): Introspec
 
 /** A foreign key that a blueprint adds must not point at a column an earlier migration retired. */
 function referencesLive(tables: ReadonlyMap<string, ProjectedTable>, blueprint: Blueprint, where: string): void {
-  for (const spec of blueprint.columns) {
+  const parts = blueprintParts(blueprint);
+  for (const spec of parts.columns) {
     if (!spec.references) continue;
     const target = tables.get(spec.references.table)?.columns.find((c) => c.name === spec.references!.column);
     if (target?.retired) {
@@ -218,14 +219,15 @@ function referencesLive(tables: ReadonlyMap<string, ProjectedTable>, blueprint: 
 
 /** Changes a known table; the foreign keys that point at a column it renames follow, as the database makes them. */
 function alter(tables: Map<string, ProjectedTable>, blueprint: Blueprint, where: string): void {
+  const parts = blueprintParts(blueprint);
   const before = tables.get(blueprint.table)!;
-  for (const column of blueprint.retirements) {
+  for (const column of parts.retirements) {
     const reference = [...tables.values()].find((other) => other.foreignKeys.some((k) => k.references === blueprint.table && k.referenced === column));
     if (reference) throw conflict(`${where} retires "${blueprint.table}.${column}", which a foreign key of "${reference.name}" references. Drop that foreign key's column first.`);
   }
   const after = change(before, blueprint, where);
   tables.set(blueprint.table, after);
-  for (const { from, to } of blueprint.renames) {
+  for (const { from, to } of parts.renames) {
     for (const [name, other] of tables) {
       if (!other.foreignKeys.some((k) => k.references === blueprint.table && k.referenced === from)) continue;
       tables.set(name, { ...other, foreignKeys: other.foreignKeys.map((k) => (k.references === blueprint.table && k.referenced === from ? { ...k, referenced: to } : k)) });
@@ -253,6 +255,7 @@ function columnOf(spec: ColumnSpec): ProjectedColumn {
 
 /** Applies a blueprint to a table in the order `alter()` runs it (a `create` has only columns, indexes and markers). */
 function change(table: ProjectedTable, blueprint: Blueprint, where: string): ProjectedTable {
+  const parts = blueprintParts(blueprint);
   let { columns, indexes, foreignKeys, markers } = table;
   const name = table.name;
   const has = (column: string) => columns.some((c) => c.name === column);
@@ -262,9 +265,9 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     if (columns.some((c) => c.name === column && c.retired)) throw retiredColumn(where, name, column);
   };
 
-  for (const index of blueprint.dropIndexes) indexes = indexes.filter((other) => other.name !== index);
+  for (const index of parts.dropIndexes) indexes = indexes.filter((other) => other.name !== index);
 
-  for (const { from, to } of blueprint.renames) {
+  for (const { from, to } of parts.renames) {
     live(from, '');
     if (has(to)) throw conflict(`${where} renames "${name}.${from}" to "${to}", but the table has a column of that name.`);
     columns = columns.map((c) => (c.name === from ? { ...c, name: to } : c));
@@ -274,7 +277,7 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     if (MARKER_COLUMNS[from]) markers = markers.filter((m) => m !== MARKER_COLUMNS[from]);
   }
 
-  for (const spec of blueprint.columns) {
+  for (const spec of parts.columns) {
     if (has(spec.name)) throw conflict(`${where} adds column "${spec.name}" to "${name}", which has it already.`);
     columns = [...columns, columnOf(spec)];
     if (spec.references) {
@@ -283,17 +286,17 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     }
   }
 
-  for (const { column } of blueprint.nullability) live(column, '');
-  for (const { column, nullable } of blueprint.nullability) columns = columns.map((c) => (c.name === column ? { ...c, nullable: nullable && !c.primary } : c));
+  for (const { column } of parts.nullability) live(column, '');
+  for (const { column, nullable } of parts.nullability) columns = columns.map((c) => (c.name === column ? { ...c, nullable: nullable && !c.primary } : c));
 
   for (const index of blueprint.allIndexes()) {
     for (const column of index.columns) live(column, ` (in index "${index.name}")`);
     indexes = [...indexes.filter((other) => other.name !== index.name), { name: index.name, columns: index.columns, unique: index.unique }];
   }
 
-  for (const marker of blueprint.markers) if (!markers.includes(marker)) markers = [...markers, marker];
+  for (const marker of parts.markers) if (!markers.includes(marker)) markers = [...markers, marker];
 
-  for (const column of blueprint.retirements) {
+  for (const column of parts.retirements) {
     const found = columns.find((c) => c.name === column);
     if (!found) throw unknown(where, `column "${name}.${column}"`);
     if (found.retired) throw conflict(`${where} retires "${name}.${column}", which an earlier migration retired. Drop it with dropColumn().`);
@@ -320,7 +323,7 @@ function change(table: ProjectedTable, blueprint: Blueprint, where: string): Pro
     foreignKeys = foreignKeys.filter((k) => k.column !== column);
   }
 
-  for (const column of blueprint.drops) {
+  for (const column of parts.drops) {
     columns = columns.filter((c) => c.name !== column);
     foreignKeys = foreignKeys.filter((k) => k.column !== column);
     // The database drops an index with a column it covers.

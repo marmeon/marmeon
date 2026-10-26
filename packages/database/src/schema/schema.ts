@@ -3,7 +3,7 @@ import type { RawBuilder, RawNode } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { isMigratorTable } from '../migration-state.ts';
 import { lastSegment, rawText } from '../migrator-connection.ts';
-import { Blueprint, closedPlan } from './blueprint.ts';
+import { Blueprint, blueprintParts, closedPlan } from './blueprint.ts';
 import type { DataContext, PlanStep, RawStatements } from './plan.ts';
 import { SchemaError } from './schema-error.ts';
 
@@ -96,8 +96,9 @@ export class Schema {
   create(table: string, build: (table: Blueprint) => void): void {
     this.#allowed(table, 'create the table');
     const blueprint = Schema.#describe(table, build);
-    if (blueprint.columns.length === 0) throw new Error(`Table "${table}" needs at least one column.`);
-    if (blueprint.drops.length || blueprint.renames.length || blueprint.dropIndexes.length || blueprint.nullability.length || blueprint.retirements.length) {
+    const parts = blueprintParts(blueprint);
+    if (parts.columns.length === 0) throw new Error(`Table "${table}" needs at least one column.`);
+    if (parts.drops.length || parts.renames.length || parts.dropIndexes.length || parts.nullability.length || parts.retirements.length) {
       throw new Error('dropColumn(), renameColumn(), dropIndex(), notNull(), nullable() and retire() only work when changing a table (schema.alter).');
     }
     this.#add({ kind: 'create', table, blueprint });

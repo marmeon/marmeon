@@ -35,8 +35,8 @@ describe.each(drivers)('migrations on %s', (driver) => {
 
   it('runs pending migrations across modules in timestamp order, one batch per run', async () => {
     const ran: string[] = [];
-    expect((await migrator(connections, auth).migrate((run) => ran.push(`${run.module}/${run.name}`))).length).toBe(1);
-    await migrator(connections, auth, blog).migrate((run) => ran.push(`${run.module}/${run.name}`));
+    expect((await migrator(connections, auth).migrate({ onRun: (run) => ran.push(`${run.module}/${run.name}`) })).length).toBe(1);
+    await migrator(connections, auth, blog).migrate({ onRun: (run) => ran.push(`${run.module}/${run.name}`) });
     expect(ran).toEqual([
       'auth/2026_01_01_000000_create_users_table',
       'blog/2026_01_02_000000_create_posts_table',

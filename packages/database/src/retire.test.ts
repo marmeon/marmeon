@@ -80,7 +80,7 @@ describe.each(drivers)('a retired column on %s', (driver) => {
     const scratch = processOf(retiring);
     await dropAllTables(inspectionConnection(scratch), driver);
     const unknown: { tables: readonly string[]; columns: readonly string[] }[] = [];
-    await new Migrator(fakeApp(retiring, root), scratch).migrate(undefined, { onUnknown: (_, found) => unknown.push(found) });
+    await new Migrator(fakeApp(retiring, root), scratch).migrate({ onUnknown: (_, found) => unknown.push(found) });
     expect(unknown).toEqual([]);
   });
 

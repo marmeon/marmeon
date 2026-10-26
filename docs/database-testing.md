@@ -41,6 +41,7 @@ Your app's code works as it does in production:
 
 - A transaction the app opens, with `connections.transaction()`, becomes a savepoint inside the test's transaction. A rollback of
   it undoes its own writes only.
+  A savepoint has no isolation level, so an `isolationLevel` option has no effect in a test; it applies in production.
 - Work registered with `afterCommit()` runs when the app's own transaction commits, although nothing is committed for real.
 - Work after a response runs outside the app's transactions, as in production.
 - `outsideTransaction()` inside a transaction of the app cannot reach the database in a test: the pinned connection belongs to
