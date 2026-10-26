@@ -65,8 +65,8 @@ class SlowCountController extends Controller {
 const routes = openRoutes((Route) => {
   Route.get('/count', CountVisitsController);
   Route.post('/slow', SlowCountController);
-  Route.post('/slow/blocked', SlowCountController).block(2, 2);
-  Route.post('/slow/impatient', SlowCountController).block(2, 0.01);
+  Route.post('/slow/blocked', SlowCountController).block({ lock: 2, wait: 2 });
+  Route.post('/slow/impatient', SlowCountController).block({ lock: 2, wait: 0.01 });
   Route.post('/save', SaveController);
   Route.post('/fail', FailingController);
 });

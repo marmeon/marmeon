@@ -152,18 +152,30 @@ describe('a route cannot be changed once it is loaded', () => {
     const router = new Router().load(
       openRoutes((Route) => {
         Route.get('/a', () => 'ok').name('a').block();
-        Route.get('/b', () => 'ok').name('b').block({ seconds: 5 }, { milliseconds: 500 });
-        Route.get('/c', () => 'ok').name('c').block(30);
+        Route.get('/b', () => 'ok').name('b').block({ lock: { seconds: 5 }, wait: { milliseconds: 500 } });
+        Route.get('/c', () => 'ok').name('c').block({ lock: 30 });
+        Route.get('/e', () => 'ok').name('e').block({ lock: 5, wait: { seconds: 2 } });
       }),
     );
     expect(router.findByName('a')!.blocking).toEqual({ lockSeconds: 10, waitSeconds: 10 });
     expect(router.findByName('b')!.blocking).toEqual({ lockSeconds: 5, waitSeconds: 0.5 });
     expect(router.findByName('c')!.blocking).toEqual({ lockSeconds: 30, waitSeconds: 30 });
-    const register = (lock: unknown, wait?: unknown) => () => new Router().load(openRoutes((Route) => Route.get('/d', () => 'ok').block(lock as never, wait as never)));
+    expect(router.findByName('e')!.blocking).toEqual({ lockSeconds: 5, waitSeconds: 2 });
+    const register = (lock: unknown, wait?: unknown) => () => new Router().load(openRoutes((Route) => Route.get('/d', () => 'ok').block({ lock, wait } as never)));
     expect(register(0)).toThrow(TypeError);
     expect(register({ minutes: -1 })).toThrow('positive span of time');
     expect(register(5, { milliseconds: 0 })).toThrow('wait must be');
     expect(register('10s')).toThrow('write `{ seconds: 10 }`');
+  });
+
+  it('refuses the two positional spans block() took before', () => {
+    const block = (...args: unknown[]) => () => new Router().load(openRoutes((Route) => (Route.get('/d', () => 'ok').block as (...args: unknown[]) => unknown)(...args)));
+    expect(block(5 as never, 2)).toThrow(TypeError);
+    expect(block(5 as never, 2)).toThrow('block() takes { lock, wait } — e.g. block({ lock: 5, wait: 2 })');
+    expect(block({ seconds: 5 }, { seconds: 2 })).toThrow('block() takes { lock, wait }');
+    expect(block(null)).toThrow(TypeError);
+    expect(block(undefined, 2)).toThrow('block() takes { lock, wait }');
+    expect(block({ lock: 5 }, 2)).toThrow('block() takes { lock, wait }');
   });
 
   it('refuses name(), internal() and block() after loading', () => {

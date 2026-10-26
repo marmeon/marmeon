@@ -1,7 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Duration } from '@marmeon/core';
 import { UrlSigner } from '@marmeon/http';
-import { addVary, EXPECTS_JSON_VARY, Router, urlFor, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteName, type RouteNameInput } from '@marmeon/router';
+import { addVary, EXPECTS_JSON_VARY, Router, type CheckRouteName, type HttpContext, type MiddlewareClass, type Next, type RouteName, type RouteNameInput } from '@marmeon/router';
+import { urlFor } from '@marmeon/router/url';
 
 // These answers are chosen by `expectsJson`: a shared cache must not hand one variant to the other client.
 const VARY = addVary(undefined, EXPECTS_JSON_VARY);

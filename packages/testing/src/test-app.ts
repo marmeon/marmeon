@@ -4,22 +4,22 @@ import { EventFake, TestClock } from '@marmeon/core/testing';
 import { Encrypter } from '@marmeon/encryption';
 import { CookieEncryption, Router } from '@marmeon/http';
 import { protocolHeaders, writeAppBrowserRoutes, browserRoutes, CONNECTION_HEADER, LIVE_PATH, LIVE_VERSION } from '@marmeon/http/internal';
-import {
-  urlFor,
-  type CheckIslandRouteName,
-  type CheckPageRouteName,
-  type CheckRouteName,
-  type CheckUploadField,
-  type ControllerOf,
-  type FormOf,
-  type InstantProp,
-  type ParamsOf,
-  type UploadToken,
-  type CheckLayerRouteName,
-  type Param,
-  type Query,
-  type RouteArgs,
-  type RouteNameInput,
+import { urlFor } from '@marmeon/router/url';
+import type {
+  CheckIslandRouteName,
+  CheckPageRouteName,
+  CheckRouteName,
+  CheckUploadField,
+  ControllerOf,
+  FormOf,
+  InstantProp,
+  ParamsOf,
+  UploadToken,
+  CheckLayerRouteName,
+  Param,
+  Query,
+  RouteArgs,
+  RouteNameInput,
 } from '@marmeon/http/page';
 import {
   ACTION_HEADER,

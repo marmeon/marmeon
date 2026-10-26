@@ -15,6 +15,7 @@ export class RequestNonce {
   }
 
   /**
+   * @internal The CSP middleware's.
    * Says that documents of this response need the nonce — the `contentSecurityPolicy()` middleware does, before the
    * route runs — without making it yet: a response that turns out to be JSON never does.
    */
@@ -22,7 +23,7 @@ export class RequestNonce {
     this.#wanted = true;
   }
 
-  /** The nonce a document of this response carries: when something wants one or made one already, else none. */
+  /** @internal The renderer's. The nonce a document of this response carries: when something wants one or made one already, else none. */
   forDocument(): string | undefined {
     return this.#wanted || this.#value !== undefined ? this.value : undefined;
   }

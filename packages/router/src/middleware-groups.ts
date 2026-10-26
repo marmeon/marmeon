@@ -73,7 +73,7 @@ export class MiddlewareGroups {
     return sorted;
   }
 
-  /** Counts the changes — what `Router.middlewareFor` keeps its per-route lists by. */
+  /** @internal Counts the changes — what `Router.middlewareFor` keeps its per-route lists by. */
   get version(): number {
     return this.#version;
   }

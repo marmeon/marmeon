@@ -1,7 +1,8 @@
 import { Clock, type Container, type Logger } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { addsOf, fillPath, tokenizePattern } from '@marmeon/router/internal';
-import { matchesPath, type Router, type RouteDefinition } from '@marmeon/router';
+import type { Router, RouteDefinition } from '@marmeon/router';
+import { matchesPath } from '@marmeon/router/url';
 import type { SitemapEntries, SitemapEntry } from '@marmeon/router';
 
 /** The most URLs one sitemap file may list (the protocol's limit); the rest is cut off with a warning. */

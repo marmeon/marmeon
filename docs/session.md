@@ -252,11 +252,11 @@ import { WizardStepController } from './controllers/WizardStepController.ts';
 export default defineRoutes((Route) => {
   const signedIn = Route.middleware(authenticate()).authorize(everyone); // the user's own cart
   signedIn.post('/notes/checkout', CheckoutController).name('notes.checkout').block();
-  signedIn.post('/notes/wizard', WizardStepController).name('notes.wizard').block(5, { seconds: 2 });
+  signedIn.post('/notes/wizard', WizardStepController).name('notes.wizard').block({ lock: 5, wait: { seconds: 2 } });
 });
 ```
 
-`block(lock, wait)` holds the lock for at most `lock`, 10 seconds by default, and waits at most `wait` for it,
+`block({ lock, wait })` holds the lock for at most `lock`, 10 seconds by default, and waits at most `wait` for it,
 by default as long. A request that waits longer answers 423 with `Retry-After`. A request without a session cookie locks nothing.
 The lock needs the cache's atomic locks: without `@marmeon/cache`, the route fails with an error that says so. The starter kit
 blocks the password change and "sign out other devices".
