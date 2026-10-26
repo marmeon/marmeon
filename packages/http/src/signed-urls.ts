@@ -7,11 +7,16 @@ import { fillPath, HttpError, Router, toSearchParams, type CheckRouteName, type 
 /** The route's path parameters, plus any others — those are signed into the query. */
 export type SignedParams<N extends string> = ParamsOf<N> & Readonly<Record<string, Param>>;
 
-type SignedArgs<N extends string> = {} extends ParamsOf<N>
-  ? [params?: SignedParams<N>, options?: SignedRouteOptions]
-  : [params: SignedParams<N>, options?: SignedRouteOptions];
-
+/** A signed link to a named route: when it stops working, and where it points. */
 export interface SignedRouteOptions {
+  /** Stops working after this (seconds, or `{ days: 7 }`). A link that never expires is `foreverSignedRoute()`. */
+  readonly expiresIn: Duration;
+  /** Prepended to the path: `https://app.example` → an absolute link, e.g. for a mail. */
+  readonly base?: string;
+}
+
+/** A signed link to a named route that never expires. */
+export interface ForeverSignedRouteOptions {
   /** Prepended to the path: `https://app.example` → an absolute link, e.g. for a mail. */
   readonly base?: string;
 }
@@ -20,8 +25,6 @@ export interface SignedRouteOptions {
 export interface SignedPathOptions extends SignedRouteOptions {
   /** Signed with the path (`signature` and `expires` are reserved). */
   readonly query?: Readonly<Record<string, string>>;
-  /** Stops working after this (seconds, or `{ days: 7 }`); without it the link never expires. */
-  readonly expiresIn?: Duration;
 }
 
 /** A key for one purpose, derived from `APP_KEY` (HKDF): a signature is never also a cookie or session key. */
@@ -35,7 +38,7 @@ function derive(key: Uint8Array, purpose: string): Buffer {
  * signed: behind proxies, the request host is not always the public one. See docs/urls.md#signed-urls.
  *
  * ```ts
- * const url = signer.temporarySignedRoute('auth.verification.verify', { id: user.id, hash }, { minutes: 60 }, { base: config.url });
+ * const url = signer.signedRoute('auth.verification.verify', { id: user.id, hash }, { expiresIn: { minutes: 60 }, base: config.url });
  * ```
  */
 export class UrlSigner {
@@ -50,35 +53,31 @@ export class UrlSigner {
   }
 
   /**
-   * A signed link to a named route that never expires. Parameters the path does not take go into the query —
-   * and are signed with it (`{ id, hash, list: 'news' }`).
+   * A signed link to a named route that stops working after `expiresIn`. Parameters the path does not take go into the
+   * query — and are signed with it (`{ id, hash, list: 'news' }`).
    */
-  signedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, ...[params, options = {}]: SignedArgs<N>): string {
-    return this.#sign(this.#route(name, params ?? {}), undefined, options);
+  signedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, params: SignedParams<N>, options: SignedRouteOptions): string {
+    return this.#sign(this.#route(name, params), this.#expiry(options), options);
   }
 
-  /** A signed link that stops working after `expiresIn`. */
-  temporarySignedRoute<const N extends RouteNameInput>(
-    name: CheckRouteName<N>,
-    params: SignedParams<N>,
-    expiresIn: Duration,
-    options: SignedRouteOptions = {},
-  ): string {
-    return this.#sign(this.#route(name, params), this.#expiry(expiresIn), options);
+  /** A signed link to a named route that never expires: for the rare link that must work for good, e.g. an unsubscribe. */
+  foreverSignedRoute<const N extends RouteNameInput>(name: CheckRouteName<N>, params: SignedParams<N>, options: ForeverSignedRouteOptions = {}): string {
+    return this.#sign(this.#route(name, params), undefined, options);
   }
 
   /**
    * A signed link to a path the app serves without a route name — e.g. a file of a disk
    * (`/_marmeon/storage/local/exports/7.json`). `path` is used as given: percent-encode its segments.
    */
-  signedPath(path: string, options: SignedPathOptions = {}): string {
+  signedPath(path: string, options: SignedPathOptions): string {
     if (!path.startsWith('/') || path.includes('?') || path.includes('#')) throw new Error(`signedPath() takes a path without query or fragment, not "${path}".`);
+    const expires = this.#expiry(options);
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(options.query ?? {})) {
       if (key === 'signature' || key === 'expires') throw new Error(`"${key}" is reserved in signed URLs.`);
       query.set(key, value);
     }
-    return this.#sign({ path, query }, options.expiresIn === undefined ? undefined : this.#expiry(options.expiresIn), options);
+    return this.#sign({ path, query }, expires, options);
   }
 
   /** Whether `url` (absolute, or path and query) carries a valid, unexpired signature. */
@@ -97,20 +96,26 @@ export class UrlSigner {
   }
 
   /** Seconds since the epoch, by the app's clock. */
-  #expiry(expiresIn: Duration): number {
-    return Math.floor(this.#clock.now() / 1000) + Math.floor(durationToSeconds(expiresIn));
+  #expiry(options: { readonly expiresIn: Duration } | undefined): number {
+    // Untyped callers get the same refusal as typed ones: no expiry given means no link, not a link that lives for ever.
+    if (options?.expiresIn === undefined) throw new TypeError('A signed link needs `expiresIn`, e.g. `{ expiresIn: { minutes: 60 } }`; for a named route that never expires, foreverSignedRoute().');
+    const seconds = Math.floor(durationToSeconds(options.expiresIn));
+    // A link that is dead when made is a mistake, not a short expiry.
+    if (seconds < 1) throw new RangeError('A signed link needs an `expiresIn` of at least one second.');
+    return Math.floor(this.#clock.now() / 1000) + seconds;
   }
 
   #route(name: string, params: Readonly<Record<string, Param>>): { path: string; query: URLSearchParams } {
     const route = this.#router.findByName(name);
     if (!route) throw new Error(withCode('H4', `Route [${name}] is not defined.`));
+    if (typeof params !== 'object' || params === null) throw new TypeError(`Route [${name}] needs its parameters: pass \`{}\` when it has none.`);
     for (const key of ['signature', 'expires']) if (key in params) throw new Error(`"${key}" is reserved in signed URLs.`);
     // The same code path as `Router.url()`: path parameters into the path, the rest into the query.
     const { path, rest } = fillPath(name, route.path, params);
     return { path, query: toSearchParams(rest) };
   }
 
-  #sign({ path, query }: { path: string; query: URLSearchParams }, expires: number | undefined, { base }: SignedRouteOptions): string {
+  #sign({ path, query }: { path: string; query: URLSearchParams }, expires: number | undefined, { base }: ForeverSignedRouteOptions): string {
     if (expires !== undefined) query.set('expires', String(expires));
     const signature = createHmac('sha256', this.#keys[0]!).update(canonical(path, query)).digest('hex');
     query.set('signature', signature);

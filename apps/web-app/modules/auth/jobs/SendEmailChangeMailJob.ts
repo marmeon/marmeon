@@ -70,7 +70,7 @@ export class SendEmailChangeMailJob {
         return;
       }
       // The link expires with the request; it works for the signed-in account it names (ConfirmEmailChangeController).
-      const link = this.#signer.temporarySignedRoute('auth.email.confirm', { id: user.id, token: payload.token }, left, { base: this.#app.url });
+      const link = this.#signer.signedRoute('auth.email.confirm', { id: user.id, token: payload.token }, { expiresIn: left, base: this.#app.url });
       await this.#mailer.queue(new ConfirmNewEmailMail(user, payload.email, link, this.#translators.for(user.locale ?? payload.locale)), { queue: 'mail' });
     } catch (error) {
       await this.#limiter.clear(own); // nothing was sent: the retry of the job may still send it

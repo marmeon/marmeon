@@ -339,7 +339,7 @@ describe('changing the address with AUTH_PRIVATE_REGISTRATION=false', { timeout:
     const session = await signIn(kj);
     await change(session, 'ada@example.com').assertInvalid({ email: 'This e-mail address is already registered.' });
     expect((await reload(kj)).email).toBe('kj@example.com');
-    const link = new URL(app.make(UrlSigner).temporarySignedRoute('auth.email.confirm', { id: kj.id, token: 'token' }, 600), 'http://localhost');
+    const link = new URL(app.make(UrlSigner).signedRoute('auth.email.confirm', { id: kj.id, token: 'token' }, { expiresIn: 600 }), 'http://localhost');
     await session.expectingJson().get(link.pathname + link.search).assertNotFound();
   });
 });
