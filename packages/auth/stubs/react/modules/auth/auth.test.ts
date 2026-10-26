@@ -166,10 +166,11 @@ describe('remember me turned off', { timeout: 30_000 }, () => {
 describe('the app name in the layout', { timeout: 30_000 }, () => {
   it('comes with the first page only (a once prop) — the browser keeps it; a path without a route has none', async () => {
     const name = app.make(AppConfig).name;
-    const first = await app.navigating().get('/login');
+    const first = await app.navigating().get('/register');
     expect(first.page()!.props.appName).toBe(name);
-    // The browser tells which once props it holds: the server leaves them out.
-    const later = await app.navigating().get('/register', { headers: { 'x-marmeon-once': 'appName' } });
+    expect(first.page()!.onceProps).toHaveProperty('appName');
+    // The browser tells which once props it holds, and under which scope: the server leaves them out.
+    const later = await app.navigating().get('/forgot-password', { headers: { 'x-marmeon-once': 'appName', 'x-marmeon-once-scope': first.page()!.onceScope! } });
     expect(later.page()!.props.appName).toBeUndefined();
     const missing = await app.navigating().get('/nowhere').assertNotFound();
     expect(missing.page()!.props.appName).toBeUndefined();
