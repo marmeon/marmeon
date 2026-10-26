@@ -57,11 +57,11 @@ the title template) and `description`. A page that sets neither object gets no `
 A preview needs a full address. `canonical`, `openGraph.url`, `openGraph.image` and `twitter.image` may be relative, and are
 made absolute:
 
-- On the server against `APP_URL`, never against the request's `Host` or `X-Forwarded-Host`. Anybody can send a request with
+- On the server against the origin of `APP_URL` (its path is not used), never against the request's `Host` or `X-Forwarded-Host`. Anybody can send a request with
   such a header, and a cache that kept the answer would hand every crawler an address on a foreign domain.
 - In the browser against the origin of `APP_URL`, which the server writes once into the first document (a `<meta>`; it is no secret and visits do not carry it), so the head after hydration equals the server's. Without `APP_URL`, against `location.origin`.
 
-A path stays on the app's own origin: `//other.example/x` and `/\other.example/x` name another host and are left out, while a full `https://cdn.example/x.png` keeps its host. Without `APP_URL`, a relative URL is left out. A URL with another scheme than `http:` or `https:`, such as `javascript:` or
+A path stays on the app's own origin: `//other.example/x` and `/\other.example/x` name another host and are left out, while a full `https://cdn.example/x.png` keeps its host. Without `APP_URL`, the server's document leaves a relative URL out, and the browser resolves it against its own origin. A URL with another scheme than `http:` or `https:`, such as `javascript:` or
 `data:`, is left out as well, and development logs a warning for each.
 
 ## Structured data
@@ -118,7 +118,7 @@ that redirects to the visitor's:
 - With `openGraph` set, `og:locale` is the page's locale in Open Graph's form (`de-AT` becomes `de_AT`) unless `openGraph.locale` is
   set, and `og:locale:alternate` names each other locale.
 - The addresses are made absolute like the others (see [Absolute URLs](#absolute-urls)): from `APP_URL`, never from the request. Without
-  `APP_URL` the whole block (the languages and the default `canonical`) is left out, and development says so once.
+  `APP_URL` the server's document leaves the whole block (the languages and the default `canonical`) out, and development says so once; the browser resolves them against its own origin.
 - The browser updates them on every visit, also from one language to another.
 
 They come only from the server: the route is localized, so its page object carries `alternates`. A page on another route gets none,

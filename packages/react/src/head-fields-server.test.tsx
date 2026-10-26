@@ -148,6 +148,12 @@ describe('<Head> fields on the server', () => {
     expect(onWarning).toHaveBeenCalledWith(expect.stringContaining('APP_URL'));
   });
 
+  it('resolves a relative URL against the origin of an app URL that has a path', async () => {
+    const head = await headOf([{ canonical: 'products', openGraph: { image: 'img/a.png' } }], { appUrl: 'https://app.example/shop/' });
+    expect(head).toContain('<link rel="canonical" href="https://app.example/products" ');
+    expect(head).toContain('content="https://app.example/img/a.png"');
+  });
+
   it('takes the app URL from the option, not from the page URL', async () => {
     const result = await (render as SsrRender)({ component: 'seo/Heads', props: { heads: [{ canonical: '/a' }] }, url: 'https://evil.example/a' }, { appUrl: APP_URL });
     expect(result.head).toContain('href="https://app.example/a"');

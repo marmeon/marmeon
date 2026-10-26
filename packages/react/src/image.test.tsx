@@ -68,7 +68,7 @@ describe('<Image priority> in the head', () => {
     const head = await headOf(photo);
     expect(head).toContain('<link rel="preload" as="image" href="/img/photo-1280.jpg" imageSrcSet="/img/photo-640.avif 640w, /img/photo-1280.avif 1280w" imageSizes="100vw" type="image/avif"');
     expect(head).toContain('fetchPriority="high"');
-    expect(head).toContain('data-marmeon-head="ssr"');
+    expect(head).toContain('data-marmeon-head="ssr-tag"');
   });
 
   it('gives the preload the crossOrigin and referrerPolicy of the image', async () => {
