@@ -25,7 +25,6 @@ export { Translator } from './translator.ts';
 export { EventDispatcher, EventRegistry, listen, ListenerQueue } from './events.ts';
 export type {
   EventClass,
-  EventDispatcherOptions,
   EventObserver,
   EventPayload,
   IsJson,
@@ -46,7 +45,6 @@ export {
   outsideTransaction,
   TransactionError,
   TransactionFinishedError,
-  TransactionFrame,
 } from './transaction-context.ts';
 export { commitAnyway, err, ok } from './result.ts';
 export type { Err, Ok, Result } from './result.ts';

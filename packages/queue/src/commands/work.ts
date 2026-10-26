@@ -1,4 +1,5 @@
 import { CommandArgumentsError, environment, Logger } from '@marmeon/core';
+import { environmentChecks } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { QueueConnections } from '../connections.ts';
 import { QueueSetupError } from '../registry.ts';
@@ -66,7 +67,7 @@ export class QueueWorkCommand {
     process.on('SIGINT', onSignal).on('SIGTERM', onSignal);
 
     // A worker as development because a .env says so: a production command — said loudly, not refused.
-    const fromDotEnv = environment.dotEnvDevelopmentWarning('queue:work');
+    const fromDotEnv = environmentChecks.dotEnvDevelopmentWarning('queue:work');
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
     // The environment it assumed: `in production (APP_ENV=staging)`, `in production (APP_ENV=production, NODE_ENV unset)`.
     output.line(`Processing jobs of the ${connection} connection: ${describeQueues(queues, this.#connections.options(connection).driver)} — in ${environment.describe()}`);

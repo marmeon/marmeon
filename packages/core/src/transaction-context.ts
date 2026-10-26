@@ -9,11 +9,17 @@ import { resultMark, withoutCommit, type Err } from './result.ts';
 export class TransactionFrame {
   /** The transaction around this one (a savepoint's transaction, or one on another connection). */
   readonly parent: TransactionFrame | undefined;
-  /** Who opened it — the database driver of its connection. */
+  /**
+   * Who opened it — the database driver of its connection.
+   * @internal
+   */
   readonly owner: object;
   /** For messages: the connection's name. */
   readonly label: string;
-  /** The owner's handle on the transaction (the database connection), set when it begins. */
+  /**
+   * The owner's handle on the transaction (the database connection), set when it begins.
+   * @internal
+   */
   resource: unknown;
   #state: 'open' | 'committed' | 'rolled back' = 'open';
   #afterCommit: (() => unknown)[] = [];
@@ -102,6 +108,7 @@ export class TransactionFinishedError extends TransactionError {
   override name = 'TransactionFinishedError';
   readonly connection: string;
 
+  /** @internal */
   constructor(frame: TransactionFrame) {
     super(
       `This work was started inside transaction() on "${frame.label}" but ran after that transaction was ${frame.state} — ` +

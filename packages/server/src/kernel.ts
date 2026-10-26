@@ -8,7 +8,7 @@ import { honoPath } from './route-pattern.ts';
 import { getRequestListener } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
 import { currentRequest, environment, EnvironmentConfig, ErrorReports, ErrorSolutions, Logger, outsideTransaction, Redactor, Translator, type Application, type Container, type CurrentRequest } from '@marmeon/core';
-import { messageBase, runWithRequest, trace, withCode } from '@marmeon/core/internal';
+import { environmentChecks, messageBase, runWithRequest, trace, withCode } from '@marmeon/core/internal';
 import { channels, type HttpRequestMessage, type PageSummary } from '@marmeon/core/diagnostics';
 import {
   AfterResponse,
@@ -1028,7 +1028,7 @@ export async function startServer({
   keepAliveTimeoutMs = app.container.has(ServerConfig) ? app.container.make(ServerConfig).keepAliveTimeoutMs : 65_000,
 }: ServeOptions): Promise<RunningServer> {
   // An unknown NODE_ENV never serves — also where a script changed it after the app booted.
-  environment.check();
+  environmentChecks.check();
   // Before Vite starts: a refused start must not leave a dev server running.
   refuseUndecidedRoutes(app);
   const mode = chosenMode ?? (environment.isDevelopment() ? 'development' : 'production');

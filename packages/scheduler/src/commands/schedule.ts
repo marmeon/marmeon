@@ -1,5 +1,6 @@
 import type { CommandInput } from 'marmeon';
 import { Clock, CommandArgumentsError, environment, Logger, Redactor } from '@marmeon/core';
+import { environmentChecks } from '@marmeon/core/internal';
 import { ScheduleError } from '../cron.ts';
 import { Scheduler, type TaskResult } from '../scheduler.ts';
 import { formatMinute, isoMinute } from '../time.ts';
@@ -71,7 +72,7 @@ export class ScheduleWorkCommand {
 
     const tasks = this.#scheduler.tasks;
     // A scheduler as development because a .env says so: a production command — said loudly, not refused.
-    const fromDotEnv = environment.dotEnvDevelopmentWarning('schedule:work');
+    const fromDotEnv = environmentChecks.dotEnvDevelopmentWarning('schedule:work');
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
     // The environment it assumed — `.environments(…)` compares against its APP_ENV (`local`, `testing`, `production` by default).
     output.line(

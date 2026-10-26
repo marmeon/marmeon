@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadEnv } from './config/config.ts';
-import { buildEnvironment, ConfigError, DOTENV_MARKER, environment, resolveEnvironment } from './environment.ts';
+import { buildEnvironment, ConfigError, DOTENV_MARKER, environment, environmentChecks, resolveEnvironment } from './environment.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 describe('environment', () => {
@@ -21,8 +21,8 @@ describe('environment', () => {
     expect(environment.app(env)).toBe(entry.app);
     expect(environment.describe(env)).toBe(entry.describe);
     expect(environment.isTest(env)).toBe(entry.NODE_ENV === 'test');
-    expect(environment.problem(env)).toBeUndefined();
-    expect(() => environment.check(env)).not.toThrow();
+    expect(environmentChecks.problem(env)).toBeUndefined();
+    expect(() => environmentChecks.check(env)).not.toThrow();
   });
 
   it('APP_ENV names the environment — and changes nothing else: APP_ENV=local on production is protected, no development', () => {
@@ -39,21 +39,21 @@ describe('environment', () => {
   });
 
   it('any other NODE_ENV stops the start, with the hint to set NODE_ENV=production and APP_ENV=<name>', () => {
-    expect(environment.problem({ NODE_ENV: 'staging' })).toBe(
+    expect(environmentChecks.problem({ NODE_ENV: 'staging' })).toBe(
       'NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging. ' +
         'NODE_ENV is development, test or production; APP_ENV names the environment (docs/configuration.md#the-environment-node_env).',
     );
-    expect(() => environment.check({ NODE_ENV: 'staging' })).toThrow(ConfigError);
-    expect(() => environment.check({ NODE_ENV: 'staging' })).toThrow(
+    expect(() => environmentChecks.check({ NODE_ENV: 'staging' })).toThrow(ConfigError);
+    expect(() => environmentChecks.check({ NODE_ENV: 'staging' })).toThrow(
       /^\[marmeon:K6\] Invalid environment — the application cannot start:\n {2}• NODE_ENV=staging is not an environment Node knows — set NODE_ENV=production and APP_ENV=staging\./,
     );
-    expect(environment.problem({ NODE_ENV: 'Production' })).toBe('NODE_ENV=Production is not an environment Node knows — it is case-sensitive: set NODE_ENV=production.');
-    expect(environment.problem({ NODE_ENV: 'qa-2' })).toMatch(/^NODE_ENV=qa-2 is not an environment Node knows — set NODE_ENV=production and APP_ENV=qa-2\./);
+    expect(environmentChecks.problem({ NODE_ENV: 'Production' })).toBe('NODE_ENV=Production is not an environment Node knows — it is case-sensitive: set NODE_ENV=production.');
+    expect(environmentChecks.problem({ NODE_ENV: 'qa-2' })).toMatch(/^NODE_ENV=qa-2 is not an environment Node knows — set NODE_ENV=production and APP_ENV=qa-2\./);
     // A value not worth repeating (a secret pasted into the wrong line, a sentence) is not echoed.
-    expect(environment.problem({ NODE_ENV: 'sk_live_0123456789abcdef0123456789abcdef0123' })).toMatch(/^NODE_ENV is not an environment Node knows — set NODE_ENV=production, and name the environment in APP_ENV\./);
-    expect(environment.problem({ NODE_ENV: 'stag ing' })).not.toContain('stag ing');
+    expect(environmentChecks.problem({ NODE_ENV: 'sk_live_0123456789abcdef0123456789abcdef0123' })).toMatch(/^NODE_ENV is not an environment Node knows — set NODE_ENV=production, and name the environment in APP_ENV\./);
+    expect(environmentChecks.problem({ NODE_ENV: 'stag ing' })).not.toContain('stag ing');
     // From .env: said so.
-    expect(environment.problem({ NODE_ENV: 'staging', [DOTENV_MARKER]: 'staging' })).toMatch(/^NODE_ENV=staging \(in \.env\) is not an environment Node knows/);
+    expect(environmentChecks.problem({ NODE_ENV: 'staging', [DOTENV_MARKER]: 'staging' })).toMatch(/^NODE_ENV=staging \(in \.env\) is not an environment Node knows/);
     // The questions themselves stay fail-closed for a value no check stopped: protected, never development.
     expect(environment.isProtected({ NODE_ENV: 'staging' })).toBe(true);
     expect(environment.isDevelopment({ NODE_ENV: 'Development' })).toBe(false);
@@ -101,14 +101,14 @@ describe('resolveEnvironment — where NODE_ENV comes from', () => {
     expect(resolveEnvironment(app({ '.env': 'APP_NAME=x\nNODE_ENV=development\n' }), { env, fallback: 'production' })).toMatchObject({ name: 'development', source: '.env' });
     expect(env).toEqual({ NODE_ENV: 'development', [DOTENV_MARKER]: 'development' });
     expect(environment.describe(env)).toBe('development (APP_ENV=local, NODE_ENV from .env)');
-    expect(environment.dotEnvDevelopmentWarning('start', env)).toMatch(/^NODE_ENV=development comes from \.env, not from the environment: marmeon start runs with the development tools/);
+    expect(environmentChecks.dotEnvDevelopmentWarning('start', env)).toMatch(/^NODE_ENV=development comes from \.env, not from the environment: marmeon start runs with the development tools/);
     // Resolving again (a re-executed child, createApplication after the CLI): still from .env.
     expect(resolveEnvironment(app({}), { env })).toMatchObject({ name: 'development', source: '.env' });
     const production: Record<string, string | undefined> = {};
     resolveEnvironment(app({ '.env': 'NODE_ENV=production\n' }), { env: production });
     expect(environment.describe(production)).toBe('production (APP_ENV=production, NODE_ENV from .env)');
-    expect(environment.dotEnvDevelopmentWarning('start', production)).toBeUndefined();
-    expect(environment.dotEnvDevelopmentWarning('start', { NODE_ENV: 'development' })).toBeUndefined(); // set in the process
+    expect(environmentChecks.dotEnvDevelopmentWarning('start', production)).toBeUndefined();
+    expect(environmentChecks.dotEnvDevelopmentWarning('start', { NODE_ENV: 'development' })).toBeUndefined(); // set in the process
   });
 
   it('stops at a NODE_ENV that is none of development, test, production — from the process or from .env', () => {

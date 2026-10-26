@@ -116,7 +116,7 @@ export const defaultToResponse: ResponseFactory = (result) => {
   if (result === undefined || result === null) return new Response(null, { status: 204 });
   // A string is text, never markup: a route that echoes input must not become reflected XSS. Markup is an `Html`.
   if (typeof result === 'string') return new Response(result, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
-  if (result instanceof Html) return new Response(result.toString(), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  if (result instanceof Html) return new Response(Html.prototype.toString.call(result), { headers: { 'content-type': 'text/html; charset=utf-8' } });
   return Response.json(result);
 };
 

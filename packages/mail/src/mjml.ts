@@ -1,9 +1,22 @@
 import { Html, interpolate, textFromHtml } from './html.ts';
 import type { MailContent } from './message.ts';
-import { withCode } from '@marmeon/core/internal';
+import { HTML_KEY, withCode } from '@marmeon/core/internal';
+
+// Held by this module only: without it the constructor throws, so the static block is the one way to an Mjml.
+const MJML_KEY = Symbol('Mjml');
+let makeMjml: (markup: string) => Mjml;
 
 /** MJML markup — what the `mjml` template returns; it compiles to the table layouts and Outlook conditionals mail clients need. */
-export class Mjml extends Html {}
+export class Mjml extends Html {
+  static {
+    makeMjml = (markup) => new Mjml(markup, MJML_KEY);
+  }
+
+  private constructor(markup: string, key: symbol) {
+    if (key !== MJML_KEY) throw new TypeError('An Mjml is made by the mjml template — new Mjml(markup) is mjml`${raw(markup)}`, for markup you trust.');
+    super(markup, HTML_KEY);
+  }
+}
 
 /**
  * A mail in MJML: every interpolated value escaped (like `html`), nested `mjml`/`html` kept. Compiled by `mjml` (an
@@ -13,7 +26,7 @@ export class Mjml extends Html {}
 export function mjml(strings: TemplateStringsArray, ...values: unknown[]): Mjml {
   let out = strings[0]!;
   for (let i = 0; i < values.length; i++) out += interpolate(values[i]) + strings[i + 1]!;
-  return new Mjml(out);
+  return makeMjml(out);
 }
 
 export class MjmlError extends Error {
@@ -28,7 +41,7 @@ export async function fromMjml(source: Mjml, options: { text?: string } = {}): P
   const compile = await (compiler ??= loadMjml());
   let result: Awaited<ReturnType<Compile>>;
   try {
-    result = await compile(source.toString(), { validationLevel: 'strict', keepComments: false });
+    result = await compile(Html.prototype.toString.call(source), { validationLevel: 'strict', keepComments: false });
   } catch (error) {
     throw new MjmlError(withCode('Q7', `The MJML template is invalid: ${error instanceof Error ? error.message.trim() : String(error)}`), { cause: error });
   }

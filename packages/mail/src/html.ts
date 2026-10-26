@@ -1,4 +1,4 @@
-import type { Html } from '@marmeon/core';
+import { Html } from '@marmeon/core';
 import type { MailContent } from './message.ts';
 
 // The escaping template lives in core (the devtools render with it too); mail re-exports it unchanged.
@@ -35,6 +35,6 @@ export function textFromHtml(markup: string): string {
 
 /** Content from an `html` template: the HTML, and a text version derived from it (or given). */
 export function fromHtml(body: Html, text?: string): MailContent {
-  const markup = body.toString();
+  const markup = Html.prototype.toString.call(body);
   return { html: markup, text: text ?? textFromHtml(markup) };
 }

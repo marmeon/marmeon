@@ -26,6 +26,61 @@ export type NodeEnvironmentName = (typeof NODE_ENVIRONMENTS)[number];
 /** `APP_ENV` when it is not set: the name that goes with `NODE_ENV`. */
 const APP_ENVIRONMENTS: Readonly<Record<NodeEnvironmentName, string>> = { development: 'local', test: 'testing', production: 'production' };
 
+/**
+ * What the launcher and the long-running commands check about `NODE_ENV`, with the `.env` it may come from. Not API: an app
+ * asks {@link environment}.
+ * @internal
+ */
+export const environmentChecks = {
+  /** Whether `NODE_ENV` was taken from the app's `.env` rather than set in the process's environment. */
+  fromDotEnv(env: NodeEnvironment = process.env): boolean {
+    const name = nodeEnv(env);
+    return name !== undefined && env[DOTENV_MARKER] === name;
+  },
+
+  /**
+   * What is wrong with `NODE_ENV` — `undefined` when it is `development`, `test`, `production` or missing. Any other value
+   * stops the start ({@link environmentChecks.check}): a staging server is `NODE_ENV=production` with `APP_ENV=staging`.
+   */
+  problem(env: NodeEnvironment = process.env): string | undefined {
+    const name = nodeEnv(env);
+    if (name === undefined || known(name)) return undefined;
+    const where = environmentChecks.fromDotEnv(env) ? ' (in .env)' : '';
+    const docs = 'NODE_ENV is development, test or production; APP_ENV names the environment (docs/configuration.md#the-environment-node_env).';
+    const lower = name.toLowerCase();
+    if (known(lower)) return `NODE_ENV=${name}${where} is not an environment Node knows — it is case-sensitive: set NODE_ENV=${lower}.`;
+    // A name worth repeating; anything else (a long or odd value) is not echoed.
+    if (/^[A-Za-z0-9_.-]{1,40}$/.test(name)) return `NODE_ENV=${name}${where} is not an environment Node knows — set NODE_ENV=production and APP_ENV=${name}. ${docs}`;
+    return `NODE_ENV${where} is not an environment Node knows — set NODE_ENV=production, and name the environment in APP_ENV. ${docs}`;
+  },
+
+  /**
+   * Stops the start when `NODE_ENV` is none of `development`, `test`, `production` (a missing one is production): throws a
+   * {@link ConfigError} with the hint. Called before anything asks {@link environment.isDevelopment} — by `marmeon` for every
+   * command, by `createApplication` and by `startServer` — so an unknown value never reaches a development tool or a check.
+   */
+  check(env: NodeEnvironment = process.env): void {
+    const problem = environmentChecks.problem(env);
+    if (problem === undefined) return;
+    const error = new ConfigError(withCode('K6', `Invalid environment — the application cannot start:\n  • ${problem}`));
+    error.stack = `${error.name}: ${error.message}`; // the location of the throw is noise here
+    throw error;
+  },
+
+  /**
+   * The warning a production command (`queue:work`, `schedule:work`; `marmeon start` refuses instead) logs when it runs as `development`
+   * because a `.env` says so — a developer's `.env` copied to a server turns the development tools on. Undefined otherwise.
+   */
+  dotEnvDevelopmentWarning(command: string, env: NodeEnvironment = process.env): string | undefined {
+    if (!environment.isDevelopment(env) || !environmentChecks.fromDotEnv(env)) return undefined;
+    return (
+      `NODE_ENV=development comes from .env, not from the environment: marmeon ${command} runs with the development tools ` +
+      '(error pages with source code, devtools, Vite) and without the production protections. On a server, set NODE_ENV=production ' +
+      'in the environment — it wins over .env — and never deploy a development .env.'
+    );
+  },
+} as const;
+
 /** The error a start fails with when its configuration is wrong — `NODE_ENV` here, the variables in `defineConfig`. */
 export class ConfigError extends Error {
   override name = 'ConfigError';
@@ -76,12 +131,6 @@ export const environment = {
     return known(name) ? APP_ENVIRONMENTS[name] : 'production';
   },
 
-  /** Whether `NODE_ENV` was taken from the app's `.env` rather than set in the process's environment. */
-  fromDotEnv(env: NodeEnvironment = process.env): boolean {
-    const name = nodeEnv(env);
-    return name !== undefined && env[DOTENV_MARKER] === name;
-  },
-
   /**
    * The environment as a start line names it: `production (APP_ENV=staging)`, `development (APP_ENV=local)`,
    * `production (APP_ENV=production, NODE_ENV unset)` — and where `NODE_ENV` came from when that was `.env`:
@@ -90,50 +139,8 @@ export const environment = {
    */
   describe(env: NodeEnvironment = process.env, app: string = environment.app(env)): string {
     const name = nodeEnv(env);
-    const notes = [`APP_ENV=${app}`, ...(name === undefined ? ['NODE_ENV unset'] : []), ...(environment.fromDotEnv(env) ? ['NODE_ENV from .env'] : [])];
+    const notes = [`APP_ENV=${app}`, ...(name === undefined ? ['NODE_ENV unset'] : []), ...(environmentChecks.fromDotEnv(env) ? ['NODE_ENV from .env'] : [])];
     return `${name ?? 'production'} (${notes.join(', ')})`;
-  },
-
-  /**
-   * What is wrong with `NODE_ENV` — `undefined` when it is `development`, `test`, `production` or missing. Any other value
-   * stops the start ({@link environment.check}): a staging server is `NODE_ENV=production` with `APP_ENV=staging`.
-   */
-  problem(env: NodeEnvironment = process.env): string | undefined {
-    const name = nodeEnv(env);
-    if (name === undefined || known(name)) return undefined;
-    const where = environment.fromDotEnv(env) ? ' (in .env)' : '';
-    const docs = 'NODE_ENV is development, test or production; APP_ENV names the environment (docs/configuration.md#the-environment-node_env).';
-    const lower = name.toLowerCase();
-    if (known(lower)) return `NODE_ENV=${name}${where} is not an environment Node knows — it is case-sensitive: set NODE_ENV=${lower}.`;
-    // A name worth repeating; anything else (a long or odd value) is not echoed.
-    if (/^[A-Za-z0-9_.-]{1,40}$/.test(name)) return `NODE_ENV=${name}${where} is not an environment Node knows — set NODE_ENV=production and APP_ENV=${name}. ${docs}`;
-    return `NODE_ENV${where} is not an environment Node knows — set NODE_ENV=production, and name the environment in APP_ENV. ${docs}`;
-  },
-
-  /**
-   * Stops the start when `NODE_ENV` is none of `development`, `test`, `production` (a missing one is production): throws a
-   * {@link ConfigError} with the hint. Called before anything asks {@link environment.isDevelopment} — by `marmeon` for every
-   * command, by `createApplication` and by `startServer` — so an unknown value never reaches a development tool or a check.
-   */
-  check(env: NodeEnvironment = process.env): void {
-    const problem = environment.problem(env);
-    if (problem === undefined) return;
-    const error = new ConfigError(withCode('K6', `Invalid environment — the application cannot start:\n  • ${problem}`));
-    error.stack = `${error.name}: ${error.message}`; // the location of the throw is noise here
-    throw error;
-  },
-
-  /**
-   * The warning a production command (`queue:work`, `schedule:work`; `marmeon start` refuses instead) logs when it runs as `development`
-   * because a `.env` says so — a developer's `.env` copied to a server turns the development tools on. Undefined otherwise.
-   */
-  dotEnvDevelopmentWarning(command: string, env: NodeEnvironment = process.env): string | undefined {
-    if (!environment.isDevelopment(env) || !environment.fromDotEnv(env)) return undefined;
-    return (
-      `NODE_ENV=development comes from .env, not from the environment: marmeon ${command} runs with the development tools ` +
-      '(error pages with source code, devtools, Vite) and without the production protections. On a server, set NODE_ENV=production ' +
-      'in the environment — it wins over .env — and never deploy a development .env.'
-    );
   },
 } as const;
 
@@ -144,12 +151,12 @@ export const environment = {
  * a missing one, `test`, and a `NODE_ENV=development` **from `.env`** (a developer's, for the commands of this machine) all
  * build for production. Set, not just removed: Vite reads the `.env` files itself and takes their `NODE_ENV=development`
  * whenever the process has none. A `NODE_ENV=development` set in the environment is respected, with a warning. Any other value
- * stops the build ({@link environment.check}). Returns the lines to print. The `marmeon` launcher calls it; see
+ * stops the build ({@link environmentChecks.check}). Returns the lines to print. The `marmeon` launcher calls it; see
  * docs/configuration.md#where-node_env-comes-from.
  */
 export function buildEnvironment(env: Record<string, string | undefined> = process.env): { readonly notes: readonly string[]; readonly warnings: readonly string[] } {
-  environment.check(env);
-  if (environment.isDevelopment(env) && !environment.fromDotEnv(env)) {
+  environmentChecks.check(env);
+  if (environment.isDevelopment(env) && !environmentChecks.fromDotEnv(env)) {
     return {
       notes: [],
       warnings: [
@@ -159,7 +166,7 @@ export function buildEnvironment(env: Record<string, string | undefined> = proce
     };
   }
   const name = nodeEnv(env);
-  const fromDotEnv = environment.fromDotEnv(env);
+  const fromDotEnv = environmentChecks.fromDotEnv(env);
   env.NODE_ENV = 'production';
   delete env[DOTENV_MARKER];
   if (name === 'development' && fromDotEnv) return { notes: ['NODE_ENV=development of .env is for the commands of this machine — marmeon build builds for production.'], warnings: [] };
@@ -183,7 +190,7 @@ const reported = new Set<string>();
  * Resolves `NODE_ENV` for the app in `root` and writes it into `env` (`process.env`) — the one place that decides it:
  * the process's own value wins; else the base `.env`'s (marked {@link DOTENV_MARKER}); else `fallback` (`marmeon start`:
  * `production`, `marmeon dev`: `development`); else none (production). A `.env.{NODE_ENV}` that sets `NODE_ENV` is ignored, with a
- * warning. A `NODE_ENV` that is none of `development`, `test`, `production` throws ({@link environment.check}) — the start error.
+ * warning. A `NODE_ENV` that is none of `development`, `test`, `production` throws ({@link environmentChecks.check}) — the start error.
  */
 export function resolveEnvironment(root: string, { fallback, env = process.env }: { fallback?: string; env?: Record<string, string | undefined> } = {}): ResolvedEnvironment {
   let source: ResolvedEnvironment['source'];
@@ -208,7 +215,7 @@ export function resolveEnvironment(root: string, { fallback, env = process.env }
     }
   }
   // Nothing reads the environment before it is known to be one: an unknown NODE_ENV stops here.
-  environment.check(env);
+  environmentChecks.check(env);
   const name = env.NODE_ENV || undefined;
   const warnings: string[] = [];
   const overlay = name === undefined ? {} : readEnvFile(join(root, `.env.${name}`));

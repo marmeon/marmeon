@@ -21,7 +21,10 @@ export class EventFake implements EventObserver {
   readonly #registry: EventRegistry;
   readonly #dispatched: object[] = [];
 
-  /** `faked`: every event (`'all'`), some (their classes and subclasses), or none (`[]` — record only). */
+  /**
+   * `faked`: every event (`'all'`), some (their classes and subclasses), or none (`[]` — record only).
+   * @internal `createTestApp()` makes it.
+   */
   constructor(registry: EventRegistry, faked: 'all' | readonly EventClass[] = []) {
     this.#registry = registry;
     this.#faked = faked === 'all' ? 'all' : new Set(faked);

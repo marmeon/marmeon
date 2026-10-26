@@ -48,6 +48,7 @@ const MAX_HEALTH_TIMEOUT_SECONDS = 60;
 export class HealthChecks {
   readonly #checks: HealthCheckClass[] = [];
 
+  /** @internal Built by the container. */
   constructor(checks: Iterable<HealthCheckClass> = []) {
     this.add(checks);
   }
