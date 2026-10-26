@@ -106,8 +106,8 @@ function pageOf(request: PageRequest | undefined): { page?: number | undefined; 
 
 /** What encrypts a cursor — the app's `Encrypter` (`@marmeon/encryption`), injected where the list is read. */
 export interface CursorEncrypter {
-  encrypt(plaintext: string, context?: string): Promise<string>;
-  decrypt(payload: string, context?: string): Promise<string>;
+  encrypt(plaintext: string, context: string): Promise<string>;
+  decrypt(payload: string, context: string): Promise<string>;
 }
 
 /**

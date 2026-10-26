@@ -18,16 +18,16 @@ async function failsToDecrypt(promise: Promise<string>): Promise<void> {
 describe('AesGcmEncrypter', () => {
   it('round-trips and never produces the same payload twice (random IV)', async () => {
     const encrypter = new AesGcmEncrypter(raw());
-    const first = await encrypter.encrypt('Grüße 👋');
-    const second = await encrypter.encrypt('Grüße 👋');
+    const first = await encrypter.encrypt('Grüße 👋', 'test');
+    const second = await encrypter.encrypt('Grüße 👋', 'test');
 
     expect(first).not.toBe(second);
     expect(first).toMatch(/^[A-Za-z0-9_-]+$/); // cookie- and URL-safe
-    expect(await encrypter.decrypt(first)).toBe('Grüße 👋');
+    expect(await encrypter.decrypt(first, 'test')).toBe('Grüße 👋');
   });
 
   it('a payload that does not decrypt says so with its code, and the solution carries it', async () => {
-    const error = await new AesGcmEncrypter(raw()).decrypt('garbage').catch((failure: unknown) => failure);
+    const error = await new AesGcmEncrypter(raw()).decrypt('garbage', 'test').catch((failure: unknown) => failure);
     expect((error as Error).message).toBe('[marmeon:A4] The payload is invalid.');
     const [solution] = await new ErrorSolutions(EncryptionServiceProvider.solutions).find(error as Error);
     expect(solution).toMatchObject({ title: 'Find out why a payload does not decrypt', code: 'A4' });
@@ -35,14 +35,14 @@ describe('AesGcmEncrypter', () => {
 
   it('rejects tampered payloads, foreign keys and garbage', async () => {
     const encrypter = new AesGcmEncrypter(raw());
-    const payload = await encrypter.encrypt('user=1');
+    const payload = await encrypter.encrypt('user=1', 'test');
     const bytes = Uint8Array.fromBase64(payload, { alphabet: 'base64url' });
     bytes[bytes.length - 1]! ^= 1;
 
-    await failsToDecrypt(encrypter.decrypt(bytes.toBase64({ alphabet: 'base64url' })));
-    await failsToDecrypt(new AesGcmEncrypter(raw()).decrypt(payload));
-    await failsToDecrypt(encrypter.decrypt('not-a-payload'));
-    await failsToDecrypt(encrypter.decrypt(''));
+    await failsToDecrypt(encrypter.decrypt(bytes.toBase64({ alphabet: 'base64url' }), 'test'));
+    await failsToDecrypt(new AesGcmEncrypter(raw()).decrypt(payload, 'test'));
+    await failsToDecrypt(encrypter.decrypt('not-a-payload', 'test'));
+    await failsToDecrypt(encrypter.decrypt('', 'test'));
   });
 
   it('binds a payload to its context', async () => {
@@ -50,16 +50,16 @@ describe('AesGcmEncrypter', () => {
     const payload = await encrypter.encrypt('1', 'cookie:session');
     expect(await encrypter.decrypt(payload, 'cookie:session')).toBe('1');
     await failsToDecrypt(encrypter.decrypt(payload, 'cookie:remember'));
-    await failsToDecrypt(encrypter.decrypt(payload));
+    await failsToDecrypt(encrypter.decrypt(payload, 'cookie:session:x'));
   });
 
   it('decrypts with previous keys after a rotation, but encrypts with the current one', async () => {
     const [oldKey, newKey] = [raw(), raw()];
-    const before = await new AesGcmEncrypter(oldKey).encrypt('kept');
+    const before = await new AesGcmEncrypter(oldKey).encrypt('kept', 'test');
     const rotated = new AesGcmEncrypter(newKey, [oldKey]);
 
-    expect(await rotated.decrypt(before)).toBe('kept');
-    await failsToDecrypt(new AesGcmEncrypter(oldKey).decrypt(await rotated.encrypt('new')));
+    expect(await rotated.decrypt(before, 'test')).toBe('kept');
+    await failsToDecrypt(new AesGcmEncrypter(oldKey).decrypt(await rotated.encrypt('new', 'test'), 'test'));
   });
 
   it('refuses keys that are not 32 bytes', () => {
@@ -72,15 +72,61 @@ describe('AesGcmEncrypter', () => {
     const encrypter = new AesGcmEncrypter(raw(), [raw()]);
     expect(imported).toHaveBeenCalledTimes(2);
     // 50 requests' worth: a cookie decrypted, two encrypted — with the previous key tried too.
-    const old = await new AesGcmEncrypter(raw()).encrypt('x');
+    const old = await new AesGcmEncrypter(raw()).encrypt('x', 'test');
     imported.mockClear();
     for (let i = 0; i < 50; i++) {
       await encrypter.decrypt(await encrypter.encrypt(`session ${i}`, 'cookie:marmeon_session'), 'cookie:marmeon_session');
-      await failsToDecrypt(encrypter.decrypt(old));
+      await failsToDecrypt(encrypter.decrypt(old, 'cookie:marmeon_session'));
     }
     expect(imported).not.toHaveBeenCalled();
   });
 });
+
+describe('the context of every encryption', () => {
+  it('is required: encrypt(x) and decrypt(x) do not type-check', async () => {
+    const encrypter = new AesGcmEncrypter(raw());
+    // @ts-expect-error a context is required
+    await encrypter.encrypt('x').catch(() => undefined);
+    // @ts-expect-error a context is required
+    await encrypter.decrypt('x').catch(() => undefined);
+    // @ts-expect-error the interface requires it too
+    await (encrypter as Encrypter).encrypt('x').catch(() => undefined);
+  });
+
+  it('refuses the empty context at run time, for encrypt and decrypt', async () => {
+    const encrypter = new AesGcmEncrypter(raw());
+    await expect(encrypter.encrypt('x', '')).rejects.toThrow(TypeError);
+    await expect(encrypter.encrypt('x', '')).rejects.toThrow("encrypt(value, 'billing:coupon')");
+    await expect(encrypter.decrypt(await encrypter.encrypt('x', 'a'), '')).rejects.toThrow(TypeError);
+    // An untyped caller that passes nothing is refused the same way.
+    await expect((encrypter as unknown as { encrypt(plaintext: string): Promise<string> }).encrypt('x')).rejects.toThrow(TypeError);
+  });
+
+  it('does not decrypt a value of context a with context b', async () => {
+    const encrypter = new AesGcmEncrypter(raw());
+    const payload = await encrypter.encrypt('discount', 'billing:coupon');
+    expect(await encrypter.decrypt(payload, 'billing:coupon')).toBe('discount');
+    await failsToDecrypt(encrypter.decrypt(payload, 'billing:role'));
+  });
+
+  it('keeps the format: payloads made before keep reading with their context', async () => {
+    const key = Uint8Array.fromBase64('J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=');
+    const encrypter = new AesGcmEncrypter(key);
+    // version 1 · iv · ciphertext · tag, the context as additional data: written by hand, not by the class under test.
+    const fixture = await sealByHand(key, 'cookie:marmeon_session');
+    expect(await encrypter.decrypt(fixture, 'cookie:marmeon_session')).toBe('fixture');
+    expect(Uint8Array.fromBase64(fixture, { alphabet: 'base64url' })[0]).toBe(1);
+  });
+});
+
+/** The format written out by hand with node:crypto, independent of the class under test: version 1, IV 01..0b, AAD = context. */
+async function sealByHand(key: Uint8Array, context: string): Promise<string> {
+  const iv = Uint8Array.from({ length: 12 }, (_, i) => i + 1);
+  const cipher = nodeCrypto.createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+  cipher.setAAD(Buffer.from(context));
+  const body = Buffer.concat([cipher.update('fixture', 'utf8'), cipher.final()]);
+  return Buffer.concat([Buffer.from([1]), iv, body, cipher.getAuthTag()]).toString('base64url');
+}
 
 describe('AesGcmEncrypter payload', () => {
   it('refuses a payload that was tampered with or cut short — the full 16-byte tag only', async () => {
@@ -111,7 +157,7 @@ describe('EncryptionConfig & provider', () => {
     expect(config.previousKeys).toHaveLength(1);
     expect(app.container.make(Encrypter)).toBe(app.container.make(Encrypter));
     const encrypter = app.container.make(Encrypter);
-    expect(await encrypter.decrypt(await encrypter.encrypt('x'))).toBe('x');
+    expect(await encrypter.decrypt(await encrypter.encrypt('x', 'test'), 'test')).toBe('x');
   });
 
   it('refuses to boot without a valid key and says how to fix it', async () => {
