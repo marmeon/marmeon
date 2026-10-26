@@ -5,13 +5,13 @@ import { withCode } from '@marmeon/core/internal';
 /**
  * Symmetric, authenticated encryption with the application key. Payloads cannot be read or changed without the key.
  *
- * `context` binds a payload to its use: a value encrypted for the cookie
- * `session` does not decrypt as the cookie `remember` (additional authenticated data).
+ * `context` is required and binds a payload to its use: a value encrypted for the cookie `session` does not decrypt as the
+ * cookie `remember` (additional authenticated data). The empty string is refused with a `TypeError`. See `docs/encryption.md#encrypting-and-decrypting`.
  */
 export interface Encrypter {
-  encrypt(plaintext: string, context?: string): Promise<string>;
+  encrypt(plaintext: string, context: string): Promise<string>;
   /** Throws `DecryptError` when the payload was tampered with, belongs to another key or another context. */
-  decrypt(payload: string, context?: string): Promise<string>;
+  decrypt(payload: string, context: string): Promise<string>;
 }
 export const Encrypter = token<Encrypter>('Encrypter');
 
@@ -74,7 +74,8 @@ export class AesGcmEncrypter implements Encrypter {
     return new AesGcmEncrypter(config.key, config.previousKeys);
   }
 
-  async encrypt(plaintext: string, context = ''): Promise<string> {
+  async encrypt(plaintext: string, context: string): Promise<string> {
+    requireContext(context, 'encrypt');
     const iv = randomBytes(IV_BYTES);
     const cipher = createCipheriv(ALGORITHM, this.#keys[0]!, iv, { authTagLength: TAG_BYTES });
     cipher.setAAD(Buffer.from(context, 'utf8'));
@@ -90,7 +91,12 @@ export class AesGcmEncrypter implements Encrypter {
     return payload.toString('base64url');
   }
 
-  async decrypt(payload: string, context = ''): Promise<string> {
+  async decrypt(payload: string, context: string): Promise<string> {
+    requireContext(context, 'decrypt');
+    return this.#open(payload, context);
+  }
+
+  async #open(payload: string, context: string): Promise<string> {
     let bytes: Uint8Array<ArrayBuffer>;
     try {
       bytes = Uint8Array.fromBase64(payload, { alphabet: 'base64url' });
@@ -116,6 +122,13 @@ export class AesGcmEncrypter implements Encrypter {
       }
     }
     throw new DecryptError();
+  }
+}
+
+/** An empty context would make every value encrypted with it interchangeable, so a caller that passes none is refused. */
+function requireContext(context: unknown, method: 'encrypt' | 'decrypt'): void {
+  if (typeof context !== 'string' || context === '') {
+    throw new TypeError(`Name what the value is for: ${method}(value, 'billing:coupon') — a context is required.`);
   }
 }
 

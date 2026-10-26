@@ -136,8 +136,8 @@ export declare class ConstrainedColumn<T> extends Column<T> {
 }
 // CursorEncrypter
 export interface CursorEncrypter {
-    encrypt(plaintext: string, context?: string): Promise<string>;
-    decrypt(payload: string, context?: string): Promise<string>;
+    encrypt(plaintext: string, context: string): Promise<string>;
+    decrypt(payload: string, context: string): Promise<string>;
 }
 // CursorOptions
 export interface CursorOptions<C extends string> {

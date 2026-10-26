@@ -78,8 +78,8 @@ Inject `Encrypter`. It is one object for the whole app.
 
 | Method | What it does |
 | --- | --- |
-| `encrypt(plaintext, context?)` | Returns the payload, a URL-safe string. |
-| `decrypt(payload, context?)` | Returns the text, or throws `DecryptError`. |
+| `encrypt(plaintext, context)` | Returns the payload, a URL-safe string. |
+| `decrypt(payload, context)` | Returns the text, or throws `DecryptError`. |
 
 - **Text in, text out.** Turn values into text yourself, with `JSON.stringify()`, and parse them after decrypting.
 - **Never the same payload twice.** Every call draws a fresh random IV, so encrypting the same text twice gives two payloads. The
@@ -87,12 +87,30 @@ Inject `Encrypter`. It is one object for the whole app.
   into a cookie or a URL as it is.
 - **One error for everything.** A changed byte, another key, another context, garbage or an empty string all end in the same
   `DecryptError`, "[marmeon:A4] The payload is invalid.". It never says which.
-- **A context binds a payload to its use.** The second argument is authenticated with the payload, `''` by default. A payload
-  encrypted for `exports:download` does not decrypt for another context. Give each use of your own a context of its own, so a
-  value from one place cannot be replayed in another.
+- **A context binds a payload to its use, and every call names one.** The second argument is required and authenticated with
+  the payload. A payload encrypted for `exports:download` does not decrypt for another context. Give each use of your own a
+  context of its own, so a value from one place cannot be replayed in another: an encrypted discount code would otherwise pass
+  as an encrypted role flag. The empty string is refused with a `TypeError`, also for a caller that is not type-checked.
 
-The framework's own contexts are `cookie:<name>`, `queue:<job name>`, `session:<key>` and `marmeon:cursor:…` for the cursors of
-lists. Choose names that do not start with these.
+The framework's own contexts are `cookie:<name>`, `queue:v<N>:<job name>` for encrypted jobs, `session:<key>`,
+`marmeon:cursor:…` for the cursors of lists and `marmeon-auth:two-factor:<user id>` for the secrets of two-factor
+authentication. Choose names that start with none of `cookie:`, `session:`, `queue:` or `marmeon`.
+
+### Values stored without a context
+
+Payloads made without a context used the empty context, which makes them interchangeable with every other value stored the same
+way. From 1.0 on, `decrypt()` refuses the empty context, and no method reads such payloads. Re-encrypt them **before you
+upgrade, on 0.4**: there `decrypt(payload)` still reads the empty context and `encrypt(text, context)` already takes a context.
+
+```ts
+for (const row of await db.selectFrom('coupons').select(['id', 'code']).execute()) {
+  const code = await encrypter.encrypt(await encrypter.decrypt(row.code), 'billing:coupon');
+  await db.updateTable('coupons').set({ code }).where('id', '=', row.id).execute();
+}
+```
+
+Deploy code that passes the context first, then upgrade. An app that skips 0.4 stays on it for one run to do this. An app that
+never called `encrypt()` without a second argument has nothing to migrate.
 
 Outside the container, `new AesGcmEncrypter(key, previousKeys)` takes raw 32-byte keys, and `AesGcmEncrypter.fromConfig(config)`
 takes the resolved `EncryptionConfig`.

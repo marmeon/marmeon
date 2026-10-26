@@ -14,8 +14,8 @@ export declare class AesGcmEncrypter implements Encrypter {
     #private;
     constructor(key: Uint8Array<ArrayBuffer>, previousKeys?: readonly Uint8Array<ArrayBuffer>[]);
     static fromConfig(config: EncryptionConfig): AesGcmEncrypter;
-    encrypt(plaintext: string, context?: string): Promise<string>;
-    decrypt(payload: string, context?: string): Promise<string>;
+    encrypt(plaintext: string, context: string): Promise<string>;
+    decrypt(payload: string, context: string): Promise<string>;
 }
 // DecryptError
 export declare class DecryptError extends Error {
@@ -24,8 +24,8 @@ export declare class DecryptError extends Error {
 }
 // Encrypter
 export interface Encrypter {
-    encrypt(plaintext: string, context?: string): Promise<string>;
-    decrypt(payload: string, context?: string): Promise<string>;
+    encrypt(plaintext: string, context: string): Promise<string>;
+    decrypt(payload: string, context: string): Promise<string>;
 }
 export declare const Encrypter: import("@marmeon/core").Token<Encrypter>;
 // EncryptionConfig
