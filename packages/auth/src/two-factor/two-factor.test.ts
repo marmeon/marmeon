@@ -206,7 +206,7 @@ async function boot(env: Record<string, string> = {}, options: { state?: 'unboun
       }),
     ],
   }, {
-    env: { APP_KEY: appKey, APP_NAME: 'Acme', SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', CACHE_DRIVER: 'memory', ...CHEAP, ...env },
+    env: { NODE_ENV: 'test', APP_KEY: appKey, APP_NAME: 'Acme', SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', DB_DATABASE: ':memory:', CACHE_DRIVER: 'memory', ...CHEAP, ...env },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       if (options.clock) container.instance(Clock, options.clock);

@@ -149,7 +149,9 @@ without a check.
 
 ## Testing
 
-`createTestApp` turns the check off, so a test can post without headers or a token. Pass `csrf: true` to test the check itself,
+`createTestApp` turns the check off, so a test can post without headers or a token, unless the test app runs as production
+(`env: { NODE_ENV: 'production' }`), where it stays on as on a server. Nothing else switches it off, and a `csrfExcept` pattern
+that matches every path (`*`, `/*`) throws. Pass `csrf: true` to test the check itself,
 and send what a browser sends:
 
 ```ts title="modules/notes/csrf.test.ts"

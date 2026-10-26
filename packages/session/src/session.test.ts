@@ -66,7 +66,7 @@ describe('Session', () => {
 
   it('keeps flash data for exactly one following request', async () => {
     const store = new MemorySessionStore();
-    const { id } = await request(store, undefined, (session) => session.flash('status', 'Saved.'));
+    const { id } = await request(store, undefined, (session) => session.flashData('status', 'Saved.'));
     await request(store, id, (session) => expect(session.get('status')).toBe('Saved.'));
     await request(store, id, (session) => expect(session.get('status')).toBeUndefined());
   });
@@ -119,8 +119,8 @@ describe('Session', () => {
   it('can keep flash data longer (reflash, keep) and flash input for old()', async () => {
     const store = new MemorySessionStore();
     const { id } = await request(store, undefined, (session) => {
-      session.flash('a', 1);
-      session.flash('b', 2);
+      session.flashData('a', 1);
+      session.flashData('b', 2);
       session.flashInput({ name: 'Ada', email: 'x' });
     });
     await request(store, id, (session) => {
@@ -218,7 +218,7 @@ describe('Session', () => {
     expect(writes).toEqual([]);
     // Worth keeping: data, flash data, a flash message, a token in the response (every page, a form).
     expect(await save((session) => session.put('visits', 1))).toEqual({ saved: true, persists: true });
-    expect(await save((session) => session.flash('status', 'Saved.'))).toEqual({ saved: true, persists: true });
+    expect(await save((session) => session.flashData('status', 'Saved.'))).toEqual({ saved: true, persists: true });
     expect(await save((session) => session.queueFlash({ id: '1', key: 'toast', data: {} }))).toEqual({ saved: true, persists: true });
     expect(await save((session) => session.token())).toEqual({ saved: true, persists: true });
     expect(writes).toHaveLength(4);
@@ -396,20 +396,20 @@ describe('session stores', () => {
 describe('Session — read-only (an island)', () => {
   it('asks before every write: a lenient lock drops it (production), the session is never saved', async () => {
     const store = new MemorySessionStore();
-    const id = (await request(store, undefined, (session) => session.flash('visits', 1))).id;
+    const id = (await request(store, undefined, (session) => session.flashData('visits', 1))).id;
     const asked: string[] = [];
     const session = new Session(store, config, plainSessionCodec);
     await session.start(id);
     session.lock((what) => (asked.push(what), false));
     expect(session.readOnly).toBe(true);
     session.put('visits', 2);
-    session.flash('user_id', 'x');
+    session.flashData('user_id', 'x');
     session.forget('visits');
     session.forget('nothing-there'); // changes nothing — not even asked
     session.regenerate();
     expect(session.id).toBe(id);
     expect(session.get('visits')).toBe(1);
-    expect(asked).toEqual(["session.put('visits')", "session.flash('user_id')", "session.forget('visits')", 'session.regenerate()']);
+    expect(asked).toEqual(["session.put('visits')", "session.flashData('user_id')", "session.forget('visits')", 'session.regenerate()']);
     expect(await session.save()).toBe(false);
     // The flash data is still there for the page it was meant for — not aged by the island's request.
     let seen: unknown;

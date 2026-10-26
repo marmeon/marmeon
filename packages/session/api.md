@@ -19,9 +19,6 @@ export type CsrfConfig = ConfigOf<typeof CsrfConfig>;
 export declare class CsrfProtection {
     #private;
     except(...paths: string[]): this;
-    disable(): this;
-    enable(): this;
-    skips(path: string): boolean;
 }
 // SESSION_USER_KEY
 export declare const SESSION_USER_KEY = "_auth_id";
@@ -31,7 +28,6 @@ export declare class Session {
     get started(): boolean;
     get readOnly(): boolean;
     get id(): string;
-    start(id?: string): Promise<void>;
     get<K extends string>(key: K): Value<K> | undefined;
     has(key: string): boolean;
     put<K extends string>(key: K, value: Value<K>): void;
@@ -39,9 +35,8 @@ export declare class Session {
     forget(...keys: string[]): void;
     all(): Record<string, unknown>;
     flush(): void;
-    flash<K extends string>(key: K, value: Value<K>): void;
+    flashData<K extends string>(key: K, value: Value<K>): void;
     reflash(): void;
-    hasFlash(document?: string): boolean;
     keep(...keys: string[]): void;
     flashInput(input: Record<string, unknown>): void;
     old(): Record<string, unknown>;
@@ -53,9 +48,6 @@ export declare class Session {
     regenerateToken(): void;
     regenerate(): void;
     invalidate(): void;
-    save(): Promise<boolean>;
-    get abandoned(): boolean;
-    get ended(): readonly string[];
 }
 // SessionCodec
 export interface SessionCodec {

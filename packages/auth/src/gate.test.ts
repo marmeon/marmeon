@@ -184,7 +184,7 @@ async function boot() {
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, CacheServiceProvider, AuthServiceProvider],
     modules: [defineModule({ name: 'gate-test', routes, apiRoutes })],
   }, {
-    env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', HASH_ARGON_MEMORY_KB: '1024', HASH_ARGON_TIME: '1' },
+    env: { NODE_ENV: 'test', APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', LOG_LEVEL: 'silent', CACHE_DRIVER: 'memory', HASH_ARGON_MEMORY_KB: '1024', HASH_ARGON_TIME: '1' },
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, provider);

@@ -7,7 +7,7 @@ import type { ViewResult } from './view.ts';
 const handler = new DefaultExceptionHandler();
 const router = new Router().load(defineRoutes(() => {}));
 const options = { debug: false };
-const flasher = { flash: () => {}, pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+const flasher = { flashData: () => {}, pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
 
 function request(headers: Record<string, string> = {}): Request {
   return new Request('http://app.test/users', { method: 'POST', headers });

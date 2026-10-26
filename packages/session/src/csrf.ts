@@ -7,6 +7,10 @@ import { Session } from './session.ts';
 
 const ORIGIN = 'Expected an origin like https://admin.example.com (no path)';
 
+/**
+ * Which origins may post besides the app's own (`CSRF_TRUSTED_ORIGINS`, `APP_URL`). The check itself cannot be switched off from
+ * configuration. See `docs/csrf.md#trusting-other-origins`.
+ */
 export const CsrfConfig = defineConfig('csrf', {
   env: env({
     /**
@@ -38,27 +42,49 @@ const READING = new Set(['GET', 'HEAD', 'OPTIONS']);
 export class CsrfProtection {
   #enabled = true;
   readonly #except: RegExp[] = [];
+  readonly #protected: boolean;
 
-  /** Paths without CSRF protection; `*` matches any characters: `/webhooks/*`. */
+  /** @internal Built by the container; `protected` is the app's environment (`SessionConfig.protected`). */
+  constructor(isProtected = true) {
+    this.#protected = isProtected;
+  }
+
+  /**
+   * Paths without CSRF protection; `*` matches any characters: `/webhooks/*`. A pattern that matches every path (`*`, `/*`) throws:
+   * a route that needs no verification belongs in a group without `VerifyCsrfToken`.
+   */
   except(...paths: string[]): this {
     for (const path of paths) {
       const pattern = path.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*');
-      this.#except.push(new RegExp(`^${pattern}$`));
+      const regexp = new RegExp(`^${pattern}$`);
+      if (regexp.test('/') && regexp.test('/a/b/c')) {
+        throw new TypeError(`CSRF exclusion '${path}' matches every path, which turns the protection off. Name the paths that need it, or put such routes in a group without CSRF verification.`);
+      }
+      this.#except.push(regexp);
     }
     return this;
   }
 
-  /** Turns verification off — what `@marmeon/testing` does by default. Never in production. */
+  /**
+   * Turns verification off — what `createTestApp()` does by itself (`createTestApp(app, { csrf: true })` keeps it on). Throws
+   * in a protected environment (production, or any `NODE_ENV` but development and test): a stray call would leave it without CSRF protection.
+   * @internal
+   */
   disable(): this {
+    if (this.#protected) {
+      throw new Error('CsrfProtection.disable() runs only in development and tests — a test app turns CSRF protection off by itself (createTestApp(app, { csrf: true }) keeps it on).');
+    }
     this.#enabled = false;
     return this;
   }
 
+  /** @internal Turns verification on again after {@link CsrfProtection.disable}. */
   enable(): this {
     this.#enabled = true;
     return this;
   }
 
+  /** @internal What `VerifyCsrfToken` asks: whether `path` is excepted, or verification is off. */
   skips(path: string): boolean {
     return !this.#enabled || this.#except.some((pattern) => pattern.test(path));
   }

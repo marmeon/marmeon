@@ -330,7 +330,7 @@ describe.each(storeKinds)('the %s session store', (kind) => {
       expect(session.exists).toBe(false);
       expect(session.get(SESSION_USER_KEY)).toBeUndefined();
       session.put('visits', 1);
-      session.flash('status', 'Saved.');
+      session.flashData('status', 'Saved.');
     });
     expect(guest.id).not.toBe(id);
     expect(await store.read(sessionKey(id))).toEqual(before);

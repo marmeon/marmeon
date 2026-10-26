@@ -1,5 +1,9 @@
 import { defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
 
+/**
+ * How sessions are kept: the driver and its connection, the cookie, its lifetime and encryption (`SESSION_*`). A session's
+ * format is a `SessionCodec` an app may bind its own of. See `docs/session.md#configuration`.
+ */
 export const SessionConfig = defineConfig('session', {
   env: env({
     /**

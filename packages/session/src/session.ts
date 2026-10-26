@@ -119,6 +119,7 @@ export class Session {
   /**
    * Loads the session `id` (from the cookie) — looked up by its key, `sessionKey(id)` — or starts a new one if it is unknown,
    * expired or unreadable (an encrypted payload that does not decrypt).
+   * @internal
    */
   async start(id?: string): Promise<void> {
     const key = id && SESSION_ID.test(id) ? sessionKey(id) : undefined;
@@ -208,9 +209,9 @@ export class Session {
   // -- Flash data ------------------------------------------------------------
 
   /** Stores a value for this and the next request only. */
-  flash<K extends string>(key: K, value: Value<K>): void {
+  flashData<K extends string>(key: K, value: Value<K>): void {
     const data = this.#ensureStarted();
-    if (!this.#may(`session.flash('${key}')`)) return;
+    if (!this.#may(`session.flashData('${key}')`)) return;
     data[key] = value;
     const flash = this.#flash();
     flash.new = [...new Set([...flash.new, key])];
@@ -248,6 +249,7 @@ export class Session {
   /**
    * The flash messages waiting, taken — by the response that delivers them. Nothing for a read-only request (an island,
    * a layer's base resolved in-process: they are not what the user is shown) or an unstarted session.
+   * @internal
    */
   hasFlash(document?: string): boolean {
     return this.#started && ((this.#data[MESSAGES] as FlashEntry[] | undefined) ?? []).some((message) => mayTake(message, document));
@@ -280,11 +282,12 @@ export class Session {
   }
 
   /**
-   * Flashes the request input, so the next page can refill the form (`old()`) — filtered like `redirect().withInput()`:
-   * no field whose name contains "password", no `_token`, no file.
+   * Flashes the request input, so the next page can refill the form (`old()`) — filtered like `redirect().withInput()`: it leaves
+   * out every field that looks like a secret (a password, a token, a card detail, a one-time code, the names
+   * `isSensitiveField` knows), the `_token` and every file. See `docs/responses.md#flash-data-and-flash-messages`.
    */
   flashInput(input: Record<string, unknown>): void {
-    this.flash(OLD_INPUT, flashableInput(input));
+    this.flashData(OLD_INPUT, flashableInput(input));
   }
 
   /** Input flashed by the previous request — all of it, or one field. */
@@ -397,6 +400,7 @@ export class Session {
    * A loaded session is written back over the version it was loaded at (compare-and-set): a sign-out or sign-in that overtook
    * this request stays (`gone`) — writing the old session back would undo it. A `conflict` (another request wrote meanwhile) is
    * read again and merged ({@link mergeSession}). See `docs/session.md#how-sessions-are-stored`.
+   * @internal
    */
   async save(): Promise<boolean> {
     this.#ensureStarted();
@@ -426,7 +430,7 @@ export class Session {
     return true;
   }
 
-  /** Whether the last `save()` gave up: other requests wrote the session on every attempt. Nothing was written. */
+  /** Whether the last `save()` gave up: other requests wrote the session on every attempt. Nothing was written. @internal */
   get abandoned(): boolean {
     return this.#abandoned;
   }
@@ -465,7 +469,7 @@ export class Session {
     return this.#store.write(key, data, { expectedVersion, lifetimeSeconds, userId: userIdOf(this.#data) });
   }
 
-  /** The ids the last `save()` destroyed: the session was regenerated (signed in) or invalidated (signed out). */
+  /** The ids the last `save()` destroyed: the session was regenerated (signed in) or invalidated (signed out). @internal */
   get ended(): readonly string[] {
     return this.#ended;
   }

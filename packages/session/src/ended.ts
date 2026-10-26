@@ -3,7 +3,8 @@ import { hash } from 'node:crypto';
 /**
  * The scope of a session: a hash of its id — never the id, which is a secret. It changes with every sign-in and
  * sign-out (the id is regenerated) and tells nothing about the session it came from. Once props are kept under it, and live
- * subscriptions are signed for it.
+ * subscriptions are signed for it. It is an unkeyed hash and stays on the server: whoever knows a session id can compute it, so it
+ * proves nothing about who asks.
  */
 export function sessionScope(id: string): string {
   return hash('sha256', `marmeon-once-scope:${id}`, 'base64url').slice(0, 22);

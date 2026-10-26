@@ -4,7 +4,7 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider, type HttpContext, type Next } from '@marmeon/http';
 import { PROTOCOL_VERSION } from '@marmeon/http/protocol';
 import { SessionServiceProvider } from '@marmeon/session';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTestApp } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
@@ -53,5 +53,20 @@ describe('the protocol gate in front of the session and the CSRF check', () => {
 
     // The supported version goes on to the CSRF check.
     await app.withHeaders({ 'x-marmeon': PROTOCOL_VERSION }).post('/things', { form: { a: '1' } }).assertStatus(419);
+  });
+});
+
+describe('the CSRF check in a test app', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('is off by default, also when the process has no NODE_ENV', async () => {
+    vi.stubEnv('NODE_ENV', undefined);
+    const app = await createTestApp(definition, { env });
+    await app.post('/things', { form: { a: '1' } }).assertOk();
+  });
+
+  it('stays on in a test app that runs as production', async () => {
+    const app = await createTestApp(definition, { env: { ...env, NODE_ENV: 'production' } });
+    await app.post('/things', { form: { a: '1' } }).assertStatus(419);
   });
 });
