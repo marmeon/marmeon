@@ -1,5 +1,5 @@
 import type { CommandInput } from 'marmeon';
-import { Clock, environment, Logger, Redactor } from '@marmeon/core';
+import { Clock, CommandArgumentsError, environment, Logger, Redactor } from '@marmeon/core';
 import { ScheduleError } from '../cron.ts';
 import { Scheduler, type TaskResult } from '../scheduler.ts';
 import { formatMinute, isoMinute } from '../time.ts';
@@ -56,8 +56,7 @@ export class ScheduleWorkCommand {
   async handle({ options, output }: CommandInput): Promise<number> {
     const stopTimeout = options['stop-timeout'] === undefined ? 30 : Number(options['stop-timeout']);
     if (!Number.isFinite(stopTimeout) || stopTimeout < 0) {
-      output.error(`--stop-timeout must be a number of seconds ≥ 0, not ${String(options['stop-timeout'])}.`);
-      return 1;
+      throw new CommandArgumentsError(`--stop-timeout must be a number of seconds ≥ 0, not ${String(options['stop-timeout'])}.`);
     }
     if (!(await checked(this.#scheduler, output))) return 1;
 
@@ -219,8 +218,7 @@ export class ScheduleTestCommand {
   async handle({ args, output }: CommandInput): Promise<number> {
     const name = args.join(' ').trim();
     if (name === '') {
-      output.error(`Which task? marmeon schedule:test <name> — one of: ${this.#scheduler.tasks.map((task) => task.name).join(', ') || '(none)'}`);
-      return 1;
+      throw new CommandArgumentsError(`Which task? marmeon schedule:test <name> — one of: ${this.#scheduler.tasks.map((task) => task.name).join(', ') || '(none)'}`);
     }
     // A test run ignores onOneServer(): no word about where its lock lives.
     if (!(await checked(this.#scheduler, output, { warn: false }))) return 1;
@@ -229,8 +227,7 @@ export class ScheduleTestCommand {
       task = this.#scheduler.task(name);
     } catch (error) {
       if (!(error instanceof ScheduleError)) throw error;
-      output.error(error.message);
-      return 1;
+      throw new CommandArgumentsError(error.message);
     }
     const result = await this.#scheduler.runNow(task).done;
     (result.outcome === 'failed' ? output.error.bind(output) : output.success.bind(output))(`${task.name}: ${describe(result)}`);

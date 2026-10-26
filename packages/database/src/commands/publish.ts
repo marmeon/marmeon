@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Application, type ServiceProviderClass } from '@marmeon/core';
+import { Application, CommandArgumentsError, type ServiceProviderClass } from '@marmeon/core';
 import { findPackage, printable } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { assignMigrations, migrationDeclarations, type PackageMigrationFile, type PackageMigrations, show } from '../package-migrations.ts';
@@ -430,16 +430,16 @@ export class PublishCommand {
 
   async handle(raw: CommandInput): Promise<number> {
     const input: CommandInput = { ...raw, output: safe(raw.output) };
-    const { output } = input;
     const name = input.args[0];
     const module = typeof input.options.module === 'string' ? input.options.module : undefined;
     if (input.args.length > 1) {
-      output.error('Pass one package at most: marmeon publish [<package>] [--module=<name>] [--check]');
-      return 1;
+      throw new CommandArgumentsError('Pass one package at most: marmeon publish [<package>] [--module=<name>] [--check]');
+    }
+    if (module !== undefined && !KEBAB.test(module)) {
+      throw new CommandArgumentsError('--module must be a kebab-case name: marmeon publish <package> --module=<name>');
     }
     if (module !== undefined && name === undefined) {
-      output.error('--module needs a package: marmeon publish <package> --module=<name>');
-      return 1;
+      throw new CommandArgumentsError('--module needs a package: marmeon publish <package> --module=<name>');
     }
 
     if (input.options.check === true) return name === undefined ? await this.#checkUsed(input) : await this.#check(input, name, module);

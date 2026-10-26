@@ -4,7 +4,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { BUILT_IN } from './built-in.ts';
-import type { CommandInput } from './command.ts';
+import { CommandArgumentsError, type CommandInput } from './command.ts';
 import { MakePolicyCommand } from './commands/make.ts';
 
 function app(manifest: string | null = JSON.stringify({ dependencies: { '@marmeon/auth': 'workspace:*' } })): string {
@@ -18,7 +18,15 @@ function run(root: string, args: string[], options: Record<string, unknown> = { 
   const lines: string[] = [];
   const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
   const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
-  const code = new MakePolicyCommand().handle({ root, args, options, output } as unknown as CommandInput);
+  let code: number;
+  try {
+    code = new MakePolicyCommand().handle({ root, args, options, output } as unknown as CommandInput);
+  } catch (error) {
+    // What `marmeon` does with an argument the command refuses: the message on stderr, exit 2.
+    if (!(error instanceof CommandArgumentsError)) throw error;
+    output.error(error.message);
+    code = 2;
+  }
   return { code, lines: lines.map((line) => stripVTControlCharacters(line)) };
 }
 
@@ -67,7 +75,7 @@ describe('make:policy', () => {
 
   it.each(['note', '../X', 'A-B', "A'); evil(); ('"])('refuses the name %s and writes nothing', (name) => {
     const root = app();
-    expect(run(root, [name]).code).toBe(1);
+    expect(run(root, [name]).code).toBe(2);
     expect(existsSync(join(root, 'modules/notes/policies'))).toBe(false);
     expect(existsSync(join(root, 'modules/X'))).toBe(false);
   });
@@ -77,7 +85,7 @@ describe('make:policy', () => {
     const { code, lines } = run(root, ['Note'], { module: 'cart' });
     expect(code).toBe(1);
     expect(lines.join('\n')).toContain('Module "cart" does not exist');
-    expect(run(root, ['Note'], {}).code).toBe(1);
+    expect(run(root, ['Note'], {}).code).toBe(2);
     expect(existsSync(join(root, 'modules/cart'))).toBe(false);
   });
 

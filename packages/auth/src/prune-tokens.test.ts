@@ -71,8 +71,8 @@ describe.each(drivers)('auth:prune-tokens on %s', (driver) => {
     expect(await access.find(expired.plainText)).toBeUndefined();
     expect(await access.find(justExpired.plainText)).toBeUndefined();
 
-    expect(await prune('-1')).toBe(1);
-    expect(lines.pop()).toMatch(/^✗ --hours must be a number ≥ 0/);
+    await expect(prune('-1')).rejects.toMatchObject({ name: 'CommandArgumentsError' });
+    await expect(prune('-1')).rejects.toThrow(/^--hours must be a number ≥ 0/);
   });
 
   it('takes every remember-me token off when AUTH_REMEMBER_DAYS is 0 — valid ones too — and keeps the sign-in', async () => {

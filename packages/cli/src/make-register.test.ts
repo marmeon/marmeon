@@ -4,7 +4,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { BUILT_IN } from './built-in.ts';
-import { CommandRegistry, type CommandClass } from './command.ts';
+import { CommandArgumentsError, CommandRegistry, type CommandClass } from './command.ts';
 import { MakeModuleCommand, MakeEventCommand, MakeListenerCommand, MakeMigrationCommand, MakeJobCommand, MakeNotificationCommand, MakeCommandCommand, MakeSeederCommand } from './commands/make.ts';
 
 const MODULE = `import { defineModule } from '@marmeon/core';
@@ -456,8 +456,8 @@ describe('make:command and make:seeder register themselves', () => {
 
   it('refuses a name that is not PascalCase and writes nothing', () => {
     const { root } = app();
-    expect(command(root, ['prune-invoices']).code).toBe(1);
-    expect(seeder(root, ['invoice']).code).toBe(1);
+    expect(() => command(root, ['prune-invoices'])).toThrow(CommandArgumentsError);
+    expect(() => seeder(root, ['invoice'])).toThrow(CommandArgumentsError);
     expect(() => readFileSync(join(root, 'modules/billing/seeders/invoiceSeeder.ts'))).toThrow();
   });
 });

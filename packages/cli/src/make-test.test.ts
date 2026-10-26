@@ -4,7 +4,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { BUILT_IN } from './built-in.ts';
-import type { CommandInput } from './command.ts';
+import { CommandArgumentsError, type CommandInput } from './command.ts';
 import { MakeTestCommand } from './commands/make.ts';
 
 function app(): string {
@@ -17,7 +17,15 @@ function run(root: string, args: string[], options: Record<string, unknown> = { 
   const lines: string[] = [];
   const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
   const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
-  const code = new MakeTestCommand().handle({ root, args, options, output } as unknown as CommandInput);
+  let code: number;
+  try {
+    code = new MakeTestCommand().handle({ root, args, options, output } as unknown as CommandInput);
+  } catch (error) {
+    // What `marmeon` does with an argument the command refuses: the message on stderr, exit 2.
+    if (!(error instanceof CommandArgumentsError)) throw error;
+    output.error(error.message);
+    code = 2;
+  }
   return { code, lines: lines.map((line) => stripVTControlCharacters(line)) };
 }
 
@@ -53,13 +61,13 @@ describe('make:test', () => {
 
   it.each(["/a'); evil(); ('", '/a b', 'shop', '', '/a?x=1', '/a#b', '/a\\b', '/a`b', '/${x}', '/a\nb', '/a b'])('refuses the path %j and writes nothing', (path) => {
     const root = app();
-    expect(run(root, ['cart'], { module: 'shop', path }).code).toBe(1);
+    expect(run(root, ['cart'], { module: 'shop', path }).code).toBe(2);
     expect(readdirSync(join(root, 'modules/shop'))).toEqual([]);
   });
 
   it.each(['Cart', 'cart_flow', '../cart', 'a--b', '-a', "a'b", ''])('refuses the name %j and writes nothing', (name) => {
     const root = app();
-    expect(run(root, name === '' ? [] : [name]).code).toBe(1);
+    expect(run(root, name === '' ? [] : [name]).code).toBe(2);
     expect(readdirSync(join(root, 'modules/shop'))).toEqual([]);
     expect(existsSync(join(root, 'modules/cart'))).toBe(false);
   });
@@ -80,7 +88,7 @@ describe('make:test', () => {
     const { code, lines } = run(root, ['cart'], { module: 'cart' });
     expect(code).toBe(1);
     expect(lines.join('\n')).toContain('Module "cart" does not exist');
-    expect(run(root, ['cart'], {}).code).toBe(1);
+    expect(run(root, ['cart'], {}).code).toBe(2);
     expect(existsSync(join(root, 'modules/cart'))).toBe(false);
   });
 });

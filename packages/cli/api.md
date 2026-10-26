@@ -67,9 +67,7 @@ export interface Command {
     handle(input: CommandInput): void | number | Promise<void | number>;
 }
 // CommandArgumentsError
-export declare class CommandArgumentsError extends Error {
-    name: string;
-}
+export { CommandArgumentsError } from '@marmeon/core';
 // CommandClass
 export interface CommandClass {
     new (...args: any[]): Command;

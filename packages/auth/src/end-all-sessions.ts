@@ -1,5 +1,5 @@
 import { hostname, userInfo } from 'node:os';
-import { environment, Logger } from '@marmeon/core';
+import { CommandArgumentsError, environment, Logger } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { AccountSessions } from './account-sessions.ts';
 
@@ -35,13 +35,11 @@ export class EndAllSessionsCommand {
   async handle({ args, options, output }: CommandInput): Promise<number> {
     // A stray argument is most likely a mistyped `auth:end-sessions <identifier>`, which must not end every account's sessions.
     if (args.length > 0) {
-      output.error(`auth:end-all-sessions takes no arguments (got "${args.join(' ')}"). To sign out one account, use auth:end-sessions <identifier> --force.`);
-      return 1;
+      throw new CommandArgumentsError(`auth:end-all-sessions takes no arguments (got "${args.join(' ')}"). To sign out one account, use auth:end-sessions <identifier> --force.`);
     }
     for (const old of ['api-tokens', 'reset-tokens']) {
       if (options[old] === true) {
-        output.error(`--${old} no longer exists: the command revokes API tokens and deletes password-reset tokens by default. Pass --keep-${old} to leave them. Nothing was ended.`);
-        return 1;
+        throw new CommandArgumentsError(`--${old} no longer exists: the command revokes API tokens and deletes password-reset tokens by default. Pass --keep-${old} to leave them. Nothing was ended.`);
       }
     }
     output.line(`Environment: ${environment.describe()}`);

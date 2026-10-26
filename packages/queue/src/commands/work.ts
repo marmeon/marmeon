@@ -1,4 +1,4 @@
-import { environment, Logger } from '@marmeon/core';
+import { CommandArgumentsError, environment, Logger } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { QueueConnections } from '../connections.ts';
 import { QueueSetupError } from '../registry.ts';
@@ -10,7 +10,7 @@ function number(input: CommandInput, name: string, fallback?: number): number | 
   const raw = input.options[name];
   if (raw === undefined) return fallback;
   const value = Number(raw);
-  if (typeof raw !== 'string' || !Number.isFinite(value) || value < 0) throw new QueueSetupError(`--${name} must be a number ≥ 0, not ${String(raw)}.`);
+  if (typeof raw !== 'string' || !Number.isFinite(value) || value < 0) throw new CommandArgumentsError(`--${name} must be a number ≥ 0, not ${String(raw)}.`);
   return value;
 }
 
@@ -97,8 +97,8 @@ export class QueueWorkCommand {
     let queues: string[] | undefined;
     if (options.queue !== undefined) {
       queues = typeof options.queue === 'string' ? options.queue.split(',').map((queue) => queue.trim()).filter(Boolean) : [];
-      if (queues.length === 0) throw new QueueSetupError('--queue names no queue — leave it out to take every queue.');
-      if (queues.filter((queue) => queue === '*').length > 1) throw new QueueSetupError('--queue names * more than once.');
+      if (queues.length === 0) throw new CommandArgumentsError('--queue names no queue — leave it out to take every queue.');
+      if (queues.filter((queue) => queue === '*').length > 1) throw new CommandArgumentsError('--queue names * more than once.');
       // `--queue=*` alone is no list: every queue, the same as without --queue.
       if (queues.length === 1 && queues[0] === '*') queues = undefined;
     }

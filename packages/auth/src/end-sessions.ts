@@ -1,4 +1,4 @@
-import { Logger, type Key } from '@marmeon/core';
+import { CommandArgumentsError, Logger, type Key } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { AccountSessions } from './account-sessions.ts';
 import { assertSignInFinder, idOf, UserProvider } from './user.ts';
@@ -33,8 +33,7 @@ export class EndSessionsCommand {
   async handle({ args, options, output }: CommandInput): Promise<number> {
     const identifier = args[0]?.trim();
     if (!identifier) {
-      output.error('Usage: marmeon auth:end-sessions <identifier> --force');
-      return 1;
+      throw new CommandArgumentsError('Usage: marmeon auth:end-sessions <identifier> --force');
     }
     assertSignInFinder(this.#users);
     const found = await this.#users.findForSignIn(identifier);

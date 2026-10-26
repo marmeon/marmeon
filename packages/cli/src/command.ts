@@ -1,5 +1,5 @@
 import { parseArgs, type ParseArgsOptionsConfig } from 'node:util';
-import type { Container } from '@marmeon/core';
+import { CommandArgumentsError, type Container } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import type { Output } from './output.ts';
 import { noPrompt, type Prompt } from './prompt.ts';
@@ -111,10 +111,8 @@ export class CommandRegistry {
   }
 }
 
-/** The arguments do not fit the command's options — the message says what, and how the command is used. */
-export class CommandArgumentsError extends Error {
-  override name = 'CommandArgumentsError';
-}
+/** The arguments do not fit the command — the message says what, and how the command is used. `marmeon` exits with 2 for it, thrown by `handle()` as well as by the option parser. */
+export { CommandArgumentsError };
 
 /**
  * Whether `argv` asks for the command's help: `--help` or `-h` before a `--`, unless the command declares an option of that name itself.

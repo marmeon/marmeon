@@ -57,11 +57,11 @@ describe('auth:reset-two-factor', () => {
     expect(info).toHaveBeenCalledWith(expect.stringContaining('second factor'), { userId: 1 });
   });
 
-  it('exits 1 for an unknown identifier or none, and changes nothing', async () => {
+  it('exits 1 for an unknown identifier and refuses none as a wrong call (exit 2), and changes nothing', async () => {
     const { run, lines, end, removeAll, state } = setup();
     expect(await run(['nobody@example.com'])).toBe(1);
-    expect(await run([])).toBe(1);
-    expect(lines).toEqual(['✗ No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.', '✗ Usage: marmeon auth:reset-two-factor <identifier> --force']);
+    await expect(run([])).rejects.toMatchObject({ name: 'CommandArgumentsError', message: 'Usage: marmeon auth:reset-two-factor <identifier> --force' });
+    expect(lines).toEqual(['✗ No account has the identifier nobody@example.com: the lookup is exact (only trimmed), so type it as it is stored, e.g. nobody@example.com.']);
     expect(end).not.toHaveBeenCalled();
     expect(removeAll).not.toHaveBeenCalled();
     expect(state.held).toHaveLength(2);

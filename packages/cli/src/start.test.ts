@@ -278,7 +278,7 @@ describe('marmeon start', { timeout: 30_000 }, () => {
     expect(booting.output).toMatch(/ended before it listened \(code 1\)/);
     expect(booting.code).toBe(1);
     const wrong = spawnSync(process.execPath, [bin, 'start', '--workers=0'], { cwd: app, encoding: 'utf8', timeout: 20_000, env: { ...parent, APP_KEY: key, NODE_ENV: 'production' } });
-    expect(wrong.status).toBe(1);
+    expect(wrong.status).toBe(2);
     expect(wrong.stderr).toContain('--workers expects a number of processes from 1, like --workers=4 (got 0).');
   }, 30_000);
 

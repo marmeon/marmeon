@@ -4,7 +4,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { BUILT_IN } from './built-in.ts';
-import type { CommandInput } from './command.ts';
+import { CommandArgumentsError, type CommandInput } from './command.ts';
 import { MakeResourceCommand } from './commands/make-resource.ts';
 import { webApp } from './__fixtures__/cli.js';
 
@@ -42,7 +42,15 @@ function run(root: string, args: string[], options: Record<string, unknown> = {}
   const lines: string[] = [];
   const push = (prefix: string) => (line = '') => lines.push(`${prefix}${line}`);
   const output = { success: push('✓ '), warn: push('! '), error: push('✗ '), line: push('') };
-  const code = new MakeResourceCommand().handle({ root, args, options, output } as unknown as CommandInput);
+  let code: number;
+  try {
+    code = new MakeResourceCommand().handle({ root, args, options, output } as unknown as CommandInput);
+  } catch (error) {
+    // What `marmeon` does with an argument the command refuses: the message on stderr, exit 2.
+    if (!(error instanceof CommandArgumentsError)) throw error;
+    output.error(error.message);
+    code = 2;
+  }
   return { code, lines: lines.map((line) => stripVTControlCharacters(line)) };
 }
 
@@ -209,7 +217,7 @@ describe('make:resource', () => {
     const root = app();
     const before = snapshot(root);
     const { code } = run(root, name === '' ? [] : [name]);
-    expect(code).toBe(1);
+    expect(code).toBe(2);
     expect(snapshot(root)).toEqual(before);
     expect(existsSync(join(root, 'modules/bookmarks'))).toBe(false);
   });
@@ -218,14 +226,14 @@ describe('make:resource', () => {
     const root = app();
     const before = snapshot(root);
     const { code, lines } = run(root, [name]);
-    expect([code, lines.join('\n')]).toEqual([1, expect.stringContaining('name the record more precisely')]);
+    expect([code, lines.join('\n')]).toEqual([2, expect.stringContaining('name the record more precisely')]);
     expect(snapshot(root)).toEqual(before);
   });
 
   it.each(['../x', 'A', 'a b', "a'b", 'x/y', '-a', 'a--b'])('refuses --module=%j and writes nothing', (module) => {
     const root = app();
     const before = snapshot(root);
-    expect(run(root, ['Bookmark'], { module }).code).toBe(1);
+    expect(run(root, ['Bookmark'], { module }).code).toBe(2);
     expect(snapshot(root)).toEqual(before);
   });
 

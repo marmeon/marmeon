@@ -1,7 +1,7 @@
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { editDefinitionFile, importedBindings } from '@marmeon/core';
+import { CommandArgumentsError, editDefinitionFile, importedBindings } from '@marmeon/core';
 import { readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 
@@ -55,8 +55,7 @@ export class MakeAuthCommand {
     const adapter = typeof input.options.adapter === 'string' ? input.options.adapter : 'react';
     const source = join(STUBS, adapter, 'modules', 'auth');
     if (!/^[a-z]+$/.test(adapter) || !existsSync(source)) {
-      input.output.error(`There are no auth templates for the UI adapter "${adapter}". Known: ${readdirSync(STUBS).filter((name) => name !== 'migrations').join(', ')}.`);
-      return 1;
+      throw new CommandArgumentsError(`There are no auth templates for the UI adapter "${adapter}". Known: ${readdirSync(STUBS).filter((name) => name !== 'migrations').join(', ')}.`);
     }
     const target = join(input.root, 'modules', 'auth');
     if (existsSync(target) && input.options.force !== true) {

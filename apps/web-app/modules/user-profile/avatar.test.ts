@@ -254,6 +254,7 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
       '✗ --hours=0 would delete uploads whose token still works: a token works for 120 minutes (UPLOADS_LIFETIME_MINUTES), so --hours must be at least 2 — or pass --force to delete them anyway (a form still open loses its files).',
     );
     expect((await run({ hours: '1.5' })).code).toBe(1);
+    expect((await run({ hours: 'soon' })).code).toBe(2); // not a number: a wrong call, not the state of the uploads
     expect((await uploadRows()).map((row) => row.id)).toEqual([token.slice(3, 39)]);
     app.storage.disk('uploads').assertCount(1);
     await send(as, ada, token).assertRedirect(); // still works

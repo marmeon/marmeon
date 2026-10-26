@@ -1,6 +1,6 @@
 import { relative } from 'node:path';
 import type { CommandInput } from 'marmeon';
-import { environment } from '@marmeon/core';
+import { CommandArgumentsError, environment } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { confirmed } from './confirm.ts';
 import { MigrationLockLostError, MigrationLockTimeoutError } from '../migrations/lock.ts';
@@ -20,8 +20,7 @@ const wait = { ...force, wait: { type: 'string' } } as const;
 async function underLock(migrator: Migrator, { options, output }: CommandInput, work: () => Promise<number>): Promise<number> {
   const seconds = options.wait === undefined ? undefined : Number(options.wait);
   if (seconds !== undefined && (!Number.isInteger(seconds) || seconds < 0)) {
-    output.error('--wait must be a whole number of seconds, 0 or more.');
-    return 1;
+    throw new CommandArgumentsError('--wait must be a whole number of seconds, 0 or more.');
   }
   migrator.lockWith({
     ...(seconds === undefined ? {} : { waitSeconds: seconds }),
@@ -141,8 +140,7 @@ export class MigrateRollbackCommand {
   async handle(input: CommandInput): Promise<number> {
     const step = input.options.step === undefined ? undefined : Number(input.options.step);
     if (step !== undefined && (!Number.isInteger(step) || step < 1)) {
-      input.output.error('--step must be a positive whole number.');
-      return 1;
+      throw new CommandArgumentsError('--step must be a positive whole number.');
     }
     if (!confirmed(input, 'roll back')) return 1;
     return underLock(this.#migrator, input, async () => {

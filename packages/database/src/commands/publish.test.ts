@@ -379,9 +379,10 @@ describe('marmeon publish', () => {
     it('a --module that is no kebab-case name, writing nothing outside modules/', async () => {
       const root = makeApp();
       for (const module of ['../x', '..', 'a/b', 'Billing', '']) {
-        const { code, lines } = await publish(root, ['@acme/perm'], { module });
-        expect(code, module).toBe(1);
-        expect(lines, module).toEqual(['✗ Pass the module as a kebab-case name: --module=<name>.']);
+        await expect(publish(root, ['@acme/perm'], { module }), module).rejects.toMatchObject({
+          name: 'CommandArgumentsError',
+          message: '--module must be a kebab-case name: marmeon publish <package> --module=<name>',
+        });
       }
       expect(written(root)).toEqual([]);
       expect(existsSync(join(root, 'x'))).toBe(false);
@@ -577,10 +578,11 @@ describe('marmeon publish: updates, the order of files, several packages', () =>
 
   it('refuses a wrong call: two packages, --module without one', async () => {
     const root = twoPackages();
-    expect((await publish(root, ['@acme/one', '@acme/two'])).code).toBe(1);
-    const { code, lines } = await publish(root, [], { module: 'x' });
-    expect(code).toBe(1);
-    expect(lines).toEqual(['✗ --module needs a package: marmeon publish <package> --module=<name>']);
+    await expect(publish(root, ['@acme/one', '@acme/two'])).rejects.toMatchObject({ name: 'CommandArgumentsError' });
+    await expect(publish(root, [], { module: 'x' })).rejects.toMatchObject({
+      name: 'CommandArgumentsError',
+      message: '--module needs a package: marmeon publish <package> --module=<name>',
+    });
     expect(written(root)).toEqual([]);
   });
 });

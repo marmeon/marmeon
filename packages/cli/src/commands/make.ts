@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, relative } from 'node:path';
 import { editDefinition, editDefinitionFile, importedBindings, type DefinitionEdit } from '@marmeon/core';
 import { bindingNameOf } from '@marmeon/core/internal';
-import { CommandRegistry, type CommandInput } from '../command.ts';
+import { CommandArgumentsError, CommandRegistry, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 
 export const PASCAL = /^[A-Z][A-Za-z0-9]*$/;
@@ -23,8 +23,7 @@ function write(input: CommandInput, file: string, contents: string): boolean {
 function moduleDir(input: CommandInput): string | undefined {
   const module = input.options.module;
   if (typeof module !== 'string' || !KEBAB.test(module)) {
-    input.output.error('Pass the module: --module=<kebab-case-name>');
-    return undefined;
+    throw new CommandArgumentsError('Pass the module: --module=<kebab-case-name>');
   }
   const dir = join(input.root, 'modules', module);
   if (!existsSync(dir)) {
@@ -37,8 +36,7 @@ function moduleDir(input: CommandInput): string | undefined {
 function className(input: CommandInput, suffix = ''): string | undefined {
   const [name] = input.args;
   if (!name || !PASCAL.test(name)) {
-    input.output.error(`Pass a PascalCase name, e.g. ${suffix ? `Show${suffix}` : 'OrderShipped'}.`);
-    return undefined;
+    throw new CommandArgumentsError(`Pass a PascalCase name, e.g. ${suffix ? `Show${suffix}` : 'OrderShipped'}.`);
   }
   return suffix && !name.endsWith(suffix) ? `${name}${suffix}` : name;
 }
@@ -139,8 +137,7 @@ export class MakeModuleCommand {
   handle(input: CommandInput): number {
     const [name] = input.args;
     if (!name || !KEBAB.test(name)) {
-      input.output.error('Pass a kebab-case name, e.g. marmeon make:module billing');
-      return 1;
+      throw new CommandArgumentsError('Pass a kebab-case name, e.g. marmeon make:module billing');
     }
     const dir = join(input.root, 'modules', name);
     const ok =
@@ -171,10 +168,9 @@ export class MakeControllerCommand {
     const reads = READING.test(name);
     // A writing endpoint answers its form with a redirect: a page beside it would never render.
     if (withView && input.options.request === true && !reads) {
-      input.output.error(
+      throw new CommandArgumentsError(
         `--view renders a page, and ${name} answers a form with a redirect (--request on a name that does not read). Name a reading endpoint (Show…, List…, Index…, Search…, Get…, Find…, Browse…) for a page, or leave out --view.`,
       );
-      return 1;
     }
     const template =
       input.options.request === true
@@ -224,8 +220,7 @@ export class MakeListenerCommand {
     const event = input.options.event;
     if (!dir || !name) return 1;
     if (typeof event !== 'string' || !PASCAL.test(event)) {
-      input.output.error('Pass the event: --event=<EventName>');
-      return 1;
+      throw new CommandArgumentsError('Pass the event: --event=<EventName>');
     }
     const module = input.options.module as string;
     const source = eventSource(dir, module, event);
@@ -522,15 +517,13 @@ export class MakeTestCommand {
   handle(input: CommandInput): number {
     const [name] = input.args;
     if (!name || !KEBAB.test(name)) {
-      input.output.error('Pass a kebab-case name, e.g. marmeon make:test checkout --module=shop');
-      return 1;
+      throw new CommandArgumentsError('Pass a kebab-case name, e.g. marmeon make:test checkout --module=shop');
     }
     const dir = moduleDir(input);
     if (!dir) return 1;
     const path = input.options.path ?? `/${input.options.module}`;
     if (typeof path !== 'string' || !TEST_PATH.test(path)) {
-      input.output.error('Pass --path as a URL path that starts with /, e.g. --path=/shop (letters, digits and . _ ~ / : - only).');
-      return 1;
+      throw new CommandArgumentsError('Pass --path as a URL path that starts with /, e.g. --path=/shop (letters, digits and . _ ~ / : - only).');
     }
     if (!write(input, join(dir, `${name}.test.ts`), TEST(name.replaceAll('-', ' '), path))) return 1;
     input.output.line(style('dim', `The test fails until ${path} answers 200 — change it to what you test.`));
@@ -573,8 +566,7 @@ export class MakeMigrationCommand {
   handle(input: CommandInput): number {
     const [name] = input.args;
     if (!name || !SNAKE.test(name)) {
-      input.output.error('Pass a snake_case name, e.g. marmeon make:migration create_invoices_table --module=billing');
-      return 1;
+      throw new CommandArgumentsError('Pass a snake_case name, e.g. marmeon make:migration create_invoices_table --module=billing');
     }
     const dir = moduleDir(input);
     if (!dir) return 1;

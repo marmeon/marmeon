@@ -93,12 +93,10 @@ describe('auth:end-all-sessions', () => {
   });
 
   it('refuses --api-tokens and --reset-tokens, which are the default now, and ends nothing', async () => {
-    const { users, run, lines, rows, access, token } = await setup();
+    const { users, run, rows, access, token } = await setup();
     for (const [flag, kept] of [['api-tokens', 'keep-api-tokens'], ['reset-tokens', 'keep-reset-tokens']] as const) {
-      lines.length = 0;
-      expect(await run({ force: true, [flag]: true })).toBe(1);
-      expect(lines).toEqual([expect.stringContaining(`--${flag} no longer exists`)]);
-      expect(lines[0]).toContain(`--${kept}`);
+      await expect(run({ force: true, [flag]: true })).rejects.toMatchObject({ name: 'CommandArgumentsError', message: expect.stringContaining(`--${flag} no longer exists`) });
+      await expect(run({ force: true, [flag]: true })).rejects.toThrow(`--${kept}`);
     }
     expect(users.key).toBeNull();
     expect(await rows(SIGN_INS_TABLE)).toBe(1);
@@ -108,8 +106,11 @@ describe('auth:end-all-sessions', () => {
 
   it('takes no arguments: a mistyped per-account call changes nothing', async () => {
     const { users, run, lines, rows } = await setup();
-    expect(await run({ force: true }, undefined, ['alice@example.com'])).toBe(1);
-    expect(lines).toEqual(['✗ auth:end-all-sessions takes no arguments (got "alice@example.com"). To sign out one account, use auth:end-sessions <identifier> --force.']);
+    await expect(run({ force: true }, undefined, ['alice@example.com'])).rejects.toMatchObject({
+      name: 'CommandArgumentsError',
+      message: 'auth:end-all-sessions takes no arguments (got "alice@example.com"). To sign out one account, use auth:end-sessions <identifier> --force.',
+    });
+    expect(lines).toEqual([]);
     expect(users.key).toBeNull();
     expect(await rows(SIGN_INS_TABLE)).toBe(1);
   });
