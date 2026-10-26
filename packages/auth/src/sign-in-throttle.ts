@@ -74,7 +74,7 @@ export class SignInThrottle {
    */
   async takeClient(identifier: string, ip: string | undefined): Promise<number | undefined> {
     const key = this.#clientKey(identifier, ip);
-    if (await this.#limiter.attempt(key, this.#perMinute, CLIENT_SECONDS)) return undefined;
+    if (await this.#limiter.attempt(key, { maxAttempts: this.#perMinute, decay: CLIENT_SECONDS })) return undefined;
     return Math.max(1, await this.#limiter.availableInSeconds(key));
   }
 
@@ -85,9 +85,9 @@ export class SignInThrottle {
    */
   async takeAccount(identifier: string, userId: string | number | undefined): Promise<AccountHeld | undefined> {
     const key = this.#accountKey(identifier, userId);
-    if (await this.#limiter.attempt(key, this.#perDay, ACCOUNT_SECONDS)) return undefined;
+    if (await this.#limiter.attempt(key, { maxAttempts: this.#perDay, decay: ACCOUNT_SECONDS })) return undefined;
     // Once per window: the owner is told, the app can listen for the event.
-    const first = await this.#limiter.attempt(`${key}|notice`, 1, ACCOUNT_SECONDS);
+    const first = await this.#limiter.attempt(`${key}|notice`, { maxAttempts: 1, decay: ACCOUNT_SECONDS });
     return { retryAfterSeconds: Math.max(1, await this.#limiter.availableInSeconds(key)), first };
   }
 
@@ -96,7 +96,7 @@ export class SignInThrottle {
    * then the cookie counts for nothing until the hour is over: the attempt goes against the account's shared ceiling like any other.
    */
   async takeDevice(nonce: string): Promise<boolean> {
-    return this.#limiter.attempt(`login-device:${this.#digest(`device:${nonce}`)}`, DEVICE_ATTEMPTS, DEVICE_SECONDS);
+    return this.#limiter.attempt(`login-device:${this.#digest(`device:${nonce}`)}`, { maxAttempts: DEVICE_ATTEMPTS, decay: DEVICE_SECONDS });
   }
 
   /** The owner is in (a password, a passkey, a second factor): this client's minute starts over. Best effort, see {@link clearAccount}. */

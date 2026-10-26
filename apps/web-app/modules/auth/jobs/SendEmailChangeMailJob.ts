@@ -58,8 +58,8 @@ export class SendEmailChangeMailJob {
     const hashed = createHash('sha256').update(payload.email).digest('hex');
     const own = `email-change-mail:${hashed}:${user.id}`;
     const all = `email-change-mail:${hashed}`;
-    if (!(await this.#limiter.attempt(own, 2, 3600))) return;
-    if (!(await this.#limiter.attempt(all, 3, 3600))) {
+    if (!(await this.#limiter.attempt(own, { maxAttempts: 2, decay: 3600 }))) return;
+    if (!(await this.#limiter.attempt(all, { maxAttempts: 3, decay: 3600 }))) {
       await this.#limiter.clear(own);
       return;
     }

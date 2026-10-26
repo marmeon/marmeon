@@ -127,7 +127,7 @@ export class EmailChange {
     // One request a pause per account: a right password clears the password throttle, so without this a loop could mail any address.
     // A request inside the pause is answered like the others and does nothing.
     const pause = `email-change:account:${userId}`;
-    if (this.#config.emailChangeThrottleSeconds > 0 && !(await this.#limiter.attempt(pause, 1, this.#config.emailChangeThrottleSeconds))) return ok({ pending: true });
+    if (this.#config.emailChangeThrottleSeconds > 0 && !(await this.#limiter.attempt(pause, { maxAttempts: 1, decay: this.#config.emailChangeThrottleSeconds }))) return ok({ pending: true });
 
     // One transaction: the stored change and the mail, or neither. Nothing here asks whether the address has an account.
     // The pause is for a link that was sent: nothing stored or mailed gives it back, so that the retry is not answered with nothing.

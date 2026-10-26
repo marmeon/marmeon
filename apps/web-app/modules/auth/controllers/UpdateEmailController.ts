@@ -65,7 +65,7 @@ export class UpdateEmailController extends Controller {
     if (requested.value.pending) return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.email_change_sent') });
     // Without private registration the address is written at once, so there is no pause between requests: at most one confirmation mail an
     // hour goes to an address, or an account could alternate two requests and fill a stranger's inbox. The address is changed all the same.
-    if (await this.#limiter.attempt(`email-change-verification:${createHash('sha256').update(email).digest('hex')}`, 1, 3600)) await this.#verification.send(requested.value.value);
+    if (await this.#limiter.attempt(`email-change-verification:${createHash('sha256').update(email).digest('hex')}`, { maxAttempts: 1, decay: 3600 })) await this.#verification.send(requested.value.value);
     return this.back('/settings/security').flash('toast', { kind: 'success', message: this.#translator.get('auth.security.email_changed') });
   }
 }

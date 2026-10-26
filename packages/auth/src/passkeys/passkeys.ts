@@ -351,7 +351,7 @@ export class Passkeys {
     const user = await this.#requireUser('confirm');
     const id = idOf(user);
     const key = `passkey-confirm:${id}`;
-    if (!(await this.#limiter.attempt(key, CONFIRM_WINDOW.attempts, CONFIRM_WINDOW.seconds))) return err({ kind: 'throttled', retryAfterSeconds: Math.max(1, await this.#limiter.availableInSeconds(key)) });
+    if (!(await this.#limiter.attempt(key, { maxAttempts: CONFIRM_WINDOW.attempts, decay: CONFIRM_WINDOW.seconds }))) return err({ kind: 'throttled', retryAfterSeconds: Math.max(1, await this.#limiter.availableInSeconds(key)) });
     // No open challenge, or an answer signed for another one (a second tab, a double click), is not judged: the owner's own correct passkey can meet it.
     const challenge = await this.#takeChallenge('confirm', id);
     if (!challenge.ok) return err(challenge.error);
@@ -538,7 +538,7 @@ export class Passkeys {
 
   /** Uses a challenge up, atomically: `false` when another request already did. */
   async #spend(challenge: string): Promise<boolean> {
-    return this.#limiter.attempt(`passkey-challenge:${createHash('sha256').update(challenge).digest('base64url')}`, 1, CHALLENGE_SECONDS);
+    return this.#limiter.attempt(`passkey-challenge:${createHash('sha256').update(challenge).digest('base64url')}`, { maxAttempts: 1, decay: CHALLENGE_SECONDS });
   }
 
   #signInKey(): string {

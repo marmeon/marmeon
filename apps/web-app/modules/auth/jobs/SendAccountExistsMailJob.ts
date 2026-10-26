@@ -42,7 +42,7 @@ export class SendAccountExistsMailJob {
     if (!user) return; // deleted meanwhile
     // Keyed on the stored (normalized) address, hashed: no plain address in the cache. A refused attempt sends nothing and says nothing.
     const key = `account-exists-mail:${createHash('sha256').update(user.email).digest('hex')}`;
-    if (!(await this.#limiter.attempt(key, 1, 3600))) return;
+    if (!(await this.#limiter.attempt(key, { maxAttempts: 1, decay: 3600 }))) return;
     const link = (route: 'auth.login' | 'auth.password.request') => new URL(this.#router.url(route), this.#app.url).href;
     const t = this.#translators.for(user.locale ?? payload.locale);
     try {

@@ -206,7 +206,10 @@ export class RedisConnections {
   #client: Promise<ClientModule> | undefined;
   #closed = false;
 
-  /** `redactor` masks a connection's failure in the log — the app's, so the names its packages add count; without one, the core's key list. */
+  /**
+   * `redactor` masks a connection's failure in the log — the app's, so the names its packages add count; without one, the core's key list.
+   * @internal Built by the container, which applies the connections' key prefix.
+   */
   constructor(options: { connections: Readonly<Record<string, RedisConnectionOptions>>; logger: Logger; redactor?: Redactor }) {
     this.#options = new Map(Object.entries(options.connections));
     this.#logger = options.logger.child({ channel: 'redis' });

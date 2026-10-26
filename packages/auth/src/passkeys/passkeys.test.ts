@@ -1047,7 +1047,7 @@ describe('Passkeys: as the second factor', () => {
     expect(kinds.slice(0, 10).every((kind) => kind === 'invalid-code')).toBe(true);
     expect(kinds[10]).toBe('throttled');
     const limiter = booted.application.container.make(RateLimiter);
-    for (let i = 0; i < 5; i++) expect(await limiter.attempt('two-factor-minute:1', 5, 60)).toBe(true);
+    for (let i = 0; i < 5; i++) expect(await limiter.attempt('two-factor-minute:1', { maxAttempts: 5, decay: 60 })).toBe(true);
   });
 
   it('is refused in an app without the passkey provider', async () => {
@@ -1627,7 +1627,7 @@ describe('Passkeys: as a step-up', () => {
     expect(kinds.slice(0, 10).every((kind) => kind === 'invalid-code')).toBe(true);
     expect(kinds[10]).toBe('throttled');
     const limiter = booted.application.container.make(RateLimiter);
-    for (let i = 0; i < 5; i++) expect(await limiter.attempt('two-factor-minute:1', 5, 60)).toBe(true);
+    for (let i = 0; i < 5; i++) expect(await limiter.attempt('two-factor-minute:1', { maxAttempts: 5, decay: 60 })).toBe(true);
     expect(await b.pk('who')).toEqual({ id: 1 });
   });
 

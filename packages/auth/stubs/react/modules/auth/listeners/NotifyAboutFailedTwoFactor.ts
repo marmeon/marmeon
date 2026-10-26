@@ -24,7 +24,7 @@ export class NotifyAboutFailedTwoFactor {
   async handle(payload: EventPayload<typeof TwoFactorChallengeFailed>): Promise<void> {
     if (payload.during !== 'sign-in') return;
     const key = `two-factor-failed-mail:${payload.userId}`;
-    if (!(await this.#limiter.attempt(key, 1, 3600))) return;
+    if (!(await this.#limiter.attempt(key, { maxAttempts: 1, decay: 3600 }))) return;
     try {
       await this.#notices.send(payload.userId, { kind: 'failed', at: payload.at, ip: payload.ip });
     } catch (error) {

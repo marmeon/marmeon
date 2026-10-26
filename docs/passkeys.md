@@ -348,7 +348,7 @@ export class MailAboutFailedPasskeySignIn {
 
   async handle(event: PasskeySignInFailed): Promise<void> {
     // At most one mail an hour and account, however many attempts there were.
-    if (!(await this.limiter.attempt(`passkey-failed-mail:${event.userId}`, 1, 3600))) return;
+    if (!(await this.limiter.attempt(`passkey-failed-mail:${event.userId}`, { maxAttempts: 1, decay: 3600 }))) return;
     // … queue the mail to event.user
   }
 }

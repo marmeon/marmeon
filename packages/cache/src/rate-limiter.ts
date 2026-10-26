@@ -6,12 +6,21 @@ import { Cache } from './cache.ts';
 
 /** How many attempts per window, and whose attempts count together (`by`). */
 export class Limit {
+  /** @internal Read by `throttle()`. */
   readonly maxAttempts: number;
+  /** @internal Read by `throttle()`. */
   readonly decaySeconds: number;
   readonly key: string;
 
-  /** `decay` is how long a window lasts: whole seconds, or `{ minutes: 1 }` — a fraction of a second is a `RangeError`. */
+  /**
+   * `decay` is how long a window lasts: whole seconds, or `{ minutes: 1 }` — a fraction of a second is a `RangeError`. `maxAttempts`
+   * is a positive finite number (or infinite, for `none()`); anything else is a `TypeError`, so a limit never silently counts as none.
+   * @internal Made by the factories (`Limit.perMinute(5)`).
+   */
   constructor(maxAttempts: number, decay: Duration, key = '') {
+    if (maxAttempts !== Number.POSITIVE_INFINITY && !isAttemptCount(maxAttempts)) {
+      throw new TypeError(`A limit needs a positive finite number of attempts, not ${typeof maxAttempts === 'string' ? JSON.stringify(maxAttempts) : String(maxAttempts)}.`);
+    }
     const decaySeconds = durationToSeconds(decay);
     if (!Number.isInteger(decaySeconds)) throw new RangeError(`A limit's window is a whole number of seconds (the key of its counter), not ${JSON.stringify(decay)}.`);
     if (decaySeconds <= 0 && Number.isFinite(maxAttempts)) throw new RangeError(`A limit with a finite number of attempts needs a window longer than 0 seconds, not ${JSON.stringify(decay)}.`);
@@ -41,6 +50,35 @@ export class Limit {
   by(key: string): Limit {
     return new Limit(this.maxAttempts, this.decaySeconds, key);
   }
+}
+
+/** A number of attempts a limit can hold: positive and finite. The one rule of `Limit` and `RateLimiter.attempt()`. */
+function isAttemptCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+/**
+ * The numbers of `RateLimiter.attempt()`, checked at run time: a positional call `attempt(key, 5, 60)` from untyped code, or a count that
+ * is zero, negative, not a number or infinite, would otherwise count against a limit nobody meant. Fails closed, before any count.
+ */
+function checkedLimit(limit: unknown): { maxAttempts: number; decay: Duration } {
+  const form = '`attempt(key, { maxAttempts: 5, decay: 60 })`';
+  if (typeof limit !== 'object' || limit === null || Array.isArray(limit)) {
+    throw new TypeError(`RateLimiter.attempt() takes its numbers by name: ${form}, not ${Array.isArray(limit) ? 'a list' : limit === null ? 'null' : `a ${typeof limit}`}.`);
+  }
+  const { maxAttempts, decay } = limit as { maxAttempts?: unknown; decay?: unknown };
+  if (!isAttemptCount(maxAttempts)) {
+    throw new TypeError(`RateLimiter.attempt() needs maxAttempts to be a positive finite number: ${form}.`);
+  }
+  if (decay === undefined || decay === null) throw new TypeError(`RateLimiter.attempt() needs a decay, the length of the window: ${form}.`);
+  let seconds: number;
+  try {
+    seconds = durationToSeconds(decay as Duration);
+  } catch {
+    throw new TypeError(`RateLimiter.attempt() needs decay to be whole seconds or a duration such as { minutes: 1 }: ${form}.`);
+  }
+  if (!Number.isFinite(seconds) || seconds <= 0) throw new TypeError(`RateLimiter.attempt() needs decay to be longer than 0 seconds: ${form}.`);
+  return { maxAttempts, decay: decay as Duration };
 }
 
 /**
@@ -139,10 +177,12 @@ export class RateLimiter {
   }
 
   /**
-   * Counts one attempt and says whether it is within `maxAttempts` — one atomic step, so concurrent attempts can never
-   * all slip through. A refused attempt counts too (the window does not restart).
+   * Counts one attempt and says whether it is within `limit.maxAttempts` — one atomic step, so concurrent attempts can never
+   * all slip through. A refused attempt counts too (the window does not restart). `limit` is `{ maxAttempts: 5, decay: 60 }`:
+   * a limit that is not a positive finite number of attempts and a window throws a `TypeError` before anything is counted.
    */
-  async attempt(key: string, maxAttempts: number, decay: Duration): Promise<boolean> {
+  async attempt(key: string, limit: { maxAttempts: number; decay: Duration }): Promise<boolean> {
+    const { maxAttempts, decay } = checkedLimit(limit);
     return (await this.hit(key, decay)) <= maxAttempts;
   }
 
@@ -279,7 +319,7 @@ export class LimitLiveValidation {
     const name = route.routeName ?? `${ctx.request.method} ${route.path}`;
     for (const limit of limits) {
       const key = `${LIVE_VALIDATION_LIMITER}:${name}:${limit.decaySeconds}:${limit.key}`;
-      if (!(await this.#limiter.attempt(key, limit.maxAttempts, limit.decaySeconds))) {
+      if (!(await this.#limiter.attempt(key, { maxAttempts: limit.maxAttempts, decay: limit.decaySeconds }))) {
         const retryAfterSeconds = await this.#limiter.availableInSeconds(key);
         throw new HttpError(429, 'Too Many Attempts.', { 'retry-after': String(retryAfterSeconds) }, { key: 'marmeon.errors.throttled', params: { seconds: retryAfterSeconds } });
       }

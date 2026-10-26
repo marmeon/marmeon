@@ -151,8 +151,10 @@ export class ExportNotesController extends Controller {
   and returns `ok(result)`, or `err({ kind: 'locked' })` without calling it when someone else holds the lock — a
   [`Result`](errors.md#results), so a callback that returns `false` is not mistaken for a taken lock. Returned from a
   `transaction()` callback, `locked` rolls the transaction back ([transactions](transactions.md#returning-an-err)).
-- **`block(wait, callback?)`** waits up to `wait` (seconds, or a `Duration`) for the lock, trying every 250 milliseconds, then throws
-  `LockTimeoutError`. With a callback it runs it, releases the lock and returns the result.
+- **`block(wait, callback)`** waits up to `wait` (seconds, or a `Duration`) for the lock, trying every 250 milliseconds, runs the
+  callback while holding it, releases the lock and returns `ok(result)`. A lock that stays held gives `err({ kind: 'timeout' })`
+  and the callback never runs. Returned from a `transaction()` callback, `timeout` rolls the transaction back
+  ([transactions](transactions.md#returning-an-err)). Without a callback `block()` throws a `TypeError`: to try once, use `get()`.
 - **`release()`** frees the lock only while this lock object holds it. A lock that expired and was taken by another stays
   theirs.
 - **`forceRelease()`** frees it, whoever holds it. **`owned()`** says whether this object holds it now.

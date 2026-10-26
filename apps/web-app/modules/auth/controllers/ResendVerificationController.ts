@@ -22,7 +22,7 @@ export class ResendVerificationController extends Controller {
     // At most five mails an hour to one address, whoever asks: the limits of the route count per user (`auth.verification`), and several
     // accounts can hold the same address as a pending one. Keyed on the hashed address; a refused request sends nothing and answers alike.
     const key = `verification-mail:${createHash('sha256').update(ctx.user.email).digest('hex')}`;
-    if (await this.#limiter.attempt(key, 5, 3600)) await this.#mailer.send(ctx.user);
+    if (await this.#limiter.attempt(key, { maxAttempts: 5, decay: 3600 })) await this.#mailer.send(ctx.user);
     return this.back('/email/verify').flash('toast', { kind: 'success', message: this.#translator.get('auth.verify.sent') });
   }
 }
