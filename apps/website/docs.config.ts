@@ -63,6 +63,7 @@ export default defineDocs({
         { slug: 'recipe-public-form', label: 'A Public Page and Form' },
         { slug: 'recipe-background-job', label: 'A Job That Retries' },
         { slug: 'recipe-bookings', label: 'Bookings That Never Overlap' },
+        { slug: 'recipe-webhook', label: 'A Payment Webhook' },
       ],
     },
     {
