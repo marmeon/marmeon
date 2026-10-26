@@ -93,7 +93,6 @@ export declare class SessionEndings {
 // SessionLottery
 export declare class SessionLottery {
     chance: number;
-    constructor(chance: number);
 }
 // SessionServiceProvider
 export declare class SessionServiceProvider implements ServiceProvider {
@@ -162,7 +161,6 @@ export interface StoredSession {
 // UserSessions
 export declare class UserSessions {
     #private;
-    constructor(store: () => SessionStore, endings?: SessionEndings);
     canEnd(): boolean;
     end(id: string | number): Promise<number>;
 }

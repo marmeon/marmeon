@@ -108,6 +108,7 @@ export class ConsoleLogger implements Logger {
   readonly #app: Application | undefined;
   readonly #redactor: Redactor;
 
+  /** @internal Built by the container. */
   constructor(bindings: LogContext = {}, app?: Application) {
     this.#bindings = bindings;
     this.#app = app;

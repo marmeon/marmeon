@@ -55,7 +55,6 @@ export interface CacheEntry {
 export declare class CacheHealthCheck implements HealthCheck {
     #private;
     static check: string;
-    constructor(cache: Cache, config: CacheConfig);
     handle(): Promise<string>;
 }
 // CacheServiceProvider
@@ -106,7 +105,6 @@ export declare class Limit {
 // LimitLiveValidation
 export declare class LimitLiveValidation {
     #private;
-    constructor(limiter: RateLimiter);
     handle(ctx: HttpContext, next: Next<{}>): Promise<Response>;
 }
 // LimiterCallback
@@ -152,7 +150,6 @@ export declare class LockTimeoutError extends Error {
 // RateLimiter
 export declare class RateLimiter {
     #private;
-    constructor(cache: Cache);
     for(name: string, callback: LimiterCallback): this;
     limiter(name: string): LimiterCallback | undefined;
     hit(key: string, decay: Duration): Promise<number>;

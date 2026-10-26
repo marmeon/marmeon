@@ -61,7 +61,6 @@ export type DeliveryOutcome = 'delivered' | 'gone' | 'delivered-before';
 // Inbox
 export declare class Inbox {
     #private;
-    constructor(store: NotificationStore);
     unread(recipient: RecipientRef, { limit }?: {
         limit?: number;
     }): Promise<StoredNotification[]>;
@@ -183,7 +182,6 @@ export interface NotificationStatics {
 // NotificationStore
 export declare class NotificationStore {
     #private;
-    constructor(connections: Connections, connection: string, clock: Clock);
     get connection(): string;
     insert(row: {
         readonly id: string;
@@ -380,7 +378,6 @@ Types from other packages: none
 // NotificationFake
 export declare class NotificationFake implements Notifications {
     #private;
-    constructor(container: Container);
     send(recipient: Recipients, notification: unknown, data: unknown, options?: SendOptions): Promise<any>;
     sendNow(recipient: Recipients, notification: unknown, data: unknown): Promise<any>;
     sent<N extends NotificationClass>(notification: N, recipient?: RecipientRef, match?: NotificationMatch<N>): SentNotification<N>[];

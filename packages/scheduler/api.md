@@ -136,7 +136,6 @@ export declare class ScheduledTaskStarting extends ScheduledTaskEvent {
 // Scheduler
 export declare class Scheduler {
     #private;
-    constructor(container: Container, app: Application, config: ScheduleConfig, clock: Clock, logger: Logger);
     get tasks(): readonly Task[];
     task(name: string): Task;
     schedules(command: string): boolean;
@@ -144,9 +143,6 @@ export declare class Scheduler {
     next(task: Task, time?: number): number | undefined;
     tick(time: number): Promise<TaskRun[]>;
     runNow(task: Task): TaskRun;
-    checkProcess(): Promise<void>;
-    lockWarning(): string | undefined;
-    releaseHeld(): Promise<void>;
 }
 // SchedulerServiceProvider
 export declare class SchedulerServiceProvider implements ServiceProvider {
@@ -307,16 +303,9 @@ export declare class CronExpression {
 }
 // RunReason
 export type RunReason = 'due' | 'catch-up' | 'test';
-// ScheduleConfig
-export declare const ScheduleConfig: import("@marmeon/core").ConfigDefinition<{
-    timeZone: string;
-    environment: string;
-}>;
-export type ScheduleConfig = ConfigOf<typeof ScheduleConfig>;
 // Scheduler
 export declare class Scheduler {
     #private;
-    constructor(container: Container, app: Application, config: ScheduleConfig, clock: Clock, logger: Logger);
     get tasks(): readonly Task[];
     task(name: string): Task;
     schedules(command: string): boolean;
@@ -324,9 +313,6 @@ export declare class Scheduler {
     next(task: Task, time?: number): number | undefined;
     tick(time: number): Promise<TaskRun[]>;
     runNow(task: Task): TaskRun;
-    checkProcess(): Promise<void>;
-    lockWarning(): string | undefined;
-    releaseHeld(): Promise<void>;
 }
 // SkipReason
 export type SkipReason = 'filter' | 'other-server' | 'overlapping' | 'job-waiting';

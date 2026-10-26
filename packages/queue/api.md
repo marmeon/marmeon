@@ -266,7 +266,6 @@ export type QueueConnectionOptions = {
 // QueueConnections
 export declare class QueueConnections {
     #private;
-    constructor(container: Container, config: QueueConfig);
     verify(): void;
     get default(): string;
     names(): string[];
@@ -314,7 +313,6 @@ export declare class QueueError extends Error {
 export declare class QueueHealthCheck implements HealthCheck {
     #private;
     static check: string;
-    constructor(queue: Queue, config: QueueConfig);
     handle(): Promise<string>;
 }
 // QueueServiceProvider
@@ -471,7 +469,6 @@ export interface DispatchedJob<J extends JobClass = JobClass> {
 // QueueFake
 export declare class QueueFake implements Queue {
     #private;
-    constructor(container: Container, root?: QueueFake, transaction?: Transaction<any>);
     dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
     bulk<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;
     chain<const J extends readonly JobClass[]>(jobs: PendingJobs<J>, options?: BatchOptions): Promise<string[]>;

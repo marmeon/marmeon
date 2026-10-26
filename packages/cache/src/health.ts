@@ -13,6 +13,7 @@ export class CacheHealthCheck implements HealthCheck {
   readonly #cache: Cache;
   readonly #config: CacheConfig;
 
+  /** @internal Built by the container. */
   constructor(cache: Cache, config: CacheConfig) {
     this.#cache = cache;
     this.#config = config;

@@ -164,6 +164,7 @@ export class Migrator {
   #held: HeldLock | undefined;
   #lockOptions: Pick<LockOptions, 'waitSeconds' | 'onTakeover' | 'now' | 'owner'> = {};
 
+  /** @internal Built by the container. */
   constructor(app: Application, connections: Connections) {
     this.#app = app;
     this.#connections = connections;

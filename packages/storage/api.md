@@ -369,7 +369,6 @@ export interface FakeDiskAssertions {
 // StorageFake
 export declare class StorageFake implements Storage {
     #private;
-    constructor(container: Container);
     get names(): readonly string[];
     get defaultDisk(): string;
     disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): FakeDisk<N>;

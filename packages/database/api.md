@@ -176,7 +176,6 @@ export interface ExposedTables {
 // Factories
 export declare class Factories {
     #private;
-    constructor(connections: Connections);
     for<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S>;
 }
 // FactoryContext
@@ -276,7 +275,6 @@ export interface MigrationStatus extends MigrationFile {
 // Migrator
 export declare class Migrator {
     #private;
-    constructor(app: Application, connections: Connections);
     files(): MigrationFile[];
     status(): Promise<MigrationStatus[]>;
     missing(): Promise<{
@@ -546,7 +544,6 @@ export type SeederClass = new (...args: any[]) => Seeder;
 // Seeding
 export declare class Seeding {
     #private;
-    constructor(app: Application, container: Container, connections: Connections, factories: Factories);
     seeders(filter?: {
         module?: string;
         seeder?: string;

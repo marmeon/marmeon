@@ -17,7 +17,7 @@ export class UserSessions {
   readonly #store: () => SessionStore;
   readonly #endings: SessionEndings | undefined;
 
-  /** `store`: the app's session store. `endings`: told that the account's sign-ins ended, so its open live streams close. */
+  /** @internal Built by the container. `store`: the app's session store. `endings`: told that the account's sign-ins ended, so its open live streams close. */
   constructor(store: () => SessionStore, endings?: SessionEndings) {
     this.#store = store;
     this.#endings = endings;

@@ -34,6 +34,7 @@ export interface VerificationLinkOptions<N extends string = string> {
 export class EmailVerification {
   readonly #signer: UrlSigner;
 
+  /** @internal Built by the container. */
   constructor(signer: UrlSigner) {
     this.#signer = signer;
   }

@@ -144,6 +144,7 @@ export class Gate {
     };
   }
 
+  /** @internal Built by the container. */
   constructor(auth: Auth, resolve: ClassResolver) {
     this.#auth = auth;
     this.#resolve = resolve;

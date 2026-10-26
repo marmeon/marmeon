@@ -10,6 +10,7 @@ import type { NotificationStore, StoredNotification } from './store.ts';
 export class Inbox {
   readonly #store: NotificationStore;
 
+  /** @internal Built by the container. */
   constructor(store: NotificationStore) {
     this.#store = store;
   }

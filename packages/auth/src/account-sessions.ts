@@ -179,7 +179,7 @@ export class AccountSessions {
   readonly #changes: (() => EmailChangeStore | undefined) | undefined;
 
   /**
-   * Built by the container. Built by hand without the reset-token or API-token store, `endEveryone()` refuses unless it keeps them.
+   * @internal Built by the container. Built by hand without the reset-token or API-token store, `endEveryone()` refuses unless it keeps them.
    * `changes` hands back the change-of-address store the app bound, or `undefined` when it bound none: the changes of the account go too.
    */
   constructor(
@@ -207,6 +207,7 @@ export class AccountSessions {
   }
 
   /**
+   * @internal
    * Tells the live streams of the account that its sign-ins ended (they close, and the browsers still signed in connect again).
    * Tidying up after the real effect: a failure is logged, never thrown. Internal, like the sign-out of other devices: `Auth` calls it.
    */

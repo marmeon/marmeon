@@ -110,6 +110,7 @@ export class PasskeyStore extends TwoFactorState {
   readonly #connections: Connections;
   readonly #clock: Clock;
 
+  /** @internal Built by the container. */
   constructor(connections: Connections, clock: Clock) {
     super();
     this.#connections = connections;

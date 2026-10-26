@@ -114,6 +114,7 @@ export class RateLimiter {
   readonly #cache: Cache;
   readonly #limiters = new Map<string, LimiterCallback>();
 
+  /** @internal Built by the container. */
   constructor(cache: Cache) {
     this.#cache = cache;
   }
@@ -262,6 +263,7 @@ export const DEFAULT_LIVE_VALIDATION_LIMIT = 30;
 export class LimitLiveValidation {
   readonly #limiter: RateLimiter;
 
+  /** @internal Built by the container. */
   constructor(limiter: RateLimiter) {
     this.#limiter = limiter;
   }

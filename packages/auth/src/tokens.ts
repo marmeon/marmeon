@@ -126,6 +126,7 @@ export class DatabaseAccessTokens extends AccessTokenStore {
   readonly #prefix: string;
   readonly #clock: Clock;
 
+  /** @internal Built by the container. */
   constructor(connections: Connections, config: AuthConfig, clock: Clock) {
     super();
     this.#connections = connections;

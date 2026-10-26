@@ -35,6 +35,7 @@ export class Seeding {
   readonly #connections: Connections;
   readonly #factories: Factories;
 
+  /** @internal Built by the container. */
   constructor(app: Application, container: Container, connections: Connections, factories: Factories) {
     this.#app = app;
     this.#container = container;

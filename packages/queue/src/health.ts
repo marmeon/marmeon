@@ -12,6 +12,7 @@ export class QueueHealthCheck implements HealthCheck {
   readonly #queue: Queue;
   readonly #config: QueueConfig;
 
+  /** @internal Built by the container. */
   constructor(queue: Queue, config: QueueConfig) {
     this.#queue = queue;
     this.#config = config;

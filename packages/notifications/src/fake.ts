@@ -37,6 +37,7 @@ export class NotificationFake implements Notifications {
   readonly #sent: SentNotification[] = [];
   readonly #delivered = new Set<string>();
 
+  /** @internal Built by the container. */
   constructor(container: Container) {
     this.#container = container;
   }

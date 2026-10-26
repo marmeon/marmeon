@@ -341,6 +341,7 @@ export class Auth {
   }
 
   /**
+   * @internal
    * The waiting sign-in, if it is still good: `undefined` without one, `'expired'` when it ran out or its account is gone or changed its
    * password or session key since the password step (it is dropped then). Checked here, before any factor is looked at.
    */
@@ -352,11 +353,13 @@ export class Auth {
     return { userId: pending.id as AuthUserId, factors: pending.factors, failures: pending.failures, remember: pending.remember };
   }
 
+  /** @internal */
   [DROP_EXPIRED](): 'expired' {
     this.#session.forget(AUTH_SESSION_KEYS.pending);
     return 'expired';
   }
 
+  /** @internal */
   [RECORD_PENDING_FAILURE](): number | undefined {
     const pending = this.#pending();
     if (pending === undefined) return undefined;
@@ -367,6 +370,7 @@ export class Auth {
   }
 
   /**
+   * @internal
    * Finishes a pending sign-in after the second factor of `verifiedUserId` was proven — package-internal (`TwoFactor` calls it). Checks it
    * again: `no-challenge` without a pending sign-in, `expired` when it ran out, belongs to another account than the one that proved a
    * factor, or the account is gone or changed its password or session key since the password step (the pending state is dropped then).
@@ -395,6 +399,7 @@ export class Auth {
   }
 
   /**
+   * @internal
    * Signs in `verifiedUserId`, whose passkey was just checked for a passwordless sign-in. New session id and CSRF token as at any sign-in; a
    * password sign-in that waits for a factor is dropped. `expired` when the account is gone. The password was not typed, so the session
    * counts as a fresh confirmation instead: the passkey with user verification is the proof `confirmedPassword()` asks for.
@@ -614,12 +619,14 @@ export class Auth {
     return true;
   }
 
+  /** @internal */
   async [DROP_REMEMBER_TOKEN](): Promise<void> {
     const own = this.#ownSignIn();
     if (own !== undefined) await this.#signIns.dropToken(own.userId, own.id);
   }
 
   /**
+   * @internal
    * Whether this session still fits the account, decided inside the transaction that stores a factor: `false` means it ended meanwhile
    * (`AccountSessions.end()`, a password change or a key rotation elsewhere) and the caller rolls back. It ends nothing itself — the
    * caller runs `ACCOUNT_STILL_CLAIMED` after the rollback, so that dropping the device's remember-me token is not rolled back too.
@@ -641,11 +648,13 @@ export class Auth {
     return this.#fits(verified);
   }
 
+  /** @internal */
   [VERIFIED_SESSION_KEY](): string | null {
     return this.#requireVerified().sessionKey ?? null;
   }
 
   /**
+   * @internal
    * The check of `CLAIM_ACCOUNT` without a lock: the whole fingerprint (id and key) is read afresh, the row too, and a session that no longer fits
    * is signed out (outside any transaction, so it stays ended). Callers run it after the factor is committed — it also covers an
    * account without a session key and a provider whose compare-and-set takes no lock for this transaction — and after a rollback

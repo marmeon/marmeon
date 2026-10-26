@@ -19,12 +19,6 @@ export declare class RedisConnection {
     #private;
     readonly name: string;
     readonly prefix: string;
-    constructor(name: string, options: RedisConnectionOptions, internals: {
-        load: () => Promise<ClientModule>;
-        logger: Logger;
-        redactor: Redactor;
-        track: (connection: RedisConnection) => void;
-    });
     key(name: string): string;
     command<T = unknown>(args: readonly (string | number)[]): Promise<T>;
     run<T = unknown>(script: RedisScript, keys: readonly string[], args?: readonly (string | number)[]): Promise<T>;
@@ -85,25 +79,6 @@ export declare function defineRedisConnection<const Schema extends StandardSchem
 }): RedisConnectionDefinition;
 // defineRedisScript
 export declare function defineRedisScript(name: string, lua: string): RedisScript;
-```
-
-### Referenced, not exported
-
-```ts
-// Client
-interface Client {
-    connect(): Promise<unknown>;
-    sendCommand(args: string[]): Promise<unknown>;
-    subscribe(channel: string, listener: (message: string, channel: string) => void): Promise<unknown>;
-    unsubscribe(channel: string): Promise<unknown>;
-    close(): Promise<unknown>;
-    destroy(): unknown;
-    on(event: 'error', listener: (error: Error) => void): unknown;
-}
-// ClientModule
-interface ClientModule {
-    createClient(options: Record<string, unknown>): Client;
-}
 ```
 
 ## Environment

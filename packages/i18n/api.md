@@ -74,7 +74,6 @@ export declare class Locales {
     readonly default: string;
     readonly fallback: string;
     readonly explicit: boolean;
-    constructor(config: I18nConfig);
     get supported(): readonly string[];
     find(value: unknown): string | undefined;
     add(locale: string): string | undefined;
@@ -149,7 +148,6 @@ export declare const Translator: Token<Translator>;
 // Translators
 export declare class Translators {
     #private;
-    constructor(catalog: Catalog, locales: Locales);
     for(locale: string | null | undefined): Translator;
     get default(): Translator;
     get locales(): readonly string[];
