@@ -284,11 +284,11 @@ export class Scheduler {
     if (!this.#container.has(CacheConfig)) return undefined;
     const { driver } = this.#container.make(CacheConfig);
     if (driver !== 'file' && driver !== 'memory') return undefined;
-    const locking = this.tasks.filter((task) => task.definition.onOneServer || task.definition.overlapMinutes !== undefined);
+    const locking = this.tasks.filter((task) => task.definition.onOneServer || task.definition.overlapSeconds !== undefined);
     if (locking.length === 0) return undefined;
     const kinds = [
       locking.some((task) => task.definition.onOneServer) ? 'onOneServer()' : '',
-      locking.some((task) => task.definition.overlapMinutes !== undefined) ? 'withoutOverlapping()' : '',
+      locking.some((task) => task.definition.overlapSeconds !== undefined) ? 'withoutOverlapping()' : '',
     ].filter(Boolean);
     const scope =
       driver === 'file'
@@ -319,7 +319,7 @@ export class Scheduler {
         } catch (error) {
           throw new ScheduleError(withCode('Q5', `${where}: ${withoutCode((error as Error).message)}`));
         }
-        const timeZone = checkTimeZone(definition.timezone ?? this.#config.timezone, where);
+        const timeZone = checkTimeZone(definition.timeZone ?? this.#config.timeZone, where);
         const existing = tasks.find((task) => task.name === name);
         if (existing) {
           throw new ScheduleError(
@@ -402,8 +402,8 @@ export class Scheduler {
             }
           }
           let overlap: Lock | undefined;
-          if (task.definition.overlapMinutes !== undefined) {
-            overlap = cache.lock(`schedule:overlap:${task.name}`, task.definition.overlapMinutes * 60);
+          if (task.definition.overlapSeconds !== undefined) {
+            overlap = cache.lock(`schedule:overlap:${task.name}`, task.definition.overlapSeconds);
             if (!(await overlap.get())) {
               logger.info(`Skipped ${task.name}: its previous run has not finished (withoutOverlapping)`);
               return await skip('overlapping');

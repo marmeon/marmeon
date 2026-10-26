@@ -158,10 +158,11 @@ export class ScheduleListCommand {
         // A job's payload and a command's arguments are part of both: masked like a log line.
         name: this.#redactor.text(task.name),
         does: this.#redactor.text(task.summary),
+        description: definition.description ?? null,
         next: this.#scheduler.next(task, now),
         options: {
           oneServer: definition.onOneServer,
-          overlapMinutes: definition.overlapMinutes ?? null,
+          overlapSeconds: definition.overlapSeconds ?? null,
           catchUp: definition.catchUp,
           environments: definition.environments ? [...definition.environments] : null,
           filtered: definition.when.length + definition.skip.length > 0,
@@ -170,13 +171,14 @@ export class ScheduleListCommand {
     });
     if (json) {
       output.json({
-        format: 1,
-        tasks: listed.map(({ task, name, does, next, options: taskOptions }) => ({
+        format: 2,
+        tasks: listed.map(({ task, name, does, description, next, options: taskOptions }) => ({
           name,
           expression: task.expression.source,
           timeZone: task.timeZone,
           next: next === undefined ? null : isoMinute(next, task.timeZone),
           does,
+          description,
           options: taskOptions,
         })),
         warnings: warning ? [warning] : [],
@@ -185,15 +187,16 @@ export class ScheduleListCommand {
     }
     output.table(
       ['Task', 'Schedule', 'Next run', 'Does', 'Options'],
-      listed.map(({ task, name, does, next, options: o }) => {
+      listed.flatMap(({ task, name, does, description, next, options: o }) => {
         const labels = [
           o.oneServer ? 'one server' : '',
-          o.overlapMinutes !== null ? 'no overlap' : '',
+          o.overlapSeconds !== null ? 'no overlap' : '',
           o.catchUp === 'skip' ? 'no catch-up' : '',
           o.environments ? `only ${o.environments.join('/')}` : '',
           o.filtered ? 'filtered' : '',
         ].filter(Boolean);
-        return [name, `${task.expression.source} (${task.timeZone})`, next === undefined ? '—' : formatMinute(next, task.timeZone), does, labels.join(', ')];
+        const row = [name, `${task.expression.source} (${task.timeZone})`, next === undefined ? '—' : formatMinute(next, task.timeZone), does, labels.join(', ')];
+        return description === null ? [row] : [row, `  ${description}`];
       }),
     );
     if (warning) output.warn(warning);

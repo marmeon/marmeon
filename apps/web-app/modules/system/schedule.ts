@@ -6,9 +6,9 @@ import { defineSchedule } from '@marmeon/scheduler';
 export const schedule = defineSchedule((s) => {
   s.command('session:prune').everyFifteenMinutes().withoutOverlapping().onOneServer();
   s.command('cache:prune').hourlyAt(25).withoutOverlapping().onOneServer();
-  s.command('queue:prune-failed', ['--hours=168']).daily().at('03:20').timezone('Europe/Berlin').onOneServer();
+  s.command('queue:prune-failed', ['--hours=168']).daily().at('03:20').timeZone('Europe/Berlin').onOneServer();
   // Notifications read more than 30 days ago (unread ones stay).
-  s.command('notifications:prune', ['--days=30']).daily().at('03:30').timezone('Europe/Berlin').withoutOverlapping().onOneServer();
+  s.command('notifications:prune', ['--days=30']).daily().at('03:30').timeZone('Europe/Berlin').withoutOverlapping().onOneServer();
   // Uploads older than a day — used, expired or never sent: their rows first, then their files on the `uploads` disk. One
   // server here: the uploads disk is local to this machine (with several, run it on each — without onOneServer).
   s.command('uploads:prune').hourly().withoutOverlapping().onOneServer();

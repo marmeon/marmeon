@@ -11,7 +11,7 @@ import { defineSchedule } from '@marmeon/scheduler';
 export const schedule = defineSchedule((s) => {
   s.command('session:prune').everyFifteenMinutes().withoutOverlapping().onOneServer();
   s.command('cache:prune').hourlyAt(25).withoutOverlapping().onOneServer();
-  s.command('queue:prune-failed', ['--hours=168']).daily().at('03:20').timezone('Europe/Berlin').onOneServer();
+  s.command('queue:prune-failed', ['--hours=168']).daily().at('03:20').timeZone('Europe/Berlin').onOneServer();
 });
 ```
 
@@ -99,7 +99,7 @@ s.call(PruneDataExports).everyTenMinutes().withoutOverlapping().onOneServer().na
 A task's name appears in `schedule:list`, in `schedule:test`, in the log and in its locks. By default it is the command with its
 arguments, such as `queue:prune-failed --hours=168`, the job's `static job` or the class name. The arguments belong to the name,
 so the same command with other arguments is another task, with locks of its own. `.name()` sets another one. Give a class a
-name with its module in front, as above, so it stays unique across modules. `.description()` adds a line for `schedule:list`.
+name with its module in front, as above, so it stays unique across modules. `.description('…')` adds a line that `schedule:list` shows under the task, and prints as `description` in its `--json`.
 
 The app does not start when two tasks have one name, when a task has no frequency, or when a cron expression or a time zone is
 invalid.
@@ -131,7 +131,7 @@ Say how often first — .daily().onOneServer(): a task needs a frequency before 
 
 ### Time zones
 
-A task's times are on the clocks of `SCHEDULE_TIMEZONE`, UTC by default, or of the zone that `.timezone('Europe/Berlin')` names.
+A task's times are on the clocks of `SCHEDULE_TIMEZONE`, UTC by default, or of the zone that `.timeZone('Europe/Berlin')` names.
 Daylight saving time counts. A task at a time the clocks skip, such as 02:30 on the last Sunday of March in Berlin, runs right after
 the gap. A task at a time that happens twice, 02:30 in October, runs the first time only. Tasks that run every hour run as the hours
 really pass.
@@ -182,8 +182,8 @@ hour.
 
 ### No overlapping runs
 
-`withoutOverlapping()` skips a run while the previous one still runs, on any server. The lock expires after 1440 minutes, or after
-the minutes you pass, `withoutOverlapping(30)`, so a scheduler that crashed cannot block the task forever. A scheduler that stops
+`withoutOverlapping()` skips a run while the previous one still runs, on any server. The lock expires after 24 hours, or after
+the [span](time.md#spans-of-time) you pass, `withoutOverlapping({ expiresAfter: { minutes: 30 } })`, so a scheduler that crashed cannot block the task forever. A scheduler that stops
 before its runs end frees their locks. `s.job()` takes no `withoutOverlapping()`: queuing a job never overlaps, and the type error
 says so. Runs of the job itself that must not overlap use the job's [middleware](queues.md#job-middleware).
 
@@ -230,9 +230,9 @@ the runs still going `--stop-timeout` seconds, 30 by default, then ends and free
 | `schedule:list [--json]` | Lists the tasks, their schedule in their time zone, the next run and their options. |
 | `schedule:test <name>` | Runs one task now, whatever its frequency, filters and environments say. Its overlap lock still counts. |
 
-`schedule:list --json` prints the same as a [machine-readable document](console.md#machine-readable-output): `format`, `tasks` and
+`schedule:list --json` prints the same as a [machine-readable document](console.md#machine-readable-output): `format` (2), `tasks` and
 `warnings`. Each task has `name`, `expression`, `timeZone`, `next` (the next run as a time with its offset, `2026-10-06T03:10+02:00`,
-or `null` when none comes within 400 days), `does` (what the task runs, as in the table's Does column: `call Class`, `job name {payload}` or `command name args`, with secrets masked) and `options`: `oneServer` (a boolean), `overlapMinutes` (a number, or `null`
+or `null` when none comes within 400 days), `does` (what the task runs, as in the table's Does column: `call Class`, `job name {payload}` or `command name args`, with secrets masked), `description` (the text of `.description()`, or `null`) and `options`: `oneServer` (a boolean), `overlapSeconds` (the lock's span in seconds, or `null`
 without `withoutOverlapping()`), `catchUp` (`once` or `skip`), `environments` (a list, or `null` for every environment) and
 `filtered` (a boolean: the task has `when()` or `skip()`). The lock warning that the text prints is in `warnings`.
 

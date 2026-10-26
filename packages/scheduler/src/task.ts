@@ -1,5 +1,5 @@
 import type { CommandClass } from 'marmeon';
-import type { Container } from '@marmeon/core';
+import { durationToSeconds, type Container, type Duration } from '@marmeon/core';
 import type { JobClass } from '@marmeon/queue';
 import { ScheduleError } from './cron.ts';
 import { withCode } from '@marmeon/core/internal';
@@ -31,7 +31,7 @@ export type TimeOfDay = `${Hour}:${Minute}`;
 /** A literal time is checked here; a `string` from elsewhere when the schedule is read. */
 export type CheckTime<T extends string> = string extends T ? T : T extends TimeOfDay ? T : 'a time of day like 03:10 — hours 0–23, minutes 00–59';
 
-/** Everything known about a task — what `defineSchedule` collected. */
+/** Everything known about a task — what `defineSchedule` collected. Read-only: change a task through its builder. */
 export interface TaskDefinition {
   readonly kind: TaskKind;
   readonly target: JobClass | CommandClass | CallableTaskClass | string;
@@ -39,19 +39,33 @@ export interface TaskDefinition {
   readonly args: readonly string[];
   /** The module whose schedule defined it — for messages. */
   readonly module: string;
-  fields: [minute: string, hour: string, day: string, month: string, weekday: string] | undefined;
+  readonly fields: readonly [minute: string, hour: string, day: string, month: string, weekday: string] | undefined;
   /** Set by `cron()`: the expression as written. */
-  expression: string | undefined;
-  timezone: string | undefined;
-  readonly when: TaskFilter[];
-  readonly skip: TaskFilter[];
-  environments: readonly string[] | undefined;
-  onOneServer: boolean;
-  /** Minutes the overlap lock holds at most (`withoutOverlapping()`), undefined = overlapping allowed. */
-  overlapMinutes: number | undefined;
-  catchUp: CatchUp;
-  name: string | undefined;
-  description: string | undefined;
+  readonly expression: string | undefined;
+  /** The IANA name `.timeZone()` set; undefined = `SCHEDULE_TIMEZONE`. */
+  readonly timeZone: string | undefined;
+  readonly when: readonly TaskFilter[];
+  readonly skip: readonly TaskFilter[];
+  readonly environments: readonly string[] | undefined;
+  readonly onOneServer: boolean;
+  /** Seconds the overlap lock holds at most (`withoutOverlapping()`), undefined = overlapping allowed. */
+  readonly overlapSeconds: number | undefined;
+  readonly catchUp: CatchUp;
+  readonly name: string | undefined;
+  readonly description: string | undefined;
+}
+
+/** What the builder fills in; handed out as the read-only {@link TaskDefinition}. */
+type Draft = Omit<{ -readonly [K in keyof TaskDefinition]: TaskDefinition[K] }, 'fields' | 'when' | 'skip'> & {
+  fields: [minute: string, hour: string, day: string, month: string, weekday: string] | undefined;
+  when: TaskFilter[];
+  skip: TaskFilter[];
+};
+
+/** Options of {@link ScheduledTask.withoutOverlapping}. */
+export interface TaskOverlapOptions {
+  /** How long the lock holds at most, in case a scheduler dies holding it. Default `{ hours: 24 }`. */
+  readonly expiresAfter?: Duration;
 }
 
 /** How often — every builder has these; each sets the whole cron expression (a later one replaces an earlier one). */
@@ -93,6 +107,7 @@ export interface UnscheduledTask<K extends TaskKind> extends Frequencies<K> {
    * or the class name.
    */
   name(name: string): UnscheduledTask<K>;
+  /** A line `schedule:list` shows under the task. */
   description(text: string): UnscheduledTask<K>;
   onOneServer(this: 'Say how often first — .daily().onOneServer(): a task needs a frequency before its options'): never;
   withoutOverlapping(this: 'Say how often first — .everyMinute().withoutOverlapping(): a task needs a frequency before its options'): never;
@@ -102,7 +117,7 @@ export interface UnscheduledTask<K extends TaskKind> extends Frequencies<K> {
 /** The overlap option, by kind: queuing a job takes no time, and `s.job` is unique until the job runs anyway. */
 type Overlapping<K extends TaskKind> = K extends 'job'
   ? (this: 's.job() only queues the job — that never overlaps, and the next one is not queued while it still waits. Overlapping runs of the job itself: withoutOverlapping() middleware on the job class') => never
-  : (expiresAfterMinutes?: number) => ScheduledTask<K>;
+  : (options?: TaskOverlapOptions) => ScheduledTask<K>;
 
 /** A task with a frequency: more options can follow. */
 export interface ScheduledTask<K extends TaskKind> extends Frequencies<K> {
@@ -115,7 +130,7 @@ export interface ScheduledTask<K extends TaskKind> extends Frequencies<K> {
   /** Only on these days of the week. */
   days(...days: [Weekday, ...Weekday[]]): ScheduledTask<K>;
   /** Whose clocks the times are on (IANA name) — daylight saving time included. Default: `SCHEDULE_TIMEZONE` (UTC). */
-  timezone(timeZone: string): ScheduledTask<K>;
+  timeZone(timeZone: string): ScheduledTask<K>;
   /** Runs only when `filter` says true (asked each time it is due). */
   when(filter: TaskFilter): ScheduledTask<K>;
   /** Does not run when `filter` says true. */
@@ -129,7 +144,7 @@ export interface ScheduledTask<K extends TaskKind> extends Frequencies<K> {
   onOneServer(): ScheduledTask<K>;
   /**
    * Skips a run while the previous one still runs — on any server (a lock in the cache, which expires after
-   * `expiresAfterMinutes`, default 1440, in case a scheduler dies holding it). "Any server" needs a shared cache, like
+   * `options.expiresAfter`, default `{ hours: 24 }`, in case a scheduler dies holding it). "Any server" needs a shared cache, like
    * `onOneServer()`: with `file` or `memory` the scheduler warns at its start.
    */
   withoutOverlapping: Overlapping<K>;
@@ -139,6 +154,7 @@ export interface ScheduledTask<K extends TaskKind> extends Frequencies<K> {
    */
   catchUp(mode: CatchUp): ScheduledTask<K>;
   name(name: string): ScheduledTask<K>;
+  /** A line `schedule:list` shows under the task. */
   description(text: string): ScheduledTask<K>;
 }
 
@@ -158,28 +174,32 @@ function weekday(day: unknown, where: string): number {
 
 /** The builder behind every task — one object, typed by stage (`UnscheduledTask` → `ScheduledTask`). */
 export class PendingTask {
-  readonly definition: TaskDefinition;
+  readonly #draft: Draft;
 
   constructor(definition: Pick<TaskDefinition, 'kind' | 'target' | 'payload' | 'args' | 'module'>) {
-    this.definition = {
+    this.#draft = {
       ...definition,
       fields: undefined,
       expression: undefined,
-      timezone: undefined,
+      timeZone: undefined,
       when: [],
       skip: [],
       environments: undefined,
       onOneServer: false,
-      overlapMinutes: undefined,
+      overlapSeconds: undefined,
       catchUp: 'once',
       name: undefined,
       description: undefined,
     };
   }
 
+  get definition(): TaskDefinition {
+    return this.#draft;
+  }
+
   #set(minute: string, hour = '*', day = '*', month = '*', weekday = '*'): this {
-    this.definition.fields = [minute, hour, day, month, weekday];
-    this.definition.expression = undefined;
+    this.#draft.fields = [minute, hour, day, month, weekday];
+    this.#draft.expression = undefined;
     return this;
   }
 
@@ -250,8 +270,8 @@ export class PendingTask {
   }
   cron(expression: string) {
     if (typeof expression !== 'string') throw new ScheduleError(withCode('Q5', `cron() takes an expression like '*/5 * * * *', not ${JSON.stringify(expression)}.`));
-    this.definition.fields = undefined;
-    this.definition.expression = expression;
+    this.#draft.fields = undefined;
+    this.#draft.expression = expression;
     return this;
   }
 
@@ -273,56 +293,69 @@ export class PendingTask {
     this.#fields('days()')[4] = days.map((day) => weekday(day, 'days()')).join(',');
     return this;
   }
-  timezone(timeZone: string) {
-    this.definition.timezone = timeZone;
+  timeZone(timeZone: string) {
+    this.#draft.timeZone = timeZone;
     return this;
   }
   when(filter: TaskFilter) {
-    this.definition.when.push(filter);
+    this.#draft.when.push(filter);
     return this;
   }
   skip(filter: TaskFilter) {
-    this.definition.skip.push(filter);
+    this.#draft.skip.push(filter);
     return this;
   }
   environments(...names: string[]) {
-    this.definition.environments = names;
+    this.#draft.environments = names;
     return this;
   }
   onOneServer() {
-    this.definition.onOneServer = true;
+    this.#draft.onOneServer = true;
     return this;
   }
-  withoutOverlapping(expiresAfterMinutes = 1440) {
-    if (this.definition.kind === 'job') throw new ScheduleError(withCode('Q5', 's.job() only queues the job — that never overlaps. Overlapping runs of the job itself: withoutOverlapping() middleware on the job class.'));
-    if (!(expiresAfterMinutes > 0)) throw new ScheduleError(withCode('Q5', `withoutOverlapping(${String(expiresAfterMinutes)}): the lock needs minutes > 0 after which it expires.`));
-    this.definition.overlapMinutes = expiresAfterMinutes;
+  withoutOverlapping(options: TaskOverlapOptions = {}) {
+    if (this.#draft.kind === 'job') throw new ScheduleError(withCode('Q5', 's.job() only queues the job — that never overlaps. Overlapping runs of the job itself: withoutOverlapping() middleware on the job class.'));
+    if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+      throw new TypeError(`withoutOverlapping(${JSON.stringify(options)}) takes an options object — withoutOverlapping({ expiresAfter: { minutes: 30 } }).`);
+    }
+    for (const key of Object.keys(options)) {
+      if (key !== 'expiresAfter') throw new ScheduleError(withCode('Q5', `withoutOverlapping({ ${key} }): the only option is expiresAfter — withoutOverlapping({ expiresAfter: { minutes: 30 } }).`));
+    }
+    let seconds: number;
+    try {
+      seconds = durationToSeconds(options.expiresAfter ?? { hours: 24 });
+    } catch (error) {
+      throw new TypeError(`withoutOverlapping({ expiresAfter }): ${(error as Error).message}`, { cause: error });
+    }
+    if (!(seconds > 0)) throw new ScheduleError(withCode('Q5', `withoutOverlapping({ expiresAfter: ${JSON.stringify(options.expiresAfter)} }): the lock needs a span above zero after which it expires.`));
+    this.#draft.overlapSeconds = seconds;
     return this;
   }
   catchUp(mode: CatchUp) {
     if (mode !== 'once' && mode !== 'skip') throw new ScheduleError(withCode('Q5', `catchUp() is 'once' or 'skip', not ${JSON.stringify(mode)}.`));
-    this.definition.catchUp = mode;
+    this.#draft.catchUp = mode;
     return this;
   }
   name(name: string) {
     if (typeof name !== 'string' || name.trim() === '') throw new ScheduleError(withCode('Q5', 'name() needs a name.'));
-    this.definition.name = name.trim();
+    this.#draft.name = name.trim();
     return this;
   }
   description(text: string) {
-    this.definition.description = text;
+    if (typeof text !== 'string' || /[\p{Cc}]/u.test(text)) throw new ScheduleError(withCode('Q5', 'description() takes one line of text.'));
+    this.#draft.description = text;
     return this;
   }
 
   /** The cron fields an option changes — set by a frequency before (`.daily().at('03:10')`), not by `cron()`. */
   #fields(option: string): [string, string, string, string, string] {
-    if (this.definition.fields) return this.definition.fields;
+    if (this.#draft.fields) return this.#draft.fields;
     throw new ScheduleError(
       withCode(
         'Q5',
-        this.definition.expression === undefined
+        this.#draft.expression === undefined
           ? `${option} needs a frequency first — .daily().at('03:10').`
-          : `${option} cannot change a cron('${this.definition.expression}') expression — write it into the expression.`,
+          : `${option} cannot change a cron('${this.#draft.expression}') expression — write it into the expression.`,
       ),
     );
   }
