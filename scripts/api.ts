@@ -18,11 +18,13 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { SAME_VALUE } from './api-names.ts';
+import { INTERNAL_EXCEPTIONS, INTERNAL_PENDING } from './api-internal.ts';
 import { SPAN_EXCEPTIONS, SPAN_PENDING, SPAN_WORDS } from './api-spans.ts';
 import { compareSnapshots, parseSnapshot, renderSnapshot, type ApiChanges, type ApiItem } from './api-snapshot.ts';
-import { LIBRARY } from './check-source.ts';
+import { NOT_SOURCE, importsOf, namespaceUseOf } from './api-usage.ts';
+import { LIBRARY, repositoryFiles } from './check-source.ts';
 import { frameworkPackages } from './packages.ts';
-import { oxc } from './source-files.ts';
+import { oxc, type SourceFile } from './source-files.ts';
 
 /**
  * The packages whose types a package's public declarations may name, per package (the directory name under `packages/`).
@@ -805,11 +807,14 @@ function experimentalScope(pkg: PackageToSnapshot, problems: string[]): true | R
   return entries;
 }
 
+/** Whether a subpath of `exports` is an `./internal` entry (also `./x/internal`): no snapshot holds it. */
+const isInternalSubpath = (subpath: string) => /^\.\/(?:.+\/)?internal$/.test(subpath);
+
 /** The entry points of a package with types (every subpath of `exports` but `./internal`): their import specifier and `.d.ts`. */
 function entryPoints(pkg: PackageToSnapshot): { entry: string; path: string }[] {
   const out: { entry: string; path: string }[] = [];
   for (const [subpath, conditions] of Object.entries((pkg.manifest.exports ?? {}) as Record<string, unknown>)) {
-    if (subpath === './internal' || typeof conditions !== 'object' || conditions === null) continue;
+    if (isInternalSubpath(subpath) || typeof conditions !== 'object' || conditions === null) continue;
     const types = (conditions as Record<string, unknown>).types;
     if (typeof types === 'string') out.push({ entry: subpath === '.' ? pkg.name : `${pkg.name}${subpath.slice(1)}`, path: join(pkg.dir, types) });
   }
@@ -1134,6 +1139,136 @@ export function spanProblems(packages: readonly PackageToSnapshot[], lists: Span
   return problems;
 }
 
+export interface InternalLists {
+  /** Names and classes that stand on purpose, each with its reason. */
+  readonly exceptions: Readonly<Record<string, string>>;
+  /** Names and classes that do not follow the rules yet. */
+  readonly pending: ReadonlySet<string>;
+}
+
+const INTERNAL_LISTS: InternalLists = { exceptions: INTERNAL_EXCEPTIONS, pending: INTERNAL_PENDING };
+
+/** The `./internal` subpaths of a package (also `./x/internal`): their import specifier and `.d.ts`. */
+function internalEntries(pkg: PackageToSnapshot): { specifier: string; path: string }[] {
+  const out: { specifier: string; path: string }[] = [];
+  for (const [subpath, conditions] of Object.entries((pkg.manifest.exports ?? {}) as Record<string, unknown>)) {
+    if (!isInternalSubpath(subpath) || typeof conditions !== 'object' || conditions === null) continue;
+    const types = (conditions as Record<string, unknown>).types;
+    if (typeof types === 'string') out.push({ specifier: `${pkg.name}${subpath.slice(1)}`, path: join(pkg.dir, types) });
+  }
+  return out;
+}
+
+/** The text with comments and string literals blanked: a name in them is no use. */
+function withoutCommentsAndStrings(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|(["'`])(?:\\[\s\S]|(?!\1)[^\\\n])*\1/g, (match) => (match.startsWith('/') ? ' ' : '""'));
+}
+
+/** The names of `./internal` entries that no file outside their package imports, as `<specifier> <name>`. */
+function unusedInternalNames(packages: readonly PackageToSnapshot[], root: string, files: readonly SourceFile[]): Set<string> {
+  const unused = new Set<string>();
+  const entries = new Map<string, { names: Set<string>; own: string }>();
+  for (const pkg of packages) {
+    const declarations = new Declarations();
+    for (const { specifier, path } of internalEntries(pkg)) {
+      const names = new Set([...declarations.exportsOf(path).keys()].filter((name) => name !== 'default' && !name.startsWith('* from ')));
+      entries.set(specifier, { names, own: `${relative(root, pkg.dir).split('\\').join('/')}/` });
+    }
+  }
+  const used = new Map<string, Set<string>>();
+  for (const { path, text } of files) {
+    // The lists spell the names they are about.
+    if (!/\.[cm]?[jt]sx?$/.test(path) || NOT_SOURCE.test(path) || path === 'scripts/api-internal.ts' || !text.includes('/internal')) continue;
+    const statements = importsOf(text);
+    for (const [specifier, entry] of entries) {
+      if (path.startsWith(entry.own) || !text.includes(specifier)) continue;
+      const taken = used.get(specifier) ?? new Set<string>();
+      used.set(specifier, taken);
+      const mine = statements.filter((statement) => statement.specifier === specifier);
+      // A named import says what it takes; any other way to reach the entry (`import()`, `import * as`, a resolved path) is
+      // read by the members the file reads (`mod.name`) and the keys it destructures (`{ name }`).
+      let spelled = mine.length === 0;
+      for (const statement of mine) {
+        if (statement.names !== undefined) for (const name of statement.names) taken.add(name);
+        else if (statement.namespace === undefined) spelled = true;
+        else {
+          const use = namespaceUseOf(text, statement.namespace);
+          if (use.whole) spelled = true;
+          for (const name of use.names) taken.add(name);
+        }
+      }
+      if (spelled) {
+        const code = withoutCommentsAndStrings(text);
+        for (const name of entry.names) {
+          const word = name.replaceAll('$', '\\$');
+          if (new RegExp(`\\??\\.${word}(?![\\w$])|\\{[^{}]*(?<![\\w$.])${word}(?![\\w$])[^{}]*\\}`).test(code)) taken.add(name);
+        }
+      }
+    }
+  }
+  for (const [specifier, { names }] of entries) for (const name of names) if (!used.get(specifier)?.has(name)) unused.add(`${specifier} ${name}`);
+  return unused;
+}
+
+/** The classes that a declaration of a package's entry points names (the "Referenced, not exported" ones of its snapshot) but no entry exports, as `<package> <class>`. */
+function leakedClasses(packages: readonly PackageToSnapshot[]): Set<string> {
+  const leaked = new Set<string>();
+  for (const pkg of packages) {
+    const declarations = new Declarations();
+    const exported = new Set<string>();
+    const pending: Reference[] = [];
+    for (const { path } of entryPoints(pkg)) {
+      for (const [, target] of declarations.exportsOf(path)) {
+        if (target.kind !== 'declaration') continue;
+        exported.add(`${target.file}\0${target.local}`);
+        const statements = exportedStatements(declarations, target);
+        for (const statement of statements?.shown ?? []) pending.push(...referencesOf(statements!.file, statement));
+      }
+      for (const filePath of reachedFiles(declarations, path)) {
+        const file = declarations.file(filePath);
+        for (const { statement } of file ? augmentationsOf(file) : []) pending.push(...referencesOf(file!, statement));
+      }
+    }
+    const seen = new Set<string>();
+    for (let index = 0; index < pending.length; index++) {
+      const target = resolveReference(declarations, pending[index]!);
+      if (target?.kind !== 'declaration') continue;
+      const key = `${target.file}\0${target.local}`;
+      if (exported.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      const file = declarations.file(target.file);
+      const statements = file?.declarations.get(target.local) ?? [];
+      if (statements.some((statement) => statement.node.type === 'ClassDeclaration')) leaked.add(`${pkg.name} ${target.local}`);
+      for (const statement of statements) pending.push(...referencesOf(file!, statement));
+    }
+  }
+  return leaked;
+}
+
+/**
+ * What a package keeps behind `./internal` is for other packages: a name of an `./internal` entry that no file outside its package
+ * imports (the code or tests of another package) is a problem, and so is a class that a public
+ * signature names but no entry point exports. A name that stands on purpose is in `lists.exceptions` with its reason, one that
+ * waits for a change in `lists.pending`; a listed name that follows the rule is a problem too, so the line gets deleted.
+ * `files` is read only when a package has an `./internal` entry.
+ */
+export function internalProblems(packages: readonly PackageToSnapshot[], root: string, files: () => readonly SourceFile[], lists: InternalLists = INTERNAL_LISTS): string[] {
+  const unused = packages.some((pkg) => internalEntries(pkg).length > 0) ? unusedInternalNames(packages, root, files()) : new Set<string>();
+  const leaked = leakedClasses(packages);
+  const problems: string[] = [];
+  const listed = (key: string) => Object.hasOwn(lists.exceptions, key) || lists.pending.has(key);
+  for (const key of [...unused].sort()) {
+    if (!listed(key)) problems.push(`${key} is exported from an ./internal entry but no file outside its package imports it — stop exporting it, or use it from the package that needs it`);
+  }
+  for (const key of [...leaked].sort()) {
+    if (!listed(key)) problems.push(`${key} is a class a public signature names, but no entry exports it — mark the member that names it @internal, or export the class`);
+  }
+  const hits = new Set([...unused, ...leaked]);
+  for (const key of Object.keys(lists.exceptions)) if (!hits.has(key)) problems.push(`${key} is listed in INTERNAL_EXCEPTIONS but follows the rule — delete the line`);
+  for (const key of lists.pending) if (!hits.has(key)) problems.push(`${key} is listed in INTERNAL_PENDING but follows the rule — delete the line`);
+  return problems;
+}
+
 /** The api.md of a package, or none when it has no entry point with types; plus the problems met on the way and what is experimental in it. */
 export function snapshotPackage(
   pkg: PackageToSnapshot,
@@ -1217,7 +1352,7 @@ export interface ApiRun {
 }
 
 /** Compares (or, with `write`, rewrites) the `api.md` of every package under `root`. */
-export async function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>>; names?: NameLists; spans?: SpanLists } = {}): Promise<ApiRun> {
+export async function runApi(root: string, options: { write?: boolean; allowed?: Readonly<Record<string, readonly string[]>>; names?: NameLists; spans?: SpanLists; internal?: InternalLists; files?: readonly SourceFile[] } = {}): Promise<ApiRun> {
   const allowed = options.allowed ?? FOREIGN_TYPES;
   const lines: string[] = [];
   let failed = false;
@@ -1273,6 +1408,11 @@ export async function runApi(root: string, options: { write?: boolean; allowed?:
   if (spans.length > 0) {
     failed = true;
     lines.push('spans of time:', ...spans.map((problem) => `  ${problem}`));
+  }
+  const internal = internalProblems(packages, root, () => options.files ?? repositoryFiles(root), options.internal);
+  if (internal.length > 0) {
+    failed = true;
+    lines.push('internal:', ...internal.map((problem) => `  ${problem}`));
   }
   const docs = experimentalProblems(root, experimental);
   if (docs.length > 0) {
