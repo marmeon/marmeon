@@ -382,7 +382,7 @@ export class AccountSessions {
       this.#logger?.warn('Ended every session of every account', { ...ended, emailChanges: done.emailChanges });
       // The work is done: a listener that fails must not make the caller run it again.
       try {
-        await this.#events?.dispatch(new EverySessionEnded(new Date(this.#clock?.now() ?? Date.now()), ended));
+        await this.#events?.dispatch(new EverySessionEnded(ended, new Date(this.#clock?.now() ?? Date.now())));
       } catch (error) {
         this.#logger?.error('A listener of EverySessionEnded failed', { error: error instanceof Error ? error.message : String(error) });
       }

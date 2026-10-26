@@ -476,3 +476,14 @@ export async function disablingTwoFactorIsAResult() {
 // @ts-expect-error scope is required
 new SignInLockedOut('ada@example.com', '203.0.113.1');
 expectTypeOf(new SignInLockedOut('ada@example.com', undefined, 'client').scope).toEqualTypeOf<'client' | 'account'>();
+
+// The session package does not know the sign-in keys: app code gets no typed way to write one.
+type DeclaresKey<K extends string> = K extends keyof import('@marmeon/session').SessionData ? true : false;
+export const sessionDeclaresNoSignInKey: [DeclaresKey<'_auth_id'>, DeclaresKey<'_auth_confirmed_at'>, DeclaresKey<'_auth_pending'>] = [false, false, false];
+
+declare const passkeys: import('./passkeys/passkeys.ts').Passkeys;
+declare const registration: import('@simplewebauthn/server').RegistrationResponseJSON;
+// @ts-expect-error — removing a passkey asks for the password
+void passkeys.remove(1);
+// @ts-expect-error — registering a passkey asks for the password
+void passkeys.register(registration, 'Laptop');

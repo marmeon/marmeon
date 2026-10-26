@@ -1,6 +1,6 @@
 import type { Session } from '@marmeon/session';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from './proof.ts';
+import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from './proof.ts';
 
 const NOW = 1_800_000_000;
 
@@ -18,7 +18,7 @@ afterEach(() => {
 
 describe('secondFactorProvenWithin()', () => {
   it('counts a factor proven now and up to the limit, and not a second later', () => {
-    expect(FACTOR_CHANGE_MAX_AGE).toBe(900);
+    expect(FACTOR_CHANGE_MAX_AGE_SECONDS).toBe(900);
     expect(secondFactorProvenWithin(session(NOW), 900, NOW)).toBe(true);
     expect(secondFactorProvenWithin(session(NOW - 900), 900, NOW)).toBe(true);
     expect(secondFactorProvenWithin(session(NOW - 901), 900, NOW)).toBe(false);

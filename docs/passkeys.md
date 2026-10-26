@@ -204,7 +204,7 @@ ask for the password in the same form, and `remove()` does so for every passkey,
 | `register(response, name, password)` | Adds the passkey. Resolves with `recoveryCodes` (the first factor) or `null`. |
 | `rename(id, name)` | Renames; `false` for an empty or too long name or one that is not the user's. |
 | `confirmOptions()`, `confirm(response)` | Confirm [sudo mode](#confirming-sudo-mode) with a passkey. |
-| `remove(id, password?)` | Removes. Every passkey needs `password`; the recovery codes go with the last factor. |
+| `remove(id, password)` | Removes. Every passkey needs `password`; the recovery codes go with the last factor. |
 | `release(id, password)` | Lets a suspended passkey sign in again, with the password typed now. |
 
 On an account that already has a factor, `registrationOptions()`, `register()`, `remove()` and `release()` also throw unless this

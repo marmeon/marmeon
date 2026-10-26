@@ -88,6 +88,7 @@ export class SignedOut {
   readonly #event = true;
   readonly user: AuthUser;
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser) {
     this.user = user;
   }
@@ -102,6 +103,7 @@ export class SignInFailed {
   readonly identifier: string;
   readonly user: AuthUser | undefined;
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(identifier: string, user: AuthUser | undefined) {
     this.identifier = identifier;
     this.user = user;
@@ -119,6 +121,7 @@ export class SignInLockedOut {
   readonly ip: string | undefined;
   readonly scope: 'client' | 'account';
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(identifier: string, ip: string | undefined, scope: 'client' | 'account') {
     this.identifier = identifier;
     this.ip = ip;
@@ -164,6 +167,7 @@ export class EmailChanged {
   readonly previousEmail: string | null;
   readonly email: string;
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(userId: AuthUserId, previousEmail: string | null, email: string) {
     this.userId = userId;
     this.previousEmail = previousEmail;
@@ -181,6 +185,7 @@ export class PasswordChanged {
   /** The API tokens the new password revoked — 0 unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`. */
   readonly revokedTokens: number;
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser, revokedTokens = 0) {
     this.user = user;
     this.revokedTokens = revokedTokens;
@@ -197,6 +202,7 @@ export class PasswordReset {
   /** The API tokens the new password revoked — 0 unless `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`. */
   readonly revokedTokens: number;
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser, revokedTokens = 0) {
     this.user = user;
     this.revokedTokens = revokedTokens;
@@ -235,7 +241,10 @@ export class EverySessionEnded {
   readonly accessTokens: number;
   readonly signIns: number;
 
-  constructor(at: Date, counts: { readonly accounts: number; readonly resetTokens: number; readonly accessTokens: number; readonly signIns: number }) {
+  /** @internal Made by the framework when it dispatches the event. */
+  constructor(counts: { readonly accounts: number; readonly resetTokens: number; readonly accessTokens: number; readonly signIns: number }, at = new Date()) {
+    // An untyped caller passing the time first would read the counts off a Date and report zeros.
+    if ((counts as unknown) instanceof Date) throw new TypeError('new EverySessionEnded(counts, at?) takes the counts first and the time last.');
     this.at = at;
     this.accounts = counts.accounts;
     this.resetTokens = counts.resetTokens;
@@ -261,6 +270,7 @@ export class TwoFactorEnabled {
   readonly user: AuthUser;
   readonly factor: 'totp' | 'passkey';
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser, factor: 'totp' | 'passkey') {
     this.user = user;
     this.factor = factor;
@@ -291,6 +301,7 @@ export class TwoFactorDisabled {
   readonly user: AuthUser;
   readonly via: 'user' | 'operator' | 'reset';
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser, via: 'user' | 'operator' | 'reset' = 'user') {
     this.user = user;
     this.via = via;
@@ -316,6 +327,7 @@ export class RecoveryCodesGenerated {
   readonly #event = true;
   readonly user: AuthUser;
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser) {
     this.user = user;
   }
@@ -342,6 +354,7 @@ export class RecoveryCodeUsed {
   readonly user: AuthUser;
   readonly remaining: number;
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser, remaining: number) {
     this.user = user;
     this.remaining = remaining;
@@ -419,6 +432,7 @@ export class PasskeyRegistered {
   readonly user: AuthUser;
   readonly name: string;
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser, name: string) {
     this.user = user;
     this.name = name;
@@ -464,6 +478,7 @@ export class PasskeySignInFailed {
   readonly ip: string | null;
   readonly userAgent: string | null;
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined } = {}, at = new Date()) {
     this.user = user;
     this.at = at;
@@ -498,6 +513,7 @@ export class PasskeyRemoved {
   readonly user: AuthUser;
   readonly via: 'user' | 'reset';
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser, via: 'user' | 'reset' = 'user') {
     this.user = user;
     this.via = via;
@@ -553,6 +569,7 @@ export class RememberTokenReused {
   /** Whether the account's sessions were ended. False when the provider could not (no session key); every remember-me token of the account is gone either way. */
   readonly sessionsEnded: boolean;
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser, details: { readonly ip?: string | undefined; readonly userAgent?: string | undefined; readonly sessionsEnded: boolean }, at = new Date()) {
     this.user = user;
     this.at = at;
@@ -585,6 +602,7 @@ export class PasskeyCloneSuspected {
   readonly user: AuthUser;
   readonly passkeyId: number;
 
+  /** @internal Made by the framework when it dispatches the event. */
   constructor(user: AuthUser, passkeyId: number) {
     this.user = user;
     this.passkeyId = passkeyId;

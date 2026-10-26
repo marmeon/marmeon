@@ -17,7 +17,7 @@ export default defineRoutes((Route) => {
 });
 ```
 
-`abilities()` is not a decision about who may call the route: it limits which tokens get in. The route still says who may call
+`abilities()` names at least one ability (`abilities()` with none throws: a route every token may call needs no `abilities()`), and it is not a decision about who may call the route: it limits which tokens get in. The route still says who may call
 it, here with `authorize(everyone)` because the controller lists only the token's own user's notes; without a decision the app
 does not start. The [authorization](authorization.md#every-route-decides) page has the rule.
 

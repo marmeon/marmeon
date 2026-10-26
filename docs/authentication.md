@@ -435,7 +435,7 @@ Every lifetime of a sign-in is listed here. The list of [sign-ins](#sign-ins) le
 | `AUTH_SESSION_MAX_HOURS` | 24 hours | A sign-in, however active the user is. A valid remember-me cookie signs in again. | 24 hours is the limit NIST SP 800-63B-4 sets at AAL2. |
 | `AUTH_REMEMBER_DAYS` | 30 days (0 to 30) | The [remember-me](#remember-me) cookie, counted from the sign-in that made it. | AAL1: a convenience, not a proof. |
 | `twoFactor()` `maxAge` | 24 hours | The proof of a [second factor](two-factor-authentication.md#requiring-it); then the user is asked for it again. | AAL2 holds only on routes behind `twoFactor()`. |
-| `FACTOR_CHANGE_MAX_AGE` | 15 minutes, no setting | The proof that [changing the factors](two-factor-authentication.md#changing-the-factors), the e-mail address or an API token asks for. | A factor proven within this time. |
+| A change of factors | 15 minutes, no setting | The proof that [changing the factors](two-factor-authentication.md#changing-the-factors), the e-mail address or an API token asks for. | A factor proven within this time. |
 | `AUTH_PASSWORD_TIMEOUT_SECONDS` | 15 minutes | The password or passkey confirmation of [sudo mode](#sudo-mode). | The password or a passkey; only a passkey also counts as a second factor. |
 
 `SESSION_LIFETIME_MINUTES` is renewed by every request, so on its own an active session would never end. `AUTH_SESSION_MAX_HOURS` (1 to 720)
@@ -1178,7 +1178,7 @@ another place:
 | `SessionStore` (`@marmeon/session`) | Abstract class | `read`, `write`, `destroy`, `gc` (`destroyUser` is optional) | The store of `SESSION_DRIVER`: `file`, `database`, `redis` or `memory`. | Does not compile. |
 
 The A5 and A6 errors are listed under [error codes](errors.md#server-error-codes). `TwoFactorStore` and `PasskeyStore` are
-implementations, not contracts: you bind them, you do not extend them. The drivers of cache, queue and storage are interfaces of
+implementations, not contracts: you bind them, you do not extend them. Their write methods are not API: change a user's factors through `TwoFactor` and `Passkeys`, which check the password, end the other sessions and dispatch the events. The drivers of cache, queue and storage are interfaces of
 their own packages.
 
 Whether a member is required or optional follows from one question, [whether it is security-relevant](#security-relevant-members):

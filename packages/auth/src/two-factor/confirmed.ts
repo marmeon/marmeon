@@ -6,7 +6,7 @@ import { urlFor } from '@marmeon/router/url';
 import { Session } from '@marmeon/session';
 import { Auth } from '../auth.ts';
 import { idOf, type Authenticated } from '../user.ts';
-import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from './proof.ts';
+import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from './proof.ts';
 import { TwoFactorState } from './state.ts';
 
 const VARY = addVary(undefined, EXPECTS_JSON_VARY);
@@ -49,7 +49,7 @@ export function confirmedSecondFactor<const V extends RouteNameInput = never>(op
         return this.#redirect(ctx, 'auth.login');
       }
       if ((await this.#state.factors(idOf(user))).length === 0) return next();
-      if (secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE, Math.floor(this.#clock.now() / 1000))) return next();
+      if (secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE_SECONDS, Math.floor(this.#clock.now() / 1000))) return next();
       if (ctx.expectsJson()) return Response.json({ error: 'two_factor_unverified' }, { status: 403, headers: VARY });
       return this.#redirect(ctx, options.verify);
     }

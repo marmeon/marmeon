@@ -1,6 +1,6 @@
 import { editableResponse, type HttpContext, type Next } from '@marmeon/router';
 import { Session } from '@marmeon/session';
-import { AUTH_SESSION_KEYS } from './auth.ts';
+import { readAuth } from './session-keys.ts';
 
 /** What a response for a signed-in user may be kept as: nowhere — not in the HTTP cache, not on a proxy. */
 export const NO_STORE = 'no-store, private';
@@ -21,7 +21,7 @@ export class NoStoreWhenSignedIn {
 
   async handle(_ctx: HttpContext, next: Next<{}>): Promise<Response> {
     const response = await next();
-    if (!this.#session.started || this.#session.get(AUTH_SESSION_KEYS.id) === undefined) return response;
+    if (!this.#session.started || readAuth(this.#session, 'id') === undefined) return response;
     if (response.headers.has('cache-control')) return response;
     // In place when the framework made the response for this request; a copy otherwise (one an app may hand out twice, or with
     // immutable headers — Response.redirect).

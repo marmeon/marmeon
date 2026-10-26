@@ -519,7 +519,7 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `MAIL_USERNAME` | mail | value | `""` | [Mail](mail.md#configuration) |
 | `MARMEON_OTEL_RECORD_QUERY_VALUES` | otel | switch | `false` | [Observability](observability.md#configuration) |
 | `MARMEON_OTEL_TRUST_TRACEPARENT` | otel | switch | `false` | [Observability](observability.md#configuration) |
-| `NODE_ENV` | auth, core, devtools, encryption, log, mail, scheduler, server, session | value | optional | [Configuration](configuration.md#the-environment-node_env) |
+| `NODE_ENV` | core, devtools, encryption, log, mail, scheduler, server, session | value | optional | [Configuration](configuration.md#the-environment-node_env) |
 | `NOTIFICATIONS_CONNECTION` | notifications | connection | `"default"` | [Notifications](notifications.md#the-notifications-table) |
 | `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` | otel | value | `[]` | [Observability](observability.md#redaction) |
 | `OTEL_SDK_DISABLED` | otel | switch | `"false"` | [Observability](observability.md#configuration) |

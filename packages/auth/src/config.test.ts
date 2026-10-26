@@ -27,6 +27,12 @@ describe('AuthConfig: variable names', () => {
     expect(Object.keys(config)).not.toContain('resetExpire');
   });
 
+  it('refuses a read of the removed protected flag, at the read', async () => {
+    const config = (await resolve({})) as Record<string, unknown>;
+    expect(() => config.protected).toThrow('ask environment.isProtected()');
+    expect(Object.keys(config)).not.toContain('protected');
+  });
+
   it('keeps the bounds of the durations', async () => {
     await expect(resolve({ AUTH_PASSWORD_TIMEOUT_SECONDS: '0' })).rejects.toThrow(/AUTH_PASSWORD_TIMEOUT_SECONDS/);
     await expect(resolve({ AUTH_RESET_MINUTES: '0' })).rejects.toThrow(/AUTH_RESET_MINUTES/);
