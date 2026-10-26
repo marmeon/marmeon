@@ -102,9 +102,9 @@ export class CloseLayerResult extends RedirectResult {
     this.back();
   }
 
-  override toResponse(request: Request, routes: RouteLookup, flasher?: Flasher): Response {
+  override toResponse(request: Request, routes: RouteLookup, flasher?: Flasher, locale?: string): Response {
     // Flash data and the target as for the redirect — `with()` data goes with the request that follows (the reload).
-    const redirect = super.toResponse(request, routes, flasher);
+    const redirect = super.toResponse(request, routes, flasher, locale);
     if (regionOf(request) !== 'layer') return redirect;
     // The client is shown the close: it takes the flash messages — they fire with it, not with whatever loads next.
     const flash = serializedFlash(flasher?.takeFlash(request.headers.get(DOCUMENT_HEADER) ?? undefined) ?? []);
