@@ -6,7 +6,7 @@ import type { JobContext } from './job.ts';
 import { RECORD_OPTIONS, type Queue } from './queue.ts';
 import { JobEvent } from './events.ts';
 import { QueueError, QueueSetupError } from './registry.ts';
-import { describeIssues, JobPayloadError, TARGET_UNKNOWN, toJson } from './runner.ts';
+import { JobPayloadError, schemaMismatch, TARGET_UNKNOWN, toJson } from './runner.ts';
 
 /** `auth.registered` — like a job's name. */
 const NAME = /^[a-z0-9]+(?:[.:_-][a-z0-9]+)*$/;
@@ -156,20 +156,25 @@ export class CallQueuedListener {
   }
 
   /**
-   * @internal Asked before the job runs: why this app has no listener for the job, if so. Such a job is foreign to this
-   * worker — a newer one may know it — and never runs another listener.
+   * @internal Asked before the job runs: why this worker cannot run it, if so — this app has no listener for the job, or the
+   * event's schema rejects the payload. Such a job is foreign to this worker — a newer one may know it, or a newer release may
+   * have changed the schema — and never runs another listener. The reason names fields, never values: the payload is encrypted.
    */
-  static [TARGET_UNKNOWN](container: Container, data: QueuedListenerPayload): string | undefined {
-    if (container.make(QueuedListeners).find(data.event, data.listener)) return undefined;
-    return `No queued listener "${data.listener}" of the event "${data.event}" is registered in this app (a deploy in progress, or the listener's static listener was changed or removed).`;
+  static async [TARGET_UNKNOWN](container: Container, data: QueuedListenerPayload): Promise<string | undefined> {
+    const target = container.make(QueuedListeners).find(data.event, data.listener);
+    if (!target) {
+      return `No queued listener "${data.listener}" of the event "${data.event}" is registered in this app (a deploy in progress, or the listener's static listener was changed or removed).`;
+    }
+    const result = await target.event.schema['~standard'].validate(data.payload);
+    return result.issues ? schemaMismatch(`the event ${data.event} (${data.listener})`, result.issues).message : undefined;
   }
 
   async handle(data: QueuedListenerPayload, job: JobContext): Promise<void> {
     const target = this.#listeners.find(data.event, data.listener);
     if (!target) throw new QueueError(`No queued listener "${data.listener}" of the event "${data.event}" in this app.`);
     const result = await target.event.schema['~standard'].validate(data.payload);
-    // A deploy changed the event's schema: it never will match — failed at once, like a job's payload.
-    if (result.issues) return job.fail(new JobPayloadError(`The payload no longer matches the schema of the event ${data.event} (${data.listener}): ${describeIssues(result.issues)}`, result.issues));
+    // The worker held a payload the schema rejects before it got here; this is for one that changed in between.
+    if (result.issues) return job.fail(new JobPayloadError(schemaMismatch(`the event ${data.event} (${data.listener})`, result.issues).message, result.issues));
     await this.#resolver.make(target.listener).handle(result.value);
   }
 }
@@ -196,7 +201,7 @@ export class QueueListenerDispatcher implements ListenerQueue {
     }
     const result = await queueable.schema['~standard'].validate(event);
     if (result.issues) {
-      throw new JobPayloadError(`${queueable.name} cannot be queued for ${listener.name}: its static schema rejects the event — ${describeIssues(result.issues)}`, result.issues);
+      throw new JobPayloadError(`${queueable.name} cannot be queued for ${listener.name}: ${schemaMismatch('the event', result.issues).message}`, result.issues);
     }
     const payload = toJson(CallQueuedListener, result.value);
     const { queue, connection, delay, tries, backoff } = listener.queue;

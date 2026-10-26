@@ -189,8 +189,9 @@ The start also checks the queued listeners: two events with one name, a listener
 listeners of an event with one name or an unknown setting in `static queue` stop it. A worker finds a queued listener only by
 its `static listener` within its event. A job that names a listener this app does not have is not run and no other listener
 takes its place: it waits like any job this worker does not know, and lands in the failed jobs after six hours. Renaming the
-string while jobs of it wait leaves them unrun, so keep it. A deploy that changes an event's schema fails the waiting jobs
-whose payload no longer matches, at once and without retries.
+string while jobs of it wait leaves them unrun, so keep it. A deploy that changes an event's schema holds the waiting jobs
+whose payload no longer matches in the same way: another worker may still accept them, and the error names the fields, never
+the values.
 
 ## The framework's events
 

@@ -149,7 +149,7 @@ async function freshDatabase(driver: TestDriver): Promise<{ env: Record<string, 
  */
 export async function notificationApp(
   driver: TestDriver,
-  options: { notifications?: ModuleDefinition['notifications']; recipients?: ModuleDefinition['recipients']; queue?: 'fake' | 'database' } = {},
+  options: { notifications?: ModuleDefinition['notifications']; recipients?: ModuleDefinition['recipients']; queue?: 'fake' | 'database'; logger?: Logger } = {},
 ): Promise<TestApp> {
   const database = await freshDatabase(driver);
   const clock = new TestClock();
@@ -164,7 +164,7 @@ export async function notificationApp(
     env: { ...database.env, APP_KEY: KEY, NODE_ENV: 'test' },
     override: (container) => {
       container.instance(Clock, clock);
-      container.instance(Logger, silent);
+      container.instance(Logger, options.logger ?? silent);
       container.instance(Mailer, mail);
       if (options.queue !== 'database') {
         queue = new QueueFake(container);

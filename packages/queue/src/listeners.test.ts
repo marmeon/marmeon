@@ -27,6 +27,19 @@ class UnitOfWork {
   readonly id = crypto.randomUUID();
 }
 
+/** An event with a field the schema pins to a few values: its message quotes what it rejects. */
+class OrderPaid {
+  static readonly event = 'shop.order-paid';
+  static readonly schema = v.object({ status: v.picklist(['paid', 'refunded']) });
+  readonly #event = true;
+  readonly status: 'paid' | 'refunded' = 'paid';
+}
+export class NoteOrderPaid {
+  static readonly listener = 'shop.note-order-paid';
+  static readonly queue = {};
+  handle(): void {}
+}
+
 class OrderShipped {
   static readonly event = 'shop.order-shipped';
   static readonly schema = v.object({ orderId: v.string() });
@@ -66,8 +79,9 @@ export class UpdateWarehouse {
   }
 }
 
-async function app(options: { listeners?: ModuleDefinition['listeners']; fake?: boolean } = {}): Promise<Application & { seen: Seen }> {
+async function app(options: { listeners?: ModuleDefinition['listeners']; fake?: boolean; logger?: Logger } = {}): Promise<Application & { seen: Seen; clock: TestClock }> {
   const seen = new Seen();
+  const clock = new TestClock();
   const application = await createApplication({
     root: '/tmp',
     discover: false,
@@ -76,15 +90,15 @@ async function app(options: { listeners?: ModuleDefinition['listeners']; fake?: 
   }, {
     env: { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', APP_KEY: KEY, NODE_ENV: 'test' },
     override: (container) => {
-      container.instance(Clock, new TestClock());
+      container.instance(Clock, clock);
       container.instance(Seen, seen);
       container.scoped(UnitOfWork);
-      container.instance(Logger, silent);
+      container.instance(Logger, options.logger ?? silent);
       if (options.fake) container.instance(Queue, new QueueFake(container));
     },
   });
   await migrate(application.container.make(Connections));
-  return Object.assign(application, { seen });
+  return Object.assign(application, { seen, clock });
 }
 
 const jobRows = async (application: Application) =>
@@ -159,16 +173,32 @@ describe('queued listeners', () => {
     queue.assertListenerNotQueued(Sub as never);
   });
 
-  it('fail a queued run at once when the payload no longer matches the event schema (a deploy changed it)', async () => {
+  it('hold a queued run whose payload this worker\'s event schema rejects (a rolling deploy) — it never runs the listener and shows the fields only', async () => {
     await using application = await app({ fake: true });
     const queue = application.container.make(Queue) as QueueFake;
     const { CallQueuedListener } = await import('./listeners.ts');
-    // Three tries: a mismatch must not use them up — it never will match.
     await queue.dispatch(CallQueuedListener as never, { event: 'shop.order-shipped', listener: 'shop.send-shipping-mail', payload: { orderId: 7 } } as never, { [RECORD_OPTIONS]: { tries: 3 } } as never);
-    expect(await queue.work()).toMatchObject({ failed: 1, released: 0 });
-    const failed = await queue.failed();
-    expect(failed.map((entry) => entry.exception).join('\n')).toContain('The payload no longer matches the schema of the event shop.order-shipped (shop.send-shipping-mail): orderId:');
+    expect(await queue.work()).toMatchObject({ failed: 0, released: 1 });
+    expect(await queue.failed()).toEqual([]);
     expect(application.seen.entries).toEqual([]);
+  });
+
+  it('hold a payload the schema rejects until it fails, and show no value of it in the log, the failed job or the reports', async () => {
+    const secret = 'secret-value-91';
+    const lines: string[] = [];
+    const logger: Logger = { debug() {}, info() {}, warn: (m, c) => void lines.push(`${m} ${JSON.stringify(c ?? {})}`), error: (m, c) => void lines.push(`${m} ${JSON.stringify(c ?? {})}`), child: () => logger };
+    await using application = await app({ listeners: [listen(OrderPaid, NoteOrderPaid)], logger });
+    const { CallQueuedListener } = await import('./listeners.ts');
+    await application.container.make(Queue).dispatch(CallQueuedListener as never, { event: 'shop.order-paid', listener: 'shop.note-order-paid', payload: { status: secret } } as never);
+    const worker = () => application.container.make(QueueConnections).worker('database', 10).run({ stopWhenEmpty: true });
+    expect(await worker()).toMatchObject({ failed: 0, released: 1 });
+    application.clock.travel({ hours: 7 });
+    expect(await worker()).toMatchObject({ failed: 1 });
+    const [failed] = await application.container.make(QueueConnections).failed().all();
+    expect(failed!.exception).toContain('fields: status');
+    expect(failed!.exception).not.toContain(secret);
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join('\n')).not.toContain(secret);
   });
 
   it('hold a job naming a listener this app does not have — the class name, as the former release wrote it, included — and run no other listener', async () => {
@@ -218,7 +248,7 @@ describe('queued listeners', () => {
     const broken = new OrderShipped('x');
     Object.defineProperty(broken, 'orderId', { value: 42 });
     await expect(application.container.createScope().make(EventDispatcher).dispatch(broken)).rejects.toThrow(
-      'OrderShipped cannot be queued for SendShippingMail: its static schema rejects the event — orderId: Invalid type: Expected string but received 42',
+      'OrderShipped cannot be queued for SendShippingMail: The data of the event does not match its schema (fields: orderId).',
     );
   });
 

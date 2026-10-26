@@ -7,7 +7,7 @@ import { DatabaseChannel, MailChannel, NotificationChannels } from './channels.t
 import { MakeNotificationsTableCommand, PruneNotificationsCommand } from './commands.ts';
 import { NotificationConfig } from './config.ts';
 import { Inbox } from './inbox.ts';
-import { SendQueuedNotification } from './job.ts';
+import { heldReason, SendQueuedNotification } from './job.ts';
 import type { NotificationClass, RecipientResolvers } from './notification.ts';
 import { NotificationDeliverer, Notifications, NotificationSender, type QueueNotification } from './notifications.ts';
 import { NotificationRegistry, NotificationSetupError, RecipientRegistry } from './registry.ts';
@@ -179,6 +179,7 @@ export class NotificationServiceProvider implements ServiceProvider {
     // The job behind send(): a framework job (`marmeon.notification`) — registered only when the app has notifications.
     this.#queue = await importOptional(async () => ({ ...(await import('@marmeon/queue')), ...(await import('@marmeon/queue/internal')) }), '@marmeon/queue');
     if (this.#queue && container.has(this.#queue.JobRegistry) && registry.all().length > 0) {
+      (SendQueuedNotification as unknown as Record<symbol, unknown>)[this.#queue.TARGET_UNKNOWN] = heldReason;
       container.make(this.#queue.JobRegistry).add([SendQueuedNotification as never], '@marmeon/notifications', { framework: true });
     }
   }
