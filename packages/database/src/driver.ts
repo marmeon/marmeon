@@ -9,6 +9,23 @@ export class DatabaseConnectionError extends Error {
   override name = 'DatabaseConnectionError';
 }
 
+/**
+ * The error for a connection that could not be opened (D11), with the connection's name and target. A key or certificate file that
+ * cannot be read says its path (`sslkey` of the URL): the path stays out of the message.
+ */
+export function connectionError(context: Pick<DriverContext, 'name' | 'target'>, error: unknown): DatabaseConnectionError {
+  const reason =
+    // pg-pool's wait for a free connection shares the connect timeout; opening a connection says "due to connection timeout".
+    error instanceof Error && error.message === 'timeout exceeded when trying to connect'
+      ? 'no free connection within the connect timeout; raise DB_POOL_MAX or shorten transactions'
+      : error instanceof Error && typeof (error as { path?: unknown }).path === 'string'
+      ? `${(error as { code?: string }).code ?? 'error'}: a certificate or key file named in the URL (sslcert, sslkey, sslrootcert) could not be read`
+      : error instanceof Error
+        ? error.message || (error as { code?: string }).code || error.name
+        : String(error);
+  return new DatabaseConnectionError(withCode('D11', `Could not connect to the database connection "${context.name}" (${context.target}): ${reason}`), { cause: error });
+}
+
 export interface DriverContext {
   /** The connection's name, e.g. `default`. */
   readonly name: string;
@@ -368,17 +385,7 @@ export class MarmeonDriver implements Driver {
       return await open();
     } catch (error) {
       if (error instanceof DatabaseConnectionError) throw error;
-      // A key or certificate file that cannot be read says its path (`sslkey` of the URL): the path stays out of the message.
-      const reason =
-        error instanceof Error && typeof (error as { path?: unknown }).path === 'string'
-          ? `${(error as { code?: string }).code ?? 'error'}: a certificate or key file named in the URL (sslcert, sslkey, sslrootcert) could not be read`
-          : error instanceof Error
-            ? error.message || (error as { code?: string }).code || error.name
-            : String(error);
-      throw new DatabaseConnectionError(
-        withCode('D11', `Could not connect to the database connection "${this.#context.name}" (${this.#context.target}): ${reason}`),
-        { cause: error },
-      );
+      throw connectionError(this.#context, error);
     }
   }
 }
