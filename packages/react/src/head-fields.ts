@@ -28,9 +28,8 @@ export interface TwitterCard {
   title?: string;
   /** Default: the page's `description`. */
   description?: string;
-  /** A URL, relative to the origin of `APP_URL`. */
-  image?: string;
-  imageAlt?: string;
+  /** A URL (relative to the origin of `APP_URL`), or the URL with its text. */
+  image?: string | { url: string; alt?: string };
 }
 
 /** A value JSON can hold: no `Date`, function, `bigint` or `undefined`. */
@@ -202,8 +201,10 @@ export function headTags(head: HeadEntry, base: string | undefined, warn?: (mess
     add('meta', 'name', 'twitter:creator', twitter.creator);
     add('meta', 'name', 'twitter:title', twitter.title ?? title);
     add('meta', 'name', 'twitter:description', twitter.description ?? description);
-    add('meta', 'name', 'twitter:image', url(twitter.image));
-    add('meta', 'name', 'twitter:image:alt', twitter.imageAlt);
+    const card = typeof twitter.image === 'string' ? { url: twitter.image } : twitter.image;
+    const cardUrl = url(card?.url);
+    add('meta', 'name', 'twitter:image', cardUrl);
+    if (cardUrl !== undefined) add('meta', 'name', 'twitter:image:alt', card && 'alt' in card ? card.alt : undefined);
   }
   if (hrefs) {
     for (const [locale, href] of hrefs) {
