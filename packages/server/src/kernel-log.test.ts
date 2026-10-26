@@ -107,7 +107,7 @@ describe('createHttpKernel — what its error lines write', async () => {
   const renderer = createDocumentRenderer({ template: () => FALLBACK_TEMPLATE, ssr: () => render });
   const application = await create({});
   application.container.make(Redactor);
-  const app = createHttpKernel(application, { renderer, islandTimeout: 50 });
+  const app = createHttpKernel(application, { renderer, islandTimeoutMs: 50 });
 
   /** Runs `act`, then proves the error lines it wrote exist and carry no part of the secrets. */
   const logsMasked = async (act: () => Promise<unknown>, expected: RegExp) => {
@@ -120,6 +120,11 @@ describe('createHttpKernel — what its error lines write', async () => {
   };
   const text = async (response: Response | Promise<Response>) => (await response).text();
   const islandsPage = (...urls: string[]) => app.request(`/page?islands=${urls.map(encodeURIComponent).join(',')}`);
+
+  it('refuses the old islandTimeout, which no type check may have seen', () => {
+    const options = { renderer, islandTimeout: 50 };
+    expect(() => createHttpKernel(application, options)).toThrow(/islandTimeoutMs/);
+  });
 
   it('masks the URL of an island from another site', async () => {
     await logsMasked(
@@ -147,7 +152,7 @@ describe('createHttpKernel — what its error lines write', async () => {
   });
 
   it('masks the path in the read-only report of an island that writes — as the default of a protected environment logs it', async () => {
-    const lenient = createHttpKernel(application, { renderer, islandTimeout: 50, strictReadOnly: false });
+    const lenient = createHttpKernel(application, { renderer, islandTimeoutMs: 50, strictReadOnly: false });
     await logsMasked(
       () => text(lenient.request(`/islands/writes/${PATH_SECRET}?token=${QUERY_SECRET}`, { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' } })),
       /^cookies\.set\('tracking'\) in an island request \(GET .*\).* \(dropped\)$/,
@@ -155,7 +160,7 @@ describe('createHttpKernel — what its error lines write', async () => {
   });
 
   it('masks the error of an island whose error response fails to render', async () => {
-    const failing = createHttpKernel(await create({ rendering: true }), { renderer, islandTimeout: 50 });
+    const failing = createHttpKernel(await create({ rendering: true }), { renderer, islandTimeoutMs: 50 });
     await logsMasked(
       () => text(failing.request('/fails', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' } })),
       /^Rendering the error of an island failed$/,
@@ -163,12 +168,12 @@ describe('createHttpKernel — what its error lines write', async () => {
   });
 
   it('masks the error of an error response that fails to render', async () => {
-    const sharing = createHttpKernel(await create({ sharing: true }), { renderer, islandTimeout: 50 });
+    const sharing = createHttpKernel(await create({ sharing: true }), { renderer, islandTimeoutMs: 50 });
     await logsMasked(() => text(sharing.request('/fails', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } })), /^Rendering the error response failed$/);
   });
 
   it('masks the error of a development error page that fails to render', async () => {
-    const developing = createHttpKernel(await create({ solutions: true }), { renderer, debug: true, islandTimeout: 50 });
+    const developing = createHttpKernel(await create({ solutions: true }), { renderer, debug: true, islandTimeoutMs: 50 });
     await logsMasked(() => text(developing.request('/fails', { headers: { accept: 'text/html' } })), /^Rendering the development error page failed$/);
   });
 });

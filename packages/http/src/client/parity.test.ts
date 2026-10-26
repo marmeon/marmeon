@@ -162,7 +162,7 @@ describe('once props — kept by the tab, skipped by the server', () => {
     expect(store.headers()).toEqual({ [ONCE_HEADER]: 'locales', [ONCE_SCOPE_HEADER]: 'alan' });
   });
 
-  it('a once prop with a `ttl` is not named after it expired — the server sends it again', () => {
+  it('a once prop that expires is not named after it expired — the server sends it again', () => {
     let now = 1_000;
     const store = new OnceStore(() => now);
     store.receive({ ...page('/a', { rates: [1] }), onceProps: { rates: { key: 'rates', expiresAt: 2_000 } } });

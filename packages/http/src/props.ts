@@ -1,3 +1,5 @@
+import { durationToMilliseconds, type Duration } from '@marmeon/core';
+
 /**
  * Page props that are more than a value: left out of the first response, loaded after it, sent with every
  * partial reload, or merged into what the browser already has. A plain function is a prop too, called only when the response
@@ -89,8 +91,8 @@ export interface OnceProp<T> extends PageProp<'once', T> {
   readonly resolve: () => unknown;
   /** Where the browser keeps it — undefined: the prop's name (a shared prop) or `<view>:<prop>` (a page's own). */
   readonly key: string | undefined;
-  /** How long the browser may keep it, in ms — undefined: for the life of the document (until a full load). */
-  readonly ttl: number | undefined;
+  /** How long the browser may keep it, in milliseconds — undefined: for the life of the document (until a full load). */
+  readonly expiresInMs: number | undefined;
 }
 
 /** Any wrapped prop. */
@@ -138,8 +140,8 @@ export interface OnceOptions {
    * Default: the prop's name for a shared prop (the app's: every page), `<view>:<prop>` for a page's own.
    */
   readonly key?: string;
-  /** How long it may be kept, in ms (by the server's clock) — then sent again. Default: as long as the document lives. */
-  readonly ttl?: number;
+  /** How long it may be kept (by the server's clock) — then sent again: `{ for: { days: 1 } }`. Default: as long as the document lives. */
+  readonly for?: Duration;
 }
 
 /** Values JSON keeps as they are — what a once prop may hold (the browser keeps it as it arrived, and uses it for every page). */
@@ -174,7 +176,10 @@ export type CheckOnceValue<T> = [UnstorablePart<T>] extends [never]
  * ```
  */
 export function once<R>(resolve: () => R & CheckOnceValue<Awaited<R>>, options: OnceOptions = {}): OnceProp<Awaited<R>> {
-  return { [PROP]: 'once', resolve, key: options.key, ttl: options.ttl } as unknown as OnceProp<Awaited<R>>;
+  if (Object.hasOwn(options, 'ttl')) {
+    throw new TypeError('once(): `ttl` (milliseconds) was renamed `for`, a Duration where a number is seconds — `{ ttl: 60_000 }` is `{ for: { minutes: 1 } }` (see docs/responses.md#once-props).');
+  }
+  return { [PROP]: 'once', resolve, key: options.key, expiresInMs: options.for === undefined ? undefined : durationToMilliseconds(options.for) } as unknown as OnceProp<Awaited<R>>;
 }
 
 /** A prop sent with every response, partial reloads included (the shared `errors` are one). */

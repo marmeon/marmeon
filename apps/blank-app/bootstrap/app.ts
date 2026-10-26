@@ -10,7 +10,7 @@ export default defineApplication({
   config: [AppConfig],
   modules: [system],
   // Every response: the security headers — once the site answers over HTTPS only, turn on HSTS with
-  // `securityHeaders({ hsts: { maxAge: 31_536_000, includeSubDomains: true } })`; every document: a strict Content-Security-Policy
+  // `securityHeaders({ hsts: { maxAge: { days: 365 }, includeSubDomains: true } })`; every document: a strict Content-Security-Policy
   // with a nonce per response — add directives for what your pages load from elsewhere.
   middleware: {
     global: [securityHeaders(), contentSecurityPolicy()],

@@ -67,7 +67,7 @@ a link without an expiry. The parts `years`, `months` and `weeks` are refused as
 Five rules say where a span is a `Duration`:
 
 1. An option or a parameter that takes a span and has no unit in its name is a `Duration`: `delay`, `release()`, `expiresIn`,
-   `uniqueFor`, the `ttl` of the cache, `lock()` and `block()` of a lock, the window of a `Limit`, and `Route.block()`.
+   `uniqueFor`, `once(fn, { for })`, the HSTS `maxAge`, the `ttl` of the cache, `lock()` and `block()` of a lock, the window of a `Limit`, and `Route.block()`.
 2. A number with a unit in its name stays a number: `keepAliveTimeoutMs`, `SESSION_MAX_SECONDS`, a measured `durationMs`.
 3. A name without a unit never holds a bare number that means something else than seconds. A `Duration` is seconds when it is a number.
 4. A contract that your app implements, such as a cache store or a lock store, gets normalised numbers with the unit in the name,

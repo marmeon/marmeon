@@ -113,8 +113,8 @@ export interface KernelOptions {
    * no `NODE_ENV`: the island and its page stay whole).
    */
   strictReadOnly?: boolean;
-  /** How long an island resolved in-process may take before it shows its `exception` fallback (ms, default 10 s). */
-  islandTimeout?: number;
+  /** How long an island resolved in-process may take before it shows its `exception` fallback (in milliseconds, default 10 000). */
+  islandTimeoutMs?: number;
   /**
    * The health endpoints' path: `/up` (liveness) and `/up/ready` (readiness), answered before any middleware. Default:
    * `ServerConfig.health` (env `SERVER_HEALTH_PATH`, `/up`); `false`: none.
@@ -223,7 +223,12 @@ export function refuseUndecidedRoutes(application: Application): void {
  */
 export function createHttpKernel(
   application: Application,
-  {
+  kernelOptions: KernelOptions = {},
+): HttpKernel {
+  if (Object.hasOwn(kernelOptions, 'islandTimeout')) {
+    throw new TypeError('createHttpKernel(): `islandTimeout` was renamed `islandTimeoutMs` — the value stays milliseconds.');
+  }
+  const {
     container = application.container,
     renderer,
     clientDir,
@@ -232,10 +237,9 @@ export function createHttpKernel(
     version = (container.has(ServerConfig) ? container.make(ServerConfig).assetVersion : undefined) ?? renderer?.version ?? null,
     ssr = container.has(ServerConfig) ? container.make(ServerConfig).ssr : true,
     strictReadOnly = !environment.isProtected(),
-    islandTimeout = 10_000,
+    islandTimeoutMs = 10_000,
     health = container.has(ServerConfig) ? container.make(ServerConfig).health : '/up',
-  }: KernelOptions = {},
-): HttpKernel {
+  } = kernelOptions;
   // Before anything else is set up, so a refused start leaves nothing behind.
   refuseUndecidedRoutes(application);
   const router = application.container.make(Router);
@@ -320,15 +324,15 @@ export function createHttpKernel(
     headers.set(REGION_HEADER, 'island');
     if (version) headers.set(VERSION_HEADER, version);
     if (parent.requestId) headers.set('x-request-id', parent.requestId);
-    const timeout = AbortSignal.timeout(islandTimeout);
+    const timeout = AbortSignal.timeout(islandTimeoutMs);
     const signal = AbortSignal.any([parent.request.signal, timeout]);
     const request = new Request(target, { method: 'GET', headers, signal });
     const timedOut = new Promise<'timeout'>((resolve) => timeout.addEventListener('abort', () => resolve('timeout'), { once: true }));
     try {
       const response = await Promise.race([app.fetch(request, { parent }), timedOut]);
       if (response === 'timeout') {
-        logger.error(`The island ${redactor.text(`${target.pathname}${target.search}`)} took longer than ${islandTimeout} ms — it shows its error`);
-        return { status: 'exception', failure: { status: 504, ...(showsDebug(parent.request) ? { message: `The island took longer than ${islandTimeout} ms.` } : {}) } };
+        logger.error(`The island ${redactor.text(`${target.pathname}${target.search}`)} took longer than ${islandTimeoutMs} ms — it shows its error`);
+        return { status: 'exception', failure: { status: 504, ...(showsDebug(parent.request) ? { message: `The island took longer than ${islandTimeoutMs} ms.` } : {}) } };
       }
       return await regionResultOf(response);
     } catch (error) {

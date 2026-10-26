@@ -51,7 +51,7 @@ describe('once props on the server', async () => {
       defineModule({
         name: 'pages',
         routes: openRoutes((Route) => {
-          Route.get('/a', () => view('pages/A', { rates: once(() => (count('rates'), [1.1, 1.2]), { ttl: 60_000 }), name: 'A' }));
+          Route.get('/a', () => view('pages/A', { rates: once(() => (count('rates'), [1.1, 1.2]), { for: { minutes: 1 } }), name: 'A' }));
           Route.get('/b', () => view('pages/B', { shared: once(() => (count('shared'), 'kept'), { key: 'shared-key' }) }));
         }),
       }),

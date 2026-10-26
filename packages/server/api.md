@@ -33,7 +33,7 @@ export interface KernelOptions {
     version?: string | null;
     ssr?: boolean;
     strictReadOnly?: boolean;
-    islandTimeout?: number;
+    islandTimeoutMs?: number;
     health?: string | false;
 }
 // PageRenderOptions
@@ -120,7 +120,7 @@ export declare class ViteSetupError extends Error {
     name: string;
 }
 // createHttpKernel
-export declare function createHttpKernel(application: Application, { container, renderer, clientDir, debug, maxBodyBytes, version, ssr, strictReadOnly, islandTimeout, health, }?: KernelOptions): HttpKernel;
+export declare function createHttpKernel(application: Application, kernelOptions?: KernelOptions): HttpKernel;
 // startServer
 export declare function startServer({ app, ssrEntry, port, host, mode: chosenMode, drainTimeoutMs, shutdownDelayMs, keepAliveTimeoutMs, }: ServeOptions): Promise<RunningServer>;
 ```

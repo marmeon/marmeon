@@ -133,10 +133,10 @@ the server which ones it holds, so the server skips them on later pages:
 
 ```ts
 share('locales', once(() => this.#locales.supported));
-countries: once(() => this.#countries.all(), { key: 'countries', ttl: 24 * 60 * 60 * 1000 }),
+countries: once(() => this.#countries.all(), { key: 'countries', for: { days: 1 } }),
 ```
 
-The `key` lets several views share one value, and `ttl` in milliseconds sends it again after that time. A full page load, such as
+The `key` lets several views share one value, and `for` (a [`Duration`](time.md#spans-of-time)) sends it again after that time. A full page load, such as
 signing in or out, a new build or a language switch, starts over. A change of the page's language during client-side navigation (through the URL, say)
 sends once props again too. A once prop is for data that is the same on every page, such as
 a country list. Anything that changes while the page is open is a normal prop, and its value must be plain data: a `Map`, a

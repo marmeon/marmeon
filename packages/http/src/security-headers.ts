@@ -1,3 +1,4 @@
+import { durationToSeconds, type Duration } from '@marmeon/core';
 import { editableResponse, type HttpContext, type MiddlewareClass, type Next } from '@marmeon/router';
 
 const REFERRER_POLICIES = [
@@ -23,8 +24,11 @@ export type ReferrerPolicy =
   | 'unsafe-url';
 
 export interface HstsOptions {
-  /** Seconds browsers refuse plain HTTP for this host: a whole number; 0 withdraws HSTS from the browsers that have seen it. */
-  maxAge: number;
+  /**
+   * How long browsers refuse plain HTTP for this host, in whole seconds: `{ days: 365 }`, or a number of seconds; 0 withdraws
+   * HSTS from the browsers that have seen it.
+   */
+  maxAge: Duration;
   /** Every subdomain too. */
   includeSubDomains?: boolean;
   /** Ask for the browsers' preload lists: needs `includeSubDomains` and a `maxAge` of at least a year. */
@@ -34,7 +38,7 @@ export interface HstsOptions {
 export interface SecurityHeadersOptions {
   /**
    * `Strict-Transport-Security`, sent on HTTPS responses only (behind a proxy: `SERVER_TRUSTED_PROXIES` and its `X-Forwarded-Proto`).
-   * Off by default: turn it on once the site answers over HTTPS only — browsers hold on to it for `maxAge` seconds.
+   * Off by default: turn it on once the site answers over HTTPS only — browsers hold on to it for `maxAge`.
    */
   hsts?: false | HstsOptions;
   /** `X-Frame-Options` for responses without a valid one of their own; `false` sends none. Default `'DENY'`. */
@@ -55,7 +59,13 @@ function isReferrerPolicy(value: string): boolean {
 }
 
 function compileHsts(hsts: HstsOptions): string {
-  const { maxAge, includeSubDomains = false, preload = false } = hsts;
+  const { includeSubDomains = false, preload = false } = hsts;
+  let maxAge: number;
+  try {
+    maxAge = durationToSeconds(hsts.maxAge);
+  } catch (error) {
+    throw new TypeError(`securityHeaders(): hsts.maxAge is no span of time: ${(error as Error).message}`, { cause: error });
+  }
   if (!Number.isSafeInteger(maxAge) || maxAge < 0) {
     throw new TypeError(`securityHeaders(): hsts.maxAge must be a whole number of seconds (0 withdraws HSTS), got ${String(maxAge)}.`);
   }

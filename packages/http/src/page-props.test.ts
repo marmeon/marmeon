@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { isPrefetch, PAGE_HEADER, PARTIAL_COMPONENT_HEADER, PARTIAL_DATA_HEADER, PARTIAL_EXCEPT_HEADER, PROTOCOL_VERSION } from './protocol.ts';
 import { onceScopeOf, partialReloadOf, resolvePageProps } from './page-props.ts';
-import { always, deepMerge, defer, merge, optional } from './props.ts';
+import { always, deepMerge, defer, merge, once, optional } from './props.ts';
 import { SharedData } from './shared-data.ts';
 import { view, type PageProps } from './view.ts';
 
@@ -225,6 +225,28 @@ describe('PageProps with wrapped props', () => {
     shared.share('pagePropsErrors', always('x'));
     // @ts-expect-error -- optional() makes a prop possibly missing, which `pageProps` is not declared as
     shared.share('pageProps', optional(() => ({ user: null })));
+  });
+});
+
+describe('once(fn, { for })', () => {
+  it('expires one span of time after now, by the clock the server passes', async () => {
+    const now = 1_700_000_000_000;
+    const held = new Set<string>();
+    const hour = await resolvePageProps({ rates: once(() => [1], { for: { hours: 1 } }) }, undefined, undefined, { component: 'A', held, now });
+    expect(hour.onceProps).toEqual({ rates: { key: 'A:rates', expiresAt: now + 3_600_000 } });
+    const seconds = await resolvePageProps({ rates: once(() => [1], { for: 90 }) }, undefined, undefined, { component: 'A', held, now });
+    expect(seconds.onceProps?.rates?.expiresAt).toBe(now + 90_000);
+    const forever = await resolvePageProps({ rates: once(() => [1]) }, undefined, undefined, { component: 'A', held, now });
+    expect(forever.onceProps).toEqual({ rates: { key: 'A:rates' } });
+  });
+
+  it('has no ttl: the old key is a type error, and refused when it arrives untyped', () => {
+    // @ts-expect-error -- `ttl` (milliseconds) is gone; the span is `for`
+    expect(() => once(() => [1], { ttl: 1 })).toThrow(/renamed `for`/);
+    const options = { ttl: 60_000 };
+    // @ts-expect-error -- a variable with only the old key has nothing in common with `OnceOptions`
+    expect(() => once(() => [1], options)).toThrow(TypeError);
+    expect(() => once(() => [1], { ttl: 1 } as any)).toThrow(TypeError);
   });
 });
 
