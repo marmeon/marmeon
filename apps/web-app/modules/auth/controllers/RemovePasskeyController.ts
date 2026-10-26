@@ -25,7 +25,7 @@ export class RemovePasskeyController extends Controller {
 
   async handle(ctx: ContextOf<typeof RemovePasskeyRequest> & Authenticated & { params: { passkey: string } }) {
     const id = /^\d{1,15}$/.test(ctx.params.passkey) ? Number(ctx.params.passkey) : 0;
-    const done = await this.#passkeys.remove(id, ctx.body.password === '' ? undefined : ctx.body.password);
+    const done = await this.#passkeys.remove(id, ctx.body.password);
     if (done.ok) {
       return this.json({ removed: id }).flash('toast', { kind: 'success', message: this.#translator.get('auth.passkeys.removed') });
     }

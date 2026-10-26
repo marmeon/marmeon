@@ -129,7 +129,6 @@ export declare const AuthConfig: import("@marmeon/core").ConfigDefinition<{
     privateRegistration: boolean;
     unverifiedDays: number;
     revokeTokensOnPasswordChange: boolean;
-    protected: boolean;
 }>;
 export type AuthConfig = ConfigOf<typeof AuthConfig>;
 // AuthServiceProvider
@@ -152,7 +151,6 @@ export declare class AuthServiceProvider implements ServiceProvider {
         privateRegistration: boolean;
         unverifiedDays: number;
         revokeTokensOnPasswordChange: boolean;
-        protected: boolean;
     }> | import("@marmeon/core").ConfigDefinition<{
         driver: "argon2id" | "scrypt";
         argon2: {
@@ -359,7 +357,6 @@ export declare class EmailChanged {
     readonly userId: AuthUserId;
     readonly previousEmail: string | null;
     readonly email: string;
-    constructor(userId: AuthUserId, previousEmail: string | null, email: string);
 }
 // EmailVerification
 export declare class EmailVerification {
@@ -390,12 +387,6 @@ export declare class EverySessionEnded {
     readonly resetTokens: number;
     readonly accessTokens: number;
     readonly signIns: number;
-    constructor(at: Date, counts: {
-        readonly accounts: number;
-        readonly resetTokens: number;
-        readonly accessTokens: number;
-        readonly signIns: number;
-    });
 }
 // EverySessionEndedInput
 export interface EverySessionEndedInput extends Omit<EverySessionEndedPayload, 'at'> {
@@ -481,7 +472,6 @@ export declare class PasskeyCloneSuspected {
     static readonly schema: StandardSchemaV1<PasskeyCloneSuspectedPayload>;
     readonly user: AuthUser;
     readonly passkeyId: number;
-    constructor(user: AuthUser, passkeyId: number);
     get userId(): AuthUserId;
 }
 // PasskeyCloneSuspectedPayload
@@ -496,7 +486,6 @@ export declare class PasskeyRegistered {
     static readonly schema: StandardSchemaV1<PasskeyRegisteredPayload>;
     readonly user: AuthUser;
     readonly name: string;
-    constructor(user: AuthUser, name: string);
     get userId(): AuthUserId;
 }
 // PasskeyRegisteredPayload
@@ -511,7 +500,6 @@ export declare class PasskeyRemoved {
     static readonly schema: StandardSchemaV1<PasskeyRemovedInput, PasskeyRemovedPayload>;
     readonly user: AuthUser;
     readonly via: 'user' | 'reset';
-    constructor(user: AuthUser, via?: 'user' | 'reset');
     get userId(): AuthUserId;
 }
 // PasskeyRemovedInput
@@ -532,10 +520,6 @@ export declare class PasskeySignInFailed {
     readonly at: Date;
     readonly ip: string | null;
     readonly userAgent: string | null;
-    constructor(user: AuthUser, details?: {
-        readonly ip?: string | undefined;
-        readonly userAgent?: string | undefined;
-    }, at?: Date);
     get userId(): AuthUserId;
 }
 // PasskeySignInFailedInput
@@ -568,7 +552,6 @@ export declare class PasswordChanged {
     #private;
     readonly user: AuthUser;
     readonly revokedTokens: number;
-    constructor(user: AuthUser, revokedTokens?: number);
 }
 // PasswordCheckError
 export type PasswordCheckError = {
@@ -598,7 +581,6 @@ export declare class PasswordReset {
     #private;
     readonly user: AuthUser;
     readonly revokedTokens: number;
-    constructor(user: AuthUser, revokedTokens?: number);
 }
 // PasswordResetTokenStore
 export declare abstract class PasswordResetTokenStore {
@@ -644,7 +626,6 @@ export declare class PolicyResponse {
     readonly allowed: boolean;
     readonly status: 403 | 404;
     readonly message: string | undefined;
-    constructor(allowed: boolean, status?: 403 | 404, message?: string);
 }
 // PolicyResult
 export type PolicyResult = boolean | PolicyResponse;
@@ -663,7 +644,6 @@ export declare class RecoveryCodeUsed {
     static readonly schema: StandardSchemaV1<RecoveryCodeUsedPayload>;
     readonly user: AuthUser;
     readonly remaining: number;
-    constructor(user: AuthUser, remaining: number);
     get userId(): AuthUserId;
 }
 // RecoveryCodeUsedPayload
@@ -677,7 +657,6 @@ export declare class RecoveryCodesGenerated {
     static readonly event = "auth.recovery-codes-generated";
     static readonly schema: StandardSchemaV1<RecoveryCodesGeneratedPayload>;
     readonly user: AuthUser;
-    constructor(user: AuthUser);
     get userId(): AuthUserId;
 }
 // RecoveryCodesGeneratedPayload
@@ -715,11 +694,6 @@ export declare class RememberTokenReused {
     readonly ip: string | null;
     readonly userAgent: string | null;
     readonly sessionsEnded: boolean;
-    constructor(user: AuthUser, details: {
-        readonly ip?: string | undefined;
-        readonly userAgent?: string | undefined;
-        readonly sessionsEnded: boolean;
-    }, at?: Date);
     get userId(): AuthUserId;
 }
 // RememberTokenReusedInput
@@ -781,7 +755,6 @@ export declare class SignInFailed {
     #private;
     readonly identifier: string;
     readonly user: AuthUser | undefined;
-    constructor(identifier: string, user: AuthUser | undefined);
 }
 // SignInLockedOut
 export declare class SignInLockedOut {
@@ -789,7 +762,6 @@ export declare class SignInLockedOut {
     readonly identifier: string;
     readonly ip: string | undefined;
     readonly scope: 'client' | 'account';
-    constructor(identifier: string, ip: string | undefined, scope: 'client' | 'account');
 }
 // SignInOptions
 export interface SignInOptions {
@@ -874,7 +846,6 @@ export interface SignedInPayload {
 export declare class SignedOut {
     #private;
     readonly user: AuthUser;
-    constructor(user: AuthUser);
 }
 // TwoFactorChallengeFailed
 export declare class TwoFactorChallengeFailed {
@@ -912,7 +883,6 @@ export declare class TwoFactorDisabled {
     static readonly schema: StandardSchemaV1<TwoFactorDisabledPayload>;
     readonly user: AuthUser;
     readonly via: 'user' | 'operator' | 'reset';
-    constructor(user: AuthUser, via?: 'user' | 'operator' | 'reset');
     get userId(): AuthUserId;
 }
 // TwoFactorDisabledPayload
@@ -927,7 +897,6 @@ export declare class TwoFactorEnabled {
     static readonly schema: StandardSchemaV1<TwoFactorEnabledPayload>;
     readonly user: AuthUser;
     readonly factor: 'totp' | 'passkey';
-    constructor(user: AuthUser, factor: 'totp' | 'passkey');
     get userId(): AuthUserId;
 }
 // TwoFactorEnabledPayload
@@ -948,15 +917,6 @@ export declare class TwoFactorStore extends TwoFactorState {
     #private;
     factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
     enabledSince(userId: AuthUserId): Promise<Date | undefined>;
-    startSetup(userId: AuthUserId, encryptedSecret: string): Promise<void>;
-    confirm(userId: AuthUserId, step: number, reencryptedSecret: string, codeHashes: readonly string[] | null): Promise<boolean>;
-    useStep(userId: AuthUserId, step: number, reencryptedSecret: string): Promise<boolean>;
-    consumeRecoveryCode(userId: AuthUserId, codeHash: string): Promise<number | undefined>;
-    replaceRecoveryCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void>;
-    remainingRecoveryCodes(userId: AuthUserId): Promise<number>;
-    removeTotp(userId: AuthUserId, { lastFactor }: {
-        lastFactor: boolean;
-    }): Promise<void>;
     removeAll(userId: AuthUserId): Promise<void>;
 }
 // UserOf
@@ -1018,7 +978,7 @@ export interface WithToken {
     readonly token: AccessToken;
 }
 // abilities
-export declare function abilities(...required: string[]): MiddlewareClass<WithToken, {}>;
+export declare function abilities(first: string, ...more: string[]): MiddlewareClass<WithToken, {}>;
 // allow
 export declare function allow(): PolicyResponse;
 // authenticate
@@ -1073,17 +1033,6 @@ export declare function verified<const N extends RouteNameInput = never>(options
 export type CheckAbility<P, K extends string, Allowed extends string, Missing extends string> = string extends K ? Allowed : K extends Allowed ? K : K extends AbilityOf<P> ? K extends ProjectableAbility<P> ? `'${K}' ${Missing}` : `'${K}' takes more than one resource — a projection asks one; use gate.allows(Policy, '${K}', …)` : `'${K}' is not an ability of this policy — it has ${JoinNames<AbilityOf<P>>}`;
 // Contravariant
 type Contravariant<T> = T extends unknown ? (resource: T) => void : never;
-// PendingSecondFactor
-export interface PendingSecondFactor {
-    readonly id: string | number;
-    readonly fingerprint: string;
-    readonly remember: boolean;
-    readonly via: SignInVia;
-    readonly typedAt?: number;
-    readonly until: number;
-    readonly failures: number;
-    readonly factors: readonly SecondFactor[];
-}
 // Projectable
 type Projectable<P, K> = Extract<K, ProjectableAbility<P>>;
 // missing
@@ -1098,20 +1047,6 @@ declare const passwordHash: unique symbol;
 // @marmeon/cache.LimiterContext
 interface LimiterContext {
     readonly user?: AuthUser | undefined;
-}
-// @marmeon/session.SessionData
-interface SessionData {
-    _auth_id: string | number;
-    _auth_password: string;
-    _auth_confirmed_at: number;
-    _auth_via_remember: boolean;
-    _auth_signed_in_at: number;
-    _auth_remember_until: number;
-    _auth_pending: PendingSecondFactor;
-    _auth_two_factor_at: number;
-    _auth_sign_in: string;
-    _auth_throttle_key: string;
-    _auth_typed_password: boolean;
 }
 ```
 
@@ -1186,24 +1121,7 @@ export declare class PasskeyStore extends TwoFactorState {
     #private;
     factors(userId: AuthUserId): Promise<readonly SecondFactor[]>;
     enabledSince(userId: AuthUserId): Promise<Date | undefined>;
-    userHandle(userId: AuthUserId): Promise<string>;
-    create(passkey: NewPasskey): Promise<Result<PasskeyRecord, {
-        kind: 'duplicate';
-    }>>;
     forUser(userId: AuthUserId): Promise<readonly PasskeyRecord[]>;
-    updateCounter(id: number, previous: number, next: number, backedUp: boolean): Promise<boolean>;
-    suspend(id: number): Promise<boolean>;
-    release(userId: AuthUserId, id: number): Promise<boolean>;
-    rename(userId: AuthUserId, id: number, name: string): Promise<boolean>;
-    remove(userId: AuthUserId, id: number, { lastFactorAllowed }: {
-        lastFactorAllowed: boolean;
-    }): Promise<Result<{
-        lastFactor: boolean;
-    }, {
-        kind: 'not-found';
-    } | {
-        kind: 'last-factor';
-    }>>;
     removeAll(userId: AuthUserId): Promise<void>;
 }
 // PasskeySummary
@@ -1235,10 +1153,10 @@ export interface PasskeyTable {
     updated_at: Generated<string | Date>;
 }
 // Passkeys
-export declare class Passkeys implements SecondFactorPasskeys {
+export declare class Passkeys {
     #private;
     registrationOptions(): Promise<PublicKeyCredentialCreationOptionsJSON>;
-    register(response: RegistrationResponseJSON, name: string, password?: string): Promise<Result<{
+    register(response: RegistrationResponseJSON, name: string, password: string): Promise<Result<{
         recoveryCodes: readonly string[] | null;
     }, RegisterError>>;
     signInOptions(): Promise<PublicKeyCredentialRequestOptionsJSON>;
@@ -1259,7 +1177,7 @@ export declare class Passkeys implements SecondFactorPasskeys {
     confirm(response: AuthenticationResponseJSON): Promise<Result<void, PasskeyError>>;
     list(): Promise<readonly PasskeySummary[]>;
     rename(id: number, name: string): Promise<boolean>;
-    remove(id: number, password?: string): Promise<Result<void, {
+    remove(id: number, password: string): Promise<Result<void, {
         readonly kind: 'invalid-password';
     } | {
         readonly kind: 'not-found';
@@ -1394,24 +1312,6 @@ export interface AuthenticatorSelectionCriteria {
 }
 // Base64URLString
 export type Base64URLString = string;
-// NewPasskey
-export interface NewPasskey {
-    readonly userId: AuthUserId;
-    readonly userHandle: string;
-    readonly credentialId: string;
-    readonly publicKey: string;
-    readonly algorithm: number;
-    readonly signCount: number;
-    readonly transports: readonly string[];
-    readonly aaguid: string;
-    readonly backupEligible: boolean;
-    readonly backedUp: boolean;
-    readonly name: string;
-}
-// PasskeyAssertion
-export type PasskeyAssertion = object;
-// PasskeyVerdict
-export type PasskeyVerdict = 'valid' | 'wrong' | 'stale';
 // PasswordThrottled
 export interface PasswordThrottled {
     readonly kind: 'throttled';
@@ -1453,11 +1353,6 @@ export interface RelyingParty {
 export type ResidentKeyRequirement = 'discouraged' | 'preferred' | 'required';
 // SecondFactor
 export type SecondFactor = 'totp' | 'passkey';
-// SecondFactorPasskeys
-export interface SecondFactorPasskeys {
-    [VERIFY_SECOND_FACTOR](userId: AuthUserId, assertion: PasskeyAssertion, during?: 'sign-in' | 'step-up'): Promise<PasskeyVerdict>;
-}
-export declare const SecondFactorPasskeys: import("@marmeon/core").Token<SecondFactorPasskeys>;
 // TwoFactorState
 export declare abstract class TwoFactorState {
     #private;
@@ -1474,8 +1369,6 @@ export type UserOf<Types> = Types extends {
 } ? U : AuthTypesNotDeclared;
 // UserVerificationRequirement
 export type UserVerificationRequirement = 'discouraged' | 'preferred' | 'required';
-// VERIFY_SECOND_FACTOR
-export declare const VERIFY_SECOND_FACTOR: unique symbol;
 // missing
 declare const missing: unique symbol;
 ```
@@ -1665,8 +1558,6 @@ export type ConfirmError = {
 export interface ConfirmedSecondFactorOptions<V extends string = string> {
     readonly verify: CheckRouteName<V>;
 }
-// FACTOR_CHANGE_MAX_AGE
-export declare const FACTOR_CHANGE_MAX_AGE = 900;
 // QrPath
 export interface QrPath {
     readonly size: number;
@@ -1823,8 +1714,6 @@ declare const missing: unique symbol;
 `HASH_SCRYPT_COST` = `17`
 // HASH_SCRYPT_PARALLELISM
 `HASH_SCRYPT_PARALLELISM` = `1`
-// NODE_ENV
-`NODE_ENV` — optional
 ```
 
 ## Commands

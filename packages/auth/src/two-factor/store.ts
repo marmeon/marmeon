@@ -83,7 +83,7 @@ export class TwoFactorStore extends TwoFactorState {
     return { encryptedSecret: row.secret, confirmed: row.confirmed_at !== null, lastUsedStep: row.last_used_step === null ? null : Number(row.last_used_step) };
   }
 
-  /** Starts setting up an authenticator with this (encrypted) secret, replacing an unconfirmed attempt. Throws when one is already confirmed: disable it first. */
+  /** @internal Starts setting up an authenticator with this (encrypted) secret, replacing an unconfirmed attempt. Throws when one is already confirmed: disable it first. */
   async startSetup(userId: AuthUserId, encryptedSecret: string): Promise<void> {
     const now = this.#now();
     // One statement decides, so parallel starts (a double click) never collide: the unique index on `user_id` turns the second into an
@@ -102,6 +102,7 @@ export class TwoFactorStore extends TwoFactorState {
   }
 
   /**
+   * @internal
    * Confirms a started setup: the code's `step` counts as used, the secret is stored re-encrypted, and — when this is the
    * account's first factor — its recovery code hashes are stored, all in one transaction. `false` when there is nothing
    * to confirm (never started, or already confirmed); then nothing changed.
@@ -126,6 +127,7 @@ export class TwoFactorStore extends TwoFactorState {
   }
 
   /**
+   * @internal
    * Accepts a TOTP `step` — and stores the secret re-encrypted with the current key — only when it is newer than every step
    * used before. One conditional `UPDATE` decides: a code works once, even for parallel requests, and no older code works after a newer one.
    */
@@ -140,7 +142,7 @@ export class TwoFactorStore extends TwoFactorState {
     return result.numUpdatedRows > 0n;
   }
 
-  /** Spends a recovery code by its hash: how many are left, or `undefined` when it is unknown or already spent. One conditional `UPDATE`: a code works once, even in parallel. */
+  /** @internal Spends a recovery code by its hash: how many are left, or `undefined` when it is unknown or already spent. One conditional `UPDATE`: a code works once, even in parallel. */
   async consumeRecoveryCode(userId: AuthUserId, codeHash: string): Promise<number | undefined> {
     const now = this.#now();
     const result = await this.#db()
@@ -154,7 +156,7 @@ export class TwoFactorStore extends TwoFactorState {
     return this.remainingRecoveryCodes(userId);
   }
 
-  /** Replaces every recovery code of the account (spent or not) with these hashes, in one transaction. */
+  /** @internal Replaces every recovery code of the account (spent or not) with these hashes, in one transaction. */
   async replaceRecoveryCodes(userId: AuthUserId, codeHashes: readonly string[]): Promise<void> {
     await this.#connections.transaction(async () => {
       // Two requests making new codes at once would interleave their deletes and inserts: the account's row is the lock.
@@ -165,6 +167,7 @@ export class TwoFactorStore extends TwoFactorState {
     });
   }
 
+  /** @internal How many recovery codes of the account are unspent; `TwoFactor.status()` reports it. */
   async remainingRecoveryCodes(userId: AuthUserId): Promise<number> {
     const row = await this.#db()
       .selectFrom(RECOVERY_CODES_TABLE)
@@ -175,7 +178,7 @@ export class TwoFactorStore extends TwoFactorState {
     return Number(row.remaining);
   }
 
-  /** Removes the authenticator; with `lastFactor` the recovery codes go in the same transaction (they belong to the account's factors, not to this one). */
+  /** @internal Removes the authenticator; with `lastFactor` the recovery codes go in the same transaction (they belong to the account's factors, not to this one). */
   async removeTotp(userId: AuthUserId, { lastFactor }: { lastFactor: boolean }): Promise<void> {
     await this.#connections.transaction(async () => {
       await this.#db().deleteFrom(TWO_FACTOR_TABLE).where('user_id', '=', userId).execute();

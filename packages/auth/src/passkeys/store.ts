@@ -130,6 +130,7 @@ export class PasskeyStore extends TwoFactorState {
   }
 
   /**
+   * @internal
    * The account's user handle, base64url: the one its passkeys already carry, else a fresh one of 32 random bytes (never the id or
    * the address). The caller puts the handle into the registration options and keeps it with the open challenge, then hands that
    * same value to {@link create} — it never asks again: the authenticator holds the handle from the options, and a passkey stored
@@ -140,7 +141,7 @@ export class PasskeyStore extends TwoFactorState {
     return row?.user_handle ?? randomBytes(32).toString('base64url');
   }
 
-  /** Stores a passkey; `duplicate` when the credential id is already registered (to any account). */
+  /** @internal Stores a passkey; `duplicate` when the credential id is already registered (to any account). */
   async create(passkey: NewPasskey): Promise<Result<PasskeyRecord, { kind: 'duplicate' }>> {
     const now = this.#now();
     // Stored exactly as given: it is the handle the authenticator got in the options (see `userHandle()`).
@@ -178,6 +179,7 @@ export class PasskeyStore extends TwoFactorState {
   }
 
   /**
+   * @internal
    * Moves the sign count of passkey `id` from `previous` to `next` and notes the use — only when the stored count is still
    * `previous`. `false` when it is not: another sign-in got there first, and this one must be refused.
    */
@@ -192,26 +194,27 @@ export class PasskeyStore extends TwoFactorState {
     return result.numUpdatedRows > 0n;
   }
 
-  /** Suspends a passkey (a possible clone); `false` if it was already suspended or is gone. */
+  /** @internal Suspends a passkey (a possible clone); `false` if it was already suspended or is gone. */
   async suspend(id: number): Promise<boolean> {
     const now = this.#now();
     const result = await this.#db().updateTable(PASSKEYS_TABLE).set({ suspended_at: now, updated_at: now }).where('id', '=', id).where('suspended_at', 'is', null).executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
 
-  /** Lets the account's suspended passkey sign in again; `false` when it has none that is suspended. The caller has checked the password. */
+  /** @internal Lets the account's suspended passkey sign in again; `false` when it has none that is suspended. The caller has checked the password. */
   async release(userId: AuthUserId, id: number): Promise<boolean> {
     const result = await this.#db().updateTable(PASSKEYS_TABLE).set({ suspended_at: null, updated_at: this.#now() }).where('id', '=', id).where('user_id', '=', userId).where('suspended_at', 'is not', null).executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
 
-  /** Renames the account's passkey; `false` when it has none with this id. */
+  /** @internal Renames the account's passkey; `false` when it has none with this id. */
   async rename(userId: AuthUserId, id: number, name: string): Promise<boolean> {
     const result = await this.#db().updateTable(PASSKEYS_TABLE).set({ name, updated_at: this.#now() }).where('id', '=', id).where('user_id', '=', userId).executeTakeFirst();
     return result.numUpdatedRows > 0n;
   }
 
   /**
+   * @internal
    * Removes the account's passkey, or refuses: `not-found` when it has none with this id, `last-factor` when it is the account's last
    * factor — no other passkey, no confirmed authenticator — and `lastFactorAllowed` is false (the caller has not seen a fresh password).
    * The decision is made here, inside the transaction, after the account's passkey rows are locked (Postgres): two removals at once

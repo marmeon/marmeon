@@ -10,6 +10,7 @@ export class PolicyResponse {
   readonly status: 403 | 404;
   readonly message: string | undefined;
 
+  /** @internal Made by `allow()`, `deny()` and `denyAsNotFound()`. */
   constructor(allowed: boolean, status: 403 | 404 = 403, message?: string) {
     this.allowed = allowed;
     this.status = status;

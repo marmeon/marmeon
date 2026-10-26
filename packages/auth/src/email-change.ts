@@ -7,7 +7,7 @@ import { AuthConfig } from './config.ts';
 import { EmailChangeStore } from './email-changes.ts';
 import { EmailChanged } from './events.ts';
 import type { PasswordCheckError } from './password-throttle.ts';
-import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from './two-factor/proof.ts';
+import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from './two-factor/proof.ts';
 import { TwoFactorState } from './two-factor/state.ts';
 import { idOf, type AuthUserId } from './user.ts';
 
@@ -99,7 +99,7 @@ export class EmailChange {
     const user = await this.#requireUser('request');
     const userId = idOf(user);
     // Also without the route's confirmedSecondFactor(): a route added by hand must not skip the factor. A passkey alone can confirm sudo mode.
-    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE, Math.floor(this.#clock.now() / 1000))) {
+    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE_SECONDS, Math.floor(this.#clock.now() / 1000))) {
       throw new Error('emailChange.request() needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().');
     }
     // Typed now, whatever confirmed sudo mode: a hijacked session must not take the account over by changing the address and resetting the password.

@@ -162,9 +162,14 @@ function tokenGuard(): MiddlewareClass<{}, Authenticated & WithToken> {
 
 /**
  * The token must grant every ability: `Route.middleware(authenticate('api'), …)` then
- * `.middleware(abilities('users:read'))` — 403 otherwise. Only after the token guard.
+ * `.middleware(abilities('users:read'))` — 403 otherwise. Names at least one ability. Only after the token guard.
  */
-export function abilities(...required: string[]): MiddlewareClass<WithToken, {}> {
+export function abilities(first: string, ...more: string[]): MiddlewareClass<WithToken, {}> {
+  const required = [first, ...more];
+  // Fail closed: without a name nothing would be checked and every token would pass.
+  if (required.some((ability) => typeof ability !== 'string' || ability === '')) {
+    throw new TypeError('abilities(): name at least one ability; a route every token may call needs no abilities().');
+  }
   const CheckAbilities = class {
     handle(ctx: HttpContext<WithToken>, next: Next<{}>): Promise<Response> | Response {
       const missing = required.filter((ability) => !tokenCan(ctx.token, ability));

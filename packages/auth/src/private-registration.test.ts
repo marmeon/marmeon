@@ -3,12 +3,16 @@ import { DatabaseServiceProvider } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { SessionServiceProvider } from '@marmeon/session';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthConfig, AuthServiceProvider } from './index.ts';
 import { PRIVATE_REGISTRATION_OFF_WARNING } from './config.ts';
 
+afterEach(() => vi.unstubAllEnvs());
+
 /** Boots auth with `env` and returns the app and what was logged as a warning about private registration. */
 async function boot(env: Record<string, string>): Promise<{ app: Application; warnings: string[] }> {
+  // The boot warning asks the process's environment, which the test sets next to the `env` the configuration reads.
+  vi.stubEnv('NODE_ENV', env.NODE_ENV ?? 'test');
   const warnings: string[] = [];
   const logger: Logger = {
     debug() {},

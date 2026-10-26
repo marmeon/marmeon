@@ -1,4 +1,4 @@
-import { defineConfig, env, environment, type ConfigOf } from '@marmeon/core';
+import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 import type { SessionConfig } from '@marmeon/session';
 
 const whole = (fallback: number, min: number) => env.integer().min(min).default(fallback);
@@ -76,7 +76,6 @@ export const AuthConfig = defineConfig('auth', {
     AUTH_DEVICE_COOKIE_DAYS: env.integer(DEVICE_DAYS).min(0, DEVICE_DAYS).max(365, DEVICE_DAYS).default(90),
     /** The app's name — the issuer authenticator apps show for the second factor (`TwoFactor.begin()`). */
     APP_NAME: env.string().optional(),
-    NODE_ENV: env.string().optional(),
   })
     .renamed('AUTH_PASSWORD_TIMEOUT', 'AUTH_PASSWORD_TIMEOUT_SECONDS')
     .renamed('AUTH_RESET_EXPIRE', 'AUTH_RESET_MINUTES')
@@ -103,8 +102,6 @@ export const AuthConfig = defineConfig('auth', {
     unverifiedDays: e.AUTH_UNVERIFIED_DAYS,
     /** A new password revokes every API token of the account, in the transaction of the new hash. */
     revokeTokensOnPasswordChange: e.AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE,
-    /** Protected (every `NODE_ENV` but `development` and `test`): turning private registration off is warned about at boot. */
-    protected: environment.isProtected(e),
   }),
 });
 export type AuthConfig = ConfigOf<typeof AuthConfig>;
@@ -126,6 +123,12 @@ function refuseOldKeys<T extends object>(config: T): T {
       },
     });
   }
+  Object.defineProperty(config, 'protected', {
+    enumerable: false,
+    get() {
+      throw new TypeError('AuthConfig.protected is gone: ask environment.isProtected().');
+    },
+  });
   return config;
 }
 

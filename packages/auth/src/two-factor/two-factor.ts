@@ -5,12 +5,13 @@ import { DecryptError, Encrypter } from '@marmeon/encryption';
 import { ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
-import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, COMPLETE_PENDING, DROP_REMEMBER_TOKEN, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE } from '../auth.ts';
+import { ACCOUNT_STILL_CLAIMED, Auth, CLAIM_ACCOUNT, COMPLETE_PENDING, DROP_REMEMBER_TOKEN, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE } from '../auth.ts';
+import { writeAuth } from '../session-keys.ts';
 import { claimRefused } from '../account-sessions.ts';
 import { AuthConfig, rememberCookieName } from '../config.ts';
 import { RecoveryCodesGenerated, RecoveryCodeUsed, TwoFactorChallengeFailed, TwoFactorEnabled, TwoFactorDisabled } from '../events.ts';
 import { idOf, UserProvider, type AuthUser, type AuthUserId } from '../user.ts';
-import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from './proof.ts';
+import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from './proof.ts';
 import type { PasswordCheckError } from '../password-throttle.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from './recovery-codes.ts';
 import { qrPath, type QrPath } from './qr.ts';
@@ -177,7 +178,7 @@ export class TwoFactor {
     await this.#limiter.clear(minute);
     // The session gains a privilege it did not have: a new id, as at sign-in, so that an id known from before is worth nothing now.
     this.#session.regenerate();
-    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now()); // seconds, from the same clock as `confirmedAt` and the sign-in, which `twoFactor()` reads
+    writeAuth(this.#session, 'twoFactorAt', this.#now()); // seconds, from the same clock as `confirmedAt` and the sign-in, which `twoFactor()` reads
     return ok(undefined);
   }
 
@@ -293,7 +294,7 @@ export class TwoFactor {
       throw new Error('The TwoFactorState does not report the authenticator that was just confirmed: bind it to combineFactors(TwoFactorStore). The confirmation was rolled back.');
     }
     // Only the first factor proves anything about this session: a further one, set up with just the password, must not stand for the one already there.
-    if (first) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
+    if (first) writeAuth(this.#session, 'twoFactorAt', this.#now());
     await this.#limiter.clear(this.#codeKey('minute', id));
     await this.#events.dispatch(new TwoFactorEnabled(user, 'totp'));
     if (first) await this.#events.dispatch(new RecoveryCodesGenerated(user));
@@ -447,7 +448,7 @@ export class TwoFactor {
 
   /** On an account that has a factor, the session must have proven one lately: the password alone does not change the factors. */
   async #requireRecentSecondFactor(method: string, userId: AuthUserId, call = `${method}()`): Promise<void> {
-    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE, this.#now())) {
+    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE_SECONDS, this.#now())) {
       throw new Error(`twoFactor.${call} needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
     }
   }

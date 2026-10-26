@@ -6,13 +6,14 @@ import { ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
 import { AccountSessions, claimRefused } from '../account-sessions.ts';
-import { ACCOUNT_STILL_CLAIMED, Auth, AUTH_SESSION_KEYS, CLAIM_ACCOUNT, DROP_REMEMBER_TOKEN, READ_PENDING, SIGN_IN_VERIFIED } from '../auth.ts';
+import { ACCOUNT_STILL_CLAIMED, Auth, CLAIM_ACCOUNT, DROP_REMEMBER_TOKEN, READ_PENDING, SIGN_IN_VERIFIED } from '../auth.ts';
+import { writeAuth } from '../session-keys.ts';
 import { AuthConfig, rememberCookieName } from '../config.ts';
 import { PasskeyCloneSuspected, PasskeyRegistered, PasskeyRemoved, PasskeySignInFailed, RecoveryCodesGenerated, TwoFactorChallengeFailed, TwoFactorDisabled, TwoFactorEnabled } from '../events.ts';
 import type { PasswordThrottled } from '../password-throttle.ts';
-import { FACTOR_CHANGE_MAX_AGE, secondFactorProvenWithin } from '../two-factor/proof.ts';
+import { FACTOR_CHANGE_MAX_AGE_SECONDS, secondFactorProvenWithin } from '../two-factor/proof.ts';
 import { generateRecoveryCodes, hashRecoveryCode } from '../two-factor/recovery-codes.ts';
-import { NoTwoFactorState, SecondFactorPasskeys, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict } from '../two-factor/state.ts';
+import { NoTwoFactorState, TwoFactorState, VERIFY_SECOND_FACTOR, type PasskeyAssertion, type PasskeyVerdict } from '../two-factor/state.ts';
 import { TwoFactorStore } from '../two-factor/store.ts';
 import { idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from '../user.ts';
 import { CHALLENGE_SECONDS, issueChallenge, takeChallenge, type ChallengePurpose } from './challenge.ts';
@@ -95,7 +96,7 @@ export interface PasskeySummary {
  * move forward refuses the sign-in, is never written and ends every session of the account; the first passkey is a factor like an authenticator app and ends the other
  * devices' sessions, and so does removing one. Every failure refuses.
  */
-export class Passkeys implements SecondFactorPasskeys {
+export class Passkeys {
   readonly #auth: Auth;
   readonly #accountSessions: AccountSessions;
   readonly #session: Session;
@@ -192,7 +193,7 @@ export class Passkeys implements SecondFactorPasskeys {
    * Order: the challenge leaves the session, the throttle counts, the password is checked, the response is verified, the other devices
    * are signed out, and the passkey and the recovery codes are stored in one transaction.
    */
-  async register(response: RegistrationResponseJSON, name: string, password?: string): Promise<Result<{ recoveryCodes: readonly string[] | null }, RegisterError>> {
+  async register(response: RegistrationResponseJSON, name: string, password: string): Promise<Result<{ recoveryCodes: readonly string[] | null }, RegisterError>> {
     const user = await this.#requireRecentPassword('register');
     const id = idOf(user);
     // Before the challenge is taken: a session that may not add a passkey keeps the challenge it holds.
@@ -208,7 +209,8 @@ export class Passkeys implements SecondFactorPasskeys {
     const first = (await this.#state.factors(id)).length === 0;
     // The first factor is turned on with the account's password (checked below), and signs the other devices out with a new session key.
     if (first && ((await this.#users.findById(id as never))?.passwordHash ?? null) === null) throw new Error('passkeys.register() needs an account with a password for its first factor: the password is checked before it is turned on.');
-    const checked = await this.#auth.checkPassword(password ?? '');
+    if (typeof password !== 'string' || password === '') return err({ kind: 'invalid-password' });
+    const checked = await this.#auth.checkPassword(password);
     if (!checked.ok) return err(checked.error);
 
     const verified = await verifyRegistration(response, { ...this.#config.relyingParty(), challenge: taken.value.challenge }, this.#logger);
@@ -264,7 +266,7 @@ export class Passkeys implements SecondFactorPasskeys {
       await this.#store.remove(id, created.value.id, { lastFactorAllowed: true });
       throw new Error('The TwoFactorState does not report the passkey that was just registered: bind it to combineFactors(TwoFactorStore, PasskeyStore). The registration was rolled back.');
     }
-    if (first) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
+    if (first) writeAuth(this.#session, 'twoFactorAt', this.#now());
     await this.#events.dispatch(new PasskeyRegistered(user, cleanName));
     if (first) {
       await this.#events.dispatch(new TwoFactorEnabled(user, 'passkey'));
@@ -368,8 +370,8 @@ export class Passkeys implements SecondFactorPasskeys {
     // The session gains a privilege it did not have: a new id, as at sign-in and in a step-up.
     this.#session.regenerate();
     const now = this.#now();
-    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, now);
-    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, now);
+    writeAuth(this.#session, 'confirmedAt', now);
+    writeAuth(this.#session, 'twoFactorAt', now);
     return ok();
   }
 
@@ -407,13 +409,13 @@ export class Passkeys implements SecondFactorPasskeys {
    * Once the passkey is gone, the account's other sessions and remember-me sign-ins end and this one stays: whatever a stolen passkey
    * started elsewhere ends with it. When this session itself ended meanwhile, the removal stands and the result is still `ok`.
    */
-  async remove(id: number, password?: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | PasswordThrottled>> {
+  async remove(id: number, password: string): Promise<Result<void, { readonly kind: 'invalid-password' } | { readonly kind: 'not-found' } | PasswordThrottled>> {
     const user = await this.#requireRecentPassword('remove');
     const userId = idOf(user);
     await this.#requireRecentSecondFactor('remove', userId);
     // Without a password (an empty form field is none) nothing is counted: there is nothing to guess.
-    if (password === undefined || password === '') return err({ kind: 'invalid-password' });
-    const checked = await this.#auth.checkPassword(password ?? '');
+    if (typeof password !== 'string' || password === '') return err({ kind: 'invalid-password' });
+    const checked = await this.#auth.checkPassword(password);
     if (!checked.ok) return err(checked.error);
     // Typed now, so the last factor may go too — and a suspended passkey (a possible clone) goes only this way.
     const removed = await this.#store.remove(userId, id, { lastFactorAllowed: true });
@@ -561,7 +563,7 @@ export class Passkeys implements SecondFactorPasskeys {
 
   /** On an account that has a factor, the session must have proven one lately: the password alone does not change the factors. */
   async #requireRecentSecondFactor(method: string, userId: AuthUserId): Promise<void> {
-    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE, this.#now())) {
+    if ((await this.#state.factors(userId)).length > 0 && !secondFactorProvenWithin(this.#session, FACTOR_CHANGE_MAX_AGE_SECONDS, this.#now())) {
       throw new Error(`passkeys.${method}() needs a second factor proven within 15 minutes on an account that has one — put the route behind confirmedSecondFactor().`);
     }
   }

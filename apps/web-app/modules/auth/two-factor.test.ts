@@ -210,6 +210,7 @@ describe('two-factor authentication', () => {
       const ada = await app.factory(UserFactory).create();
       const login = (await app.post('/login', credentialsOf(ada)).assertRedirect('/users/me')).cookie(SESSION)!;
       const encrypted = await app.make(Encrypter).encrypt(KEY, `marmeon-auth:two-factor:${ada.id}`);
+      // The store, not `TwoFactor`: confirming through the service would end the other sessions, and this session must keep its stale proof.
       const store = app.make(TwoFactorStore);
       await store.startSetup(ada.id, encrypted);
       expect(await store.confirm(ada.id, 0, encrypted, null)).toBe(true);
@@ -259,6 +260,7 @@ describe('two-factor authentication', () => {
     /** A factor added behind the back of the open sessions: they hold it without having proven it. */
     async function addFactorQuietly(user: User) {
       const encrypted = await app.make(Encrypter).encrypt(KEY, `marmeon-auth:two-factor:${user.id}`);
+      // The store, not `TwoFactor`: the service would end the open sessions that these tests need to keep.
       const store = app.make(TwoFactorStore);
       await store.startSetup(user.id, encrypted);
       expect(await store.confirm(user.id, 0, encrypted, null)).toBe(true);

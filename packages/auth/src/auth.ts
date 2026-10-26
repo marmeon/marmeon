@@ -4,12 +4,13 @@ import { afterCommit, afterRollback, Clock, durationToSeconds, err, EventDispatc
 import { withCode } from '@marmeon/core/internal';
 import { ClientHistory, ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
-import { Session, SESSION_USER_KEY, SessionConfig } from '@marmeon/session';
+import { Session, SessionConfig } from '@marmeon/session';
 import { ANNOUNCE_ENDED, AccountSessions, missingSessionKeyMethod, notABoolean, passwordHashWritten, rotateSessionKey } from './account-sessions.ts';
 import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
 import { AuthConfig, rememberCookieName } from './config.ts';
 import { SignInFailed, SignInLockedOut, SignedIn, MAX_USER_AGENT, SignedOut, PasswordChanged, RememberTokenReused, type SignInVia } from './events.ts';
 import { Hasher } from './hashing.ts';
+import { AUTH_SESSION_KEYS, readAuth, writeAuth, type PendingSecondFactor } from './session-keys.ts';
 import { SessionFingerprints } from './fingerprint.ts';
 import { SignInThrottle, type DeviceCookie } from './sign-in-throttle.ts';
 import { AccountClaimLost, NewPassword } from './new-password.ts';
@@ -20,52 +21,10 @@ import { TwoFactorState, type SecondFactor } from './two-factor/state.ts';
 import { assertSignInFinder, idOf, UserProvider, type AuthUser, type AuthUserId, type Credentials } from './user.ts';
 import { RateLimiter } from '@marmeon/cache';
 
-/** Session keys of the signed-in user — `_`-prefixed: framework bookkeeping, left out of `session.all()`. */
-export const AUTH_SESSION_KEYS = {
-  /** The user's id (the session package's key: the `database` session driver copies it into `user_id`). */
-  id: SESSION_USER_KEY,
-  /** The account's fingerprint when the session signed in: its id and session key (`SessionFingerprints`). */
-  password: '_auth_password',
-  /** When the password was last typed (sign-in, confirmation), in Unix seconds — for `confirmedPassword()`. */
-  confirmedAt: '_auth_confirmed_at',
-  /** Signed in by the remember-me cookie, not by a password. */
-  viaRemember: '_auth_via_remember',
-  /** When the sign-in happened, in Unix seconds — the start of its absolute lifetime (`AUTH_SESSION_MAX_HOURS`); no activity extends it. */
-  signedInAt: '_auth_signed_in_at',
-  /** For a session restored by the remember-me cookie: when its token ends, in Unix seconds — the session never outlives it. */
-  rememberUntil: '_auth_remember_until',
-  /** A correct password whose account still owes a second factor — not a sign-in (see {@link PendingSecondFactor}). */
-  pending: '_auth_pending',
-  /** When this session proved a second factor, in Unix seconds — for the middleware that asks for one. */
-  twoFactorAt: '_auth_two_factor_at',
-  /** The sign-in's row in `SignInStore` — its end ends the session. */
-  signIn: '_auth_sign_in',
-  /** A random key of this sign-in (new at every sign-in): what its password checks are counted under, whatever the session id. */
-  throttleKey: '_auth_throttle_key',
-  /** Set when the sign-in began with a typed password (`attempt()`, including its second factor), never by a passkey or `signIn()`. */
-  typedPassword: '_auth_typed_password',
-} as const;
+export { AUTH_SESSION_KEYS, type PendingSecondFactor } from './session-keys.ts';
 
 /** How long a correct password waits for the second factor, in seconds. */
 export const PENDING_SECONDS = 300;
-
-/**
- * What the session keeps between the password and the second factor. It names the account, but nothing in the session
- * signs anybody in until {@link COMPLETE_PENDING} has checked it again.
- */
-export interface PendingSecondFactor {
-  readonly id: string | number;
-  /** The account's fingerprint at the password step: a new session key in between (a new password writes one) ends the wait. */
-  readonly fingerprint: string;
-  readonly remember: boolean;
-  readonly via: SignInVia;
-  /** Unix seconds when the password was typed (`via` is `attempt`); a sign-in nobody typed a password for has none. */
-  readonly typedAt?: number;
-  /** Unix seconds. */
-  readonly until: number;
-  readonly failures: number;
-  readonly factors: readonly SecondFactor[];
-}
 
 /** Reads the pending state (package-internal, for `TwoFactor`): the account it names, and how often a factor failed. `undefined` when none waits or it ran out. */
 export const READ_PENDING = Symbol('marmeon.auth.readPending');
@@ -126,22 +85,6 @@ export type AttemptError =
   | { readonly kind: 'invalid-credentials' }
   | { readonly kind: 'two-factor-required'; readonly factors: readonly SecondFactor[] }
   | { readonly kind: 'throttled'; readonly retryAfterSeconds: number; readonly account?: true };
-
-declare module '@marmeon/session' {
-  interface SessionData {
-    _auth_id: string | number;
-    _auth_password: string;
-    _auth_confirmed_at: number;
-    _auth_via_remember: boolean;
-    _auth_signed_in_at: number;
-    _auth_remember_until: number;
-    _auth_pending: PendingSecondFactor;
-    _auth_two_factor_at: number;
-    _auth_sign_in: string;
-    _auth_throttle_key: string;
-    _auth_typed_password: boolean;
-  }
-}
 
 declare module '@marmeon/cache' {
   interface LimiterContext {
@@ -309,8 +252,8 @@ export class Auth {
       await this.#signInThrottle.clearAccount(idOf(current.user));
       return err({ kind: 'two-factor-required', factors });
     }
-    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now()); // the password was just typed
-    this.#session.put(AUTH_SESSION_KEYS.typedPassword, true);
+    writeAuth(this.#session, 'confirmedAt', this.#now()); // the password was just typed
+    writeAuth(this.#session, 'typedPassword', true);
     return ok(credentials.user);
   }
 
@@ -365,7 +308,7 @@ export class Auth {
     if (pending === undefined) return undefined;
     const failures = pending.failures + 1;
     if (failures >= PENDING_MAX_FAILURES) this.#session.forget(AUTH_SESSION_KEYS.pending);
-    else this.#session.put(AUTH_SESSION_KEYS.pending, { ...pending, failures });
+    else writeAuth(this.#session, 'pending', { ...pending, failures });
     return failures;
   }
 
@@ -390,11 +333,11 @@ export class Auth {
     await (await this.#completeSignIn(found, { remember: pending.remember }, pending.via)).announce();
     // Only a typed password confirms, dated when it was typed. The sign-in starts then too, so the confirmation stays inside it (`passwordRecentlyConfirmed`).
     if (pending.via === 'attempt' && typeof pending.typedAt === 'number') {
-      this.#session.put(AUTH_SESSION_KEYS.signedInAt, pending.typedAt);
-      this.#session.put(AUTH_SESSION_KEYS.confirmedAt, pending.typedAt);
-      this.#session.put(AUTH_SESSION_KEYS.typedPassword, true);
+      writeAuth(this.#session, 'signedInAt', pending.typedAt);
+      writeAuth(this.#session, 'confirmedAt', pending.typedAt);
+      writeAuth(this.#session, 'typedPassword', true);
     }
-    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
+    writeAuth(this.#session, 'twoFactorAt', this.#now());
     return ok(found.user);
   }
 
@@ -416,8 +359,8 @@ export class Auth {
     if (!found) return err({ kind: 'expired' });
     if (checkedAgainst !== undefined && !this.#fingerprints.matches(this.#fingerprints.of(found), checkedAgainst)) return err({ kind: 'expired' });
     await (await this.#completeSignIn(checkedAgainst ?? found, { remember: options.remember === true }, 'passkey')).announce();
-    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
-    this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, this.#now());
+    writeAuth(this.#session, 'confirmedAt', this.#now());
+    writeAuth(this.#session, 'twoFactorAt', this.#now());
     return ok(found.user);
   }
 
@@ -462,7 +405,7 @@ export class Auth {
 
   /** Whether this session was signed in by the remember-me cookie rather than a password. */
   viaRemember(): boolean {
-    return this.#session.started && this.#session.get(AUTH_SESSION_KEYS.viaRemember) === true;
+    return this.#session.started && readAuth(this.#session, 'viaRemember') === true;
   }
 
   /**
@@ -485,7 +428,7 @@ export class Auth {
     await clearPasswordCheck(this.#limiter, scope);
     // A session id leaked before the confirmation must not ride into the window it opens (`throttleKey` stays, so the counts do).
     this.#session.regenerate();
-    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
+    writeAuth(this.#session, 'confirmedAt', this.#now());
     return ok();
   }
 
@@ -496,21 +439,23 @@ export class Auth {
    */
   passwordCheckScope(): PasswordCheckScope {
     if (!this.#session.started) throw new Error('auth.passwordCheckScope() needs a started session — a password check belongs to a signed-in user.');
-    let key = this.#session.get(AUTH_SESSION_KEYS.throttleKey);
-    if (typeof key !== 'string') {
+    const stored = readAuth(this.#session, 'throttleKey');
+    let key: string;
+    if (typeof stored === 'string') key = stored;
+    else {
       if (this.#session.readOnly) return { session: this.#session.id, typed: false };
       key = randomBytes(16).toString('base64url');
-      this.#session.put(AUTH_SESSION_KEYS.throttleKey, key);
+      writeAuth(this.#session, 'throttleKey', key);
     }
-    return { session: key, typed: this.#session.get(AUTH_SESSION_KEYS.typedPassword) === true };
+    return { session: key, typed: readAuth(this.#session, 'typedPassword') === true };
   }
 
   /** Whether a password was typed or a passkey proven (`passkeys.confirm()`, a passwordless sign-in) within `within`, a {@link Duration} (a number is seconds; default `AUTH_PASSWORD_TIMEOUT_SECONDS`). An invalid `within` throws; a missing or implausible confirmation time is `false`. */
   passwordRecentlyConfirmed(within?: Duration): boolean {
     const seconds = within === undefined ? this.#config.passwordTimeoutSeconds : durationToSeconds(within);
-    const at = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.confirmedAt) : undefined;
+    const at = this.#session.started ? readAuth(this.#session, 'confirmedAt') : undefined;
     // A confirmation counts only inside the sign-in it was typed for: one dated before the sign-in began is not its own.
-    const signedInAt = this.#session.started ? this.#session.get(AUTH_SESSION_KEYS.signedInAt) : undefined;
+    const signedInAt = this.#session.started ? readAuth(this.#session, 'signedInAt') : undefined;
     const current = this.#now();
     // A time further in the future than the clock skew is no confirmation (a clock that moved back, a value that did not come from
     // here). An earlier sign-in cannot slip in through the skew before `signedInAt`, because `#completeSignIn` forgets `confirmedAt`.
@@ -584,7 +529,7 @@ export class Auth {
     const { revoked, sessionKey } = stored;
     this.#cookies.delete(this.#rememberCookie);
     this.#anchor({ ...verified, passwordHash: hash, sessionKey });
-    this.#session.put(AUTH_SESSION_KEYS.confirmedAt, this.#now());
+    writeAuth(this.#session, 'confirmedAt', this.#now());
     await this.#endOtherSignIns(idOf(user), true); // after the key: the key is what ends the other sessions, the rows only leave the list
     await this.#events.dispatch(new PasswordChanged(user, revoked));
     await this.#announceEnded(idOf(user)); // last: this tab's new session is saved by the time its stream connects again
@@ -736,7 +681,7 @@ export class Auth {
 
   /** Binds this session to `credentials`, which are built from what this request verified and wrote itself (see `#verified`). */
   #anchor(credentials: Credentials): void {
-    this.#session.put(AUTH_SESSION_KEYS.password, this.#fingerprints.of(credentials));
+    writeAuth(this.#session, 'password', this.#fingerprints.of(credentials));
     this.#verified = credentials;
   }
 
@@ -879,16 +824,16 @@ export class Auth {
     this.#session.forget(AUTH_SESSION_KEYS.confirmedAt);
     // A new sign-in counts its password checks anew, and has typed no password until `attempt()` says so.
     this.#session.forget(AUTH_SESSION_KEYS.typedPassword);
-    this.#session.put(AUTH_SESSION_KEYS.throttleKey, randomBytes(16).toString('base64url'));
-    this.#session.put(AUTH_SESSION_KEYS.id, idOf(user));
+    writeAuth(this.#session, 'throttleKey', randomBytes(16).toString('base64url'));
+    writeAuth(this.#session, 'id', idOf(user));
     this.#anchor(credentials); // from what the caller read just now: the rule at `#verified` holds
-    this.#session.put(AUTH_SESSION_KEYS.signedInAt, this.#now());
-    if (viaRemember) this.#session.put(AUTH_SESSION_KEYS.viaRemember, true);
+    writeAuth(this.#session, 'signedInAt', this.#now());
+    if (viaRemember) writeAuth(this.#session, 'viaRemember', true);
     else this.#session.forget(AUTH_SESSION_KEYS.viaRemember);
-    if (viaRemember && rememberUntil !== undefined) this.#session.put(AUTH_SESSION_KEYS.rememberUntil, rememberUntil);
+    if (viaRemember && rememberUntil !== undefined) writeAuth(this.#session, 'rememberUntil', rememberUntil);
     else this.#session.forget(AUTH_SESSION_KEYS.rememberUntil);
     if (token !== undefined && expiresAt !== undefined) this.#setCookie(token, expiresAt);
-    this.#session.put(AUTH_SESSION_KEYS.signIn, signIn);
+    writeAuth(this.#session, 'signIn', signIn);
     this.#user = Promise.resolve(user);
     // Another person may sit at this browser now: pages kept from before the sign-in must not come back.
     // (A remember-me sign-in continues the same person's session — no reload for that.)
@@ -910,7 +855,7 @@ export class Auth {
     for (const key of [AUTH_SESSION_KEYS.id, AUTH_SESSION_KEYS.password, AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.viaRemember, AUTH_SESSION_KEYS.twoFactorAt, AUTH_SESSION_KEYS.signedInAt, AUTH_SESSION_KEYS.rememberUntil, AUTH_SESSION_KEYS.signIn, AUTH_SESSION_KEYS.throttleKey, AUTH_SESSION_KEYS.typedPassword] as const) {
       this.#session.forget(key);
     }
-    this.#session.put(AUTH_SESSION_KEYS.pending, {
+    writeAuth(this.#session, 'pending', {
       id: idOf(credentials.user),
       fingerprint: this.#fingerprints.of(credentials),
       remember,
@@ -931,27 +876,27 @@ export class Auth {
   /** The pending sign-in if it is well-formed and has not run out; anything else counts as none. */
   #pending(): PendingSecondFactor | undefined {
     if (!this.#session.started) return undefined;
-    const pending = this.#session.get(AUTH_SESSION_KEYS.pending);
+    const pending = readAuth(this.#session, 'pending') as Partial<Record<keyof PendingSecondFactor, unknown>> | null | undefined;
     if (typeof pending !== 'object' || pending === null || typeof pending.until !== 'number' || pending.until <= this.#now()) return undefined;
     if (!Array.isArray(pending.factors) || typeof pending.fingerprint !== 'string') return undefined;
     // A wait that an earlier release began (`via: 'login'`) is not read: the user signs in again, as for any other unreadable wait.
     if (!SIGN_IN_VIA.includes(pending.via)) return undefined;
-    return pending;
+    return pending as unknown as PendingSecondFactor;
   }
 
   async #resolve(): Promise<AuthUser | undefined> {
     if (!this.#session.started) return undefined; // the stateless `api` group has no session
-    const id = this.#session.get(AUTH_SESSION_KEYS.id);
+    const id = readAuth(this.#session, 'id');
     if (id === undefined) return this.#fromRememberCookie();
     const found = await this.#users.findById(id as never);
-    const fingerprint = this.#session.get(AUTH_SESSION_KEYS.password);
+    const fingerprint = readAuth(this.#session, 'password');
     if (!found || !this.#fingerprints.matches(fingerprint, found)) {
       // Deleted, or the session key changed since this session signed in (a new password writes one): this session ends — by the next request that may
       // write it (an island's is read-only: for it, nobody is signed in).
       if (!this.#session.readOnly) this.#session.invalidate();
       return undefined;
     }
-    const signedInAt = this.#session.get(AUTH_SESSION_KEYS.signedInAt);
+    const signedInAt = readAuth(this.#session, 'signedInAt');
     // Invariant: a sign-in ends at most `AUTH_SESSION_MAX_HOURS` after it began, however active; after that only a still-valid
     // remember-me cookie signs in again, and `AUTH_REMEMBER_DAYS` bounds that. Unreadable times end it too (fail closed).
     if (this.#lifetimeOver(signedInAt)) {
@@ -963,16 +908,16 @@ export class Auth {
     // A confirmation it holds is dated outside that sign-in, so it goes (the clock skew would otherwise let one just before count).
     if (signedInAt === undefined && !this.#session.readOnly) {
       this.#session.forget(AUTH_SESSION_KEYS.confirmedAt, AUTH_SESSION_KEYS.typedPassword);
-      this.#session.put(AUTH_SESSION_KEYS.signedInAt, this.#now());
+      writeAuth(this.#session, 'signedInAt', this.#now());
     }
     // Invariant: the row in the store is the authority over a sign-in. A session whose row is gone — ended from another device, by
     // the user's list or by `prune` — is over, whatever the session driver still holds; its remember-me cookie hangs on the same row.
-    const signIn = this.#session.get(AUTH_SESSION_KEYS.signIn);
+    const signIn = readAuth(this.#session, 'signIn');
     if (signIn === undefined) {
       // A session made without a row (`actingAs()` in a test, a session that predates the rows): its row is made now. Only a session
       // without a key gets one — a session whose row was ended has the key and takes the branch below.
       if (!this.#session.readOnly) {
-        this.#session.put(AUTH_SESSION_KEYS.signIn, await this.#signIns.create({ userId: idOf(found.user), userAgent: this.#request.userAgent }));
+        writeAuth(this.#session, 'signIn', await this.#signIns.create({ userId: idOf(found.user), userAgent: this.#request.userAgent }));
       }
     } else if (typeof signIn !== 'string' || !(await this.#signIns.seen(idOf(found.user), signIn, !this.#session.readOnly))) {
       if (this.#session.readOnly) return undefined;
@@ -1043,7 +988,7 @@ export class Auth {
     if (signedInAt !== undefined) {
       if (typeof signedInAt !== 'number' || !Number.isFinite(signedInAt) || signedInAt > at + CLOCK_SKEW_SECONDS || at - signedInAt >= this.#config.sessionMaxSeconds) return true;
     }
-    const until = this.#session.get(AUTH_SESSION_KEYS.rememberUntil);
+    const until = readAuth(this.#session, 'rememberUntil');
     return until !== undefined && (typeof until !== 'number' || !Number.isFinite(until) || until <= at);
   }
 
@@ -1106,15 +1051,15 @@ export class Auth {
     // Every token of an account with a factor was made on a device that proved it (tokens made before the factor existed are dropped
     // when it is turned on), so this device has proven it too — at the time the token was made, which rotation keeps: a stolen cookie
     // does not turn into a fresh proof for the middleware's `maxAge`.
-    if ((await this.#twoFactor.factors(idOf(found.user))).length > 0) this.#session.put(AUTH_SESSION_KEYS.twoFactorAt, Math.floor(madeAt! / 1000));
+    if ((await this.#twoFactor.factors(idOf(found.user))).length > 0) writeAuth(this.#session, 'twoFactorAt', Math.floor(madeAt! / 1000));
     return found.user;
   }
 
   /** The row of this session's sign-in, with the user it belongs to — `undefined` without a started session, a user or a row. */
   #ownSignIn(): { readonly userId: AuthUserId; readonly id: string } | undefined {
     if (!this.#session.started) return undefined;
-    const userId = this.#session.get(AUTH_SESSION_KEYS.id);
-    const id = this.#session.get(AUTH_SESSION_KEYS.signIn);
+    const userId = readAuth(this.#session, 'id');
+    const id = readAuth(this.#session, 'signIn');
     return userId === undefined || typeof id !== 'string' ? undefined : { userId: userId as AuthUserId, id };
   }
 

@@ -1,4 +1,4 @@
-import { Clock, defineConfig, env, EventDispatcher, Logger, Redactor, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { Clock, defineConfig, env, environment, EventDispatcher, Logger, Redactor, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import type { ProviderMigrations } from '@marmeon/database';
 import { RateLimiter } from '@marmeon/cache';
 import { withCode } from '@marmeon/core/internal';
@@ -159,7 +159,8 @@ export class AuthServiceProvider implements ServiceProvider {
     if (app.container.has(Redactor) && app.container.has(SessionConfig)) {
       app.container.make(Redactor).addKeys(rememberCookieName(config, app.container.make(SessionConfig)));
     }
-    if (config.protected && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
+    // Protected: every `NODE_ENV` but `development` and `test`.
+    if (environment.isProtected() && !config.privateRegistration) app.container.make(Logger).warn(PRIVATE_REGISTRATION_OFF_WARNING, { privateRegistration: false });
     // /up/ready is red until the tables of the stores in use have every column the stores need.
     await requireAuthTables(app.container);
     requireSignInFinder(app.container);
