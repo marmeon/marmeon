@@ -1,4 +1,6 @@
 import * as nodeCrypto from 'node:crypto';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createApplication, ErrorSolutions } from '@marmeon/core';
 import { describe, expect, it, vi } from 'vitest';
 import { AesGcmEncrypter, DecryptError, Encrypter, EncryptionConfig, EncryptionServiceProvider, generateKey } from './index.ts';
@@ -199,5 +201,33 @@ describe('EncryptionConfig & provider', () => {
     it('does not stop another valid key in production', async () => {
       expect(await boot({ APP_KEY: generateKey(), NODE_ENV: 'production' })).toBeDefined();
     });
+  });
+});
+
+describe('the fixtures of every version of the encrypted value', () => {
+  const directory = join(import.meta.dirname, '__fixtures__', 'formats', 'encrypted-value');
+  const keyOf = (text: string) => Uint8Array.fromBase64(text.replace(/^base64:/, ''));
+  const fixtures = readdirSync(directory).sort().map((name) => {
+    expect(name).toMatch(/^v1(-[a-z-]+)?\.txt$/);
+    const lines = readFileSync(join(directory, name), 'utf8').trimEnd().split('\n');
+    const fields = Object.fromEntries(lines.map((line) => [line.slice(0, line.indexOf(': ')), line.slice(line.indexOf(': ') + 2)]));
+    return { name, key: fields.key!, context: fields.context!, plaintext: fields.plaintext!, payload: fields.payload! };
+  });
+
+  it('keeps a fixture for version 1', () => {
+    expect(fixtures.map((fixture) => fixture.name)).toContain('v1.txt');
+  });
+
+  it.each(fixtures.map((fixture) => [fixture.name, fixture] as const))('decrypts %s with its key and context only', async (_name, fixture) => {
+    const encrypter = new AesGcmEncrypter(keyOf(fixture.key));
+    expect(await encrypter.decrypt(fixture.payload, fixture.context)).toBe(fixture.plaintext);
+    await failsToDecrypt(encrypter.decrypt(fixture.payload, `${fixture.context}-other`));
+  });
+
+  it('refuses a payload whose version byte is one this release does not know', async () => {
+    const fixture = fixtures[0]!;
+    const bytes = Uint8Array.fromBase64(fixture.payload, { alphabet: 'base64url' });
+    bytes[0] = 2;
+    await failsToDecrypt(new AesGcmEncrypter(keyOf(fixture.key)).decrypt(bytes.toBase64({ alphabet: 'base64url' }), fixture.context));
   });
 });
