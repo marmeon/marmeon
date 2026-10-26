@@ -113,7 +113,8 @@ A check that fails names what failed, such as the database connection, in the de
 
 ## What the answer shows
 
-In development, `/up/ready` lists every check with its status, its time in milliseconds, its note and its error:
+In development, `/up/ready` lists every check with its status, its time in milliseconds, its note and its error, to a request for
+`localhost`, a loopback address or the host of `APP_URL`; a request with another `Host` gets the plain answer:
 
 ```json
 {

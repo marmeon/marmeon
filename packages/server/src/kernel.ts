@@ -80,6 +80,7 @@ import { createProductionRenderer } from './production.ts';
 import { createResponseFactory, leaveForeignRedirect, toActionResponse, toLiveValidationResponse, toRegionResponse, type LayerBaseResult, type PageRenderer } from './render.ts';
 import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
+import { devHosts, hostAllowed } from '@marmeon/core/dev';
 import { checkHealthPaths, createHealthEndpoints } from './health.ts';
 import { ServerConfig } from './provider.ts';
 import { forwardedRequest, proxyMatcher } from './proxies.ts';
@@ -260,6 +261,10 @@ export function createHttpKernel(
   const timing = container.has(ServerTiming) ? container.make(ServerTiming) : undefined;
   // Development only: the error page's queries and log of each request — bound by the provider in debug mode.
   const recorder = debug && container.has(DevRequestRecorder) ? container.make(DevRequestRecorder) : undefined;
+  // Debug details (the development error page, an exception's text, the health details) go only to a request for a host the
+  // development routes answer — a page re-pointed at this machine carries a foreign `Host` and sees the plain answer.
+  const hosts = devHosts(appUrl);
+  const showsDebug = (request: Request): boolean => debug && hostAllowed(request, hosts);
   const app = new Hono();
   /** The route each request in flight matched — its name for the log line and the request channel. */
   const matched = new WeakMap<Request, RouteDefinition>();
@@ -323,7 +328,7 @@ export function createHttpKernel(
       const response = await Promise.race([app.fetch(request, { parent }), timedOut]);
       if (response === 'timeout') {
         logger.error(`The island ${redactor.text(`${target.pathname}${target.search}`)} took longer than ${islandTimeout} ms — it shows its error`);
-        return { status: 'exception', failure: { status: 504, ...(debug ? { message: `The island took longer than ${islandTimeout} ms.` } : {}) } };
+        return { status: 'exception', failure: { status: 504, ...(showsDebug(parent.request) ? { message: `The island took longer than ${islandTimeout} ms.` } : {}) } };
       }
       return await regionResultOf(response);
     } catch (error) {
@@ -375,7 +380,7 @@ export function createHttpKernel(
     },
     logger: container.make(Logger).child({ channel: 'ssr' }),
     ssr,
-    debug,
+    debug: showsDebug,
     islands: dispatchIsland,
     layerBases: dispatchLayerBase,
     onDeferredError: (error, request) => reportLate(error, request, 'deferred'),
@@ -444,8 +449,8 @@ export function createHttpKernel(
     try {
       // In the request's language, when a translator is bound (@marmeon/i18n) — the error page, its title, validation messages.
       const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
-      const result = handler.render(error, request, { debug, translator });
-      if (debug) {
+      const result = handler.render(error, request, { debug: showsDebug(failed), translator });
+      if (showsDebug(failed)) {
         const developed = await developmentError(error, result, failed, request);
         if (developed) return developed;
       }
@@ -456,7 +461,7 @@ export function createHttpKernel(
       // renders the page then). Only if even that fails: a plain answer rather than none.
       logger.error('Rendering the error response failed', { exception: redactor.text(String(failure)) });
       try {
-        return await toResponse(handler.render(error, request, { debug }), { request });
+        return await toResponse(handler.render(error, request, { debug: showsDebug(failed) }), { request });
       } catch {
         return new Response('Server Error', { status: 500 });
       }
@@ -527,7 +532,7 @@ export function createHttpKernel(
     try {
       const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
       // Never back to a form with the errors flashed (that would write the session): the island has no form.
-      const result = error instanceof ValidationError ? Response.json({ message: error.message }, { status: 422 }) : handler.render(error, request, { debug, translator });
+      const result = error instanceof ValidationError ? Response.json({ message: error.message }, { status: 422 }) : handler.render(error, request, { debug: showsDebug(request), translator });
       if (result instanceof Response) return result;
       if (isViewResult(result)) return Response.json(result.props, { status: result.status, headers: result.headers });
     } catch (failure) {
@@ -564,10 +569,10 @@ export function createHttpKernel(
 
   // Health: answered first — before the request id, the log line, the request channel and every middleware group.
   if (health !== false) {
-    const endpoints = createHealthEndpoints(application, container, { path: health, debug });
+    const endpoints = createHealthEndpoints(application, container, { path: health, debug, hosts });
     checkHealthPaths(endpoints, router.routes);
     app.get(endpoints.path, () => endpoints.live());
-    app.get(endpoints.readyPath, () => endpoints.ready());
+    app.get(endpoints.readyPath, (c) => endpoints.ready(c.req.raw));
   }
 
   app.use(async (c, next) => {

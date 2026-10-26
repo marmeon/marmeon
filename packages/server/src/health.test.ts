@@ -126,6 +126,23 @@ describe('health endpoints', () => {
     }
   });
 
+  it('in development a foreign Host gets the plain answer; localhost and APP_URL keep the details', async () => {
+    const { application } = await boot({ env: { NODE_ENV: 'development', APP_URL: 'https://app.example' } });
+    const kernel = createHttpKernel(application);
+    try {
+      state.database = 'down';
+      const foreign = await kernel.request('/up/ready', { headers: { host: 'evil.example' } });
+      expect(foreign.status).toBe(503);
+      expect(await foreign.json()).toEqual({ status: 'failing' });
+      for (const host of ['localhost:3000', 'app.example']) {
+        const body = (await (await kernel.request('/up/ready', { headers: { host } })).json()) as { checks?: unknown[] };
+        expect(body.checks).toHaveLength(2);
+      }
+    } finally {
+      await application.shutdown();
+    }
+  });
+
   it('in development the answer names each check with its time, note and (redacted) error', async () => {
     const { application, later } = await boot({ env: { NODE_ENV: 'development' } });
     const kernel = createHttpKernel(application);
