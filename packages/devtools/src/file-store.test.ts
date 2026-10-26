@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
-import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { EntryIds, type AnyEntry } from './entry.ts';
 import { FileDevtoolsStore } from './file-store.ts';
@@ -21,7 +21,84 @@ function diskBytes(path: string): number {
   return readdirSync(path).reduce((sum, name) => sum + statSync(join(path, name)).size, 0);
 }
 
+const modes = process.platform === 'win32' ? it.skip : it;
+const modeOf = (path: string): number => statSync(path).mode & 0o777;
+
 describe('FileDevtoolsStore', () => {
+  modes('keeps the directory and its files to the owner, also one an older version left open', async () => {
+    const path = directory();
+    mkdirSync(path, { recursive: true, mode: 0o755 });
+    chmodSync(path, 0o755);
+    const hour = new Date().toISOString().slice(0, 13).replaceAll(/[-T]/g, '');
+    const oldName = `${hour}-1-aaaaaa-0001.ndjson`;
+    const old = join(path, oldName);
+    writeFileSync(old, '', { mode: 0o644 });
+    chmodSync(old, 0o644);
+
+    const store = new FileDevtoolsStore({ directory: path });
+    await store.write([log('secret')]);
+    expect(modeOf(path)).toBe(0o700);
+    expect(modeOf(old)).toBe(0o600);
+    const fresh = readdirSync(path).filter((name) => name !== oldName);
+    expect(fresh.length).toBeGreaterThan(0);
+    for (const name of fresh) expect(modeOf(join(path, name))).toBe(0o600);
+
+    const created = directory();
+    await new FileDevtoolsStore({ directory: created }).write([log('secret')]);
+    expect(modeOf(created)).toBe(0o700);
+  });
+
+  modes('does not write through a symlink planted at the next segment name', async () => {
+    const path = directory();
+    const reports: unknown[] = [];
+    let at = Date.UTC(2030, 0, 1, 10);
+    const store = new FileDevtoolsStore({ directory: path, now: () => at, onError: (error) => reports.push(error) });
+    await store.write([log('first', at)]);
+    const [first] = readdirSync(path);
+    const target = join(tempDir('marmeon-devtools-victim-'), 'victim');
+    writeFileSync(target, 'untouched');
+    at += 3_600_000;
+    symlinkSync(target, join(path, first!.replace(/^\d{10}/, new Date(at).toISOString().slice(0, 13).replaceAll(/[-T]/g, '')).replace('-0001', '-0002')));
+    await store.write([log('second', at)]);
+    expect(reports).toHaveLength(1);
+    expect((reports[0] as NodeJS.ErrnoException).code).toBe('EEXIST');
+    expect(readFileSync(target, 'utf8')).toBe('untouched');
+    await store.write([log('third', at)]);
+    const third = readdirSync(path).filter((name) => name.includes('-0003'));
+    expect(third).toHaveLength(1);
+    expect(readFileSync(join(path, third[0]!), 'utf8')).toContain('third');
+    expect(lstatSync(join(path, first!.replace(/^\d{10}/, new Date(at).toISOString().slice(0, 13).replaceAll(/[-T]/g, '')).replace('-0001', '-0002'))).isSymbolicLink()).toBe(true);
+  });
+
+  modes('leaves the target of a symlinked .ndjson alone when closing old files', async () => {
+    const path = directory();
+    mkdirSync(path, { recursive: true });
+    const target = join(tempDir('marmeon-devtools-victim-'), 'victim');
+    writeFileSync(target, 'x', { mode: 0o755 });
+    chmodSync(target, 0o755);
+    symlinkSync(target, join(path, 'x.ndjson'));
+    await new FileDevtoolsStore({ directory: path }).write([log('one')]);
+    expect(modeOf(target)).toBe(0o755);
+  });
+
+  modes('writes again owner-only when another process removed the segment', async () => {
+    const path = directory();
+    const store = new FileDevtoolsStore({ directory: path });
+    await store.write([log('one')]);
+    await new FileDevtoolsStore({ directory: path }).clear();
+    await store.write([log('two')]);
+    const files = readdirSync(path);
+    expect(files).toHaveLength(1);
+    expect(modeOf(join(path, files[0]!))).toBe(0o600);
+  });
+
+  modes('does not make the parents of a missing directory owner-only', async () => {
+    const path = directory();
+    await new FileDevtoolsStore({ directory: path }).write([log('one')]);
+    expect(modeOf(dirname(path))).not.toBe(0o700);
+    expect(modeOf(path)).toBe(0o700);
+  });
+
   it('writes NDJSON — one file per process and hour — and reads it back: newest first, by type, batch, request, tag, text and page', async () => {
     const path = directory();
     const store = new FileDevtoolsStore({ directory: path });
