@@ -86,7 +86,9 @@ export const QueueRedis = defineRedisConnection('queue', {
 ```
 
 List it in `config` of `defineApplication()` in `bootstrap/app.ts`, and point the queue at it with `QUEUE_REDIS_CONNECTION=queue`.
-`resolve` returns the URL and the prefix. `default` is the name of the connection of `REDIS_URL`, and
+`resolve` returns the URL and the prefix. The prefix is required here too: a connection whose prefix is empty stops the app at
+the start, because two apps on one Redis would share their keys. The problem is listed with the other configuration problems,
+under the connection's name. `default` is the name of the connection of `REDIS_URL`, and
 `defineRedisConnection('default', …)` throws.
 
 ## Using Redis yourself

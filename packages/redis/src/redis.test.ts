@@ -66,6 +66,25 @@ describe('RedisConnections without a server', () => {
     expect(() => defineRedisConnection('default', { env: env({}), resolve: () => ({ url: 'redis://x', prefix: '' }) })).toThrow(/REDIS_URL/);
   });
 
+  it('stops the start for a named connection with an empty prefix, listing it with the other problems', async () => {
+    const Queue = defineRedisConnection('queue', {
+      env: env({ QUEUE_PREFIX: env.string().default('') }),
+      resolve: (e) => ({ url: 'redis://queue.internal:6379', prefix: e.QUEUE_PREFIX }),
+    });
+    const definition = { root: import.meta.dirname, discover: false, providers: [RedisServiceProvider], config: [Queue] };
+    const message = await createApplication(definition, { env: { APP_NAME: 'Shop', REDIS_URL: 'http://wrong' } }).then(() => '', (error: Error) => error.message);
+    expect(message).toMatch(/Invalid configuration/);
+    expect(message).toMatch(/• redis\.queue: the prefix is empty — set one in its resolve/);
+    expect(message).toMatch(/REDIS_URL/);
+
+    const building = await createApplication(definition, { env: { APP_NAME: 'Shop' }, phase: 'build' });
+    expect(() => building.container.make(Queue)).toThrow(/prefix is empty/);
+
+    const app = await createApplication(definition, { env: { APP_NAME: 'Shop', QUEUE_PREFIX: 'queue:' } });
+    expect(app.container.make(RedisConnections).options('queue').prefix).toBe('queue:');
+    await app.shutdown();
+  });
+
   it('takes an empty REDIS_PREFIX as a missing one — the app name, never a key without a prefix', async () => {
     const prefix = async (variables: Record<string, string>) =>
       (await createApplication({ root: import.meta.dirname, discover: false, providers: [RedisServiceProvider] }, { env: { APP_NAME: 'Shop', ...variables } })).container.make(RedisConfig).default.prefix;
