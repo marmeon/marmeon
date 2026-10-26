@@ -45,6 +45,7 @@ export class StorageFake implements Storage {
     return this.#manager.names;
   }
 
+  /** @internal Used by the storage provider. */
   get defaultDisk(): string {
     return this.#manager.defaultDisk;
   }
@@ -53,22 +54,34 @@ export class StorageFake implements Storage {
     return this.#manager.disk(name) as FakeDisk<N>;
   }
 
-  /** The disk `name`, untyped — for names from configuration or the URL (an unknown one throws {@link StorageError}). */
+  /**
+   * The disk `name`, untyped — for names from configuration or the URL (an unknown one throws {@link StorageError}).
+   * @internal Used by the storage provider and routes.
+   */
   named(name: string): Disk {
     return this.#manager.named(name);
   }
 
-  /** The configuration of the disk `name` — or a {@link StorageError} with the known names. */
+  /**
+   * The configuration of the disk `name` — or a {@link StorageError} with the known names.
+   * @internal Used by the storage provider.
+   */
   options(name: string): DiskOptions {
     return this.#manager.options(name);
   }
 
-  /** Builds every disk of a driver a provider brought; the fake's disks are all in memory, so nothing can fail. */
+  /**
+   * Builds every disk of a driver a provider brought; the fake's disks are all in memory, so nothing can fail.
+   * @internal Used by the storage provider.
+   */
   verify(): void {
     this.#manager.verify();
   }
 
-  /** Closes every built disk that has a `close()`. */
+  /**
+   * Closes every built disk that has a `close()`.
+   * @internal Used by the storage provider.
+   */
   async close(): Promise<void> {
     await this.#manager.close();
   }

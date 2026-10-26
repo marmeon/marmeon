@@ -38,11 +38,17 @@ export function forDriver({ expiresIn, filename, base }: TemporaryUrlOptions): D
   return { expiresInSeconds: secondsOf(expiresIn), ...(filename === undefined ? {} : { filename }), ...(base === undefined ? {} : { base }) };
 }
 
-/** Whole seconds of a {@link Duration}, rounded down (a link never outlives what was asked); refuses zero, negative and non-finite spans. */
+/** The longest a temporary URL may last, on every disk: the limit of S3's presigned URLs (seven days). */
+export const MAX_TEMPORARY_URL_SECONDS = 604_800;
+
+/** Whole seconds of a {@link Duration}, rounded down (a link never outlives what was asked); refuses zero, negative, non-finite and over-seven-day spans. */
 export function secondsOf(expiresIn: Duration): number {
   const seconds = durationToSeconds(expiresIn);
   if (!Number.isFinite(seconds) || seconds <= 0) throw new RangeError(`expiresIn must be a positive time span, not ${JSON.stringify(expiresIn)}.`);
   const whole = Math.floor(seconds);
   if (whole < 1) throw new RangeError(`expiresIn must be at least one second, not ${JSON.stringify(expiresIn)}.`);
+  if (whole > MAX_TEMPORARY_URL_SECONDS) {
+    throw new RangeError(`expiresIn is at most 7 days (the limit of S3's presigned URLs), not ${JSON.stringify(expiresIn)} — for a link that lasts, serve the file through a route of your own.`);
+  }
   return whole;
 }

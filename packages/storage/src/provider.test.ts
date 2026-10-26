@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { Clock, createApplication, defineModule, env, type ConfigDefinition } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { HttpServiceProvider } from '@marmeon/http';
+import { HttpServiceProvider, UrlSigner } from '@marmeon/http';
 import { Router } from '@marmeon/router';
 import { accessLabel, routeAccess } from '@marmeon/router/internal';
 import { createHttpKernel } from '@marmeon/server';
@@ -164,6 +164,14 @@ describe('serving public disks', () => {
 });
 
 describe('temporary URLs of local disks', () => {
+  it('refuses a link signed for more than seven days, however it was signed', async () => {
+    const { storage, kernel, app } = await boot(storageConfig(freshDirectory()));
+    await storage.disk('local').put('x.txt', 'x');
+    const signer = app.container.make(UrlSigner);
+    expect((await kernel!.request(signer.signedPath('/_marmeon/storage/local/x.txt', { expiresIn: { days: 7 } }))).status).toBe(200);
+    expect((await kernel!.request(signer.signedPath('/_marmeon/storage/local/x.txt', { expiresIn: { days: 8 } }))).status).toBe(403);
+  });
+
   it('signed by UrlSigner, expiring by the app clock — served as a download with no-store', async () => {
     const base = freshDirectory();
     const { storage, kernel, clock } = await boot(storageConfig(base));
@@ -383,6 +391,13 @@ describe('the fake', () => {
     await expect(fake.disk('public').get('../x')).rejects.toThrow('".." segment');
     const { readdirSync } = await import('node:fs');
     expect(readdirSync(base)).toEqual([]); // nothing on the file system
+  });
+
+  it('the fake refuses a temporary URL over seven days, like every disk', async () => {
+    const { storage } = await boot(storageConfig(freshDirectory()), { fake: true });
+    const disk = (storage as unknown as StorageFake).disk('bucket');
+    await expect(disk.temporaryUrl('x.txt', { expiresIn: { days: 7 } })).resolves.toEqual(expect.any(String));
+    await expect(disk.temporaryUrl('x.txt', { expiresIn: { days: 8 } })).rejects.toThrow(RangeError);
   });
 
   it('diskAttachment(): a file as a mail attachment', async () => {

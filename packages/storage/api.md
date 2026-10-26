@@ -356,12 +356,7 @@ export interface FakeDiskAssertions {
 export declare class StorageFake implements Storage {
     #private;
     get names(): readonly string[];
-    get defaultDisk(): string;
     disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): FakeDisk<N>;
-    named(name: string): Disk;
-    options(name: string): DiskOptions;
-    verify(): void;
-    close(): Promise<void>;
 }
 ```
 

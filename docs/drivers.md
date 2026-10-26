@@ -159,7 +159,7 @@ What the framework keeps for a disk of a provider's driver, whatever the driver 
   `url()` on a private disk is refused by the framework and never reaches the driver, and a private disk with a `url` option
   stops the start.
 - **`temporaryUrl()` gets whole seconds.** The app writes `expiresIn` as seconds or a [`Duration`](time.md#spans-of-time); the
-  framework turns it into `expiresInSeconds`, a whole number of at least 1, before it calls the driver's `temporaryUrl(key,
+  framework turns it into `expiresInSeconds`, a whole number from 1 to 604 800 (seven days; a longer span throws a `RangeError` before the driver is called), before it calls the driver's `temporaryUrl(key,
   { expiresInSeconds, filename?, base? })`. A driver's factory returns a `DiskDriver`: the members of a disk, with that signature.
 - **A private file is reached only through a signed URL.** `temporaryUrl()` of a private disk must sign the URL and let it expire.
   That is the driver's job: the framework cannot tell a signature from a long string and refuses only an empty result. A driver

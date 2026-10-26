@@ -1,6 +1,7 @@
-import type { Container } from '@marmeon/core';
+import { Clock, type Container } from '@marmeon/core';
 import type { StorageOptions } from './config.ts';
 import { FRAMEWORK_ROUTES } from '@marmeon/router/internal';
+import { MAX_TEMPORARY_URL_SECONDS } from './contents.ts';
 import { keyFromPath } from './keys.ts';
 import { notFound, serveFile } from './serve.ts';
 import { Storage, StorageManager, visibilityOf } from './storage.ts';
@@ -46,6 +47,10 @@ export function registerStorageRoutes(http: Http, container: Container, options:
   const temporary = http.defineRoutes((Route) => {
     Route.middleware(http.signed()).get(`${TEMPORARY_PREFIX}/:disk/:path{.+}`, async (ctx) => {
       const url = new URL(ctx.request.url);
+      // A link signed with the same key by other means (or before the cap) is refused too: no link outlives seven days
+      // (60 seconds of tolerance for clock skew between servers).
+      const lasts = Number(url.searchParams.get('expires')) - Math.floor(container.make(Clock).now() / 1000);
+      if (!(lasts <= MAX_TEMPORARY_URL_SECONDS + 60)) throw new http.HttpError(403, 'Invalid signature.', {}, { key: 'marmeon.errors.signature' });
       const rest = url.pathname.slice(TEMPORARY_PREFIX.length + 1);
       const slash = rest.indexOf('/');
       let disk: string;
