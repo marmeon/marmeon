@@ -349,7 +349,7 @@ The attributes combine in any order:
 | --- | --- |
 | `prefix(path)` | Puts `path` in front of every route's path. Parameters in the prefix reach every route's context. |
 | `name(prefix)` | Puts `prefix` in front of every route's name: `name('show')` under `name('notes.')` is `notes.show`. |
-| `middleware(m)` | Adds a middleware to every route. Call it once per middleware. |
+| `middleware(m)` | Adds a middleware to every route. Call it once per middleware: more than one argument to `Route.middleware()` or `Route.authorize()` is a `TypeError`, so chain the calls. |
 | `bind(param, binder)` | Resolves a parameter to a record for every route. See [route model binding](#route-model-binding). |
 | `authorize(check)` | Asks `check` before any route answers. See [below](#asking-who-may-call-a-group). |
 | `internal()` | Keeps every route out of the browser. See [above](#routes-the-browser-never-learns). |

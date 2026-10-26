@@ -1,4 +1,5 @@
 import { isScoped, registrationSite, siteOf, type AccessCheck } from './access.ts';
+import { assertMiddleware } from './middleware.ts';
 import type { NoReservedKeys, ReservedContextKey } from './middleware.ts';
 import { RouteDefinition } from './route-definition.ts';
 import type { StandardSchemaV1 } from './request-definition.ts';
@@ -164,6 +165,11 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
    * passes to `next()` becomes available to everything registered after it.
    */
   middleware<TAdds extends object & NoReservedKeys = EmptyObject>(middleware: MiddlewareLike<TState, TAdds>): Route<Merge<TState, Omit<TAdds, ReservedContextKey>>, TParams, TBindings> {
+    // Untyped code gets past the signature; a second argument dropped silently would leave the route without that middleware.
+    if (arguments.length > 1) {
+      throw new TypeError(`Route.middleware() takes one middleware — got ${arguments.length} at ${this.#attributes.prefix}; chain them: Route.middleware(a).middleware(b).`);
+    }
+    assertMiddleware(middleware, `Route.middleware() at ${this.#attributes.prefix}`);
     return this.#with({ middleware: [...this.#attributes.middleware, middleware] });
   }
 
@@ -207,6 +213,10 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
   authorize(
     check: (ctx: RouteContext<TState, TParams, TBindings, ''>, resolve: ClassResolver) => boolean | Promise<boolean>,
   ): Route<TState, TParams, TBindings> {
+    // Untyped code gets past the signature; a second check dropped silently would leave the route open to more callers.
+    if (arguments.length > 1) {
+      throw new TypeError(`Route.authorize() takes one check — got ${arguments.length} at ${this.#attributes.prefix}; chain them: Route.authorize(a).authorize(b).`);
+    }
     // Untyped code gets past the parameter type; a check that is not callable would otherwise fail on the first request.
     if (typeof check !== 'function') {
       throw new TypeError(`Route.authorize() takes a function (ctx, resolve) => boolean — got ${typeof check} at ${this.#attributes.prefix}.`);

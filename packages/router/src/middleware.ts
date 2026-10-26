@@ -117,8 +117,10 @@ export function runPipeline<TCtx extends object>(
   };
 
   const dispatch = (index: number, current: TCtx): Promise<Response> => {
-    const layer = middleware[index];
-    if (layer === undefined) return guard(() => destination(current), current);
+    if (index >= middleware.length) return guard(() => destination(current), current);
+    // A hole in the list (an `undefined` entry) fails the request; ending the pipeline there would skip every later layer.
+    const layer = middleware[index]!;
+    if (!isMiddleware(layer)) return Promise.reject(new TypeError(`The middleware at position ${index} of the pipeline is ${describe(layer)}, not a middleware.`));
 
     let nextCalled = false;
     const next = (extension?: object): Promise<Response> => {
@@ -160,4 +162,20 @@ export function runPipeline<TCtx extends object>(
 /** Classes carry `handle` on their prototype; `defineMiddleware` objects carry it themselves. */
 export function isMiddlewareClass(layer: AnyMiddleware): layer is MiddlewareClass {
   return typeof layer === 'function';
+}
+
+const describe = (value: unknown): string => (value === null ? 'null' : typeof value === 'object' ? 'an object without handle()' : `of type ${typeof value}`);
+
+function isMiddleware(value: unknown): boolean {
+  return typeof value === 'function' || (typeof value === 'object' && value !== null && typeof (value as { handle?: unknown }).handle === 'function');
+}
+
+/**
+ * Throws a TypeError unless `value` is a middleware (a class or an object with `handle`). Untyped code gets past the
+ * signature, and an `undefined` from a condition would otherwise surface only on the first request.
+ *
+ * @internal
+ */
+export function assertMiddleware(value: unknown, where: string): void {
+  if (!isMiddleware(value)) throw new TypeError(`${where} takes a middleware (a class, or an object with handle()) — got ${value === undefined ? 'undefined' : describe(value)}.`);
 }

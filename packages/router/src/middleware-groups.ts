@@ -1,3 +1,4 @@
+import { assertMiddleware } from './middleware.ts';
 import type { AnyMiddleware } from './types.ts';
 
 /**
@@ -45,6 +46,11 @@ export class MiddlewareGroups {
 
   /** Adds middleware to a group; equal priorities keep the order they were added in. */
   append(group: string, middleware: AnyMiddleware, priority: number = MiddlewarePriority.app): this {
+    assertMiddleware(middleware, `MiddlewareGroups.append('${group}')`);
+    // Untyped code gets past the signature: append('web', a, b) would make `b` the priority.
+    if (typeof priority !== 'number' || !Number.isFinite(priority)) {
+      throw new TypeError(`MiddlewareGroups.append('${group}') takes a finite number as priority — got ${String(priority)}. One middleware per call.`);
+    }
     const entries = this.#groups.get(group) ?? [];
     this.#groups.set(group, [...entries.filter((entry) => entry.middleware !== middleware), { middleware, priority }]);
     this.#changed();
