@@ -87,6 +87,22 @@ describe('CACHE_DRIVER', () => {
     await app.shutdown();
   });
 
+  it('reads the seconds left of a key and of a limit under names with the unit; the old names are gone', async () => {
+    const app = await boot({ CACHE_DRIVER: 'memory' }, []);
+    const cache = app.container.make(Cache);
+    const limiter = app.container.make(RateLimiter);
+    await cache.put('session', 1, { minutes: 1 });
+    expect(await cache.ttlSeconds('session')).toBe(60);
+    expect(await cache.ttlSeconds('missing')).toBeUndefined();
+    await limiter.hit('login', 60);
+    expect(await limiter.availableInSeconds('login')).toBe(60);
+    // @ts-expect-error `ttl` is `ttlSeconds`
+    expect(() => cache.ttl('session')).toThrow(TypeError);
+    // @ts-expect-error `availableIn` is `availableInSeconds`
+    expect(() => limiter.availableIn('login')).toThrow(TypeError);
+    await app.shutdown();
+  });
+
   it('exports the stores for apps that build their own cache', () => {
     expect(new DatabaseStore(async () => ({ db: undefined as never, driver: 'sqlite' }))).toBeDefined();
     expect(new RedisStore(async () => undefined as never)).toBeDefined();

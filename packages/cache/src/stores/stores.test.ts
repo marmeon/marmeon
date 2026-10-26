@@ -73,8 +73,8 @@ describe.each(storeKinds)('the %s store', (kind) => {
     expect(await cache.increment('hits', 2, 3600)).toBe(3);
     expect(await cache.increment('hits', -1)).toBe(2);
     expect(await cache.get('hits')).toBe(2);
-    expect(await cache.ttl('hits')).toBeLessThanOrEqual(60);
-    expect(await cache.ttl('hits')).toBeGreaterThan(55);
+    expect(await cache.ttlSeconds('hits')).toBeLessThanOrEqual(60);
+    expect(await cache.ttlSeconds('hits')).toBeGreaterThan(55);
   });
 
   it('starts a counter over once its window passed, or when the key held no integer', async () => {

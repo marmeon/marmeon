@@ -1,4 +1,5 @@
 import type { AnyRecipientResolverClass, NotificationClass } from './notification.ts';
+import { durationToSeconds, type Duration } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 
 /** Notifications are set up wrongly — a class without a name, a name used twice, two resolvers for one kind … — said at startup. */
@@ -89,9 +90,8 @@ export function checkNotificationClass(notification: NotificationClass, source: 
     }
     const { tries, backoff } = options;
     if (tries !== undefined && (!Number.isInteger(tries) || (tries as number) < 1)) throw new NotificationSetupError(withCode('Q6', `${label} (static queue): tries must be a whole number ≥ 1, not ${String(tries)}.`));
-    const delays = backoff === undefined ? [] : typeof backoff === 'number' ? [backoff] : backoff;
-    if (!Array.isArray(delays) || delays.some((delay) => !(typeof delay === 'number' && delay >= 0))) {
-      throw new NotificationSetupError(withCode('Q6', `${label} (static queue): backoff must be seconds ≥ 0 — a number or a list like [10, 60, 300].`));
+    if (backoff !== undefined && backoffSeconds(backoff) === undefined) {
+      throw new NotificationSetupError(withCode('Q6', `${label} (static queue): backoff must be seconds ≥ 0 — a number, a duration like { minutes: 1 }, or a list like [10, { minutes: 1 }, 300].`));
     }
   }
   return notification.notification;
@@ -126,5 +126,16 @@ export class RecipientRegistry {
 
   types(): string[] {
     return [...this.#resolvers.keys()];
+  }
+}
+
+/** The seconds before each retry, or `undefined` when `backoff` is not a duration or a list of them (or one is negative). */
+export function backoffSeconds(backoff: unknown): number[] | undefined {
+  const list: unknown[] = Array.isArray(backoff) ? backoff : [backoff];
+  try {
+    const seconds = list.map((delay) => durationToSeconds(delay as Duration));
+    return seconds.every((value) => Number.isFinite(value) && value >= 0) ? seconds : undefined;
+  } catch {
+    return undefined;
   }
 }

@@ -150,7 +150,7 @@ export interface NotificationQueueOptions {
     readonly connection?: string;
     readonly delay?: Duration;
     readonly tries?: number;
-    readonly backoff?: number | readonly number[];
+    readonly backoff?: Duration | readonly Duration[];
 }
 // NotificationRecipients
 export interface NotificationRecipients {
@@ -274,7 +274,7 @@ export declare class SendQueuedNotification {
     static readonly schema: StandardSchemaV1<QueuedNotificationPayload>;
     static readonly encrypted = true;
     static readonly tries = 3;
-    static readonly backoff: number[];
+    static readonly backoff: readonly Duration[];
     handle(payload: QueuedNotificationPayload, job: JobContext): Promise<void>;
 }
 // SendResult
@@ -515,7 +515,7 @@ export interface NotificationQueueOptions {
     readonly connection?: string;
     readonly delay?: Duration;
     readonly tries?: number;
-    readonly backoff?: number | readonly number[];
+    readonly backoff?: Duration | readonly Duration[];
 }
 // NotificationRecipients
 export interface NotificationRecipients {

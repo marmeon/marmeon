@@ -74,7 +74,7 @@ export class SignInThrottle {
   async takeClient(identifier: string, ip: string | undefined): Promise<number | undefined> {
     const key = this.#clientKey(identifier, ip);
     if (await this.#limiter.attempt(key, this.#perMinute, CLIENT_SECONDS)) return undefined;
-    return Math.max(1, await this.#limiter.availableIn(key));
+    return Math.max(1, await this.#limiter.availableInSeconds(key));
   }
 
   /**
@@ -87,7 +87,7 @@ export class SignInThrottle {
     if (await this.#limiter.attempt(key, this.#perDay, ACCOUNT_SECONDS)) return undefined;
     // Once per window: the owner is told, the app can listen for the event.
     const first = await this.#limiter.attempt(`${key}|notice`, 1, ACCOUNT_SECONDS);
-    return { retryAfterSeconds: Math.max(1, await this.#limiter.availableIn(key)), first };
+    return { retryAfterSeconds: Math.max(1, await this.#limiter.availableInSeconds(key)), first };
   }
 
   /**

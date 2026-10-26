@@ -50,20 +50,20 @@ export async function takePasswordCheck(limiter: RateLimiter, scope: PasswordChe
   let account = false;
   for (const window of SESSION_WINDOWS) {
     const key = sessionKey(window.name, scope);
-    if (!(await limiter.attempt(key, window.attempts, window.seconds))) waits.push(await limiter.availableIn(key));
+    if (!(await limiter.attempt(key, window.attempts, window.seconds))) waits.push(await limiter.availableInSeconds(key));
   }
   // Only a check the sign-in itself allows counts against the account: one that is held up has guessed nothing.
   if (waits.length === 0 && !scope.typed) {
     const key = accountKey(userId);
     if (!(await limiter.attempt(key, ACCOUNT_WINDOW.attempts, ACCOUNT_WINDOW.seconds))) {
-      waits.push(await limiter.availableIn(key));
+      waits.push(await limiter.availableInSeconds(key));
       account = true;
     }
   }
   if (waits.length === 0) {
     const key = accountDayKey(userId);
     if (!(await limiter.attempt(key, ACCOUNT_DAY_WINDOW.attempts, ACCOUNT_DAY_WINDOW.seconds))) {
-      waits.push(await limiter.availableIn(key));
+      waits.push(await limiter.availableInSeconds(key));
       account = true;
     }
   }

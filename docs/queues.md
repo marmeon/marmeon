@@ -83,7 +83,7 @@ The queue gives you two tools for that:
 - **`job.id`** stays the same over every attempt and every retry, also after `queue:retry`. Pass it to an API that takes an
   idempotency key.
 - **`job.once(key, fn)`** runs `fn` unless it already ran for `key`. After `fn` succeeds, a marker for the key goes into the
-  app's cache for a day, or for `{ for: seconds }`. A later attempt, a retry or another job with the same key skips it, and
+  app's cache for a day, or for `{ for }`: seconds, or a duration such as `{ hours: 1 }`. A later attempt, a retry or another job with the same key skips it, and
   `once()` resolves `false`. Put an id into the key: `` `welcome-mail:${user.id}` ``.
 
 `once()` makes repeats rare, not impossible: a worker that dies after `fn` and before the marker runs `fn` again. While one attempt
@@ -176,8 +176,8 @@ belongs to the framework, stop the app at the start.
 | `job` | required | The stable name the queue stores. Never derived from the class name, so renaming the class breaks no waiting job. |
 | `schema` | required | The payload's schema. Checked at the dispatch and again before `handle()` runs. |
 | `tries` | `1` | Attempts in all. `1` means no retry. |
-| `backoff` | `0` | Seconds before the next attempt: one number, or one per retry, such as `[10, 60, 300]`. The last repeats. |
-| `timeout` | `60` | Seconds an attempt may take before `job.signal` aborts. |
+| `backoff` | `0` | The wait before the next attempt: one value, or one per retry, such as `[10, { minutes: 1 }, 300]`. A number is seconds. The last repeats. |
+| `timeout` | `60` | How long an attempt may take before `job.signal` aborts: seconds, or a duration such as `{ minutes: 2 }`. |
 | `encrypted` | `false` | Encrypts the payload in the queue. |
 | `middleware` | none | Job middleware that runs around each attempt. |
 
@@ -254,6 +254,9 @@ a worker that is `development` only because of the app's `.env` logs a warning a
 | `--stop-when-empty` | off | Stop as soon as no job is ready. |
 | `--stop-timeout` | `10` | Seconds a running job may still take after a stop, or after its timeout. |
 
+The flags take seconds. Code that runs a `Worker` of `@marmeon/queue` itself passes a [`Duration`](time.md#spans-of-time) (seconds, or an object such as `{ minutes: 5 }`) as `sleep`, `maxTime`
+and `stopTimeout` of `worker.run({ … })`, and as the `stopTimeout` of `QueueConnections.worker(connection, stopTimeout)`.
+
 ### Which queues a worker takes
 
 Without `--queue`, a worker takes **every queue, fairly**. No queue waits for another to run empty, so a long `default` queue never
@@ -274,7 +277,7 @@ one with `--queue=mail`.
 
 A worker with a list and no `*` looks at the other queues once a minute while it is idle. Jobs that are ready on a queue it does not
 take, at two looks in a row, are named once in a warning, so they do not wait without a word. Code that runs a `Worker` of
-`@marmeon/queue` itself sets the interval with `watchOtherQueues` in `worker.run({ … })`, in seconds, or turns the look off with
+`@marmeon/queue` itself sets the interval with `watchOtherQueues` in `worker.run({ … })`, as seconds or a duration, or turns the look off with
 `false`.
 
 ### Timeouts and `retryAfterSeconds`
@@ -495,12 +498,12 @@ export class RebuildMemberStatsJob {
 }
 ```
 
-An attempt that finds the key taken does not run. It goes back to the queue for `releaseAfter` seconds, 5 by default. That counts
+An attempt that finds the key taken does not run. It goes back to the queue for `releaseAfter`, 5 seconds by default. That counts
 as an attempt, so a job with this middleware needs `tries`. The key can depend on the payload:
-`` withoutOverlapping<typeof RebuildStatsJob>((payload) => `stats:${payload.userId}`) ``. The lock expires after `expiresAfter`
-seconds, by default the connection's `retryAfterSeconds`. `shared: true` shares the key with other jobs.
+`` withoutOverlapping<typeof RebuildStatsJob>((payload) => `stats:${payload.userId}`) ``. The lock expires after `expiresAfter`,
+by default the connection's `retryAfterSeconds`. `releaseAfter` and `expiresAfter` take seconds or a duration such as `{ minutes: 1 }`. `shared: true` shares the key with other jobs.
 
-A middleware of your own implements `handle(context, next)`. `context` holds the `payload`, the `job` context, the job's `timeout`,
+A middleware of your own implements `handle(context, next)`. `context` holds the `payload`, the `job` context, the job's timeout in `timeoutSeconds`,
 the connection's `retryAfterSeconds` and `cache()`. Call `next()` to run the job, or end the attempt with `context.job.release()` or
 `context.job.discard()`.
 

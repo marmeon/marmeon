@@ -1,11 +1,10 @@
 import type { Container, EventClass, EventRegistry, ListenerQueue, QueueableEvent, QueuedListenerClass, QueuedListenerOptions, Resolver, StandardSchemaV1 } from '@marmeon/core';
-import { durationToSeconds, type Duration } from '@marmeon/core';
 import { isQueuedListener, withCode } from '@marmeon/core/internal';
 import * as v from 'valibot';
 import type { JobContext } from './job.ts';
 import { RECORD_OPTIONS, type Queue } from './queue.ts';
 import { JobEvent } from './events.ts';
-import { QueueError, QueueSetupError } from './registry.ts';
+import { backoffSeconds, QueueError, QueueSetupError } from './registry.ts';
 import { JobPayloadError, schemaMismatch, TARGET_UNKNOWN, toJson } from './runner.ts';
 
 /** `auth.registered` — like a job's name. */
@@ -114,17 +113,6 @@ function checkListenerOptions(listener: QueuedListenerClass): void {
   if (tries !== undefined && (!Number.isInteger(tries) || tries < 1)) throw new QueueSetupError(withCode('Q4', `${label}: tries must be a whole number ≥ 1, not ${String(tries)}.`));
   if (backoff !== undefined && backoffSeconds(backoff) === undefined) {
     throw new QueueSetupError(withCode('Q4', `${label}: backoff must be seconds ≥ 0 — a number, a duration like { minutes: 1 }, or a list like [10, { minutes: 1 }, 300].`));
-  }
-}
-
-/** The seconds before each retry, or `undefined` when `backoff` is not a duration or a list of them (or one is negative). */
-function backoffSeconds(backoff: unknown): number[] | undefined {
-  const list: unknown[] = Array.isArray(backoff) ? backoff : [backoff];
-  try {
-    const seconds = list.map((delay) => durationToSeconds(delay as Duration));
-    return seconds.every((value) => value >= 0) ? seconds : undefined;
-  } catch {
-    return undefined;
   }
 }
 

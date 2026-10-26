@@ -55,8 +55,8 @@ export interface NotificationQueueOptions {
   readonly delay?: Duration;
   /** Attempts of the job in all (default 3). */
   readonly tries?: number;
-  /** Seconds before the next attempt — one value, or one per retry (the last repeats). Default [10, 60, 300]. */
-  readonly backoff?: number | readonly number[];
+  /** The wait before the next attempt — one value, or one per retry (the last repeats); seconds or a duration. Default [10, 60, 300]. */
+  readonly backoff?: Duration | readonly Duration[];
 }
 
 /** The static side of a notification class: a stable name and the schema of its data — like a job's. */

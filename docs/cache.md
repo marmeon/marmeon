@@ -101,7 +101,7 @@ works too. The [database](database.md#more-connections) page shows how to define
 | `forget(key)` | Removes the key. |
 | `increment(key, by = 1, ttl?)` | Adds a whole number and returns the result. |
 | `remember(key, ttl, compute)` | The value, or `compute()` stored and returned. |
-| `ttl(key)` | Seconds until the key expires, or `undefined`. |
+| `ttlSeconds(key)` | Seconds until the key expires, or `undefined`. |
 | `flush()` | Removes every entry. Locks stay. |
 
 Values are stored as JSON, so they must survive `JSON.stringify()`: a `Date` comes back as a string. Expiry follows the app's

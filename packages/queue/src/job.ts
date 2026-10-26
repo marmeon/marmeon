@@ -32,19 +32,19 @@ export interface JobContext {
   fail(reason: string | Error): void;
   /**
    * Runs `fn` — a side effect that must not repeat, like sending a mail — unless it already ran for `key`: after it
-   * succeeds, a marker for `key` goes into the app's cache (`options.for` seconds, default a day). Resolves true when `fn`
+   * succeeds, a marker for `key` goes into the app's cache (kept for `options.for`, seconds or a duration; default a day). Resolves true when `fn`
    * ran now, false when it was skipped. The marker is written after `fn`, so a worker that dies between the two runs `fn`
    * again: repeats get rare, not impossible. Needs @marmeon/cache. See `docs/queues.md#at-least-once`.
    */
-  once(key: string, fn: () => unknown, options?: { readonly for?: number }): Promise<boolean>;
+  once(key: string, fn: () => unknown, options?: { readonly for?: Duration }): Promise<boolean>;
 }
 
 /** What a job middleware gets: the attempt's context and payload, and the app's cache (for locks). */
 export interface JobMiddlewareContext<P = unknown> {
   readonly payload: P;
   readonly job: JobContext;
-  /** The job's `timeout` in seconds. */
-  readonly timeout: number;
+  /** The job's `timeout`, in seconds. */
+  readonly timeoutSeconds: number;
   /** Seconds a claim holds before another worker may take the job again (`retryAfterSeconds`) — undefined on the sync connection. */
   readonly retryAfterSeconds: number | undefined;
   /** The app's `Cache` (@marmeon/cache) — for locks across workers. */
@@ -72,10 +72,10 @@ export interface JobStatics {
   readonly schema: StandardSchemaV1;
   /** Attempts in all (default 1: no retry). */
   readonly tries?: number;
-  /** Seconds before the next attempt — one value, or one per retry (the last repeats): `[10, 60, 300]`. Default 0. */
-  readonly backoff?: number | readonly number[];
-  /** Seconds an attempt may take (default 60): then `job.signal` aborts; a job that does not stop ends the worker. */
-  readonly timeout?: number;
+  /** The wait before the next attempt — one value, or one per retry (the last repeats): `[10, { minutes: 1 }, 300]`. Seconds or a duration. Default 0. */
+  readonly backoff?: Duration | readonly Duration[];
+  /** How long an attempt may take (seconds or a duration, default 60): then `job.signal` aborts; a job that does not stop ends the worker. */
+  readonly timeout?: Duration;
   /** Encrypt the payload in the queue — for payloads with secrets (tokens, signed links). Needs APP_KEY. */
   readonly encrypted?: boolean;
   /**

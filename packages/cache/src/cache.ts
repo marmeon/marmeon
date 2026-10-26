@@ -23,7 +23,7 @@ export interface Cache {
   /** The cached value, or `compute()` stored for `ttl`. Not a lock: two misses at once both compute. */
   remember<T>(key: string, ttl: Duration | undefined, compute: () => T | Promise<T>): Promise<T>;
   /** Seconds until the key expires, undefined if absent or without expiry. */
-  ttl(key: string): Promise<number | undefined>;
+  ttlSeconds(key: string): Promise<number | undefined>;
   /** Empties the cache. Locks stay — they belong to whoever holds them. */
   flush(): Promise<void>;
   /**
@@ -246,7 +246,7 @@ export class StoreCache implements Cache {
     return value;
   }
 
-  async ttl(key: string): Promise<number | undefined> {
+  async ttlSeconds(key: string): Promise<number | undefined> {
     const entry = await this.#store.read(this.#prefix + key);
     return entry?.expires ? Math.max(0, Math.ceil((entry.expires - this.#clock.now()) / 1000)) : undefined;
   }

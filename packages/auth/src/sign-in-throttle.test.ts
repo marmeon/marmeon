@@ -310,7 +310,7 @@ describe('SignInThrottle', () => {
     const keys: string[] = [];
     const limiter = {
       attempt: async (key: string) => (keys.push(key), true),
-      availableIn: async () => 1,
+      availableInSeconds: async () => 1,
       clear: async (key: string) => {
         keys.push(key);
         await clear(key);
