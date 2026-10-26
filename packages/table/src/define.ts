@@ -62,9 +62,13 @@ export class ColumnDefinition<R extends string = string, S extends boolean = boo
   /** `true` once `visible(…)` decides: the column may be missing — optional in the row's type. */
   declare readonly '~conditional': V;
   readonly ref: R;
+  /** @internal */
   readonly isSortable: boolean;
+  /** @internal */
   readonly isSearchable: boolean;
+  /** @internal */
   readonly text: string | null;
+  /** @internal */
   readonly visibility: TableVisibility | undefined;
 
   /** @internal */
@@ -121,6 +125,7 @@ export class Filter<R extends string = string, T extends 'select' | 'dateRange' 
   readonly ref: R;
   readonly type: T;
   readonly options: readonly O[];
+  /** @internal */
   readonly visibility: TableVisibility | undefined;
 
   /** @internal */
@@ -174,8 +179,11 @@ export class RowAction<H extends RowActionClass = RowActionClass, P = unknown, K
   declare readonly '~policy': P;
   declare readonly '~ability': K;
   readonly handler: H;
+  /** @internal */
   readonly authorization: RowAuthorization | undefined;
+  /** @internal */
   readonly visibility: TableVisibility | undefined;
+  /** @internal */
   readonly confirms: boolean;
 
   /** @internal */
@@ -225,9 +233,13 @@ export class BulkAction<H extends BulkActionClass = BulkActionClass, P = unknown
   declare readonly '~policy': P;
   declare readonly '~ability': K;
   readonly handler: H;
+  /** @internal */
   readonly authorization: RowAuthorization | undefined;
+  /** @internal */
   readonly visibility: TableVisibility | undefined;
+  /** @internal */
   readonly confirms: boolean;
+  /** @internal */
   readonly limit: number;
 
   /** @internal */
@@ -279,7 +291,9 @@ export const DEFAULT_EXPORT_MAX = 10_000;
 /** An export — built by {@link exportCsv}. */
 export class TableExport {
   readonly format = 'csv' as const;
+  /** @internal */
   readonly visibility: TableVisibility | undefined;
+  /** @internal */
   readonly limit: number;
 
   /** @internal */
@@ -365,6 +379,7 @@ export interface DataTable<
   S extends string = C,
 > {
   readonly [TABLE_TYPES]?: { readonly row: Row; readonly ctx: Ctx; readonly columns: C; readonly sortable: S; readonly filters: F; readonly actions: A; readonly bulk: B; readonly exports: E };
+  /** @internal */
   readonly definition: TableDefinition;
   /**
    * The table's state in the URL as a query schema (rules of @marmeon/validation): `?sort=`, `?page=` (or `?cursor=`), `?per_page=`,

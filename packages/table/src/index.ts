@@ -15,17 +15,14 @@ export type {
   CheckRowAbility,
   CheckSort,
   RowActionClass,
-  RowAuthorization,
   DataTableRow,
   DataTable,
   TableContext,
-  TableDefinition,
   TableInput,
   TablePagination,
   TableQuery,
   TableProps,
   TableQuerySchema,
-  TableVisibility,
   TableVisibilityCheck,
 } from './define.ts';
 export { TableQueryError } from './state.ts';

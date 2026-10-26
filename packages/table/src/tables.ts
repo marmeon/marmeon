@@ -148,7 +148,10 @@ export class DataTables {
     return data as unknown as TableProps<T>;
   }
 
-  /** A row action, from its endpoint: the table, the action, its visibility and the row's policy — all checked again. */
+  /**
+   * A row action, from its endpoint: the table, the action, its visibility and the row's policy — all checked again.
+   * @internal
+   */
   async runAction(definition: TableDefinition, name: string, ctx: HttpContext): Promise<unknown> {
     await this.#authorizeTable(definition, ctx);
     const entry = Object.hasOwn(definition.actions, name) ? definition.actions[name]! : undefined;
@@ -176,6 +179,7 @@ export class DataTables {
    * A bulk action, from its endpoint: chosen keys (`{ keys }`) ∩ the base query ∩ the policy per row — or "all matching"
    * (`{ all: true, query }`: the table's state, parsed again here, never a list the browser made up). More rows than the action's
    * `max` is a 422; rows the policy refuses are left out and counted (`skipped`), keys that are no rows of the table too (`missing`).
+   * @internal
    */
   async runBulk(definition: TableDefinition, name: string, ctx: HttpContext): Promise<unknown> {
     await this.#authorizeTable(definition, ctx);
@@ -220,6 +224,7 @@ export class DataTables {
   /**
    * An export, from its endpoint: its own authorization, the visible columns only, filtered and sorted as the URL says (parsed
    * strictly) — streamed in batches, every cell escaped against formula injection, `no-store`.
+   * @internal
    */
   async export(definition: TableDefinition, name: string, ctx: HttpContext): Promise<Response> {
     await this.#authorizeTable(definition, ctx);

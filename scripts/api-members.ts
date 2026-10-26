@@ -7,6 +7,8 @@
 /** Members that stay public although no app code calls them. Each says why; nothing else belongs here. */
 export const MEMBER_EXCEPTIONS: Readonly<Record<string, string>> = {
   '@marmeon/http/client/adapter *': 'the contract of a client adapter: an adapter for another UI library calls it',
+  '@marmeon/table RowAction.handler': 'defineTable infers the handler class from it and checks its handle(row, ctx) against the table\'s row',
+  '@marmeon/table BulkAction.handler': 'defineTable infers the handler class from it and checks its handle(rows, ctx) against the table\'s row',
   '@marmeon/table/client TableController.*': 'the React adapter builds the controller and an adapter for another UI library does the same',
 };
 
@@ -110,13 +112,5 @@ export const MEMBER_PENDING: readonly string[] = [
   '@marmeon/storage TemporaryUpload.extension',
   '@marmeon/storage/testing StorageFake.defaultDisk',
   '@marmeon/storage/testing StorageFake.named',
-  '@marmeon/table BulkAction.confirms',
-  '@marmeon/table BulkAction.handler',
-  '@marmeon/table ColumnDefinition.isSearchable',
-  '@marmeon/table ColumnDefinition.isSortable',
-  '@marmeon/table DataTables.export',
-  '@marmeon/table DataTables.runAction',
-  '@marmeon/table RowAction.confirms',
-  '@marmeon/table RowAction.handler',
   'marmeon Output.constructor',
 ];
