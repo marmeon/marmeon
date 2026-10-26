@@ -92,6 +92,7 @@ import { createViteDevRenderer } from './vite.ts';
 export interface KernelOptions {
   /** Override the application's container (tests). Every request gets its own scope of it. */
   container?: Container;
+  /** @internal */
   renderer?: PageRenderer;
   /** Built client output (production). Only its `/assets/*` files are served. */
   clientDir?: string;

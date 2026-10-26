@@ -4,7 +4,7 @@ import type * as Presigner from '@aws-sdk/s3-request-presigner';
 import type * as PresignedPost from '@aws-sdk/s3-presigned-post';
 import type { Clock, Duration } from '@marmeon/core';
 import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
-import type { S3DiskOptions } from '../config.ts';
+import type { S3DiskOptions, StorageOptions } from '../config.ts';
 import { secondsOf, toBytes } from '../contents.ts';
 import { FileNotFoundError, StorageError, StorageSetupError } from '../errors.ts';
 import { basename, encodeKey, normalizeDirectory, normalizeKey } from '../keys.ts';
@@ -317,5 +317,22 @@ export class S3Disk implements Disk {
       return { modules, client };
     });
     return this.#modules;
+  }
+}
+
+/**
+ * The disks the app is sure to use — the default disk and the uploads' (UPLOADS_DISK) — fail the start when they are on S3 and
+ * the AWS SDK is missing (optional peers): the exact command at the start, not an error on the first request. Uploads on S3
+ * go straight to the store (a presigned POST) and need `@aws-sdk/s3-presigned-post` too. Other S3 disks say it when first used.
+ */
+export function checkS3Sdk(options: StorageOptions, uploadsDisk: string, missing: (names: readonly string[]) => string[] = missingPackages): void {
+  const used = [...new Set([options.default, uploadsDisk])].filter((name) => options.disks[name]?.driver === 's3');
+  if (used.length === 0) return;
+  if (missing(['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner']).length > 0) {
+    const what = used.map((name) => `"${name}"${name === options.default ? ' (the default disk)' : ' (UPLOADS_DISK)'}`).join(' and ');
+    throw new StorageSetupError(withCode('S2', `The disk ${what} is on S3, which needs the AWS SDK — not installed in this app: ${S3_INSTALL}`));
+  }
+  if (used.includes(uploadsDisk) && missing(['@aws-sdk/s3-presigned-post']).length > 0) {
+    throw new StorageSetupError(withCode('S2', `The disk "${uploadsDisk}" (UPLOADS_DISK) is on S3: uploads go straight to it and need @aws-sdk/s3-presigned-post — not installed in this app: ${S3_UPLOADS_INSTALL}`));
   }
 }

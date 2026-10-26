@@ -78,6 +78,7 @@ export class TestResponse {
   /** What server rendering did — undefined without `createTestApp(…, { ssr: true })`. */
   readonly #ssr: SsrOutcome | undefined;
 
+  /** @internal */
   constructor(
     response: Response,
     body: string,
@@ -95,6 +96,7 @@ export class TestResponse {
     this.#ssr = ssr;
   }
 
+  /** @internal */
   static async from(
     response: Response,
     label: string,

@@ -1,7 +1,7 @@
 import { defineModule, type ApplicationDefinition } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider } from '@marmeon/http';
-import type { PageRenderer } from '@marmeon/server';
+import type { PageRenderer } from '@marmeon/server/internal';
 import { describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { createTestApp } from './index.ts';

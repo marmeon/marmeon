@@ -67,6 +67,7 @@ export class ColumnDefinition<R extends string = string, S extends boolean = boo
   readonly text: string | null;
   readonly visibility: TableVisibility | undefined;
 
+  /** @internal */
   constructor(ref: R, options: { sortable?: boolean; searchable?: boolean; label?: string | null; visibility?: TableVisibility | undefined } = {}) {
     if (typeof ref !== 'string' || !/^[A-Za-z_][\w]*(\.[A-Za-z_][\w]*)?$/.test(ref)) {
       throw new TypeError(`column(${JSON.stringify(ref)}): a column of the query, as "name" or "table.name".`);
@@ -122,6 +123,7 @@ export class Filter<R extends string = string, T extends 'select' | 'dateRange' 
   readonly options: readonly O[];
   readonly visibility: TableVisibility | undefined;
 
+  /** @internal */
   constructor(ref: R, type: T, options: readonly O[], visibility?: TableVisibility) {
     if (typeof ref !== 'string' || !/^[A-Za-z_][\w]*(\.[A-Za-z_][\w]*)?$/.test(ref)) throw new TypeError(`filter.${type}(${JSON.stringify(ref)}): a column of the query.`);
     if (type === 'select' && (options.length === 0 || !options.every((option) => typeof option === 'string' && option.length > 0 && option.length <= 100))) {
@@ -176,6 +178,7 @@ export class RowAction<H extends RowActionClass = RowActionClass, P = unknown, K
   readonly visibility: TableVisibility | undefined;
   readonly confirms: boolean;
 
+  /** @internal */
   constructor(handler: H, options: ActionOptions = {}) {
     if (typeof handler !== 'function' || typeof handler.prototype?.handle !== 'function') throw new TypeError('action(Handler): a class with handle(row, ctx).');
     this.handler = handler;
@@ -227,6 +230,7 @@ export class BulkAction<H extends BulkActionClass = BulkActionClass, P = unknown
   readonly confirms: boolean;
   readonly limit: number;
 
+  /** @internal */
   constructor(handler: H, options: ActionOptions = {}) {
     if (typeof handler !== 'function' || typeof handler.prototype?.handle !== 'function') throw new TypeError('bulk(Handler): a class with handle(rows, ctx).');
     const max = options.max ?? DEFAULT_BULK_MAX;
@@ -278,6 +282,7 @@ export class TableExport {
   readonly visibility: TableVisibility | undefined;
   readonly limit: number;
 
+  /** @internal */
   constructor(visibility?: TableVisibility, max: number = DEFAULT_EXPORT_MAX) {
     if (!Number.isSafeInteger(max) || max < 1) throw new RangeError(`exportCsv().max(${max}): a whole number ≥ 1.`);
     this.visibility = visibility;

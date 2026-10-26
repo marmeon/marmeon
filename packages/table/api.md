@@ -27,7 +27,6 @@ export declare class BulkAction<H extends BulkActionClass = BulkActionClass, P =
     readonly visibility: TableVisibility | undefined;
     readonly confirms: boolean;
     readonly limit: number;
-    constructor(handler: H, options?: ActionOptions);
     authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): BulkAction<H, P2, K2>;
     visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): BulkAction<H, P, K>;
     visible(check: TableVisibilityCheck): BulkAction<H, P, K>;
@@ -73,12 +72,6 @@ export declare class ColumnDefinition<R extends string = string, S extends boole
     readonly isSearchable: boolean;
     readonly text: string | null;
     readonly visibility: TableVisibility | undefined;
-    constructor(ref: R, options?: {
-        sortable?: boolean;
-        searchable?: boolean;
-        label?: string | null;
-        visibility?: TableVisibility | undefined;
-    });
     sortable(): ColumnDefinition<R, true, Q, V>;
     searchable(): ColumnDefinition<R, S, true, V>;
     label(text: string): ColumnDefinition<R, S, Q, V>;
@@ -125,7 +118,6 @@ export declare class Filter<R extends string = string, T extends 'select' | 'dat
     readonly type: T;
     readonly options: readonly O[];
     readonly visibility: TableVisibility | undefined;
-    constructor(ref: R, type: T, options: readonly O[], visibility?: TableVisibility);
     visible<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): Filter<R, T, O>;
     visible(check: TableVisibilityCheck): Filter<R, T, O>;
 }
@@ -149,7 +141,6 @@ export declare class RowAction<H extends RowActionClass = RowActionClass, P = un
     readonly authorization: RowAuthorization | undefined;
     readonly visibility: TableVisibility | undefined;
     readonly confirms: boolean;
-    constructor(handler: H, options?: ActionOptions);
     authorize<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRowAbility<P2, K2>): RowAction<H, P2, K2>;
     visible<P2 extends object, const K2 extends string>(policy: PolicyClass<P2>, ability: CheckRequestAbility<P2, K2>): RowAction<H, P, K>;
     visible(check: TableVisibilityCheck): RowAction<H, P, K>;
@@ -236,7 +227,6 @@ export declare class TableExport {
     readonly format: 'csv';
     readonly visibility: TableVisibility | undefined;
     readonly limit: number;
-    constructor(visibility?: TableVisibility, max?: number);
     max(rows: number): TableExport;
     authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
     authorize(check: TableVisibilityCheck): TableExport;
@@ -348,13 +338,6 @@ export declare function tableRoutes<R extends Route<any, any, any>, T extends Da
 ### Referenced, not exported
 
 ```ts
-// ActionOptions
-interface ActionOptions {
-    readonly authorization?: RowAuthorization | undefined;
-    readonly visibility?: TableVisibility | undefined;
-    readonly confirm?: boolean;
-    readonly max?: number;
-}
 // CheckKeyColumn
 export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string extends K ? StringReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ExtractTypeFromReferenceExpression<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
 // CheckRegistrar

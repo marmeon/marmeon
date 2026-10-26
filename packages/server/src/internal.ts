@@ -8,6 +8,7 @@ export { refuseUndecidedRoutes } from './kernel.ts';
 export { heldOnLoopback, shadowedLocalhost } from './loopback.ts';
 export { DevDocument } from './dev-document.ts';
 export type { DevMarkup } from './dev-document.ts';
+export type { PageRenderer } from './render.ts';
 export { DevRequestRecorder } from './error-page/recorder-token.ts';
 /** Loads the recorder of the development error page — only where it is used, never on a production start. */
 export const importRequestRecorder = () => import('./error-page/recorder.ts');

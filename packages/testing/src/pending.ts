@@ -19,6 +19,7 @@ export class PendingTestResponse implements PromiseLike<TestResponse> {
   readonly #response: Promise<TestResponse>;
   readonly #assertions: ((response: TestResponse) => void)[] = [];
 
+  /** @internal */
   constructor(response: Promise<TestResponse>) {
     this.#response = response;
   }
