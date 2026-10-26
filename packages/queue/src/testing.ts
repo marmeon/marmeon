@@ -3,4 +3,4 @@
  * imports it only to type a variable.
  */
 export { QueueFake } from './fake.ts';
-export type { ChainMatch, DispatchedJob, DispatchMatch } from './fake.ts';
+export type { ChainMatch, DispatchedJob, DispatchedUnique, DispatchMatch } from './fake.ts';

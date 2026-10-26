@@ -287,7 +287,7 @@ describe('missed runs (catchUp)', () => {
       ['at-five', 'catch-up'],
     ]);
     // The catch-up stands for the last missed time (its onOneServer lock is that minute's).
-    expect(back[1]!.minute).toBe(at('2026-10-05T10:05:00Z'));
+    expect(back[1]!.dueAt).toBe(at('2026-10-05T10:05:00Z'));
     // And only once: the next tick has nothing to catch up.
     expect((await schedule.run('2026-10-05T10:11:00Z')).map((result) => result.task)).toEqual(['count']);
     await app.shutdown();
@@ -463,13 +463,17 @@ describe('events', () => {
     const booted = await boot(schedule, { ...options, listeners: [listen(ScheduledTaskEvent, (event) => void events.push(event))] });
     return { ...booted, events };
   }
+  it('refuses an event built with the old minute field', () => {
+    expect(() => new ScheduledTaskStarting({ task: 'count', minute: START, reason: 'due' } as never)).toThrow(/dueAt is the time the task was due/);
+  });
+
   const names = (events: readonly ScheduledTaskEvent[]) => events.map((event) => `${event.constructor.name} ${event.task}`);
 
   it('a run that ends: Starting, then Finished with how long it took', async () => {
     const { schedule, events, app } = await withEvents(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count')));
     await schedule.runTask('count');
     expect(names(events)).toEqual(['ScheduledTaskStarting count', 'ScheduledTaskFinished count']);
-    expect(events[0]).toMatchObject({ task: 'count', minute: START, reason: 'test' });
+    expect(events[0]).toMatchObject({ task: 'count', dueAt: START, reason: 'test' });
     expect((events[1] as ScheduledTaskFinished).ms).toBeGreaterThanOrEqual(0);
     await app.shutdown();
   });
@@ -604,7 +608,7 @@ describe('the schedule.task channel', () => {
     } finally {
       off();
     }
-    expect(ended.map((message) => [message.task, message.outcome, message.reason, message.minute]).sort()).toEqual([
+    expect(ended.map((message) => [message.task, message.outcome, message.reason, message.dueAt]).sort()).toEqual([
       ['count', 'ran', 'due', START],
       ['failing', 'failed', 'due', START],
     ]);

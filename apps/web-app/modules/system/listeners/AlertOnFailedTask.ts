@@ -20,7 +20,7 @@ export class AlertOnFailedTask {
     this.#logger.error(`The scheduled task ${event.task} failed: ${this.#redactor.text(message)}`, {
       alert: true,
       task: event.task,
-      due: new Date(event.minute).toISOString(),
+      due: new Date(event.dueAt).toISOString(),
       ms: event.ms,
     });
   }

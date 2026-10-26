@@ -64,7 +64,7 @@ export class QueueConnections {
   }
 
   /**
-   * Fails the start when `QUEUE_DRIVER` or `QUEUE_FAILED_DRIVER` names a driver nobody brought (a typo never lands on another
+   * @internal Fails the start when `QUEUE_DRIVER` or `QUEUE_FAILED_DRIVER` names a driver nobody brought (a typo never lands on another
    * driver), and builds what a driver of a provider provides — its factory's errors surface now, not at the first dispatch.
    */
   verify(): void {
@@ -170,7 +170,7 @@ export class QueueConnections {
     return this.#runner;
   }
 
-  /** The app's cache (@marmeon/cache) — for unique jobs, `withoutOverlapping` and `job.once`. */
+  /** @internal The app's cache (@marmeon/cache) — for unique jobs, `withoutOverlapping` and `job.once`. */
   async cache(): Promise<Cache> {
     const { Cache } = await importCache();
     if (!this.#container.has(Cache)) {
@@ -179,7 +179,7 @@ export class QueueConnections {
     return this.#container.make(Cache);
   }
 
-  /** Dispatches a job event through the app's `EventDispatcher` (listeners built from the root container). */
+  /** @internal Dispatches a job event through the app's `EventDispatcher` (listeners built from the root container). */
   readonly events = (event: JobEvent): Promise<void> => this.#container.make(EventDispatcher).dispatch(event);
 
   /** @internal The app's `Encrypter`, for `static encrypted` jobs. */

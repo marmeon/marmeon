@@ -16,6 +16,7 @@ import * as v from 'valibot';
 import { afterAll, describe, expect, it } from 'vitest';
 import { DevtoolsServiceProvider, DevtoolsStore, type AnyEntry } from './index.ts';
 import { BASE, MAIL_CSP } from './pages/index.ts';
+import { entryPage } from './pages/views.ts';
 import { enableDevtoolsForTests } from './test-opt-in.ts';
 import type { DevtoolsTester } from './tester.ts';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
@@ -442,5 +443,14 @@ describe('the in-page bar’s side on the server', () => {
     } finally {
       await app.shutdown();
     }
+  });
+});
+
+describe('a scheduled run whose entry has no dueAt', () => {
+  it('still shows its page, without the time', () => {
+    const entry = { id: 'a1', type: 'schedule', at: 1, batch: 'b1', tags: ['task:prune'], content: { task: 'prune', minute: 1, reason: 'due' } } as unknown as AnyEntry;
+    const page = entryPage({ usage: undefined, mailPreviews: false, environment: 'local' } as never, entry, { batch: [entry], triggered: [] });
+    expect(page).toContain('prune');
+    expect(page).not.toContain('Invalid time');
   });
 });

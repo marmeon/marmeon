@@ -400,7 +400,7 @@ export class Recorder {
         message,
         {
           task: message.task,
-          minute: message.minute,
+          dueAt: message.dueAt,
           reason: message.reason,
           ...(message.outcome === undefined ? {} : { outcome: message.outcome }),
           ...(message.skipped === undefined ? {} : { skipped: message.skipped }),

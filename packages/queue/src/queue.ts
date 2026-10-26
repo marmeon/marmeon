@@ -69,8 +69,8 @@ export interface Queue {
    * ```
    */
   using(transaction: Transaction<any>): Queue;
-  /** Jobs waiting or running on a queue (default: the connection's default queue). */
-  size(queue?: string, connection?: string): Promise<number>;
+  /** Jobs waiting or running on a queue (default: the connection's default queue): `size()`, `size('mail')`, `size('mail', { connection: 'redis' })`. */
+  size(queue?: string, options?: { readonly connection?: string }): Promise<number>;
 }
 export const Queue = token<Queue>('Queue');
 
@@ -197,7 +197,11 @@ export class QueueManager implements Queue {
     return new QueueManager(this.#deps, transaction);
   }
 
-  async size(queue?: string, connection = this.#deps.default): Promise<number> {
+  async size(queue?: string, sizeOptions: { readonly connection?: string } = {}): Promise<number> {
+    if (typeof sizeOptions !== 'object' || sizeOptions === null) {
+      throw new TypeError(`size(${JSON.stringify(queue)}, ${JSON.stringify(sizeOptions)}) takes the connection in an options object — size(queue, { connection: ${JSON.stringify(sizeOptions)} }).`);
+    }
+    const connection = sizeOptions.connection ?? this.#deps.default;
     const options = this.#connection(connection);
     if (options.driver === 'sync') return 0;
     return this.#driver(connection).size(queue ?? options.queue);

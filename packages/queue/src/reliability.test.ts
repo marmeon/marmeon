@@ -582,7 +582,11 @@ describe('QueueFake', () => {
       fake.assertDispatchedTimes(NoteJob, 1);
       fake.assertDispatched(NoteJob, { n: 1 }, { unique: 'stats:1' });
       expect(() => fake.assertDispatched(NoteJob, { n: 1 }, { unique: 'stats:2' })).toThrow(/with the unique key "stats:2" \(unique keys dispatched: stats:1\)/);
-      expect(fake.dispatched(NoteJob)[0]!.unique).toEqual({ key: 'stats:1', for: 600, until: 'done' });
+      expect(fake.dispatched(NoteJob)[0]!.unique).toEqual({ key: 'stats:1', forSeconds: 600, until: 'done' });
+      // @ts-expect-error — the span is `forSeconds`
+      void fake.dispatched(NoteJob)[0]!.unique?.for;
+      expect(await fake.size('default', { connection: 'redis' })).toBe(1);
+      await expect(fake.size('default', 'redis' as never)).rejects.toThrow('takes the connection in an options object');
       await fake.work();
       expect(seen.entries.map((entry) => entry.n)).toEqual([1]);
       expect(await fake.dispatch(NoteJob, { n: 3 }, { unique: 'stats:1' })).toEqual(expect.any(String));

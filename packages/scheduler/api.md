@@ -23,10 +23,6 @@ export type CheckTime<T extends string> = string extends T ? T : T extends TimeO
 export declare class CronExpression {
     #private;
     readonly source: string;
-    constructor(expression: string);
-    get hourRestricted(): boolean;
-    matches(time: WallTime): boolean;
-    matchesHour(time: Omit<WallTime, 'minute'>): boolean;
     toString(): string;
 }
 // Frequencies
@@ -95,11 +91,11 @@ export interface ScheduledTask<K extends TaskKind> extends Frequencies<K> {
 // ScheduledTaskEvent
 export declare abstract class ScheduledTaskEvent {
     readonly task: string;
-    readonly minute: number;
+    readonly dueAt: number;
     readonly reason: RunReason;
     constructor(data: {
         task: string;
-        minute: number;
+        dueAt: number;
         reason: RunReason;
     });
 }
@@ -117,17 +113,11 @@ export declare class ScheduledTaskFailed extends ScheduledTaskEvent {
 export declare class ScheduledTaskFinished extends ScheduledTaskEvent {
     #private;
     readonly ms: number;
-    constructor(data: ConstructorParameters<typeof ScheduledTaskEvent>[0] & {
-        ms: number;
-    });
 }
 // ScheduledTaskSkipped
 export declare class ScheduledTaskSkipped extends ScheduledTaskEvent {
     #private;
     readonly skipped: SkipReason;
-    constructor(data: ConstructorParameters<typeof ScheduledTaskEvent>[0] & {
-        skipped: SkipReason;
-    });
 }
 // ScheduledTaskStarting
 export declare class ScheduledTaskStarting extends ScheduledTaskEvent {
@@ -138,11 +128,7 @@ export declare class Scheduler {
     #private;
     get tasks(): readonly Task[];
     task(name: string): Task;
-    schedules(command: string): boolean;
-    due(time: number): Task[];
     next(task: Task, time?: number): number | undefined;
-    tick(time: number): Promise<TaskRun[]>;
-    runNow(task: Task): TaskRun;
 }
 // SchedulerServiceProvider
 export declare class SchedulerServiceProvider implements ServiceProvider {
@@ -194,7 +180,7 @@ export interface TaskOverlapOptions {
 // TaskResult
 export interface TaskResult {
     readonly task: string;
-    readonly minute: number;
+    readonly dueAt: number;
     readonly reason: RunReason;
     readonly outcome: 'ran' | 'skipped' | 'failed';
     readonly skipped?: SkipReason;
@@ -204,7 +190,7 @@ export interface TaskResult {
 // TaskRun
 export interface TaskRun {
     readonly task: Task;
-    readonly minute: number;
+    readonly dueAt: number;
     readonly reason: RunReason;
     readonly done: Promise<TaskResult>;
 }
@@ -267,10 +253,6 @@ Types from other packages: none
 // ScheduleTester
 export declare class ScheduleTester {
     #private;
-    constructor(scheduler: Scheduler, clock: {
-        travelTo(time: number): unknown;
-        now(): number;
-    });
     get tasks(): string[];
     due(time?: ScheduleTime): string[];
     run(time?: ScheduleTime): Promise<TaskResult[]>;
@@ -283,95 +265,19 @@ export type ScheduleTime = Date | number | string | Temporal.Instant | Temporal.
 ### Referenced, not exported
 
 ```ts
-// CallableTask
-export interface CallableTask {
-    handle(): unknown;
-}
-// CallableTaskClass
-export type CallableTaskClass = new (...args: any[]) => CallableTask;
-// CatchUp
-export type CatchUp = 'once' | 'skip';
-// CronExpression
-export declare class CronExpression {
-    #private;
-    readonly source: string;
-    constructor(expression: string);
-    get hourRestricted(): boolean;
-    matches(time: WallTime): boolean;
-    matchesHour(time: Omit<WallTime, 'minute'>): boolean;
-    toString(): string;
-}
 // RunReason
 export type RunReason = 'due' | 'catch-up' | 'test';
-// Scheduler
-export declare class Scheduler {
-    #private;
-    get tasks(): readonly Task[];
-    task(name: string): Task;
-    schedules(command: string): boolean;
-    due(time: number): Task[];
-    next(task: Task, time?: number): number | undefined;
-    tick(time: number): Promise<TaskRun[]>;
-    runNow(task: Task): TaskRun;
-}
 // SkipReason
 export type SkipReason = 'filter' | 'other-server' | 'overlapping' | 'job-waiting';
-// Task
-export interface Task {
-    readonly name: string;
-    readonly definition: TaskDefinition;
-    readonly expression: CronExpression;
-    readonly timeZone: string;
-    readonly summary: string;
-}
-// TaskDefinition
-export interface TaskDefinition {
-    readonly kind: TaskKind;
-    readonly target: JobClass | CommandClass | CallableTaskClass | string;
-    readonly payload: unknown;
-    readonly args: readonly string[];
-    readonly module: string;
-    readonly fields: readonly [minute: string, hour: string, day: string, month: string, weekday: string] | undefined;
-    readonly expression: string | undefined;
-    readonly timeZone: string | undefined;
-    readonly when: readonly TaskFilter[];
-    readonly skip: readonly TaskFilter[];
-    readonly environments: readonly string[] | undefined;
-    readonly onOneServer: boolean;
-    readonly overlapSeconds: number | undefined;
-    readonly catchUp: CatchUp;
-    readonly name: string | undefined;
-    readonly description: string | undefined;
-}
-// TaskFilter
-export type TaskFilter = (scope: Container) => boolean | Promise<boolean>;
-// TaskKind
-export type TaskKind = 'job' | 'command' | 'call';
 // TaskResult
 export interface TaskResult {
     readonly task: string;
-    readonly minute: number;
+    readonly dueAt: number;
     readonly reason: RunReason;
     readonly outcome: 'ran' | 'skipped' | 'failed';
     readonly skipped?: SkipReason;
     readonly error?: unknown;
     readonly ms: number;
-}
-// TaskRun
-export interface TaskRun {
-    readonly task: Task;
-    readonly minute: number;
-    readonly reason: RunReason;
-    readonly done: Promise<TaskResult>;
-}
-// WallTime
-export interface WallTime {
-    readonly year: number;
-    readonly month: number;
-    readonly day: number;
-    readonly hour: number;
-    readonly minute: number;
-    readonly weekday: number;
 }
 ```
 

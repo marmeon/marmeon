@@ -958,7 +958,7 @@ export interface QueueJobMessage extends MessageBase, Ended {
 // ScheduleTaskMessage
 export interface ScheduleTaskMessage extends MessageBase, Ended {
     readonly task: string;
-    readonly minute: number;
+    readonly dueAt: number;
     readonly reason: 'due' | 'catch-up' | 'test';
     outcome?: 'ran' | 'skipped' | 'failed';
     skipped?: string;

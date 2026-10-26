@@ -54,6 +54,7 @@ export class CronExpression {
   /** Whether the field starts with `*` (`*`, `*\/5`) — "every", not a particular value. */
   readonly #wild: readonly boolean[];
 
+  /** @internal Built by the schedule definition. */
   constructor(expression: string) {
     const source = expression.trim().replace(/\s+/g, ' ');
     const expanded = MACROS[source.toLowerCase()] ?? source;
@@ -66,11 +67,12 @@ export class CronExpression {
     this.#wild = parts.map((part) => part.startsWith('*'));
   }
 
-  /** Whether the hour field names particular hours (`2`, `9-17`) — not `*` or `*\/2`. Such a task runs once in an hour a clock change repeats. */
+  /** @internal Whether the hour field names particular hours (`2`, `9-17`) — not `*` or `*\/2`. Such a task runs once in an hour a clock change repeats. */
   get hourRestricted(): boolean {
     return !this.#wild[1];
   }
 
+  /** @internal Whether `time` matches every field. */
   matches(time: WallTime): boolean {
     const [minute, hour, day, month, weekday] = this.#sets as [ReadonlySet<number>, ReadonlySet<number>, ReadonlySet<number>, ReadonlySet<number>, ReadonlySet<number>];
     if (!minute.has(time.minute) || !hour.has(time.hour) || !month.has(time.month)) return false;
@@ -81,7 +83,7 @@ export class CronExpression {
     return dayMatches && weekdayMatches;
   }
 
-  /** Whether some minute of the hour `time` lies in could match — to skip hours quickly. */
+  /** @internal Whether some minute of the hour `time` lies in could match — to skip hours quickly. */
   matchesHour(time: Omit<WallTime, 'minute'>): boolean {
     return this.matches({ ...time, minute: this.#firstMinute() });
   }

@@ -15,6 +15,16 @@ import { QueueError, JobRegistry } from './registry.ts';
 import { delaySeconds, JobRunner } from './runner.ts';
 import { Worker, type WorkOptions, type WorkResult } from './worker.ts';
 
+/** The unique lock a recorded dispatch carried. */
+export interface DispatchedUnique {
+  /** The key as dispatched (`unique: 'stats:7'`). */
+  readonly key: string;
+  /** Seconds the lock holds at most. */
+  readonly forSeconds: number;
+  /** `processing`: freed when a worker starts the job; `done`: when it leaves the queue. */
+  readonly until: 'processing' | 'done';
+}
+
 /** A job the fake recorded: its class, the payload as dispatched, where it was to go. */
 export interface DispatchedJob<J extends JobClass = JobClass> {
   readonly job: J;
@@ -28,7 +38,7 @@ export interface DispatchedJob<J extends JobClass = JobClass> {
   /** Dispatched inside a transaction — `connections.transaction()` (recorded with its commit) or `queue.using(trx)`. */
   readonly inTransaction: boolean;
   /** The unique key it was dispatched with (`{ unique: 'stats:7' }`), with how long and until when its lock holds. */
-  readonly unique: (Pick<UniqueRecord, 'key' | 'for' | 'until'>) | undefined;
+  readonly unique: DispatchedUnique | undefined;
   /** The jobs chained after it (`queue.chain([...])`), in order — empty for a job dispatched alone. */
   readonly chain: readonly { readonly job: JobClass; readonly payload: unknown; readonly id: string }[];
 }
@@ -128,7 +138,10 @@ export class QueueFake implements Queue {
     return new QueueFake(this.#container, this.#owner, transaction);
   }
 
-  async size(queue = 'default'): Promise<number> {
+  async size(queue = 'default', options: { readonly connection?: string } = {}): Promise<number> {
+    if (typeof options !== 'object' || options === null) {
+      throw new TypeError(`size(${JSON.stringify(queue)}, ${JSON.stringify(options)}) takes the connection in an options object — size(queue, { connection: ${JSON.stringify(options)} }).`);
+    }
     return this.#owner.#memory().size(queue);
   }
 
@@ -176,7 +189,7 @@ export class QueueFake implements Queue {
   }
 
   /**
-   * The queued runs of a queued listener (`static queue`) — each with the event's payload as queued. The dispatch
+   * @internal The queued runs of a queued listener (`static queue`) — each with the event's payload as queued. The dispatch
    * happens with the commit of the transaction around it (the default `afterCommit`).
    */
   listenerQueued<P>(listener: QueuedListenerClass<P>, match?: Partial<P> | ((payload: P) => boolean)): { readonly payload: P; readonly dispatched: DispatchedJob }[] {
@@ -316,7 +329,7 @@ export class QueueFake implements Queue {
     const record = async () => {
       for (const { job, payload, prepared, chain } of entries) {
         const { record } = prepared;
-        const unique = record.unique ? { key: record.unique.key, for: record.unique.for, until: record.unique.until } : undefined;
+        const unique = record.unique ? { key: record.unique.key, forSeconds: record.unique.for, until: record.unique.until } : undefined;
         owner.#dispatched.push({ job, payload, id: record.uuid, queue: options.queue, connection: options.connection, delaySeconds: delay, inTransaction: this.#inTransaction || ambient, unique, chain });
         // Stamped like the real queue's push: the time it can first be claimed.
         await owner.#memory().push(options.queue ?? 'default', JSON.stringify({ ...record, availableAt: this.#container.make(Clock).now() + Math.round(delay * 1000) }), delay);

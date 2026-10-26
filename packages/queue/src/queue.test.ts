@@ -257,6 +257,9 @@ describe('dispatching', () => {
     await queue.dispatch(WelcomeJob, { userId: 8 }, { queue: 'mail' });
     expect(await queue.size()).toBe(1);
     expect(await queue.size('mail')).toBe(1);
+    expect(await queue.size('mail', { connection: 'database' })).toBe(1);
+    // A string as the second argument is refused: it would count the default connection.
+    await expect(queue.size('mail', 'database' as never)).rejects.toThrow('size("mail", "database") takes the connection in an options object — size(queue, { connection: "database" })');
 
     const { QueueConnections } = await import('./connections.ts');
     const result = await application.container.make(QueueConnections).worker('database', 10).run({ queues: ['mail', 'default'], stopWhenEmpty: true });
@@ -770,6 +773,10 @@ export function typeChecks(queue: Queue): void {
   class NotAJob {
     handle() {}
   }
+  // @ts-expect-error — the connection is an option: size('mail', { connection: 'redis' })
+  void queue.size('mail', 'redis');
+  void queue.size('mail', { connection: 'redis' });
+
   // @ts-expect-error — no static job / schema
   void queue.dispatch(NotAJob, {});
 

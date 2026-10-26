@@ -505,6 +505,22 @@ describe('what the recorder keeps', () => {
     }
   });
 
+  it('keeps the time a scheduled task was due as dueAt', async () => {
+    const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true });
+    try {
+      const dueAt = Date.parse('2026-10-03T12:10:00Z');
+      await trace(channels.tracing('schedule.task'), { ...messageBase(app), task: 'prune', dueAt, reason: 'due' }, async () => 0, (ended) => {
+        ended.outcome = 'ran';
+      });
+      await tester!.settled();
+      const run = tester!.assertRecorded('schedule');
+      expect(run.content).toMatchObject({ task: 'prune', dueAt, reason: 'due', outcome: 'ran' });
+      expect(run.content).not.toHaveProperty('minute');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
   it('masks password hashes and API tokens by their pattern — where no key or secret column gives them away', async () => {
     const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {

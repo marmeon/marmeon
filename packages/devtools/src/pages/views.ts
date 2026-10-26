@@ -426,7 +426,7 @@ ${section('Input', c.input === undefined ? html`<p class="empty">The app read no
         'Run',
         keyValues([
           ['Task', html`<code>${entry.content.task}</code>`],
-          ['Due', time(entry.content.minute)],
+          ['Due', entry.content.dueAt === undefined ? undefined : time(entry.content.dueAt)],
           ['Reason', entry.content.reason],
           ['Outcome', entry.content.outcome],
           ['Skipped', entry.content.skipped],

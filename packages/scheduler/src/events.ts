@@ -11,14 +11,17 @@ import type { RunReason, SkipReason } from './scheduler.ts';
 export abstract class ScheduledTaskEvent {
   /** The task's name (unique in the app). */
   readonly task: string;
-  /** The minute it was due (epoch ms) — for a catch-up, the last minute it was missed. */
-  readonly minute: number;
+  /** The time it was due (epoch ms) — for a catch-up, the last time it was missed. */
+  readonly dueAt: number;
   /** `due`, `catch-up` (missed while the scheduler was down) or `test` (`schedule:test`). */
   readonly reason: RunReason;
 
-  constructor(data: { task: string; minute: number; reason: RunReason }) {
+  constructor(data: { task: string; dueAt: number; reason: RunReason }) {
+    if (typeof data?.dueAt !== 'number') {
+      throw new TypeError('A scheduler event takes { task, dueAt, reason }: dueAt is the time the task was due (epoch ms), not minute.');
+    }
     this.task = data.task;
-    this.minute = data.minute;
+    this.dueAt = data.dueAt;
     this.reason = data.reason;
   }
 }
@@ -34,6 +37,7 @@ export class ScheduledTaskFinished extends ScheduledTaskEvent {
   /** How long it ran. */
   readonly ms: number;
 
+  /** @internal Built by the scheduler. */
   constructor(data: ConstructorParameters<typeof ScheduledTaskEvent>[0] & { ms: number }) {
     super(data);
     this.ms = data.ms;
@@ -63,6 +67,7 @@ export class ScheduledTaskSkipped extends ScheduledTaskEvent {
   readonly #event = true;
   readonly skipped: SkipReason;
 
+  /** @internal Built by the scheduler. */
   constructor(data: ConstructorParameters<typeof ScheduledTaskEvent>[0] & { skipped: SkipReason }) {
     super(data);
     this.skipped = data.skipped;
