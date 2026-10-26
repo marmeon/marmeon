@@ -2,7 +2,7 @@ import type { Container } from '@marmeon/core';
 import type { CheckDiskName, DefaultDiskName, DiskFor, DiskNameInput, DiskOptions } from './config.ts';
 import type { Disk } from './disk.ts';
 import type { ExpectedContents } from './drivers/memory.ts';
-import { StorageManager } from './storage.ts';
+import { type Storage, StorageManager } from './storage.ts';
 import { StorageSetup } from './setup.ts';
 
 /** A disk of the fake: the configured disk's type plus the memory disk's assertions. */
@@ -19,23 +19,56 @@ export interface FakeDiskAssertions {
   assertCount(count: number, directory?: string): this;
 }
 
+/** The manager of the fake: every disk is built in memory. */
+class FakeManager extends StorageManager {
+  protected override build(name: string, options: DiskOptions): Disk {
+    return this.memory(name, options);
+  }
+}
+
 /**
  * The storage of a test app (default in `createTestApp`, like the mail and queue fakes): every configured disk is an
  * in-memory disk with the configured name, visibility and URL — nothing touches the file system or S3, and each test
  * starts empty. Keys are checked as on every disk; `temporaryUrl()` signs real URLs the app's routes serve from memory.
  * Assert with `app.storage.disk('local').assertExists(key)`.
  */
-export class StorageFake extends StorageManager {
+export class StorageFake implements Storage {
+  readonly #manager: FakeManager;
+
   constructor(container: Container) {
     const setup = container.make(StorageSetup);
-    super(setup.options, setup.dependencies);
+    this.#manager = new FakeManager(setup.options, setup.dependencies);
   }
 
-  override disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): FakeDisk<N> {
-    return super.disk(name) as FakeDisk<N>;
+  get names(): readonly string[] {
+    return this.#manager.names;
   }
 
-  protected override build(name: string, options: DiskOptions): Disk {
-    return this.memory(name, options);
+  get defaultDisk(): string {
+    return this.#manager.defaultDisk;
+  }
+
+  disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): FakeDisk<N> {
+    return this.#manager.disk(name) as FakeDisk<N>;
+  }
+
+  /** The disk `name`, untyped — for names from configuration or the URL (an unknown one throws {@link StorageError}). */
+  named(name: string): Disk {
+    return this.#manager.named(name);
+  }
+
+  /** The configuration of the disk `name` — or a {@link StorageError} with the known names. */
+  options(name: string): DiskOptions {
+    return this.#manager.options(name);
+  }
+
+  /** Builds every disk of a driver a provider brought; the fake's disks are all in memory, so nothing can fail. */
+  verify(): void {
+    this.#manager.verify();
+  }
+
+  /** Closes every built disk that has a `close()`. */
+  async close(): Promise<void> {
+    await this.#manager.close();
   }
 }

@@ -3,4 +3,4 @@
  * @internal
  */
 export { VALIDATION_TEXTS } from './texts.ts';
-export { contentsOf, type RuleContents } from './rule.ts';
+export { contentsOf } from './rule.ts';

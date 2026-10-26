@@ -5,14 +5,14 @@
  */
 export { accessLabel, formatAccessProblems, isEveryone, routeAccess } from './access.ts';
 export { ensuresOf } from './ensures.ts';
-export type { DispatchInput, DispatchOptions, ResponseFactory, RouteCheck } from './router.ts';
+export type { DispatchOptions, ResponseFactory } from './router.ts';
 export { defaultToResponse, describeMiddlewareProblem, FRAMEWORK_ROUTES, isControllerClass } from './router.ts';
 export { PageAlternates } from './page-alternates.ts';
 export { UrlLocales } from './url-locales.ts';
 export { matchParams, tokenizePattern } from './pattern.ts';
 export { localLocation } from './local-location.ts';
-export { addsConflicts, addsOf, isMiddlewareClass, runPipeline } from './middleware.ts';
+export { addsOf, isMiddlewareClass } from './middleware.ts';
 export { withQueuedCookies } from './cookies.ts';
 export { clientIp, createRequestState, requestBytes } from './request.ts';
-export { authorizeRequest, messageOf, NOT_LIVE, validateRequest } from './request-definition.ts';
+export { messageOf, NOT_LIVE } from './request-definition.ts';
 export { VALIDATE_HEADER, VALIDATED_HEADER } from './live-validation.ts';

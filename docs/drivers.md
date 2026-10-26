@@ -98,7 +98,7 @@ What a driver must guarantee:
 - **The payload is opaque.** It arrives as the queue stores it. A job with `static encrypted` is encrypted before `push`, so the
   driver sees only ciphertext and stores it as it is. The record inside carries a version the worker checks, never the driver.
 - **`release` may carry `availableAt`.** `release(job, delaySeconds, { availableAt })` gives the time the job can be claimed again (epoch
-  ms). Write it into the stored payload's `availableAt` field, as `withAvailableAt` from `@marmeon/queue/internal` does, so a worker
+  ms). Write it, in epoch ms, into the stored payload's `availableAt` field, so a worker
   that cannot read the record yet counts how long it waited from there. A driver that ignores the option leaves the payload as it
   was; a job released with a long delay may then fail sooner than it should after a deploy.
 

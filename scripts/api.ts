@@ -18,8 +18,8 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { SAME_VALUE } from './api-names.ts';
-import { INTERNAL_EXCEPTIONS, INTERNAL_PENDING } from './api-internal.ts';
-import { SPAN_EXCEPTIONS, SPAN_PENDING, SPAN_WORDS } from './api-spans.ts';
+import { INTERNAL_EXCEPTIONS } from './api-internal.ts';
+import { SPAN_EXCEPTIONS, SPAN_WORDS } from './api-spans.ts';
 import { compareSnapshots, parseSnapshot, renderSnapshot, type ApiChanges, type ApiItem } from './api-snapshot.ts';
 import { NOT_SOURCE, importsOf, namespaceUseOf } from './api-usage.ts';
 import { LIBRARY, repositoryFiles } from './check-source.ts';
@@ -1019,11 +1019,12 @@ export function nameProblems(packages: readonly PackageToSnapshot[], lists: Name
 export interface SpanLists {
   /** Members that hold a bare number on purpose, each with its reason. */
   readonly exceptions: Readonly<Record<string, string>>;
-  /** Members that do not follow the rule yet. */
-  readonly pending: ReadonlySet<string>;
 }
 
-const SPAN_LISTS: SpanLists = { exceptions: SPAN_EXCEPTIONS, pending: SPAN_PENDING };
+const SPAN_LISTS: SpanLists = { exceptions: SPAN_EXCEPTIONS };
+
+/** The units a name may end in when it holds a number of them (`expiresAfterMinutes`). */
+const UNIT_SUFFIX = /(Seconds|Ms|Milliseconds|Minutes|Hours|Days)$/;
 
 /** A name that ends in a span word: the whole name, or its last camel-case words (`islandTimeout`). */
 function isSpanName(name: string): boolean {
@@ -1049,12 +1050,15 @@ function isBareNumber(annotation: Node | null | undefined): boolean {
 /**
  * A span of time is a `Duration`, or a number with its unit in the name (docs/time.md, "Spans of time"): a member, a parameter
  * or a return value of a stable entry point whose name ends in a span word (`timeout`, `ttl`, `maxAge`, …) and whose type holds
- * a bare `number` is a problem. A member that holds a number on purpose stands in `lists.exceptions` with its reason, one that
- * waits for a change in `lists.pending`; a listed member that follows the rule is a problem too, so the line gets deleted.
+ * a bare `number` is a problem. So is a positional parameter whose name, without its unit (`expiresAfterMinutes`), is a span name
+ * and whose type is a bare `number`: a span in parameter position is a `Duration` or goes into an options object. A member that
+ * holds a number on purpose stands in `lists.exceptions` with its reason; a listed member that follows the rule is a problem
+ * too, so the line gets deleted.
  * `@internal` and `@experimental` members and experimental entry points do not count.
  */
 export function spanProblems(packages: readonly PackageToSnapshot[], lists: SpanLists = SPAN_LISTS): string[] {
   const hits = new Set<string>();
+  const positional = new Set<string>();
   const seen = new Set<string>();
   const FUNCTION_LIKE = new Set(['TSFunctionType', 'TSConstructorType', 'TSEmptyBodyFunctionExpression', 'TSCallSignatureDeclaration', 'TSConstructSignatureDeclaration']);
   for (const pkg of packages) {
@@ -1070,6 +1074,10 @@ export function spanProblems(packages: readonly PackageToSnapshot[], lists: Span
         for (const param of (fn.params ?? []) as Node[]) {
           const label = param.type === 'Identifier' ? `${where}(${param.name})` : `${where}(options)`;
           if (param.type === 'Identifier' && isSpanName(param.name) && isBareNumber(param.typeAnnotation)) report(label);
+          else if (param.type === 'Identifier' && isSpanName(param.name.replace(UNIT_SUFFIX, '')) && param.name !== param.name.replace(UNIT_SUFFIX, '') && isBareNumber(param.typeAnnotation) && param.typeAnnotation?.typeAnnotation?.type !== 'TSFunctionType') {
+            report(label);
+            positional.add(`${entry} ${label}`);
+          }
           walk(param.typeAnnotation, label);
         }
         walk(fn.returnType, where);
@@ -1132,21 +1140,23 @@ export function spanProblems(packages: readonly PackageToSnapshot[], lists: Span
   }
   const problems: string[] = [];
   for (const hit of [...hits].sort()) {
-    if (!Object.hasOwn(lists.exceptions, hit) && !lists.pending.has(hit)) problems.push(`${hit} is a span of time as a bare number — take a Duration, or name its unit (docs/time.md › Spans of time)`);
+    if (Object.hasOwn(lists.exceptions, hit)) continue;
+    problems.push(
+      positional.has(hit)
+        ? `${hit} is a span of time as a positional number — move it into an options object, or take a Duration (docs/time.md › Spans of time)`
+        : `${hit} is a span of time as a bare number — take a Duration, or name its unit (docs/time.md › Spans of time)`,
+    );
   }
   for (const key of Object.keys(lists.exceptions)) if (!hits.has(key)) problems.push(`${key} is listed in SPAN_EXCEPTIONS but is no bare number span any more — delete the line`);
-  for (const key of lists.pending) if (!hits.has(key)) problems.push(`${key} is listed in SPAN_PENDING but follows the rule — delete the line`);
   return problems;
 }
 
 export interface InternalLists {
   /** Names and classes that stand on purpose, each with its reason. */
   readonly exceptions: Readonly<Record<string, string>>;
-  /** Names and classes that do not follow the rules yet. */
-  readonly pending: ReadonlySet<string>;
 }
 
-const INTERNAL_LISTS: InternalLists = { exceptions: INTERNAL_EXCEPTIONS, pending: INTERNAL_PENDING };
+const INTERNAL_LISTS: InternalLists = { exceptions: INTERNAL_EXCEPTIONS };
 
 /** The `./internal` subpaths of a package (also `./x/internal`): their import specifier and `.d.ts`. */
 function internalEntries(pkg: PackageToSnapshot): { specifier: string; path: string }[] {
@@ -1248,15 +1258,15 @@ function leakedClasses(packages: readonly PackageToSnapshot[]): Set<string> {
 /**
  * What a package keeps behind `./internal` is for other packages: a name of an `./internal` entry that no file outside its package
  * imports (the code or tests of another package) is a problem, and so is a class that a public
- * signature names but no entry point exports. A name that stands on purpose is in `lists.exceptions` with its reason, one that
- * waits for a change in `lists.pending`; a listed name that follows the rule is a problem too, so the line gets deleted.
+ * signature names but no entry point exports. A name that stands on purpose is in `lists.exceptions` with its reason; a listed
+ * name that follows the rule is a problem too, so the line gets deleted.
  * `files` is read only when a package has an `./internal` entry.
  */
 export function internalProblems(packages: readonly PackageToSnapshot[], root: string, files: () => readonly SourceFile[], lists: InternalLists = INTERNAL_LISTS): string[] {
   const unused = packages.some((pkg) => internalEntries(pkg).length > 0) ? unusedInternalNames(packages, root, files()) : new Set<string>();
   const leaked = leakedClasses(packages);
   const problems: string[] = [];
-  const listed = (key: string) => Object.hasOwn(lists.exceptions, key) || lists.pending.has(key);
+  const listed = (key: string) => Object.hasOwn(lists.exceptions, key);
   for (const key of [...unused].sort()) {
     if (!listed(key)) problems.push(`${key} is exported from an ./internal entry but no file outside its package imports it — stop exporting it, or use it from the package that needs it`);
   }
@@ -1265,7 +1275,6 @@ export function internalProblems(packages: readonly PackageToSnapshot[], root: s
   }
   const hits = new Set([...unused, ...leaked]);
   for (const key of Object.keys(lists.exceptions)) if (!hits.has(key)) problems.push(`${key} is listed in INTERNAL_EXCEPTIONS but follows the rule — delete the line`);
-  for (const key of lists.pending) if (!hits.has(key)) problems.push(`${key} is listed in INTERNAL_PENDING but follows the rule — delete the line`);
   return problems;
 }
 
