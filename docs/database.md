@@ -45,7 +45,7 @@ The default connection reads these variables, checked when the app starts like a
 | --- | --- | --- |
 | `DB_DRIVER` | `sqlite` | The driver: `sqlite` or `pgsql`. |
 | `DB_DATABASE` | `storage/database.sqlite` for SQLite, none for Postgres | SQLite: the file, relative to the app's root, or `:memory:`. Postgres: the database's name, required unless `DB_URL` is set. |
-| `DB_HOST` | `127.0.0.1` | Postgres: the server. |
+| `DB_HOST` | `127.0.0.1` | Postgres: the server: a name, an IPv4 or IPv6 address (`::1`), or the directory of a Unix socket (`/var/run/postgresql`). |
 | `DB_PORT` | `5432` | Postgres: its port. |
 | `DB_USERNAME` | `postgres` | Postgres: the user. |
 | `DB_PASSWORD` | empty | Postgres: the password. |
@@ -53,6 +53,8 @@ The default connection reads these variables, checked when the app starts like a
 | `DB_POOL_MAX` | `10` | Postgres: the most connections the app's pool opens. |
 | `DB_INFRA_POOL_MAX` | `4` | Postgres: the most connections of the small pool the cache, the sessions and uploads use. See [infrastructure connections](#infrastructure-connections). |
 | `DB_MANAGED` | `true` | `false` when another tool manages the database's tables. See [a database another tool manages](#a-database-another-tool-manages). |
+
+Opening a Postgres connection fails after ten seconds, instead of waiting for a host that does not answer; this holds for the app's pools and for the connection `marmeon migrate` takes its lock on. Set `?connect_timeout=<seconds>` in `DB_URL` for a server that needs longer: whole seconds from 0 to 2147483, anything else fails the start naming `DB_URL`; `0` waits without a limit, as before. The error is `D11` with the connection named. The same limit applies to the wait for a free connection of a full pool: that failure says that no connection was free within the timeout, and the cure is a larger `DB_POOL_MAX` or shorter transactions, not the network. A connection always runs in UTC: options in the URL (`?options=-c%20search_path%3Dapp`) are kept, and a `TimeZone` among them is replaced by UTC.
 
 A Postgres server is either the five variables `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`, or its
 whole address in `DB_URL`. When `DB_URL` is set, it wins: the five are not read. `DB_URL` must start with `postgres://` or

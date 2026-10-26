@@ -6,11 +6,47 @@ export interface PostgresOptions {
   name?: string;
   /** Largest number of pooled connections (default 10). */
   poolMax?: number;
+  /** How long opening a connection, or waiting for a free one, may take before it fails (default: the URL's `connect_timeout`, else {@link CONNECT_TIMEOUT_MS}). */
+  connectTimeoutMs?: number;
   /**
    * An idle pooled connection failed (the server restarted, an admin terminated it). Without a
    * listener, pg emits an unhandled 'error' event — which ends the Node process.
    */
   onIdleError?: (error: Error) => void;
+}
+
+/** How long a connection to Postgres may take to open: an unreachable host fails after it instead of hanging `migrate` and the readiness check. */
+export const CONNECT_TIMEOUT_MS = 10_000;
+
+const UTC_SESSION = '-c TimeZone=UTC';
+
+/**
+ * What `pg` is given for `url`. `pg` lets the URL's `options` replace the config's, so they are taken out of the URL and sent
+ * as `options` with the UTC session after them. A bracketed IPv6 host goes to `pg` as the `host` parameter, because `pg`
+ * would look the brackets up as part of a name. The connect timeout is `override`, else libpq's `connect_timeout` (seconds) of the
+ * URL, else {@link CONNECT_TIMEOUT_MS}.
+ */
+export function postgresConnection(url: string, override?: number): { connectionString: string; options: string; connectionTimeoutMillis: number } {
+  const parsed = URL.parse(url);
+  if (parsed === null) return { connectionString: url, options: UTC_SESSION, connectionTimeoutMillis: override ?? CONNECT_TIMEOUT_MS };
+  // The value was checked with the configuration: whole seconds, 0 for no limit.
+  const seconds = parsed.searchParams.get('connect_timeout');
+  const urlTimeout = seconds ? Number(seconds) * 1000 : undefined;
+  const urlOptions = parsed.searchParams.get('options');
+  let changed = false;
+  if (urlOptions !== null) {
+    parsed.searchParams.delete('options');
+    changed = true;
+  }
+  if (parsed.hostname.startsWith('[') && !parsed.searchParams.has('host')) {
+    parsed.searchParams.set('host', parsed.hostname.slice(1, -1));
+    changed = true;
+  }
+  return {
+    connectionString: changed ? parsed.href : url,
+    options: [urlOptions?.trim(), UTC_SESSION].filter(Boolean).join(' '),
+    connectionTimeoutMillis: override ?? urlTimeout ?? CONNECT_TIMEOUT_MS,
+  };
 }
 
 // Postgres type OIDs whose default parsing differs from what SQLite returns.
@@ -42,7 +78,11 @@ export function createPostgresDialect(options: PostgresOptions): PostgresDialect
           return pg.types.getTypeParser(oid, format);
         },
       };
-      const pool = new pg.Pool({ connectionString: options.url, max: options.poolMax ?? 10, types, options: '-c TimeZone=UTC' });
+      const pool = new pg.Pool({
+        ...postgresConnection(options.url, options.connectTimeoutMs),
+        max: options.poolMax ?? 10,
+        types,
+      });
       // The pool replaces a broken idle connection by itself; it only needs to be told not to crash.
       pool.on('error', (error) => options.onIdleError?.(error));
       return pool;

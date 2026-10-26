@@ -4,7 +4,9 @@ import { withCode } from '@marmeon/core/internal';
 import { sql, type Kysely } from 'kysely';
 import { isUniqueViolation } from '../errors.ts';
 import { assertLockReadable, LOCK_TABLE } from '../migration-state.ts';
-import { importPg } from '../postgres.ts';
+import { describeConnection } from '../config.ts';
+import { connectionError } from '../driver.ts';
+import { importPg, postgresConnection } from '../postgres.ts';
 
 export { LOCK_TABLE };
 
@@ -95,6 +97,8 @@ export interface LockOptions {
   readonly url?: string;
   /** Postgres: the connection's name, for the message when `pg` is missing. */
   readonly connection?: string;
+  /** Postgres: how long opening the lock's connection may take (default: the URL's `connect_timeout`, else ten seconds). */
+  readonly connectTimeoutMs?: number;
   /** How long to wait for another migration to end (default 60). `0` tries once. */
   readonly waitSeconds?: number;
   /** A SQLite lock that was taken over from a dead process. */
@@ -125,13 +129,18 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 async function acquirePostgres(options: LockOptions, owner: string, waitMs: number): Promise<HeldLock> {
   if (options.url === undefined) throw new TypeError('The Postgres migration lock needs the connection’s url.');
   const pg = await importPg(undefined, options.connection);
-  const client = new pg.Client({ connectionString: options.url, keepAlive: true });
+  const client = new pg.Client({ ...postgresConnection(options.url, options.connectTimeoutMs), keepAlive: true });
   let lost: MigrationLockLostError | undefined;
   // Without a listener an ended connection would crash the process with an unrelated message.
   client.on('error', (error) => {
     lost ??= new MigrationLockLostError(`its database connection ended (${error.message})`);
   });
-  await client.connect();
+  try {
+    await client.connect();
+  } catch (error) {
+    await client.end().catch(() => {});
+    throw connectionError({ name: options.connection ?? 'default', target: describeConnection({ driver: 'pgsql', url: options.url }) }, error);
+  }
   const key = String(ADVISORY_KEY);
   try {
     const deadline = Date.now() + waitMs;

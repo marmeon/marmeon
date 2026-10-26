@@ -49,6 +49,12 @@ function hasDatabaseName(url: string): boolean {
   }
 }
 
+/** Whether the `connect_timeout` of a Postgres URL, if it has one, is whole seconds that a timer can wait: 0 (no limit) to 2147483. */
+function hasValidConnectTimeout(url: string): boolean {
+  const value = URL.parse(url)?.searchParams.get('connect_timeout');
+  return value == null || (/^\d+$/.test(value) && Number(value) <= 2_147_483);
+}
+
 /** `options` as the connections use them: a Postgres server's parts made into its URL, unless the URL is given. */
 function connectionOptions(name: string, options: ConnectionDefinitionOptions): ConnectionOptions {
   const managed = options.managed === false ? { managed: false } : {};
@@ -60,12 +66,19 @@ function connectionOptions(name: string, options: ConnectionDefinitionOptions): 
   };
   if (options.url !== undefined) {
     if (!hasDatabaseName(options.url)) throw new TypeError(`The Postgres connection "${name}" needs a database: the name in its url's path, or database.`);
+    if (!hasValidConnectTimeout(options.url)) throw new TypeError(`The Postgres connection "${name}" has a connect_timeout in its url that is not whole seconds from 0 to 2147483.`);
     return { driver: 'pgsql', url: new URL(options.url).href, ...pools };
   }
   if (!options.database) throw new TypeError(`The Postgres connection "${name}" needs a url or a database.`);
-  const url = new URL(`postgres://${options.host ?? '127.0.0.1'}:${options.port ?? 5432}`);
-  url.username = options.username ?? 'postgres';
-  url.password = options.password ?? '';
+  const host = options.host ?? '127.0.0.1';
+  // A socket directory travels as the `host` parameter (the authority stays: it carries the account); an IPv6 address needs brackets.
+  const socket = host.startsWith('/');
+  const authority = socket ? 'localhost' : host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  const url = new URL(`postgres://${authority}:${options.port ?? 5432}`);
+  if (socket) url.searchParams.set('host', host);
+  // Encoded here: the setters leave a `%` alone, and pg decodes what it reads, so `100%` or `%41` would arrive as another text.
+  url.username = encodeURIComponent(options.username ?? 'postgres');
+  url.password = encodeURIComponent(options.password ?? '');
   url.pathname = `/${options.database}`;
   return { driver: 'pgsql', url: url.href, ...pools };
 }
@@ -99,6 +112,11 @@ export const DatabaseConfig = defineConfig('database', {
       (e) => e.DB_DRIVER !== 'pgsql' || (e.DB_URL !== undefined ? hasDatabaseName(e.DB_URL) : e.DB_DATABASE !== undefined),
       'set DB_DATABASE, or DB_URL with the database\'s name in its path — apps on one Postgres server share their tables otherwise (docs/database.md#configuration)',
       'DB_DATABASE',
+    )
+    .check(
+      (e) => e.DB_DRIVER !== 'pgsql' || e.DB_URL === undefined || hasValidConnectTimeout(e.DB_URL),
+      'connect_timeout in DB_URL is whole seconds from 0 (no limit) to 2147483 (docs/database.md#configuration)',
+      'DB_URL',
     ),
   resolve: (e): { default: ConnectionOptions } => {
     if (e.DB_DRIVER === 'sqlite') return { default: connectionOptions('default', { driver: 'sqlite', database: e.DB_DATABASE ?? 'storage/database.sqlite', managed: e.DB_MANAGED }) };
