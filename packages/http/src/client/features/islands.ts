@@ -3,7 +3,7 @@
  * the server answers becomes the region's outcome — never a navigation of the page — except a 409: a new build (or a document
  * change), so the whole page loads again (the island's code of this build may be gone).
  */
-import { LOCATION_HEADER, protocolHeaders, REGION_HEADER, REGION_STATUS_HEADER, VERSION_HEADER, type RegionObject } from '../../protocol.ts';
+import { LOCATION_HEADER, protocolHeaders, REGION_HEADER, REGION_STATUS_HEADER, speaksProtocol, VERSION_HEADER, type RegionObject } from '../../protocol.ts';
 import type { FeatureHost } from '../core.ts';
 import { defineFeature } from '../feature.ts';
 import { follow } from '../load-live.ts';
@@ -50,7 +50,7 @@ async function regionRequest(core: IslandsCore, url: string, headers: Readonly<R
     await response.body?.cancel();
     return { kind: 'forbidden' };
   }
-  if (response.ok && response.headers.get(REGION_HEADER) === 'island') return { kind: 'region', region: (await response.json()) as RegionObject };
+  if (response.ok && speaksProtocol(response.headers) && response.headers.get(REGION_HEADER) === 'island') return { kind: 'region', region: (await response.json()) as RegionObject };
   let message: string | undefined;
   try {
     const body = (await response.json()) as { message?: unknown };

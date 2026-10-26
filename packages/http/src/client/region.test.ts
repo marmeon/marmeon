@@ -47,6 +47,19 @@ describe('Region — islands in the client core', () => {
     expect(init?.redirect).toBe('manual');
   });
 
+  it('reads an island only from an answer that speaks this protocol version', async () => {
+    const win = new FakeWindow(`${ORIGIN}/dashboard`);
+    win.handler = (url) =>
+      new Response(JSON.stringify(island(new URL(url).pathname)), {
+        headers: { [PAGE_HEADER]: url.includes('foreign') ? '2' : PROTOCOL_VERSION, [REGION_HEADER]: 'island', 'content-type': 'application/json' },
+      });
+    const { navigator } = boot(win, page('/dashboard', {}, 'dashboard/Show'));
+    const foreign = navigator.use(islands).region('/dashboard/islands/foreign');
+    const own = navigator.use(islands).region('/dashboard/islands/own');
+    await Promise.all([foreign.load(), own.load()]);
+    expect([foreign.snapshot.status, own.snapshot.status]).toEqual(['exception', 'ready']);
+  });
+
   it('two identical islands share one request (and one state)', async () => {
     const win = new FakeWindow(`${ORIGIN}/dashboard`);
     win.handler = (url) => islandResponse(island(new URL(url).pathname + new URL(url).search));

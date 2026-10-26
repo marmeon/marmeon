@@ -57,7 +57,7 @@ function Lazy({ stats, list }: { stats?: number; list: { data: number[]; next: s
         {() => <p data-testid="stats">{stats}</p>}
       </WhenVisible>
       <ul data-testid="list">{list.data.map((item) => <li key={item}>{item}</li>)}</ul>
-      {list.next && <WhenVisible always params={{ data: { cursor: list.next }, only: ['list'], preserveUrl: true }} fallback={<p data-testid="more">Loading more…</p>} />}
+      {list.next && <WhenVisible always reload={{ data: { cursor: list.next }, only: ['list'], preserveUrl: true }} fallback={<p data-testid="more">Loading more…</p>} />}
     </div>
   );
 }
@@ -244,6 +244,13 @@ describe('<WhenVisible>', () => {
     };
   });
   afterEach(() => void vi.unstubAllGlobals());
+
+  it('refuses the old `params` prop with a TypeError naming `reload`', () => {
+    // @ts-expect-error no prop `params`: the reload is `reload`
+    expect(() => WhenVisible({ params: { only: ['stats'] } })).toThrow(TypeError);
+    // @ts-expect-error no prop `params`: the reload is `reload`
+    expect(() => WhenVisible({ params: { only: ['stats'] } })).toThrow('<WhenVisible reload>');
+  });
 
   it('loads its props when scrolled into view — not before, and once', async () => {
     await mount(page('Lazy', '/a', { list: { data: [1, 2], next: null } }));

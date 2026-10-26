@@ -90,7 +90,7 @@ its element scrolls into view:
 ```
 
 `buffer` starts the request that many pixels before the element is visible. `as` names the watched element, a `div` by default.
-`params` takes a whole reload instead of prop names. In a browser without `IntersectionObserver` it loads right away. A
+`reload` takes a whole reload instead of prop names. In a browser without `IntersectionObserver` it loads right away. A
 `defer()` prop works with `<WhenVisible>` too.
 
 ### Partial reloads
@@ -167,7 +167,7 @@ How a prop merges:
 - **A paginator**, `{ data, meta }`, appends its `data` and takes the new `meta`. Match its items with `matchOn('data.id')`.
 
 `preserveUrl` keeps the list's URL in the address bar, so a reload starts at the top instead of showing one later page alone. For
-infinite scroll, put `<WhenVisible always params={{ data: { cursor }, only: ['notes'], preserveUrl: true }} />` at the end of the
+infinite scroll, put `<WhenVisible always reload={{ data: { cursor }, only: ['notes'], preserveUrl: true }} />` at the end of the
 list: `always` loads again each time it comes into view. `defer(fn).merge()` merges a deferred prop the same way once it has
 loaded.
 

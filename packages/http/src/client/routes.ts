@@ -1,22 +1,39 @@
 import { urlFor } from '@marmeon/router/url';
 import type { Param, Query, RouteManifest } from '../page.ts';
 
+/** What {@link resolveRoute} takes besides the route's name. */
+export interface ResolveRouteOptions {
+  /** The route's parameters. */
+  readonly params?: Readonly<Record<string, Param>> | undefined;
+  /** The query string to append. */
+  readonly query?: Query | undefined;
+  /** The locale of the page on screen — a localized route takes it when `params` name no `locale`. */
+  readonly pageLocale?: string | undefined;
+}
+
 /**
  * Where a named route leads and how to call it — from the routes the browser knows (`routes` of
  * `virtual:marmeon/routes`). Throws for a name the manifest lacks. What an adapter's `route()`, `<Link route>` and
  * `useForm(name, …)` resolve with; the names are typed in the adapter (`CheckBrowserRouteName`).
  *
- * A localized route (`Route.localized()`) given no `locale` takes `defaults.locale` — the page on screen's. An explicit
- * `locale` wins; a route that is not localized takes none. The value only fills a path segment (encoded), so it never
- * leads off this site.
+ * A localized route (`Route.localized()`) given no `locale` in `params` takes `options.pageLocale`: the locale of the
+ * page on screen. An explicit `locale` wins; a route that is not localized takes none. The value only fills a path
+ * segment (encoded), so it never leads off this site.
  */
 export function resolveRoute(
   manifest: RouteManifest | undefined,
   name: string,
-  params?: Readonly<Record<string, Param>>,
-  query?: Query,
-  defaults?: { readonly locale?: string | undefined },
+  options: ResolveRouteOptions = {},
 ): { url: string; method: string } {
+  if (arguments.length > 3 || typeof options !== 'object' || options === null || Array.isArray(options)) {
+    throw new TypeError(`resolveRoute(manifest, name, options) takes { params, query, pageLocale } as its third argument (route [${name}]).`);
+  }
+  for (const key of Object.keys(options)) {
+    if (key !== 'params' && key !== 'query' && key !== 'pageLocale') {
+      throw new TypeError(`resolveRoute() takes { params, query, pageLocale }, not [${key}] (route [${name}]).`);
+    }
+  }
+  const { params, query, pageLocale } = options;
   if (!manifest) {
     throw new Error(
       (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
@@ -33,6 +50,6 @@ export function resolveRoute(
         : `[marmeon:C2] ${name}`,
     );
   }
-  const locale = entry.localized && params?.locale === undefined ? defaults?.locale : undefined;
+  const locale = entry.localized && params?.locale === undefined ? pageLocale : undefined;
   return { url: urlFor({ findByName: () => entry }, name, locale === undefined ? params : { ...params, locale }, query), method: entry.method };
 }

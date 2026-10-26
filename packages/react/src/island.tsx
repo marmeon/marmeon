@@ -104,7 +104,7 @@ export function Island<const N extends BrowserRouteNameInput>(props: IslandEleme
   const { route, params, query, fallback = null, load = 'eager', as = 'div', className, id } = props as IslandElementProps & {
     params?: Record<string, string | number>;
   };
-  const url = resolveRoute(manifest, route, params, query, page).url;
+  const url = resolveRoute(manifest, route, { params, query, pageLocale: page?.locale }).url;
   const scriptId = `marmeon-island-${useId()}`;
   // Until its part has rendered in the browser (hydrated), the element stays the same: a page update reaching a boundary
   // that is still streaming would make React render it in the browser instead — and load the island again.
