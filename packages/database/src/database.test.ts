@@ -106,6 +106,14 @@ describe.each(drivers)('a %s connection', (driver) => {
     ]);
   });
 
+  it('ignores the isolation level of a transaction while the connection is isolated: it is a savepoint of the test’s', async () => {
+    const isolation = await connections.isolate();
+    const before = queries.length;
+    await connections.transaction(async () => {}, { isolationLevel: 'serializable' });
+    expect(queries.slice(before).filter((q) => /isolation level/i.test(q.sql))).toEqual([]);
+    await isolation.rollback();
+  });
+
   it('keeps using the pool once the isolation is rolled back', async () => {
     const isolation = await connections.isolate();
     await expect(connections.isolate()).rejects.toThrow('is already isolated');

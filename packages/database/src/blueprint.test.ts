@@ -2,7 +2,7 @@ import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql, type Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
-import { ForeignIdColumn, Migrator, type Connections } from './index.ts';
+import { Blueprint, ForeignIdColumn, Migrator, type Connections } from './index.ts';
 
 type Spec = ConstructorParameters<typeof ForeignIdColumn>[0];
 
@@ -115,5 +115,16 @@ describe.each(drivers)('UUIDv7 columns on %s', (driver) => {
   it('reports the column as a uuid', async () => {
     await db.selectFrom('teams').select('id').execute(); // loads the metadata
     expect(connections.metadata().kinds.get('profiles')?.get('public_id')).toBe('uuid');
+  });
+});
+
+describe('a blueprint keeps its parts to itself', () => {
+  it('has no list a migration could write to', () => {
+    const table = new Blueprint('notes');
+    table.string('title');
+    // @ts-expect-error — the columns are not a member of the schema builder
+    expect(table.columns).toBeUndefined();
+    // @ts-expect-error — nor are the indexes
+    expect(table.indexes).toBeUndefined();
   });
 });

@@ -13,21 +13,6 @@ Types from other packages: `kysely`
 export declare class Blueprint {
     #private;
     readonly table: string;
-    readonly columns: ColumnSpec[];
-    readonly indexes: IndexSpec[];
-    readonly drops: string[];
-    readonly dropIndexes: string[];
-    readonly renames: {
-        from: string;
-        to: string;
-    }[];
-    readonly nullability: {
-        column: string;
-        nullable: boolean;
-    }[];
-    readonly retirements: string[];
-    readonly markers: Set<TableMarker>;
-    constructor(table: string);
     id(name?: string): Column<number>;
     string(name: string, length?: number): Column<string>;
     text(name: string): Column<string>;
@@ -55,8 +40,6 @@ export declare class Blueprint {
     notNull(column: string): void;
     nullable(column: string): void;
     retire(column: string): void;
-    seal(): void;
-    allIndexes(): IndexSpec[];
 }
 // ChangedMigration
 export interface ChangedMigration {
@@ -71,8 +54,6 @@ export type CheckPageRequest<Q> = [keyof Q & keyof PageRequest] extends [never] 
 // Column
 export declare class Column<T> {
     #private;
-    constructor(spec: ColumnSpec);
-    protected get spec(): ColumnSpec;
     nullable(): Column<T | null>;
     unique(): this;
     primary(): this;
@@ -231,6 +212,8 @@ export declare class InvalidCursorError extends HttpError {
     name: string;
     constructor();
 }
+// IsolationLevel
+export type IsolationLevel = 'read committed' | 'repeatable read' | 'serializable';
 // Json
 export type Json = null | boolean | number | string | Json[] | {
     [key: string]: Json;
@@ -257,16 +240,6 @@ export interface LockHolder {
 export type MadeAttributes<Row, O> = {
     [K in keyof Row]: K extends keyof O ? Exclude<O[K], undefined> | (undefined extends O[K] ? Attribute<Row[K]> : never) : Attribute<Row[K]>;
 };
-// MigrateOptions
-export interface MigrateOptions {
-    readonly onUnknown?: (connection: string, found: UnknownSchema) => void;
-    readonly onLegacy?: (connection: string, tables: readonly string[]) => void;
-    readonly onCarriedOver?: (carried: {
-        readonly recorded: number;
-        readonly unknown: readonly string[];
-    }) => void;
-    readonly onChanged?: (changed: readonly ChangedMigration[]) => void;
-}
 // Migration
 export interface Migration {
     readonly connection?: MigrationConnection;
@@ -287,12 +260,6 @@ export declare class MigrationLockLostError extends Error {
 export declare class MigrationLockTimeoutError extends Error {
     readonly holder: LockHolder;
     constructor(holder: LockHolder);
-}
-// MigrationRun
-export interface MigrationRun {
-    readonly name: string;
-    readonly module: string;
-    readonly ms: number;
 }
 // MigrationStateError
 export declare class MigrationStateError extends Error {
@@ -318,14 +285,6 @@ export declare class Migrator {
         batch: number;
     }[]>;
     changed(): Promise<ChangedMigration[]>;
-    migrate(onRun?: (run: MigrationRun) => void, options?: MigrateOptions): Promise<MigrationRun[]>;
-    rollback(options?: {
-        steps?: number;
-    } & Pick<MigrateOptions, 'onCarriedOver' | 'onChanged'>, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
-    reset(onRun?: (run: MigrationRun) => void, options?: Pick<MigrateOptions, 'onCarriedOver' | 'onChanged'>): Promise<MigrationRun[]>;
-    fresh(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]>;
-    dropAllTables(): Promise<string[]>;
-    connections(): Promise<string[]>;
     projection(): Promise<SchemaProjection>;
 }
 // ModuleDatabase
@@ -372,7 +331,6 @@ export interface Paginated<T> {
 // PendingFactory
 export declare class PendingFactory<T extends keyof DB & string, DB = Tables, Many extends boolean = false, S extends string = never> {
     #private;
-    constructor(definition: FactoryDefinition<T, DB, S>, pending: Pending);
     count(count: number): PendingFactory<T, DB, true, S>;
     state(state: S | Partial<NewRowOf<DB[T]>>): PendingFactory<T, DB, Many, S>;
     using(db: Connection<DB>): PendingFactory<T, DB, Many, S>;
@@ -551,13 +509,6 @@ export declare class Schema {
 export declare class SchemaError extends Error {
     name: string;
 }
-// SchemaMarker
-export interface SchemaMarker {
-    readonly table: string;
-    readonly column: string;
-    readonly marker: 'inverse' | 'soft_deletes' | 'timestamps';
-    readonly value: string | null;
-}
 // SchemaProjection
 export interface SchemaProjection {
     readonly migrations: readonly {
@@ -644,11 +595,6 @@ export interface TransactionOptions {
     readonly connection?: string;
     readonly isolationLevel?: IsolationLevel;
 }
-// UnknownSchema
-export interface UnknownSchema {
-    readonly tables: readonly string[];
-    readonly columns: readonly string[];
-}
 // UuidColumn
 export declare class UuidColumn<T> extends Column<T> {
     useUuidv7(): this;
@@ -720,35 +666,10 @@ type Attributes<Row> = {
 };
 // CanWrite
 type CanWrite<DB, X> = X extends keyof DB ? ([keyof RowUpdateOf<DB[X]>] extends [never] ? false : true) : false;
-// ColumnSpec
-interface ColumnSpec {
-    readonly name: string;
-    readonly type: Record<Driver, DataTypeExpression>;
-    nullable: boolean;
-    primary: boolean;
-    identity: boolean;
-    unique: boolean;
-    secret: boolean;
-    default?: {
-        value: unknown;
-    } | {
-        now: true;
-    } | {
-        uuidv7: true;
-    };
-    references?: {
-        table: string;
-        column: string;
-        onDelete?: OnDelete;
-        inverse?: string;
-    };
-}
 // DataContext
 export interface DataContext {
     readonly driver: Driver;
 }
-// DataTypeExpression
-type DataTypeExpression = Parameters<CreateTableBuilder<string, never>['addColumn']>[1];
 // DeclaredTables
 type DeclaredTables<T> = 0 extends 1 & T ? [never] : [T] extends [never] ? [never] : [];
 // Driver
@@ -760,12 +681,6 @@ export type ExposedToOthers<All, Owners, Exposed, M extends string> = {
 // ForeignTables
 export type ForeignTables<Foreign> = 0 extends 1 & Foreign ? {} : [Foreign] extends [never] ? {} : {
     [T in keyof Foreign]: ReadOnlyTable<Foreign[T]>;
-};
-// IndexSpec
-type IndexSpec = {
-    readonly columns: readonly string[];
-    readonly unique: boolean;
-    readonly name: string;
 };
 // IsSecret
 type IsSecret<C> = [C] extends [ColumnType<infer S, any, infer U>] ? ([S] extends [never] ? ([U] extends [never] ? false : true) : false) : false;
@@ -789,21 +704,12 @@ type NamesOf<DB, T> = T extends keyof Relations ? {
 }[keyof Relations[T]] & string : never;
 // NewRelated
 type NewRelated<DB, X extends keyof DB, F> = Omit<NewRowOf<DB[X]>, F & string>;
-// OnDelete
-type OnDelete = 'cascade' | 'set null' | 'restrict' | 'no action';
 // OwnedTables
 export type OwnedTables<All, Owners, M extends string> = {
     [T in keyof All as T extends keyof Owners ? (Owners[T] extends M ? T : never) : never]: All[T];
 };
 // PageSizes
 type PageSizes<P extends number> = P | readonly [P, ...P[]];
-// Pending
-interface Pending {
-    readonly factories: Factories;
-    readonly count: number | undefined;
-    readonly states: readonly (string | Record<string, unknown>)[];
-    readonly db: Connection<any> | undefined;
-}
 // READ_METHODS
 export declare const READ_METHODS: readonly ['selectFrom', 'selectNoFrom', 'fn', 'case', 'dynamic', 'isTransaction'];
 // RawStatements

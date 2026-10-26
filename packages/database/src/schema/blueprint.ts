@@ -42,11 +42,12 @@ export type TableMarker = 'soft_deletes' | 'timestamps';
 export class Column<T> {
   readonly #spec: ColumnSpec;
 
+  /** @internal — columns come from the {@link Blueprint}'s methods. */
   constructor(spec: ColumnSpec) {
     this.#spec = spec;
   }
 
-  /** The column's description, for the modifiers; once the plan is closed it is not to be changed. */
+  /** @internal — the column's description, for the modifiers; once the plan is closed it is not to be changed. */
   protected get spec(): ColumnSpec {
     if (closedSpecs.has(this.#spec)) throw closedPlan();
     return this.#spec;
@@ -164,6 +165,29 @@ export class ConstrainedColumn<T> extends Column<T> {
 
 type IndexSpec = { readonly columns: readonly string[]; readonly unique: boolean; readonly name: string };
 
+/** What a {@link Blueprint} holds about its table; the migrator's plan reads it through {@link blueprintParts}. */
+interface BlueprintParts {
+  /** Columns to add (create, or alter). */
+  readonly columns: ColumnSpec[];
+  readonly indexes: IndexSpec[];
+  readonly drops: string[];
+  readonly dropIndexes: string[];
+  readonly renames: { from: string; to: string }[];
+  /** Existing columns that become NOT NULL (`nullable: false`) or nullable (`nullable: true`). */
+  readonly nullability: { column: string; nullable: boolean }[];
+  /** Columns taken out of use (`retire()`): the projection forgets them, the database keeps them. */
+  readonly retirements: string[];
+  /** `timestamps()` and `softDeletes()` were called. */
+  readonly markers: Set<TableMarker>;
+}
+
+let partsOf: (blueprint: Blueprint) => BlueprintParts;
+
+/** What a blueprint holds, for the plan and the projection. Not exported by the package: a migration reaches a table through the methods of `Blueprint` only. */
+export function blueprintParts(blueprint: Blueprint): BlueprintParts {
+  return partsOf(blueprint);
+}
+
 /**
  * Describes a table's columns, indexes and foreign keys, and compiles them for SQLite or Postgres.
  * The declared types are chosen so the type generator (and the SQLite adapter) recognize them:
@@ -171,21 +195,24 @@ type IndexSpec = { readonly columns: readonly string[]; readonly unique: boolean
  */
 export class Blueprint {
   readonly table: string;
-  /** Columns to add (create, or alter). */
-  readonly columns: ColumnSpec[] = [];
-  readonly indexes: IndexSpec[] = [];
-  readonly drops: string[] = [];
-  readonly dropIndexes: string[] = [];
-  readonly renames: { from: string; to: string }[] = [];
-  /** Existing columns that become NOT NULL (`nullable: false`) or nullable (`nullable: true`). */
-  readonly nullability: { column: string; nullable: boolean }[] = [];
-  /** Columns taken out of use (`retire()`): the projection forgets them, the database keeps them. */
-  readonly retirements: string[] = [];
-  /** `timestamps()` and `softDeletes()` were called. */
-  readonly markers = new Set<TableMarker>();
 
+  readonly #parts: BlueprintParts = {
+    columns: [],
+    indexes: [],
+    drops: [],
+    dropIndexes: [],
+    renames: [],
+    nullability: [],
+    retirements: [],
+    markers: new Set(),
+  };
   #sealed = false;
 
+  static {
+    partsOf = (blueprint) => blueprint.#parts;
+  }
+
+  /** @internal — a blueprint is handed to the callback of `schema.create()` and `schema.alter()`. */
   constructor(table: string) {
     this.table = table;
   }
@@ -262,7 +289,7 @@ export class Blueprint {
   timestamps(): void {
     this.timestamp('created_at').useCurrent();
     this.timestamp('updated_at').useCurrent();
-    this.markers.add('timestamps');
+    this.#parts.markers.add('timestamps');
   }
 
   /**
@@ -271,7 +298,7 @@ export class Blueprint {
    */
   softDeletes(): void {
     this.timestamp('deleted_at').nullable();
-    this.markers.add('soft_deletes');
+    this.#parts.markers.add('soft_deletes');
   }
 
   /** A big integer that references another table: `table.foreignId('user_id').constrained().cascadeOnDelete()`. */
@@ -296,25 +323,25 @@ export class Blueprint {
   /** Changing a table only: drops a column. */
   dropColumn(name: string): void {
     this.#open();
-    this.drops.push(name);
+    this.#parts.drops.push(name);
   }
 
   /** Changing a table only: drops an index by name (`{table}_{columns}_index`). */
   dropIndex(name: string): void {
     this.#open();
-    this.dropIndexes.push(name);
+    this.#parts.dropIndexes.push(name);
   }
 
   /** Changing a table only: drops a unique index by name (`{table}_{columns}_unique`). SQLite drops no indexed column. */
   dropUnique(name: string): void {
     this.#open();
-    this.dropIndexes.push(name);
+    this.#parts.dropIndexes.push(name);
   }
 
   /** Changing a table only: renames a column. */
   renameColumn(from: string, to: string): void {
     this.#open();
-    this.renames.push({ from, to });
+    this.#parts.renames.push({ from, to });
   }
 
   /**
@@ -333,28 +360,29 @@ export class Blueprint {
   /** Changing a table only: takes a column out of use one release before it is dropped; runs no statement. See `docs/migrations.md#retiring-a-column`. */
   retire(column: string): void {
     this.#open();
-    this.retirements.push(column);
+    this.#parts.retirements.push(column);
   }
 
   /**
-   * Closes the description once the callback that built it has returned: a column modifier or a new column after that (from an
+   * @internal — closes the description once the callback that built it has returned: a column modifier or a new column after that (from an
    * `async` callback, or a later step) throws instead of changing a table the plan already holds.
    */
   seal(): void {
     this.#sealed = true;
-    for (const spec of this.columns) closedSpecs.add(spec);
-    for (const spec of this.columns) {
+    for (const spec of this.#parts.columns) closedSpecs.add(spec);
+    for (const spec of this.#parts.columns) {
       if (spec.references) Object.freeze(spec.references);
       if (spec.default) Object.freeze(spec.default);
       Object.freeze(spec);
     }
-    for (const list of [this.columns, this.indexes, this.drops, this.dropIndexes, this.renames, this.nullability, this.retirements]) Object.freeze(list);
+    const { columns, indexes, drops, dropIndexes, renames, nullability, retirements } = this.#parts;
+    for (const list of [columns, indexes, drops, dropIndexes, renames, nullability, retirements]) Object.freeze(list);
   }
 
-  /** Every index to create: table-level ones and `.unique()` on columns — all named, so all droppable. */
+  /** @internal — every index to create: table-level ones and `.unique()` on columns — all named, so all droppable. */
   allIndexes(): IndexSpec[] {
-    const columnUniques = this.columns.filter((c) => c.unique).map((c) => ({ columns: [c.name], unique: true, name: `${this.table}_${c.name}_unique` }));
-    return [...columnUniques, ...this.indexes];
+    const columnUniques = this.#parts.columns.filter((c) => c.unique).map((c) => ({ columns: [c.name], unique: true, name: `${this.table}_${c.name}_unique` }));
+    return [...columnUniques, ...this.#parts.indexes];
   }
 
   #open(): void {
@@ -363,14 +391,14 @@ export class Blueprint {
 
   #nullability(column: string, nullable: boolean): void {
     this.#open();
-    if (this.nullability.some((change) => change.column === column)) throw new Error(`Column "${column}" of table "${this.table}" is made NOT NULL or nullable twice.`);
-    this.nullability.push({ column, nullable });
+    if (this.#parts.nullability.some((change) => change.column === column)) throw new Error(`Column "${column}" of table "${this.table}" is made NOT NULL or nullable twice.`);
+    this.#parts.nullability.push({ column, nullable });
   }
 
   #index(columns: string | readonly string[], unique: boolean, name?: string): void {
     this.#open();
     const list = typeof columns === 'string' ? [columns] : columns;
-    this.indexes.push({ columns: list, unique, name: name ?? `${this.table}_${list.join('_')}_${unique ? 'unique' : 'index'}` });
+    this.#parts.indexes.push({ columns: list, unique, name: name ?? `${this.table}_${list.join('_')}_${unique ? 'unique' : 'index'}` });
   }
 
   #add<T>(name: string, type: Record<Driver, DataTypeExpression>): Column<T> {
@@ -379,9 +407,9 @@ export class Blueprint {
 
   #spec(name: string, type: Record<Driver, DataTypeExpression>, extra: Partial<ColumnSpec> = {}): ColumnSpec {
     this.#open();
-    if (this.columns.some((column) => column.name === name)) throw new Error(`Column "${name}" is defined twice on table "${this.table}".`);
+    if (this.#parts.columns.some((column) => column.name === name)) throw new Error(`Column "${name}" is defined twice on table "${this.table}".`);
     const spec: ColumnSpec = { name, type, nullable: false, primary: false, identity: false, unique: false, secret: false, ...extra };
-    this.columns.push(spec);
+    this.#parts.columns.push(spec);
     return spec;
   }
 }

@@ -3,7 +3,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { Redactor, rollBackOnErr, runTransaction, TransactionError, token, type Application, type Logger } from '@marmeon/core';
 import { bindTransaction, messageBase, publishEnded, transactionOf, withCode } from '@marmeon/core/internal';
 import { channels, type DbQueryMessage } from '@marmeon/core/diagnostics';
-import { Kysely, sql, TableNode, type CompiledQuery, type Dialect, type IsolationLevel, type KyselyPlugin, type LogEvent, type OperationNode } from 'kysely';
+import { Kysely, sql, TableNode, type CompiledQuery, type Dialect, type KyselyPlugin, type LogEvent, type OperationNode } from 'kysely';
 import type { Connection, Transaction } from './builder.ts';
 import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from './types.ts';
 import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOptions } from './config.ts';
@@ -34,6 +34,14 @@ export type Database<M extends keyof Modules & string = never> = [M] extends [ne
   ? Connection<Tables>
   : ModuleDatabase<Tables, TableOwners, ExposedTables, M>;
 export const Database = token<Connection<Tables>>('Database');
+
+/**
+ * What a transaction may be isolated at. No `'read uncommitted'`: Postgres treats it as `'read committed'`, and SQLite has one
+ * writer at a time and ignores every level.
+ */
+export type IsolationLevel = 'read committed' | 'repeatable read' | 'serializable';
+
+const ISOLATION_LEVELS: readonly string[] = ['read committed', 'repeatable read', 'serializable'] satisfies IsolationLevel[];
 
 /** How `connections.transaction()` runs. */
 export interface TransactionOptions {
@@ -94,6 +102,9 @@ export class Connections {
    */
   async transaction<R>(callback: (trx: Transaction<Tables>) => R | PromiseLike<R>, options: TransactionOptions = {}): Promise<R> {
     const name = options.connection ?? 'default';
+    if (options.isolationLevel !== undefined && !ISOLATION_LEVELS.includes(options.isolationLevel)) {
+      throw new TypeError(`transaction({ isolationLevel: '${String(options.isolationLevel)}' }): the level is one of ${ISOLATION_LEVELS.map((level) => `'${level}'`).join(', ')}.`);
+    }
     const { db, driver } = this.#instance(name);
     if (options.isolationLevel && transactionOf(driver)) {
       throw new TransactionError(

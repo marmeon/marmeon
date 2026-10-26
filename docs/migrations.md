@@ -96,6 +96,9 @@ without running it. Put what depends on the data into a `schema.data()` step.
 
 A migration without `down` cannot be rolled back. A rollback that reaches it stops there with an error that names it.
 
+A migration reaches a table only through the methods of the table description that `create` and `alter` hand to `build`
+(`table.string()`, `table.index()`, `table.dropColumn()` …). What it keeps inside is not part of the API.
+
 ### Migrations from a package
 
 A module's `migrations` folder belongs to your app, so it has to be in your repository where a review sees every change. It has to
@@ -251,6 +254,8 @@ leaves no half-changed table behind, and it is not recorded. The migrations befo
 `migrate` and `migrate:fresh` write the table types afterwards when migrations ran, with `NODE_ENV=development` only. `--no-types`
 skips that. `migrate:rollback` and `migrate:reset` do not write them: after a rollback, run `marmeon db:types` to bring the file
 back in line. With `NODE_ENV=development`, `migrate` and `migrate:fresh` stop before any step (before `migrate:fresh` drops a table) when `bootstrap/database.d.ts` comes from a newer Marmeon, because they would have to write over it; `--no-types` skips this check. The [repositories and queries](queries.md#table-types) page explains the file.
+
+Run migrations with these commands. `Migrator` is the class behind them: its `status()`, `changed()`, `missing()`, `projection()` and `files()` read and are public, but the methods that run migrations are internal and may change.
 
 `migrate`, `migrate:rollback`, `migrate:reset` and `migrate:fresh` take `--wait=<seconds>` (default 60): how long to wait for another migration to end, see [one migration at a time](#one-migration-at-a-time).
 

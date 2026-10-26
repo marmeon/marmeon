@@ -54,12 +54,12 @@ note, the revision, whatever the listeners wrote, and the queued job.
 | --- | --- |
 | `connections.transaction(callback)` | A transaction on the default connection. |
 | `connections.transaction(callback, { connection: 'reporting' })` | A transaction on another connection. |
-| `connections.transaction(callback, { isolationLevel: 'serializable' })` | Sets the isolation level of an outermost transaction. |
+| `connections.transaction(callback, { isolationLevel: 'serializable' })` | Sets the isolation level of an outermost transaction: `'read committed'`, `'repeatable read'` or `'serializable'`. |
 | `repository.transaction(callback)` | A transaction on the repository's connection. The callback receives the repository. |
 | `inTransaction()` | Whether the current code runs inside a transaction. Import it from `@marmeon/database`. |
 | `connections.inTransaction(name?)` | Whether it runs inside a transaction of that connection. |
 
-Postgres applies an isolation level. SQLite has one writer at a time and ignores it. A transaction exists exactly as long as its
+Postgres applies an isolation level. SQLite has one writer at a time and ignores it. Any other value, `'snapshot'` or `'read uncommitted'` for one, is a type error and throws a `TypeError` before the transaction begins. A transaction exists exactly as long as its
 callback runs. "Check, then insert" is not safe on Postgres at the default isolation level: two transactions can both pass the
 check. A rule such as "no two bookings overlap" belongs in a constraint, as the [bookings recipe](recipe-bookings.md) shows, with
 a row lock or `isolationLevel: 'serializable'` as the other ways; the latter makes Postgres abort one transaction, and running it

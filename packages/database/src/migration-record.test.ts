@@ -78,7 +78,7 @@ describe.each(drivers)('the migrator keeps two tables on %s', (driver) => {
     const legacy: [string, string[]][] = [];
     const unknown: UnknownSchema[] = [];
     const carried: unknown[] = [];
-    const ran = await migrator(connections, accounts).migrate(undefined, {
+    const ran = await migrator(connections, accounts).migrate({
       onLegacy: (c, tables) => legacy.push([c, [...tables]]),
       onUnknown: (_, found) => unknown.push(found),
       onCarriedOver: (found) => carried.push(found),
@@ -112,7 +112,7 @@ describe.each(drivers)('the migrator keeps two tables on %s', (driver) => {
         expect(checksums).toEqual({ '2026_01_05_000000_create_accounts_table': sum('2026_01_05_000000_create_accounts_table'), '2026_01_06_000000_add_recovery_code_to_accounts_table': sum('2026_01_06_000000_add_recovery_code_to_accounts_table') });
         // Said on every run: the tables stay until someone drops them.
         legacy.length = 0;
-        await migrator(connections, accounts).migrate(undefined, { onLegacy: (c, tables) => legacy.push([c, [...tables]]) });
+        await migrator(connections, accounts).migrate({ onLegacy: (c, tables) => legacy.push([c, [...tables]]) });
         expect(legacy).toHaveLength(1);
       },
       // Already the current form: nothing is carried over, and the checksum the fixture holds stays.
@@ -137,7 +137,7 @@ describe.each(drivers)('the migrator keeps two tables on %s', (driver) => {
         await createLegacyTables(migratorConnection(both, 'system'));
         const legacy: string[] = [];
         const unknown: [string, UnknownSchema][] = [];
-        await new Migrator(app, both).migrate(undefined, { onLegacy: (c) => legacy.push(c), onUnknown: (c, found) => unknown.push([c, found]) });
+        await new Migrator(app, both).migrate({ onLegacy: (c) => legacy.push(c), onUnknown: (c, found) => unknown.push([c, found]) });
         expect(legacy).toEqual(['system']);
         expect(unknown).toEqual([]);
       } finally {
@@ -153,7 +153,7 @@ describe.each(drivers)('the migrator keeps two tables on %s', (driver) => {
     await migratorConnection(connections).schema.createTable('secret_columns').addColumn('id', 'integer').addColumn('title', 'varchar(20)').execute();
     const legacy: string[][] = [];
     const unknown: UnknownSchema[] = [];
-    await migrator(connections, auth).migrate(undefined, { onLegacy: (_, tables) => legacy.push([...tables]), onUnknown: (_, found) => unknown.push(found) });
+    await migrator(connections, auth).migrate({ onLegacy: (_, tables) => legacy.push([...tables]), onUnknown: (_, found) => unknown.push(found) });
     expect(legacy).toEqual([]);
     expect(unknown).toEqual([{ tables: ['secret_columns'], columns: [] }]);
   });
@@ -222,7 +222,7 @@ describe.each(drivers)('a database with tables and no record of migrations, on %
   it('refuses queries until `migrate` wrote the record — there is no adoption: the tables stay unknown, and are named', async () => {
     await expect(connections.get<any>().selectFrom('stranger').selectAll().execute()).rejects.toMatchObject({ reason: 'unmigrated' });
     const unknown: [string, UnknownSchema][] = [];
-    const ran = await migrator(connections, auth).migrate(undefined, { onUnknown: (connection, found) => unknown.push([connection, found]) });
+    const ran = await migrator(connections, auth).migrate({ onUnknown: (connection, found) => unknown.push([connection, found]) });
     expect(ran).toHaveLength(1);
     expect(unknown).toEqual([['default', { tables: ['stranger'], columns: [] }]]);
     expect(await connections.get<any>().selectFrom('stranger').selectAll().execute()).toEqual([]);
@@ -315,7 +315,7 @@ describe.each(drivers)('the record of migrations in the form of 0.3, on %s', (dr
 
   it('is carried over by `migrate` even when no migration is pending: the columns, and the checksum of every file there is', async () => {
     const carried: unknown[] = [];
-    expect(await migrator(connections, auth, accounts).migrate(undefined, { onCarriedOver: (found) => carried.push(found) })).toEqual([]);
+    expect(await migrator(connections, auth, accounts).migrate({ onCarriedOver: (found) => carried.push(found) })).toEqual([]);
     expect(await columnsOfRecord()).toEqual(['batch', 'checksum', 'id', 'module', 'name']);
     expect(await checksums()).toMatchObject({ [USERS]: sumOf('auth', USERS), [ACCOUNTS]: sumOf('accounts', ACCOUNTS) });
     expect(carried).toEqual([{ recorded: 3, unknown: [] }]);
@@ -324,13 +324,13 @@ describe.each(drivers)('the record of migrations in the form of 0.3, on %s', (dr
   it('leaves a migration without its file unknown, names it, and never fills it in later', async () => {
     await sql`insert into migrations (name, module, batch) values ('2025_12_31_000000_create_gone_table', 'gone', 1)`.execute(migratorConnection(connections));
     const carried: { recorded: number; unknown: readonly string[] }[] = [];
-    await migrator(connections, auth, accounts).migrate(undefined, { onCarriedOver: (found) => carried.push(found) });
+    await migrator(connections, auth, accounts).migrate({ onCarriedOver: (found) => carried.push(found) });
     expect(carried).toEqual([{ recorded: 3, unknown: ['2025_12_31_000000_create_gone_table'] }]);
     expect((await checksums())['2025_12_31_000000_create_gone_table']).toBeNull();
     // Not carried over again, and not filled in: a migration that ran and has no checksum stays unknown, also when its file comes back.
     await sql`update migrations set checksum = null where name = ${USERS}`.execute(migratorConnection(connections));
     carried.length = 0;
-    await migrator(connections, auth, accounts).migrate(undefined, { onCarriedOver: (found) => carried.push(found) });
+    await migrator(connections, auth, accounts).migrate({ onCarriedOver: (found) => carried.push(found) });
     expect(carried).toEqual([]);
     expect((await checksums())[USERS]).toBeNull();
   });
@@ -345,7 +345,7 @@ describe.each(drivers)('the record of migrations in the form of 0.3, on %s', (dr
 
   it('is carried over by `migrate:reset` too', async () => {
     const carried: unknown[] = [];
-    await migrator(connections, auth, accounts).reset(undefined, { onCarriedOver: (found) => carried.push(found) });
+    await migrator(connections, auth, accounts).reset({ onCarriedOver: (found) => carried.push(found) });
     expect(carried).toEqual([{ recorded: 3, unknown: [] }]);
   });
 
@@ -476,7 +476,7 @@ describe.each(drivers)('the database against the migrations after each one, on %
   it('does not take what the database has beyond the migrations for an error: a column and a table raw SQL added are named after the run', async () => {
     const hand: ModuleDefinition = { name: 'hand', migrations: fixtures('raw-add') };
     const unknown: [string, UnknownSchema][] = [];
-    const ran = await migrator(connections, auth, accounts, hand).migrate(undefined, { onUnknown: (connection, found) => unknown.push([connection, found]) });
+    const ran = await migrator(connections, auth, accounts, hand).migrate({ onUnknown: (connection, found) => unknown.push([connection, found]) });
     expect(ran).toHaveLength(1);
     expect(unknown).toEqual([['default', { tables: ['made_by_hand'], columns: ['accounts.by_hand'] }]]);
   });
@@ -628,7 +628,7 @@ describe.runIf(drivers.includes('pgsql' as never))('tables an extension owns, on
       await sql`alter extension citext add table spatial_ref_sys`.execute(books);
       expect(await connections.get<any>().selectFrom('spatial_ref_sys').selectAll().execute()).toEqual([]);
       const unknown: UnknownSchema[] = [];
-      await migrator(connections, auth).migrate(undefined, { onUnknown: (_, found) => unknown.push(found) });
+      await migrator(connections, auth).migrate({ onUnknown: (_, found) => unknown.push(found) });
       expect(unknown).toEqual([]);
       expect(await allTables(connections.get<any>())).toContain('migrations');
     } finally {

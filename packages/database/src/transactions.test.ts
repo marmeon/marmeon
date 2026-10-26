@@ -283,6 +283,15 @@ describe.each(drivers)('connections.transaction() on %s', (driver) => {
     );
   });
 
+  it('refuses an isolation level it does not know, before beginning', async () => {
+    let ran = false;
+    // @ts-expect-error — 'snapshot' is Kysely's, not Marmeon's
+    const snapshot = connections.transaction(async () => { ran = true; }, { isolationLevel: 'snapshot' });
+    await expect(snapshot).rejects.toThrow(TypeError);
+    await expect(snapshot).rejects.toThrow("the level is one of 'read committed', 'repeatable read', 'serializable'");
+    expect(ran).toBe(false);
+  });
+
   it('keeps the context to its own call chain: concurrent transactions never see each other (AsyncLocalStorage)', async () => {
     // On Postgres the three run at once (three connections): each step waits for the others to have looked — not for a
     // guessed time, which a loaded machine overran. On SQLite (one connection) they queue: b and the plain chain

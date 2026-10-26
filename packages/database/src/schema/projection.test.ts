@@ -239,10 +239,10 @@ describe('the projection of a plan', () => {
     });
 
     it('changes nothing in the database: an alter that only retires has no statement', async () => {
-      const { Blueprint } = await import('./blueprint.ts');
+      const { Blueprint, blueprintParts } = await import('./blueprint.ts');
       const blueprint = new Blueprint('members');
       blueprint.retire('pin');
-      expect(blueprint.retirements).toEqual(['pin']);
+      expect(blueprintParts(blueprint).retirements).toEqual(['pin']);
       blueprint.seal();
       expect(() => blueprint.retire('badge')).toThrow(/closed/);
     });

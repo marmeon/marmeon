@@ -34,6 +34,8 @@ export interface UnknownSchema {
 }
 
 export interface MigrateOptions {
+  /** Called after each migration that ran, with its name, module and duration. */
+  readonly onRun?: (run: MigrationRun) => void;
   /**
    * Called per connection, after the run, with the tables and columns the database has and no migration made (raw SQL, another tool): the
    * schema the migrations describe does not know them, so `selectAll()` leaves such columns out and such tables are not protected.
@@ -234,9 +236,9 @@ export class Migrator {
     });
   }
 
-  /** Runs every pending migration, in one new batch. */
-  async migrate(onRun?: (run: MigrationRun) => void, options: MigrateOptions = {}): Promise<MigrationRun[]> {
-    return this.locked(() => this.#withdrawnOnFailure(() => this.#migrate(onRun, options)));
+  /** @internal — runs every pending migration, in one new batch. Apps run migrations with `marmeon migrate`. */
+  async migrate(options: MigrateOptions = {}): Promise<MigrationRun[]> {
+    return this.locked(() => this.#withdrawnOnFailure(() => this.#migrate(options)));
   }
 
   /**
@@ -252,7 +254,8 @@ export class Migrator {
     }
   }
 
-  async #migrate(onRun: ((run: MigrationRun) => void) | undefined, options: MigrateOptions): Promise<MigrationRun[]> {
+  async #migrate(options: MigrateOptions): Promise<MigrationRun[]> {
+    const { onRun } = options;
     let hasRecord = await this.#prepare();
     await this.#carryOver(options);
     // Every connection a migration runs on, not only those with a migration pending.
@@ -329,37 +332,37 @@ export class Migrator {
     return runs;
   }
 
-  /** Rolls back the last batch — or the last `steps` migrations. */
-  async rollback(options: { steps?: number } & Pick<MigrateOptions, 'onCarriedOver' | 'onChanged'> = {}, onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
+  /** @internal — rolls back the last batch, or the last `steps` migrations. */
+  async rollback(options: { steps?: number } & Pick<MigrateOptions, 'onRun' | 'onCarriedOver' | 'onChanged'> = {}): Promise<MigrationRun[]> {
     return this.locked(async () => {
       await this.#withdrawnOnFailure(() => this.#carryOver(options));
       const rows = (await this.#ran()).toReversed();
       const last = rows[0]?.batch;
       const targets = options.steps ? rows.slice(0, options.steps) : rows.filter((row) => row.batch === last);
-      return this.#withdrawnOnFailure(() => this.#down(targets, onRun, options));
+      return this.#withdrawnOnFailure(() => this.#down(targets, options));
     });
   }
 
-  /** Rolls back every migration. */
-  async reset(onRun?: (run: MigrationRun) => void, options: Pick<MigrateOptions, 'onCarriedOver' | 'onChanged'> = {}): Promise<MigrationRun[]> {
+  /** @internal — rolls back every migration. */
+  async reset(options: Pick<MigrateOptions, 'onRun' | 'onCarriedOver' | 'onChanged'> = {}): Promise<MigrationRun[]> {
     return this.locked(async () =>
       this.#withdrawnOnFailure(async () => {
         await this.#carryOver(options);
-        return this.#down((await this.#ran()).toReversed(), onRun, options);
+        return this.#down((await this.#ran()).toReversed(), options);
       }),
     );
   }
 
-  /** Drops every table (not only the migrated ones) and migrates from scratch. */
-  async fresh(onRun?: (run: MigrationRun) => void): Promise<MigrationRun[]> {
+  /** @internal — drops every table (not only the migrated ones) and migrates from scratch. */
+  async fresh(options: Pick<MigrateOptions, 'onRun'> = {}): Promise<MigrationRun[]> {
     return this.locked(async () => {
       await this.dropAllTables();
-      return this.migrate(onRun);
+      return this.migrate(options);
     });
   }
 
   /**
-   * Drops every table of the default connection, the record of migrations included — and of every other connection a migration
+   * @internal — drops every table of the default connection, the record of migrations included — and of every other connection a migration
    * runs on (its tables would be in the way of the fresh run). Returns the connections.
    */
   async dropAllTables(): Promise<string[]> {
@@ -383,7 +386,7 @@ export class Migrator {
     });
   }
 
-  /** `default`, and every other connection a migration runs on. */
+  /** @internal — `default`, and every other connection a migration runs on. */
   async connections(): Promise<string[]> {
     const names = new Set(['default']);
     for (const file of this.files()) names.add(this.#connectionOf(await loadMigration(file), file));
@@ -399,7 +402,8 @@ export class Migrator {
     return loadProjection(this.#app.root, this.files());
   }
 
-  async #down(rows: readonly { name: string; module: string; batch: number; checksum: string | null }[], onRun: ((run: MigrationRun) => void) | undefined, options: Pick<MigrateOptions, 'onChanged'>): Promise<MigrationRun[]> {
+  async #down(rows: readonly { name: string; module: string; batch: number; checksum: string | null }[], options: Pick<MigrateOptions, 'onRun' | 'onChanged'>): Promise<MigrationRun[]> {
+    const { onRun } = options;
     const known = this.files();
     const files = new Map(known.map((file) => [file.name, file]));
     const planned = await this.#plans(known);

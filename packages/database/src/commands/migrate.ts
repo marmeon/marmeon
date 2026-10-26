@@ -118,7 +118,7 @@ export class MigrateCommand {
   async handle(input: CommandInput): Promise<number> {
     if (!confirmed(input, 'migrate') || blockedByNewerTypes(this.#types, input)) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.migrate(report(input.output, 'Migrated'), notices(input.output));
+      const runs = await this.#migrator.migrate({ onRun: report(input.output, 'Migrated'), ...notices(input.output) });
       if (runs.length === 0) input.output.info('Nothing to migrate.');
       await afterMigrating(this.#types, input, runs.length > 0 && input.options['no-types'] !== true);
       return 0;
@@ -146,7 +146,7 @@ export class MigrateRollbackCommand {
     }
     if (!confirmed(input, 'roll back')) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.rollback({ steps: step, onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output) }, report(input.output, 'Rolled back'));
+      const runs = await this.#migrator.rollback({ steps: step, onRun: report(input.output, 'Rolled back'), onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output) });
       if (runs.length === 0) input.output.info('Nothing to roll back.');
       return 0;
     });
@@ -168,7 +168,7 @@ export class MigrateResetCommand {
   async handle(input: CommandInput): Promise<number> {
     if (!confirmed(input, 'roll back every migration')) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.reset(report(input.output, 'Rolled back'), { onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output) });
+      const runs = await this.#migrator.reset({ onRun: report(input.output, 'Rolled back'), onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output) });
       if (runs.length === 0) input.output.info('Nothing to roll back.');
       return 0;
     });
@@ -197,7 +197,7 @@ export class MigrateFreshCommand {
     const migrated = await underLock(this.#migrator, input, async () => {
       const connections = await this.#migrator.dropAllTables();
       input.output.info(connections.length === 1 ? 'Dropped all tables.' : `Dropped all tables of the connections ${connections.join(', ')}.`);
-      const runs = await this.#migrator.migrate(report(input.output, 'Migrated'), notices(input.output));
+      const runs = await this.#migrator.migrate({ onRun: report(input.output, 'Migrated'), ...notices(input.output) });
       await afterMigrating(this.#types, input, runs.length > 0 && input.options['no-types'] !== true);
       return 0;
     });

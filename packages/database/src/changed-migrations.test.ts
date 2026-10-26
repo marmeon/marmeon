@@ -88,7 +88,7 @@ describe.each(drivers)('a migration that changed after it ran, on %s', (driver) 
       join(directory, `${things}.ts`),
       `import { defineMigration } from ${JSON.stringify(new URL('./index.ts', import.meta.url).href)};\nexport default defineMigration({ up: (schema) => schema.create('things', (table) => table.id()), down: (schema) => schema.drop('things') });\n`,
     );
-    const runs = await migrator().migrate((run) => events.push(`ran ${run.name}`), { onChanged: (changed) => events.push(`changed ${changed.map((c) => c.name).join(',')}`) });
+    const runs = await migrator().migrate({ onRun: (run) => events.push(`ran ${run.name}`), onChanged: (changed) => events.push(`changed ${changed.map((c) => c.name).join(',')}`) });
     expect(runs.map((run) => run.name)).toEqual([things]);
     expect(events).toEqual([`changed ${created}`, `ran ${things}`]);
   });
@@ -97,7 +97,7 @@ describe.each(drivers)('a migration that changed after it ran, on %s', (driver) 
     await migrator().migrate();
     edit(created);
     const seen: ChangedMigration[][] = [];
-    expect(await migrator().migrate(undefined, { onChanged: (changed) => seen.push([...changed]) })).toEqual([]);
+    expect(await migrator().migrate({ onChanged: (changed) => seen.push([...changed]) })).toEqual([]);
     expect(seen.map((changed) => changed.map((c) => c.name))).toEqual([[created]]);
     const command = new MigrateCommand(migrator(), { fileFormat: () => 'current' } as unknown as TypeGenerator);
     const printed = await capture(() => command.handle(input({ force: true, 'no-types': true })));
@@ -135,9 +135,9 @@ describe.each(drivers)('a migration that changed after it ran, on %s', (driver) 
     const onChanged = (changed: readonly ChangedMigration[]) => events.push(`changed ${changed.map((c) => c.name).join(',')}`);
     const onRun = (run: { name: string }) => events.push(`ran ${run.name}`);
     // Both ran in one batch: the last step rolls back the second, which did not change.
-    await migrator().rollback({ steps: 1, onChanged }, onRun);
+    await migrator().rollback({ steps: 1, onChanged, onRun });
     expect(events).toEqual([`ran ${added}`]);
-    await migrator().rollback({ steps: 1, onChanged }, onRun);
+    await migrator().rollback({ steps: 1, onChanged, onRun });
     expect(events).toEqual([`ran ${added}`, `changed ${created}`, `ran ${created}`]);
   });
 
@@ -149,7 +149,7 @@ describe.each(drivers)('a migration that changed after it ran, on %s', (driver) 
     await migrator().migrate();
     edit(created);
     const seen: string[][] = [];
-    await migrator().reset(undefined, { onChanged: (changed) => seen.push(changed.map((c) => c.name)) });
+    await migrator().reset({ onChanged: (changed) => seen.push(changed.map((c) => c.name)) });
     expect(seen).toEqual([[created]]);
     await migrator().migrate();
     edit(created, (source) => `${source}// again\n`);
