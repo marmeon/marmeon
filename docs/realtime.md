@@ -144,6 +144,8 @@ channel goes into pages only, never into an island or a layer, which show no lay
 - **Gathered.** A tab collects hints until 250 milliseconds pass without one, at most 2 seconds after the first, and then makes
   **one** partial reload per page, island or layer.
 
+`Broadcaster` is given to your code, not meant to be implemented: a later release may add a member.
+
 With Redis down, `refresh()` logs the lost hint and does not retry it. The change itself is committed. New streams answer `503`
 with `Retry-After: 5` meanwhile, and tabs that connect again later catch up.
 

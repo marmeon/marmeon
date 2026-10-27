@@ -91,6 +91,10 @@ for changing it:
 - Within a line, the minimum version rises in a minor version only for a security fix in Node.
 - Supporting a new LTS line is a minor change.
 
+### Operating systems
+
+Linux and macOS. On Windows, use WSL 2. Supporting one more operating system is a minor change.
+
 ### TypeScript and ES modules
 
 An app needs TypeScript 7 and the options of the starter's `tsconfig.json`: `erasableSyntaxOnly`, `verbatimModuleSyntax` and a
@@ -119,13 +123,23 @@ The promise of a version covers the public API. These are part of it:
   other member is optional.
 - Other interfaces an app implements itself, such as the drivers of cache, queue and storage: a new required member is a break. An
   extension arrives as an optional member.
+- Interfaces your code is given but does not implement: `Disk`, `Storage`, `Broadcaster`, `HttpKernel`, `Prompt`, `Output`,
+  `CommandInput` and `DevtoolsStore`. A later release may add a member to them. A disk of your own implements `DiskDriver`.
+- A class you extend (`Repository`, `Controller` …) may gain members in a minor release. A member of your subclass
+  with the same name may then need another name; the [upgrade guide](../UPGRADING.md) lists each such member with a `Low` line.
 - The names and defaults of environment variables.
 - The commands of `marmeon`, their flags and exit codes.
+- The flags and exit codes of `create-marmeon` ([listed here](installation.md#options)). The files it writes are not: they follow the
+  starter kit of its version, `marmeon-stubs.json` records where they came from, and the release notes name changes.
+- The JSON body of an error: the keys `message` and `errors` (a field's dotted path, a list index as a number, to a list of
+  messages); the status code of each error class (`ValidationError` 422, `HttpError` its status); and the error codes, the
+  [server's](errors.md#server-error-codes) and the [browser's](errors.md#error-codes) `C` and `R` alike: a code keeps its meaning and
+  never moves to another error, and an error may get a code later. The text of a message is not API.
 - The documents `--json` prints, by their `format`.
 - The place of the documentation of an installed version, `node_modules/marmeon/docs/`, and `docs/index.json` there (`format` 1: `version` and `sections` with each page's `slug`, `label`, `title` and `file`, relative to the package).
 - The table schemas of the migrations the framework ships, the stubs and the `make:*` tables. The migrations the framework's packages ship, the starter kit's among them, are append-only: a released file never changes, and a change of a table is a new file ([tables](package-development.md#tables)).
 - `defineMigration`, `up(schema)` and the schema builder, including which plans they accept and what they create: a migration that ran keeps its meaning.
-- The protocol between client and server: headers and the page object.
+- The protocol between client and server: headers ([listed here](navigation.md#the-headers-of-the-protocol)) and the page object.
 - Stored and wire formats: queue payloads, sessions, encrypted values, tokens, cookies, the record of migrations and the generated files, as
   [listed below](#stored-and-wire-formats).
 - Translation keys, `@marmeon/react/styles.css` (its classes and custom properties) and the names of diagnostics channels and the

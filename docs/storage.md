@@ -115,6 +115,8 @@ how to keep it.
 | `url(key)` | The public URL of a file on a public disk. |
 | `temporaryUrl(key, { expiresIn, filename?, base? })` | A signed link that expires. `expiresIn` is seconds, or a [`Duration`](time.md#spans-of-time) such as `{ minutes: 5 }`, and at most seven days on every disk. |
 
+A `Disk` is given to your code by `storage.disk()`; it is not meant to be implemented, and a later release may add a member. A disk of your own implements `DiskDriver` ([disk drivers](#disk-drivers)).
+
 A missing file throws `FileNotFoundError`. A reader never sees half a file: the local driver writes to a temporary file and
 renames it into place. The content type comes from the key's extension on a local disk, and from what was stored on S3 and in
 memory: `put()`'s `contentType` counts there only.

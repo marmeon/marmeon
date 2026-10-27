@@ -339,7 +339,7 @@ instead of waiting. An agent without a terminal is never asked. The scheduler ru
 
 ### Testing a command
 
-A test runs a command by its name with `app.command('queue:retry', { args: ['all'] })`: the exit code and the printed lines come back, and nothing is asked. See [running commands](testing.md#running-commands) in the testing guide.
+A test runs a command by its name with `app.command('queue:retry', { args: ['all'] })`: the exit code and the printed lines come back, and nothing is asked. See [running commands](testing.md#running-commands) in the testing guide. The `CommandInput` a command's `handle()` is given is built by `marmeon` and `app.command()`, not by your code; a later release may add a member.
 
 ## Tinker
 

@@ -4,6 +4,10 @@ import { withCode } from '@marmeon/core/internal';
 import type { Output } from './output.ts';
 import { noPrompt, type Prompt } from './prompt.ts';
 
+/**
+ * What a command's `handle()` is given. Built by `marmeon` and `app.command()`, not by an app: a later release may add a member.
+ * See docs/console.md#writing-commands.
+ */
 export interface CommandInput {
   /** Positional arguments after the command name. */
   readonly args: readonly string[];

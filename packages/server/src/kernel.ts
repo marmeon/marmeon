@@ -158,7 +158,10 @@ const ISLAND_HEADERS = ['host', 'cookie', 'accept-language', 'user-agent', 'forw
 
 type OnTerminable = NonNullable<DispatchOptions['onTerminable']>;
 
-/** The app's HTTP entry: answers a `Request`; `request()` is the shorthand tests use. See docs/testing.md#what-every-test-app-has. */
+/**
+ * The app's HTTP entry: answers a `Request`; `request()` is the shorthand tests use. Given to your code, not meant to be
+ * implemented — a later release may add a member. See docs/testing.md#what-every-test-app-has.
+ */
 export interface HttpKernel {
   /** Answers a request the way the server does. */
   fetch(request: Request, connection?: KernelConnection): Promise<Response>;

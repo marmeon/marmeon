@@ -17,7 +17,8 @@ export interface RefreshOptions {
 /**
  * Hints the browsers on a channel that it changed: `await this.#broadcast.refresh(\`users.${user.id}\`, { only: ['profile'] })`.
  * A hint, never data — each tab reloads through the page's own route and policies. It goes out after the commit (a
- * rollback sends nothing), and reaches the tab that caused it with nothing to reload. See `docs/realtime.md#sending-hints`.
+ * rollback sends nothing), and reaches the tab that caused it with nothing to reload. Given to your code, not meant to be implemented — a later release may add
+ * a member. See `docs/realtime.md#sending-hints`.
  */
 export interface Broadcaster {
   refresh(channel: string, options?: RefreshOptions): Promise<void>;

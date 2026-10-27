@@ -31,7 +31,7 @@ export interface TemporaryUrlOptions {
 
 /** What a disk driver's `temporaryUrl()` is given: the framework has already turned `expiresIn` into whole seconds. */
 export interface DiskDriverTemporaryUrlOptions {
-  /** How long the URL works, in whole seconds, at least 1. */
+  /** How long the URL works, in whole seconds, from 1 to 604 800. */
   readonly expiresInSeconds: number;
   /** The file name the browser saves it as (default: the key's last segment). */
   readonly filename?: string;
@@ -52,8 +52,8 @@ export interface OpenedFile {
  * ({@link normalizeKey}): no `..`, no absolute path, no backslash, no NUL. Reading a missing file throws
  * `FileNotFoundError`. See `docs/storage.md#using-a-disk`.
  *
- * A package or an app brings a disk of its own (`static diskDrivers`, `docs/drivers.md#disk-drivers`) by implementing every
- * member below except `close`. The framework checks every key ({@link normalizeKey}) before the driver sees it, refuses a disk
+ * Given to your code by `storage.disk()`, not meant to be implemented — a later release may add a member. A disk of your own
+ * implements {@link DiskDriver} (`static diskDrivers`, `docs/drivers.md#disk-drivers`). The framework checks every key ({@link normalizeKey}) before the driver sees it, refuses a disk
  * whose `visibility` is not the configured one and never calls `url()` of a private disk on the driver.
  */
 export interface Disk {

@@ -19,11 +19,6 @@ export const EXPORT_EXCEPTIONS: Readonly<Record<string, string>> = {
  * Exports that do not follow the rule yet. Each change that fixes one deletes its line; the list is empty before a release.
  */
 export const EXPORT_PENDING: Readonly<Record<string, string>> = {
-  '@marmeon/http/protocol ACTION_HEADER': 'a header of the page protocol: the docs list it before the release candidate',
-  '@marmeon/http/protocol FLASH_HEADER': 'a header of the page protocol: the docs list it before the release candidate',
-  '@marmeon/http/protocol LAYER_CLOSE_HEADER': 'a header of the page protocol: the docs list it before the release candidate',
-  '@marmeon/http/protocol REGION_STATUS_HEADER': 'a header of the page protocol: the docs list it before the release candidate',
-  '@marmeon/http/protocol VALIDATE_HEADER': 'a header of the page protocol: the docs list it before the release candidate',
   '@marmeon/core REDACTED': 'useful API the docs do not name yet: documented before the release candidate',
   '@marmeon/queue JobRecord': 'useful API the docs do not name yet: documented before the release candidate',
   '@marmeon/react FormHandle': 'useful API the docs do not name yet: documented before the release candidate',

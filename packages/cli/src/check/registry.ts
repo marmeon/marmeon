@@ -8,7 +8,7 @@ export interface AppCheck {
   handle(context?: AppCheckContext): AppCheckResult | Promise<AppCheckResult>;
 }
 
-/** What a check is given. */
+/** What a check is given. Built by `marmeon check`, not by an app: a later release may add a member. */
 export interface AppCheckContext {
   /** Aborted when the check took longer than its time limit: stop, and release what you opened. */
   readonly signal: AbortSignal;

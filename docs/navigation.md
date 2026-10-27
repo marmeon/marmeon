@@ -479,6 +479,38 @@ The tab loads that address as a whole document. A visit follows the rules above:
 postpone it. An action, a live validation or an upload cannot be postponed, because what it sends cannot be answered. Whatever
 the user typed into a form there and had not sent is lost.
 
+### The headers of the protocol
+
+The client core sends and reads these; an app needs them for a test, a proxy or a cache rule, and a client of another kind speaks
+them. Their names and meanings are public API. `@marmeon/http/protocol` exports each constant but the two marked internal, which only the framework's packages import; their header names are still public.
+
+| Constant | Header | Sent with | What it says |
+|---|---|---|---|
+| `PAGE_HEADER` | `x-marmeon` | every request of the client core | The protocol version the client speaks (`PROTOCOL_VERSION`); the server answers with the page object as JSON. |
+| `VERSION_HEADER` | `x-marmeon-version` | every request of the client core that has a build version (not in development) | The asset version the client was built with; a mismatch answers `409`. |
+| `PARTIAL_COMPONENT_HEADER` | `x-marmeon-partial-component` | a partial reload | The component the client shows; only for that component does the server leave props out. |
+| `PARTIAL_DATA_HEADER` | `x-marmeon-partial-data` | a partial reload | The props to send, comma-separated (`only`); `always()` props come anyway. |
+| `PARTIAL_EXCEPT_HEADER` | `x-marmeon-partial-except` | a partial reload | The props to leave out, comma-separated (`except`). |
+| `PURPOSE_HEADER` | `purpose` | a prefetch | `prefetch`: the user has not asked for the page yet, so a GET that does more than show skips that. |
+| `REGION_HEADER` | `x-marmeon-region` | an island's or a layer's request | `island`: the server answers with the island's region object, never a page. `layer`: a layer route answers with its page object marked `layer`, a page route with its page. |
+| `REGION_STATUS_HEADER` | `x-marmeon-region-status` | the answer to an island's request | How it ended without a region object: `unauthorized` or `forbidden` with `204`, `exception` with the error's status (500 if lower). |
+| `ONCE_HEADER` | `x-marmeon-once` | every page request of the client core | The keys of the once props the browser holds, comma-separated; the server does not compute them again. |
+| `ONCE_SCOPE_HEADER` | `x-marmeon-once-scope` | every page request of the client core | The scope the held once props were sent under; the server skips them only for the same scope. |
+| `ACTION_HEADER` | `x-marmeon-action` | an action (`useAction`) | The request does not navigate: the answer is data, never a page, and is never cached. |
+| `ACTION_REDIRECT_HEADER` | `x-marmeon-redirect` | the `204` of an action | Where the controller redirected to; the client reports it and does not go there. |
+| `VALIDATE_HEADER` | `x-marmeon-validate` | a live validation | The fields to check, comma-separated; the server answers `204` or `422` and never runs the controller. |
+| `VALIDATED_HEADER` | `x-marmeon-validated` | the `204` and `422` of a live validation | The fields that were checked, so a client tells the answer from a proxy's. |
+| `UPLOAD_HEADER` | `x-marmeon-upload` | an upload's requests | The request asks for an upload target, or is the one that receives the file (with the token's id). |
+| `FLASH_HEADER` | `x-marmeon-flash` | the answer to an action | The flash messages the action delivers, as URI-encoded JSON. |
+| `FLASH_WAITING_HEADER` | `x-marmeon-flash-waiting` | the answer to a prefetch | Flash messages are waiting for the page the user is shown; the client asks the server instead of showing the prefetched page. |
+| `LAYER_CLOSE_HEADER` | `x-marmeon-layer-close` | the answer to a layer's request | `true`: the JSON body says how many layers close and what reloads beneath them. |
+| `LOCATION_HEADER` | `x-marmeon-location` | a `409` | The address the client loads as a whole document. |
+| `DOCUMENT_HEADER` (internal) | `x-marmeon-document` | every request of a tab with tab sync (the default) | A random id of the tab's document: flash messages its request causes go only to it, and tab sync names it. |
+| `CONNECTION_HEADER` (internal) | `x-marmeon-connection` | every request of a tab that follows live hints | The id of the tab's document, so the server leaves that connection out of the hints its own request causes. |
+| `RELOAD_HEADER` | `x-marmeon-reload` | a `409` with a location | `version`: a new build, which the client may postpone; anything else is a document change nothing can stop. |
+
+[Protocol headers](responses.md#protocol-headers) says which of them belong in `Vary`.
+
 ## View transitions
 
 A page change can animate with the browser's view transitions. Nothing animates until you ask for it.
