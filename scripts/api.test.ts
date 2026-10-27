@@ -22,7 +22,7 @@ const CONSUMER = [{ path: 'packages/other/src/c.ts', text: `import { c } from '$
 const NO_INTERNAL = { exceptions: {} };
 const NO_SPANS = { exceptions: {} };
 const NO_MEMBERS = { exceptions: {} };
-const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, spans: NO_SPANS, internal: NO_INTERNAL, members: NO_MEMBERS, files: CONSUMER, ...options });
+const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, spans: NO_SPANS, internal: NO_INTERNAL, members: NO_MEMBERS, exports: false, files: CONSUMER, ...options });
 
 /** Writes `dist/<name>` files into a fresh package; `exports` maps subpaths to their `.d.ts` under `dist/`. */
 function demo(files: Record<string, string>, exports: Record<string, string> = { '.': 'index.d.ts' }, extra: Record<string, unknown> = {}) {
@@ -1484,5 +1484,13 @@ describe('constructors and members that only their own package uses', () => {
     const { root } = demo({ 'index.d.ts': CLASSES });
     const run = await runApi(root, { allowed: {}, files: [] });
     expect(run.lines).toContain('members:');
+  });
+
+  it('reports the exports only the framework uses through api:check with a line of their own', async () => {
+    const { root } = demo({ 'index.d.ts': 'export declare function f(): void;\n' });
+    await runApi(root, { write: true });
+    const run = await runApi(root, { exports: { exceptions: {}, pending: {} }, files: [] });
+    expect(run.lines).toContain('exports:');
+    expect((await runApi(root, { exports: { exceptions: {}, pending: { '@marmeon/demo f': 'reason' } }, files: [] })).code).toBe(0);
   });
 });
