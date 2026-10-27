@@ -6,8 +6,6 @@ import type { Encrypter } from '@marmeon/encryption';
  * `key` is the session's store key — an encrypted payload is bound to it.
  */
 export interface SessionCodec {
-  /** Whether payloads are encrypted. */
-  readonly encrypts: boolean;
   seal(json: string, key: string): string | Promise<string>;
   /** The JSON — or undefined when the payload cannot be read: tampered with, under another key, from another session. */
   open(data: string, key: string): string | undefined | Promise<string | undefined>;
@@ -16,7 +14,6 @@ export const SessionCodec = token<SessionCodec>('SessionCodec');
 
 /** Payloads as they are (JSON). */
 export const plainSessionCodec: SessionCodec = {
-  encrypts: false,
   seal: (json) => json,
   open: (data) => data,
 };
@@ -26,7 +23,6 @@ export const plainSessionCodec: SessionCodec = {
  * session's key as authenticated data: a payload copied into another session's place does not decrypt there.
  */
 export class EncryptedSessionCodec implements SessionCodec {
-  readonly encrypts = true;
   readonly #encrypter: Encrypter;
 
   constructor(encrypter: Encrypter) {

@@ -112,6 +112,7 @@ export class Session {
     return this.#permit === undefined || this.#permit(what);
   }
 
+  /** @internal The session's secret: never log it or key data by it — see sessionScope() in ended.ts. */
   get id(): string {
     this.#ensureStarted();
     return this.#id;
@@ -348,7 +349,7 @@ export class Session {
   }
 
   /**
-   * Whether the session outlives this request: it came from the store, or this request keeps it (something was written or handed out). For a read-only
+   * @internal Whether the session outlives this request: it came from the store, or this request keeps it (something was written or handed out). For a read-only
    * request (an island, a live stream, an upload) — which never keeps a new one — whether the session it reads exists.
    */
   get exists(): boolean {

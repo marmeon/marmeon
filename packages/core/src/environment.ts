@@ -13,15 +13,16 @@ import { join } from 'node:path';
 export interface NodeEnvironment {
   readonly NODE_ENV?: string | undefined;
   readonly APP_ENV?: string | undefined;
-  readonly [DOTENV_MARKER]?: string | undefined;
 }
 
-/** Set next to `NODE_ENV` when its value came from `.env` (holds that value, so a later explicit `NODE_ENV` is never mistaken). */
+/** @internal The launcher's: set next to `NODE_ENV` when its value came from `.env` (holds that value, so a later explicit `NODE_ENV` is never mistaken). */
 export const DOTENV_MARKER = 'MARMEON_NODE_ENV_FROM_DOTENV';
 
 /** The values `NODE_ENV` may have — any other stops the start. */
-export const NODE_ENVIRONMENTS = ['development', 'test', 'production'] as const;
-export type NodeEnvironmentName = (typeof NODE_ENVIRONMENTS)[number];
+export type NodeEnvironmentName = 'development' | 'test' | 'production';
+
+/** @internal The values `NODE_ENV` may have: name one with `NodeEnvironmentName` and ask `environment`. */
+export const NODE_ENVIRONMENTS = ['development', 'test', 'production'] as const satisfies readonly NodeEnvironmentName[];
 
 /** `APP_ENV` when it is not set: the name that goes with `NODE_ENV`. */
 const APP_ENVIRONMENTS: Readonly<Record<NodeEnvironmentName, string>> = { development: 'local', test: 'testing', production: 'production' };
@@ -33,7 +34,7 @@ const APP_ENVIRONMENTS: Readonly<Record<NodeEnvironmentName, string>> = { develo
  */
 export const environmentChecks = {
   /** Whether `NODE_ENV` was taken from the app's `.env` rather than set in the process's environment. */
-  fromDotEnv(env: NodeEnvironment = process.env): boolean {
+  fromDotEnv(env: NodeEnvironment & { readonly [DOTENV_MARKER]?: string | undefined } = process.env): boolean {
     const name = nodeEnv(env);
     return name !== undefined && env[DOTENV_MARKER] === name;
   },
@@ -153,6 +154,7 @@ export const environment = {
  * whenever the process has none. A `NODE_ENV=development` set in the environment is respected, with a warning. Any other value
  * stops the build ({@link environmentChecks.check}). Returns the lines to print. The `marmeon` launcher calls it; see
  * docs/configuration.md#where-node_env-comes-from.
+ * @internal The launcher's: an app reads `NODE_ENV` through `environment`.
  */
 export function buildEnvironment(env: Record<string, string | undefined> = process.env): { readonly notes: readonly string[]; readonly warnings: readonly string[] } {
   environmentChecks.check(env);
@@ -174,6 +176,7 @@ export function buildEnvironment(env: Record<string, string | undefined> = proce
   return { notes: [], warnings: [] };
 }
 
+/** @internal The launcher's: what `resolveEnvironment()` decided. */
 export interface ResolvedEnvironment {
   /** The resolved `NODE_ENV` — `undefined`: none anywhere (production). */
   readonly name: string | undefined;
@@ -191,6 +194,7 @@ const reported = new Set<string>();
  * the process's own value wins; else the base `.env`'s (marked {@link DOTENV_MARKER}); else `fallback` (`marmeon start`:
  * `production`, `marmeon dev`: `development`); else none (production). A `.env.{NODE_ENV}` that sets `NODE_ENV` is ignored, with a
  * warning. A `NODE_ENV` that is none of `development`, `test`, `production` throws ({@link environmentChecks.check}) — the start error.
+ * @internal The launcher's: an app reads `NODE_ENV` through `environment`.
  */
 export function resolveEnvironment(root: string, { fallback, env = process.env }: { fallback?: string; env?: Record<string, string | undefined> } = {}): ResolvedEnvironment {
   let source: ResolvedEnvironment['source'];

@@ -56,7 +56,7 @@ export { env } from './config/env.ts';
 export { EnvironmentConfig } from './config/environment-config.ts';
 export type { EnvBlock, EnvMessage, EnvNumber, EnvRead, EnvSchema, EnvString, EnvVariable, RenamedOptions } from './config/env.ts';
 export { environment } from './environment.ts';
-export type { NodeEnvironment, NodeEnvironmentName, ResolvedEnvironment } from './environment.ts';
+export type { NodeEnvironment, NodeEnvironmentName } from './environment.ts';
 export type { ConfigDefinition, ConfigOf } from './config/config.ts';
 export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from './config/standard-schema.ts';
 export type { ModuleDefinition } from './module.ts';
