@@ -41,8 +41,6 @@ export declare class RedisConnections {
     get(name?: string): RedisConnection;
     options(name?: string): RedisConnectionOptions;
     names(): string[];
-    verify(): Promise<void>;
-    close(): Promise<void>;
 }
 // RedisHealthCheck
 export declare class RedisHealthCheck implements HealthCheck {

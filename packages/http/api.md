@@ -2626,8 +2626,6 @@ export type ResolvedProps<P> = {
 };
 // RouteArgs
 export type { RouteArgs } from '@marmeon/router';
-// RouteLookup
-export type { RouteLookup } from '@marmeon/router';
 // RouteManifest
 export type RouteManifest = Readonly<Record<string, {
     readonly method: string;

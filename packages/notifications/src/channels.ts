@@ -62,6 +62,7 @@ export class NotificationChannels {
     return [...this.#factories.keys()];
   }
 
+  /** @internal Builds a channel; the notification sender does. */
   make(name: string, container: Resolver): NotificationChannel {
     const factory = this.#factories.get(name);
     if (!factory) {

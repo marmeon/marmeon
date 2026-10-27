@@ -142,6 +142,7 @@ export class ErrorReports {
   /**
    * Asks every reporter to send what it buffers, while the reports in flight finish — at most {@link FLUSH_TIMEOUT} ms in all;
    * never throws.
+   * @internal
    */
   async flush(): Promise<void> {
     if (this.#instances.size === 0) return;

@@ -187,13 +187,6 @@ export interface TaskResult {
     readonly error?: unknown;
     readonly ms: number;
 }
-// TaskRun
-export interface TaskRun {
-    readonly task: Task;
-    readonly dueAt: number;
-    readonly reason: RunReason;
-    readonly done: Promise<TaskResult>;
-}
 // TimeOfDay
 export type TimeOfDay = `${Hour}:${Minute}`;
 // UnscheduledTask
@@ -203,15 +196,6 @@ export interface UnscheduledTask<K extends TaskKind> extends Frequencies<K> {
     onOneServer(this: 'Say how often first — .daily().onOneServer(): a task needs a frequency before its options'): never;
     withoutOverlapping(this: 'Say how often first — .everyMinute().withoutOverlapping(): a task needs a frequency before its options'): never;
     at(this: 'at() sets the time of a daily, weekly or monthly task — say how often first: .daily().at(…)', time?: unknown): never;
-}
-// WallTime
-export interface WallTime {
-    readonly year: number;
-    readonly month: number;
-    readonly day: number;
-    readonly hour: number;
-    readonly minute: number;
-    readonly weekday: number;
 }
 // Weekday
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';

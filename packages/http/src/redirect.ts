@@ -1,6 +1,6 @@
 import { token } from '@marmeon/core';
-import { localLocation } from '@marmeon/router/internal';
-import { ownResponse, type CheckRouteName, type Param, type Query, type RedirectRouteArgs, type RouteLookup, type RouteNameInput } from '@marmeon/router';
+import { localLocation, type RouteLookup } from '@marmeon/router/internal';
+import { ownResponse, type CheckRouteName, type Param, type Query, type RedirectRouteArgs, type RouteNameInput } from '@marmeon/router';
 import { urlFor } from '@marmeon/router/url';
 import { flashEntry, type FlashEntry } from './flash.ts';
 import type { CheckFlashKey, FlashValue } from './page.ts';

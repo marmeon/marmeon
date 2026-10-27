@@ -59,6 +59,7 @@ export class ErrorSolutions {
     this.add(definitions);
   }
 
+  /** @internal Registers solutions; the container does. */
   add(definitions: Iterable<SolutionDefinition<any>>): this {
     for (const definition of definitions) if (!this.#definitions.includes(definition)) this.#definitions.push(definition);
     return this;
@@ -67,6 +68,7 @@ export class ErrorSolutions {
   /**
    * The solutions for `error` and its causes (`error.cause`, five deep), each title once. A solution that fails to look
    * something up counts as none — the error page must never fail over its hints.
+   * @internal
    */
   async find(error: unknown, context: SolutionContext = {}): Promise<Solution[]> {
     const found: Solution[] = [];

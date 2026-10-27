@@ -56,6 +56,7 @@ interface FileState {
 export class FileDevtoolsStore implements DevtoolsStore {
   /** @internal The directory the store writes to. */
   readonly directory: string;
+  /** @internal The size limit of the ring, from `storage.maxBytes`. */
   readonly maxBytes: number;
   /** @internal The age limit in milliseconds, derived from `maxAgeHours`. */
   readonly maxAgeMs: number;

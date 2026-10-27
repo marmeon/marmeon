@@ -4,7 +4,7 @@ import type { Disk } from '../disk.ts';
 import { ObjectChangedError, S3Disk } from '../drivers/s3.ts';
 import { normalizeDirectory } from '../keys.ts';
 
-/** Why an upload token was refused — the user sees one message per kind, never which check failed in detail. */
+/** @internal Why an upload token was refused — the user sees one message per kind, never which check failed in detail. */
 export type UploadProblem = 'invalid' | 'expired' | 'used';
 
 /** Where the bytes of an upload are, and how it is used up — the service of @marmeon/storage hands it over. */

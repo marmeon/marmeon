@@ -243,9 +243,7 @@ export declare class QueueConnections {
     get default(): string;
     names(): string[];
     options(name: string): QueueConnectionOptions;
-    find(name: string): QueueConnectionOptions | undefined;
     driver(name: string): QueueDriver;
-    failed(): FailedJobStore;
     worker(connection: string, stopTimeout: Duration): Worker;
 }
 // QueueCounts

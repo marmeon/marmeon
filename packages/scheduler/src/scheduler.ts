@@ -54,7 +54,7 @@ export interface TaskResult {
   readonly ms: number;
 }
 
-/** A run that started: its task, and its result once done (never rejects). */
+/** @internal A run that started: its task, and its result once done (never rejects). */
 export interface TaskRun {
   readonly task: Task;
   readonly dueAt: number;
