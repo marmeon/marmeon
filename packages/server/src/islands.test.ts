@@ -134,7 +134,7 @@ describe('createHttpKernel — islands', async () => {
     const versioned = createHttpKernel(application, { assetVersion: 'v2' });
     const stale = await versioned.request('/islands/feed', { headers: { ...ISLAND, 'x-marmeon-version': 'v1' } });
     expect(stale.status).toBe(409);
-    expect(stale.headers.get('x-marmeon-location')).toBe('http://localhost/islands/feed');
+    expect(stale.headers.get('x-marmeon-location')).toBe('/islands/feed');
   });
 
   it('an island is read-only — a cookie or work after the response throws in development …', async () => {

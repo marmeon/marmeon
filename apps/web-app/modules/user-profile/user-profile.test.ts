@@ -258,7 +258,7 @@ describe('user-profile module', () => {
       .withHeaders({ 'x-marmeon-version': 'build-1' })
       .get(`/users/${user.public_id}`)
       .assertStatus(409)
-      .assertHeader('x-marmeon-location', `http://localhost/users/${user.public_id}`);
+      .assertHeader('x-marmeon-location', `/users/${user.public_id}`);
     await deployed.actingAs(user).navigating().get(`/users/${user.public_id}`).assertOk();
   });
 

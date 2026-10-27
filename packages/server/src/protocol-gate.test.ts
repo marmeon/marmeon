@@ -86,9 +86,9 @@ describe('protocol gate', async () => {
   }
 
   it('sends a GET to its own URL, and a write to the page it came from', async () => {
-    expect((await send('GET', { [PAGE_HEADER]: 'true' })).headers.get(LOCATION_HEADER)).toBe('http://localhost/things?page=2');
+    expect((await send('GET', { [PAGE_HEADER]: 'true' })).headers.get(LOCATION_HEADER)).toBe('/things?page=2');
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
-      expect((await send(method, { [PAGE_HEADER]: 'true' })).headers.get(LOCATION_HEADER)).toBe('http://localhost/settings?tab=1');
+      expect((await send(method, { [PAGE_HEADER]: 'true' })).headers.get(LOCATION_HEADER)).toBe('/settings?tab=1');
     }
   });
 
@@ -96,11 +96,19 @@ describe('protocol gate', async () => {
     const kinds: Record<string, string>[] = [{ [ACTION_HEADER]: 'true' }, { [ACTION_HEADER]: '1' }, { [VALIDATE_HEADER]: 'name' }, { [UPLOAD_HEADER]: 'avatar' }, { [REGION_HEADER]: 'island' }];
     for (const headers of kinds) {
       const response = await send('GET', { ...headers, [PAGE_HEADER]: 'true' });
-      expect([response.status, response.headers.get(LOCATION_HEADER)]).toEqual([409, 'http://localhost/settings?tab=1']);
+      expect([response.status, response.headers.get(LOCATION_HEADER)]).toEqual([409, '/settings?tab=1']);
     }
     // Without a Referer there is nothing to name but the start page; a layer's GET is a page of its own.
     expect((await kernel.request('/things', { headers: { [ACTION_HEADER]: 'true' } })).headers.get(LOCATION_HEADER)).toBe('/');
-    expect((await send('GET', { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'layer' })).headers.get(LOCATION_HEADER)).toBe('http://localhost/things?page=2');
+    expect((await send('GET', { [PAGE_HEADER]: 'true', [REGION_HEADER]: 'layer' })).headers.get(LOCATION_HEADER)).toBe('/things?page=2');
+  });
+
+  it('names only path and query, whatever address a proxy forwarded to, and never a second host', async () => {
+    const forwarded = (url: string, headers: Record<string, string> = {}) =>
+      kernel.fetch(new Request(url, { headers: { [PAGE_HEADER]: 'true', ...headers } }));
+    expect((await forwarded('http://10.0.0.5:3000/x?y=1')).headers.get(LOCATION_HEADER)).toBe('/x?y=1');
+    const post = await kernel.fetch(new Request('http://10.0.0.5:3000/x', { method: 'POST', headers: { [PAGE_HEADER]: 'true', referer: 'http://10.0.0.5:3000//evil.example/p?q=1' } }));
+    expect(post.headers.get(LOCATION_HEADER)).toBe('/evil.example/p?q=1');
   });
 
   it('answers with nosniff', async () => {
