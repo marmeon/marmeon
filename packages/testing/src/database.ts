@@ -1,4 +1,5 @@
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { threadId } from 'node:worker_threads';
 import { Logger, resolveConfig, type Application } from '@marmeon/core';
@@ -11,7 +12,7 @@ const prepared = new Map<string, Promise<void>>();
 
 /**
  * Where a refreshed test app keeps its data: one database per test worker — a SQLite
- * file under the app's `storage/framework/testing/`, or a Postgres database named after the app's with `_test_<worker>` — so parallel
+ * file under the app's `storage/framework/testing/`, or a Postgres database named after the app's with `_test_` and the worker process — so parallel
  * workers never meet. Returns the environment that points the app there.
  */
 export interface WorkerDatabase {
@@ -25,10 +26,6 @@ export async function workerDatabase(root: string, env: Env): Promise<WorkerData
   const { DatabaseConfig } = await import('@marmeon/database/internal');
   const config = (await resolveConfig([DatabaseConfig], env)).get(DatabaseConfig) as { default: import('@marmeon/database').ConnectionOptions };
   const options = config.default;
-  // Postgres: named after the worker slot, so the next run reuses (and first resets) it and databases do not pile up.
-  // Two runs at once would share them.
-  const worker = process.env.VITEST_POOL_ID ?? '0';
-
   if (options.driver === 'sqlite') {
     // A file, not `:memory:`: an in-memory database lives only as long as its connection, and every test app has its own.
     // Inside the app, not the shared temporary directory: there, other users could predict the name and plant a file or link.
@@ -44,7 +41,12 @@ export async function workerDatabase(root: string, env: Env): Promise<WorkerData
   // Per app too (like the SQLite file): two apps' tests in one worker must not share a schema.
   // A run of the repository's own tests tags its databases with its checkout, so the teardown of another checkout's run leaves them alone.
   const tag = process.env.MARMEON_TEST_DATABASE_TAG ? `${process.env.MARMEON_TEST_DATABASE_TAG}_` : '';
-  url.pathname = `/${url.pathname.slice(1) || 'marmeon'}_test_${tag}${hash(root)}_${worker}`;
+  // Named after the process, not the pool slot (see the SQLite file): Vitest can give one slot to two files at once, and they would drop each other's database.
+  const prefix = databasePrefix(url.pathname.slice(1) || 'marmeon', tag, root);
+  const name = `${prefix}${process.pid}_${threadId}`;
+  // Postgres would cut a longer name silently, and the drop and the sweep would then name another database than the one created.
+  if (Buffer.byteLength(name) > 63) throw new Error(`The test database name "${name}" is longer than the 63 bytes Postgres allows: shorten MARMEON_TEST_DATABASE_TAG.`);
+  url.pathname = `/${name}`;
   return { key: url.href, env: { DB_DRIVER: 'pgsql', DB_URL: url.href }, adminUrl: options.url };
 }
 
@@ -101,6 +103,38 @@ function alive(pid: number): boolean {
   }
 }
 
+/** Postgres cuts identifiers at 63 bytes: a long app database name gives way, never the part that tells the roots and processes apart. */
+function databasePrefix(base: string, tag: string, root: string): string {
+  // The host too: two containers on one server can share a root and a process id, and must not sweep each other's databases.
+  const suffix = `_test_${tag}${hash(`${hostname()}\0${root}`)}_`;
+  // Room for the longest process and thread ids (10 digits each) and the underscore between them.
+  const room = 63 - Buffer.byteLength(suffix) - 21;
+  let kept = base;
+  while (Buffer.byteLength(kept) > room && kept.length > 1) kept = kept.slice(0, -1);
+  return `${kept}${suffix}`;
+}
+
+/** Once per process, per server: the worker databases of processes that are gone are dropped. */
+const swept = new Set<string>();
+
+/**
+ * Drops the databases named like `own` (same app, root and tag) whose process is gone: Vitest ends its workers with a signal, so
+ * they cannot drop their database themselves. A live or unknowable process keeps its database; so does anything not named exactly so.
+ */
+async function dropStaleDatabases(admin: InstanceType<DatabaseModule['Connections']>, database: DatabaseModule, own: string, main: string): Promise<void> {
+  const prefix = /^(.*_)\d+_\d+$/.exec(own)?.[1];
+  if (prefix === undefined) return;
+  const { sql } = database;
+  const pattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)_\\d+$`);
+  const { rows } = await sql<{ datname: string }>`select datname from pg_database`.execute(admin.get());
+  for (const { datname } of rows) {
+    const match = pattern.exec(datname);
+    if (!match || datname === main || datname === own || alive(Number(match[1]))) continue;
+    // One that cannot be dropped (not the owner, say) does not stop the rest.
+    await sql`drop database if exists ${sql.id(datname)} with (force)`.execute(admin.get()).catch(() => {});
+  }
+}
+
 async function recreatePostgresDatabase(database: DatabaseModule, app: Application, url: string, adminUrl: string): Promise<void> {
   const name = new URL(url).pathname.slice(1);
   const admin = new database.Connections({
@@ -110,6 +144,11 @@ async function recreatePostgresDatabase(database: DatabaseModule, app: Applicati
   });
   const { sql } = database;
   try {
+    const server = `${new URL(adminUrl).host}/${name.replace(/\d+_\d+$/, '')}`;
+    if (!swept.has(server)) {
+      swept.add(server);
+      await dropStaleDatabases(admin, database, name, new URL(adminUrl).pathname.slice(1)).catch(() => {});
+    }
     await sql`drop database if exists ${sql.id(name)} with (force)`.execute(admin.get());
     await sql`create database ${sql.id(name)}`.execute(admin.get());
   } finally {
