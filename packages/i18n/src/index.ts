@@ -439,6 +439,8 @@ async function loadLangFiles(root: string, catalog: Catalog, locales: Locales): 
  */
 export class I18nServiceProvider implements ServiceProvider {
   static config = [I18nConfig];
+  /** `marmeon publish @marmeon/i18n --only=lang` copies the framework's texts into the app's `lang/marmeon/`. */
+  static publishes = { lang: new URL('../stubs/lang', import.meta.url) };
 
   register(container: Container): void {
     const locales = new Locales(container.make(I18nConfig));

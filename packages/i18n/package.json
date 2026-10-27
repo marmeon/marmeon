@@ -53,6 +53,7 @@
   "files": [
     "dist",
     "src",
+    "stubs",
     "LICENSE",
     "README.md",
     "CHANGELOG.md",

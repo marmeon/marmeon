@@ -122,21 +122,22 @@ function sorted(value: unknown): unknown {
 
 /**
  * Records a set in `marmeon-stubs.json`: replaces the set under `key` entirely, keeps the others and hashes the files as they lie in
- * the app now. Nothing is written when the manifest cannot be read. The JSON is deterministic (keys sorted, two spaces, a final newline).
+ * the app now, unless a file carries its own `sha256` (the one recorded when it was written). Nothing is written when the manifest cannot be read. The JSON is deterministic (keys sorted, two spaces, a final newline).
  */
 export function recordStubSet(
   root: string,
   key: string,
-  set: { readonly package: string; readonly version: string; readonly files: readonly { readonly path: string; readonly stub: string }[] },
+  set: { readonly package: string; readonly version: string; readonly files: readonly { readonly path: string; readonly stub: string; readonly sha256?: string }[] },
 ): Result<void, StubManifestProblem> {
   const current = readStubManifest(root);
   if (!current.ok) return current;
   const keyProblem = checkSet(key, set.package, set.version);
   if (keyProblem) return invalid(`${keyProblem}.`);
   const files: Record<string, StubFile> = {};
-  for (const { path, stub } of set.files) {
+  for (const { path, stub, sha256 } of set.files) {
     if (!safePath(path) || !safePath(stub)) return invalid(`${JSON.stringify(path)} from ${JSON.stringify(stub)} is not a relative path.`);
-    files[path] = { stub, sha256: stubHash(readFileSync(join(root, path))) };
+    if (sha256 !== undefined && !HASH.test(sha256)) return invalid(`${JSON.stringify(path)} has no valid sha256.`);
+    files[path] = { stub, sha256: sha256 ?? stubHash(readFileSync(join(root, path))) };
   }
   const manifest: StubManifest = {
     format: 1,

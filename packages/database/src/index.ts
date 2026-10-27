@@ -34,6 +34,7 @@ export { DatabaseHealthCheck } from './health.ts';
 export { DatabaseServiceProvider } from './provider.ts';
 export { SchemaRequirements } from './schema-requirements.ts';
 export type { ProviderMigrations } from './package-migrations.ts';
+export type { ProviderPublishes } from './package-files.ts';
 export type { TableRequirement } from './schema-requirements.ts';
 export { defineFactory, Factories, PendingFactory } from './factories.ts';
 export type { FactoryContext, FactoryDefinition, MadeAttributes } from './factories.ts';

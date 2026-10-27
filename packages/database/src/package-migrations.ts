@@ -38,8 +38,10 @@ const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 const DEVICE_NAME = /^(con|prn|aux|nul|com\d|lpt\d)$/;
 const FILE_NAME = /^(\d{4}_\d{2}_\d{2}_\d{6})_([a-z][a-z0-9_]*)\.ts$/;
 const MAX_MODULE = 64;
-const MAX_FILES = 100;
-const MAX_BYTES = 1 << 20;
+/** @internal */
+export const MAX_FILES = 100;
+/** @internal */
+export const MAX_BYTES = 1 << 20;
 
 function invalid(pkg: { name: string }, why: string): Result<never, PackageMigrationsError> {
   return err({ kind: 'invalid-package-migrations', message: withCode('D21', `${pkg.name} declares the migrations it ships wrongly: ${why}`) });
@@ -212,8 +214,9 @@ export interface ProviderPackage {
  * The classes a package exports at its main entry, or why they are unknown. The entry is imported only when it lies in the package (no
  * `..` or `node_modules` segment, and its real path inside the real directory): a package cannot make the reader run another one's code.
  * The callers ask only for a package a declaration points into, or one that lists providers, whose entry the app's boot loads anyway.
+ * @internal
  */
-async function exportedClasses(pkg: ProviderPackage, root: string): Promise<{ classes: Set<unknown> } | { reason: string }> {
+export async function exportedClasses(pkg: ProviderPackage, root: string): Promise<{ classes: Set<unknown> } | { reason: string }> {
   let entry: string | undefined;
   try {
     entry = resolveExports(pkg, '.', runtimeConditions());
@@ -238,15 +241,15 @@ async function exportedClasses(pkg: ProviderPackage, root: string): Promise<{ cl
   }
 }
 
-/** Whether the app's boot loads the main entry of the package for its providers: `marmeon.providers` lists some. */
-function discoverable(pkg: ProviderPackage): boolean {
+/** Whether the app's boot loads the main entry of the package for its providers: `marmeon.providers` lists some. @internal */
+export function discoverable(pkg: ProviderPackage): boolean {
   const field = pkg.json.marmeon;
   const providers = typeof field === 'object' && field !== null ? (field as { providers?: unknown }).providers : undefined;
   return Array.isArray(providers) && providers.length > 0;
 }
 
-/** `path` for a message: relative to the package when it lies in it, so a long install path does not cut the useful part. */
-function shown(pkg: { dir: string }, root: string, path: string): string {
+/** `path` for a message: relative to the package when it lies in it, so a long install path does not cut the useful part. @internal */
+export function shown(pkg: { dir: string }, root: string, path: string): string {
   for (const base of [resolve(pkg.dir), root]) {
     const inside = relative(base, path);
     if (!(inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) && inside !== '') return show(inside.split(sep).join('/'));
@@ -373,7 +376,8 @@ function readDeclaration(pkg: ProviderPackage, root: string, mine: readonly Pars
   return ok({ module, from, files: files.value });
 }
 
-type FileRead = { ok: true; contents: string } | { ok: false; why: 'not-a-file' | 'too-large' | 'no-migration' | 'not-utf8' | 'unreadable' };
+/** @internal */
+export type FileRead = { ok: true; contents: string } | { ok: false; why: 'not-a-file' | 'too-large' | 'no-migration' | 'not-utf8' | 'unreadable' };
 
 const DEFAULT_EXPORT = /^\s*export\s+default\b/m;
 
@@ -383,8 +387,9 @@ const DEFAULT_EXPORT = /^\s*export\s+default\b/m;
  * re-resolved, which narrows the window but cannot close it. A hard link inside the package to a file outside it passes both checks, so the contents must
  * look like a migration: valid UTF-8 with a default export. That is plausibility, not a proof; the risk that remains is
  * acceptable because such a link needs code that runs when the package is installed.
+ * @internal
  */
-function readRegularFile(real: string, root: string): FileRead {
+export function readRegularFile(real: string, root: string): FileRead {
   try {
     const fd = openSync(real, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
     try {

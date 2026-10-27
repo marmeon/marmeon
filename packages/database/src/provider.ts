@@ -6,6 +6,7 @@ import { DbShowCommand } from './commands/db-show.ts';
 import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
 import { DbSeedCommand } from './commands/db-seed.ts';
 import { DbTypesCommand } from './commands/db-types.ts';
+import type { ProviderPublishes } from './package-files.ts';
 import type { ProviderMigrations } from './package-migrations.ts';
 import { Factories } from './factories.ts';
 import { Seeding } from './seeders.ts';
@@ -31,6 +32,11 @@ declare module '@marmeon/core' {
      * See `docs/package-development.md#declaring-the-migrations-a-package-ships`.
      */
     readonly migrations?: ProviderMigrations;
+    /**
+     * The files the provider's package lets an app copy in: `{ lang: new URL('../stubs/lang', import.meta.url) }`. In this version only
+     * `@marmeon/i18n` publishes files, its language files. See `docs/package-development.md#declaring-the-files-a-package-publishes`.
+     */
+    readonly publishes?: ProviderPublishes;
   }
 }
 import { DatabaseConfig, isConnectionDefinition, type ConnectionDefinition, type ConnectionOptions } from './config.ts';

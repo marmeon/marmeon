@@ -6,6 +6,7 @@ import { findPackage, printable } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { assignMigrations, migrationDeclarations, type PackageMigrationFile, type PackageMigrations, show } from '../package-migrations.ts';
 import { installRoot } from '../workspace.ts';
+import { describeLang, langState, noLang, readLangPackages, writeLang, type Installed } from './publish-lang.ts';
 import { appMigrations, findMigration, publishMigration, SYSTEM_MODULE, timestamp } from './publish-migration.ts';
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
@@ -71,6 +72,9 @@ function opensSystem(module: string, name: string, pkg: Package, dependencies: R
   return own || fromRegistry(dependencies[name]);
 }
 
+/** The refusal for a package that declares no migrations. */
+const noMigrations = (name: string) => `${name} ships no migrations.`;
+
 /** What `publish` would do for one package: the files the app lacks, and the ones it has. */
 export interface Plan {
   readonly package: string;
@@ -114,19 +118,26 @@ interface Context {
 }
 
 /**
+ * The dependencies and devDependencies the app's `package.json` lists, by name; undefined when it cannot be read — unless `lenient`,
+ * where one that is not there at all lists none. A `package.json` that exists and cannot be read is the app's problem.
+ */
+function readDependencies(root: string, lenient = false): Record<string, unknown> | undefined {
+  try {
+    const json = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies?: object; devDependencies?: object };
+    return Object.assign(Object.create(null), json.dependencies, json.devDependencies);
+  } catch (error) {
+    return lenient && (error as NodeJS.ErrnoException).code === 'ENOENT' ? Object.create(null) : undefined;
+  }
+}
+
+/**
  * Reads the direct dependencies of the app and the migrations the service providers `providers` declare for them, assigned in one
  * pass over all of them; undefined when the `package.json` cannot be read — unless `lenient`, where an app without one (not there
  * at all) has no dependencies (a command of a package does not need to list it).
  */
 async function inspect(root: string, providers: readonly ServiceProviderClass[], lenient = false): Promise<Context | undefined> {
-  let dependencies: Record<string, unknown> = Object.create(null);
-  try {
-    const json = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies?: object; devDependencies?: object };
-    dependencies = Object.assign(Object.create(null), json.dependencies, json.devDependencies);
-  } catch (error) {
-    // Only a package.json that is not there is no reason to stop: one that exists and cannot be read is the app's problem.
-    if (!lenient || (error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined;
-  }
+  const dependencies = readDependencies(root, lenient);
+  if (dependencies === undefined) return undefined;
   const entries = new Map<string, Entry>();
   const shippers = new Map<string, string[]>();
   // A name goes into messages only after PACKAGE_NAME has passed it; `locate` and `findPackage` look nothing else up.
@@ -300,7 +311,7 @@ export async function planPublish(
     const entry = isOwn ? await ownEntry(context, source.own!) : context.entries.get(name)!;
     if (entry.kind === 'error') refusals.push(entry.message);
     else if (entry.kind === 'absent') refusals.push(`${name} is not installed in your app — install your dependencies first.`);
-    else if (entry.kind === 'none') refusals.push(`${name} ships no migrations.`);
+    else if (entry.kind === 'none') refusals.push(noMigrations(name));
     else {
       const planned = planOne(context, name, entry.pkg, entry.manifest, module, isOwn);
       if ('plan' in planned) {
@@ -411,16 +422,50 @@ function stamps(count: number, newest: string | undefined, newestPath: string | 
   return { stamps: dates };
 }
 
+const KINDS = ['migrations', 'lang'] as const;
+type Kind = (typeof KINDS)[number];
+
+/** The kinds `--only` names; `migrations` without it. A list that is empty, has an empty entry or names another kind is an error. */
+function kindsOf(only: unknown): Set<Kind> {
+  if (only === undefined) return new Set<Kind>(['migrations']);
+  const usage = 'marmeon publish [<package>] --only=migrations,lang';
+  if (typeof only !== 'string') throw new CommandArgumentsError(`--only needs a list of kinds: ${usage}`);
+  const kinds = new Set<Kind>();
+  for (const name of only.split(',')) {
+    const kind = KINDS.find((candidate) => candidate === name.trim());
+    if (kind === undefined) throw new CommandArgumentsError(`--only knows ${KINDS.join(' and ')}, not ${JSON.stringify(name.trim())}: ${usage}`);
+    kinds.add(kind);
+  }
+  return kinds;
+}
+
+/** The direct dependencies of the app that are installed, and the names the app lists; undefined when its `package.json` cannot be read. */
+function installedDependencies(root: string): { names: Set<string>; installed: Installed[] } | undefined {
+  const dependencies = readDependencies(root);
+  if (dependencies === undefined) return undefined;
+  const installed: Installed[] = [];
+  for (const name of Object.keys(dependencies).sort()) {
+    try {
+      const pkg = PACKAGE_NAME.test(name) ? locate(name, root) : undefined;
+      if (pkg) installed.push(pkg);
+    } catch {
+      // a package.json that cannot be read is not a package with language files
+    }
+  }
+  return { names: new Set(Object.keys(dependencies)), installed };
+}
+
 /**
- * `marmeon publish [<package>] [--module=<name>] [--check]` copies the migrations of a direct dependency of your app into a
- * module, or with `--check` says what is missing. Nothing is written unless every chosen package can be published; see
+ * `marmeon publish [<package>] [--module=<name>] [--only=migrations,lang] [--check] [--force]` copies the migrations of a direct
+ * dependency of your app into a module, or with `--check` says what is missing; `--only=lang` copies the framework's texts into
+ * `lang/marmeon/`. Nothing is written unless every chosen package can be published; see
  * `docs/migrations.md#publishing-the-migrations-of-a-package`.
  */
 export class PublishCommand {
   static command = 'publish';
   static description = 'Copy the migrations of your packages into your app, or check that they are there';
-  static usage = '[<package>] [--module=<name>] [--check]';
-  static options = { module: { type: 'string', short: 'm' }, check: { type: 'boolean' } } as const;
+  static usage = '[<package>] [--module=<name>] [--only=migrations,lang] [--check] [--force]';
+  static options = { module: { type: 'string', short: 'm' }, check: { type: 'boolean' }, only: { type: 'string' }, force: { type: 'boolean' } } as const;
 
   readonly #app: Application;
 
@@ -442,9 +487,87 @@ export class PublishCommand {
       throw new CommandArgumentsError('--module needs a package: marmeon publish <package> --module=<name>');
     }
 
-    if (input.options.check === true) return name === undefined ? await this.#checkUsed(input) : await this.#check(input, name, module);
-    if (name !== undefined) return await this.#publish(input, [name], module);
-    return this.#choose(input);
+    const kinds = kindsOf(input.options.only);
+    const force = input.options.force === true;
+    if (input.options.check === true && kinds.has('lang')) {
+      throw new CommandArgumentsError('--check covers migrations: the language files you published are yours.');
+    }
+    if (module !== undefined && !kinds.has('migrations')) throw new CommandArgumentsError('--module belongs to migrations: marmeon publish <package> --module=<name>');
+    if (force && !kinds.has('lang')) throw new CommandArgumentsError('--force belongs to language files: marmeon publish <package> --only=lang --force');
+
+    // With both kinds and a package, a kind the package does not ship is skipped; it is an error only to ship neither.
+    let shipsMigrations = true;
+    if (kinds.size === 2 && name !== undefined) {
+      const probe = await planPublish(input.root, this.#app.providers, [name], module);
+      shipsMigrations = !(probe.refusals.length === 1 && probe.refusals[0] === noMigrations(name));
+    }
+    if (kinds.has('migrations') && shipsMigrations) {
+      let code: number;
+      if (input.options.check === true) code = name === undefined ? await this.#checkUsed(input) : await this.#check(input, name, module);
+      else if (name !== undefined) code = await this.#publish(input, [name], module);
+      // Both kinds without a package: the language files have the last word on "Nothing to publish".
+      else code = await this.#choose(input, !kinds.has('lang'));
+      // The language files follow only when the migrations went through.
+      if (code !== 0 || !kinds.has('lang')) return code;
+    }
+    return await this.#lang(input, name, force, kinds.size === 2 ? shipsMigrations : undefined);
+  }
+
+  /** `--only=lang`: the language files of the packages that publish some, written into `lang/marmeon/`. */
+  async #lang(input: CommandInput, name: string | undefined, force: boolean, optional?: boolean): Promise<number> {
+    const { output, prompt } = input;
+    const dependencies = installedDependencies(input.root);
+    if (!dependencies) {
+      output.error('The package.json of your app cannot be read.');
+      return 1;
+    }
+    const { found, errors, warnings } = await readLangPackages(this.#app.providers, dependencies.installed);
+    for (const warning of warnings) output.warn(warning);
+
+    if (name !== undefined) {
+      const installed = dependencies.installed.some((pkg) => pkg.name === name);
+      if (!dependencies.names.has(name)) output.error(`${name} is not a dependency of your app — add it first.`);
+      else if (!installed) output.error(`${name} is not installed in your app — install your dependencies first.`);
+      else if (errors.has(name)) output.error(errors.get(name)!);
+      else if (!found.has(name)) {
+        // The package's migrations were published: it need not ship language files as well.
+        if (optional === true) return 0;
+        output.error(optional === false ? `${show(name)} ships neither migrations nor language files.` : noLang(name));
+      }
+      else return writeLang(input, found.get(name)!.pkg, found.get(name)!.lang, force);
+      return 1;
+    }
+
+    for (const message of errors.values()) output.error(message);
+    const statuses = [...found].map(([package_, { lang }]) => ({ package: package_, state: langState(input.root, lang) }));
+    const selectable = statuses.filter((status) => status.state.present < status.state.total);
+    if (!prompt.interactive) {
+      for (const status of statuses) output.line(describeLang(status.package, status.state));
+      if (selectable.length === 0) {
+        if (errors.size > 0) return 1;
+        output.success('Nothing to publish');
+        return 0;
+      }
+      output.error('Choose on a terminal, or run marmeon publish <package> --only=lang for each of them');
+      return 1;
+    }
+    for (const status of statuses) if (!selectable.includes(status)) output.line(describeLang(status.package, status.state));
+    if (selectable.length === 0) {
+      if (errors.size > 0) return 1;
+      output.success('Nothing to publish');
+      return 0;
+    }
+    const picked = await prompt.choose('Publish the language files of which packages?', selectable.map((status) => describeLang(status.package, status.state)), { multiple: true });
+    if (picked.length === 0) {
+      output.line('Nothing published');
+      return 0;
+    }
+    for (const index of picked) {
+      const { lang, pkg } = found.get(selectable[index]!.package)!;
+      const code = writeLang(input, pkg, lang, force);
+      if (code !== 0) return code;
+    }
+    return 0;
   }
 
   /** `--check <package>`: that package, used or not. */
@@ -479,19 +602,19 @@ export class PublishCommand {
   }
 
   /** No package: list, and at a terminal let the person choose. */
-  async #choose(input: CommandInput): Promise<number> {
+  async #choose(input: CommandInput, announce = true): Promise<number> {
     const { output, prompt } = input;
     const { statuses, warnings } = await packageStatus(input.root, this.#app.providers);
     for (const warning of warnings) output.warn(warning);
     const selectable = statuses.filter((status) => status.state === 'lacks' || status.state === 'unpublished');
     if (statuses.length === 0 || (selectable.length === 0 && !statuses.some((status) => status.state === 'refused'))) {
-      output.success('Nothing to publish');
+      if (announce) output.success('Nothing to publish');
       return 0;
     }
     if (!prompt.interactive) {
       for (const status of statuses) for (const line of describe(status)) output.line(line);
       if (selectable.length === 0) {
-        output.success('Nothing to publish');
+        if (announce) output.success('Nothing to publish');
         return 0;
       }
       output.error('Choose on a terminal, or run marmeon publish <package> for each of them');
@@ -499,7 +622,7 @@ export class PublishCommand {
     }
     for (const status of statuses) if (status.state === 'complete' || status.state === 'refused') for (const line of describe(status)) output.line(line);
     if (selectable.length === 0) {
-      output.success('Nothing to publish');
+      if (announce) output.success('Nothing to publish');
       return 0;
     }
     const picked = await prompt.choose('Publish the migrations of which packages?', selectable.map((status) => describe(status)[0]!), { multiple: true });

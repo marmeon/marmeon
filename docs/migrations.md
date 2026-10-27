@@ -990,6 +990,8 @@ when nothing is missing it says "Nothing to publish" and ends with 0. The list h
 migrations, with what each lacks: `@acme/permissions — lacks 1: add_grants_table`, `— not published (2)`, `— complete`, or
 `— refused` with the reason on the next line.
 
+`marmeon publish --only=migrations` is what it does without `--only`. `--only=lang` does the same for language files, see [the framework's texts](localization.md#the-frameworks-texts); `--check` stays with the migrations.
+
 `marmeon publish <package> [--module=<name>]` copies the migrations of one package without asking. The package must be in the
 `dependencies` or `devDependencies` of your app's `package.json` and installed in its `node_modules`: a package that only
 another package brought is not copied; the package is looked for in the `node_modules` of the app and, in a workspace, of the
