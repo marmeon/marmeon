@@ -2,7 +2,7 @@
  * `pnpm website:image` — the docs as the image they are deployed with (the `image` part of `pnpm run ci`, after the starter kit's
  * image): `apps/website/Dockerfile` built from this checkout, then checked as an image (non-root, no `.env*`, tests or dev
  * dependencies, tini is PID 1), as a container (read-only root, `/up` 200, every page 200 without Set-Cookie, healthy, SIGTERM →
- * exit 0; the pinned release lines and their snapshots are in it and served, and a fixture line mounted over the pins too) and behind Caddy (`deploy/website/compose.yaml`: HTTP/2, HSTS, forwarded headers trusted, 304 on a revalidation, a redirect host answering 301).
+ * exit 0; the pinned release lines and their snapshots are in it and served, and a fixture line mounted over the pins too) and behind Caddy (`deploy/website/compose.yaml`: HTTP/2, HSTS, 304 on a revalidation, a redirect host answering 301).
  *
  * Image `marmeon-website:smoke-…`, Compose project `marmeon-website-smoke-…`: both and the volumes are removed afterwards. Without
  * Docker, or when the build cannot reach the registry: exit 75 — skipped, never green.
@@ -279,7 +279,7 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
       docker(['rm', '-f', '-v', name]);
       containers.delete(name);
     });
-    await step('behind Caddy (deploy/website/compose.yaml): HTTP/2, no Set-Cookie, HSTS, X-Forwarded-* trusted, compressed documents with 304, a redirect host → 301', async () => {
+    await step('behind Caddy (deploy/website/compose.yaml): HTTP/2, no Set-Cookie, HSTS, a local 409 location for an old build, compressed documents with 304, a redirect host → 301', async () => {
       const port = Number(composeEnv.SMOKE_PORT);
       composed = true;
       compose(['up', '-d', '--no-build', '--wait', '--wait-timeout', '90']);
@@ -293,10 +293,10 @@ export async function websiteImage({ keep = false }: { keep?: boolean } = {}): P
         if (!page.headers.get('strict-transport-security')?.startsWith('max-age=')) problems.push(`${path}: no Strict-Transport-Security`);
         if (page.headers.get('content-security-policy') !== DEPLOYED_POLICY) problems.push(`${path}: Content-Security-Policy "${page.headers.get('content-security-policy')}"`);
       }
-      // An old client's visit: the docs build the reload URL from what Caddy forwarded — trusted, it is Caddy's https address.
+      // An old client's visit: the 409 names a local location (path and query) and no cache keeps it, whatever Caddy forwarded.
       const stale = curl(`${base}/docs/deployment`, { 'x-marmeon': '1', 'x-marmeon-version': 'stale', accept: 'text/html, application/json' });
-      if (stale.status !== 409 || stale.headers.get('x-marmeon-location') !== `${base}/docs/deployment`) {
-        problems.push(`an old client's visit: ${stale.status}, x-marmeon-location "${stale.headers.get('x-marmeon-location')}" — expected 409 and ${base}/docs/deployment (SERVER_TRUSTED_PROXIES)`);
+      if (stale.status !== 409 || stale.headers.get('x-marmeon-location') !== '/docs/deployment' || !stale.headers.get('cache-control')?.includes('no-store')) {
+        problems.push(`an old client's visit: ${stale.status}, x-marmeon-location "${stale.headers.get('x-marmeon-location')}", cache-control "${stale.headers.get('cache-control')}" — expected 409, /docs/deployment and no-store`);
       }
       const compressed = curl(`${base}/docs/validation`, { accept: 'text/html', 'accept-encoding': 'zstd, gzip' });
       const plain = curl(`${base}/docs/validation`, { accept: 'text/html' });
