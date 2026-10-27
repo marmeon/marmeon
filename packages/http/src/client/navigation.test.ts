@@ -497,6 +497,82 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(win.loads).toEqual([]);
     });
 
+    it('keeps the page when the answer to a form is no page — a proxy’s 413 as HTML, a 429 as JSON — and loads nothing', async () => {
+      const win = new FakeWindow(`${ORIGIN}/a`);
+      win.handler = () => new Response('<h1>413 Payload Too Large</h1>', { status: 413, headers: { 'content-type': 'text/html' } });
+      const { navigator, shown } = boot(win, page('/a'));
+      const { events, errors } = record(navigator);
+
+      expect(await navigator.visit('/b', { method: 'post', data: { name: 'Ada' } })).toBeUndefined();
+      expect(events).toEqual(['start post /b', 'exception server', 'finish /b']);
+      expect(errors[0]).toMatchObject({ type: 'server', status: 413, page: undefined, html: '<h1>413 Payload Too Large</h1>' });
+
+      win.handler = () => new Response('{"error":"slow down"}', { status: 429, headers: { 'content-type': 'application/json' } });
+      await navigator.visit('/b', { method: 'post', data: { name: 'Ada' } });
+      expect(errors[1]).toMatchObject({ type: 'server', status: 429, page: undefined, html: undefined });
+
+      // A 2xx that is no page (an API route) is no page to show either.
+      win.handler = () => new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+      await navigator.visit('/b', { method: 'post' });
+      expect(errors[2]).toMatchObject({ type: 'server', status: 200, page: undefined, html: undefined });
+
+      expect(win.loads).toEqual([]);
+      expect(shown).toEqual([]);
+      expect(win.entries).toHaveLength(1);
+    });
+
+    it('loads a download a write redirected to — fetch path and upload path — instead of reporting an exception', async () => {
+      const win = new FakeWindow(`${ORIGIN}/a`);
+      win.handler = () => {
+        const response = new Response('%PDF-1.7', { status: 200, headers: { 'content-type': 'application/pdf', 'content-disposition': 'attachment' } });
+        Object.defineProperty(response, 'redirected', { value: true });
+        Object.defineProperty(response, 'url', { value: `${ORIGIN}/files/notes.pdf` });
+        return response;
+      };
+      const { navigator } = boot(win, page('/a'));
+      const { errors } = record(navigator);
+      await navigator.visit('/export', { method: 'post' });
+      expect(errors).toEqual([]);
+      expect(win.loads).toEqual([`assign ${ORIGIN}/files/notes.pdf`]);
+
+      // Over XHR (an upload) the response is rebuilt: `redirected` is false, only its URL differs from the write's.
+      const upload = new FakeWindow(`${ORIGIN}/a`);
+      upload.XMLHttpRequest = class FakeXhr extends EventTarget {
+        readonly upload = new EventTarget();
+        status = 0;
+        statusText = '';
+        responseText = '';
+        responseURL = '';
+        open() {}
+        setRequestHeader() {}
+        getAllResponseHeaders() {
+          return 'content-type: application/pdf\r\n';
+        }
+        abort() {}
+        send() {
+          Object.assign(this, { status: 200, responseText: '%PDF-1.7', responseURL: `${ORIGIN}/files/notes.pdf` });
+          this.dispatchEvent(new Event('load'));
+        }
+      } as never;
+      const second = boot(upload, page('/a'));
+      const seen = record(second.navigator);
+      const data = new FormData();
+      data.append('file', new Blob(['…']), 'f.txt');
+      await second.navigator.visit('/export', { method: 'post', data, onProgress: () => {} });
+      expect(seen.errors).toEqual([]);
+      expect(upload.loads).toEqual([`assign ${ORIGIN}/files/notes.pdf`]);
+    });
+
+    it('still loads a read’s answer that is no page (a download) fully', async () => {
+      const win = new FakeWindow(`${ORIGIN}/a`);
+      win.handler = () => new Response('%PDF-1.7', { headers: { 'content-type': 'application/pdf' } });
+      const { navigator } = boot(win, page('/a'));
+      const { errors } = record(navigator);
+      await navigator.visit('/report.pdf');
+      expect(errors).toEqual([]);
+      expect(win.loads).toEqual([`assign ${ORIGIN}/report.pdf`]);
+    });
+
     it('shows 4xx pages as pages (404, 403) — they are answers, not failures', async () => {
       const win = new FakeWindow(`${ORIGIN}/a`);
       win.handler = () => new Response(JSON.stringify(page('/missing', { status: 404 }, 'errors/Error')), { status: 404, headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });

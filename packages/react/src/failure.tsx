@@ -51,7 +51,7 @@ export function LayoutErrorFallback({ fallback: Fallback, error, retry }: { fall
 }
 
 /**
- * A 5xx over the page (which stays, with whatever was typed into it): the server's error page in a dialog — with the exception in
+ * A 5xx, or a form's answer that is no page, over the page (which stays, with whatever was typed into it): the server's error page in a dialog — with the exception in
  * debug mode (development), else just status and title. Plain HTML from something in front of the server goes into a sandboxed frame.
  */
 export function ServerFailure({ failure, resolve, onDismiss }: { failure: Extract<VisitError, { type: 'server' }>; resolve: ResolvePage; onDismiss: () => void }) {

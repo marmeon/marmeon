@@ -1142,7 +1142,8 @@ export class Navigator {
 
   /**
    * The page object of a response — or undefined when there is none to show: a full page load took over
-   * (409, a response that is not a page), or the server failed (5xx, reported as an `error` when `failed`).
+   * (409, a response to a read that is not a page), or the visit failed: a 5xx (when `failed`) or a write's answer that is
+   * no page, reported as an `exception`.
    */
   async #read(response: Response, { replace, failed, consented }: ReadOptions, visit: Visit, callbacks: VisitCallbacks): Promise<PageObject | undefined> {
     if (isForeign(response, this.#core.window)) {
@@ -1162,6 +1163,17 @@ export class Navigator {
       const page = isPage ? this.#collect((await response.json()) as PageObject) : undefined;
       const html = isPage ? undefined : await response.text();
       this.#events.emit('exception', callbacks.onException, { type: 'server', visit, status: response.status, page: page && pageInfo(page), html });
+      return undefined;
+    }
+    // The write's own answer, not a redirect's: a redirect names a GET target (a download, say) the server took the write for.
+    const redirected = response.redirected || (response.url !== '' && stripHash(response.url) !== stripHash(new URL(atOrigin(visit.url, this.#core.window), this.#core.window.location.href).href));
+    if (!isPage && visit.method !== 'get' && !redirected) {
+      // The answer to a write is no page (a proxy's 413 or 429, a JSON error): loading the URL with GET would lose what was typed.
+      // The page stays, as after a 5xx.
+      const isHtml = response.headers.get('content-type')?.includes('text/html');
+      const html = isHtml ? await response.text() : undefined;
+      if (!isHtml) await response.body?.cancel();
+      this.#events.emit('exception', callbacks.onException, { type: 'server', visit, status: response.status, page: undefined, html });
       return undefined;
     }
     if (!isPage) {
@@ -1364,3 +1376,6 @@ function validationErrors(page: PageObject): ValidationErrors | undefined {
   const errors = (page.props as { errors?: unknown }).errors;
   return typeof errors === 'object' && errors !== null && Object.keys(errors).length > 0 ? (errors as ValidationErrors) : undefined;
 }
+
+/** `url` without its fragment: a response's URL never has one. */
+const stripHash = (url: string): string => url.split('#')[0]!;

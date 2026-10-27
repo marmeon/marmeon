@@ -99,6 +99,17 @@ function Form() {
   );
 }
 
+/** A form with an input: what was typed stays in `useForm`'s data. */
+function Typed() {
+  const form = useForm<{ name: string }>({ name: '' });
+  return (
+    <form>
+      <input data-testid="name" value={form.data.name} onChange={(event) => form.setData({ name: event.target.value })} />
+      <button type="button" data-testid="send" onClick={() => void form.post('/form')} />
+    </form>
+  );
+}
+
 /** A page with a deferred prop and an optional one (`reload({ only })`), inside the app layout. */
 function Profile({ name, activity, stats }: { name: string; activity?: string[]; stats?: { links: number } }) {
   const router = useRouter<{ name: string; activity?: string[]; stats?: { links: number } }>();
@@ -114,7 +125,7 @@ function Profile({ name, activity, stats }: { name: string; activity?: string[];
 }
 Profile.layout = AppLayout;
 
-const pages: Record<string, PageComponent> = { A, B, Settings, Bare, Plain, Fragile, Form, Profile };
+const pages: Record<string, PageComponent> = { A, B, Settings, Bare, Plain, Fragile, Form, Typed, Profile };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 
 const page = (name: string, url: string, props: Record<string, unknown> = {}): PageObject => ({ component: `app/${name}`, props, url, version: null });
@@ -346,6 +357,24 @@ describe('form callbacks', () => {
     };
     await click('submit');
     await until(() => expect(calls).toEqual([{ exception: 'network' }, 'finish']));
+  });
+});
+
+describe('a form answered with no page', () => {
+  it('keeps the page and what was typed, and shows the answer as a server failure', async () => {
+    server = () => new Response('<h1>413 Payload Too Large</h1>', { status: 413, headers: { 'content-type': 'text/html' } });
+    await mount(page('Typed', '/form'));
+    const input = $('[data-testid="name"]') as HTMLInputElement;
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setValue.call(input, 'Ada');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(input.value).toBe('Ada');
+    await click('send');
+    await shown('[data-marmeon-failure="server"]');
+    expect(($('[data-testid="name"]') as HTMLInputElement).value).toBe('Ada');
+    expect($('[data-testid="name"]')).not.toBeNull(); // still the form: nothing loaded in its place
   });
 });
 
