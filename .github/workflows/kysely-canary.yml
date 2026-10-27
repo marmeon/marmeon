@@ -1,5 +1,5 @@
 # Once a week: build and test the database, table and queue packages against the newest Kysely under the `next` tag, which is
-# ahead of the exact version the packages pin. A break, or a statement or method the guards of `@marmeon/database` do not
+# ahead of the exact version `@marmeon/database` pins. A break, or a statement or method the guards of `@marmeon/database` do not
 # classify, shows here before a pull request that updates Kysely. The newest version goes in on the runner only; nothing is
 # committed. Not a required check: a red run is a reminder, never a block for a pull request.
 #
@@ -80,7 +80,7 @@ jobs:
         if: steps.kysely.outputs.run == 'true'
         env:
           VERSION: ${{ steps.kysely.outputs.version }}
-        run: pnpm -r --filter "./packages/*" update "kysely@$VERSION"
+        run: pnpm -r --filter "./packages/database" update "kysely@$VERSION"
       - if: steps.kysely.outputs.run == 'true'
         run: pnpm build
       - if: steps.kysely.outputs.run == 'true'
