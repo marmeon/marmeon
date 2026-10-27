@@ -3,7 +3,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
-import { BROWSER_ROUTES_FILE, ERROR_PAGE, matchesRoutePatterns, pageName, writeBrowserRoutes, browserRoutes, type BrowserRoutes } from '@marmeon/http/internal';
+import { BROWSER_ROUTES_FILE, ERROR_PAGE, legacyFrameworkPage, matchesRoutePatterns, pageName, writeBrowserRoutes, browserRoutes, type BrowserRoutes } from '@marmeon/http/internal';
 import { Router, type RouteDefinition } from '@marmeon/router';
 import { isControllerClass } from '@marmeon/router/internal';
 
@@ -166,6 +166,16 @@ export class RouteTypes {
     const reserved = files.filter(({ name }) => name?.includes('::')).map(({ file }) => file);
     if (reserved.length > 0) {
       throw new Error(reserved.map((file) => `${file}: "::" is reserved for the pages of packages (package::Page) — rename the file or its folder.`).join('\n'));
+    }
+    // A file in the former place of an error page or the backdrop would silently lose to the built-in page.
+    const moved = files.flatMap(({ file }) => {
+      const now = legacyFrameworkPage(file);
+      return now ? [[file, now] as const] : [];
+    });
+    if (moved.length > 0) {
+      throw new Error(
+        withCode('K14', moved.map(([old, now]) => `${old} is no page of the framework any more: move it to ${now} (the error pages and the layer backdrop live in the system module). See docs/errors.md#your-own-error-page.`).join('\n')),
+      );
     }
     return files.map(({ name }) => name).filter((name): name is string => name !== undefined);
   }

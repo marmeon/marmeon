@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { watch, type FSWatcher } from 'node:fs';
 import { flushCompileCache } from 'node:module';
 import { join } from 'node:path';
-import { Application, environment, Logger } from '@marmeon/core';
+import { Application, environment, errorCodeOf, Logger } from '@marmeon/core';
 import { CLUSTER_WORKER } from '@marmeon/core/internal';
 import { ServerConfig, startServer, ViteSetupError } from '@marmeon/server';
 import { refuseUndecidedRoutes, heldOnLoopback, shadowedLocalhost, startLastError } from '@marmeon/server/internal';
@@ -65,7 +65,12 @@ export class ServeCommand {
     const signals = listenForSignals();
     // `marmeon dev` keeps bootstrap/routes.ts current: on every start (Node restarts when a route file changes)
     // and when a view is added or removed (Node never loads views, so that restarts nothing).
-    const views = development ? await this.#watchRouteTypes(output, root) : undefined;
+    const watched = development ? await this.#watchRouteTypes(output, root) : undefined;
+    if (watched === 'refused') {
+      signals.remove();
+      return 1;
+    }
+    const views = watched;
     // Parses the modules' files: development only, so `marmeon start` never loads the parser. A failure is a warning, never fatal.
     if (development) {
       try {
@@ -226,14 +231,23 @@ export class ServeCommand {
     };
   }
 
-  async #watchRouteTypes(output: CommandInput['output'], root: string): Promise<FSWatcher | undefined> {
-    // A failure here is reported, never fatal: the server runs on with the committed file.
+  /** `'refused'` when the first run found an error page or the backdrop in its former place (K14): the server must not start with the built-in page in its stead. */
+  async #watchRouteTypes(output: CommandInput['output'], root: string): Promise<FSWatcher | undefined | 'refused'> {
+    // Any other failure is reported, never fatal: the server runs on with the committed file.
     const regenerate = () =>
       writeRouteTypes(this.#routeTypes, output, root, { quiet: true }).catch((error: unknown) => {
         output.warn(`marmeon route:types failed — ${root}/bootstrap/routes.ts may be out of date: ${error instanceof Error ? error.message : String(error)}`);
         return false;
       });
-    await regenerate();
+    try {
+      await writeRouteTypes(this.#routeTypes, output, root, { quiet: true });
+    } catch (error) {
+      if (errorCodeOf(error) === 'K14') {
+        output.error(error instanceof Error ? error.message : String(error));
+        return 'refused';
+      }
+      output.warn(`marmeon route:types failed — ${root}/bootstrap/routes.ts may be out of date: ${error instanceof Error ? error.message : String(error)}`);
+    }
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return watch(join(root, 'modules'), { recursive: true }, (event, file) => {

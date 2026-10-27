@@ -147,7 +147,7 @@ describe('client fallback: server rendering never breaks a page', () => {
     const response = await app.request('/broken', { headers: { accept: 'text/html' } });
     const html = await response.text();
     expect(response.status).toBe(500);
-    expect(page(html)).toMatchObject({ component: 'errors/Error', props: { status: 500 } });
+    expect(page(html)).toMatchObject({ component: 'system/errors/Error', props: { status: 500 } });
   });
 
   it('builds the error page without shared props when they are what fails — instead of a bare "Server Error"', async () => {
@@ -155,7 +155,7 @@ describe('client fallback: server rendering never breaks a page', () => {
     const response = await app.request('/shared-broken', { headers: { accept: 'text/html' } });
     const html = await response.text();
     expect(response.status).toBe(500);
-    expect(page(html)).toMatchObject({ component: 'errors/Error', props: { status: 500, title: 'Server Error' } });
+    expect(page(html)).toMatchObject({ component: 'system/errors/Error', props: { status: 500, title: 'Server Error' } });
     expect(markup(html)).toBe('<h1>Server Error</h1>');
   });
 

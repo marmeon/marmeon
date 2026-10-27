@@ -16,19 +16,19 @@ beforeEach(async () => {
 const page = { headers: { accept: 'text/html' } };
 
 describe('the page per status', () => {
-  it('shows modules/errors/views/404.tsx for a 404, on the server and in the browser, which hydrates it', async () => {
+  it('shows modules/system/views/errors/404.tsx for a 404, on the server and in the browser, which hydrates it', async () => {
     await app
       .get('/no/such/page', page)
       .assertNotFound()
-      .assertPage('errors/Error') // on the wire it stays the one name
+      .assertPage('system/errors/Error') // on the wire it stays the one name
       .assertServerRendered()
       .assertSee('<h1>This page does not exist</h1>')
       .assertHydrates();
   });
 
-  it('leaves the other statuses to errors/Error', async () => {
+  it('leaves the other statuses to system/errors/Error', async () => {
     const users: User[] = await app.make(UserRepository).query().selectAll().orderBy('id').execute();
     const [ada, alan] = users as [User, User];
-    await app.actingAs(ada).get(`/users/${alan.public_id}/edit`, page).assertForbidden().assertPage('errors/Error').assertServerRendered().assertDontSee('This page does not exist');
+    await app.actingAs(ada).get(`/users/${alan.public_id}/edit`, page).assertForbidden().assertPage('system/errors/Error').assertServerRendered().assertDontSee('This page does not exist');
   });
 });

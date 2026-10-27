@@ -8,6 +8,6 @@ declare module '@marmeon/router' {
 
 declare module '@marmeon/http/page' {
   interface Views {
-    'errors/Error': true;
+    'system/errors/Error': true;
   }
 }

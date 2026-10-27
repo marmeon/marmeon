@@ -52,7 +52,7 @@ AlsoWrong.layout = ['AppLayout'] satisfies PageLayout;
 export const notAPage: PageComponent = Object.assign(() => null, { layout: 'AppLayout' });
 
 // The app's default: by page name, a layout, a list, or null.
-export const byName: DefaultLayout = (name) => (name.startsWith('auth/') ? [AppLayout, SettingsLayout] : name === 'errors/Error' ? null : AppLayout);
+export const byName: DefaultLayout = (name) => (name.startsWith('auth/') ? [AppLayout, SettingsLayout] : name === 'system/errors/Error' ? null : AppLayout);
 export const ignoringChildren: DefaultLayout = () => WithoutChildren;
 // @ts-expect-error — a default layout is a component, not a name
 export const byString: DefaultLayout = () => 'AppLayout';

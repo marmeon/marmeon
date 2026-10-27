@@ -39,7 +39,7 @@ export function LazyPage({ resolve, name, props }: { resolve: ResolvePage; name:
   return <loaded.Component {...props} />;
 }
 
-/** The app's error page (`errors/Error`) for an error thrown while rendering. */
+/** The app's error page (`system/errors/Error`) for an error thrown while rendering. */
 export function RenderErrorFallback({ resolve, error }: { resolve: ResolvePage; error: unknown }) {
   const props = renderErrorProps(error);
   return <LazyPage resolve={resolve} name={viewName(resolve, ERROR_PAGE, props)} props={props} />;

@@ -1,7 +1,7 @@
 import type { ErrorPageProps } from '@marmeon/http/client/adapter';
 
 /**
- * Built-in error page, used until the app provides `modules/errors/views/Error.tsx` — loaded on demand, a chunk of its own.
+ * Built-in error page, used until the app provides `modules/system/views/errors/Error.tsx` — loaded on demand, a chunk of its own.
  * Exception details only arrive in debug mode (development). Its look: `marmeon-error…` classes of `@marmeon/react/styles.css`.
  */
 export function ErrorPage({ status, title, message, exception }: ErrorPageProps) {

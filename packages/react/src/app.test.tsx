@@ -322,7 +322,7 @@ describe('failed visits', () => {
 
   it('shows the server’s error page over the page on a 5xx, with the exception in debug mode', async () => {
     const exception = { name: 'TypeError', message: 'boom', stack: 'TypeError: boom\n    at ShowController.handle' };
-    server = () => respond({ component: 'errors/Error', props: { status: 500, title: 'Internal Server Error', message: 'boom', exception }, url: '/b', version: null }, 500);
+    server = () => respond({ component: 'system/errors/Error', props: { status: 500, title: 'Internal Server Error', message: 'boom', exception }, url: '/b', version: null }, 500);
     await mount(page('A', '/a'));
     await click('to-b');
     const dialog = (await shown('dialog[data-marmeon-failure="server"] pre'))!.closest('dialog')!;

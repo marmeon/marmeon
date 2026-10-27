@@ -76,7 +76,7 @@ export interface PageObject {
   /**
    * The layers over this page, bottom first — only on a server-rendered document's page object, for a deep link (or a reload)
    * of a layer's URL: this page is the layer's declared base (resolved in-process), or the neutral surface (the view
-   * `layers/Backdrop`) when the base turned the user away. Never in a client-side navigation's answer.
+   * `system/layers/Backdrop`) when the base turned the user away. Never in a client-side navigation's answer.
    */
   layers?: PageObject[];
   /**

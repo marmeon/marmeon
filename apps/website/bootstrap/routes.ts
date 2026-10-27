@@ -45,8 +45,8 @@ declare module '@marmeon/http/page' {
     'docs/LinePage': true;
     'docs/Page': true;
     'docs/Search': true;
-    'errors/Error': true;
     'site/Landing': true;
     'site/Legal': true;
+    'system/errors/Error': true;
   }
 }

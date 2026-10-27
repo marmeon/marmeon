@@ -59,8 +59,8 @@ describe('a German browser', () => {
 
   it('gets the error page in German (404, the framework’s texts by key)', async () => {
     const ada = await app.factory(UserFactory).create();
-    await app.actingAs(ada).withHeaders(german).navigating().get('/users/999999').assertNotFound().assertPage('errors/Error', { title: 'Nicht gefunden', message: 'Nicht gefunden' });
-    await app.actingAs(ada).navigating().get('/users/999999').assertPage('errors/Error', { title: 'Not Found' });
+    await app.actingAs(ada).withHeaders(german).navigating().get('/users/999999').assertNotFound().assertPage('system/errors/Error', { title: 'Nicht gefunden', message: 'Nicht gefunden' });
+    await app.actingAs(ada).navigating().get('/users/999999').assertPage('system/errors/Error', { title: 'Not Found' });
   });
 
   it('two requests at the same time, one German, one English: each gets its own language', async () => {

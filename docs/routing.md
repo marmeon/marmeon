@@ -780,7 +780,7 @@ route needs it.
 ## When no route matches
 
 A request that matches no route still passes the global middleware, so it gets the security headers like any other response. It
-then ends in a 404. A browser gets the app's error page, `errors/Error`, and every other client gets JSON with the status text
+then ends in a 404. A browser gets the app's error page, `system/errors/Error`, and every other client gets JSON with the status text
 in the visitor's language:
 
 ```json

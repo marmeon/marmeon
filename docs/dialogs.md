@@ -41,7 +41,8 @@ page, or another layer, whose own base then comes next.
 
 For such a deep link, the server runs the base's route in the same request, with its own middleware and authorization, and sends
 the base with the layer over it. When the user may not see the base, because its route redirects, refuses or fails, the layer
-shows alone over an empty surface inside the app's layout. Nothing of the base is computed for the browser then.
+shows alone over an empty surface inside the app's layout. Nothing of the base is computed for the browser then. Your own surface
+is the view `modules/system/views/layers/Backdrop.tsx`.
 
 > [!WARNING]
 > A base resolved for a deep link only reads. Its middleware and controller cannot write the session, set a cookie or queue work

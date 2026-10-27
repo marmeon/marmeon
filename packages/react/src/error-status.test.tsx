@@ -19,14 +19,14 @@ const NotFound = () => <p data-view="404">Nothing here</p>;
 const Generic = () => <p data-view="Error">Something is wrong</p>;
 
 const views = (names: Record<string, () => React.JSX.Element>) =>
-  resolveModulePages(Object.fromEntries(Object.entries(names).map(([name, view]) => [`/modules/errors/views/${name}.tsx`, async () => ({ default: view })])));
+  resolveModulePages(Object.fromEntries(Object.entries(names).map(([name, view]) => [`/modules/system/views/errors/${name}.tsx`, async () => ({ default: view })])));
 
 const both = views({ '404': NotFound, Error: Generic });
 const generic = views({ Error: Generic });
 const neither = views({});
 
-/** An error page as the server sends it: always `errors/Error` on the wire. */
-const errorPage = (status: unknown): PageObject => ({ component: 'errors/Error', props: { status, title: 'Title', message: 'Message', exception: null }, url: '/missing', version: null });
+/** An error page as the server sends it: always `system/errors/Error` on the wire. */
+const errorPage = (status: unknown): PageObject => ({ component: 'system/errors/Error', props: { status, title: 'Title', message: 'Message', exception: null }, url: '/missing', version: null });
 
 async function ssr(resolve: ReturnType<typeof views>, page: PageObject): Promise<string> {
   return new Response((await createSsrRenderer(resolve)(page, { complete: true })).html).text();
@@ -34,14 +34,19 @@ async function ssr(resolve: ReturnType<typeof views>, page: PageObject): Promise
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('errors/<status>', () => {
-  it('renders the view of the exact status on the server when the app has one, else errors/Error, else the built-in page', async () => {
+describe('system/errors/<status>', () => {
+  it('renders the view of the exact status on the server when the app has one, else system/errors/Error, else the built-in page', async () => {
     expect(await ssr(both, errorPage(404))).toContain('data-view="404"');
     expect(await ssr(both, errorPage(500))).toContain('data-view="Error"');
     expect(await ssr(both, errorPage('404'))).toContain('data-view="Error"'); // no pattern, no coercion
     expect(await ssr(generic, errorPage(404))).toContain('data-view="Error"');
     expect(await ssr(neither, errorPage(404))).not.toContain('data-view');
     expect(await ssr(neither, errorPage(404))).toContain('Message');
+  });
+
+  it('no longer picks a view in the former place of the error pages', async () => {
+    const former = resolveModulePages({ '/modules/errors/views/404.tsx': async () => ({ default: NotFound }), '/modules/errors/views/Error.tsx': async () => ({ default: Generic }) });
+    expect(await ssr(former, errorPage(404))).not.toContain('data-view');
   });
 
   it('hydrates the same view in the browser', async () => {
@@ -63,7 +68,7 @@ describe('errors/<status>', () => {
       navigator = useRouterContext().navigator();
       return <p data-view="start">Start</p>;
     }
-    const resolve = resolveModulePages({ '/modules/app/views/Start.tsx': async () => ({ default: Start }), '/modules/errors/views/404.tsx': async () => ({ default: NotFound }), '/modules/errors/views/Error.tsx': async () => ({ default: Generic }) });
+    const resolve = resolveModulePages({ '/modules/app/views/Start.tsx': async () => ({ default: Start }), '/modules/system/views/errors/404.tsx': async () => ({ default: NotFound }), '/modules/system/views/errors/Error.tsx': async () => ({ default: Generic }) });
     vi.spyOn(window, 'fetch').mockImplementation(async () => new Response(JSON.stringify(errorPage(404)), { status: 404, headers: { [PAGE_HEADER]: PROTOCOL_VERSION } }));
     history.replaceState(null, '', '/');
     const container = document.createElement('div');
