@@ -30,6 +30,29 @@ export const Logger = token<Logger>('Logger');
 const entries = channels.event('log');
 
 /**
+ * The fields of a JSON log line that carry the framework's own values (docs/logging.md#the-fields-of-a-json-line). A key of a call's context with one of
+ * these names is written as `context.<key>`, so logged data cannot forge a level, a request id or a trace. The bindings of a
+ * child logger are the developer's own and are not renamed.
+ * @internal
+ */
+export const FRAMEWORK_LOG_FIELDS: ReadonlySet<string> = new Set([
+  'level', 'time', 'msg', 'appEnv', 'requestId', 'job', 'jobId', 'attempt', 'task', 'trace_id', 'span_id', 'trace_flags',
+]);
+
+/** `context` with its keys that name a {@link FRAMEWORK_LOG_FIELDS} entry written as `context.<key>`; `context` itself when none does. @internal */
+export function withoutFrameworkFields(context: LogContext): LogContext {
+  let renamed: Record<string, unknown> | undefined;
+  for (const key of Object.keys(context)) {
+    if (!FRAMEWORK_LOG_FIELDS.has(key)) continue;
+    renamed ??= { ...context };
+    delete renamed[key];
+    // A `context.<key>` the caller wrote itself stays: the value under the framework's name is dropped, never written as the field.
+    if (!(`context.${key}` in context)) renamed[`context.${key}`] = context[key];
+  }
+  return renamed ?? context;
+}
+
+/**
  * More fields for every log entry written now — beside the request's id or the job's name (`currentLogContext()`). One per
  * app; `@marmeon/otel` adds the active span's `trace_id` and `span_id`. A source runs for every entry: keep it cheap, and
  * return nothing when it has nothing to add.
@@ -133,7 +156,7 @@ export class ConsoleLogger implements Logger {
 
   #write(level: 'debug' | 'info' | 'warn' | 'error', message: string, context?: LogContext): void {
     if (this.#app && entries.hasSubscribers) entries.publish({ ...messageBase(this.#app), level, message, context: { ...this.#bindings, ...context } });
-    const data = this.#redactor.log({ ...this.#bindings, ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...context });
+    const data = this.#redactor.log({ ...withoutFrameworkFields(context ?? {}), ...currentLogContext(), ...logContextSourcesOf(this.#app)?.current(), ...this.#bindings });
     const line = escapeControls(`[${level}] ${message}${Object.keys(data).length ? ` ${JSON.stringify(data)}` : ''}`);
     (everythingToStderr || level === 'error' || level === 'warn' ? console.error : console.log)(line);
   }

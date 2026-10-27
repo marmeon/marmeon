@@ -185,7 +185,7 @@ export class Worker {
   /** @internal Runs one claimed job to its outcome; `work()` and the test queue call it. */
   async process(reserved: ReservedJob, options: Pick<WorkOptions, 'stopTimeout' | 'signal' | 'onStuck'> = {}): Promise<Outcome> {
     const stopTimeout = stopTimeoutOf(options);
-    const { runner, logger } = this.#deps;
+    const { runner } = this.#deps;
     const prepared = await runner.prepare(reserved.payload).catch((error: unknown): Prepared => ({ kind: 'poison', record: undefined, reason: `The record could not be prepared: ${this.#message(error)}` }));
     const attempt = { attempt: reserved.attempts, queue: reserved.queue, connection: this.#deps.connection };
     if (prepared.kind === 'poison') {
@@ -202,7 +202,9 @@ export class Worker {
       return 'failed';
     }
 
-    const base = { job: record.job, jobId: record.uuid, attempt: reserved.attempts, queue: reserved.queue };
+    // The job's identity is bound, not passed: a call's context cannot carry the framework's `job`, `jobId` and `attempt`.
+    const logger = this.#deps.logger.child({ job: record.job, jobId: record.uuid, attempt: reserved.attempts });
+    const base = { queue: reserved.queue };
     logger.info(`Processing ${record.job}`, base);
     await this.#emit(new JobProcessing({ ...this.#about(reserved, record), attempt: reserved.attempts }));
     // A job unique until processing: a new one with its key may be queued from now on.
@@ -381,7 +383,7 @@ export class Worker {
     try {
       await releaseUnique(this.#deps.runner.cache, record, moment);
     } catch (error) {
-      this.#deps.logger.warn(`Could not free the unique lock of ${record.job} (it expires after ${record.unique?.for}s): ${this.#message(error)}`, { job: record.job, jobId: record.uuid });
+      this.#deps.logger.child({ job: record.job, jobId: record.uuid }).warn(`Could not free the unique lock of ${record.job} (it expires after ${record.unique?.for}s): ${this.#message(error)}`);
     }
   }
 
@@ -391,7 +393,7 @@ export class Worker {
     try {
       await this.#deps.events(event);
     } catch (error) {
-      this.#deps.logger.warn(`A listener of ${event.constructor.name} failed: ${this.#message(error)}`, { job: event.job, jobId: event.jobId });
+      this.#deps.logger.child({ job: event.job, jobId: event.jobId }).warn(`A listener of ${event.constructor.name} failed: ${this.#message(error)}`);
     }
   }
 
@@ -446,7 +448,7 @@ export class Worker {
           `${prepared.record.job} ignored its timeout of ${timeout}s and did not stop within ${grace}s more (job.signal aborted). ` +
             `Node cannot cancel a running promise, so this worker must end; the job runs again once retryAfterSeconds is over (attempt ${reserved.attempts} of ${prepared.record.tries}).`,
         );
-        this.#deps.logger.error(error.message, { job: prepared.record.job, jobId: prepared.record.uuid, attempt: reserved.attempts });
+        this.#deps.logger.child({ job: prepared.record.job, jobId: prepared.record.uuid, attempt: reserved.attempts }).error(error.message);
         if (options.onStuck) options.onStuck(reserved, error);
         throw error;
       }
@@ -491,9 +493,8 @@ export class Worker {
     const delay = Math.min(300, Math.max(15, Math.floor(age / 4)));
     const release = async () => {
       await this.#deps.driver.release(reserved, delay, { refund: true });
-      const context = { job: name, jobId: id, attempt: reserved.attempts, queue: reserved.queue };
       if (!this.#warnedAbout(id)) {
-        this.#deps.logger.warn(`Holding ${name}: ${this.#message(error)} It waits for a worker that can run it, again in ${delay}s.`, context);
+        this.#deps.logger.child({ job: name, jobId: id, attempt: reserved.attempts }).warn(`Holding ${name}: ${this.#message(error)} It waits for a worker that can run it, again in ${delay}s.`, { queue: reserved.queue });
       }
       await this.#emit(new JobReleased({ connection: this.#deps.connection, queue: reserved.queue, job: name, jobId: id, attempt: reserved.attempts, delaySeconds: delay, reason: 'unknown' }));
     };
@@ -510,11 +511,11 @@ export class Worker {
   }
 
   async #retryOrFail(reserved: ReservedJob, record: JobRecord, error: unknown, ms: number | undefined, reason: 'error'): Promise<Outcome> {
-    const context = { job: record.job, jobId: record.uuid, attempt: reserved.attempts, queue: reserved.queue, ...(ms === undefined ? {} : { ms }) };
+    const context = { queue: reserved.queue, ...(ms === undefined ? {} : { ms }) };
     if (reserved.attempts < record.tries) {
       const delay = backoffDelay(record.backoff, reserved.attempts);
       await this.#deps.driver.release(reserved, delay, { availableAt: this.#deps.clock.now() + Math.round(delay * 1000) });
-      this.#deps.logger.warn(`Attempt ${reserved.attempts} of ${record.tries} of ${record.job} failed, again in ${delay}s: ${this.#message(error)}`, context);
+      this.#deps.logger.child({ job: record.job, jobId: record.uuid, attempt: reserved.attempts }).warn(`Attempt ${reserved.attempts} of ${record.tries} of ${record.job} failed, again in ${delay}s: ${this.#message(error)}`, context);
       await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: delay, reason, ...(ms === undefined ? {} : { ms }) }));
       return 'released';
     }
@@ -539,20 +540,15 @@ export class Worker {
     });
     const removed = await this.#deps.driver.fail(reserved);
     const dropped = record?.chain?.length ? ` — the ${record.chain.length} job(s) chained after it will not run` : '';
-    const fields = {
-      job: name,
-      ...(record || identity?.uuid ? { jobId: uuid } : {}),
-      attempt: reserved.attempts,
-      queue: reserved.queue,
-      ...(ms === undefined ? {} : { ms }),
-    };
+    const bindings = { job: name, ...(record || identity?.uuid ? { jobId: uuid } : {}), attempt: reserved.attempts };
+    const fields = { queue: reserved.queue, ...(ms === undefined ? {} : { ms }) };
     const line = `Failed ${name}${how}${dropped}: ${this.#message(error)}`;
     if (this.#deps.errors && record?.fromReporter !== true) {
       // The payload is not in the context: only who ran where.
       const context = { job: name, jobId: uuid, queue: reserved.queue, connection: this.#deps.connection, attempt: String(reserved.attempts) };
-      this.#deps.errors.report(reported ?? withoutValues(name, error), { source: 'job', context, log: { message: line, fields: { channel: 'queue', ...fields } } });
+      this.#deps.errors.report(reported ?? withoutValues(name, error), { source: 'job', context, log: { message: line, bindings, fields: { channel: 'queue', ...fields } } });
     } else {
-      this.#deps.logger.error(line, fields);
+      this.#deps.logger.child(bindings).error(line, fields);
     }
     // A unique job that failed for good is done: a new one with its key may be queued.
     const locked = record ?? (identity?.unique ? ({ uuid, job: name, unique: identity.unique } as JobRecord) : undefined);

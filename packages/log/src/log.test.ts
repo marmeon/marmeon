@@ -167,6 +167,60 @@ describe('@marmeon/log', () => {
     expect(lines[1]).toMatchObject({ msg: 'Running', task: 'cache:prune' });
   });
 
+  it('writes a key of a call\'s context that names a field of the framework as context.<key> — logged data forges no level, request id or trace', async () => {
+    const forged = { level: 99, time: 1, msg: 'forged', appEnv: 'forged', requestId: 'forged', job: 'forged', jobId: 'forged', attempt: 99, task: 'forged', trace_id: 'forged', span_id: 'forged', trace_flags: 'forged' };
+    const app = await createApplication({ root: import.meta.dirname, discover: false }, { env: {} });
+    const sources = app.container.make(LogContextSources);
+    sources.add(() => ({ trace_id: 'real-trace', span_id: 'real-span', trace_flags: '01' }));
+    const lines: Record<string, unknown>[] = [];
+    const raw: string[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, done) {
+        raw.push(String(chunk));
+        lines.push(JSON.parse(String(chunk)));
+        done();
+      },
+    });
+    const logger = createPinoLogger({ level: 'info', format: 'json', environment: 'real-env' }, { destination: stream, app });
+    runWithRequest({ requestId: 'real-request' }, () =>
+      runWithJob({ job: 'real-job', jobId: 'real-id', attempt: 2 }, () => runWithTask({ task: 'real-task' }, () => logger.info('real message', forged))),
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ level: 30, msg: 'real message', appEnv: 'real-env', requestId: 'real-request', job: 'real-job', jobId: 'real-id', attempt: 2, task: 'real-task', trace_id: 'real-trace', span_id: 'real-span', trace_flags: '01' });
+    expect(lines[0]!.time).not.toBe(1);
+    expect(lines[0]).toMatchObject(Object.fromEntries(Object.entries(forged).map(([key, value]) => [`context.${key}`, value])));
+    for (const key of Object.keys(forged)) expect(raw[0]!.match(new RegExp(`"${key}":`, 'g')), key).toHaveLength(1);
+  });
+
+  it('writes a forged level or msg once without a request, and a child\'s own task stays task', () => {
+    const { lines, raw, logger } = capture();
+    logger.info('real', { level: 'fatal', msg: 'forged', requestId: 'forged' });
+    logger.child({ task: 'session:prune' }).info('Done', { task: 'forged' });
+    expect(raw[0]!.match(/"level":/g)).toHaveLength(1);
+    expect(raw[0]!.match(/"msg":/g)).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ level: 30, msg: 'real', 'context.level': 'fatal', 'context.msg': 'forged', 'context.requestId': 'forged' });
+    expect(lines[0]).not.toHaveProperty('requestId');
+    expect(lines[1]).toMatchObject({ task: 'session:prune', 'context.task': 'forged' });
+    expect(raw[1]!.match(/"task":/g)).toHaveLength(1);
+  });
+
+  it('lets the bindings of a child logger win over the running scope, and keeps a context.<key> the caller wrote itself', () => {
+    const { lines, raw, logger } = capture();
+    runWithJob({ job: 'A', jobId: 'a-1', attempt: 1 }, () => logger.child({ job: 'B', jobId: 'b-1' }).info('Held'));
+    logger.info('Hook', { 'context.level': 'mine', level: 'forged' });
+    expect(lines[0]).toMatchObject({ job: 'B', jobId: 'b-1', attempt: 1 });
+    expect(raw[0]!.match(/"job":/g)).toHaveLength(1);
+    expect(lines[1]).toMatchObject({ level: 30, 'context.level': 'mine' });
+    expect(raw[1]!.match(/"level":/g)).toHaveLength(1);
+    expect(raw[1]!.match(/"context\.level":/g)).toHaveLength(1);
+  });
+
+  it('leaves a context without a collision as it is', () => {
+    const { lines, logger } = capture();
+    logger.info('plain', { user: 7, context: 'mine' });
+    expect(lines[0]).toMatchObject({ level: 30, msg: 'plain', user: 7, context: 'mine' });
+  });
+
   it('redacts secrets in text — a failed job\'s stored error', () => {
     expect(redactText('login failed: password=hunter2&user=ada, "api_key":"k-1", token: abc123')).toBe(
       'login failed: password=[redacted]&user=ada, "api_key":"[redacted]", token: [redacted]',
@@ -239,11 +293,11 @@ describe('@marmeon/log', () => {
   it('writes an error under any key with its type, message and stack — masked like under err, never as {}', () => {
     const { lines, raw, logger } = capture();
     const failure = () => Object.assign(new TypeError('import failed for password=errpw', { cause: new Error('socket token=c4use') }), { code: 'EIMPORT', secret: 'own-field' });
-    logger.error('Failed', { error: failure(), job: { last: failure() }, errors: [failure()] });
+    logger.error('Failed', { error: failure(), batch: { last: failure() }, errors: [failure()] });
     const all = raw.join('');
     for (const secret of ['errpw', 'c4use', 'own-field']) expect(all, all).not.toContain(secret);
     const written = { type: 'TypeError', message: expect.stringContaining('import failed for password=[redacted]'), stack: expect.stringContaining('TypeError: import failed'), code: 'EIMPORT', secret: '[redacted]' };
-    expect(lines[0], JSON.stringify(lines[0])).toMatchObject({ error: written, job: { last: written }, errors: [written] });
+    expect(lines[0], JSON.stringify(lines[0])).toMatchObject({ error: written, batch: { last: written }, errors: [written] });
     expect((lines[0]!.error as { stack: string }).stack).toContain('caused by: Error: socket token=[redacted]');
 
     const printed: string[] = [];

@@ -87,6 +87,8 @@ message is not part of it.
 | `trace_id`, `span_id` | The active span, with `@marmeon/otel`. |
 | `err` | An error the app logs as `{ err: error }`: `type`, `message` and `stack`. The fields the framework writes for its own errors (`exception`, `stack` and sometimes `message`) are not part of the frozen set yet. |
 
+The fields keep the framework's values: a key of the context you pass to a log call that names one of them (every field of the table except `err`, plus `trace_flags`) is written as `context.<key>`. Data you log, such as a webhook payload, cannot forge a level or a request id that way. The bindings of a child logger are not renamed.
+
 ## The log context
 
 Every entry gets the context of what is running when it is written, with nothing to pass by hand:

@@ -119,17 +119,17 @@ export class ErrorReports {
 
   /**
    * Logs the error and passes the masked view to every reporter. Returns at once. `log` is the log line when the caller has a better one
-   * than the error's message (`{ message, fields }`, masked here), or `false` when it said the error to the user already.
+   * than the error's message (`{ message, fields }`, masked here), or `false` when it said the error to the user already. `bindings` are fields of the framework (`job`, `task` …) that a call's context cannot carry: the line is written through a child logger bound with them.
    */
   report(
     error: unknown,
-    { source, context = {}, log }: { source: ErrorReport['source']; context?: Readonly<Record<string, string>>; log?: false | { readonly message: string; readonly fields?: LogContext } },
+    { source, context = {}, log }: { source: ErrorReport['source']; context?: Readonly<Record<string, string>>; log?: false | { readonly message: string; readonly fields?: LogContext; readonly bindings?: LogContext } },
   ): void {
     // The message is the log line's own text, the stack a string: masked like text by the app's Redactor — keys alone would
     // not catch a connection URL or a token an error quotes, and the core's list alone not the names packages add (the session cookie).
     const { name, message, stack } = asError(error);
     if (log === undefined) this.#logger.error(this.#redactor.text(message), { exception: name, stack: this.#redactor.text(stack) });
-    else if (log !== false) this.#logger.error(this.#redactor.text(log.message), log.fields);
+    else if (log !== false) (log.bindings ? this.#logger.child(log.bindings) : this.#logger).error(this.#redactor.text(log.message), log.fields);
     if (this.#instances.size === 0 || reporting.getStore()) return;
     const report: ErrorReport = Object.freeze({
       error: this.#reported(error, new Set(), 0),

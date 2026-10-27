@@ -1,10 +1,12 @@
+import { Writable } from 'node:stream';
 import { readdirSync, readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Clock, createApplication, currentLogContext, listen, Logger, Redactor, type Application, type ModuleDefinition } from '@marmeon/core';
+import { Clock, createApplication, currentLogContext, ErrorReports, listen, Logger, Redactor, type Application, type ModuleDefinition } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
+import { createPinoLogger } from '@marmeon/log';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { migrate, silent } from './__fixtures__/targets.ts';
@@ -563,6 +565,34 @@ describe('the worker', () => {
     application.clock.travel({ seconds: 301 });
     expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, failed: 1 });
     expect(await failed.all()).toMatchObject([{ uuid: id, job: 'test.from-the-next-release', exception: expect.stringMatching(/^Error: \[marmeon:Q2\] No job named "test\.from-the-next-release" is registered in this app.*No worker could run it within 6 hours/s) }]);
+  });
+
+  it('writes job, jobId and attempt on the worker\'s lines — Processing, a retry\'s warning, Failed — as fields, never as context.<key>', async () => {
+    const lines: Record<string, unknown>[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, done) {
+        lines.push(JSON.parse(String(chunk)));
+        done();
+      },
+    });
+    await using application = await app({ logger: createPinoLogger({ level: 'info', format: 'json' }, { destination: stream }) });
+    const container = application.container;
+    const driver = new MemoryQueueDriver({ clock: container.make(Clock) });
+    const failed = new MemoryFailedJobStore();
+    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter));
+    const w = new Worker({ driver, connection: 'memory', runner, failed, clock: container.make(Clock), logger: container.make(Logger), errors: container.make(ErrorReports) });
+    const id = await push(application, driver, 'test.flaky', { failUntil: 9 }, { tries: 1, backoff: [0] });
+    await w.run({ queues: ['default'], stopWhenEmpty: true });
+    const processing = lines.find((line) => line.msg === 'Processing test.flaky');
+    const failure = lines.find((line) => String(line.msg).startsWith('Failed test.flaky'));
+    expect(processing).toMatchObject({ job: 'test.flaky', jobId: id, attempt: 1, queue: 'default' });
+    expect(failure).toMatchObject({ job: 'test.flaky', jobId: id, attempt: 1, queue: 'default', channel: 'queue' });
+    for (const line of lines) expect(Object.keys(line).filter((key) => key.startsWith('context.')), JSON.stringify(line)).toEqual([]);
+
+    lines.length = 0;
+    const retried = await push(application, driver, 'test.flaky', { failUntil: 9 }, { tries: 3, backoff: [0] });
+    await w.run({ queues: ['default'], stopWhenEmpty: true });
+    expect(lines.find((line) => String(line.msg).startsWith('Attempt 1 of 3 of test.flaky failed'))).toMatchObject({ job: 'test.flaky', jobId: retried, attempt: 1 });
   });
 
   it('traces an attempt that cannot run on queue.job — a job held for a worker that knows it, a poisoned payload — ending with its error, its log in the job\'s context', async () => {

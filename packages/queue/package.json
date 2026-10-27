@@ -112,6 +112,7 @@
     "marmeon": "workspace:*",
     "@marmeon/database": "workspace:*",
     "@marmeon/encryption": "workspace:*",
+    "@marmeon/log": "workspace:*",
     "@marmeon/redis": "workspace:*"
   }
 }

@@ -241,7 +241,7 @@ export class QueueManager implements Queue {
     }
     const lock = uniqueLock(await this.#cache(), record);
     if (!(await lock.get())) {
-      this.#deps.logger.debug(`Not queued: ${record.job} with the unique key "${record.unique.key}" is queued already`, { job: record.job, unique: record.unique.key });
+      this.#deps.logger.child({ job: record.job, unique: record.unique.key }).debug(`Not queued: ${record.job} with the unique key "${record.unique.key}" is queued already`);
       return undefined;
     }
     await afterRollback(() => lock.release());
@@ -342,7 +342,7 @@ export class QueueManager implements Queue {
     try {
       await this.#deps.events(event);
     } catch (error) {
-      this.#deps.logger.warn(`A listener of ${event.constructor.name} failed: ${this.#redactor.text(error instanceof Error ? error.message : String(error))}`, { job: event.job, jobId: event.jobId });
+      this.#deps.logger.child({ job: event.job, jobId: event.jobId }).warn(`A listener of ${event.constructor.name} failed: ${this.#redactor.text(error instanceof Error ? error.message : String(error))}`);
     }
   }
 

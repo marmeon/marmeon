@@ -913,6 +913,9 @@ importers:
       '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
+      '@marmeon/log':
+        specifier: workspace:*
+        version: link:../log
       '@marmeon/redis':
         specifier: workspace:*
         version: link:../redis

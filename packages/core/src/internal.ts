@@ -23,7 +23,7 @@ export { embedPackageInjections } from './injection/embed.ts';
 export { writeInjectionArtifacts } from './injection/artifacts.ts';
 export { HTML_KEY, interpolateHtml } from './html.ts';
 export { loadEnv } from './config/config.ts';
-export { consoleLogsGoToStderr, logContextSourcesOf, sendConsoleLogsToStderr } from './logger.ts';
+export { consoleLogsGoToStderr, logContextSourcesOf, sendConsoleLogsToStderr, withoutFrameworkFields } from './logger.ts';
 export { runWithJob, runWithRequest, runWithTask } from './request-context.ts';
 export { staticNames } from './static-names.ts';
 export { parseSync } from './oxc.ts';
