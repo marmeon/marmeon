@@ -61,7 +61,7 @@ export class ResetTwoFactorCommand {
     }
     // Before the factors go: were it to fail, the factors stay and the operator can run the command again.
     // Ending first also matters for a factor still being set up: `confirm()` and `register()` check their session against the account when they store it, so they find it ended.
-    if (!(await this.#accounts.end(id)).ok) {
+    if (!(await this.#accounts.end(id, { accessTokens: false })).ok) {
       output.error(`The account ${identifier} vanished while its sessions were ended.`);
       return 1;
     }

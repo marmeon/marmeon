@@ -423,9 +423,9 @@ const en = {
       suspended: {
         subject: 'A passkey was suspended',
         preview: 'A passkey of your account may have been copied',
-        intro: 'the passkey “{name}” of your account answered with a counter that went backwards, so it may have been copied. It was suspended: it cannot sign in until you release it. Every device of your account was signed out.',
-        intro_unnamed: 'a passkey of your account answered with a counter that went backwards, so it may have been copied. It was suspended: it cannot sign in until you release it. Every device of your account was signed out.',
-        outro: 'Sign in again with your password. Under Settings, Passkeys you can release it with your password, or remove it. If you do not know it, remove it and reset your password.',
+        intro: 'the passkey “{name}” of your account answered with a counter that went backwards, so it may have been copied. It was suspended: it cannot sign in until you release it. Every device of your account was signed out, but your API tokens were not.',
+        intro_unnamed: 'a passkey of your account answered with a counter that went backwards, so it may have been copied. It was suspended: it cannot sign in until you release it. Every device of your account was signed out, but your API tokens were not.',
+        outro: 'Sign in again with your password and check your API tokens: revoke any you do not know. Under Settings, Passkeys you can release it with your password, or remove it. If you do not know it, remove it and reset your password.',
       },
       after_reset: {
         subject: 'Your password was reset — these passkeys still sign in',

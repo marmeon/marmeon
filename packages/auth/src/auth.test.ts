@@ -9,6 +9,7 @@ import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionSto
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   AccessTokenStore,
+  PasswordResetTokenStore,
   Auth,
   authenticate,
   AuthConfig,
@@ -947,6 +948,25 @@ describe('remember me', () => {
       });
     });
 
+    it('ends the sessions and remember-me tokens of the thief and the owner but leaves the API tokens', async () => {
+      const { add, browser, kernel, application } = await boot();
+      await add(ada);
+      const tokens = application.container.make(AccessTokenStore);
+      const made = await tokens.create(1, 'ci', { abilities: ['*'], expiresIn: null });
+      const owner = browser();
+      await rememberLogin(owner.send);
+      const copied = owner.jar.get('marmeon_remember')!;
+      await browser(new Map([['marmeon_remember', copied]])).send('/who');
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+      try {
+        await kernel.request('/who', { headers: { cookie: `marmeon_remember=${copied}`, accept: 'application/json' } });
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(await (await owner.send('/who')).json(), 'the owner is signed out too').toMatchObject({ id: null });
+      expect(await tokens.find(made.plainText), 'the API token stays').toBeDefined();
+    });
+
     it('drops control characters from the browser it carries', () => {
       const event = new RememberTokenReused(ada, { userAgent: 'Fire\r\nfox\u0000/1\u009f', sessionsEnded: true });
       expect(event.userAgent).toBe('Firefox/1');
@@ -1161,6 +1181,18 @@ describe('password changes and confirmation', () => {
     expect(body).not.toEqual({ changed: true });
     expect(events.some((event) => event instanceof PasswordChanged)).toBe(false);
     expect((await login(browser().send, 'secret')).status).toBe(303);
+  });
+
+  it('deletes the reset link of the account with a new password: an older link answers invalid-token', async () => {
+    const { add, browser, application } = await boot();
+    await add(ada);
+    const resets = application.container.make(PasswordResetTokenStore);
+    const link = await resets.create(ada.email, 0);
+    if (!link.ok) throw new Error('no reset link');
+    const laptop = browser();
+    await login(laptop.send);
+    expect(await (await laptop.send('/password', { method: 'POST', json: { password: 'a new secret' } })).json()).toEqual({ changed: true });
+    expect(await resets.consume(ada.email, link.value, 3600)).toEqual(err({ kind: 'invalid-token' }));
   });
 
   it('revokes every API token of the user with a new password — with AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true, in the transaction of the new hash', async () => {

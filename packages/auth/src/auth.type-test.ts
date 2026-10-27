@@ -74,6 +74,22 @@ export async function everyoneEndedIsReadOnly() {
   return ended.resetTokens + ended.signIns;
 }
 
+export async function endKnowsItsOptionsAndReportsWhatItEnded() {
+  const result = await accountSessions.end(1, { accessTokens: false });
+  if (result.ok) {
+    // @ts-expect-error what end() did is read-only
+    result.value.accessTokens = 1;
+    // @ts-expect-error the result counts no reset links: the store cannot say
+    result.value.resetTokens;
+    return result.value.removed + result.value.accessTokens;
+  }
+  // @ts-expect-error the options are an object, not a flag
+  await accountSessions.end(1, false);
+  // @ts-expect-error an unknown option is refused
+  await accountSessions.end(1, { resetTokens: false });
+  return 0;
+}
+
 // A provider keeps the whole contract: the session-key methods, and a password write that says whether it wrote.
 export const fullProvider: UserProvider = {
   findById: async () => undefined,
