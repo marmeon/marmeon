@@ -12,6 +12,11 @@ export interface Encrypter {
   encrypt(plaintext: string, context: string): Promise<string>;
   /** Throws `DecryptError` when the payload was tampered with, belongs to another key or another context. */
   decrypt(payload: string, context: string): Promise<string>;
+  /**
+   * @internal Like `decrypt`, and says whether the payload was sealed with an older key (`stale`): the cookie middleware has the
+   * session cookie re-sent, so removing a previous key does not sign anybody out. An encrypter without it never reports `stale`.
+   */
+  decryptWithAge?(payload: string, context: string): Promise<{ value: string; stale: boolean }>;
 }
 export const Encrypter = token<Encrypter>('Encrypter');
 
@@ -93,10 +98,16 @@ export class AesGcmEncrypter implements Encrypter {
 
   async decrypt(payload: string, context: string): Promise<string> {
     requireContext(context, 'decrypt');
+    return (await this.#open(payload, context)).value;
+  }
+
+  /** @internal */
+  async decryptWithAge(payload: string, context: string): Promise<{ value: string; stale: boolean }> {
+    requireContext(context, 'decrypt');
     return this.#open(payload, context);
   }
 
-  async #open(payload: string, context: string): Promise<string> {
+  async #open(payload: string, context: string): Promise<{ value: string; stale: boolean }> {
     let bytes: Uint8Array<ArrayBuffer>;
     try {
       bytes = Uint8Array.fromBase64(payload, { alphabet: 'base64url' });
@@ -109,14 +120,14 @@ export class AesGcmEncrypter implements Encrypter {
     const ciphertext = bytes.subarray(1 + IV_BYTES, bytes.byteLength - TAG_BYTES);
     const tag = bytes.subarray(bytes.byteLength - TAG_BYTES);
     const aad = Buffer.from(context, 'utf8');
-    for (const key of this.#keys) {
+    for (const [index, key] of this.#keys.entries()) {
       try {
         const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: TAG_BYTES });
         decipher.setAAD(aad);
         decipher.setAuthTag(tag);
         const head = decipher.update(ciphertext);
         const tail = decipher.final(); // throws when the tag does not match: tampered, another key or another context
-        return (tail.length === 0 ? head : Buffer.concat([head, tail])).toString('utf8');
+        return { value: (tail.length === 0 ? head : Buffer.concat([head, tail])).toString('utf8'), stale: index > 0 };
       } catch {
         // Wrong key or tampered: try the next key.
       }

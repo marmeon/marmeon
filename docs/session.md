@@ -92,6 +92,8 @@ prefetches or JSON endpoints that never touch it. So a visitor who only reads le
 Their forms still pass the CSRF check by the browser's word, which the [CSRF protection](csrf.md#how-a-request-is-checked) page
 explains.
 
+The cookie is sent when the session is new, its id changed, or the browser's copy was sealed with a key listed in `APP_PREVIOUS_KEYS` (with the framework's encrypter; a custom `Encrypter` without that report keeps the old key, so removing a retired key signs nobody out); `XSRF-TOKEN` when the browser does not hold its current value. A response that carries either is never stored by a shared cache (see [headers](responses.md#headers)). A changed cookie setting (`SESSION_SAME_SITE`, `SESSION_SECURE_COOKIE`) reaches a browser that already holds the cookie only when its session gets a new id, for example at its next sign-in.
+
 A session that came from its store is always written back. To keep a new session with nothing in it, call `persist()`. A guest's
 page with an upload field does so in its controller, since an upload belongs to a session. `token()` keeps it as well, since the
 token it hands out must still be valid when it comes back.

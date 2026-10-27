@@ -68,6 +68,7 @@ export class StartSession {
       if (page?.started) this.#session.adopt(page);
       else await this.#session.start(ctx.cookies.get(cookie));
       // An island: it reads the session, never writes it — no save, no cookie, flash data stays for the page.
+      if (this.#session.exists) ctx.cookies.markPrivate();
       this.#session.lock((what) => this.#readOnly.permit(what));
       return next();
     }
@@ -76,27 +77,37 @@ export class StartSession {
     const lock = ctx.route?.blocking ? await this.#block(ctx, id) : undefined;
     try {
       await this.#session.start(id);
+      // Marked before anything can fail: the error page of an existing session is private too. A session created by this
+      // request is marked after its save.
+      if (this.#session.exists) ctx.cookies.markPrivate();
+      let response: Response;
       try {
-        const response = await next();
+        response = await next();
         // An asset-version reload (409): the page is requested again, so flash data must survive it.
         if (response.status === 409 && response.headers.has(LOCATION_HEADER)) this.#session.reflash();
-        return response;
       } finally {
         // Not written back (a sign-out of the same browser overtook this request): no cookie either — the browser
         // keeps the one the sign-out sent.
         // No Max-Age: the browser drops the cookie when it closes; the store's lifetime ends the session on the server either way.
-        if (await this.#session.save()) ctx.cookies.set(cookie, this.#session.id, { secure, sameSite });
-        else if (this.#session.abandoned) {
+        // Sent when the browser does not hold it yet: a cookie on every response would let a shared cache that stores one hand a session to a stranger.
+        if (await this.#session.save()) {
+          // Also when the browser's copy was sealed with a key that is retired since: the cookie must not outlive that key.
+          if (this.#session.id !== id || ctx.cookies.isStale(cookie)) ctx.cookies.set(cookie, this.#session.id, { secure, sameSite });
+        } else if (this.#session.abandoned) {
           this.#logger.warn('The session was not saved: other requests of the same session wrote it on every attempt — Route.block() serialises such a route', {
             route: ctx.route?.routeName ?? ctx.route?.path,
           });
         }
+        // The answer of an existing session carries its data (CSRF token, flash data, who is signed in): the kernel keeps it
+        // from shared caches, also when it is an error page.
+        if (this.#session.exists) ctx.cookies.markPrivate();
         // Signed in or out: the old session is gone — whoever listened through it stops (its live streams, everywhere).
         for (const ended of this.#session.ended) await this.#endings.ended(sessionScope(ended));
         // Saved: nothing that still runs in this request — a streamed page's deferred props — reaches the store any
         // more. Once the headers are out, the kernel makes the request read-only, and a write throws (or is dropped).
         this.#session.lock((what) => this.#readOnly.permit(what));
       }
+      return response;
     } finally {
       await lock?.release();
     }

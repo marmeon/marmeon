@@ -8,7 +8,7 @@ export const NO_STORE = 'no-store, private';
 /**
  * Answers for a signed-in user are never stored (`Cache-Control: no-store, private`), so "Back" after signing out cannot
  * show them from the HTTP cache (Chromium keeps `no-store` pages out of the back/forward cache too). Asks the session, never
- * loads the user; a route that sets its own `Cache-Control` keeps it. See
+ * loads the user; a route that sets its own `Cache-Control` keeps it, but never as `public` (the answer of a session is sent as `private`). See
  * `docs/authentication.md#signed-in-pages-are-never-cached`.
  */
 export class NoStoreWhenSignedIn {

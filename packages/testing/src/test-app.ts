@@ -562,6 +562,8 @@ export interface CookieCrypto {
   encrypt(name: string, value: string): Promise<string>;
   /** The plain value, or the raw one if it is not encrypted (or not decryptable). */
   decrypt(name: string, value: string): Promise<string>;
+  /** What the app reads from a cookie the browser sent: the plain value, or undefined when it does not decrypt (the app treats it as absent). */
+  open(name: string, value: string): Promise<string | undefined>;
 }
 
 function cookieCrypto(container: Container): CookieCrypto {
@@ -569,6 +571,14 @@ function cookieCrypto(container: Container): CookieCrypto {
     container.has(Encrypter) && (!container.has(CookieEncryption) || container.make(CookieEncryption).isEncrypted(name));
   return {
     encrypt: async (name, value) => (encrypted(name) ? container.make(Encrypter).encrypt(value, `cookie:${name}`) : value),
+    open: async (name, value) => {
+      if (!encrypted(name) || value === '') return value;
+      try {
+        return await container.make(Encrypter).decrypt(value, `cookie:${name}`);
+      } catch {
+        return undefined;
+      }
+    },
     decrypt: async (name, value) => {
       if (!encrypted(name) || value === '') return value;
       try {
@@ -1060,10 +1070,14 @@ export class TestApp {
     const { ssr } = this.#shared;
     const render = ssr?.begin();
     const response = this.#init(method, options)
-      .then((init) => this.#shared.kernel.request(path, render === undefined ? init : { ...init, headers: { ...(init.headers as Record<string, string>), [SSR_TEST_HEADER]: render } }))
-      .then(async (res) => {
+      .then(async (init) => ({
+        res: await this.#shared.kernel.request(path, render === undefined ? init : { ...init, headers: { ...(init.headers as Record<string, string>), [SSR_TEST_HEADER]: render } }),
+        sent: (init.headers as Record<string, string>).cookie,
+      }))
+      .then(async ({ res, sent }) => {
         const response = await TestResponse.from(res, label, this.#crypto, await this.#session, async (page) =>
           render === undefined ? undefined : ssr!.finish(render, new URL(path, 'http://localhost').href, page),
+          sent,
         );
         await this.#shared.kernel.settle(); // terminate hooks ran
         await this.#shared.devtools?.settled(); // the request's entries are written (an exception's solutions looked up)

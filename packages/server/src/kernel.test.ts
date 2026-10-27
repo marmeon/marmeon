@@ -713,3 +713,77 @@ describe('createHttpKernel — response copies', async () => {
     expect([...SHARED.headers]).toEqual([['x-own', 'yes']]);
   });
 });
+
+describe('createHttpKernel — answers that set a cookie are never shared', async () => {
+  const warned: string[] = [];
+  const logger: Logger = { debug() {}, info() {}, warn: (message) => warned.push(message), error() {}, child: () => logger };
+  class LoggingProvider {
+    register(container: Container) {
+      container.singleton(Logger, () => logger);
+    }
+  }
+  class SetCookie {
+    async handle(ctx: HttpContext, next: Next<{}>) {
+      ctx.cookies.set('visit', '1');
+      return next();
+    }
+  }
+  const asksPublic = (value: string) =>
+    class {
+      async handle(_ctx: HttpContext, next: Next<{}>) {
+        const response = await next();
+        const edited = new Response(response.body, response);
+        edited.headers.set('cache-control', value);
+        edited.headers.set('cdn-cache-control', 'max-age=600');
+        return edited;
+      }
+    };
+  const application = await createApplication({
+    root: import.meta.dirname,
+    discover: false,
+    providers: [EncryptionServiceProvider, HttpServiceProvider, LoggingProvider],
+    modules: [
+      defineModule({
+        name: 'shared',
+        routes: openRoutes((Route) => {
+          Route.middleware(SetCookie).middleware(asksPublic('public, s-maxage=600, max-age=60')).get('/items/:id', () => ({ ok: true }));
+          Route.middleware(asksPublic('public, max-age=60')).get('/plain', () => ({ ok: true }));
+          Route.middleware(SetCookie).get('/bare', () => ({ ok: true }));
+        }),
+      }),
+    ],
+  }, { env: { APP_KEY: generateKey() } });
+  const app = createHttpKernel(application);
+
+  it('sends public as private, drops s-maxage and the CDN header, and warns once per route pattern', async () => {
+    const first = await app.request('/items/1');
+    const second = await app.request('/items/2');
+    for (const response of [first, second]) {
+      expect(response.headers.get('cache-control')).toBe('private, max-age=60');
+      expect(response.headers.has('cdn-cache-control')).toBe(false);
+      expect(response.headers.getSetCookie()).toHaveLength(1);
+    }
+    expect(warned.filter((message) => message.includes('GET /items/:id'))).toHaveLength(1);
+    expect(warned[0]).toContain('sets a cookie, so it is sent as private');
+  });
+
+  it('keeps public on an answer that sets no cookie', async () => {
+    const response = await app.request('/plain');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=60');
+    expect(response.headers.has('cdn-cache-control')).toBe(true);
+  });
+
+  it('gives a cookie answer without a Cache-Control header a private one, without a warning', async () => {
+    const before = warned.length;
+    const response = await app.request('/bare');
+    expect(response.headers.get('cache-control')).toBe('private');
+    expect(warned).toHaveLength(before);
+  });
+
+  it('does not warn when no route matched', async () => {
+    const before = warned.length;
+    const response = await app.request('/nothing-here');
+    expect(response.status).toBe(404);
+    expect(warned).toHaveLength(before);
+  });
+});
