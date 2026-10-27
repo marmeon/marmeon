@@ -136,6 +136,14 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
       expect(win.loads).toEqual(['assign https://app.test/b']);
     });
 
+    it('follows the path of a new build\'s 409 onto its own origin', async () => {
+      const win = new FakeWindow(`${ORIGIN}/a`);
+      const { navigator } = boot(win, page('/a'));
+      win.handler = () => new Response(null, { status: 409, headers: { [LOCATION_HEADER]: '/b?x=1', [RELOAD_HEADER]: 'version' } });
+      expect(await navigator.visit('/b?x=1')).toBeUndefined();
+      expect(win.loads).toEqual(['assign https://app.test/b?x=1']);
+    });
+
     it('does not reload a document restored from the back/forward cache that was not left for a full load', () => {
       const win = new FakeWindow(`${ORIGIN}/a`);
       boot(win, page('/a'));

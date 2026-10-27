@@ -166,7 +166,7 @@ describe('the two kinds of 409 — a new build may wait, signing in or out never
   it('a new build: 409 with `x-marmeon-reload: version` — the one the client may postpone', async () => {
     const response = await stale('/a');
     expect(response.status).toBe(409);
-    expect(response.headers.get(LOCATION_HEADER)).toBe('http://localhost/a');
+    expect(response.headers.get(LOCATION_HEADER)).toBe('/a');
     expect(response.headers.get(RELOAD_HEADER)).toBe('version');
   });
 

@@ -633,11 +633,18 @@ describe('createHttpKernel — asset versioning', async () => {
     const app = createHttpKernel(application, { assetVersion: 'v2' });
     const stale = await visit(app, 'v1');
     expect(stale.status).toBe(409);
-    expect(stale.headers.get('x-marmeon-location')).toBe('http://localhost/page');
+    expect(stale.headers.get('x-marmeon-location')).toBe('/page');
 
     const current = await visit(app, 'v2');
     expect(current.status).toBe(200);
     expect(await current.json()).toMatchObject({ component: 'pages/Show', version: 'v2' });
+  });
+
+  it('names only path and query, and is never cached', async () => {
+    const app = createHttpKernel(application, { assetVersion: 'v2' });
+    const stale = await app.fetch(new Request('http://10.0.0.5:3000/page?y=1', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-version': 'v1' } }));
+    expect([stale.status, stale.headers.get('x-marmeon-location'), stale.headers.get('cache-control')]).toEqual([409, '/page?y=1', 'no-store']);
+    expect(stale.headers.get('vary')?.toLowerCase()).toContain('x-marmeon-version');
   });
 
   it('never throws away a form submit, and does not check without a version (development)', async () => {
