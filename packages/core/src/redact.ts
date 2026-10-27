@@ -275,6 +275,16 @@ export class Redactor {
     return this;
   }
 
+  /** @internal Whether `key` is a name an app or a package added — not one of the core's own list. */
+  isAddedKey(key: string): boolean {
+    return this.#keys.has(key.toLowerCase());
+  }
+
+  /** @internal Whether an app or a package added any name. */
+  get hasAddedKeys(): boolean {
+    return this.#keys.size > 0;
+  }
+
   /** Whether the value under `key` is never shown. */
   isSensitive(key: string): boolean {
     return REDACTED_KEYS.test(key) || CAMEL_OTP.test(key) || this.#keys.has(key.toLowerCase());

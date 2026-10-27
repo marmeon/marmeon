@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
+import type { Redactor } from '@marmeon/core';
 import type { ValidationErrors } from '@marmeon/http';
 import { flashableInput, OLD_INPUT_KEY, type FlashEntry } from '@marmeon/http/internal';
 import { SessionCodec } from './codec.ts';
@@ -18,6 +19,17 @@ export interface SessionData {
 }
 
 type Value<K extends string> = K extends keyof SessionData ? SessionData[K] : unknown;
+
+/** `value` without any field, at any depth, whose name `redactor` was given (exact, case-insensitive); arrays are walked. */
+function withoutAddedKeys(given: unknown, redactor: Redactor): unknown {
+  // Like the JSON the store writes: a `Date` is its string, not an object without entries.
+  const value = typeof (given as { toJSON?: unknown } | null)?.toJSON === 'function' ? (given as { toJSON(): unknown }).toJSON() : given;
+  if (Array.isArray(value)) return value.map((item) => withoutAddedKeys(item, redactor));
+  if (typeof value !== 'object' || value === null) return value;
+  const kept: Record<string, unknown> = {};
+  for (const [name, item] of Object.entries(value)) if (!redactor.isAddedKey(name)) kept[name] = withoutAddedKeys(item, redactor);
+  return kept;
+}
 
 const FLASH = '_flash';
 /** Flash messages waiting for a response that is shown. */
@@ -74,6 +86,8 @@ export class Session {
   readonly #obsolete: string[] = [];
   /** Set for a read-only request (an island): asked before every write. */
   #permit: ((what: string) => boolean) | undefined;
+  /** Its added names keep their fields out of the flashed input. */
+  readonly #redactor: Redactor | undefined;
   /** The flash messages this request took — put back by `reflash()` (a 409: the page is requested again). */
   #taken: FlashEntry[] = [];
   /** Something bound to this session was handed out (its CSRF token, a live subscription — `persist()`): a new session is kept. */
@@ -82,7 +96,8 @@ export class Session {
   #ended: string[] = [];
 
   /** @internal Built by the container. */
-  constructor(store: SessionStore, config: SessionConfig, codec: SessionCodec) {
+  constructor(store: SessionStore, config: SessionConfig, codec: SessionCodec, redactor?: Redactor) {
+    this.#redactor = redactor;
     this.#store = store;
     this.#config = config;
     this.#codec = codec;
@@ -214,7 +229,10 @@ export class Session {
   flashData<K extends string>(key: K, value: Value<K>): void {
     const data = this.#ensureStarted();
     if (!this.#may(`session.flashData('${key}')`)) return;
-    data[key] = value;
+    // Here, where every way of flashing input arrives: a field whose name the app (or a package) added to the redactor never
+    // reaches the store, `old()` or the next page's props. The core's own list is for the browser's and the log's sake, not this.
+    const redactor = this.#redactor;
+    data[key] = key === OLD_INPUT && redactor?.hasAddedKeys ? withoutAddedKeys(value, redactor) : value;
     const flash = this.#flash();
     flash.new = [...new Set([...flash.new, key])];
     flash.old = flash.old.filter((old) => old !== key);

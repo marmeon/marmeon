@@ -209,7 +209,7 @@ return this.back().with('email', ctx.body.email);
 `Session` reads them with `get()`. `withErrors(errors)` and `withInput(input)` flash a form's errors and its input. `errors` is a `Record<string, readonly string[]>`, the field's name (`'email'`, or `'address.city'` for a nested one) with its messages: `withErrors({ email: ['Already taken.'] })`. A field whose
 name looks secret, among them one that contains "password", "passcode", "secret", "token", "credential", "signature", "jwt", "recovery", "card", "cvc", "cvv" or
 "iban", an API key, private key or session id, or a one-time code (`otp`, `totp_secret`, `code`, `sms_code`, `backup_codes`;
-not `footprint`, `zip_code`, `language_code` or `promoCode`), the `_token` and every file are left out of the input. The names follow the rules of [remembered input](forms.md#remembering-input), without `include`. The framework does both for you when validation
+not `footprint`, `zip_code`, `language_code` or `promoCode`), the `_token` and every file are left out of the input. The names follow the rules of [remembered input](forms.md#remembering-input), without `include`, and every field whose name your app added with `redact.keys` (or a package with `addKeys()`) is left out as well. The framework does both for you when validation
 fails, so you rarely call them.
 
 A flash message is something to show the user once, such as "Note saved.":

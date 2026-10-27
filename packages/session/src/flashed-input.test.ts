@@ -1,6 +1,6 @@
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { HttpServiceProvider, ValidationError } from '@marmeon/http';
+import { HttpServiceProvider, RedirectResult, ValidationError } from '@marmeon/http';
 import { createHttpKernel } from '@marmeon/server';
 import { describe, expect, it } from 'vitest';
 import { SessionServiceProvider } from './provider.ts';
@@ -16,6 +16,38 @@ const routes = openRoutes((Route) => {
   Route.post('/tags', async (ctx: { request: Request }) => {
     const { tags } = (await ctx.request.json()) as { tags: unknown[] };
     throw new ValidationError({ tags: tags.map((_, index) => `Item ${index} must be a string.`), email: ['Required.'] }, { tags, email: 'ada@example.com' });
+  });
+});
+
+const FIELDS = { name: 'Ada', national_id: 'X-1234', person: { National_ID: 'Y-5678', city: 'Z' } };
+
+const fieldRoutes = openRoutes((Route) => {
+  Route.post('/invalid', () => {
+    throw new ValidationError({ name: ['Required.'] }, FIELDS);
+  });
+  Route.post('/back', () => new RedirectResult('/form').withInput(FIELDS));
+});
+
+describe('a form and the names an app added to the redactor', () => {
+  it.each(['/invalid', '/back'])('%s leaves the added field out of the stored session', async (path) => {
+    const memory = new MemorySessionStore();
+    const written: string[] = [];
+    const store = wrapped(memory, { write: (key, data, options) => (written.push(data), memory.write(key, data, options)) });
+    const application = await createApplication({
+      root: import.meta.dirname,
+      discover: false,
+      redact: { keys: ['national_id'] },
+      providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider],
+      modules: [defineModule({ name: 'forms', routes: fieldRoutes })],
+    }, { env: { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', LOG_LEVEL: 'silent' }, override: (container) => void container.instance(SessionStore, store) });
+
+    const response = await createHttpKernel(application).request(path, { method: 'POST', headers: { 'sec-fetch-site': 'same-origin', accept: 'text/html' } });
+    expect(response.status).toBe(303);
+    expect(written).toHaveLength(1);
+    const payload = written[0]!;
+    expect(payload, payload).not.toMatch(/national_id|X-1234|Y-5678/i);
+    expect(payload).toContain('Ada');
+    expect(payload).toContain('"city":"Z"');
   });
 });
 

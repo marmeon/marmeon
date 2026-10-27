@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, statSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
+import { Redactor } from '@marmeon/core';
 import { RedirectResult } from '@marmeon/http';
 import { Router } from '@marmeon/router';
 import { describe, expect, expectTypeOf, it } from 'vitest';
@@ -151,6 +152,50 @@ describe('Session', () => {
     const kept = JSON.stringify(await stored(store, id));
     expect(kept, kept).not.toMatch(/secret|csrf|deep|password|_token|avatar/i);
     await request(store, id, (session) => expect(session.old()).toEqual({ email: 'ada@example.com', nested: { name: 'n' } }));
+  });
+
+  describe('with names added to the redactor', () => {
+    const flashed = { name: 'Ada', national_id: 'X', person: { National_ID: 'Y', city: 'Z' }, list: [{ national_id: 'W', ok: 1 }, 'plain'], remember: 'on' };
+    const expected = { name: 'Ada', person: { city: 'Z' }, list: [{ ok: 1 }, 'plain'], remember: 'on' };
+    const sessionWith = (redactor: Redactor | undefined) => new Session(new MemorySessionStore(), config, plainSessionCodec, redactor);
+
+    it('leaves their fields out of flashed input at any depth and keeps the rest', async () => {
+      const store = new MemorySessionStore();
+      const first = new Session(store, config, plainSessionCodec, new Redactor({ keys: ['national_id'] }));
+      await first.start(undefined);
+      first.flashInput(flashed);
+      await first.save();
+      const kept = JSON.stringify(await stored(store, first.id));
+      expect(kept, kept).not.toMatch(/national_id|"X"|"Y"|"W"/i);
+      await request(store, first.id, (session) => expect(session.old()).toEqual(expected));
+    });
+
+    it('filters what is flashed under the input key in any other way, too', async () => {
+      const session = sessionWith(new Redactor().addKeys('national_id'));
+      await session.start(undefined);
+      session.flashData('_old_input', flashed);
+      expect(session.old()).toEqual(expected);
+    });
+
+    it('keeps a value with toJSON as its JSON form, like the store writes it', async () => {
+      const session = sessionWith(new Redactor({ keys: ['national_id'] }));
+      await session.start(undefined);
+      session.flashData('_old_input', { born: new Date('2000-01-02T00:00:00Z'), national_id: 'X' });
+      expect(session.old()).toEqual({ born: '2000-01-02T00:00:00.000Z' });
+    });
+
+    it('changes nothing without added names, and does not use the core list', async () => {
+      for (const redactor of [undefined, new Redactor()]) {
+        const session = sessionWith(redactor);
+        await session.start(undefined);
+        session.flashData('_old_input', flashed);
+        expect(session.old()).toEqual(flashed);
+      }
+      const added = sessionWith(new Redactor({ keys: ['national_id'] }));
+      await added.start(undefined);
+      added.flashData('_old_input', { token: 'kept', national_id: 'X' });
+      expect(added.old()).toEqual({ token: 'kept' });
+    });
   });
 
   it('keeps a stored session small when a huge input is flashed: nothing above 64 KiB', async () => {
