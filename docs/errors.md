@@ -498,8 +498,9 @@ What the browser does when something fails:
 - **An error while a page renders** shows the app's `errors/Error` page (or `errors/500`, if there is one) inside its layouts, with details in development only. A
   layout that throws shows the page without layouts. The next visit tries again. A layout with `error` shows the failure of what
   is below it itself, inside the layout, with a `retry()` for a button: [When a page fails](pages.md#when-a-page-fails).
-- **A failed visit** keeps the page and whatever was typed into it. A server that cannot be reached shows a notice, and a 5xx shows
-  the server's error page in a dialog over the page.
+- **A failed visit** keeps the page and whatever was typed into it: offline, a 5xx, or an answer to a form that is no page (a
+  proxy's 413 or 429, a JSON error). A server that cannot be reached shows a notice, and a 5xx or such an answer shows the
+  server's error in a dialog over the page.
 - **An island** fails on its own and shows its error, while the rest of the page stays.
 
 The code that shows a failure loads when a failure happens, never with the first download. When it cannot load, a 5xx shows the

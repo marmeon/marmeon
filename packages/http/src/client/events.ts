@@ -31,8 +31,9 @@ export interface VisitProgress {
  * A visit that failed (`exception`) — the page stays as it is (nothing typed is lost) and the
  * app shows a fallback:
  * - `network`: the server could not be reached (offline, the server is down, the connection broke).
- * - `server`: the server answered with a 5xx — its error page (`page`, as `usePage()` shows a page, with the exception in debug mode) or, from
- *   something in front of it (a proxy), plain HTML (`html`).
+ * - `server`: the server answered with a 5xx, or a form's answer was no page (any status, a proxy's 413 or 429, a JSON error). The
+ *   answer is its error page (`page`, as `usePage()` shows a page, with the exception in debug mode) or, from something in front of
+ *   the server (a proxy), plain HTML (`html`, only for `text/html`).
  *
  * Validation errors are no failure: they are the `error` event (the page's `errors` prop, see `useForm`).
  *
@@ -55,7 +56,7 @@ export interface VisitEvents {
   success: (page: PageInfo, visit: Visit) => void;
   /** The visit ended on a page with validation errors (its `errors` prop — the server redirected back to the form). */
   error: (errors: ValidationErrors, visit: Visit) => void;
-  /** The request failed: offline or a 5xx. The page stays; the app shows a fallback. */
+  /** The request failed: offline, a 5xx, or an answer to a form that is no page. The page stays; the app shows a fallback. */
   exception: (exception: VisitError) => void;
   /** A newer visit (or Back/Forward) replaced this one before it finished. */
   cancel: (visit: Visit) => void;
