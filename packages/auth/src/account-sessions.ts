@@ -5,7 +5,7 @@ import { withCode } from '@marmeon/core/internal';
 import { accountScope } from '@marmeon/session/internal';
 import { EverySessionEnded } from './events.ts';
 import type { EmailChangeStore } from './email-changes.ts';
-import type { PasswordResetTokenStore } from './password-reset.ts';
+import { forgetResetLinks, type PasswordResetTokenStore } from './password-reset.ts';
 import type { SignInStore } from './sign-ins.ts';
 import type { AccessTokenStore } from './tokens.ts';
 import { idOf, UserProvider, type AuthUserId } from './user.ts';
@@ -141,6 +141,11 @@ export function missingEmailChangeMethod(caller: string, method: string): Error 
   );
 }
 
+/** The error for a store without a method `AccountSessions.end()` uses (JavaScript, a cast; a TypeScript store cannot leave it out). */
+function refuseStore(store: string, method: string): Error {
+  return new Error(withCode('A6', `AccountSessions.end() needs ${store}.${method}(). A store extends ${store} and implements every method. Nothing was changed.`));
+}
+
 /** The key of `AccountSessions`' announcement that sign-ins ended — for `Auth`, not re-exported from the package. */
 export const ANNOUNCE_ENDED = Symbol('announceEnded');
 
@@ -148,6 +153,8 @@ export const ANNOUNCE_ENDED = Symbol('announceEnded');
 export interface EndedSessions {
   /** How many sessions the store deleted at once (only the `database` driver can); the others end at their next request. */
   readonly removed: number;
+  /** How many API tokens it revoked (0 when kept with `accessTokens: false`, or when no token store is bound). */
+  readonly accessTokens: number;
 }
 
 /** What `AccountSessions.endEveryone()` did. */
@@ -220,12 +227,18 @@ export class AccountSessions {
   }
 
   /**
-   * Ends the account's sign-ins (their remember-me tokens with them), replaces its session key, then deletes the sessions a store can find. Answers
+   * Ends the account's sign-ins (their remember-me tokens with them), replaces its session key, then deletes the sessions a store can find,
+   * the account's password-reset link and its API tokens (`{ accessTokens: false }` keeps the tokens, such as for an integration that outlives a sign-out). Answers
    * `missing` when the id is not valid or no such account exists, with nothing written. Throws, naming the remedy, when the
    * `UserProvider` cannot store a session key: without one a running remember-me sign-in could outlive the call. Throws inside
    * a database transaction: each step commits on its own, and a rollback would bring the deleted tokens back.
    */
-  async end(userId: AuthUserId): Promise<Result<EndedSessions, { readonly kind: 'missing' }>> {
+  async end(userId: AuthUserId, options: { readonly accessTokens?: boolean } = {}): Promise<Result<EndedSessions, { readonly kind: 'missing' }>> {
+    // `end(id, false)` is the obvious mix-up with the options object; a non-object would silently mean the default.
+    if (typeof options !== 'object' || options === null) {
+      throw new TypeError('AccountSessions.end() takes its options as an object: end(userId, { accessTokens: false }).');
+    }
+    const { accessTokens = true } = options;
     if (typeof this.#signIns.endAll !== 'function') throw missingSignInMethod('AccountSessions.end()', 'endAll');
     if (inTransaction()) {
       throw new Error('AccountSessions.end() must run outside a database transaction: each step commits on its own, and a rollback would bring the ended sign-ins back.');
@@ -235,6 +248,10 @@ export class AccountSessions {
     }
     const changes = this.#changes?.();
     if (changes && typeof changes.forget !== 'function') throw missingEmailChangeMethod('AccountSessions.end()', 'forget');
+    const resets = this.#resets?.();
+    if (resets && typeof resets.forget !== 'function') throw refuseStore('PasswordResetTokenStore', 'forget');
+    const access = accessTokens ? this.#access?.() : undefined;
+    if (access && typeof access.revokeAll !== 'function') throw refuseStore('AccessTokenStore', 'revokeAll');
     const id = userId as string | number;
     if (id === '' || (typeof id === 'number' && !Number.isSafeInteger(id))) return err({ kind: 'missing' });
     const found = await this.#users.findById(id as never);
@@ -254,9 +271,12 @@ export class AccountSessions {
       const removed = (await this.#sessions?.end(id)) ?? 0;
       // Rows a request made since the first `endAll()` (a sign-in that was running) go too; the key has ended their sessions already.
       await this.#signIns.endAll(idOf(found.user));
-      // Last, after the key: every session is over whatever fails above, and a store that fails here leaves only this step to run again.
+      // Last, after the key: every session is over whatever fails above, and a store that fails here leaves only the steps after it to run again.
+      // The API tokens, the live credential, come first; then the reset link (a mailbox a thief read) and the pending change of address.
+      const revoked = access ? await access.revokeAll(idOf(found.user)) : 0;
+      if (resets) await forgetResetLinks(resets, found.user);
       await changes?.forget(idOf(found.user));
-      return ok({ removed });
+      return ok({ removed, accessTokens: revoked });
     } finally {
       await this[ANNOUNCE_ENDED](idOf(found.user)); // the account's own id, not the one the caller wrote
     }

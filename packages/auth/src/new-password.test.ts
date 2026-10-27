@@ -1,7 +1,7 @@
 import type { EventDispatcher, Logger } from '@marmeon/core';
 import type { Connections } from '@marmeon/database';
 import { describe, expect, it } from 'vitest';
-import { PasswordBroker } from './password-reset.ts';
+import { PasswordBroker, type PasswordResetTokenStore } from './password-reset.ts';
 import { NO_LOGIN_LIMITS } from './test-helpers/login-limits.ts';
 import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
 import type { PasswordHash } from './hashing.ts';
@@ -74,6 +74,19 @@ describe('NewPassword and the sign-ins of the account', () => {
     const { reset, ended } = setup({ state: source([]) });
     await reset({ id: 1, email_verified_at: new Date() });
     expect(ended).toEqual([{ op: 'endAll', args: [1, undefined] }]);
+  });
+
+  it('a reset or a change deletes the reset link of the account, in the transaction of the hash', async () => {
+    const forgotten: string[] = [];
+    const resets = { forget: async (email: string) => void forgotten.push(email) } as unknown as PasswordResetTokenStore;
+    const { users } = setup({ state: source([]) });
+    const connections = { transaction: async (run: () => Promise<unknown>) => run() } as unknown as Connections;
+    const newPassword = new NewPassword(() => ({}) as never, () => connections, { revokeTokensOnPasswordChange: false } as never, {} as never, () => signInStore({ endAll: async () => 0, dropToken: async () => {} }), undefined, undefined, undefined, () => resets);
+    await newPassword.store(users, 1, hash, 'reset', { id: 1, email: 'ada@example.com' } as never);
+    expect(forgotten).toEqual(['ada@example.com']);
+    forgotten.length = 0;
+    await newPassword.store(users, 1, hash, 'change');
+    expect(forgotten, 'a change finds the address through the provider').toEqual(['ada@example.com']);
   });
 
   it('a change keeps the sign-in it is made in, without its token, and ends the others', async () => {

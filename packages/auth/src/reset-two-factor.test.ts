@@ -57,6 +57,12 @@ describe('auth:reset-two-factor', () => {
     expect(info).toHaveBeenCalledWith(expect.stringContaining('second factor'), { userId: 1 });
   });
 
+  it('ends the sessions but keeps the API tokens: an integration outlives the owner losing a device', async () => {
+    const { run, end } = setup();
+    expect(await run(['ada@example.com'])).toBe(0);
+    expect(end).toHaveBeenCalledWith(1, { accessTokens: false });
+  });
+
   it('exits 1 for an unknown identifier and refuses none as a wrong call (exit 2), and changes nothing', async () => {
     const { run, lines, end, removeAll, state } = setup();
     expect(await run(['nobody@example.com'])).toBe(1);

@@ -9,6 +9,7 @@ import type { AuthConfig } from './config.ts';
 import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
 import type { EmailChangeStore } from './email-changes.ts';
 import type { PasswordHash } from './hashing.ts';
+import { forgetResetLinks, type PasswordResetTokenStore } from './password-reset.ts';
 import type { SignInStore } from './sign-ins.ts';
 import type { AccessTokenStore } from './tokens.ts';
 import { factorSources, NoTwoFactorState, type TwoFactorState } from './two-factor/state.ts';
@@ -38,10 +39,12 @@ export class NewPassword {
   readonly #endings: SessionEndings | undefined;
   readonly #factors: (() => { readonly state: TwoFactorState; readonly events: EventDispatcher }) | undefined;
   readonly #changes: (() => EmailChangeStore | undefined) | undefined;
+  readonly #resets: (() => PasswordResetTokenStore) | undefined;
   #warnedUnknownVerification = false;
 
   /**
    * @internal Built by the container. `changes` hands back the change-of-address store the app bound, or `undefined`: a new password drops the account's pending change.
+   * `resets` hands back the password-reset store: a new password deletes the account's reset link.
    */
   constructor(
     tokens: () => AccessTokenStore,
@@ -52,7 +55,9 @@ export class NewPassword {
     endings?: SessionEndings,
     factors?: () => { readonly state: TwoFactorState; readonly events: EventDispatcher },
     changes?: () => EmailChangeStore | undefined,
+    resets?: () => PasswordResetTokenStore,
   ) {
+    this.#resets = resets;
     this.#changes = changes;
     this.#factors = factors;
     this.#endings = endings;
@@ -122,6 +127,9 @@ export class NewPassword {
         if (typeof stored.sessionKey !== 'string' || stored.sessionKey === previous) throw keyNotStored('NewPassword');
         if (guarded) throw new AccountClaimLost('The sessions of the account ended before its password was changed.');
       }
+      // A link mailed before the new password (to a mailbox a thief read) must not set another one.
+      const resets = this.#resets?.();
+      if (resets) await forgetResetLinks(resets, stored?.user ?? user ?? {});
       return revoked;
     };
     const revokeTokens = this.#config.revokeTokensOnPasswordChange || unconfirmed;

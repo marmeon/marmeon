@@ -213,6 +213,8 @@ The [API tokens](api-tokens.md#pruning-tokens) page describes the command.
 
 ## A store of your own
 
+A new password calls `forget()` of the store for the account, in the transaction of the new hash, so a store of your own that fails fails the password change.
+
 The broker keeps its tokens in a `PasswordResetTokenStore`, by default the `password_reset_tokens` table. To keep them elsewhere,
 bind your own in a provider. It extends the abstract class (see [your own stores](authentication.md#your-own-stores)) and implements
 every method:
@@ -231,7 +233,7 @@ abstract class PasswordResetTokenStore {
 returns `ok` only for the current, fresh token of the address, and uses it up in the same step; every other case is one `err` of
 kind `invalid-token`. A store that deletes an expired token before it answers must return `commitAnyway(err(…))`, so the deletion
 survives a [transaction that returns the err](transactions.md#returning-an-err). Store a hash of the token, never the token.
-`forgetEveryone()` deletes every token in one statement and returns how many: [ending every session of every account](authentication.md#ending-every-session-of-every-account) calls it.
+The store keys a link by the address `createToken(email)` was given, so pass it trimmed and in lower case, as the starter kit's `SendPasswordResetLinkRequest` does: ending a user's sessions and a new password call `forget()` with that form. `forgetEveryone()` deletes every token in one statement and returns how many: [ending every session of every account](authentication.md#ending-every-session-of-every-account) calls it.
 
 A `password_reset_tokens` table of your own needs what the starter kit's migration gives it: `email` as its primary key, so an
 address never has two rows, and `token_hash` as a 64-character `secret()` column.

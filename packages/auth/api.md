@@ -53,7 +53,9 @@ export declare abstract class AccessTokenStore {
 // AccountSessions
 export declare class AccountSessions {
     #private;
-    end(userId: AuthUserId): Promise<Result<EndedSessions, {
+    end(userId: AuthUserId, options?: {
+        readonly accessTokens?: boolean;
+    }): Promise<Result<EndedSessions, {
         readonly kind: 'missing';
     }>>;
     endEveryone({ accessTokens, resetTokens }?: {
@@ -376,6 +378,7 @@ export declare class EmailVerification {
 // EndedSessions
 export interface EndedSessions {
     readonly removed: number;
+    readonly accessTokens: number;
 }
 // EverySessionEnded
 export declare class EverySessionEnded {
@@ -1727,8 +1730,9 @@ marmeon auth:end-all-sessions --force [--keep-api-tokens] [--keep-reset-tokens]
 --keep-reset-tokens (boolean)
 --reset-tokens (boolean)
 // auth:end-sessions
-marmeon auth:end-sessions <identifier> --force
+marmeon auth:end-sessions <identifier> --force [--keep-api-tokens]
 --force (boolean)
+--keep-api-tokens (boolean)
 // auth:prune-tokens
 marmeon auth:prune-tokens [--hours=0]
 --hours (string)

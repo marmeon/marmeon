@@ -61,6 +61,6 @@ describe('the operator commands built by the container', () => {
   it('auth:end-sessions ends the sessions of a known account', async () => {
     const { container, lines, input } = await boot();
     expect(await build(container, EndSessionsCommand).handle(input(['ada@example.com']))).toBe(0);
-    expect(lines).toEqual([expect.stringContaining('of ada@example.com;')]);
+    expect(lines).toEqual([expect.stringContaining('of ada@example.com;'), 'Kept: second factors, passkeys']);
   });
 });

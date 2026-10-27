@@ -591,7 +591,7 @@ The counts live in the app's `RateLimiter`, so signing in needs `@marmeon/cache`
 the hash is not part of the fingerprint a session keeps, so this session is bound to the new key and stays signed in. Every other session ends at its
 next request, every other sign-in of the user is deleted and this device's remember-me token is taken off, and `PasswordChanged` is dispatched. With
 `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE=true`, every API token of the user is revoked as well, in the same transaction as the new
-hash, and the log says how many.
+hash, and the log says how many. A new password also deletes the account's password-reset link, so a link mailed before it cannot set another one.
 
 `updatePassword()` does not check the current password itself, but it throws without a recent confirmation, a password or a passkey
 (`passwordRecentlyConfirmed()`, as `endSignIn()` does): a stolen session cookie behind a route with only `authenticate()` cannot
@@ -847,7 +847,7 @@ and leaves the ending to the next page request. The account's open live streams 
 > `updatePassword()` and the password reset do), or call `AccountSessions.end()` after it. Raising the `HASH_*` costs signs nobody out;
 > to end every sign-in, run `marmeon auth:end-all-sessions --force`.
 
-`AccountSessions` of `@marmeon/auth` ends every session of an account, and every remember-me cookie with them. Use it after an
+`AccountSessions` of `@marmeon/auth` ends every session of an account, and every remember-me cookie, API token and reset link with them. Use it after an
 incident, from a command, a job or an admin controller. Put the route behind `authenticate()` and decide who may call it with `authorize(can(…))`, such as with a policy of your own:
 
 ```ts title="modules/admin/routes.ts"
@@ -877,13 +877,24 @@ export class EndSessionsController extends Controller {
 ```
 
 `end(id)` answers `missing` for an id that is no account (and for one that is not a valid id, such as `NaN` or an empty
-string), and writes nothing then. Otherwise it goes in three steps, in this order:
+string), and writes nothing then. Otherwise it goes in four steps, in this order:
 
 1. It ends every sign-in of the account, remember-me tokens with them, so no cookie signs in again, and a remember-me sign-in that is running
    finds its token gone.
 2. It stores a new session key with `updateSessionKey()` of your `UserProvider`. The fingerprint of every session changes, so each
    one ends at its next request, with every driver.
 3. It deletes the sessions a store can find at once (only `database`, by its `user_id` column) and returns how many: `removed`.
+4. It revokes the account's API tokens and returns how many: `accessTokens`; then it deletes the account's password-reset link and its pending change of address. The reset store
+   does not say whether a link existed, so the result has no count for it.
+
+| After `end(id)` | |
+| --- | --- |
+| Ended | sessions, sign-ins, remember-me tokens, API tokens (not with `{ accessTokens: false }` or `--keep-api-tokens`), the reset link, a pending change of address |
+| Kept | second factors, passkeys |
+
+A token that must outlive the call, such as an integration that keeps running after a sign-out, stays with `end(id, { accessTokens: false })`.
+The framework passes that itself where it ends sessions on a suspicion (a remember-me cookie used twice, a passkey that looks copied) and
+in `auth:reset-two-factor`, since a suspicion is no proof and an owner's integrations would stop for it. The second argument is an object; `end(id, false)` throws.
 
 The session key is what ends the sessions, so your `UserProvider` must store one: a provider without `updateSessionKey()` does not
 compile, and at run time `end()` throws error A5 before it changes anything, and names what to add. It also throws when `findById()` does not hand the new key back; the
@@ -893,7 +904,8 @@ A custom `SignInStore` needs `remembered(cookie)`, which says whether the token 
 remember-me cookie asks it right before it starts. A store without `endAll()` (JavaScript, a cast) makes `end()` throw error A6 before it changes anything.
 
 `@marmeon/auth` brings this as a command, `marmeon auth:end-sessions <identifier> --force` (the identifier as your sign-in form normalizes it; the account is found by `UserProvider.findForSignIn()`), for an operator who has no admin page.
-It prints how many stored sessions it deleted at once (the others end at their next request), requires `--force` in every environment,
+It prints how many stored sessions it deleted at once (the others end at their next request), how many API tokens it revoked and that it deleted the reset link,
+and what it kept (second factors and passkeys, and the API tokens with `--keep-api-tokens`). It requires `--force` in every environment,
 exits with 1 for an unknown identifier, and shows an error of the call instead of hiding it. The password still signs in, so change it first when it may be known.
 
 `UserSessions` of `@marmeon/session` is the low-level variant, and deleting an account needs it. The starter kit's

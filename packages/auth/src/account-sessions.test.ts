@@ -125,7 +125,7 @@ describe('AccountSessions.end()', () => {
     expect(cookie).toBeDefined();
     expect((await laptop.send('/me')).status, 'before').toBe(200);
 
-    expect(await accounts.end(1)).toEqual(ok({ removed: 0 }));
+    expect(await accounts.end(1)).toEqual(ok({ removed: 0, accessTokens: 0 }));
     expect((await laptop.send('/me')).status).toBe(401);
     expect((await phone.send('/me')).status).toBe(401);
     expect(await rememberWho(browser, cookie)).toEqual({ id: null });
@@ -139,7 +139,7 @@ describe('AccountSessions.end()', () => {
     const { browser, accounts } = await boot(users, 'database');
     await browser().send('/as/1', { method: 'POST' });
     await browser().send('/as/1', { method: 'POST' });
-    expect(await accounts.end(1)).toEqual(ok({ removed: 2 }));
+    expect(await accounts.end(1)).toEqual(ok({ removed: 2, accessTokens: 0 }));
   });
 
   it('answers missing for an id that is no account, and writes nothing', async () => {
@@ -179,7 +179,7 @@ describe('AccountSessions.end()', () => {
     users.after = async () => {
       expect((await attacker.send('/end-other-sessions', { method: 'POST' })).status).toBe(200);
     };
-    expect(await accounts.end(1)).toEqual(ok({ removed: 0 }));
+    expect(await accounts.end(1)).toEqual(ok({ removed: 0, accessTokens: 0 }));
     expect((await attacker.send('/me')).status).toBe(401);
     expect(await rememberWho(browser, attacker.jar.get('marmeon_remember') ?? 'none')).toEqual({ id: null });
   });

@@ -10,13 +10,14 @@ const noAccount = (identifier: string) => `No account has the identifier ${ident
  * `marmeon auth:end-sessions <identifier> --force`: signs an account out everywhere, every browser and every "keep me signed in" cookie, for
  * a lost device or a suspected theft. Whoever holds the password signs in again; change it first when it may be known. The account is
  * found by `UserProvider.findForSignIn()` with the identifier as the sign-in form normalizes it (usually the e-mail, lower case). `--force`
- * in every environment, since it cannot be undone. Through `AccountSessions.end()`, see `docs/authentication.md#ending-every-session-of-a-user`.
+ * in every environment, since it cannot be undone. It also revokes the account's API tokens and deletes its password-reset link;
+ * `--keep-api-tokens` keeps the tokens. Through `AccountSessions.end()`, see `docs/authentication.md#ending-every-session-of-a-user`.
  */
 export class EndSessionsCommand {
   static command = 'auth:end-sessions';
   static description = 'End every session and remember-me cookie of an account (a lost device, a suspected theft)';
-  static usage = '<identifier> --force';
-  static options = { force: { type: 'boolean' } } as const;
+  static usage = '<identifier> --force [--keep-api-tokens]';
+  static options = { force: { type: 'boolean' }, 'keep-api-tokens': { type: 'boolean' } } as const;
   // Annotated: the declaration then names `Key` instead of spelling out the app's user type.
   static inject: readonly Key[] = [UserProvider, AccountSessions, Logger];
 
@@ -47,14 +48,20 @@ export class EndSessionsCommand {
     }
     const id = idOf(found.user);
     // A failure is not caught: the operator has to see that some sessions may still stand.
-    const ended = await this.#accounts.end(id);
+    const keepTokens = options['keep-api-tokens'] === true;
+    const ended = await this.#accounts.end(id, { accessTokens: !keepTokens });
     if (!ended.ok) {
       // Only a race: the account was deleted after findForSignIn().
       output.error(noAccount(identifier));
       return 1;
     }
     this.#logger.info('Ended every session of an account at the operator\'s request', { userId: id });
-    output.success(`Ended every session and remember-me cookie of ${identifier}; ${ended.value.removed} stored sessions were deleted at once, the others end at their next request.`);
+    const { removed, accessTokens } = ended.value;
+    output.success(
+      `Ended every session and remember-me cookie of ${identifier}; ${removed} stored sessions were deleted at once, the others end at their next request. ` +
+        `Revoked ${accessTokens} API tokens and deleted the password-reset link, if there was one.`,
+    );
+    output.line(`Kept: second factors, passkeys${keepTokens ? ', API tokens' : ''}`);
     return 0;
   }
 }

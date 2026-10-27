@@ -17,6 +17,7 @@ import {
   Hasher,
   SignedIn,
   PasskeyCloneSuspected,
+  AccessTokenStore,
   PasskeyRegistered,
   PasskeyRemoved,
   PasskeySignInFailed,
@@ -1851,7 +1852,10 @@ describe('Passkeys: ending sessions', () => {
     const seen: { signIns: number; key: string | undefined }[] = [];
     whileHandling = async () => void seen.push({ signIns: (await signInRows(booted)).length, key: booted.users.keys.get(ada.id) });
     const keyBefore = booted.users.keys.get(ada.id);
+    const tokens = booted.application.container.make(AccessTokenStore);
+    const apiToken = await tokens.create(ada.id, 'ci', { abilities: ['*'], expiresIn: null });
     expect(await stale.pk('sign-in', { response })).toEqual({ ok: false, kind: 'clone-suspected' });
+    expect(await tokens.find(apiToken.plainText), 'an integration outlives a suspected clone').toBeDefined();
     expect(events.filter((event) => event instanceof PasskeyCloneSuspected)).toHaveLength(1);
     expect(seen, 'the event finds the sessions already ended').toHaveLength(1);
     expect(seen[0]).toMatchObject({ signIns: 0 });

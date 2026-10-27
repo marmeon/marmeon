@@ -513,7 +513,7 @@ export class Passkeys {
   async #endSessionsOfClone(record: PasskeyRecord): Promise<void> {
     const end = async () => {
       try {
-        const ended = await this.#accountSessions.end(record.userId as never);
+        const ended = await this.#accountSessions.end(record.userId as never, { accessTokens: false });
         if (!ended.ok) this.#logger.warn('A passkey looked copied, but its account is gone, so no sessions were ended', { user: record.userId, passkey: record.id });
       } catch (error) {
         this.#logger.error('A passkey looked copied and was suspended, but the sessions of its account could not be ended', { user: record.userId, passkey: record.id, error: error instanceof Error ? error.message : String(error) });

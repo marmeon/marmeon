@@ -49,7 +49,19 @@ class WhoController extends Controller {
   }
 }
 
+class ScopeController extends Controller {
+  readonly #auth: Auth;
+  constructor(auth: Auth) {
+    super();
+    this.#auth = auth;
+  }
+  async handle() {
+    return this.#auth.passwordCheckScope();
+  }
+}
+
 const routes = openRoutes((Route) => {
+  Route.get('/scope', ScopeController);
   Route.post('/login', LoginController);
   Route.get('/who', WhoController);
 });
@@ -242,6 +254,19 @@ describe('the absolute lifetime of a sign-in', () => {
     expect(b.jar.get('marmeon_remember')).toBe(cookie);
     expect(await b.stored()).toEqual(stored);
     expect(await b.who()).toEqual({ id: 1, viaRemember: true }); // the page's request signs in, with the token still unused
+  });
+
+  it('counts the password checks of a read-only request under a hash of its session id, never the id', async () => {
+    const { browser, application } = await boot();
+    const b = browser();
+    await signIn(b);
+    await b.edit((data) => delete data[AUTH_SESSION_KEYS.throttleKey]); // a session from before the key existed
+    const id = await application.container.make(Encrypter).decrypt(decodeURIComponent(b.jar.get('marmeon_session')!), 'cookie:marmeon_session');
+    const island = { [PAGE_HEADER]: PROTOCOL_VERSION, 'x-marmeon-region': 'island' };
+    const scope = (await (await b.send('/scope', { headers: island })).json()) as { session: string };
+    expect(scope.session).toMatch(/^[\w-]{22}$/);
+    expect(sessionKey(id).includes(scope.session) || scope.session.includes(sessionKey(id))).toBe(false);
+    expect(scope.session).not.toBe(sessionKey(id));
   });
 
   it('refuses 721 hours at boot and defaults to 24', async () => {

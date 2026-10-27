@@ -5,6 +5,7 @@ import { withCode } from '@marmeon/core/internal';
 import { ClientHistory, ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
+import { sessionScope } from '@marmeon/session/internal';
 import { ANNOUNCE_ENDED, AccountSessions, missingSessionKeyMethod, notABoolean, passwordHashWritten, rotateSessionKey } from './account-sessions.ts';
 import { CLOCK_SKEW_SECONDS } from './clock-skew.ts';
 import { AuthConfig, rememberCookieName } from './config.ts';
@@ -434,7 +435,7 @@ export class Auth {
 
   /**
    * Whose password checks these are, for `takePasswordCheck()`: this sign-in's own key, and whether it began with a typed password.
-   * A session without a key gets one now; on a read-only request it is counted under the session id, with the account's cap.
+   * A session without a key gets one now; on a read-only request it is counted under a hash of the session id, with the account's cap.
    * Throws without a started session: a password check needs a signed-in user.
    */
   passwordCheckScope(): PasswordCheckScope {
@@ -443,7 +444,7 @@ export class Auth {
     let key: string;
     if (typeof stored === 'string') key = stored;
     else {
-      if (this.#session.readOnly) return { session: this.#session.id, typed: false };
+      if (this.#session.readOnly) return { session: sessionScope(this.#session.id), typed: false };
       key = randomBytes(16).toString('base64url');
       writeAuth(this.#session, 'throttleKey', key);
     }
@@ -939,7 +940,7 @@ export class Auth {
     const end = async () => {
       let sessionsEnded = false;
       try {
-        sessionsEnded = (await this.#accountSessions.end(userId as AuthUserId)).ok;
+        sessionsEnded = (await this.#accountSessions.end(userId as AuthUserId, { accessTokens: false })).ok;
       } catch (error) {
         this.#logger.error('A rotated remember-me token was used again, but the sessions of the user could not be ended', {
           user: userId,

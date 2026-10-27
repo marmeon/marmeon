@@ -56,6 +56,19 @@ export abstract class PasswordResetTokenStore {
   abstract forgetEveryone(): Promise<number>;
 }
 
+/**
+ * @internal
+ * Deletes the reset link of `user`'s account, under the address as stored and as the sign-in form normalizes it (`createToken()` is
+ * called with the latter). Nothing for an account without an address. The contract cannot tell whether a link existed.
+ */
+export async function forgetResetLinks(store: PasswordResetTokenStore, user: object): Promise<void> {
+  const email = (user as { email?: unknown }).email;
+  if (typeof email !== 'string' || email === '') return;
+  await store.forget(email);
+  const normalized = email.trim().toLowerCase();
+  if (normalized !== email) await store.forget(normalized);
+}
+
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 /** The default {@link PasswordResetTokenStore}, on the app's `password_reset_tokens` table. */
@@ -154,7 +167,7 @@ export class PasswordBroker {
   }
 
   /**
-   * A token for `email` (normalized like the login), or an `err` of kind `unavailable`. There is one kind for an unknown e-mail and for
+   * A token for `email` (trimmed and lower-case, as the starter kit's `SendPasswordResetLinkRequest` makes it: the store keys links by it, and ending sessions or a new password deletes the link under that form), or an `err` of kind `unavailable`. There is one kind for an unknown e-mail and for
    * one within `AUTH_RESET_THROTTLE_SECONDS` of the last token, so the answer never tells whether an account exists.
    */
   async createToken(email: string): Promise<Result<{ user: AuthUser; token: string }, { readonly kind: 'unavailable' }>> {

@@ -188,7 +188,7 @@ export const TOKEN_ABILITIES = ['users:read', 'notes:read', 'notes:write'] as co
 for such a request, the same as for a token that does not exist.
 
 A token stays valid until it expires or is revoked. A user who thinks a token leaked revokes it on the tokens page. When an account
-is deleted, its tokens go with it. "Sign out other devices" leaves the tokens as they are.
+is deleted, its tokens go with it. "Sign out other devices" leaves the tokens as they are; `AccountSessions.end()` and `marmeon auth:end-sessions` revoke them unless told otherwise ([ending every session of a user](authentication.md#ending-every-session-of-a-user)).
 
 ### Revoking every token with a new password
 
