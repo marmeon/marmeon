@@ -397,7 +397,7 @@ describe('schema metadata, unit', () => {
     };
     const driver = new MarmeonDriver(
       { init: async () => {}, acquireConnection: async () => connection, releaseConnection: async () => {}, beginTransaction: async () => {}, commitTransaction: async () => {}, rollbackTransaction: async () => {}, destroy: async () => {} },
-      { name: 'default', target: 'fake', metadata },
+      { name: 'default', driver: 'sqlite', target: 'fake', metadata },
     );
     const acquired = await driver.acquireConnection();
     const loaded = sent.length;
@@ -447,7 +447,7 @@ describe('schema metadata, unit', () => {
     };
     const driver = new MarmeonDriver(
       { init: async () => {}, acquireConnection: async () => connection, releaseConnection: async () => {}, beginTransaction: async () => {}, commitTransaction: async () => {}, rollbackTransaction: async () => {}, destroy: async () => {} },
-      { name: 'default', target: 'fake', metadata },
+      { name: 'default', driver: 'sqlite', target: 'fake', metadata },
     );
     const acquired = await driver.acquireConnection();
     await driver.beginTransaction(acquired, {});
@@ -476,7 +476,7 @@ describe('schema metadata, unit', () => {
     const connection = fake({ sql: ddl.sql, gate: slow });
     const driver = new MarmeonDriver(
       { init: async () => {}, acquireConnection: async () => connection, releaseConnection: async () => {}, beginTransaction: async () => {}, commitTransaction: async () => {}, rollbackTransaction: async () => {}, destroy: async () => {} },
-      { name: 'default', target: 'fake', metadata },
+      { name: 'default', driver: 'sqlite', target: 'fake', metadata },
     );
     const acquired = await driver.acquireConnection();
     const running = acquired.executeQuery(ddl);

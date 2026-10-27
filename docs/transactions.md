@@ -113,6 +113,12 @@ await this.#connections.transaction(async () => {
 });
 ```
 
+On Postgres, a statement that fails aborts the transaction it runs in. Catch the error outside the nested `transaction()`, never
+inside it; a transaction whose error was caught inside it rolls back and throws `TransactionError` (D24), and the transaction around
+a savepoint can go on. Use `tryInsert()` where a taken value is expected. A savepoint you roll back yourself has to be a statement
+of its own that starts with `rollback to`: a recovery behind a comment or after another statement in the same query is not
+recognized, and the commit still throws D24.
+
 Open nested transactions one after the other. Several at once, such as `transaction()` calls in a `Promise.all`, would share one
 connection, so the second one throws:
 
