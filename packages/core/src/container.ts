@@ -89,6 +89,7 @@ export class Container implements Resolver {
   readonly #warned = new Map<Concrete, InjectionWarning[]>();
   readonly #warningListeners = new Set<(warning: InjectionWarning) => void>();
 
+  /** @internal Made by the application, `createScope()` and the command line. */
   constructor(parent?: Container) {
     this.#parent = parent;
   }
@@ -98,6 +99,7 @@ export class Container implements Resolver {
     return new Container(this);
   }
 
+  /** @internal Read by the framework. */
   get isScope(): boolean {
     return this.#parent !== undefined;
   }

@@ -41,7 +41,6 @@ export declare class RedisConnections {
     get(name?: string): RedisConnection;
     options(name?: string): RedisConnectionOptions;
     names(): string[];
-    inUse(): string[];
     verify(): Promise<void>;
     close(): Promise<void>;
 }

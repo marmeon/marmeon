@@ -21,7 +21,7 @@ const DEMO_INTERNAL = `@marmeon/demo${INTERNAL}`;
 const CONSUMER = [{ path: 'packages/other/src/c.ts', text: `import { c } from '${DEMO_INTERNAL}';` }];
 const NO_INTERNAL = { exceptions: {} };
 const NO_SPANS = { exceptions: {} };
-const NO_MEMBERS = { exceptions: {}, pending: [] };
+const NO_MEMBERS = { exceptions: {} };
 const runApi = (root: string, options: NonNullable<Parameters<typeof runApiWithLists>[1]> = {}) => runApiWithLists(root, { names: NO_NAMES, spans: NO_SPANS, internal: NO_INTERNAL, members: NO_MEMBERS, files: CONSUMER, ...options });
 
 /** Writes `dist/<name>` files into a fresh package; `exports` maps subpaths to their `.d.ts` under `dist/`. */
@@ -1402,17 +1402,16 @@ describe('constructors and members that only their own package uses', () => {
   });
 
   it('suppresses a member, a class or an entry that stands in a list', () => {
-    const pending = ['@marmeon/demo Box.open', '@marmeon/demo Box.close'];
-    expect(members(CLASSES, own, { pending })).toEqual(['Box.constructor', 'Box.make', 'Box.size'].map(nowhere));
+    expect(members(CLASSES, own, { exceptions: { '@marmeon/demo Box.open': 'x', '@marmeon/demo Box.close': 'y' } })).toEqual(['Box.constructor', 'Box.make', 'Box.size'].map(nowhere));
     expect(members(CLASSES, own, { exceptions: { '@marmeon/demo Box.*': 'a base class' } })).toEqual([]);
     expect(members(CLASSES, own, { exceptions: { '@marmeon/demo *': 'the contract of an adapter' } })).toEqual([]);
   });
 
   it('names a listed line that matches nothing any more', () => {
     const sources = { 'docs/box.md': '`box.open()` `box.close()` `box.size` `Box.make()` `new Box()`' };
-    expect(members(CLASSES, sources, { pending: ['@marmeon/demo Box.open'], exceptions: { '@marmeon/demo Gone.*': 'y' } })).toEqual([
+    expect(members(CLASSES, sources, { exceptions: { '@marmeon/demo Gone.*': 'y', '@marmeon/demo Box.open': 'x' } })).toEqual([
       '@marmeon/demo Gone.* is listed in MEMBER_EXCEPTIONS but follows the rule — delete the line',
-      '@marmeon/demo Box.open is listed in MEMBER_PENDING but follows the rule — delete the line',
+      '@marmeon/demo Box.open is listed in MEMBER_EXCEPTIONS but follows the rule — delete the line',
     ]);
   });
 

@@ -220,7 +220,6 @@ export declare class TemporaryUpload {
     readonly name: string;
     readonly size: number;
     readonly mime: string;
-    readonly extension: string;
     store(disk: Disk, directory?: string): Promise<string>;
     toJSON(): undefined;
 }

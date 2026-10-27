@@ -2,7 +2,6 @@ export { describeAccess, everyone, RouteAccessError } from './access.ts';
 export type { AccessCheck } from './access.ts';
 export { Route } from './route.ts';
 export { RouteDefinition } from './route-definition.ts';
-export type { RouteBlocking } from './route-definition.ts';
 export { Router, defineRoutes } from './router.ts';
 export type { LoadOptions, PageQuery, ResponseContext, RouteDefinitions, RouteInterceptor } from './router.ts';
 export { GLOBAL, MiddlewareGroups, MiddlewarePriority } from './middleware-groups.ts';

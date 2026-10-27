@@ -88,12 +88,13 @@ export class Session {
     this.#codec = codec;
   }
 
+  /** @internal Whether the session was started; read by the auth and page-protocol code. */
   get started(): boolean {
     return this.#started;
   }
 
   /**
-   * Whether this request may not change the session — an island's (`StartSession` locks it). Writes then throw in
+   * @internal Whether this request may not change the session — an island's (`StartSession` locks it). Writes then throw in
    * development and are dropped in production; the session is never saved. Framework code that would write as a side
    * effect (a remember-me sign-in, the page a guest wanted) skips that instead.
    */
@@ -334,7 +335,7 @@ export class Session {
   }
 
   /**
-   * Whether `save()` writes this session (and `StartSession` sends its cookie). Always for a session that came from the
+   * @internal Whether `save()` writes this session (and `StartSession` sends its cookie). Always for a session that came from the
    * store. A NEW session only once something is written: data, flash messages or errors (a failed form), a sign-in — or
    * something bound to it went out: its CSRF token handed out explicitly (`token()`), a live subscription (`persist()`). A
    * request that leaves nothing — a guest's page, a health check, an API call, a bot's redirect, a JSON endpoint that
@@ -347,7 +348,7 @@ export class Session {
   }
 
   /**
-   * Whether the session outlives this request: it came from the store, or this request keeps it (`persists`). For a read-only
+   * Whether the session outlives this request: it came from the store, or this request keeps it (something was written or handed out). For a read-only
    * request (an island, a live stream, an upload) — which never keeps a new one — whether the session it reads exists.
    */
   get exists(): boolean {
@@ -355,7 +356,7 @@ export class Session {
     return this.#loaded || (this.#permit === undefined && this.persists);
   }
 
-  /** A new CSRF token now — the old one stops matching (sign-in and sign-out do it through `regenerate()`). */
+  /** @internal A new CSRF token now — the old one stops matching (sign-in and sign-out do it through `regenerate()`). */
   regenerateToken(): void {
     const data = this.#ensureStarted();
     if (!this.#may('session.regenerateToken()')) return;

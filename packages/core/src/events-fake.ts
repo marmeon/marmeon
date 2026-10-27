@@ -35,7 +35,7 @@ export class EventFake implements EventObserver {
     return !this.isFaked(event);
   }
 
-  /** Whether the listeners of `event` are held back. */
+  /** @internal Whether the listeners of `event` are held back. */
   isFaked(event: object): boolean {
     if (this.#faked === 'all') return true;
     for (const Class of this.#faked) if (event instanceof Class) return true;

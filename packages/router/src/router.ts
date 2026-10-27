@@ -324,6 +324,7 @@ export class Router {
     return this;
   }
 
+  /** @internal Used by the redirect, signed-URL and test helpers. */
   findByName(name: string): RouteDefinition | undefined {
     return this.#byName.get(name);
   }

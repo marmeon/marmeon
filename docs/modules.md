@@ -80,7 +80,6 @@ the app's types](package-development.md#extending-the-apps-types)).
 | --- | --- |
 | `env` | The environment to check the configuration against, instead of `.env` and the real environment. For tests and scripts. |
 | `phase` | `'build'` registers the providers and boots none (what `marmeon build` needs). Default: `'run'`. |
-| `container` | The container to bind into. Default: a new one. |
 | `override` | A function that replaces bindings after every provider registered and before any boots. For tests. |
 
  `app.shutdown()` stops the app again: every provider's `shutdown()` runs and closes its pools and connections. Code

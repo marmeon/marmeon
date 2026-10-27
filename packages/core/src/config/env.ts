@@ -37,6 +37,7 @@ const text = <T>(message: EnvMessage<T>, value: T): string => (typeof message ==
 export class EnvBlock<T> implements EnvVariable<T> {
   readonly #spec: BlockSpec<T>;
 
+  /** @internal Made by the `e.*` builders. */
   constructor(spec: BlockSpec<T>) {
     this.#spec = spec;
   }
@@ -248,6 +249,7 @@ export class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> i
   #notes: ReadonlyMap<string, string> = new Map();
   readonly '~standard': StandardSchemaV1<In, Out>['~standard'];
 
+  /** @internal Made by `env()`. */
   constructor(fields: Fields, checks: readonly CrossCheck<Out>[] = []) {
     this.#fields = fields;
     this.#checks = checks;

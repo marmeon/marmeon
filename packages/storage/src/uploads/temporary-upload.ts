@@ -51,7 +51,7 @@ export class TemporaryUpload {
   readonly size: number;
   /** The type by its bytes (`image/png`) — `application/octet-stream` when it has no signature known here. */
   readonly mime: string;
-  /** The extension of that type (`png`) — what `store()` names the file with. */
+  /** @internal The extension of that type (`png`) — what `store()` names the file with. */
   readonly extension: string;
   readonly #source: UploadSource;
 

@@ -64,7 +64,7 @@ export interface CreateApplicationOptions {
    * app with (`static boots = 'build'` on a built-in command). Default: `run`.
    */
   phase?: ApplicationPhase;
-  /** The container to bind into. Default: a new one. */
+  /** @internal The container to bind into. Default: a new one. */
   container?: Container;
   /**
    * Runs after every provider registered and before any boots — the place to
@@ -228,7 +228,7 @@ const BOOT_OPTIONS = ['env', 'phase', 'container', 'override'] as const;
 
 /**
  * Creates and boots the application from its definition — the composition root of `bootstrap/app.ts`. The boot options
- * (`env`, `phase`, `container`, `override`) are what tests and scripts decide; the definition never carries them: one that
+ * (`env`, `phase`, `override`) are what tests and scripts decide; the definition never carries them: one that
  * does — also by a spread, which the types cannot see — is refused, so no test double or foreign environment ships.
  */
 export async function createApplication(definition: ApplicationDefinition, options: CreateApplicationOptions = {}): Promise<Application> {

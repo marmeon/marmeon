@@ -70,9 +70,7 @@ export type Constructor<T = unknown> = abstract new (...args: any[]) => T;
 // Container
 export declare class Container implements Resolver {
     #private;
-    constructor(parent?: Container);
     createScope(): Container;
-    get isScope(): boolean;
     bind<T, C extends Concrete<NoInfer<T>>>(key: Key<T>, target: Factory<NoInfer<T>> | (C & InjectCheck<C>)): this;
     singleton<C extends Concrete>(concrete: C & InjectCheck<C>): this;
     singleton<T, C extends Concrete<NoInfer<T>>>(key: Key<T>, target: Factory<NoInfer<T>> | (C & InjectCheck<C>)): this;
@@ -106,7 +104,6 @@ export type ContainerErrorReason = 'unbound' | 'scoped' | 'no-injection-list' | 
 export interface CreateApplicationOptions {
     env?: Readonly<Record<string, string | undefined>>;
     phase?: ApplicationPhase;
-    container?: Container;
     override?: (container: Container) => void;
 }
 // CurrentJob
@@ -170,7 +167,6 @@ export interface DurationParts {
 // type-only
 export declare class EnvBlock<T> implements EnvVariable<T> {
     #private;
-    constructor(spec: BlockSpec<T>);
     readonly '~env': (raw: string | undefined, name: string) => EnvRead<T>;
     check(test: (value: T) => boolean, message: EnvMessage<T>): this;
     required(message?: string): this;
@@ -199,7 +195,6 @@ export type EnvRead<T> = {
 export declare class EnvSchema<Out, In = Readonly<Record<string, string | undefined>>> implements StandardSchemaV1<In, Out> {
     #private;
     readonly '~standard': StandardSchemaV1<In, Out>['~standard'];
-    constructor(fields: Fields, checks?: readonly CrossCheck<Out>[]);
     check(test: (values: Out) => boolean, message: EnvMessage<Out>, variable: keyof Out & string): EnvSchema<Out, In>;
     renamed(from: string, to: keyof Out & string, options?: RenamedOptions): EnvSchema<Out, In>;
 }
@@ -279,8 +274,6 @@ export declare class EventRegistry {
     #private;
     listen<E extends EventClass, L>(event: E, listener: L & ListenerFor<E, NoInfer<L>>): this;
     add(bindings: readonly ListenerBinding[]): this;
-    listenersFor(event: object): ListenerBinding['listener'][];
-    bindingsFor(event: object): ListenerBinding[];
     all(): ListenerBinding[];
 }
 // Factory
@@ -668,12 +661,6 @@ interface BlockSpec<T> {
     readonly checks: readonly ((value: T, name: string) => string | undefined)[];
     readonly missing?: string | undefined;
 }
-// CrossCheck
-interface CrossCheck<Out> {
-    readonly variable: string;
-    readonly test: (values: Out) => boolean;
-    readonly message: EnvMessage<Out>;
-}
 // DOTENV_MARKER
 export declare const DOTENV_MARKER = "MARMEON_NODE_ENV_FROM_DOTENV";
 // Env
@@ -1042,9 +1029,7 @@ export type Constructor<T = unknown> = abstract new (...args: any[]) => T;
 // Container
 export declare class Container implements Resolver {
     #private;
-    constructor(parent?: Container);
     createScope(): Container;
-    get isScope(): boolean;
     bind<T, C extends Concrete<NoInfer<T>>>(key: Key<T>, target: Factory<NoInfer<T>> | (C & InjectCheck<C>)): this;
     singleton<C extends Concrete>(concrete: C & InjectCheck<C>): this;
     singleton<T, C extends Concrete<NoInfer<T>>>(key: Key<T>, target: Factory<NoInfer<T>> | (C & InjectCheck<C>)): this;
@@ -1299,7 +1284,6 @@ Types from other packages: none
 export declare class EventFake implements EventObserver {
     #private;
     observe(event: object): boolean;
-    isFaked(event: object): boolean;
     dispatched<E extends object>(Class: EventClass<E>, match?: EventMatch<E>): E[];
     assertDispatched<E extends object>(Class: EventClass<E>, match?: EventMatch<E>): this;
     assertDispatchedTimes<E extends object>(Class: EventClass<E>, times: number, match?: EventMatch<E>): this;

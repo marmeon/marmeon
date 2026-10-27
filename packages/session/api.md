@@ -25,8 +25,6 @@ export declare const SESSION_USER_KEY = "_auth_id";
 // Session
 export declare class Session {
     #private;
-    get started(): boolean;
-    get readOnly(): boolean;
     get id(): string;
     get<K extends string>(key: K): Value<K> | undefined;
     has(key: string): boolean;
@@ -43,9 +41,7 @@ export declare class Session {
     old(key: string): unknown;
     token(): string;
     persist(): void;
-    get persists(): boolean;
     get exists(): boolean;
-    regenerateToken(): void;
     regenerate(): void;
     invalidate(): void;
 }
