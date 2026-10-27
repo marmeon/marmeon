@@ -162,6 +162,60 @@ describe('RedirectResult', () => {
     expect(flashed._old_input).toEqual({ email: 'ada@example.com', zip_code: '10115', footprint: 'f', rootPath: '/', language_code: 'de', promoCode: 'P', postalCode: '10115', country_code: 'DE', coupon_code: 'SAVE', payment: { city: 'Berlin' } });
   });
 
+  it('keeps a long field and the short ones — and leaves out only a string that alone cannot fit in 64 KiB', () => {
+    const flashed: Record<string, unknown> = {};
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const long = 'x'.repeat(5000);
+    const input = { email: 'ada@example.com', message: long, list: ['a', 'z'.repeat(1024 * 1024)], nested: { note: 'n', big: 'b'.repeat(70_000) }, body: 'x'.repeat(8 * 1024 * 1024) };
+    new RedirectResult('/').withInput(input).toResponse(request('POST'), { routes: router, flasher: flasher });
+    expect(flashed._old_input).toEqual({ email: 'ada@example.com', message: long, list: ['a'], nested: { note: 'n' } });
+  });
+
+  it('leaves out a multi-byte string that alone exceeds 64 KiB as JSON, and keeps the short fields', () => {
+    const flashed: Record<string, unknown> = {};
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const input = { email: 'ada@example.com', euros: '€'.repeat(30_000), controls: '\u0001'.repeat(12_000) };
+    new RedirectResult('/').withInput(input).toResponse(request('POST'), { routes: router, flasher: flasher });
+    expect(flashed._old_input).toEqual({ email: 'ada@example.com' });
+  });
+
+  it('bounds the flashed errors to 64 KiB: all while they fit, else the first message per field, else the first fields', () => {
+    const flashed: Record<string, unknown> = {};
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const flash = (errors: Record<string, string[]>) => {
+      new RedirectResult('/').withErrors(errors).toResponse(request('POST'), { routes: router, flasher: flasher });
+      return flashed.errors as Record<string, string[]>;
+    };
+    const normal = { email: ['Required.', 'Must be an email.'], name: ['Required.'] };
+    expect(flash(normal)).toEqual(normal);
+    // 30,000 invalid items of one list: one field with thousands of messages.
+    const list = { tags: Array.from({ length: 30_000 }, (_, index) => `Item ${index} must be a string.`), other: ['Bad.', 'Worse.'] };
+    expect(flash(list)).toEqual({ tags: ['Item 0 must be a string.'], other: ['Bad.'] });
+    // Thousands of fields: the first ones stay, in order, within the cap.
+    const wide = Object.fromEntries(Array.from({ length: 5000 }, (_, index) => [`items.${index}`, ['Must be a string.', 'Again.']]));
+    const kept = flash(wide);
+    expect(Object.keys(kept).length).toBeGreaterThan(0);
+    expect(Object.keys(kept).length).toBeLessThan(5000);
+    expect(Object.keys(kept)[0]).toBe('items.0');
+    expect(JSON.stringify(kept).length).toBeLessThanOrEqual(65_536);
+  });
+
+  it('flashes no input at all above 64 KiB — and keeps the errors', () => {
+    const flashed: Record<string, unknown> = {};
+    const flasher = { flashData: (key: string, value: unknown) => (flashed[key] = value), pull: () => undefined, queueFlash: () => {}, takeFlash: () => [], hasFlash: () => false };
+    const input = Object.fromEntries(Array.from({ length: 70 }, (_, index) => [`field${index}`, 'v'.repeat(1000)]));
+    new RedirectResult('/').withInput(input).withErrors({ field0: ['Required.'] }).toResponse(request('POST'), { routes: router, flasher: flasher });
+    expect(flashed._old_input).toEqual({});
+    expect(flashed.errors).toEqual({ field0: ['Required.'] });
+    // Just below the cap everything stays; multi-byte text counts by its bytes.
+    const small = Object.fromEntries(Array.from({ length: 10 }, (_, index) => [`f${index}`, 'v'.repeat(1000)]));
+    new RedirectResult('/').withInput(small).toResponse(request('POST'), { routes: router, flasher: flasher });
+    expect(flashed._old_input).toEqual(small);
+    const wide = Object.fromEntries(Array.from({ length: 20 }, (_, index) => [`f${index}`, '€'.repeat(1500)]));
+    new RedirectResult('/').withInput(wide).toResponse(request('POST'), { routes: router, flasher: flasher });
+    expect(flashed._old_input).toEqual({});
+  });
+
   it('hides every clearly secret name the log redactor hides — the two lists name the same terms', () => {
     const secret = ['password', 'new_password', 'passcode', 'token', 'api_token', 'secret', 'client_secret', 'api_key', 'apiKey', 'signature'];
     expect(secret.filter((name) => !REDACTED_KEYS.test(name))).toEqual([]);
