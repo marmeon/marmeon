@@ -175,7 +175,7 @@ export class NotePublished {
 - **`static listener`** on the listener is its stable name, like `'auth.send-email-verification'` (lowercase words, a `.` after
   the module). The queued job carries this name and a worker finds the listener by it within the event. Never the class name:
   renaming the class, or a minifier, must not break the jobs that wait. Two listeners of one event cannot share a name.
-- **`static queue`** takes `queue`, `connection`, `delay`, `tries` and `backoff`. `delay` and `backoff` are seconds or a [`Duration`](time.md#spans-of-time); `backoff` is one value or a list with one per retry (`[10, { minutes: 1 }]`). Without `tries` a queued listener runs once.
+- **`static queue`** takes `queue`, `connection`, `delay`, `tries` and `backoff`. `delay` and `backoff` are seconds or a [`Duration`](time.md#spans-of-time); `backoff` is one value or a list with one per retry (`[10, { minutes: 1 }]`). Without `tries` a queued listener runs once. A queued listener has 60 seconds; for longer work, dispatch a job of its own with a `timeout`.
 
 `listen()` checks all of this when it compiles: an event without `static event` and `static schema`, a schema that is no JSON, a
 schema that wants a field the event lacks, and a `handle()` that takes the event instead of `EventPayload<typeof Event>` are type

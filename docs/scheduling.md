@@ -96,7 +96,7 @@ s.call(PruneDataExports).everyTenMinutes().withoutOverlapping().onOneServer().na
 
 ### Names
 
-A task's name appears in `schedule:list`, in `schedule:test`, in the log and in its locks. By default it is the command with its
+A task's name appears in `schedule:list`, in `schedule:test`, in the log, in traces and in its locks. Never pass a secret as an argument of a scheduled command: read it in the command. By default it is the command with its
 arguments, such as `queue:prune-failed --hours=168`, the job's `static job` or the class name. The arguments belong to the name,
 so the same command with other arguments is another task, with locks of its own. `.name()` sets another one. Give a class a
 name with its module in front, as above, so it stays unique across modules. `.description('…')` adds a line that `schedule:list` shows under the task, and prints as `description` in its `--json`.

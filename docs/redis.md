@@ -174,7 +174,7 @@ talks to it. The [health checks](health.md#liveness-and-readiness) page explains
 ## Time
 
 A key's expiry follows the clock of the Redis server, never the app's clock. `app.travel()` in a test therefore does not expire
-Redis keys. The [time](time.md) page explains the test clock.
+Redis keys. The [time](time.md) page explains the test clock. The queue is different: it works out its claims with the clock of the app, so the servers of a Redis queue need synchronised clocks as well (see [deployment](deployment.md#more-than-one-instance)).
 
 ## What is not supported
 

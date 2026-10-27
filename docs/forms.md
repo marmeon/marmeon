@@ -123,7 +123,7 @@ const form = useForm<StoreNoteController>({ title: '', body: '' });
 void form.post('/notes');
 ```
 
-`get`, `post`, `put`, `patch` and `delete` send it, and `submit(method, url)` takes the method. Live validation needs a route
+`useForm(initial)` returns a `FormHandle<StoreNoteController>`; type the prop of a component you hand the form to with it: `function NoteFields({ form }: { form: FormHandle<StoreNoteController> })`. `get`, `post`, `put`, `patch` and `delete` send it, and `submit(method, url)` takes the method. Live validation needs a route
 name, so this kind of form has no `validate` option.
 
 ## Forms without state

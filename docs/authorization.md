@@ -117,7 +117,7 @@ import type { Row } from '@marmeon/database';
 
 export class NotePolicy {
   before(user: AuthUser) {
-    if (user.email === 'admin@example.com') return true;
+    if (user.is_admin) return true;
   }
 
   update(user: AuthUser, note: Row<'notes'>) {
@@ -126,7 +126,7 @@ export class NotePolicy {
 }
 ```
 
-`before` is a hook, not an ability: `can()` and the gate do not accept it as one.
+`before` is a hook, not an ability: `can()` and the gate do not accept it as one. Decide by a column that holds the role, as `is_admin` does here. Never decide by an address: a user can change it.
 
 ## Authorizing requests
 

@@ -1,13 +1,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { EXPORT_EXCEPTIONS, EXPORT_PENDING, exportProblems, type ExportLists } from './api-exports.ts';
+import { EXPORT_EXCEPTIONS, exportProblems, type ExportLists } from './api-exports.ts';
 import { renderSnapshot, type ApiItem } from './api-snapshot.ts';
 import type { SourceFile } from './source-files.ts';
 import { tempDir } from './test/temp-dir.js';
 
 const ENTRY = '@marmeon/demo';
-const NONE: ExportLists = { exceptions: {}, pending: {} };
+const NONE: ExportLists = { exceptions: {} };
 const item = (name: string, text: string, section: ApiItem['section'] = 'stable'): ApiItem => ({ entry: ENTRY, section, name, text });
 const fn = (name: string) => item(name, `export declare function ${name}(): void;`);
 const constant = (name: string) => item(name, `export declare const ${name}: 1;`);
@@ -59,7 +59,7 @@ describe('exports only the framework uses', () => {
     mkdirSync(join(root, 'packages/other'), { recursive: true });
     writeFileSync(join(root, 'packages/other/api.md'), renderSnapshot('@marmeon/other', [{ entry: '@marmeon/other', section: 'stable', name: 'f', text: `export { f } from '${ENTRY}';` }, { entry: '@marmeon/other', section: 'stable', name: 'g', text: 'export declare function g(): void;' }], new Map()));
     const page = file('docs/a.md', "```ts\nimport { f } from '@marmeon/other';\n```");
-    expect(exportProblems(root, [page], { exceptions: {}, pending: { '@marmeon/other g': 'reason' } })).toEqual([]);
+    expect(exportProblems(root, [page], { exceptions: { '@marmeon/other g': 'reason' } })).toEqual([]);
     expect(exportProblems(root, [], NONE)).toEqual([nowhere('f'), '@marmeon/other g is used nowhere outside the framework (docs, apps, the kit) — mark it @internal, stop exporting it, or list it in EXPORT_EXCEPTIONS with the reason an app needs it; see `pnpm api:usage @marmeon/other --files`']);
   });
 
@@ -101,26 +101,24 @@ describe('exports only the framework uses', () => {
 
   it('suppresses a listed export, and `<entry> *` every export of an entry', () => {
     const items = [fn('a'), fn('b')];
-    expect(problems(items, [], { exceptions: { [`${ENTRY} a`]: 'reason' }, pending: {} })).toEqual([nowhere('b')]);
-    expect(problems(items, [], { exceptions: {}, pending: { [`${ENTRY} b`]: 'reason' } })).toEqual([nowhere('a')]);
-    expect(problems(items, [], { exceptions: { [`${ENTRY} *`]: 'reason' }, pending: {} })).toEqual([]);
+    expect(problems(items, [], { exceptions: { [`${ENTRY} a`]: 'reason' } })).toEqual([nowhere('b')]);
+    expect(problems(items, [], { exceptions: { [`${ENTRY} *`]: 'reason' } })).toEqual([]);
   });
 
-  it('reports a line of either list that follows the rule', () => {
+  it('reports a line of the list that follows the rule', () => {
     const files = [file('apps/web-app/src/a.ts', `import { used } from '${ENTRY}';`)];
-    const lists = { exceptions: { [`${ENTRY} used`]: 'reason', [`${ENTRY} gone`]: 'reason' }, pending: { [`${ENTRY} used`]: 'reason', '@marmeon/none *': 'reason' } };
+    const lists = { exceptions: { [`${ENTRY} used`]: 'reason', [`${ENTRY} gone`]: 'reason', '@marmeon/none *': 'reason' } };
     expect(problems([fn('used')], files, lists)).toEqual([
       `${ENTRY} used is listed in EXPORT_EXCEPTIONS but follows the rule — delete the line`,
       `${ENTRY} gone is listed in EXPORT_EXCEPTIONS but follows the rule — delete the line`,
-      `${ENTRY} used is listed in EXPORT_PENDING but follows the rule — delete the line`,
-      '@marmeon/none * is listed in EXPORT_PENDING but follows the rule — delete the line',
+      '@marmeon/none * is listed in EXPORT_EXCEPTIONS but follows the rule — delete the line',
     ]);
   });
 });
 
 describe('the lists', () => {
   it('name an entry and an export, or `*`, and give a reason', () => {
-    for (const [line, reason] of [...Object.entries(EXPORT_EXCEPTIONS), ...Object.entries(EXPORT_PENDING)]) {
+    for (const [line, reason] of Object.entries(EXPORT_EXCEPTIONS)) {
       expect(line).toMatch(/^@marmeon\/[\w/-]+ (?:\*|[\w$]+)$/);
       expect(reason.length).toBeGreaterThan(10);
     }

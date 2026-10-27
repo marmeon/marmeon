@@ -1,7 +1,8 @@
 /**
  * `@marmeon/react` — the React rendering layer on the UI-free client core `@marmeon/http/client`:
  * components, hooks, context, layouts, error boundaries and `<Head>`. Visits, history, caching, prefetching, polling
- * and the progress bar come from the core (import `Navigator`, `createPoll` … from there).
+ * and the progress bar come from the core (import `createPoll` and `progressBar` from `@marmeon/http/client`, `Navigator` from
+ * `@marmeon/http/client/adapter`).
  */
 export { useAlternates, useFeature, usePage, useRouter } from './app.tsx';
 // The progress bar (opt-in): `createMarmeonApp({ progress: progressBar({ delayMs: 250 }) })`.

@@ -217,8 +217,8 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /**
-   * The rows in batches of `size`, by their primary key — no offset: rows added or removed meanwhile neither repeat nor go missing. One query
-   * per batch; `query` narrows what is read (conditions, relations). See `docs/queries.md#reading`.
+   * The rows in batches of `size`, by their primary key — no offset: rows removed meanwhile do not make it skip others. A row added
+   * meanwhile comes at the end — or, when another transaction commits it later with a smaller key, not at all. One query per batch; `query` narrows what is read (conditions, relations). See `docs/queries.md#reading`.
    *
    * ```ts
    * for await (const users of this.chunk(500, (query) => query.where('email_verified_at', 'is', null))) …

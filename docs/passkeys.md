@@ -98,6 +98,8 @@ export class AuthServiceProvider implements ServiceProvider {
 passkey. The binding of `TwoFactorState` is what makes a registered passkey a factor: `combineFactors()` joins the authenticator app and
 the passkeys into one answer. Without it `registrationOptions()` throws, because a passkey that is never asked for would be no protection.
 
+`PASSKEYS_TABLE` and the row type `PasskeyTable` (`@marmeon/auth/passkeys`) name the table and its columns.
+
 To switch passkeys off again, remove the provider, `PasskeyStore` from `combineFactors()` and both imports of `@marmeon/auth/passkeys`.
 
 Because a registered passkey is a factor, an account that has one needs a second step after its password too. The first passkey of an

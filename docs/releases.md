@@ -154,7 +154,7 @@ The promise of a version covers the public API. These are part of it:
   prefix (`members_sort`). People bookmark and share these URLs. A key does not change its name or its meaning, and a value that
   was valid stays valid.
 - The field names of the JSON log line ([listed here](logging.md#the-fields-of-a-json-line)): `level`, `time`, `msg`, `appEnv`,
-  `requestId`, `job`, `jobId`, `attempt`, `task`, `trace_id`, `span_id` and `err` with its `type`, `message` and `stack`, for an error the app logs as `{ err: error }`. The fields the framework writes for its own errors (`exception`, `stack` and sometimes `message`) are not part of this set yet. Log
+  `requestId`, `job`, `jobId`, `attempt`, `task`, `trace_id`, `span_id`, `trace_flags` and `err` with its `type`, `message` and `stack`, for an error the app logs as `{ err: error }`. The fields the framework writes for its own errors (`exception`, `stack` and sometimes `message`) are not part of this set yet. Log
   shippers parse them, so the name and the meaning of a field stay; a new field is not a break. The text of a message is not part of it.
 - The health endpoints ([health.md](health.md#liveness-and-readiness)): the path `SERVER_HEALTH_PATH` names and `/ready` below it,
   their status codes (`200`, `503`), and the `status` of `/up/ready`: `ok`, `failing` or `draining`. The details a check adds

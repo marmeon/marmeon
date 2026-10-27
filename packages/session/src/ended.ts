@@ -2,7 +2,7 @@ import { hash } from 'node:crypto';
 
 /**
  * The scope of a session: a hash of its id — never the id, which is a secret. It changes with every sign-in and
- * sign-out (the id is regenerated) and tells nothing about the session it came from. Once props are kept under it, and live
+ * sign-out (the id is regenerated) and tells nothing about the session it came from. Once props derive their scope from it (with the page's locale), and live
  * subscriptions are signed for it. It is an unkeyed hash and stays on the server: whoever knows a session id can compute it, so it
  * proves nothing about who asks.
  */
