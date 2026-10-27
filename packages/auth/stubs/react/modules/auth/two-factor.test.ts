@@ -65,7 +65,7 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
     await app.withCookie(SESSION, cookie).get('/settings/two-factor/confirm').assertRedirect('/settings/two-factor');
   });
 
-  it('turning it on signs out the other devices and lists the API tokens without revoking them', async () => {
+  it('turning it on signs out the other devices and leaves the API tokens alone', async () => {
     const ada = await app.factory(UserFactory).create();
     const other = (await app.post('/login', credentialsOf(ada)).assertRedirect('/dashboard')).cookie(SESSION)!;
     await app.withCookie(SESSION, other).get('/dashboard').assertAuthenticated(ada);
@@ -79,7 +79,8 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
       .layering()
       .post('/settings/two-factor/confirm', { form: { code: twoFactorCode(setup.secret), password: 'password' } })
       .assertLayer('auth/RecoveryCodes');
-    expect(done.page()!.props.tokens).toEqual([expect.objectContaining({ name: 'CI' })]);
+    expect(done.page()!.props).not.toHaveProperty('tokens');
+    expect(done.page()!.props.signedOut).toBe(true);
     await app.withCookie(SESSION, other).get('/dashboard').assertRedirect('/login'); // the other device is signed out
     await app.withCookie(SESSION, done.cookie(SESSION) ?? cookie).get('/dashboard').assertOk(); // this one is not
     await app.assertDatabaseCount('personal_access_tokens', 1);
@@ -170,6 +171,7 @@ describe('two-factor authentication', { timeout: 30_000 }, () => {
     const { cookie, recoveryCodes } = await enable(ada);
     const again = await app.withCookie(SESSION, cookie).layering().post('/settings/two-factor/recovery-codes', { form: { password: 'password' } }).assertLayer('auth/RecoveryCodes');
     const fresh = again.page()!.props.codes as string[];
+    expect(again.page()!.props.signedOut).toBe(false);
     expect(fresh).toHaveLength(10);
     expect(fresh).not.toContain(recoveryCodes[0]);
     await app
