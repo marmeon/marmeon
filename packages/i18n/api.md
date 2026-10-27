@@ -50,6 +50,9 @@ export declare class I18nServiceProvider implements ServiceProvider {
         fallback: string;
         locales: string[] | undefined;
     }>[];
+    static publishes: {
+        lang: import("node:url").URL;
+    };
     register(container: Container): void;
     boot(app: Application): Promise<void>;
 }

@@ -168,4 +168,14 @@ describe('marmeon-stubs.json', () => {
     }
     expect(readdirSync(root)).not.toContain(STUB_MANIFEST);
   });
+
+  it('records the hash a file carries instead of hashing it, and refuses one that is no hash', () => {
+    const root = app();
+    const written = stubHash('what was written\n');
+    expect(recordStubSet(root, 'pkg:stubs', { ...set, files: [{ path: 'a.txt', stub: 'stubs/a.txt', sha256: written }, set.files[1]!] }).ok).toBe(true);
+    const read = readStubManifest(root);
+    expect(read.ok && read.value?.sets['pkg:stubs']?.files['a.txt']?.sha256).toBe(written);
+    expect(read.ok && read.value?.sets['pkg:stubs']?.files['sub/b.txt']?.sha256).toBe(stubHash('two\n'));
+    expect(recordStubSet(root, 'pkg:stubs', { ...set, files: [{ path: 'a.txt', stub: 'stubs/a.txt', sha256: 'nope' }] })).toMatchObject({ ok: false });
+  });
 });

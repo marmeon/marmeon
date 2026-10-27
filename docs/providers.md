@@ -59,10 +59,10 @@ reading it throws an error that names the variables. Read configuration in `boot
 [configuration](configuration.md#configuration-and-the-build) page explains why.
 
 The app builds each provider through the container, and every method is optional. A class listed as a provider without any of
-them, and without `static config`, `static health`, `static errorReporters`, `static solutions`, `static commands`, `static queueDrivers`, `static failedJobDrivers`, `static diskDrivers`, `static cacheDrivers`, `static mailDrivers`, `static checks` or `static migrations` from the list below, stops the start:
+them, and without `static config`, `static health`, `static errorReporters`, `static solutions`, `static commands`, `static queueDrivers`, `static failedJobDrivers`, `static diskDrivers`, `static cacheDrivers`, `static mailDrivers`, `static checks`, `static migrations` or `static publishes` from the list below, stops the start:
 
 ```text
-[marmeon:K9] NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static mailDrivers, static checks or static migrations.
+[marmeon:K9] NotesServiceProvider is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static mailDrivers, static checks, static migrations or static publishes.
 ```
 
 ## The order

@@ -93,6 +93,12 @@ everything around the placeholders, but not leave one out. Placeholders are fill
 and the result is plain text: render it as text, never as HTML. Only `lang/marmeon/` holds these files; a module named `marmeon`
 is refused.
 
+`marmeon publish @marmeon/i18n --only=lang` writes the framework's English and German texts into `lang/marmeon/` as a start: change what you need, delete what
+you keep, copy `en.ts` to `fr.ts` to translate. The files carry the `satisfies MessageOverrides<FrameworkTexts>` above, so the start is checked like
+any file of yours. A file that is already there stays as it is (the command says so) unless you pass `--force`, which replaces it; a link in its place is
+refused, and so is a `lang/marmeon` that is not a real directory. The files are recorded in `marmeon-stubs.json`. Without a package the command lists
+what is published and, at a terminal, asks. `--check` is for migrations only: the language files you published are yours.
+
 ## Messages
 
 A message is text with placeholders, in a subset of ICU's message format. It is parsed once and formatted with `Intl`:

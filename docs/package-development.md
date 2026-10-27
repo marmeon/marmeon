@@ -93,6 +93,7 @@ reads them, and are known once that package is installed.
 | `commands` | `readonly CommandClass[]` | `marmeon` | [Commands](#commands) |
 | `checks` | `readonly AppCheckClass[]` | `marmeon check` | [Checks](#checks) |
 | `migrations` | `{ from: URL, module: string }` | `marmeon publish` | [Declaring the migrations a package ships](#declaring-the-migrations-a-package-ships) |
+| `publishes` | `{ lang: URL }` | `marmeon publish` | [Declaring the files a package publishes](#declaring-the-files-a-package-publishes) |
 | `queueDrivers` | `Record<string, QueueDriverFactory>` | `@marmeon/queue` | [Drivers](drivers.md#bringing-a-driver) |
 | `failedJobDrivers` | `Record<string, FailedJobStoreFactory>` | `@marmeon/queue` | [Drivers](drivers.md#bringing-a-driver) |
 | `diskDrivers` | `Record<string, DiskDriverFactory>` | `@marmeon/storage` | [Drivers](drivers.md#bringing-a-driver) |
@@ -377,6 +378,28 @@ A package's code is not trusted, so the static is read strictly, once, and a wro
 
 List the directory in `files` of your `package.json`, so the stubs ship in the tarball; `pnpm pack:check` of this repository does
 that for the framework's packages.
+
+### Declaring the files a package publishes
+
+`static publishes` names directories of files `marmeon publish --only=<kind>` copies into an app. In this version only `@marmeon/i18n` publishes
+files, its language files, to `lang/marmeon/` (the target is fixed and is not the package's to choose):
+
+```ts
+export class I18nServiceProvider implements ServiceProvider {
+  static publishes = { lang: new URL('../stubs/lang', import.meta.url) };
+}
+```
+
+A package that declares `lang` and is not `@marmeon/i18n` (by its own `package.json`) is told so by a warning and publishes nothing. The
+declaration is read like the migrations' (assigned to the package that exports the provider and holds the directory), and refused with
+[D25](errors.md#server-error-codes) when:
+
+- `static publishes` is no object with only `lang`, or `lang` is no `file:` URL without host, query or fragment.
+- Its real path, after following symlinks, lies outside the package, is the package itself or is no directory.
+- A file in it is named otherwise than `<language tag>.ts` (`en.ts`, `pt-BR.ts`), is a symlink leading out of the package or no regular file, is larger than 1 MiB, is not UTF-8 or has no `export default`.
+- The directory holds more than 100 files, or none.
+
+List the directory in `files` of your `package.json`.
 
 ## Middleware
 

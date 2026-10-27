@@ -191,9 +191,9 @@ export const CLUSTER_WORKER = 'MARMEON_CLUSTER_WORKER';
 
 /**
  * The statics a package's provider lists drivers in — each service package adds its own through declaration merging —
- * `checks`, what `marmeon check` runs, and `migrations`, the migrations a package ships.
+ * `checks`, what `marmeon check` runs, `migrations`, the migrations a package ships, and `publishes`, the files it lets an app copy in.
  */
-const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers', 'diskDrivers', 'cacheDrivers', 'mailDrivers', 'checks', 'migrations'] as const;
+const DRIVER_STATICS = ['queueDrivers', 'failedJobDrivers', 'diskDrivers', 'cacheDrivers', 'mailDrivers', 'checks', 'migrations', 'publishes'] as const;
 
 /** Every static of a provider class (docs/package-development.md#provider-statics): the table of the page and the K9 message list exactly these. @internal */
 export const PROVIDER_STATICS = ['config', 'health', 'errorReporters', 'solutions', 'commands', ...DRIVER_STATICS] as const;

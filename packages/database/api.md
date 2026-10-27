@@ -384,6 +384,10 @@ export interface ProviderMigrations {
     readonly from: URL;
     readonly module: string;
 }
+// ProviderPublishes
+export interface ProviderPublishes {
+    readonly lang?: URL;
+}
 // QueryEvent
 export interface QueryEvent {
     readonly connection: string;
@@ -763,6 +767,7 @@ interface ModuleDefinition {
 // @marmeon/core.ServiceProviderClass
 interface ServiceProviderClass {
     readonly migrations?: ProviderMigrations;
+    readonly publishes?: ProviderPublishes;
 }
 // kysely.SelectQueryBuilder
 interface SelectQueryBuilder<DB, TB extends keyof DB, O> {
@@ -874,7 +879,9 @@ marmeon migrate:rollback [--step=<n>] [--force] [--wait=<seconds>]
 marmeon migrate:status [--json]
 --json (boolean)
 // publish
-marmeon publish [<package>] [--module=<name>] [--check]
+marmeon publish [<package>] [--module=<name>] [--only=migrations,lang] [--check] [--force]
 --check (boolean)
+--force (boolean)
 --module (string, short m)
+--only (string)
 ```
