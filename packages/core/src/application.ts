@@ -4,7 +4,7 @@ import { EnvironmentConfig } from './config/environment-config.ts';
 import { Container } from './container.ts';
 import { withCode } from './error-codes.ts';
 import { coreSolutions } from './core-solutions.ts';
-import { Redactor } from './redact.ts';
+import { Redactor, redactorFor, type RedactionAdditions } from './redact.ts';
 import { ErrorSolutions } from './solutions.ts';
 import { loadDiscoveredPackages } from './discovery/discover.ts';
 import { environment, environmentChecks, resolveEnvironment } from './environment.ts';
@@ -47,6 +47,12 @@ export interface ApplicationDefinition {
   health?: readonly HealthCheckClass[];
   /** Register providers of installed packages (`marmeon discover`). Default: true. */
   discover?: boolean;
+  /**
+   * Names and patterns every redactor of the app masks besides the core's lists — logs, failed jobs, the devtools, traces and the
+   * report of `marmeon check` for an app that could not start. A pattern that can stall the match stops the start (`K15`).
+   * See [patterns of your own](docs/logging.md#patterns-of-your-own).
+   */
+  redact?: RedactionAdditions;
 }
 
 /**
@@ -235,6 +241,8 @@ export async function createApplication(definition: ApplicationDefinition, optio
   for (const key of BOOT_OPTIONS) {
     if (key in definition) throw new TypeError(withCode('K10', `\`${key}\` is a boot option: pass it as createApplication(definition, { ${key} }), not in the definition.`));
   }
+  // The first thing: a pattern that cannot be accepted stops the start before discovery and before any provider logs.
+  const redactor = redactorFor(definition);
   const container = options.container ?? new Container();
   const modules = definition.modules ?? [];
 
@@ -278,7 +286,7 @@ export async function createApplication(definition: ApplicationDefinition, optio
   container.singleton(Logger, () => new ConsoleLogger({}, app));
   container.singleton(Clock, () => new SystemClock());
   // What may be shown or recorded of a value — packages add names (the session's cookie) while booting.
-  container.instance(Redactor, new Redactor());
+  container.instance(Redactor, redactor);
   // The solutions the development error page shows: every provider's `static solutions` (the specific ones), then the core's.
   container.instance(ErrorSolutions, new ErrorSolutions([...providers.flatMap((Provider) => Provider.solutions ?? []), ...coreSolutions]));
   // The readiness checks of `/up/ready`: the packages' (database, redis, cache, queue), then the app's and its modules'.

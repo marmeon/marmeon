@@ -1,4 +1,4 @@
-import { outsideTransaction, Redactor, type Logger } from '@marmeon/core';
+import { outsideTransaction, type Logger, type Redactor } from '@marmeon/core';
 import type { LiveHint } from '@marmeon/http';
 import type { LiveBackend, LiveMessage } from './backend.ts';
 import { monotonicNow } from './monotonic.ts';
@@ -232,8 +232,8 @@ export class LiveHub {
   #listening: Promise<unknown> | undefined;
   #closed = false;
 
-  /** `redactor` masks a failure's text in the log — the app's, so the names its packages add (the session cookie) count; without one, the core's key list. */
-  constructor(backend: LiveBackend, options: LiveHubOptions, logger: Logger, closing?: AbortSignal, redactor: Redactor = new Redactor()) {
+  /** `redactor` masks a failure's text in the log — the app's, so the names and patterns it adds count. */
+  constructor(backend: LiveBackend, options: LiveHubOptions, logger: Logger, closing: AbortSignal | undefined, redactor: Redactor) {
     this.#backend = backend;
     this.#options = options;
     this.#perSession = options.maxStreamsPerSession ?? MAX_STREAMS_PER_SESSION;

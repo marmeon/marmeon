@@ -31,6 +31,7 @@ export interface ApplicationDefinition {
     config?: readonly ConfigDefinition<any>[];
     health?: readonly HealthCheckClass[];
     discover?: boolean;
+    redact?: RedactionAdditions;
 }
 // ApplicationPhase
 export type ApplicationPhase = 'run' | 'build';
@@ -394,10 +395,16 @@ export interface RedactableQuery {
     readonly parameters: readonly unknown[];
     readonly secret: boolean;
 }
+// RedactionAdditions
+export interface RedactionAdditions {
+    readonly keys?: readonly string[];
+    readonly patterns?: readonly RegExp[];
+}
 // Redactor
 export declare class Redactor {
     #private;
     addKeys(...keys: string[]): this;
+    addPatterns(...patterns: RegExp[]): this;
     isSensitive(key: string): boolean;
     log(context: Readonly<Record<string, unknown>>): Record<string, unknown>;
     text(text: string): string;
@@ -974,6 +981,7 @@ export interface ApplicationDefinition {
     config?: readonly ConfigDefinition<any>[];
     health?: readonly HealthCheckClass[];
     discover?: boolean;
+    redact?: RedactionAdditions;
 }
 // ApplicationPhase
 export type ApplicationPhase = 'run' | 'build';
@@ -1086,6 +1094,11 @@ export interface QueuedListenerOptions {
     readonly delay?: Duration;
     readonly tries?: number;
     readonly backoff?: Duration | readonly Duration[];
+}
+// RedactionAdditions
+export interface RedactionAdditions {
+    readonly keys?: readonly string[];
+    readonly patterns?: readonly RegExp[];
 }
 // ReportedError
 export interface ReportedError {

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { describeError, ENCRYPTED, maskUrlPasswords, MAX_ENTRY_BYTES, redact, REDACTED, Redactor, redactText } from './redact.ts';
+import { describeError, ENCRYPTED, maskUrlPasswords, MAX_ENTRY_BYTES, REDACTED, Redactor, redactText } from './redact.ts';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaA';
 const SCRYPT = '$scrypt$ln=15,r=8,p=1$c2FsdA$aGFzaA';
@@ -278,9 +278,9 @@ describe('Redactor — what the devtools record', () => {
   });
 });
 
-describe('redact() — the log path', () => {
+describe('Redactor.log — the log path', () => {
   it('redacts inside lists, nested lists, maps and sets', () => {
-    const shown = redact({
+    const shown = new Redactor().log({
       users: [{ email: 'ada@example.com', password: 'hunter2' }, [{ api_key: 'k-1' }]],
       sessions: new Map<string, unknown>([['token', 't0k3n'], ['owner', { remember_web: 'sel.val' }]]),
       tags: new Set([{ secret: 's' }, 'plain']),
@@ -305,7 +305,7 @@ describe('redact() — the log path', () => {
       response: { data: [{ access_token: 'a-1' }] },
     });
     const aggregate = new AggregateError([new Error('one secret=s1')], 'two failed');
-    const shown = redact({ err: error, failure: { last: error }, aggregate }) as Record<string, Record<string, unknown>>;
+    const shown = new Redactor().log({ err: error, failure: { last: error }, aggregate }) as Record<string, Record<string, unknown>>;
     const written = {
       type: 'HttpError',
       message: 'auth failed for password=[redacted]: socket token=[redacted]',
@@ -326,30 +326,30 @@ describe('redact() — the log path', () => {
   });
 
   it("redacts the names an app's Redactor adds, by key and in an error's text", () => {
-    const redactor = new Redactor(['marmeon_session']);
+    const redactor = new Redactor({ keys: ['marmeon_session'] });
     const shown = redactor.log({ MARMEON_SESSION: 's1', nested: [{ marmeon_session: 's2' }], err: new Error('rejected marmeon_session=s3') });
     expect(shown).toMatchObject({ MARMEON_SESSION: REDACTED, nested: [{ marmeon_session: REDACTED }], err: { message: 'rejected marmeon_session=[redacted]' } });
-    expect(JSON.stringify(redact({ marmeon_session: 's1' }))).toContain('s1');
+    expect(JSON.stringify(new Redactor().log({ marmeon_session: 's1' }))).toContain('s1');
   });
 
   it('survives cycles and leaves out what is nested deeper than six levels', () => {
     const error = new Error('loop') as Error & { self?: unknown };
     error.cause = error;
     const deep = { a: { b: { c: { d: { e: { f: { g: { h: { note: 'deep' } } } } } } } } };
-    expect(() => redact({ error })).not.toThrow();
-    expect(JSON.stringify(redact(deep))).not.toContain('deep');
+    expect(() => new Redactor().log({ error })).not.toThrow();
+    expect(JSON.stringify(new Redactor().log(deep as Record<string, unknown>))).not.toContain('deep');
   });
 
   it('describes a non-error cause or a thrown object redacted by key, also inside lists', () => {
-    const text = describeError(new Error('failed', { cause: { attempts: [{ token: 'abc' }] } }));
+    const text = describeError(new Error('failed', { cause: { attempts: [{ token: 'abc' }] } }), new Redactor());
     expect(text).toContain('Caused by: {"attempts":[{"token":"[redacted]"}]}');
-    expect(describeError({ users: [{ password: 'hunter2' }] })).not.toContain('hunter2');
+    expect(describeError({ users: [{ password: 'hunter2' }] }, new Redactor())).not.toContain('hunter2');
   });
 });
 
 describe('Redactor.text — the shortcut for text without anything to mask', () => {
   it('returns a plain path as it is, and masks the same as redactText wherever a pattern could match', () => {
-    const redactor = new Redactor(['marmeon_session']);
+    const redactor = new Redactor({ keys: ['marmeon_session'] });
     const token = 'Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z';
     const texts = [
       '/users/7/edit', '/people', '/lab/errors/table', '/docs/packages/core', '/a-slug-of-thirty-one-characters',
@@ -418,13 +418,13 @@ describe('URL objects', () => {
 
   it('are masked like text on the log path — a query token and a token-like path segment never pass as the object', () => {
     const link = new URL(`https://example.com/reset-password/${RESET}?email=ada%40example.com&token=t0k3n-abc&page=2`);
-    const shown = redact({ link, nested: { at: [new URL('https://example.com/callback?signature=s1gn3d')] }, query: new URLSearchParams('token=t0k3n-abc&page=2') });
+    const shown = new Redactor().log({ link, nested: { at: [new URL('https://example.com/callback?signature=s1gn3d')] }, query: new URLSearchParams('token=t0k3n-abc&page=2') });
     expect(shown.link, String(shown.link)).toBe('https://example.com/reset-password/[redacted]?email=ada%40example.com&token=[redacted]&page=2');
     expect(shown.nested).toEqual({ at: ['https://example.com/callback?signature=[redacted]'] });
     expect(shown.query).toBe('token=[redacted]&page=2');
     expect(JSON.stringify(shown)).not.toMatch(/t0k3n|s1gn3d|Q7mZ2xLk9/);
     // A URL without anything to hide stays readable.
-    expect(redact({ link: new URL('https://example.com/users/7?page=2') }).link).toBe('https://example.com/users/7?page=2');
+    expect(new Redactor().log({ link: new URL('https://example.com/users/7?page=2') }).link).toBe('https://example.com/users/7?page=2');
   });
 
   it('are masked by the Redactor too (devtools, error page, spans) — its URL rules, not an empty object', () => {
@@ -472,7 +472,7 @@ describe('the secret names the logging page promises', () => {
 
   it('keeps the own code of an error in the text of a stored error although `"code"` is masked in text', () => {
     const failure = Object.assign(new Error('refused'), { code: 'ECONNREFUSED', otp: '1' });
-    const text = describeError(failure);
+    const text = describeError(failure, new Redactor());
     expect(text).toContain('"code":"ECONNREFUSED"');
     expect(text).toContain('"otp":"[redacted]"');
   });
@@ -494,5 +494,108 @@ describe('the secret names the logging page promises', () => {
     expect(JSON.stringify(shown)).not.toMatch(/p4ss|x9|t0k/);
     expect(shown).toMatchObject({ note: 'plain text' });
     expect(String(shown.target)).toContain('sslmode=require');
+  });
+});
+
+describe('Redactor: the patterns of an app', () => {
+  // A key format of a partner, built at run time (a literal would look like a token to a scanner); lower case, so the core's own rules leave it.
+  const partnerKey = ['wa', 'live', 'q8fz0kzb3t5wyvlp9nr2xcj7'].join('_');
+  const PARTNER = /\bwa_live_[A-Za-z0-9]{24}\b/;
+
+  it('masks a match in text(), value(), headers(), describeError() and a log context', () => {
+    const redactor = new Redactor({ patterns: [PARTNER] });
+    expect(redactor.text(`partner said ${partnerKey}.`)).toBe('partner said [redacted].');
+    expect(redactor.value({ note: `key ${partnerKey}`, list: [partnerKey] })).toEqual({ note: 'key [redacted]', list: ['[redacted]'] });
+    expect(redactor.headers({ 'x-partner': `k ${partnerKey}` })).toEqual({ 'x-partner': 'k [redacted]' });
+    expect(describeError(new Error(`rejected ${partnerKey}`), redactor)).not.toContain(partnerKey);
+    expect(redactor.log({ note: `key ${partnerKey}`, nested: { list: [partnerKey] } })).toEqual({ note: 'key [redacted]', nested: { list: ['[redacted]'] } });
+    // An error's text and an own field of it pass as well.
+    expect(JSON.stringify(redactor.log({ err: Object.assign(new Error(`bad ${partnerKey}`), { detail: partnerKey }) }))).not.toContain(partnerKey);
+  });
+
+  it('leaves a string of a log context as it is without a pattern (the core masks a URL there, not other text)', () => {
+    expect(new Redactor().log({ note: `key ${partnerKey}` })).toEqual({ note: `key ${partnerKey}` });
+  });
+
+  it('masks what the core has no character for: an IBAN has no `:`, no `=` and no space', () => {
+    const iban = 'DE89370400440532013000';
+    expect(new Redactor().text(iban)).toBe(iban);
+    expect(new Redactor({ patterns: [/\bDE\d{20}\b/] }).text(iban)).toBe('[redacted]');
+  });
+
+  it('adds to the core and never takes from it', () => {
+    const redactor = new Redactor({ patterns: [PARTNER] });
+    expect(redactor.text('password=hunter2')).toBe('password=[redacted]');
+    expect(redactor.text(`Authorization: Bearer abc ${TOKEN}`)).not.toContain(TOKEN);
+  });
+
+  it("is not moved by the lastIndex of the app's object, and gives the same twice", () => {
+    const pattern = new RegExp(PARTNER.source, 'g');
+    pattern.lastIndex = 5;
+    const redactor = new Redactor({ patterns: [pattern] });
+    const text = `${partnerKey} and ${partnerKey}`;
+    expect(redactor.text(text)).toBe('[redacted] and [redacted]');
+    expect(redactor.text(text)).toBe('[redacted] and [redacted]');
+    expect(pattern.lastIndex).toBe(5);
+  });
+
+  it('ignores a match of length 0 (a lookaround)', () => {
+    const redactor = new Redactor({ patterns: [/(?<=zz)(?=yy)/] });
+    expect(redactor.text('zzyy is fine')).toBe('zzyy is fine');
+    expect(redactor.log({ note: 'zzyy' })).toEqual({ note: 'zzyy' });
+  });
+
+  it('adds patterns later, from a package', () => {
+    const redactor = new Redactor();
+    expect(redactor.addPatterns(PARTNER)).toBe(redactor);
+    expect(redactor.text(partnerKey)).toBe('[redacted]');
+  });
+
+  it.each([
+    ['an empty match', /a*/, /empty string/],
+    ['a sticky flag', /x/y, /sticky/],
+    ['a back-reference', /(a)\1/, /back-reference/],
+    ['a named back-reference', /(?<n>a)\k<n>/, /back-reference/],
+    ['a group that repeats a group that repeats', /(a+)+$/, /repeats without limit/],
+    ['the same with a lazy quantifier', /(a+?)+?$/, /repeats without limit/],
+    ['a group of a class and an optional that repeats', /(?:\w+\s?)+$/, /repeats without limit/],
+    ['a bounded repeat of an unbounded one', /(?:a*b){2,5}c/, /repeats without limit/],
+    ['a fixed repeat of an unbounded one', /(a+){3}$/, /repeats without limit/],
+    ['a repeat with long digits', /(?:a+){00000000000000000000001,}$/, /repeats without limit/],
+    ['a bound beyond any number', new RegExp(`(?:a+){2,${'9'.repeat(22)}}$`), /repeats without limit/],
+    ['an unbounded repeat two groups deep', /((a+)b)+c/, /repeats without limit/],
+    ['no RegExp at all', 'text' as unknown as RegExp, /not a RegExp/],
+  ])('refuses %s with K15, naming the pattern and the page', (_, pattern, reason) => {
+    expect(() => new Redactor({ patterns: [pattern] })).toThrow(/^\[marmeon:K15\]/);
+    expect(() => new Redactor().addPatterns(pattern)).toThrow(reason);
+    expect(() => new Redactor().addPatterns(pattern)).toThrow(/docs\/logging\.md#patterns-of-your-own/);
+  });
+
+  it('refuses a group that repeats and may match nothing (`(?:\\w+\\s?)*$`), and keeps none of the patterns when one is refused', () => {
+    const redactor = new Redactor();
+    expect(() => redactor.addPatterns(PARTNER, /(?:\w+\s?)*$/)).toThrow(/\[marmeon:K15\]/);
+    expect(redactor.text(partnerKey)).toBe(partnerKey);
+  });
+
+  it('shortens a long pattern in the message', () => {
+    const long = new RegExp(`(?:${'abcdefghij'.repeat(20)})*`);
+    expect(() => new Redactor().addPatterns(long)).toThrow(/…/);
+    expect(() => new Redactor().addPatterns(long)).not.toThrow(/abcdefghij(?:abcdefghij){9}/);
+  });
+
+  it.each([/(ab)+/, /[a+]+/, /\(a+\)+/, /(a{2})+/, /(?:ab|cd)+x/, /a+b*c?/, /(?<![\w-])AKX[0-9]{8,}/, /\bacme_(?:live|test)_[A-Za-z0-9]{32}\b/])('accepts %s', (pattern) => {
+    expect(() => new Redactor({ patterns: [pattern] })).not.toThrow();
+  });
+
+  it('runs an accepted pattern in linear time on a long hostile input', () => {
+    const redactor = new Redactor({ patterns: [PARTNER] });
+    const started = performance.now();
+    redactor.text('wa_live_ '.repeat(20_000));
+    expect(performance.now() - started).toBeLessThan(1500);
+  });
+
+  it('keeps the text without a pattern on its fast path: unchanged, as before', () => {
+    expect(new Redactor().text('/users/7/edit')).toBe('/users/7/edit');
+    expect(new Redactor().log({ note: 'key wa_live_x' })).toEqual({ note: 'key wa_live_x' });
   });
 });

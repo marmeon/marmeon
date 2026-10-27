@@ -9,7 +9,7 @@ export { CSP_NONCE_PLACEHOLDER } from './csp.ts';
 export { coreSolutions } from './core-solutions.ts';
 export { environmentChecks } from './environment.ts';
 export { withCode, withoutCode } from './error-codes.ts';
-export { describeError, maskUrlPasswords, REDACTED_KEYS } from './redact.ts';
+export { describeError, maskUrlPasswords, REDACTED_KEYS, redactorFor } from './redact.ts';
 export { collectDrivers } from './drivers.ts';
 export { bindingNameOf } from './definition-edit.ts';
 export { loadDiscoveredPackages, writeManifest } from './discovery/discover.ts';

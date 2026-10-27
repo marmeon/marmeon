@@ -82,12 +82,12 @@ shape of a text:
 So a recorded mail with a reset link shows the link with the token masked, and a sign-in shows `password: [redacted]`. The
 [logging](logging.md#what-the-framework-shows-elsewhere) page explains what each part of the framework masks.
 
-Everything else is recorded as it is: input under other names, such as `card_number` or `iban`, headers such as `Referer`, the
+Everything else is recorded as it is: input under other names, such as `iban`, headers such as `Referer`, the
 parameters of statements on ordinary tables, job and event payloads, and the full text and HTML of every mail, so a one-time code
 in a mail body shows. The entries are plain-text files in `storage/framework/devtools/`, which a new app's `.gitignore` keeps out
 of Git. Do not record real personal data in development. Data that must never show belongs in a column marked `secret()`, a job
-marked as encrypted, or a field whose name the redactor knows, which `app.container.make(Redactor).addKeys('card_number')` in a
-provider's `boot()` adds.
+marked as encrypted, or a field whose name the redactor knows, which `redact: { keys: ['iban'] }` in `bootstrap/app.ts` adds
+(see [keeping secrets out of the log](logging.md#patterns-of-your-own)).
 
 ## Settings
 
