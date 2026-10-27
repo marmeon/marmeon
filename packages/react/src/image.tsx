@@ -14,6 +14,10 @@ interface ImageBase extends ImageAttributes {
   priority?: boolean;
 }
 
+/**
+ * The props of {@link Image}: an `alt` and a `src` that is an `ImageSource`, or a plain URL with its `width` and
+ * `height`.
+ */
 export type ImageProps = ImageBase &
   (
     | { src: ImageSource; width?: never; height?: never }

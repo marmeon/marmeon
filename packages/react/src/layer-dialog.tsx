@@ -1,6 +1,10 @@
 import { useId, useInsertionEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import type { LayerFrameProps } from './layer.tsx';
 
+/**
+ * The props of {@link LayerDialog}: the layer frame's, plus the close button's label, a class and inline styles. See
+ * docs/dialogs.md#the-frame.
+ */
 export interface LayerDialogProps extends LayerFrameProps {
   /** The close button's accessible name (default `Close` — pass the app's translation). */
   closeLabel?: string;

@@ -15,6 +15,7 @@ export type Layout = ComponentType<LayoutProps> & {
   error?: ErrorFallback;
 };
 
+/** The props a layout gets: the `children` it wraps. See docs/pages.md#layouts. */
 export interface LayoutProps {
   children: ReactNode;
 }
@@ -56,6 +57,10 @@ type ViewPropsOf<C extends ViewAction> = [PageProps<C>] extends [never] ? Island
 export type RevalidateOnBack<C extends ViewAction> = boolean | readonly (keyof ViewPropsOf<C> & string)[];
 
 // Page props are validated at the controller boundary (PageProps<...>), not here.
+/**
+ * A page's component, with the statics a page may declare: `layout`, `ssr`, `layer`, `revalidateOnBack` and an instant
+ * visit's `placeholder`. See docs/pages.md#writing-pages.
+ */
 export type PageComponent = ComponentType<any> & {
   layout?: PageLayout;
   ssr?: PageSsr;
@@ -124,6 +129,7 @@ function checkLayout(name: string, layout: unknown): void {
   }
 }
 
+/** Turns a page's name into its component; `resolveModulePages()` makes one from the app's page modules. */
 export type ResolvePage = ((name: string) => Promise<PageComponent>) & {
   /**
    * The client features its views use — `<MarmeonApp>` attaches them to its navigator. `resolveModulePages` brings

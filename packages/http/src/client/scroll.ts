@@ -6,6 +6,7 @@ import { LruMap } from './cache.ts';
 import type { HistoryState } from './history.ts';
 import type { NavigatorWindow } from './navigation.ts';
 
+/** A scroll offset in pixels. */
 export interface ScrollPosition {
   readonly x: number;
   readonly y: number;

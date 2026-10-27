@@ -26,6 +26,7 @@ export interface ProjectedColumn {
   readonly retired?: boolean;
 }
 
+/** One index as a migration describes it. */
 export interface ProjectedIndex {
   readonly name: string;
   readonly columns: readonly string[];
@@ -42,6 +43,7 @@ export interface ProjectedForeignKey {
   readonly inverse?: string;
 }
 
+/** One table as the migrations describe it. See docs/migrations.md#what-the-migrations-describe. */
 export interface ProjectedTable {
   readonly name: string;
   /** The module whose migration created it. */

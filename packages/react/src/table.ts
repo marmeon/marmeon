@@ -48,6 +48,10 @@ export interface TableLabels<T extends AnyTableData> {
   confirm?(action: ActionOf<T> | BulkOf<T>, rows: number): string;
 }
 
+/**
+ * What `useTable()` takes besides the table's props: texts, the page prop and the search debounce. See
+ * docs/tables.md#in-the-browser.
+ */
 export interface UseTableOptions<T extends AnyTableData> {
   labels?: TableLabels<T>;
   /** The page prop the table is — default: found on the page (the same object, or a table of the same name). */

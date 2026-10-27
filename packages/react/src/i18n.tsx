@@ -3,6 +3,7 @@
 import type { Catalog, Formatter, Namespace, Translate } from '@marmeon/i18n/messages';
 import { createContext, useContext, useMemo } from 'react';
 
+/** What the app's messages give a component: the page's `locale` and its `catalog`. */
 export interface I18nValue {
   /** The page's locale (`PageObject.locale`). */
   readonly locale: string;
@@ -10,6 +11,10 @@ export interface I18nValue {
   readonly catalog: Catalog;
 }
 
+/**
+ * Where {@link I18nValue} comes from for `useTranslation()` and `useLocale()`; `<MarmeonApp>` provides it. See
+ * docs/localization.md#in-the-browser.
+ */
 export const I18nContext = createContext<I18nValue | null>(null);
 
 function useI18n(hook: string): I18nValue {

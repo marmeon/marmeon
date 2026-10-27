@@ -81,6 +81,7 @@ export interface LiveFeature {
   readonly connection: string;
 }
 
+/** The live feature: follows the channels of what is on screen (page, layer, island) and turns each hint into a partial reload. See docs/realtime.md#following-a-channel. */
 export const live = /* @__PURE__ */ defineFeature('live', (host): LiveFeature => {
   const win = host.window;
   const doc = win.document;

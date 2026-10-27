@@ -23,6 +23,7 @@ export type ReferrerPolicy =
   | 'strict-origin-when-cross-origin'
   | 'unsafe-url';
 
+/** The `Strict-Transport-Security` header of `securityHeaders()`. See docs/csp.md#the-other-security-headers. */
 export interface HstsOptions {
   /**
    * How long browsers refuse plain HTTP for this host, in whole seconds: `{ days: 365 }`, or a number of seconds; 0 withdraws
@@ -35,6 +36,10 @@ export interface HstsOptions {
   preload?: boolean;
 }
 
+/**
+ * What `securityHeaders()` sends on every response: HSTS (on HTTPS, when set), `nosniff`, `X-Frame-Options` and `Referrer-Policy`;
+ * a route's own valid frame and referrer value stays. See docs/csp.md#the-other-security-headers.
+ */
 export interface SecurityHeadersOptions {
   /**
    * `Strict-Transport-Security`, sent on HTTPS responses only (behind a proxy: `SERVER_TRUSTED_PROXIES` and its `X-Forwarded-Proto`).

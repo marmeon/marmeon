@@ -23,6 +23,7 @@ export function useUpload(field: FormField): (file: File) => Promise<void> {
   );
 }
 
+/** The props of {@link FileInput}: the upload `field` of a route form, plus the attributes of an `<input>`. */
 export interface FileInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'value' | 'defaultValue' | 'onChange' | 'multiple' | 'name'> {
   /** The upload field of a route form: `form.field('avatar')` (its rule is `upload()`). */
   readonly field: FormField;

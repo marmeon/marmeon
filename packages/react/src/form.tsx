@@ -99,6 +99,10 @@ type IncludableName<F> = Extract<FieldName<F>, string> extends infer N ? (N exte
 
 type ParamsProp<N extends string> = {} extends BrowserParamsOf<N> ? { params?: BrowserParamsOf<N> } : { params: BrowserParamsOf<N> };
 
+/**
+ * The props of {@link Form}: the `route` it sends to, its `children`, and the options for a confirmation, live
+ * validation, the guard and remembered input. See docs/forms.md#forms-without-state.
+ */
 export type FormProps<N extends string> = {
   /** The route it sends to — method and URL from it; a GET route writes its query. */
   route: CheckFormElementRoute<N>;

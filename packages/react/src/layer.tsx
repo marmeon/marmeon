@@ -86,6 +86,7 @@ type LayerController<C> = AnswersLayer<C> extends true
   ? LayerAction
   : { handle: 'this controller never answers a layer — useLayer<C>() is for the view of a layer: its controller returns this.view(…).layer({ base })' };
 
+/** What `useLayer()` takes: a listener for the layer leaving the screen. */
 export interface UseLayerOptions {
   /** Runs once the layer leaves the screen — closed, Back, a page visit (not when its own answer replaces it in place). */
   onClose?: () => void;

@@ -14,11 +14,16 @@ export interface PageMeta {
   readonly to: number | null;
 }
 
+/** A page of rows by number: the rows in `data`, where the page stands in `meta`. See docs/pagination.md#pages-by-number. */
 export interface Paginated<T> {
   readonly data: T[];
   readonly meta: PageMeta;
 }
 
+/**
+ * A page of rows by cursor: `meta.nextCursor` opens the next page and is `null` on the last. See
+ * docs/pagination.md#cursors.
+ */
 export interface CursorPaginated<T> {
   readonly data: T[];
   readonly meta: { readonly perPage: number; readonly nextCursor: string | null };

@@ -10,6 +10,7 @@ export interface PollDocument {
   removeEventListener(type: 'visibilitychange', listener: () => void): void;
 }
 
+/** What a poll takes: the interval, whether it keeps running in a hidden tab, and the document to watch. */
 export interface PollOptions {
   /** Milliseconds between two turns: above 0, up to 2147483647 (the longest a timer holds). */
   intervalMs: number;
@@ -19,6 +20,7 @@ export interface PollOptions {
   document?: PollDocument;
 }
 
+/** A poll: `start()` it, `stop()` it, and `running` tells which. */
 export interface Poll {
   start(): void;
   stop(): void;

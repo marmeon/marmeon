@@ -18,6 +18,7 @@ export type RememberKey<K extends string> =
 /** A sensitive-looking key the app keeps on purpose — never a password. */
 type SensitiveKey<K extends string> = IsPassword<K> extends true ? RememberKey<K> : K;
 
+/** What `useRemember()` takes besides the key and the initial value. */
 export interface UseRememberOptions {
   /** Keep it although its key looks sensitive (`token`, `secret`, `card`, …) — never for a password. */
   sensitive?: true;

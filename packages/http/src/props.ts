@@ -10,6 +10,10 @@ const PROP = Symbol.for('marmeon.page-prop');
 /** Carries a prop's type (never set at runtime). */
 declare const TYPE: unique symbol;
 
+/**
+ * How a response treats a page prop: `optional`, `defer`, `always`, `merge`, `deepMerge` or `once`.
+ * See docs/deferred-props.md#props-that-load-later.
+ */
 export type PropKind = 'optional' | 'defer' | 'always' | 'merge' | 'deepMerge' | 'once';
 
 interface PageProp<K extends PropKind, T> {

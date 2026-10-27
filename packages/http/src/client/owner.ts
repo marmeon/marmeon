@@ -23,6 +23,7 @@ export interface LiveRegion {
 /** What a history entry keeps of its islands: their region objects by id — what Back/Forward shows without a request. */
 export const REGIONS = slot('regions', () => new Map<string, KeptRegion>());
 
+/** The owner of what one history entry shows: its key, and the regions (islands) on screen that end with the entry. */
 export class RegionOwner {
   /** The key of its history entry — where what the entry's components keep lives (`host.entry`: islands, remembered state). */
   readonly entry: string | undefined;

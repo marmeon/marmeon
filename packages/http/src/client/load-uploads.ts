@@ -6,4 +6,5 @@
 import type { Feature } from './feature.ts';
 import type { UploadsFeature } from './features/uploads.ts';
 
+/** Loads the uploads feature in a chunk of its own, on first use. See docs/client-features.md#what-loads-when. */
 export const loadUploads = (): Promise<Feature<UploadsFeature>> => import('./features/uploads.ts').then((module) => module.uploads);

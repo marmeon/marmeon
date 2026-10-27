@@ -6,6 +6,7 @@ import { addLive, type LiveMethod, type PagePropNames } from './live.ts';
 
 const VIEW_RESULT = Symbol.for('marmeon.view-result');
 
+/** The props a view takes: a record by prop name. See docs/pages.md#props. */
 export type ViewProps = Record<string, unknown>;
 
 /** What `view()` and `json()` take besides the data: the response's `status` (default 200) and extra `headers`. */

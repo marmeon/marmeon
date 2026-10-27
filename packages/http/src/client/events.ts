@@ -87,8 +87,10 @@ export interface VersionChange {
   reload(): void;
 }
 
+/** The name of an event of the navigator: a visit's `start`, `progress`, `success`, `error`, `exception`, `cancel` and `finish`, plus `flash` and `version`. */
 export type VisitEvent = keyof VisitEvents;
 
+/** The callbacks of a visit, one per visit event ({@link VisitEvent} without `flash` and `version`). See docs/navigation.md#visiting-from-code. */
 export interface VisitCallbacks {
   onStart?: VisitEvents['start'];
   onProgress?: VisitEvents['progress'];

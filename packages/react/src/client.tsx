@@ -11,6 +11,10 @@ import type { ConfirmComponent } from './confirm.tsx';
 import { viewName, type DefaultLayout, type ResolvePage } from './pages.ts';
 import { loadView } from './views.ts';
 
+/**
+ * What `createMarmeonApp()` takes: the page resolver, and the title template, routes, layout and messages shared with
+ * the SSR entry. See docs/pages.md#the-entries.
+ */
 export interface CreateMarmeonAppOptions {
   resolve: ResolvePage;
   /** Id of the element the server rendered into. */

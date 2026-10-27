@@ -3,6 +3,10 @@ import { FileNotFoundError, InvalidKeyError } from './errors.ts';
 import { basename } from './keys.ts';
 import { contentDisposition, isInlineType, mimeTypeOf } from './mime.ts';
 
+/**
+ * What `serveFile()` takes: the `Cache-Control` of the response and the name the browser saves the file as. See
+ * docs/storage.md#public-and-private-files.
+ */
 export interface ServeFileOptions {
   /** `Cache-Control` of the response. */
   readonly cacheControl: string;

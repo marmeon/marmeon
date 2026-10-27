@@ -2,6 +2,10 @@ import { createPoll, type Poll } from '@marmeon/http/client';
 import { useEffect, useMemo, useRef } from 'react';
 import { useRouterContext, type ReloadOptions } from './app.tsx';
 
+/**
+ * What `usePoll()` takes: the interval, whether it keeps polling in a hidden tab, and whether it starts at once. See
+ * docs/deferred-props.md#polling.
+ */
 export interface UsePollOptions {
   /** Milliseconds between two reloads: above 0, up to 2147483647 (the longest a timer holds). */
   intervalMs: number;

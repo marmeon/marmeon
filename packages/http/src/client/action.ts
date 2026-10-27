@@ -35,6 +35,7 @@ export type ActionOutcome =
   | { readonly ok: false; readonly kind: 'exception'; readonly exception: ActionError }
   | { readonly ok: false; readonly kind: 'cancelled' };
 
+/** What an action call takes: method, body, headers, and how it is listed while under way. See docs/actions.md#sending. */
 export interface ActionOptions {
   /** Default `post`. */
   method?: ActionMethod;

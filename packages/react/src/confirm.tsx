@@ -19,6 +19,10 @@ export interface ConfirmProps {
  */
 export type ConfirmComponent = ComponentType<ConfirmProps>;
 
+/**
+ * The props of the default confirmation dialog: a {@link ConfirmProps} with the texts of its buttons, a class and
+ * inline styles. See docs/dialogs.md#asking-the-user.
+ */
 export interface ConfirmDialogProps extends ConfirmProps {
   /** The yes button of a confirmation (default `OK`; `request.confirmLabel` wins). */
   confirmLabel?: string;

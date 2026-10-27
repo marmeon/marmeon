@@ -40,6 +40,7 @@ export interface EntryContents {
   command: CommandEntryContent;
 }
 
+/** The kinds of entry the devtools record. */
 export type EntryType = keyof EntryContents;
 
 export const ENTRY_TYPES: readonly EntryType[] = ['request', 'query', 'job', 'mail', 'notification', 'log', 'exception', 'schedule', 'live', 'event', 'command'];
@@ -51,6 +52,10 @@ export interface ErrorDetails {
   readonly stack?: string;
 }
 
+/**
+ * What a `request` entry holds: the request as the app read it, its route, the response's status and time, and the page
+ * it answered with. See docs/devtools.md#what-they-record.
+ */
 export interface RequestEntryContent {
   readonly method: string;
   /** The URL as requested: sensitive route parameters (`:token`) and query values replaced. */
@@ -99,6 +104,10 @@ export interface RequestEntryContent {
   readonly error?: ErrorDetails;
 }
 
+/**
+ * What a `query` entry holds: the connection, the SQL, its parameters and time, and whether it was slow. See
+ * docs/devtools.md#what-they-record.
+ */
 export interface QueryEntryContent {
   readonly connection: string;
   readonly driver: string;
@@ -113,6 +122,10 @@ export interface QueryEntryContent {
   readonly error?: ErrorDetails;
 }
 
+/**
+ * What a `job` entry holds: a dispatch, or an attempt with its outcome, time and error.
+ * See docs/devtools.md#what-they-record.
+ */
 export interface JobEntryContent {
   /** `queued` (dispatched), then per attempt: `done`, `failed`, `released`, `discarded`. */
   readonly status: 'queued' | 'done' | 'failed' | 'released' | 'discarded';
@@ -135,6 +148,10 @@ export interface JobEntryContent {
   readonly error?: ErrorDetails;
 }
 
+/**
+ * What a `mail` entry holds: the mailable, whether it was sent or queued, the addresses, subject and body. See
+ * docs/devtools.md#what-they-record.
+ */
 export interface MailEntryContent {
   /** The mailable's class. */
   readonly mailable: string;
@@ -153,6 +170,10 @@ export interface MailEntryContent {
   readonly error?: ErrorDetails;
 }
 
+/**
+ * What a `notification` entry holds: the notification, its recipient, channels and outcome.
+ * See docs/devtools.md#what-they-record.
+ */
 export interface NotificationEntryContent {
   readonly notification: string;
   readonly id: string;
@@ -165,6 +186,7 @@ export interface NotificationEntryContent {
   readonly error?: ErrorDetails;
 }
 
+/** What a `log` entry holds: level, message and context. See docs/devtools.md#what-they-record. */
 export interface LogEntryContent {
   readonly level: 'debug' | 'info' | 'warn' | 'error';
   readonly message: string;
@@ -172,6 +194,10 @@ export interface LogEntryContent {
   readonly context: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * What an `exception` entry holds: the error, where it ended and the solutions the error page shows. See
+ * docs/devtools.md#what-they-record.
+ */
 export interface ExceptionEntryContent extends ErrorDetails {
   /** Where it ended: a request (`status`, `method`, `path`), a job, a scheduled task or a command. */
   readonly in: 'request' | 'job' | 'schedule' | 'command';
@@ -182,6 +208,10 @@ export interface ExceptionEntryContent extends ErrorDetails {
   readonly solutions: readonly { readonly title: string; readonly text: string; readonly command?: string; readonly docs?: string }[];
 }
 
+/**
+ * What a `schedule` entry holds: one run of a scheduled task, why it ran and how it ended.
+ * See docs/devtools.md#what-they-record.
+ */
 export interface ScheduleEntryContent {
   readonly task: string;
   /** The time it was due (epoch ms). */
@@ -193,6 +223,7 @@ export interface ScheduleEntryContent {
   readonly error?: ErrorDetails;
 }
 
+/** What a `live` entry holds: one hint, with its channel and the props it names. See docs/devtools.md#what-they-record. */
 export interface LiveEntryContent {
   readonly channel: string;
   /** The props it names; `null`: every prop each follower follows. */
@@ -201,6 +232,10 @@ export interface LiveEntryContent {
   readonly error?: ErrorDetails;
 }
 
+/**
+ * What an `event` entry holds: the event, its redacted fields and the listeners it reached.
+ * See docs/devtools.md#what-they-record.
+ */
 export interface EventEntryContent {
   /** `static event`, else the class name. */
   readonly name: string;
@@ -210,6 +245,10 @@ export interface EventEntryContent {
   readonly listeners: readonly string[];
 }
 
+/**
+ * What a `command` entry holds: a `marmeon` command with its arguments and exit code.
+ * See docs/devtools.md#what-they-record.
+ */
 export interface CommandEntryContent {
   readonly command: string;
   /** Its arguments, redacted (`--password=…`). */

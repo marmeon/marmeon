@@ -34,6 +34,7 @@ export interface HistoryState {
   readonly layer?: { readonly depth: number; readonly below: readonly string[] };
 }
 
+/** Whether `value` has the shape of a {@link HistoryState} (a page entry, no props). */
 export function isHistoryState(value: unknown): value is HistoryState {
   if (typeof value !== 'object' || value === null) return false;
   const state = value as Record<string, unknown>;

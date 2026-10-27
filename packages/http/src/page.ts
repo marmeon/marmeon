@@ -253,6 +253,10 @@ export interface SsrResult {
   streamedProps?: string[];
 }
 
+/**
+ * How an SSR entry renders a page: whether to wait for every Suspense boundary and what to do with an error after the
+ * shell. See docs/pages.md#server-rendering.
+ */
 export interface SsrRenderOptions {
   /**
    * Resolve only once the whole page has rendered, every Suspense boundary included — for bots, which read the HTML

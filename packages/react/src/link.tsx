@@ -121,6 +121,10 @@ type RouteLinkProps<N extends string> = LinkOptions &
 } & ParamsProp<N> &
   MethodProps<N>;
 
+/**
+ * The props of {@link Link}: a checked `route` with its `params` and `query`, or a plain `href`. See
+ * docs/navigation.md#links.
+ */
 export type LinkProps<N extends string = never> = [N] extends [never] ? HrefLinkProps : RouteLinkProps<N>;
 
 type AnyLinkProps = LinkOptions &

@@ -107,6 +107,10 @@ export async function sendLiveValidation(host: ActionHost, url: string, { method
 /** When a form's fields are checked: when a field is left (`blur`, the default), or while typing, after a pause (`change`). */
 export type LiveValidationTrigger = 'blur' | 'change';
 
+/**
+ * What the live validation of one form is built from: how it sends a check, reads the data and reports a result.
+ * Adapters only.
+ */
 export interface LiveValidationOptions {
   /** Sends one check — the navigator's `validate(url, …)` bound to the form's URL. */
   readonly send: (request: LiveValidationRequest) => Promise<LiveValidationOutcome>;
