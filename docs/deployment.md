@@ -342,6 +342,15 @@ The template turns `http2 on`, sets the forwarded headers itself instead of pass
 between two reads of a response, longer than the live heartbeat of 20 seconds. The app turns nginx's buffering off for each live
 stream with `X-Accel-Buffering: no`.
 
+The template limits a request body to 8 MB, as `SERVER_MAX_BODY_MB` does, except in `location /_marmeon/uploads/`: it lets the
+bytes of an upload to a local disk through without a body limit and without buffering them. The app limits each upload to the
+size it announced, and reads no byte before the signature of the URL, the session and the open upload have been checked. A
+`deploy/nginx.conf` written by an earlier version has no such block: copy it from a new one, or run
+`marmeon make:docker --nginx --force`. Without it, nginx answers `413` to a file over 8 MB. An upload to S3 goes from the browser to
+the bucket and does not pass nginx.
+An upload may take at most 5 minutes in all: the app ends a request after that (Node's `requestTimeout`), and nginx waits 60 seconds between
+two reads of the body (`client_body_timeout`). A larger file needs a faster link, or an upload to S3.
+
 ### Keep-alive to the app
 
 A proxy that reuses its connections to the app must close an idle one before the app does. Otherwise it now and then sends a
