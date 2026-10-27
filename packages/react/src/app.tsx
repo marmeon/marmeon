@@ -428,7 +428,7 @@ export function MarmeonApp({
   const render = useCallback(
     async (
       page: PageObject,
-      { preserveState, owner, layers, placeholder, transition }: { preserveState: boolean; owner: RegionOwner; layers: readonly Layer[]; placeholder?: boolean; transition?: readonly string[] },
+      { preserveState, owner, layers, placeholder, transition, signal }: { preserveState: boolean; owner: RegionOwner; layers: readonly Layer[]; placeholder?: boolean; transition?: readonly string[]; signal?: AbortSignal },
     ) => {
       const turn = ++renders.current;
       if (placeholder) {
@@ -449,6 +449,8 @@ export function MarmeonApp({
         loadPageMessages(page, messages),
         ...(layers.length > 0 ? [loadLayerStack(), ...layers.map((layer) => loadView(resolve, layer.page.component))] : []),
       ]);
+      // The navigator's call, not the turn counter's: a layer closing or an optimistic draw also counts a turn.
+      if (signal?.aborted) return;
       await new Promise<void>((done) => {
         committed.current.push(done);
         // A view transition by React (`viewTransition: 'react'`): the page changes in a transition with its types — the views'

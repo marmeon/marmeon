@@ -1922,6 +1922,7 @@ export interface RenderOptions {
     readonly owner: RegionOwner;
     readonly layers: readonly Layer[];
     readonly placeholder?: boolean;
+    readonly signal?: AbortSignal;
     readonly transition?: readonly string[];
 }
 // ResolveRouteOptions

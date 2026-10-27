@@ -506,3 +506,30 @@ describe('deferred and optional props', () => {
     expect($('[data-testid="activity"]')!.textContent).toBe('joined');
   });
 });
+
+describe('a visit whose view is still loading', () => {
+  it('does not land over a newer visit when its code arrives late', async () => {
+    let release: () => void = () => {};
+    const late = Object.assign(async (name: string) => {
+      if (name === 'app/Settings') await new Promise<void>((done) => (release = done));
+      return resolve(name);
+    }, resolve) as typeof resolve;
+    server = (url) => respond(url.endsWith('/settings') ? page('Settings', '/settings') : page('B', '/b'));
+    const Component = await resolve('app/A');
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<MarmeonApp features={HISTORY} initialPage={page('A', '/a')} initialComponent={Component} resolve={late} />);
+    });
+
+    await click('to-settings');
+    await flush();
+    await click('to-b');
+    await until(() => expect($('[data-page="b"]')).not.toBeNull());
+
+    await act(async () => release());
+    await flush();
+    expect($('[data-page="b"]')).not.toBeNull();
+    expect($('[data-page="settings"]')).toBeNull();
+    expect(location.pathname).toBe('/b');
+  });
+});
