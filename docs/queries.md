@@ -131,7 +131,8 @@ as a parameter and never becomes part of the SQL text. `sql.raw()` is the except
 never give it input. `marmeon check` warns about `sql.raw()` and `sql.lit()` with an argument that is not a literal ([raw SQL](check.md#raw-sql)).
 
 The builder's types are exported under Marmeon's names: `Connection<DB>` is a connection's builder, `Transaction<DB>` the builder inside a
-transaction and `SelectQuery<DB, TB, O>` a select that you go on with. A table's row is `Row<'notes'>`, `NewRow<'notes'>` and
+transaction and `SelectQuery<DB, TB, O>` a select that you go on with. `ColumnReference<DB, TB>` is a column as a query names it
+(`'name'` or `'users.name'`), and `ReferencedType<DB, TB, R>` the type a query reads from it. A table's row is `Row<'notes'>`, `NewRow<'notes'>` and
 `RowUpdate<'notes'>`, named by the table in `Tables`. A table that is not in `Tables`, such as a package's own, takes its type
 instead: `RowOf<NoteTable>`, `NewRowOf<NoteTable>` and `RowUpdateOf<NoteTable>`.
 

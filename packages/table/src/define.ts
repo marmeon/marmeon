@@ -1,7 +1,6 @@
 import type { AbilityOf, PolicyClass, ResourcelessAbility, ResourceOf } from '@marmeon/auth';
-import type { Database, SecretReference, SelectQuery } from '@marmeon/database';
+import type { ColumnReference, Database, ReferencedType, SecretReference, SelectQuery } from '@marmeon/database';
 import type { ClassResolver, HttpContext, JoinNames, StandardSchemaV1 } from '@marmeon/router';
-import type { ExtractTypeFromReferenceExpression, StringReference } from 'kysely';
 import type { Rule } from '@marmeon/validation';
 import type { TableData } from './client/index.ts';
 import { querySchema } from './state.ts';
@@ -429,12 +428,12 @@ export type DataTableRow<T> = T extends DataTable<infer Row> ? Row : never;
 type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
 /** The plain column names of the query's tables — for "it has …" in messages. */
-type PlainColumns<DB, TB extends keyof DB> = Extract<StringReference<DB, TB>, `${string}`> extends infer All extends string ? Exclude<All, `${string}.${string}` | SecretReference<DB, TB>> : never;
+type PlainColumns<DB, TB extends keyof DB> = Extract<ColumnReference<DB, TB>, `${string}`> extends infer All extends string ? Exclude<All, `${string}.${string}` | SecretReference<DB, TB>> : never;
 
 type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> =
   R extends SecretReference<DB, TB>
     ? `'${R}' is a secret column — a table never reads it (its migration marked it .secret())`
-    : R extends StringReference<DB, TB> | Selected<DB, TB, O>
+    : R extends ColumnReference<DB, TB> | Selected<DB, TB, O>
       ? never
       : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB> | Selected<DB, TB, O>>}`;
 
@@ -498,20 +497,20 @@ export type KeyColumn<K> = K extends { readonly column: infer C extends string }
 
 /** The key by name only: a column of the query whose values are numbers (an integer key) — a text key names its type. */
 export type CheckColumnKey<DB, TB extends keyof DB, K extends string> = string extends K
-  ? StringReference<DB, TB>
+  ? ColumnReference<DB, TB>
   : [ColumnProblem<DB, TB, K>] extends [never]
-    ? ExtractTypeFromReferenceExpression<DB, TB, K> extends number
+    ? ReferencedType<DB, TB, K> extends number
       ? K
-      : ExtractTypeFromReferenceExpression<DB, TB, K> extends ScalarKey
+      : ReferencedType<DB, TB, K> extends ScalarKey
         ? `the key '${K}' holds text — say how to read it: key: { column: '${K}', type: 'string' } (or 'uuid', 'bigint')`
         : `the key '${K}' is no string or number column — rows are acted on by their key`
     : ColumnProblem<DB, TB, K>;
 
 /** The key with its type: a string or number column of the query. */
 export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string extends K
-  ? StringReference<DB, TB>
+  ? ColumnReference<DB, TB>
   : [ColumnProblem<DB, TB, K>] extends [never]
-    ? ExtractTypeFromReferenceExpression<DB, TB, K> extends ScalarKey
+    ? ReferencedType<DB, TB, K> extends ScalarKey
       ? K
       : `the key '${K}' is no string or number column — rows are acted on by their key`
     : ColumnProblem<DB, TB, K>;
@@ -536,13 +535,13 @@ export type CheckSort<Cols, S extends string> = string extends S
 type KeyName<K extends string> = K extends `${string}.${infer C}` ? KeyName<C> : K;
 
 type ValueOf<DB, TB extends keyof DB, O, C> =
-  C extends ColumnDefinition<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ExtractTypeFromReferenceExpression<DB, TB, R>) : never;
+  C extends ColumnDefinition<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ReferencedType<DB, TB, R>) : never;
 
 /** A row as the table sends it (and hands it to actions and policies): the visible columns by name, plus the key. */
 type RowOf<DB, TB extends keyof DB, Cols, K extends string, O = {}> = Simplify<
   { readonly [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? never : A]: ValueOf<DB, TB, O, Cols[A]> } & {
     readonly [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? A : never]?: ValueOf<DB, TB, O, Cols[A]>;
-  } & { readonly [P in KeyName<K>]: ExtractTypeFromReferenceExpression<DB, TB, K> }
+  } & { readonly [P in KeyName<K>]: ReferencedType<DB, TB, K> }
 >;
 
 type PolicyProblem<P, K extends string, Row, Name extends string> = [P] extends [unknown]

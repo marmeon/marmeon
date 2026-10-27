@@ -1,4 +1,4 @@
-import type { Insertable, Kysely, Selectable, SelectQueryBuilder, Transaction as KyselyTransaction, Updateable } from 'kysely';
+import type { ExtractTypeFromReferenceExpression, Insertable, Kysely, Selectable, SelectQueryBuilder, StringReference, Transaction as KyselyTransaction, Updateable } from 'kysely';
 
 /** A connection's query builder, typed by the tables `DB`. See [Queries](../../../docs/queries.md#writing-queries). */
 export type Connection<DB> = Kysely<DB>;
@@ -8,6 +8,12 @@ export type Transaction<DB> = KyselyTransaction<DB>;
 
 /** A select on the tables `DB` that goes on with `where()`, `orderBy()` and the rest. See [Queries](../../../docs/queries.md#writing-queries). */
 export type SelectQuery<DB, TB extends keyof DB, O> = SelectQueryBuilder<DB, TB, O>;
+
+/** A column of the tables `TB` of `DB` as a query names it: `'name'` or `'users.name'`. See [Queries](../../../docs/queries.md#writing-queries). */
+export type ColumnReference<DB, TB extends keyof DB> = StringReference<DB, TB>;
+
+/** The type a column reference or expression `R` reads from the tables `TB` of `DB`. See [Queries](../../../docs/queries.md#writing-queries). */
+export type ReferencedType<DB, TB extends keyof DB, R> = ExtractTypeFromReferenceExpression<DB, TB, R>;
 
 /**
  * A row of any table type, as a select returns it: every column with its read type. For a table that is not in `Tables`, such as a

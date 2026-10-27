@@ -940,7 +940,7 @@ describe('the driver rule', () => {
       '@opentelemetry/api must stay a peer, not a dependency — the app and the framework share one instance; a dependency installs a second copy',
       '@opentelemetry/api is a dependency — the app and the framework must share one instance of it: a peer',
     ]);
-    expect(checkDriverRule('table', { dependencies: { kysely: '0.29.6', react: '^19.3.0' } })).toEqual(['react is a dependency — the app and the framework must share one instance of it: a peer']);
+    expect(checkDriverRule('table', { dependencies: { react: '^19.3.0' } })).toEqual(['react is a dependency — the app and the framework must share one instance of it: a peer']);
   });
 
   const EXACT = 'kysely must be an exact dependency (x.y.z, no range) — the framework is tested against one version of it';
@@ -953,8 +953,7 @@ describe('the driver rule', () => {
     expect(checkDriverRule('database', { dependencies: { kysely: '0.29.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([]);
     expect(checkDriverRule('database', { dependencies: { kysely: '^0.29.6' }, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
     expect(checkDriverRule('database', { peerDependencies: { kysely: '0.29.6', pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
-    expect(checkDriverRule('table', { dependencies: { kysely: '0.29.6', '@marmeon/database': '1.0.0' } })).toEqual([]);
-    expect(checkDriverRule('table', { dependencies: {} })).toEqual([EXACT]);
+    expect(checkDriverRule('database', { dependencies: {}, peerDependencies: { pg: '^8.23.0' }, peerDependenciesMeta: { pg: { optional: true } } })).toEqual([EXACT]);
   });
 
   it('names a package that pins another version of kysely', () => {

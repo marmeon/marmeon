@@ -69,7 +69,7 @@ export type DriverKind = 'dependency' | 'exact dependency' | 'optional peer' | '
  * The driver rule, per package — `pack:check` holds the packed manifests to it, a test in `scripts/ci.test.ts` the sources:
  *   1. a package that wraps exactly one third-party driver and is useless without it lists it in `dependencies`, at a caret range
  *      of the tested major (`@marmeon/redis` → `redis`); decided exceptions: `nodemailer` in `@marmeon/mail`, `@simplewebauthn/server` in `@marmeon/auth` (loaded only by `@marmeon/auth/passkeys`);
- *      `kysely` is an exact dependency of `@marmeon/database` and `@marmeon/table` (docs/database.md#kysely-and-its-version);
+ *      `kysely` is an exact dependency of `@marmeon/database` only (docs/database.md#kysely-and-its-version);
  *   2. a package with several drivers (usually with a built-in one) keeps the third-party ones as optional peers — its error names the
  *      exact install command with the major (`pnpm add pg@^8`);
  *   3. a library whose instance or types the app must share (the OpenTelemetry API, React, Vite) is a peer — and no framework package
@@ -83,9 +83,8 @@ export const DRIVER_RULE: Readonly<Record<string, Readonly<Record<string, Driver
   auth: { '@simplewebauthn/server': 'dependency' },
   mail: { nodemailer: 'dependency', mjml: 'optional peer' },
   storage: { '@aws-sdk/client-s3': 'optional peer', '@aws-sdk/s3-request-presigner': 'optional peer', '@aws-sdk/s3-presigned-post': 'optional peer' },
-  // The builders' shape is public API and the secret guard is tested against one version: exact, and the same in every package, so one copy installs.
+  // The builders' shape is public API and the secret guard is tested against one version: exact.
   database: { pg: 'optional peer', kysely: 'exact dependency' },
-  table: { kysely: 'exact dependency' },
   otel: { '@opentelemetry/api': 'peer' },
   server: { vite: 'peer' },
   vite: { vite: 'peer' },
