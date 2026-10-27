@@ -268,7 +268,7 @@ describe('user-profile module', () => {
 
   it('answers unknown users with the error page (navigation) or JSON (API)', async () => {
     // Route binding: a missing record never reaches the controller.
-    await as(ada).get('/users/999999').assertNotFound().assertPage('errors/Error', { message: 'Not Found' });
+    await as(ada).get('/users/999999').assertNotFound().assertPage('system/errors/Error', { message: 'Not Found' });
     await app.actingAs(ada).expectingJson().get('/users/abc').assertNotFound().assertExactJson({ message: 'Not Found' });
     await app.actingAs(ada).expectingJson().get('/users/999999/edit').assertNotFound();
   });
@@ -301,7 +301,7 @@ describe('user-profile module', () => {
     await stubbed.factory(UserFactory).create({ id: stub.id, name: 'Grace (row)', email: 'grace-row@example.com' });
     // Authentication asks the repository (it is the UserProvider): the stub's user is signed in, not the row.
     await stubbed.actingAs(stub).get('/users/me').assertRedirect(`/users/${stub.public_id}`);
-    await stubbed.actingAs(stub).navigating().get('/users/999999').assertNotFound().assertPage('errors/Error', { auth: { user: { name: 'Grace (stub)' } } });
+    await stubbed.actingAs(stub).navigating().get('/users/999999').assertNotFound().assertPage('system/errors/Error', { auth: { user: { name: 'Grace (stub)' } } });
   });
 
   it('boots modules and discovered packages through their providers', () => {

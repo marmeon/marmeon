@@ -456,7 +456,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
 
     it('reports a 5xx with the server’s error page — the page on screen stays, no history entry', async () => {
       const win = new FakeWindow(`${ORIGIN}/a`);
-      const errorPage = page('/b', { status: 500, title: 'Server Error', message: 'boom', exception: { name: 'Error', message: 'boom', stack: '…' } }, 'errors/Error');
+      const errorPage = page('/b', { status: 500, title: 'Server Error', message: 'boom', exception: { name: 'Error', message: 'boom', stack: '…' } }, 'system/errors/Error');
       win.handler = () => new Response(JSON.stringify(errorPage), { status: 500, headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       const { navigator, shown } = boot(win, page('/a'));
       const { events, errors } = record(navigator);
@@ -583,12 +583,12 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
 
     it('shows 4xx pages as pages (404, 403) — they are answers, not failures', async () => {
       const win = new FakeWindow(`${ORIGIN}/a`);
-      win.handler = () => new Response(JSON.stringify(page('/missing', { status: 404 }, 'errors/Error')), { status: 404, headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
+      win.handler = () => new Response(JSON.stringify(page('/missing', { status: 404 }, 'system/errors/Error')), { status: 404, headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       const { navigator, visible } = boot(win, page('/a'));
       const { errors } = record(navigator);
       await navigator.visit('/missing');
       expect(errors).toEqual([]);
-      expect(visible().component).toBe('errors/Error');
+      expect(visible().component).toBe('system/errors/Error');
     });
 
     it('cancels the older of two visits — the newer one wins', async () => {
@@ -1222,7 +1222,7 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
         stop();
       }
       // A 5xx error page with the page header is not kept either.
-      win.handler = () => new Response(JSON.stringify(page('/b', {}, 'errors/Error')), { status: 500, headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
+      win.handler = () => new Response(JSON.stringify(page('/b', {}, 'system/errors/Error')), { status: 500, headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       const { navigator } = boot(win, page('/a'));
       await navigator.use(prefetch).prefetch('/b');
       expect(navigator.use(prefetch).size).toBe(0);

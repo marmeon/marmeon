@@ -141,8 +141,8 @@ describe('createHttpKernel — errors & logging', async () => {
       throw new Error('database password is hunter2 (postgres://app:hunter3@db/app)');
     });
     Route.get('/forbidden', () => abort(403, 'Only admins.'));
-    Route.get('/vary-own', () => view('errors/Error', { status: 200, title: 'a', message: 'b', exception: null }, { headers: { Vary: 'Accept, X-Marmeon, Origin' } }));
-    Route.get('/vary-star', () => view('errors/Error', { status: 200, title: 'a', message: 'b', exception: null }, { headers: { vary: '*' } }));
+    Route.get('/vary-own', () => view('system/errors/Error', { status: 200, title: 'a', message: 'b', exception: null }, { headers: { Vary: 'Accept, X-Marmeon, Origin' } }));
+    Route.get('/vary-star', () => view('system/errors/Error', { status: 200, title: 'a', message: 'b', exception: null }, { headers: { vary: '*' } }));
     Route.get('/cookie-boom', () => {
       throw new Error(`the upstream refused the request with ${LEAKY_COOKIE}`);
     });
@@ -216,7 +216,7 @@ describe('createHttpKernel — errors & logging', async () => {
     expect(response.status).toBe(403);
     expect(response.headers.get(PAGE_HEADER)).toBe(PROTOCOL_VERSION);
     expect(await response.json()).toMatchObject({
-      component: 'errors/Error',
+      component: 'system/errors/Error',
       props: { status: 403, title: 'Forbidden', message: 'Only admins.', exception: null },
     });
   });
@@ -238,7 +238,7 @@ describe('createHttpKernel — errors & logging', async () => {
   it('routes unknown paths through the same handler', async () => {
     const response = await app.request('/nope', page);
     expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ component: 'errors/Error', props: { status: 404 } });
+    expect(await response.json()).toMatchObject({ component: 'system/errors/Error', props: { status: 404 } });
   });
 
   it('generates a request id and writes an access log entry', async () => {

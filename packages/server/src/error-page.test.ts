@@ -225,7 +225,7 @@ describe('the development error page', () => {
     try {
       const response = await kernel.request('/forbidden', visit);
       expect(response.status).toBe(403);
-      expect(((await response.json()) as PageObject).component).toBe('errors/Error');
+      expect(((await response.json()) as PageObject).component).toBe('system/errors/Error');
     } finally {
       await application.shutdown();
     }
@@ -357,7 +357,7 @@ describe('the development error page — only in development', () => {
         expect(response.status).toBe(500);
         const body = await response.text();
         const page = JSON.parse(body) as PageObject;
-        expect(page.component).toBe('errors/Error');
+        expect(page.component).toBe('system/errors/Error');
         expect(page.props).toEqual({ status: 500, title: 'Server Error', message: 'Server Error', exception: null });
         for (const leak of ['The controller failed', 'select * from users', 'Bearer', 'error-page.test.ts', 'throw new Error']) expect(body).not.toContain(leak);
       } finally {

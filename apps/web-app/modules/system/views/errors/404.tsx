@@ -1,7 +1,7 @@
 import type { ErrorPageProps } from '@marmeon/http';
 import { Head, Link } from '@marmeon/react';
 
-/** The page for a 404 — `errors/<status>` comes before `errors/Error`; the other statuses keep the built-in page. */
+/** The page for a 404 — `system/errors/<status>` comes before `system/errors/Error`; the other statuses keep the built-in page. */
 export default function NotFound({ title }: ErrorPageProps) {
   return (
     <main data-not-found>

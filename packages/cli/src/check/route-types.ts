@@ -1,5 +1,6 @@
 import { relative, resolve } from 'node:path';
-import { Application, Redactor } from '@marmeon/core';
+import { Application, Redactor, errorCodeOf } from '@marmeon/core';
+import { withoutCode } from '@marmeon/core/internal';
 import { Router } from '@marmeon/router';
 import { describeMiddlewareProblem } from '@marmeon/router/internal';
 import { RouteTypes } from '../route-types.ts';
@@ -47,7 +48,9 @@ export class RouteTypesCheck implements AppCheck {
       try {
         if (!(await this.#types.isCurrent())) problems.push({ severity: 'error', message: `${file} is out of date`, file, fix: 'marmeon route:types' });
       } catch (error) {
-        problems.push({ severity: 'error', message: `${file} cannot be compared with the routes and views: ${redactor.text(error instanceof Error ? error.message : String(error)).split(resolve(this.#app.root)).join('.')}`, file });
+        const code = errorCodeOf(error); // a refusal that has a code (an error page in its former place) shows it as the problem's code
+        const text = redactor.text(error instanceof Error ? error.message : String(error)).split(resolve(this.#app.root)).join('.');
+        problems.push({ severity: 'error', message: `${file} cannot be compared with the routes and views: ${code ? withoutCode(text) : text}`, file, ...(code && { code }) });
       }
     }
     for (const problem of this.#router.accessProblems()) problems.push(accessFinding(problem, redactor, this.#app.root));

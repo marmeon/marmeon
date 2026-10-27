@@ -77,7 +77,7 @@ const LazyRenderError = lazy(() => loadFailure().then((module) => ({ default: mo
 const LazyLayoutError = lazy(() => loadFailure().then((module) => ({ default: module.LayoutErrorFallback })));
 const LazyServerFailure = lazy(() => loadFailure().then((module) => ({ default: module.ServerFailure })));
 
-/** The app's error page (`errors/Error`) for an error thrown while rendering. */
+/** The app's error page (`system/errors/Error`) for an error thrown while rendering. */
 export function RenderErrorFallback(props: { resolve: ResolvePage; error: unknown }) {
   return (
     <Suspense fallback={null}>

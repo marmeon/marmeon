@@ -121,12 +121,12 @@ describe('createHttpKernel — layers', async () => {
   it('a forbidden base leaves the layer alone over the neutral surface, the base’s data never computed or sent', async () => {
     ran.length = 0;
     const forbidden = documentPage(await (await app.request('/admin/note')).text());
-    expect(forbidden).toMatchObject({ component: 'layers/Backdrop', url: '/admin' });
+    expect(forbidden).toMatchObject({ component: 'system/layers/Backdrop', url: '/admin' });
     expect(forbidden.layers?.map((layer) => layer.component)).toEqual(['admin/Note']);
     // Turned away by its middleware (a redirect): the base's controller never ran.
     const redirected = await (await app.request('/admin/report/note')).text();
     const surface = documentPage(redirected);
-    expect(surface).toMatchObject({ component: 'layers/Backdrop', url: '/admin/report', props: {} });
+    expect(surface).toMatchObject({ component: 'system/layers/Backdrop', url: '/admin/report', props: {} });
     expect(redirected).not.toContain('numbers');
     expect(ran).toEqual(['admin']); // the 403 came from its handler — the guarded report's handler never ran
     // Allowed (the cookie), the same layer gets its base.
@@ -145,7 +145,7 @@ describe('createHttpKernel — layers', async () => {
     const page = documentPage(await (await app.request('/loop/a')).text());
     // The layer itself and at most 10 bases asked for — then it stops.
     expect(ran.length).toBeLessThanOrEqual(MAX_LAYER_DEPTH + 1);
-    expect(page.component).toBe('layers/Backdrop');
+    expect(page.component).toBe('system/layers/Backdrop');
     expect(page.layers?.map((layer) => layer.component)).toEqual(['loop/A']);
     expect(logged.some((message) => message.includes('more than 10 bases'))).toBe(true);
   });
@@ -154,7 +154,7 @@ describe('createHttpKernel — layers', async () => {
     logged.length = 0;
     const response = await app.request('/writes/note');
     const page = documentPage(await response.text());
-    expect(page.component).toBe('layers/Backdrop');
+    expect(page.component).toBe('system/layers/Backdrop');
     expect(response.headers.getSetCookie().join()).not.toContain('written');
     // The message names the base and its rule — not an island's.
     const message = logged.find((line) => line.includes("in a layer's base")) ?? JSON.stringify(logged);

@@ -159,7 +159,7 @@ SettingsLayout.error = function SettingsError({ title, retry }: ErrorFallbackPro
 
 When a page throws while it renders, the nearest layout above it that has `error` shows it in place of its children. The layout
 itself stays mounted, so its menu, its state and the layouts around it stay as they are. A failure of a layout goes the same way to
-the next layout above it with `error`. Without any layout with `error`, nothing changes: the page `errors/Error` shows inside the
+the next layout above it with `error`. Without any layout with `error`, nothing changes: the page `system/errors/Error` shows inside the
 layouts, and a layout that throws shows it without them. Before an `error` shows, the page is loaded once more with fresh props,
 as it always was.
 
@@ -389,8 +389,8 @@ the document has no markup, because the page has `ssr = false` or rendering fail
 
 ## The error page
 
-An error while a page renders shows the page `errors/Error` inside its layouts. A built-in one is there until you write
-`modules/errors/views/Error.tsx`; a view named for a status, such as `404.tsx` or `500.tsx`, comes first for that status. The [error handling](errors.md#your-own-error-page) page shows how.
+An error while a page renders shows the page `system/errors/Error` inside its layouts. A built-in one is there until you write
+`modules/system/views/errors/Error.tsx`; a view named for a status, such as `404.tsx` or `500.tsx`, comes first for that status. The [error handling](errors.md#your-own-error-page) page shows how.
 
 ## Testing
 

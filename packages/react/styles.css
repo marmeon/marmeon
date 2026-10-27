@@ -125,7 +125,7 @@
   border: 0;
 }
 
-/* The built-in error page (`errors/Error` until the app brings its own). */
+/* The built-in error page (`system/errors/Error` until the app brings its own). */
 :where(.marmeon-error) {
   font-family: system-ui, sans-serif;
   max-width: 720px;

@@ -13,7 +13,7 @@ export { ServerClosing } from './server-closing.ts';
 export { ReadOnly } from './read-only.ts';
 export { ParentRequest } from './parent-request.ts';
 export { AssetVersion } from './asset-version.ts';
-export { ERROR_PAGE, LAYER_BACKDROP, pageName, scriptJson } from './page-support.ts';
+export { ERROR_PAGE, LAYER_BACKDROP, legacyFrameworkPage, pageName, scriptJson } from './page-support.ts';
 export {
   ACTION_HEADER,
   ACTION_REDIRECT_HEADER,

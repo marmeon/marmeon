@@ -226,7 +226,7 @@ class Tab {
     this.failed.push(`${this.fail} ${request.url}`);
     if (this.fail === 'network') return void (await this.send('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' }));
     const page = {
-      component: 'errors/Error',
+      component: 'system/errors/Error',
       props: { status: 500, title: 'Server Error', message: 'Server Error', exception: null },
       url: new URL(request.url).pathname,
       version: this.version,

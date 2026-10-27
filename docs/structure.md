@@ -174,7 +174,7 @@ modules/auth/
 ```
 
 Only `index.ts` is required, and two folder names matter: the pages are found under `views/`, and the module's texts under
-`lang/`. Routes, providers, jobs,
+`lang/`. The `system` module's `views/errors/` and `views/layers/` hold the framework's pages your app replaces (error pages, the layer backdrop). Routes, providers, jobs,
 listeners, commands, migrations and the schedule count once the module's definition lists them. Controllers and other classes
 need no list: the container builds them when a route or a constructor asks for them.
 

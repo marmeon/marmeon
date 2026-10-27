@@ -47,6 +47,67 @@ describe('marmeon route:types (reserved page names)', { timeout: 30_000 }, () =>
   });
 });
 
+describe('marmeon route:types (pages of the framework in their former place)', { timeout: 60_000 }, () => {
+  const blank = join(repo, 'apps/blank-app');
+
+  function appWith(views: string[]): string {
+    const app = realpathSync(tempDir('marmeon-former-'));
+    cpSync(blank, app, { recursive: true, filter: (source) => !/[/\\](node_modules|\.marmeon|storage|dist)([/\\]|$)/.test(source.slice(blank.length)) && !/[/\\]\.env$/.test(source) });
+    symlinkSync(join(blank, 'node_modules'), join(app, 'node_modules'), 'dir');
+    mkdirSync(join(app, 'storage'));
+    for (const view of views) {
+      mkdirSync(dirname(join(app, view)), { recursive: true });
+      writeFileSync(join(app, view), 'export default function Page() { return null; }\n');
+    }
+    return app;
+  }
+
+  it('stops with K14, names the new path and writes nothing', () => {
+    const app = appWith(['modules/errors/views/404.tsx', 'modules/layers/views/Backdrop.tsx']);
+    const before = readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8');
+    for (const args of [['route:types'], ['route:types', '--check']]) {
+      const { code, stderr } = marmeon(app, args);
+      expect(code).toBe(1);
+      expect(stderr).toContain('K14');
+      expect(stderr).toContain('modules/errors/views/404.tsx is no page of the framework any more: move it to modules/system/views/errors/404.tsx');
+      expect(stderr).toContain('move it to modules/system/views/layers/Backdrop.tsx');
+    }
+    expect(readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8')).toBe(before);
+  });
+
+  it('stops marmeon build', () => {
+    const app = appWith(['modules/errors/views/Error.tsx']);
+    const { code, stderr } = marmeon(app, ['build', '--no-typecheck']);
+    expect(code).toBe(1);
+    expect(stderr).toContain('K14');
+    expect(stderr).toContain('Not built: marmeon route:types failed');
+    expect(existsSync(join(app, 'dist'))).toBe(false);
+  });
+
+  it('stops the server of marmeon dev before it starts', () => {
+    const app = appWith(['modules/layers/views/Backdrop.tsx']);
+    const { code, stderr } = marmeon(app, ['serve'], { DB_DATABASE: ':memory:', NODE_ENV: 'development', APP_KEY: generateKey(), APP_NAME: 'Former', APP_URL: 'https://example.test', PORT: '0', MARMEON_CHILD: '1', MARMEON_LAUNCH: 'dev' }, 15_000);
+    expect(code).toBe(1);
+    expect(stderr).toContain('K14');
+    expect(stderr).toContain('modules/system/views/layers/Backdrop.tsx');
+  });
+
+  it('shows in marmeon check as a problem with its code', () => {
+    const app = appWith(['modules/errors/views/500.tsx']);
+    marmeon(app, ['route:types']);
+    const { code, stdout } = marmeon(app, ['check', '--only=route-types', '--json'], {}, 60_000);
+    expect(code).toBe(1);
+    const problem = JSON.parse(stdout).checks.flatMap((report: { problems?: { code?: string; message: string }[] }) => report.problems ?? []).find((found: { code?: string }) => found.code === 'K14');
+    expect(problem.message).toContain('modules/system/views/errors/500.tsx');
+  });
+
+  it('lets other pages of a module named errors through, and the new places', () => {
+    const app = appWith(['modules/errors/views/List.tsx', 'modules/system/views/errors/404.tsx']);
+    expect(marmeon(app, ['route:types']).code).toBe(0);
+    expect(readFileSync(join(app, 'bootstrap/routes.ts'), 'utf8')).toContain("'errors/List': true;");
+  });
+});
+
 describe('marmeon route:types (format mark)', { timeout: 30_000 }, () => {
   const blank = join(repo, 'apps/blank-app');
   const MARK = '// @marmeon-format 1';

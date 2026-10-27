@@ -191,8 +191,6 @@ declare module '@marmeon/http/page' {
     'dashboard/MyActivity': true;
     'dashboard/RecentSignIns': true;
     'dashboard/Show': true;
-    'errors/404': true;
-    'errors/Error': true;
     'lab/BrowserOnly': true;
     'lab/ClientOnly': true;
     'lab/Devtools': true;
@@ -203,6 +201,8 @@ declare module '@marmeon/http/page' {
     'lab/Validation': true;
     'members/Index': true;
     'notifications/Index': true;
+    'system/errors/404': true;
+    'system/errors/Error': true;
     'user-profile/Edit': true;
     'user-profile/People': true;
     'user-profile/RemoveLink': true;

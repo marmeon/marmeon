@@ -1351,7 +1351,7 @@ export interface ConfirmRequest extends ConfirmOptions {
 // DeclaredRevalidation
 export type DeclaredRevalidation = (component: string) => RevalidateOnBack | undefined | Promise<RevalidateOnBack | undefined>;
 // ERROR_PAGE
-export declare const ERROR_PAGE = "errors/Error";
+export declare const ERROR_PAGE = "system/errors/Error";
 // EpochChange
 export interface EpochChange {
     readonly previous: string | undefined;
@@ -1460,7 +1460,7 @@ export type KeptRegion = RegionObject | {
     readonly status: 'unauthorized' | 'forbidden';
 };
 // LAYER_BACKDROP
-export declare const LAYER_BACKDROP = "layers/Backdrop";
+export declare const LAYER_BACKDROP = "system/layers/Backdrop";
 // Layer
 export declare class Layer {
     #private;
