@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isHistoryState, mergePage, Navigator, type VisitError } from './navigation.ts';
 import type { PatchTarget } from './optimistic.ts';
 import { boot, FakeEntry, FakeWindow, historyFeatures, ORIGIN, page, pageResponse, PATHS, settle } from './test-window.ts';
+import type { RegionOwner } from './owner.ts';
 import { pageInfo } from '../page-support.ts';
 import { prefetch } from './features/prefetch.ts';
 import { prefetchWith } from './lazy.ts';
@@ -183,6 +184,218 @@ describe.each(PATHS)('the navigator on the %s path', (path) => {
   }
 
   describe('Navigator — visit events and failures', () => {
+    /**
+     * A navigator whose render of a page waits for its own `release()` — the page's view code still loading: the pages under
+     * `/slow`, and those added to `hold`.
+     */
+    function slowBoot(win: FakeWindow, initial: PageObject, options: Pick<ConstructorParameters<typeof Navigator>[0], 'loadLayers'> = {}) {
+      const held = new Map<string, () => void>();
+      const hold = new Set<string>();
+      const shown: string[] = [];
+      const owners = new Map<string, RegionOwner>();
+      const navigator = new Navigator({
+        initialPage: initial,
+        window: win,
+        features: historyFeatures(win),
+        ...options,
+        render: async (next, { signal, owner }) => {
+          if (next.url.startsWith('/slow') || hold.has(next.url)) {
+            owners.set(next.url, owner);
+            await new Promise<void>((release) => held.set(next.url, release));
+          }
+          if (signal?.aborted) return;
+          shown.push(next.url);
+        },
+      });
+      navigator.start();
+      return { navigator, held, hold, shown, owners };
+    }
+
+    it('lets a newer visit win when an older one’s view is still loading', async () => {
+      const win = new FakeWindow(`${ORIGIN}/start`);
+      win.handler = (url) => pageResponse(page(new URL(url).pathname));
+      const { navigator, held, shown, owners } = slowBoot(win, page('/start'));
+      const { events } = record(navigator);
+      const length = win.entries.length;
+
+      const older = navigator.visit('/slow-a');
+      await settle();
+      expect(held.has('/slow-a')).toBe(true);
+      await navigator.visit('/b');
+      expect(shown.at(-1)).toBe('/b');
+
+      held.get('/slow-a')!();
+      expect(await older).toBeUndefined();
+      await settle();
+
+      expect(shown).toEqual(['/b']);
+      expect(win.current.url).toBe(`${ORIGIN}/b`);
+      expect(win.entries.length).toBe(length + 1);
+      expect(win.entries.map((entry) => entry.url)).not.toContain(`${ORIGIN}/slow-a`);
+      expect(events).not.toContain('success /slow-a');
+      expect(events).toContain('cancel /slow-a');
+      expect(events).toContain('finish /slow-a');
+      expect(events).toContain('success /b');
+      expect(owners.get('/slow-a')!.closed).toBe(true);
+    });
+
+    it('lets Back win when the view of a visit is still loading', async () => {
+      const win = new FakeWindow(`${ORIGIN}/start`);
+      win.handler = (url) => pageResponse(page(new URL(url).pathname));
+      const { navigator, held, shown } = slowBoot(win, page('/start'));
+      await navigator.visit('/b');
+      const length = win.entries.length;
+
+      const older = navigator.visit('/slow-a');
+      await settle();
+      expect(held.has('/slow-a')).toBe(true);
+      win.back();
+      await settle();
+      held.get('/slow-a')!();
+      expect(await older).toBeUndefined();
+      await settle();
+
+      expect(shown.at(-1)).toBe('/start');
+      expect(win.current.url).toBe(`${ORIGIN}/start`);
+      expect(win.entries.length).toBe(length);
+      expect(win.entries.map((entry) => entry.url)).not.toContain(`${ORIGIN}/slow-a`);
+    });
+
+    it('lets the later Back/Forward win when an earlier one’s view is still loading — and scrolls only for the later', async () => {
+      const win = new FakeWindow(`${ORIGIN}/start`);
+      win.handler = (url) => pageResponse(page(new URL(url).pathname));
+      const { navigator, held, hold, shown } = slowBoot(win, page('/start'));
+      await navigator.visit('/b');
+      win.scroll(300);
+      await navigator.visit('/c');
+      hold.add('/b');
+
+      win.back(); // /b — its view is held
+      await settle();
+      expect(held.has('/b')).toBe(true);
+      win.back(); // /start
+      await settle();
+      expect(shown.at(-1)).toBe('/start');
+      expect(win.scrollY).toBe(0);
+
+      held.get('/b')!();
+      await settle();
+      expect(shown.at(-1)).toBe('/start');
+      expect(win.scrollY).toBe(0); // the position of /b is not applied to /start
+      expect(win.current.url).toBe(`${ORIGIN}/start`);
+    });
+
+    it('lets a visit in the background lose to a foreground visit that landed while its view loaded', async () => {
+      const win = new FakeWindow(`${ORIGIN}/start`);
+      win.handler = (url) => pageResponse(page(new URL(url).pathname));
+      const { navigator, held, shown } = slowBoot(win, page('/start'));
+      const length = win.entries.length;
+
+      const background = navigator.visit('/slow-a', { async: true });
+      await settle();
+      expect(held.has('/slow-a')).toBe(true);
+      await navigator.visit('/b');
+
+      held.get('/slow-a')!();
+      expect(await background).toBeUndefined();
+      await settle();
+      expect(shown).toEqual(['/b']);
+      expect(win.current.url).toBe(`${ORIGIN}/b`);
+      expect(win.entries.length).toBe(length + 1);
+    });
+
+    it('keeps the messages of a page still loading until that page is on screen — a dropped render fires none', async () => {
+      const win = new FakeWindow(`${ORIGIN}/start`);
+      const message = { id: 'm1', key: 'toast', data: { message: 'Saved.' } };
+      win.handler = (url) => {
+        const path = new URL(url).pathname;
+        return pageResponse(path === '/slow-c' ? { ...page(path), flash: [message] as never } : page(path));
+      };
+      const { navigator, held } = slowBoot(win, page('/start'));
+      const fired: string[] = [];
+      navigator.on('flash', (flash) => fired.push(flash.id));
+
+      const older = navigator.visit('/slow-a');
+      await settle();
+      const newer = navigator.visit('/slow-c');
+      await settle();
+      held.get('/slow-a')!();
+      expect(await older).toBeUndefined();
+      await settle();
+      expect(fired).toEqual([]);
+
+      held.get('/slow-c')!();
+      await newer;
+      expect(fired).toEqual(['m1']);
+    });
+
+    it('keeps the messages of a page still loading when a request in the background ends meanwhile', async () => {
+      const win = new FakeWindow(`${ORIGIN}/start`);
+      const message = { id: 'm1', key: 'toast', data: { message: 'Saved.' } };
+      win.handler = (url) => {
+        const path = new URL(url).pathname;
+        return pageResponse(path === '/slow-c' ? { ...page(path), flash: [message] as never } : page(path));
+      };
+      const { navigator, held } = slowBoot(win, page('/start'));
+      const fired: string[] = [];
+      navigator.on('flash', (flash) => fired.push(flash.id));
+
+      const newer = navigator.visit('/slow-c');
+      await settle();
+      expect(held.has('/slow-c')).toBe(true);
+      await navigator.visit('/d', { async: true });
+      expect(fired).toEqual([]);
+
+      held.get('/slow-c')!();
+      await newer;
+      expect(fired).toEqual(['m1']);
+    });
+
+    it('keeps a background visit from landing while the newest draw is still held — a stale draw ending does not end it', async () => {
+      const win = new FakeWindow(`${ORIGIN}/start`);
+      win.handler = (url) => pageResponse(page(new URL(url).pathname));
+      const { navigator, held, shown } = slowBoot(win, page('/start'));
+
+      const stale = navigator.visit('/slow-a');
+      await settle();
+      const newest = navigator.visit('/slow-b');
+      await settle();
+      held.get('/slow-a')!();
+      expect(await stale).toBeUndefined();
+
+      expect(await navigator.visit('/start', { async: true })).toBeUndefined();
+      expect(shown).toEqual([]);
+
+      held.get('/slow-b')!();
+      expect((await newest)?.url).toBe('/slow-b');
+    });
+
+    it('does not cancel a visit when a layer closes (Escape) while its view is loading — the page lands', async () => {
+      const win = new FakeWindow(`${ORIGIN}/start`);
+      win.handler = (url) => {
+        const path = new URL(url).pathname;
+        return pageResponse(path === '/edit' ? { ...page(path), layer: { key: path, base: '/start' } } : page(path));
+      };
+      const { navigator, held, shown } = slowBoot(win, page('/start'));
+      const { events } = record(navigator);
+      await navigator.visit('/edit', { layer: true });
+      expect(navigator.layers).toHaveLength(1);
+
+      const visit = navigator.visit('/slow-a');
+      await settle();
+      expect(held.has('/slow-a')).toBe(true);
+      await navigator.layers[0]!.close();
+      await settle();
+
+      held.get('/slow-a')!();
+      const landed = await visit;
+      await settle();
+      expect(landed?.url).toBe('/slow-a');
+      expect(shown.at(-1)).toBe('/slow-a');
+      expect(win.current.url).toBe(`${ORIGIN}/slow-a`);
+      expect(events).toContain('success /slow-a');
+    });
+
     it('reports start and finish of a visit — per visit too', async () => {
       const win = new FakeWindow(`${ORIGIN}/a`);
       win.handler = () => pageResponse(page('/b'));

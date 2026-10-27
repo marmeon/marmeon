@@ -217,6 +217,11 @@ export interface RenderOptions {
    */
   readonly placeholder?: boolean;
   /**
+   * Aborted when a later page render started (a newer visit, Back/Forward) or the document is left: the adapter must not
+   * commit this one (no state update, no DOM change) — and resolves. Absent for renders that nothing can supersede.
+   */
+  readonly signal?: AbortSignal;
+  /**
    * A view transition's types — only for an adapter that starts them itself (`NavigatorOptions.viewTransition: 'adapter'`):
    * render this page in one, with these types. Undefined: a plain render.
    */
@@ -302,6 +307,8 @@ export class Navigator {
   readonly #render: NavigatorOptions['render'];
   readonly #events = new VisitEmitter();
   #inFlight: AbortController | undefined;
+  /** The page render under way (`#show`, `#arrive`): a later one, Back/Forward or leaving the document aborts it. */
+  #drawing: AbortController | undefined;
   /** Requests in the background (`visit.async`): they die with the document's pages when it is left. */
   readonly #background = new Set<AbortController>();
   /** Development only: the routes (or paths) already warned about as slow — once each per document. */
@@ -783,7 +790,7 @@ export class Navigator {
         if (partial !== undefined && page.component === partial && current.component === partial) page = mergePage(current, page, options.reset);
         // The URL — and so the query state — stays the one of the page on screen.
         if (preserveUrl) page = withQueryOf({ ...page, url: current.url }, current);
-        const shown = await this.#place(from, page, { method, replace, preserveScroll, preserveState, preserveUrl, partial: partial !== undefined, hash: preserveUrl ? '' : target.hash });
+        const shown = await this.#place(from, page, { method, replace, preserveScroll, preserveState, preserveUrl, partial: partial !== undefined, hash: preserveUrl ? '' : target.hash }, signal);
         if (timed && shown && performance.now() - startedAt > SLOW_VISIT_MS) {
           const where = options.name ?? page.route ?? target.pathname;
           if (!this.#slowVisits.has(where)) {
@@ -808,14 +815,14 @@ export class Navigator {
   }
 
   /** Where a visit's answer goes — see {@link Navigator.#visit}: a feature takes it (layers), anything else is the page. */
-  async #place(from: LayerControl | undefined, page: PageObject, options: PlaceOptions): Promise<PageObject | undefined> {
+  async #place(from: LayerControl | undefined, page: PageObject, options: PlaceOptions, signal: AbortSignal): Promise<PageObject | undefined> {
     const placed = this.#first('place', from, page, options);
     if (placed) return placed;
     const { method, replace, preserveScroll, preserveState, preserveUrl, hash } = options;
     // Redirected back to the same URL (a failed form), or kept the URL ("load more"): replace, don't stack history entries.
     const sameUrl = page.url === this.#core.window.location.pathname + this.#core.window.location.search;
     const history = replace || preserveUrl || (method !== 'get' && sameUrl) ? 'replace' : 'push';
-    return this.#show(page, history, { preserveScroll, preserveState, hash });
+    return this.#show(page, history, { preserveScroll, preserveState, hash }, signal);
   }
 
   /**
@@ -851,8 +858,11 @@ export class Navigator {
     page: PageObject,
     history: 'push' | 'replace',
     { preserveScroll, preserveState, hash }: { preserveScroll: boolean; preserveState: boolean; hash: string },
+    visitSignal?: AbortSignal,
   ): Promise<PageObject | undefined> {
     const core = this.#core;
+    const drawing = this.#startDrawing();
+    const signal = visitSignal ? AbortSignal.any([visitSignal, drawing.signal]) : drawing.signal;
     // Back restores where the page being left was scrolled to.
     if (history === 'push') this.#save();
     core.scroll.cancelSave();
@@ -867,6 +877,7 @@ export class Navigator {
     // entry replaced by it forgets what it kept.
     let owner = core.owner;
     if (history === 'push' || !keep || top !== core.key) {
+      // Before the draw on purpose: the new owner must start without the slots the entry kept (a stale replace has dropped them already).
       if (history === 'replace') core.forget(key);
       owner = core.ownerOf(key);
       if (keep) this.#all('carry', core.owner, owner);
@@ -874,11 +885,18 @@ export class Navigator {
     try {
       try {
         // In a view transition's update when one runs — the history entry and the scroll follow once it is in.
-        await this.#draw(core.paint(key, page), { preserveState, owner, layers: [] }, history, keep);
+        await this.#draw(core.paint(key, page), { preserveState, owner, layers: [], signal }, history, keep);
       } catch {
-        // The page's code could not be loaded (a chunk gone after a deployment, offline): the browser loads it.
         if (owner !== core.owner) owner.close();
+        // A newer visit (or Back) has the screen: this page's code failing changes nothing for it.
+        if (signal.aborted) return undefined;
+        // The page's code could not be loaded (a chunk gone after a deployment, offline): the browser loads it.
         this.#away(page.url);
+        return undefined;
+      }
+      // Its code came in after a newer visit, Back/Forward or leaving the document took over: nothing of this page is written.
+      if (signal.aborted) {
+        if (owner !== core.owner) owner.close();
         return undefined;
       }
       const arrived = preserveScroll ? core.scroll.current() : TOP;
@@ -894,8 +912,21 @@ export class Navigator {
       core.props.load();
       return page;
     } finally {
-      core.transitioning = false;
+      this.#endDrawing(drawing);
     }
+  }
+
+  /** A page render begins: the one under way (its answer is stale now) is aborted. */
+  #startDrawing(): AbortController {
+    this.#drawing?.abort();
+    return (this.#drawing = new AbortController());
+  }
+
+  /** The render `drawing` is done — it was the last one started, nothing is drawing any more. */
+  #endDrawing(drawing: AbortController): void {
+    if (this.#drawing !== drawing) return;
+    this.#drawing = undefined;
+    this.#core.transitioning = false;
   }
 
   // -- Back/Forward -----------------------------------------------------------------------------------------------------
@@ -952,7 +983,10 @@ export class Navigator {
     }
     // A feature takes it (a layer closing by going back, tab sync: an entry of another epoch); others follow it (an instant visit ends).
     if (this.#first('popState', state, own)) return;
-    if (!own) this.#inFlight?.abort();
+    if (!own) {
+      this.#inFlight?.abort();
+      this.#drawing?.abort();
+    }
     // A save still pending belongs to the entry just left; the browser already switched to the new one.
     core.scroll.cancelSave();
     const stack = this.#first('stack', state.key) ?? (core.cache.get(state.key) && { page: state.key });
@@ -992,16 +1026,19 @@ export class Navigator {
   /** Renders a page of the history and scrolls to where it was. */
   async #arrive(page: PageObject, position: Scroll, owner: RegionOwner): Promise<void> {
     const core = this.#core;
+    const drawing = this.#startDrawing();
     core.transitioning = true;
     try {
-      await this.#draw(core.paint(core.key!, page), { preserveState: false, owner }, 'traverse');
+      await this.#draw(core.paint(core.key!, page), { preserveState: false, owner, signal: drawing.signal }, 'traverse');
+      // Another entry (or a visit) took the screen meanwhile: its scroll and its props are the ones that count.
+      if (drawing.signal.aborted) return;
       core.scroll.apply(position);
       core.props.load();
       this.#all('deferred');
     } catch {
-      this.#away();
+      if (!drawing.signal.aborted) this.#away();
     } finally {
-      core.transitioning = false;
+      this.#endDrawing(drawing);
     }
   }
 
@@ -1096,8 +1133,9 @@ export class Navigator {
       if (this.#inFlight === controller) this.#inFlight = undefined;
       if (this.#visiting === visit) this.#setVisiting(undefined);
       this.#background.delete(controller);
-      // Messages of an answer that did not land (moved on meanwhile, a failure page): they were taken — they fire anyway.
-      this.#flushFlash();
+      // Messages of an answer that did not land (moved on meanwhile, a failure page): they were taken — they fire anyway, once no
+      // newer visit is under way or drawing (its page is not on screen yet: its messages wait for it, and its draw flushes them).
+      if (this.#inFlight === undefined && this.#drawing === undefined) this.#flushFlash();
       events.emit('finish', callbacks.onFinish, visit);
     }
   }
@@ -1229,7 +1267,8 @@ export class Navigator {
     this.#all('draw');
     const run = () => this.#render(page, { owner: this.#core.owner, layers: [], ...this.#extras(), ...options });
     await ((how && this.#first('swap', run, how, keep)) ?? run());
-    this.#flushFlash();
+    // A render dropped as stale leaves the messages in the inbox: they fire with the page that lands.
+    if (!options.signal?.aborted) this.#flushFlash();
   }
 
   #setVisiting(visit: Visit | undefined): void {
@@ -1316,6 +1355,7 @@ export class Navigator {
     // the visit the user started before — its answer is what the signed-in user was about to see.
     for (const request of this.#background) request.abort();
     this.#inFlight?.abort();
+    this.#drawing?.abort();
   }
 }
 
