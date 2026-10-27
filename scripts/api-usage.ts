@@ -26,8 +26,15 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 
 export type Suggestion = 'keep' | 'testing' | 'internal' | 'drop';
 
+/** What a declaration is, from its first line in `api.md`; `reexport` for `export { … } from`. */
+export type DeclarationKind = 'function' | 'const' | 'class' | 'enum' | 'type' | 'reexport' | 'other';
+
 export interface NameUsage {
   readonly name: string;
+  /** The kind of declaration the entry exports under this name. */
+  readonly kind: DeclarationKind;
+  /** The snapshot lists it as experimental. */
+  readonly experimental: boolean;
   readonly suggestion: Suggestion;
   /** Why — in a few words. */
   readonly reason: string;
@@ -239,6 +246,16 @@ function withoutStrings(text: string): string {
   return code(false);
 }
 
+/** The kind of declaration an item's text starts with, after its marker lines. */
+export function kindOf(declaration: string): DeclarationKind {
+  const text = declaration.replace(/^(?:\/\/[^\n]*\n)+/, ''); // `// type-only` and `// @deprecated` lines
+  if (/^export\s+(?:type\s+)?\{/.test(text)) return 'reexport';
+  const keyword = /^export\s+(?:declare\s+)?(?:abstract\s+)?(?:const\s+)?(function|class|enum|const|let|var|interface|type|namespace)\b/.exec(text)?.[1];
+  if (keyword === 'function' || keyword === 'class' || keyword === 'enum') return keyword;
+  if (keyword === 'const' || keyword === 'let' || keyword === 'var') return 'const';
+  return keyword === 'interface' || keyword === 'type' ? 'type' : 'other';
+}
+
 /** An experimental member (`Options.pages`) is no export of its own. */
 const isExport = (item: ApiItem) => item.entry !== '' && (item.section === 'stable' || (item.section === 'experimental' && !item.name.includes('.')));
 
@@ -257,6 +274,8 @@ export function usageOf(entry: string, repository: string = root, files: readonl
   if (!own) return undefined;
   const names = [...new Set(own.items.filter((item) => item.entry === entry && isExport(item)).map((item) => item.name))].sort();
   const known = new Set(names);
+  const declared = new Map<string, ApiItem>();
+  for (const item of own.items) if (item.entry === entry && isExport(item) && !declared.has(item.name)) declared.set(item.name, item);
 
   const importers = new Map<string, Set<string>>();
   const wholeImports = new Set<string>();
@@ -322,7 +341,7 @@ export function usageOf(entry: string, repository: string = root, files: readonl
       else if (kind.kind === 'kit') usage.kit.push(path);
       else usage.tests.push(path);
     }
-    return { name, ...suggest(name, usage, whole, testingEntry, [...(exportedBy.get(name) ?? [])].sort()), ...usage };
+    return { name, kind: kindOf(declared.get(name)!.text), experimental: declared.get(name)!.section === 'experimental', ...suggest(name, usage, whole, testingEntry, [...(exportedBy.get(name) ?? [])].sort()), ...usage };
   });
   return { entry, names: result, wholeImports: whole };
 }
