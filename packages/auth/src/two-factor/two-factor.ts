@@ -405,8 +405,9 @@ export class TwoFactor {
     try {
       return await this.#encrypter.decrypt(payload, context(userId));
     } catch (error) {
-      if (error instanceof DecryptError) return undefined;
-      throw error;
+      if (!(error instanceof DecryptError)) throw error;
+      this.#logger.warn('The two-factor secret of a user cannot be decrypted with APP_KEY or APP_PREVIOUS_KEYS — was the key it was encrypted with removed?', { user: userId });
+      return undefined;
     }
   }
 
