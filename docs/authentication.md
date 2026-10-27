@@ -1334,7 +1334,7 @@ for client-side visits, redirects and error pages. Without it, the browser would
 would show them again without asking the server. The middleware, `NoStoreWhenSignedIn`, asks the session and never loads the user.
 Every app with `@marmeon/auth` has it.
 
-A route that sets its own `Cache-Control` keeps it, such as one with `cacheControl('private, max-age=60')`. Then its answer may
+A route that sets its own `Cache-Control` keeps it, but never as `public`: the answer of a session is sent as `private`. An example is a route with `cacheControl('private, max-age=60')`. Then its answer may
 stay in the browser after a sign-out: set your own header only on answers that hold nothing of the user. An app that does keep such answers signs out with `history.clear({ siteData: ['cache', 'storage'] })` after `signOut()`, which asks the browser to drop its cache too; the [client features](client-features.md#the-browsers-storage-on-sign-out) page has the cost.
 
 ## Events

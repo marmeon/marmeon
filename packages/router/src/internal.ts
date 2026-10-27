@@ -15,6 +15,7 @@ export { matchParams, tokenizePattern } from './pattern.ts';
 export { localLocation } from './local-location.ts';
 export { addsOf, isMiddlewareClass } from './middleware.ts';
 export { withQueuedCookies } from './cookies.ts';
+export { keepFromSharedCaches, SharedCacheWarnings } from './cache-control.ts';
 export { clientIp, createRequestState, requestBytes } from './request.ts';
 export { messageOf, NOT_LIVE } from './request-definition.ts';
 export { isLiveValidation, liveValidationFields, VALIDATE_HEADER, VALIDATED_HEADER } from './live-validation.ts';

@@ -63,6 +63,22 @@ export type IslandPropsOf<TSource extends IslandSource> = IslandSource extends T
 
 const PAGE_SCRIPT = new RegExp(`<script type="application/json" id="${PAGE_SCRIPT_ID}">([\\s\\S]*?)</script>`);
 
+/** The session id the app read from the `Cookie` header a request was sent with — undefined when it did not decrypt, as for the app. */
+async function sessionSent(name: string, header: string | undefined, crypto?: CookieCrypto): Promise<string | undefined> {
+  for (const part of (header ?? '').split(';')) {
+    const index = part.indexOf('=');
+    if (part.slice(0, index).trim() !== name) continue;
+    let raw = part.slice(index + 1).trim();
+    try {
+      raw = decodeURIComponent(raw);
+    } catch {
+      // kept as it is
+    }
+    return crypto ? crypto.open(name, raw) : raw;
+  }
+  return undefined;
+}
+
 /**
  * A response with assertions. The body is read up front, so every assertion is synchronous and can be chained.
  */
@@ -75,6 +91,8 @@ export class TestResponse {
   readonly #cookies: ReadonlyMap<string, string>;
   /** The session as the request left it — undefined if the app has no session. */
   readonly #session: Record<string, unknown> | undefined;
+  /** The session cookie the request came with, when this response did not send it again — the browser still holds it. */
+  readonly #held: ReadonlyMap<string, string>;
   /** What server rendering did — undefined without `createTestApp(…, { ssr: true })`. */
   readonly #ssr: SsrOutcome | undefined;
 
@@ -86,6 +104,7 @@ export class TestResponse {
     cookies: ReadonlyMap<string, string> = new Map(),
     session?: Record<string, unknown>,
     ssr?: SsrOutcome,
+    held: ReadonlyMap<string, string> = new Map(),
   ) {
     this.status = response.status;
     this.headers = response.headers;
@@ -94,6 +113,7 @@ export class TestResponse {
     this.#cookies = cookies;
     this.#session = session;
     this.#ssr = ssr;
+    this.#held = held;
   }
 
   /** @internal */
@@ -103,17 +123,20 @@ export class TestResponse {
     crypto?: CookieCrypto,
     sessions?: SessionAccess,
     ssr?: (page: PageObject | undefined) => Promise<SsrOutcome | undefined>,
+    sent?: string,
   ): Promise<TestResponse> {
     const cookies = new Map<string, string>();
     for (const header of response.headers.getSetCookie()) {
       const { name, value } = splitSetCookie(header);
       cookies.set(name, crypto ? await crypto.decrypt(name, value) : value);
     }
-    const id = sessions ? cookies.get(sessions.cookie) : undefined;
+    // A session that kept its id sends no cookie back: it is the one the request came with.
+    const sentId = sessions && !cookies.has(sessions.cookie) ? await sessionSent(sessions.cookie, sent, crypto) : undefined;
+    const id = sessions ? (cookies.get(sessions.cookie) ?? sentId) : undefined;
     const session = id ? await sessions!.read(id) : undefined;
     const body = await response.text();
     const page = response.headers.get('content-type')?.includes('text/html') ? pageIn(body) : undefined;
-    return new TestResponse(response, body, label, cookies, session, await ssr?.(page));
+    return new TestResponse(response, body, label, cookies, session, await ssr?.(page), new Map(sentId && sessions ? [[sessions.cookie, sentId]] : []));
   }
 
   /** The session data after the request (from the store, via the session cookie). */
@@ -139,9 +162,12 @@ export class TestResponse {
     return isPageObject(candidate) ? candidate : undefined;
   }
 
-  /** A cookie set by this response — decrypted, like the app will read it — or undefined. */
+  /**
+   * A cookie set by this response — decrypted, like the app will read it — or undefined. The session cookie is sent only when
+   * the session is new or its id changed: for a request that came with one, this is the cookie the browser holds after it.
+   */
   cookie(name: string): string | undefined {
-    return this.#setCookie(name)?.value;
+    return this.#setCookie(name)?.value ?? this.#held.get(name);
   }
 
   #setCookie(name: string): { value: string; attributes: Map<string, string> } | undefined {

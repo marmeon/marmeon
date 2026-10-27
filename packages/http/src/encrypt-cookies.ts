@@ -38,7 +38,10 @@ export class EncryptCookies {
       decode: async (name, value) => {
         if (!this.#settings.isEncrypted(name)) return value;
         try {
-          return await this.#encrypter.decrypt(value, `cookie:${name}`);
+          if (!this.#encrypter.decryptWithAge) return await this.#encrypter.decrypt(value, `cookie:${name}`);
+          const opened = await this.#encrypter.decryptWithAge(value, `cookie:${name}`);
+          if (opened.stale) ctx.cookies.markStale(name);
+          return opened.value;
         } catch (error) {
           if (error instanceof DecryptError) return undefined;
           throw error;

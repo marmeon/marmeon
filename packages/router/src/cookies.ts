@@ -159,6 +159,29 @@ export class CookieJar {
     this.#codec = codec;
   }
 
+  readonly #stale = new Set<string>();
+  #private = false;
+
+  /** @internal The cookie codec saw this cookie sealed with a previous key: whoever owns it sends it again under the current one. */
+  markStale(name: string): void {
+    this.#stale.add(name);
+  }
+
+  /** @internal Whether the incoming cookie `name` was sealed with a previous key. */
+  isStale(name: string): boolean {
+    return this.#stale.has(name);
+  }
+
+  /** @internal The answer belongs to a session: the kernel keeps it from shared caches, whatever a middleware set. */
+  markPrivate(): void {
+    this.#private = true;
+  }
+
+  /** @internal */
+  get markedPrivate(): boolean {
+    return this.#private;
+  }
+
   /** @internal The response writes these. `Set-Cookie` values queued so far, one per cookie name (the last `set` wins). Deletions are not encoded. */
   async queued(): Promise<string[]> {
     const headers: string[] = [];

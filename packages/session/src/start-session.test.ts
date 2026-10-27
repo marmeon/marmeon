@@ -1,14 +1,14 @@
 import { CacheServiceProvider } from '@marmeon/cache';
 import { CliServiceProvider } from 'marmeon';
 import { createApplication, defineModule, Logger, type Container, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
-import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { abort, Controller, HttpServiceProvider } from '@marmeon/http';
+import { AesGcmEncrypter, Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
+import { abort, cacheControl, Controller, HttpServiceProvider } from '@marmeon/http';
 import { defineSchedule, SchedulerServiceProvider } from '@marmeon/scheduler';
 import { createHttpKernel } from '@marmeon/server';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it, vi } from 'vitest';
 import { CsrfProtection } from './csrf.ts';
-import { sessionCookieName } from './config.ts';
+import { SessionConfig, sessionCookieName } from './config.ts';
 import { SessionServiceProvider } from './provider.ts';
 import { SessionStore } from './store.ts';
 import { Session } from './session.ts';
@@ -25,6 +25,18 @@ class CountVisitsController extends Controller {
     const visits = Number(this.#session.get('visits') ?? 0) + 1;
     this.#session.put('visits', visits);
     return { visits, status: this.#session.get('status') ?? null };
+  }
+}
+
+class RegenerateController extends Controller {
+  readonly #session: Session;
+  constructor(session: Session) {
+    super();
+    this.#session = session;
+  }
+  handle() {
+    this.#session.regenerate();
+    return { ok: true };
   }
 }
 
@@ -69,6 +81,10 @@ const routes = openRoutes((Route) => {
   Route.post('/slow/impatient', SlowCountController).block({ lock: 2, wait: 0.01 });
   Route.post('/save', SaveController);
   Route.post('/fail', FailingController);
+  Route.post('/regenerate', RegenerateController);
+  // Pages that ask shared caches to keep them: one that never touches the session, one that keeps it.
+  Route.middleware(cacheControl('public, max-age=60')).get('/public', () => ({ plans: ['basic'] }));
+  Route.middleware(cacheControl('public, max-age=60')).get('/public/:id', CountVisitsController);
 });
 const apiRoutes = openRoutes((Route) => {
   Route.post('/no-session', () => new SaveController().handle());
@@ -76,11 +92,12 @@ const apiRoutes = openRoutes((Route) => {
 
 const sessionCookie = (response: Response) => response.headers.getSetCookie().find((header) => header.startsWith('marmeon_session='));
 
-async function boot(env: Record<string, string> = {}, kernelOptions: { assetVersion?: string } = {}, extra: { providers?: ServiceProviderClass[]; schedule?: ModuleDefinition['schedule'] } = {}) {
+async function boot(env: Record<string, string> = {}, kernelOptions: { assetVersion?: string } = {}, extra: { providers?: ServiceProviderClass[]; schedule?: ModuleDefinition['schedule']; middleware?: { global: (new (...args: never[]) => unknown)[] } } = {}) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, SessionServiceProvider, ...(extra.providers ?? [])],
+    ...(extra.middleware ? { middleware: extra.middleware as never } : {}),
     modules: [defineModule({ name: 'visits', routes, apiRoutes, ...(extra.schedule ? { schedule: extra.schedule } : {}) })], // CSRF has its own tests
   }, { env: { NODE_ENV: 'test', APP_KEY: generateKey(), SESSION_DRIVER: 'memory', SESSION_LOTTERY: '0/1', CACHE_DRIVER: 'memory', ...env }, override: (container) => container.make(CsrfProtection).disable() });
   const kernel = createHttpKernel(application, kernelOptions);
@@ -96,7 +113,95 @@ async function boot(env: Record<string, string> = {}, kernelOptions: { assetVers
   return { send, cookieHeader: () => cookie, application: application as typeof application & { kernel: typeof kernel } };
 }
 
-describe('StartSession', () => {
+describe('StartSession and shared caches', () => {
+  const capture = (warned: string[]): Logger => {
+    const logger: Logger = { debug() {}, info() {}, warn: (message) => warned.push(message), error() {}, child: () => logger };
+    return logger;
+  };
+  const bootCapturing = (warned: string[]) =>
+    boot({}, {}, { providers: [class { register = (container: Container) => container.instance(Logger, capture(warned)); }] });
+
+  it('leaves a guest without a session its public answer, and sends no cookie', async () => {
+    const { send } = await boot();
+    const response = await send('/public');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=60');
+    expect(response.headers.getSetCookie()).toEqual([]);
+  });
+
+  it('sends the answer of a session as private, and its cookie only when the id is new', async () => {
+    const warned: string[] = [];
+    const { send } = await bootCapturing(warned);
+    const first = await send('/public/1');
+    expect(first.headers.get('cache-control')).toBe('private, max-age=60');
+    expect(sessionCookie(first)).toBeDefined();
+
+    // The second request of the same session: no cookie to hand to a cache, and still not shareable.
+    const second = await send('/public/2');
+    expect(await second.json()).toMatchObject({ visits: 2 });
+    expect(sessionCookie(second)).toBeUndefined();
+    expect(second.headers.get('cache-control')).toBe('private, max-age=60');
+    expect(second.headers.get('cache-control')).not.toContain('public');
+    expect(warned.filter((message) => message.includes('belongs to a session'))).toHaveLength(1); // once for GET /public/:id
+  });
+
+  it('keeps the answer of a session private although a middleware around it asks for public', async () => {
+    class ForcePublic {
+      async handle(_ctx: unknown, next: () => Promise<Response>) {
+        const response = await next();
+        const edited = new Response(response.body, response);
+        edited.headers.set('cache-control', 'public, max-age=60');
+        return edited;
+      }
+    }
+    const warned: string[] = [];
+    const { send } = await boot({}, {}, { middleware: { global: [ForcePublic] }, providers: [class { register = (container: Container) => container.instance(Logger, capture(warned)); }] });
+    // The browser holds both cookies after the first request, so the second sets none.
+    const first = await send('/count');
+    const jar = first.headers.getSetCookie().map((header) => header.split(';')[0]).join('; ');
+    const second = await send('/count', { headers: { cookie: jar } });
+    expect(second.headers.getSetCookie()).toEqual([]);
+    expect(second.headers.get('cache-control')).toBe('private, max-age=60');
+    expect(warned.some((message) => message.includes('belongs to a session'))).toBe(true);
+  });
+
+  it('sends the error answer of an existing session as private when saving it fails', async () => {
+    const { send, application } = await boot();
+    const first = await send('/count');
+    const jar = first.headers.getSetCookie().map((header) => header.split(';')[0]).join('; ');
+    const write = vi.spyOn(application.container.make(SessionStore), 'write').mockRejectedValue(new Error('store down'));
+    try {
+      const failed = await send('/count', { headers: { cookie: jar } });
+      expect(failed.status).toBe(500);
+      expect(failed.headers.get('cache-control')).toContain('private');
+    } finally {
+      write.mockRestore();
+    }
+  });
+
+  it('sends the cookie again when the browser holds it sealed with a key that is now only a previous one', async () => {
+    const retired = generateKey();
+    const { send, application } = await boot({ APP_PREVIOUS_KEYS: retired });
+    const first = await send('/count');
+    const current = decodeURIComponent(sessionCookie(first)!.split(';')[0]!.split('=')[1]!);
+    const id = await application.container.make(Encrypter).decrypt(current, `cookie:${sessionCookieName(application.container.make(SessionConfig))}`);
+    const old = await new AesGcmEncrypter(Buffer.from(retired.slice('base64:'.length), 'base64')).encrypt(id, `cookie:${sessionCookieName(application.container.make(SessionConfig))}`);
+    const again = await send('/count', { headers: { cookie: `marmeon_session=${encodeURIComponent(old)}` } });
+    expect(await again.json()).toMatchObject({ visits: 2 }); // the old cookie still works
+    const fresh = sessionCookie(again);
+    expect(fresh, 'the cookie sealed with the retired key is sent again').toBeDefined();
+    // Under the current key now: a later request needs nothing more.
+    const value = decodeURIComponent(fresh!.split(';')[0]!.split('=')[1]!);
+    expect(await application.container.make(Encrypter).decrypt(value, `cookie:${sessionCookieName(application.container.make(SessionConfig))}`)).toBe(id);
+    expect(sessionCookie(await send('/count', { headers: { cookie: `marmeon_session=${encodeURIComponent(value)}` } }))).toBeUndefined();
+  });
+
+  it('sends the cookie again when the session id changes', async () => {
+    const { send } = await boot();
+    await send('/count');
+    expect(sessionCookie(await send('/count'))).toBeUndefined();
+    expect(sessionCookie(await send('/regenerate', { method: 'POST' }))).toBeDefined();
+  });
+
   it('keeps state across requests through an encrypted, HttpOnly session cookie', async () => {
     const { send } = await boot();
     const first = await send('/count');

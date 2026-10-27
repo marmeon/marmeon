@@ -337,6 +337,19 @@ describe('VerifyCsrfToken', () => {
       expect((await send('/save', { method: 'POST', headers: { 'x-xsrf-token': token() } })).status).toBe(200);
     });
 
+    it('sends XSRF-TOKEN only when the browser does not hold that value: not on the next request, again after a new token', async () => {
+      const { send, token } = await boot();
+      const names = (response: Response) => response.headers.getSetCookie().map((cookie) => cookie.split('=')[0]);
+      expect(names(await send('/remember'))).toContain('XSRF-TOKEN');
+      const held = token();
+      const again = await send('/remember');
+      expect(names(again)).not.toContain('XSRF-TOKEN');
+      expect(names(again)).not.toContain('marmeon_session');
+      const rotated = await send('/login', { method: 'POST', headers: { 'x-xsrf-token': held } });
+      expect(names(rotated)).toContain('XSRF-TOKEN');
+      expect(token()).not.toBe(held);
+    });
+
     it('a failed guest form keeps its errors — that writes the session, and from then on its pages carry the token', async () => {
       const { send, token } = await boot();
       const failed = await send('/fail', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin', accept: 'text/html' } });

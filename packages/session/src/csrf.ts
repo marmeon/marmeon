@@ -128,7 +128,9 @@ export class VerifyCsrfToken {
     if (this.#session.readOnly || !this.#session.persists) return response;
     const { secure, sameSite } = this.#sessionConfig; // no Max-Age: it ends with the browser, like the session cookie
     // The token is made here if nothing needed it before: a kept session always gets its cookie.
-    ctx.cookies.set(XSRF_COOKIE, this.#session.token(), { httpOnly: false, secure, sameSite });
+    // Sent when it differs from the browser's: a cookie on every response would let a shared cache that stores one hand the token to a stranger.
+    const token = this.#session.token();
+    if (ctx.cookies.get(XSRF_COOKIE) !== token) ctx.cookies.set(XSRF_COOKIE, token, { httpOnly: false, secure, sameSite });
     return response;
   }
 

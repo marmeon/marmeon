@@ -330,6 +330,8 @@ Route.middleware(authenticate()).middleware(cacheControl('private, max-age=60'))
 
 Never use `public` for anything that depends on the user: a shared cache would hand it to the next visitor.
 
+A response that sets a cookie, or belongs to a session, is never shared: the framework turns `public` into `private` (dropping `s-maxage`, `proxy-revalidate`, `CDN-Cache-Control` and `Surrogate-Control`) and logs a warning once per route. Cache public pages in a group without the session.
+
 Since that answer stays in the browser's cache, the app signs out with `history.clear({ siteData: ['cache', 'storage'] })` after `signOut()`; see [the browser's storage on sign-out](client-features.md#the-browsers-storage-on-sign-out).
 
 #### Protocol headers

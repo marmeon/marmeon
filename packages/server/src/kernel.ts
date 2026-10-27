@@ -66,7 +66,9 @@ import {
   describeMiddlewareProblem,
   formatAccessProblems,
   isLiveValidation,
+  keepFromSharedCaches,
   liveValidationFields,
+  SharedCacheWarnings,
   UrlLocales,
   VALIDATED_HEADER,
   withQueuedCookies,
@@ -276,6 +278,7 @@ export function createHttpKernel(
   const app = new Hono();
   /** The route each request in flight matched — its name for the log line and the request channel. */
   const matched = new WeakMap<Request, RouteDefinition>();
+  const sharedCacheWarnings = new SharedCacheWarnings();
   const routeHandlers = new Map<unknown, RouteDefinition>();
 
   /**
@@ -763,7 +766,19 @@ export function createHttpKernel(
     // A page visit's and an upload target's `fetch` follow redirects and would carry its CSRF header to another origin: that one becomes a full load.
     else if (isVisit(request.headers) || upload) response = await leaveForeignRedirect(response, request);
     // Cookies queued during the request reach the client whatever the outcome.
-    const final = await withQueuedCookies(response, state.cookies);
+    let final = await withQueuedCookies(response, state.cookies);
+    // An answer that sets a cookie is one person's: a shared cache that stored it would hand the cookie to the next visitor.
+    // The same for the answer of a session, which carries its data (CSRF token, flash data, who is signed in) with or without a cookie.
+    const session = state.cookies.markedPrivate;
+    if (session || final.headers.has('set-cookie')) {
+      const kept = keepFromSharedCaches(final);
+      final = kept.response;
+      const route = matched.get(request);
+      const label = route && (route.routeName ?? `${request.method} ${route.path}`);
+      if (kept.outcome === 'downgraded' && route && label && sharedCacheWarnings.first(label)) {
+        logger.warn(`${request.method} ${route.path} asks shared caches to keep its answer, but the answer ${session ? 'belongs to a session' : 'sets a cookie'}, so it is sent as private. Serve the route without the session (a group without StartSession), or drop public.`);
+      }
+    }
 
     if (terminable.length > 0) {
       // After the response is handed to the server — the client does not wait for this work.

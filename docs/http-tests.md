@@ -65,8 +65,8 @@ The awaited response holds:
 | `status`, `headers`, `body` | The status, the `Headers`, and the body as text. |
 | `json()` | The body parsed as JSON. |
 | `page()` | The page object of a page answer, from a client visit's JSON or the document's page script. |
-| `cookie(name)` | A cookie the response set, decrypted as the app reads it. |
-| `session()` | The session after the request, read from the store through the session cookie. |
+| `cookie(name)` | A cookie the response set, decrypted as the app reads it. For the session cookie, which the app sends only when the session is new or its id changed, it is what the browser holds after the response: the request's cookie when the response sends none. |
+| `session()` | The session after the request, read from the store through the session cookie the response sent, else through the one the request came with (when the app accepted it). `assertCookie()` and `assertCookieMissing()` check only what the response sent. |
 | `flash()`, `flashed()` | The flash messages this response delivers, and those waiting in the session. |
 
 ## Request defaults
