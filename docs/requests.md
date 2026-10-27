@@ -240,6 +240,11 @@ In the `web` group, every cookie is encrypted with the app's key on its way out 
 decrypt, such as one a page's script wrote, is gone from `ctx.cookies`. The `XSRF-TOKEN` cookie is the one exception, since your
 page's JavaScript reads it. Routes of the `api` group read and write cookies as they are.
 
+`CookieEncryption.except(...names)` leaves more cookies unencrypted, for a script of your own that has to read one. A service
+provider takes `CookieEncryption` from the container and calls it. A value in such a cookie is readable and writable by whoever
+holds the browser, and by every script of the page. Never name a session or remember-me cookie, and nothing that decides who
+someone is or what they may do.
+
 Requests that only read, such as an island's, may not set cookies. A `set` there throws in development and in tests, and is
 logged and dropped everywhere else.
 The [request lifecycle](lifecycle.md#requests-that-only-read) page lists them.

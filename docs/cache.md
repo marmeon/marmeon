@@ -39,9 +39,14 @@ framework's rate limits and locks, and the [rate limiting](rate-limiting.md) pag
 | `CACHE_DRIVER` | `file` | Where entries live: `file`, `database`, `redis`, `memory` or a driver a package brings. |
 | `CACHE_CONNECTION` | `default` | The database or Redis connection of the `database` and `redis` drivers. |
 | `CACHE_PATH` | `storage/framework/cache` | Where the `file` driver keeps entries, relative to the app. |
-| `CACHE_PREFIX` | empty | Put in front of every key and lock, so apps that share a store stay apart. |
+| `CACHE_PREFIX` | empty | Put in front of every key and lock. It separates keys, not stores: see below. |
 
 A new app's `.env.test` sets `CACHE_DRIVER=memory`.
+
+`CACHE_PREFIX` keeps the keys of two apps apart, but `marmeon cache:clear` empties the whole store, not the prefix: on the `file`
+and `database` drivers every entry, rate-limit counters and `job.once` markers of the other app included. Locks stay. So give each
+app a store of its own: its own `CACHE_PATH` with the `file` driver, its own database (`CACHE_CONNECTION`) with the `database`
+driver, and with `redis` its own `REDIS_PREFIX`, which `cache:clear` stays within.
 
 ## Drivers
 

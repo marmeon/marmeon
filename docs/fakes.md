@@ -267,6 +267,12 @@ records. `app.live(path)` opens the stream of the page at `path` as a tab does, 
 for the stream's first message, `waitFor(n)` for `n` hints (it fails after two seconds; `waitFor(n, { timeout: { seconds: 5 }, what: 'the profile hint' })` changes the wait and names it in the failure), and `hints` holds them. The [real-time updates](realtime.md) page
 explains hints.
 
+`LiveStreamReader`, what `app.live()` returns, has these members besides `hello()`, `waitFor()` and `hints`: `events`, every event so
+far as `{ event, id, data }`; `status`; `response`, the `Response` of the stream; `ended`, whether the stream ended, and `closed`, a promise that
+resolves when it did; `close()`, which hangs up like a tab that goes away; and, for tests of the stream itself, `heartbeats`, how many heartbeat
+comment lines came, and `retryMs`, the stream's `retry:` in milliseconds. `waitFor(until)` also takes a function that returns `true` once what the
+test waits for has come. `app.broadcast.clear()` forgets the hints recorded so far.
+
 ## The schedule
 
 `app.schedule` runs the app's schedule on the test's clock:

@@ -42,6 +42,10 @@ Content-Security-Policy: script-src 'nonce-…' 'strict-dynamic'; object-src 'no
 
 Styles, images, fonts and connections are not limited by default. Add the directives your app needs.
 
+`DEFAULT_CSP` from `@marmeon/http` is this policy as a frozen object of directives. A directive you name replaces the default of
+the same name, so you extend one from it: `scriptSrc: [...DEFAULT_CSP.scriptSrc!, 'https://cdn.example.com']` keeps the nonce and
+`'strict-dynamic'`. The object is read-only; copy it, never change it.
+
 ## The nonce
 
 Each response that renders a document gets its own nonce: 16 random bytes, made only when a document is rendered. The server puts
@@ -68,6 +72,10 @@ export class ShowNoteEmbedController extends Controller {
 
 The page data travels in a `<script type="application/json">`, which the browser never runs, so it needs no nonce. A JSON visit,
 an island, an action and an API answer make no nonce at all.
+
+A service outside `ctx` that needs the nonce takes `RequestNonce` from `@marmeon/http` as a constructor parameter and reads its
+`value`: the nonce of this response, the one `ctx.nonce()` returns. Such a service is [scoped](container.md#scopes), because the
+nonce belongs to one request.
 
 ## Adding directives
 
