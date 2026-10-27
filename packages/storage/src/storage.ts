@@ -14,7 +14,8 @@ import { withCode } from '@marmeon/core/internal';
 
 /**
  * The app's disks, injected as `Storage`: `storage.disk('public')` (typed by the app's `StorageTypes`, so a wrong name is a
- * type error), or `storage.disk()` for the default disk.
+ * type error), or `storage.disk()` for the default disk. Given to your code, not meant to be implemented — a later release may
+ * add a member.
  */
 export interface Storage {
   /** The disk `name` — built on first use (default: the configured default disk). */

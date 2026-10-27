@@ -24,6 +24,8 @@ which Node, TypeScript and library versions Marmeon supports and how that change
 You also need a package manager. Marmeon is built and tested with **pnpm 12**, and a new app pins the exact version in its
 `package.json` (`"packageManager": "pnpm@12.9.1"`). npm works as well, with `--npm`.
 
+Marmeon runs on Linux and macOS; on Windows, use WSL 2 ([operating systems](releases.md#operating-systems)).
+
 Nothing else is required. The app uses SQLite in a file by default, so you need no database server to get started.
 
 ## Creating an app
@@ -56,6 +58,8 @@ app's name: `my-app` is the package `my-app` and the app "My App".
 | `--no-git` | Creates no git repository. |
 | `-h`, `--help` | Shows the help. |
 | `-v`, `--version` | Shows the version. Every framework package of the new app has this same version. |
+
+These flags and the [exit codes](#without-a-terminal) are [API](releases.md#what-is-public-api).
 
 ### Without a terminal
 

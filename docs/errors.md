@@ -406,7 +406,7 @@ browser in production.
 A solution can be tied to a code with `code` in its definition. It then matches only an error with exactly that code, on the same
 level of the `cause` chain. `errorCodeOf(error)` from `@marmeon/core` returns an error's code, so your own reporter can tag it.
 
-A letter names the area, a number is given once and never reused. A code that is gone stays in the table as retired. The browser's
+A letter names the area, a number is given once and never reused. A code keeps its meaning: it never moves to another error. A code that is gone stays in the table as retired. The browser's
 codes, `C` and `R`, are listed under [Error codes](#error-codes) below.
 
 | Letter | Area |

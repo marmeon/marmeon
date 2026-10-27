@@ -165,6 +165,8 @@ const kernel = createHttpKernel(app.application);
 const response = await kernel.request('/whoami');
 ```
 
+`HttpKernel` is given to your code, not meant to be implemented: a later release may add a member.
+
 `createHttpKernel(application, options)` takes `KernelOptions`, among them `maxBodyBytes` for a request body under 1 MB
 (the [requests](requests.md) page has `SERVER_MAX_BODY_MB` for everything above). The kernel builds on the application's
 container, so it sees the test app's fakes. A request has no peer address unless you give one as the last argument, which then goes
