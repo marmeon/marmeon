@@ -142,12 +142,12 @@ export class RedirectResult {
 
   /** Flashes validation errors (`errors`) — what a failed page request shows next to the fields. */
   withErrors(errors: Record<string, readonly string[]>): this {
-    return this.with(ERRORS_KEY, errors);
+    return this.with(ERRORS_KEY, boundedErrors(errors));
   }
 
   /**
    * Flashes the input for `old()`, so the form can be filled again. Files, uploads and
-   * passwords never go into the session.
+   * passwords never go into the session, and neither does input over 64 KiB. See `docs/session.md#flash-data`.
    */
   withInput(input: Record<string, unknown>): this {
     return this.with(OLD_INPUT_KEY, flashableInput(input));
@@ -208,15 +208,49 @@ export function isLocalPath(value: unknown): value is string {
 
 /**
  * The input as the session may keep it for `old()`: without credential and payment fields (`password`, `api_token`, `otp`, `recovery_code`, `card_number`, … — `isSensitiveField`), without `_token` and
- * without files, at every depth. `redirect().withInput()`, the failed form and `Session.flashInput()` all flash through it.
+ * without files, at every depth; over 64 KiB as JSON none is kept (`docs/session.md#flash-data`). `redirect().withInput()`, the failed form and `Session.flashInput()` all flash through it.
  */
 export function flashableInput(input: Record<string, unknown>): Record<string, unknown> {
+  const result = stripInput(input);
+  // A form refills from the session, it does not keep documents: over the cap nothing is kept (never a cut-off half that looks valid).
+  return jsonBytes(result) > MAX_FLASHED_INPUT_BYTES ? {} : result;
+}
+
+/** What the session keeps of one failed request's input, and of its errors, each as UTF-8 JSON. */
+const MAX_FLASHED_INPUT_BYTES = 65_536;
+
+const jsonBytes = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+
+/**
+ * The errors as the session may keep them: all of them while they fit in 64 KiB; else the first message of every field (what a
+ * form shows); else as many fields, in order, as fit. A list with thousands of invalid items cannot fill the store.
+ */
+function boundedErrors(errors: Record<string, readonly string[]>): Record<string, readonly string[]> {
+  if (jsonBytes(errors) <= MAX_FLASHED_INPUT_BYTES) return errors;
+  const result: Record<string, readonly string[]> = {};
+  let size = 2;
+  for (const [field, messages] of Object.entries(errors)) {
+    const first = messages.slice(0, 1);
+    // Key, value, quotes, colon and comma.
+    const entry = jsonBytes(field) + jsonBytes(first) + 2;
+    if (size + entry > MAX_FLASHED_INPUT_BYTES) break;
+    result[field] = first;
+    size += entry;
+  }
+  return result;
+}
+
+function stripInput(input: Record<string, unknown>): Record<string, unknown> {
   const clean = (given: unknown): unknown => {
     // What JSON would make of it: a verified upload is nothing — neither its token nor its file go into the session.
     const value = typeof (given as { toJSON?: unknown } | null)?.toJSON === 'function' ? (given as { toJSON(): unknown }).toJSON() : given;
+    if (typeof value === 'string') {
+      // UTF-16 units undercount UTF-8 JSON (`€` three bytes, a control character six): measure what could be too big.
+      return value.length > MAX_FLASHED_INPUT_BYTES || (value.length > 10_922 && jsonBytes(value) > MAX_FLASHED_INPUT_BYTES) ? undefined : value;
+    }
     if (typeof value === 'object' && value !== null && !(value instanceof File)) {
       if (Array.isArray(value)) return value.map(clean).filter((item) => item !== undefined);
-      return flashableInput(value as Record<string, unknown>);
+      return stripInput(value as Record<string, unknown>);
     }
     return value instanceof File ? undefined : value;
   };

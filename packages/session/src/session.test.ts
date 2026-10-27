@@ -153,6 +153,18 @@ describe('Session', () => {
     await request(store, id, (session) => expect(session.old()).toEqual({ email: 'ada@example.com', nested: { name: 'n' } }));
   });
 
+  it('keeps a stored session small when a huge input is flashed: nothing above 64 KiB', async () => {
+    const store = new MemorySessionStore();
+    const { id } = await request(store, undefined, (session) => session.flashInput({ email: 'ada@example.com', body: 'x'.repeat(8 * 1024 * 1024) }));
+    expect(JSON.stringify(await stored(store, id)).length).toBeLessThan(1024);
+    await request(store, id, (session) => expect(session.old()).toEqual({ email: 'ada@example.com' }));
+    const many = Object.fromEntries(Array.from({ length: 70 }, (_, index) => [`field${index}`, 'v'.repeat(1000)]));
+    const second = await request(store, undefined, (session) => session.flashInput(many));
+    // Only the empty input is stored, not the 70 KB.
+    expect(JSON.stringify(await stored(store, second.id)).length).toBeLessThan(1024);
+    await request(store, second.id, (session) => expect(session.old()).toEqual({}));
+  });
+
   it('regenerates the id and token but keeps the data — and destroys the old id (session fixation)', async () => {
     const store = new MemorySessionStore();
     const planted = await request(store, undefined, (session) => session.put('visits', 3));
