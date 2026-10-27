@@ -488,20 +488,66 @@ describe('the worker', () => {
     expect(await failed.all()).toMatchObject([{ uuid: failing, exception: expect.stringContaining('Error: the account is gone') }]);
   });
 
-  it('fails a payload that cannot run at once: no job record, a forged plaintext for an encrypted job, a ciphertext it cannot read', async () => {
+  it('fails a payload that cannot run at once: no job record, a forged plaintext for an encrypted job', async () => {
     await using application = await app();
     const { driver, failed, worker: w } = worker(application);
     await driver.push('default', 'not json', 0);
     await push(application, driver, 'test.reset-link', { email: 'a@b.c', token: 't' }, { tries: 5 });
-    await push(application, driver, 'test.reset-link', 'v1.garbage', { tries: 5, encrypted: true });
-    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 3, failed: 3, released: 0 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 2, failed: 2, released: 0 });
     const exceptions = (await failed.all()).map((job) => job.exception.split('\n')[0]).toReversed();
     expect(exceptions).toEqual([
       'Error: The payload is not a job record (expected JSON with "job" and "data").',
       'Error: test.reset-link takes an encrypted payload (static encrypted), but this one is plain — not queued by this app.',
-      expect.stringMatching(/^Error: The encrypted payload of test\.reset-link cannot be decrypted \(was APP_KEY changed\?\)/),
     ]);
     expect(application.seen.entries).toEqual([]);
+  });
+
+  it('fails an encrypted payload at once that is no ciphertext, or whose plaintext is no JSON', async () => {
+    await using application = await app();
+    const { driver, failed, worker: w } = worker(application);
+    const encrypter = application.container.make((await import('@marmeon/encryption')).Encrypter);
+    await push(application, driver, 'test.reset-link', { not: 'a string' }, { tries: 5, encrypted: true });
+    await push(application, driver, 'test.reset-link', await encrypter.encrypt('hunter2-not-json', cipherContext('test.reset-link', 1)), { tries: 5, encrypted: true });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 2, failed: 2, released: 0 });
+    expect(JSON.stringify(await failed.all())).not.toContain('hunter2');
+    expect(application.seen.entries).toEqual([]);
+  });
+
+  it('holds an encrypted payload it cannot decrypt like a record of a newer release, and fails it after six hours without ever running it', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    const { driver, failed, worker: w } = worker(application);
+    const id = await push(application, driver, 'test.reset-link', 'v1.garbage', { tries: 1, encrypted: true });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, released: 1, failed: 0 });
+    expect(driver.entries()).toMatchObject([{ attempts: 0, availableAt: application.clock.now() + 15_000 }]);
+    application.clock.travel({ hours: 6 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1, failed: 0 });
+    application.clock.travel({ seconds: 301 });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, failed: 1 });
+    const [entry] = await failed.all();
+    expect(entry).toMatchObject({ uuid: id, exception: expect.stringMatching(/^Error: \[marmeon:Q2\] The encrypted payload of test\.reset-link cannot be decrypted with APP_KEY or APP_PREVIOUS_KEYS.*No worker could run it within 6 hours/s) });
+    expect(entry!.exception).not.toContain('garbage');
+    expect(application.seen.entries).toEqual([]);
+  });
+
+  it('runs an encrypted payload another worker made under a key in APP_PREVIOUS_KEYS, and holds it where that key is unknown', async () => {
+    const { AesGcmEncrypter, generateKey } = await import('@marmeon/encryption');
+    const oldKey = generateKey();
+    const newKey = generateKey();
+    const decode = (key: string) => Buffer.from(key.replace('base64:', ''), 'base64');
+    const data = await new AesGcmEncrypter(decode(oldKey)).encrypt(JSON.stringify({ email: 'a@b.c', token: 't' }), cipherContext('test.reset-link', 1));
+
+    await using knows = await app({ env: { APP_KEY: newKey, APP_PREVIOUS_KEYS: oldKey } });
+    const reader = worker(knows);
+    await push(knows, reader.driver, 'test.reset-link', data, { encrypted: true });
+    expect(await reader.worker.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 1, failed: 0, released: 0 });
+    expect(knows.seen.entries).toHaveLength(1);
+
+    await using ignorant = await app({ env: { APP_KEY: newKey } });
+    const old = worker(ignorant);
+    await push(ignorant, old.driver, 'test.reset-link', data, { encrypted: true });
+    expect(await old.worker.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1, failed: 0 });
+    expect(ignorant.seen.entries).toEqual([]);
   });
 
   it('holds a job it does not know, whatever its tries, and fails it once no worker took it in six hours (a rolling deploy)', async () => {
@@ -1143,8 +1189,8 @@ describe('the version of the job record', () => {
     const encrypter = application.container.make((await import('@marmeon/encryption')).Encrypter);
     const data = await encrypter.encrypt(JSON.stringify({ email: 'a@b.c', token: 't' }), 'queue:test.reset-link');
     await raw(driver, base(application, { v: 1, job: 'test.reset-link', data, encrypted: true }));
-    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ failed: 1 });
-    expect((await failed.all())[0]!.exception).toMatch(/cannot be decrypted/);
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ released: 1, failed: 0 });
+    expect(await failed.all()).toEqual([]);
     expect(application.seen.entries).toEqual([]);
   });
 });

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { RateLimiter } from '@marmeon/cache';
-import { Clock, createApplication, defineModule, listen, type Container } from '@marmeon/core';
+import { Clock, createApplication, defineModule, listen, Logger, type Container } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, secret } from '@marmeon/database';
@@ -896,6 +896,18 @@ describe('TwoFactor: signing in', () => {
     const b = await waiting(booted);
     expect(await b.tf('challenge', { code: '123456' })).toMatchObject({ ok: false, kind: 'invalid-code' });
     expect(await b.tf('challenge', { recoveryCode: recoveryCodes[0] })).toEqual({ ok: true, id: 1 });
+  });
+
+  it('warns, naming the user and no secret, when the secret sits under a key that was removed', async () => {
+    const booted = await boot();
+    const { secret: key } = await enable(booted);
+    const warn = vi.spyOn(booted.application.container.make(Logger), 'warn');
+    const removed = new AesGcmEncrypter(Buffer.from(generateKey().replace('base64:', ''), 'base64'));
+    await booted.connections.get<any>().updateTable(TWO_FACTOR_TABLE).set({ secret: await removed.encrypt(key, 'marmeon-auth:two-factor:1'), last_used_step: null }).execute();
+    const b = await waiting(booted);
+    expect(await b.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toMatchObject({ ok: false, kind: 'invalid-code' });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('APP_PREVIOUS_KEYS'), { user: 1 });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(key);
   });
 
   it('a secret made with an earlier key still works and is encrypted with the current one afterwards', async () => {

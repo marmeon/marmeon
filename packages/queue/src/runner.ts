@@ -177,11 +177,26 @@ export class JobRunner {
       return { kind: 'poison', record, reason: `${record.job} takes an encrypted payload (static encrypted), but this one is plain — not queued by this app.` };
     }
     if (record.encrypted) {
+      if (typeof data !== 'string') return { kind: 'poison', record, reason: `The encrypted payload of ${record.job} is not a ciphertext.` };
+      let plain: string;
       try {
-        if (typeof data !== 'string') throw new Error('not a ciphertext');
-        data = JSON.parse(await (await this.#cipher()).decrypt(data, cipherContext(record.job, record.v)));
+        plain = await (await this.#cipher()).decrypt(data, cipherContext(record.job, record.v));
       } catch (error) {
-        return { kind: 'poison', record, reason: `The encrypted payload of ${record.job} cannot be decrypted (was APP_KEY changed?): ${(error as Error).message}` };
+        // Only a failed decryption is held; any other error is a fault of this worker and fails the record at once.
+        const DecryptError = await import('@marmeon/encryption').then((module) => module.DecryptError, () => undefined);
+        if (DecryptError === undefined || !(error instanceof DecryptError)) return { kind: 'poison', record, reason: `The encrypted payload of ${record.job} could not be read: ${(error as Error).message}` };
+        return {
+          kind: 'foreign',
+          reason: `The encrypted payload of ${record.job} cannot be decrypted with APP_KEY or APP_PREVIOUS_KEYS: a key this worker does not know yet (a rotation in progress), or not this app's.`,
+          envelope: envelopeOf(record),
+          record,
+        };
+      }
+      try {
+        data = JSON.parse(plain);
+      } catch {
+        // The parse error is left out: V8 quotes the plaintext in it.
+        return { kind: 'poison', record, reason: `The encrypted payload of ${record.job} is not JSON after decryption.` };
       }
     }
     try {

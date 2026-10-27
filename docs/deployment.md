@@ -235,9 +235,11 @@ on every interface: `0.0.0.0` or `::`. On `127.0.0.1`, the default, a port anoth
 
 ### Rotating `APP_KEY`
 
-Generate a new key, move the current one into `APP_PREVIOUS_KEYS`, and deploy every instance with both. Sessions, encrypted
+Generate a new key, move the current one into `APP_PREVIOUS_KEYS`, and deploy every instance with both. On more than one server,
+rotate in two deploys: first add the new key to `APP_PREVIOUS_KEYS` everywhere, then make it `APP_KEY`. Sessions, encrypted
 cookies and signed links made with the old key keep working. Remove the old key once the longest session or signed link has
-expired. Replacing the key without this step signs everybody out and breaks every signed link. The
+expired, queued and failed jobs are gone, and the two-factor secrets are encrypted again (at their next use; a warning names a user
+whose secret is still under a removed key). Replacing the key without this step signs everybody out and breaks every signed link. The
 [encryption](encryption.md#rotating-the-key) page explains the keys.
 
 ### Mail

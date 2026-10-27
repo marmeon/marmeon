@@ -136,6 +136,10 @@ An app whose `web` group has no `Encrypter` does not start: the error says to re
 
 After a leak the procedure differs: the leaked key must not stay in `APP_PREVIOUS_KEYS`, see [ending every session of every account](authentication.md#ending-every-session-of-every-account).
 
+On more than one server, rotate in two deploys: first add the new key to `APP_PREVIOUS_KEYS` everywhere, then make it `APP_KEY`.
+Every server can then read what any other writes. A job that a server still on the old key cannot decrypt waits, up to six hours,
+for a worker that can (see [queues](queues.md#retries-and-failures)).
+
 `encrypt()` always uses `APP_KEY`. `decrypt()` tries `APP_KEY` first and then each key of `APP_PREVIOUS_KEYS` in order. The keys
 derived for signatures accept the previous keys too. So a rotation keeps everything valid that the old key made:
 
@@ -144,15 +148,16 @@ derived for signatures accept the previous keys too. So a rotation keeps everyth
    current key into `APP_PREVIOUS_KEYS`, a new one from `--show` into `APP_KEY`.
 2. Deploy, with both variables on every server.
 3. Remove the old key once nothing made with it is still around: sessions and remember-me cookies after their lifetime, queued and
-   failed jobs, and signed links after their expiry. Encrypted session data is encrypted with the new key at the session's next
+   failed jobs, signed links after their expiry, and the two-factor secrets, which are encrypted again at their next use (a warning
+   names a user whose secret is still under a removed key). Encrypted session data is encrypted with the new key at the session's next
    write. A "load more" cursor made with the old key answers 400 once the key is removed.
 
 One thing follows the new key at once: the tabs of every browser find a new session epoch at their next check and reload once,
 because the epoch uses the current key only.
 
 Replacing `APP_KEY` without keeping the old one signs everybody out, because no session cookie decrypts any more. It also breaks
-every signed link, and turns every encrypted job still waiting into a failure:
-`The encrypted payload of … cannot be decrypted (was APP_KEY changed?)`. The
+every signed link, and an encrypted job still waiting finds no worker that can read it: it is held for six hours and then fails with
+`The encrypted payload of … cannot be decrypted with APP_KEY or APP_PREVIOUS_KEYS`. The
 [deployment](deployment.md#rotating-app_key) page has the short version for a server.
 
 ## Testing

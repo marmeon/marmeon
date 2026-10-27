@@ -373,11 +373,13 @@ A job can also end an attempt on its own:
 
 Some jobs can never succeed, and they fail at once, after one attempt:
 
-- a payload that cannot be decrypted, or a plain payload for an encrypted job,
+- a plain payload for an encrypted job, or an encrypted one that is no ciphertext or no JSON once decrypted,
 - a record that is no job record, has no version, or has a chain with a link the worker cannot read.
 
 A job the worker cannot read, but a worker of another release perhaps can, does not fail: it waits. That is a record of a newer
-version, a job whose name the worker does not know, and a payload the job's schema rejects, as after a deploy that widened it.
+version, a job whose name the worker does not know, a payload the job's schema rejects, as after a deploy that widened it, and an encrypted
+payload that `APP_KEY` and `APP_PREVIOUS_KEYS` cannot decrypt, as when a server already writes with a new key during a
+[rotation](encryption.md#rotating-the-key). Such a record is held like one of a newer release, up to six hours, and then fails with the reason.
 The framework's own jobs are held the same way: a queued listener or notification this app has no name for, and an event or
 notification whose data its schema rejects.
 See [Deploying while jobs wait](#deploying-while-jobs-wait). A job claimed more often than its `tries`, because its worker died

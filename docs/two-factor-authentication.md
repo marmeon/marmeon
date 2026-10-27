@@ -396,4 +396,6 @@ The password alone signs in afterwards: if a compromise is suspected, have the o
 
 The secret is encrypted with `APP_KEY`. After you rotate the key, list the old one in `APP_PREVIOUS_KEYS` (see
 [encryption](encryption.md)); a secret that was encrypted with an earlier key still works, and every accepted code stores it
-again with the current key. Recovery codes do not depend on `APP_KEY`.
+again with the current key. A secret still under a removed key cannot be read: the sign-in answers `invalid-code`, and a warning names the
+user (never the secret). Recovery codes do not depend on `APP_KEY`. Remove the old key only once the secrets are encrypted again, as
+[the rotation steps](encryption.md#rotating-the-key) say.
