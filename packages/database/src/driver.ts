@@ -3,6 +3,7 @@ import { leftTransactionOf, transactionOf, withCode, type TransactionFrame } fro
 import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import { changesSchema, isRawSchemaChange, type SchemaMetadata } from './metadata.ts';
 import { PREFIX, SECRET } from './placeholders.ts';
+import type { Driver as SqlDriver } from './schema/blueprint.ts';
 
 /** A connection could not be opened — with the connection's name and where it points, never its password. */
 export class DatabaseConnectionError extends Error {
@@ -29,6 +30,8 @@ export function connectionError(context: Pick<DriverContext, 'name' | 'target'>,
 export interface DriverContext {
   /** The connection's name, e.g. `default`. */
   readonly name: string;
+  /** The SQL dialect. Postgres aborts a transaction whose statement failed ({@link MarmeonDriver}). */
+  readonly driver: SqlDriver;
   /** Where it points, for error messages: `sqlite storage/database.sqlite`, `pgsql postgres://marmeon:***@localhost/app`. */
   readonly target: string;
   /** Refreshed on each connection handed out, while stale (see {@link SchemaMetadata}). */
@@ -74,6 +77,11 @@ export class MarmeonDriver implements Driver {
   readonly #context: DriverContext;
   /** Open transaction levels per connection: 1 = a real transaction, 2+ = savepoints inside it. */
   readonly #depth = new WeakMap<DatabaseConnection, number>();
+  /**
+   * Postgres: the levels (of {@link #depth}) in which a statement failed on the server. Postgres aborts such a level, whatever the
+   * code does with the error, so it cannot commit: see {@link MarmeonDriver.commitTransaction}.
+   */
+  readonly #tainted = new WeakMap<DatabaseConnection, Set<number>>();
   #init: Promise<void> | undefined;
   /** While isolated: the one connection every query uses, inside a transaction that is rolled back later. */
   #pinned: DatabaseConnection | undefined;
@@ -244,12 +252,14 @@ export class MarmeonDriver implements Driver {
     const connection = this.#serialOf(await this.#connecting(() => this.#driver.acquireConnection()));
     await this.#driver.beginTransaction(connection, {});
     this.#depth.set(connection, 1);
+    this.#tainted.delete(connection);
     this.#pinned = connection;
     return {
       rollback: async () => {
         if (this.#pinned !== connection) return;
         this.#pinned = undefined;
         this.#depth.delete(connection);
+        this.#tainted.delete(connection);
         this.#context.metadata?.release(connection);
         try {
           await this.#driver.rollbackTransaction(connection);
@@ -269,22 +279,47 @@ export class MarmeonDriver implements Driver {
     else if (depth === 0) await this.#driver.beginTransaction(connection, settings);
     else await connection.executeQuery(CompiledQuery.raw(`savepoint ${savepoint(depth)}`));
     this.#depth.set(connection, depth + 1);
+    this.#tainted.get(connection)?.delete(depth + 1);
   }
 
+  /**
+   * On Postgres a level in which a statement failed is aborted, whether or not the code caught the error: a `commit` would answer
+   * with a rollback and `release savepoint` would fail or, worse, leave the transaction around it running in a state nobody
+   * decided on. Such a level sends nothing and throws instead (D24); Kysely then rolls exactly this level back.
+   */
   async commitTransaction(connection: DatabaseConnection): Promise<void> {
+    const level = this.#depth.get(connection);
+    if (level !== undefined && this.#tainted.get(connection)?.has(level)) throw new TransactionError(withCode('D24', ABORTED_TRANSACTION));
     const depth = this.#leave(connection);
     if (depth === 0) {
       try {
         await this.#driver.commitTransaction(connection);
+      } catch (error) {
+        // The commit itself failed (a deferred constraint, a serialization failure): Kysely rolls back next, with the original error kept.
+        this.#depth.set(connection, 1);
+        throw error;
       } finally {
         this.#context.metadata?.release(connection);
       }
-    } else await connection.executeQuery(CompiledQuery.raw(`release savepoint ${savepoint(depth)}`));
+      return;
+    }
+    // A failing `release` taints the level below, which it did not abort before: only a level that was tainted already stays so.
+    const outerTainted = this.#tainted.get(connection)?.has(depth) ?? false;
+    try {
+      await connection.executeQuery(CompiledQuery.raw(`release savepoint ${savepoint(depth)}`));
+    } catch (error) {
+      // Kysely rolls this level back next.
+      this.#depth.set(connection, depth + 1);
+      if (!outerTainted) this.#tainted.get(connection)?.delete(depth);
+      throw error;
+    }
   }
 
   async rollbackTransaction(connection: DatabaseConnection): Promise<void> {
+    const level = this.#depth.get(connection);
     const depth = this.#leave(connection);
     if (depth === 0) {
+      this.#tainted.delete(connection);
       try {
         await this.#driver.rollbackTransaction(connection);
       } finally {
@@ -292,6 +327,7 @@ export class MarmeonDriver implements Driver {
       }
     } else {
       await connection.executeQuery(CompiledQuery.raw(`rollback to savepoint ${savepoint(depth)}`));
+      this.#healed(connection, level!);
       this.#undone(connection);
     }
   }
@@ -316,6 +352,7 @@ export class MarmeonDriver implements Driver {
     if (pinned) {
       this.#pinned = undefined;
       this.#depth.delete(pinned);
+      this.#tainted.delete(pinned);
       this.#context.metadata?.release(pinned);
       try {
         await this.#driver.rollbackTransaction(pinned);
@@ -328,10 +365,19 @@ export class MarmeonDriver implements Driver {
 
   /** Leaves one level and returns the level that remains (0 = the real transaction ends now). */
   #leave(connection: DatabaseConnection): number {
-    const depth = (this.#depth.get(connection) ?? 1) - 1;
+    const open = this.#depth.get(connection);
+    if (open === undefined) throw new Error('No transaction is open on this connection — a commit or rollback without its begin.');
+    const depth = open - 1;
     if (depth === 0) this.#depth.delete(connection);
     else this.#depth.set(connection, depth);
     return depth;
+  }
+
+  /** `rollback to savepoint` brought the transaction back from level `from` on: nothing in those levels is aborted any more. */
+  #healed(connection: DatabaseConnection, from: number): void {
+    const levels = this.#tainted.get(connection);
+    if (!levels) return;
+    for (const level of levels) if (level >= from) levels.delete(level);
   }
 
   #serialOf(connection: DatabaseConnection): DatabaseConnection {
@@ -351,9 +397,28 @@ export class MarmeonDriver implements Driver {
       }
       // The schema of a managed connection is the migrations', not the catalog's: a statement that changes the catalog changes nothing there.
       if (metadata && !metadata.managed) hooks.ran = (query) => this.#ran(serial!, query, metadata);
+      if (this.#context.driver === 'pgsql') {
+        hooks.failed = (error) => this.#failed(serial!, error);
+        hooks.passed = (query) => this.#passed(serial!, query);
+      }
       this.#serial.set(connection, (serial = serialQueries(connection, hooks)));
     }
     return serial;
+  }
+
+  /** A statement failed on the server (pg's error with a SQLSTATE) inside a transaction: Postgres aborted the level it ran in. */
+  #failed(connection: DatabaseConnection, error: unknown): void {
+    const depth = this.#depth.get(connection);
+    if (depth === undefined || !isServerError(error)) return;
+    let levels = this.#tainted.get(connection);
+    if (!levels) this.#tainted.set(connection, (levels = new Set()));
+    levels.add(depth);
+  }
+
+  /** A `rollback to savepoint` Postgres accepted (written by hand, or by a repository bound with `using(trx)`) brings the level back from its abort. */
+  #passed(connection: DatabaseConnection, query: CompiledQuery): void {
+    const depth = this.#depth.get(connection);
+    if (depth !== undefined && ROLLBACK_TO.test(query.sql)) this.#tainted.get(connection)?.delete(depth);
   }
 
   /**
@@ -462,6 +527,20 @@ export class UncheckedDriver implements Driver {
   }
 }
 
+/** The error code of a failure the server reported: five characters of digits and capital letters. */
+const SQLSTATE = /^[0-9A-Z]{5}$/;
+const ROLLBACK_TO = /^\s*rollback\s+to\b/i;
+
+/** An error the server sent (pg's `DatabaseError` has a `severity`), not a Node error such as `EPIPE` whose code looks alike. */
+export function isServerError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { code, severity } = error as { code?: unknown; severity?: unknown };
+  return typeof severity === 'string' && typeof code === 'string' && SQLSTATE.test(code);
+}
+const ABORTED_TRANSACTION =
+  'A statement failed inside this transaction and its error was caught inside it. Postgres aborted the transaction (or its savepoint), so nothing in it was ' +
+  'committed. Catch the error outside the nested transaction(), or use tryInsert().';
+
 const savepoint = (depth: number) => `marmeon_savepoint_${depth}`;
 /** A statement that may roll a savepoint back — a false alarm (the word in a string) costs one load, and only after a schema change. */
 const ROLLBACK = /rollback/i;
@@ -490,6 +569,10 @@ export interface SerialHooks {
   resolve?(query: CompiledQuery, own: DatabaseConnection): Promise<CompiledQuery>;
   /** Before and after a statement ran (or failed) on the connection. */
   ran?(query: CompiledQuery): void;
+  /** A statement ran without an error. */
+  passed?(query: CompiledQuery): void;
+  /** A statement failed (before the error goes on to the caller). */
+  failed?(error: unknown): void;
   /** The connection's name, for the message when a query holds placeholders nobody resolves. */
   name?: string;
   /** The rows of a query that ran (or of each chunk of a stream), with the query as it ran. */
@@ -518,17 +601,23 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
   const execute = connection.executeQuery.bind(connection) as Execute;
   const stream = connection.streamQuery.bind(connection) as Stream;
   const own = new Map<PropertyKey, unknown>();
-  const { ran } = hooks;
-  const run: Execute = ran
-    ? async (query, ...rest) => {
-        ran(query);
-        try {
-          return await execute(query, ...rest);
-        } finally {
-          ran(query);
+  const { ran, failed, passed } = hooks;
+  const run: Execute =
+    ran || failed || passed
+      ? async (query, ...rest) => {
+          ran?.(query);
+          try {
+            const result = await execute(query, ...rest);
+            passed?.(query);
+            return result;
+          } catch (error) {
+            failed?.(error);
+            throw error;
+          } finally {
+            ran?.(query);
+          }
         }
-      }
-    : execute;
+      : execute;
   let tail: Promise<unknown> | undefined;
   const turn = <T>(run: () => Promise<T>): Promise<T> => {
     const result = tail ? tail.then(run, run) : run();
@@ -551,6 +640,9 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
     );
     try {
       yield* stream(query, ...rest);
+    } catch (error) {
+      failed?.(error);
+      throw error;
     } finally {
       done();
     }

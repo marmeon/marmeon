@@ -3,8 +3,9 @@ import { translatable, ValidationError } from '@marmeon/router';
 /**
  * Whether `error` is a unique-constraint violation — SQLite (`SQLITE_CONSTRAINT_UNIQUE`, 2067) or
  * Postgres (SQLSTATE 23505). Repositories have `tryInsert()` for the common case. Inside a
- * transaction, catch it only around a savepoint: on Postgres the failed statement aborts the
- * transaction ("current transaction is aborted, commands ignored").
+ * transaction, catch it outside a nested `transaction()`, never inside it: on Postgres the failed statement
+ * aborts that transaction, which then rolls back and throws `TransactionError` (D24). See
+ * `docs/transactions.md#nested-transactions`.
  */
 export function isUniqueViolation(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
