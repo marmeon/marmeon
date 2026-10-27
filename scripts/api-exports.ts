@@ -19,18 +19,6 @@ export const EXPORT_EXCEPTIONS: Readonly<Record<string, string>> = {
  * Exports that do not follow the rule yet. Each change that fixes one deletes its line; the list is empty before a release.
  */
 export const EXPORT_PENDING: Readonly<Record<string, string>> = {
-  '@marmeon/core HealthReport': 'framework plumbing: becomes @internal before the release candidate',
-  '@marmeon/core ListenerQueue': 'framework plumbing: becomes @internal before the release candidate',
-  '@marmeon/core escapeHtml': 'framework plumbing: becomes @internal before the release candidate',
-  '@marmeon/http CookieDefaults': 'framework plumbing: becomes @internal before the release candidate',
-  '@marmeon/router CookieDefaults': 'framework plumbing: becomes @internal before the release candidate',
-  '@marmeon/router GET_HAS_NO_BODY': 'framework plumbing: becomes @internal before the release candidate',
-  '@marmeon/router ISLAND_IS_GET_ONLY': 'framework plumbing: becomes @internal before the release candidate',
-  '@marmeon/router ResponseContext': 'framework plumbing: becomes @internal before the release candidate',
-  '@marmeon/router statusText': 'framework plumbing: becomes @internal before the release candidate',
-  '@marmeon/router toSearchParams': 'framework plumbing: becomes @internal before the release candidate',
-  '@marmeon/router/url toSearchParams': 'framework plumbing: becomes @internal before the release candidate',
-  '@marmeon/storage UPLOAD_TYPES': 'framework plumbing: becomes @internal before the release candidate',
   '@marmeon/http/protocol ACTION_HEADER': 'a header of the page protocol: the docs list it before the release candidate',
   '@marmeon/http/protocol FLASH_HEADER': 'a header of the page protocol: the docs list it before the release candidate',
   '@marmeon/http/protocol LAYER_CLOSE_HEADER': 'a header of the page protocol: the docs list it before the release candidate',

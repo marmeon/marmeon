@@ -97,7 +97,7 @@ type RouteAction<
       : `Route.bind('${Missing & string}') needs a :${Missing & string} parameter in the path`
     : never;
 
-/** What a GET route says to a controller whose request validates a body: there is none. */
+/** @internal The route types': what a GET route says to a controller whose request validates a body: there is none. */
 export const GET_HAS_NO_BODY = 'a GET request has no body — validate its URL with `query` (defineRequest({ query }))';
 
 /** A GET route's action: like any other, but a request with a body `schema` is refused. */
@@ -110,7 +110,7 @@ type GetRouteAction<
   TQuery extends StandardSchemaV1,
 > = [TSchema] extends [never] ? RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery> : typeof GET_HAS_NO_BODY;
 
-/** What a route of another method than GET says to a controller that answers with an island. */
+/** @internal The route types': what a route of another method than GET says to a controller that answers with an island. */
 export const ISLAND_IS_GET_ONLY = 'this.island(…) answers GET requests only — an island reads, it never changes anything: register it with Route.get';
 
 /** The action of a route that is not a GET: like any other, but an island (`this.island(…)`) is refused. */

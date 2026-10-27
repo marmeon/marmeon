@@ -36,7 +36,7 @@ export class Html {
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' };
 
-/** Text for element content and quoted attributes: `& < > " ' \`` escaped. */
+/** @internal The `html` template escapes; this alone is right only in element content and quoted attributes: `& < > " ' \`` escaped. */
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"'`]/g, (char) => ESCAPES[char]!);
 }

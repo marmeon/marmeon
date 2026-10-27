@@ -49,7 +49,7 @@ export function fillPath(name: string, pattern: string, params: Readonly<Record<
   return { path: path || '/', rest };
 }
 
-/** Query values as search parameters, in the given order; `null`/`undefined` left out. */
+/** @internal The framework's: query values as search parameters, in the given order; `null`/`undefined` left out. */
 export function toSearchParams(...queries: Query[]): URLSearchParams {
   const search = new URLSearchParams();
   for (const query of queries) {

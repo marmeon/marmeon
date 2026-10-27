@@ -20,7 +20,7 @@ export interface CookieOptions {
 }
 
 /**
- * What every cookie of a request gets unless its `set` says otherwise: the kernel takes them
+ * @internal The session binds it and the kernel reads it. What every cookie of a request gets unless its `set` says otherwise: the kernel takes them
  * from the container (`CookieDefaults`, bound by `@marmeon/session` from its config).
  */
 export interface CookieDefaults {

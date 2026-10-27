@@ -36,6 +36,12 @@ describe('sniff — a file’s type by its first bytes, never by its name', () =
 });
 
 describe('upload() — the rule of an upload field', () => {
+  it('refuses a type it cannot recognise by its bytes and points to the docs for the ones it can', () => {
+    for (const mime of ['image/svg+xml', 'application/octet-stream', 'text/plain']) {
+      expect(() => upload({ maxBytes: 1, mime: [mime as never] })).toThrow(`upload() cannot recognise "${mime}" by its bytes — see docs/storage.md#uploads for the types it can.`);
+    }
+  });
+
   const schema = r.object({ avatar: upload({ maxBytes: 2_000_000, mime: ['image/png', 'image/jpeg'] }) });
   const parse = (rule: StandardSchemaV1, value: unknown) => rule['~standard'].validate(value) as { value?: { avatar?: unknown }; issues?: StandardResult<unknown>['issues'] };
   const verified = (mime: string, size = 10) => new TemporaryUpload({ id: 'x', field: 'avatar', name: 'a', size, mime, extension: 'png' }, { disk: undefined!, key: 'x', consume: async () => true });

@@ -4,7 +4,7 @@
  * Markup that a browser would render — HTML, SVG, XML — is recognised so it can be refused (it can carry script).
  */
 
-/** The types an upload rule can accept: those {@link sniff} recognises by their bytes. */
+/** @internal `UploadMime` names the types an upload rule accepts: those {@link sniff} recognises by their bytes. */
 export const UPLOAD_TYPES = {
   'image/png': 'png',
   'image/jpeg': 'jpg',

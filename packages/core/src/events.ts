@@ -157,12 +157,13 @@ export class EventRegistry {
 }
 
 /**
- * Queues a queued listener — bound by @marmeon/queue. The dispatcher hands it the event, the class the
+ * @internal Bound by @marmeon/queue. Queues a queued listener. The dispatcher hands it the event, the class the
  * listener was registered for and the listener.
  */
 export interface ListenerQueue {
   queue(event: object, registeredFor: EventClass, listener: QueuedListenerClass): Promise<void>;
 }
+/** @internal Bound by @marmeon/queue. */
 export const ListenerQueue = token<ListenerQueue>('ListenerQueue');
 
 /** Whether a listener is queued: a class with `static queue`. */

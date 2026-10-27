@@ -75,7 +75,7 @@ export function upload<const M extends string = UploadMime>(options: { readonly 
   if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) throw new RangeError(`upload() needs maxBytes > 0, not ${String(options.maxBytes)}.`);
   const rule: UploadRule = { maxBytes: options.maxBytes, mime: options.mime as readonly UploadMime[] | undefined };
   for (const mime of rule.mime ?? []) {
-    if (!(mime in UPLOAD_TYPES) || (mime as string) === 'application/octet-stream') throw new TypeError(`upload() cannot recognise "${mime}" by its bytes — see UPLOAD_TYPES.`);
+    if (!(mime in UPLOAD_TYPES) || (mime as string) === 'application/octet-stream') throw new TypeError(`upload() cannot recognise "${mime}" by its bytes — see docs/storage.md#uploads for the types it can.`);
   }
   const types = (rule.mime ?? []).map(label).join(', ');
   const tooLarge = message('max', { max: formatBytes(rule.maxBytes) });

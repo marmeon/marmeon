@@ -16,7 +16,7 @@ export type HealthCheckClass = (new (...args: any[]) => HealthCheck) & {
   readonly timeout?: Duration;
 };
 
-/** What one check said. */
+/** @internal A part of `HealthReport`. What one check said. */
 export interface HealthCheckResult {
   readonly name: string;
   readonly status: 'ok' | 'failing' | 'timeout';
@@ -28,7 +28,7 @@ export interface HealthCheckResult {
   readonly error?: unknown;
 }
 
-/** What every check said: `ok` when each one is. */
+/** @internal What `/up/ready` is built from; its JSON is the API. What every check said: `ok` when each one is. */
 export interface HealthReport {
   readonly ok: boolean;
   readonly checks: readonly HealthCheckResult[];
