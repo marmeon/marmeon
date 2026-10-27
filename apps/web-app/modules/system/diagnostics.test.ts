@@ -129,13 +129,14 @@ describe('Server-Timing in the web app', () => {
 describe('a failed scheduled task', () => {
   it("raises one alert: an error with alert: true, the message masked by the app's Redactor", async () => {
     const entries: { message: string; context: LogContext }[] = [];
-    const recording: Logger = {
+    const recorder = (bindings: LogContext): Logger => ({
       debug() {},
       info() {},
       warn() {},
-      error: (message, context = {}) => void entries.push({ message, context }),
-      child: () => recording,
-    };
+      error: (message, context = {}) => void entries.push({ message, context: { ...bindings, ...context } }),
+      child: (more) => recorder({ ...bindings, ...more }),
+    });
+    const recording = recorder({});
     const app = await createTestApp(application, { override: (container) => container.instance(Logger, recording) });
     await app.make(EventDispatcher).dispatch(
       new ScheduledTaskFailed({ task: 'user-profile.prune-data-exports', dueAt: Date.parse('2026-10-03T12:10:00Z'), reason: 'due', error: new Error('disk full, token=abc123, Cookie: a=1; marmeon_session=s3ss10nvalue'), ms: 12 }),
@@ -145,7 +146,7 @@ describe('a failed scheduled task', () => {
       {
         // The app's Redactor: the session cookie's value after another cookie is masked too.
         message: 'The scheduled task user-profile.prune-data-exports failed: Error: disk full, token=[redacted], Cookie: [redacted]; marmeon_session=[redacted]',
-        context: { alert: true, task: 'user-profile.prune-data-exports', due: '2026-10-03T12:10:00.000Z', ms: 12 },
+        context: { channel: 'alerts', alert: true, task: 'user-profile.prune-data-exports', due: '2026-10-03T12:10:00.000Z', ms: 12 },
       },
     ]);
   });

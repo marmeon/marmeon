@@ -246,6 +246,7 @@ export declare class ErrorReports {
         log?: false | {
             readonly message: string;
             readonly fields?: LogContext;
+            readonly bindings?: LogContext;
         };
     }): void;
 }

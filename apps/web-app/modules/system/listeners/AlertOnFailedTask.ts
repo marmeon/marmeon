@@ -17,9 +17,8 @@ export class AlertOnFailedTask {
 
   handle(event: ScheduledTaskFailed): void {
     const message = event.error instanceof Error ? `${event.error.name}: ${event.error.message}` : String(event.error);
-    this.#logger.error(`The scheduled task ${event.task} failed: ${this.#redactor.text(message)}`, {
+    this.#logger.child({ task: event.task }).error(`The scheduled task ${event.task} failed: ${this.#redactor.text(message)}`, {
       alert: true,
-      task: event.task,
       due: new Date(event.dueAt).toISOString(),
       ms: event.ms,
     });

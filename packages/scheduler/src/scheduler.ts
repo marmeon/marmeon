@@ -431,7 +431,7 @@ export class Scheduler {
         } catch (error) {
           const exception = this.#redactor.text(error instanceof Error ? `${error.name}: ${error.message}` : String(error));
           if (this.#container.has(ErrorReports)) {
-            this.#container.make(ErrorReports).report(error, { source: 'schedule', context: { task: task.name }, log: { message: `Failed: ${task.name}`, fields: { channel: 'schedule', task: task.name, exception } } });
+            this.#container.make(ErrorReports).report(error, { source: 'schedule', context: { task: task.name }, log: { message: `Failed: ${task.name}`, bindings: { task: task.name }, fields: { channel: 'schedule', exception } } });
           } else {
             logger.error(`Failed: ${task.name}`, { exception });
           }

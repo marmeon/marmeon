@@ -1,5 +1,5 @@
 import { Application, currentLogContext, defineConfig, env, environment, escapeControls, Logger, Redactor, type ConfigOf, type Container, type LogContext, type ServiceProvider } from '@marmeon/core';
-import { consoleLogsGoToStderr, logContextSourcesOf, messageBase } from '@marmeon/core/internal';
+import { consoleLogsGoToStderr, logContextSourcesOf, messageBase, withoutFrameworkFields } from '@marmeon/core/internal';
 import { channels } from '@marmeon/core/diagnostics';
 import { createRequire } from 'node:module';
 import { destination as pinoDestination, pino, type Logger as Pino } from 'pino';
@@ -170,6 +170,9 @@ export function createPinoLogger(config: LogOptions, options: PinoLoggerOptions 
       // Every entry written while a request is handled carries its id; while a job runs, the job's name, id and attempt; and
       // what the app's log context sources add (the active span's ids).
       // A key a child logger is bound with already (the scheduler's `task`) is left out: pino would write it twice.
+      // A key of the call's context that names a field of the framework is written as `context.<key>`: the mixin's values and
+      // pino's own `level`, `time` and `msg` cannot be overridden by logged data.
+      mixinMergeStrategy: (mergeObject, mixinObject) => Object.assign({}, withoutFrameworkFields(mergeObject as LogContext), mixinObject),
       mixin: (_merge, _level, instance) => {
         const added = sources?.current();
         return withoutBound(added ? { ...currentLogContext(), ...added } : currentLogContext(), instance);
