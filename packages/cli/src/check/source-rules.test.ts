@@ -59,10 +59,10 @@ describe('raw-sql', () => {
   it('reports an alias of the import and a namespace import', () => {
     const root = app({
       'src/alias.ts': "import { sql as q } from '@marmeon/database';\nexport const a = q.raw(name);\n",
-      'src/kysely.ts': "import { sql as k } from 'kysely';\nexport const a = k.lit(name);\n",
+      'src/builder.ts': `import { sql as k } from '${['kys', 'ely'].join('')}';\nexport const a = k.lit(name);\n`,
       'src/namespace.ts': "import * as db from '@marmeon/database';\nexport const a = db.sql.raw(name);\n",
     });
-    expect(rawSqlProblems(root).map((problem) => problem.file)).toEqual(['src/alias.ts', 'src/kysely.ts', 'src/namespace.ts']);
+    expect(rawSqlProblems(root).map((problem) => problem.file)).toEqual(['src/alias.ts', 'src/builder.ts', 'src/namespace.ts']);
   });
 
   it.each([

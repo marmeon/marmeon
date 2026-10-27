@@ -284,12 +284,13 @@ checked over every file of the repository — tracked, or new and not ignored. E
     that no other call uses, the message, and `removeIn` as `major.minor`. The version must lie after the current one — otherwise it
     is a typo or overdue. From 1.0 on it is a major version (`Removed in 2.0`). [Package development](docs/package-development.md#deprecating-an-api) shows both.
 
-11. **Only the framework's packages import the query builder**: no code file outside `packages/<name>/src/` (apps, the
-    template, stubs, scripts, the templates of `make:*`, the edits of an example) names `kysely` as a quoted module specifier —
-    `import`, `import type`, `export … from`, `import()`, `require()`, `import.meta.resolve()`, any subpath such as
-    `kysely/helpers/postgres` — and no code block of a docs page or README of a package, app or example imports it. No app or
-    template manifest installs it: not as a dependency, an alias (`npm:kysely@…`), a bundled dependency or an override.
-    Apps take the builder, `sql`, `Kysely` and `Transaction` from `@marmeon/database`. `UPGRADING.md` may show an old import.
+11. **Only `@marmeon/database` imports the query builder**: no code file outside `packages/database/src/` (the other packages
+    and their tests, apps, the template, stubs, scripts, the templates of `make:*`, the edits of an example) names `kysely` as a
+    quoted module specifier — `import`, `import type`, `export … from`, `import()`, `require()`, `import.meta.resolve()`, any
+    subpath such as `kysely/helpers/postgres` — and no code block of a docs page or README of a package, app or example imports
+    it. No manifest but `packages/database/package.json` installs it — the root `package.json` is checked too, `pnpm-workspace.yaml` is not: not as a dependency, an alias (`npm:kysely@…`), a bundled
+    dependency or an override. Packages and apps take the builder, `sql`, `Kysely`, `Transaction` and the types
+    (`Connection`, `SelectQuery`, `ColumnReference` …) from `@marmeon/database`. `UPGRADING.md` may show an old import.
 
 12. **No test is retried**: in every test file and every Vite or Vitest configuration — the framework's tests, the stubs, the
     template and the examples alike — each property `retry` is refused unless its value is `0` or `{ count: 0 }`, as are `.retry()`

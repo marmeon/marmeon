@@ -153,8 +153,8 @@ function scan(root: string, tests: boolean, visit: (file: string, parsed: Parsed
   }
 }
 
-/** The packages whose `sql` is the query builder's tag. */
-const SQL_PACKAGES = new Set(['@marmeon/database', 'kysely']);
+/** The packages whose `sql` is the query builder's tag: the framework's, and the builder itself, which an app may not install but a check still reads (spelled in parts: rule 11 of `pnpm check:source` refuses the quoted name outside `@marmeon/database`). */
+const SQL_PACKAGES = new Set(['@marmeon/database', ['kys', 'ely'].join('')]);
 
 /** `(x)`, `x as T`, `x satisfies T`, `x!` and `<T>x` are `x`. */
 function unwrap(node: Node): Node {

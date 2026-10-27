@@ -1255,7 +1255,7 @@ describe('checkCanaryWorkflow — the scheduled Kysely canary', () => {
   });
 
   it('refuses an override of the release-age gate and the trust policy', () => {
-    const update = 'pnpm -r --filter "./packages/*" update "kysely@$VERSION"';
+    const update = 'pnpm -r --filter "./packages/database" update "kysely@$VERSION"';
     for (const override of ['--config.minimum-release-age=0', '--config.trust-policy=off', '--minimum-release-age=0', 'minimumReleaseAge=0', 'trustPolicy: off']) {
       expect(problemsOf(mutated(update, `${update} ${override}`)), override).toContain('an override of the release-age gate');
     }
@@ -1264,7 +1264,7 @@ describe('checkCanaryWorkflow — the scheduled Kysely canary', () => {
   });
 
   it('refuses a script that changes pnpm-workspace.yaml but not one that reads it', () => {
-    const update = 'pnpm -r --filter "./packages/*" update "kysely@$VERSION"';
+    const update = 'pnpm -r --filter "./packages/database" update "kysely@$VERSION"';
     for (const write of ["sed -i '/^minimum/d' pnpm-workspace.yaml", "sed -ni '1p' pnpm-workspace.yaml", 'echo x > pnpm-workspace.yaml', 'echo x >> pnpm-workspace.yaml', 'rm pnpm-workspace.yaml', 'tee pnpm-workspace.yaml </dev/null']) {
       expect(problemsOf(mutated(update, `${write}\n          ${update}`).replace('run: ' + write, 'run: |\n          ' + write)), write).toContain('changes pnpm-workspace.yaml');
     }

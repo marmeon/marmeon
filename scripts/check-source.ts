@@ -2,7 +2,7 @@
  * `pnpm check:source` — rules over the repository's own files, a part of `pnpm run ci`. Exit 1 names every hit. The rules: the
  * old name is gone, no Valibot outside a package's `src/`, `NODE_ENV` is checked positively, the old token prefix is gone, the
  * docs and the framework's messages speak to their readers, no reference to the private record, no mutant switched off without
- * a reason, no lint rule disabled without one, no import of a package's internal subpath outside `packages/<name>/src/`, every deprecation shows the way forward, no import of the query builder outside a package's `src/`.
+ * a reason, no lint rule disabled without one, no import of a package's internal subpath outside `packages/<name>/src/`, every deprecation shows the way forward, no import of the query builder outside `@marmeon/database`.
  *
  * Each rule in full: CONTRIBUTING.md, "Rules over the source".
  */
@@ -158,6 +158,10 @@ const LIBRARY_IMPORT = new RegExp(
 const LIBRARY_QUOTED = new RegExp(`(['"])${LIBRARY_SPECIFIER}\\1|(?:\\(|\\bfrom)\\s*\`${LIBRARY_SPECIFIER}\``, 'g');
 /** Where the import of the library is shown to an app: docs pages and READMEs of packages, apps and examples (UPGRADING.md may show the old import). */
 const LIBRARY_TEXT = /^(?:docs\/[^/]+|README|(?:packages|apps|examples)\/[^/]+\/README)\.md$/;
+/** The manifests of the repository root and of the framework's packages: only `@marmeon/database` lists the query builder. */
+const PACKAGE_MANIFEST = /^(?:package\.json|packages\/(?!database\/)[^/]+\/package\.json)$/;
+/** The one place that imports the query builder. */
+const LIBRARY_HOME = /^packages\/database\/src\//;
 /** The edits of an example: their `replace` text becomes app code. */
 const EXAMPLE_EDITS = /^examples\/[^/]+\/edits\.json$/;
 /** A key of `overrides`, `resolutions`: `kysely`, `kysely@<range>`, `parent>kysely`, `a/kysely` (yarn). */
@@ -208,21 +212,21 @@ function matchedLines(text: string, pattern: RegExp): number[] {
 }
 
 /**
- * Rule 11: every import of the library outside a package's `src/` (or in a generator), in the code of docs and READMEs, in the
- * edits of an example, and every app manifest that installs it — `path:line: text`.
+ * Rule 11: every import of the library outside `packages/database/src/`, in the code of docs and READMEs, in the edits of an
+ * example, and every manifest but database's own that installs it — `path:line: text`.
  */
 export function libraryImportHits(files: Iterable<SourceFile>): string[] {
   const hits: string[] = [];
   const say = (text: string, line: number) => text.split('\n')[line - 1]!.trim().slice(0, 160);
   for (const { path, text } of files) {
-    if (APP_MANIFEST.test(path)) {
+    if (APP_MANIFEST.test(path) || PACKAGE_MANIFEST.test(path)) {
       let manifest: Record<string, unknown>;
       try {
         manifest = JSON.parse(text) as Record<string, unknown>;
       } catch {
         continue; // not JSON: the template's own checks catch it
       }
-      for (const found of libraryInManifest(manifest)) hits.push(`${path}: ${found} — an app writes queries through @marmeon/database`);
+      for (const found of libraryInManifest(manifest)) hits.push(`${path}: ${found} — only @marmeon/database depends on it`);
       continue;
     }
     if (EXAMPLE_EDITS.test(path)) {
@@ -243,7 +247,7 @@ export function libraryImportHits(files: Iterable<SourceFile>): string[] {
       for (const line of matchedLines(code, LIBRARY_IMPORT)) hits.push(`${path}:${line}: ${say(text, line)}`);
       continue;
     }
-    if (!CODE.test(path) || (/^packages\/[^/]+\/src\//.test(path) && !GENERATORS.includes(path))) continue;
+    if (!CODE.test(path) || LIBRARY_HOME.test(path)) continue;
     for (const line of matchedLines(text, LIBRARY_QUOTED)) hits.push(`${path}:${line}: ${say(text, line)}`);
   }
   return hits;
@@ -700,7 +704,8 @@ export function checkSource(repository: string = root): string[] {
     ...engineHits(files).map((hit) => `no ${ENGINE} in apps, stubs and templates: ${hit}`),
     ...internalImportHits(files).map((hit) => `the internal subpath of a package is not API (decide access with everyone or a check; docs/package-development.md): ${hit}`),
     ...libraryImportHits(files).map(
-      (hit) => `import Kysely's builder through @marmeon/database (sql, Kysely, Transaction …) — the framework pins its version; docs/releases.md#libraries-the-framework-builds-on: ${hit}`,
+      (hit) =>
+        `only @marmeon/database depends on Kysely; take the builder and its types from it (sql, Kysely, Transaction, Connection, SelectQuery, ColumnReference …) — the framework pins its version; docs/releases.md#libraries-the-framework-builds-on: ${hit}`,
     ),
     ...negativeEnvHits(files).map(
       (hit) => `NODE_ENV checked positively (only development and test are development; a missing NODE_ENV is production): use === 'development' || === 'test', or environment.isDevelopment()/isProtected(): ${hit}`,
@@ -728,7 +733,7 @@ if (import.meta.main) {
     process.exitCode = 1;
   } else {
     console.log(
-      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; every lint-disable comment says why; no test is retried; nothing outside a package's src/ imports an internal subpath; every deprecation names a replacement, a docs page and the version that removes it; no app, stub, template, doc or generator imports or installs ${LIBRARY}.`,
+      `check:source: no file or path says the old name (allowed: the company name and its website's URL); no app, stub, template or generator imports or installs ${ENGINE}; no package, template or app checks NODE_ENV against 'production' (or asks import.meta.env.DEV); no file says the old token prefix; no docs page is pending, and no reader's text compares Marmeon with another framework; no string of a package's code or launchers names a decision, a wave or another framework; no file names a decision, a wave, a personal date or the maintainers' notes; no mutant is disabled without a reason or left disabled; every lint-disable comment says why; no test is retried; nothing outside a package's src/ imports an internal subpath; every deprecation names a replacement, a docs page and the version that removes it; nothing but @marmeon/database imports or installs ${LIBRARY}.`,
     );
   }
 }
