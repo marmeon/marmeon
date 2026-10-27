@@ -51,7 +51,7 @@ export interface DispatchInput {
 }
 
 /**
- * The parsed query of a page's request (`defineRequest({ query })`), for the page object: the fields the URL set
+ * @internal A part of `ResponseContext`. The parsed query of a page's request (`defineRequest({ query })`), for the page object: the fields the URL set
  * (without defaults) and the defaults — so the browser never parses a URL itself (`useQueryState`).
  */
 export interface PageQuery {
@@ -59,7 +59,7 @@ export interface PageQuery {
   readonly defaults: Readonly<Record<string, unknown>>;
 }
 
-/** What a response factory gets besides the result: the request — and, behind a query schema, its parsed query. */
+/** @internal The router's: what a response factory gets besides the result: the request — and, behind a query schema, its parsed query. */
 export interface ResponseContext {
   readonly request: Request;
   readonly pageQuery?: PageQuery | undefined;

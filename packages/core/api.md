@@ -284,22 +284,9 @@ export type HealthCheckClass = (new (...args: any[]) => HealthCheck) & {
     readonly check: string;
     readonly timeout?: Duration;
 };
-// HealthCheckResult
-export interface HealthCheckResult {
-    readonly name: string;
-    readonly status: 'ok' | 'failing' | 'timeout';
-    readonly ms: number;
-    readonly note?: string;
-    readonly error?: unknown;
-}
 // HealthChecks
 export declare class HealthChecks {
     #private;
-}
-// HealthReport
-export interface HealthReport {
-    readonly ok: boolean;
-    readonly checks: readonly HealthCheckResult[];
 }
 // Html
 export declare class Html {
@@ -340,11 +327,6 @@ export interface ListenerBinding {
 }
 // ListenerLike
 export type ListenerLike<TEvent> = (new (...args: any[]) => Listener<TEvent>) | ((event: TEvent) => void | Promise<void>);
-// ListenerQueue
-export interface ListenerQueue {
-    queue(event: object, registeredFor: EventClass, listener: QueuedListenerClass): Promise<void>;
-}
-export declare const ListenerQueue: import("./token.ts").Token<ListenerQueue>;
 // LogContext
 export type LogContext = Readonly<Record<string, unknown>>;
 // LogContextSources
@@ -610,8 +592,6 @@ export declare function err<K extends string, E extends {
 export declare function errorCodeOf(error: unknown): ErrorCode | undefined;
 // escapeControls
 export declare function escapeControls(line: string): string;
-// escapeHtml
-export declare function escapeHtml(value: string): string;
 // html
 export declare function html(strings: TemplateStringsArray, ...values: unknown[]): Html;
 // importedBindings

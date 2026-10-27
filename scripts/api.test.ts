@@ -1052,7 +1052,7 @@ describe('one exported name, one declaration', () => {
   });
 
   it('keeps the list of the repository to the agreed exceptions', () => {
-    expect(Object.keys(SAME_VALUE).sort()).toEqual(['CookieDefaults', 'RevalidateOnBack', 'Translator']);
+    expect(Object.keys(SAME_VALUE).sort()).toEqual(['RevalidateOnBack', 'Translator']);
   });
 });
 

@@ -8,7 +8,6 @@
  * says why; nothing else belongs here.
  */
 export const SAME_VALUE: Readonly<Record<string, string>> = {
-  CookieDefaults: 'the type of the router option and its token, which http aliases',
   RevalidateOnBack: 'the typed form of the same option in react',
   Translator: 'the same token; i18n extends the contract of core',
 };

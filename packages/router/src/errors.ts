@@ -13,7 +13,7 @@ const REASONS: Readonly<Record<number, string>> = {
   503: 'Service Unavailable',
 };
 
-/** `404` → `Not Found`. */
+/** @internal The framework's error pages: `404` → `Not Found`. Read a status's text from `response.statusText`. */
 export function statusText(status: number): string {
   return REASONS[status] ?? 'Error';
 }

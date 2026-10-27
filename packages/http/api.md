@@ -86,9 +86,6 @@ export declare abstract class Controller {
     protected redirect(url?: string): RedirectResult;
     protected back(fallback?: string): RedirectResult;
 }
-// CookieDefaults
-export type CookieDefaults = CookieDefaultsOptions;
-export declare const CookieDefaults: import("@marmeon/core").Token<CookieDefaultsOptions>;
 // CookieEncryption
 export declare class CookieEncryption {
     #private;

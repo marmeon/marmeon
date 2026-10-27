@@ -2,10 +2,11 @@ import { Logger, token } from '@marmeon/core';
 import { editableResponse, RequestNonce, type CookieDefaults as CookieDefaultsOptions, type HttpContext, type MiddlewareClass, type Next } from '@marmeon/router';
 
 /**
- * What every cookie of a request gets unless its `set` says otherwise — `@marmeon/session` binds it from its config
+ * @internal The session and the kernel's: `SESSION_SECURE_COOKIE` decides `Secure` for every cookie. What every cookie of a request gets unless its `set` says otherwise — `@marmeon/session` binds it from its config
  * (`secure`: `SESSION_SECURE_COOKIE`, which follows `APP_URL`), the kernel hands it to each request's cookie jar.
  */
 export type CookieDefaults = CookieDefaultsOptions;
+/** @internal The session and the kernel's. */
 export const CookieDefaults = token<CookieDefaults>('CookieDefaults');
 
 /** Stands for the response's nonce in a directive: `scriptSrc: [NONCE, "'strict-dynamic'"]` → `script-src 'nonce-…' 'strict-dynamic'`. */

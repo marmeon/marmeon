@@ -79,10 +79,6 @@ export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any, 
 export type ControllerOf<N extends string> = Entry<N> extends {
     readonly controller: infer C;
 } ? C : never;
-// CookieDefaults
-export interface CookieDefaults {
-    readonly secure?: boolean;
-}
 // CookieJar
 export declare class CookieJar {
     #private;
@@ -114,8 +110,6 @@ export type EmptyObject = {};
 export type ExtractParams<Path extends string> = Path extends `:${string}` ? ExtractParams<`/${Path}`> : Path extends `${string}/:${infer Segment}/${infer Rest}` ? ParamEntry<Segment> & ExtractParams<`/${Rest}`> : Path extends `${string}/:${infer Segment}` ? ParamEntry<Segment> : EmptyObject;
 // FormOf
 export type FormOf<C> = InferInput<SchemaOf<RequestOf<C>>>;
-// GET_HAS_NO_BODY
-export declare const GET_HAS_NO_BODY = "a GET request has no body \u2014 validate its URL with `query` (defineRequest({ query }))";
 // GLOBAL
 export declare const GLOBAL = "global";
 // Handler
@@ -132,8 +126,6 @@ export declare class HttpError extends Error {
 }
 // HttpMethod
 export type HttpMethod = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
-// ISLAND_IS_GET_ONLY
-export declare const ISLAND_IS_GET_ONLY = "this.island(\u2026) answers GET requests only \u2014 an island reads, it never changes anything: register it with Route.get";
 // InferInput
 export type { InferInput } from '@marmeon/core';
 // InferOutput
@@ -223,11 +215,6 @@ export type Next<TAdd extends object> = unknown extends TAdd ? (extension?: TAdd
 export type NoReservedKeys = {
     readonly [K in ReservedContextKey]?: never;
 };
-// PageQuery
-export interface PageQuery {
-    readonly values: Readonly<Record<string, unknown>>;
-    readonly defaults: Readonly<Record<string, unknown>>;
-}
 // Param
 export type Param = string | number;
 // ParamsOf
@@ -312,11 +299,6 @@ export interface RequestState {
 }
 // ReservedContextKey
 export type ReservedContextKey = (typeof RESERVED)[number];
-// ResponseContext
-export interface ResponseContext {
-    readonly request: Request;
-    readonly pageQuery?: PageQuery | undefined;
-}
 // Route
 export declare class Route<TState extends object = EmptyObject, TParams extends object = EmptyObject, TBindings extends object = EmptyObject> {
     #private;
@@ -535,10 +517,6 @@ export declare function expectsJson(request: Request): boolean;
 export declare function ownResponse<R extends Response>(response: R): R;
 // parseQuery
 export declare function parseQuery(schema: StandardSchemaV1, search: URLSearchParams): Promise<ParsedQuery>;
-// statusText
-export declare function statusText(status: number): string;
-// toSearchParams
-export declare function toSearchParams(...queries: Query[]): URLSearchParams;
 // translatable
 export declare function translatable(key: string, params?: Readonly<Record<string, unknown>>, fallback?: string): (issue: object) => string;
 ```
@@ -574,8 +552,12 @@ type ControllerQuery<C> = C extends {
 type Entry<N> = N extends keyof Routes ? Routes[N] : never;
 // First
 type First<U> = (U extends unknown ? (x: () => U) => void : never) extends (x: infer I) => void ? (I extends () => infer R ? R : never) : never;
+// GET_HAS_NO_BODY
+export declare const GET_HAS_NO_BODY = "a GET request has no body \u2014 validate its URL with `query` (defineRequest({ query }))";
 // GetRouteAction
 type GetRouteAction<TState extends object, TParams extends object, TBindings extends object, TPath extends string, TSchema extends StandardSchemaV1, TQuery extends StandardSchemaV1> = [TSchema] extends [never] ? RouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery> : typeof GET_HAS_NO_BODY;
+// ISLAND_IS_GET_ONLY
+export declare const ISLAND_IS_GET_ONLY = "this.island(\u2026) answers GET requests only \u2014 an island reads, it never changes anything: register it with Route.get";
 // Instance
 type Instance<C> = C extends abstract new (...args: never) => infer I ? I : never;
 // IsIsland
@@ -671,6 +653,4 @@ export type Param = string | number;
 export type Query = Readonly<Record<string, QueryValue>>;
 // QueryValue
 export type QueryValue = Param | boolean | null | undefined | readonly (Param | boolean)[];
-// toSearchParams
-export declare function toSearchParams(...queries: Query[]): URLSearchParams;
 ```

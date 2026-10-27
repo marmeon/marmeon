@@ -231,19 +231,6 @@ export interface TemporaryUrlOptions {
 }
 // UPLOADS_TABLE
 export declare const UPLOADS_TABLE = "temporary_uploads";
-// UPLOAD_TYPES
-export declare const UPLOAD_TYPES: {
-    readonly 'image/png': 'png';
-    readonly 'image/jpeg': 'jpg';
-    readonly 'image/gif': 'gif';
-    readonly 'image/webp': 'webp';
-    readonly 'image/avif': 'avif';
-    readonly 'application/pdf': 'pdf';
-    readonly 'application/zip': 'zip';
-    readonly 'video/mp4': 'mp4';
-    readonly 'audio/mpeg': 'mp3';
-    readonly 'application/octet-stream': 'bin';
-};
 // UploadInput
 export type UploadInput = Upload | null;
 // UploadMime
@@ -316,6 +303,19 @@ declare const NO_ENV: import("@marmeon/core").EnvSchema<{}, {}>;
 type Near<N extends string> = N extends `${infer First}${string}` ? Extract<DiskName, `${First}${string}`> : never;
 // Near (2)
 type Near<M extends string> = M extends `${infer Group}/${string}` ? Extract<UploadMime, `${Group}/${string}`> : never;
+// UPLOAD_TYPES
+export declare const UPLOAD_TYPES: {
+    readonly 'image/png': 'png';
+    readonly 'image/jpeg': 'jpg';
+    readonly 'image/gif': 'gif';
+    readonly 'image/webp': 'webp';
+    readonly 'image/avif': 'avif';
+    readonly 'application/pdf': 'pdf';
+    readonly 'application/zip': 'zip';
+    readonly 'video/mp4': 'mp4';
+    readonly 'audio/mpeg': 'mp3';
+    readonly 'application/octet-stream': 'bin';
+};
 // UnionToIntersection
 type UnionToIntersection<U> = (U extends unknown ? (x: () => U) => void : never) extends (x: infer I) => void ? I : never;
 ```
