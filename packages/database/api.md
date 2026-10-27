@@ -60,6 +60,8 @@ export declare class Column<T> {
     default(value: T): this;
     secret(): this;
 }
+// ColumnReference
+export type ColumnReference<DB, TB extends keyof DB> = StringReference<DB, TB>;
 // Connection
 export type Connection<DB> = Kysely<DB>;
 // ConnectionDefinition
@@ -397,6 +399,8 @@ export declare class RecordNotFoundError extends HttpError {
     readonly key: unknown;
     constructor(table: string, key: unknown);
 }
+// ReferencedType
+export type ReferencedType<DB, TB extends keyof DB, R> = ExtractTypeFromReferenceExpression<DB, TB, R>;
 // RelatedWriter
 export interface RelatedWriter<DB, X extends keyof DB, F> {
     create<V extends NewRelated<DB, X, F>>(values: Exact<V, NewRelated<DB, X, F>>): Promise<RowOf<DB[X]>>;

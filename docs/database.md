@@ -234,7 +234,8 @@ holds the file for both. On Postgres there is nothing to configure.
 ## Kysely and its version
 
 The query builder is [Kysely](https://kysely.dev), and the framework pins it to one exact version. You write its builder through
-`@marmeon/database` and never install or import the `kysely` package yourself, so the app and the framework use the same copy.
+`@marmeon/database` and never install or import the `kysely` package yourself, so the app and the framework use the same copy. Only `@marmeon/database` depends on it; the other packages of the framework take the
+builder and its types from there, as your app does.
 A Kysely update that changes the builder's shape comes only in a major version of Marmeon. The
 [releases](releases.md#libraries-the-framework-builds-on) page lists what else it promises.
 

@@ -4,7 +4,7 @@
 
 ## `@marmeon/table`
 
-Types from other packages: `kysely`
+Types from other packages: none
 
 ### Stable
 
@@ -42,7 +42,7 @@ export type CheckBulk<Row, Bulk> = {
     [N in keyof Bulk]: Bulk[N] extends BulkAction<infer H, infer P, infer K> ? [HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string>] extends [never] ? unknown : Problem<HandlerProblem<H, Row, N & string, true> | PolicyProblem<P, K, Row, N & string>> : unknown;
 };
 // CheckColumnKey
-export type CheckColumnKey<DB, TB extends keyof DB, K extends string> = string extends K ? StringReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ExtractTypeFromReferenceExpression<DB, TB, K> extends number ? K : ExtractTypeFromReferenceExpression<DB, TB, K> extends ScalarKey ? `the key '${K}' holds text — say how to read it: key: { column: '${K}', type: 'string' } (or 'uuid', 'bigint')` : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
+export type CheckColumnKey<DB, TB extends keyof DB, K extends string> = string extends K ? ColumnReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ReferencedType<DB, TB, K> extends number ? K : ReferencedType<DB, TB, K> extends ScalarKey ? `the key '${K}' holds text — say how to read it: key: { column: '${K}', type: 'string' } (or 'uuid', 'bigint')` : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
 // CheckColumns
 export type CheckColumns<DB, TB extends keyof DB, Cols, O = {}> = {
     [A in keyof Cols]: A extends 'can' ? Problem<`'can' is taken — a row's abilities are its 'can'; name the column otherwise`> : Cols[A] extends ColumnDefinition<infer R extends string> ? [ColumnProblem<DB, TB, R, O> | SelectedProblem<DB, TB, O, A, Cols[A]>] extends [never] ? unknown : Problem<ColumnProblem<DB, TB, R, O> | SelectedProblem<DB, TB, O, A, Cols[A]>> : unknown;
@@ -290,13 +290,13 @@ export declare function tableRoutes<R extends Route<any, any, any>, T extends Da
 
 ```ts
 // CheckKeyColumn
-export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string extends K ? StringReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ExtractTypeFromReferenceExpression<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
+export type CheckKeyColumn<DB, TB extends keyof DB, K extends string> = string extends K ? ColumnReference<DB, TB> : [ColumnProblem<DB, TB, K>] extends [never] ? ReferencedType<DB, TB, K> extends ScalarKey ? K : `the key '${K}' is no string or number column — rows are acted on by their key` : ColumnProblem<DB, TB, K>;
 // CheckRegistrar
 type CheckRegistrar<R, T> = T extends DataTable<any, infer Ctx> ? (RegistrarContext<R> extends Ctx ? T : {
     readonly 'the table needs more of the request than these routes have — register them on the registrar of its page, after its middleware (authenticate(), …)': Ctx;
 }) : T;
 // ColumnProblem
-type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> = R extends SecretReference<DB, TB> ? `'${R}' is a secret column — a table never reads it (its migration marked it .secret())` : R extends StringReference<DB, TB> | Selected<DB, TB, O> ? never : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB> | Selected<DB, TB, O>>}`;
+type ColumnProblem<DB, TB extends keyof DB, R extends string, O = {}> = R extends SecretReference<DB, TB> ? `'${R}' is a secret column — a table never reads it (its migration marked it .secret())` : R extends ColumnReference<DB, TB> | Selected<DB, TB, O> ? never : `'${R}' is not a column of the table's query — it has ${JoinNames<PlainColumns<DB, TB> | Selected<DB, TB, O>>}`;
 // CtxOf
 type CtxOf<Q> = Q extends (db: any, ctx: infer C) => unknown ? (unknown extends C ? TableContext : C) : TableContext;
 // DbOf
@@ -316,7 +316,7 @@ export type KeyType = 'integer' | 'bigint' | 'string' | 'uuid';
 // OutOf
 type OutOf<Q> = Q extends (...args: any[]) => SelectQuery<any, any, infer O> ? O : {};
 // PlainColumns
-type PlainColumns<DB, TB extends keyof DB> = Extract<StringReference<DB, TB>, `${string}`> extends infer All extends string ? Exclude<All, `${string}.${string}` | SecretReference<DB, TB>> : never;
+type PlainColumns<DB, TB extends keyof DB> = Extract<ColumnReference<DB, TB>, `${string}`> extends infer All extends string ? Exclude<All, `${string}.${string}` | SecretReference<DB, TB>> : never;
 // PolicyProblem
 type PolicyProblem<P, K extends string, Row, Name extends string> = [P] extends [unknown] ? unknown extends P ? never : K extends AbilityOf<P> ? Row extends ResourceOf<P, K> ? never : `'${Name}': ${K}(user, row) of its policy takes another row than the table's (${JoinNames<keyof Row & string>})` : `'${Name}': '${K}' is not an ability of its policy — it has ${JoinNames<AbilityOf<P>>}` : never;
 // Problem
@@ -347,7 +347,7 @@ type RowOf<DB, TB extends keyof DB, Cols, K extends string, O = {}> = Simplify<{
 } & {
     readonly [A in keyof Cols as Cols[A] extends ColumnDefinition<string, boolean, boolean, true> ? A : never]?: ValueOf<DB, TB, O, Cols[A]>;
 } & {
-    readonly [P in KeyName<K>]: ExtractTypeFromReferenceExpression<DB, TB, K>;
+    readonly [P in KeyName<K>]: ReferencedType<DB, TB, K>;
 }>;
 // ScalarKey
 type ScalarKey = string | number;
@@ -388,7 +388,7 @@ export type TableQueryValues = {
 // TbOf
 type TbOf<Q> = Q extends (...args: any[]) => SelectQuery<infer DB, infer TB, any> ? Extract<TB, keyof DB> : never;
 // ValueOf
-type ValueOf<DB, TB extends keyof DB, O, C> = C extends ColumnDefinition<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ExtractTypeFromReferenceExpression<DB, TB, R>) : never;
+type ValueOf<DB, TB extends keyof DB, O, C> = C extends ColumnDefinition<infer R extends string> ? (R extends Selected<DB, TB, O> ? O[R & keyof O] : ReferencedType<DB, TB, R>) : never;
 ```
 
 ## `@marmeon/table/client`

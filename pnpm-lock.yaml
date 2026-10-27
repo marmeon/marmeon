@@ -1126,9 +1126,6 @@ importers:
       '@marmeon/validation':
         specifier: workspace:*
         version: link:../validation
-      kysely:
-        specifier: 0.29.6
-        version: 0.29.6
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)

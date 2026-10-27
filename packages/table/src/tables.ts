@@ -1,12 +1,11 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Gate, PolicyClass } from '@marmeon/auth';
 import { cursorPaginate, outsideTransaction, paginate, sql, type Connection, type CursorEncrypter, type SelectQuery } from '@marmeon/database';
-import { isSecretSelection } from '@marmeon/database/internal';
+import { leaveOutSelections, selectionsOf } from '@marmeon/database/internal';
 import { json, RedirectResult, type JsonResult } from '@marmeon/http';
 import { ACTION_HEADER, isJsonResult, isRedirectResult, PAGE_HEADER } from '@marmeon/http/internal';
 import { addVary, expectsJson, EXPECTS_JSON_VARY, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition, type Router } from '@marmeon/router';
 import { fillPath, matchParams } from '@marmeon/router/internal';
-import { AliasNode, IdentifierNode, type KyselyPlugin, type RootOperationNode } from 'kysely';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM } from './csv.ts';
@@ -358,7 +357,7 @@ export class DataTables {
     }
     const shown = new Set(view.columns.map(([, col]) => col));
     const hidden = new Set(Object.values(definition.columns).flatMap((col) => (selected.has(col.ref) && !shown.has(col) ? [col.ref] : [])));
-    return hidden.size ? query.withPlugin(new LeaveOut(hidden)) : query;
+    return leaveOutSelections(query, hidden);
   }
 
   /** The base query with the state's filters and search — on visible columns and filters only (checked before). */
@@ -470,40 +469,8 @@ function project(definition: TableDefinition, query: SelectQuery<any, any, any>,
   return query.select((eb) => [...columns.map(([alias, col]) => eb.ref(col.ref).as(alias)), ...(keyCovered ? [] : [eb.ref(definition.key).as(keyName)])]);
 }
 
-/**
- * The names of the values a query selects itself under an alias (`withCount(…, { as })`, `eb.fn(…).as(…)`): a column of such a name
- * reads that value, and SQL refers to it by name only in `ORDER BY`. A `secret()` is never one of them: it is in `secret`.
- */
-function selectionsOf(query: SelectQuery<any, any, any>): { selected: ReadonlySet<string>; secret: ReadonlySet<string> } {
-  const selected = new Set<string>();
-  const secret = new Set<string>();
-  for (const { selection } of query.toOperationNode().selections ?? []) {
-    if (AliasNode.is(selection) && IdentifierNode.is(selection.alias)) (isSecretSelection(selection) ? secret : selected).add(selection.alias.name);
-  }
-  return { selected, secret };
-}
-
 function selectedBy(query: SelectQuery<any, any, any>): ReadonlySet<string> {
   return selectionsOf(query).selected;
-}
-
-/** Leaves the values of hidden columns out of the base query's own selections — whatever builds on it, as a subquery too. */
-class LeaveOut implements KyselyPlugin {
-  readonly #names: ReadonlySet<string>;
-
-  constructor(names: ReadonlySet<string>) {
-    this.#names = names;
-  }
-
-  transformQuery({ node }: { node: RootOperationNode }): RootOperationNode {
-    if (node.kind !== 'SelectQueryNode' || !node.selections) return node;
-    const kept = node.selections.filter(({ selection }) => !(AliasNode.is(selection) && IdentifierNode.is(selection.alias) && this.#names.has(selection.alias.name)));
-    return kept.length === node.selections.length ? node : { ...node, selections: kept };
-  }
-
-  async transformResult<R>({ result }: { result: R }): Promise<R> {
-    return result;
-  }
 }
 
 /** Ordered by the state's sort (NULLs last, either way — the same on SQLite and Postgres), then by the key. */

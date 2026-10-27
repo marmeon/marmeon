@@ -348,9 +348,9 @@ command, and the [package development](docs/package-development.md#dependencies-
 4. Decided exception: **`nodemailer` is a dependency of `@marmeon/mail`** — no dependencies of its own, the production path.
 5. Decided exception: **`@simplewebauthn/server` is a dependency of `@marmeon/auth`** — passkeys are a required standard and their
    verification is security-critical, so a proven implementation; loaded only by `@marmeon/auth/passkeys`.
-6. Decided exception: **`kysely` is an exact dependency of `@marmeon/database` and `@marmeon/table`** — no caret, the same version in
-   both. The builder's shape is public API and the security plugins are tested against exactly this version; one pin in every
-   package installs one copy. A Kysely update is a pull request of its own that changes both manifests. Once a week the
+6. Decided exception: **`kysely` is an exact dependency of `@marmeon/database` only** — no caret. The other packages take the builder
+   and its types from there. The builder's shape is public API and the security plugins are tested against exactly this version.
+   A Kysely update is a pull request of its own that changes its manifest. Once a week the
    workflow `.github/workflows/kysely-canary.yml` installs the newest Kysely under the `next` tag over that pin on its runner
    (nothing is committed), builds, typechecks and tests `database`, `table` and `queue`, and fails when something breaks or a
    new builder method or statement is unclassified. It is no required check and opens no issue: a red run is the cue to prepare the update. A version younger than the

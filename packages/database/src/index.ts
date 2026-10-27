@@ -1,5 +1,5 @@
 export { sql } from './builder.ts';
-export type { Connection, NewRowOf, RowOf, RowUpdateOf, SelectQuery, Transaction } from './builder.ts';
+export type { ColumnReference, Connection, NewRowOf, ReferencedType, RowOf, RowUpdateOf, SelectQuery, Transaction } from './builder.ts';
 export { Connections, Database } from './connections.ts';
 export type { IsolationLevel, QueryEvent, TransactionOptions } from './connections.ts';
 // The ambient transaction context lives in core — the queue, events and the HTTP kernel use it without depending
