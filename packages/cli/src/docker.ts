@@ -255,6 +255,29 @@ export function caddyfile({ systemd = false }: DockerOptions): string {
 
 export function nginxConf({ systemd = false }: DockerOptions): string {
   const upstream = systemd ? '127.0.0.1:3000' : 'web:3000';
+  // What both locations pass on: the request as nginx saw it, never what the client sent about it.
+  const proxy = `		proxy_pass http://marmeon;
+		proxy_http_version 1.1;
+		proxy_set_header Connection "";
+		proxy_set_header Host $host;
+		# Set by nginx, never passed on: Proto, Host and For replace whatever the client sent — For is the address nginx
+		# sees (with SERVER_TRUSTED_PROXIES: '*' the app takes the right-most entry anyway). Behind another proxy (a CDN), append
+		# ($proxy_add_x_forwarded_for) and name both proxies' ranges in SERVER_TRUSTED_PROXIES instead of '*'.
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $host;`;
+  // The path is UPLOADS_PREFIX of @marmeon/storage, which the cli cannot import: keep both in step.
+  const uploads = `	# Uploads to a local disk: the app limits each one to the size it announced, so nginx neither limits nor buffers the body.
+	location ^~ /_marmeon/uploads/ {
+		# The only route there is PUT /_marmeon/uploads/:id.
+		limit_except PUT {
+			deny all;
+		}
+		client_max_body_size 0;
+		proxy_request_buffering off;
+${proxy}
+	}
+`;
   return `# Written by \`marmeon make:docker --nginx\`. Replace example.com; the certificates (fullchain.pem, privkey.pem) are yours to
 # provide — ${systemd ? 'e.g. from certbot' : 'deploy/certs is mounted at /etc/nginx/certs'}.
 upstream marmeon {
@@ -286,17 +309,9 @@ server {
 	# compressed already (marmeon build writes .br/.gz).
 	gzip off;
 
+${uploads}
 	location / {
-		proxy_pass http://marmeon;
-		proxy_http_version 1.1;
-		proxy_set_header Connection "";
-		proxy_set_header Host $host;
-		# Set by nginx, never passed on: Proto, Host and For replace whatever the client sent — For is the address nginx
-		# sees (with SERVER_TRUSTED_PROXIES: '*' the app takes the right-most entry anyway). Behind another proxy (a CDN), append
-		# ($proxy_add_x_forwarded_for) and name both proxies' ranges in SERVER_TRUSTED_PROXIES instead of '*'.
-		proxy_set_header X-Forwarded-For $remote_addr;
-		proxy_set_header X-Forwarded-Proto $scheme;
-		proxy_set_header X-Forwarded-Host $host;
+${proxy}
 		# Live streams send a heartbeat every 20 s and X-Accel-Buffering: no (unbuffered): the timeout must be longer.
 		proxy_read_timeout 75s;
 	}

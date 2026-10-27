@@ -272,6 +272,66 @@ describe('the avatar (uploaded ahead, a token in the form, checked by its bytes)
   });
 });
 
+// nginx lets the bytes of an upload past its own body limit (deploy/nginx.conf): the app alone decides, with the body limit of its own
+// kernel (SERVER_MAX_BODY_MB, here 1 MB) not in the way, and with every check made before the first byte is read.
+describe('the bytes of an upload, where the proxy lets them through without a limit', () => {
+  const MIB = 1024 * 1024;
+  const chunk = new Uint8Array(64 * 1024);
+  chunk.set(PNG);
+
+  /** A body of `length` bytes that counts the bytes pulled from it. */
+  function counted(length: number) {
+    const body = { pulled: 0, stream: undefined as unknown as ReadableStream<Uint8Array> };
+    body.stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (body.pulled >= length) return controller.close();
+        const part = chunk.subarray(0, Math.min(chunk.byteLength, length - body.pulled));
+        body.pulled += part.byteLength;
+        controller.enqueue(part);
+      },
+    });
+    return body;
+  }
+
+  async function targetFor(size: number) {
+    app = await createTestApp(application, { database: 'refresh', env: { SERVER_MAX_BODY_MB: '1' } });
+    const ada = await app.factory(UserFactory).create({ name: 'Ada', email: 'ada@example.com' });
+    const as = app.actingAs(ada);
+    const target = (await as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'avatar' }).put(`/users/${ada.public_id}/avatar`, { json: { name: 'big.png', size } }).assertOk()).json() as { token: string; upload: { url: string } };
+    return { as: as.withHeaders({ [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: 'bytes', 'content-type': 'application/octet-stream' }), target };
+  }
+
+  it('a file over the kernel’s own body limit (1 MB) is received at the size it announced', async () => {
+    const size = Math.floor(1.5 * MIB);
+    const { as, target } = await targetFor(size);
+    const body = counted(size);
+    const answer = await as.put(target.upload.url, { body: body.stream }).assertOk();
+    expect(answer.json()).toEqual({ size });
+    expect(body.pulled).toBe(size);
+    app.storage.disk('uploads').assertCount(1);
+  });
+
+  it('a signature that does not match is a 403 before the first chunk is read — nothing is stored, the upload stays unsent', async () => {
+    const { as, target } = await targetFor(Math.floor(1.5 * MIB));
+    const url = new URL(target.upload.url, 'http://localhost');
+    const signature = url.searchParams.get('signature')!;
+    url.searchParams.set('signature', `${signature.startsWith('A') ? 'B' : 'A'}${signature.slice(1)}`);
+    const body = counted(2 * MIB);
+    await as.put(`${url.pathname}${url.search}`, { body: body.stream }).assertForbidden();
+    expect(body.pulled).toBeLessThanOrEqual(chunk.byteLength);
+    app.storage.disk('uploads').assertCount(0);
+    expect((await uploadRows()).every((row) => (row as { started_at?: unknown }).started_at == null)).toBe(true);
+  });
+
+  it('a body over the announced size is cut off with a 413 — no temporary file, nothing on the disk', async () => {
+    const { as, target } = await targetFor(MIB);
+    const body = counted(5 * MIB);
+    await as.put(target.upload.url, { body: body.stream }).assertStatus(413);
+    expect(body.pulled).toBeLessThan(2 * MIB);
+    app.storage.disk('uploads').assertCount(0);
+  });
+});
+
 // The table of uploads is infrastructure: it never joins the app's transaction. In a test app's refreshed database (one isolated
 // connection) a submit inside a transaction of the app fails loudly — never a silent join. A file of its own:
 // packages/storage/src/uploads-sqlite.test.ts.

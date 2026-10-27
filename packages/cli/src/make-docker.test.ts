@@ -164,6 +164,28 @@ describe('marmeon make:docker', { timeout: 30_000 }, () => {
     expect(nginx.file('compose.production.yaml')).toContain('image: nginx:mainline-alpine');
   });
 
+  it('--nginx: the bytes of an upload pass without the 8m body limit — every other path keeps it', () => {
+    for (const options of [[], ['--systemd']]) {
+      const conf = makeDocker(pnpmApp(), '--nginx', ...options).file('deploy/nginx.conf');
+      const locations = [...conf.matchAll(/^\tlocation (?:\^~ )?(\S+) \{\n([\s\S]*?)^\t\}$/gm)].map(([, path, body]) => ({ path, body: body! }));
+      expect(locations.map((location) => location.path)).toEqual(['/_marmeon/uploads/', '/']);
+      const [uploads, rest] = locations;
+      expect(uploads!.body).toContain('client_max_body_size 0;');
+      expect(uploads!.body).toContain('proxy_request_buffering off;');
+      expect(conf).toContain('location ^~ /_marmeon/uploads/ {');
+      expect(uploads!.body).toMatch(/limit_except PUT \{\n\t+deny all;/);
+      expect(uploads!.body).toContain('proxy_pass http://marmeon;');
+      // The headers that tell the app who is asking are the same in both.
+      for (const header of ['X-Forwarded-For $remote_addr', 'X-Forwarded-Proto $scheme', 'X-Forwarded-Host $host', 'Host $host']) {
+        expect(uploads!.body).toContain(`proxy_set_header ${header};`);
+      }
+      expect(rest!.body).not.toContain('client_max_body_size');
+      // Only the upload location lifts the limit; the server block keeps 8m for everything else.
+      expect(conf.match(/client_max_body_size/g)).toHaveLength(2);
+      expect(conf).toMatch(/^\tclient_max_body_size 8m;$/m);
+    }
+  });
+
   it("gives the scheduler more time to stop than its runs get: schedule:work's --stop-timeout (30 s) and its exit 10 s later fit in", () => {
     const shop: DockerApp = { name: 'shop', packageManager: 'pnpm', pnpmVersion: TESTED_PNPM, installFiles: [], localPackages: [] };
     // schedule:work drains for --stop-timeout (30 s by default), then frees the runs' locks; a run that hangs ends the process 10 s later.
