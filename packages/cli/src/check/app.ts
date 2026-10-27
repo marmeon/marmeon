@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { Application, durationToMilliseconds, ErrorSolutions, errorCodeOf, HealthChecks, Redactor, type ServiceProviderClass } from '@marmeon/core';
 import { coreSolutions, loadDiscoveredPackages } from '@marmeon/core/internal';
-import { loadApplication } from '../load.ts';
+import { appRedactor, loadApplication } from '../load.ts';
 import { CheckRegistry, type AppCheckClass } from './registry.ts';
 import { escapeControl, reportOf, unrunReport, type CheckProblem, type CheckReport, type SilencedProblem } from './report.ts';
 
@@ -38,12 +38,12 @@ function redactorOf(app: Application | undefined): Redactor {
   return app?.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
 }
 
-/** {@link redactorOf} that cannot fail: the core's keys alone when the app's redactor cannot be built. */
-function safeRedactor(app: Application | undefined): Redactor {
+/** {@link redactorOf} that cannot fail: `fallback` (the redactor of the app's definition) when there is no app or its redactor cannot be built. */
+function safeRedactor(app: Application | undefined, fallback: Redactor = new Redactor()): Redactor {
   try {
-    return redactorOf(app);
+    return app ? redactorOf(app) : fallback;
   } catch {
-    return new Redactor();
+    return fallback;
   }
 }
 
@@ -94,7 +94,7 @@ async function solutionFor(error: unknown, root: string): Promise<{ fix?: string
 /** The finding for an app that did not start: the redacted message, its code, and what the solutions of the core and the packages say to do. */
 async function bootProblem(error: unknown, root: string): Promise<CheckProblem> {
   const solution = await solutionFor(error, root);
-  const redactor = new Redactor();
+  const redactor = await appRedactor(root);
   const code = errorCodeOf(error);
   const message = describeFailure(error, redactor, root);
   return {
@@ -259,15 +259,17 @@ export async function runAppChecks({ root, build, selected, reports, warnings }:
   const wants = (name: string) => selected.includes(name);
   let current: string | undefined;
   let active: Application | undefined = build instanceof Error ? undefined : build;
+  // An app that did not load has no container: its definition's additions still mask what the report quotes.
+  const fallback = build instanceof Error ? await appRedactor(root) : undefined;
   const strays: { readonly name: string | undefined; readonly text: string }[] = [];
   let timedOut = false;
   // After a check ran out of time, a failure cannot be told from the one that check left behind: it has no owner.
-  const onStray = (error: unknown) => void strays.push({ name: timedOut ? undefined : current, text: describeFailure(error, safeRedactor(active), root) });
+  const onStray = (error: unknown) => void strays.push({ name: timedOut ? undefined : current, text: describeFailure(error, safeRedactor(active, fallback), root) });
   process.on('unhandledRejection', onStray);
   process.on('uncaughtException', onStray);
 
   const failedToLoad = async (error: Error) => {
-    const reason = describeFailure(error, new Redactor(), root);
+    const reason = describeFailure(error, await appRedactor(root), root);
     for (const name of selected) {
       if (reports.has(name)) continue;
       if (name === 'boot') reports.set(name, { name, status: 'failed', ms: Math.round(performance.now() - started), problems: [await bootProblem(error, root)] });

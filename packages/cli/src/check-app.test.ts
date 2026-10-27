@@ -234,6 +234,71 @@ class B { static command = 'dup'; handle() { return 0; } }
     }
   });
 
+  describe('the additions of the app to the redactor, for an app that did not start', () => {
+    // The app's own definition, with a provider that fails while registering and quotes a key of the app's partner (built at run time).
+    const definition = (redact: string) => `
+import { join } from 'node:path';
+import { defineApplication } from '@marmeon/core';
+import system from '#modules/system';
+import { AppConfig } from '../config/app.ts';
+import { ProbeProvider } from '../probe.ts';
+
+export default defineApplication({
+  root: join(import.meta.dirname, '..'),
+  config: [AppConfig],
+  modules: [system],
+  providers: [ProbeProvider],
+  redact: ${redact},
+});
+`;
+    const probe = `
+export class ProbeProvider {
+  register() {
+    throw new Error('the partner refused ' + ['wa', 'live', 'q8fz0kzb3t5wyvlp9nr2xcj7'].join('_'));
+  }
+}
+`;
+    const key = ['wa', 'live', 'q8fz0kzb3t5wyvlp9nr2xcj7'].join('_');
+
+    it('masks what the report quotes with the patterns of the definition', () => {
+      const root = app({ files: { 'probe.ts': probe, 'bootstrap/app.ts': definition('{ patterns: [/\\bwa_live_[a-z0-9]{24}\\b/] }') } });
+      const { code, stdout, stderr } = check(root, ['--only=boot', '--json']);
+      expect(code).toBe(1);
+      expect(reportOf(stdout, 'boot').problems[0].message).toContain('the partner refused [redacted]');
+      expect(stdout + stderr).not.toContain(key);
+      const plain = check(root, ['--only=boot']);
+      expect(plain.stdout + plain.stderr).not.toContain(key);
+      // Without the boot check selected, the check that could not run says why, masked as well.
+      const other = check(root, ['--only=route-types', '--json']);
+      expect(reportOf(other.stdout, 'route-types').reason).toContain('the partner refused [redacted]');
+      expect(other.stdout + other.stderr).not.toContain(key);
+    });
+
+    it('masks a failure that arrives while the report of an app that did not start is built, with the patterns of the definition', () => {
+      // The definition leaves an unhandled rejection behind when `marmeon check` reads it after it installed its own handler.
+      const redact = `{
+        get keys() {
+          if (process.listenerCount('unhandledRejection') > 0) void Promise.reject(new Error('left behind ' + ['wa', 'live', 'q8fz0kzb3t5wyvlp9nr2xcj7'].join('_')));
+          return [];
+        },
+        patterns: [/\\bwa_live_[a-z0-9]{24}\\b/],
+      }`;
+      const root = app({ files: { 'probe.ts': 'export class ProbeProvider { register() { throw new Error("the partner refused"); } }', 'bootstrap/app.ts': definition(redact) } });
+      const { stdout, stderr } = check(root, ['--only=boot', '--json']);
+      expect(JSON.parse(stdout).warnings).toEqual(expect.arrayContaining([expect.stringContaining('left behind [redacted]')]));
+      expect(stdout + stderr).not.toContain(key);
+    });
+
+    it('stops the start of an app with a pattern it refuses (K15), before the provider runs', () => {
+      const root = app({ files: { 'probe.ts': probe, 'bootstrap/app.ts': definition('{ patterns: [/(a+)+$/] }') } });
+      const { code, stdout, stderr } = check(root, ['--only=boot', '--json']);
+      expect(code).toBe(1);
+      expect(reportOf(stdout, 'boot')).toMatchObject({ status: 'failed', problems: [{ severity: 'error', code: 'K15' }] });
+      // The provider never registered: its error is not in the report.
+      expect(stdout + stderr).not.toContain('the partner refused');
+    });
+  });
+
   it('reports a route that does not say who may call it, with H3 and its place', () => {
     const routes = `
 import { defineModule } from '@marmeon/core';

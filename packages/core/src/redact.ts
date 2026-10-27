@@ -1,3 +1,5 @@
+import { withCode } from './error-codes.ts';
+
 /**
  * Keys whose values never reach a log (or a stored error): passwords, tokens, secrets, credentials, keys, one-time codes,
  * session ids, recovery codes, card data and cookies. `code` and `auth` count only as the whole name, and `otp` only as a word of its
@@ -8,16 +10,6 @@ export const REDACTED_KEYS =
   /pass(word)?|secret|token|authorization|cookie|remember|api[-_]?key|signature|credential|private[-_]?key|app[-_]?(?:previous[-_]?)?keys?|encryption[-_]?key|session[-_]?id|jwt|dsn|recovery|cvv|cvc|card[-_]?number|(?:mfa|2fa|two[-_]?factor|verification|sms|auth)[-_]?code|(?:^|[-_])t?otp|^(?:x-)?auth$|^code$/i;
 // `userOtp`, `totpSecret`: an `otp` at a camel-case boundary — told from `footprint` by its capital, which `REDACTED_KEYS` ignores.
 const CAMEL_OTP = /[a-z](?:Otp|Totp)/;
-
-/**
- * A log entry's context with sensitive values replaced by `[redacted]`, by the core's key list alone — what
- * {@link Redactor.log} does for a logger without an app. A logger of an app redacts with the app's `Redactor`, so the names
- * the app's packages add count too.
- * @internal
- */
-export function redact(context: Readonly<Record<string, unknown>>): Record<string, unknown> {
-  return new Redactor().log(context);
-}
 
 /** How deep {@link Redactor.log} follows a log context; deeper values are written as `[…]`. */
 const MAX_DEPTH = 6;
@@ -111,7 +103,8 @@ export function maskUrlPasswords(text: string): string {
  * sensitive keys (`password=…`, `"token":"…"`, `?signature=…`), bearer credentials, passwords in URLs, password hashes
  * (PHC strings), API tokens, JWTs, keys of well-known services (`ghp_…`, `sk_live_…`, `xoxb-…`, `AKIA…`) and token-like words
  * and path segments (`/reset-password/<token>` in a link, a log line or a `Referer`; a quoted value in a foreign error message).
- * A safety net, not a guarantee: a secret in free text without one of these shapes still shows.
+ * A safety net, not a guarantee: a secret in free text without one of these shapes still shows. It works with the core's list
+ * alone — the names and patterns an app adds need the app's {@link Redactor}.
  */
 export function redactText(text: string): string {
   return text
@@ -148,19 +141,110 @@ export interface RedactableQuery {
 }
 
 /**
+ * What an app adds to the core's lists, in `defineApplication({ redact })`: key names whose values are never shown, and patterns
+ * whose matches are replaced in every string. The core's own lists cannot be shortened. See docs/logging.md#patterns-of-your-own.
+ */
+export interface RedactionAdditions {
+  /** Names whose values are never shown — a field, a header, a cookie. Case does not matter. */
+  readonly keys?: readonly string[];
+  /** Patterns whose matches are replaced by `[redacted]` — a key format of a partner, an IBAN. Kept linear: see `Redactor.addPatterns()`. */
+  readonly patterns?: readonly RegExp[];
+}
+
+/** The longest part of a refused pattern a message names. */
+const SHOWN_PATTERN = 80;
+
+/** Why `pattern` may not be added, or `undefined` when it may. */
+function checkPattern(pattern: unknown): string | undefined {
+  if (!(pattern instanceof RegExp)) return 'it is not a RegExp';
+  if (pattern.flags.includes('y')) return 'it is sticky (`y`), so it only matches at one position';
+  if (new RegExp(pattern.source, pattern.flags.replaceAll(/[gy]/g, '')).test('')) return 'it matches the empty string';
+  return shapeProblem(pattern.source);
+}
+
+// `{2}`, `{2,}`, `{2,5}` at the index (sticky), however long the numbers.
+const BRACES = /\{(\d+)(?:(,)(\d*))?\}/y;
+
+/** The reading of a quantifier at `index` in `source`: how long it is, whether it repeats without limit, whether it repeats more than once. */
+function quantifierAt(source: string, index: number): { length: number; unbounded: boolean; many: boolean } | undefined {
+  const char = source[index];
+  if (char === '*' || char === '+') return { length: 1, unbounded: true, many: true };
+  if (char === '?') return { length: 1, unbounded: false, many: false };
+  if (char !== '{') return undefined;
+  BRACES.lastIndex = index;
+  const braces = BRACES.exec(source);
+  if (!braces) return undefined;
+  const [text, min, comma, max] = braces;
+  if (comma === undefined) return { length: text.length, unbounded: false, many: Number(min) > 1 };
+  if (max === '') return { length: text.length, unbounded: true, many: true };
+  return { length: text.length, unbounded: false, many: Number(max) > 1 };
+}
+
+/**
+ * A reading of the pattern's source for the two shapes that make a match slow: a back-reference, and a repeated group that holds
+ * an unbounded repeat (`(a+)+`, `(\w+\s?)*`). A safety net, not a proof: an alternation with overlap (`(a|a)*`) passes.
+ */
+function shapeProblem(source: string): string | undefined {
+  // Per open group: whether it holds a repeat without limit; the first entry is the pattern itself.
+  const open: boolean[] = [false];
+  // The atom just read is a group that holds such a repeat.
+  let previous = false;
+  let nested = false;
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index]!;
+    if (char === '\\') {
+      const next = source[index + 1];
+      if ((next !== undefined && next >= '1' && next <= '9') || (next === 'k' && source[index + 2] === '<')) return 'it holds a back-reference';
+      index++;
+      previous = false;
+    } else if (char === '[') {
+      index++;
+      while (index < source.length && source[index] !== ']') index += source[index] === '\\' ? 2 : 1;
+      previous = false;
+    } else if (char === '(') {
+      open.push(false);
+      // `(?:`, `(?=`, `(?!`, `(?<=`, `(?<!` and `(?<name>`: the `?` after the bracket is no quantifier.
+      if (source[index + 1] === '?') {
+        const kind = source[index + 2];
+        if (kind === '<' && source[index + 3] !== '=' && source[index + 3] !== '!') index = Math.max(index + 2, source.indexOf('>', index));
+        else index += kind === '<' ? 3 : 2;
+      }
+      previous = false;
+    } else if (char === ')') {
+      previous = open.length > 1 ? open.pop()! : false;
+      if (previous) open[open.length - 1] = true;
+    } else {
+      const quantifier = quantifierAt(source, index);
+      if (quantifier === undefined) {
+        previous = false;
+        continue;
+      }
+      if (quantifier.many && previous) nested = true;
+      if (quantifier.unbounded) open[open.length - 1] = true;
+      index += quantifier.length - 1;
+      previous = false;
+    }
+  }
+  return nested ? 'it repeats a group that repeats without limit, which can take exponential time' : undefined;
+}
+
+/**
  * The one place that decides what of a value may be shown or recorded — the development error page, the devtools and
  * telemetry. It masks sensitive keys at any depth (the core's list and the names packages add), secrets in text and the
  * parameters of statements on secret columns, shows files and bytes by their size only, and cuts every string at
- * {@link MAX_ENTRY_BYTES}. One per app (`app.container.make(Redactor)`), so the names an app adds stay its own.
+ * {@link MAX_ENTRY_BYTES}. One per app (`app.container.make(Redactor)`), so the names and patterns an app adds stay its own.
  * See docs/logging.md#what-the-framework-shows-elsewhere.
  */
 export class Redactor {
   readonly #keys = new Set<string>();
   #text: RegExp | undefined;
+  // Copies with `g` of the patterns an app or a package added: the `lastIndex` of the caller's object never counts.
+  readonly #patterns: RegExp[] = [];
 
-  /** @internal Built by the container. */
-  constructor(keys: Iterable<string> = []) {
-    this.addKeys(...keys);
+  /** @internal Built from the app's definition (`defineApplication({ redact })`) and by the container. */
+  constructor(additions: RedactionAdditions = {}) {
+    this.addKeys(...(additions.keys ?? []));
+    this.addPatterns(...(additions.patterns ?? []));
   }
 
   /** More names whose values are never shown — a cookie's name (`marmeon_session`), a header, a field. Case does not matter. */
@@ -168,6 +252,26 @@ export class Redactor {
     for (const key of keys) if (key !== '') this.#keys.add(key.toLowerCase());
     const names = [...this.#keys].map((key) => key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     this.#text = names.length > 0 ? new RegExp(`(\\b(?:${names.join('|')}))(\\s*[:=]\\s*"?)(?!\\[redacted\\])([^\\s"'&,;}]+)`, 'gi') : undefined;
+    return this;
+  }
+
+  /**
+   * More patterns whose matches are replaced by `[redacted]` in every string the redactor sees — also in the strings of a log
+   * context, unlike the core's own patterns, which a context passes only when it holds a URL. They add to the core's lists, which
+   * cannot be shortened. A pattern that can stall the match is refused with `K15`: a sticky one, one that matches the empty
+   * string, one with a back-reference, and a repeated group that repeats without limit (`(a+)+`). See
+   * docs/logging.md#patterns-of-your-own.
+   * @throws {TypeError} `K15`, before any of the patterns is added.
+   */
+  addPatterns(...patterns: RegExp[]): this {
+    for (const pattern of patterns) {
+      const problem = checkPattern(pattern);
+      if (problem === undefined) continue;
+      const shown = pattern instanceof RegExp ? String(pattern) : typeof pattern === 'string' ? JSON.stringify(pattern) : typeof pattern;
+      const cut = shown.length > SHOWN_PATTERN ? `${shown.slice(0, SHOWN_PATTERN)}…` : shown;
+      throw new TypeError(withCode('K15', `The redaction pattern ${cut} is refused: ${problem}. See docs/logging.md#patterns-of-your-own.`));
+    }
+    for (const pattern of patterns) this.#patterns.push(new RegExp(pattern.source, `${pattern.flags.replaceAll('g', '')}g`));
     return this;
   }
 
@@ -205,7 +309,8 @@ export class Redactor {
   /** A value inside a log context (`depth`: the level of the object holding it). */
   #logValue(value: unknown, depth: number): unknown {
     // A URL-shaped string under a harmless key (`{ target: 'postgres://u:p@h/db?password=x' }`) is masked like text.
-    if (typeof value === 'string') return value.includes('://') && URL_LIKE.test(value) ? this.text(value) : value;
+    // The patterns of the app reach every string; the core's own only a URL.
+    if (typeof value === 'string') return value.includes('://') && URL_LIKE.test(value) ? this.text(value) : this.#appPatterns(value);
     if (value === null || typeof value !== 'object') return value;
     if (depth >= MAX_DEPTH) return '[…]';
     if (value instanceof Error) return this.#logError(value, depth + 1, new Set());
@@ -243,11 +348,22 @@ export class Redactor {
     return out;
   }
 
-  /** `text` without what looks like a secret ({@link redactText} and the added names' values), cut at {@link MAX_ENTRY_BYTES}. */
+  /** `text` with the matches of the added patterns replaced. */
+  #appPatterns(text: string): string {
+    let masked = text;
+    // A match of length 0 (a lookaround) has nothing to hide.
+    for (const pattern of this.#patterns) masked = masked.replace(pattern, (match) => (match === '' ? match : REDACTED));
+    return masked;
+  }
+
+  /**
+   * `text` without what looks like a secret ({@link redactText}, the added names' values and the added patterns' matches), cut at
+   * {@link MAX_ENTRY_BYTES}.
+   */
   text(text: string): string {
-    if (text.length <= MAX_ENTRY_BYTES && !MAYBE_SECRET.test(text)) return text;
+    if (this.#patterns.length === 0 && text.length <= MAX_ENTRY_BYTES && !MAYBE_SECRET.test(text)) return text;
     const masked = redactText(text);
-    return truncate(this.#text ? masked.replace(this.#text, `$1$2${REDACTED}`) : masked);
+    return truncate(this.#appPatterns(this.#text ? masked.replace(this.#text, `$1$2${REDACTED}`) : masked));
   }
 
   /**
@@ -405,9 +521,9 @@ function truncate(text: string): string {
  * An error as text for storage (a failed job's `exception`): name, message, stack and the error's own properties and
  * causes — redacted like a log entry by `redactor` ({@link Redactor.log} for properties, {@link Redactor.text} for the text, cut
  * at {@link MAX_ENTRY_BYTES}). Pass the app's (`app.container.make(Redactor)`), so the names its packages add — the session's
- * cookie — are masked too; without one, the core's key list alone.
+ * cookie — and the patterns the app added are masked too.
  */
-export function describeError(error: unknown, redactor: Redactor = new Redactor()): string {
+export function describeError(error: unknown, redactor: Redactor): string {
   if (!(error instanceof Error)) return redactor.text(typeof error === 'string' ? error : safeJson(redactor.log({ value: error }).value));
   const parts: string[] = [];
   const codes = new Map<string, string>();
@@ -439,4 +555,9 @@ function safeJson(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+/** The redactor an app's definition asks for: the core's lists and the `redact` additions. @internal */
+export function redactorFor(definition: { readonly redact?: RedactionAdditions }): Redactor {
+  return new Redactor(definition.redact);
 }

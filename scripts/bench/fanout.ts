@@ -15,6 +15,7 @@ import { once } from 'node:events';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+import { Redactor } from '@marmeon/core';
 
 interface Result {
   readonly streams: number;
@@ -52,7 +53,7 @@ async function measure(count: number, runs: number, live: string | undefined): P
   const module = { ...((await load('backend')) as typeof import('../../packages/live/src/backend.ts')), ...((await load('hub')) as typeof import('../../packages/live/src/hub.ts')) };
   const logger = { debug() {}, info() {}, warn() {}, error() {}, child: () => logger };
   const backend = new module.MemoryLiveBackend();
-  const hub = new module.LiveHub(backend, { heartbeatSeconds: 300, retryMs: 3000, maxStreams: count + 1 }, logger);
+  const hub = new module.LiveHub(backend, { heartbeatSeconds: 300, retryMs: 3000, maxStreams: count + 1 }, logger, undefined, new Redactor());
   const gc = (globalThis as { gc?: () => void }).gc;
   gc?.();
   const before = process.memoryUsage().heapUsed;

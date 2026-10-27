@@ -66,6 +66,7 @@ the explicit list low: it adds the new module to `bootstrap/app.ts` for you (see
 | `listeners` | App-level event listeners: `listen(Event, Listener)`. |
 | `health` | App-level checks for `/up/ready`. See [health checks](health.md). |
 | `discover` | `false` registers none of the installed packages. Default: `true`. |
+| `redact` | Key names and value patterns every redactor of the app masks besides the core's lists: `{ keys: ['iban'], patterns: [/\bacme_live_[A-Za-z0-9]{32}\b/] }`. See [patterns of your own](logging.md#patterns-of-your-own). |
 
 The definition is what ships. What only one boot decides is not part of it: `defineApplication({ root, env: {} })` and
 `defineApplication({ root, override: … })` are type errors, so a test double or a foreign environment cannot end up in the

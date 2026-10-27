@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RedisConnection, RedisScript } from '@marmeon/redis';
+import { Redactor } from '@marmeon/core';
 import { LIVE_VERSION } from '@marmeon/http/internal';
 import { describe, expect, it } from 'vitest';
 import { MemoryLiveBackend, parseMessage } from './backend.ts';
@@ -32,8 +33,8 @@ describe('the live stream: the fixtures of every version it once spoke', () => {
     const [fixture, ...more] = files('stream-query', 'txt');
     expect(more).toEqual([]);
     const query = fixture!.text.trim().replace(/TOKEN\.([\w.-]+)/g, (_all, channel: string) => encodeURIComponent(`${tokens.sign(ADA, channel)}.${channel}`));
-    const hub = new LiveHub(new MemoryLiveBackend(), options, silent);
-    const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
+    const hub = new LiveHub(new MemoryLiveBackend(), options, silent, undefined, new Redactor());
+    const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const reader = new LiveStreamReader(await controller.handle({ request: new Request(`http://app.test/_marmeon/live?${query}`) } as never));
     try {
       expect(reader.status).toBe(200);
@@ -63,7 +64,7 @@ describe('the live stream: the fixtures of every version it once spoke', () => {
     const backend = new MemoryLiveBackend();
     await backend.refresh('users.1', null, undefined);
     await backend.refresh('users.1', null, undefined);
-    const hub = new LiveHub(backend, options, silent);
+    const hub = new LiveHub(backend, options, silent, undefined, new Redactor());
     try {
       const response = await hub.open({ channels: ['users.1'], scope: ADA, connection: CONNECTION });
       await backend.refresh('users.1', ['posts'], undefined);

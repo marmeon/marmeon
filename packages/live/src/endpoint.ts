@@ -1,6 +1,6 @@
 import type { HttpContext, LiveAudience } from '@marmeon/http';
 import { isLiveChannel, LIVE_VERSION } from '@marmeon/http/internal';
-import { Redactor, type Logger } from '@marmeon/core';
+import type { Logger, Redactor } from '@marmeon/core';
 import { CONNECTION_ID } from './broadcaster.ts';
 import { END_FRAME, STREAM_HEADERS, type LiveHub } from './hub.ts';
 import { monotonicNow } from './monotonic.ts';
@@ -37,7 +37,7 @@ export class LiveStreamController {
   readonly #logger: Logger | undefined;
   readonly #redactor: Redactor;
 
-  constructor(hub: LiveHub, tokens: LiveTokens, maxChannels: number, scope: () => string | undefined, audience?: LiveAudience, logger?: Logger, redactor: Redactor = new Redactor()) {
+  constructor(hub: LiveHub, tokens: LiveTokens, maxChannels: number, scope: () => string | undefined, audience: LiveAudience | undefined, logger: Logger | undefined, redactor: Redactor) {
     this.#hub = hub;
     this.#tokens = tokens;
     this.#maxChannels = maxChannels;

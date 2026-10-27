@@ -146,7 +146,8 @@ logger.info('Login failed', { email, password, headers: { authorization: 'Bearer
 
 > [!WARNING]
 > Only keys are checked. The message and the strings in a context are written as they are, so never put a secret into either.
-> The one exception is a string that holds a URL (`scheme://…`): its password and the values of sensitive query parameters are masked.
+> The exceptions are a string that holds a URL (`scheme://…`), whose password and the values of sensitive query parameters are masked,
+> and the matches of [your own patterns](#patterns-of-your-own).
 > Never turn an error into a string before you log it: `{ exception: String(error) }` is a string, and a connection URL with its
 > password in the error's message goes out as it is. Log the error itself: `logger.error('Import failed', { err: error })`.
 
@@ -160,12 +161,42 @@ separators — not a slug, a UUID or a name in camel case (a pagination cursor l
 hex secret without a key in front of it stays visible (a digest or a trace id is no secret), so do secrets under 32 characters
 without a known prefix, and standard base64 with `+` or `/` is masked only in pieces of 32 or more characters. In text, `code`
 counts as a name only in a query parameter (`?code=…`) or a JSON key (`"code":…`), and a private key in
-PEM form is removed whole. `redactText()` of `@marmeon/core` does the same with the core's key list alone, for code that runs without an app.
+PEM form is removed whole. `redactText()` of `@marmeon/core` does the same with the core's list alone, for code that runs without an app: the
+names and patterns your app adds need the app's `Redactor`.
 
 Every error entry of the framework passes the app's `Redactor` as text: the log line of a server error, server rendering,
 islands, work after the response, scheduled tasks, live updates, session clean-up, the listeners of job events, failed jobs, and lost
 database and Redis connections.
 A failed job's text in `failed_jobs` is cut at 64 KB.
+
+### Patterns of your own
+
+A secret in a format only your app knows, such as the key of a partner or an IBAN, is in no list of the core. Name the format once in
+`bootstrap/app.ts`, together with the field names the core does not know:
+
+```ts title="bootstrap/app.ts"
+export default defineApplication({
+  root: import.meta.dirname,
+  redact: {
+    keys: ['iban'],
+    patterns: [/\bacme_live_[A-Za-z0-9]{32}\b/],
+  },
+});
+```
+
+Every redactor of the app has them from the start: the log, failed jobs, the development error page, the devtools, the traces of
+the OpenTelemetry package, the live updates, and the report of `marmeon check` for an app that could not start. A package adds the
+same from a provider's `boot()` with `app.container.make(Redactor).addKeys(…)` and `.addPatterns(…)`.
+
+- The whole match becomes `[redacted]`. A match of length 0 (a lookaround alone) changes nothing.
+- A pattern works on every string the redactor sees: text, the values of a context, headers, queries, the text of a stored error.
+  Unlike the core's own patterns, it also works on the plain strings of a log context. It does not work on the message: that is
+  code, and data belongs in the context. Your patterns add to the core's lists; the core's cannot be shortened.
+- Whether a pattern has `g` makes no difference, and neither does the `lastIndex` of your object: the redactor keeps its own copy.
+- A pattern runs on text of attackers' choosing (a path, a body), so a pattern that can stall the match stops the start with
+  `K15`: one that is sticky (`y`), one that matches the empty string (`/a*/`), one with a back-reference (`\1`, `\k<name>`), and a
+  repeated group that holds a repeat without limit (`(a+)+`, `(\w+\s?)*`, `(a+){3}`). The message names the pattern and the reason.
+- A pattern runs on every string the app logs, including input from requests, so write it to match in linear time: prefer a fixed length or a bounded repeat (`[a-z0-9]{24}`, `{1,64}`) and a literal prefix or a `\b` anchor over an open `+` or `*`, and keep repeats over the same characters apart. The check is a safety net, not a proof: a repeated alternation with overlap such as `(a|a)*`, and adjacent repeats over the same characters such as `\w+\w+\w+x`, pass it and can still be slow.
 
 ### What the framework shows elsewhere
 

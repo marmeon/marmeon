@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { connect, createServer as createTcpServer, type AddressInfo, type Server as TcpServer } from 'node:net';
-import type { Logger } from '@marmeon/core';
+import { Redactor, type Logger } from '@marmeon/core';
 import { runTransaction } from '@marmeon/core/internal';
 import { RedisConnections, defineRedisScript } from '@marmeon/redis';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -30,7 +30,7 @@ afterEach(async () => {
 const everyHint: unknown[] = [];
 
 function hubOf(backend: LiveBackend = new MemoryLiveBackend(), options: Partial<LiveHubOptions> = {}, closing?: AbortSignal): LiveHub {
-  const hub = new LiveHub(backend, { heartbeatSeconds: 20, retryMs: 3000, maxStreams: 100, ...options }, silent, closing);
+  const hub = new LiveHub(backend, { heartbeatSeconds: 20, retryMs: 3000, maxStreams: 100, ...options }, silent, closing, new Redactor());
   cleanups.push(() => hub.close());
   return hub;
 }
@@ -78,7 +78,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('opens a stream for channels signed for this session — with the stream headers', async () => {
     const hub = hubOf();
-    const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
+    const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const response = await controller.handle(request(`connection=tab-a-0001&${pair('users.1')}&${pair('dashboard.sign-ins')}`));
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('text/event-stream; charset=utf-8');
@@ -101,7 +101,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
       const scope = () => (asked++, ADA);
       let checked = 0;
       const audience = { check: async () => (checked++, { kind: 'guest' as const }) };
-      const controller = new LiveStreamController(hub, tokens, 20, scope, audience);
+      const controller = new LiveStreamController(hub, tokens, 20, scope, audience, undefined, new Redactor());
       // A forged token, a missing connection and a missing session would each be refused later; the version comes first.
       const forged = `c=${encodeURIComponent(`${tokens.sign(ADA, 'users.1')}.users.2`)}`;
       for (const query of [`connection=tab-a-0001&${pair('users.1')}`, `connection=tab-a-0001&${forged}`, pair('users.1'), '']) {
@@ -118,7 +118,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('with the version, a forged token is still a 403 and no stream', async () => {
     const hub = hubOf();
-    const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
+    const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const forged = `c=${encodeURIComponent(`${tokens.sign(ADA, 'users.1')}.users.2`)}`;
     expect((await controller.handle(raw(`v=1&connection=tab-a-0001&${forged}`))).status).toBe(403);
     expect((await controller.handle(raw(`connection=tab-a-0001&${forged}&v=1`))).status).toBe(403);
@@ -127,7 +127,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('takes the timeout of waitFor() as a duration', async () => {
     const hub = hubOf();
-    const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
+    const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const reader = new LiveStreamReader(await controller.handle(request(`connection=tab-a-0001&${pair('users.1')}`)));
     cleanups.push(() => reader.close());
     await reader.hello({ milliseconds: 500 });
@@ -136,7 +136,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('refuses a token rewritten to another channel (users.1 → users.2): 403, no stream', async () => {
     const hub = hubOf();
-    const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
+    const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const forged = `c=${encodeURIComponent(`${tokens.sign(ADA, 'users.1')}.users.2`)}`;
     const response = await controller.handle(request(`connection=tab-a-0001&${pair('dashboard.sign-ins')}&${forged}`));
     expect(response.status).toBe(403);
@@ -146,23 +146,23 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
   it('refuses a token of another session — or of one that ended (signed out: the cookie names a new session now): 403', async () => {
     const hub = hubOf();
     // The tab's cookie is Grace's session now (another browser's token, or Ada signed out and the id was regenerated).
-    const controller = new LiveStreamController(hub, tokens, 20, () => GRACE);
+    const controller = new LiveStreamController(hub, tokens, 20, () => GRACE, undefined, undefined, new Redactor());
     expect((await controller.handle(request(`connection=tab-a-0001&${pair('users.1', ADA)}`))).status).toBe(403);
     expect(hub.size).toBe(0);
   });
 
   it('refuses a stream without a connection, without channels, with too many — and one without a session (401)', async () => {
     const hub = hubOf();
-    const controller = new LiveStreamController(hub, tokens, 2, () => ADA);
+    const controller = new LiveStreamController(hub, tokens, 2, () => ADA, undefined, undefined, new Redactor());
     expect((await controller.handle(request(pair('users.1')))).status).toBe(400);
     expect((await controller.handle(request('connection=tab-a-0001'))).status).toBe(400);
     expect((await controller.handle(request(`connection=tab-a-0001&${pair('a')}&${pair('b')}&${pair('c')}`))).status).toBe(400);
-    expect((await new LiveStreamController(hub, tokens, 2, () => undefined).handle(request(`connection=tab-a-0001&${pair('a')}`))).status).toBe(401);
+    expect((await new LiveStreamController(hub, tokens, 2, () => undefined, undefined, undefined, new Redactor()).handle(request(`connection=tab-a-0001&${pair('a')}`))).status).toBe(401);
   });
 
   it('asks the audience after the tokens: an ended sign-in gets `end` and no place in the hub; an open one a stream', async () => {
     const hub = hubOf();
-    const ended = new LiveStreamController(hub, tokens, 20, () => ADA, { check: async () => ({ kind: 'ended' }) });
+    const ended = new LiveStreamController(hub, tokens, 20, () => ADA, { check: async () => ({ kind: 'ended' }) }, undefined, new Redactor());
     const response = await ended.handle(request(`connection=tab-a-0001&${pair('users.1')}`));
     expect(response.status).toBe(200);
     expect(await response.text()).toBe('event: end\ndata: {}\n\n');
@@ -172,7 +172,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     expect((await ended.handle(request(`connection=tab-a-0001&${forged}`))).status).toBe(403);
 
     for (const [connection, who] of [['tab-b-0001', { kind: 'guest' }], ['tab-c-0001', { kind: 'account', scope: 'acct-1' }]] as const) {
-      const open = new LiveStreamController(hub, tokens, 20, () => ADA, { check: async () => who });
+      const open = new LiveStreamController(hub, tokens, 20, () => ADA, { check: async () => who }, undefined, new Redactor());
       const stream = new LiveStreamReader(await open.handle(request(`connection=${connection}&${pair('users.1')}`)));
       cleanups.push(() => stream.close());
       await stream.hello();
@@ -192,7 +192,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
         await backend.end(tokens.accountScope('acct-1'));
         return { kind: 'account', scope: 'acct-1' } as const;
       };
-      const controller = new LiveStreamController(hub, tokens, 20, () => ADA, { check });
+      const controller = new LiveStreamController(hub, tokens, 20, () => ADA, { check }, undefined, new Redactor());
       // The wall clock is an hour ahead of the monotonic one, as after a step: a `checkedAt` taken from it would postdate the end.
       vi.setSystemTime(Date.now() + 3_600_000);
       const stream = new LiveStreamReader(await controller.handle(request(`connection=tab-a-0001&${pair('users.1')}`)));
@@ -208,7 +208,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     const hub = hubOf();
     const error = vi.fn();
     const logger = { error } as unknown as Logger;
-    const failing = () => new LiveStreamController(hub, tokens, 20, () => ADA, { check: async () => Promise.reject(new Error('down')) }, logger);
+    const failing = () => new LiveStreamController(hub, tokens, 20, () => ADA, { check: async () => Promise.reject(new Error('down')) }, logger, new Redactor());
     // The log line is throttled per process: move the clock past any earlier test's line.
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
@@ -229,7 +229,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
 
   it('holds at most LIVE_MAX_STREAMS streams per process — beyond, 503 with Retry-After until one closes', async () => {
     const hub = hubOf(new MemoryLiveBackend(), { maxStreams: 1 });
-    const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
+    const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const first = new LiveStreamReader(await controller.handle(request(`connection=tab-a-0001&${pair('users.1')}`)));
     const refused = await controller.handle(request(`connection=tab-b-0001&${pair('users.1')}`));
     expect([refused.status, refused.headers.get('retry-after')]).toEqual([503, '10']);
@@ -243,9 +243,9 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
   it('holds at most LIVE_MAX_STREAMS_PER_SESSION streams of one session (16): the 17th → 429 with its own log line — other sessions still open', async () => {
     const warnings: string[] = [];
     const logger: Logger = { ...silent, warn: (message) => void warnings.push(message), child: () => logger };
-    const hub = new LiveHub(new MemoryLiveBackend(), { heartbeatSeconds: 20, retryMs: 3000, maxStreams: 100 }, logger);
+    const hub = new LiveHub(new MemoryLiveBackend(), { heartbeatSeconds: 20, retryMs: 3000, maxStreams: 100 }, logger, undefined, new Redactor());
     cleanups.push(() => hub.close());
-    const controller = new LiveStreamController(hub, tokens, 20, () => ADA);
+    const controller = new LiveStreamController(hub, tokens, 20, () => ADA, undefined, undefined, new Redactor());
     const opened: LiveStreamReader[] = [];
     for (let tab = 0; tab < 16; tab++) {
       const response = await controller.handle(request(`connection=tab-${String(tab).padStart(2, '0')}-0001&${pair('users.1')}`));
@@ -259,7 +259,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     expect([refused.headers.get('retry-after'), await refused.text()]).toEqual(['30', 'Too many live streams for this session.']);
     expect(warnings).toEqual(['A session asked for more live streams than it may hold in this process (LIVE_MAX_STREAMS_PER_SESSION); refused with 429']);
     // Another session is not counted with Ada's.
-    const grace = await new LiveStreamController(hub, tokens, 20, () => GRACE).handle(request(`connection=tab-g-0001&${pair('users.1', GRACE)}`));
+    const grace = await new LiveStreamController(hub, tokens, 20, () => GRACE, undefined, undefined, new Redactor()).handle(request(`connection=tab-g-0001&${pair('users.1', GRACE)}`));
     expect(grace.status).toBe(200);
     await grace.body?.cancel();
     // One of Ada's tabs closes: the next one opens.
@@ -273,7 +273,7 @@ describe('the stream endpoint — GET /_marmeon/live', () => {
     // Fifty tabs whose requests arrive together (a synchronized start: all of them are handled before any stream got further).
     const burst = async (hub: LiveHub, scopes: (tab: number) => string) => {
       const responses = await Promise.all(
-        Array.from({ length: 50 }, (_, tab) => new LiveStreamController(hub, tokens, 20, () => scopes(tab)).handle(request(`connection=tab-${String(tab).padStart(2, '0')}-0001&${pair('users.1', scopes(tab))}`))),
+        Array.from({ length: 50 }, (_, tab) => new LiveStreamController(hub, tokens, 20, () => scopes(tab), undefined, undefined, new Redactor()).handle(request(`connection=tab-${String(tab).padStart(2, '0')}-0001&${pair('users.1', scopes(tab))}`))),
       );
       const statuses = responses.map((response) => response.status);
       await Promise.all(responses.map((response) => response.body?.cancel()));
@@ -464,7 +464,7 @@ describe('the stream — hints, never data', () => {
       const backend = new MemoryLiveBackend();
       const hub = hubOf(backend);
       const process = new LiveTokens(to);
-      const reader = new LiveStreamController(hub, process, 20, () => ADA, { check: async () => ({ kind: 'account', scope: 'acct-1' }) });
+      const reader = new LiveStreamController(hub, process, 20, () => ADA, { check: async () => ({ kind: 'account', scope: 'acct-1' }) }, undefined, new Redactor());
       const stream = new LiveStreamReader(await reader.handle({ request: new Request(`http://app.test/_marmeon/live?v=1&connection=tab-a-0001&c=${encodeURIComponent(`${process.sign(ADA, 'users.1')}.users.1`)}`) } as never));
       cleanups.push(() => stream.close());
       await stream.hello();

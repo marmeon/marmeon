@@ -37,7 +37,7 @@ class Collecting implements ErrorReporter {
 
 function setup(...reporters: (new () => ErrorReporter)[]) {
   const logger = new MemoryLogger();
-  const redactor = new Redactor(['marmeon_session']);
+  const redactor = new Redactor({ keys: ['marmeon_session'] });
   const container = new Container();
   const errorReports = new ErrorReports(logger, redactor, container, reporters);
   return { logger, errorReports, container };

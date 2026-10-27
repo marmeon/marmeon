@@ -229,7 +229,7 @@ describe('@marmeon/log', () => {
     expect(redactText('Authorization: Bearer eyJhbGciOi.x.y failed; then Bearer abc')).toBe('Authorization: Bearer [redacted] failed; then Bearer [redacted]');
     expect(redactText('GET /reset?signature=f00&expires=1')).toBe('GET /reset?signature=[redacted]&expires=1');
     const error = Object.assign(new Error('SMTP: auth failed for password=x', { cause: new Error('socket token=y') }), { headers: { authorization: 'Basic z' }, code: 'EAUTH' });
-    const text = describeError(error);
+    const text = describeError(error, new Redactor());
     expect(text).toMatch(/^Error: SMTP: auth failed for password=\[redacted\]\n {4}at /);
     expect(text).toContain('{"headers":{"authorization":"[redacted]"},"code":"EAUTH"}');
     expect(text).toContain('Caused by: Error: socket token=[redacted]');

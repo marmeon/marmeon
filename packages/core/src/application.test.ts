@@ -6,6 +6,7 @@ import { ConfigError, defineConfig } from './config/config.ts';
 import { env } from './config/env.ts';
 import { EnvironmentConfig } from './config/environment-config.ts';
 import { Logger } from './logger.ts';
+import { Redactor } from './redact.ts';
 import { coreSolutions } from './core-solutions.ts';
 import { defineSolutions, ErrorSolutions } from './solutions.ts';
 import { defineModule } from './module.ts';
@@ -260,6 +261,30 @@ describe('createApplication(definition, options)', () => {
     const refused = createApplication({ root: import.meta.dirname, discover: false, ...smuggled });
     await expect(refused).rejects.toBeInstanceOf(TypeError);
     await expect(refused).rejects.toThrow(`[marmeon:K10] \`${key}\` is a boot option: pass it as createApplication(definition, { ${key} })`);
+  });
+
+  it("builds the app's redactor from `redact`: the names and the patterns every redactor of the app has", async () => {
+    const app = await createApplication({ root: import.meta.dirname, discover: false, redact: { keys: ['iban'], patterns: [/\bDE\d{20}\b/] } });
+    const redactor = app.container.make(Redactor);
+    expect(redactor.isSensitive('iban')).toBe(true);
+    expect(redactor.isSensitive('password')).toBe(true);
+    expect(redactor.text('DE89370400440532013000')).toBe('[redacted]');
+  });
+
+  it('refuses a pattern (K15) before discovery and before any provider registers', async () => {
+    const calls: string[] = [];
+    class Spy {
+      register(): void {
+        calls.push('register');
+      }
+      boot(): void {
+        calls.push('boot');
+      }
+    }
+    const definition = { root: import.meta.dirname, providers: [Spy], redact: { patterns: [/(a+)+$/] } };
+    await expect(createApplication(definition)).rejects.toThrow(/^\[marmeon:K15\]/);
+    await expect(createApplication({ ...definition, redact: { patterns: [/a*/] } })).rejects.toBeInstanceOf(TypeError);
+    expect(calls).toEqual([]);
   });
 
   it('refuses an inherited boot option too', async () => {

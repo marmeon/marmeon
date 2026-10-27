@@ -1,11 +1,11 @@
-import { Application, Redactor } from '@marmeon/core';
+import { Application } from '@marmeon/core';
 import type { CommandInput } from '../command.ts';
 import { escapeControl, exitCodeOf, reportJson, unrunReport, type CheckProblem, type CheckReport, type SilencedProblem } from '../check/report.ts';
 import { checkRegistryOf, describeFailure, discoveredChecks, runAppChecks } from '../check/app.ts';
 import { BUILT_IN_CHECKS } from '../check/registry.ts';
 import { innerHtmlCheck, rawSqlCheck } from '../check/source-rules.ts';
 import { agentsCheck, internalImportsCheck, lintCheck, TOOL_CHECKS, typesCheck, type CheckRun } from '../check/tools.ts';
-import { loadApplication } from '../load.ts';
+import { appRedactor, loadApplication } from '../load.ts';
 
 /** The process exits with this when `marmeon check` is called wrongly (see docs/check.md#exit-codes). */
 const EXIT_USAGE = 2;
@@ -93,7 +93,7 @@ export class CheckCommand {
       else if (build instanceof Application) await build.shutdown();
     } catch (error) {
       // Whatever the run of the app's checks threw: the reports it finished stay, the others could not say.
-      for (const name of appNames) if (!appReports.has(name)) appReports.set(name, unrunReport(name, 'error', describeFailure(error, new Redactor(), root), 0));
+      for (const name of appNames) if (!appReports.has(name)) appReports.set(name, unrunReport(name, 'error', describeFailure(error, await appRedactor(root), root), 0));
     }
     const runs = [...(await toolRuns), ...appNames.filter((name) => appReports.has(name)).map((name): CheckRun => ({ report: appReports.get(name)! }))];
     const reports = runs.map((run) => run.report);

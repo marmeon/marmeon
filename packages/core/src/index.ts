@@ -49,8 +49,8 @@ export {
 export { commitAnyway, err, ok } from './result.ts';
 export type { Err, Ok, Result } from './result.ts';
 export { escapeHtml, Html, html, raw } from './html.ts';
-export { redact, REDACTED, redactText, Redactor } from './redact.ts';
-export type { RedactableQuery } from './redact.ts';
+export { REDACTED, redactText, Redactor } from './redact.ts';
+export type { RedactableQuery, RedactionAdditions } from './redact.ts';
 export { ConfigError, defineConfig, resolveConfig } from './config/config.ts';
 export { env } from './config/env.ts';
 export { EnvironmentConfig } from './config/environment-config.ts';

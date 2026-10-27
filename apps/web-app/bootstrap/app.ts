@@ -25,6 +25,8 @@ import bookmarks from '#modules/bookmarks';
 export default defineApplication({
   root: join(import.meta.dirname, '..'),
   config: [AppConfig, SystemDatabase, AppStorage],
+  // The names and the value format of the example app's partner: the core's lists do not know them.
+  redact: { keys: ['iban'], patterns: [/\bwa_live_[a-z0-9]{24}\b/] },
   modules: [about, auth, userProfile, dashboard, members, notifications, locale, lab, system, bookmarks, webhooks],
   // Added after the framework's own middleware. Module routes run in the `web` group
   // (cookies, session, CSRF), `apiRoutes` in the stateless `api` group under /api.
