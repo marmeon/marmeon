@@ -15,7 +15,7 @@ export type QueryValue = Param | boolean | null | undefined | readonly (Param | 
 /** The query string of a URL: `{ tab: 'links', page: 2 }` → `?tab=links&page=2`. */
 export type Query = Readonly<Record<string, QueryValue>>;
 
-/** Where a route name leads — the router (`findByName`) or the browser's route manifest. */
+/** @internal Where a route name leads — the router (`findByName`) or the browser's route manifest. */
 export interface RouteLookup {
   findByName(name: string): { readonly path: string; readonly localized?: boolean } | undefined;
 }

@@ -100,6 +100,14 @@ describe('the SSR lab', () => {
     expect(entries).toContainEqual(expect.objectContaining({ level: 'error', message: 'Server rendering of [lab/LateError] failed in a Suspense boundary — the browser renders that part' }));
   });
 
+  it('a missing view (R2) shows its solution in Vite’s overlay', async () => {
+    const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh', debug: true, ssr: true, ssrServer: server });
+    const response = await app.get('/lab/errors/view', page);
+    expect(response.body).toContain('Create modules/lab/views/Missing.tsx');
+    expect(response.body).toContain('marmeon route:types');
+    await app.close();
+  });
+
   it('is off unless enabled: 404 with LAB_PAGES=false — and by default anywhere but development', async () => {
     const app = await createTestApp(application, { env: { LAB_PAGES: 'false' } });
     await app.get('/lab/streaming', page).assertNotFound();

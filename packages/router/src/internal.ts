@@ -4,6 +4,7 @@
  * @internal
  */
 export { fillPath } from './url.ts';
+export type { RouteLookup } from './url.ts';
 export { accessLabel, formatAccessProblems, isEveryone, routeAccess } from './access.ts';
 export { ensuresOf } from './ensures.ts';
 export type { DispatchOptions, ResponseFactory } from './router.ts';

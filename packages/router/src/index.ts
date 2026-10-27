@@ -11,7 +11,7 @@ export type { MiddlewareEnsures } from './ensures.ts';
 export type * from './types.ts';
 export type * from './routes.ts';
 export { toSearchParams } from './url.ts';
-export type { Param, Query, QueryValue, RouteLookup } from './url.ts';
+export type { Param, Query, QueryValue } from './url.ts';
 export { abort, HttpError, statusText } from './errors.ts';
 export type { TextKey } from './errors.ts';
 export { CookieJar } from './cookies.ts';

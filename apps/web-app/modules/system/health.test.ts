@@ -1,9 +1,7 @@
-import { HealthChecks } from '@marmeon/core';
 import { Connections } from '@marmeon/database';
 import { createTestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
-import { StorageWritable } from './health/StorageWritable.ts';
 import { WARM_UP_TIMEOUT, warmUpDatabase } from '../auth/warm-up.ts';
 
 beforeAll(warmUpDatabase, WARM_UP_TIMEOUT);
@@ -25,8 +23,6 @@ describe('health in the web app', () => {
 
   it('/up/ready runs the database, redis, cache, queue and storage checks — the details only with the development error handling', async () => {
     const app = await createTestApp(application, { database: 'refresh', debug: true });
-    expect(app.make(HealthChecks).all().map((check) => check.check)).toEqual(['database', 'redis', 'cache', 'queue', 'storage']);
-    expect(app.make(HealthChecks).all()).toContain(StorageWritable);
     const ready = await app.get('/up/ready');
     expect(ready.status).toBe(200);
     const body = JSON.parse(ready.body) as { status: string; checks: { name: string; status: string; note?: string }[] };

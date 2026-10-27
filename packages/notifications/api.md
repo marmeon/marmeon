@@ -102,7 +102,6 @@ export declare class NotificationChannels {
     add(name: string, factory: ChannelFactory): this;
     has(name: string): boolean;
     names(): string[];
-    make(name: string, container: Resolver): NotificationChannel;
 }
 // NotificationClass
 export type NotificationClass = NotificationStatics & (new (...args: any[]) => NotificationInstance);

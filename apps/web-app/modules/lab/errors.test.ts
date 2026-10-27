@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { ErrorReports, ErrorSolutions, Redactor } from '@marmeon/core';
+import { ErrorReports, Redactor } from '@marmeon/core';
 import { Router } from '@marmeon/router';
 import { createTestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -62,14 +62,6 @@ describe('the lab’s errors on the development error page', () => {
     expect(response.body).toContain(
       `ReminderSchedule (${application.root}/modules/lab/errors.ts:${line}): the parameter &quot;clock: Clock = new SystemClock()&quot; is defaulted, so the container never injects Clock`,
     );
-  });
-
-  it('a missing view (R2) has its solution too — server rendering shows it in Vite’s overlay', async () => {
-    const app = await createTestApp(application, { env: { LAB_PAGES: 'true' }, database: 'refresh', debug: true });
-    const [solution] = await app.container.make(ErrorSolutions).find(new Error('[marmeon:R2] Page [lab/Missing] not found. Expected a default export in modules/lab/views/Missing.tsx'), {
-      app: app.application,
-    });
-    expect(solution).toMatchObject({ title: 'Create modules/lab/views/Missing.tsx', command: 'marmeon route:types' });
   });
 
   it('the session cookie’s name is redacted like any credential', async () => {

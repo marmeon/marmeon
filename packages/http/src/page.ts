@@ -52,7 +52,6 @@ export type {
   QueryParams,
   RouteArgs,
   RouteQueryOf,
-  RouteLookup,
   RouteName,
   RouteNameInput,
   Routes,

@@ -255,12 +255,13 @@ export class RedisConnections {
   /**
    * Checks what can be checked without connecting: loads the client. Drivers call it when they boot, so a broken install
    * fails the start, not the first request; an unreachable Redis is noticed by the first command.
+   * @internal
    */
   async verify(): Promise<void> {
     await this.#load();
   }
 
-  /** Closes every opened connection, duplicates included. Later `get()` calls throw. */
+  /** @internal Closes every opened connection, duplicates included. Later `get()` calls throw. */
   async close(): Promise<void> {
     this.#closed = true;
     const connections = [...this.#instances.values(), ...this.#duplicates];

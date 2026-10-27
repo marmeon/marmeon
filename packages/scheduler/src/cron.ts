@@ -5,7 +5,7 @@ export class ScheduleError extends Error {
   override name = 'ScheduleError';
 }
 
-/** The local time of one minute — what a cron expression is matched against. `weekday`: 0 = Sunday … 6 = Saturday. */
+/** @internal The local time of one minute — what a cron expression is matched against. `weekday`: 0 = Sunday … 6 = Saturday. */
 export interface WallTime {
   readonly year: number;
   readonly month: number;

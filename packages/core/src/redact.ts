@@ -13,6 +13,7 @@ const CAMEL_OTP = /[a-z](?:Otp|Totp)/;
  * A log entry's context with sensitive values replaced by `[redacted]`, by the core's key list alone — what
  * {@link Redactor.log} does for a logger without an app. A logger of an app redacts with the app's `Redactor`, so the names
  * the app's packages add count too.
+ * @internal
  */
 export function redact(context: Readonly<Record<string, unknown>>): Record<string, unknown> {
   return new Redactor().log(context);

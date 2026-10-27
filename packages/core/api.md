@@ -248,13 +248,10 @@ export declare class ErrorReports {
             readonly fields?: LogContext;
         };
     }): void;
-    flush(): Promise<void>;
 }
 // ErrorSolutions
 export declare class ErrorSolutions {
     #private;
-    add(definitions: Iterable<SolutionDefinition<any>>): this;
-    find(error: unknown, context?: SolutionContext): Promise<Solution[]>;
 }
 // EventClass
 export type EventClass<TEvent extends object = object> = abstract new (...args: any[]) => TEvent;
@@ -298,11 +295,6 @@ export interface HealthCheckResult {
 // HealthChecks
 export declare class HealthChecks {
     #private;
-    add(checks: Iterable<HealthCheckClass>): this;
-    all(): readonly HealthCheckClass[];
-    run(container: Container, options?: {
-        timeout?: Duration;
-    }): Promise<HealthReport>;
 }
 // HealthReport
 export interface HealthReport {
@@ -642,8 +634,6 @@ export declare function ok<T>(value: T): Ok<T>;
 export declare function outsideTransaction<R>(fn: () => R): R;
 // raw
 export declare function raw(markup: string): Html;
-// redact
-export declare function redact(context: Readonly<Record<string, unknown>>): Record<string, unknown>;
 // redactText
 export declare function redactText(text: string): string;
 // resolveConfig

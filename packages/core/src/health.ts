@@ -53,7 +53,7 @@ export class HealthChecks {
     this.add(checks);
   }
 
-  /** Adds checks; the same class twice counts once, two classes with one name are a mistake. */
+  /** @internal Adds checks; the same class twice counts once, two classes with one name are a mistake. */
   add(checks: Iterable<HealthCheckClass>): this {
     for (const check of checks) {
       if (this.#checks.includes(check)) continue;
@@ -81,7 +81,7 @@ export class HealthChecks {
     return this;
   }
 
-  /** The registered checks, in order. */
+  /** @internal The registered checks, in order. */
   all(): readonly HealthCheckClass[] {
     return [...this.#checks];
   }
@@ -89,6 +89,7 @@ export class HealthChecks {
   /**
    * Runs every check at once, each built by `container` (a scope of its own) and given `timeout` (default 2 s, or its own
    * `static timeout`). A check that throws or takes longer fails; the report says which.
+   * @internal
    */
   async run(container: Container, options: { timeout?: Duration } = {}): Promise<HealthReport> {
     const fallback = options.timeout === undefined ? DEFAULT_HEALTH_TIMEOUT_MS : durationToMilliseconds(options.timeout);

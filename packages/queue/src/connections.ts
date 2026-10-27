@@ -90,7 +90,7 @@ export class QueueConnections {
     return options;
   }
 
-  /** {@link options}, or `undefined` for a name that is no connection. */
+  /** @internal {@link options}, or `undefined` for a name that is no connection. */
   find(name: string): QueueConnectionOptions | undefined {
     // A `custom` entry of an overridden config names no factory of its own: only a provider's driver is custom.
     const built = Object.hasOwn(this.#config.connections, name) ? this.#config.connections[name] : undefined;
@@ -137,7 +137,7 @@ export class QueueConnections {
     return driver;
   }
 
-  /** Where failed jobs go (`QUEUE_FAILED_DRIVER`). */
+  /** @internal Where failed jobs go (`QUEUE_FAILED_DRIVER`). */
   failed(): FailedJobStore {
     this.#failed ??= this.#failedStore();
     return this.#failed;

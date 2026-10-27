@@ -248,8 +248,6 @@ export declare const UPLOAD_TYPES: {
 export type UploadInput = Upload | null;
 // UploadMime
 export type UploadMime = Exclude<keyof typeof UPLOAD_TYPES, 'application/octet-stream'>;
-// UploadProblem
-export type UploadProblem = 'invalid' | 'expired' | 'used';
 // UploadSchema
 export type UploadSchema = Rule<TemporaryUpload, UploadInput>;
 // UploadsConfig

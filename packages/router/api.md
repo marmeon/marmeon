@@ -410,13 +410,6 @@ export interface RouteInterceptor {
     claims(request: Request): boolean;
     answer(ctx: HttpContext, request: RequestDefinition | undefined, resolve: ClassResolver): Response | Promise<Response>;
 }
-// RouteLookup
-export interface RouteLookup {
-    findByName(name: string): {
-        readonly path: string;
-        readonly localized?: boolean;
-    } | undefined;
-}
 // RouteName
 export type RouteName = Registered extends true ? keyof Routes & string : string;
 // RouteNameInput
@@ -678,13 +671,6 @@ export type Param = string | number;
 export type Query = Readonly<Record<string, QueryValue>>;
 // QueryValue
 export type QueryValue = Param | boolean | null | undefined | readonly (Param | boolean)[];
-// RouteLookup
-export interface RouteLookup {
-    findByName(name: string): {
-        readonly path: string;
-        readonly localized?: boolean;
-    } | undefined;
-}
 // toSearchParams
 export declare function toSearchParams(...queries: Query[]): URLSearchParams;
 ```

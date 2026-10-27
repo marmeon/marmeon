@@ -50,7 +50,6 @@ export { normalizeDirectory, normalizeKey } from './keys.ts';
 export { upload } from './uploads/rule.ts';
 export type { CheckUploadMime, UploadInput, UploadSchema } from './uploads/rule.ts';
 export { TemporaryUpload } from './uploads/temporary-upload.ts';
-export type { UploadProblem } from './uploads/temporary-upload.ts';
 export { UPLOAD_TYPES } from './uploads/sniff.ts';
 export type { UploadMime } from './uploads/sniff.ts';
 export { UPLOADS_TABLE } from './uploads/service.ts';
