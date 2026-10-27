@@ -1,5 +1,6 @@
 import { Writable } from 'node:stream';
 import { Application, Logger, Redactor } from '@marmeon/core';
+import { cookieNames } from '@marmeon/auth/testing';
 import { createPinoLogger } from '@marmeon/log';
 import { createTestApp } from '@marmeon/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -31,6 +32,19 @@ describe('what bootstrap/app.ts adds to the redactor', () => {
     expect(lines[0]).toMatchObject({ iban: '[redacted]', note: 'partner answered with [redacted]' });
     expect(JSON.stringify(lines)).not.toContain(partnerKey);
     expect(JSON.stringify(lines)).not.toContain('DE89370400440532013000');
+  });
+
+  it("keeps a failed form's added field out of the session and the next page, and the other fields in", async () => {
+    const app = await createTestApp(application);
+    const session = cookieNames(app).session;
+    // The core's field list knows `iban`; `national_id` is a name only the app added, so only the session's filter can drop it.
+    const nationalId = 'ID-7741-0093';
+    const failed = await app
+      .post('/register', { form: { name: 'Ada Lovelace', email: 'nope', national_id: nationalId }, headers: { referer: 'http://localhost/register' } })
+      .assertRedirect('/register')
+      .assertSessionHas('_old_input', { name: 'Ada Lovelace', email: 'nope' });
+    expect(JSON.stringify(failed.session())).not.toContain(nationalId);
+    await app.withCookie(session, failed.cookie(session)!).navigating().get('/register').assertPage('auth/Register', { old: { name: 'Ada Lovelace', email: 'nope' } });
   });
 
   it("gives the same redactor to the app's stored errors", async () => {

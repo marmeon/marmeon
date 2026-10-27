@@ -43,7 +43,11 @@ export class SessionServiceProvider implements ServiceProvider {
   register(container: Container): void {
     container.singleton(CsrfProtection, (c) => new CsrfProtection(c.make(SessionConfig).protected));
     container.singleton(SessionEndings);
-    container.scoped(Session);
+    // The redactor is optional: a bare container (a test) has none, and only the core's field list applies to flashed input then.
+    container.scoped(
+      Session,
+      (c) => new Session(c.make(SessionStore), c.make(SessionConfig), c.make(SessionCodec), container.has(Redactor) ? container.make(Redactor) : undefined),
+    );
     // `redirect().with(…)` flashes into the request's session.
     container.scoped(Flasher, (c) => c.make(Session));
     // What a page knows of the session: the CSRF token for forms without JavaScript, and a scope for once props.
