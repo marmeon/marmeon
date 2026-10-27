@@ -13,8 +13,9 @@ vi.mock('node:crypto', async (importOriginal) => {
 
 /** Cheap costs: these tests are about behaviour, not strength (the app does the same in `.env.test`). */
 const cheap: HasherOptions = { driver: 'argon2id', argon2: { memory: 1024, time: 1, parallelism: 1 }, scrypt: { cost: 10, blockSize: 8, parallelism: 1 } };
-const argon2 = new PasswordHasher(cheap);
-const scrypt = new PasswordHasher({ ...cheap, driver: 'scrypt' });
+// No background re-measure: a late run of a tampered hash's set would land in another test's calls.
+const argon2 = createPasswordHasher(cheap, { remeasureGapsMs: [] });
+const scrypt = createPasswordHasher({ ...cheap, driver: 'scrypt' }, { remeasureGapsMs: [] });
 
 describe('PasswordHasher', () => {
   it('makes argon2id hashes in PHC format, with OWASP costs by default', async () => {
