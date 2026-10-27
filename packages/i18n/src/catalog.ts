@@ -100,6 +100,12 @@ export class Catalog {
     return this;
   }
 
+  /** @internal Adds a namespace's messages in `locale`, in place of the ones it has (the framework's texts with an app's wording). */
+  replace(locale: string, namespace: string, messages: unknown, source = `${namespace} (${locale})`): this {
+    this.#messages.get(locale)?.delete(namespace);
+    return this.add(locale, namespace, messages, source);
+  }
+
   /** The locales with messages. */
   locales(): string[] {
     return [...this.#messages.keys()];

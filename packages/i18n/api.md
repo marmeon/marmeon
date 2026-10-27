@@ -219,6 +219,8 @@ export interface Formatter {
     relativeTime(value: number, unit: Intl.RelativeTimeFormatUnit, options?: Intl.RelativeTimeFormatOptions): string;
     relative(date: Date | number | string, now: Date | number | string, options?: Intl.RelativeTimeFormatOptions): string;
 }
+// FrameworkTexts
+export type FrameworkTexts = typeof frameworkEn;
 // LangFiles
 export type LangFiles = Readonly<Record<string, () => Promise<unknown>>>;
 // MessageAt
@@ -238,6 +240,10 @@ export interface MessageLoader {
         fallback?: string;
     }): Promise<Catalog>;
 }
+// MessageOverrides
+export type MessageOverrides<T> = {
+    readonly [K in keyof T]?: T[K] extends string ? (string extends T[K] ? string : Keeps<keyof MessageParamsOf<T[K]> & string>) : MessageOverrides<T[K]>;
+};
 // MessageParamsOf
 export type MessageParamsOf<M> = M extends string ? (string extends M ? Record<string, unknown> : Simplify<Text<M, [], {}>>) : Record<string, unknown>;
 // MessageSyntaxError
@@ -308,6 +314,83 @@ type Trim<S extends string> = S extends ` ${infer R}` ? Trim<R> : S extends `${i
 type UnionToIntersection<U> = (U extends unknown ? (value: U) => void : never) extends (value: infer I) => void ? I : never;
 // ValueOf
 type ValueOf<Type extends string> = Type extends 'plural' | 'selectordinal' | 'number' ? number : Type extends 'date' | 'time' ? Date | number | string : Type extends 'select' ? string : string | number;
+// en
+declare const en: {
+    readonly status: {
+        readonly '400': 'Bad Request';
+        readonly '401': 'Unauthorized';
+        readonly '403': 'Forbidden';
+        readonly '404': 'Not Found';
+        readonly '405': 'Method Not Allowed';
+        readonly '413': 'Content Too Large';
+        readonly '415': 'Unsupported Media Type';
+        readonly '419': 'Page Expired';
+        readonly '422': 'Unprocessable Content';
+        readonly '423': 'Locked';
+        readonly '429': 'Too Many Requests';
+        readonly '500': 'Server Error';
+        readonly '503': 'Service Unavailable';
+    };
+    readonly errors: {
+        readonly unauthorized: 'This action is unauthorized.';
+        readonly csrf: 'CSRF token mismatch.';
+        readonly cross_site: 'Cross-site request refused.';
+        readonly throttled: 'Too Many Attempts.';
+        readonly signature: 'Invalid signature.';
+    };
+    readonly validation: {
+        readonly password: {
+            readonly required: 'Enter a password.';
+            readonly min: 'The password needs at least {min} characters.';
+            readonly max: 'The password is too long.';
+        };
+        readonly upload: {
+            readonly required: 'Choose a file.';
+            readonly invalid: 'The file did not arrive — choose it again.';
+            readonly expired: 'The upload expired — choose the file again.';
+            readonly used: 'This file was saved already — choose it again.';
+            readonly max: 'The file may be at most {max}.';
+            readonly type: 'This type of file is not accepted (allowed: {types}).';
+        };
+        readonly more: '(and {count, plural, one {# more error} other {# more errors}})';
+        readonly required: 'The {attribute} field is required.';
+        readonly string: 'The {attribute} field must be a string.';
+        readonly number: 'The {attribute} field must be a number.';
+        readonly integer: 'The {attribute} field must be an integer.';
+        readonly boolean: 'The {attribute} field must be true or false.';
+        readonly accepted: 'The {attribute} field must be accepted.';
+        readonly object: 'The {attribute} field must be an object.';
+        readonly array: 'The {attribute} field must be a list.';
+        readonly in: 'The selected {attribute} is invalid.';
+        readonly union: 'The {attribute} field is invalid.';
+        readonly custom: 'The {attribute} field is invalid.';
+        readonly min: {
+            readonly string: 'The {attribute} field must be at least {min} characters.';
+            readonly number: 'The {attribute} field must be at least {min}.';
+            readonly array: 'The {attribute} field must have at least {min} items.';
+        };
+        readonly max: {
+            readonly string: 'The {attribute} field must not be longer than {max} characters.';
+            readonly number: 'The {attribute} field must not be greater than {max}.';
+            readonly array: 'The {attribute} field must not have more than {max} items.';
+        };
+        readonly between: {
+            readonly string: 'The {attribute} field must be between {min} and {max} characters.';
+            readonly number: 'The {attribute} field must be between {min} and {max}.';
+            readonly array: 'The {attribute} field must have between {min} and {max} items.';
+        };
+        readonly email: 'The {attribute} field must be a valid email address.';
+        readonly url: 'The {attribute} field must be a valid URL.';
+        readonly uuid: 'The {attribute} field must be a valid UUID.';
+        readonly regex: 'The {attribute} field format is invalid.';
+        readonly date: 'The {attribute} field must be a valid date.';
+        readonly iso_timestamp: 'The {attribute} field must be a valid date and time.';
+        readonly confirmed: 'The {attribute} does not match.';
+        readonly unique: 'The {attribute} has already been taken.';
+        readonly exists: 'The selected {attribute} is invalid.';
+        readonly port: 'The {attribute} field must be a port number from 1 to 65535.';
+    };
+};
 ```
 
 ## Environment

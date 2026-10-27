@@ -1494,3 +1494,15 @@ describe('constructors and members that only their own package uses', () => {
     expect((await runApi(root, { exports: { exceptions: { '@marmeon/demo f': 'reason' } }, files: [] })).code).toBe(0);
   });
 });
+
+describe('the snapshots of the real packages', () => {
+  it('no package reaches an augmentation of `Translations`', () => {
+    // `Translations` is filled by the app only: were a package's entry point to bring in a namespace, `[keyof Translations] extends [never]`
+    // would be false and an app without messages of its own would lose its `string` keys. The snapshot lists every augmentation an entry
+    // point reaches in the built declarations, and `api:check` keeps api.md equal to them.
+    const reaching = frameworkPackages(repository)
+      .map((pkg) => join(pkg.dir, 'api.md'))
+      .filter((file) => existsSync(file) && /^\/\/ @marmeon\/i18n\/messages\.Translations$/m.test(readFileSync(file, 'utf8')));
+    expect(reaching).toEqual([]);
+  });
+});

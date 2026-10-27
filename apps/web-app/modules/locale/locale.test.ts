@@ -57,9 +57,9 @@ describe('a German browser', () => {
     expect(json.json()).toMatchObject({ errors: { email: ['Bitte gib eine gültige E-Mail-Adresse ein.'] } });
   });
 
-  it('gets the error page in German (404, the framework’s texts by key)', async () => {
+  it('gets the error page in German (404, the framework’s texts by key — this app rewords the 404 in lang/marmeon/de.ts)', async () => {
     const ada = await app.factory(UserFactory).create();
-    await app.actingAs(ada).withHeaders(german).navigating().get('/users/999999').assertNotFound().assertPage('system/errors/Error', { title: 'Nicht gefunden', message: 'Nicht gefunden' });
+    await app.actingAs(ada).withHeaders(german).navigating().get('/users/999999').assertNotFound().assertPage('system/errors/Error', { title: 'Seite nicht gefunden', message: 'Seite nicht gefunden' });
     await app.actingAs(ada).navigating().get('/users/999999').assertPage('system/errors/Error', { title: 'Not Found' });
   });
 

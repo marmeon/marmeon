@@ -1,14 +1,15 @@
 import { readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Application, defineConfig, env, Logger, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { PreferredLocale } from '@marmeon/core/internal';
 import { editableResponse, HttpError, MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@marmeon/router';
 import { fillPath, PageAlternates, UrlLocales } from '@marmeon/router/internal';
 import { Session } from '@marmeon/session';
-import { Catalog } from './catalog.ts';
+import { Catalog, MessageError } from './catalog.ts';
 import frameworkDe from './lang/de.ts';
 import frameworkEn from './lang/en.ts';
+import { MessageSyntaxError, parseMessage, type Part } from './format.ts';
 import { langFileOf } from './loader.ts';
 import { isLanguageTag, negotiateLocale, supportedLocale } from './locale.ts';
 import { createTranslator, CurrentLocale, Translator } from './translator.ts';
@@ -306,6 +307,94 @@ async function langFiles(root: string): Promise<string[]> {
   return files;
 }
 
+/** The app's rewording and translations of the framework's texts: `lang/marmeon/<locale>.ts`, by locale tag. */
+async function frameworkFiles(root: string): Promise<{ path: string; locale: string }[]> {
+  const dir = join(root, 'lang', 'marmeon');
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  const files: { path: string; locale: string }[] = [];
+  for (const entry of entries) {
+    const match = /^([^/]+)\.[jt]s$/.exec(entry.name);
+    if (!entry.isFile() || !match || !isLanguageTag(match[1])) continue; // `fr.test.ts`, `fr.d.ts` are no language tags
+    files.push({ path: join(dir, entry.name), locale: match[1] });
+  }
+  return files;
+}
+
+type Tree = { readonly [key: string]: unknown };
+
+const isTree = (value: unknown): value is Tree => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** The dot paths of a message tree's texts (and, apart, of its groups). Anything that is neither is left to the catalog's own error. */
+function textsOf(tree: Tree, texts = new Map<string, string>(), groups = new Set<string>(), path = ''): { texts: Map<string, string>; groups: Set<string> } {
+  for (const [key, value] of Object.entries(tree)) {
+    const at = path ? `${path}.${key}` : key;
+    if (typeof value === 'string') texts.set(at, value);
+    else if (isTree(value)) {
+      groups.add(at);
+      textsOf(value, texts, groups, at);
+    }
+  }
+  return { texts, groups };
+}
+
+/** The placeholder names of a message, nested ones included. */
+function placeholderNames(parts: readonly Part[], names = new Set<string>()): Set<string> {
+  for (const part of parts) {
+    if (typeof part === 'string' || part.kind === 'pound') continue;
+    names.add(part.name);
+    if ('branches' in part) for (const branch of Object.values(part.branches)) placeholderNames(branch, names);
+  }
+  return names;
+}
+
+/**
+ * Checks an app's `lang/marmeon/<locale>.ts` against the framework's English texts — every key must exist there, and each text must keep
+ * the placeholders of the English one (a translation may reorder or leave out words, never the values a text is given). Syntax errors
+ * are the catalog's, when the merged messages are added.
+ */
+function checkFrameworkTexts(path: string, root: string, tree: Tree): void {
+  const file = relative(root, path).replaceAll('\\', '/');
+  const source = textsOf(frameworkEn);
+  const own = textsOf(tree);
+  for (const group of own.groups) {
+    if (source.groups.has(group)) continue;
+    throw new MessageError(
+      `[marmeon:S6] ${file} has the key ${group}, ${source.texts.has(group) ? "which is a text of the framework's, not a group" : "which the framework's texts do not have"}.`,
+    );
+  }
+  for (const [key, text] of own.texts) {
+    const original = source.texts.get(key);
+    if (original === undefined) {
+      throw new MessageError(`[marmeon:S6] ${file} has the key ${key}, which the framework's texts do not have${source.groups.has(key) ? ' (it is a group of texts, not a text)' : ''}.`);
+    }
+    let kept: ReadonlySet<string>;
+    try {
+      kept = placeholderNames(parseMessage(text));
+    } catch (error) {
+      if (error instanceof MessageSyntaxError) throw new MessageError(`[marmeon:S5] Message marmeon.${key} in ${path} is malformed: ${error.message.replace(/^\[marmeon:S5\] /, '')}`);
+      throw error;
+    }
+    for (const name of placeholderNames(parseMessage(original))) {
+      if (!kept.has(name)) throw new MessageError(`[marmeon:S6] ${file} drops the placeholder {${name}} of ${key}.`);
+    }
+  }
+}
+
+/** `base` with `overrides` laid over it, key by key. */
+function mergeTexts(base: Tree, overrides: Tree): Tree {
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(overrides)) {
+    const current = merged[key];
+    merged[key] = isTree(current) && isTree(value) ? mergeTexts(current, value) : value;
+  }
+  return merged;
+}
+
+const frameworkTexts = new Map<string, Tree>([
+  ['en', frameworkEn],
+  ['de', frameworkDe],
+]);
+
 /**
  * Loads the app's language files into `catalog` — the locales `locales` accepts (all, unless `APP_LOCALES` names
  * them; a file for another locale is skipped). The paths come from the app's folders, never from a request.
@@ -324,6 +413,21 @@ async function loadLangFiles(root: string, catalog: Catalog, locales: Locales): 
     }
     const module = (await importLangFile(pathToFileURL(path).href)) as { default?: unknown };
     catalog.add(locale, file.namespace, module.default, path);
+    loaded.push(path);
+  }
+  const reworded = new Set<string>();
+  for (const { path, locale: tag } of await frameworkFiles(root)) {
+    const locale = addLocale(locales, tag);
+    if (!locale) {
+      skipped.push(path);
+      continue;
+    }
+    if (reworded.has(locale)) throw new MessageError(`The marmeon messages in ${locale} are defined twice (${path}).`);
+    reworded.add(locale);
+    const module = (await importLangFile(pathToFileURL(path).href)) as { default?: unknown };
+    if (!isTree(module.default)) throw new MessageError(`${path} must export an object of messages (strings, nested in objects).`);
+    checkFrameworkTexts(path, root, module.default);
+    catalog.replace(locale, 'marmeon', mergeTexts(frameworkTexts.get(locale) ?? {}, module.default), `${frameworkTexts.has(locale) ? `@marmeon/i18n (${locale}) + ` : ''}${path}`);
     loaded.push(path);
   }
   return { loaded, skipped };
