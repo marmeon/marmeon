@@ -444,6 +444,8 @@ The web app's page works without JavaScript as well: sort links are links, the f
 are plain forms that come back with a 303. The table's browser code is in the chunk of the page that imports `useTable()`, so an
 app's first download carries none of it unless its first page shows a table.
 
+A table component for another UI library builds on `TableController` and the helpers of `@marmeon/table/client` (`sortUrl`, `exportUrl`, `keyOf`, `tableStatus`), as `@marmeon/react/table` does.
+
 ### Accessible markup
 
 `useTable()` hands out the attributes for markup that follows the WAI-ARIA Authoring Practices for sortable tables:

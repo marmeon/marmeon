@@ -84,10 +84,10 @@ message is not part of it.
 | `requestId` | The id of the request the entry was written in, the one `x-request-id` carries. |
 | `job`, `jobId`, `attempt` | The job that was running, its id and its attempt. |
 | `task` | The scheduled task that was running. |
-| `trace_id`, `span_id` | The active span, with `@marmeon/otel`. |
+| `trace_id`, `span_id`, `trace_flags` | The active span, with `@marmeon/otel`: its W3C trace flags as two hex digits (`01` = sampled). |
 | `err` | An error the app logs as `{ err: error }`: `type`, `message` and `stack`. The fields the framework writes for its own errors (`exception`, `stack` and sometimes `message`) are not part of the frozen set yet. |
 
-The fields keep the framework's values: a key of the context you pass to a log call that names one of them (every field of the table except `err`, plus `trace_flags`) is written as `context.<key>`. Data you log, such as a webhook payload, cannot forge a level or a request id that way. The bindings of a child logger are not renamed.
+The fields keep the framework's values: a key of the context you pass to a log call that names one of them (every field of the table except `err`) is written as `context.<key>`. Data you log, such as a webhook payload, cannot forge a level or a request id that way. The bindings of a child logger are not renamed.
 
 ## The log context
 
@@ -99,8 +99,8 @@ Every entry gets the context of what is running when it is written, with nothing
 | A job | `job`, `jobId` and `attempt`. A job that runs inside a request has the request's id too. |
 | A scheduled task | `task`, such as `session:prune`. |
 
-Your app can add fields to every entry with a log context source, and the OpenTelemetry package adds the active span's `trace_id`
-and `span_id` the same way. The [context](context.md#adding-fields-to-every-log-entry) page shows how. A key that a child logger
+Your app can add fields to every entry with a log context source, and the OpenTelemetry package adds the active span's `trace_id`,
+`span_id` and `trace_flags` the same way. The [context](context.md#adding-fields-to-every-log-entry) page shows how. A key that a child logger
 is bound with already is written once, not twice.
 
 ## The request log line
@@ -117,7 +117,7 @@ The line is built only when it goes somewhere. With `LOG_LEVEL=warn` or `silent`
 Before an entry is written, its context passes the app's `Redactor`. Every key that contains `pass`, `secret`, `token`,
 `authorization`, `cookie`, `remember`, `apikey` with or without a `-` or `_`, `signature`, `credential`, `private_key`, `app_key`,
 `encryption_key`, `session_id`, `jwt`, `dsn`, `recovery`, `cvv`, `cvc`, `card_number`, `mfa_code`, `two_factor_code`,
-`verification_code` or `sms_code`, in any case, has its value replaced by `[redacted]`. So do keys that start with `otp` or
+`verification_code` or `sms_code`, in any case, has its value replaced by `[redacted]`, the `REDACTED` constant of `@marmeon/core`, which a test compares with. So do keys that start with `otp` or
 `totp`, have it after a `-` or `_`, or at a camel-case boundary (`otp_code`, `totpCode`, `userOtp`), and the keys that are exactly
 `code`, `auth` or `x-auth`. So `password`, `new_password`, `privateKey` and `api_key` are masked, and so is a harmless
 `passport`. The `code` of an error (`ECONNREFUSED`) stays, because it says what failed, and so do names such as `status_code`

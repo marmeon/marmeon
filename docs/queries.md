@@ -209,7 +209,7 @@ no UUID. For input that was not checked, a request's parameter say, use `findByR
 `findOrFail(id, { with: ['author', 'tags'] })` loads the [relations](#relations) into the same query, as `with()` does, and the
 row's type has them: `RowWith<'notes', 'author' | 'tags'>` names it, for example as the prop type of a page. `chunk()` reads the rows by their primary key, each batch after the last one it read, one query per batch. Rows removed
 during the loop do not make it skip others. Rows added meanwhile come at the end or, when another transaction commits them later
-with a lower id, not at all. Its callback narrows what it reads:
+with a lower key, not at all. Its callback narrows what it reads:
 
 ```ts
 for await (const users of this.#users.chunk(500, (query) => query.where('email_verified_at', 'is', null).with('profile_links'))) {

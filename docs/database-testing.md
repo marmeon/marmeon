@@ -56,7 +56,7 @@ Requests that a test sends at the same time share the pinned connection, and the
 > own, stay after the test. Point what tests write to `default` in `.env.test`, or set that connection's database to
 > `:memory:` there.
 
-Two test runs of one app at the same time would share their workers' databases. Run one at a time.
+Two test runs of one app at the same time are not supported: on SQLite, a run in a container and one on the host that share the app's directory remove each other's files. The names of the workers' databases are not API.
 
 ### One refreshed app at a time
 

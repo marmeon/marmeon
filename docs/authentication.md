@@ -1325,7 +1325,7 @@ optional, with the behaviour when it is missing documented.
 The default stores keep their rows in `sign_ins` (with the remember-me tokens), `password_reset_tokens`, `personal_access_tokens`,
 `two_factor_authentications` with `two_factor_recovery_codes` and `passkeys`, and `email_changes` once the app binds the `DatabaseEmailChanges`
 (one row per account that asked for a new address and has not confirmed it, the link's token only as a `secret()` SHA-256 hash; `users`
-never holds an address its owner has not confirmed, so no other module reads one). The starter kit's migrations create them. `users` is your
+never holds an address its owner has not confirmed, so no other module reads one). `SIGN_INS_TABLE`, `PASSWORD_RESET_TABLE` and `EMAIL_CHANGES_TABLE` of `@marmeon/auth` name three of them, for a query or a test of your own. The starter kit's migrations create them. `users` is your
 app's own table. Column marks stay with the tables: the hashes, the validators and the authenticator's secret are `secret()`
 columns, so `selectAll()` and relations never return them.
 
@@ -1372,7 +1372,7 @@ stay in the browser after a sign-out: set your own header only on answers that h
 it tells whether the address has an account. The `ip` and `userAgent` of `SignedIn` are the request's, the address resolved through
 `SERVER_TRUSTED_PROXIES` like `ctx.ip`, unless the call to `attempt()` or `signIn()` passed others. Outside a request they are `null`.
 `RememberTokenReused` is dispatched once for each copied cookie, after the user's sign-ins were deleted and their sessions ended (or could not be, see `sessionsEnded`), and only for an account that still exists. Its `ip` and `userAgent` belong to the request that presented the old or never-issued value: whoever holds the copy, possibly the thief, or, more rarely, the owner's browser that missed the response carrying a renewal (a cancelled load, a dropped connection), so a mail should say so. A cookie that is no longer the current or just-replaced one cannot come from a browser that kept up with the rotations, so the owner is told for every old copy. `ip` is `null` when it is not an address, `userAgent` has its control characters removed and is cut to 512 characters, and `sessionsEnded` is `false` when the `UserProvider` could not end the sessions (the tokens are gone either way). The event never carries the cookie or a token. The `userAgent` is text the client chose: show a parsed browser and system (`describeDevice()`) in a mail, not the raw header. A queued listener gets `{ userId, at, ip, userAgent, sessionsEnded }`, with `at` as an ISO 8601 string. The starter kit mails the owner.
-`SignedIn`, `TwoFactorChallengeFailed`, `PasskeySignInFailed` and `RememberTokenReused` take the user, an object of the details, and the time last (`new SignedIn(user, { remember: true, via: 'attempt' }, at)`, `new TwoFactorChallengeFailed(user, { during: 'step-up' }, at)`); the time may be left out, and so may every detail except `sessionsEnded`.
+`SignedIn` and `TwoFactorChallengeFailed` take the user, an object of the details, and the time last (`new SignedIn(user, { remember: true, via: 'attempt' }, at)`, `new TwoFactorChallengeFailed(user, { during: 'step-up' }, at)`); the time may be left out, and so may every detail.
 A queueable event's payload has a name — `RememberTokenReusedPayload`, `SignedInPayload` and so on, each the same as `EventPayload<typeof …>` of its class.
 
 `Registered` is dispatched by your app's code, the starter kit's controllers, not by the package; `SignInLockedOut` comes from `attempt()`.
@@ -1413,21 +1413,20 @@ listeners.
 | `AUTH_LOGIN_ATTEMPTS_PER_MINUTE` | `5` | Password sign-ins a minute for one identifier from one client: 1 to 60. See [limits](#limits-on-password-sign-ins). |
 | `AUTH_ACCOUNT_SIGN_INS_PER_DAY` | `100` | Password sign-ins a day for one account, from all clients: 10 to 100000. |
 | `AUTH_DEVICE_COOKIE_DAYS` | `90` | Days the device cookie lasts that a password sign-in or a completed reset hands the browser: 0 to 365, `0` turns it off. |
-| `AUTH_PASSWORD_TIMEOUT_SECONDS` | `900` | Seconds a typed password or a proven passkey counts for `confirmedPassword()`. |
+| `AUTH_PASSWORD_TIMEOUT_SECONDS` | `900` | Seconds a typed password or a proven passkey counts for `confirmedPassword()`: 1 or more. |
 | `AUTH_RESET_MINUTES` | `60` | Minutes a password reset link works: 1 to 1440. See [password reset](passwords.md#configuration). |
-| `AUTH_RESET_THROTTLE_SECONDS` | `60` | Seconds before another reset link goes to the same address. |
+| `AUTH_RESET_THROTTLE_SECONDS` | `60` | Seconds before another reset link goes to the same address: 0 or more, `0` turns the pause off. |
 | `AUTH_EMAIL_CHANGE_MINUTES` | `60` | Minutes the link of a change of address works: 5 to 1440. See [changing the address](#changing-the-address). |
-| `AUTH_EMAIL_CHANGE_THROTTLE_SECONDS` | `60` | Seconds an account waits after a request for a new address that sent a link; `0` turns the pause off. See [changing the address](#changing-the-address). |
+| `AUTH_EMAIL_CHANGE_THROTTLE_SECONDS` | `60` | Seconds an account waits after a request for a new address that sent a link: 0 or more, `0` turns the pause off. See [changing the address](#changing-the-address). |
 | `AUTH_TOKEN_PREFIX` | `marmeon_` | The prefix of API tokens. See [API tokens](api-tokens.md#the-token-format). |
 | `AUTH_PRIVATE_REGISTRATION` | `true` | The private registration of the starter kit. See [starter kit](starter-kit.md#private-registration). |
-| `AUTH_UNVERIFIED_DAYS` | `7` | Days before `auth:prune-unverified` deletes an account without a confirmed address. See [email verification](verification.md#unconfirmed-accounts). |
+| `AUTH_UNVERIFIED_DAYS` | `7` | Days before `auth:prune-unverified` deletes an account without a confirmed address: 0 to 99999, `0` keeps them. See [email verification](verification.md#unconfirmed-accounts). |
 | `APP_NAME` | none | The app's name shown by authenticator apps next to the code. Two-factor setup needs it. See [two-factor authentication](two-factor-authentication.md#setting-up). |
 | `AUTH_PASSKEY_RP_ID` | host of `APP_URL` | The RP ID of [passkeys](passkeys.md#requirements): a parent domain of every allowed origin. Checked when passkeys are first used. |
 | `AUTH_PASSKEY_ORIGINS` | origin of `APP_URL` | The origins [passkeys](passkeys.md#requirements) are accepted from, comma-separated and exact: `https:`, or `http://localhost`. |
 | `AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE` | `false` | `true`: a new password, set by the user or by a reset, revokes every API token of the user. A boolean (`true`, `false`, `1`, `0`); anything else stops the start. See [API tokens](api-tokens.md#revoking-every-token-with-a-new-password). |
 
-The numbers are whole numbers of at least 1; `AUTH_RESET_THROTTLE_SECONDS` and `AUTH_UNVERIFIED_DAYS` may be `0`. A value outside its
-range stops the start. The `HASH_*` variables are on the [hashing](hashing.md#configuration) page.
+Each number names its range. A value outside it stops the start. The `HASH_*` variables are on the [hashing](hashing.md#configuration) page.
 
 ## Testing
 

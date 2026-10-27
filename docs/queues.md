@@ -293,6 +293,8 @@ Node cannot stop a running promise from outside. A job's `timeout` is therefore 
 must be longer than every job's `timeout` plus `--stop-timeout`, or a second worker would run a job the first one still runs.
 `queue:work` checks every job of the app at its start and refuses to start with a message that names the jobs and what to change.
 
+Every server's clock must be synchronised (NTP). Claims, delays, locks and rate-limit windows of the `database` and `file` stores compare times taken on different machines; a clock ahead by more than `retryAfterSeconds − (timeout + --stop-timeout)` runs a job twice.
+
 ### Stopping a worker
 
 On `SIGTERM` or `SIGINT` a worker takes no new job. The running job gets `--stop-timeout` seconds to finish, then it goes back to

@@ -231,6 +231,7 @@ the schedule, a batch and the location of a controller's source.
 A test records with `devtools: true`, into memory, and `app.devtools` reads the entries (type a variable with `DevtoolsTester` from `@marmeon/devtools/testing`):
 
 ```ts title="modules/notes/devtools.test.ts"
+import { REDACTED } from '@marmeon/core';
 import { createTestApp } from '@marmeon/testing';
 import { expect, it } from 'vitest';
 import application from '../../bootstrap/app.ts';
@@ -241,7 +242,7 @@ it('records a registration without the password', async () => {
   await app.post('/register', { form: { name: 'Ada Lovelace', email: 'ada@example.com', password, password_confirmation: password } });
 
   const request = app.devtools.assertRecorded('request', (content) => content.route === 'auth.register.store');
-  expect(request.content.input).toMatchObject({ email: 'ada@example.com', password: '[redacted]' });
+  expect(request.content.input).toMatchObject({ email: 'ada@example.com', password: REDACTED });
   app.devtools.assertRecorded('query', (query) => query.sql.startsWith('insert into "users"') && query.sensitive);
 
   await app.queue.work();

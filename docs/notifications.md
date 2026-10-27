@@ -99,7 +99,7 @@ export class NoteSharedNotification implements Notification<'user'> {
 - **`static database`** checks what the database channel stores. Only the fields it describes are kept.
 - **`static queue`** picks the queue, `connection`, `delay`, `tries` and `backoff` of the notification's job. A `backoff` is seconds or a duration, or a list of them: `[10, { minutes: 1 }]`. Its mail goes to
   the same queue and connection, with the mail's own retries. Without `tries` the job tries three times, 10 seconds and then a
-  minute apart.
+  minute apart. The job has 60 seconds; a delivery that needs longer is work for a job of its own with a `timeout`.
 
 The class is built through the container for each delivery, so its constructor gets what it asks for. A module lists its
 notifications, and only a listed notification can be sent:
@@ -198,8 +198,8 @@ export class NotifyAboutNewSignIn {
 A delivery, in a worker or by `sendNow()`, finds the recipient again, asks `via()`, picks the recipient's language and runs the
 channels in **one transaction** of the notifications' connection: the `database` row first, the other channels after it. The
 notification's id is the row's id. A job that runs again after a delivery that committed finds the row and stops, so nothing is
-delivered twice. Without the `database` channel, a repeated job can send again. On a queue other than the database's, a crash
-right after the commit can lose a mail that waited for it.
+delivered twice. Without the `database` channel, a repeated job can send again. On a queue other than the database's, a crash or a failed push
+right after the commit can lose a mail that waited for it. A `database` queue on the notifications' connection keeps the queued mail in the delivery's transaction.
 
 After a deploy, a job the worker cannot read does not fail: it waits, like any [job](queues.md#deploying-while-jobs-wait) this
 worker cannot run, for a worker that can. That is a notification the worker does not know, renamed or from a newer version

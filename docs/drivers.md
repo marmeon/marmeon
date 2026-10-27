@@ -96,7 +96,9 @@ What a driver must guarantee:
   framework checks every job's `timeout` plus the worker's `--stop-timeout` against it when `queue:work` starts, but only the
   driver can keep a claim from being taken too early. A driver that ignores it runs a job twice.
 - **The payload is opaque.** It arrives as the queue stores it. A job with `static encrypted` is encrypted before `push`, so the
-  driver sees only ciphertext and stores it as it is. The record inside carries a version the worker checks, never the driver.
+  driver sees only ciphertext and stores it as it is. The record inside carries a version the worker checks, never the driver. It is the JSON of a `JobRecord` (`@marmeon/queue`), a [stored format](releases.md#stored-and-wire-formats): a driver writes `availableAt` and leaves every other field as it is.
+- **`release` with `refund` gives the attempt back.** The next claim carries the same `attempts`. A driver that ignores it uses up the attempts of every job held during a deploy or stopped with its worker, so a job with few tries fails.
+- **`ack(job, next)` queues `next` in the same atomic step.**
 - **`release` may carry `availableAt`.** `release(job, delaySeconds, { availableAt })` gives the time the job can be claimed again (epoch
   ms). Write it, in epoch ms, into the stored payload's `availableAt` field, so a worker
   that cannot read the record yet counts how long it waited from there. A driver that ignores the option leaves the payload as it

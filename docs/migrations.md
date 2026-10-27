@@ -199,6 +199,8 @@ adds a column to leaves that column out (name it in the query), and `selectAll()
 `schema.create()`, `schema.alter()` and `schema.rename()`, for everything it can do: only what it describes is known. Changing a table or
 column that raw SQL made with `schema.alter()` or `schema.rename()` stops with error D19, because Marmeon would not know the change.
 
+Every migration runs in a transaction, so `create index concurrently` of Postgres does not work in one. A plain `create index` on a large table blocks writes to it until the index is built.
+
 ### What the migrations describe
 
 `Migrator.projection()` computes the schema the migrations describe from their plans alone, without a database and without running

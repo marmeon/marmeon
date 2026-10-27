@@ -283,6 +283,8 @@ export default function RecentNotes({ notes }: IslandProps<ShowRecentNotesContro
 }
 ```
 
+In an island's view, `usePage()` and `useRouter()` are the page's: shared props, the user, the locale. The island's own deferred props arrive in the view's props: `props.stats === undefined` until they are loaded. `<Deferred>` and `<WhenVisible>` read the page.
+
 `useIsland()` gives the island's `props`, its `query` with the defaults filled in, its `status`, `pending` while a request runs,
 and the `failure` of the last reload. `reload({ query, only, except, reset })` asks again for this island only, and its `query` is
 checked against the route's query schema. A link inside an island navigates the page. `<Head>` inside an island throws in

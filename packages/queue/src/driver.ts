@@ -94,7 +94,8 @@ export interface QueueDriver {
   ack(job: ReservedJob, next?: readonly QueuedPush[]): Promise<boolean>;
   /**
    * Back to the queue, available again in `delaySeconds`; the attempt stays counted — unless `refund`: then it is given back,
-   * because the job never ran (`job.once` found its key busy in another attempt).
+   * because the job never ran (`job.once` found its key busy in another attempt, or this worker cannot run it yet) or was stopped with its worker. A driver that
+   * ignores it fails jobs held during a deploy. See `docs/drivers.md#queue-drivers-and-failed-job-stores`.
    */
   release(job: ReservedJob, delaySeconds: number, options?: ReleaseOptions): Promise<boolean>;
   /** Leaves the queue for good — the worker has recorded it in the failed jobs first. */

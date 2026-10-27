@@ -420,6 +420,8 @@ store:
 Jobs that wait while you deploy are held, not lost: a worker puts back a job it cannot read yet, and a newer worker takes it.
 [Deploying while jobs wait](queues.md#deploying-while-jobs-wait) says how long and what to watch.
 
+Every server's clock must be synchronised (NTP). Claims, delays, locks and rate-limit windows of the `database` and `file` stores compare times taken on different machines; a clock ahead by more than `retryAfterSeconds − (timeout + --stop-timeout)` runs a job twice.
+
 On one machine, the Compose file shares one `storage` volume between web, worker and scheduler, so SQLite and the `file` drivers
 work there. Limits on live streams count per process: with four servers, a session may hold its limit of streams in each.
 

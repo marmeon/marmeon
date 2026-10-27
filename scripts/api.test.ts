@@ -1489,8 +1489,8 @@ describe('constructors and members that only their own package uses', () => {
   it('reports the exports only the framework uses through api:check with a line of their own', async () => {
     const { root } = demo({ 'index.d.ts': 'export declare function f(): void;\n' });
     await runApi(root, { write: true });
-    const run = await runApi(root, { exports: { exceptions: {}, pending: {} }, files: [] });
+    const run = await runApi(root, { exports: { exceptions: {} }, files: [] });
     expect(run.lines).toContain('exports:');
-    expect((await runApi(root, { exports: { exceptions: {}, pending: { '@marmeon/demo f': 'reason' } }, files: [] })).code).toBe(0);
+    expect((await runApi(root, { exports: { exceptions: { '@marmeon/demo f': 'reason' } }, files: [] })).code).toBe(0);
   });
 });

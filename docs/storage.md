@@ -236,7 +236,7 @@ Storing does not read the file into memory: on the same S3 store the bucket copi
 
 ### The uploads table
 
-Uploads keep their tokens in a table, which the app creates once:
+Uploads keep their tokens in a table, which the app creates once. The table is `temporary_uploads` (`UPLOADS_TABLE` of `@marmeon/storage`):
 
 ```sh
 pnpm marmeon make:uploads-table

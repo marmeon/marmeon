@@ -185,6 +185,7 @@ a transaction, an `err` rolls the transaction back, as the [transactions](transa
 | `PasswordResetTokenStore.create()` | `throttled` | [Password reset](passwords.md#a-store-of-your-own) |
 | `PasswordResetTokenStore.consume()` | `invalid-token` | [Password reset](passwords.md#a-store-of-your-own) |
 | `lock.get(callback)` | `locked` | [Cache](cache.md#locks) |
+| `lock.block(wait, callback)` | `timeout` | [Cache](cache.md#locks) |
 
 These `err` kinds are closed: a new kind comes only with a new method, never as a new member of an existing one. That is why an
 exhaustive `switch` over them with `satisfies never` keeps compiling across minor versions. Other unions are open, as
