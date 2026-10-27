@@ -131,8 +131,7 @@ on, and then:
   [`updateSessionKey()`](authentication.md#signing-out-other-devices-without-a-password) does it (a new session key), without a second password check. The signing out
   runs twice, before the factor is switched on and again right after, so that a sign-in racing the activation does not survive it.
   Say so on the page before the user submits.
-- **API tokens are not revoked.** They are integrations of your app, such as scripts and CI, and revoking them is your decision. List
-  them in the answer and link to where they are revoked, as the example app does.
+- **API tokens are not revoked.** They are integrations of your app, such as scripts and CI, and revoking them is your decision.
 - **Recovery codes** are made when this is the account's first factor (see [Recovery codes](#recovery-codes)).
 - **This session** counts as having proven the factor.
 

@@ -31,6 +31,6 @@ export class RegenerateRecoveryCodesController extends Controller {
       const message = made.error.kind === 'throttled' ? (made.error.account ? this.#translator.get('auth.validation.throttled_account', { seconds: made.error.retryAfterSeconds }) : this.#translator.get('auth.validation.throttled', { seconds: made.error.retryAfterSeconds })) : this.#translator.get('auth.validation.password_incorrect');
       throw new ValidationError({ password: [message] });
     }
-    return this.view('auth/RecoveryCodes', { codes: [...made.value], tokens: null }).layer(CODES_LAYER);
+    return this.view('auth/RecoveryCodes', { codes: [...made.value], signedOut: false }).layer(CODES_LAYER);
   }
 }

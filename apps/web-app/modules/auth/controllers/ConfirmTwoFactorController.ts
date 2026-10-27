@@ -1,4 +1,4 @@
-import { AccessTokenStore, type Authenticated } from '@marmeon/auth';
+import type { Authenticated } from '@marmeon/auth';
 import { TwoFactor } from '@marmeon/auth/two-factor';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
@@ -13,7 +13,7 @@ export const ConfirmTwoFactorRequest = defineRequest({
 
 /**
  * Turns the authenticator on with the first code it shows and the password. Every other device is signed out; API tokens are not
- * touched, but the answer lists them with a link to revoke. The answer holds the recovery codes: a layer over the settings page that
+ * touched. The answer holds the recovery codes: a layer over the settings page that
  * answers this POST, shown once — they never sit in the session, and the database keeps only their hashes.
  */
 export class ConfirmTwoFactorController extends Controller {
@@ -21,13 +21,11 @@ export class ConfirmTwoFactorController extends Controller {
 
   readonly #twoFactor: TwoFactor;
   readonly #translator: Translator;
-  readonly #tokens: AccessTokenStore;
 
-  constructor(twoFactor: TwoFactor, translator: Translator, tokens: AccessTokenStore) {
+  constructor(twoFactor: TwoFactor, translator: Translator) {
     super();
     this.#twoFactor = twoFactor;
     this.#translator = translator;
-    this.#tokens = tokens;
   }
 
   async handle(ctx: ContextOf<typeof ConfirmTwoFactorRequest> & Authenticated) {
@@ -50,8 +48,6 @@ export class ConfirmTwoFactorController extends Controller {
     }
     // A second factor beside an existing one has no new codes: the page just shows it is on.
     if (done.value.recoveryCodes === null) return this.redirect().route('auth.two-factor');
-    // API tokens stay valid (they are integrations of the app): the answer lists them, so the user can revoke the ones they do not know.
-    const tokens = (await this.#tokens.list(ctx.user.id)).map((token) => ({ id: token.id, name: token.name }));
-    return this.view('auth/RecoveryCodes', { codes: [...done.value.recoveryCodes], tokens }).layer(CODES_LAYER);
+    return this.view('auth/RecoveryCodes', { codes: [...done.value.recoveryCodes], signedOut: true }).layer(CODES_LAYER);
   }
 }
