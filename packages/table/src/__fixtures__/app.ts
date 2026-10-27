@@ -146,6 +146,24 @@ export const LeakyTable = defineTable({
   filters: { since: filter.dateRange('created_at') },
 });
 
+/** One column of every cell form the CSV export writes: text, integer, decimal, boolean, time, JSON, a formula-like text. */
+export const LedgerTable = defineTable({
+  name: 'ledger',
+  query: (db, _ctx: TeamContext) => db.selectFrom('ledger'),
+  key: 'ledger.id',
+  columns: {
+    note: column('ledger.note').label('Note').sortable(),
+    qty: column('ledger.qty'),
+    amount: column('ledger.amount'),
+    paid: column('ledger.paid'),
+    booked: column('ledger.booked_at'),
+    meta: column('ledger.meta'),
+    formula: column('ledger.formula'),
+  },
+  defaultSort: 'note',
+  export: { csv: exportCsv().authorize(() => true) },
+});
+
 /** Exports of at most three rows — the limit refuses, it never cuts. */
 export const SmallExportTable = defineTable({
   name: 'small',
@@ -333,6 +351,7 @@ const routes = openRoutes((Route) => {
   tableRoutes(team, TeamsTable);
   team.get('/no-schema', NoSchemaPage);
   team.get('/export-in-transaction', ExportInTransaction);
+  tableRoutes(team, LedgerTable);
   tableRoutes(team, SmallExportTable);
   tableRoutes(team, ByEmailTable);
   tableRoutes(team, ActiveTable);
@@ -416,6 +435,19 @@ export async function tableApp(driver: TestDriver): Promise<TableTestApp> {
         table.timestamp('created_at');
         table.timestamp('last_seen_at').nullable();
         table.boolean('active').nullable();
+      }),
+  });
+  await runMigration(connections, {
+    up: (schema) =>
+      schema.create('ledger', (table) => {
+        table.id();
+        table.string('note');
+        table.integer('qty');
+        table.decimal('amount', 10, 2);
+        table.boolean('paid');
+        table.timestamp('booked_at');
+        table.json('meta');
+        table.string('formula');
       }),
   });
   const queries: QueryEvent[] = [];

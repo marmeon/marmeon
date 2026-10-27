@@ -213,13 +213,18 @@ Some formats have no version of their own and are kept stable another way:
 - **Pagination cursors** carry no mark: the values of the last row as JSON, encrypted with `APP_KEY` under a context that names the
   list's order (and its `name`, when given). A cursor stays valid while the key that made it is `APP_KEY` or in `APP_PREVIOUS_KEYS`
   and the list's order stays the same; its payload is frozen, and one that no longer decrypts or fits answers 400.
+- **CSV exports** of a [table](tables.md#exports) are frozen: a byte order mark, every field quoted, lines ended by CRLF. The header
+  row is each column's `label`, or its name, in the order of the definition. A time the database returns as a date is written as ISO 8601 in UTC, and a time stored as text as it is stored; a boolean as
+  `true` or `false`, an object as JSON, and a text that starts like a formula gets a `'` in front (a plain decimal such as `-12.50` is
+  no formula). The file is named `<name>-YYYY-MM-DD.csv`, the day being the UTC day. A new form of a cell arrives with a new kind of column, never as a new
+  meaning of an old one; `csv/v1.csv` holds the form. The table's cursor is a pagination cursor under the context `table:<name>`.
 - **`history.state`** holds the URL, component, a key and the scroll position. An entry that does not match loads from the server.
 - **The names of keys** in the cache and the lock store (`limiter:…`, `queue:unique:…`, `queue:once-lock:…`, the scheduler's locks) and the names of
   [encryption contexts](encryption.md#what-the-key-protects) are format: two nodes must agree on them. A release that renames one
   does so with the same care as a renamed column.
 
 Fixtures sit under `__fixtures__/formats/`, one per version: the page and region object, the job record, the Redis member, queued
-listeners, mails and notifications, the session payload, the pagination cursor, the record of migrations, the encrypted value, API tokens, the live stream, its query and the messages between nodes, the manifest of copied files and the `--json` documents. A test reads each
+listeners, mails and notifications, the session payload, the pagination cursor, the CSV export, the record of migrations, the encrypted value, API tokens, the live stream, its query and the messages between nodes, the manifest of copied files and the `--json` documents. A test reads each
 directory with the current code. A pull request that changes or deletes a fixture is a `breaking` one. [Changing a stored or wire format](../CONTRIBUTING.md#changing-a-stored-or-wire-format)
 says how a format moves on.
 
