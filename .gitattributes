@@ -1,2 +1,5 @@
 # The snapshots of the website's release lines: the text of old releases, written by `pnpm website:lines add`; kept byte for byte.
 apps/website/content/lines/** -text linguist-generated=true
+
+# CSV fixtures of the export format: the line ends are part of the format; kept byte for byte.
+packages/*/src/__fixtures__/formats/csv/** -text

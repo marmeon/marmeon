@@ -14,6 +14,17 @@ describe('CSV cells (RFC 4180 + OWASP "CSV Injection")', () => {
     expect(csvCell(value)).toBe(expected);
   });
 
+  it('keeps a decimal that arrives as text a number — and still escapes everything that is more than digits', () => {
+    expect(csvCell('-12.50')).toBe('"-12.50"');
+    expect(csvCell('-5')).toBe('"-5"');
+    expect(csvCell('+5')).toBe('"\'+5"');
+    for (const text of ['-1+cmd|\'/C calc\'!A0', '-2E3', '-1e5', '-2+3', '-.5', '-5.', '-1.2.3', '--5', '-5 ', '-5\n', '-1,5', '-１', '-1\t']) {
+      expect(csvCell(text), text).toBe(`"'${text}"`);
+    }
+    expect(csvCell(['-12.50'])).toBe('"[""-12.50""]"');
+    expect(csvCell(-12.5)).toBe('"-12.5"');
+  });
+
   it('quotes every field and doubles quotes — a separator or a line break inside stays in its cell', () => {
     expect(csvCell('Ada')).toBe('"Ada"');
     expect(csvCell('Ada "the first" Lovelace')).toBe('"Ada ""the first"" Lovelace"');

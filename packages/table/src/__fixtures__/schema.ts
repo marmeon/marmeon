@@ -18,6 +18,16 @@ declare module '@marmeon/database' {
       last_seen_at: Timestamp | null;
       active: boolean | null;
     };
+    ledger: {
+      id: Generated<number>;
+      note: string;
+      qty: number;
+      amount: string;
+      paid: boolean;
+      booked_at: Timestamp;
+      meta: unknown;
+      formula: string;
+    };
   }
   // What `db:types` derives from `members.team_id` (a foreign key to `teams`).
   interface Relations {

@@ -310,7 +310,8 @@ A handler that returns a redirect, a JSON result or a `Response` answers for its
 - **Headers.** `Content-Disposition: attachment` with a safe file name such as `members-2026-10-06.csv`, `Cache-Control: no-store`,
   `X-Content-Type-Options: nosniff`, and a byte order mark, so spreadsheets read umlauts right.
 - **Formula injection** is escaped. A text cell that starts with `=`, `+`, `-`, `@`, a tab, a carriage return or a line feed gets a
-  `'` in front. Every field is quoted, with quotes doubled. Numbers stay numbers, so `-5` is no formula.
+  `'` in front. Every field is quoted, with quotes doubled. Numbers stay numbers, and so does a decimal: `-5` and `-12.50` are no
+  formula. Anything more than digits after the minus (`-2+3`, `-2E3`) is escaped.
 
 ## The security model
 
