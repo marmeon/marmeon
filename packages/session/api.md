@@ -25,7 +25,6 @@ export declare const SESSION_USER_KEY = "_auth_id";
 // Session
 export declare class Session {
     #private;
-    get id(): string;
     get<K extends string>(key: K): Value<K> | undefined;
     has(key: string): boolean;
     put<K extends string>(key: K, value: Value<K>): void;
@@ -41,13 +40,11 @@ export declare class Session {
     old(key: string): unknown;
     token(): string;
     persist(): void;
-    get exists(): boolean;
     regenerate(): void;
     invalidate(): void;
 }
 // SessionCodec
 export interface SessionCodec {
-    readonly encrypts: boolean;
     seal(json: string, key: string): string | Promise<string>;
     open(data: string, key: string): string | undefined | Promise<string | undefined>;
 }

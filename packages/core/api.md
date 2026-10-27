@@ -375,10 +375,9 @@ export interface ModuleDefinition {
 export interface NodeEnvironment {
     readonly NODE_ENV?: string | undefined;
     readonly APP_ENV?: string | undefined;
-    readonly [DOTENV_MARKER]?: string | undefined;
 }
 // NodeEnvironmentName
-export type NodeEnvironmentName = (typeof NODE_ENVIRONMENTS)[number];
+export type NodeEnvironmentName = 'development' | 'test' | 'production';
 // Ok
 export interface Ok<T> {
     readonly ok: true;
@@ -443,12 +442,6 @@ export interface ReportedError {
 }
 // Resolve
 export type Resolve<K> = K extends Token<infer T> ? T : K extends Constructor<infer T> ? T : never;
-// ResolvedEnvironment
-export interface ResolvedEnvironment {
-    readonly name: string | undefined;
-    readonly source: 'process' | '.env' | 'fallback' | 'unset';
-    readonly warnings: readonly string[];
-}
 // Resolver
 export interface Resolver {
     make<T>(key: Key<T>): T;
@@ -651,8 +644,6 @@ interface BlockSpec<T> {
     readonly checks: readonly ((value: T, name: string) => string | undefined)[];
     readonly missing?: string | undefined;
 }
-// DOTENV_MARKER
-export declare const DOTENV_MARKER = "MARMEON_NODE_ENV_FROM_DOTENV";
 // Env
 type Env = Readonly<Record<string, string | undefined>>;
 // ErrorClass
@@ -675,8 +666,6 @@ type JsonMember<T> = T extends string | number | boolean | null ? true : T exten
 type ListenerFor<E extends EventClass, L> = L extends {
     readonly queue: unknown;
 } ? QueuedListenerFor<E, L> : ListenerLike<InstanceType<E>>;
-// NODE_ENVIRONMENTS
-export declare const NODE_ENVIRONMENTS: readonly ['development', 'test', 'production'];
 // QueuedListenerFor
 type QueuedListenerFor<E extends EventClass, L> = L extends {
     readonly queue: {
@@ -1220,29 +1209,13 @@ Types from other packages: none
 export declare class ConfigError extends Error {
     name: string;
 }
-// DOTENV_MARKER
-export declare const DOTENV_MARKER = "MARMEON_NODE_ENV_FROM_DOTENV";
-// NODE_ENVIRONMENTS
-export declare const NODE_ENVIRONMENTS: readonly ['development', 'test', 'production'];
 // NodeEnvironment
 export interface NodeEnvironment {
     readonly NODE_ENV?: string | undefined;
     readonly APP_ENV?: string | undefined;
-    readonly [DOTENV_MARKER]?: string | undefined;
 }
 // NodeEnvironmentName
-export type NodeEnvironmentName = (typeof NODE_ENVIRONMENTS)[number];
-// ResolvedEnvironment
-export interface ResolvedEnvironment {
-    readonly name: string | undefined;
-    readonly source: 'process' | '.env' | 'fallback' | 'unset';
-    readonly warnings: readonly string[];
-}
-// buildEnvironment
-export declare function buildEnvironment(env?: Record<string, string | undefined>): {
-    readonly notes: readonly string[];
-    readonly warnings: readonly string[];
-};
+export type NodeEnvironmentName = 'development' | 'test' | 'production';
 // environment
 export declare const environment: {
     readonly name: (env?: NodeEnvironment) => string | undefined;
@@ -1252,11 +1225,6 @@ export declare const environment: {
     readonly app: (env?: NodeEnvironment) => string;
     readonly describe: (env?: NodeEnvironment, app?: string) => string;
 };
-// resolveEnvironment
-export declare function resolveEnvironment(root: string, { fallback, env }?: {
-    fallback?: string;
-    env?: Record<string, string | undefined>;
-}): ResolvedEnvironment;
 ```
 
 ## `@marmeon/core/register`

@@ -53,7 +53,8 @@ describe('environment', () => {
     expect(environmentChecks.problem({ NODE_ENV: 'sk_live_0123456789abcdef0123456789abcdef0123' })).toMatch(/^NODE_ENV is not an environment Node knows — set NODE_ENV=production, and name the environment in APP_ENV\./);
     expect(environmentChecks.problem({ NODE_ENV: 'stag ing' })).not.toContain('stag ing');
     // From .env: said so.
-    expect(environmentChecks.problem({ NODE_ENV: 'staging', [DOTENV_MARKER]: 'staging' })).toMatch(/^NODE_ENV=staging \(in \.env\) is not an environment Node knows/);
+    const fromFile: Record<string, string> = { NODE_ENV: 'staging', [DOTENV_MARKER]: 'staging' };
+    expect(environmentChecks.problem(fromFile)).toMatch(/^NODE_ENV=staging \(in \.env\) is not an environment Node knows/);
     // The questions themselves stay fail-closed for a value no check stopped: protected, never development.
     expect(environment.isProtected({ NODE_ENV: 'staging' })).toBe(true);
     expect(environment.isDevelopment({ NODE_ENV: 'Development' })).toBe(false);
