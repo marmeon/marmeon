@@ -8,7 +8,8 @@ import type { CheckKey } from './index.ts';
 // @ts-expect-error — `KeyOf` is not exported by the browser-safe core either
 import type { KeyOf as CoreKeyOf } from './messages.ts';
 import type { Locales } from './index.ts';
-import type { MessageKeyOf, MessageAt, Messages, MessageParamsOf, TranslateArgs } from './types.ts';
+import type { FrameworkTexts } from './messages.ts';
+import type { MessageKeyOf, MessageAt, MessageOverrides, Messages, MessageParamsOf, TranslateArgs } from './types.ts';
 
 const en = {
   login: { title: 'Sign in', failed: 'These credentials do not match our records.' },
@@ -81,6 +82,34 @@ export function translations() {
   } satisfies Messages<typeof en>;
 
   return [de, missing, renamed, extra];
+}
+
+export function frameworkOverrides() {
+  // Some keys, nested, each text free of the framework's words.
+  const reworded = { status: { '404': 'Nothing here' }, validation: { max: { string: 'Too long: {attribute} ({max}).' } } } satisfies MessageOverrides<FrameworkTexts>;
+  const empty = {} satisfies MessageOverrides<FrameworkTexts>;
+  const wrong = {
+    // @ts-expect-error — a key the framework's texts do not have
+    surplus: 'x',
+  } satisfies MessageOverrides<FrameworkTexts>;
+  const nested = {
+    validation: {
+      // @ts-expect-error — nor does a group of them
+      foo: 'x',
+    },
+  } satisfies MessageOverrides<FrameworkTexts>;
+  const lost = {
+    validation: {
+      max: {
+        // @ts-expect-error — the text must keep the placeholders of the framework's: {attribute} and {max}
+        string: 'Too long.',
+      },
+    },
+  } satisfies MessageOverrides<FrameworkTexts>;
+  // A complete translation is a `Messages<FrameworkTexts>`; a partial one is not.
+  // @ts-expect-error — keys are missing
+  const partial = { status: { '404': 'Introuvable' } } satisfies Messages<FrameworkTexts>;
+  return [reworded, empty, wrong, nested, lost, partial];
 }
 
 export type Unused = [KeyOf<string>, ParamsOf<string>, CheckKey<'a', {}, 'b'>, CoreKeyOf<string>];

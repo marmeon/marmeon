@@ -122,6 +122,19 @@ export type Messages<T> = {
   readonly [K in keyof T]: T[K] extends string ? (string extends T[K] ? string : Keeps<keyof MessageParamsOf<T[K]> & string>) : Messages<T[K]>;
 };
 
+/**
+ * What an app's override of a source file may be — some of its keys, each text keeping the source's placeholders. Unlike
+ * {@link Messages}, keys may be left out; a key the source does not have is an error:
+ *
+ * ```ts
+ * import type { FrameworkTexts, MessageOverrides } from '@marmeon/i18n/messages';
+ * export default { status: { '404': 'Nothing here' } } satisfies MessageOverrides<FrameworkTexts>;
+ * ```
+ */
+export type MessageOverrides<T> = {
+  readonly [K in keyof T]?: T[K] extends string ? (string extends T[K] ? string : Keeps<keyof MessageParamsOf<T[K]> & string>) : MessageOverrides<T[K]>;
+};
+
 /** `K` when it is a key of tree `T`; otherwise a message naming the namespace, with the keys next to it. */
 export type CheckMessageKey<K extends string, T, N extends string> = K extends MessageKeyOf<T>
   ? K

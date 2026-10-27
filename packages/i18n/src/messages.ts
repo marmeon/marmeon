@@ -3,6 +3,7 @@
  * files. No server code: UI adapters (`useTranslation` in @marmeon/react) build on this.
  */
 import type { Formatter } from './catalog.ts';
+import type frameworkEn from './lang/texts.ts';
 import type { CheckMessageKey, MessageKeyOf, MessageAt, MessageTree, Namespace, TranslateArgs, Translations } from './types.ts';
 
 export { Catalog, MessageError } from './catalog.ts';
@@ -10,7 +11,14 @@ export type { Formatter } from './catalog.ts';
 export { MessageSyntaxError } from './format.ts';
 export { createMessageLoader } from './loader.ts';
 export type { LangFiles, MessageLoader } from './loader.ts';
-export type { CheckMessageKey, MessageAt, MessageKeyOf, MessageParamsOf, Messages, MessageTree, Namespace, TranslateArgs, Translations } from './types.ts';
+export type { CheckMessageKey, MessageAt, MessageKeyOf, MessageOverrides, MessageParamsOf, Messages, MessageTree, Namespace, TranslateArgs, Translations } from './types.ts';
+
+/**
+ * The framework's own texts (namespace `marmeon`) in English — what `lang/marmeon/<locale>.ts` of an app may reword
+ * (`satisfies MessageOverrides<FrameworkTexts>`) or translate in full (`satisfies Messages<FrameworkTexts>`).
+ * See `docs/localization.md#the-frameworks-texts`.
+ */
+export type FrameworkTexts = typeof frameworkEn;
 
 /** The messages of namespace `N` — its source file's type, once declared in `Translations`. */
 export type MessagesOf<N extends string> = N extends keyof Translations ? Translations[N] : MessageTree;

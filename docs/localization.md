@@ -66,9 +66,32 @@ export default {
 placeholders. The app loads the files of every locale in `APP_LOCALES`, or of every locale it has files for when the variable is
 not set. Files of other locales are skipped.
 
+### The framework's texts
+
 The framework's texts, under the namespace `marmeon`, come in English and German: the status pages, the CSRF and rate-limit
 errors, and the message of every validation rule. Each package also keeps its English text in its code, for apps without this
 package.
+
+`lang/marmeon/<locale>.ts` rewords them or adds a language. Name only the texts to change; every other text stays the framework's:
+
+```ts
+// lang/marmeon/en.ts
+import type { FrameworkTexts, MessageOverrides } from '@marmeon/i18n/messages';
+
+export default {
+  status: { '404': 'Nothing here' },
+} satisfies MessageOverrides<FrameworkTexts>;
+```
+
+A language the framework does not ship (`lang/marmeon/fr.ts`) holds the texts of its own and falls back like any message, to `APP_FALLBACK_LOCALE` (English by default), for the rest. Like
+any language file it counts as supported without `APP_LOCALES`, and is skipped when `APP_LOCALES` leaves it out. To translate every
+text, write `satisfies Messages<FrameworkTexts>` instead; it asks for all of the keys.
+
+The files are checked when the app starts. A key the framework's texts do not have, or a text that leaves out a placeholder of the
+framework's (`{max}` in `validation.max.number`), stops the start with `S6`; a syntax error is `S5`. A text may reword and reorder
+everything around the placeholders, but not leave one out. Placeholders are filled as in the framework's own texts,
+and the result is plain text: render it as text, never as HTML. Only `lang/marmeon/` holds these files; a module named `marmeon`
+is refused.
 
 ## Messages
 
