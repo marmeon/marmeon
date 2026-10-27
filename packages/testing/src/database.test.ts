@@ -1,8 +1,9 @@
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { defineModule, type ApplicationDefinition } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider, defineFactory, type Generated, type SeedContext } from '@marmeon/database';
+import { Connections, DatabaseServiceProvider, defineFactory, sql, type Generated, type SeedContext } from '@marmeon/database';
 import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import * as os from 'node:os';
 import { join } from 'node:path';
 import { threadId } from 'node:worker_threads';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -181,6 +182,11 @@ describe('a test app that is ready after its test ended (a hook that timed out)'
   });
 });
 
+vi.mock('node:os', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:os')>();
+  return { ...original, hostname: vi.fn(original.hostname) };
+});
+
 describe('where the worker databases live', () => {
   const env = { APP_KEY: 'unused' };
 
@@ -223,11 +229,11 @@ describe('where the worker databases live', () => {
 
   const pgsql = { DB_DRIVER: 'pgsql', DB_URL: 'postgres://u:p@localhost:5432/shop' };
 
-  it('names a Postgres database as before: the configured one, with _test_, the root’s hash and the worker', async () => {
+  it('names a Postgres database after the configured one, with _test_, the root’s hash and the worker process', async () => {
     vi.stubEnv('MARMEON_TEST_DATABASE_TAG', '');
     try {
       const worker = await workerDatabase('/some/app', { ...env, ...pgsql });
-      expect(new URL(worker.key).pathname).toMatch(/^\/shop_test_[0-9a-z]+_\d+$/);
+      expect(new URL(worker.key).pathname).toMatch(new RegExp(`^/shop_test_[0-9a-z]+_${process.pid}_${threadId}$`));
       expect(worker.adminUrl).toBe('postgres://u:p@localhost:5432/shop');
     } finally {
       vi.unstubAllEnvs();
@@ -238,9 +244,101 @@ describe('where the worker databases live', () => {
     vi.stubEnv('MARMEON_TEST_DATABASE_TAG', 'abcd1234');
     try {
       const worker = await workerDatabase('/some/app', { ...env, ...pgsql });
-      expect(new URL(worker.key).pathname).toMatch(/^\/shop_test_abcd1234_[0-9a-z]+_\d+$/);
+      expect(new URL(worker.key).pathname).toMatch(new RegExp(`^/shop_test_abcd1234_[0-9a-z]+_${process.pid}_${threadId}$`));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('names the databases of two processes that share a pool slot differently', async () => {
+    vi.stubEnv('VITEST_POOL_ID', '1');
+    const original = process.pid;
+    try {
+      const first = await workerDatabase('/some/app', { ...env, ...pgsql });
+      Object.defineProperty(process, 'pid', { value: original + 1, configurable: true });
+      const second = await workerDatabase('/some/app', { ...env, ...pgsql });
+      expect(second.key).not.toBe(first.key);
+    } finally {
+      Object.defineProperty(process, 'pid', { value: original, configurable: true });
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('names the databases of two hosts that share a root and a process id differently', async () => {
+    const real = os.hostname();
+    try {
+      vi.mocked(os.hostname).mockReturnValue('host-a');
+      const first = await workerDatabase('/app', { ...env, ...pgsql });
+      vi.mocked(os.hostname).mockReturnValue('host-b');
+      const second = await workerDatabase('/app', { ...env, ...pgsql });
+      expect(second.key).not.toBe(first.key);
+    } finally {
+      vi.mocked(os.hostname).mockReturnValue(real);
+    }
+  });
+
+  it('keeps the name within the 63 bytes Postgres allows, whatever the database is called and however long the ids', async () => {
+    const original = process.pid;
+    Object.defineProperty(process, 'pid', { value: 4194304, configurable: true });
+    try {
+      const worker = await workerDatabase('/some/app', { ...env, DB_DRIVER: 'pgsql', DB_URL: `postgres://u:p@localhost:5432/${'long'.repeat(30)}` });
+      const name = new URL(worker.key).pathname.slice(1);
+      expect(Buffer.byteLength(name)).toBeLessThanOrEqual(63);
+      expect(name).toMatch(new RegExp(`_4194304_${threadId}$`));
+    } finally {
+      Object.defineProperty(process, 'pid', { value: original, configurable: true });
+    }
+  });
+
+  it('refuses a name that cannot fit rather than let Postgres cut it', async () => {
+    vi.stubEnv('MARMEON_TEST_DATABASE_TAG', 'x'.repeat(60));
+    try {
+      await expect(workerDatabase('/some/app', { ...env, ...pgsql })).rejects.toThrow('longer than the 63 bytes');
     } finally {
       vi.unstubAllEnvs();
     }
   });
 });
+
+describe.skipIf(!PGSQL_URL)('stale worker databases on Postgres', () => {
+  it('drops those of this root whose process is gone, and keeps live ones, other roots’ and the main database — in an app whose database name has a dot', async () => {
+    const root = workspaceTempDir('marmeon-testing-db-');
+    const main = new URL(PGSQL_URL!);
+    const env = { APP_KEY: generateKey(), DB_DRIVER: 'pgsql', DB_URL: PGSQL_URL };
+    const dotted = new URL(PGSQL_URL!);
+    dotted.pathname = '/marmeon.dot';
+    const dottedEnv = { ...env, DB_URL: dotted.href };
+    await expectSweep(root, env, main.pathname.slice(1));
+    await expectSweep(workspaceTempDir('marmeon-testing-db-'), dottedEnv, 'marmeon.dot');
+  });
+});
+
+async function expectSweep(root: string, env: Record<string, string | undefined>, mainName: string): Promise<void> {
+  const adminUrl = new URL(PGSQL_URL!).href;
+  {
+    const own = new URL((await workerDatabase(root, env)).key).pathname.slice(1);
+    const prefix = own.replace(/\d+_\d+$/, '');
+    const other = new URL((await workerDatabase(`${root}-other`, env)).key).pathname.slice(1).replace(/\d+_\d+$/, '');
+    const dead = `${prefix}4194305_1`;
+    const live = `${prefix}${process.ppid}_1`;
+    const foreign = `${other}4194305_1`;
+    const lookalike = `${prefix}4194305_1_x`;
+    // The dot is a regex wildcard: this name matches an unescaped pattern and must stay.
+    const wildcard = prefix.replace('.', 'X') + '4194305_1';
+    const admin = new Connections({ connections: { default: { driver: 'pgsql', url: adminUrl, poolMax: 1 } }, root: '/', logger: { debug() {}, info() {}, warn() {}, error() {}, child() { return this; } } });
+    const names = [dead, live, foreign, lookalike, ...(wildcard === dead ? [] : [wildcard]), ...(mainName === new URL(PGSQL_URL!).pathname.slice(1) ? [] : [mainName])];
+    try {
+      for (const name of names) await sql`drop database if exists ${sql.id(name)} with (force)`.execute(admin.get());
+      for (const name of names) await sql`create database ${sql.id(name)}`.execute(admin.get());
+      const app = await createTestApp({ root, discover: false, providers: [EncryptionServiceProvider, DatabaseServiceProvider] }, { env, database: 'refresh' });
+      await app.close();
+      const { rows } = await sql<{ datname: string }>`select datname from pg_database`.execute(admin.get());
+      const left = rows.map((row) => row.datname);
+      expect(left).not.toContain(dead);
+      expect(left).toEqual(expect.arrayContaining([live, foreign, lookalike, own, mainName, ...(wildcard === dead ? [] : [wildcard])]));
+    } finally {
+      for (const name of [...names, own]) await sql`drop database if exists ${sql.id(name)} with (force)`.execute(admin.get());
+      await admin.destroy();
+    }
+  }
+}

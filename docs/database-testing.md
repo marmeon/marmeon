@@ -29,8 +29,9 @@ Each test worker of Vitest gets a database of its own, so tests that run in para
 
 - **SQLite:** a file in the app's `storage/framework/testing/`, one per worker process. The next worker that starts in the app deletes the files of finished ones, so a run leaves at most about one
   file per worker. The folder is created when it is missing.
-- **Postgres:** a database next to the configured one, named `<database>_test_<app>_<worker>`. The test run drops and creates it,
-  so the database's user needs the right to create databases.
+- **Postgres:** a database next to the configured one, named `<database>_test_<app>_<process>_<thread>`. The test run drops and creates it,
+  and drops the ones of this app whose worker process is gone, so the database's user needs the right to create and drop databases. The name includes a hash of the host name and the app's directory, so runs on different hosts never drop each other's databases.
+  Databases left by an earlier naming (`<database>_test_…` ending in a single number) are not removed automatically; drop them by hand.
 
 Each test file starts with a fresh database: before its first refreshed test, the file's worker drops its database, creates it
 and runs the migrations. Then each test app pins one connection of the `default` database connection and runs every query on it,
