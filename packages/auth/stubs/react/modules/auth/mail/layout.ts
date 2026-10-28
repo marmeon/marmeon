@@ -10,7 +10,7 @@ export function layout(t: Translator, { preview, body }: { preview: string; body
   <mj-head>
     <mj-preview>${preview}</mj-preview>
     <mj-attributes>
-      <mj-all font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" />
+      <mj-all font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" />
       <mj-text font-size="15px" line-height="1.5" color="#1f2933" />
       <mj-button background-color="#1f2933" color="#ffffff" border-radius="6px" font-size="15px" />
     </mj-attributes>

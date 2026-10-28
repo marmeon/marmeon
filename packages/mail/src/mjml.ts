@@ -41,7 +41,12 @@ export async function fromMjml(source: Mjml, options: { text?: string } = {}): P
   const compile = await (compiler ??= loadMjml());
   let result: Awaited<ReturnType<Compile>>;
   try {
-    result = await compile(Html.prototype.toString.call(source), { validationLevel: 'strict', keepComments: false });
+    result = await compile(Html.prototype.toString.call(source), {
+      validationLevel: 'strict',
+      keepComments: false,
+      // An empty list turns off mjml's built-in one, which imports a Google font for a known family name; only an `<mj-font>` of the app loads a font. Each call needs a new object: mjml writes every `<mj-font>` into it, so a shared one would carry one mail's font into the next.
+      fonts: {},
+    });
   } catch (error) {
     throw new MjmlError(withCode('Q7', `The MJML template is invalid: ${error instanceof Error ? error.message.trim() : String(error)}`), { cause: error });
   }
