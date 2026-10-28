@@ -646,6 +646,7 @@ describe('password reset', () => {
     app.mail.assertQueuedCount(ResetPasswordMail, 1).assertQueued(ResetPasswordMail, (_mail, message, options) => message.to[0]!.address === 'ada@example.com' && options.queue === 'mail');
     const [mail] = app.mail.queued(ResetPasswordMail);
     expect(mail!.message.html).toContain('<!--[if mso'); // MJML: built for mail clients
+    expect(mail!.message.html).not.toContain('fonts.googleapis.com');
     expect(mail!.message.text).toContain('Hello Ada,');
 
     const cookie = await open();

@@ -114,6 +114,10 @@ when the mail is composed: a line break there could add recipients.
 
 `envelope()`, `content()` and `attachments()` may each be `async`.
 
+Mails load no web font by themselves, even when a `font-family` names one such as Roboto: opening a mail would call the font's host. Add an `<mj-font name="…" href="…" />` to the `<mj-head>` to use one, with a source you may load; the starter kit's frame uses system fonts.
+
+Some MJML components load images from a host of someone else when you give them none: `mj-social-element` without `src` (icons from Mailjet), `mj-accordion` without `icon-wrapped-url` and `icon-unwrapped-url`, and `mj-carousel` without `left-icon` and `right-icon` (Imgur). Set these attributes to images you serve.
+
 MJML is a library of its own. A new app has it, and an app without it gets `pnpm add mjml@^5` in the error of its first MJML mail.
 
 The starter kit's mails share a frame: a function that returns `` mjml`…` `` and takes the translator and the body. Each mail
