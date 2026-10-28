@@ -17,7 +17,7 @@ const HISTORY = [await loadHistoryFallback()];
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const DEFAULTS = { q: '', sort: 'name' };
-const routes: RouteManifest = { people: { method: 'get', path: '/people' }, find: { method: 'get', path: '/people/find' }, show: { method: 'get', path: '/users/:user' } };
+const routes: RouteManifest = { people: { method: 'get', path: '/people' }, find: { method: 'get', path: '/people/find' }, show: { method: 'get', path: '/users/:user' }, home: { method: 'get', path: '/:locale/people', localized: true } };
 
 function People({ people }: { people: string[] }) {
   const [query, setQuery] = useQueryState('people', { only: ['people'], debounceMs: 30, history: 'replace' });
@@ -86,12 +86,29 @@ function FindAll({ people }: { people: string[] }) {
   );
 }
 
+/** The same list on a page whose route has a parameter, and on one whose route is localized. */
+function SearchList({ name }: { name: string }) {
+  const [query, setQuery] = useQueryState(name, { only: ['people'], debounceMs: 30, history: 'replace' });
+  return (
+    <main>
+      <input data-testid="q" value={query.q as string} onChange={(event) => setQuery({ q: event.target.value })} />
+      <ul data-testid="list">{(query.q as string) || 'all'}</ul>
+    </main>
+  );
+}
+function UserPeople() {
+  return <SearchList name="show" />;
+}
+function LocalizedPeople() {
+  return <SearchList name="home" />;
+}
+
 function Misplaced() {
   useQueryState('people');
   return null;
 }
 
-const pages: Record<string, PageComponent> = { People, Early, Misplaced, Directory, Find, FindAll };
+const pages: Record<string, PageComponent> = { UserPeople, LocalizedPeople, People, Early, Misplaced, Directory, Find, FindAll };
 const resolve = resolveModulePages(Object.fromEntries(Object.entries(pages).map(([name, page]) => [`/modules/app/views/${name}.tsx`, async () => ({ default: page })])));
 const NAMES = ['Ada', 'Alan', 'Grace'];
 const peoplePage = (url: string): PageObject => {
@@ -100,10 +117,11 @@ const peoplePage = (url: string): PageObject => {
   const sort = search.get('sort') === '-name' ? '-name' : 'name';
   const people = NAMES.filter((name) => name.toLowerCase().includes(q.toLowerCase()));
   if (sort === '-name') people.reverse();
-  return { component: 'app/People', url, props: { people }, version: null, query: { ...(q ? { q } : {}), ...(sort !== 'name' ? { sort } : {}) }, queryDefaults: DEFAULTS };
+  return { component: listView, url, props: { people }, version: null, query: { ...(q ? { q } : {}), ...(sort !== 'name' ? { sort } : {}) }, queryDefaults: DEFAULTS };
 };
 
 let layerView = 'app/Find';
+let listView = 'app/People';
 const component = () => layerView;
 let gate: Promise<void> | undefined;
 let requests: { url: string; headers: Record<string, string> }[];
@@ -117,6 +135,7 @@ beforeEach(() => {
   requests = [];
   gate = undefined;
   layerView = 'app/Find';
+  listView = 'app/People';
   vi.spyOn(window, 'fetch').mockImplementation(async (input, init = {}) => {
     requests.push({ url: String(input).replace(window.location.origin, ''), headers: { ...(init.headers as Record<string, string>) } });
     if (new URL(String(input).replace(window.location.origin, ''), location.href).pathname === '/people/find') {
@@ -203,6 +222,23 @@ describe('useQueryState', () => {
     vi.spyOn(console, 'error').mockImplementation((...args) => void errors.push(args));
     await mount({ component: 'app/Misplaced', url: '/users/1', props: {}, version: null });
     expect(JSON.stringify(errors.map(String))).toContain('is used on /users/1, a page of another route');
+  });
+
+  it('works on the page of a route with a parameter: the visit goes to the page’s own URL', async () => {
+    history.replaceState(null, '', '/users/7');
+    listView = 'app/UserPeople';
+    await mount(peoplePage('/users/7'));
+    typeNow('q', 'al');
+    await until(() => expect(requests.map((r) => r.url)).toEqual(['/users/7?q=al']));
+    expect(location.pathname + location.search).toBe('/users/7?q=al');
+  });
+
+  it('works on the page of a localized route: the visit keeps the locale of the URL', async () => {
+    history.replaceState(null, '', '/de/people');
+    listView = 'app/LocalizedPeople';
+    await mount({ ...peoplePage('/de/people'), locale: 'de' });
+    typeNow('q', 'al');
+    await until(() => expect(requests.map((r) => r.url)).toEqual(['/de/people?q=al']));
   });
 
   it('inside a layer it is the layer’s query: typing visits the layer in place, the page beneath stays, one Back closes it', async () => {

@@ -1,5 +1,5 @@
-import { assertQueryPage, type QueryState } from '@marmeon/http/client/adapter';
-import { resolveRoute, type QueryStateOptions, type QueryUpdate } from '@marmeon/http/client';
+import { assertQueryPage, routeEntry, type QueryState } from '@marmeon/http/client/adapter';
+import type { QueryStateOptions, QueryUpdate } from '@marmeon/http/client';
 import { pageQueryOf } from '@marmeon/http/client/adapter';
 import { queryState } from '@marmeon/http/client/adapter';
 import type { BrowserRouteNameInput, CheckBrowserRouteName, ControllerOf, Routes, RouteQueryOf } from '@marmeon/http/page';
@@ -45,8 +45,8 @@ export function useQueryState<const N extends BrowserRouteNameInput>(
   const router = useRouterContext();
   const manifest = useContext(RoutesContext);
   const { page } = router;
-  resolveRoute(manifest, name); // a name the manifest lacks throws the usual message
-  assertQueryPage(name, manifest![name]!.path, page);
+  // Only the route's pattern is needed: the URL to visit is the page's own, so parameters and locale are never filled in.
+  assertQueryPage(name, routeEntry(manifest, name).path, page);
 
   const latest = useRef(options);
   latest.current = options;

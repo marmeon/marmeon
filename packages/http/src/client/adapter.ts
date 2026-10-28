@@ -10,7 +10,7 @@ export { createPoll } from './poll.ts';
 export { progressBar, PROGRESS_ATTRIBUTE, showProgress } from './progress.ts';
 export { accepted } from './confirm.ts';
 export { isDevelopment, hasServerMarkup, readAppOrigin, readInitialPage, rootElement } from './document.ts';
-export { resolveRoute, type ResolveRouteOptions } from './routes.ts';
+export { resolveRoute, routeEntry, type ResolveRouteOptions } from './routes.ts';
 export { pageQueryOf, linkQuery, queryUrl } from './query.ts';
 export { isSensitiveRememberField, loadSensitiveFields, Remembered } from './remember.ts';
 export type { Confirm, ConfirmAnswer, ConfirmOptions, ConfirmRequest, ConfirmHandler, NativeDialogs } from './confirm.ts';
