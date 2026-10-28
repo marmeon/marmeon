@@ -66,6 +66,10 @@ export declare function notificationsChannel(recipient: {
 ### Augments
 
 ```ts
+// @marmeon/core.ModuleDefinition
+interface ModuleDefinition {
+    readonly liveAuthorizers?: readonly LiveAuthorizerClass[];
+}
 // @marmeon/notifications.NotificationChannelMap
 interface NotificationChannelMap {
     live: {};

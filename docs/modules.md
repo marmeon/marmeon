@@ -108,6 +108,7 @@ its own:
 | `exposes` | The tables other modules may read and join. See [repositories](queries.md#module-boundaries). | `@marmeon/database` |
 | `jobs` | Its [queued jobs](queues.md). A worker runs only registered jobs. | `@marmeon/queue` |
 | `notifications`, `recipients` | Its [notifications](notifications.md) and who may receive them. | `@marmeon/notifications` |
+| `liveAuthorizers` | Who may follow its [live channels](realtime.md#who-may-follow-a-channel). | `@marmeon/live` |
 | `schedule` | Its [scheduled work](scheduling.md). | `@marmeon/scheduler` |
 | `csrfExcept` | Paths that skip the [CSRF check](csrf.md#excluding-paths). | `@marmeon/session` |
 

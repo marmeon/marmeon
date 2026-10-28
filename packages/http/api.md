@@ -282,6 +282,12 @@ export interface LiveAudience {
     }>;
 }
 export declare const LiveAudience: import("@marmeon/core").Token<LiveAudience>;
+// LiveAuthorizer
+export interface LiveAuthorizer {
+    allows(channel: string, ctx: HttpContext): boolean | Promise<boolean>;
+}
+// LiveAuthorizerClass
+export type LiveAuthorizerClass = new (...args: any[]) => LiveAuthorizer;
 // LiveHint
 export interface LiveHint {
     readonly channel: string;

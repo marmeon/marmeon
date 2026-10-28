@@ -1,4 +1,4 @@
-import type { HttpContext, LiveAudience } from '@marmeon/http';
+import type { HttpContext, LiveAudience, LiveAuthorizer } from '@marmeon/http';
 import { isLiveChannel, LIVE_VERSION } from '@marmeon/http/internal';
 import type { Logger, Redactor } from '@marmeon/core';
 import { CONNECTION_ID } from './broadcaster.ts';
@@ -16,6 +16,16 @@ const unversioned = () => new Response(null, { status: 204, headers: { 'cache-co
 /** When a failed sign-in check was last logged. Per process, not per controller: the controller is built per request, and every reconnecting tab would log. */
 let lastCheckLog = 0;
 
+/** The same for a failed channel authorization, on a mark of its own. */
+let lastAuthorizeLog = 0;
+
+/** The answer to a check that could not be made: no stream — the client tries again later, as for any 503. */
+function unavailable(): Response {
+  const response = refuse(503, 'Try again later.');
+  response.headers.set('retry-after', '5');
+  return response;
+}
+
 /** The answer to a stream whose sign-in is over: only `end` — the client stops and does not reconnect. */
 const ended = () => new Response(END_FRAME, { status: 200, headers: STREAM_HEADERS });
 
@@ -26,7 +36,8 @@ const ended = () => new Response(END_FRAME, { status: 200, headers: STREAM_HEADE
  * saves the session or sets a cookie): the session is read only to know whose stream it is. One invalid token — a channel
  * rewritten, a token of another session or of one that ended — and there is no stream (403). The hub counts what is open:
  * 429 beyond the session's streams, 503 beyond the process's or while the server closes. With a {@link LiveAudience} bound
- * (`@marmeon/auth`) the sign-in is checked as well: one that ended gets `end` only, never a stream.
+ * (`@marmeon/auth`) the sign-in is checked as well: one that ended gets `end` only, never a stream. With {@link LiveAuthorizer}s
+ * listed by the modules, every channel is asked at this connection: the ones not every authorizer allows are left out, none left is a 403.
  */
 export class LiveStreamController {
   readonly #hub: LiveHub;
@@ -36,8 +47,9 @@ export class LiveStreamController {
   readonly #audience: LiveAudience | undefined;
   readonly #logger: Logger | undefined;
   readonly #redactor: Redactor;
+  readonly #authorizers: () => readonly LiveAuthorizer[];
 
-  constructor(hub: LiveHub, tokens: LiveTokens, maxChannels: number, scope: () => string | undefined, audience: LiveAudience | undefined, logger: Logger | undefined, redactor: Redactor) {
+  constructor(hub: LiveHub, tokens: LiveTokens, maxChannels: number, scope: () => string | undefined, audience: LiveAudience | undefined, logger: Logger | undefined, redactor: Redactor, authorizers: () => readonly LiveAuthorizer[] = () => []) {
     this.#hub = hub;
     this.#tokens = tokens;
     this.#maxChannels = maxChannels;
@@ -45,6 +57,7 @@ export class LiveStreamController {
     this.#audience = audience;
     this.#logger = logger;
     this.#redactor = redactor;
+    this.#authorizers = authorizers;
   }
 
   async handle(ctx: HttpContext): Promise<Response> {
@@ -82,12 +95,35 @@ export class LiveStreamController {
           lastCheckLog = Date.now();
           this.#logger?.error('A live stream could not check its sign-in; refused with 503', { exception: this.#redactor.text(String(error)) });
         }
-        const response = refuse(503, 'Try again later.');
-        response.headers.set('retry-after', '5');
-        return response;
+        return unavailable();
       }
     }
+    // After the tokens and the sign-in; fail-closed: only `true` keeps a channel, a throw is no stream. In order, one at a time.
+    let followed = [...channels];
+    let asked = false;
+    {
+      try {
+        // Built here, not with the controller: a class that cannot be built is a 503 of this check, and a forged request never builds one.
+        const authorizers = this.#authorizers();
+        asked = authorizers.length > 0;
+        const allowed: string[] = [];
+        for (const channel of followed) {
+          let keep = true;
+          // Every authorizer, in order; the first to say anything but `true` ends the question.
+          for (const authorizer of authorizers) if (keep && (await authorizer.allows(channel, ctx)) !== true) keep = false;
+          if (keep) allowed.push(channel);
+        }
+        followed = allowed;
+      } catch (error) {
+        if (Date.now() - lastAuthorizeLog >= 60_000) {
+          lastAuthorizeLog = Date.now();
+          this.#logger?.error('A live stream could not authorize its channels; refused with 503', { exception: this.#redactor.text(String(error)) });
+        }
+        return unavailable();
+      }
+      if (asked && followed.length === 0) return refuse(403, 'Not allowed to follow these channels.');
+    }
     // The hub counts the streams of the process and of the session itself (503, 429) — atomically, in `open()`.
-    return this.#hub.open({ channels: [...channels], scope, accounts, checkedAt, connection, lastEventId: ctx.request.headers.get('last-event-id'), signal: ctx.request.signal });
+    return this.#hub.open({ channels: followed, scope, accounts, checkedAt, connection, lastEventId: ctx.request.headers.get('last-event-id'), signal: ctx.request.signal });
   }
 }

@@ -80,6 +80,18 @@ const routes = openRoutes((Route) => {
   Route.post('/sign-out', SignOutController);
 });
 
+/** Two modules' authorizers: one turns the shared channel away, the other the board's. Each answers `true` for the rest. */
+class DenyCounters {
+  allows(channel: string) {
+    return channel !== 'counters.everyone';
+  }
+}
+class DenyBoardSeven {
+  allows(channel: string) {
+    return channel !== 'board.7';
+  }
+}
+
 const env = { APP_KEY: generateKey(), SESSION_DRIVER: 'memory', LIVE_HEARTBEAT_SECONDS: '1' };
 
 const definition: ApplicationDefinition = {
@@ -89,6 +101,45 @@ const definition: ApplicationDefinition = {
   middleware: { web: [ShareCounter] },
   modules: [defineModule({ name: 'board', routes })],
 };
+
+describe('live authorizers of the modules — asked at every connection of the stream', () => {
+  const withAuthorizers = (...modules: ReturnType<typeof defineModule>[]): ApplicationDefinition => ({ ...definition, modules: [...(definition.modules ?? []), ...modules] });
+
+  it('an authorizer of a module leaves its channel out of the stream — the page still signs it', async () => {
+    const app = await createTestApp(withAuthorizers(defineModule({ name: 'shared', liveAuthorizers: [DenyCounters] })), { env });
+    const ada = app.withSession({ who: 'ada' });
+    expect((await ada.navigating().get('/boards/7')).page()!.live!.map((each) => each.channel)).toEqual(['counters.everyone', 'board.7']);
+    const stream = await ada.live('/boards/7');
+    expect(await stream.hello()).toEqual({ seq: { 'board.7': 0 } });
+  });
+
+  it('every module is asked and a channel stays only if all allow it — none left is a 403', async () => {
+    const app = await createTestApp(withAuthorizers(defineModule({ name: 'shared', liveAuthorizers: [DenyCounters] }), defineModule({ name: 'boards', liveAuthorizers: [DenyBoardSeven] })), { env });
+    const stream = await app.withSession({ who: 'ada' }).live('/boards/7');
+    expect(stream.status).toBe(403);
+  });
+
+  it('an authorizer that cannot be built is a 503 with Retry-After, not a 500 — and a forged token never builds it', async () => {
+    const Missing = class {
+      constructor(_missing: { never: true }) {}
+      allows() {
+        return true;
+      }
+    };
+    const app = await createTestApp(withAuthorizers(defineModule({ name: 'broken', liveAuthorizers: [Missing as never] })), { env });
+    const ada = app.withSession({ who: 'ada' });
+    const channels = (await ada.navigating().get('/boards/7')).page()!.live!;
+    const stream = await ada.live(channels);
+    expect(stream.status).toBe(503);
+    const forged = await ada.live(channels.map((each) => ({ ...each, token: 'x'.repeat(43) })));
+    expect(forged.status).toBe(403);
+  });
+
+  it('without any, the stream follows every signed channel', async () => {
+    const app = await createTestApp(definition, { env });
+    expect(await (await app.withSession({ who: 'ada' }).live('/boards/7')).hello()).toEqual({ seq: { 'counters.everyone': 0, 'board.7': 0 } });
+  });
+});
 
 describe('live props through the app — the page declares, the stream hints', () => {
   it('signs what a page, a layer and an island follow into their objects — a page also what every page shares', async () => {
