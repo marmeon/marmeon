@@ -41,7 +41,7 @@
     "@marmeon/server": "workspace:*",
     "@marmeon/validation": "workspace:*",
     "github-slugger": "2.0.0",
-    "markdown-it": "15.0.2",
+    "markdown-it": "15.0.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "shiki": "4.5.0"
@@ -55,7 +55,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "happy-dom": "^20.14.5",
+    "happy-dom": "^21.0.4",
     "oxlint": "^1.86.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
