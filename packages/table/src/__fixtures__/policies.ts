@@ -2,6 +2,14 @@ import type { AuthUser } from '@marmeon/auth';
 
 /** What the tests' members table asks: admins see e-mails and manage, they and exporters export; nobody deactivates themselves; Grace (id 3) is protected. */
 export class MemberPolicy {
+  viewAny(user: AuthUser) {
+    return user.admin === true;
+  }
+
+  viewEvent(user: AuthUser, event: { readonly id: number }) {
+    return user.id === event.id;
+  }
+
   viewEmails(user: AuthUser) {
     return user.admin === true;
   }

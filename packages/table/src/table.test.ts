@@ -365,6 +365,27 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
     });
   });
 
+  describe('the table\'s own authorize, a can() of a policy', () => {
+    const guarded = (application: TableTestApp, user: number, what: 'page' | 'action' | 'bulk' | 'export') =>
+      what === 'page'
+        ? application.request('/teams/1/guarded', { user })
+        : what === 'action'
+          ? application.request('/teams/1/_tables/guarded/actions/deactivate', { method: 'POST', user, json: { key: 4 } })
+          : what === 'bulk'
+            ? application.request('/teams/1/_tables/guarded/bulk/deactivate', { method: 'POST', user, json: { keys: [4] } })
+            : application.request('/teams/1/_tables/guarded/export/csv', { user });
+
+    for (const what of ['page', 'action', 'bulk', 'export'] as const) {
+      it(`refuses a user it denies on the ${what} (403, no handler ran) and lets one it allows through`, async () => {
+        const application = await app(driver);
+        expect((await guarded(application, ALAN, what)).status, `the ${what} ran for a user the table refuses`).toBe(403);
+        expect(application.recorder.deactivated, 'a handler ran').toEqual([]);
+        expect(application.recorder.batches, 'a handler ran').toEqual([]);
+        expect((await guarded(application, ADA, what)).status).toBe(200);
+      });
+    }
+  });
+
   describe('bulk actions (POST …/bulk/:action)', () => {
     const run = (application: TableTestApp, user: number | undefined, body: unknown) =>
       application.request('/teams/1/_tables/members/bulk/deactivate', { method: 'POST', user, json: body });
