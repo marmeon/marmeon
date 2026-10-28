@@ -5,7 +5,7 @@ import { EncryptionConfig, EncryptionServiceProvider, generateKey } from '@marme
 import { defineRoutes, Router } from '@marmeon/router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HttpServiceProvider } from './provider.ts';
-import { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
+import { signed, UrlSigner, ValidateSignature, withoutCsrfSignature } from './signed-urls.ts';
 
 const routes = defineRoutes((Route) => {
   Route.middleware(signed()).get('/email/verify/:id/:hash', (ctx) => ({ id: ctx.params.id })).name('verify');
@@ -229,5 +229,15 @@ describe('signed() middleware', () => {
     expect(await run(strict, expiring)).toBe(403);
     expect(await run(lenient, expiring)).toBe(403);
     expect(await run(lenient, forever)).toBe(200);
+  });
+});
+
+describe('signed({ withoutCsrf: true })', () => {
+  it('is marked for the CSRF check, with the policy on expiry it checks by; no other middleware is', () => {
+    expect(withoutCsrfSignature(signed({ withoutCsrf: true }))).toEqual({ forever: false });
+    expect(withoutCsrfSignature(signed({ withoutCsrf: true, forever: true }))).toEqual({ forever: true });
+    for (const layer of [signed(), signed({ forever: true }), ValidateSignature, class extends (signed({ withoutCsrf: true }) as unknown as new () => object) {}, { handle: () => undefined }]) {
+      expect(withoutCsrfSignature(layer)).toBeUndefined();
+    }
   });
 });

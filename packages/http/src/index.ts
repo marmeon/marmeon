@@ -52,7 +52,7 @@ export { contentSecurityPolicy, CookieDefaults, DEFAULT_CSP, NONCE } from './csp
 export type { ContentSecurityPolicyOptions, CspDirectives, CspSource } from './csp.ts';
 export { securityHeaders } from './security-headers.ts';
 export type { HstsOptions, ReferrerPolicy, SecurityHeadersOptions } from './security-headers.ts';
-export { signed, UrlSigner, ValidateSignature } from './signed-urls.ts';
+export { signed, UrlSigner, ValidateSignature, type SignedMiddlewareOptions } from './signed-urls.ts';
 export type { ForeverSignedRouteOptions, SignatureCheckOptions, SignedPathOptions, SignedRouteOptions } from './signed-urls.ts';
 export { verifyWebhook, Webhooks } from './webhooks.ts';
 export type { WebhookContext, WebhookDefinition, WebhookScheme } from './webhooks.ts';

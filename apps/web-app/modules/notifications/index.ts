@@ -2,6 +2,7 @@ import { defineModule, listen } from '@marmeon/core';
 import { AccountDeleted } from '#modules/auth';
 import { ClearInbox } from './listeners/ClearInbox.ts';
 import { NotificationsLiveAuthorizer } from './NotificationsLiveAuthorizer.ts';
+import { NotificationsServiceProvider } from './NotificationsServiceProvider.ts';
 import routes from './routes.ts';
 
 /**
@@ -11,6 +12,8 @@ import routes from './routes.ts';
  */
 export default defineModule({
   name: 'notifications',
+  providers: [NotificationsServiceProvider],
+  migrations: new URL('./migrations/', import.meta.url),
   routes,
   // The live stream asks it at every connection, so a channel whose right is gone is left out of the next one.
   liveAuthorizers: [NotificationsLiveAuthorizer],

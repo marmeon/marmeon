@@ -199,6 +199,26 @@ Build every link from `APP_URL`, never from the request's `Host` header. With th
 `new URL(router.url('notes.show', { note: 7 }), app.url).href`. A signed link takes `{ base: app.url }`, as the
 [URL generation](urls.md#absolute-urls) page shows.
 
+## Leaving a list with one click
+
+A mail that a list sends carries two headers, so that the mail client can offer an "Unsubscribe" button that posts at once
+(RFC 8058). Put the link into `envelope()` and, so the reader finds it too, into the text, where it opens a page with a button (the link in the text is a `GET`, the mail client's post is a `POST`):
+
+```ts
+envelope() {
+  return {
+    to: this.#to,
+    subject: 'Your digest',
+    headers: { 'List-Unsubscribe': `<${this.#unsubscribe}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+  };
+}
+```
+
+`#unsubscribe` is an absolute link from `foreverSignedRoute()`, and its route says
+[`signed({ forever: true, withoutCsrf: true })`](csrf.md#a-link-in-a-mail-that-posts), because the mail client posts without a
+token. Sign the mail with DKIM over both headers (`h=` names `list-unsubscribe` and `list-unsubscribe-post`): mailbox providers
+show the button only for a mail whose sender they can tie to those headers. The `https` link is the one the client posts to.
+
 ## Attachments
 
 `attachments()` returns a list of `{ filename, content, contentType? }`. `calendarEvent()` makes an `.ics` file that calendars

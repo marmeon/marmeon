@@ -15,4 +15,14 @@ export default {
     title: 'Neue Anmeldung bei deinem Konto',
     body: 'Von {ip} · {browser}',
   },
+  mail: {
+    digest: {
+      subject: 'Deine Benachrichtigungen',
+      intro: 'Du hast neue Benachrichtigungen.',
+      unsubscribe: 'Diese Mails abbestellen',
+      page_title: 'Diese Mails abbestellen?',
+      page_body: 'Der Digest wird nicht mehr an {email} gesendet.',
+      page_button: 'Mails abbestellen',
+    },
+  },
 } satisfies Messages<typeof en>;

@@ -224,6 +224,9 @@ So the policy sits on the route, and a forever link opens no route that did not 
 modes. `hasValidSignature(url)` refuses a link without `expires` the same way; `hasValidSignature(url, { forever: true })`
 accepts one, for code that checks without the middleware, such as the `describeAccess()` above.
 
+`signed({ withoutCsrf: true })` also leaves a request out of [CSRF verification](csrf.md#a-link-in-a-mail-that-posts), but only when
+its signature is valid: a one-click unsubscribe that a mail client posts has no token. It combines with `forever`.
+
 The signing key is derived from `APP_KEY`, a key of its own that signs nothing else. Links signed with a key in
 `APP_PREVIOUS_KEYS` stay valid, so rotating the key does not break the links in sent mails. The host is not signed: a link works
 on every host of the app, since behind a proxy the request's host is not always the public one. The expiry follows the app's

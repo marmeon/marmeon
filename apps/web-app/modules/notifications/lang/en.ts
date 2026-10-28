@@ -13,6 +13,16 @@ const en = {
     title: 'New sign-in to your account',
     body: 'From {ip} · {browser}',
   },
+  mail: {
+    digest: {
+      subject: 'Your notifications',
+      intro: 'You have new notifications.',
+      unsubscribe: 'Stop these mails',
+      page_title: 'Stop these mails?',
+      page_body: 'The digest will no longer be sent to {email}.',
+      page_button: 'Stop the mails',
+    },
+  },
 } as const;
 
 export default en;

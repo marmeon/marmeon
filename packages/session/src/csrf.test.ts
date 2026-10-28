@@ -1,9 +1,9 @@
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Controller, HttpServiceProvider, ValidationError, verifyWebhook, view, Webhooks, type PageObject } from '@marmeon/http';
+import { Controller, HttpServiceProvider, signed, UrlSigner, ValidationError, verifyWebhook, view, Webhooks, type PageObject } from '@marmeon/http';
 import { signWebhook } from '@marmeon/http/internal';
 import { createHttpKernel } from '@marmeon/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionConfig } from './config.ts';
 import { CsrfConfig, CsrfProtection, VerifyCsrfToken } from './csrf.ts';
 import { SessionServiceProvider } from './provider.ts';
@@ -95,6 +95,11 @@ const routes = openRoutes((Route) => {
   Route.post('/webhooks/stripe', () => ({ received: true }));
   Route.middleware(verifyWebhook('payments')).post('/signed', () => ({ received: true }));
   Route.post('/unsigned', () => ({ received: true }));
+  Route.middleware(signed({ withoutCsrf: true })).post('/leave/:id', (ctx) => ({ left: ctx.params.id })).name('leave');
+  Route.middleware(signed({ withoutCsrf: true })).get('/leave/:id', (ctx) => ({ page: ctx.params.id }));
+  Route.middleware(signed({ withoutCsrf: true })).post('/also-leave/:id', () => ({ left: true })).name('alsoLeave');
+  Route.middleware(signed({ withoutCsrf: true, forever: true })).post('/leave-for-good/:id', () => ({ left: true })).name('leaveForGood');
+  Route.middleware(signed()).post('/confirm/:id', () => ({ confirmed: true })).name('confirm');
 });
 
 // Put together at run time: a literal that looks like a secret would block the push.
@@ -458,6 +463,73 @@ describe('VerifyCsrfToken', () => {
     });
   });
 
+  describe('a route behind signed({ withoutCsrf: true })', () => {
+    afterEach(() => vi.useRealTimers());
+    const post = (extra: Record<string, string> = {}) => ({ method: 'POST', body: new URLSearchParams({ 'List-Unsubscribe': 'One-Click' }), headers: extra });
+
+    it('takes a post with a valid signature and no token, no session, no Origin', async () => {
+      const { send, application } = await boot();
+      const url = application.container.make(UrlSigner).signedRoute('leave', { id: 7 }, { expiresIn: { days: 1 } });
+      const response = await send(url, post());
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ left: '7' });
+      expect(response.headers.getSetCookie()).toEqual([]);
+    });
+
+    it('lets it through whatever its Origin and Fetch Metadata say: the link is the proof', async () => {
+      const { send, application } = await boot();
+      const url = application.container.make(UrlSigner).signedRoute('leave', { id: 7 }, { expiresIn: { days: 1 } });
+      expect((await send(url, post({ origin: 'https://mail.example', 'sec-fetch-site': 'cross-site' }))).status).toBe(200);
+    });
+
+    it('takes a forever link on a route that says forever, and refuses it on one that does not', async () => {
+      const { send, application } = await boot();
+      const signer = application.container.make(UrlSigner);
+      expect((await send(signer.foreverSignedRoute('leaveForGood', { id: 7 }), post())).status).toBe(200);
+      expect((await send(signer.foreverSignedRoute('leave', { id: 7 }), post())).status).toBe(419);
+    });
+
+    it('answers a missing, wrong or expired signature with the CSRF check: 419, or 403 from a foreign Origin', async () => {
+      const { send, application } = await boot();
+      const signer = application.container.make(UrlSigner);
+      const url = signer.signedRoute('leave', { id: 7 }, { expiresIn: { days: 1 } });
+      expect((await send('/leave/7', post())).status).toBe(419);
+      expect((await send(url.replace(/signature=./, (m) => `signature=${m.endsWith('0') ? '1' : '0'}`), post())).status).toBe(419);
+      expect((await send(`${url}0`, post())).status).toBe(419);
+      expect((await send('/leave/7', post({ origin: 'https://evil.example' }))).status).toBe(403);
+      const short = signer.signedRoute('leave', { id: 7 }, { expiresIn: 60 });
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(Date.now() + 120_000);
+      expect((await send(short, post())).status).toBe(419);
+    });
+
+    it('is not opened by a link of another route or with other parameters', async () => {
+      const { send, application } = await boot();
+      const signer = application.container.make(UrlSigner);
+      const other = signer.signedRoute('alsoLeave', { id: 7 }, { expiresIn: { days: 1 } });
+      const url = new URL(signer.signedRoute('leave', { id: 7 }, { expiresIn: { days: 1 } }), 'http://x');
+      // Another route's query on this route, this route's query on another id, another param added.
+      expect((await send(`/leave/7?${new URL(other, 'http://x').searchParams}`, post())).status).toBe(419);
+      expect((await send(`/leave/8${url.search}`, post())).status).toBe(419);
+      expect((await send(`${url.pathname}${url.search}&list=news`, post())).status).toBe(419);
+    });
+
+    it('does not open a route beside it: without withoutCsrf a valid signature still needs the token', async () => {
+      const { send, application } = await boot();
+      const url = application.container.make(UrlSigner).signedRoute('confirm', { id: 7 }, { expiresIn: { days: 1 } });
+      expect((await send(url, post())).status).toBe(419);
+      expect((await send(url, post({ origin: 'https://evil.example' }))).status).toBe(403);
+    });
+
+    it('reads as before: a GET passes with and without a signature (signed() answers 403 to the latter)', async () => {
+      const { send, application } = await boot();
+      const url = application.container.make(UrlSigner).signedRoute('leave', { id: 7 }, { expiresIn: { days: 1 } });
+      expect((await send(url)).status).toBe(200);
+      expect((await send('/leave/7')).status).toBe(403);
+      expect((await send(url, { method: 'HEAD' })).status).toBe(200);
+    });
+  });
+
   it('stops the start of an app whose route names a webhook nobody defined', async () => {
     const application = await createApplication({
       root: import.meta.dirname,
@@ -475,6 +547,7 @@ describe('VerifyCsrfToken', () => {
       new CsrfProtection(),
       application.container.make(CsrfConfig),
       application.container.make(SessionConfig),
+      application.container.make(UrlSigner),
     );
     const request = new Request('http://app.test/x', { method: 'POST' });
     const ctx = { request, input: async () => ({}) } as never;
