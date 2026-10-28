@@ -307,7 +307,10 @@ This records `http.request.header.x-tenant`, while `authorization`, `cookie` and
 | `MARMEON_OTEL_TRUST_TRACEPARENT` | `false` | `true` or `1`: an incoming `traceparent` is the parent of the request's span instead of a link. |
 | `MARMEON_OTEL_RECORD_QUERY_VALUES` | `false` | `true` or `1`: `url.query` carries the values of the query, masked like any text, not only its keys. |
 
-Everything else belongs to the SDK: `OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_SAMPLER` and the rest.
+Everything else belongs to the SDK: `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` are read by the `envDetector`, and
+`OTEL_EXPORTER_OTLP_ENDPOINT` and the other `OTEL_EXPORTER_OTLP_*` variables by the exporter. `@opentelemetry/sdk-trace` reads no
+sampler, span limit or batch variable (`OTEL_TRACES_SAMPLER`, `OTEL_SPAN_*_LIMIT`, `OTEL_BSP_*`): pass a `sampler`, `spanLimits` and
+the options of the `BatchSpanProcessor` in code.
 
 ### Testing
 
