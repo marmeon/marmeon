@@ -149,14 +149,61 @@ describe('CsrfProtection.disable()', () => {
 });
 
 describe('CsrfProtection.except()', () => {
-  it.each(['*', '/*', '**'])('refuses %j, which matches every path', (pattern) => {
+  it.each(['*', '/*', '/**', '/***', '/*/unsubscribe/*', '/**/x', '/a*', '*/tail', 'webhooks/*', '/*/*', '/*/unsubscribe', '**'])('refuses %j: it does not start with a fixed segment', (pattern) => {
     expect(() => new CsrfProtection().except(pattern)).toThrow(TypeError);
+  });
+
+  it.each(['/webhooks/*', '/webhooks/**', '/w/*/unsubscribe', '/de/unsubscribe/*', '/:locale/leave', '/go'])('takes %j', (pattern) => {
+    expect(() => new CsrfProtection().except(pattern)).not.toThrow();
   });
 
   it('takes a path, a prefix and an empty pattern', () => {
     const protection = new CsrfProtection().except('/webhooks/*', '');
     expect(protection.skips('/webhooks/stripe')).toBe(true);
     expect(protection.skips('/save')).toBe(false);
+  });
+
+  it('lets * match within one segment: a slug pattern leaves the routes below other slugs protected', () => {
+    const protection = new CsrfProtection().except('/w/*/unsubscribe');
+    expect(protection.skips('/w/a/unsubscribe')).toBe(true);
+    expect(protection.skips('/w/a/b/unsubscribe')).toBe(false);
+    expect(protection.skips('/x/a/unsubscribe')).toBe(false);
+    expect(protection.skips('/w/a/unsubscribe/members')).toBe(false);
+  });
+
+  it('matches an empty segment and stops * at a slash, an encoded one included as part of the segment', () => {
+    const protection = new CsrfProtection().except('/hooks/*');
+    expect(protection.skips('/hooks/')).toBe(true);
+    expect(protection.skips('/hooks/a')).toBe(true);
+    expect(protection.skips('/hooks/a/b')).toBe(false);
+    expect(protection.skips('/hooks/a/')).toBe(false);
+    // The path arrives still encoded: `%2F` is not a separator the router would split at, and no `/` follows from it.
+    expect(protection.skips('/hooks/a%2Fb')).toBe(true);
+    expect(protection.skips('/hooks%2Fa')).toBe(false);
+  });
+
+  it('lets ** match across segments', () => {
+    const protection = new CsrfProtection().except('/webhooks/**', '/a/**/z');
+    expect(protection.skips('/webhooks/a')).toBe(true);
+    expect(protection.skips('/webhooks/a/b/c')).toBe(true);
+    expect(protection.skips('/webhooks')).toBe(false);
+    expect(protection.skips('/other/webhooks/a')).toBe(false);
+    expect(protection.skips('/a/b/c/z')).toBe(true);
+    expect(protection.skips('/a/b/c/y')).toBe(false);
+  });
+
+  it('anchors at both ends, matches case-sensitively', () => {
+    const protection = new CsrfProtection().except('/pay/*');
+    expect(protection.skips('/x/pay/a')).toBe(false);
+    expect(protection.skips('/pay/a/x')).toBe(false);
+    expect(protection.skips('/Pay/a')).toBe(false);
+  });
+
+  it('takes every other character in a pattern literally', () => {
+    const protection = new CsrfProtection().except('/v1.0/(a)+/[b]?/$c/^d|e/{f}/g\\h/*');
+    expect(protection.skips('/v1.0/(a)+/[b]?/$c/^d|e/{f}/g\\h/x')).toBe(true);
+    expect(protection.skips('/v1x0/(a)+/[b]?/$c/^d|e/{f}/g\\h/x')).toBe(false);
+    expect(protection.skips('/v1.0/a/b/c/d/e/f/g/x')).toBe(false);
   });
 });
 
@@ -365,6 +412,12 @@ describe('VerifyCsrfToken', () => {
     const { send } = await boot();
     expect((await send('/webhooks/stripe', form({}))).status).toBe(200);
     expect((await send('/form')).status).toBe(200);
+  });
+
+  it('judges the path alone: a query string holding a slash does not change a match', async () => {
+    const { send } = await boot();
+    expect((await send('/webhooks/stripe?next=/a/b', form({}))).status).toBe(200);
+    expect((await send('/save?next=/webhooks/stripe', form({}))).status).toBe(419);
   });
 
   describe('a route behind verifyWebhook()', () => {

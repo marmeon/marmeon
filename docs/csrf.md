@@ -101,7 +101,7 @@ An origin is a scheme, a host and an optional port, without a path. A value with
 
 A request that another service signs, such as the webhook of a payment provider, needs no entry here: put
 [`verifyWebhook()`](webhooks.md) on its route, and the CSRF check skips that route, and only that route. For the requests that
-cannot carry a token, come from no browser and carry no signature either, a module lists the paths in `csrfExcept`. A `*` matches any characters, and the pattern covers the whole path:
+cannot carry a token, come from no browser and carry no signature either, a module lists the paths in `csrfExcept`. The pattern covers the whole path, and its characters are literal except two: `*` matches within one path segment (`/hooks/*` covers `/hooks/a`, not `/hooks/a/b`), and `**` matches any characters, `/` included:
 
 ```ts title="modules/billing/index.ts"
 import { defineModule } from '@marmeon/core';
@@ -110,9 +110,14 @@ import routes from './routes.ts';
 export default defineModule({
   name: 'billing',
   routes,
-  csrfExcept: ['/webhooks/*'],
+  csrfExcept: ['/webhooks/*', '/callbacks/**'],
 });
 ```
+
+A placeholder stands only after a fixed first segment: `/*`, `/*/unsubscribe/*` and `/**/x` are refused, because they would cover routes such as
+`/login`. Write each locale out (`/de/abmelden/*`, `/en/unsubscribe/*`). A `*` covers every value of its segment, slugs that users choose
+themselves included, so `/w/*/unsubscribe` leaves `/w/a/b/unsubscribe` protected but not `/w/anything/unsubscribe`. The path is compared as
+the request carries it, with the query string left out and an encoded slash (`%2F`) not counting as a separator.
 
 > [!WARNING]
 > An excluded route accepts requests from anywhere. Check each request yourself, and never exclude a route that acts on the
@@ -151,7 +156,7 @@ without a check.
 
 `createTestApp` turns the check off, so a test can post without headers or a token, unless the test app runs as production
 (`env: { NODE_ENV: 'production' }`), where it stays on as on a server. Nothing else switches it off, and a `csrfExcept` pattern
-that matches every path (`*`, `/*`) throws. Pass `csrf: true` to test the check itself,
+that does not start with a fixed segment (`*`, `/*`) throws. Pass `csrf: true` to test the check itself,
 and send what a browser sends:
 
 ```ts title="modules/notes/csrf.test.ts"
