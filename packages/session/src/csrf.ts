@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { defineConfig, env, type ConfigOf } from '@marmeon/core';
-import { isWebhookMiddleware } from '@marmeon/http/internal';
+import { UrlSigner } from '@marmeon/http';
+import { isWebhookMiddleware, withoutCsrfSignature } from '@marmeon/http/internal';
 import { HttpError, type HttpContext, type Next } from '@marmeon/router';
 import { SessionConfig } from './config.ts';
 import { Session } from './session.ts';
@@ -104,13 +105,15 @@ export class VerifyCsrfToken {
   readonly #protection: CsrfProtection;
   readonly #config: CsrfConfig;
   readonly #sessionConfig: SessionConfig;
+  readonly #signer: UrlSigner;
 
   /** @internal Built by the container. */
-  constructor(session: Session, protection: CsrfProtection, config: CsrfConfig, sessionConfig: SessionConfig) {
+  constructor(session: Session, protection: CsrfProtection, config: CsrfConfig, sessionConfig: SessionConfig, signer: UrlSigner) {
     this.#session = session;
     this.#protection = protection;
     this.#config = config;
     this.#sessionConfig = sessionConfig;
+    this.#signer = signer;
   }
 
   async handle(ctx: HttpContext, next: Next<{}>) {
@@ -118,7 +121,8 @@ export class VerifyCsrfToken {
     // A route behind `verifyWebhook()` is signed by its sender, who has no session: the signature is its protection, and only a route
     // that names the middleware skips the check.
     const signed = ctx.route?.middleware.some(isWebhookMiddleware) === true;
-    if (!signed && !READING.has(request.method) && !this.#protection.skips(new URL(request.url).pathname)) {
+    // The signature last: only a write to a route with `withoutCsrf` pays for the HMAC.
+    if (!signed && !READING.has(request.method) && !this.#protection.skips(new URL(request.url).pathname) && !this.#validlySigned(ctx)) {
       const from = this.#origin(request);
       if (from === 'foreign') throw new HttpError(403, 'Cross-site request refused.', {}, { key: 'marmeon.errors.cross_site' });
       if (from === 'unknown' && !(await this.#tokenMatches(ctx))) throw new HttpError(419, 'CSRF token mismatch.', {}, { key: 'marmeon.errors.csrf' });
@@ -134,6 +138,18 @@ export class VerifyCsrfToken {
     const token = this.#session.token();
     if (ctx.cookies.get(XSRF_COOKIE) !== token) ctx.cookies.set(XSRF_COOKIE, token, { httpOnly: false, secure, sameSite });
     return response;
+  }
+
+  /**
+   * Whether the route said `signed({ withoutCsrf: true })` and the request's link is signed right now. The signature is checked
+   * here, not trusted to `signed()` further down: it runs after this check and may be missing from the route's other layers.
+   */
+  #validlySigned(ctx: HttpContext): boolean {
+    for (const layer of ctx.route?.middleware ?? []) {
+      const rule = withoutCsrfSignature(layer);
+      if (rule !== undefined) return this.#signer.hasValidSignature(ctx.request.url, { forever: rule.forever });
+    }
+    return false;
   }
 
   /** Where the browser says the request comes from: this app (or an origin it trusts), elsewhere, or it does not say. */

@@ -508,6 +508,10 @@ export type SharedValue<T> = Lazy<T> | AlwaysProp<T> | MergeProp<T> | OnceProp<T
 export interface SignatureCheckOptions {
     readonly forever?: boolean;
 }
+// SignedMiddlewareOptions
+export interface SignedMiddlewareOptions extends SignatureCheckOptions {
+    readonly withoutCsrf?: boolean;
+}
 // SignedPathOptions
 export interface SignedPathOptions extends SignedRouteOptions {
     readonly query?: Readonly<Record<string, string>>;
@@ -674,7 +678,7 @@ export declare function regionOf(request: Request): RegionKind | undefined;
 // securityHeaders
 export declare function securityHeaders(options?: SecurityHeadersOptions): MiddlewareClass<{}, {}>;
 // signed
-export declare function signed(options?: SignatureCheckOptions): typeof ValidateSignature;
+export declare function signed(options?: SignedMiddlewareOptions): typeof ValidateSignature;
 // translatable
 export { translatable } from '@marmeon/router';
 // verifyWebhook

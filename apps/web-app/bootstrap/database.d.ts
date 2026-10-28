@@ -99,6 +99,15 @@ declare module '@marmeon/database' {
       last_login_at: Timestamp;
     };
     /**
+     * Owned by `notifications`.
+     * Primary key: user_id.
+     * Foreign key: user_id -> users.id (on delete cascade).
+     */
+    notification_opt_outs: {
+      user_id: number;
+      created_at: Timestamp;
+    };
+    /**
      * Owned by `system`.
      * Primary key: id.
      */
@@ -294,6 +303,9 @@ declare module '@marmeon/database' {
     login_activity: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
+    notification_opt_outs: {
+      user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
+    };
     passkeys: {
       user: { kind: 'belongsTo'; table: 'users'; foreignKey: 'user_id'; localKey: 'user_id'; targetKey: 'id'; nullable: false };
     };
@@ -316,6 +328,7 @@ declare module '@marmeon/database' {
       bookmarks: { kind: 'hasMany'; table: 'bookmarks'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       email_changes: { kind: 'hasOne'; table: 'email_changes'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
       login_activity: { kind: 'hasOne'; table: 'login_activity'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
+      notification_opt_outs: { kind: 'hasOne'; table: 'notification_opt_outs'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id'; nullable: true };
       passkeys: { kind: 'hasMany'; table: 'passkeys'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       personal_access_tokens: { kind: 'hasMany'; table: 'personal_access_tokens'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
       profile_links: { kind: 'hasMany'; table: 'profile_links'; foreignKey: 'user_id'; localKey: 'id'; targetKey: 'user_id' };
@@ -333,6 +346,7 @@ declare module '@marmeon/database' {
     jobs: 'id';
     lab_one_time_links: 'id';
     login_activity: 'user_id';
+    notification_opt_outs: 'user_id';
     notifications: 'id';
     passkeys: 'id';
     password_reset_tokens: 'email';
@@ -354,6 +368,7 @@ declare module '@marmeon/database' {
     jobs: 'system';
     lab_one_time_links: 'lab';
     login_activity: 'user-profile';
+    notification_opt_outs: 'notifications';
     notifications: 'system';
     passkeys: 'auth';
     password_reset_tokens: 'auth';

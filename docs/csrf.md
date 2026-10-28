@@ -126,6 +126,44 @@ the request carries it, with the query string left out and an encoded slash (`%2
 A service provider can add paths the same way: `container.make(CsrfProtection).except('/webhooks/*')`, with `CsrfProtection`
 from `@marmeon/session`.
 
+## A link in a mail that posts
+
+A mail client that offers an "Unsubscribe" button posts to the link in the mail's `List-Unsubscribe` header, with no cookie and
+no `Origin` (RFC 8058, "one-click"). No pattern in `csrfExcept` should open that route, because a pattern cannot tell the mail's
+link from any other path under it. Let the route say that a valid signature is enough:
+
+```ts title="modules/notifications/routes.ts"
+import { defineRoutes, everyone, signed } from '@marmeon/http';
+import { ConfirmUnsubscribeController } from './controllers/ConfirmUnsubscribeController.ts';
+import { UnsubscribeController } from './controllers/UnsubscribeController.ts';
+
+export default defineRoutes((Route) => {
+  const leave = Route.prefix('/unsubscribe').authorize(everyone);
+  // The page behind the link in the mail's text: it only asks, and posts the same address.
+  leave.middleware(signed({ forever: true })).get('/:user', ConfirmUnsubscribeController).name('unsubscribe.confirm');
+  leave.middleware(signed({ forever: true, withoutCsrf: true })).post('/:user', UnsubscribeController).name('unsubscribe');
+});
+```
+
+The CSRF check verifies the signature itself, before it asks for a token, and leaves the request out only if the signature is
+valid right now: the path, every query parameter, the expiry and the key are the ones the link was made with. Without a valid
+signature the check runs as usual, and the answer is a 419 (or a 403 from a foreign `Origin`), then `signed()`'s own 403. A signed
+link of another route, or of the same route with other parameters, opens nothing, and a route without `withoutCsrf` stays protected
+even for a valid signature. `GET` and `HEAD` are as before.
+
+> [!WARNING]
+> The CSRF check is off for every request that carries the link, whoever sends it and with whichever cookies, and the signature covers
+> the path and the query, not the body. Act only on what the link names, never on the session's user or the body, and give the route
+> only the work the mail's reader may do: leaving a list, not signing in or changing an account. This matters most with
+> `SESSION_SAME_SITE=none`; the default `lax` sends no session with a cross-site form post.
+
+A mail client posts, but the reader who clicks the link in the mail's text sends a `GET` to the same address. The signature does not
+cover the method, so the `GET` route shows a page whose form posts to that address, and changes nothing itself: a scanner or a
+prefetch that opens every link of a mail would otherwise unsubscribe everyone. Send that page with `Cache-Control: no-store, private`,
+`Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex`, since its address is a credential. Make the link with
+`foreverSignedRoute()` when it must work as long as the mail exists, and put it in the mail's headers and in its text (see
+[Mail](mail.md#leaving-a-list-with-one-click)).
+
 ## Plain HTTP
 
 Browsers send Fetch Metadata to secure origins only: `https://` addresses, `localhost` and `127.0.0.1`. A server reached over

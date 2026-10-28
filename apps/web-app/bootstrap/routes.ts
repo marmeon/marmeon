@@ -8,6 +8,7 @@ import type { ConfirmEmailChangeController } from '../modules/auth/controllers/C
 import type { ConfirmPasswordController } from '../modules/auth/controllers/ConfirmPasswordController.ts';
 import type { ConfirmRemoveLinkController } from '../modules/user-profile/controllers/ConfirmRemoveLinkController.ts';
 import type { ConfirmTwoFactorController } from '../modules/auth/controllers/ConfirmTwoFactorController.ts';
+import type { ConfirmUnsubscribeController } from '../modules/notifications/controllers/ConfirmUnsubscribeController.ts';
 import type { CreateAccessTokenController } from '../modules/auth/controllers/CreateAccessTokenController.ts';
 import type { CreateBookmarkController } from '../modules/bookmarks/controllers/CreateBookmarkController.ts';
 import type { DeleteBookmarkController } from '../modules/bookmarks/controllers/DeleteBookmarkController.ts';
@@ -74,6 +75,7 @@ import type { ShowVerifyEmailNoticeController } from '../modules/auth/controller
 import type { StoreBookmarkController } from '../modules/bookmarks/controllers/StoreBookmarkController.ts';
 import type { TwoFactorChallengeController } from '../modules/auth/controllers/TwoFactorChallengeController.ts';
 import type { TwoFactorVerifyController } from '../modules/auth/controllers/TwoFactorVerifyController.ts';
+import type { UnsubscribeController } from '../modules/notifications/controllers/UnsubscribeController.ts';
 import type { UpdateAvatarController } from '../modules/user-profile/controllers/UpdateAvatarController.ts';
 import type { UpdateBookmarkController } from '../modules/bookmarks/controllers/UpdateBookmarkController.ts';
 import type { UpdateEmailController } from '../modules/auth/controllers/UpdateEmailController.ts';
@@ -152,6 +154,8 @@ declare module '@marmeon/router' {
     'notifications.index': { method: 'get'; path: '/notifications'; controller: typeof ShowNotificationsController };
     'notifications.read': { method: 'post'; path: '/notifications/:notification/read'; controller: typeof MarkNotificationReadController };
     'notifications.read-all': { method: 'post'; path: '/notifications/read-all'; controller: typeof MarkAllNotificationsReadController };
+    'notifications.unsubscribe': { method: 'post'; path: '/notifications/unsubscribe/:user'; controller: typeof UnsubscribeController };
+    'notifications.unsubscribe.confirm': { method: 'get'; path: '/notifications/unsubscribe/:user'; controller: typeof ConfirmUnsubscribeController };
     'user-profile.avatar.update': { method: 'put'; path: '/users/:user/avatar'; controller: typeof UpdateAvatarController };
     'user-profile.edit': { method: 'get'; path: '/users/:user/edit'; controller: typeof EditUserProfileController };
     'user-profile.export': { method: 'post'; path: '/users/me/export'; controller: typeof ExportMyDataController };
@@ -203,6 +207,7 @@ declare module '@marmeon/http/page' {
     'lab/Streaming': true;
     'lab/Validation': true;
     'members/Index': true;
+    'notifications/ConfirmUnsubscribe': true;
     'notifications/Index': true;
     'system/errors/404': true;
     'system/errors/Error': true;

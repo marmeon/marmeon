@@ -28,6 +28,18 @@ export interface SignatureCheckOptions {
   readonly forever?: boolean;
 }
 
+/** What `signed()` can be told about a route. */
+export interface SignedMiddlewareOptions extends SignatureCheckOptions {
+  /**
+   * Leave the route out of CSRF verification when — and only when — the request carries a valid signature, e.g. the
+   * one-click unsubscribe a mail client posts without a cookie. Without a valid signature the CSRF check applies as usual.
+   * The signature covers the path and the query, not the body or the session: act only on what the link names, never on the
+   * session's user or the request's body, since the CSRF check is off for every request that carries the link.
+   * See docs/csrf.md#a-link-in-a-mail-that-posts.
+   */
+  readonly withoutCsrf?: boolean;
+}
+
 /** A signed path (not a named route): its query, its expiry, its base. */
 export interface SignedPathOptions extends SignedRouteOptions {
   /** Signed with the path (`signature` and `expires` are reserved). */
@@ -168,11 +180,33 @@ class ForeverValidateSignature extends ValidateSignature {
   protected override readonly forever: boolean = true;
 }
 
+/** The classes `signed({ withoutCsrf: true })` made, and whether they take a link without `expires`: a map, so nothing else can claim to be one. */
+const WITHOUT_CSRF = new WeakMap<object, boolean>();
+
+/** The middleware of `signed({ withoutCsrf: true })`; the CSRF check asks the signer itself. */
+class SignedWithoutCsrf extends ValidateSignature {}
+/** The middleware of `signed({ forever: true, withoutCsrf: true })`. */
+class ForeverSignedWithoutCsrf extends ForeverValidateSignature {}
+WITHOUT_CSRF.set(SignedWithoutCsrf, false);
+WITHOUT_CSRF.set(ForeverSignedWithoutCsrf, true);
+
+/**
+ * Whether `layer` is the middleware of `signed({ withoutCsrf: true })`: `{ forever }` says whether it takes a link without
+ * `expires`; `undefined`, it is not one. The CSRF check skips a route that has one, for a request with a valid signature. @internal
+ */
+export function withoutCsrfSignature(layer: unknown): { readonly forever: boolean } | undefined {
+  if (typeof layer !== 'function' || !WITHOUT_CSRF.has(layer)) return undefined;
+  return { forever: WITHOUT_CSRF.get(layer)! };
+}
+
 /**
  * `Route.middleware(signed()).get('/email/verify/:id/:hash', …)` lets through links with a valid signature that have not expired;
  * a link without `expires` is refused. A route whose links are made by `foreverSignedRoute()` says so with
- * `signed({ forever: true })`. See docs/urls.md#signed-urls.
+ * `signed({ forever: true })`; `signed({ withoutCsrf: true })` also leaves a validly signed request out of CSRF verification.
+ * See docs/urls.md#signed-urls.
  */
-export function signed(options: SignatureCheckOptions = {}): typeof ValidateSignature {
-  return options.forever === true ? ForeverValidateSignature : ValidateSignature;
+export function signed(options: SignedMiddlewareOptions = {}): typeof ValidateSignature {
+  const forever = options.forever === true;
+  if (options.withoutCsrf === true) return forever ? ForeverSignedWithoutCsrf : SignedWithoutCsrf;
+  return forever ? ForeverValidateSignature : ValidateSignature;
 }
