@@ -7,7 +7,7 @@ The cache of Marmeon apps, with atomic locks and rate limits — on files, the d
 Part of every new Marmeon app: `pnpm create marmeon` installs it.
 
 The `file` and `memory` drivers need nothing more. `CACHE_DRIVER=database` needs `@marmeon/database`, which a new app has, and
-`CACHE_DRIVER=redis` needs `@marmeon/redis`, which brings the Redis client: `pnpm add @marmeon/redis`. A missing package stops the
+`CACHE_DRIVER=redis` needs `@marmeon/redis`, which brings the Redis client: `pnpm add -E @marmeon/redis@<version of your app>`. A missing package stops the
 start and names the command.
 
 ## A first cached value

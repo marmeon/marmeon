@@ -5,7 +5,7 @@ Redis connections for Marmeon apps: the driver behind a Redis cache, sessions, q
 ## Installation
 
 ```sh
-pnpm add @marmeon/redis
+pnpm add -E @marmeon/redis@<version of your app>
 ```
 
 The package brings the Redis client, `redis`, as a dependency, so an app installs nothing else. Without it, a Redis driver stops

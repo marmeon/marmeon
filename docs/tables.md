@@ -8,10 +8,10 @@ ids, a cell that a spreadsheet runs as a formula. A data table handles them once
 server; the URL holds its state and is parsed strictly; its actions and exports are endpoints that check everything again. The
 browser half is headless: `useTable()` gives a component what the props allow and renders nothing itself.
 
-Install the package first:
+Install the package first, in the version of the app's other framework packages:
 
 ```sh
-pnpm add @marmeon/table
+pnpm add -E @marmeon/table@<version of your app>
 ```
 
 This page builds the members table of the web app: every member with a confirmed address and the number of their links, an e-mail

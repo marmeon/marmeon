@@ -6,7 +6,7 @@ delivered by the queue.
 ## Installation
 
 ```sh
-pnpm add @marmeon/notifications
+pnpm add -E @marmeon/notifications@<version of your app>
 pnpm marmeon make:notifications-table
 pnpm marmeon migrate
 ```

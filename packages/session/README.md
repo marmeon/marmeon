@@ -8,7 +8,7 @@ protection.
 Part of every new Marmeon app: `pnpm create marmeon` installs it.
 
 The `database` driver needs `@marmeon/database`, which a new app has, and the `redis` driver `@marmeon/redis`, which brings the
-Redis client: `pnpm add @marmeon/redis`. A driver whose package is missing stops the start with the command that installs it.
+Redis client: `pnpm add -E @marmeon/redis@<version of your app>`. A driver whose package is missing stops the start with the command that installs it.
 
 ## Using the session
 

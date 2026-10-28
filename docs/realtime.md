@@ -7,10 +7,10 @@ arrived, an administrator removed a row. A page **follows a channel**, and when 
 **hint**. Every tab that follows the channel then reloads the props it named, through the page's own route, as a partial reload.
 A hint says *that* something changed, never *what*: the data always comes from the route, its middleware and its policies.
 
-Install the package first:
+Install the package first, in the version of the app's other framework packages:
 
 ```sh
-pnpm add @marmeon/live
+pnpm add -E @marmeon/live@<version of your app>
 ```
 
 A page follows a channel with `.live()`:

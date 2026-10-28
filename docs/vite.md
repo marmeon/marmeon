@@ -22,7 +22,7 @@ language files and its route manifest as virtual modules, and refuses server cod
 Vite and the plugin are development dependencies. Nothing of them runs on a production server:
 
 ```sh
-pnpm add -D vite@^8 @marmeon/vite @vitejs/plugin-react
+pnpm add -D vite@^8 @marmeon/vite@<version of your app> @vitejs/plugin-react
 ```
 
 Vite is a peer of the plugin, so the plugin runs inside your app's own Vite. The types of the virtual modules come from

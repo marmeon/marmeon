@@ -6,7 +6,7 @@ URL state, row and bulk actions and CSV export.
 ## Installation
 
 ```sh
-pnpm add @marmeon/table
+pnpm add -E @marmeon/table@<version of your app>
 ```
 
 In the browser, `useTable()` of `@marmeon/react/table` renders it. TanStack Table is optional, through

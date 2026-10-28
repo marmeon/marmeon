@@ -59,7 +59,7 @@ driver, and with `redis` its own `REDIS_PREFIX`, which `cache:clear` stays withi
 
 The `database` driver needs `@marmeon/database` and the `redis` driver `@marmeon/redis`, which brings the Redis client. Without
 the package the app fails at the start and names it: `CACHE_DRIVER=redis needs @marmeon/redis, which is not installed in this
-app: pnpm add @marmeon/redis`. The [Redis](redis.md#which-connection-a-driver-uses) page covers its connection.
+app: pnpm add -E @marmeon/redis@<version of your app>`. The [Redis](redis.md#which-connection-a-driver-uses) page covers its connection.
 
 The `database` driver needs its tables once:
 
