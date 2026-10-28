@@ -1,6 +1,6 @@
 import { afterCommit, outsideTransaction, Redactor, token, type Application, type Logger } from '@marmeon/core';
 import { channels } from '@marmeon/core/diagnostics';
-import { messageBase, trace } from '@marmeon/core/internal';
+import { messageBase, outermostTransaction, trace } from '@marmeon/core/internal';
 import { checkedChannel } from '@marmeon/http/internal';
 import type { LiveBackend } from './backend.ts';
 import type { BroadcastTester } from './recorder.ts';
@@ -17,7 +17,7 @@ export interface RefreshOptions {
 /**
  * Hints the browsers on a channel that it changed: `await this.#broadcast.refresh(\`users.${user.id}\`, { only: ['profile'] })`.
  * A hint, never data — each tab reloads through the page's own route and policies. It goes out after the commit (a
- * rollback sends nothing), and reaches the tab that caused it with nothing to reload. Given to your code, not meant to be implemented — a later release may add
+ * rollback sends nothing; equal hints of one transaction go out once), and reaches the tab that caused it with nothing to reload. Given to your code, not meant to be implemented — a later release may add
  * a member. See `docs/realtime.md#sending-hints`.
  */
 export interface Broadcaster {
@@ -42,6 +42,13 @@ export interface LiveBroadcasterDependencies {
 }
 
 const refreshes = channels.tracing('live.refresh');
+
+/** The hints each outermost transaction has sent so far, by their {@link hintKey}. */
+const sentInTransaction = new WeakMap<object, Set<string>>();
+
+/** What makes two hints equal: channel, the props named (in any order) and the tab left out. */
+const hintKey = (channel: string, only: readonly string[] | null, connection: string | undefined) =>
+  JSON.stringify([channel, only === null ? null : [...only].sort(), connection ?? null]);
 
 export class LiveBroadcaster implements Broadcaster {
   readonly #backend: () => LiveBackend;
@@ -68,9 +75,18 @@ export class LiveBroadcaster implements Broadcaster {
     }
     const only = given === undefined ? null : [...(given as string[])];
     const except = this.#connection;
-    // After the commit — and outside of any transaction: it is no part of one.
+    const transaction = outermostTransaction();
+    const key = hintKey(name, only, except);
+    // After the commit — and outside of any transaction: it is no part of one. Equal hints of one transaction go out once:
+    // decided when they run, so a hint of a savepoint that rolled back never takes the place of one that stays.
     await afterCommit(() =>
       outsideTransaction(async () => {
+        if (transaction) {
+          const sent = sentInTransaction.get(transaction) ?? new Set<string>();
+          sentInTransaction.set(transaction, sent);
+          if (sent.has(key)) return;
+          sent.add(key);
+        }
         this.#recorder?.record({ channel: name, only, connection: except });
         try {
           const send = () => this.#backend().refresh(name, only, except);

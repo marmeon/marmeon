@@ -145,6 +145,13 @@ export function inTransaction(): boolean {
   return currentTransaction() !== undefined;
 }
 
+/** @internal — the outermost open transaction of the current call chain: where after-commit work finally runs. `undefined` outside of one. */
+export function outermostTransaction(): TransactionFrame | undefined {
+  let frame = currentTransaction();
+  while (frame?.parent?.open) frame = frame.parent;
+  return frame;
+}
+
 /** The innermost transaction of `owner` in the current call chain (throws like {@link currentTransaction}). */
 export function transactionOf(owner: object): TransactionFrame | undefined {
   for (let frame = currentTransaction(); frame; frame = frame.parent) if (frame.owner === owner) return frame;
