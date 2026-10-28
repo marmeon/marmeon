@@ -1,4 +1,5 @@
 import type { Authenticated } from '@marmeon/auth';
+import type { Serialize } from '@marmeon/http';
 import { describe, expectTypeOf, it } from 'vitest';
 import './__fixtures__/schema.ts';
 import { MemberPolicy } from './__fixtures__/policies.ts';
@@ -9,6 +10,7 @@ import type { RowAuthorization } from './index.ts';
 import type { TableDefinition } from './index.ts';
 // @ts-expect-error — `TableVisibility` is not exported
 import type { TableVisibility } from './index.ts';
+import type { AnyTableData } from './client/index.ts';
 import { action, bulk, column, defineTable, exportCsv, filter, tableRoutes, type TableContext, type TableProps } from './index.ts';
 
 class Deactivate {
@@ -51,6 +53,14 @@ describe('defineTable — typed from the query', () => {
     expectTypeOf<Props['columns'][number]['name']>().toEqualTypeOf<'name' | 'email' | 'joined' | 'seen'>();
     expectTypeOf<Props['filters'][number]['name']>().toEqualTypeOf<'role' | 'joined'>();
     expectTypeOf<Props['exports'][number]['name']>().toEqualTypeOf<'csv'>();
+  });
+
+  it('serializes to props the client takes — a table without filters, actions, exports or a sortable column too', () => {
+    const Minimal = defineTable({ name: 'minimal', query: (db) => db.selectFrom('members'), key: 'id', columns: { name: column('name') } });
+    const takes = (_data: AnyTableData) => {};
+    takes(undefined as unknown as Serialize<TableProps<typeof Minimal>>);
+    takes(undefined as unknown as Serialize<TableProps<typeof Members>>);
+    expectTypeOf<keyof Serialize<TableProps<typeof Minimal>>>().toEqualTypeOf<keyof TableProps<typeof Minimal>>(); // no key lost
   });
 
   it('refuses what the query has not', () => {

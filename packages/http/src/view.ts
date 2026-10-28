@@ -107,7 +107,12 @@ export type Serialize<T> = 0 extends 1 & T
   ? T // any
   : unknown extends T
     ? unknown
-    : SerializeKnown<T>;
+    : [T] extends [JsonValue]
+      ? T // already JSON: walking it again would not end for a recursive type such as a database's `Json`
+      : SerializeKnown<T>;
+
+/** What JSON holds — structurally the database's `Json`, so a `Json` column passes through (this package does not depend on it). */
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue; [key: symbol]: never };
 
 type SerializeKnown<T> = T extends string | number | boolean | null
   ? T
@@ -129,7 +134,7 @@ type SerializeKnown<T> = T extends string | number | boolean | null
 type SerializeElement<E> = E extends Unserializable ? null : Serialize<E>;
 
 type SerializeObject<T> = Simplify<
-  { [K in keyof T as K extends symbol ? never : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]> } & {
+  { [K in keyof T as K extends symbol ? never : [T[K]] extends [never] ? K : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]> } & {
     [K in keyof T as K extends symbol ? never : undefined extends T[K] ? ([Exclude<T[K], undefined>] extends [never] ? never : K) : never]?: Serialize<
       Exclude<T[K], undefined>
     >;
