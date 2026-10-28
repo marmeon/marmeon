@@ -135,7 +135,8 @@ it had thrown. `transaction()` returns the `err` unchanged instead of throwing i
 writes only, and after-commit work is dropped while [after-rollback work](#after-a-rollback) runs, just as after an exception.
 
 Some errors are a change of their own that must stay: a request that is dropped, or a failed attempt that is counted. Return
-those as `commitAnyway(err(…))`, and the transaction commits:
+those as `commitAnyway(err(…))`, and the transaction commits. The `tokenHash` below is what
+[`hashLinkToken()`](urls.md#a-link-that-is-used-once) gives for the token in the invitation's link:
 
 ```ts title="modules/teams/Invitations.ts"
 import { commitAnyway, err, ok, type Result } from '@marmeon/core';

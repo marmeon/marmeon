@@ -1,5 +1,5 @@
 import { throttle } from '@marmeon/cache';
-import { defineRoutes, everyone } from '@marmeon/http';
+import { defineRoutes, describeAccess, everyone } from '@marmeon/http';
 import {
   ShowBrowserOnlyLabController,
   ShowClientOnlyLabController,
@@ -10,6 +10,8 @@ import {
   TriggerErrorLabController,
 } from './controllers/ShowLabPageController.ts';
 import { SendDevtoolsLabController, ShowDevtoolsLabController } from './controllers/ShowDevtoolsLabController.ts';
+import { CreateOneTimeLinkLabController, OpenOneTimeLinkLabController, UseOneTimeLinkLabController } from './controllers/OneTimeLinkLabController.ts';
+import { OneTimeLinkRepository } from './OneTimeLinkRepository.ts';
 import { RaceValidationLabController, ShowValidationLabController, StoreValidationLabController } from './controllers/ValidationLabController.ts';
 
 // Unnamed on purpose: they are not part of the app (no route names in bootstrap/routes.ts, nothing in the browser's
@@ -36,4 +38,12 @@ export default defineRoutes((Route) => {
   lab.get('/validation', ShowValidationLabController);
   lab.post('/validation', StoreValidationLabController);
   lab.post('/validation/race', RaceValidationLabController);
+  // A link that is used once: its path is the token, found by its hash (`hashLinkToken()`). Open to everyone and public by design — the
+  // token is the key, and every wrong token gets the same 404. The GET only shows a page; the POST uses the link up.
+  lab.middleware(throttle('lab.one-time-links')).post('/one-time-links', CreateOneTimeLinkLabController);
+  lab.bind('link', OneTimeLinkRepository, { public: true }).get('/one-time-links/:link', OpenOneTimeLinkLabController);
+  // The POST changes data, so the link itself is the decision: the binder found an unused link by its token, and the update that
+  // uses it up decides again.
+  const holdsLink = describeAccess((ctx) => ctx.params.link !== undefined, 'one-time link');
+  group.authorize(holdsLink).middleware(throttle('lab.one-time-links')).bind('link', OneTimeLinkRepository).post('/one-time-links/:link', UseOneTimeLinkLabController);
 });

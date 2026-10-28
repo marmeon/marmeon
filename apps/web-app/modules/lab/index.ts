@@ -7,6 +7,7 @@ import routes from './routes.ts';
 export default defineModule({
   name: 'lab',
   config: [LabConfig],
+  migrations: new URL('./migrations/', import.meta.url),
   providers: [LabServiceProvider],
   routes,
 });

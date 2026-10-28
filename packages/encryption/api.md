@@ -43,8 +43,17 @@ export declare class EncryptionServiceProvider implements ServiceProvider {
     static solutions: readonly import("@marmeon/core").SolutionDefinition<any>[];
     register(container: Container): void;
 }
+// LinkToken
+export interface LinkToken {
+    readonly token: string;
+    readonly hash: string;
+}
 // generateKey
 export declare function generateKey(): string;
+// hashLinkToken
+export declare function hashLinkToken(presented: string): string;
+// linkToken
+export declare function linkToken(): LinkToken;
 ```
 
 ## Environment
