@@ -156,7 +156,7 @@ modules/auth/
 ├── routes.ts               the routes of the web group
 ├── api-routes.ts           the routes of the api group, under /api
 ├── AuthServiceProvider.ts  bindings and start-up code
-├── controllers/            one class per endpoint
+├── controllers/            the classes behind the routes
 ├── views/                  the pages
 ├── layouts/                the layouts around the pages
 ├── lang/                   the module's texts
@@ -164,7 +164,6 @@ modules/auth/
 ├── mail/                   mails
 ├── jobs/                   queued jobs
 ├── listeners/              event listeners
-├── tasks/                  scheduled tasks
 ├── commands/               console commands
 ├── migrations/
 ├── factories/
