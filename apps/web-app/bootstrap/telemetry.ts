@@ -1,7 +1,7 @@
 /**
  * OpenTelemetry for this app: the SDK and its exporter are the app's, and @marmeon/otel records spans once one is registered.
  * Loaded before the app boots — `NODE_OPTIONS='--import ./bootstrap/telemetry.ts' marmeon start`; see
- * `docs/observability.md#starting-the-sdk`. The packages are devDependencies of this demo app (it ships without telemetry).
+ * `docs/observability.md#starting-the-sdk`. The packages are dependencies of this demo app; it records nothing unless this file is loaded.
  */
 import { context, propagation, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
