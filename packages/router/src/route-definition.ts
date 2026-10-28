@@ -1,5 +1,5 @@
 import { durationToSeconds, type Duration } from '@marmeon/core';
-import type { AccessCheck } from './access.ts';
+import type { AccessCheck, AfterAuthorizeHook } from './access.ts';
 import type { AnyAction, AnyMiddleware, HttpMethod, RouteBinding } from './types.ts';
 
 /**
@@ -18,6 +18,8 @@ export class RouteDefinition {
   declare readonly bindings: readonly RouteBinding[];
   /** The registrar's `authorize` checks, in declaration order; they run after the bindings and before anything else answers. */
   declare readonly checks: readonly AccessCheck[];
+  /** @internal The registrar's `afterAuthorize` hooks, in declaration order; they run once every check has passed. */
+  declare readonly afterAuthorize: readonly AfterAuthorizeHook[];
   /** @internal Where the route was registered, as `file:line` — for the messages about routes that do not say who may call them. */
   declare readonly site: string | undefined;
   /** Whether the route lives under `/:locale` (`Route.localized()`); the server limits the segment to the app's locales. */
@@ -43,6 +45,7 @@ export class RouteDefinition {
     group?: string | undefined;
     bindings?: readonly RouteBinding[];
     checks?: readonly AccessCheck[];
+    afterAuthorize?: readonly AfterAuthorizeHook[];
     site?: string | undefined;
     internal?: boolean;
     localized?: boolean;
@@ -63,6 +66,8 @@ export class RouteDefinition {
     });
     // Not writable and frozen: a check cannot be removed once the route is registered.
     Object.defineProperty(this, 'checks', { value: Object.freeze([...(options.checks ?? [])]), writable: false, enumerable: true });
+    // Frozen the same way: a hook cannot be taken out, nor one added, once the route is registered.
+    Object.defineProperty(this, 'afterAuthorize', { value: Object.freeze([...(options.afterAuthorize ?? [])]), writable: false, enumerable: true });
     this.site = options.site;
     this.localized = options.localized ?? false;
     this.generatedFrom = options.generatedFrom;

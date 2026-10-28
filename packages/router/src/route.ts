@@ -1,5 +1,5 @@
 import { withCode } from '@marmeon/core/internal';
-import { isScoped, registrationSite, siteOf, type AccessCheck } from './access.ts';
+import { isScoped, registrationSite, siteOf, type AccessCheck, type AfterAuthorizeHook } from './access.ts';
 import { assertMiddleware } from './middleware.ts';
 import type { NoReservedKeys, ReservedContextKey } from './middleware.ts';
 import { RouteDefinition } from './route-definition.ts';
@@ -51,6 +51,8 @@ type NoParent = 'scopedBy names a parameter bound before this one — bind the p
 export interface RegistrarAudit {
   used: boolean;
   readonly site: string | undefined;
+  /** The registrar method that made it; `authorize` when absent. */
+  readonly method?: 'afterAuthorize';
 }
 
 export interface GroupAttributes {
@@ -62,6 +64,8 @@ export interface GroupAttributes {
   readonly bindings?: readonly RouteBinding[];
   /** Checks of every route registered through this registrar (`Route.authorize`), in declaration order. */
   readonly checks?: readonly AccessCheck[];
+  /** Hooks of every route registered through this registrar (`Route.afterAuthorize`), in declaration order. */
+  readonly afterAuthorize?: readonly AfterAuthorizeHook[];
   /** Where `authorize()` registrars are recorded, so `Router.load` can refuse one that registered nothing. */
   readonly audit?: RegistrarAudit[];
   /** The `authorize()` registrars this one descends from. */
@@ -241,6 +245,29 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
   }
 
   /**
+   * Runs `hook` for every route registered through the returned registrar, once every check the router makes has passed: after the bindings, the
+   * registrar's `authorize` checks and the request's own `authorize`, before the interceptors, the validation and the handler.
+   * A request that is refused (a 404 from a binder, a 403) never reaches it. A check inside the handler (a table's `authorize`, a `Gate` call) runs after the hooks, so share only what the registrar's checks and the request's `authorize` allow. Use it for what depends on the bound record, such
+   * as `resolve(SharedData).share(…)`; it decides nothing and its return value is ignored. Hooks run in declaration order.
+   * See docs/routing.md#after-the-checks.
+   */
+  afterAuthorize(
+    hook: (ctx: RouteContext<TState, TParams, TBindings, ''>, resolve: ClassResolver) => void | Promise<void>,
+  ): Route<TState, TParams, TBindings> {
+    if (arguments.length > 1) {
+      throw new TypeError(`Route.afterAuthorize() takes one hook — got ${arguments.length} at ${this.#attributes.prefix}; chain them: Route.afterAuthorize(a).afterAuthorize(b).`);
+    }
+    if (typeof hook !== 'function') {
+      throw new TypeError(`Route.afterAuthorize() takes a function (ctx, resolve) => void — got ${typeof hook} at ${this.#attributes.prefix}.`);
+    }
+    const holder: { stack?: string } = {};
+    Error.captureStackTrace(holder, this.afterAuthorize);
+    const entry: RegistrarAudit = { used: false, site: siteOf(holder.stack), method: 'afterAuthorize' };
+    this.#attributes.audit?.push(entry);
+    return this.#with({ afterAuthorize: [...(this.#attributes.afterAuthorize ?? []), hook as AfterAuthorizeHook], pending: [...(this.#attributes.pending ?? []), entry] });
+  }
+
+  /**
    * Every route registered through the returned registrar is internal — never sent to the browser
    * (see `RouteDefinition.internal()`): `Route.internal().prefix('/admin').group((Route) => { … })`.
    */
@@ -349,6 +376,7 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
       group: this.#attributes.group,
       bindings,
       checks: this.#attributes.checks ?? [],
+      afterAuthorize: this.#attributes.afterAuthorize ?? [],
       site: registrationSite(caller),
       internal: this.#attributes.internal ?? false,
       localized: this.#attributes.localized ?? false,

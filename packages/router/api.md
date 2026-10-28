@@ -314,6 +314,7 @@ export declare class Route<TState extends object = EmptyObject, TParams extends 
         [K in TName]: BoundValue<B, W>;
     }>>;
     authorize(check: (ctx: RouteContext<TState, TParams, TBindings, ''>, resolve: ClassResolver) => boolean | Promise<boolean>): Route<TState, TParams, TBindings>;
+    afterAuthorize(hook: (ctx: RouteContext<TState, TParams, TBindings, ''>, resolve: ClassResolver) => void | Promise<void>): Route<TState, TParams, TBindings>;
     internal(): Route<TState, TParams, TBindings>;
     group(callback: (Route: this) => void): void;
     get<const TPath extends string, TSchema extends StandardSchemaV1 = never, TQuery extends StandardSchemaV1 = never>(path: TPath, action: GetRouteAction<TState, TParams, TBindings, TPath, TSchema, TQuery>): RouteDefinition;

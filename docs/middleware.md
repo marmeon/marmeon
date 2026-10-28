@@ -290,6 +290,10 @@ after the framework's:
 Each package adds its part only when the app has it installed. The [request lifecycle](lifecycle.md#the-web-group) page explains
 what each of them does. `pnpm marmeon route:list` shows the middleware every route really runs, in order.
 
+The route's own steps come after all middleware, in this order: the bindings, the registrar's `authorize` checks, the request's
+`authorize`, the registrar's [`afterAuthorize` hooks](routing.md#after-the-checks), then an interceptor or the validation, and
+the handler. Middleware runs before the bindings, so it cannot know the record in the URL.
+
 A package or a service provider of your own adds middleware with a priority of its choice. This one puts `ResponseTime` first in
 the global stack, so it measures everything after it. The name of the global stack, `GLOBAL`, and the priorities of the table,
 `MiddlewarePriority`, come from `@marmeon/router`:

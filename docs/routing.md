@@ -411,6 +411,46 @@ Checks add up: a group inside `admin` can call `authorize` again, and a request 
 own `authorize`. A later check never opens what an earlier one closed. `everyone`, exported by `@marmeon/http`, is the check that
 says yes to anyone its middleware lets through: `Route.authorize(everyone)`. See [authorization](authorization.md#every-route-decides).
 
+### After the checks
+
+`afterAuthorize(hook)` runs code for every route of the registrar once every decision the router makes is made. It gets the same context as
+`authorize`, with the bound records, and a `resolve` function. Use it for what depends on the record in the URL, such as the
+props a layout shows about it:
+
+```ts title="modules/workspaces/routes.ts"
+import { defineRoutes, SharedData } from '@marmeon/http';
+
+declare module '@marmeon/http/page' {
+  interface SharedProps {
+    workspace?: { name: string };
+  }
+}
+
+export default defineRoutes((Route) => {
+  const workspace = Route.prefix('/workspaces/:workspace')
+    .middleware(authenticate())
+    .bind('workspace', WorkspaceRepository)
+    .authorize(can(WorkspacePolicy, 'view', 'workspace'))
+    .afterAuthorize((ctx, resolve) => {
+      resolve(SharedData).share('workspace', { name: ctx.params.workspace.name });
+    });
+
+  workspace.get('/', ShowWorkspaceController).name('workspaces.show');
+});
+```
+
+A route runs its hooks in the order of their declaration, after the bindings, the registrar's checks and the request's own
+`authorize`, and before an interceptor, the validation and the handler. A request that a binder answers with 404, a check refuses
+or the request's `authorize` refuses never reaches them, so the page that tells a stranger "not found" or "forbidden" carries
+nothing the hook shares. The redirect of a [localized](#routes-under-a-locale) route to its locale runs no hook either.
+
+A check inside the handler runs after the hooks: the `authorize` of a table's routes, or a `Gate` call in `handle`. A hook
+therefore shares nothing that the registrar's checks and the request's `authorize` do not already allow.
+
+A hook decides nothing. What it returns is ignored, it does not extend the context, and a route with a hook and no `authorize`
+is still a route that does not say who may call it. It may throw an `HttpError`, which answers as it does from a check. A
+registrar that never registers a route fails at `load()` for its hooks as it does for its checks.
+
 ### Middleware
 
 Middleware runs before the controller and can answer instead of it. A route runs the global middleware first, then its group's
