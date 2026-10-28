@@ -483,7 +483,7 @@ export interface SecurityHeadersOptions {
     referrerPolicy?: ReferrerPolicy | false;
 }
 // Serialize
-export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : SerializeKnown<T>;
+export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : [T] extends [JsonValue] ? T : SerializeKnown<T>;
 // SharedData
 export declare class SharedData {
     #private;
@@ -718,6 +718,11 @@ type ItemPath<E> = {
 }[keyof E & string];
 // JSON_RESULT
 declare const JSON_RESULT: unique symbol;
+// JsonValue
+type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [key: string]: JsonValue;
+    [key: symbol]: never;
+};
 // LAYER_RESULT
 declare const LAYER_RESULT: unique symbol;
 // Lazy
@@ -752,7 +757,7 @@ type SerializeKnown<T> = T extends string | number | boolean | null ? T : T exte
 } : T extends object ? SerializeObject<T> : never;
 // SerializeObject
 type SerializeObject<T> = Simplify<{
-    [K in keyof T as K extends symbol ? never : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]>;
+    [K in keyof T as K extends symbol ? never : [T[K]] extends [never] ? K : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]>;
 } & {
     [K in keyof T as K extends symbol ? never : undefined extends T[K] ? ([Exclude<T[K], undefined>] extends [never] ? never : K) : never]?: Serialize<Exclude<T[K], undefined>>;
 }>;
@@ -1160,6 +1165,11 @@ export type FlashMessage<K extends FlashKey = FlashKey> = K extends unknown ? {
 } : never;
 // FlashValue
 export type FlashValue<K extends string> = K extends keyof FlashData ? FlashData[K] : unknown;
+// JsonValue
+type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [key: string]: JsonValue;
+    [key: symbol]: never;
+};
 // KEY_PREFIXES
 declare const KEY_PREFIXES = "api|app|private|encryption";
 // LayerClose
@@ -1193,7 +1203,7 @@ export type RouteManifest = Readonly<Record<string, {
 // SensitivePattern
 type SensitivePattern = `${string}${Split<typeof NAME_TERMS>}${string}` | `${string}${Split<typeof KEY_PREFIXES>}${'' | '_' | '-'}key${string}` | `${string}session${'' | '_' | '-'}id${string}` | `${string}${Split<typeof CODE_PREFIXES>}${'' | '_' | '-'}code${string}` | `${'' | `${string}.`}${'code' | 'codes' | 'pass' | 'auth'}` | `${'' | Boundary}${'otp' | 'totp'}${string}`;
 // Serialize
-export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : SerializeKnown<T>;
+export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : [T] extends [JsonValue] ? T : SerializeKnown<T>;
 // SerializeElement
 type SerializeElement<E> = E extends Unserializable ? null : Serialize<E>;
 // SerializeKnown
@@ -1204,7 +1214,7 @@ type SerializeKnown<T> = T extends string | number | boolean | null ? T : T exte
 } : T extends object ? SerializeObject<T> : never;
 // SerializeObject
 type SerializeObject<T> = Simplify<{
-    [K in keyof T as K extends symbol ? never : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]>;
+    [K in keyof T as K extends symbol ? never : [T[K]] extends [never] ? K : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]>;
 } & {
     [K in keyof T as K extends symbol ? never : undefined extends T[K] ? ([Exclude<T[K], undefined>] extends [never] ? never : K) : never]?: Serialize<Exclude<T[K], undefined>>;
 }>;
@@ -2275,6 +2285,11 @@ export type FlashMessage<K extends FlashKey = FlashKey> = K extends unknown ? {
 } : never;
 // FlashValue
 export type FlashValue<K extends string> = K extends keyof FlashData ? FlashData[K] : unknown;
+// JsonValue
+type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [key: string]: JsonValue;
+    [key: symbol]: never;
+};
 // KEY_PREFIXES
 declare const KEY_PREFIXES = "api|app|private|encryption";
 // LayerClose
@@ -2368,7 +2383,7 @@ export type RouteManifest = Readonly<Record<string, {
 // SensitivePattern
 type SensitivePattern = `${string}${Split<typeof NAME_TERMS>}${string}` | `${string}${Split<typeof KEY_PREFIXES>}${'' | '_' | '-'}key${string}` | `${string}session${'' | '_' | '-'}id${string}` | `${string}${Split<typeof CODE_PREFIXES>}${'' | '_' | '-'}code${string}` | `${'' | `${string}.`}${'code' | 'codes' | 'pass' | 'auth'}` | `${'' | Boundary}${'otp' | 'totp'}${string}`;
 // Serialize
-export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : SerializeKnown<T>;
+export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : [T] extends [JsonValue] ? T : SerializeKnown<T>;
 // SerializeElement
 type SerializeElement<E> = E extends Unserializable ? null : Serialize<E>;
 // SerializeKnown
@@ -2379,7 +2394,7 @@ type SerializeKnown<T> = T extends string | number | boolean | null ? T : T exte
 } : T extends object ? SerializeObject<T> : never;
 // SerializeObject
 type SerializeObject<T> = Simplify<{
-    [K in keyof T as K extends symbol ? never : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]>;
+    [K in keyof T as K extends symbol ? never : [T[K]] extends [never] ? K : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]>;
 } & {
     [K in keyof T as K extends symbol ? never : undefined extends T[K] ? ([Exclude<T[K], undefined>] extends [never] ? never : K) : never]?: Serialize<Exclude<T[K], undefined>>;
 }>;
@@ -2642,7 +2657,7 @@ export type { Routes } from '@marmeon/router';
 // SensitiveNeverLive
 export type SensitiveNeverLive = 'fields that look like a secret (a password, a card detail, a one-time code, a token) are never validated live — they are checked when the form is sent';
 // Serialize
-export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : SerializeKnown<T>;
+export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : [T] extends [JsonValue] ? T : SerializeKnown<T>;
 // SharedProps
 export interface SharedProps {
 }
@@ -2749,6 +2764,11 @@ type ItemPath<E> = {
 }[keyof E & string];
 // JSON_RESULT
 declare const JSON_RESULT: unique symbol;
+// JsonValue
+type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [key: string]: JsonValue;
+    [key: symbol]: never;
+};
 // KEY_PREFIXES
 declare const KEY_PREFIXES = "api|app|private|encryption";
 // LAYER_RESULT
@@ -2872,7 +2892,7 @@ type SerializeKnown<T> = T extends string | number | boolean | null ? T : T exte
 } : T extends object ? SerializeObject<T> : never;
 // SerializeObject
 type SerializeObject<T> = Simplify<{
-    [K in keyof T as K extends symbol ? never : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]>;
+    [K in keyof T as K extends symbol ? never : [T[K]] extends [never] ? K : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]>;
 } & {
     [K in keyof T as K extends symbol ? never : undefined extends T[K] ? ([Exclude<T[K], undefined>] extends [never] ? never : K) : never]?: Serialize<Exclude<T[K], undefined>>;
 }>;
@@ -3029,8 +3049,13 @@ export type FlashMessage<K extends FlashKey = FlashKey> = K extends unknown ? {
 } : never;
 // FlashValue
 export type FlashValue<K extends string> = K extends keyof FlashData ? FlashData[K] : unknown;
+// JsonValue
+type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [key: string]: JsonValue;
+    [key: symbol]: never;
+};
 // Serialize
-export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : SerializeKnown<T>;
+export type Serialize<T> = 0 extends 1 & T ? T : unknown extends T ? unknown : [T] extends [JsonValue] ? T : SerializeKnown<T>;
 // SerializeElement
 type SerializeElement<E> = E extends Unserializable ? null : Serialize<E>;
 // SerializeKnown
@@ -3041,7 +3066,7 @@ type SerializeKnown<T> = T extends string | number | boolean | null ? T : T exte
 } : T extends object ? SerializeObject<T> : never;
 // SerializeObject
 type SerializeObject<T> = Simplify<{
-    [K in keyof T as K extends symbol ? never : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]>;
+    [K in keyof T as K extends symbol ? never : [T[K]] extends [never] ? K : undefined extends T[K] ? never : T[K] extends Unserializable ? never : K]: Serialize<T[K]>;
 } & {
     [K in keyof T as K extends symbol ? never : undefined extends T[K] ? ([Exclude<T[K], undefined>] extends [never] ? never : K) : never]?: Serialize<Exclude<T[K], undefined>>;
 }>;

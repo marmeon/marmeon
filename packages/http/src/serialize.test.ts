@@ -48,6 +48,26 @@ describe('Serialize<T>', () => {
     expectTypeOf<Serialize<readonly [Date, number]>>().toEqualTypeOf<[string, number]>();
   });
 
+  it('keeps a key of type never', () => {
+    expectTypeOf<Serialize<{ a: never; at: Date }>>().toEqualTypeOf<{ a: never; at: string }>();
+    expectTypeOf<Serialize<{ a?: never }>>().toEqualTypeOf<{}>(); // optional never: only undefined, which JSON drops
+    // @ts-expect-error — a key of type never is not optional
+    expectTypeOf<Serialize<{ a: never }>>().toEqualTypeOf<{ a?: never }>();
+  });
+
+  it('stops at a JSON value', () => {
+    type Json = null | boolean | number | string | Json[] | { [key: string]: Json }; // the database's, spelled out
+    expectTypeOf<Serialize<Json>>().toEqualTypeOf<Json>();
+    expectTypeOf<Serialize<{ meta: Json }>>().toEqualTypeOf<{ meta: Json }>();
+    expectTypeOf<Serialize<{ rows: { id: number; meta: Json; at: Date }[] }>>().toEqualTypeOf<{ rows: { id: number; meta: Json; at: string }[] }>();
+    const sym = Symbol('s');
+    expectTypeOf<Serialize<{ name: string; [sym]: number }>>().toEqualTypeOf<{ name: string }>();
+    expectTypeOf<Serialize<{ meta: { name: string; [sym]: number } }>>().toEqualTypeOf<{ meta: { name: string } }>();
+    const json: { [key: string]: Json } = {};
+    const props: Serialize<{ meta: Json; rows: { id: number }[] }> = { meta: json, rows: [] };
+    void props;
+  });
+
   it('types page props as they arrive', () => {
     class ShowEventController extends Controller {
       handle() {
