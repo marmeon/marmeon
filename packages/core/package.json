@@ -120,7 +120,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "oxc-parser": "^0.152.0"
+    "oxc-parser": "^0.155.0"
   },
   "devDependencies": {
     "valibot": "^1.5.0"

@@ -49,7 +49,9 @@ describe('internalImports', () => {
   });
 
   it.each(['a.ts', 'a.mts', 'a.cts', 'a.js', 'a.jsx', 'a.mjs', 'a.cjs'])('reads %s', (name) => {
-    expect(scan({ [name]: "import '@marmeon/core/internal';" })).toHaveLength(1);
+    // A `.cjs` file is a script to the parser, which refuses an `import` statement there.
+    const source = name.endsWith('.cjs') ? "require('@marmeon/core/internal');" : "import '@marmeon/core/internal';";
+    expect(scan({ [name]: source })).toHaveLength(1);
   });
 
   it('reports the line and column of the string', () => {
