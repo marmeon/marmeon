@@ -484,8 +484,29 @@ instead: `where('user_id', 'in', (eb) => eb.selectFrom('personal_access_tokens')
 A condition may compare a secret column, in the callback of `with()`, `withCount()` or `whereHas()` as in any `where()`: its
 value stays in the database. The answer does not: every row, count or yes the condition gives says something about the secret, so
 never let a request choose the column or send a `like` pattern for it. A comparison in SQL does not take constant time either,
-so do not look a secret up by its value. Look the row up by its key and compare the secret in code, as an
-[API token](api-tokens.md#the-token-format) is checked: by its id, then its secret in constant time.
+so a secret that can be guessed (a PIN, a password, a short code) is never looked up by its value: look the row up by its key and
+compare the secret in code. A token with at least 128 random bits is different, see below.
+
+### Finding a row by a hashed secret
+
+A token with at least 128 random bits cannot be guessed, however fast the comparison: a request may look it up by its hash, which
+the table keeps in a secret column with a unique index. The types close `where('token_hash', '=', hash)` (a secret column has no
+value to compare), and `secretEquals()` opens it for this one comparison. It works in any `where()`, also in `whereHas()`, `updateTable()`
+and `deleteFrom()`:
+
+```ts
+import { hashLinkToken } from '@marmeon/encryption';
+import { secretEquals } from '@marmeon/database';
+
+findByToken(presented: string) {
+  return this.query().selectAll().where((eb) => secretEquals(eb, 'token_hash', hashLinkToken(presented))).executeTakeFirst();
+}
+```
+
+The row comes back without the hash, as from any query. `secretEquals()` takes the hash, never the token, and throws a `TypeError`
+for a value under 32 characters (a hex SHA-256 has 64) without naming it. It refuses a short secret, but not the hash of
+a guessable one: hash only what is random, as [`linkToken()`](urls.md#a-link-that-is-used-once) and an
+[API token](api-tokens.md#the-token-format) do.
 
 The text of a raw `` sql`…` `` template is not checked: a column written into it is the query's own choice. Neither is a view: it
 is raw SQL of a migration, so a view over a table with secret columns returns what its own SQL selects.

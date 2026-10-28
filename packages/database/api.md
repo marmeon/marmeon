@@ -625,6 +625,8 @@ export declare function pageQuery<const P extends number = 15>({ perPage }?: {
 export declare function paginate<DB, TB extends keyof DB, O, const Q = PageRequest>(db: Pick<Connection<any>, 'selectFrom'>, query: SelectQuery<DB, TB, O>, request?: CheckPageRequest<Q>): Promise<Paginated<O>>;
 // secret
 export declare function secret<DB, TB extends keyof DB, R extends SecretReference<DB, TB>>(eb: ExpressionBuilder<DB, TB>, column: R): AliasedExpression<SecretValue<DB, TB, R>, SecretName<R>>;
+// secretEquals
+export declare function secretEquals<DB, TB extends keyof DB, R extends SecretReference<DB, TB>>(eb: ExpressionBuilder<DB, TB>, column: R, value: SecretValue<DB, TB, R>): Expression<SqlBool>;
 // sql
 export { sql } from 'kysely';
 // uniqueViolationColumns

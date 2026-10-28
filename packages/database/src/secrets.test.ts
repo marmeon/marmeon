@@ -3,7 +3,7 @@ import { CamelCasePlugin, ColumnNode, RawNode, ColumnUpdateNode, CommonTableExpr
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { drivers, freshConnections, unfresh } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
-import { Migrator, Repository, secret, sql, type Connections, type Generated, type Secret, type RowOf, type Timestamp } from './index.ts';
+import { Migrator, Repository, secret, secretEquals, sql, type Connections, type Generated, type Secret, type RowOf, type Timestamp } from './index.ts';
 import { projectMigrations } from './schema/projection.ts';
 import { renderTypes } from './types-gen/render.ts';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
@@ -154,6 +154,49 @@ describe.each(drivers)('secret columns on %s', (driver) => {
     const both = await db.selectFrom('accounts').selectAll().select((eb) => secret(eb, 'accounts.totp_secret')).executeTakeFirstOrThrow();
     expect(both).toMatchObject({ totp_secret: 'JBSWY3DP' });
     expect(both).not.toHaveProperty('password');
+  });
+
+  describe('secretEquals()', () => {
+    // A hex SHA-256, what a token's hash column holds.
+    const TOKEN_HASH = 'b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c';
+
+    it('finds the row by the hash, in a select, an update and a delete, and returns no hash', async () => {
+      const ada = await accounts.insert({ email: 'ada@example.com', password: HASH, recovery_code: TOKEN_HASH });
+      await accounts.insert({ email: 'grace@example.com', password: HASH, recovery_code: `${TOKEN_HASH.slice(0, -1)}0` });
+      const found = await db.selectFrom('accounts').selectAll().where((eb) => secretEquals(eb, 'recovery_code', TOKEN_HASH)).execute();
+      expect(found).toEqual([ada]);
+      expect(found[0]).not.toHaveProperty('recovery_code');
+      expect(await db.selectFrom('accounts').select('id').where((eb) => secretEquals(eb, 'accounts.recovery_code', TOKEN_HASH.toUpperCase())).execute()).toEqual([]);
+      expect(await db.selectFrom('accounts').select('id').where((eb) => secretEquals(eb, 'recovery_code', 'f'.repeat(64))).execute()).toEqual([]);
+
+      const updated = await db.updateTable('accounts').set({ email: 'ada@example.org' }).where((eb) => secretEquals(eb, 'recovery_code', TOKEN_HASH)).executeTakeFirst();
+      expect(updated.numUpdatedRows).toBe(1n);
+      const deleted = await db.deleteFrom('accounts').where((eb) => secretEquals(eb, 'recovery_code', TOKEN_HASH)).executeTakeFirst();
+      expect(deleted.numDeletedRows).toBe(1n);
+      expect(await db.selectFrom('accounts').select('email').execute()).toEqual([{ email: 'grace@example.com' }]);
+    });
+
+    it('refuses a value that is no hash — a short secret can be guessed — without naming it', () => {
+      const compare = (value: unknown) => db.selectFrom('accounts').select('id').where((eb) => secretEquals(eb, 'recovery_code', value as string));
+      for (const short of ['123456', 'x'.repeat(31), '', null, 12345678901234567890123456789012345n, undefined]) {
+        expect(() => compare(short)).toThrow(TypeError);
+      }
+      expect(() => compare('x'.repeat(32))).not.toThrow();
+      let message = '';
+      try {
+        compare('s3cr3t-pin');
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain('secretEquals()');
+      expect(message).not.toContain('s3cr3t-pin');
+    });
+
+    it('sends the hash as a parameter, never in the SQL text', () => {
+      const compiled = db.selectFrom('accounts').select('id').where((eb) => secretEquals(eb, 'recovery_code', TOKEN_HASH)).compile();
+      expect(compiled.sql).not.toContain(TOKEN_HASH);
+      expect(compiled.parameters).toContain(TOKEN_HASH);
+    });
   });
 
   it('without the connection plugin, select-all would hand out the hash', async () => {
@@ -496,6 +539,17 @@ export async function secretTypes() {
   accountsDb.selectFrom('accounts').select((eb) => secret(eb, 'email'));
   // @ts-expect-error — `accounts` is not in this query
   accountsDb.selectFrom('users').select((eb) => secret(eb, 'accounts.password'));
+
+  // Comparing one takes `secretEquals()`: the operand of `where()` has no value to compare.
+  // @ts-expect-error — a secret column cannot be an operand of where()
+  accountsDb.selectFrom('accounts').select('id').where('password', '=', 'hash');
+  const hashed = accountsDb.selectFrom('accounts').select('id').where((eb) => secretEquals(eb, 'password', 'hash'));
+  expectTypeOf(await hashed.executeTakeFirst()).toEqualTypeOf<{ id: number } | undefined>();
+  accountsDb.deleteFrom('accounts').where((eb) => secretEquals(eb, 'accounts.password', 'hash'));
+  // @ts-expect-error — `email` is not secret: compare it with where()
+  accountsDb.selectFrom('accounts').select('id').where((eb) => secretEquals(eb, 'email', 'ada@example.com'));
+  // @ts-expect-error — the value is the column's type
+  accountsDb.selectFrom('accounts').select('id').where((eb) => secretEquals(eb, 'password', 42));
 
   // Kysely's `selectAll()` type keeps the key as `never` (the runtime drops it).
   const all = await accountsDb.selectFrom('accounts').selectAll().executeTakeFirstOrThrow();

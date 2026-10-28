@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Clock, commitAnyway, ContainerError, err, ok, type Result } from '@marmeon/core';
-import { Connections, secret, sql, type Generated, type Secret } from '@marmeon/database';
+import { Connections, secret, secretEquals, sql, type Generated, type Secret } from '@marmeon/database';
 import type { DeviceDescription } from './device.ts';
 import type { AuthUserId } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
@@ -392,7 +392,7 @@ export class DatabaseSignIns extends SignInStore {
         .updateTable(SIGN_INS_TABLE)
         .set({ remember_validator_hash: sha256(validator), remember_previous_validator_hash: row.remember_validator_hash, remember_rotated_at: now, signed_in_at: now, last_seen_at: now, updated_at: now })
         .where('id', '=', row.id)
-        .where(sql<boolean>`${sql.ref('remember_validator_hash')} = ${row.remember_validator_hash}`)
+        .where((eb) => secretEquals(eb, 'remember_validator_hash', row.remember_validator_hash))
         .executeTakeFirst();
       if (result.numUpdatedRows > 0n) return device(`${parts.selector}.${validator}`);
       // The row changed after it was read: a rotation by another request, or a revocation, an end, a new token. Only a cookie that is the
@@ -462,7 +462,7 @@ export class DatabaseSignIns extends SignInStore {
         .set({ remember_fingerprint: fingerprint, updated_at: this.#now() })
         .where('id', '=', row.id)
         .where('user_id', '=', userId)
-        .where(sql<boolean>`${sql.ref('remember_validator_hash')} = ${row.remember_validator_hash}`)
+        .where((eb) => secretEquals(eb, 'remember_validator_hash', row.remember_validator_hash))
         .executeTakeFirst();
       return result.numUpdatedRows > 0n ? ok() : err({ kind: 'invalid' });
     }
