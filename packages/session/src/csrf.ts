@@ -50,16 +50,18 @@ export class CsrfProtection {
   }
 
   /**
-   * Paths without CSRF protection; `*` matches any characters: `/webhooks/*`. A pattern that matches every path (`*`, `/*`) throws:
-   * a route that needs no verification belongs in a group without `VerifyCsrfToken`.
+   * Paths without CSRF protection; `*` matches within one path segment (`/hooks/*` covers `/hooks/a`, not `/hooks/a/b`), `**` any
+   * characters, `/` included (`/hooks/**`). A pattern starts with a fixed first segment, or it throws: a placeholder up front would
+   * cover routes like `/login`, and a route that needs no verification belongs in a group without `VerifyCsrfToken`. See `docs/csrf.md#excluding-paths`.
    */
   except(...paths: string[]): this {
     for (const path of paths) {
-      const pattern = path.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*');
-      const regexp = new RegExp(`^${pattern}$`);
-      if (regexp.test('/') && regexp.test('/a/b/c')) {
-        throw new TypeError(`CSRF exclusion '${path}' matches every path, which turns the protection off. Name the paths that need it, or put such routes in a group without CSRF verification.`);
+      if (path !== '' && !/^\/[^/*]+(?:\/|$)/.test(path)) {
+        throw new TypeError(`CSRF exclusion '${path}' must start with a fixed segment ('/webhooks/*'); write each locale out ('/de/unsubscribe/*'). A placeholder up front covers routes that need the protection.`);
       }
+      // `**` is split off first, so that the single `*` inside the pieces stops at a `/`.
+      const pattern = path.split('**').map((piece) => piece.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*')).join('.*');
+      const regexp = new RegExp(`^${pattern}$`);
       this.#except.push(regexp);
     }
     return this;
