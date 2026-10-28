@@ -4,13 +4,16 @@
 
 Marmeon is a set of packages that are released together. A new app depends on most of them already, and you add the others when
 you need what they bring. Each installed package registers itself through [discovery](modules.md#discovery), so adding one is a
-single command:
+single command, in the version your app already has:
 
 ```sh
-pnpm add @marmeon/redis
+pnpm add -E @marmeon/redis@<version of your app>
 ```
 
-Every package has the same version as every other: upgrade them together. The [release policy](releases.md) explains why.
+Every package has the same version as every other: upgrade them together. Each pins the others exactly, so one in another version
+(`pnpm add @marmeon/redis` takes `latest`, which an app on a release candidate is not) brings a second copy of `@marmeon/core`, and the package
+manager's only sign is a warning about peers. `-E` saves the version exactly. A new app saves exactly by itself (`saveExact: true` in `pnpm-workspace.yaml`, `save-exact=true` in `.npmrc` for npm); an app that is older can set it too. [`marmeon check`](check.md#the-packages-check)
+finds a package in another version, and `marmeon dev` warns about it at the start. The [release policy](releases.md) explains why.
 
 ## What a new app has
 

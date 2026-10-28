@@ -143,7 +143,7 @@ auto-instrumentation.
 ### Installation
 
 ```sh
-pnpm add @marmeon/otel @opentelemetry/api@^1.9.0
+pnpm add -E @marmeon/otel@<version of your app> @opentelemetry/api@^1.9.0
 pnpm add @opentelemetry/sdk-trace @opentelemetry/context-async-hooks @opentelemetry/core @opentelemetry/resources @opentelemetry/exporter-trace-otlp-http
 ```
 

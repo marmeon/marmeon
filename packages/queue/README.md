@@ -7,7 +7,7 @@ Background jobs for Marmeon apps: job classes, a database or Redis queue, worker
 Part of every new Marmeon app: `pnpm create marmeon` installs it.
 
 The `database` driver is the default and needs its `jobs` and `failed_jobs` tables, which a new app has. `QUEUE_DRIVER=redis`
-needs `@marmeon/redis`, which brings the Redis client: `pnpm add @marmeon/redis`.
+needs `@marmeon/redis`, which brings the Redis client: `pnpm add -E @marmeon/redis@<version of your app>`.
 
 ## A first job
 

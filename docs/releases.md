@@ -46,7 +46,9 @@ fixes](#which-versions-get-fixes) is a separate question.
 ## Release candidates
 
 A release candidate, `x.y.z-rc.N`, is a preview of the release `x.y.z`. It comes under the npm dist-tag `next` and never moves `latest`,
-so an app only gets one when it asks: `pnpm add @marmeon/core@next`, and the same for every other framework package, all in the same version.
+so an app only gets one when it asks: `pnpm add -E @marmeon/core@next`, and the same for every other framework package, all in the same version.
+To start an app from a candidate, run `pnpm create marmeon@next my-app`. A package added later takes the version of the app (`pnpm add -E @marmeon/redis@<version of your app>`), not `next`, which may be newer than the app's.
+[`marmeon check`](check.md#the-packages-check) finds a package that is not.
 
 From the first candidate to its release, only bug fixes, documentation and internals change; the public API is the one the release
 will have. The exception is a security hardening: it may come all the same and brings the next candidate. A hardening

@@ -6,11 +6,11 @@ the props it named through the page's own route.
 ## Installation
 
 ```sh
-pnpm add @marmeon/live
+pnpm add -E @marmeon/live@<version of your app>
 ```
 
 `LIVE_DRIVER=memory`, the default, carries hints within one process. More than one process needs `LIVE_DRIVER=redis` and
-`@marmeon/redis`, which brings the Redis client: `pnpm add @marmeon/redis`.
+`@marmeon/redis`, which brings the Redis client: `pnpm add -E @marmeon/redis@<version of your app>`.
 
 ## Following a channel
 

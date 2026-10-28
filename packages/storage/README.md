@@ -6,7 +6,7 @@ signed URLs and uploads.
 ## Installation
 
 ```sh
-pnpm add @marmeon/storage
+pnpm add -E @marmeon/storage@<version of your app>
 ```
 
 The local and memory disks need nothing more. An S3 disk needs the AWS SDK, optional peers the app installs as dependencies:

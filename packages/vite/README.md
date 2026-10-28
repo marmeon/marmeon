@@ -8,7 +8,7 @@ and the check that keeps server code out of the browser.
 A dev dependency of every new Marmeon app. In another app, with React's plugin next to it:
 
 ```sh
-pnpm add -D vite@^8 @marmeon/vite @vitejs/plugin-react
+pnpm add -D vite@^8 @marmeon/vite@<version of your app> @vitejs/plugin-react
 ```
 
 Vite is a peer, never a dependency: the app's own Vite, with its plugins and config, is the one the framework runs.

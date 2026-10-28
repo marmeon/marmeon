@@ -10,7 +10,7 @@ signature, are masked before anything is written.
 A new app has them already. In another app, install the package as a dev dependency:
 
 ```sh
-pnpm add -D @marmeon/devtools
+pnpm add -E -D @marmeon/devtools@<version of your app>
 ```
 
 Discovery registers it, and `marmeon dev` starts recording. Open http://localhost:3000/_marmeon/devtools while the app runs.

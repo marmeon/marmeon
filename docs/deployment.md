@@ -189,7 +189,7 @@ A new app needs nothing more for SQLite, files, the database queue and the log m
 
 | For | Install |
 | --- | --- |
-| Redis for the cache, sessions, the queue or live updates | `pnpm add @marmeon/redis`. It brings the `redis` client. |
+| Redis for the cache, sessions, the queue or live updates | `pnpm add -E @marmeon/redis@<version of your app>`. It brings the `redis` client. |
 | SMTP, `MAIL_DRIVER=smtp` | Nothing: `@marmeon/mail` brings `nodemailer`. |
 | Postgres, `DB_DRIVER=pgsql` | `pnpm add pg@^8` |
 | An S3 disk | `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3` |

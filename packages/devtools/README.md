@@ -8,7 +8,7 @@ What a Marmeon app did while you develop — requests, queries, jobs, mails, log
 A dev dependency of every new Marmeon app. In another app:
 
 ```sh
-pnpm add -D @marmeon/devtools
+pnpm add -E -D @marmeon/devtools@<version of your app>
 ```
 
 The devtools run only with `NODE_ENV=development`, which `marmeon dev` sets. Under `test`, `production` (whatever `APP_ENV`

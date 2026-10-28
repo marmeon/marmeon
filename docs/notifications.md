@@ -10,7 +10,7 @@ and an id, and a worker delivers it.
 Add the package and the table its database channel writes:
 
 ```sh
-pnpm add @marmeon/notifications
+pnpm add -E @marmeon/notifications@<version of your app>
 pnpm marmeon make:notifications-table
 pnpm marmeon migrate
 ```
