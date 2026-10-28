@@ -96,6 +96,13 @@ describe('marmeon (in the web app)', () => {
     expect(stderr).toContain('a certificate or key file named in the URL');
   });
 
+  it('does not tell to set a renamed variable: the error says to rename it', () => {
+    const { code, stderr, stdout } = marmeon(webApp, ['route:list'], { HASH_ARGON_MEMORY: '19456' });
+    expect(code).toBe(1);
+    expect(stderr).toContain('HASH_ARGON_MEMORY was renamed HASH_ARGON_MEMORY_KB');
+    expect(stdout + stderr).not.toContain('Set HASH_ARGON_MEMORY');
+  });
+
   it('prints configuration errors without Node internals and exits with 1', () => {
     const { code, stderr } = marmeon(webApp, ['route:list'], { APP_NAME: '', APP_URL: 'localhost' });
     expect(code).toBe(1);

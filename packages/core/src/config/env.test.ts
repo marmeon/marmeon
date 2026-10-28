@@ -264,7 +264,7 @@ describe('env through defineConfig — the start error', () => {
         '  • app: PORT — PORT must be a port from 1 to 65535.',
         '  • app: ADMINS — ADMINS entry 2 must be an e-mail address.',
         '  • encryption: APP_KEY — Missing — run "marmeon key:generate"',
-        'Set these variables in the environment or in .env (see .env.example).',
+        'Set or rename these variables in the environment or in .env (see .env.example).',
       ].join('\n'),
     );
   });

@@ -295,6 +295,9 @@ problem, for a rename that changes the unit; it cannot be empty.
 Reading both names would leave it open which one wins when a deployment sets both, so the old one only stops the start. Leave
 the `.renamed()` call in place: without it, the old name falls back to the default again, silently.
 
+The "How to fix it" hint of the start ("Set … in .env") lists only the variables that are missing or invalid; a retired name is
+never in it, and when the problem is only a retired name there is no such hint, because the problem already says what to rename.
+
 ### Where a definition is listed
 
 A definition counts once it is listed, and it is checked once, however often it is listed:
@@ -378,7 +381,7 @@ everything to fix:
   • notes: NOTES_PER_PAGE — NOTES_PER_PAGE must be at most 100.
   • notes: NOTES_EDITORS — NOTES_EDITORS entry 2 must be an e-mail address.
   • encryption: APP_KEY — Missing — run "marmeon key:generate"
-Set these variables in the environment or in .env (see .env.example).
+Set or rename these variables in the environment or in .env (see .env.example).
 ```
 
 Each line names the definition, the variable as it is written, and the problem. A variable has one line, however much is wrong

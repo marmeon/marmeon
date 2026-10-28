@@ -186,7 +186,7 @@ describe('createApplication({ phase: "build" })', () => {
     }
     const error = await createApplication({ root: import.meta.dirname, discover: false, config: [Secret, Plain], providers: [Registers] }, { env: { NODE_ENV: 'production' } }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConfigError);
-    expect((error as Error).message).toMatch(/^\[marmeon:K6\] Invalid configuration — the application cannot start:\n {2}• secret: APP_KEY — .+\nSet these variables in the environment or in \.env \(see \.env\.example\)\.$/);
+    expect((error as Error).message).toMatch(/^\[marmeon:K6\] Invalid configuration — the application cannot start:\n {2}• secret: APP_KEY — .+\nSet or rename these variables in the environment or in \.env \(see \.env\.example\)\.$/);
     expect(registered).toEqual([]);
   });
 });

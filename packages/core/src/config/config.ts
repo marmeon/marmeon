@@ -96,7 +96,7 @@ export function invalidConfiguration(problems: ReadonlyMap<ConfigDefinition<unkn
     withCode(
       'K6',
       `Invalid configuration — the application cannot start:\n${[...problems.values()].flat().join('\n')}\n` +
-        'Set these variables in the environment or in .env (see .env.example).',
+        'Set or rename these variables in the environment or in .env (see .env.example).',
     ),
   );
   error.stack = `${error.name}: ${error.message}`; // the location of the throw is noise here
