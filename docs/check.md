@@ -3,7 +3,7 @@
 ## Introduction
 
 `marmeon check` answers "am I done?" in one command: it runs the checks below, names each result and ends with an exit code a
-script or an agent can act on. The tools (`types`, `lint`, `internal-imports`, `raw-sql`, `inner-html`, `agents`) need no app. The other checks load it, once
+script or an agent can act on. The tools (`types`, `lint`, `internal-imports`, `raw-sql`, `inner-html`, `agents`, `packages`) need no app. The other checks load it, once
 registered and once booted, so they need the `.env` and, for [readiness](#the-app-checks), the services the app depends on.
 
 ```sh
@@ -41,6 +41,7 @@ A new app has the script: `pnpm check` runs `marmeon check`.
 | `raw-sql` | Warns about [`sql.raw()` and `sql.lit()` with an argument that is not a literal](#raw-sql). | nothing |
 | `inner-html` | Warns about [HTML that code sets from a value that is not a literal](#html-from-code). | nothing |
 | `agents` | Warns when the marmeon block of `AGENTS.md` is [missing or out of date](#the-agents-block). | nothing |
+| `packages` | Fails when a `marmeon` or `@marmeon/*` package is [not in the app's version](#the-packages-check). | nothing |
 
 The tools run side by side and are always listed in this order. `--only=types,lint` runs just those, `--skip=lint` runs all but
 that one. A check you leave out is not in the report at all; it is not reported as `skipped`. A name that no check has, or options that leave no check to run (`--only=lint --skip=lint`), is a wrong call: the command lists the valid names and exits with 2. The app is loaded only when a selected check needs it, so `--only=types,lint` runs without an app.
@@ -340,3 +341,24 @@ The syntax is `marmeon-check-ignore <check>[, <check>]: <reason>`, as a `//` com
 To keep the warning out of the report, run `marmeon agents:sync` and commit the result, or leave the check out with
 `--skip=agents`. To make CI fail on a block that is out of date, use `marmeon agents:sync --check`. See
 [coding agents](agents.md#keeping-the-block-current).
+
+## The packages check
+
+Every `@marmeon/*` package pins the others it needs to one exact version, and `marmeon` and the packages are released together.
+`pnpm add @marmeon/storage` takes the version `latest` names, so in an app on another version it installs a second `@marmeon/core`
+next to the app's, and the package manager only warns about peers. `packages` reads the `package.json` of the app and the installed
+packages (no app is loaded, no file is searched) and compares each `marmeon` and `@marmeon/*` it lists with `@marmeon/core`:
+
+| Finding | Level |
+| --- | --- |
+| A package is installed in another version than `@marmeon/core`. The message names the package, both versions and the command in your package manager, chosen by the lockfile (`pnpm add -E @marmeon/storage@<the app's version>`, or `npm install -E …` with a `package-lock.json` and no `pnpm-lock.yaml`). | error |
+| A package that is in the app's version, or a package of someone else the app lists, pulls an `@marmeon/*` in a different version, so a second copy is installed. | error |
+| A package is listed with a range (`^1.0.0`) or a tag instead of an exact version. | warning |
+| A package that is not looked up by version (`workspace:*`, `file:`, `link:`). | not reported |
+| No `@marmeon/core` installed. | `skipped` |
+| `package.json` cannot be read. | `error`, "could not run" |
+
+Fix a finding with the command it shows; `-E` saves the version exactly, and `-D` is added for a package listed under
+`devDependencies`. `marmeon dev` runs the same comparison at each start of the server, so after every restart, and warns without
+stopping, and a `K3` error of any command ends with it too, since a package that is read in another version is a usual reason for it. `marmeon start` does not look: the
+production server starts what CI has checked. Leave the check out with `--skip=packages`.

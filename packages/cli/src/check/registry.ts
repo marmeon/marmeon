@@ -36,7 +36,7 @@ export type AppCheckClass = (new (...args: any[]) => AppCheck) & {
 };
 
 /** The names `marmeon check` uses itself. */
-export const BUILT_IN_CHECKS = ['types', 'lint', 'internal-imports', 'raw-sql', 'inner-html', 'agents', 'boot', 'readiness'] as const;
+export const BUILT_IN_CHECKS = ['types', 'lint', 'internal-imports', 'raw-sql', 'inner-html', 'agents', 'packages', 'boot', 'readiness'] as const;
 
 /** The longest `static timeout` a check may ask for (s); more can only be a value meant as milliseconds. */
 const MAX_CHECK_TIMEOUT_SECONDS = 600;
@@ -54,7 +54,7 @@ export class CheckRegistry {
 
   /**
    * Registers `checks`; adding the same class again is a no-op. A name that is not kebab-case, one of marmeon's own
-   * (`types`, `lint`, `internal-imports`, `raw-sql`, `inner-html`, `agents`, `boot`, `readiness`), or taken by another class throws a {@link CheckSetupError}
+   * (`types`, `lint`, `internal-imports`, `raw-sql`, `inner-html`, `agents`, `packages`, `boot`, `readiness`), or taken by another class throws a {@link CheckSetupError}
    * naming both classes and their `source`, so no package takes over another's result.
    */
   add(checks: readonly AppCheckClass[], source = 'a package'): this {

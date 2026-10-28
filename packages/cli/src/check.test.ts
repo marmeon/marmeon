@@ -46,13 +46,14 @@ describe('marmeon check', { timeout: 90_000 }, () => {
       ['raw-sql', 'passed'],
       ['inner-html', 'passed'],
       ['agents', 'skipped'],
+      ['packages', 'skipped'],
     ]);
   });
 
   it('prints one line per check without --json', () => {
     const { code, stdout } = check(app({}));
     expect(code).toBe(0);
-    expect(stdout).toMatch(/✓ types\n✓ lint\n✓ internal-imports\n✓ raw-sql\n✓ inner-html\n- agents skipped: no AGENTS.md\n/);
+    expect(stdout).toMatch(/✓ types\n✓ lint\n✓ internal-imports\n✓ raw-sql\n✓ inner-html\n- agents skipped: no AGENTS.md\n- packages skipped: no @marmeon\/core installed\n/);
     expect(stdout).toContain('Passed (exit 0).');
   });
 
@@ -151,7 +152,7 @@ describe('marmeon check', { timeout: 90_000 }, () => {
   it('runs only the checks --only names, and not the ones --skip names', () => {
     const root = app({});
     expect(JSON.parse(check(root, ['--only=types', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types']);
-    expect(JSON.parse(check(root, ['--skip=types,lint', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['internal-imports', 'raw-sql', 'inner-html', 'agents']);
+    expect(JSON.parse(check(root, ['--skip=types,lint', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['internal-imports', 'raw-sql', 'inner-html', 'agents', 'packages']);
   });
 
   it('exits 2 for empty name lists, and fails on the boot, with a warning, for a name nobody knows when the app did not load', () => {
@@ -418,9 +419,9 @@ describe('marmeon check: the block of AGENTS.md', { timeout: 90_000 }, () => {
     expect(report.problems[0].message).toBe('AGENTS.md is not a file. It was not read.');
   });
 
-  it('is listed after inner-html, and --skip=agents leaves it out', () => {
+  it('is listed after inner-html, before packages, and --skip=agents leaves it out', () => {
     const root = app({ 'AGENTS.md': '# Shop\n' });
-    expect(JSON.parse(check(root, ['--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'raw-sql', 'inner-html', 'agents']);
-    expect(JSON.parse(check(root, ['--skip=agents', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'raw-sql', 'inner-html']);
+    expect(JSON.parse(check(root, ['--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'raw-sql', 'inner-html', 'agents', 'packages']);
+    expect(JSON.parse(check(root, ['--skip=agents', '--json']).stdout).checks.map((report: { name: string }) => report.name)).toEqual(['types', 'lint', 'internal-imports', 'raw-sql', 'inner-html', 'packages']);
   });
 });

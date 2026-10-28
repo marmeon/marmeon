@@ -22,6 +22,8 @@ import {
   installedClosure,
   nameTitles,
   pnpmWorkspace,
+  SAVE_EXACT_NPM,
+  SAVE_EXACT_PNPM,
   readme,
   registerModule,
   stubSets,
@@ -186,7 +188,9 @@ export async function main(io: Io = processIo()): Promise<number> {
   }
   const blank = readFileSync(join(target, 'package.json'), 'utf8');
   const template = choices.kit ? withKitDependencies(blank) : blank;
-  if ('tarballs' in source && pm === 'pnpm') writeFileSync(join(target, 'pnpm-workspace.yaml'), pnpmWorkspace(source.tarballs, installedClosure(JSON.parse(template), source)));
+  if (pm === 'npm') writeFileSync(join(target, '.npmrc'), SAVE_EXACT_NPM);
+  else if ('tarballs' in source) writeFileSync(join(target, 'pnpm-workspace.yaml'), pnpmWorkspace(source.tarballs, installedClosure(JSON.parse(template), source)));
+  else writeFileSync(join(target, 'pnpm-workspace.yaml'), `${SAVE_EXACT_PNPM}\n`);
   const manifest = appManifest(template, { name, packageManager: pm, source });
   writeFileSync(join(target, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   writeEnv(target, title);

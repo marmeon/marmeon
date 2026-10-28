@@ -1,8 +1,9 @@
-import { Application, ConfigError, Container, ErrorReports, ErrorSolutions, type ServiceProviderClass } from '@marmeon/core';
+import { Application, ConfigError, Container, errorCodeOf, ErrorReports, ErrorSolutions, type ServiceProviderClass } from '@marmeon/core';
 import { coreSolutions, loadDiscoveredPackages, messageBase, sendConsoleLogsToStderr, trace } from '@marmeon/core/internal';
 import { channels, type CommandRunMessage } from '@marmeon/core/diagnostics';
 import { CommandArgumentsError, CommandRegistry, type CommandClass, CommandSetupError, parseCommandArgs, runCommand, wantsHelp } from './command.ts';
 import { BUILT_IN } from './built-in.ts';
+import { packageAdvice } from './check/packages.ts';
 import { printCommandHelp, printCommandList, printCommandListJson } from './commands/list.ts';
 import { loadApplication } from './load.ts';
 import { Output, printError, stdoutToStderr, style } from './output.ts';
@@ -96,6 +97,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
         const code = (loaded as { code?: unknown }).code;
         output.error(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}${typeof code === 'string' ? ` (${code})` : ''}`);
         await printSolutions(output, loaded, root, failing);
+        printPackageAdvice(output, loaded, root, failing);
         return 1;
       }
       warning = `${loaded.message.split('\n')[0]} — showing built-in commands only.`;
@@ -191,6 +193,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
       return EXIT_USAGE;
     }
     printError(output, error);
+    printPackageAdvice(output, error, root, 'stderr');
     reportFailure(app, Command, error);
     return 1;
   } finally {
@@ -226,4 +229,18 @@ async function printSolutions(output: Output, error: Error, root: string, stream
   } catch {
     // The error itself was printed — that is what counts.
   }
+}
+
+/**
+ * After a K3 (a class the loader could not give an injection list), the @marmeon packages of the app that are not in one version
+ * — the usual reason a package is read by a loader of another version. Prints nothing when they are all alike. Never fails itself.
+ */
+function printPackageAdvice(output: Output, error: unknown, root: string, stream: 'stdout' | 'stderr'): void {
+  if (errorCodeOf(error) !== 'K3') return;
+  const advice = packageAdvice(root);
+  if (advice.length === 0) return;
+  const line = (text = '') => (stream === 'stderr' ? void process.stderr.write(`${text}\n`) : output.line(text));
+  line();
+  line(`${stream === 'stderr' ? 'ℹ' : style('cyan', 'ℹ')} The @marmeon packages of this app are not in one version (docs/check.md#the-packages-check):`);
+  for (const text of advice) line(`  ${text}`);
 }

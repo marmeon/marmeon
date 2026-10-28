@@ -45,6 +45,7 @@ Pass \`--no-interaction\` to \`marmeon\` when you run it in a terminal.
 - Fix what \`marmeon check\` finds. Only where the code is safe as it is, silence a \`raw-sql\`, \`inner-html\` or \`throttle\` finding with
   \`// marmeon-check-ignore <check>: <why it is safe>\` (docs/check.md#silencing-a-finding), and tell the user.
 - No import from \`@marmeon/*/internal\`.
+- Run \`marmeon\` from the app's root, never from inside \`node_modules\`.
 - Your own stores (auth, sessions) extend the abstract base class (\`SignInStore\`, \`SessionStore\`, …), never a \`Database…\` class.
 - An error carries \`[marmeon:XX]\`: look the code up with \`marmeon docs errors\` (section "Server error codes"). In development the last
   error is in \`.marmeon/last-error.md\`.
