@@ -387,6 +387,8 @@ export interface ValidateOptions {
   readonly only?: readonly string[] | undefined;
   /** What runs before the body schema (see {@link ValidationHook}). */
   readonly hooks?: readonly ValidationHook[] | undefined;
+  /** The request's `authorize` already ran for this context (the router runs it before the route's `afterAuthorize` hooks): skip it. */
+  readonly authorized?: boolean | undefined;
 }
 
 /** The 403 every refused check answers with, so a route's registrar and its request look the same from outside. */
@@ -410,9 +412,9 @@ export async function validateRequest(
   definition: RequestDefinition,
   ctx: HttpContext,
   resolve: ClassResolver = (Class) => new Class(),
-  { only, hooks = [] }: ValidateOptions = {},
+  { only, hooks = [], authorized = false }: ValidateOptions = {},
 ): Promise<ValidatedRequest> {
-  await authorizeRequest(definition, ctx, resolve);
+  if (!authorized) await authorizeRequest(definition, ctx, resolve);
   const query = definition.query ? await parseQuery(definition.query, ctx.query) : undefined;
   if (!definition.schema) {
     if (only) throw nothingToValidate();

@@ -119,6 +119,17 @@ List the class in the `web` key of `middleware` in `bootstrap/app.ts`. A functio
 once per request, never for a redirect or JSON. The wrappers of page props work here too. The page's own prop of the same name
 wins, and `usePage().props` reads the shared ones in any component.
 
+> [!WARNING]
+> A middleware runs before the route's bindings and checks. Do not share anything about a bound record from it: the page of a
+> 404 or 403 for somebody who may not see the record would carry it. Share it with the route's
+> [`afterAuthorize`](routing.md#after-the-checks) instead, which runs only once every check has passed:
+>
+> ```ts
+> const project = Route.bind('project', ProjectRepository).authorize(can(ProjectPolicy, 'view', 'project')).afterAuthorize((ctx, resolve) => {
+>   resolve(SharedData).share('project', { name: ctx.params.project.name });
+> });
+> ```
+
 Declare shared props as optional. A path that matches no route passes no group's middleware, so its 404 page renders without
 them, inside the same layout. The starter kit shares the signed-in user as `auth`, and the session shares the validation errors of
 the last form as `errors`.

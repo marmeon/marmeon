@@ -11,6 +11,12 @@ import type { ClassResolver, RouteBinding } from './types.ts';
  */
 export type AccessCheck<TCtx = any> = (ctx: TCtx, resolve: ClassResolver) => boolean | Promise<boolean>;
 
+/**
+ * Code a route runs once every check has passed (`Route.afterAuthorize()`). It decides nothing: what it returns is ignored,
+ * and a throw answers as a failing check does. See docs/routing.md#after-the-checks.
+ */
+export type AfterAuthorizeHook<TCtx = any> = (ctx: TCtx, resolve: ClassResolver) => void | Promise<void>;
+
 const EVERYONE = Symbol.for('marmeon.access.everyone');
 
 /** Labels live beside the functions, not on them: a frozen or already labelled function takes one all the same. */

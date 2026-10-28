@@ -249,6 +249,9 @@ export class Router {
     }
     const dropped = audit.find((entry) => !entry.used);
     if (dropped) {
+      if (dropped.method === 'afterAuthorize') {
+        throw new Error(`Route.afterAuthorize() at ${dropped.site ?? 'a route file'} made a registrar that never registered a route: its hook applies only to routes registered through the registrar it returns — keep it in a constant (const shared = Route.afterAuthorize(…)) and register through that.`);
+      }
       throw new Error(`Route.authorize() at ${dropped.site ?? 'a route file'} made a registrar that never registered a route: its check applies only to routes registered through the registrar it returns — keep it in a constant (const admin = Route.authorize(…)) and register through that. A condition belongs around the whole \`Route.authorize(…)…\` call, not around the routes after it.`);
     }
     if (options.framework === FRAMEWORK_ROUTES) {
@@ -402,18 +405,21 @@ export class Router {
         for (const check of route.checks) {
           if ((await check(finalCtx, resolve)) !== true) throw unauthorized();
         }
+        // The request's own `authorize` is the last decision. Only then do the hooks run: what they share about a bound record
+        // never reaches an answer to somebody who may not see it, whichever of the paths below answers.
+        const request = isControllerClass(action) ? action.request : undefined;
+        if (request) await authorizeRequest(request, finalCtx, resolve);
+        for (const hook of route.afterAuthorize) await hook(finalCtx, resolve);
         // An interceptor or a live validation: the controller is never built, `handle` never runs.
         const interceptor = this.#interceptors.find((candidate) => candidate.claims(finalCtx.request));
         if (interceptor) {
-          const request = isControllerClass(action) ? action.request : undefined;
-          if (request) await authorizeRequest(request, finalCtx, resolve);
           return interceptor.answer(finalCtx, request, resolve);
         }
         const live = liveValidationFields(finalCtx.request);
         if (live) {
           const method = finalCtx.request.method;
           if (!isControllerClass(action) || !action.request || method === 'GET' || method === 'HEAD' || live.length === 0) throw nothingToValidate();
-          await validateRequest(action.request, finalCtx, resolve, { only: live, hooks: this.#validationHooks });
+          await validateRequest(action.request, finalCtx, resolve, { only: live, hooks: this.#validationHooks, authorized: true });
           return new Response(null, { status: 204, headers: { [VALIDATED_HEADER]: live.join(','), 'cache-control': 'no-store' } });
         }
         let result: unknown;
@@ -422,7 +428,7 @@ export class Router {
           // REPR: authorize and validate before the controller is even built.
           let handlerCtx: HttpContext = finalCtx;
           if (action.request) {
-            const { body, query } = await validateRequest(action.request, finalCtx, resolve, { hooks: this.#validationHooks });
+            const { body, query } = await validateRequest(action.request, finalCtx, resolve, { hooks: this.#validationHooks, authorized: true });
             if (query) {
               const method = finalCtx.request.method;
               // A URL with an invalid or unknown field may go to its canonical form instead (GET only).

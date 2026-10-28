@@ -1,5 +1,5 @@
 import { authenticate, confirmedPassword, verified } from '@marmeon/auth';
-import { defineRoutes, everyone } from '@marmeon/http';
+import { defineRoutes, everyone, SharedData } from '@marmeon/http';
 import { UserRepository } from '#modules/auth';
 import { AddProfileLinkController } from './controllers/AddProfileLinkController.ts';
 import { ConfirmRemoveLinkController } from './controllers/ConfirmRemoveLinkController.ts';
@@ -13,6 +13,13 @@ import { UpdateAvatarController } from './controllers/UpdateAvatarController.ts'
 import { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
 import { ProfileDirectory } from './ProfileDirectory.ts';
 import { ProfileLinkRepository } from './ProfileLinkRepository.ts';
+
+declare module '@marmeon/http/page' {
+  interface SharedProps {
+    /** Whose profile a page below `/users/:user` works on, for the layout. Shared only once the policy has let the signed-in user in. */
+    profileOwner?: { name: string };
+  }
+}
 
 export default defineRoutes((Route) => {
   // Everyone, filtered and sorted by the query string (`ListPeopleRequest`) — state that lives in the URL.
@@ -34,7 +41,11 @@ export default defineRoutes((Route) => {
   // the server (the e-mail only for the owner).
   users.authorize(everyone).bind('user', ProfileDirectory, { public: true }).get('/:user', ShowUserProfileController).name('show');
   // Everything below changes or opens a profile for editing, and each request checks ProfilePolicy (or ProfileLinkPolicy).
-  const user = users.bind('user', UserRepository);
+  // The name is shared once every check has passed (`afterAuthorize`): the 403 of somebody else's edit page, in the same layout, never
+  // carries it. A middleware runs before the user is looked up and could not tell.
+  const user = users.bind('user', UserRepository).afterAuthorize((ctx, resolve) => {
+    resolve(SharedData).share('profileOwner', { name: ctx.params.user.name });
+  });
   // A layer over whatever is on screen; its base, for deep links, is the profile.
   user.get('/:user/edit', EditUserProfileController).name('edit');
   user.put('/:user', UpdateUserProfileController).name('update');
