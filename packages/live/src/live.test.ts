@@ -765,6 +765,121 @@ describe('the Broadcaster — after the commit, never in a rollback', () => {
     expect(() => recorder.assertRefreshed('users.1')).toThrow('Expected users.1 to be refreshed — refreshed: nothing.');
   });
 
+  it('equal hints of one transaction go out once after its commit — the channel counts one', async () => {
+    const backend = new MemoryLiveBackend();
+    const recorder = new BroadcastTester();
+    const broadcast = broadcasterOf(backend, undefined, recorder);
+    await runTransaction(owner, 'default', async () => {
+      for (let row = 0; row < 3; row++) await broadcast.refresh('users.1', { only: ['profile', 'bell'] });
+      await broadcast.refresh('users.1', { only: ['bell', 'profile'] });
+    });
+    recorder.assertRefreshed('users.1', { times: 1 });
+    expect(await backend.seqs(['users.1'])).toEqual([1]);
+  });
+
+  it('hints that differ in channel or props stay apart', async () => {
+    const backend = new MemoryLiveBackend();
+    const recorder = new BroadcastTester();
+    const broadcast = broadcasterOf(backend, undefined, recorder);
+    await runTransaction(owner, 'default', async () => {
+      await broadcast.refresh('users.1', { only: ['profile'] });
+      await broadcast.refresh('users.1', { only: ['bell'] });
+      await broadcast.refresh('users.1');
+      await broadcast.refresh('users.1');
+      await broadcast.refresh('users.2');
+    });
+    expect(recorder.refreshed().map((refresh) => [refresh.channel, refresh.only])).toEqual([
+      ['users.1', ['profile']],
+      ['users.1', ['bell']],
+      ['users.1', null],
+      ['users.2', null],
+    ]);
+    expect(await backend.seqs(['users.1', 'users.2'])).toEqual([3, 1]);
+  });
+
+  it('hints that leave out different tabs stay apart; those that leave out the same tab are one', async () => {
+    const backend = new MemoryLiveBackend();
+    const recorder = new BroadcastTester();
+    await runTransaction(owner, 'default', async () => {
+      await broadcasterOf(backend, 'tab-a-0001', recorder).refresh('users.1');
+      await broadcasterOf(backend, undefined, recorder).refresh('users.1');
+    });
+    expect(recorder.refreshed('users.1').map((refresh) => refresh.connection)).toEqual(['tab-a-0001', undefined]);
+    expect(await backend.seqs(['users.1'])).toEqual([2]);
+
+    recorder.clear();
+    await runTransaction(owner, 'default', async () => {
+      await broadcasterOf(backend, 'tab-a-0001', recorder).refresh('users.1');
+      await broadcasterOf(backend, 'tab-a-0001', recorder).refresh('users.1');
+    });
+    expect(recorder.refreshed('users.1').map((refresh) => refresh.connection)).toEqual(['tab-a-0001']);
+    expect(await backend.seqs(['users.1'])).toEqual([3]);
+  });
+
+  it('outside a transaction every hint goes out at once', async () => {
+    const backend = new MemoryLiveBackend();
+    const recorder = new BroadcastTester();
+    const broadcast = broadcasterOf(backend, undefined, recorder);
+    await broadcast.refresh('users.1');
+    await broadcast.refresh('users.1');
+    recorder.assertRefreshed('users.1', { times: 2 });
+    expect(await backend.seqs(['users.1'])).toEqual([2]);
+  });
+
+  it('two transactions one after the other each send their hint', async () => {
+    const recorder = new BroadcastTester();
+    const broadcast = broadcasterOf(new MemoryLiveBackend(), undefined, recorder);
+    await runTransaction(owner, 'default', () => broadcast.refresh('users.1'));
+    await runTransaction(owner, 'default', () => broadcast.refresh('users.1'));
+    recorder.assertRefreshed('users.1', { times: 2 });
+  });
+
+  it('a hint of a savepoint that rolled back does not displace the equal one outside it', async () => {
+    const backend = new MemoryLiveBackend();
+    const recorder = new BroadcastTester();
+    const broadcast = broadcasterOf(backend, undefined, recorder);
+    await runTransaction(owner, 'default', async () => {
+      await expect(
+        runTransaction(owner, 'default', async () => {
+          await broadcast.refresh('users.1');
+          throw new Error('savepoint rolled back');
+        }),
+      ).rejects.toThrow('savepoint rolled back');
+      await broadcast.refresh('users.1');
+    });
+    recorder.assertRefreshed('users.1', { times: 1 });
+    expect(await backend.seqs(['users.1'])).toEqual([1]);
+  });
+
+  it('equal hints of nested transactions go out once, at the outermost commit', async () => {
+    const backend = new MemoryLiveBackend();
+    const recorder = new BroadcastTester();
+    const broadcast = broadcasterOf(backend, undefined, recorder);
+    await runTransaction(owner, 'default', async () => {
+      await broadcast.refresh('users.1');
+      await runTransaction(owner, 'default', async () => {
+        await broadcast.refresh('users.1');
+        await runTransaction(owner, 'default', () => broadcast.refresh('users.1'));
+      });
+      await settle();
+      recorder.assertNothingRefreshed();
+    });
+    recorder.assertRefreshed('users.1', { times: 1 });
+  });
+
+  it('a transaction that rolls back after equal hints sends none', async () => {
+    const recorder = new BroadcastTester();
+    const broadcast = broadcasterOf(new MemoryLiveBackend(), undefined, recorder);
+    await expect(
+      runTransaction(owner, 'default', async () => {
+        await broadcast.refresh('users.1');
+        await broadcast.refresh('users.1');
+        throw new Error('rolled back');
+      }),
+    ).rejects.toThrow('rolled back');
+    recorder.assertNothingRefreshed();
+  });
+
   it('refuses a channel that is no name and an `only` that is no list', async () => {
     const broadcast = broadcasterOf(new MemoryLiveBackend());
     await expect(broadcast.refresh('users 1')).rejects.toThrow(/a live channel is a name/);
@@ -867,6 +982,21 @@ describe.runIf(REDIS_URL)('the redis backend — every process hears every hint'
     const keys = await one.connections.get().command<string[]>(['KEYS', `${prefix}*`]);
     expect(keys).toEqual([`${prefix}live:seq:users.1`]);
     expect(Number(await one.connections.get().command(['TTL', keys[0]!]))).toBeGreaterThan(80_000);
+  });
+
+  it('equal hints of one transaction are one message in every process, and the sequence goes up once', async () => {
+    const prefix = `marmeon-test-${crypto.randomUUID().slice(0, 8)}:`;
+    const one = processOf(prefix);
+    const two = processOf(prefix);
+    const reader = await open(two.hub, ['users.1']);
+    await reader.hello();
+    await runTransaction({}, 'default', async () => {
+      for (let row = 0; row < 3; row++) await broadcasterOf(one.backend).refresh('users.1', { only: ['profile'] });
+    });
+    await reader.waitFor(1);
+    await settle();
+    expect(reader.hints).toEqual([{ channel: 'users.1', only: ['profile'], seq: 1 }]);
+    expect(await one.backend.seqs(['users.1'])).toEqual([1]);
   });
 
   it('the sequence key expired (a day without hints) or was deleted: the open stream still hears the hints that count from 1 again', async () => {

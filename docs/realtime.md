@@ -138,6 +138,10 @@ channel goes into pages only, never into an island or a layer, which show no lay
 
 - **After the commit.** Inside a transaction the hint goes out once the transaction committed, and a rollback sends nothing. A tab
   never reloads data that is not there yet.
+- **Once per transaction.** Equal hints (the same channel and `only`, leaving out the same tab) sent in one transaction go out
+  once after its commit, however many rows a loop changed: the channel's sequence goes up by one. Hints that differ in channel
+  or props stay apart. The hint of a savepoint that rolled back is dropped, and it does not keep an equal hint outside the
+  savepoint from going out. Outside a transaction every `refresh()` goes out at once.
 - **Not back to the tab that caused it.** Every request of a tab that follows a channel names its document in the
   `x-marmeon-connection` header. The hint of its own write reaches that tab with nothing to reload, since it shows the server's
   answer already. A hint sent from a job or a command reaches every tab.

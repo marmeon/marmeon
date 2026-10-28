@@ -12,7 +12,7 @@ export interface RecordedRefresh {
 const sameProps = (a: readonly string[] | null, b: readonly string[] | null) => (a === null || b === null ? a === b : a.length === b.length && [...a].sort().every((prop, i) => prop === [...b].sort()[i]));
 
 /**
- * What the app's `Broadcaster` sent — `app.broadcast` in tests: every refresh that went out (after its commit), as it
+ * What the app's `Broadcaster` sent — `app.broadcast` in tests: every hint that went out (after its commit; equal hints of one transaction as one), as it
  * went out; the hints themselves reach the streams as in production (`app.live(path)`).
  */
 export class BroadcastTester {
@@ -29,7 +29,7 @@ export class BroadcastTester {
   }
 
   /**
-   * `channel` was refreshed — with exactly these props (`only`; `null`: none named), when given, and `times` times when
+   * `channel` was refreshed — with exactly these props (`only`; `null`: none named), when given, and `times` hints when
    * given: `app.broadcast.assertRefreshed(\`users.${ada.id}\`, { only: ['profile'] })`.
    */
   assertRefreshed(channel: string, { only, times }: { only?: readonly string[] | null; times?: number } = {}): this {
