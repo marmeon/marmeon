@@ -26,15 +26,15 @@ framework bring them.
 | `AuthServiceProvider.ts` | Finds users through the `UserRepository`, binds the authenticator app and passkeys as the sources of second factors, and shares `auth` with every page. The rate limits of its forms are those of `@marmeon/auth` ([the limits of the auth routes](authentication.md#the-limits-of-the-auth-routes)). |
 | `users.ts`, `UserRepository.ts` | The `User` type and the only code that reads a password hash or a session key. It is the app's `UserProvider`: the statements that write a hash or a session key are `credentialWriter()` of `@marmeon/auth`, so a fix to them reaches you with a package update. The `session_key` column lets `auth.updateSessionKey()` end an account's other sessions with every session driver. |
 | `routes.ts`, `api-routes.ts` | The pages and forms, and `GET /api/user` for API tokens. |
-| `controllers/` | 46 controllers, one per endpoint. A form's controller validates it with a request schema. |
+| `controllers/` | The controllers of the pages and forms in `routes.ts`. A form's controller validates it with a request schema. |
 | `views/`, `layouts/` | The React pages and the app's layout, `AppLayout`, with a settings layout inside it. |
 | `mail/` | Ten mails: the confirmation of an address, the reset link, the notes about a change of address and about a known address, the notes about the second factor and about passkeys, the note about a copied "keep me signed in" cookie, and the note that an account stopped taking passwords. |
-| `jobs/`, `listeners/`, `tasks/` | The work that runs on the queue or on a schedule. |
+| `jobs/`, `listeners/`, `commands/` | The work that runs on the queue, the listeners that react to events, and the command `auth:prune-unverified`. |
 | `middleware/` | `ShareAuthProps` and `ConfirmedAddress`. |
 | `migrations/` | The tables `users`, `password_reset_tokens`, `personal_access_tokens`, `two_factor_authentications` with `two_factor_recovery_codes`, `passkeys`, `sign_ins`, which also holds the remember-me tokens, and `email_changes`, where a change of address waits for its link. |
 | `factories/`, `seeders/` | `UserFactory` for tests, and `UserSeeder` with `test@example.com` and the password `password`. The seeder runs only with `marmeon db:seed` or `migrate:fresh --seed`: never seed a server with it. |
 | `schedule.ts` | The nightly clean-up of expired tokens and changes of address. |
-| `auth.test.ts` and twelve more | The module's own tests. |
+| `*.test.ts` | The module's own tests, next to the code. |
 
 `marmeon make:auth` also writes `marmeon-stubs.json` into the root of the app: for every file it copied, except the migrations, the
 template it came from in `@marmeon/auth`, the version of the package and the hash of what it wrote (line endings do not count). Commit it with the
