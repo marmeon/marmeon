@@ -114,8 +114,8 @@ does not pass `devtools: true`, also in one that runs as development. The
 | --- | --- | --- |
 | `env` | none | Variables on top of the app's environment. `undefined` removes one: `{ APP_URL: undefined }`. |
 | `override` | none | `(container) => …` replaces bindings before the app boots. Even singletons see the replacement. |
-| `database` | none | `'refresh'`: a migrated database for each test worker, and each test in a transaction that is rolled back. |
-| `seed` | `false` | With `database: 'refresh'`, runs the modules' seeders for every test. |
+| `database` | none | `'refresh'`: a migrated database for each test worker, and each test in a transaction that is rolled back. `'isolated'`: the same database on the app's real pool, with every table emptied before and after, for [testing a lock](database-testing.md#testing-a-lock). |
+| `seed` | `false` | With a `database`, runs the modules' seeders for every test. |
 | `csrf` | `false` | `true` checks requests for CSRF as the app does. |
 | `mail` | `'fake'` | `'real'` keeps the configured mailer instead of the fake. |
 | `queue` | `'fake'` | `'real'` keeps the configured queue connection instead of the fake. |
@@ -129,10 +129,10 @@ does not pass `devtools: true`, also in one that runs as development. The
 
 `marmeon make:test checkout --module=shop --path=/shop` writes `modules/shop/checkout.test.ts`: a test with this setup that expects `/shop` to answer 200. It fails until the route does, so change it to what you test. It needs `@marmeon/testing` and `vitest` in the app.
 
-A fake is put in place only when the app has its package. `seed: true` without `database: 'refresh'` stops the test:
+A fake is put in place only when the app has its package. `seed: true` without a `database` stops the test:
 
 ```text
-createTestApp(…, { seed: true }) seeds a refreshed database: add database: 'refresh'.
+createTestApp(…, { seed: true }) seeds a test database: add database: 'refresh' or database: 'isolated'.
 ```
 
 The [database testing](database-testing.md) page covers the database, the [fakes](fakes.md) page the fakes, and the

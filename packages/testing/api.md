@@ -170,7 +170,7 @@ export interface TestAppOptions {
     env?: Readonly<Record<string, string | undefined>>;
     override?: (container: Container) => void;
     csrf?: boolean;
-    database?: 'refresh';
+    database?: 'refresh' | 'isolated';
     seed?: boolean;
     mail?: 'fake' | 'real';
     queue?: 'fake' | 'real';

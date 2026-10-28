@@ -75,6 +75,55 @@ export function prepareWorkerDatabase(database: DatabaseModule, app: Application
   return ready;
 }
 
+type EmptyingModule = DatabaseModule & Pick<typeof import('@marmeon/database/internal'), 'isMigratorTable' | 'tableColumns'>;
+
+/**
+ * Throws unless the app's default connection is the worker's own database: an `override` or a variable that points the app elsewhere
+ * must never get that database dropped, recreated or emptied. Checks what the options name; {@link emptyWorkerDatabase} asks the
+ * server too, once the database exists.
+ */
+export function assertWorkerConnection(database: DatabaseModule, app: Application, worker: WorkerDatabase): void {
+  const options = app.container.make(database.Connections).options();
+  const same =
+    options.driver === 'sqlite'
+      ? options.database === worker.key
+      : options.driver === 'pgsql' && new URL(options.url).host === new URL(worker.key).host && new URL(options.url).pathname === new URL(worker.key).pathname;
+  if (!same) throw new Error("A test app with a database must use the worker's own test database; its connection \"default\" names another one (an override of the database configuration?).");
+}
+
+/**
+ * Empties every table of the app's connection but the migrator's two, so that the next test starts from nothing and a refreshed
+ * test after an isolated one finds no leftovers: Postgres in one `truncate … restart identity cascade` (the tables of extensions
+ * stay), SQLite a `delete from` per table with foreign keys off, and the counters of `sqlite_sequence`. Only ever runs on the
+ * worker's own database: it throws when the connection is another one.
+ */
+export async function emptyWorkerDatabase(database: EmptyingModule, app: Application, worker: WorkerDatabase): Promise<void> {
+  assertWorkerConnection(database, app, worker);
+  const connections = app.container.make(database.Connections);
+  const db = connections.get();
+  const { sql, isMigratorTable, tableColumns } = database;
+  const driver = connections.options().driver === 'sqlite' ? 'sqlite' : 'pgsql';
+  if (driver === 'pgsql') {
+    const { rows } = await sql<{ name: string }>`select current_database() as name`.execute(db);
+    if (rows[0]?.name !== new URL(worker.key).pathname.slice(1)) throw new Error("A test app with a database must use the worker's own test database; the server answers for another one.");
+  }
+  // The tables the app's search path finds (Postgres: `current_schema()` can be an empty schema named like the role).
+  const { types, extension } = await tableColumns(async (text) => (await sql.raw(text).execute(db)).rows as never[], driver);
+  const names = [...types.keys()].filter((name) => !extension.has(name) && !isMigratorTable(name) && !name.startsWith('sqlite_'));
+  if (driver === 'sqlite') {
+    await sql`pragma foreign_keys = off`.execute(db);
+    try {
+      for (const name of names) await sql`delete from ${sql.id(name)}`.execute(db);
+      const sequences = await sql`select 1 from sqlite_master where name = 'sqlite_sequence'`.execute(db);
+      if (sequences.rows.length > 0) await sql`delete from sqlite_sequence`.execute(db);
+    } finally {
+      await sql`pragma foreign_keys = on`.execute(db);
+    }
+    return;
+  }
+  if (names.length > 0) await sql`truncate ${sql.join(names.map((name) => sql.id(name)))} restart identity cascade`.execute(db);
+}
+
 /**
  * Deletes the SQLite files (and their WAL files) of worker processes that are gone, and the files named after a pool slot
  * (`database-<n>.sqlite`), which no live process owns. Vitest ends its workers with a signal, so they cannot clean up
