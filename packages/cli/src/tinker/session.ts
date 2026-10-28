@@ -71,7 +71,7 @@ export class TinkerSession {
       return {
         available: key !== undefined,
         value: () => {
-          if (!key) throw new Error(`${label} needs ${pkg} (pnpm add ${pkg}; marmeon discover).`);
+          if (!key) throw new Error(`${label} needs ${pkg} (pnpm add -E ${pkg}@<version of your app>; marmeon discover).`);
           return this.scope.make(key as Key<unknown>);
         },
       };
@@ -93,7 +93,7 @@ export class TinkerSession {
         description: 'the repositories (*Repository.ts), by table: repos.users',
         available: this.#names.has('Connections'),
         value: () => {
-          if (!this.#names.has('Connections')) throw new Error('repos needs @marmeon/database (pnpm add @marmeon/database; marmeon discover).');
+          if (!this.#names.has('Connections')) throw new Error('repos needs @marmeon/database (pnpm add -E @marmeon/database@<version of your app>; marmeon discover).');
           return this.#repositoryObject();
         },
       },
@@ -116,7 +116,7 @@ export class TinkerSession {
         description: 'a text in APP_LOCALE',
         available: translator,
         value: () => {
-          if (!translator) throw new Error('t needs @marmeon/i18n (pnpm add @marmeon/i18n; marmeon discover).');
+          if (!translator) throw new Error('t needs @marmeon/i18n (pnpm add -E @marmeon/i18n@<version of your app>; marmeon discover).');
           const translations = this.scope.make(Translator);
           return (key: string, params?: Record<string, unknown>) => translations.text(key, params);
         },
@@ -227,7 +227,7 @@ export class TinkerSession {
   async open(): Promise<void> {
     if (!this.sandbox || this.#done) return;
     const connections = this.#connections();
-    if (!connections) throw new Error('--sandbox needs @marmeon/database (pnpm add @marmeon/database; marmeon discover).');
+    if (!connections) throw new Error('--sandbox needs @marmeon/database (pnpm add -E @marmeon/database@<version of your app>; marmeon discover).');
     const inside = Promise.withResolvers<<R>(fn: () => R) => R>();
     const end = Promise.withResolvers<void>();
     this.#end = end.resolve;

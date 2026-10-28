@@ -77,7 +77,7 @@ describe('a tinker session (in-process)', () => {
     expect(context.Mailer).toBe(Mailer); // names are their class or token
     expect(context.URL).toBe(URL); // … a name the context had stays
     expect(Object.getOwnPropertyDescriptor(context, 'db')?.get).toBeTypeOf('function'); // built on first use
-    expect(() => context.db).toThrow('db needs @marmeon/database (pnpm add @marmeon/database; marmeon discover).');
+    expect(() => context.db).toThrow('db needs @marmeon/database (pnpm add -E @marmeon/database@<version of your app>; marmeon discover).');
     context.db = 'replaced'; // like any variable
     expect(context.db).toBe('replaced');
     await tinker.loadRepositories();

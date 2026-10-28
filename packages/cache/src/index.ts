@@ -70,8 +70,8 @@ export function cacheTablesConnection(container: Resolver): string {
   return config.driver === 'database' ? config.connection : 'default';
 }
 
-const importDatabase = () => importOptional(() => import('@marmeon/database'), '@marmeon/database', 'database', 'pnpm add @marmeon/database');
-const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'pnpm add @marmeon/redis');
+const importDatabase = () => importOptional(() => import('@marmeon/database'), '@marmeon/database', 'database', 'pnpm add -E @marmeon/database@<version of your app>');
+const importRedis = () => importOptional(() => import('@marmeon/redis'), '@marmeon/redis', 'redis', 'pnpm add -E @marmeon/redis@<version of your app>');
 
 /** Registers the `Cache` (`CACHE_DRIVER`) and the `RateLimiter`, and `make:cache-table`. Found by `marmeon discover`. */
 export class CacheServiceProvider implements ServiceProvider {

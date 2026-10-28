@@ -107,7 +107,7 @@ export class TransportMailer implements Mailer {
   }
 
   async queue(mailable: Mailable, options: QueueMailOptions = {}): Promise<MailMessage> {
-    if (!this.#queue) throw new MailError('mailer.queue() needs @marmeon/queue (pnpm add @marmeon/queue; marmeon discover) — or send the mail now: mailer.send().');
+    if (!this.#queue) throw new MailError('mailer.queue() needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or send the mail now: mailer.send().');
     const queue = this.#queue;
     return traceMail(this.#app, mailable.constructor.name, 'queue', async () => {
       const message = await compose(mailable, this.#from);

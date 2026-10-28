@@ -155,7 +155,7 @@ describe('make:auth', () => {
     const without = fakeInput(root);
     expect(await new MakeAuthCommand().handle(without.input)).toBe(0);
     expect(without.lines).toContain("Lint: marmeon make:lint-config writes the app's preset (views import controllers only with import type).");
-    expect(without.lines).toContain('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): pnpm add -D @marmeon/devtools');
+    expect(without.lines).toContain('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): pnpm add -E -D @marmeon/devtools@<version of your app>');
     expect(without.lines).toContain("Content-Security-Policy: add contentSecurityPolicy() of @marmeon/http to the app's global middleware (a nonce per page).");
     writeFileSync(join(root, '.oxlintrc.json'), '{}\n');
     pkg.devDependencies['@marmeon/devtools'] = 'workspace:*';
@@ -410,8 +410,8 @@ describe('make:auth', () => {
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
     const { input, lines, spawned } = fakeInput(root);
     expect(await new MakeAuthCommand().handle(input)).toBe(0);
-    expect(lines).toContain('Install what the module uses: pnpm add @marmeon/i18n');
-    expect(lines).toContain('And what its tests use: pnpm add -D @marmeon/testing');
+    expect(lines).toContain('Install what the module uses: pnpm add -E @marmeon/i18n@<version of your app>');
+    expect(lines).toContain('And what its tests use: pnpm add -E -D @marmeon/testing@<version of your app>');
     // Without the module's packages the route types would not load: not generated now.
     expect(spawned).toEqual([]);
   });
@@ -424,7 +424,7 @@ describe('make:auth', () => {
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg, null, 2));
     const { input, lines } = fakeInput(root);
     expect(await new MakeAuthCommand().handle(input)).toBe(0);
-    expect(lines).toContain('Production needs these as dependencies, not dev dependencies: pnpm add marmeon');
+    expect(lines).toContain('Production needs these as dependencies, not dev dependencies: pnpm add -E marmeon@<version of your app>');
     expect(lines.filter((line) => line.startsWith('Install what the module uses'))).toEqual([]);
   });
 

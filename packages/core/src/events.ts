@@ -173,7 +173,7 @@ export function isQueuedListener(listener: unknown): listener is QueuedListenerC
 
 /** The message when a queued listener exists but nothing can queue it. */
 export function missingListenerQueue(listener: { readonly name: string }): string {
-  return `${listener.name} is a queued listener (static queue), but this app has no queue — install and register @marmeon/queue (pnpm add @marmeon/queue; marmeon discover), or remove static queue to run it at the dispatch.`;
+  return `${listener.name} is a queued listener (static queue), but this app has no queue — install and register @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover), or remove static queue to run it at the dispatch.`;
 }
 
 /** Sees every dispatched event first — and decides whether its listeners run (an `EventFake` in tests). */

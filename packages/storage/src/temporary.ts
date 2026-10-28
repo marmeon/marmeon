@@ -20,7 +20,7 @@ export const NO_TEMPORARY_URLS: TemporaryUrls = {
     throw new StorageSetupError(
       withCode(
         'S2',
-        `temporaryUrl() on the disk "${disk}" needs @marmeon/http — its UrlSigner signs the URL and its router serves it (pnpm add @marmeon/http; marmeon discover).`,
+        `temporaryUrl() on the disk "${disk}" needs @marmeon/http — its UrlSigner signs the URL and its router serves it (pnpm add -E @marmeon/http@<version of your app>; marmeon discover).`,
       ),
     );
   },

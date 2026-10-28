@@ -500,7 +500,7 @@ export class MakePolicyCommand {
     const name = className(input, 'Policy');
     if (!dir || !name) return 1;
     if (!dependsOn(input.root, '@marmeon/auth')) {
-      input.output.error('A policy answers with `deny…` of @marmeon/auth: pnpm add @marmeon/auth');
+      input.output.error('A policy answers with `deny…` of @marmeon/auth: pnpm add -E @marmeon/auth@<version of your app>');
       return 1;
     }
     if (!write(input, join(dir, 'policies', `${name}.ts`), POLICY(name, 'Owned', OWNED))) return 1;

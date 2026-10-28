@@ -97,7 +97,7 @@ describe('make:policy', () => {
     const root = app(manifest);
     const { code, lines } = run(root, ['Note']);
     expect(code).toBe(1);
-    expect(lines.join('\n')).toContain('pnpm add @marmeon/auth');
+    expect(lines.join('\n')).toContain('pnpm add -E @marmeon/auth@<version of your app>');
     expect(existsSync(join(root, 'modules/notes/policies'))).toBe(false);
   });
 

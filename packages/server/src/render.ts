@@ -238,7 +238,7 @@ function pageVary(headers: Readonly<Record<string, string>> | undefined): string
 async function liveSubscriptions(declarations: readonly LiveDeclaration[], scope: Container | undefined, component: string): Promise<{ live?: PageObject['live'] }> {
   const live = await signedLive(declarations, () => {
     if (!scope?.has(LiveSigner)) {
-      throw new Error(`[${component}] follows a live channel (.live() or shared.live()), which needs @marmeon/live in the app: pnpm add @marmeon/live (marmeon discover registers it).`);
+      throw new Error(`[${component}] follows a live channel (.live() or shared.live()), which needs @marmeon/live in the app: pnpm add -E @marmeon/live@<version of your app> (marmeon discover registers it).`);
     }
     return scope.make(LiveSigner);
   });
