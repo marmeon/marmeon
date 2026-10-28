@@ -69,8 +69,8 @@
     "@marmeon/core": "workspace:*",
     "@marmeon/http": "workspace:*",
     "@marmeon/router": "workspace:*",
-    "@hono/node-server": "^2.1.3",
-    "hono": "^4.13.11"
+    "@hono/node-server": "^2.1.5",
+    "hono": "^4.13.14"
   },
   "marmeon": {
     "providers": [
@@ -79,7 +79,7 @@
   },
   "devDependencies": {
     "@marmeon/encryption": "workspace:*",
-    "vite": "^8.3.1",
+    "vite": "^8.3.5",
     "valibot": "^1.5.0"
   },
   "peerDependencies": {

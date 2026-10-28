@@ -78,7 +78,7 @@
     "@marmeon/core": "workspace:*",
     "@marmeon/router": "workspace:*",
     "@marmeon/validation": "workspace:*",
-    "kysely": "0.29.6"
+    "kysely": "0.29.7"
   },
   "peerDependencies": {
     "marmeon": "workspace:*",
@@ -95,6 +95,6 @@
   "devDependencies": {
     "marmeon": "workspace:*",
     "@types/pg": "^8.23.1",
-    "pg": "^8.23.0"
+    "pg": "^8.23.1"
   }
 }

@@ -60,6 +60,6 @@
   },
   "dependencies": {
     "@marmeon/core": "workspace:*",
-    "redis": "^6.2.1"
+    "redis": "^6.3.0"
   }
 }
