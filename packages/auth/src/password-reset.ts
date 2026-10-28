@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Clock, commitAnyway, ContainerError, err, EventDispatcher, ok, type Result } from '@marmeon/core';
-import { Connections, secret, sql, type Secret } from '@marmeon/database';
+import { Connections, secret, secretEquals, type Secret } from '@marmeon/database';
 import { AuthConfig } from './config.ts';
 import { PasswordReset } from './events.ts';
 import { assertHashable, Hasher } from './hashing.ts';
@@ -107,7 +107,7 @@ export class DatabasePasswordResetTokens extends PasswordResetTokenStore {
     }
     if (!equal(sha256(value), row.token_hash)) return err({ kind: 'invalid-token' });
     // Used up — conditionally, so two requests with the same token cannot both succeed.
-    const deleted = await db.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).where(sql<boolean>`${sql.ref('token_hash')} = ${row.token_hash}`).executeTakeFirst();
+    const deleted = await db.deleteFrom(PASSWORD_RESET_TABLE).where('email', '=', email).where((eb) => secretEquals(eb, 'token_hash', row.token_hash)).executeTakeFirst();
     return deleted.numDeletedRows > 0n ? ok() : err({ kind: 'invalid-token' });
   }
 

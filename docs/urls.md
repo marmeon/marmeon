@@ -243,7 +243,7 @@ to keep in that row; `hashLinkToken()` finds the row again from the token a requ
 
 ```ts title="modules/events/TicketRepository.ts"
 import { hashLinkToken, linkToken } from '@marmeon/encryption';
-import { Repository, sql, type Row } from '@marmeon/database';
+import { Repository, secretEquals, type Row } from '@marmeon/database';
 
 export class TicketRepository extends Repository<'tickets'> {
   static table = 'tickets' as const;
@@ -257,7 +257,7 @@ export class TicketRepository extends Repository<'tickets'> {
 
   /** `/tickets/:ticket` → the row, or `undefined` for a 404. */
   override resolveRouteBinding(token: string): Promise<Row<'tickets'> | undefined> {
-    return this.query().selectAll().where(sql<boolean>`${sql.ref('token_hash')} = ${hashLinkToken(token)}`).where('used_at', 'is', null).executeTakeFirst();
+    return this.query().selectAll().where((eb) => secretEquals(eb, 'token_hash', hashLinkToken(token))).where('used_at', 'is', null).executeTakeFirst();
   }
 
   /** True for exactly one caller, however many arrive at once: the update decides, not an earlier read. */

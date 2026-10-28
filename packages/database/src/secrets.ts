@@ -1,6 +1,6 @@
-import { AliasNode, FunctionNode, IdentifierNode } from 'kysely';
+import { AliasNode, FunctionNode, IdentifierNode, sql } from 'kysely';
 import { SECRET } from './placeholders.ts';
-import type { AliasedExpression, ColumnType, ExpressionBuilder, UpdateType } from 'kysely';
+import type { AliasedExpression, ColumnType, Expression, ExpressionBuilder, SqlBool, UpdateType } from 'kysely';
 
 /**
  * A column its migration marked `.secret()` (a password hash, a 2FA secret): written like any
@@ -37,4 +37,28 @@ export function secret<DB, TB extends keyof DB, R extends SecretReference<DB, TB
   // Marked as asked for: the connection lets this selection — and only it — read the secret column.
   const marked = FunctionNode.create(SECRET, [eb.ref(column as never).toOperationNode()]);
   return { expression: eb.ref(column as never), alias: name, toOperationNode: () => AliasNode.create(marked, IdentifierNode.create(name)) } as never;
+}
+
+/** The shortest value {@link secretEquals} compares: a hex SHA-256 is 64 characters, a base64url one 43. */
+const LEAST_HASH_LENGTH = 32;
+
+/**
+ * Compares a secret column with a value in `where()`, for a token looked up by the hash a unique index holds. Only for the hash
+ * of a secret with at least 128 random bits: the answer says whether the value matches, so a short or guessable secret
+ * (a PIN, a password) must be checked in code. Throws a `TypeError` for a value under 32 characters, without naming it. See
+ * `docs/queries.md#finding-a-row-by-a-hashed-secret`.
+ *
+ * ```ts
+ * this.query().selectAll().where((eb) => secretEquals(eb, 'token_hash', hashLinkToken(presented)))
+ * ```
+ */
+export function secretEquals<DB, TB extends keyof DB, R extends SecretReference<DB, TB>>(
+  eb: ExpressionBuilder<DB, TB>,
+  column: R,
+  value: SecretValue<DB, TB, R>,
+): Expression<SqlBool> {
+  if (typeof value !== 'string' || value.length < LEAST_HASH_LENGTH) {
+    throw new TypeError('secretEquals(): compare the hash of a random token (at least 32 characters) — a short secret can be guessed; check it in code.');
+  }
+  return sql<SqlBool>`${eb.ref(column as never)} = ${value}`;
 }

@@ -1,7 +1,7 @@
 import { createHash, randomInt } from 'node:crypto';
 import { crc32 } from 'node:zlib';
 import { Clock, ContainerError, durationToSeconds, type Duration } from '@marmeon/core';
-import { Connections, sql, type Generated, type JsonColumn, type Secret } from '@marmeon/database';
+import { Connections, secretEquals, type Generated, type JsonColumn, type Secret } from '@marmeon/database';
 import { AuthConfig } from './config.ts';
 import type { AuthUserId } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
@@ -166,7 +166,7 @@ export class DatabaseAccessTokens extends AccessTokenStore {
     const row = await this.#db()
       .selectFrom(ACCESS_TOKEN_TABLE)
       .select(['id', 'user_id', 'name', 'abilities', 'last_used_at', 'expires_at', 'created_at'])
-      .where(sql<boolean>`${sql.ref('token_hash')} = ${parsed ? hashToken(parsed.secret) : sha256(`${MALFORMED_DOMAIN}${plainText}`)}`)
+      .where((eb) => secretEquals(eb, 'token_hash', parsed ? hashToken(parsed.secret) : sha256(`${MALFORMED_DOMAIN}${plainText}`)))
       .executeTakeFirst();
     if (!row) return undefined;
     if (row.expires_at !== null && new Date(row.expires_at).getTime() <= this.#clock.now()) return undefined;

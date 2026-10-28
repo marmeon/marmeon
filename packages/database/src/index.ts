@@ -44,7 +44,7 @@ export type { Migration } from './migrations/migration.ts';
 export { MigrationLockLostError, MigrationLockTimeoutError } from './migrations/lock.ts';
 export type { LockHolder } from './migrations/lock.ts';
 export { Migrator } from './migrations/migrator.ts';
-export { secret } from './secrets.ts';
+export { secret, secretEquals } from './secrets.ts';
 export type { Secret, SecretReference } from './secrets.ts';
 export type { ChangedMigration, MigrationFile, MigrationStatus } from './migrations/migrator.ts';
 export type { ProjectedColumn, ProjectedForeignKey, ProjectedIndex, ProjectedTable, SchemaProjection } from './schema/projection.ts';

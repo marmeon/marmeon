@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Clock, ContainerError } from '@marmeon/core';
-import { Connections, sql, type Secret } from '@marmeon/database';
+import { Connections, secretEquals, sql, type Secret } from '@marmeon/database';
 import type { AuthUserId } from './user.ts';
 import { withCode } from '@marmeon/core/internal';
 
@@ -112,7 +112,7 @@ export class DatabaseEmailChanges extends EmailChangeStore {
       .select('expires_at')
       .where('user_id', '=', userId as string | number)
       .where('email', '=', email)
-      .where(sql<boolean>`${sql.ref('token_hash')} = ${sha256(value)}`)
+      .where((eb) => secretEquals(eb, 'token_hash', sha256(value)))
       .where(this.#keyHolds(userId as string | number))
       .where('expires_at', '>', new Date(this.#clock.now()))
       .executeTakeFirst();
@@ -136,7 +136,7 @@ export class DatabaseEmailChanges extends EmailChangeStore {
     const row = await this.#db()
       .deleteFrom(EMAIL_CHANGES_TABLE)
       .where('user_id', '=', userId as string | number)
-      .where(sql<boolean>`${sql.ref('token_hash')} = ${sha256(value)}`)
+      .where((eb) => secretEquals(eb, 'token_hash', sha256(value)))
       .where(this.#keyHolds(userId as string | number))
       .where('expires_at', '>', now)
       .returning('email')
