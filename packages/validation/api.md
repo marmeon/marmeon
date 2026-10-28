@@ -35,8 +35,8 @@ export interface CustomContext {
     readonly request: ValidationContext | undefined;
 }
 // ExistsOptions
-export interface ExistsOptions<Ctx = any> {
-    readonly where?: (query: any, ctx: Ctx) => any;
+export interface ExistsOptions<Ctx = any, Q = any> {
+    readonly where?: (query: Q, ctx: Ctx) => Q;
     readonly message?: RuleMessage;
 }
 // NumberRule
@@ -53,6 +53,10 @@ export declare class ObjectRule<S extends Shape, When extends Shape = {}> extend
     when<const W extends Shape>(condition: (data: ShapeOutput<S>) => boolean, fields: W): ObjectRule<S, Simplify<When & W>>;
     confirmed(field: keyof S & string, confirmation?: string): this;
 }
+// QueryOfRepository
+export type QueryOfRepository<R> = R extends {
+    query(): infer Q;
+} ? Q : never;
 // RepositoryColumnOf
 export type RepositoryColumnOf<R> = R extends {
     find(id: never): Promise<infer Row>;
@@ -72,8 +76,8 @@ export declare class Rule<Output = unknown, Input = Output> implements StandardS
     custom(check: CustomCheck<Output> | {
         readonly validate: CustomCheck<Output>;
     }, message?: RuleMessage): this;
-    unique<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options?: UniqueOptions<Ctx>): this;
-    exists<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options?: ExistsOptions<Ctx>): this;
+    unique<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options?: UniqueOptions<Ctx, QueryOfRepository<R>>): this;
+    exists<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options?: ExistsOptions<Ctx, QueryOfRepository<R>>): this;
     live(): this;
 }
 // RuleMessage
@@ -108,7 +112,7 @@ export declare class StringRule extends Rule<string, string> {
     isoTimestamp(): this;
 }
 // UniqueOptions
-export interface UniqueOptions<Ctx = any> extends ExistsOptions<Ctx> {
+export interface UniqueOptions<Ctx = any, Q = any> extends ExistsOptions<Ctx, Q> {
     readonly ignore?: (ctx: Ctx) => unknown;
     readonly ignoreColumn?: string;
 }

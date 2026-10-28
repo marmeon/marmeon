@@ -6,10 +6,15 @@ import { rules as r } from './index.ts';
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 const same = <A, B>(proof: Equal<A, B>) => proof;
 
+/** A query as the repositories' are: its `where()` takes the columns of the rows and a value of the column's type. */
+interface UserQuery {
+  where<C extends 'id' | 'name' | 'email'>(column: C, operator: '=' | '<>', value: { id: number; name: string; email: string }[C]): UserQuery;
+}
+
 /** A repository as @marmeon/database's are: `query()`, and `find()` says what a row has. */
 class UserRepository {
-  query(): unknown {
-    return undefined;
+  query(): UserQuery {
+    throw new Error('never run');
   }
   find(_id: number): Promise<{ id: number; name: string; email: string } | undefined> {
     return Promise.resolve(undefined);
@@ -99,6 +104,29 @@ r.integer().default('1');
 // Argument of type '"mail"' is not assignable to parameter of type '"email" | "id" | "name"'.
 // @ts-expect-error — unique() names a column of the repository's rows
 r.string().unique(UserRepository, 'mail');
+
+// ——— The query of unique() and exists(): the repository's ———
+
+type Workspace = { id: number };
+type Scoped = { user: { id: number }; params: { workspace: Workspace } };
+
+r.integer().exists(UserRepository, 'id', { where: (query, ctx: Scoped) => query.where('id', '=', ctx.params.workspace.id) }); // typed ctx: fine
+r.string().unique(UserRepository, 'email', { where: (query) => query.where('name', '=', 'Ada') }); // an untyped ctx stays any: fine
+
+// @ts-expect-error — the column of `where` is one of the repository's rows
+r.integer().exists(UserRepository, 'id', { where: (query) => query.where('team_id', '=', 1) });
+
+// @ts-expect-error — the value has the column's type
+r.integer().exists(UserRepository, 'id', { where: (query) => query.where('id', '=', 'one') });
+
+// @ts-expect-error — a callback that returns something else than the query
+r.string().unique(UserRepository, 'email', { where: () => 'nothing' });
+
+// @ts-expect-error — a typo in an annotated ctx
+r.integer().exists(UserRepository, 'id', { where: (query, ctx: Scoped) => query.where('id', '=', ctx.params.workspce.id) });
+
+// @ts-expect-error — the callback takes the repository's query, not another one
+r.integer().exists(UserRepository, 'id', { where: (query: { select(): void }) => query });
 
 // Argument of type '"nope"' is not assignable to parameter of type '"kind"'.
 // @ts-expect-error — confirmed() names a field of the object
