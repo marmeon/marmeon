@@ -105,6 +105,41 @@ describe('the core solutions', () => {
     expect(solution).toMatchObject({ title: 'Set MAIL_HOST, MAIL_PORT in .env', docs: 'docs/configuration.md#when-a-value-is-wrong' });
   });
 
+  describe('a variable that was renamed', () => {
+    const schema = env({ MAIL_HOST: env.string(), MAIL_PORT: env.port().default(25) }).renamed('MAIL_SERVER', 'MAIL_HOST');
+    const find = async (environment: Record<string, string>) => {
+      const error = await resolveConfig([defineConfig('mail', { env: schema, resolve: (e) => e })], environment).catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(ConfigError);
+      return solutions.find(error);
+    };
+
+    it('is not told to be set: the error names the new variable and the docs, so there is no solution of its own', async () => {
+      expect(await find({ MAIL_SERVER: 'smtp.example.com', MAIL_HOST: 'smtp.example.com' })).toEqual([]);
+    });
+
+    it('stays out of the variables to set next to a missing one, and the text says to rename', async () => {
+      const [solution] = await find({ MAIL_SERVER: 'smtp.example.com', MAIL_PORT: 'x' });
+      expect(solution).toMatchObject({ title: 'Set MAIL_HOST, MAIL_PORT in .env' });
+      expect(solution!.text).not.toContain('MAIL_SERVER');
+      expect(solution!.text).toContain('Do not set the renamed variables above under their old name');
+    });
+
+    it('does not claim the value is kept when the rename converts it', async () => {
+      const converting = env({ MAIL_HOST: env.string(), MAIL_LIMIT_MB: env.integer().default(1) }).renamed('MAIL_LIMIT', 'MAIL_LIMIT_MB', { conversion: 'the old value was in bytes; divide by 1,048,576' });
+      const error = await resolveConfig([defineConfig('mail', { env: converting, resolve: (e) => e })], { MAIL_LIMIT: '1048576' }).catch((failure: unknown) => failure);
+      const [solution] = await solutions.find(error);
+      expect(solution!.title).toBe('Set MAIL_HOST in .env');
+      expect(solution!.text).not.toMatch(/keep their value|same value/);
+    });
+
+    it('counts a line that only mentions a rename after its own message as a plain issue', async () => {
+      const lying = { '~standard': { version: 1, vendor: 'test', validate: () => ({ issues: [{ message: 'must be set — MAIL_HOST was renamed MAIL_X — no', path: ['MAIL_HOST'] }] }) } } as const;
+      const error = await resolveConfig([defineConfig('mail', { env: lying as never, resolve: (e) => e })], {}).catch((failure: unknown) => failure);
+      const [solution] = await solutions.find(error);
+      expect(solution).toMatchObject({ title: 'Set MAIL_HOST in .env' });
+    });
+  });
+
   it('invalid configuration: a nested variable keeps its whole path — and an issue without a path names no word of its message', async () => {
     // A Standard Schema of another library may nest its issues (`SMTP.HOST`) or give one for the whole object.
     const nested = {

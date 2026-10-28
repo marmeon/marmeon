@@ -26,7 +26,7 @@ does. A command that cannot boot the app prints the error and the known solution
 ```text
 ✗ [marmeon:K6] Invalid configuration — the application cannot start:
   • encryption: APP_KEY — Missing — run "marmeon key:generate"
-Set these variables in the environment or in .env (see .env.example).
+Set or rename these variables in the environment or in .env (see .env.example).
 
 ℹ How to fix it: Generate an application key
   APP_KEY encrypts the cookies …

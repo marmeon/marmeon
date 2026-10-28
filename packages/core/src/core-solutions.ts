@@ -76,8 +76,9 @@ export const coreSolutions = defineSolutions([
   {
     for: ConfigError,
     code: 'K6',
-    // The variables the start found missing or invalid (listed with •) — not a ConfigError that says something else.
-    when: (e) => /•\s/.test(e.message),
+    // The variables the start found missing or invalid (listed with •) — not a ConfigError that says something else, and not
+    // one that lists only renamed variables: its message names the new variable and the docs, and "set the old name" is the opposite.
+    when: (e) => listedIssues(e.message).some((issue) => !issue.renamed),
     solve: (e) => configSolution(e.message),
   },
 ]);
@@ -105,16 +106,30 @@ function injectionSolution(key: string, reason: string | undefined): Solution {
   };
 }
 
+/** One `  • name: PATH — message` line of a configuration error (`validateConfig`); `renamed` for a retired name (`EnvSchema.renamed()`). */
+function listedIssues(message: string): { variable: string | undefined; renamed: boolean }[] {
+  return message
+    .split('\n')
+    .filter((line) => /^\s*•\s/.test(line))
+    .map((line) => {
+      // The whole path, `SMTP.HOST` of a nested schema too; an issue without one names none. A retired name's message starts with its own path.
+      const match = /^\s*•\s*[\w.-]+:\s*([^\s—]+) — (?:(\1) was renamed \S+ — )?/.exec(line);
+      return { variable: match?.[1], renamed: match?.[2] !== undefined };
+    });
+}
+
 /** What to do about invalid configuration: set the variables its message lists (packages add more specific solutions). */
 function configSolution(message: string): Solution {
-  // `  • name: PATH — message` per issue (`validateConfig`): the whole path, `SMTP.HOST` of a nested schema too; an issue without one names none.
-  const variables = [...new Set([...message.matchAll(/•\s*[\w.-]+:\s*([^\s—]+) — /g)].map((match) => match[1]!))];
+  const issues = listedIssues(message);
+  const variables = [...new Set(issues.filter((issue) => !issue.renamed).flatMap((issue) => issue.variable ?? []))];
   const names = variables.length > 0 ? variables.join(', ') : 'the variables listed';
+  const renamed = issues.some((issue) => issue.renamed) ? ' Do not set the renamed variables above under their old name: their lines say the new name and how the value carries over.' : '';
   return {
     title: `Set ${names} in .env`,
     text:
       `The configuration is checked when the app starts: ${names} ${variables.length === 1 ? 'is' : 'are'} missing or invalid. ` +
-      'Set them in .env (copy the lines from .env.example) or in the environment; .env.{NODE_ENV} (.env.test) is read on top.',
+      'Set them in .env (copy the lines from .env.example) or in the environment; .env.{NODE_ENV} (.env.test) is read on top.' +
+      renamed,
     docs: 'docs/configuration.md#when-a-value-is-wrong',
   };
 }
