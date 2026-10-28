@@ -126,7 +126,7 @@ describe('mailer.queue()', () => {
   it('needs @marmeon/queue — the error says what to do', async () => {
     const mailer = new TransportMailer(new ArrayTransport(), 'team@app.test');
     await expect(mailer.queue(new ResetMail('https://app.test/x'))).rejects.toThrow(
-      'mailer.queue() needs @marmeon/queue (pnpm add @marmeon/queue; marmeon discover) — or send the mail now: mailer.send().',
+      'mailer.queue() needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or send the mail now: mailer.send().',
     );
   });
 

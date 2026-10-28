@@ -248,7 +248,7 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
 
   if (devtools && !application.container.has(devtools.Recorder)) {
     await application.shutdown();
-    throw new Error("createTestApp(…, { devtools: true }): the app does not register @marmeon/devtools — add it to the app's package.json (pnpm add -D @marmeon/devtools), so discovery finds its provider.");
+    throw new Error("createTestApp(…, { devtools: true }): the app does not register @marmeon/devtools — add it to the app's package.json (pnpm add -E -D @marmeon/devtools@<version of your app>), so discovery finds its provider.");
   }
 
   let ssr: TestSsr | undefined;
@@ -471,7 +471,7 @@ async function importDevtools(): Promise<typeof import('@marmeon/devtools/intern
   try {
     return await import('@marmeon/devtools/internal');
   } catch (error) {
-    throw new Error('createTestApp(…, { devtools: true }) needs @marmeon/devtools (pnpm add -D @marmeon/devtools).', { cause: error });
+    throw new Error('createTestApp(…, { devtools: true }) needs @marmeon/devtools (pnpm add -E -D @marmeon/devtools@<version of your app>).', { cause: error });
   }
 }
 
@@ -518,7 +518,7 @@ async function importCli(): Promise<typeof import('marmeon') & typeof import('ma
   try {
     return { ...(await import('marmeon')), ...(await import('marmeon/internal')) };
   } catch (error) {
-    throw new Error('app.command() needs marmeon in the app (pnpm add marmeon).', { cause: error });
+    throw new Error('app.command() needs marmeon in the app (pnpm add -E marmeon@<version of your app>).', { cause: error });
   }
 }
 

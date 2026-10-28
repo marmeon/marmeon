@@ -42,7 +42,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       when: (e) => e.message.startsWith('DEVTOOLS_ENABLED is on with') || e.message.startsWith('The devtools were opted in'),
       solve: () => ({
         title: 'Remove DEVTOOLS_ENABLED in production',
-        text: 'The devtools run with NODE_ENV=development only — nothing can turn them on in production or without NODE_ENV, whatever APP_ENV says. Remove DEVTOOLS_ENABLED from the environment, and install @marmeon/devtools as a dev dependency (pnpm add -D @marmeon/devtools): a production install then does not even have it.',
+        text: 'The devtools run with NODE_ENV=development only — nothing can turn them on in production or without NODE_ENV, whatever APP_ENV says. Remove DEVTOOLS_ENABLED from the environment, and install @marmeon/devtools as a dev dependency (pnpm add -E -D @marmeon/devtools@<version of your app>): a production install then does not even have it.',
         docs: 'docs/devtools.md#only-in-development',
       }),
     },

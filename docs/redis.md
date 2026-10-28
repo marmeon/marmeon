@@ -7,7 +7,7 @@ and rate limits there, its sessions, its queue and the hints of live updates. Re
 default, and `pnpm dev` and `pnpm test` need no Redis. [Valkey](https://valkey.io) works the same way.
 
 ```sh
-pnpm add @marmeon/redis
+pnpm add -E @marmeon/redis@<version of your app>
 ```
 
 The package brings the Redis client, so an app installs nothing else. Then choose Redis per driver in `.env`:
@@ -23,7 +23,7 @@ LIVE_DRIVER=redis
 A Redis driver without the package stops the app at the start and names the command:
 
 ```text
-[marmeon:S1] CACHE_DRIVER=redis needs @marmeon/redis, which is not installed in this app: pnpm add @marmeon/redis
+[marmeon:S1] CACHE_DRIVER=redis needs @marmeon/redis, which is not installed in this app: pnpm add -E @marmeon/redis@<version of your app>
 ```
 
 The [cache](cache.md#drivers), [session](session.md#drivers), [queues](queues.md#drivers) and

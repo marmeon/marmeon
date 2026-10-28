@@ -127,7 +127,7 @@ export class NotificationServiceProvider implements ServiceProvider {
     const queue: QueueNotification = async (pending, options) => {
       const module = this.#queue;
       if (!module || !container.has(module.Queue)) {
-        throw new NotificationSetupError(withCode('Q6', 'notifications.send() queues the delivery and needs @marmeon/queue (pnpm add @marmeon/queue; marmeon discover) — or deliver now: notifications.sendNow().'));
+        throw new NotificationSetupError(withCode('Q6', 'notifications.send() queues the delivery and needs @marmeon/queue (pnpm add -E @marmeon/queue@<version of your app>; marmeon discover) — or deliver now: notifications.sendNow().'));
       }
       const { queue: name, connection, delay, tries, backoff } = pending.notification.queue ?? {};
       const when = options.delay ?? delay;

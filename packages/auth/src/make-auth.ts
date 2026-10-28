@@ -39,6 +39,9 @@ export const NEEDED = [
 /** What only the module's tests import — reported as dev dependencies. */
 export const NEEDED_FOR_TESTS = ['@marmeon/server', '@marmeon/testing', 'vitest'];
 
+/** The names for `pnpm add -E`: a framework package in the version of the app (they must all be one), anything else as it is. */
+const exact = (names: readonly string[]) => names.map((name) => (name === 'marmeon' || name.startsWith('@marmeon/') ? `${name}@<version of your app>` : name)).join(' ');
+
 /**
  * `marmeon make:auth`: writes a complete auth module into the app — sign-in, registration, remember-me, password reset,
  * e-mail verification, password confirmation, API tokens, with views, mails, migrations and tests. The code belongs to the
@@ -150,9 +153,9 @@ export class MakeAuthCommand {
     // The module's routes and views into bootstrap/routes.ts — a fresh process, as this one booted without the module.
     const typed = runtime.length === 0 && registered.status !== 'manual' && (await input.spawn('route:types')) === 0;
     input.output.line();
-    if (runtime.length > 0) input.output.line(`Install what the module uses: pnpm add ${runtime.join(' ')}`);
-    if (forTests.length > 0) input.output.line(`And what its tests use: pnpm add -D ${forTests.join(' ')}`);
-    if (devOnly.length > 0) input.output.line(`Production needs these as dependencies, not dev dependencies: pnpm add ${devOnly.join(' ')}`);
+    if (runtime.length > 0) input.output.line(`Install what the module uses: pnpm add -E ${exact(runtime)}`);
+    if (forTests.length > 0) input.output.line(`And what its tests use: pnpm add -E -D ${exact(forTests)}`);
+    if (devOnly.length > 0) input.output.line(`Production needs these as dependencies, not dev dependencies: pnpm add -E ${exact(devOnly)}`);
     if (!typed) input.output.line('Then: marmeon route:types — it writes the routes and views of the module into bootstrap/routes.ts.');
     input.output.line('Then: marmeon migrate (with NODE_ENV=development — .env.example sets it — it writes the table types) — and set MAIL_* in .env (development writes mails to the log).');
     input.output.line('Its mails go through the queue, on its "mail" queue: a jobs table (marmeon make:queue-table, once) and a worker (marmeon dev starts one; in production: marmeon queue:work, which takes every queue).');
@@ -165,7 +168,7 @@ export class MakeAuthCommand {
       input.output.line('Lint: marmeon make:lint-config writes the app\'s preset (views import controllers only with import type).');
     }
     if (!('@marmeon/devtools' in installed(input.root))) {
-      input.output.line('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): pnpm add -D @marmeon/devtools');
+      input.output.line('Devtools for marmeon dev (requests, queries, jobs, mails at /_marmeon/devtools): pnpm add -E -D @marmeon/devtools@<version of your app>');
     }
     // The Content-Security-Policy belongs to the app's middleware too — named when bootstrap/app.ts has none.
     const bootstrap = join(input.root, 'bootstrap', 'app.ts');
