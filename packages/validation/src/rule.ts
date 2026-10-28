@@ -149,12 +149,12 @@ export class Rule<Output = unknown, Input = Output> implements StandardSchemaV1<
    * validation never asks the database, so free and taken values get the same answer there — `.live()` turns that on. See
    * `docs/validation.md#database-rules-and-why-they-never-run-live`.
    */
-  unique<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options: UniqueOptions<Ctx> = {}): this {
+  unique<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options: UniqueOptions<Ctx, QueryOfRepository<R>> = {}): this {
     return this.with(databaseStep('unique', Repository, column, options));
   }
 
   /** The value is in a row of `Repository`'s table (not soft-deleted). Not live, like {@link unique}. */
-  exists<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options: ExistsOptions<Ctx> = {}): this {
+  exists<R extends RepositoryLike, Ctx = any>(Repository: new (...args: any[]) => R, column: RepositoryColumnOf<R>, options: ExistsOptions<Ctx, QueryOfRepository<R>> = {}): this {
     return this.with(databaseStep('exists', Repository, column, options));
   }
 
@@ -224,14 +224,21 @@ export interface RepositoryLike {
 /** The columns of a repository's rows (from its `find()`), or any name for another class. */
 export type RepositoryColumnOf<R> = R extends { find(id: never): Promise<infer Row> } ? Extract<keyof NonNullable<Row>, string> : string;
 
-export interface ExistsOptions<Ctx = any> {
-  /** Narrows the rows that count — a tenant, say: `(query, ctx) => query.where('team_id', '=', ctx.user.team_id)`. */
-  readonly where?: (query: any, ctx: Ctx) => any;
+/** The query a repository's `query()` returns — what `where` of `unique` and `exists` receives and returns. */
+export type QueryOfRepository<R> = R extends { query(): infer Q } ? Q : never;
+
+export interface ExistsOptions<Ctx = any, Q = any> {
+  /**
+   * Narrows the rows that count — a tenant, say: `(query, ctx) => query.where('team_id', '=', ctx.user.team_id)`. `query` is the
+   * repository's, so a wrong column is a compile error; annotate `ctx` with the context the request has. See
+   * `docs/validation.md#database-rules-and-why-they-never-run-live`.
+   */
+  readonly where?: (query: Q, ctx: Ctx) => Q;
   /** Own message — a translation key, a text or `translatable()`'s (default: `marmeon.validation.exists`/`unique`). */
   readonly message?: RuleMessage;
 }
 
-export interface UniqueOptions<Ctx = any> extends ExistsOptions<Ctx> {
+export interface UniqueOptions<Ctx = any, Q = any> extends ExistsOptions<Ctx, Q> {
   /** A row that does not count — the one being edited: `(ctx) => ctx.user.id`. */
   readonly ignore?: (ctx: Ctx) => unknown;
   /** The column `ignore` names (default `id`). */

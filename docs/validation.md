@@ -265,6 +265,20 @@ folder_id: r.integer().exists(FolderRepository, 'id', { where: (query, ctx) => q
 tags: r.array(r.integer().exists(TagRepository, 'id', { where: (query, ctx) => query.where('user_id', '=', ctx.user.id) })).max(10),
 ```
 
+`query` in `where` is the repository's own, so a wrong column or value type is a compile error, and so is a callback that returns
+something other than the query. `ctx` is `any` unless you annotate it; annotate it with the context the request has and a typo in it
+is an error too:
+
+```ts
+import type { Authenticated } from '@marmeon/auth';
+import type { Row } from '@marmeon/database';
+import type { HttpContext } from '@marmeon/http';
+
+folder_id: r.integer().exists(FolderRepository, 'id', {
+  where: (query, ctx: HttpContext<Authenticated, { workspace: Row<'workspaces'> }>) => query.where('workspace_id', '=', ctx.params.workspace.id),
+}),
+```
+
 - **`unique(Repository, column, { ignore?, ignoreColumn?, where?, message? })`** passes when no row of the repository's table holds
   the value yet. `ignore` leaves out the row being edited, by `ignoreColumn`, `id` by default. `where` narrows the rows that count,
   say to one user's. Soft-deleted rows count, since the unique index holds them too.
