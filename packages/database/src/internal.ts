@@ -10,3 +10,5 @@ export { TypeGenerator } from './types-gen/generator.ts';
 export { runMigration } from './migrations/run.ts';
 export { projectApp } from './schema/project-app.ts';
 export { watchMigrations } from './migrations/watch.ts';
+export { tableColumns } from './introspection.ts';
+export { isMigratorTable } from './migration-state.ts';

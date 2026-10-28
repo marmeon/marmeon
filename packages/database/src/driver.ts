@@ -90,6 +90,8 @@ export class MarmeonDriver implements Driver {
   readonly #lock = new ConnectionLock();
   /** While isolated on a dialect with several connections: ambient transactions take turns on the pinned connection. */
   readonly #turns = new ConnectionLock();
+  /** Whether this isolation has told of transactions taking turns (once each: a test that races requests would repeat it for every one). */
+  #warnedOfTurns = false;
   /**
    * Connections bound to an ambient transaction, with how many hold them: the transaction itself and each query
    * running inside it. The last release really releases (and unlocks) it.
@@ -186,6 +188,14 @@ export class MarmeonDriver implements Driver {
    */
   async exclusive<R>(transaction: () => Promise<R>): Promise<R> {
     if (!this.#pinned || this.#single || transactionOf(this)) return transaction();
+    if (this.#turns.busy && !this.#warnedOfTurns) {
+      this.#warnedOfTurns = true;
+      process.emitWarning(
+        "Two requests' transactions took turns: under database: 'refresh' concurrent requests run one after another, so a missing lock still passes. " +
+          "Test a lock with database: 'isolated' — docs/database-testing.md#testing-a-lock",
+        { type: 'MarmeonDatabaseWarning', code: 'MARMEON_SERIAL_TRANSACTIONS' },
+      );
+    }
     await this.#turns.obtain();
     try {
       return await transaction();
@@ -254,6 +264,7 @@ export class MarmeonDriver implements Driver {
     this.#depth.set(connection, 1);
     this.#tainted.delete(connection);
     this.#pinned = connection;
+    this.#warnedOfTurns = false;
     return {
       rollback: async () => {
         if (this.#pinned !== connection) return;
@@ -715,6 +726,11 @@ function unresolved(name: string, secret: boolean): string {
 class ConnectionLock {
   #held: Promise<void> | undefined;
   #release: (() => void) | undefined;
+
+  /** Whether someone holds the lock, so that the next {@link obtain} waits. */
+  get busy(): boolean {
+    return this.#held !== undefined;
+  }
 
   async obtain(): Promise<void> {
     while (this.#held) await this.#held;

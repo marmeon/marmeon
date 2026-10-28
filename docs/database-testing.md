@@ -49,7 +49,12 @@ Your app's code works as it does in production:
   that transaction, so a query throws a `TransactionError` instead of waiting forever. Production on SQLite behaves the same, and
   Postgres does not. Do such work after the transaction.
 
-Requests that a test sends at the same time share the pinned connection, and their queries take turns on it.
+Requests that a test sends at the same time share the pinned connection. Their outermost transactions run one after another: the
+second begins when the first has ended, and what the first wrote is already visible to it. That is not how the app behaves in
+production, where such requests compete. A check that reads and then writes in several statements, such as counting the free seats
+and then inserting, passes here even without the lock that protects it, so
+[test those with `database: 'isolated'`](#testing-a-lock). A single statement that decides by itself, such as an `update … where`
+with a condition or a unique index, is as right or wrong here as in production.
 
 > [!NOTE]
 > Only the `default` connection is reset. Rows written through another connection, such as a `system` connection of your
@@ -60,11 +65,11 @@ Two test runs of one app at the same time are not supported: on SQLite, a run in
 
 ### One refreshed app at a time
 
-A test has one database transaction, so only one test app with `database: 'refresh'` may be open at a time. A second one stops the
-test:
+A test works on the worker's one database, so only one test app with a `database`, `'refresh'` or `'isolated'`, may be open at a time.
+A second one stops the test, naming the mode of the open one:
 
 ```text
-Another test app with database: 'refresh' is still open. Close it first (await app.close()) — each test works in one transaction of one app.
+Another test app with database: 'refresh' is still open. Close it first (await app.close()) — each test works on the worker's one database.
 ```
 
 A test app made inside a test closes when the test ends. To switch to a test app with other options in the middle of a test,
@@ -75,6 +80,53 @@ A hook or test that times out while its app is still starting leaves nothing ope
 over, it is closed again and `createTestApp()` throws, so the next test does not fail with the message above. For the first app of a
 worker, which creates and migrates the worker's database, give the file a `beforeAll` of its own with a longer hook timeout and
 open and close one app there.
+
+## Testing a lock
+
+Code that reads and then writes in several statements, such as counting the free seats and then inserting a booking, needs a lock
+(`forUpdate()`) so that two requests do not both read the same free seats. `database: 'refresh'` cannot show that the lock is
+there: its requests take turns, so code that forgot it passes. (A single statement that decides by itself, an `update … where`
+with a condition or a unique index, needs no lock, and a test of it fails without the condition under `'refresh'` too.)
+`database: 'isolated'` runs the test app on its real connection pool. Nothing is wrapped in a transaction, every commit is real, and requests sent together compete
+as they do in production:
+
+```ts title="modules/workshops/booking.test.ts"
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { WorkshopFactory } from './factories/WorkshopFactory.ts';
+
+it('books no more seats than the workshop has', async () => {
+  const app = await createTestApp(application, { database: 'isolated' });
+  const workshop = await app.factory(WorkshopFactory).create({ capacity: 2 });
+  const responses = await Promise.all(Array.from({ length: 5 }, () => app.post(`/workshops/${workshop.id}/bookings`, { json: { guest: 'Ada' } })));
+  expect(responses.filter((response) => response.status === 201)).toHaveLength(2);
+  await app.assertDatabaseCount('bookings', 2);
+});
+```
+
+With `database: 'isolated'` the tables are emptied when the test app starts and again when it closes, all but the record of
+migrations, so a later test, refreshed or isolated, finds no rows left over. The ids start over too. `seed: true` seeds after
+the tables were emptied. The worker's database, its migration and the rule of one open test app with a database are the same as with
+`'refresh'`: close the app before you open another. A test app that is not closed leaves its rows until the next one starts.
+
+Use the mode for the tests that need it. Emptying every table and committing is slower than a rollback, and a test that fails
+leaves nothing to look at after the app has closed.
+
+Prove that the test can fail. Remove the lock from the code, for example the `forUpdate()` of the query that reads the free seats,
+and run the test again: it must turn red, here with five bookings. The same test with `database: 'refresh'` stays green without
+the lock, which is what that mode cannot tell you. Put the lock back afterwards.
+
+Row locks are checked on Postgres. SQLite has one writer at a time, so on SQLite the test runs, but the writes never overlap and
+it stays green without the lock: run such tests on Postgres ([Running the tests on Postgres](#running-the-tests-on-postgres)).
+
+A refreshed test that sends requests together while Postgres makes them take turns prints a warning once for each test app:
+
+```text
+(node:1234) [MARMEON_SERIAL_TRANSACTIONS] MarmeonDatabaseWarning: Two requests' transactions took turns: under database: 'refresh' concurrent requests run one after another, so a missing lock still passes. Test a lock with database: 'isolated' — docs/database-testing.md#testing-a-lock
+```
+
+It does not fail the test. If the requests need no lock, ignore it.
 
 ## Factories
 
@@ -183,8 +235,10 @@ DB_DRIVER=pgsql DB_HOST=localhost DB_DATABASE=notes DB_USERNAME=notes DB_PASSWOR
 
 `DB_URL=postgres://notes:secret@localhost:5432/notes` instead of the four does the same, and then `DB_DATABASE` is not read.
 
-Each worker gets its own database next to `notes`, as described above. Postgres finds what SQLite hides, such as two requests
-that race for the same row, so run the suite on the database you deploy to before you ship.
+Each worker gets its own database next to `notes`, as described above. Postgres finds what SQLite hides, such as a column type
+or a constraint the other server reads differently, so run the suite on the database you deploy to before you ship. It does not
+find two requests that race for the same row in a refreshed test: those take turns. [Testing a lock](#testing-a-lock) shows how
+to test that.
 
 > [!WARNING]
 > The test run drops and creates databases on that server, and a variable in the shell wins over `.env.test`. Point it

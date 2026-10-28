@@ -46,7 +46,7 @@ import type { StorageFake } from '@marmeon/storage/testing';
 import type { DevtoolsTester } from '@marmeon/devtools/testing';
 import type { ScheduleTester } from '@marmeon/scheduler/testing';
 import type { FactoryDefinition, PendingFactory, RowOf, Tables } from '@marmeon/database';
-import { prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
+import { assertWorkerConnection, emptyWorkerDatabase, prepareWorkerDatabase, workerDatabase, type WorkerDatabase } from './database.ts';
 import { TestMarkup } from './markup.ts';
 import { PendingTestResponse } from './pending.ts';
 import { checkSsrServer, SSR_TEST_HEADER, TestSsr, type SsrServer } from './ssr.ts';
@@ -63,11 +63,16 @@ export interface TestAppOptions {
    */
   csrf?: boolean;
   /**
-   * `'refresh'`: a real database, reset for every test. Each test worker gets its own database, migrated once; every test
-   * app runs inside one transaction that is rolled back when the test ends. Needs @marmeon/database.
+   * A real database per test worker, migrated once. Needs @marmeon/database. See docs/database-testing.md#testing-a-lock.
+   *
+   * - `'refresh'`: every test app runs inside one transaction that is rolled back when the test ends. Requests sent together
+   *   take turns, so a test cannot show that a lock keeps two of them apart.
+   * - `'isolated'`: the app runs on its real connection pool and commits for real; the tables are emptied when the app starts and
+   *   when it closes. Requests sent together compete, as in production: this is how a test shows that a lock holds. Postgres
+   *   checks row locks; SQLite has one writer, so there the test only runs.
    */
-  database?: 'refresh';
-  /** With `database: 'refresh'`: run the modules' seeders for every test (inside its transaction). */
+  database?: 'refresh' | 'isolated';
+  /** With a `database`: run the modules' seeders for every test (`'refresh'`: inside its transaction; `'isolated'`: after the tables were emptied). */
   seed?: boolean;
   /**
    * Mail is recorded, never sent (default `'fake'`): the `Mailer` is a `MailFake`, available as `app.mail`. `'real'` keeps
@@ -186,20 +191,23 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
   const clock = new TestClock();
 
   let worker: WorkerDatabase | undefined;
-  if (options.database === 'refresh') {
-    if (!database) throw new Error("createTestApp(…, { database: 'refresh' }) needs @marmeon/database installed.");
-    if (openRefreshed.size > 0) {
+  if (options.database !== undefined) {
+    if (options.database !== 'refresh' && options.database !== 'isolated') throw new Error(`createTestApp(…, { database }) takes 'refresh' or 'isolated', not ${JSON.stringify(options.database)}.`);
+    if (!database) throw new Error(`createTestApp(…, { database: '${options.database}' }) needs @marmeon/database installed.`);
+    if (openWithDatabase.size > 0) {
       // Two open transactions on the worker's database: SQLite has one writer, so the second app would
-      // wait for the first one's lock (5 s, then "database is locked"). One database app per test.
+      // wait for the first one's lock (5 s, then "database is locked"). Two isolated apps would empty each other's tables.
+      // One database app per test.
+      const [mode] = openWithDatabase.values();
       throw new Error(
-        "Another test app with database: 'refresh' is still open. Close it first (await app.close()) — " +
-          'each test works in one transaction of one app.',
+        `Another test app with database: '${mode}' is still open. Close it first (await app.close()) — ` +
+          "each test works on the worker's one database.",
       );
     }
     worker = await workerDatabase(definition.root, env);
     env = { ...env, ...worker.env };
   } else if (options.seed) {
-    throw new Error("createTestApp(…, { seed: true }) seeds a refreshed database: add database: 'refresh'.");
+    throw new Error("createTestApp(…, { seed: true }) seeds a test database: add database: 'refresh' or database: 'isolated'.");
   }
 
   const application = await createApplication(definition, {
@@ -278,13 +286,38 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
   const app = new TestApp(application, shared, { headers: {}, cookies: [], session: undefined });
   if (database && worker) {
     try {
+      assertWorkerConnection(database, application, worker);
       await prepareWorkerDatabase(database, application, worker);
-      const isolation = await application.container.make(database.Connections).isolate();
-      openRefreshed.add(app);
-      shared.cleanups.push(async () => {
-        openRefreshed.delete(app);
-        await isolation.rollback();
-      });
+      if (options.database === 'isolated') {
+        openWithDatabase.set(app, 'isolated');
+        // Set before anything is committed, cleared when the tables are empty again: an app that could not empty them (its connections
+        // were closed) leaves rows that a refreshed app after it would otherwise take for its own.
+        uncleaned.add(worker.key);
+        // Before the pool closes: a refreshed test of the next file must not find what this one committed.
+        shared.cleanups.push(async () => {
+          openWithDatabase.delete(app);
+          // A test that closed the connections itself cannot have them emptied: the next app with a database does it.
+          try {
+            application.container.make(database.Connections).get();
+          } catch {
+            return;
+          }
+          await emptyWorkerDatabase(database, application, worker);
+          uncleaned.delete(worker.key);
+        });
+        await emptyWorkerDatabase(database, application, worker);
+      } else {
+        if (uncleaned.has(worker.key)) {
+          await emptyWorkerDatabase(database, application, worker);
+          uncleaned.delete(worker.key);
+        }
+        const isolation = await application.container.make(database.Connections).isolate();
+        openWithDatabase.set(app, 'refresh');
+        shared.cleanups.push(async () => {
+          openWithDatabase.delete(app);
+          await isolation.rollback();
+        });
+      }
       // No await since it counts as open: a late app is closed before it seeds, and the cleanup above frees the worker's database.
       if (watch.ended) throw lateApp();
       if (options.seed) await application.container.make(database.Seeding).run();
@@ -297,8 +330,11 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
   return app;
 }
 
-/** Refreshed test apps not closed yet — at most one at a time (see createTestApp). */
-const openRefreshed = new Set<TestApp>();
+/** The worker databases an isolated app has written to and not emptied again. */
+const uncleaned = new Set<string>();
+
+/** Test apps with a database not closed yet, with their mode — at most one at a time (see createTestApp). */
+const openWithDatabase = new Map<TestApp, 'refresh' | 'isolated'>();
 
 /** Where the test that called {@link createTestApp} stands: `ended` turns true when it is over. */
 interface TestWatch {

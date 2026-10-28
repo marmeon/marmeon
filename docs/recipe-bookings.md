@@ -393,7 +393,7 @@ refused. The second calls `book()` twice together and expects one `ok` and one `
 
 A test app with `database: 'refresh'` runs every query on one pinned connection, so requests that a test sends at the same
 time take turns on it, as [database testing](database-testing.md#how-the-database-is-reset) says. That makes these two tests
-check the rule, but not the race. For the race, the Postgres test gives the repository a check that sees nothing, which is what
+check the rule, but not the race (a test that has to compete for real runs with `database: 'isolated'`, see [testing a lock](database-testing.md#testing-a-lock)). For the race, the Postgres test gives the repository a check that sees nothing, which is what
 the second transaction sees when the first has not committed: the insert is then refused by the constraint alone, and `book()`
 answers `overlap`. It runs only when the tests run on Postgres. The deadlock tests throw the deadlock error once, and expect the second
 try to find the room taken, and throw it on every try, and expect `book()` to give up after the second. A period that ends
