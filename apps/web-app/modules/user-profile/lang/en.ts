@@ -29,6 +29,12 @@ const en = {
     back: 'Back to my profile',
     avatar: 'Picture of {name}',
   },
+  links_page: {
+    title: 'Links of {name}',
+    search: 'Search the links',
+    none: 'No link by that label.',
+    back: 'Back to the profile',
+  },
   people: {
     title: 'People',
     loading: 'Loading people…',

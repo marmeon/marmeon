@@ -189,7 +189,9 @@ have is a compile error.
 Inside a layer, the state is the layer's query: typing visits the layer in place and the page beneath stays as it is. The layer
 always replaces its history entry, whatever `history` says.
 
-The hook works on the page of its route only, and a route without a query schema is a compile error. Without JavaScript, put the
+The hook works on the page of its route only, and a route without a query schema is a compile error. It follows the URL of the
+page on screen, so it works as well on a route with path parameters (`/users/:user/links`) or a localized one: the search stays on
+the same profile and in the same language, and the hook needs no parameters to name them. Without JavaScript, put the
 field in a plain `<form method="get">`: it sends the same URL. The [navigation](navigation.md#links-to-routes) page covers
 `<Link>`.
 

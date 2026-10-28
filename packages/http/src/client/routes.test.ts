@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveRoute } from './routes.ts';
+import { resolveRoute, routeEntry } from './routes.ts';
 
 const routes = {
   'about.index': { method: 'get', path: '/:locale/about', localized: true },
@@ -49,5 +49,18 @@ describe('resolveRoute with the locale of the page', () => {
       expect(url).toMatch(/^\/[^/]+\/about$/);
     }
     expect(() => resolveRoute(routes, 'about.index', { params: { locale: '..' }, pageLocale: 'de' })).toThrow('a dot segment');
+  });
+});
+
+describe('routeEntry', () => {
+  it('gives the entry of a route without needing its parameters', () => {
+    expect(routeEntry(routes, 'people.show')).toEqual({ method: 'get', path: '/people/:person' });
+    expect(routeEntry(routes, 'about.index').localized).toBe(true);
+  });
+
+  it('names a route the manifest lacks and a missing manifest', () => {
+    expect(() => routeEntry(routes, 'nowhere')).toThrow('[marmeon:C2] Route [nowhere]');
+    expect(() => routeEntry(routes, 'toString')).toThrow('[marmeon:C2]');
+    expect(() => routeEntry(undefined, 'people.show')).toThrow('[marmeon:C1] Route [people.show]');
   });
 });

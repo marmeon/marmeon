@@ -30,6 +30,12 @@ export default {
     back: 'Zurück zu meinem Profil',
     avatar: 'Bild von {name}',
   },
+  links_page: {
+    title: 'Links von {name}',
+    search: 'Links durchsuchen',
+    none: 'Kein Link mit dieser Bezeichnung.',
+    back: 'Zurück zum Profil',
+  },
   people: {
     title: 'Leute',
     loading: 'Leute werden geladen …',

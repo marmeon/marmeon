@@ -8,6 +8,7 @@ import { EditUserProfileController } from './controllers/EditUserProfileControll
 import { ExportMyDataController } from './controllers/ExportMyDataController.ts';
 import { ListPeopleController } from './controllers/ListPeopleController.ts';
 import { RedirectToOwnProfileController } from './controllers/RedirectToOwnProfileController.ts';
+import { SearchProfileLinksController } from './controllers/SearchProfileLinksController.ts';
 import { ShowUserProfileController } from './controllers/ShowUserProfileController.ts';
 import { UpdateAvatarController } from './controllers/UpdateAvatarController.ts';
 import { UpdateUserProfileController } from './controllers/UpdateUserProfileController.ts';
@@ -31,8 +32,10 @@ export default defineRoutes((Route) => {
 
   // The profile page reads through the module's own read model; editing goes through auth's repository.
   // Every confirmed account may look at every profile: the binder is public for it, and the controller picks the fields that leave
-  // the server (the e-mail only for the owner).
-  users.authorize(everyone).bind('user', ProfileDirectory, { public: true }).get('/:user', ShowUserProfileController).name('show');
+  // the server (the e-mail only for the owner). Registered for the profile page and its link search.
+  const profiles = users.authorize(everyone).bind('user', ProfileDirectory, { public: true });
+  profiles.get('/:user', ShowUserProfileController).name('show');
+  profiles.get('/:user/links', SearchProfileLinksController).name('links.index');
   // Everything below changes or opens a profile for editing, and each request checks ProfilePolicy (or ProfileLinkPolicy).
   const user = users.bind('user', UserRepository);
   // A layer over whatever is on screen; its base, for deep links, is the profile.

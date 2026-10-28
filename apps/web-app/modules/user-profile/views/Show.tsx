@@ -128,6 +128,13 @@ export default function Show({ profile, email, isOwnProfile, abilities, lastLogi
       </section>
 
       <section aria-label={t('show.links')}>
+        {profile.links.length > 0 && (
+          <p>
+            <Link route="user-profile.links.index" params={{ user: profile.public_id }}>
+              {t('links_page.search')}
+            </Link>
+          </p>
+        )}
         {(profile.links.length > 0 || adding.length > 0) && (
           <ul>
             {profile.links.map((link) => (

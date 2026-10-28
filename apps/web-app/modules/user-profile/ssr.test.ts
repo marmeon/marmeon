@@ -54,6 +54,17 @@ describe('the profile page, rendered on the server', () => {
   });
 });
 
+describe('a search on a route with a path parameter, rendered on the server', () => {
+  it('renders the links of one profile filtered by the URL, and it hydrates: useQueryState follows the page’s own URL', async () => {
+    await app.factory(ProfileLinkFactory).create({ user_id: alan.id, label: 'Papers' });
+    await app.factory(ProfileLinkFactory).create({ user_id: alan.id, label: 'Machines' });
+    const response = await app.actingAs(ada).get(`/users/${alan.public_id}/links?q=pap`, page).assertOk().assertServerRendered().assertHydrates();
+    expect(response.body).toContain('Papers');
+    expect(response.body).not.toContain('Machines');
+    expect(response.body).toContain('value="pap"');
+  });
+});
+
 describe('view transitions: the avatars the list and the profile share, rendered on the server', () => {
   it('without inline styles — view-transition-name only through the CSSOM (React, during a transition): a strict style-src blocks none', async () => {
     await app.make(UserRepository).update(ada.id, { avatar_path: 'avatars/ada.png' });

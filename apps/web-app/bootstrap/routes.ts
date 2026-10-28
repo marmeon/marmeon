@@ -46,6 +46,7 @@ import type { RenamePasskeyController } from '../modules/auth/controllers/Rename
 import type { ResendVerificationController } from '../modules/auth/controllers/ResendVerificationController.ts';
 import type { ResetPasswordController } from '../modules/auth/controllers/ResetPasswordController.ts';
 import type { RevokeAccessTokenController } from '../modules/auth/controllers/RevokeAccessTokenController.ts';
+import type { SearchProfileLinksController } from '../modules/user-profile/controllers/SearchProfileLinksController.ts';
 import type { SendPasswordResetLinkController } from '../modules/auth/controllers/SendPasswordResetLinkController.ts';
 import type { ShowAboutController } from '../modules/about/controllers/ShowAboutController.ts';
 import type { ShowAccessTokensController } from '../modules/auth/controllers/ShowAccessTokensController.ts';
@@ -155,6 +156,7 @@ declare module '@marmeon/router' {
     'user-profile.edit': { method: 'get'; path: '/users/:user/edit'; controller: typeof EditUserProfileController };
     'user-profile.export': { method: 'post'; path: '/users/me/export'; controller: typeof ExportMyDataController };
     'user-profile.links.destroy': { method: 'delete'; path: '/users/:user/links/:link'; controller: typeof DeleteProfileLinkController };
+    'user-profile.links.index': { method: 'get'; path: '/users/:user/links'; controller: typeof SearchProfileLinksController };
     'user-profile.links.remove': { method: 'get'; path: '/users/:user/links/:link/remove'; controller: typeof ConfirmRemoveLinkController };
     'user-profile.links.store': { method: 'post'; path: '/users/:user/links'; controller: typeof AddProfileLinkController };
     'user-profile.me': { method: 'get'; path: '/users/me'; controller: typeof RedirectToOwnProfileController };
@@ -204,6 +206,7 @@ declare module '@marmeon/http/page' {
     'system/errors/404': true;
     'system/errors/Error': true;
     'user-profile/Edit': true;
+    'user-profile/Links': true;
     'user-profile/People': true;
     'user-profile/RemoveLink': true;
     'user-profile/Show': true;
