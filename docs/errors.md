@@ -124,12 +124,13 @@ accept(tokenHash: string, userId: number): Promise<Result<Member, { kind: 'expir
 ```
 
 Inside, `return err({ kind: 'expired' })` ends with an error and `return ok(member)` with the value. `ok()` without a value is
-for work that only succeeds or fails. The caller narrows the result over `ok`, then switches over `error.kind`:
+for work that only succeeds or fails. The caller narrows the result over `ok`, then switches over `error.kind`. The invitation's token
+is made with [`linkToken()`](urls.md#a-link-that-is-used-once), and the controller finds its row by `hashLinkToken()`:
 
 ```ts title="modules/teams/controllers/AcceptInvitationController.ts"
 import type { Authenticated } from '@marmeon/auth';
+import { hashLinkToken } from '@marmeon/encryption';
 import { abort, Controller, type HttpContext } from '@marmeon/http';
-import { invitationTokenHash } from '../invitation-token.ts';
 import { Invitations } from '../Invitations.ts';
 
 export class AcceptInvitationController extends Controller {
@@ -141,7 +142,7 @@ export class AcceptInvitationController extends Controller {
   }
 
   async handle(ctx: HttpContext<Authenticated, { token: string }>) {
-    const accepted = await this.#invitations.accept(invitationTokenHash(ctx.params.token), ctx.user.id);
+    const accepted = await this.#invitations.accept(hashLinkToken(ctx.params.token), ctx.user.id);
     if (!accepted.ok) {
       switch (accepted.error.kind) {
         case 'expired':

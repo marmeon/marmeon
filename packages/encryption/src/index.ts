@@ -2,6 +2,8 @@ import { createCipheriv, createDecipheriv, createSecretKey, randomBytes, type Ke
 import { defineConfig, defineSolutions, env, environment, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 
+export { hashLinkToken, linkToken, type LinkToken } from './link-token.ts';
+
 /**
  * Symmetric, authenticated encryption with the application key. Payloads cannot be read or changed without the key.
  *

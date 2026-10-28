@@ -77,6 +77,19 @@ declare module '@marmeon/database' {
       created_at: number;
     };
     /**
+     * Owned by `lab`.
+     * Timestamps.
+     * Primary key: id.
+     * Unique: token_hash.
+     */
+    lab_one_time_links: {
+      id: Generated<string>;
+      token_hash: Secret<string>;
+      used_at: Timestamp | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /**
      * Owned by `user-profile`.
      * Primary key: user_id.
      * Foreign key: user_id -> users.id (on delete cascade).
@@ -318,6 +331,7 @@ declare module '@marmeon/database' {
     email_changes: 'user_id';
     failed_jobs: 'uuid';
     jobs: 'id';
+    lab_one_time_links: 'id';
     login_activity: 'user_id';
     notifications: 'id';
     passkeys: 'id';
@@ -338,6 +352,7 @@ declare module '@marmeon/database' {
     email_changes: 'auth';
     failed_jobs: 'system';
     jobs: 'system';
+    lab_one_time_links: 'lab';
     login_activity: 'user-profile';
     notifications: 'system';
     passkeys: 'auth';

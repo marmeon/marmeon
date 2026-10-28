@@ -235,6 +235,107 @@ clock, so a test can travel past it.
 > truly has to outlive its mail. A route that acts on an account needs
 > `authenticate()` as well, as the starter kit's address confirmation does.
 
+## A link that is used once
+
+A signed URL cannot be used up or taken back: the signature says only that your app made it, and it holds until it expires. A link
+that works once, or that its owner can revoke, needs a row to remember it. `linkToken()` makes the token for the link and the hash
+to keep in that row; `hashLinkToken()` finds the row again from the token a request brings:
+
+```ts title="modules/events/TicketRepository.ts"
+import { hashLinkToken, linkToken } from '@marmeon/encryption';
+import { Repository, sql, type Row } from '@marmeon/database';
+
+export class TicketRepository extends Repository<'tickets'> {
+  static table = 'tickets' as const;
+
+  /** A new ticket: the token comes back once, for the link. The table keeps its hash. */
+  async issue(eventId: number): Promise<string> {
+    const { token, hash } = linkToken();
+    await this.insert({ event_id: eventId, token_hash: hash });
+    return token;
+  }
+
+  /** `/tickets/:ticket` → the row, or `undefined` for a 404. */
+  override resolveRouteBinding(token: string): Promise<Row<'tickets'> | undefined> {
+    return this.query().selectAll().where(sql<boolean>`${sql.ref('token_hash')} = ${hashLinkToken(token)}`).where('used_at', 'is', null).executeTakeFirst();
+  }
+
+  /** True for exactly one caller, however many arrive at once: the update decides, not an earlier read. */
+  async redeem(id: Row<'tickets'>['id']): Promise<boolean> {
+    const result = await this.db.updateTable('tickets').set({ used_at: new Date() }).where('id', '=', id).where('used_at', 'is', null).executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+}
+```
+
+The column is `table.string('token_hash', 64).secret().unique()`: a secret column stays out of every `select *`, and the unique index
+is what finds the row. The token has 32 random bytes (256 bits) as 43 characters of base64url. `hash` is the SHA-256 of the token
+in hex, and it needs no key: a copy of the table opens no link, and rotating `APP_KEY` does not kill one, as a signed URL does
+unless the old key stays in `APP_PREVIOUS_KEYS`.
+
+`hashLinkToken()` first checks the shape. A value that is no token (too short, too long, other characters, no string) is hashed
+whole under a domain of its own, cut to 512 characters: it runs the same indexed query as a real token, matches no row and costs
+the same, so a request learns nothing from how long the answer takes. Answer every failure with the same 404: a link that does
+not exist, one that was used and one that was revoked must look alike. The GET is open to everyone, with the binder marked
+`{ public: true }`, since the token is the key. The POST changes data, so it gets a check of its own that names the link, and a
+plain binder: see [every route decides](authorization.md#every-route-decides).
+
+```ts title="modules/events/routes.ts"
+const holdsTicket = describeAccess((ctx) => ctx.params.ticket !== undefined, 'ticket link');
+
+Route.authorize(everyone).bind('ticket', TicketRepository, { public: true }).get('/tickets/:ticket', ShowTicketController);
+Route.authorize(holdsTicket).bind('ticket', TicketRepository).post('/tickets/:ticket', UseTicketController);
+```
+
+Use a signed URL where reuse and passing on do no harm: a read-only link, such as the shared note above. A link that signs someone
+in or acts on an account is used once, and needs a row with a hashed token. So does a ticket, or an invitation into a team: it must
+not work twice, and its owner must be able to take it back.
+
+Use the link up in a POST, never in the GET that opens it: mail scanners and link previews fetch every link in a mail. The GET
+shows a page with a button, and the button's POST calls `redeem()`. A page whose URL holds the token must not be cached and must
+not send the token on in a `Referer`, so it answers with `Cache-Control: no-store, private` and `Referrer-Policy: no-referrer`;
+set both headers yourself for now. A helper for this page is to follow.
+
+### The same link, sent more than once
+
+A mail that is sent again, or retried by the queue, must carry the same link. Then the token cannot be thrown away after the first
+send. Keep it stable, but encrypted, in a second `secret()` column next to the hash, and look the row up by the hash only:
+
+```ts title="modules/events/TicketLinks.ts"
+import { Encrypter, linkToken } from '@marmeon/encryption';
+
+export class TicketLinks {
+  readonly #encrypter: Encrypter;
+  readonly #tickets: TicketRepository;
+
+  constructor(encrypter: Encrypter, tickets: TicketRepository) {
+    this.#encrypter = encrypter;
+    this.#tickets = tickets;
+  }
+
+  async issue(eventId: number): Promise<number> {
+    const { token, hash } = linkToken();
+    const ticket = await this.#tickets.insert({
+      event_id: eventId,
+      token_hash: hash,
+      token_sealed: await this.#encrypter.encrypt(token, 'tickets:token'),
+    });
+    return ticket.id;
+  }
+
+  /** The link for a mail: decrypted when it is sent, so neither the table nor the job carries it in the clear. */
+  async link(ticketId: number): Promise<string> {
+    // A query of its own: `select([(eb) => secret(eb, 'token_sealed')])` on the ticket's row.
+    const sealed = await this.#tickets.sealedToken(ticketId);
+    return `/tickets/${await this.#encrypter.decrypt(sealed, 'tickets:token')}`;
+  }
+}
+```
+
+The job takes the ticket's id, not the token, and the mail builds the link when it is sent. The encrypted column is never searched:
+only the hash is, through the unique index. The sealed token follows `APP_KEY`, so rotating the key needs the old one in
+`APP_PREVIOUS_KEYS` as long as such a link may still be sent. See [rotating the key](encryption.md#rotating-the-key).
+
 ## Testing
 
 A test builds URLs with the app's own router and signer:
