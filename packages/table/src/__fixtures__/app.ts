@@ -1,4 +1,4 @@
-import { Gate, type Auth, type Authenticated } from '@marmeon/auth';
+import { can, Gate, type Auth, type Authenticated } from '@marmeon/auth';
 import { createApplication, defineModule, Logger, type Application } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, sql, type QueryEvent } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
@@ -182,6 +182,34 @@ export const ActiveTable = defineTable({
   export: { csv: exportCsv().authorize(() => true) },
 });
 
+/** Only admins see it: the table's own `authorize` is a policy's ability, asked by `can()`. */
+export const GuardedTable = defineTable({
+  name: 'guarded',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: 'members.id',
+  columns: { name: column('members.name').sortable() },
+  authorize: can(MemberPolicy, 'viewAny'),
+  actions: { deactivate: action(Deactivate).authorize(MemberPolicy, 'deactivate') },
+  bulk: { deactivate: bulk(DeactivateMany).authorize(MemberPolicy, 'deactivate').max(5) },
+  export: { csv: exportCsv().authorize(() => true) },
+});
+
+export const GuardedRequest = defineRequest({ query: GuardedTable.query });
+
+export class GuardedPage extends Controller {
+  static request = GuardedRequest;
+  readonly #tables: DataTables;
+
+  constructor(tables: DataTables) {
+    super();
+    this.#tables = tables;
+  }
+
+  async handle(ctx: ContextOf<typeof GuardedRequest> & Authenticated & { team: number }) {
+    return this.json({ guarded: await this.#tables.resolve(GuardedTable, ctx) });
+  }
+}
+
 /** Keyed by text (the e-mail): keys are parsed as text, never as numbers. */
 export const ByEmailTable = defineTable({
   name: 'by-email',
@@ -354,6 +382,8 @@ const routes = openRoutes((Route) => {
   tableRoutes(team, LedgerTable);
   tableRoutes(team, SmallExportTable);
   tableRoutes(team, ByEmailTable);
+  team.get('/guarded', GuardedPage);
+  tableRoutes(team, GuardedTable);
   tableRoutes(team, ActiveTable);
 });
 

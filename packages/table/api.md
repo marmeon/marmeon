@@ -215,7 +215,9 @@ export type TableFilter<F extends string = string> = {
 export interface TableInput<Q extends TableQuery, Cols, K extends string, Filters, Sort extends string, Actions, Bulk, Exports, P extends string = string, Pg extends TablePagination = TablePagination> {
     readonly name: string;
     readonly prefix?: P;
-    readonly authorize?: (ctx: NoInfer<CtxOf<Q>>, resolve: ClassResolver) => boolean | Promise<boolean>;
+    readonly authorize?: (ctx: NoInfer<CtxOf<Q>> & {
+        readonly query: never;
+    }, resolve: ClassResolver) => boolean | Promise<boolean>;
     readonly query: Q;
     readonly key: CheckColumnKey<DbOf<Q>, TbOf<Q>, K> | {
         readonly column: CheckKeyColumn<DbOf<Q>, TbOf<Q>, K>;

@@ -600,11 +600,10 @@ export interface TableInput<Q extends TableQuery, Cols, K extends string, Filter
   /** Prefix of its URL keys (`members_sort`, `members_filter[role]`) — for more than one table on a page. */
   readonly prefix?: P;
   /**
-   * Who may see the table at all — checked on the page and in every action and export (its endpoints run the group's middleware,
-   * not the page controller's `authorize`). A `can(Policy, 'ability')` of @marmeon/auth, or any check. Without it: whoever
-   * reaches the routes.
+   * Who may see the table at all — asked on the page and in every action and export: a `can(Policy, 'ability')` or any check.
+   * Like the query, it does not read `ctx.query`, which differs between the page and the endpoints. See `docs/tables.md#who-may-see-the-table`.
    */
-  readonly authorize?: (ctx: NoInfer<CtxOf<Q>>, resolve: ClassResolver) => boolean | Promise<boolean>;
+  readonly authorize?: (ctx: NoInfer<CtxOf<Q>> & { readonly query: never }, resolve: ClassResolver) => boolean | Promise<boolean>;
   /**
    * The base query — every row the table may ever show this request (the tenant, the scope): `(db, ctx: TableContext<Authenticated>) =>
    * db.selectFrom('users').where('team_id', '=', ctx.user.team_id)`. Pages, actions, bulk actions (also "all matching") and exports

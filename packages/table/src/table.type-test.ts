@@ -1,4 +1,4 @@
-import type { Authenticated } from '@marmeon/auth';
+import { can, type Authenticated } from '@marmeon/auth';
 import type { Serialize } from '@marmeon/http';
 import { describe, expectTypeOf, it } from 'vitest';
 import './__fixtures__/schema.ts';
@@ -38,6 +38,52 @@ const Members = defineTable({
   actions: { deactivate: action(Deactivate).authorize(MemberPolicy, 'deactivate').confirm() },
   bulk: { deactivate: bulk(DeactivateMany).authorize(MemberPolicy, 'deactivate').max(500) },
   export: { csv: exportCsv().authorize(MemberPolicy, 'export') },
+});
+
+describe('defineTable — authorize', () => {
+  it('takes what can() returns — the snippet of the docs', () => {
+    defineTable({
+      name: 'members',
+      query: (db, ctx: TableContext<Authenticated>) => db.selectFrom('members').where('team_id', '=', Number(ctx.user.id)),
+      key: 'id',
+      columns: { name: column('name') },
+      authorize: can(MemberPolicy, 'viewAny'),
+    });
+  });
+
+  it('takes can() with a resource the table\'s query binds', () => {
+    defineTable({
+      name: 'members',
+      query: (db, _ctx: TableContext<Authenticated, { event: { readonly id: number } }>) => db.selectFrom('members'),
+      key: 'id',
+      columns: { name: column('name') },
+      authorize: can(MemberPolicy, 'viewEvent', 'event'),
+    });
+  });
+
+  it('refuses a check that needs a user on a table without one', () => {
+    defineTable({
+      name: 'members',
+      query: (db) => db.selectFrom('members'),
+      key: 'id',
+      columns: { name: column('name') },
+      // @ts-expect-error — the table's context has no user: there is no authenticate() before it
+      authorize: can(MemberPolicy, 'viewAny'),
+    });
+  });
+});
+
+describe('defineTable — authorize and the query string', () => {
+  it('refuses a check that reads ctx.query: the page and the endpoints have another one', () => {
+    defineTable({
+      name: 'members',
+      query: (db) => db.selectFrom('members'),
+      key: 'id',
+      columns: { name: column('name') },
+      // @ts-expect-error — `query` differs between the page and the table's endpoints
+      authorize: (ctx) => ctx.query.get('x') === '1',
+    });
+  });
 });
 
 describe('defineTable — typed from the query', () => {
