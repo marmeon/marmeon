@@ -1,5 +1,146 @@
 # @marmeon/i18n
 
+## 1.0.0-rc.1
+
+### Breaking changes
+
+- Remove the pages and lang options of the Vite plugin by @maxeckel in https://github.com/marmeon/marmeon/pull/351
+- Write every span of time as seconds or as a Duration object by @maxeckel in https://github.com/marmeon/marmeon/pull/337
+- Declare primary keys in the generated table types by @maxeckel in https://github.com/marmeon/marmeon/pull/338
+- Say the unit of every size in an environment variable's name by @maxeckel in https://github.com/marmeon/marmeon/pull/342
+- Let packages bring mail transports and return the provider's message id by @maxeckel in https://github.com/marmeon/marmeon/pull/341
+- Refuse a list of files or a file in an optional object when the routes load by @maxeckel in https://github.com/marmeon/marmeon/pull/346
+- Make @marmeon/live stable by @maxeckel in https://github.com/marmeon/marmeon/pull/339
+- Make @marmeon/devtools stable by @maxeckel in https://github.com/marmeon/marmeon/pull/340
+- Give the message types of @marmeon/i18n names of their own by @maxeckel in https://github.com/marmeon/marmeon/pull/348
+- Make the adapter interface of the client core stable by @maxeckel in https://github.com/marmeon/marmeon/pull/343
+- Make the data tables stable by @maxeckel in https://github.com/marmeon/marmeon/pull/353
+- Name the client's errors and the React router and action types apart by @maxeckel in https://github.com/marmeon/marmeon/pull/352
+- Say the unit of retryAfter by @maxeckel in https://github.com/marmeon/marmeon/pull/354
+- Rename the remaining names that two packages export by @maxeckel in https://github.com/marmeon/marmeon/pull/355
+- Move the machinery of notifications, queue, database, auth, core and uploads to internal by @maxeckel in https://github.com/marmeon/marmeon/pull/356
+- Keep the command classes internal and their names and flags public by @maxeckel in https://github.com/marmeon/marmeon/pull/359
+- Name the unit of the client's spans of time by @maxeckel in https://github.com/marmeon/marmeon/pull/378
+- Scope once props by the page's language, and drop the RegExp modifier by @maxeckel in https://github.com/marmeon/marmeon/pull/385
+- Give a stopped job its attempt back, and keep queue.using(trx) inside its transaction by @maxeckel in https://github.com/marmeon/marmeon/pull/390
+- Write the spans of time of core, router and the checks as Duration by @maxeckel in https://github.com/marmeon/marmeon/pull/391
+- Refuse a /0 proxy range and show development details only to allowed hosts by @maxeckel in https://github.com/marmeon/marmeon/pull/392
+- Connect to Postgres with a timeout and keep its session in UTC by @maxeckel in https://github.com/marmeon/marmeon/pull/393
+- Make the context of every encryption explicit by @maxeckel in https://github.com/marmeon/marmeon/pull/397
+- Give signed URLs one shape with a visible expiry by @maxeckel in https://github.com/marmeon/marmeon/pull/398
+- Refuse an empty prefix on a named Redis connection by @maxeckel in https://github.com/marmeon/marmeon/pull/399
+- Refuse a middleware list that would drop a layer by @maxeckel in https://github.com/marmeon/marmeon/pull/401
+- Send a string as text and only Html as HTML by @maxeckel in https://github.com/marmeon/marmeon/pull/402
+- Remove the remembered-field patterns deprecated for 0.5 by @maxeckel in https://github.com/marmeon/marmeon/pull/396
+- Give twitter.image the shape of openGraph.image by @maxeckel in https://github.com/marmeon/marmeon/pull/403
+- Let only a binder that scopes take scopedBy by @maxeckel in https://github.com/marmeon/marmeon/pull/387
+- Reserve dev and start, and keep the launcher's entry out of the API by @maxeckel in https://github.com/marmeon/marmeon/pull/394
+- Give access tokens, password changes and reset links safe defaults by @maxeckel in https://github.com/marmeon/marmeon/pull/400
+- Read route patterns with one tokenizer everywhere by @maxeckel in https://github.com/marmeon/marmeon/pull/407
+- Settle the scheduler's spans of time, time zone and task definition by @maxeckel in https://github.com/marmeon/marmeon/pull/408
+- Write the spans of time of http and the server as Duration or with their unit by @maxeckel in https://github.com/marmeon/marmeon/pull/410
+- Close the schema builder, transactions and migrator of @marmeon/database by @maxeckel in https://github.com/marmeon/marmeon/pull/411
+- Refuse a signed link without an expiry unless the route allows it by @maxeckel in https://github.com/marmeon/marmeon/pull/409
+- Never send a password or secret field with a live validation by @maxeckel in https://github.com/marmeon/marmeon/pull/405
+- Move the machinery of @marmeon/http to internal by @maxeckel in https://github.com/marmeon/marmeon/pull/412
+- Move the plumbing of server, storage, testing, table and devtools to internal by @maxeckel in https://github.com/marmeon/marmeon/pull/413
+- Move the machinery of core, router and validation to internal by @maxeckel in https://github.com/marmeon/marmeon/pull/414
+- Write the spans of time of queue, notifications and cache as Duration or with their unit by @maxeckel in https://github.com/marmeon/marmeon/pull/416
+- Exit with 2 for every argument a command refuses by @maxeckel in https://github.com/marmeon/marmeon/pull/415
+- Mark the live stream with its protocol version by @maxeckel in https://github.com/marmeon/marmeon/pull/418
+- Name the units of the auth and session configs and take a Duration in their middleware by @maxeckel in https://github.com/marmeon/marmeon/pull/417
+- Keep the constructors of the auth and session services out of the API by @maxeckel in https://github.com/marmeon/marmeon/pull/420
+- Take the interval of usePoll and createPoll in their options by @maxeckel in https://github.com/marmeon/marmeon/pull/422
+- Keep the constructors of the services the container builds out of the API by @maxeckel in https://github.com/marmeon/marmeon/pull/423
+- Take a span or an options object where a parameter could be mistaken by @maxeckel in https://github.com/marmeon/marmeon/pull/425
+- Move the names only the framework uses out of the API by @maxeckel in https://github.com/marmeon/marmeon/pull/426
+- Keep a table's definition out of the API by @maxeckel in https://github.com/marmeon/marmeon/pull/429
+- Take createPinoLogger's destination and app as options, and fix the locales once booted by @maxeckel in https://github.com/marmeon/marmeon/pull/430
+- Keep the constructors and plumbing of core out of the API, and make Html only through html and raw() by @maxeckel in https://github.com/marmeon/marmeon/pull/431
+- Keep the router's plumbing out of the API, and take block()'s spans by name by @maxeckel in https://github.com/marmeon/marmeon/pull/432
+- List hidden commands apart from the API by @maxeckel in https://github.com/marmeon/marmeon/pull/441
+- Cap temporary URLs at seven days on every disk, and keep the storage fake's plumbing internal by @maxeckel in https://github.com/marmeon/marmeon/pull/436
+- Keep the request state and the page props' machinery out of @marmeon/http by @maxeckel in https://github.com/marmeon/marmeon/pull/433
+- Keep the connections' plumbing internal, and name the Postgres options by @maxeckel in https://github.com/marmeon/marmeon/pull/434
+- Keep the queue's and scheduler's plumbing internal, and name what sizes and due times mean by @maxeckel in https://github.com/marmeon/marmeon/pull/435
+- Keep the auth stores, the session layout and the policy response out of the API, and require a name in abilities() by @maxeckel in https://github.com/marmeon/marmeon/pull/440
+- Keep the session's lifecycle and the CSRF switch out of the API, and name flash data by @maxeckel in https://github.com/marmeon/marmeon/pull/437
+- Name WhenVisible's reload, take resolveRoute options, and check an island's protocol by @maxeckel in https://github.com/marmeon/marmeon/pull/438
+- Name the asset version and the live retry, and keep the mail fake and notification store internal by @maxeckel in https://github.com/marmeon/marmeon/pull/439
+- Take a rate limit's numbers by name, and return a Result from a lock that waits by @maxeckel in https://github.com/marmeon/marmeon/pull/444
+- Keep the members only the framework uses out of the API, and drop the pending list by @maxeckel in https://github.com/marmeon/marmeon/pull/445
+- Keep the last types and members only the framework uses out of the API by @maxeckel in https://github.com/marmeon/marmeon/pull/448
+- Keep the launcher's environment, the session id and the codec's encrypts out of the API by @maxeckel in https://github.com/marmeon/marmeon/pull/455
+- Keep the framework's plumbing out of the API by @maxeckel in https://github.com/marmeon/marmeon/pull/456
+- End a user's API tokens and reset links with their sessions by @maxeckel in https://github.com/marmeon/marmeon/pull/458
+- Move the error pages and the layer backdrop into the system module by @maxeckel in https://github.com/marmeon/marmeon/pull/469
+
+### Features
+
+- Make @marmeon/otel stable by @maxeckel in https://github.com/marmeon/marmeon/pull/345
+- Make marmeon tinker stable by @maxeckel in https://github.com/marmeon/marmeon/pull/349
+- Run a command by its name in an app's tests by @maxeckel in https://github.com/marmeon/marmeon/pull/357
+- Serve a group of routes under the locale in the URL by @maxeckel in https://github.com/marmeon/marmeon/pull/361
+- Catch a page's error in its nearest layout, with a retry by @maxeckel in https://github.com/marmeon/marmeon/pull/362
+- Preload the fonts an app names by @maxeckel in https://github.com/marmeon/marmeon/pull/365
+- Render a page's placeholder in a test by @maxeckel in https://github.com/marmeon/marmeon/pull/372
+- Warn in development about a slow visit without a placeholder by @maxeckel in https://github.com/marmeon/marmeon/pull/373
+- Show errors/&lt;status> before errors/Error by @maxeckel in https://github.com/marmeon/marmeon/pull/368
+- Give a named font a fallback with matching metrics by @maxeckel in https://github.com/marmeon/marmeon/pull/369
+- Prefetch a link's page when it scrolls into view by @maxeckel in https://github.com/marmeon/marmeon/pull/364
+- Give Head fields for search engines and link previews by @maxeckel in https://github.com/marmeon/marmeon/pull/363
+- Serve a sitemap and robots.txt from the routes by @maxeckel in https://github.com/marmeon/marmeon/pull/370
+- Put structured data into the document head by @maxeckel in https://github.com/marmeon/marmeon/pull/367
+- Load a link's code ahead without asking the server by @maxeckel in https://github.com/marmeon/marmeon/pull/374
+- Take the request's locale from the URL first by @maxeckel in https://github.com/marmeon/marmeon/pull/366
+- Keep the page's locale in links and route() by @maxeckel in https://github.com/marmeon/marmeon/pull/371
+- List every locale of a localized route in the sitemap by @maxeckel in https://github.com/marmeon/marmeon/pull/375
+- Name every language of a localized page in its head by @maxeckel in https://github.com/marmeon/marmeon/pull/376
+- Add Image with responsive sources by @maxeckel in https://github.com/marmeon/marmeon/pull/377
+- Build responsive images from the app's files by @maxeckel in https://github.com/marmeon/marmeon/pull/379
+- Verify the signature of an incoming webhook by @maxeckel in https://github.com/marmeon/marmeon/pull/384
+- Take the table's query-builder needs from @marmeon/database by @maxeckel in https://github.com/marmeon/marmeon/pull/470
+- Let an app add patterns the redactor masks, and give every redactor the app's additions by @maxeckel in https://github.com/marmeon/marmeon/pull/471
+- Let an app reword and translate the framework's texts by @maxeckel in https://github.com/marmeon/marmeon/pull/473
+- Leave the fields an app marks as secret out of flashed input by @maxeckel in https://github.com/marmeon/marmeon/pull/474
+- Publish the framework's texts into an app with publish --only=lang by @maxeckel in https://github.com/marmeon/marmeon/pull/475
+
+### Fixes
+
+- List @marmeon/encryption among the packages a new app has by @maxeckel in https://github.com/marmeon/marmeon/pull/347
+- Give each test process its own SQLite database file by @maxeckel in https://github.com/marmeon/marmeon/pull/381
+- Keep the locale when closeLayer() redirects to a localized route by @maxeckel in https://github.com/marmeon/marmeon/pull/382
+- Keep the scripts and styles of Head when the page hydrates by @maxeckel in https://github.com/marmeon/marmeon/pull/388
+- Begin SQLite transactions at once, and count distinct pages right by @maxeckel in https://github.com/marmeon/marmeon/pull/389
+- Keep the values of encrypted jobs out of failed_jobs and the log by @maxeckel in https://github.com/marmeon/marmeon/pull/406
+- Pin an uploaded S3 object by its ETag and stream it into place by @maxeckel in https://github.com/marmeon/marmeon/pull/419
+- Write the devtools' files for their owner only by @maxeckel in https://github.com/marmeon/marmeon/pull/442
+- Keep a reset link when the password cannot be hashed, and refuse to write outside the project by @maxeckel in https://github.com/marmeon/marmeon/pull/443
+- Name a test database by its process, so two test files never share one by @maxeckel in https://github.com/marmeon/marmeon/pull/449
+- Let the newer visit win when an older one's view is still loading by @maxeckel in https://github.com/marmeon/marmeon/pull/450
+- Roll back a Postgres transaction whose failed statement was caught inside it by @maxeckel in https://github.com/marmeon/marmeon/pull/451
+- Keep answers of a session out of shared caches by @maxeckel in https://github.com/marmeon/marmeon/pull/453
+- Keep the page and its input when a form gets an answer that is no page by @maxeckel in https://github.com/marmeon/marmeon/pull/454
+- Hold a job this worker cannot decrypt, and say when an old key may go by @maxeckel in https://github.com/marmeon/marmeon/pull/457
+- Keep a log call's context from overwriting the framework's fields by @maxeckel in https://github.com/marmeon/marmeon/pull/460
+- Let uploads past the nginx template's body limit by @maxeckel in https://github.com/marmeon/marmeon/pull/461
+- Cap the input and errors a failed form flashes into the session by @maxeckel in https://github.com/marmeon/marmeon/pull/464
+- Keep negative decimals numbers in a CSV export, and freeze the export in a fixture by @maxeckel in https://github.com/marmeon/marmeon/pull/462
+- Answer a new build's 409 with a local location that no cache keeps by @maxeckel in https://github.com/marmeon/marmeon/pull/463
+- Stop listing API tokens with the new recovery codes by @maxeckel in https://github.com/marmeon/marmeon/pull/468
+
+### Documentation
+
+- Say which other surfaces are public API by @maxeckel in https://github.com/marmeon/marmeon/pull/395
+- Show a webhook endpoint as a recipe by @maxeckel in https://github.com/marmeon/marmeon/pull/404
+- Say which more surfaces are API, and fix the docs the audits found by @maxeckel in https://github.com/marmeon/marmeon/pull/446
+- Say what every export is for by @maxeckel in https://github.com/marmeon/marmeon/pull/447
+- Say which more promises 1.0 makes, and which interfaces an app is only given by @maxeckel in https://github.com/marmeon/marmeon/pull/465
+- Fix the docs the third audit found wrong or missing by @maxeckel in https://github.com/marmeon/marmeon/pull/466
+- Say which variables the tracing SDK leaves unread by @maxeckel in https://github.com/marmeon/marmeon/pull/478
+
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v0.4.0...v1.0.0-rc.1
+
 ## 0.4.0
 
 ### Breaking changes

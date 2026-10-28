@@ -1,6 +1,6 @@
 {
   "name": "create-marmeon",
-  "version": "0.4.0",
+  "version": "1.0.0-rc.1",
   "description": "Create a Marmeon app: pnpm create marmeon my-app — the starter kit (sign-in, layout, home page) or a blank app.",
   "keywords": [
     "marmeon",
