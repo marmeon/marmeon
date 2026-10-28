@@ -65,7 +65,7 @@ export const probeModule = defineModule({ name: 'probe', checks: [BarCheck] });
 
 describe('marmeon check (the app)', { timeout: 120_000 }, () => {
   it('runs the checks of a provider and of a module, in the order build, run, readiness', () => {
-    const { code, stdout } = check(migrated({ probe: PROBE }), ['--skip=types,lint,internal-imports,raw-sql,inner-html,agents', '--json']);
+    const { code, stdout } = check(migrated({ probe: PROBE }), ['--skip=types,lint,internal-imports,raw-sql,inner-html,agents,packages', '--json']);
     expect(code).toBe(0);
     expect(names(stdout)).toEqual(['boot', 'route-types', 'modules', 'throttle', 'package-migrations', 'bar', 'hsts', 'db-types', 'foo', 'readiness']);
     expect(reportOf(stdout, 'foo')).toMatchObject({
@@ -166,7 +166,7 @@ export class DownCheck { static check = 'cache-down'; handle() { throw new Error
     expect(text.stdout).toContain('cache-down: connect failed');
     expect(text.stdout + text.stderr).not.toContain('geheim');
     // CI without services.
-    const skipped = check(root, ['--skip=types,lint,internal-imports,raw-sql,inner-html,agents,readiness']);
+    const skipped = check(root, ['--skip=types,lint,internal-imports,raw-sql,inner-html,agents,packages,readiness']);
     expect(skipped.code).toBe(0);
     expect(skipped.stdout).not.toContain('readiness');
   });
@@ -182,7 +182,7 @@ export class SlowCheck { static check = 'slow'; static timeout = { milliseconds:
   });
 
   it('fails boot with the code and the fix of an invalid configuration, and skips the run checks', () => {
-    const { code, stdout } = check(app({ probe: PROBE }), ['--skip=types,lint,internal-imports,raw-sql,inner-html,agents', '--json'], { APP_KEY: '' });
+    const { code, stdout } = check(app({ probe: PROBE }), ['--skip=types,lint,internal-imports,raw-sql,inner-html,agents,packages', '--json'], { APP_KEY: '' });
     expect(code).toBe(1);
     expect(reportOf(stdout, 'boot')).toMatchObject({ status: 'failed', problems: [{ severity: 'error', code: 'K6' }] });
     expect(reportOf(stdout, 'boot').problems[0].fix).toEqual(expect.any(String));
@@ -197,7 +197,7 @@ class A { static command = 'dup'; handle() { return 0; } }
 class B { static command = 'dup'; handle() { return 0; } }
 (ProbeProvider as { commands?: unknown }).commands = [A, B];
 `;
-    const { code, stdout } = check(app({ probe }), ['--skip=types,lint,internal-imports,raw-sql,inner-html,agents', '--json']);
+    const { code, stdout } = check(app({ probe }), ['--skip=types,lint,internal-imports,raw-sql,inner-html,agents,packages', '--json']);
     expect(code).toBe(1);
     expect(reportOf(stdout, 'boot')).toMatchObject({ status: 'failed', problems: [{ code: 'K8' }] });
     // Those of the installed packages are known without the app; a check only the app adds (`foo`, `bar`) is not.

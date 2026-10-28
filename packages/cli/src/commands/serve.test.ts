@@ -1,5 +1,8 @@
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Application, Logger } from '@marmeon/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import type { CommandInput } from '../command.ts';
 import type { DevProcesses } from '../dev.ts';
 import type { RouteTypes } from '../route-types.ts';
@@ -30,7 +33,7 @@ afterEach(() => {
 });
 
 /** Runs `marmeon serve` for an app that is stubbed, and stops it with SIGINT once the server listens. */
-async function serve(nodeEnv: string) {
+async function serve(nodeEnv: string, root = '/nowhere', warn: (text: string) => void = () => {}) {
   vi.stubEnv('NODE_ENV', nodeEnv);
   server.startServer.mockImplementation(async () => ({ close: server.close }));
   server.startLastError.mockImplementation(async () => server.lastError);
@@ -39,8 +42,8 @@ async function serve(nodeEnv: string) {
   const logger = { info: () => {} } as unknown as Logger;
   const devProcesses = { all: () => [] } as unknown as DevProcesses;
   const command = new ServeCommand(app, logger, {} as RouteTypes, devProcesses);
-  const output = { error: () => {}, warn: () => {}, info: () => {} } as unknown as CommandInput['output'];
-  const running = command.handle({ args: [], options: {}, output, root: '/nowhere', spawn: async () => 0, prompt: noPrompt });
+  const output = { error: () => {}, warn, info: () => {} } as unknown as CommandInput['output'];
+  const running = command.handle({ args: [], options: {}, output, root, spawn: async () => 0, prompt: noPrompt });
   await vi.waitFor(() => expect(server.startServer).toHaveBeenCalled());
   await vi.waitFor(() => expect(process.listenerCount('SIGINT')).toBeGreaterThan(0));
   process.emit('SIGINT');
@@ -71,5 +74,32 @@ describe('marmeon serve and the migration watcher', () => {
   it('does not watch them for a production server', async () => {
     await serve('production');
     expect(migrations.watch).not.toHaveBeenCalled();
+  });
+});
+
+describe('marmeon serve and the versions of the @marmeon packages', () => {
+  /** An app whose `@marmeon/storage` is not in the version of its `@marmeon/core`. */
+  function mixedApp(): string {
+    const root = realpathSync(tempDir('marmeon-serve-packages-'));
+    const versions = { '@marmeon/core': '1.0.0-rc.1', '@marmeon/storage': '0.4.0' };
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: versions }));
+    for (const [name, version] of Object.entries(versions)) {
+      mkdirSync(join(root, 'node_modules', name), { recursive: true });
+      writeFileSync(join(root, 'node_modules', name, 'package.json'), JSON.stringify({ name, version }));
+    }
+    return root;
+  }
+
+  it('warns once at the start of the development server and starts it all the same', async () => {
+    const warn = vi.fn();
+    await serve('development', mixedApp(), warn);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('@marmeon/storage is 0.4.0, the app\'s framework is 1.0.0-rc.1'));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('pnpm add -E @marmeon/storage@1.0.0-rc.1'));
+  });
+
+  it('reads nothing of the packages for a production server', async () => {
+    const warn = vi.fn();
+    await serve('production', mixedApp(), warn);
+    expect(warn).not.toHaveBeenCalled();
   });
 });

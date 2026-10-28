@@ -110,7 +110,7 @@ describe('create-marmeon — the app', () => {
     expect((await create(cwd, ['blank', '--minimal', '--no-install', '--no-git'])).code).toBe(0);
     const app = join(cwd, 'blank');
     const own = new Set(['package.json', 'tsconfig.json', 'README.md', 'index.html', 'bootstrap/head.ts', '.env', '.env.test']);
-    expect(filesUnder(app).filter((file) => file !== '.env')).toEqual([...new Set([...blankAppFiles(), 'README.md', 'marmeon-stubs.json'])].sort());
+    expect(filesUnder(app).filter((file) => file !== '.env')).toEqual([...new Set([...blankAppFiles(), 'README.md', 'marmeon-stubs.json', 'pnpm-workspace.yaml'])].sort());
     for (const file of blankAppFiles().filter((name) => !own.has(name))) {
       expect(readFileSync(join(app, file), 'utf8'), file).toBe(readFileSync(join(blank, file), 'utf8'));
     }
@@ -129,6 +129,8 @@ describe('create-marmeon — the app', () => {
     const written = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')) as Record<string, any>;
     const { name: _name, description: _description, dependencies, devDependencies, ...rest } = expected;
     const pinned = (list: Record<string, string>) => Object.fromEntries(Object.entries(list).map(([name, range]) => [name, framework(name) ? ownVersion : range]));
+    // `pnpm add @marmeon/x` saves the exact version, as every @marmeon/* package must have the app's.
+    expect(readFileSync(join(app, 'pnpm-workspace.yaml'), 'utf8')).toMatch(/^saveExact: true$/m);
     expect(written).toEqual({ ...rest, name: 'blank', packageManager: `pnpm@${PNPM_VERSION}`, dependencies: pinned(dependencies), devDependencies: pinned(devDependencies) });
     expect(JSON.stringify(written)).not.toMatch(/workspace:|"latest"|"\*"/);
 
@@ -149,6 +151,8 @@ describe('create-marmeon — the app', () => {
     const manifest = JSON.parse(readFileSync(join(cwd, 'with-npm/package.json'), 'utf8')) as Record<string, any>;
     expect(manifest.packageManager).toBeUndefined();
     expect(existsSync(join(cwd, 'with-npm/pnpm-workspace.yaml'))).toBe(false);
+    // `npm install @marmeon/x` saves the exact version, as every @marmeon/* package must have the app's.
+    expect(readFileSync(join(cwd, 'with-npm/.npmrc'), 'utf8')).toMatch(/^save-exact=true$/m);
     const pinned = Object.entries({ ...manifest.dependencies, ...manifest.devDependencies }).filter(([name]) => framework(name));
     expect(pinned.length).toBeGreaterThan(15);
     expect(pinned.filter(([, range]) => range !== ownVersion)).toEqual([]);
@@ -305,6 +309,7 @@ describe('create-marmeon — the framework from tarballs (MARMEON_CREATE_TARBALL
     // An overridden optional peer is installed by pnpm as if the app had asked for it — what nobody installs stays out.
     expect(workspaceFile).not.toContain('@marmeon/redis');
     expect(workspaceFile).toContain('hoistPattern: []');
+    expect(workspaceFile).toMatch(/^saveExact: true$/m);
   });
 
   it('turns a template manifest into the app\'s without touching anything but the framework', () => {

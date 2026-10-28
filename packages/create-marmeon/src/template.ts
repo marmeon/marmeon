@@ -258,9 +258,19 @@ export function pnpmWorkspace(tarballs: ReadonlyMap<string, string>, installed: 
     ...[...tarballs].filter(([dependency]) => installed.has(dependency)).map(([dependency, file]) => `  ${JSON.stringify(dependency)}: ${JSON.stringify(`file:${file}`)}`),
     '# Nothing hoisted: a package can only import what it declares.',
     'hoistPattern: []',
+    SAVE_EXACT_PNPM,
     '',
   ].join('\n');
 }
+
+/** pnpm's setting that saves what `pnpm add` installs without a caret: `@marmeon/*` packages must all be in one version. */
+export const SAVE_EXACT_PNPM = [
+  '# Save packages in the version installed, not as a range: every @marmeon/* package must have the app\'s version.',
+  'saveExact: true',
+].join('\n');
+
+/** npm's setting for the same (`.npmrc`). */
+export const SAVE_EXACT_NPM = '# Save packages in the version installed, not as a range: every @marmeon/* package must have the app\'s version.\nsave-exact=true\n';
 
 /**
  * The framework's tarballs in `dir` (`pnpm pack` names them `marmeon-<short>-<version>.tgz`, the CLI `marmeon-<version>.tgz`), copied into the app under

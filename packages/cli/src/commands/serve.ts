@@ -10,6 +10,7 @@ import { ServerConfig, startServer, ViteSetupError } from '@marmeon/server';
 import { refuseUndecidedRoutes, heldOnLoopback, shadowedLocalhost, startLastError } from '@marmeon/server/internal';
 import { RouteAccessError } from '@marmeon/router';
 import { CommandArgumentsError, type CommandInput } from '../command.ts';
+import { packageAdvice } from '../check/packages.ts';
 import { DevProcesses, type DevProcess } from '../dev.ts';
 import { startMarmeon } from '../spawn.ts';
 import { RouteTypes } from '../route-types.ts';
@@ -71,6 +72,8 @@ export class ServeCommand {
       return 1;
     }
     const views = watched;
+    // At each start of the server (under `node --watch`, each restart): the @marmeon packages in one version. A warning only — the server starts, and `marmeon check` fails on it.
+    if (development) for (const advice of packageAdvice(root)) output.warn(advice);
     // Parses the modules' files: development only, so `marmeon start` never loads the parser. A failure is a warning, never fatal.
     if (development) {
       try {

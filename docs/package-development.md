@@ -288,7 +288,7 @@ is for anything that reads configuration or opens a connection, and gets the boo
 a scope of its own. `handle()` is given `{ signal }`, aborted when the time is up: release what you opened. Return `{ skipped: 'why' }` instead of findings when the check should not run here, or `{ problems, silenced }` to report findings a comment of the app silenced (each with its `reason`; one without a reason is a finding, not silenced). A finding is a [`CheckProblem`](check.md#json-output); its message is masked by the app's redactor, but name no secret in it.
 A check that throws, or takes longer than a minute (`static timeout` sets it: seconds, or a `Duration` like `{ minutes: 2 }`, at most ten minutes; more stops the start with `K13`), ends as `error`, never as another check's result.
 
-A bad or duplicate check name stops every command, not only `marmeon check`, as a command name used twice does. The name must be unique, in kebab-case, and none of `types`, `lint`, `internal-imports`, `raw-sql`, `inner-html`, `agents`, `boot` or `readiness`; the app does
+A bad or duplicate check name stops every command, not only `marmeon check`, as a command name used twice does. The name must be unique, in kebab-case, and none of `types`, `lint`, `internal-imports`, `raw-sql`, `inner-html`, `agents`, `packages`, `boot` or `readiness`; the app does
 not start otherwise, and the message names both checks. A check that asks whether the package's service is reachable is not a
 check but a [health check](health.md#writing-a-health-check): `marmeon check` runs those as `readiness`.
 

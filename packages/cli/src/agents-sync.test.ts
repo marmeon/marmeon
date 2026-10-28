@@ -41,6 +41,10 @@ describe('marmeon agents:sync', () => {
     expect(claude).toBe('@AGENTS.md\n');
   });
 
+  it('tells an agent to run marmeon from the app\'s root', () => {
+    expect(AGENTS_BLOCK).toContain('Run `marmeon` from the app\'s root, never from inside `node_modules`.');
+  });
+
   it('titles a new file "This app" when package.json names nothing', () => {
     expect(sync({}).agents).toMatch(/^# This app\n/);
     expect(sync({ 'package.json': '{ not json' }).agents).toMatch(/^# This app\n/);

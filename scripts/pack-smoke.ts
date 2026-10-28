@@ -124,6 +124,11 @@ export function checkManifest(app: string, packageManager: 'pnpm' | 'npm'): Reco
   if (packageManager === 'npm' && (manifest.packageManager || existsSync(join(app, 'pnpm-workspace.yaml')) || existsSync(join(app, 'pnpm-lock.yaml')))) {
     throw new SmokeError('the npm app has pnpm files (packageManager, pnpm-workspace.yaml or pnpm-lock.yaml).');
   }
+  // A package added later is saved in the version installed: every @marmeon/* package must have the app's.
+  const exact = packageManager === 'npm' ? ['.npmrc', /^save-exact=true$/m] : ['pnpm-workspace.yaml', /^saveExact: true$/m];
+  if (!existsSync(join(app, exact[0] as string)) || !(exact[1] as RegExp).test(readFileSync(join(app, exact[0] as string), 'utf8'))) {
+    throw new SmokeError(`${exact[0]} does not save packages exactly (${packageManager}).`);
+  }
   const env = readFileSync(join(app, '.env'), 'utf8');
   if (!/^APP_KEY=base64:[A-Za-z0-9+/]{43}=$/m.test(env)) throw new SmokeError('.env has no APP_KEY.');
   if (!/^APP_KEY=$/m.test(readFileSync(join(app, '.env.example'), 'utf8'))) throw new SmokeError('.env.example carries an APP_KEY.');
@@ -707,6 +712,8 @@ async function main(): Promise<number> {
       if (!manifest.dependencies['@marmeon/redis'] || !manifest.dependencies['@marmeon/storage']) throw new SmokeError('pnpm add did not add @marmeon/redis and @marmeon/storage.');
       // New packages, new injection lists: built as before a deploy (the start must not parse anything).
       pnpmApp.buildWithoutEnv();
+      // The packages the app added come from tarballs of one version: pnpm's layout (a package's siblings beside it) is read as it is.
+      if (!/✓ packages/.test(pnpmApp.marmeon('check', '--only=packages'))) throw new SmokeError('marmeon check --only=packages did not pass in the pnpm app.');
     });
     await pnpmApp.step('marmeon start with CACHE_DRIVER=redis SESSION_DRIVER=redis — redis came with @marmeon/redis', async () => {
       const prefix = `marmeon-smoke-${process.pid}-${Date.now()}:`;
@@ -796,6 +803,8 @@ async function main(): Promise<number> {
           `discovery in npm's node_modules found ${flat.summary} (${flat.names.join(', ')}), in pnpm's ${discovered.summary} — missing: ${missing.join(', ') || 'none'}`,
         );
       }
+      // npm's flat layout puts a package's siblings in the app's node_modules: the versions check finds them there too.
+      if (!/✓ packages/.test(npmApp.marmeon('check', '--only=packages'))) throw new SmokeError('marmeon check --only=packages did not pass in the npm app.');
     });
 
     const total = ((performance.now() - started) / 1000).toFixed(1);
