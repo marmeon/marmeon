@@ -5,7 +5,7 @@
  * the one that says who may hear its hints (no second policy).
  */
 import { token } from '@marmeon/core';
-import type { JoinNames } from '@marmeon/router';
+import type { HttpContext, JoinNames } from '@marmeon/router';
 import type { SharedProps } from './page.ts';
 import type { LiveSubscription } from './protocol.ts';
 
@@ -22,6 +22,23 @@ export interface LiveAudience {
 }
 
 export const LiveAudience = token<LiveAudience>('LiveAudience');
+
+/**
+ * Decides at every connection of a live stream which of its signed channels the request may follow — the stream opening and
+ * each reconnect, so a right that is gone takes effect by the next connection (at the latest after `LIVE_MAX_STREAM_SECONDS`).
+ * A channel's token only proves that the page was signed for the session; this is where an app says who may still hear it.
+ * A module lists its authorizers as `liveAuthorizers` (classes, built per request with their dependencies); the stream asks
+ * every one of them and keeps a channel only if each answers `true`, so an authorizer answers `true` for the channels it does not
+ * decide. A channel answered with anything else is left out of the stream, and a stream left with none is refused with a 403.
+ * A throw refuses the stream with a 503. Without any, a signed channel is the session's to follow. See
+ * docs/realtime.md#who-may-follow-a-channel.
+ */
+export interface LiveAuthorizer {
+  allows(channel: string, ctx: HttpContext): boolean | Promise<boolean>;
+}
+
+/** A class of a {@link LiveAuthorizer}, as a module lists it in `liveAuthorizers`. */
+export type LiveAuthorizerClass = new (...args: any[]) => LiveAuthorizer;
 
 /** What a channel's name may hold: letters, digits, `_`, `-`, `.` and `:` — `users.7`, `dashboard.sign-ins`, `team:4.tasks`. */
 export const LIVE_CHANNEL = /^[\w.:-]{1,200}$/;

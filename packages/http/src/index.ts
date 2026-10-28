@@ -42,7 +42,7 @@ export type { ErrorPageProps } from './page-support.ts';
 export type { OnceInfo, LayerClose, LayerInfo, PageObject, RegionKind, RegionObject, RegionOutcomeStatus } from './protocol.ts';
 export { SharedData } from './shared-data.ts';
 export { LiveAudience } from './live.ts';
-export type { LiveMethod, LiveOnly, PagePropNames } from './live.ts';
+export type { LiveAuthorizer, LiveAuthorizerClass, LiveMethod, LiveOnly, PagePropNames } from './live.ts';
 export { ClientInfo } from './client-info.ts';
 export { AfterResponse } from './after-response.ts';
 export { ReadOnlyError } from './read-only.ts';

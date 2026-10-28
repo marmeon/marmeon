@@ -182,8 +182,57 @@ with `Retry-After: 5` meanwhile, and tabs that connect again later catch up.
 - **Read-only.** The stream at `GET /_marmeon/live` never writes the session, sets no cookie and takes no flash message.
 
 > [!NOTE]
-> Channel tokens do not expire while their session lives. A user who loses access to a channel keeps hearing *that* it changed,
-> its name and when, until the session ends. Every reload this causes meets the route's policy, so no data reaches them.
+> Channel tokens do not expire while their session lives. Without a `LiveAuthorizer`, a user who loses access to a channel keeps
+> hearing *that* it changed, its name, when, and the sequence numbers of its hints, until the session ends. Every reload this
+> causes meets the route's policy, so no data reaches them. [Who may follow a channel](#who-may-follow-a-channel) ends it.
+
+## Who may follow a channel
+
+A token proves that a page was signed for the session, not that the session may still hear the channel. A module lists
+`liveAuthorizers`, and the stream asks every one of them about each channel at each connection, which includes every reconnect and
+comes after the tokens and the sign-in check:
+
+```ts title="modules/teams/TeamsLiveAuthorizer.ts"
+import { Auth } from '@marmeon/auth';
+import type { HttpContext, LiveAuthorizer } from '@marmeon/http';
+import { TeamMembers } from './TeamMembers.ts';
+
+export class TeamsLiveAuthorizer implements LiveAuthorizer {
+  readonly #auth: Auth;
+  readonly #members: TeamMembers;
+
+  constructor(auth: Auth, members: TeamMembers) {
+    this.#auth = auth;
+    this.#members = members;
+  }
+
+  async allows(channel: string, _ctx: HttpContext): Promise<boolean> {
+    const team = /^team\.(\d+)$/.exec(channel)?.[1];
+    if (team === undefined) return true; // not a channel this authorizer decides
+    const user = await this.#auth.user();
+    return user !== undefined && (await this.#members.has(Number(team), user.id));
+  }
+}
+```
+
+```ts title="modules/teams/index.ts"
+export default defineModule({ name: 'teams', liveAuthorizers: [TeamsLiveAuthorizer] });
+```
+
+- **Every authorizer must say `true`.** The authorizers of all modules are asked, so each one answers `true` for the channels it
+  does not decide, and a channel stays only if none of them objects. The class is built for each request, with its dependencies.
+- **Only `true` keeps a channel.** Every other answer leaves it out of the stream: the stream opens for the channels that remain,
+  and its `hello` names only those. If none remain, the answer is a `403`.
+- **A throw is a `503`** with `Retry-After: 5` and no stream, logged at most once a minute. The tab connects again by itself.
+- **It takes effect at the next connection.** A removed member keeps the stream that is open until it closes, which is after
+  `LIVE_MAX_STREAM_SECONDS` (15 minutes) at the latest, and then hears nothing more. It does not close open streams at once. The
+  hint carries no data, and the reload meets the route's policy.
+- **Not asked** for a channel whose token is wrong, nor for a stream whose sign-in has ended.
+- **Without any** nothing changes: a signed channel is the session's to follow.
+
+Another way needs no authorizer: a channel for each membership, such as `memberships.<id>`, that your code refreshes only for
+current memberships. A removed member's tab still holds a valid token, but nothing is sent on that channel for them any more, so
+they hear no hints and no new sequence numbers. It costs one hint per member and change.
 
 ## Unsaved changes
 

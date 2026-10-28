@@ -2,7 +2,7 @@ import cluster from 'node:cluster';
 import { Application, Logger, Redactor, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { CLUSTER_WORKER, withCode } from '@marmeon/core/internal';
 import { EncryptionConfig } from '@marmeon/encryption';
-import { defineRoutes, LiveAudience, Router } from '@marmeon/http';
+import { defineRoutes, LiveAudience, Router, type LiveAuthorizerClass } from '@marmeon/http';
 import { FRAMEWORK_ROUTES, IncomingRequest, CONNECTION_HEADER, LIVE_PATH, LiveSigner, PageSession, ReadOnly, ServerClosing } from '@marmeon/http/internal';
 import { LiveBackend, MemoryLiveBackend } from './backend.ts';
 import { Broadcaster, LiveBroadcaster } from './broadcaster.ts';
@@ -19,6 +19,13 @@ export type { RefreshOptions } from './broadcaster.ts';
 export type { LiveHello } from './hub.ts';
 export { LiveConfig } from './config.ts';
 export { notificationsChannel } from './notifications.ts';
+
+declare module '@marmeon/core' {
+  interface ModuleDefinition {
+    /** The module's live authorizers — classes with `allows(channel, ctx)`, asked at every connection of a stream. See docs/realtime.md#who-may-follow-a-channel. */
+    readonly liveAuthorizers?: readonly LiveAuthorizerClass[];
+  }
+}
 
 /** Live props need a piece the app does not have. */
 export class LiveSetupError extends Error {
@@ -104,7 +111,7 @@ export class LiveServiceProvider implements ServiceProvider {
       const recorder = container.has(BroadcastTester) ? container.make(BroadcastTester) : undefined;
       return new LiveBroadcaster({ backend: () => container.make(LiveBackend), connection: connectionOf(c), logger: c.make(Logger).child({ channel: 'live' }), recorder, app: c.make(Application), redactor: c.make(Redactor) });
     });
-    container.scoped(LiveStreamController, (c) => new LiveStreamController(c.make(LiveHub), c.make(LiveTokens), c.make(LiveConfig).maxChannels, () => sessionScopeOf(c), container.has(LiveAudience) ? c.make(LiveAudience) : undefined, c.make(Logger).child({ channel: 'live' }), c.make(Redactor)));
+    container.scoped(LiveStreamController, (c) => new LiveStreamController(c.make(LiveHub), c.make(LiveTokens), c.make(LiveConfig).maxChannels, () => sessionScopeOf(c), container.has(LiveAudience) ? c.make(LiveAudience) : undefined, c.make(Logger).child({ channel: 'live' }), c.make(Redactor), () => [...new Set(c.make(Application).modules.flatMap((module) => module.liveAuthorizers ?? []))].map((authorizer) => c.make(authorizer))));
   }
 
   async boot(app: Application): Promise<void> {
