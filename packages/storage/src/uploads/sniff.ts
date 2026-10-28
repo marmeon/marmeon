@@ -66,6 +66,23 @@ function markup(bytes: Uint8Array): ActiveType | undefined {
   return undefined;
 }
 
+/**
+ * Whether `bytes` open with a valid MPEG audio frame header (11 sync bits, then version, layer, bitrate and sample-rate
+ * fields none of which is reserved or invalid). `FF FE` is the UTF-16LE byte order mark and also a valid MPEG-1 Layer I
+ * header with CRC; it is refused on purpose, or UTF-16LE text would pass for audio (the price: an MP1 file with CRC and
+ * no ID3 tag is sniffed as `bin`).
+ */
+function isMpegFrame(bytes: Uint8Array): boolean {
+  const [b0, b1, b2] = bytes;
+  if (b0 === undefined || b1 === undefined || b2 === undefined) return false;
+  if (b0 !== 0xff || b1 === 0xfe || (b1 & 0xe0) !== 0xe0) return false;
+  const version = (b1 >> 3) & 0x03;
+  const layer = (b1 >> 1) & 0x03;
+  const bitrate = b2 >> 4;
+  const sampleRate = (b2 >> 2) & 0x03;
+  return version !== 0b01 && layer !== 0b00 && bitrate !== 0b0000 && bitrate !== 0b1111 && sampleRate !== 0b11;
+}
+
 /** The type of a file by its first bytes ({@link SNIFF_BYTES} are enough). */
 export function sniff(bytes: Uint8Array): Sniffed {
   const found = (mime: UploadMime): Sniffed => ({ mime, extension: UPLOAD_TYPES[mime] });
@@ -75,7 +92,7 @@ export function sniff(bytes: Uint8Array): Sniffed {
   if (ascii(bytes, 0, 'RIFF') && ascii(bytes, 8, 'WEBP')) return found('image/webp');
   if (ascii(bytes, 0, '%PDF-')) return found('application/pdf');
   if (startsWith(bytes, [0x50, 0x4b, 0x03, 0x04]) || startsWith(bytes, [0x50, 0x4b, 0x05, 0x06])) return found('application/zip');
-  if (ascii(bytes, 0, 'ID3') || (bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0 && ((bytes[1] ?? 0) & 0x06) !== 0)) return found('audio/mpeg');
+  if (ascii(bytes, 0, 'ID3') || isMpegFrame(bytes)) return found('audio/mpeg');
   const brands = isoBrands(bytes);
   if (brands.some((brand) => brand === 'avif' || brand === 'avis')) return found('image/avif');
   if (brands.some((brand) => ['isom', 'iso2', 'mp41', 'mp42', 'avc1', 'M4V '].includes(brand))) return found('video/mp4');

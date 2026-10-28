@@ -28,6 +28,36 @@ describe('sniff — a file’s type by its first bytes, never by its name', () =
     expect(sniff(new Uint8Array())).toEqual({ mime: 'application/octet-stream', extension: 'bin' });
   });
 
+  it('takes audio/mpeg for an ID3 tag or a valid MPEG frame header, never for text behind a byte order mark', () => {
+    const mp3 = { mime: 'audio/mpeg', extension: 'mp3' };
+    // MPEG-1 Layer III 128 kbit/s 44.1 kHz; MPEG-1 Layer III 320 kbit/s 48 kHz; MPEG-2 Layer III 64 kbit/s 24 kHz; MPEG-2.5 Layer III 8 kbit/s 12 kHz; MPEG-1 Layer II 192 kbit/s 44.1 kHz with CRC.
+    for (const header of [[0xff, 0xfb, 0x90], [0xff, 0xfb, 0xe4], [0xff, 0xf3, 0x84], [0xff, 0xe3, 0x14], [0xff, 0xfc, 0xa0]]) expect(sniff(bytes(...header, 0, 0)), header.join()).toEqual(mp3);
+    expect(sniff(bytes('ID3', 4, 0, 0, 0, 0, 0, 0))).toEqual(mp3);
+    expect(sniff(bytes('ID3')).mime).toBe('audio/mpeg');
+    const octet = { mime: 'application/octet-stream', extension: 'bin' };
+    for (const encoded of [[0xff, 0xfe, ...'a,b\n1,2'.split('').flatMap((c) => [c.charCodeAt(0), 0])], [0xfe, 0xff, ...'a,b\n1,2'.split('').flatMap((c) => [0, c.charCodeAt(0)])]]) {
+      expect(sniff(new Uint8Array(encoded))).toEqual(octet);
+    }
+    expect(sniff(bytes(0xff, 0xfe, 0x41, 0x00))).toEqual(octet);
+    // Invalid fields behind a sync: reserved version, reserved layer, bitrate 0000 / 1111, sample rate 11.
+    for (const header of [[0xff, 0xeb, 0x90], [0xff, 0xf9, 0x90], [0xff, 0xfb, 0x00], [0xff, 0xfb, 0xf0], [0xff, 0xfb, 0x9c]]) expect(sniff(bytes(...header, 0, 0)).mime, header.join()).not.toBe('audio/mpeg');
+    // Too short for a header: the padding above would otherwise stand in for the missing bytes.
+    expect(sniff(bytes(0xff, 0xfb)).mime).not.toBe('audio/mpeg');
+    expect(sniff(bytes(0xff)).mime).not.toBe('audio/mpeg');
+  });
+
+  it('refuses UTF-16 text for an upload that must be audio/mpeg — the verified type is the sniffed one', () => {
+    const mpegOnly = r.object({ track: upload({ maxBytes: 2_000_000, mime: ['audio/mpeg'] }) });
+    const verifiedAs = (head: Uint8Array) => {
+      const { mime, extension } = sniff(head);
+      return new TemporaryUpload({ id: 'x', field: 'track', name: 't', size: head.length, mime, extension }, { disk: undefined!, key: 'x', consume: async () => true });
+    };
+    const check = (head: Uint8Array) => (mpegOnly['~standard'].validate({ track: verifiedAs(head) }) as { issues?: unknown[] }).issues;
+    expect(check(new Uint8Array([0xff, 0xfe, 0x61, 0x00, 0x2c, 0x00]))).toHaveLength(1);
+    expect(check(bytes(0xff, 0xfb, 0x90, 0))).toBeUndefined();
+    expect(verifiedAs(new Uint8Array([0xff, 0xfe, 0x61, 0x00])).extension).toBe('bin');
+  });
+
   it('recognises markup a browser would run — HTML, SVG, XML — after a BOM, whitespace and in any case', () => {
     for (const html of ['<!DOCTYPE html><p>', '﻿ \n<HTML><body>', '<script>alert(1)</script>', '<iframe src=x>', '<!-- x --><b>']) expect(sniff(text(html)).mime).toBe('text/html');
     for (const svg of ['<svg xmlns="http://www.w3.org/2000/svg">', '<?xml version="1.0"?><svg>', '  <SVG onload=alert(1)>']) expect(sniff(text(svg)).mime).toBe('image/svg+xml');
