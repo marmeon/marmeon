@@ -257,8 +257,9 @@ The [request lifecycle](lifecycle.md#requests-that-only-read) page lists them.
 whatever the client claimed. In tests, `ctx.ip` is undefined unless the request comes from `app.withIp('203.0.113.9')`, which
 sends it like a socket's peer address (see the [HTTP tests](http-tests.md#request-defaults) page).
 
-A service that has no `ctx`, such as a listener of the sign-in event, injects `ClientInfo` of `@marmeon/http` instead. It holds
-the request's `ip` and `userAgent`, and both are undefined outside a request. The [deployment](deployment.md#trusted-proxies) page
+A service that has no `ctx`, such as a listener of the sign-in event or the listener of an [audit trail](events.md#an-audit-trail),
+injects `ClientInfo` of `@marmeon/http` instead. It holds the request's `ip` and `userAgent`, and both are undefined outside a
+request. The [deployment](deployment.md#trusted-proxies) page
 explains how to list your proxies.
 
 ## What the client expects
