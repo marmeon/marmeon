@@ -34,7 +34,7 @@ token belongs to.
 
 `AccessTokenStore` creates a token for a user and returns its plain text once:
 
-```ts title="modules/auth/controllers/CreateAccessTokenController.ts"
+```ts title="modules/auth/controllers/StoreAccessTokenController.ts"
 import { AccessTokenStore, type Authenticated } from '@marmeon/auth';
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
@@ -43,15 +43,15 @@ import { abilityDescriptions, TOKEN_ABILITIES, type TokenAbility } from '../abil
 
 const abilityNames = [...TOKEN_ABILITIES] as [TokenAbility, ...TokenAbility[]];
 
-export const CreateAccessTokenRequest = defineRequest({
+export const StoreAccessTokenRequest = defineRequest({
   schema: r.object({
     name: r.string().trim().required().max(60),
     abilities: r.union([r.in(abilityNames), r.array(r.in(abilityNames)).required()]).transform((value) => [value].flat()),
   }),
 });
 
-export class CreateAccessTokenController extends Controller {
-  static request = CreateAccessTokenRequest;
+export class StoreAccessTokenController extends Controller {
+  static request = StoreAccessTokenRequest;
 
   readonly #tokens: AccessTokenStore;
   readonly #translator: Translator;
@@ -62,7 +62,7 @@ export class CreateAccessTokenController extends Controller {
     this.#translator = translator;
   }
 
-  async handle(ctx: ContextOf<typeof CreateAccessTokenRequest> & Authenticated) {
+  async handle(ctx: ContextOf<typeof StoreAccessTokenRequest> & Authenticated) {
     const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: { days: 90 } });
     return this.view('auth/AccessTokens', {
       tokens: await this.#tokens.list(ctx.user.id),

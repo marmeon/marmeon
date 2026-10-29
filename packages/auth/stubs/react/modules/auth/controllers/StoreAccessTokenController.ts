@@ -7,7 +7,7 @@ import { passwordCheckMessage } from '../password-errors.ts';
 
 const abilityNames = [...TOKEN_ABILITIES] as [TokenAbility, ...TokenAbility[]];
 
-export const CreateAccessTokenRequest = defineRequest({
+export const StoreAccessTokenRequest = defineRequest({
   schema: r.object({
     name: r.string().trim().required().max(60),
     // Typed now, whatever confirmed sudo mode: a token outlives the session and a password change, so a stolen session must not be able to mint one.
@@ -29,8 +29,8 @@ export const CreateAccessTokenRequest = defineRequest({
  * A new token. Its plain text is in this one response — rendered, not redirected, so it never sits in
  * the session (a flash would store it). The database keeps only its hash.
  */
-export class CreateAccessTokenController extends Controller {
-  static request = CreateAccessTokenRequest;
+export class StoreAccessTokenController extends Controller {
+  static request = StoreAccessTokenRequest;
 
   readonly #tokens: AccessTokenStore;
   readonly #auth: Auth;
@@ -43,7 +43,7 @@ export class CreateAccessTokenController extends Controller {
     this.#translator = translator;
   }
 
-  async handle(ctx: ContextOf<typeof CreateAccessTokenRequest> & Authenticated) {
+  async handle(ctx: ContextOf<typeof StoreAccessTokenRequest> & Authenticated) {
     const checked = await this.#auth.checkPassword(ctx.body.current_password);
     if (!checked.ok) throw new ValidationError({ current_password: [passwordCheckMessage(this.#translator, checked.error)] });
     const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: { days: 90 } });

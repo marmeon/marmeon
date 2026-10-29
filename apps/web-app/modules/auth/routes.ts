@@ -4,7 +4,8 @@ import { throttle } from '@marmeon/cache';
 import { defineRoutes, everyone, signed } from '@marmeon/http';
 import { ConfirmEmailChangeController } from './controllers/ConfirmEmailChangeController.ts';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
-import { CreateAccessTokenController, ShowCreateAccessTokenController } from './controllers/CreateAccessTokenController.ts';
+import { ShowCreateAccessTokenController } from './controllers/ShowCreateAccessTokenController.ts';
+import { StoreAccessTokenController } from './controllers/StoreAccessTokenController.ts';
 import { BeginTwoFactorController } from './controllers/BeginTwoFactorController.ts';
 import { ConfirmTwoFactorController } from './controllers/ConfirmTwoFactorController.ts';
 import { EndSignInController } from './controllers/EndSignInController.ts';
@@ -152,7 +153,7 @@ export default defineRoutes((Route) => {
   // Creating one is a layer over the list; its answer — the plain text — replaces it, shown once.
   sudo.get('/settings/tokens/create', ShowCreateAccessTokenController).name('auth.tokens.create');
   // A new token and a new address are as good as a factor of one's own: a stolen session must not make either with the password alone.
-  confirmedFactors.post('/settings/tokens', CreateAccessTokenController).name('auth.tokens.store');
+  confirmedFactors.post('/settings/tokens', StoreAccessTokenController).name('auth.tokens.store');
   sudo.delete('/settings/tokens/:token', RevokeAccessTokenController).name('auth.tokens.destroy');
 
   // E-mail verification: the link is signed (made by the app, expires) — and only for its own user. Internal: only
