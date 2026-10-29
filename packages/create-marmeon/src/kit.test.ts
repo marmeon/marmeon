@@ -196,6 +196,7 @@ it(
     const styles = css.map((file) => readFileSync(join(root, 'dist/client', file), 'utf8')).join('\n');
     expect(styles).toContain('.auth-header');
     expect(styles).toContain('.marmeon-layer');
+    expect(styles).toMatch(/img\s*\{[^}]*max-width:\s*100%[^}]*height:\s*auto/); // an <Image> with width/height stays in proportion
     const html = readFileSync(join(root, 'dist/client/index.html'), 'utf8');
     for (const file of css) expect(html, `index.html links ${file}`).toContain(`/${file}`);
     expect(bundle).toContain('/dashboard');

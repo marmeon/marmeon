@@ -17,6 +17,12 @@ body {
   font-family: 'IBM Plex Sans Variable', 'IBM Plex Sans Variable Fallback', system-ui, sans-serif;
 }
 
+/* width and height attributes reserve the space; height: auto keeps the ratio when max-width shrinks the image. */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* Layout */
 .app-header {
   display: flex;
