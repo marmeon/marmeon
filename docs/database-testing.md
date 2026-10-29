@@ -235,7 +235,9 @@ DB_DRIVER=pgsql DB_HOST=localhost DB_DATABASE=notes DB_USERNAME=notes DB_PASSWOR
 
 `DB_URL=postgres://notes:secret@localhost:5432/notes` instead of the four does the same, and then `DB_DATABASE` is not read.
 
-Each worker gets its own database next to `notes`, as described above. Postgres finds what SQLite hides, such as a column type
+Each worker gets its own database next to `notes`, as described above. `notes` itself need not exist yet: when the server
+refuses it, the run creates its workers' databases through the server's `postgres` database, and only fails, asking you to
+create `notes` first, when that one is closed to the test user too. Postgres finds what SQLite hides, such as a column type
 or a constraint the other server reads differently, so run the suite on the database you deploy to before you ship. It does not
 find two requests that race for the same row in a refreshed test: those take turns. [Testing a lock](#testing-a-lock) shows how
 to test that.
