@@ -248,3 +248,13 @@ The [cache](cache.md#drivers) page covers the drivers.
 
 Tests run on the `memory` cache, and its windows follow the app's clock. `app.travel({ minutes: 1 })` lets a window pass without
 waiting, as the [time](time.md) page shows.
+
+In tests `ctx.ip` is undefined unless the request comes from `withIp()`, so a limit keyed on `clientKey(ctx.ip)` counts every test request as
+`unknown`. `app.withIp('203.0.113.9')` sends requests from that address, and a second address is counted apart, with no kernel of your own:
+
+```ts
+const first = app.withIp('203.0.113.9');
+for (let i = 0; i < 30; i++) await first.post('/login', { json });
+await first.post('/login', { json }).assertStatus(429);
+await app.withIp('203.0.113.10').post('/login', { json }).assertOk();
+```

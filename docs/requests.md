@@ -253,7 +253,8 @@ The [request lifecycle](lifecycle.md#requests-that-only-read) page lists them.
 
 `ctx.ip` is the client's IP address. Without trusted proxies it is the address of whoever connected. Behind a proxy listed in
 `SERVER_TRUSTED_PROXIES`, it is the right-most `X-Forwarded-For` entry that is not a trusted proxy itself, since entries further left are
-whatever the client claimed. In tests, `ctx.ip` is undefined.
+whatever the client claimed. In tests, `ctx.ip` is undefined unless the request comes from `app.withIp('203.0.113.9')`, which
+sends it like a socket's peer address (see the [HTTP tests](http-tests.md#request-defaults) page).
 
 A service that has no `ctx`, such as a listener of the sign-in event, injects `ClientInfo` of `@marmeon/http` instead. It holds
 the request's `ip` and `userAgent`, and both are undefined outside a request. The [deployment](deployment.md#trusted-proxies) page

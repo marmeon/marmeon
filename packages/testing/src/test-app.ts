@@ -36,6 +36,7 @@ import {
 import { createHttpKernel, type HttpKernel } from '@marmeon/server';
 import { DevRequestRecorder, importRequestRecorder } from '@marmeon/server/internal';
 import { AssertionError } from 'node:assert';
+import { isIP } from 'node:net';
 import { stripVTControlCharacters } from 'node:util';
 import type { AuthUser } from '@marmeon/auth';
 import type { MailFake } from '@marmeon/mail/testing';
@@ -416,6 +417,8 @@ interface TestCookie {
 interface Defaults {
   readonly headers: Readonly<Record<string, string>>;
   readonly cookies: readonly TestCookie[];
+  /** The socket peer every request is sent from (`withIp`); none when unset. */
+  readonly ip?: string;
   /** Data for a session created before the request (`withSession`). */
   readonly session: Readonly<Record<string, unknown>> | undefined;
   /** Signed in as this user (`actingAs`). */
@@ -933,6 +936,17 @@ export class TestApp {
     return this.#with({ headers: { ...this.#defaults.headers, ...headers } });
   }
 
+  /**
+   * Sends every request from the client address `address`, as a socket's peer would be — so it goes through `SERVER_TRUSTED_PROXIES`
+   * and `ctx.ip` holds it: `app.withIp('203.0.113.9').post('/login', …)`. Only this test client has it; the app never
+   * takes an address from a header it did not trust. Throws a `TypeError` for text that is not an IPv4 or IPv6 address.
+   * See `docs/http-tests.md#request-defaults`.
+   */
+  withIp(address: string): TestApp {
+    if (isIP(address) === 0) throw new TypeError(`withIp() needs an IPv4 or IPv6 address, got "${address}".`);
+    return this.#with({ ip: address });
+  }
+
   /** Sends a cookie, encrypted like the app encrypts its own. */
   withCookie(name: string, value: string): TestApp {
     return this.#with({ cookies: [...this.#defaults.cookies, { name, value, encrypt: true }] });
@@ -958,6 +972,10 @@ export class TestApp {
   /** Sends a cookie exactly as given — e.g. to prove that forged values are ignored. */
   withUnencryptedCookie(name: string, value: string): TestApp {
     return this.#with({ cookies: [...this.#defaults.cookies, { name, value, encrypt: false }] });
+  }
+
+  #connection(): { remoteAddress: string } | undefined {
+    return this.#defaults.ip === undefined ? undefined : { remoteAddress: this.#defaults.ip };
   }
 
   #with(defaults: Partial<Defaults>): TestApp {
@@ -1086,7 +1104,7 @@ export class TestApp {
    * it streams (`createTestApp(app, { ssr: 'stream' })`): when the headers came, when an island arrived.
    */
   async stream(path: string, options: RequestOptions = {}): Promise<Response> {
-    return this.#shared.kernel.request(path, await this.#init('GET', options));
+    return this.#shared.kernel.request(path, await this.#init('GET', options), this.#connection());
   }
   post(path: string, options?: RequestOptions): PendingTestResponse {
     return this.request('POST', path, options);
@@ -1107,7 +1125,7 @@ export class TestApp {
     const render = ssr?.begin();
     const response = this.#init(method, options)
       .then(async (init) => ({
-        res: await this.#shared.kernel.request(path, render === undefined ? init : { ...init, headers: { ...(init.headers as Record<string, string>), [SSR_TEST_HEADER]: render } }),
+        res: await this.#shared.kernel.request(path, render === undefined ? init : { ...init, headers: { ...(init.headers as Record<string, string>), [SSR_TEST_HEADER]: render } }, this.#connection()),
         sent: (init.headers as Record<string, string>).cookie,
       }))
       .then(async ({ res, sent }) => {

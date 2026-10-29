@@ -164,6 +164,7 @@ export class RateLimiter {
     return this;
   }
 
+  /** The callback registered for `name` by `for()`, or undefined. See [rate limiting](docs/rate-limiting.md#defining-limiters). */
   limiter(name: string): LimiterCallback | undefined {
     return this.#limiters.get(name);
   }
