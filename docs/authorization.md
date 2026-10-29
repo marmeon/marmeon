@@ -159,6 +159,18 @@ To decide for a whole group of routes, put the check on the registrar. It runs a
 const notes = Route.middleware(authenticate()).bind('note', NoteRepository).authorize(can(NotePolicy, 'view', 'note'));
 ```
 
+A controller under such a registrar names the parameters it binds as the second argument of `ContextOf`, because the request's own
+`authorize` does not bring them:
+
+```ts
+handle(ctx: ContextOf<typeof ShowNoteRequest, { note: Row<'notes'> }>) {
+  return this.view('notes/Show', { title: ctx.params.note.title });
+}
+```
+
+The compiler checks them where the controller is registered: a route whose registrar binds no `note`, or binds it to another type,
+is an error.
+
 `everyone` is the check that says yes to anyone its middleware lets through. A route has to say who may call it, and
 [the next section](#every-route-decides) shows how.
 

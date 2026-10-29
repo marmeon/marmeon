@@ -70,7 +70,7 @@ export type ConsistentBinder<B> = B extends {
     };
 } : unknown : unknown;
 // ContextOf
-export type ContextOf<R extends RequestDefinition> = R extends RequestDefinition<StandardSchemaV1, infer TCtx> ? WithQuery<TCtx, QuerySchemaOf<R>> & Validated<R> : never;
+export type ContextOf<R extends RequestDefinition, Params extends object = EmptyObject> = R extends RequestDefinition<StandardSchemaV1, infer TCtx> ? WithParams<WithQuery<TCtx, QuerySchemaOf<R>>, Params> & Validated<R> : never;
 // ControllerClass
 export type ControllerClass<TCtx = any, TSchema extends StandardSchemaV1 = any, TQuery extends StandardSchemaV1 = any, TResult = unknown> = (new (...args: any[]) => Invokable<WithQuery<TCtx, TQuery> & BodyOf<TSchema>, TResult>) & {
     readonly request?: RequestDefinition<TSchema, TCtx, TQuery>;
@@ -639,6 +639,12 @@ type UnserializableFields<O> = {
 type WithOf<B> = B extends new (...args: any[]) => infer I ? 'routeBindingWith' extends keyof I ? I extends {
     readonly routeBindingWith?: infer L extends RouteBindingWith | undefined;
 } ? NonNullable<L> : never : never : never;
+// WithParams
+type WithParams<TCtx, Params extends object> = [keyof Params] extends [never] ? TCtx : Omit<TCtx, 'params'> & {
+    readonly params: Merge<TCtx extends {
+        readonly params: infer P extends object;
+    } ? P : EmptyObject, Params>;
+};
 ```
 
 ## `@marmeon/router/url`
