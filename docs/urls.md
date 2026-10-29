@@ -272,8 +272,9 @@ export class TicketRepository extends Repository<'tickets'> {
 ```
 
 The column is `table.string('token_hash', 64).secret().unique()`: a secret column stays out of every `select *`, and the unique index
-is what finds the row. The token has 32 random bytes (256 bits) as 43 characters of base64url. `hash` is the SHA-256 of the token
-in hex, and it needs no key: a copy of the table opens no link, and rotating `APP_KEY` does not kill one, as a signed URL does
+is what finds the row. The token has 32 random bytes (256 bits) as 43 characters of base64url. `hash` is the SHA-256, in hex, of
+`marmeon.link-token.v1`, a NUL character and the token, so it is not the plain SHA-256 of the token: the prefix keeps it apart
+from any other hash of the same value. It needs no key: a copy of the table opens no link, and rotating `APP_KEY` does not kill one, as a signed URL does
 unless the old key stays in `APP_PREVIOUS_KEYS`.
 
 `hashLinkToken()` first checks the shape. A value that is no token (too short, too long, other characters, no string) is hashed
@@ -297,6 +298,31 @@ not work twice, and its owner must be able to take it back.
 Use the link up in a POST, never in the GET that opens it: mail scanners and link previews fetch every link in a mail. The GET
 shows a page with a button, and the button's POST calls `redeem()`. A page whose URL holds the token must not stay in a shared cache or a search index, nor leave in a `Referer`, so the routes that carry the token take the `credentialPage()` middleware;
 the [security](security.md#a-link-that-is-a-credential) page lists what it sends.
+
+### Moving from a hash of your own
+
+The prefix is part of what your table stores. It stays the same within a major version, so a `token_hash` written by `linkToken()`
+is found by `hashLinkToken()` for as long as the app lives. A hash of your own, such as `sha256(token)` in hex, is not found by
+it, and a stored hash cannot be turned into the new one: the token is not in the table. Move without breaking a link that is still
+valid: issue new links with `linkToken()`, and let the binder look for both hashes until the longest old link has expired or been
+used. Both comparisons use the unique index.
+
+```ts title="modules/events/TicketRepository.ts"
+import { createHash } from 'node:crypto';
+
+const oldHash = (token: string): string => createHash('sha256').update(token).digest('hex'); // what the app stored before
+
+override resolveRouteBinding(token: string): Promise<Row<'tickets'> | undefined> {
+  return this.query().selectAll()
+    .where((eb) => eb.or([secretEquals(eb, 'token_hash', hashLinkToken(token)), secretEquals(eb, 'token_hash', oldHash(token))]))
+    .where('used_at', 'is', null)
+    .executeTakeFirst();
+}
+```
+
+Then delete `oldHash` and its branch. There is no helper for the old scheme, since it is yours (hex or base64, with or without a
+salt). `hashLinkToken()` hashes a value that is not 43 characters of base64url under a domain of its own, so it never finds an old
+token of another shape: that one is only matched by `oldHash`.
 
 ### The same link, sent more than once
 
