@@ -276,10 +276,17 @@ describe('the members table (/members) — @marmeon/table in the app', () => {
     ]);
   });
 
-  it('throttles the table\'s endpoints (60 a minute per user) — an export reads the whole filtered table', async () => {
-    for (let request = 1; request <= 60; request++) await app.actingAs(ada).get('/members/_tables/members/export/csv').assertOk();
+  it('throttles the table\'s endpoints (60 a minute per user), the export on top of that (10 a minute)', async () => {
+    for (let request = 1; request <= 10; request++) await app.actingAs(ada).get('/members/_tables/members/export/csv').assertOk();
     const over = await app.actingAs(ada).get('/members/_tables/members/export/csv');
-    expect(over.status, 'the 61st request of a minute was served').toBe(429);
+    expect(over.status, 'the 11th export of a minute was served').toBe(429);
+    // The second page's export has the same limit, counted together.
+    expect((await app.actingAs(ada).get('/members/directory/_tables/members/export/csv')).status).toBe(429);
+    // The actions are not held back by it: they count against the 60 of the whole table, the twelve export requests above included.
+    for (let request = 13; request <= 60; request++) {
+      expect((await app.actingAs(ada).acting().post('/members/_tables/members/actions/removeLinks', { json: { key: ada.id } })).status, `request ${request}`).not.toBe(429);
+    }
+    expect((await app.actingAs(ada).acting().post('/members/_tables/members/actions/removeLinks', { json: { key: ada.id } })).status, 'the 61st request of a minute was served').toBe(429);
   });
 
   it('shows the table on a second page (/members/directory) whose props link that page\'s own endpoints, behind the same checks', async () => {

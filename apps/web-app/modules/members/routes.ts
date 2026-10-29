@@ -19,12 +19,14 @@ export default defineRoutes((Route) => {
   readers.get('/directory', ListMembersController).name('directory');
   // The table's actions, bulk actions and CSV export (POST /members/_tables/members/…, GET …/export/csv): the same middleware as
   // the page — a guest or an unconfirmed account never reaches them. CSRF as for every POST of the `web` group. Throttled (60 a minute
-  // per user, MembersServiceProvider): an export reads the whole filtered table.
+  // per user, MembersServiceProvider), the export further (ten a minute): it reads the whole filtered table.
   // The file import: uploaded ahead, this route hands out the upload target for its `file` field, and its request authorizes
   // (administrators only, MemberPolicy) — which is why it is on `members`, not `readers`. Throttled like the table's endpoints.
   members.middleware(throttle('members-table')).post('/import', ImportMembersController).name('import');
   // The second step: confirms the file the first one kept (its id in the path; only this session's, under this flow's scope, finds it).
   members.middleware(throttle('members-table')).post('/import/:import', ConfirmMemberImportController).name('import.confirm');
-  tableRoutes(readers.middleware(throttle('members-table')), MembersTable);
-  tableRoutes(readers.prefix('/directory').middleware(throttle('members-table')), MembersTable);
+  // The export has a throttle of its own on top of the registrar's (ten a minute per user, MembersServiceProvider).
+  const exportThrottle = { export: { middleware: [throttle('members-export')] } };
+  tableRoutes(readers.middleware(throttle('members-table')), MembersTable, exportThrottle);
+  tableRoutes(readers.prefix('/directory').middleware(throttle('members-table')), MembersTable, exportThrottle);
 });

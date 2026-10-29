@@ -75,6 +75,10 @@ is `undefined`, so the type says it may be missing. Without `@marmeon/auth` the 
 > A limit without `.by()` is one counter for every client. Ten registrations a minute then means ten for the whole app, and one
 > script locks everyone else out.
 
+`ctx.params` holds the raw strings of the URL, such as a workspace's slug, not the records a route binding resolves: a limiter runs
+as middleware, before the bindings. A table's export can have a limiter of its own, next to the one on the page: see
+[middleware per endpoint](tables.md#middleware-per-endpoint).
+
 `ctx.ip` is the client's address. Behind a proxy it is the client's only when the proxy is in `SERVER_TRUSTED_PROXIES`; otherwise every
 visitor has the proxy's address and shares its limit. The [requests](requests.md#the-clients-address) page explains how the
 address is found.

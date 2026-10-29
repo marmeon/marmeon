@@ -149,6 +149,10 @@ export declare class DataTables {
     #private;
     resolve<T extends DataTable>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>>;
 }
+// EndpointOptions
+export interface EndpointOptions<S extends object = {}> {
+    readonly middleware: readonly MiddlewareLike<S, any>[];
+}
 // ExportRecorderClass
 export type ExportRecorderClass<C = any> = new (...args: any[]) => {
     handle(info: TableExportInfo, ctx: C): unknown;
@@ -369,6 +373,12 @@ export interface TableQuerySchema<QV extends object = TableQueryValues> extends 
         readonly [K in keyof QV]: Rule<QV[K], string | readonly string[] | undefined>;
     };
 }
+// TableRoutesOptions
+export interface TableRoutesOptions<S extends object = {}> {
+    readonly export?: EndpointOptions<S>;
+    readonly bulk?: EndpointOptions<S>;
+    readonly action?: EndpointOptions<S>;
+}
 // TableServiceProvider
 export declare class TableServiceProvider implements ServiceProvider {
     boot(app: Application): void;
@@ -399,7 +409,7 @@ export declare const filter: {
 // readCsv
 export declare function readCsv(bytes: Uint8Array, options?: ReadCsvOptions): Result<CsvTable, CsvReadError>;
 // tableRoutes
-export declare function tableRoutes<R extends Route<any, any, any>, T extends DataTable>(Route: R, table: T & CheckRegistrar<R, T>): void;
+export declare function tableRoutes<R extends Route<any, any, any>, T extends DataTable>(Route: R, table: T & CheckRegistrar<R, T>, options?: TableRoutesOptions<StateOf<R>>): void;
 // unescapeCsvCell
 export declare function unescapeCsvCell(text: string): string;
 ```
@@ -517,6 +527,8 @@ type SortableForEveryone<Cols> = {
 type SortableNames<Cols> = {
     [A in keyof Cols]: Cols[A] extends ColumnDefinition<string, true> ? A : never;
 }[keyof Cols] & string;
+// StateOf
+type StateOf<R> = R extends Route<infer TState, any, any> ? (TState extends object ? TState : {}) : {};
 // TABLE_TYPES
 declare const TABLE_TYPES: unique symbol;
 // TableOf

@@ -252,7 +252,33 @@ export default defineRoutes((Route) => {
 The endpoints are ordinary routes of the page's group, with its middleware, its route bindings, the session and CSRF protection
 for the posts. A guest or an unconfirmed account never reaches them. A registrar that lacks what the base query needs, such as
 `ctx.user` without `authenticate()`, is a compile error. The routes have no names, because the props carry their URLs. Throttle
-them: an export reads the whole filtered table. The [rate limiting](rate-limiting.md) page shows the `members-table` limiter.
+them: an export reads the whole filtered table, and [can have a limit of its own](#middleware-per-endpoint). The [rate limiting](rate-limiting.md) page shows the `members-table` limiter.
+
+### Middleware per endpoint
+
+The page's middleware covers the action, bulk and export endpoints alike. An export reads the whole filtered table, so it usually
+wants a stricter limit than a row action. Give the third argument of `tableRoutes()` a list of middleware for each kind of endpoint:
+
+```ts title="modules/members/routes.ts"
+tableRoutes(members.middleware(throttle('members-table')), MembersTable, {
+  export: { middleware: [throttle('members-export')] },
+  // bulk: { middleware: [...] }, action: { middleware: [...] }
+});
+```
+
+```ts title="modules/members/MembersServiceProvider.ts"
+app.container.make(RateLimiter).for('members-export', (ctx) => Limit.perMinute(10).by(String(ctx.user?.id ?? clientKey(ctx.ip))));
+```
+
+`export`, `bulk` and `action` are the options; a kind without one has the page's middleware alone. The endpoint's middleware runs
+**after** the registrar's, in the order of the list, and before the endpoint's own checks (`authorize`, visibility, the input) and
+the controller. Like any route middleware it runs before the route bindings and the registrar's `authorize()`: `ctx.params` are
+still strings and the request is not yet authorized. It adds to the page's protection and never replaces it: with `authenticate()` on
+the registrar a guest never reaches it, the table's own `authorize` and the CSRF protection of the `web` group still apply, and the
+start still checks every registration. Middleware that answers the request
+or throws stops the endpoint; for an export, that is before the count, the first batch and the export recorder. The middleware
+follows the kind of endpoint, not its path, so a workspace slug such as `export` changes nothing. Both throttles count: with the
+two throttles above an export uses one request of `members-table` and one of `members-export`.
 
 ### One table on several pages
 
