@@ -112,14 +112,17 @@ export class Connections {
         `transaction({ isolationLevel: '${options.isolationLevel}' }) inside another transaction of "${name}" becomes a savepoint, which has no isolation level of its own — set it on the outermost transaction.`,
       );
     }
-    return driver.exclusive(() =>
-      runTransaction(driver, name, (frame) => {
+    return runTransaction(
+      driver,
+      name,
+      (frame) => {
         const builder = options.isolationLevel ? db.transaction().setIsolationLevel(options.isolationLevel) : db.transaction();
         return builder.execute(async (trx) => {
           bindTransaction(trx, frame);
           return rollBackOnErr(await callback(trx as Transaction<Tables>));
         });
-      }),
+      },
+      (run) => driver.exclusive(run),
     );
   }
 

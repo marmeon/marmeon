@@ -362,6 +362,13 @@ describe.each(drivers)('connections.transaction() on %s', (driver) => {
       expect(await notes.titles()).toContain('later');
     },
   );
+
+  it.runIf(driver === 'sqlite')("fails a transaction opened in outsideTransaction() at once instead of waiting for SQLite's one connection", { timeout: 5000 }, async () => {
+    await expect(
+      connections.transaction(() => outsideTransaction(() => connections.transaction(() => notes.insert({ title: 'never' })))),
+    ).rejects.toThrow('cannot start inside outsideTransaction()');
+    expect(await notes.titles()).not.toContain('never');
+  });
 });
 
 describe.each(drivers)('a transaction callback that returns a Result on %s', (driver) => {

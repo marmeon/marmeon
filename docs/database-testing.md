@@ -46,7 +46,7 @@ Your app's code works as it does in production:
 - Work registered with `afterCommit()` runs when the app's own transaction commits, although nothing is committed for real.
 - Work after a response runs outside the app's transactions, as in production.
 - `outsideTransaction()` inside a transaction of the app cannot reach the database in a test: the pinned connection belongs to
-  that transaction, so a query throws a `TransactionError` instead of waiting forever. Production on SQLite behaves the same, and
+  that transaction, so a query or a transaction throws a `TransactionError` instead of waiting forever. Production on SQLite behaves the same, and
   Postgres does not. Do such work after the transaction.
 
 Requests that a test sends at the same time share the pinned connection. Their outermost transactions run one after another: the

@@ -192,8 +192,22 @@ export function openTransactionOf(owner: object): TransactionFrame | undefined {
  *   do. Its errors do not hide the error that rolled the transaction back (see {@link afterRollback}).
  * - **Rolled back by an `err`** (the driver passed the callback's result through {@link rollBackOnErr}): as above, then
  *   the `err` is returned; an error of the after-rollback work is thrown instead (several as an `AggregateError`).
+ *
+ * `turn` is how the driver makes the transaction wait for its turn (see `MarmeonDriver.exclusive`): only the transaction
+ * itself runs inside it. The work outside of any transaction runs after the turn is given up — it may open a transaction.
  */
-export async function runTransaction<R>(owner: object, label: string, body: (frame: TransactionFrame) => Promise<R>): Promise<R> {
+export async function runTransaction<R>(
+  owner: object,
+  label: string,
+  body: (frame: TransactionFrame) => Promise<R>,
+  turn: <T>(run: () => Promise<T>) => Promise<T> = (run) => run(),
+): Promise<R> {
+  const settle = await turn(() => runInside(owner, label, body));
+  return settle();
+}
+
+/** Runs the transaction and decides what is left to do after it: the work outside of any transaction, and the outcome to settle with. */
+async function runInside<R>(owner: object, label: string, body: (frame: TransactionFrame) => Promise<R>): Promise<() => Promise<R>> {
   const parent = currentTransaction();
   const frame = new TransactionFrame(owner, label, parent);
   // Nested on the same connection: a savepoint — and only one at a time.
@@ -206,29 +220,33 @@ export async function runTransaction<R>(owner: object, label: string, body: (fra
     // Rolled back: its after-commit work is dropped — it was for data that never existed — and its after-rollback work
     // runs now: what it cleans up after is gone, even if a transaction around this one still commits.
     const { rollback } = frame.finish('rolled back');
-    const failures = await runOutside(rollback);
-    if (error instanceof RolledBackOnErr) {
-      if (failures.length === 1) throw failures[0];
-      if (failures.length > 1) {
-        throw new AggregateError(failures, `${failures.length} pieces of after-rollback work failed (the transaction on "${label}" returned an err and is rolled back).`);
+    return async () => {
+      const failures = await runOutside(rollback);
+      if (error instanceof RolledBackOnErr) {
+        if (failures.length === 1) throw failures[0];
+        if (failures.length > 1) {
+          throw new AggregateError(failures, `${failures.length} pieces of after-rollback work failed (the transaction on "${label}" returned an err and is rolled back).`);
+        }
+        return error.result as R;
       }
-      return error.result as R;
-    }
-    if (failures.length === 0) throw error;
-    const cause = failures.length === 1 ? failures[0] : new AggregateError(failures, `${failures.length} pieces of after-rollback work failed.`);
-    throw new SuppressedError(cause, error, `After-rollback work failed (the transaction on "${label}" is rolled back): ${messageOf(cause)}`);
+      if (failures.length === 0) throw error;
+      const cause = failures.length === 1 ? failures[0] : new AggregateError(failures, `${failures.length} pieces of after-rollback work failed.`);
+      throw new SuppressedError(cause, error, `After-rollback work failed (the transaction on "${label}" is rolled back): ${messageOf(cause)}`);
+    };
   }
   const { commit, rollback } = frame.finish('committed');
   // Committed into the transaction around it: both kinds of work wait for that one.
   if (parent?.open) {
     if (commit.length > 0) parent.addAfterCommit(commit);
     if (rollback.length > 0) parent.addAfterRollback(rollback);
-    return result;
+    return async () => result;
   }
-  const failures = await runOutside(commit);
-  if (failures.length === 1) throw failures[0];
-  if (failures.length > 1) throw new AggregateError(failures, `${failures.length} pieces of after-commit work failed (the transaction is committed).`);
-  return result;
+  return async () => {
+    const failures = await runOutside(commit);
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures, `${failures.length} pieces of after-commit work failed (the transaction is committed).`);
+    return result;
+  };
 }
 
 /** Thrown inside the driver's transaction so that it rolls back — the callback returned an `err`, it did not throw. */
