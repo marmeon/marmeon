@@ -2,6 +2,7 @@ import { Passkeys, type AuthenticationResponseJSON } from '@marmeon/auth/passkey
 import { Controller, defineRequest, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
+import { HOME } from '../home.ts';
 
 export const PasskeySignInRequest = defineRequest({
   schema: r.object({
@@ -30,7 +31,7 @@ export class PasskeySignInController extends Controller {
 
   async handle(ctx: ContextOf<typeof PasskeySignInRequest>) {
     const done = await this.#passkeys.signIn(ctx.body.response, { remember: ctx.body.remember });
-    if (done.ok) return this.redirect().intended().route('dashboard');
+    if (done.ok) return this.redirect().intended().route(HOME);
     if (done.error.kind === 'throttled') return this.json({ error: this.#translator.get('auth.two_factor.throttled', { seconds: done.error.retryAfterSeconds }) }, { status: 429 });
     return this.json({ error: this.#translator.get('auth.passkeys.failed') }, { status: 422 });
   }

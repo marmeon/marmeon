@@ -1,6 +1,8 @@
 import { Auth } from '@marmeon/auth';
 import { once, SharedData, type HttpContext, type Next } from '@marmeon/http';
+import { Router } from '@marmeon/router';
 import { AppConfig } from '../../../config/app.ts';
+import { HOME } from '../home.ts';
 
 declare module '@marmeon/http/page' {
   interface SharedProps {
@@ -9,6 +11,9 @@ declare module '@marmeon/http/page' {
      * for the same reason as `auth`.
      */
     appName?: string;
+
+    /** The URL of {@link HOME}, where the layout's links to the app's home go. A once prop, optional like `appName`. */
+    home?: string;
 
     /**
      * The signed-in user, on every page of the `web` group — or null. Optional on purpose: a path without a route (a 404)
@@ -27,20 +32,23 @@ declare module '@marmeon/http/page' {
   }
 }
 
-/** Shares the signed-in user with every page. Lazy: only pages ask. */
+/** Shares the signed-in user, the app's name and the URL of HOME with every page. Lazy: only pages ask. */
 export class ShareAuthProps {
   readonly #shared: SharedData;
   readonly #auth: Auth;
   readonly #app: AppConfig;
+  readonly #router: Router;
 
-  constructor(shared: SharedData, auth: Auth, app: AppConfig) {
+  constructor(shared: SharedData, auth: Auth, app: AppConfig, router: Router) {
     this.#shared = shared;
     this.#auth = auth;
     this.#app = app;
+    this.#router = router;
   }
 
   handle(_ctx: HttpContext, next: Next<{}>) {
     this.#shared.share('appName', once(() => this.#app.name));
+    this.#shared.share('home', once(() => this.#router.url(HOME)));
     this.#shared.share('auth', async () => {
       const user = await this.#auth.user();
       return { user: user ? { name: user.name, verified: user.email_verified_at !== null } : null };

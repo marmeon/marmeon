@@ -21,7 +21,7 @@
   },
   {
     "file": "modules/auth/layouts/AppLayout.tsx",
-    "find": "            <Link route=\"dashboard\">{t('layout.dashboard')}</Link>",
-    "replace": "            <Link route=\"dashboard\">{t('layout.dashboard')}</Link>\n            <Link route=\"notes.index\" activeMatch=\"notes.*\">\n              {notes('nav')}\n            </Link>"
+    "find": "            <Link href={home ?? '/'}>{t('layout.dashboard')}</Link>",
+    "replace": "            <Link href={home ?? '/'}>{t('layout.dashboard')}</Link>\n            <Link route=\"notes.index\" activeMatch=\"notes.*\">\n              {notes('nav')}\n            </Link>"
   }
 ]

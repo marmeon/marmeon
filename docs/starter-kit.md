@@ -26,6 +26,7 @@ framework bring them.
 | `AuthServiceProvider.ts` | Finds users through the `UserRepository`, binds the authenticator app and passkeys as the sources of second factors, and shares `auth` with every page. The rate limits of its forms are those of `@marmeon/auth` ([the limits of the auth routes](authentication.md#the-limits-of-the-auth-routes)). |
 | `users.ts`, `UserRepository.ts` | The `User` type and the only code that reads a password hash or a session key. It is the app's `UserProvider`: the statements that write a hash or a session key are `credentialWriter()` of `@marmeon/auth`, so a fix to them reaches you with a package update. The `session_key` column lets `auth.updateSessionKey()` end an account's other sessions with every session driver. |
 | `routes.ts`, `api-routes.ts` | The pages and forms, and `GET /api/user` for API tokens. |
+| `home.ts` | `HOME`, the name of the route people land on after they sign in, register or confirm their address: `dashboard`. Change the name there and every sign-in, the guest pages (`guest({ homeRoute: HOME })`) and the layout follow. It names a route without path parameters. |
 | `controllers/` | The controllers of the pages and forms in `routes.ts`. A form's controller validates it with a request schema. |
 | `views/`, `layouts/` | The React pages and the app's layout, `AppLayout`, with a settings layout inside it. |
 | `mail/` | Ten mails: the confirmation of an address, the reset link, the notes about a change of address and about a known address, the notes about the second factor and about passkeys, the note about a copied "keep me signed in" cookie, and the note that an account stopped taking passwords. |
@@ -81,7 +82,7 @@ To add a language, put a file next to every `en.ts` of the app — a locale with
 | `/settings/tokens` | `auth.tokens` | the same |
 | `/email/verify` | `auth.verification.notice` | signed in |
 
-A signed-in user who opens a guest page goes to `/dashboard`. The security page changes the password and the e-mail address,
+A signed-in user who opens a guest page goes to `HOME` of `modules/auth/home.ts`, `/dashboard` as the module ships. A sign-in (password, second factor, passkey) goes to the page that asked for it, or to `HOME` when none did; `HOME` is a route name, so moving it is one edit. A view cannot import it into `<Link route>`, since the build reads route names written out, so the layout takes the URL from the page's `home` prop. The security page changes the password and the e-mail address,
 signs out the other devices, and lists the browsers the account is signed in on, each with a button to end it ([sign-ins](authentication.md#sign-ins)). The two-factor page sets up an authenticator app and shows the recovery codes once; the
 challenge page asks for the code, a passkey or a recovery code after the password. The passkeys page adds, renames and removes passkeys, and the login page offers "Sign in with a passkey". The tokens page creates and revokes API tokens. A passkey alone can confirm sudo mode, so the forms that change the e-mail address, create an API token, turn on an authenticator app and make new recovery codes ask for the current password too, as the passkeys and password forms do ([sudo mode](authentication.md#sudo-mode)). `/` belongs to the home module, so the auth
 module leaves it free.

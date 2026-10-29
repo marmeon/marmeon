@@ -242,6 +242,7 @@ class RecordEvent {
 
 const routes = openRoutes((Route) => {
   Route.middleware(guest('/home')).get('/login', () => 'login page').name('auth.login');
+  Route.middleware(guest({ homeRoute: 'home' })).get('/join', () => 'join page');
   Route.post('/login', LoginController);
   Route.post('/logout', LogoutController);
   Route.post('/login-ignoring', IgnoringLoginController);
@@ -639,6 +640,16 @@ describe('authenticate() and guest()', () => {
     expect((await send('/login')).status).toBe(200);
     await login(send);
     const away = await send('/login');
+    expect([away.status, away.headers.get('location')]).toEqual([302, '/home']);
+  });
+
+  it('sends signed-in users to the route guest() names', async () => {
+    const { add, browser } = await boot();
+    await add(ada);
+    const { send } = browser();
+    expect((await send('/join')).status).toBe(200);
+    await login(send);
+    const away = await send('/join');
     expect([away.status, away.headers.get('location')]).toEqual([302, '/home']);
   });
 

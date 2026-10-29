@@ -1011,6 +1011,7 @@ export declare function denyAsNotFound(): PolicyResponse;
 export declare function describeDevice(userAgent: string | undefined): DeviceDescription;
 // guest
 export declare function guest(home?: string): MiddlewareClass<{}, {}>;
+export declare function guest<const N extends RouteNameInput>(options: GuestOptions<N>): MiddlewareClass<{}, {}>;
 // parseAccessToken
 export declare function parseAccessToken(plainText: string, prefix: string): {
     secret: string;
@@ -1036,6 +1037,10 @@ export declare function verified<const N extends RouteNameInput = never>(options
 export type CheckAbility<P, K extends string, Allowed extends string, Missing extends string> = string extends K ? Allowed : K extends Allowed ? K : K extends AbilityOf<P> ? K extends ProjectableAbility<P> ? `'${K}' ${Missing}` : `'${K}' takes more than one resource — a projection asks one; use gate.allows(Policy, '${K}', …)` : `'${K}' is not an ability of this policy — it has ${JoinNames<AbilityOf<P>>}`;
 // Contravariant
 type Contravariant<T> = T extends unknown ? (resource: T) => void : never;
+// GuestOptions
+export interface GuestOptions<N extends string = string> {
+    readonly homeRoute: CheckRouteName<N>;
+}
 // Projectable
 type Projectable<P, K> = Extract<K, ProjectableAbility<P>>;
 // missing

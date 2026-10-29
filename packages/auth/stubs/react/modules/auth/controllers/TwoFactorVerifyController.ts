@@ -2,6 +2,7 @@ import { TwoFactor } from '@marmeon/auth/two-factor';
 import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
+import { HOME } from '../home.ts';
 
 export const TwoFactorVerifyRequest = defineRequest({
   schema: r.object({ code: r.string().trim().max(32).default(''), recovery_code: r.string().trim().max(64).default('') }),
@@ -27,7 +28,7 @@ export class TwoFactorVerifyController extends Controller {
     const { code, recovery_code: recoveryCode } = ctx.body;
     const field = recoveryCode !== '' ? 'recovery_code' : 'code';
     const done = await this.#twoFactor.stepUp(recoveryCode !== '' ? { recoveryCode } : { code });
-    if (done.ok) return this.redirect().intended().route('dashboard');
+    if (done.ok) return this.redirect().intended().route(HOME);
 
     switch (done.error.kind) {
       case 'no-challenge':

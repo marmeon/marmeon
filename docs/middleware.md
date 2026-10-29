@@ -389,7 +389,7 @@ These middleware come with the framework's packages. Add them to routes with `Ro
 | --- | --- | --- |
 | `authenticate()` | `@marmeon/auth` | Only signed-in users. Adds `ctx.user`. A guest is sent to the login page, a JSON client gets 401. |
 | `authenticate('api')` | `@marmeon/auth` | Only requests with a valid API token. Adds `ctx.user` and `ctx.token`. |
-| `guest(home)` | `@marmeon/auth` | Only guests. A signed-in user is sent to `home`, by default `/`. |
+| `guest(home)` or `guest({ homeRoute })` | `@marmeon/auth` | Only guests. A signed-in user is sent to the path `home`, by default `/`, or to the named route `homeRoute`, which takes no path parameters. |
 | `verified()` | `@marmeon/auth` | Only users with a confirmed address. Needs `authenticate()` before it. |
 | `confirmedPassword()` | `@marmeon/auth` | Asks for the password again unless the user confirmed it within the last 15 minutes. |
 | `twoFactor({ setup, verify, maxAge? })` | `@marmeon/auth/two-factor` | Only sessions that proved a second factor. Needs `authenticate()` before it; the framework never installs it. A browser goes to `setup` or `verify`, a JSON client gets 403. See [two-factor authentication](two-factor-authentication.md#requiring-it). |

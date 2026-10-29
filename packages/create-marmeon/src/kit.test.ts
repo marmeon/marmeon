@@ -171,6 +171,26 @@ it(
     expect(ran('end-all-sessions', "AccountSessions.endEveryone() with the app's repository")).toBe(1);
     expect(tests.code).toBe(0);
 
+    // HOME is the one place that names where people land: with another route in it the kit still compiles, and its sign-ins and guest
+    // pages follow (home.test.ts reads HOME rather than a path).
+    const homeFile = join(root, 'modules/auth/home.ts');
+    const home = readFileSync(homeFile, 'utf8');
+    expect(home).toContain("export const HOME = 'dashboard' satisfies RouteName;");
+    // The route is renamed too: a controller or view that still names 'dashboard' no longer compiles.
+    const routesFile = join(root, 'modules/auth/routes.ts');
+    const authRoutes = readFileSync(routesFile, 'utf8');
+    expect(authRoutes).toContain(".name('dashboard')");
+    writeFileSync(homeFile, home.replace("'dashboard'", "'overview'"));
+    writeFileSync(routesFile, authRoutes.replace(".name('dashboard')", ".name('overview')"));
+    expect(marmeon('route:types').code).toBe(0);
+    const moved = run(join(root, 'node_modules/.bin/tsc'), ['--noEmit', '-p', root]);
+    expect(moved.out).toBe('');
+    const followed = run(join(root, 'node_modules/.bin/vitest'), ['run', '--configLoader', 'native', '--reporter=verbose', '--testTimeout=30000', 'modules/auth/home.test.ts'], { NODE_OPTIONS: '--conditions=@marmeon/source', NODE_ENV: 'test' });
+    expect(followed.out).toMatch(/Tests\s+4 passed \(4\)/);
+    writeFileSync(homeFile, home);
+    writeFileSync(routesFile, authRoutes);
+    expect(marmeon('route:types').code).toBe(0);
+
     // A stale bootstrap/routes.ts fails the CI check.
     const stalled = routeTypes.replace(/^ {4}'dashboard': .*\n/m, '');
     expect(stalled).not.toBe(routeTypes);
@@ -199,7 +219,8 @@ it(
     expect(styles).toMatch(/img\s*\{[^}]*max-width:\s*100%[^}]*height:\s*auto/); // an <Image> with width/height stays in proportion
     const html = readFileSync(join(root, 'dist/client/index.html'), 'utf8');
     for (const file of css) expect(html, `index.html links ${file}`).toContain(`/${file}`);
-    expect(bundle).toContain('/dashboard');
+    // HOME is named on the server only: the layout takes its URL from the page's props, so the browser's route table lacks it.
+    expect(bundle).not.toContain('/dashboard');
     expect(readFileSync(join(root, '.marmeon/routes.json'), 'utf8')).toContain('"auth.password.reset"'); // the browser may learn it …
     for (const serverOnly of ['auth.password.reset', 'auth.password.confirm', 'auth.verification.notice']) {
       expect(bundle).not.toMatch(new RegExp(`[\`"']${serverOnly.replaceAll('.', '\\.')}[\`"']`)); // … but no view names it

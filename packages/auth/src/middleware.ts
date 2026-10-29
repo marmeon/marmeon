@@ -64,20 +64,34 @@ export function authenticate(options: AuthenticateOptions | 'api' = {}): Middlew
   return Authenticate;
 }
 
+export interface GuestOptions<N extends string = string> {
+  /**
+   * Named route signed-in users are sent to, resolved when the request arrives (the route may be defined in a file that loads
+   * later). It takes no path parameters.
+   */
+  readonly homeRoute: CheckRouteName<N>;
+}
+
 /**
- * Only for guests — the login and registration pages: `Route.middleware(guest('/dashboard'))`.
- * Signed-in users are sent to `home` instead.
+ * Only for guests — the login and registration pages: `Route.middleware(guest('/dashboard'))` or, by the name of a route,
+ * `Route.middleware(guest({ homeRoute: 'dashboard' }))`. Signed-in users are sent there instead (`/` without one).
  */
-export function guest(home = '/'): MiddlewareClass<{}, {}> {
+export function guest(home?: string): MiddlewareClass<{}, {}>;
+export function guest<const N extends RouteNameInput>(options: GuestOptions<N>): MiddlewareClass<{}, {}>;
+export function guest(home: string | GuestOptions = '/'): MiddlewareClass<{}, {}> {
   const RedirectIfAuthenticated = class {
     readonly #auth: Auth;
+    readonly #router: Router;
 
-    constructor(auth: Auth) {
+    constructor(auth: Auth, router: Router) {
       this.#auth = auth;
+      this.#router = router;
     }
 
     async handle(_ctx: HttpContext, next: Next<{}>): Promise<Response> {
-      return (await this.#auth.check()) ? new Response(null, { status: 302, headers: { location: home } }) : next();
+      if (!(await this.#auth.check())) return next();
+      const location = typeof home === 'string' ? home : urlFor(this.#router, home.homeRoute);
+      return new Response(null, { status: 302, headers: { location } });
     }
   };
   Object.defineProperty(RedirectIfAuthenticated, 'name', { value: 'guest' });

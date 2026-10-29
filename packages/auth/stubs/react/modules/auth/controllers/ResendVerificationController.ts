@@ -4,6 +4,7 @@ import { RateLimiter } from '@marmeon/cache';
 import { Controller, type HttpContext } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { VerificationMailer } from '../verification.ts';
+import { HOME } from '../home.ts';
 
 export class ResendVerificationController extends Controller {
   readonly #mailer: VerificationMailer;
@@ -18,7 +19,7 @@ export class ResendVerificationController extends Controller {
   }
 
   async handle(ctx: HttpContext<Authenticated>) {
-    if (ctx.user.email_verified_at !== null) return this.redirect().route('dashboard');
+    if (ctx.user.email_verified_at !== null) return this.redirect().route(HOME);
     // At most five mails an hour to one address, whoever asks: the limits of the route count per user (`auth.verification`), and several
     // accounts can hold the same address as a pending one. Keyed on the hashed address; a refused request sends nothing and answers alike.
     const key = `verification-mail:${createHash('sha256').update(ctx.user.email).digest('hex')}`;

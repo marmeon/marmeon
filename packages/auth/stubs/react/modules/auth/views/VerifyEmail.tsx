@@ -1,5 +1,5 @@
 import type { PageProps } from '@marmeon/http';
-import { Head, Link, useTranslation } from '@marmeon/react';
+import { Head, Link, usePage, useTranslation } from '@marmeon/react';
 import type { ShowVerifyEmailNoticeController } from '../controllers/ShowVerifyEmailNoticeController.ts';
 import { AppLayout } from '../layouts/AppLayout.tsx';
 
@@ -7,6 +7,7 @@ type Props = PageProps<ShowVerifyEmailNoticeController>;
 
 export default function VerifyEmail({ email }: Props) {
   const t = useTranslation('auth');
+  const { home } = usePage().props;
   return (
     <main className="app-main">
       <div className="card auth-card">
@@ -18,7 +19,7 @@ export default function VerifyEmail({ email }: Props) {
           <Link route="auth.verification.send" className="button">
             {t('verify.resend')}
           </Link>
-          <Link route="dashboard">{t('verify.back')}</Link>
+          <Link href={home ?? '/'}>{t('verify.back')}</Link>
         </div>
       </div>
     </main>

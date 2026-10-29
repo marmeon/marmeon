@@ -3,6 +3,7 @@ import { Clock } from '@marmeon/core';
 import { abort, Controller, type HttpContext } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { UserRepository } from '../UserRepository.ts';
+import { HOME } from '../home.ts';
 
 /** The link from the mail — behind authenticate() and signed(): made by the app, unexpired, and for this user’s current address. */
 export class VerifyEmailController extends Controller {
@@ -23,6 +24,6 @@ export class VerifyEmailController extends Controller {
     // A valid signature proves the app made the link — not that it is yours.
     if (!this.#verification.matches(ctx.user, ctx.params)) abort(403, this.#translator.get('auth.verify.wrong_account'));
     if (ctx.user.email_verified_at === null) await this.#users.markEmailVerified(ctx.user.id, new Date(this.#clock.now()));
-    return this.redirect().route('user-profile.me').flash('toast', { kind: 'success', message: this.#translator.get('auth.verify.verified') });
+    return this.redirect().route(HOME).flash('toast', { kind: 'success', message: this.#translator.get('auth.verify.verified') });
   }
 }
