@@ -464,6 +464,8 @@ export function NewVersionBanner() {
 
 `event.preventDefault()` keeps the page. `useNewVersion()` then returns `{ location, reload() }`, and the user's next visit loads
 the new version anyway. Signing in or out also loads a whole document, and that load cannot be postponed.
+The browser writes every `409` to the console, such as `Failed to load resource: the server responded with a status of 409`, and
+it does so here too. That line is this reload, not an error, and no script can hide it.
 
 ### A tab of another protocol version
 
