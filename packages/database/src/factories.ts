@@ -1,5 +1,6 @@
 import type { Connection, NewRowOf, RowOf } from './builder.ts';
 import { Connections } from './connections.ts';
+import { nowOf } from './schema-resolver.ts';
 import { stampTimestamps } from './timestamps.ts';
 import type { Tables } from './types.ts';
 
@@ -7,6 +8,11 @@ import type { Tables } from './types.ts';
 export interface FactoryContext {
   /** Counts the rows this factory made in this app: 1, 2, 3 … */
   readonly sequence: number;
+  /**
+   * The app's time as its `Clock` reads it, so `app.travel()` moves it as it moves the `created_at` a factory stamps.
+   * A new `Date` on each call. See `docs/time.md#what-follows-the-clock`.
+   */
+  now(): Date;
   /**
    * Another factory, for a foreign key: `user_id: factory(UserFactory)` creates the user when this
    * row is created and uses its id.
@@ -155,7 +161,11 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
 
   #attributes(overrides: Partial<NewRowOf<DB[T]>>): Record<string, unknown> {
     const { factories } = this.#pending;
-    const context: FactoryContext = { sequence: factories.next(this.#definition), factory: (definition) => factories.for(definition) };
+    const context: FactoryContext = {
+      sequence: factories.next(this.#definition),
+      now: () => new Date(nowOf(this.#pending.db ?? factories.db())),
+      factory: (definition) => factories.for(definition),
+    };
     let attributes: Record<string, unknown> = { ...this.#definition.definition(context) };
     for (const state of this.#pending.states) {
       const values = typeof state === 'string' ? this.#definition.states[state as S] : state;

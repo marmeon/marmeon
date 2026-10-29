@@ -181,6 +181,7 @@ export declare class Factories {
 // FactoryContext
 export interface FactoryContext {
     readonly sequence: number;
+    now(): Date;
     factory<T extends keyof DB & string, DB, S extends string>(definition: FactoryDefinition<T, DB, S>): PendingFactory<T, DB, false, S>;
 }
 // FactoryDefinition
