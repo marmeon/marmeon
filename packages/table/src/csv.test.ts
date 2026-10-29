@@ -14,6 +14,53 @@ describe('CSV cells (RFC 4180 + OWASP "CSV Injection")', () => {
     expect(csvCell(value)).toBe(expected);
   });
 
+  it.each([
+    ' =1+1',
+    '  @SUM(A1)',
+    ' =1',
+    '\u3000=1',
+    '\uFEFF=1',
+    '\u200B=1',
+    '\u200E=1',
+    '\u200F+1',
+    '\u2060-1+1',
+    '\u00AD=1',
+    '\v=1',
+    '\f=1',
+    ' \t=1',
+    '\uFF1D1+1',
+    '\uFF0B1',
+    '\uFF0D1+1',
+    '\uFF20SUM(A1)',
+    '\uFE661',
+    '\uFE621',
+    '\uFE631',
+    '\uFE6B1',
+    '\u207C1',
+    '\u208C1',
+    '\u207A1',
+    '\u208A1',
+    '\u22125',
+    '\u207B1',
+    '\u208B1',
+    ' \uFF1D1',
+    '\uFEFF \u200B=1',
+  ])('escapes a formula behind spaces, invisible characters or in full width: %j', (value) => {
+    expect(csvCell(value)).toBe(`"'${value}"`);
+  });
+
+  it.each(['a =1', 'x\uFF1D1', ' x', ' ', '\uFEFF', '-5', '-12.50', "\u200B'=1", ''])(
+    'leaves a text that is no formula as it is: %j',
+    (value) => {
+      expect(csvCell(value)).toBe(`"${value}"`);
+    },
+  );
+
+  it('escapes 100000 spaces in front of a formula without backtracking', () => {
+    const value = `${' '.repeat(100_000)}=1`;
+    expect(csvCell(value)).toBe(`"'${value}"`);
+  }, 1000);
+
   it('keeps a decimal that arrives as text a number — and still escapes everything that is more than digits', () => {
     expect(csvCell('-12.50')).toBe('"-12.50"');
     expect(csvCell('-5')).toBe('"-5"');
@@ -48,7 +95,8 @@ describe('CSV cells (RFC 4180 + OWASP "CSV Injection")', () => {
   });
 
   describe('undoing the escape', () => {
-    const starts = ['=', '+', '-', '@', '\t', '\r', '\n'];
+    const starts = ['=', '+', '-', '@', '\t', '\r', '\n', '\uFF1D', '\uFF0B', '\uFF0D', '\uFF20', '\uFE66', '\u2212'];
+    const spaces = ['', ' ', '\u3000', '\uFEFF', '\u200B', '\u200E', ' \u200B', '\v'];
     const unquote = (cell: string): string => cell.slice(1, -1).replaceAll('""', '"');
 
     it('escapes a leading quote before a formula character once more, so no two texts give the same cell', () => {
@@ -80,9 +128,11 @@ describe('CSV cells (RFC 4180 + OWASP "CSV Injection")', () => {
     it('gives back every text with or without leading quotes before any formula character', () => {
       for (const start of starts) {
         for (const quotes of ['', "'", "''", "'''"]) {
-          for (const rest of ['', 'x', '1', '5.5', "'=", '"q"']) {
-            const value = `${quotes}${start}${rest}`;
-            expect(unescapeCsvCell(unquote(csvCell(value))), JSON.stringify(value)).toBe(value);
+          for (const space of spaces) {
+            for (const rest of ['', 'x', '1', '5.5', "'=", '"q"']) {
+              const value = `${quotes}${space}${start}${rest}`;
+              expect(unescapeCsvCell(unquote(csvCell(value))), JSON.stringify(value)).toBe(value);
+            }
           }
         }
       }
@@ -91,14 +141,22 @@ describe('CSV cells (RFC 4180 + OWASP "CSV Injection")', () => {
     it('never leaves an exported cell that starts like a formula, so undoing is the only way to one', () => {
       for (const start of starts) {
         for (const quotes of ['', "'", "''"]) {
-          const written = unquote(csvCell(`${quotes}${start}1+1`));
-          expect(written.startsWith("'"), JSON.stringify(written)).toBe(true);
+          for (const space of spaces) {
+            const written = unquote(csvCell(`${quotes}${space}${start}1+1`));
+            expect(written.startsWith("'"), JSON.stringify(written)).toBe(true);
+          }
         }
       }
     });
 
+    it('gives back a formula behind spaces or invisible characters, with or without a quote in front', () => {
+      for (const value of [' =1', "' =1", '\uFEFF=1', '\uFF1D1', "'\uFF1D1"]) {
+        expect(unescapeCsvCell(unquote(csvCell(value))), value).toBe(value);
+      }
+    });
+
     it('does not turn a text that was no formula into one', () => {
-      for (const value of ["'x", "''", "'1", "a'=", ' =1', "x'=1"]) {
+      for (const value of ["'x", "''", "'1", "a'=", "x'=1", '\u200B\'=1', "'a =1"]) {
         expect(unescapeCsvCell(value), value).toBe(value);
         expect(unescapeCsvCell(unquote(csvCell(value))), value).toBe(value);
       }
