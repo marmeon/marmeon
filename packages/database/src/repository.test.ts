@@ -1,6 +1,7 @@
 import type { Application, ModuleDefinition, Result } from '@marmeon/core';
 import { sql, type Generated } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import type { RouteBindingContext } from '@marmeon/router';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { isUniqueViolation, Migrator, type DuplicateError, RecordNotFoundError, Repository, type Connections, type RowOf } from './index.ts';
@@ -373,6 +374,16 @@ describe.each(drivers)('Repository on a table whose primary key is not id, on %s
     expect(await pages.findByRouteKey('x'.repeat(256))).toBeUndefined();
     expect(await pages.findByRouteKey('')).toBeUndefined();
     expect(queries).toEqual([]);
+  });
+
+  it('gives findByRouteKey no request: a repository that reads binding.ctx gets a TypeError naming it', async () => {
+    class ByUser extends Pages {
+      override async resolveRouteBinding(value: string, binding: RouteBindingContext) {
+        void (binding.ctx as { user?: unknown }).user;
+        return super.resolveRouteBinding(value, binding);
+      }
+    }
+    await expect(new ByUser(connections).findByRouteKey('a')).rejects.toThrow('ByUser.findByRouteKey() has no request');
   });
 });
 

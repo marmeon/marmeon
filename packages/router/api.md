@@ -41,6 +41,10 @@ export type BrowserRouteName = Registered extends true ? {
 }[keyof Routes] & string : string;
 // BrowserRouteNameInput
 export type BrowserRouteNameInput = BrowserRouteName | (string & {});
+// CheckBinderState
+export type CheckBinderState<B, TState extends object> = [MissingState<B, TState>] extends [never] ? unknown : {
+    readonly 'the binder reads more of the request than this route has — bind it behind the middleware that adds it (authenticate(), …), or drop it from its RouteBindingContext<…>': MissingState<B, TState>;
+};
 // CheckBrowserRouteName
 export type CheckBrowserRouteName<N extends string> = string extends N ? BrowserRouteName : N extends BrowserRouteName ? N : N extends RouteName ? `'${N}' is not sent to the browser — API routes, .internal() routes and clientRoutes.except stay on the server` : `'${N}' is not a route name${Suggest<N, BrowserRouteName>}`;
 // CheckIslandRouteName
@@ -308,7 +312,7 @@ export declare class Route<TState extends object = EmptyObject, TParams extends 
     }>, TBindings>;
     name(prefix: string): Route<TState, TParams, TBindings>;
     middleware<TAdds extends object & NoReservedKeys = EmptyObject>(middleware: MiddlewareLike<TState, TAdds>): Route<Merge<TState, Omit<TAdds, ReservedContextKey>>, TParams, TBindings>;
-    bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = keyof TBindings & string, const W extends BindingWith<B> = never>(param: TName, binder: B & ConsistentBinder<B>, options?: BindOptions<TScope, [BindingWith<B>] extends [never] ? NoRelations : readonly W[], [B] extends [{
+    bind<const TName extends string, B extends RouteBinderClass<unknown>, const TScope extends keyof TBindings & string = keyof TBindings & string, const W extends BindingWith<B> = never>(param: TName, binder: B & ConsistentBinder<B> & CheckBinderState<B, TState>, options?: BindOptions<TScope, [BindingWith<B>] extends [never] ? NoRelations : readonly W[], [B] extends [{
         readonly routeBindingScoped: true;
     }] ? true : false>): Route<TState, TParams, Merge<TBindings, {
         [K in TName]: BoundValue<B, W>;
@@ -351,8 +355,8 @@ export interface RouteBinding {
     readonly public?: true;
 }
 // RouteBindingContext
-export interface RouteBindingContext {
-    readonly ctx: HttpContext<any, any>;
+export interface RouteBindingContext<TState extends object = {}> {
+    readonly ctx: HttpContext<TState, Readonly<Record<string, string>>>;
     readonly scope?: {
         readonly param: string;
         readonly parent: unknown;
@@ -583,6 +587,12 @@ type LocalizedParamValues<E> = E extends {
 } ? Omit<ParamValues<ExtractParams<P>>, 'locale'> & {
     readonly locale?: Param;
 } : ParamValues<ExtractParams<P>> : never;
+// MissingState
+type MissingState<B, TState extends object> = B extends new (...args: any[]) => {
+    resolveRouteBinding(value: any, binding: infer C): any;
+} ? C extends {
+    readonly ctx: infer Needed;
+} ? HttpContext<TState, Readonly<Record<string, string>>> extends Needed ? never : Exclude<keyof Needed, keyof HttpContext<TState, Readonly<Record<string, string>>>> | 'state' : never : never;
 // NoParent
 type NoParent = 'scopedBy names a parameter bound before this one — bind the parent first: Route.bind(parent, …).bind(child, …, { scopedBy: parent })';
 // NoRelations

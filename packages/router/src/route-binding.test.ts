@@ -1,5 +1,6 @@
 import * as v from 'valibot';
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import { defineMiddleware } from './middleware.ts';
 import { defineRequest } from './request-definition.ts';
 import { Router } from './router.ts';
 import type { HttpContext, RouteBinder, RouteBindingContext, RouteBindingWith } from './types.ts';
@@ -179,6 +180,23 @@ class MembersOfTeam extends Members {
   declare readonly routeBindingWith?: MemberWith;
 }
 
+/** Looks a record up by the signed-in person: declares the state it reads, so it binds only behind the middleware that adds it. */
+interface SignedIn {
+  readonly user: { readonly id: number };
+}
+class MembersOfUser implements RouteBinder<Member> {
+  resolveRouteBinding(value: string, { ctx }: RouteBindingContext<SignedIn>) {
+    return members.find((member) => String(member.id) === value && member.team_id === ctx.user.id);
+  }
+}
+class MembersOfUnknown implements RouteBinder<Member> {
+  resolveRouteBinding(value: string, { ctx }: RouteBindingContext) {
+    // @ts-expect-error — no annotation, no state: `ctx.user` is not there
+    return members.find((member) => String(member.id) === value && member.team_id === ctx.user.id);
+  }
+}
+const signIn = defineMiddleware<SignedIn>('signIn', (_ctx, next) => next({ user: { id: 1 } }));
+
 // Type guarantees — compiled, not run.
 export function typeLevelTests() {
   checkedRoutes((Route) => {
@@ -208,6 +226,15 @@ export function typeLevelTests() {
     Route.bind('team', Teams).bind('member', Members as typeof Members | typeof Teams, { scopedBy: 'team' });
     // @ts-expect-error — (4) a controller that needs a bound member — the route binds none
     Route.bind('team', Teams).get('/teams/:team/members/:member', ShowMemberController);
+    // A binder that reads the state of its route binds behind the middleware that adds it, and nowhere else.
+    Route.middleware(signIn).bind('member', MembersOfUser).get('/members/:member', (ctx) => ctx.params.member.name);
+    Route.middleware(signIn).bind('member', MembersOfUnknown);
+    // @ts-expect-error — (4b) the route has no `user`, so a binder by person must not bind there
+    Route.bind('member', MembersOfUser);
+    // @ts-expect-error — (4c) nor after a binding that adds no state
+    Route.bind('team', Teams).bind('member', MembersOfUser);
+    // @ts-expect-error — (4d) a union with a binder by person is one: it must not bind on a route without the state
+    Route.bind('member', MembersOfUser as typeof MembersOfUser | typeof MembersOfUnknown);
     // @ts-expect-error — (5) not a binder (no resolveRouteBinding)
     Route.bind('team', class {}).get('/teams/:team', () => null);
 
