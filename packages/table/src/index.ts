@@ -20,6 +20,8 @@ export type {
   FilterOptions,
   FilterOptionsSource,
   DataTable,
+  ExportRecorderClass,
+  TableExportInfo,
   TableContext,
   TableInput,
   TablePagination,

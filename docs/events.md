@@ -357,6 +357,13 @@ transaction, the failed sign-in or the refused action, choose one of these:
   `TransactionError`. A test's fixed connection throws it too, also on Postgres, so the tests that reach it use
   `database: 'isolated'` on Postgres.
 
+### A download
+
+Reading data leaves no change to dispatch an event for, so a table's export records itself: `exportCsv().onExport(Recorder)` runs
+the recorder's `handle(info, ctx)` after the export was authorized and counted, and before its first byte. The recorder writes
+its entry like the listener above, and if it throws, no file is sent. The entry records an export that started: if the first
+query fails or the stream breaks, the entry stays though the file was not delivered in full ([exports](tables.md#exports)).
+
 ### The diagnostics channel is no audit trail
 
 The `event` channel of [observability](observability.md#events) reports every dispatch, whether or not the transaction around

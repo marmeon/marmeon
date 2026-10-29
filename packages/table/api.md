@@ -149,6 +149,10 @@ export declare class DataTables {
     #private;
     resolve<T extends DataTable>(table: T, ctx: ContextOfTable<T>): Promise<TableProps<T>>;
 }
+// ExportRecorderClass
+export type ExportRecorderClass<C = any> = new (...args: any[]) => {
+    handle(info: TableExportInfo, ctx: C): unknown;
+};
 // Filter
 export declare class Filter<R extends string = string, T extends 'select' | 'dateRange' | 'has' = 'select' | 'dateRange' | 'has', O extends string = string, C extends string = string> {
     #private;
@@ -265,6 +269,7 @@ export declare class TableExport {
     max(rows: number): TableExport;
     authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
     authorize(check: TableVisibilityCheck): TableExport;
+    onExport(Recorder: ExportRecorderClass): TableExport;
 }
 // TableExportEntry
 export interface TableExportEntry<E extends string = string> {
@@ -272,6 +277,21 @@ export interface TableExportEntry<E extends string = string> {
     readonly format: 'csv';
     readonly url: string;
     readonly max: number;
+}
+// TableExportInfo
+export interface TableExportInfo {
+    readonly table: string;
+    readonly export: string;
+    readonly rows: number;
+    readonly columns: readonly string[];
+    readonly state: {
+        readonly sort: {
+            readonly column: string;
+            readonly direction: 'asc' | 'desc';
+        } | undefined;
+        readonly search: string;
+        readonly filters: Readonly<Record<string, string>>;
+    };
 }
 // TableFilter
 export type TableFilter<F extends string = string> = {

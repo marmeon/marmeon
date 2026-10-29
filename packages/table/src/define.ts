@@ -412,6 +412,27 @@ export function bulk<H extends BulkActionClass>(handler: H): BulkAction<H, unkno
   return new BulkAction(handler);
 }
 
+/** What an export recorder is told: which export is about to start, how many rows it holds and the state it was asked for. */
+export interface TableExportInfo {
+  /** The table's name. */
+  readonly table: string;
+  /** The export's key in the table's `export` (such as `csv`). */
+  readonly export: string;
+  /** The rows that matched when the export started: the count of the filtered query the file is read from. */
+  readonly rows: number;
+  /** The visible columns the file holds, by name. */
+  readonly columns: readonly string[];
+  /** The sort, search and filters of the request, as the table parsed and checked them. */
+  readonly state: {
+    readonly sort: { readonly column: string; readonly direction: 'asc' | 'desc' } | undefined;
+    readonly search: string;
+    readonly filters: Readonly<Record<string, string>>;
+  };
+}
+
+/** An export recorder's class: `handle(info, ctx)` — runs once, before the first byte of an export that is authorized and within its limit. */
+export type ExportRecorderClass<C = any> = new (...args: any[]) => { handle(info: TableExportInfo, ctx: C): unknown };
+
 /** The most rows an export takes by default — more is refused (422), never cut short. */
 export const DEFAULT_EXPORT_MAX = 10_000;
 
@@ -422,12 +443,15 @@ export class TableExport {
   readonly visibility: TableVisibility | undefined;
   /** @internal */
   readonly limit: number;
+  /** @internal */
+  readonly recorder: ExportRecorderClass | undefined;
 
   /** @internal */
-  constructor(visibility?: TableVisibility, max: number = DEFAULT_EXPORT_MAX) {
+  constructor(visibility?: TableVisibility, max: number = DEFAULT_EXPORT_MAX, recorder?: ExportRecorderClass) {
     if (!Number.isSafeInteger(max) || max < 1) throw new RangeError(`exportCsv().max(${max}): a whole number ≥ 1.`);
     this.visibility = visibility;
     this.limit = max;
+    this.recorder = recorder;
   }
 
   /**
@@ -435,7 +459,7 @@ export class TableExport {
    * the filter. Exports read the whole filtered table; throttle the table's routes as well (`throttle()` of @marmeon/cache).
    */
   max(rows: number): TableExport {
-    return new TableExport(this.visibility, rows);
+    return new TableExport(this.visibility, rows, this.recorder);
   }
 
   /**
@@ -445,7 +469,18 @@ export class TableExport {
   authorize<P extends object, const K extends string>(policy: PolicyClass<P>, ability: CheckRequestAbility<P, K>): TableExport;
   authorize(check: TableVisibilityCheck): TableExport;
   authorize(...args: unknown[]): TableExport {
-    return new TableExport(visibility(args, 'exportCsv()'), this.limit);
+    return new TableExport(visibility(args, 'exportCsv()'), this.limit, this.recorder);
+  }
+
+  /**
+   * Records every export: the recorder's `handle(info, ctx)` runs once the export is authorized, its state checked and its rows
+   * counted within the limit, and before the first byte. A refused export never reaches it. If it throws, nothing is sent: the
+   * download fails with that error. The entry records an export that started: if its first query fails or the stream breaks, the
+   * entry stays though the file was not delivered in full. See [exports](docs/tables.md#exports).
+   */
+  onExport(Recorder: ExportRecorderClass): TableExport {
+    if (typeof Recorder !== 'function' || typeof Recorder.prototype?.handle !== 'function') throw new TypeError('exportCsv().onExport(Recorder): a class with handle(info, ctx).');
+    return new TableExport(this.visibility, this.limit, Recorder);
   }
 }
 
