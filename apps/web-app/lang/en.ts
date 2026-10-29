@@ -44,6 +44,11 @@ const en = {
     changed: 'Language changed.',
     unsupported: 'This language is not available.',
   },
+  // The talk pages (modules/locale): each speaks the language of its talk.
+  talk: {
+    welcome: 'Welcome to “{title}”.',
+    question_required: 'Write your question first.',
+  },
 } as const;
 
 export default en;

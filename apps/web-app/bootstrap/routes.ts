@@ -3,6 +3,7 @@
 // @marmeon-format 1
 
 import type { AddProfileLinkController } from '../modules/user-profile/controllers/AddProfileLinkController.ts';
+import type { AskQuestionController } from '../modules/locale/controllers/AskQuestionController.ts';
 import type { BeginTwoFactorController } from '../modules/auth/controllers/BeginTwoFactorController.ts';
 import type { ConfirmEmailChangeController } from '../modules/auth/controllers/ConfirmEmailChangeController.ts';
 import type { ConfirmPasswordController } from '../modules/auth/controllers/ConfirmPasswordController.ts';
@@ -68,6 +69,7 @@ import type { ShowRegistrationSentController } from '../modules/auth/controllers
 import type { ShowResetPasswordController } from '../modules/auth/controllers/ShowResetPasswordController.ts';
 import type { ShowSecurityController } from '../modules/auth/controllers/ShowSecurityController.ts';
 import type { ShowSensitiveController } from '../modules/auth/controllers/ShowSensitiveController.ts';
+import type { ShowTalkController } from '../modules/locale/controllers/ShowTalkController.ts';
 import type { ShowTwoFactorChallengeController } from '../modules/auth/controllers/ShowTwoFactorChallengeController.ts';
 import type { ShowTwoFactorController } from '../modules/auth/controllers/ShowTwoFactorController.ts';
 import type { ShowTwoFactorVerifyController } from '../modules/auth/controllers/ShowTwoFactorVerifyController.ts';
@@ -158,6 +160,8 @@ declare module '@marmeon/router' {
     'notifications.read-all': { method: 'post'; path: '/notifications/read-all'; controller: typeof MarkAllNotificationsReadController };
     'notifications.unsubscribe': { method: 'post'; path: '/notifications/unsubscribe/:user'; controller: typeof UnsubscribeController };
     'notifications.unsubscribe.confirm': { method: 'get'; path: '/notifications/unsubscribe/:user'; controller: typeof ConfirmUnsubscribeController };
+    'talks.ask': { method: 'post'; path: '/talks/:talk/questions'; controller: typeof AskQuestionController };
+    'talks.show': { method: 'get'; path: '/talks/:talk'; controller: typeof ShowTalkController };
     'user-profile.avatar.update': { method: 'put'; path: '/users/:user/avatar'; controller: typeof UpdateAvatarController };
     'user-profile.edit': { method: 'get'; path: '/users/:user/edit'; controller: typeof EditUserProfileController };
     'user-profile.export': { method: 'post'; path: '/users/me/export'; controller: typeof ExportMyDataController };
