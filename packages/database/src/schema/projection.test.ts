@@ -393,6 +393,7 @@ const GROUPS: Record<string, string[]> = {
   'relations-named': ['auth', 'relations-named'],
   'relations-secrets': ['auth', 'relations-secrets'],
   'relations-readers': ['auth', 'relations', 'relations-readers'],
+  'relations-stamped': ['auth', 'relations', 'relations-stamped'],
   'relations-archived': ['auth', 'relations', 'relations-archived'],
   'relations-not-pivot': ['auth', 'relations', 'relations-not-pivot'],
   // The DDL groups build on each other: the later ones alter, rename and drop what the first made.

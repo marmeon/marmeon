@@ -1,5 +1,6 @@
 import type { Connection } from '@marmeon/database';
 import { sql } from '@marmeon/database';
+import { nowOf } from '@marmeon/database/internal';
 import type { PasswordHash } from './hashing.ts';
 import type { UserProvider } from './user.ts';
 
@@ -31,7 +32,7 @@ export function credentialWriter(db: Connection<any>, options: { table?: string 
       if (sessionKey !== undefined && sessionKey.length < 32) throw new Error(SHORT_KEY);
       const result = await tbl
         .updateTable(table)
-        .set({ password: hash, ...(sessionKey === undefined ? {} : { session_key: sessionKey }), updated_at: new Date() })
+        .set({ password: hash, ...(sessionKey === undefined ? {} : { session_key: sessionKey }), updated_at: new Date(nowOf(db)) })
         .where('id', '=', id)
         .$if(expected !== undefined, (query) => query.where(sql<boolean>`password = ${expected}`))
         // Only together with a new key: the key is what the check protects.
@@ -44,7 +45,7 @@ export function credentialWriter(db: Connection<any>, options: { table?: string 
       if (key.length < 32) throw new Error(SHORT_KEY);
       const result = await tbl
         .updateTable(table)
-        .set({ session_key: key, updated_at: new Date() })
+        .set({ session_key: key, updated_at: new Date(nowOf(db)) })
         .where('id', '=', id)
         .$if(expected !== undefined, (query) => query.where(keyIs(expected!)))
         .executeTakeFirst();

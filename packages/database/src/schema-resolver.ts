@@ -98,10 +98,14 @@ export class SchemaResolver implements KyselyPlugin {
   /** The statement each query was last compiled from, as written — to see a plugin added after our plugins change what it writes. */
   readonly #written = new WeakMap<QueryId, RootOperationNode>();
 
-  constructor(metadata: SchemaMetadata, compiler: QueryCompiler, relations: RelationsPlugin) {
+  /** The app's time in milliseconds, for what a repository stamps — the wall clock when the connection was made without one. */
+  readonly now: () => number;
+
+  constructor(metadata: SchemaMetadata, compiler: QueryCompiler, relations: RelationsPlugin, now: () => number = Date.now) {
     this.#metadata = metadata;
     this.#compiler = compiler;
     this.#relations = relations;
+    this.now = now;
   }
 
   /** What the connection knows about its schema — what this plugin resolves with. */
@@ -124,7 +128,7 @@ export class SchemaResolver implements KyselyPlugin {
       return node;
     }
     // The relations' JSON is built by the next plugin, `RelationsPlugin`.
-    return resolve(node, this.#metadata);
+    return resolve(node, this.#metadata, this.now);
   }
 
   async transformResult({ result }: PluginTransformResultArgs): Promise<QueryResult<UnknownRow>> {
@@ -153,7 +157,7 @@ export class SchemaResolver implements KyselyPlugin {
     }
     // A builder deferred once keeps its id: a later compile of it, made while the metadata was fresh, is resolved and checked
     // already (`RelationsPlugin` returns such a node as it is) — only a soft delete is still to be done.
-    const resolved = hasPlaceholder(query.query) ? resolve(query.query, this.#metadata) : query.query;
+    const resolved = hasPlaceholder(query.query) ? resolve(query.query, this.#metadata, this.now) : query.query;
     const node = passed ? this.#relations.transform(resolved, query.queryId) : this.#relations.recheck(resolved, query.queryId);
     return node === query.query ? query : this.#compiler.compileQuery(node, query.queryId);
   }
@@ -167,8 +171,16 @@ export function metadataOf(db: Pick<Kysely<any>, 'getExecutor'>): SchemaMetadata
   return db.getExecutor().plugins.find((plugin): plugin is SchemaResolver => plugin instanceof SchemaResolver)?.metadata;
 }
 
-function resolve(node: RootOperationNode, metadata: SchemaMetadata): RootOperationNode {
-  const root = node.kind === 'DeleteQueryNode' ? softly(node, metadata) : node;
+/**
+ * The time the connection `db` runs on stamps rows with (a transaction's too): the app's `Clock`, so a test that moves it sees the
+ * stamps move. The wall clock on a connection without Marmeon's plugins.
+ */
+export function nowOf(db: Pick<Kysely<any>, 'getExecutor'>): number {
+  return (db.getExecutor().plugins.find((plugin): plugin is SchemaResolver => plugin instanceof SchemaResolver)?.now ?? Date.now)();
+}
+
+function resolve(node: RootOperationNode, metadata: SchemaMetadata, now: () => number): RootOperationNode {
+  const root = node.kind === 'DeleteQueryNode' ? softly(node, metadata, now) : node;
   return new Resolver(metadata).transformNode(root);
 }
 
@@ -176,7 +188,7 @@ function resolve(node: RootOperationNode, metadata: SchemaMetadata): RootOperati
  * A delete with the soft-delete placeholder, on a table with soft deletes: `update … set deleted_at = now where … and deleted_at
  * is null`. It keeps the table, `with`, `where` and `returning` only — a delete with anything else is refused, never cut down.
  */
-function softly(node: DeleteQueryNode, metadata: SchemaMetadata): RootOperationNode {
+function softly(node: DeleteQueryNode, metadata: SchemaMetadata, now: () => number): RootOperationNode {
   const table = tableOf(node.from.froms[0]);
   if (!node.where || !table || !metadata.softDeletes.has(table) || !hasPlaceholder(node.where, SOFT_DELETE)) return node;
   const extra = (['using', 'joins', 'orderBy', 'limit', 'top', 'output', 'explain', 'endModifiers'] as const).filter((part) => node[part] !== undefined);
@@ -186,7 +198,7 @@ function softly(node: DeleteQueryNode, metadata: SchemaMetadata): RootOperationN
   const update = UpdateQueryNode.create([TableNode.create(table)], node.with);
   return {
     ...update,
-    updates: [ColumnUpdateNode.create(ColumnNode.create('deleted_at'), ValueNode.create(new Date()))],
+    updates: [ColumnUpdateNode.create(ColumnNode.create('deleted_at'), ValueNode.create(new Date(now())))],
     where: WhereNode.create(AndNode.create(node.where.where, notDeleted(table))),
     ...(node.returning ? { returning: node.returning } : {}),
   };

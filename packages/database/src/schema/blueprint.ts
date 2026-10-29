@@ -317,8 +317,8 @@ export class Blueprint {
   }
 
   /**
-   * `created_at` and `updated_at`, both set to the current time on insert — and a mark on the table: a repository's `update()`
-   * sets `updated_at`. See `docs/migrations.md#timestamps-and-soft-deletes`.
+   * `created_at` and `updated_at`, both set to the current time on insert — and a mark on the table: a repository's `insert()`,
+   * `insertMany()`, `update()` and relation writes (a pivot's links too) stamp them from the app's clock, the column default covers other writes. See `docs/migrations.md#timestamps-and-soft-deletes`.
    */
   timestamps(): void {
     this.timestamp('created_at').useCurrent();

@@ -68,6 +68,8 @@ export class Connections {
   readonly #logger: Logger;
   /** The app the queries are reported for on the `db.query` channel — none: not reported (scratch connections). */
   readonly #app: Application | undefined;
+  /** The time rows are stamped with (`created_at`, `updated_at`) — the app's clock; the wall clock without one. */
+  readonly #now: () => number;
   /** What a connection's failure is masked with in the log: the app's (the names its packages add count too). */
   readonly #redactor: Redactor;
   readonly #instances = new Map<string, Instance>();
@@ -81,11 +83,12 @@ export class Connections {
   #destroyed = false;
 
   /** @internal — the service provider builds it; an app gets it from the container. */
-  constructor(options: { connections: Readonly<Record<string, ConnectionOptions>>; root: string; logger: Logger; app?: Application }) {
+  constructor(options: { connections: Readonly<Record<string, ConnectionOptions>>; root: string; logger: Logger; app?: Application; now?: () => number }) {
     this.#options = new Map(Object.entries(options.connections));
     this.#root = options.root;
     this.#logger = options.logger.child({ channel: 'db' });
     this.#app = options.app;
+    this.#now = options.now ?? Date.now;
     this.#redactor = options.app?.container.has(Redactor) ? options.app.container.make(Redactor) : new Redactor();
   }
 
@@ -266,7 +269,7 @@ export class Connections {
       if (this.#published) metadata.publish(this.#published);
       const base = this.#dialect(options, name);
       const relations = new RelationsPlugin(options.driver, metadata);
-      const resolver = new SchemaResolver(metadata, base.createQueryCompiler(), relations);
+      const resolver = new SchemaResolver(metadata, base.createQueryCompiler(), relations, this.#now);
       const { dialect, driver } = withMarmeonDriver(base, { name, driver: options.driver, target: describeConnection(options), metadata, deferred: resolver, results: relations });
       // In this order: placeholders resolved, then the relations' JSON built and the query checked for secret columns.
       const plugins = [resolver, relations];

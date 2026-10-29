@@ -137,7 +137,9 @@ Everything that reads the time through the app's `Clock` follows the test clock:
   factor (`twoFactor()`, `confirmedSecondFactor()`) and the cap of a remember-me cookie (`AUTH_REMEMBER_DAYS`), and how long a started second-factor step stays open;
 - the delays and backoffs of queued jobs, which `app.queue.work()` runs once they are due;
 - the scheduler, through `app.schedule`;
-- the cached answer of the readiness check.
+- the cached answer of the readiness check;
+- `created_at` and `updated_at` of a table with `timestamps()`, which a repository's `insert()`, `insertMany()`, `update()`, `relation().create()` and `attach()`, a
+  factory and `credentialWriter()` stamp, and `deleted_at` of a soft delete (a raw query does not: see below).
 
 Your own services follow it when they take a `Clock` through the constructor instead of calling `Date.now()`. The
 [context](context.md#the-clock) page shows how.
@@ -149,7 +151,7 @@ Some time is not the app's to move:
 - **Redis** keeps its own clock. A cache entry, a lock or a rate limit on the `redis` driver expires when Redis says so,
   whatever the test clock reads. Tests that travel use the `memory` driver, which `.env.test` sets.
 - **The database** has its own clock too. A column default such as `current_timestamp`, or `now()` in a query, is the database
-  server's time.
+  server's time: a row written by a raw `insertInto()` without `created_at` gets it.
 - **`Date.now()` and `new Date()`** in your code read the real time. Inject a `Clock` where a test must move the time.
 - **Timers** such as `setTimeout()` wait in real time. A job's timeout and a lock's wait are real waits.
 

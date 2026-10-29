@@ -1,5 +1,6 @@
 import type { Connection, NewRowOf, RowOf } from './builder.ts';
 import { Connections } from './connections.ts';
+import { stampTimestamps } from './timestamps.ts';
 import type { Tables } from './types.ts';
 
 /** What a factory definition gets. */
@@ -142,7 +143,8 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
           values[column] = value;
         }
       }
-      rows.push((await db.insertInto(this.#definition.table).values(values).returningAll().executeTakeFirstOrThrow()) as RowOf<DB[T]>);
+      const [stamped] = await stampTimestamps(db, this.#definition.table, [values]);
+      rows.push((await db.insertInto(this.#definition.table).values(stamped!).returningAll().executeTakeFirstOrThrow()) as RowOf<DB[T]>);
     }
     return (this.#pending.count === undefined ? rows[0] : rows) as never;
   }

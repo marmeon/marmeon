@@ -1,3 +1,4 @@
+import { TestClock } from '@marmeon/core/testing';
 import { sql, type Connections } from '@marmeon/database';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, migratedConnections } from './__fixtures__/databases.ts';
@@ -16,9 +17,11 @@ describe.each(drivers)('credentialWriter on %s', (driver) => {
   const db = () => connections.get<any>();
   const row = async (id: number) => (await sql<{ password: string; session_key: string | null }>`select password, session_key from accounts where id = ${id}`.execute(db())).rows[0]!;
   const writer = () => credentialWriter(db(), { table: 'accounts' });
+  const clock = new TestClock();
+  const stamped = async (id: number) => new Date((await sql<{ updated_at: string }>`select updated_at from accounts where id = ${id}`.execute(db())).rows[0]!.updated_at).getTime();
 
   beforeAll(async () => {
-    ({ connections, close } = await migratedConnections(driver));
+    ({ connections, close } = await migratedConnections(driver, undefined, () => clock.now()));
     await sql`create table accounts (id integer primary key, password text not null, session_key text, updated_at text)`.execute(db());
   });
   afterAll(() => close());
@@ -140,6 +143,32 @@ describe.each(drivers)('credentialWriter on %s', (driver) => {
       await expect(writer().updateEverySessionKey('x'.repeat(31))).rejects.toThrow('at least 32');
       expect((await row(1)).session_key).toBe(KEY);
       expect((await writer().updateEverySessionKey('x'.repeat(32))).accounts).toBe(2);
+    });
+  });
+
+  describe('updated_at', () => {
+    const THEN = Date.parse('2031-03-04T05:06:07.089Z');
+
+    it('is the app clock for a new hash, with or without a session key, and for a session key', async () => {
+      clock.freeze(THEN);
+      expect(await writer().updatePasswordHash(1, NEW)).toBe(true);
+      expect(await stamped(1)).toBe(THEN);
+      clock.travel({ days: 7 });
+      expect(await writer().updatePasswordHash(2, NEW, { sessionKey: NEXT_KEY })).toBe(true);
+      expect(await stamped(2)).toBe(THEN + 7 * 86_400_000);
+      clock.travel({ hours: 1 });
+      expect(await writer().updateSessionKey(1, NEXT_KEY, KEY)).toBe(true);
+      expect(await stamped(1)).toBe(THEN + 7 * 86_400_000 + 3_600_000);
+      clock.unfreeze();
+    });
+
+    it('is the app clock inside a transaction too', async () => {
+      clock.freeze(THEN);
+      await connections.transaction(async (trx) => {
+        await credentialWriter(trx as never, { table: 'accounts' }).updatePasswordHash(1, NEW);
+      });
+      expect(await stamped(1)).toBe(THEN);
+      clock.unfreeze();
     });
   });
 
