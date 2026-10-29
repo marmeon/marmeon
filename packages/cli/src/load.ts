@@ -23,18 +23,21 @@ export async function loadApplication(root: string, phase: ApplicationPhase): Pr
 
 /**
  * `import(href)`, watching which module Node loaded last, so that a syntax error V8 reports without a file (a duplicate `export`, an
- * invisible character in a regular expression) can name it. The hook only looks: it passes `nextLoad`'s result on untouched. With a
+ * invisible character in a regular expression) can name it, and its line, which comes from a second parse of the source the loader
+ * compiled, by V8, on the failure path alone. The hook only looks: it passes `nextLoad`'s result on untouched, keeping a reference to it. With a
  * hook registered Node loads and compiles the static graph inside the `import()` call, each module right after its load, so the
  * module loaded last is the one that failed to compile — unless the import is not the only one running or a module awaits a dynamic
  * `import()` of its own; the count of loads says so, and the file is then left unnamed.
  */
 async function importObserved(href: string): Promise<unknown> {
   let last: string | undefined;
+  let lastLoaded: { format?: string | null; source?: unknown } | undefined;
   let count = 0;
   const recorder = registerHooks({
     load(url, context, nextLoad) {
       const loaded = nextLoad(url, context);
       last = url;
+      lastLoaded = loaded;
       count++;
       return loaded;
     },
@@ -42,11 +45,11 @@ async function importObserved(href: string): Promise<unknown> {
   try {
     const pending = import(href);
     // Taken now, before anything else runs: the static graph is done by the time `import()` returns its promise.
-    const linked = { url: last, count };
+    const linked = { url: last, loaded: lastLoaded, count };
     try {
       return await pending;
     } catch (error) {
-      if (linked.url !== undefined && count === linked.count && isLoaderCompileError(error)) noteCompileFailure(error, linked.url);
+      if (linked.url !== undefined && count === linked.count && isLoaderCompileError(error)) noteCompileFailure(error, linked.url, linked.loaded);
       throw error;
     }
   } finally {

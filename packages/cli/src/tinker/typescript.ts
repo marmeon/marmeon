@@ -1,4 +1,4 @@
-import { stripTypeScriptTypes } from 'node:module';
+import { strip } from '../strip-types.ts';
 
 /** What the REPL evaluates for one input: JavaScript, an incomplete input (wait for more lines), or a TypeScript error. */
 export type Input = { readonly code: string } | { readonly incomplete: Error } | { readonly error: SyntaxError };
@@ -30,23 +30,5 @@ export function toJavaScript(code: string): Input {
       }
     }
     return { code };
-  }
-}
-
-/**
- * `stripTypeScriptTypes` is still experimental in Node 26 (stable: type stripping of files) and says so with a warning on
- * first use — in the middle of a prompt. That one warning is left out; every other warning goes through.
- */
-function strip(code: string): string {
-  const emit = process.emitWarning;
-  process.emitWarning = function (this: unknown, warning: string | Error, ...rest: unknown[]) {
-    const type = typeof warning === 'string' ? (typeof rest[0] === 'string' ? rest[0] : (rest[0] as { type?: string } | undefined)?.type) : warning.name;
-    if (type === 'ExperimentalWarning') return;
-    return (emit as (...args: unknown[]) => void).call(process, warning, ...rest);
-  } as typeof process.emitWarning;
-  try {
-    return stripTypeScriptTypes(code);
-  } finally {
-    process.emitWarning = emit;
   }
 }
