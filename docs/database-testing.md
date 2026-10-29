@@ -106,7 +106,13 @@ it('books no more seats than the workshop has', async () => {
 ```
 
 With `database: 'isolated'` the tables are emptied when the test app starts and again when it closes, all but the record of
-migrations, so a later test, refreshed or isolated, finds no rows left over. The ids start over too. `seed: true` seeds after
+migrations, so a later test, refreshed or isolated, finds no rows left over. The ids start over too. That holds for a table
+whose trigger refuses `TRUNCATE` or `DELETE`, such as an append-only audit log: for that one emptying, on the worker's own test
+database only, the triggers of the emptied tables are put aside and back in the same transaction (a failure rolls them back
+too), so every statement of your test meets them. The role of `DB_URL` creates and migrates that database and owns its tables;
+if a migration takes `TRUNCATE` from that role, or someone else owns a table with such a trigger, the test app does not start
+and the error names the table. Take privileges from the role your app runs as in production, not from the one that creates the
+test database. `seed: true` seeds after
 the tables were emptied. The worker's database, its migration and the rule of one open test app with a database are the same as with
 `'refresh'`: close the app before you open another. A test app that is not closed leaves its rows until the next one starts.
 

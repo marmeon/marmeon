@@ -101,8 +101,10 @@ export function assertWorkerConnection(database: DatabaseModule, app: Applicatio
 /**
  * Empties every table of the app's connection but the migrator's two, so that the next test starts from nothing and a refreshed
  * test after an isolated one finds no leftovers: Postgres in one `truncate … restart identity cascade` (the tables of extensions
- * stay), SQLite a `delete from` per table with foreign keys off, and the counters of `sqlite_sequence`. Only ever runs on the
- * worker's own database: it throws when the connection is another one.
+ * stay), SQLite a `delete from` per table with foreign keys off, and the counters of `sqlite_sequence`. The triggers of the emptied
+ * tables are put aside for that one transaction and back before it commits, so a table whose trigger refuses `TRUNCATE` or
+ * `DELETE` (an append-only log) is emptied too. Only ever runs on the worker's own database: it throws when the connection is
+ * another one. See docs/database-testing.md#testing-a-lock.
  */
 export async function emptyWorkerDatabase(database: EmptyingModule, app: Application, worker: WorkerDatabase): Promise<void> {
   assertWorkerConnection(database, app, worker);
@@ -117,18 +119,64 @@ export async function emptyWorkerDatabase(database: EmptyingModule, app: Applica
   // The tables the app's search path finds (Postgres: `current_schema()` can be an empty schema named like the role).
   const { types, extension } = await tableColumns(async (text) => (await sql.raw(text).execute(db)).rows as never[], driver);
   const names = [...types.keys()].filter((name) => !extension.has(name) && !isMigratorTable(name) && !name.startsWith('sqlite_'));
+  // Security invariant: an app guards a table with a trigger (an append-only log) against its own role in production. The triggers are
+  // off only inside this one transaction, on the worker's test database (the guards above), and on again before it commits — a failure
+  // rolls them back with the rest (DDL is transactional). Not a setting the trigger reads (any session could set it), not a list of
+  // tables left alone (a test would find another's rows), not `session_replication_role` (superuser, and every trigger of the session).
   if (driver === 'sqlite') {
     await sql`pragma foreign_keys = off`.execute(db);
     try {
-      for (const name of names) await sql`delete from ${sql.id(name)}`.execute(db);
-      const sequences = await sql`select 1 from sqlite_master where name = 'sqlite_sequence'`.execute(db);
-      if (sequences.rows.length > 0) await sql`delete from sqlite_sequence`.execute(db);
+      await connections.transaction(async (trx) => {
+        const triggers =
+          names.length === 0
+            ? []
+            : (await sql<{ name: string; sql: string }>`select name, sql from sqlite_master where type = 'trigger' and tbl_name in (${sql.join(names)}) and sql is not null`.execute(trx)).rows;
+        for (const trigger of triggers) await sql`drop trigger ${sql.id(trigger.name)}`.execute(trx);
+        for (const name of names) await sql`delete from ${sql.id(name)}`.execute(trx);
+        const sequences = await sql`select 1 from sqlite_master where name = 'sqlite_sequence'`.execute(trx);
+        if (sequences.rows.length > 0) await sql`delete from sqlite_sequence`.execute(trx);
+        for (const trigger of triggers) await sql.raw(trigger.sql).execute(trx);
+      });
     } finally {
       await sql`pragma foreign_keys = on`.execute(db);
     }
     return;
   }
-  if (names.length > 0) await sql`truncate ${sql.join(names.map((name) => sql.id(name)))} restart identity cascade`.execute(db);
+  if (names.length === 0) return;
+  await connections.transaction(async (trx) => {
+    // The tables as an unqualified name finds them (see `tableColumns`), with what the role may do to each.
+    const tables = (
+      await sql<{ oid: number; name: string; truncate: boolean; usable: boolean }>`
+        select c.oid, c.relname::text as name, has_table_privilege(c.oid, 'TRUNCATE') as truncate, pg_has_role(c.relowner, 'USAGE') as usable
+        from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+        where c.relname::text = any(${names}::text[]) and n.nspname = any(current_schemas(false)) and c.oid = pg_catalog.to_regclass(quote_ident(c.relname))
+          and c.relkind in ('r', 'p')`.execute(trx)
+    ).rows;
+    // Truncate triggers (bit 5 of `tgtype`) that are on: `D` is off already, and `R` fires only in the replica role.
+    const triggers = (
+      await sql<{ table: string; name: string; enabled: string }>`
+        select c.relname::text as "table", t.tgname::text as name, t.tgenabled::text as enabled
+        from pg_catalog.pg_trigger t join pg_catalog.pg_class c on c.oid = t.tgrelid
+        where t.tgrelid = any(${tables.map((table) => table.oid)}::oid[]) and not t.tgisinternal and (t.tgtype & 32) <> 0 and t.tgenabled in ('O', 'A')
+        order by c.relname, t.tgname`.execute(trx)
+    ).rows;
+    // Before the first statement that writes: a role that cannot do it gets the reason, and nothing is emptied.
+    const guarded = new Set(triggers.map((trigger) => trigger.table));
+    const refused = tables.filter((table) => !table.truncate).map((table) => `\`${table.name}\``);
+    const foreign = tables.filter((table) => table.truncate && guarded.has(table.name) && !table.usable).map((table) => `\`${table.name}\``);
+    if (refused.length > 0 || foreign.length > 0) {
+      const reasons = [
+        ...(refused.length > 0 ? [`may not truncate ${refused.join(', ')} there (TRUNCATE was revoked from it)`] : []),
+        ...(foreign.length > 0 ? [`does not own ${foreign.join(', ')}, whose truncate trigger it has to put aside for that statement`] : []),
+      ];
+      throw new Error(
+        `database: 'isolated' empties every table of the worker's test database, and the role of DB_URL ${reasons.join(', and ')}. The role creates and migrates the test database: take privileges from the role the app runs as in production, not from this one. See docs/database-testing.md#testing-a-lock.`,
+      );
+    }
+    for (const trigger of triggers) await sql`alter table ${sql.id(trigger.table)} disable trigger ${sql.id(trigger.name)}`.execute(trx);
+    await sql`truncate ${sql.join(names.map((name) => sql.id(name)))} restart identity cascade`.execute(trx);
+    for (const trigger of triggers) await sql`alter table ${sql.id(trigger.table)} ${sql.raw(trigger.enabled === 'A' ? 'enable always' : 'enable')} trigger ${sql.id(trigger.name)}`.execute(trx);
+  });
 }
 
 /**
