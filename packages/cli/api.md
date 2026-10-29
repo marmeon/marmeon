@@ -184,6 +184,11 @@ marmeon make:docker [--caddy|--nginx] [--systemd] [--force]
 marmeon make:event <Name> --module=<module>
 --force (boolean)
 --module (string, short m)
+// make:factory
+marmeon make:factory <Name> --module=<module> [--table=<table>]
+--force (boolean)
+--module (string, short m)
+--table (string)
 // make:job
 marmeon make:job <Name> --module=<module> [--no-register]
 --force (boolean)
@@ -226,6 +231,11 @@ marmeon make:notification <Name> --module=<module> [--no-register]
 marmeon make:policy <Name> --module=<module>
 --force (boolean)
 --module (string, short m)
+// make:repository
+marmeon make:repository <Name> --module=<module> [--table=<table>]
+--force (boolean)
+--module (string, short m)
+--table (string)
 // make:resource
 marmeon make:resource <Name> [--module=<module>] [--no-register]
 --module (string, short m)
@@ -235,6 +245,11 @@ marmeon make:seeder <Name> --module=<module> [--no-register]
 --force (boolean)
 --module (string, short m)
 --no-register (boolean)
+// make:table
+marmeon make:table <Name> --module=<module> [--table=<table>]
+--force (boolean)
+--module (string, short m)
+--table (string)
 // make:test
 marmeon make:test <name> --module=<module> [--path=/…]
 --force (boolean)

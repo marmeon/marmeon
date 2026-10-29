@@ -16,7 +16,7 @@ const RESERVED = new Set([
 ]);
 
 /** `BlogPost` → `['blog', 'post']`, `HTMLPage` → `['html', 'page']`. */
-const wordsOf = (name: string) =>
+export const wordsOf = (name: string) =>
   name
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
@@ -27,7 +27,7 @@ const upperFirst = (word: string) => word.charAt(0).toUpperCase() + word.slice(1
 const camel = (words: readonly string[]) => words[0]! + words.slice(1).map(upperFirst).join('');
 
 /** The plural of an English noun in the three ways code names need: `Category` → `Categories`, `Box` → `Boxes`, `Bookmark` → `Bookmarks`. */
-function pluralOf(name: string): string {
+export function pluralOf(name: string): string {
   if (/[^aeiou]y$/i.test(name)) return `${name.slice(0, -1)}ies`;
   if (/(?:s|x|z|ch|sh)$/i.test(name)) return `${name}es`;
   return `${name}s`;
@@ -41,7 +41,7 @@ function layoutImport(root: string): string | undefined {
 }
 
 /** Whether the app's `Tables` (bootstrap/database.d.ts, read as text — nothing boots) already declares this table. */
-function tableDeclared(root: string, table: string): boolean {
+export function tableDeclared(root: string, table: string): boolean {
   const file = join(root, 'bootstrap/database.d.ts');
   if (!existsSync(file)) return false;
   const text = readFileSync(file, 'utf8');

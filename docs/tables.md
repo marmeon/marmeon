@@ -102,6 +102,10 @@ A column can also show a value the base query computes under a name: `withCount(
 searched or filtered by, since `WHERE` cannot see a value the query computes; both are compile errors. Hidden by `.visible(…)`, the
 value is left out of the base query too, so it never reaches the SQL.
 
+### Generating a table
+
+`marmeon make:table Members --module=members` writes `modules/members/tables/MembersTable.ts` (`--table` names the table; it is the plural of the name by default): the base query typed with the module's `Database`, the key, an `id` column and `authorize: () => false`. Nobody sees the table until you replace that with `can(Policy, 'viewAny')`. It registers nothing; `tableRoutes()` does, [on the page's routes](#the-controller-and-the-routes).
+
 ### The key
 
 The key identifies a row, and it is what actions send. A number column goes by name, `key: 'users.id'`, and is read as an integer.

@@ -22,7 +22,7 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
       mkdirSync(dirname(join(app, 'node_modules', name)), { recursive: true });
       symlinkSync(target, join(app, 'node_modules', name), 'dir');
     };
-    for (const pkg of ['core', 'auth', 'http','router', 'database', 'queue', 'notifications', 'validation', 'testing', 'react', 'mail', 'i18n']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
+    for (const pkg of ['core', 'auth', 'http','router', 'database', 'queue', 'notifications', 'validation', 'testing', 'react', 'mail', 'i18n', 'table']) link(`@marmeon/${pkg}`, join(repo, 'packages', pkg));
     link('mjml', realpathSync(join(repo, 'packages/mail/node_modules/mjml'))); // the mail's layout is compiled by it
     link('vitest', realpathSync(join(repo, 'node_modules/vitest'))); // the generated test imports it
     link('marmeon', join(repo, 'packages', 'cli')); // the generated command imports its input type from it
@@ -324,6 +324,80 @@ describe('marmeon make:* (generated code compiles)', { timeout: 30_000 }, () => 
       writeFileSync(join(app, 'package.json'), manifest);
       writeFileSync(join(app, 'tsconfig.json'), tsconfig);
       for (const path of ['bootstrap', 'modules/auth', 'modules/bookmarks', 'modules/tables.d.ts', 'modules/billing/gate.ts', 'modules/billing/auth-types.ts']) {
+        rmSync(join(app, path), { recursive: true, force: true });
+      }
+    }
+  }, 60_000);
+
+  it('generates a repository, a factory and a table that compile against the module\'s table types, and a table that boots and loads', async () => {
+    const manifest = readFileSync(join(app, 'package.json'), 'utf8');
+    try {
+      writeFileSync(join(app, 'package.json'), JSON.stringify({ ...JSON.parse(manifest), dependencies: { ...JSON.parse(manifest).dependencies, '@marmeon/database': 'workspace:*', '@marmeon/table': 'workspace:*' } }));
+      writeFileSync(
+        join(app, 'modules/billing/auth-types.ts'),
+        "declare module '@marmeon/auth' { interface AuthTypes { user: { readonly id: number } } }\nexport {};\n",
+      );
+      // The shape `db:types` writes for a table with an id and timestamps.
+      writeFileSync(
+        join(app, 'modules/tables.d.ts'),
+        [
+          "import type { Generated, Timestamp } from '@marmeon/database';",
+          "declare module '@marmeon/database' {",
+          '  interface Tables {',
+          '    invoices: { id: Generated<number>; created_at: Generated<Timestamp>; updated_at: Generated<Timestamp> };',
+          '  }',
+          "  interface PrimaryKeys { invoices: 'id' }",
+          "  interface TableOwners { invoices: 'billing' }",
+          '  interface ExposedTables {}',
+          '  interface Modules { billing: true }',
+          '}',
+          '',
+        ].join('\n'),
+      );
+      for (const [command, file] of [['make:repository', 'InvoiceRepository.ts'], ['make:factory', 'factories/InvoiceFactory.ts'], ['make:table', 'tables/InvoiceTable.ts']] as const) {
+        const made = marmeon(app, [command, 'Invoice', '--module=billing']);
+        expect([made.code, made.stderr]).toEqual([0, '']);
+        expect(made.stdout).toContain(`Created modules/billing/${file}`);
+      }
+      // The table is shown by the page's routes; this registrar is the one a page of signed-in users has.
+      writeFileSync(
+        join(app, 'modules/billing/invoice-routes.ts'),
+        [
+          "import { authenticate } from '@marmeon/auth';",
+          "import { defineRoutes, everyone } from '@marmeon/http';",
+          "import { tableRoutes } from '@marmeon/table';",
+          "import { InvoiceTable } from './tables/InvoiceTable.ts';",
+          'export default defineRoutes((Route) => {',
+          '  tableRoutes(Route.prefix(\'/invoices\').middleware(authenticate()).authorize(everyone), InvoiceTable);',
+          '});',
+          '',
+        ].join('\n'),
+      );
+      writeFileSync(join(app, 'modules/billing/boot.ts'), "export { Router } from '@marmeon/router';\nexport { TableServiceProvider } from '@marmeon/table';\n");
+
+      const typecheck = spawnSync(tsc, ['-p', app], { encoding: 'utf8' });
+      expect(typecheck.stdout + typecheck.stderr).toBe('');
+      expect(typecheck.status).toBe(0);
+
+      // The table passes the check of a registrar that lets everyone call it (it has no action or export to leave open),
+      // and the boot check of the table package.
+      const { Router, TableServiceProvider } = (await import(join(app, 'modules/billing/boot.ts'))) as {
+        Router: new () => { load(routes: unknown): unknown };
+        TableServiceProvider: new () => { boot(app: unknown): void };
+      };
+      const routes = (await import(join(app, 'modules/billing/invoice-routes.ts'))) as { default: unknown };
+      const router = new Router();
+      expect(() => router.load(routes.default)).not.toThrow();
+      expect(() => new TableServiceProvider().boot({ container: { make: () => router } })).not.toThrow();
+      const table = (await import(join(app, 'modules/billing/tables/InvoiceTable.ts'))) as { InvoiceTable: { definition: { name: string; authorize: (() => boolean) | undefined } } };
+      expect(table.InvoiceTable.definition.name).toBe('invoices');
+      // Nobody sees the table until the app says who may.
+      expect(table.InvoiceTable.definition.authorize?.()).toBe(false);
+      const factory = (await import(join(app, 'modules/billing/factories/InvoiceFactory.ts'))) as { InvoiceFactory: { table: string } };
+      expect(factory.InvoiceFactory.table).toBe('invoices');
+    } finally {
+      writeFileSync(join(app, 'package.json'), manifest);
+      for (const path of ['modules/tables.d.ts', 'modules/billing/auth-types.ts', 'modules/billing/invoice-routes.ts', 'modules/billing/boot.ts', 'modules/billing/InvoiceRepository.ts', 'modules/billing/factories/InvoiceFactory.ts', 'modules/billing/tables']) {
         rmSync(join(app, path), { recursive: true, force: true });
       }
     }

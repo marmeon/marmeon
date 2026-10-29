@@ -7,6 +7,7 @@ import { DocsCommand } from './commands/docs.ts';
 import { KeyGenerateCommand } from './commands/key-generate.ts';
 import { MakeDockerCommand } from './commands/make-docker.ts';
 import { MakeLintConfigCommand } from './commands/make-lint-config.ts';
+import { MakeFactoryCommand, MakeRepositoryCommand, MakeTableCommand } from './commands/make-parts.ts';
 import { MakeResourceCommand } from './commands/make-resource.ts';
 import {
   MakeCommandCommand,
@@ -59,6 +60,9 @@ export const BUILT_IN: readonly CommandClass[] = [
   MakePolicyCommand,
   MakeTestCommand,
   MakeResourceCommand,
+  MakeRepositoryCommand,
+  MakeFactoryCommand,
+  MakeTableCommand,
   MakeMigrationCommand,
   MakeLintConfigCommand,
   MakeDockerCommand,

@@ -36,6 +36,8 @@ export const UserFactory = defineFactory(
 values are typed against the table's insert type. A new `NOT NULL` column without a default therefore makes every factory that
 misses it a compile error, and you find them all at once.
 
+`marmeon make:factory Note --module=notes` writes the file into `factories/` (`--table` names the table when it is not the plural of the name) and registers nothing: a factory is imported where it is used. The definition it writes is empty, and the compiler lists the columns it still has to set.
+
 The definition gets a context:
 
 - **`sequence`** counts the rows this factory has made in this app: 1, 2, 3 and on. Use it for values that must be unique, such
