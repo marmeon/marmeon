@@ -6,8 +6,8 @@ import type { Disk } from '../disk.ts';
 import { FileNotFoundError, StorageSetupError } from '../errors.ts';
 import { ObjectChangedError, S3Disk } from '../drivers/s3.ts';
 import { formatBytes, type UploadRule } from './rule.ts';
-import { isPlainText, SNIFF_BYTES, sniff } from './sniff.ts';
-import { RejectedUpload, TemporaryUpload } from './temporary-upload.ts';
+import { isActiveType, isPlainText, SNIFF_BYTES, sniff } from './sniff.ts';
+import { KEEP_MAX_MINUTES, RejectedUpload, STAGED_SCOPE, TemporaryUpload } from './temporary-upload.ts';
 import { withCode } from '@marmeon/core/internal';
 
 /** The table `marmeon make:uploads-table` creates (the app owns the migration; this package types it itself). */
@@ -86,6 +86,9 @@ const SETTLE_ATTEMPTS = 5;
 
 const CHARGE = sql`case when size > ${OPEN_UPLOAD_MIN_CHARGE} then size else ${OPEN_UPLOAD_MIN_CHARGE} end`;
 
+/** What `keep()` writes before its scope into the route column: no route is named so, so a kept upload fits no field's token any more. */
+const STAGED_PREFIX = 'staged:';
+
 const TOKEN = /^tu_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([\w-]{43})$/;
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -94,6 +97,35 @@ export function uploadError(field: string, key: string, message: string, params:
   const filled = message.replace(/\{(\w+)\}/g, (match, name: string) => (name in params ? String(params[name]) : match));
   const issue = { message: filled, path: field.split('.'), [Symbol.for('marmeon.translation')]: { key, params } };
   return ValidationError.fromIssues([issue], {});
+}
+
+/**
+ * The uploads a flow kept over several requests (`TemporaryUpload.keep()`), found again for the session of the current request —
+ * inject it where the flow continues:
+ *
+ * ```ts
+ * const upload = await this.#uploads.staged(ctx.params.import, 'products-import');
+ * ```
+ *
+ * Without a session in the request it finds nothing. See `docs/storage.md#an-upload-over-several-requests`.
+ */
+export class StagedUploads {
+  readonly #uploads: TemporaryUploads;
+  readonly #session: () => string | undefined;
+
+  /** @internal The storage provider makes it, once per request. */
+  constructor(uploads: TemporaryUploads, session: () => string | undefined) {
+    this.#uploads = uploads;
+    this.#session = session;
+  }
+
+  /**
+   * The upload `id` that `keep()` held under `scope` — only when it belongs to this request's session, carries this scope and is neither
+   * used nor expired; every other case, such as another user's id, is the same `undefined`.
+   */
+  staged(id: string, scope: string): Promise<TemporaryUpload | undefined> {
+    return this.#uploads.staged(this.#session(), id, scope);
+  }
 }
 
 /**
@@ -221,6 +253,39 @@ export class TemporaryUploads {
     if (!row || row.session !== scope.session || row.route !== scope.route || row.field !== scope.field) return new RejectedUpload('invalid');
     if (row.consumed_at !== null) return new RejectedUpload('used');
     if (Number(row.expires_at) <= this.#options.clock.now()) return new RejectedUpload('expired');
+    return this.#open(row);
+  }
+
+  /**
+   * The upload `id` that was kept under `scope` (`TemporaryUpload.keep()`), for `session` — or
+   * `undefined`: another session's (also the same user after signing in), another scope, a made-up id, a used or expired upload, and a
+   * file that is gone or changed all look the same. The file's type is read again, and one that is HTML, SVG or XML, or larger than
+   * the field allowed, is not returned.
+   */
+  async staged(session: string | undefined, id: string, scope: string): Promise<TemporaryUpload | undefined> {
+    if (session === undefined || !ID.test(id) || !STAGED_SCOPE.test(scope)) return undefined;
+    const now = this.#options.clock.now();
+    const row = await this.#options
+      .db()
+      .selectFrom(UPLOADS_TABLE)
+      .selectAll()
+      .where('id', '=', id)
+      .where('session', '=', session)
+      .where('consumed_at', 'is', null)
+      .where('expires_at', '>', now)
+      .executeTakeFirst();
+    // `staged:<scope>`, and on S3 `staged:<scope>:<etag>` — the object the check saw, which a presigned POST must not swap meanwhile.
+    const own = `${STAGED_PREFIX}${scope}`;
+    if (!row || (row.route !== own && !row.route.startsWith(`${own}:`))) return undefined;
+    const pinned = row.route === own ? undefined : row.route.slice(own.length + 1);
+    const found = await this.#open(row, pinned);
+    if (found instanceof RejectedUpload || isActiveType(found.mime) || found.size > Number(row.max_bytes)) return undefined;
+    return found;
+  }
+
+  /** The upload of a row that passed its checks, with the file's type read from its bytes — or why the file is refused. */
+  async #open(row: UploadRow, pinned?: string): Promise<TemporaryUpload | RejectedUpload> {
+    const id = row.id;
     const disk = this.#named(row.disk);
     let size: number;
     let head: Uint8Array;
@@ -230,7 +295,8 @@ export class TemporaryUploads {
         // The ETag of the object as it is now: what is read here, and later stored, must be this object — the POST policy lets
         // the browser send to the key again until it expires.
         const found = await disk.fingerprint(row.key);
-        if (found.etag === undefined) return new RejectedUpload('invalid');
+        // A kept upload is the object `keep()` saw, or nothing.
+        if (found.etag === undefined || (pinned !== undefined && found.etag !== pinned)) return new RejectedUpload('invalid');
         etag = found.etag;
         size = found.size;
         head = await firstBytes(await disk.streamIfMatch(row.key, found.etag), SNIFF_BYTES);
@@ -245,7 +311,45 @@ export class TemporaryUploads {
       throw error;
     }
     const { mime, extension } = sniff(head);
-    return new TemporaryUpload({ id, field: row.field, name: row.name, size, mime, extension, plainText: isPlainText(head, size) }, { disk, key: row.key, etag, readStart: (count) => readStart(disk, row.key, etag, count), read: (limit) => readWhole(disk, row.key, etag, limit), consume: () => this.consume(id) });
+    return new TemporaryUpload(
+      { id, field: row.field, name: row.name, size, mime, extension, plainText: isPlainText(head, size) },
+      {
+        disk,
+        key: row.key,
+        etag,
+        readStart: (count) => readStart(disk, row.key, etag, count),
+        read: (limit) => readWhole(disk, row.key, etag, limit),
+        consume: () => this.consume(id),
+        keep: (scope, minutes) => this.#keep(id, row.session, scope, minutes, etag),
+        discard: () => this.#discard(id, disk, row.key),
+      },
+    );
+  }
+
+  /** Holds upload `id` of `session` under `scope`: one conditional statement, so a used, expired or foreign upload is never touched. */
+  async #keep(id: string, session: string, scope: string, minutes: number, etag: string | undefined): Promise<boolean> {
+    const now = this.#options.clock.now();
+    const wanted = now + minutes * 60_000;
+    const result = await this.#options
+      .db()
+      .updateTable(UPLOADS_TABLE)
+      // Never past KEEP_MAX_MINUTES after the upload was made: asking again does not make it last for ever.
+      .set({ route: etag === undefined ? `${STAGED_PREFIX}${scope}` : `${STAGED_PREFIX}${scope}:${etag}`, expires_at: sql`case when created_at + ${KEEP_MAX_MINUTES * 60_000} < ${wanted} then created_at + ${KEEP_MAX_MINUTES * 60_000} else cast(${wanted} as bigint) end` })
+      .where('id', '=', id)
+      .where('session', '=', session)
+      .where('consumed_at', 'is', null)
+      .where('expires_at', '>', now)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows) === 1;
+  }
+
+  /** Claims upload `id` (so `store()` can no longer win), then deletes its file and row. */
+  async #discard(id: string, disk: Disk, key: string): Promise<boolean> {
+    if (!(await this.consume(id))) return false;
+    // If the file cannot be deleted the used row stays, and `uploads:prune` takes both.
+    await disk.delete(key);
+    await this.#options.db().deleteFrom(UPLOADS_TABLE).where('id', '=', id).execute();
+    return true;
   }
 
   /** Uses upload `id` up — `false` when it was used already or has expired. One statement: of two at once, one wins. */
@@ -263,15 +367,22 @@ export class TemporaryUploads {
   }
 
   /**
-   * Deletes the uploads that expired unused and those made before `before` (epoch ms) — the rows first, in one
+   * Deletes the uploads that expired unused and those made before `before` (epoch ms), except a kept upload that is still waiting
+   * (it expires at the latest 24 hours after it was made, and goes then) — the rows first, in one
    * statement, then their files: a token being used right now either still finds its row (and its file) or finds neither.
    * Returns how many.
    */
   async prune(before: number): Promise<number> {
+    const now = this.#options.clock.now();
     const rows = await this.#options
       .db()
       .deleteFrom(UPLOADS_TABLE)
-      .where((eb) => eb.or([eb.and([eb('expires_at', '<=', this.#options.clock.now()), eb('consumed_at', 'is', null)]), eb('created_at', '<=', before)]))
+      .where((eb) =>
+        eb.or([
+          eb.and([eb('expires_at', '<=', now), eb('consumed_at', 'is', null)]),
+          eb.and([eb('created_at', '<=', before), eb.not(eb.and([eb('route', 'like', `${STAGED_PREFIX}%`), eb('consumed_at', 'is', null), eb('expires_at', '>', now)]))]),
+        ]),
+      )
       .returning(['disk', 'key'])
       .execute();
     for (const row of rows) {

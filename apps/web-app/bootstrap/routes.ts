@@ -6,6 +6,7 @@ import type { AddProfileLinkController } from '../modules/user-profile/controlle
 import type { AskQuestionController } from '../modules/locale/controllers/AskQuestionController.ts';
 import type { BeginTwoFactorController } from '../modules/auth/controllers/BeginTwoFactorController.ts';
 import type { ConfirmEmailChangeController } from '../modules/auth/controllers/ConfirmEmailChangeController.ts';
+import type { ConfirmMemberImportController } from '../modules/members/controllers/ImportMembersController.ts';
 import type { ConfirmPasswordController } from '../modules/auth/controllers/ConfirmPasswordController.ts';
 import type { ConfirmRemoveLinkController } from '../modules/user-profile/controllers/ConfirmRemoveLinkController.ts';
 import type { ConfirmTwoFactorController } from '../modules/auth/controllers/ConfirmTwoFactorController.ts';
@@ -153,6 +154,7 @@ declare module '@marmeon/router' {
     'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
     'members.import': { method: 'post'; path: '/members/import'; controller: typeof ImportMembersController };
+    'members.import.confirm': { method: 'post'; path: '/members/import/:import'; controller: typeof ConfirmMemberImportController };
     'members.index': { method: 'get'; path: '/members'; controller: typeof ListMembersController };
     'notifications.destroy': { method: 'delete'; path: '/notifications/:notification'; controller: typeof DeleteNotificationController };
     'notifications.index': { method: 'get'; path: '/notifications'; controller: typeof ShowNotificationsController };

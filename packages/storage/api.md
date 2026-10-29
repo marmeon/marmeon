@@ -170,6 +170,11 @@ export interface ServeFileOptions {
     readonly cacheControl: string;
     readonly filename?: string | undefined;
 }
+// StagedUploads
+export declare class StagedUploads {
+    #private;
+    staged(id: string, scope: string): Promise<TemporaryUpload | undefined>;
+}
 // Storage
 export interface Storage {
     disk<const N extends DiskNameInput = DefaultDiskName>(name?: CheckDiskName<N>): DiskFor<N>;
@@ -228,6 +233,11 @@ export declare class TemporaryUpload {
     dimensions(): Promise<ImageDimensions | undefined>;
     bytes(): Promise<Uint8Array>;
     text(): Promise<string>;
+    keep(options: {
+        scope: string;
+        minutes: number;
+    }): Promise<string>;
+    discard(): Promise<boolean>;
     store(disk: Disk, directory?: string): Promise<string>;
     toJSON(): undefined;
 }

@@ -1,5 +1,5 @@
 import type { PageProps } from '@marmeon/http';
-import { FileInput, Head, Link, useForm, useTranslation } from '@marmeon/react';
+import { FileInput, Form, Head, Link, useFlash, useForm, useTranslation } from '@marmeon/react';
 import { useTable, type TableRunOutcome } from '@marmeon/react/table';
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import { Pagination } from '../../../layouts/Pagination.tsx';
@@ -28,6 +28,9 @@ export default function Index({ members }: Props) {
   // refused by their bytes); the form sends the token. Administrators only: the export link below marks them.
   const importForm = useForm('members.import', { file: null });
   const file = importForm.data.file;
+  // The preview keeps the file and its toast carries the id: the second step posts it to the confirmation. The next toast replaces it.
+  const [kept, setKept] = useState<string | undefined>();
+  useFlash('toast', (toast) => setKept(toast.confirm));
   const label = (column: string) => t(`column.${column as 'name'}`);
   const table = useTable(members, {
     labels: {
@@ -297,6 +300,11 @@ export default function Index({ members }: Props) {
             {(importForm.errors.file ?? file?.error) && <small role="alert">{importForm.errors.file ?? file?.error}</small>}
           </p>
         </form>
+      )}
+      {kept !== undefined && (
+        <Form route="members.import.confirm" params={{ import: kept }}>
+          <button type="submit">{t('import_confirm')}</button>
+        </Form>
       )}
       {csv && (
         <p>

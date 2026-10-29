@@ -59,6 +59,45 @@ describe('the member import (/members/import) — upload({ text: true }) in the 
     expect(app.storage.disk('uploads').files().filter((key) => key.startsWith('imports/'))).toEqual([]);
   });
 
+  describe('the import over two requests: the preview keeps the file, the confirmation finds it again', () => {
+    const CSV = 'name;email\nAnne;anne@example.com\nBen;not-an-address\n';
+    const confirm = (as: TestApp, id: string) => as.expectingJson().post(`/members/import/${id}`, { json: {} });
+    const preview = async (as: TestApp) => {
+      const token = await as.upload(ROUTE, 'file', new File([windows1252(CSV)], 'members.csv', { type: 'text/csv' }));
+      const response = await send(as, token);
+      return { response, id: (response.flashed().find((message) => message.key === 'toast')!.data as { confirm: string }).confirm };
+    };
+
+    it('shows the count, keeps the file for the session, and the confirmation takes it over once and drops the file', async () => {
+      const as = app.actingAs(ada);
+      const { response, id } = await preview(as);
+      response.assertRedirect('/members').assertFlashed('toast', { message: '2 rows read, 1 to correct.' });
+      expect(id).toMatch(/^[0-9a-f-]{36}$/);
+      (await confirm(as, id)).assertRedirect('/members').assertFlashed('toast', { kind: 'success', message: '1 row taken over.' });
+      expect(app.storage.disk('uploads').files()).toEqual([]);
+      (await confirm(as, id)).assertNotFound();
+    });
+
+    it('two confirmations at once: one takes the file over, the other finds it gone', async () => {
+      const as = app.actingAs(ada);
+      const { id } = await preview(as);
+      const answers = await Promise.all([confirm(as, id), confirm(as, id)]);
+      expect(answers.map((answer) => answer.status).sort()).toEqual([303, 404]);
+    });
+
+    it('is found only by the session that sent the file: the same administrator in another session gets a 404, and the file stays', async () => {
+      const { id } = await preview(app.actingAs(ada));
+      (await confirm(app.actingAs(ada), id)).assertNotFound();
+      expect(app.storage.disk('uploads').files()).toHaveLength(1);
+    });
+
+    it('is for administrators, and an id that was never kept is a 404', async () => {
+      const { id } = await preview(app.actingAs(ada));
+      (await confirm(app.actingAs(alan), id)).assertForbidden();
+      (await confirm(app.actingAs(ada), '11111111-1111-4111-8111-111111111111')).assertNotFound();
+    });
+  });
+
   it('is for administrators: another member gets no upload target and no import', async () => {
     const as = app.actingAs(alan);
     await expect(as.upload(ROUTE, 'file', new File([windows1252('name;email\n')], 'members.csv'))).rejects.toThrow('answered 403');

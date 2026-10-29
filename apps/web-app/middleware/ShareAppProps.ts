@@ -26,7 +26,8 @@ declare module '@marmeon/http/page' {
    * layout (`useFlash('toast', …)`) — exactly once per message. No shared prop: the protocol carries them.
    */
   interface FlashData {
-    toast: { kind: 'success' | 'error' | 'info'; message: string };
+    /** `confirm`: the id of a kept file the message asks to confirm (the member import's preview). */
+    toast: { kind: 'success' | 'error' | 'info'; message: string; confirm?: string };
   }
 }
 

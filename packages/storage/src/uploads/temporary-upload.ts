@@ -21,7 +21,16 @@ export interface UploadSource {
   read(limit: number): Promise<Uint8Array | undefined>;
   /** Marks the upload used — once: `false` when it was used already (or expired meanwhile). Atomic across processes. */
   consume(): Promise<boolean>;
+  /** Holds the upload for later requests of its session under `scope` for `minutes`; `false` when it was used or has expired. */
+  keep(scope: string, minutes: number): Promise<boolean>;
+  /** Deletes the upload's row and file; `false` when it was used already (the file is where `store()` put it). */
+  discard(): Promise<boolean>;
 }
+
+/** The longest an upload is held, in minutes — counted from when it was made, so holding it again never extends it past this. */
+export const KEEP_MAX_MINUTES = 1440;
+/** What a staged scope may be made of (it becomes part of the stored route). */
+export const STAGED_SCOPE = /^[A-Za-z0-9._-]{1,100}$/;
 
 /** Where `translatable()` of the router leaves a message's key on an issue — the request's translator reads it. */
 const TRANSLATION = Symbol.for('marmeon.translation');
@@ -120,6 +129,31 @@ export class TemporaryUpload {
         {},
       );
     }
+  }
+
+  /**
+   * Holds the upload for later requests of the same session, such as a preview before the user confirms: it stays bound to the
+   * session, and `uploads.staged(id, scope)` finds it again. `scope` names the flow (letters, digits, `.`, `-`, `_`, at most 100),
+   * `minutes` is how long it waits (1 to 1 440). Returns the upload's `id` to keep with the session (a flash message). The
+   * upload is not used up: `store()` still moves the file, `discard()` drops it, and `uploads:prune` removes it once it has expired.
+   * Holding it again restarts the wait, but never past 24 hours after the upload was made. Any new session id (signing in or out,
+   * confirming the password) puts it out of the session's reach. Throws a `TypeError` for a scope or minutes out of range, and for an upload that was used or has expired
+   * (`docs/storage.md#an-upload-over-several-requests`).
+   */
+  async keep(options: { scope: string; minutes: number }): Promise<string> {
+    const { scope, minutes } = options;
+    if (!STAGED_SCOPE.test(scope)) throw new TypeError('TemporaryUpload.keep() needs a scope of letters, digits, ".", "-" and "_", at most 100 characters.');
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > KEEP_MAX_MINUTES) throw new TypeError(`TemporaryUpload.keep() holds an upload for 1 to ${KEEP_MAX_MINUTES} minutes.`);
+    if (this.#stored || !(await this.#source.keep(scope, minutes))) {
+      throw new TypeError('TemporaryUpload.keep() was called on an upload that was used or has expired.');
+    }
+    return this.id;
+  }
+
+  /** Deletes the upload and its file, so nothing is left to prune; `false` when it was used already. A kept upload that is not wanted any more. */
+  async discard(): Promise<boolean> {
+    if (this.#stored) return false;
+    return this.#source.discard();
   }
 
   /**
