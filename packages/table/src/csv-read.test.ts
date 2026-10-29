@@ -107,6 +107,15 @@ describe('readCsv(): export to import', () => {
     expect(back.rows).toEqual([row]);
   });
 
+  it('gives back a formula behind spaces, invisible characters or in full width, and unescapes it', () => {
+    const texts = [' =1', '\uFEFF=1', '\uFF1D1', "' =1"];
+    const file = utf8(csvLine(texts) + csvLine(texts));
+    expect(value(file).headers).toEqual(texts.map((text) => `'${text}`));
+    const back = value(file, { unescape: true });
+    expect(back.headers).toEqual(texts);
+    expect(back.rows).toEqual([texts]);
+  });
+
   it('gives back every text that starts with quotes before a formula character, or is plain', () => {
     const texts = ["''=x", "'''=x", "'x", '=x', "'=x", "'", 'x'];
     const file = utf8(csvLine(texts) + csvLine(texts));

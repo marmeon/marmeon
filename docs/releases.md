@@ -231,7 +231,7 @@ Some formats have no version of their own and are kept stable another way:
   and the list's order stays the same; its payload is frozen, and one that no longer decrypts or fits answers 400.
 - **CSV exports** of a [table](tables.md#exports) are frozen: a byte order mark, every field quoted, lines ended by CRLF. The header
   row is each column's `label`, or its name, in the order of the definition. A time the database returns as a date is written as ISO 8601 in UTC, and a time stored as text as it is stored; a boolean as
-  `true` or `false`, an object as JSON, and a text that starts like a formula gets a `'` in front (a plain decimal such as `-12.50` is
+  `true` or `false`, an object as JSON, and a text that starts like a formula (`=`, `+`, `-`, `@`, a tab, a carriage return or a line feed, also behind spaces or invisible characters, or in full width) gets a `'` in front (a plain decimal such as `-12.50` is
   no formula). The file is named `<name>-YYYY-MM-DD.csv`, the day being the UTC day. A new form of a cell arrives with a new kind of column, never as a new
   meaning of an old one; `csv/v1.csv` holds the form. The table's cursor is a pagination cursor under the context `table:<name>`.
 - **`history.state`** holds the URL, component, a key and the scroll position. An entry that does not match loads from the server.

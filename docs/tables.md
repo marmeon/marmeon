@@ -456,8 +456,9 @@ A handler that returns a redirect, a JSON result or a `Response` answers for its
   later row out of the file, and a row added meanwhile shows at most once.
 - **Headers.** `Content-Disposition: attachment` with a safe file name such as `members-2026-10-06.csv`, `Cache-Control: no-store`,
   `X-Content-Type-Options: nosniff`, and a byte order mark, so spreadsheets read umlauts right.
-- **Formula injection** is escaped. A text cell that starts with `=`, `+`, `-`, `@`, a tab, a carriage return or a line feed gets a
-  `'` in front. Every field is quoted, with quotes doubled. Numbers stay numbers, and so does a decimal: `-5` and `-12.50` are no
+- **Formula injection** is escaped. A text cell that starts with `=`, `+`, `-`, `@`, a tab, a carriage return or a line feed, also
+  after spaces or invisible characters such as a byte order mark or a zero-width space, or with a full-width `＝`, `＋`, `－` or `＠`, or a minus sign (U+2212),
+  gets a `'` in front, before the spaces. Every field is quoted, with quotes doubled. Numbers stay numbers, and so does a decimal: `-5` and `-12.50` are no
   formula. Anything more than digits after the minus (`-2+3`, `-2E3`) is escaped.
 - **Reading an export back.** A text that already starts with `'` before such a character gets one more `'`, so no two texts give the
   same cell. `unescapeCsvCell(cell)` from `@marmeon/table` removes exactly that one `'` and gives the text back as it was. It takes a cell as a CSV reader returns it:
