@@ -132,6 +132,27 @@ class RecordJobEvents {
   }
 }
 
+/** Fails every attempt; its `failed()` writes what it got into the recorder. */
+class DoomedJob {
+  static readonly job = 'test.doomed';
+  static readonly schema = v.object({ n: v.number() });
+  static readonly tries = 2;
+
+  readonly #seen: Seen;
+
+  constructor(seen: Seen) {
+    this.#seen = seen;
+  }
+
+  handle(): void {
+    throw new Error('refused');
+  }
+
+  failed(payload: JobPayload<typeof DoomedJob>, error: Error, job: JobContext): void {
+    this.#seen.entries.push({ n: payload.n, attempt: job.attempt, note: `failed: ${error.message}` });
+  }
+}
+
 type TestApp = Application & { seen: Seen; queue: Queue; target: SharedTarget; clock: TestClock; work(queues?: string[] | 'every queue'): Promise<void> };
 
 /** The cache a target's app would use for the queue's locks: memory beside SQLite (a shared file cannot lock inside a transaction). */
@@ -148,7 +169,7 @@ async function withApp(kind: SharedTarget['kind'], test: (app: TestApp) => Promi
     root: '/tmp',
     discover: false,
     providers: [DatabaseServiceProvider, RedisServiceProvider, CacheServiceProvider, QueueServiceProvider],
-    modules: [{ name: 'test', jobs: [NoteJob, MailJob, OnceJob, GuardedJob], listeners: [listen(JobEvent, RecordJobEvents)] }],
+    modules: [{ name: 'test', jobs: [NoteJob, MailJob, OnceJob, GuardedJob, DoomedJob], listeners: [listen(JobEvent, RecordJobEvents)] }],
   }, {
     env: { ...targetEnv(target), ...cacheFor(target), ...env },
     override: (container) => {
@@ -174,6 +195,18 @@ async function withApp(kind: SharedTarget['kind'], test: (app: TestApp) => Promi
     await drop();
   }
 }
+
+describe.each(processKinds)('a job that fails for good on %s', (kind) => {
+  it('calls failed() once, on the last attempt, after the retry — and once more is not called', async () => {
+    await withApp(kind, async (app) => {
+      await app.queue.dispatch(DoomedJob, { n: 7 });
+      await app.work();
+      await app.work();
+      expect(app.seen.entries).toEqual([{ n: 7, attempt: 2, note: 'failed: refused' }]);
+      expect(await app.container.make(QueueConnections).failed().all()).toHaveLength(1);
+    });
+  });
+});
 
 describe.each(processKinds)('unique jobs on %s', (kind) => {
   it('queues a second job with the same key not at all until the first is done — then again', async () => {

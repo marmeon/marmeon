@@ -272,13 +272,13 @@ export class JobRunner {
     return result!.value;
   }
 
-  async #run(
-    prepared: Extract<Prepared, { kind: 'ready' }>,
+  /** The context of one attempt; `request` takes what the job asks for through it (`discard`, `release`, `fail`). */
+  #context(
+    { record, job }: Extract<Prepared, { kind: 'ready' }>,
     attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal; readonly retryAfterSeconds?: number },
-  ): Promise<Requested | undefined> {
-    const { record, job, payload } = prepared;
-    let requested: Requested | undefined;
-    const context: JobContext = {
+    request: (requested: Requested) => void,
+  ): JobContext {
+    return {
       id: record.uuid,
       name: record.job,
       attempt: attempt.attempt,
@@ -286,18 +286,45 @@ export class JobRunner {
       queue: attempt.queue,
       connection: attempt.connection,
       signal: attempt.signal,
-      discard: (reason) => {
-        requested ??= { kind: 'discard', reason };
-      },
-      release: (delay) => {
-        requested ??= { kind: 'release', delay: delaySeconds(delay) };
-      },
-      fail: (reason) => {
-        requested ??= { kind: 'fail', reason };
-      },
+      discard: (reason) => request({ kind: 'discard', reason }),
+      release: (delay) => request({ kind: 'release', delay: delaySeconds(delay) }),
+      fail: (reason) => request({ kind: 'fail', reason }),
       once: (key, fn, options = {}) =>
         runOnce(this.#cache, key, fn, { ...(options.for === undefined ? {} : { for: options.for }), lockSeconds: attempt.retryAfterSeconds ?? timeoutOf(job) + 60 }),
     };
+  }
+
+  /**
+   * Calls the job's `failed(payload, error, job)` once the job has failed for good — in a fresh scope, outside any transaction, in the
+   * job's log context. `discard`, `release` and `fail` of its context do nothing; `attempt.signal` is its `job.signal`. Rejects with what `failed()` (or building the job) throws:
+   * the caller logs it, the failure itself is already recorded.
+   */
+  async failed(
+    prepared: Extract<Prepared, { kind: 'ready' }>,
+    attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal },
+    error: unknown,
+  ): Promise<void> {
+    const { record, job, payload } = prepared;
+    if (typeof (job.prototype as { failed?: unknown }).failed !== 'function') return;
+    const context = this.#context(prepared, attempt, () => {});
+    const cause = error instanceof Error ? error : new Error(String(error));
+    await outsideTransaction(() =>
+      runWithJob({ job: record.job, jobId: record.uuid, attempt: attempt.attempt, ...(record.requestId === undefined ? {} : { requestId: record.requestId }), ...(record.fromReporter ? { fromReporter: true as const } : {}) }, async () => {
+        const instance = this.#container.createScope().make(job as never) as { failed(payload: unknown, error: Error, job: JobContext): unknown };
+        await instance.failed(payload, cause, context);
+      }),
+    );
+  }
+
+  async #run(
+    prepared: Extract<Prepared, { kind: 'ready' }>,
+    attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal; readonly retryAfterSeconds?: number },
+  ): Promise<Requested | undefined> {
+    const { record, job, payload } = prepared;
+    let requested: Requested | undefined;
+    const context = this.#context(prepared, attempt, (request) => {
+      requested ??= request;
+    });
     const middleware: readonly JobMiddleware[] = job.middleware ?? [];
     // A job is a boundary: it never runs inside a transaction that was open where it was dispatched or worked on.
     await outsideTransaction(() => runWithJob({ job: record.job, jobId: record.uuid, attempt: attempt.attempt, ...(record.requestId === undefined ? {} : { requestId: record.requestId }), ...(record.fromReporter ? { fromReporter: true as const } : {}) }, async () => {

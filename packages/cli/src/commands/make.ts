@@ -743,6 +743,10 @@ export class ${name} {
     void payload;
     void job; // job.signal aborts at the timeout — pass it on: fetch(url, { signal: job.signal })
   }
+
+  // Runs at most once when the job fails for good (its last attempt fails or times out, job.fail(), a release on the last attempt,
+  // a worker that died in every attempt): set a delivery log to \`failed\`. job.signal aborts at the timeout.
+  // async failed(payload: JobPayload<typeof ${name}>, error: Error, job: JobContext): Promise<void> {}
 }
 `;
 
