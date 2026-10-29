@@ -162,21 +162,31 @@ describe('make:listener registers the listener with its event', () => {
     expect(readFileSync(join(root, 'modules', 'billing', 'listeners', 'A.ts'), 'utf8')).toContain("from '../events.ts';");
   });
 
-  it('reports a module that does not parse instead of a missing event', () => {
+  it('writes nothing for a module that does not parse and has no such event', () => {
     const source = 'export default defineModule({ ;;';
     const { root, index } = app(source);
-    const { lines } = listener(root);
+    const { code, lines } = listener(root);
+    expect(code).toBe(1);
     expect(readFileSync(index, 'utf8')).toBe(source);
-    expect(lines.some((line) => line.includes('does not parse') && !line.includes('neither'))).toBe(true);
+    expect(existsSync(join(root, 'modules', 'billing', 'listeners', 'SendReceipt.ts'))).toBe(false);
+    expect(lines.some((line) => line.includes('modules/billing/index.ts does not parse. Fix it and run the command again') && !line.includes('neither'))).toBe(true);
   });
 
-  it('writes the listener but leaves the module alone when the event is found nowhere', () => {
+  it('writes no listener and exits 1 when the event is found nowhere', () => {
     const { root, index } = app();
     const { code, lines } = listener(root);
-    expect(code).toBe(0);
+    expect(code).toBe(1);
     expect(readFileSync(index, 'utf8')).toBe(MODULE);
-    expect(lines.some((line) => line.startsWith('! Not registered — modules/billing/index.ts: InvoicePaid is neither in modules/billing/events/ nor imported'))).toBe(true);
-    expect(lines).toContain('  listeners: [listen(InvoicePaid, SendReceipt)]');
+    expect(existsSync(join(root, 'modules', 'billing', 'listeners'))).toBe(false);
+    const message = lines.find((line) => line.includes('InvoicePaid is neither in modules/billing/events/ nor imported by modules/billing/index.ts'));
+    expect(message).toContain('make:event');
+    expect(message).toContain('import it in modules/billing/index.ts first');
+  });
+
+  it('writes no listener under --no-register either when the event is found nowhere', () => {
+    const { root } = app();
+    expect(listener(root, 'SendReceipt', 'InvoicePaid', { 'no-register': true }).code).toBe(1);
+    expect(existsSync(join(root, 'modules', 'billing', 'listeners'))).toBe(false);
   });
 
   it('is idempotent and keeps two listeners of one event', () => {

@@ -57,8 +57,6 @@ interface RegisterMessages {
   readonly heading: string;
   /** The lines to add by hand. */
   readonly manual: readonly string[];
-  /** A reason the generator already knows the edit cannot be made — printed like a `manual` outcome, nothing is edited. */
-  readonly unregistrable?: string;
   /** Edit this file instead of the module's index.ts, shown as `shown` (an app-relative path). A missing file prints the lines as `--no-register` does. */
   readonly target?: { readonly file: string; readonly shown: string };
 }
@@ -88,10 +86,6 @@ export function registerInModule(
     input.output.line(messages.heading);
     printLines();
     return 'printed';
-  }
-  if (messages.unregistrable !== undefined) {
-    notRegistered(messages.unregistrable);
-    return 'manual';
   }
   if (leavesProject(input, [file])) return 'printed';
   const outcome = editDefinitionFile(file, edit, shown);
@@ -230,6 +224,11 @@ export class MakeListenerCommand {
     }
     const module = input.options.module as string;
     const source = eventSource(dir, module, event);
+    // A listener importing an event that is not there would not compile, so nothing is written.
+    if (source.problem !== undefined) {
+      input.output.error(`${source.problem}. Nothing was written.`);
+      return 1;
+    }
     const listener = input.options.queued ? QUEUED_LISTENER(name, event, source.listenerFrom, source.listenerImport, `${module}.${stableName(name, 'Listener') || 'listener'}`) : LISTENER(name, event, source.listenerFrom, source.listenerImport);
     if (!write(input, join(dir, 'listeners', `${name}.ts`), listener)) return 1;
 
@@ -257,7 +256,6 @@ export class MakeListenerCommand {
           `import { ${name} } from './listeners/${name}.ts';`,
           `listeners: [listen(${event}, ${name})]`,
         ],
-        unregistrable: source.problem,
       },
     );
     return 0;
@@ -289,10 +287,10 @@ function eventSource(
     text === undefined
       ? undefined
       : editDefinition(text, 'index.ts', { define: { name: 'defineModule', from: '@marmeon/core' }, key: 'probe', add: { value: '0' } });
-  if (probe?.status === 'manual' && probe.reason.includes('parse')) return { ...ownSource, problem: probe.reason };
+  if (probe?.status === 'manual' && probe.reason.includes('parse')) return { ...ownSource, problem: `${indexOf(module)} does not parse. Fix it and run the command again` };
   return {
     ...ownSource,
-    problem: `${event} is neither in modules/${module}/events/ nor imported by ${indexOf(module)} (create it with make:event, or import it there)`,
+    problem: `${event} is neither in modules/${module}/events/ nor imported by ${indexOf(module)}. Create it with make:event, or import it in ${indexOf(module)} first`,
   };
 }
 
