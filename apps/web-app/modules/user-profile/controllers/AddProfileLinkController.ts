@@ -32,7 +32,7 @@ export class AddProfileLinkController extends Controller {
     this.#broadcast = broadcast;
   }
 
-  async handle(ctx: ContextOf<typeof AddProfileLinkRequest> & { params: { user: Row<'users'> } }) {
+  async handle(ctx: ContextOf<typeof AddProfileLinkRequest, { user: Row<'users'> }>) {
     await this.#links.insert({ user_id: ctx.params.user.id, ...ctx.body });
     // Live: the profile's other tabs reload it — not this one (x-marmeon-connection), it shows its own answer.
     await this.#broadcast.refresh(profileChannel(ctx.params.user.public_id), { only: ['profile'] });

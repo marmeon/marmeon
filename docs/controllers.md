@@ -137,6 +137,8 @@ export class UpdateNoteController extends Controller {
 `ContextOf` takes the route's side of the context from the type of `authorize`. `can()` brings the signed-in user and the bound
 record with it. A request without a check of its own adds what the controller needs to `handle`:
 `handle(ctx: ContextOf<typeof Request> & Authenticated)`, or `handle(ctx: HttpContext<Authenticated>)` when there is no request.
+The records a registrar binds are the second argument, `ContextOf<typeof Request, { note: Row<'notes'> }>`, and the compiler
+checks them against the route.
 The context's type belongs to `handle`, the decision to `authorize`: write `authorize: everyone` in the request, or call
 `Route.authorize(everyone)` on the registrar, when anyone who reaches the route may call it.
 

@@ -2,7 +2,7 @@
 import type { InferInput, InferOutput, StandardIssue, StandardSchemaV1 } from '@marmeon/core';
 import { HttpError, type TextKey } from './errors.ts';
 import { issueOfFields } from './live-validation.ts';
-import type { ClassResolver, EmptyObject, HttpContext } from './types.ts';
+import type { ClassResolver, EmptyObject, HttpContext, Merge } from './types.ts';
 
 export type { InferInput, InferOutput, StandardIssue, StandardOptions, StandardResult, StandardSchemaV1 } from '@marmeon/core';
 
@@ -165,9 +165,17 @@ export type WithQuery<TCtx, TQuery extends StandardSchemaV1> = [TQuery] extends 
   ? TCtx
   : Omit<TCtx, 'query'> & { readonly query: InferOutput<TQuery> };
 
-/** The full context of an endpoint: what its `authorize` needs, plus the validated body and the parsed query. */
-export type ContextOf<R extends RequestDefinition> =
-  R extends RequestDefinition<StandardSchemaV1, infer TCtx> ? WithQuery<TCtx, QuerySchemaOf<R>> & Validated<R> : never;
+/** `ctx` with the parameters a registrar binds (`Params`) laid over its own `params` — nothing to lay over: `ctx` as it is. */
+type WithParams<TCtx, Params extends object> = [keyof Params] extends [never]
+  ? TCtx
+  : Omit<TCtx, 'params'> & { readonly params: Merge<TCtx extends { readonly params: infer P extends object } ? P : EmptyObject, Params> };
+
+/**
+ * The full context of an endpoint: what its `authorize` needs, plus the validated body and the parsed query. `Params` names
+ * the parameters the route's registrar binds, checked where the controller is registered: docs/authorization.md#authorizing-requests.
+ */
+export type ContextOf<R extends RequestDefinition, Params extends object = EmptyObject> =
+  R extends RequestDefinition<StandardSchemaV1, infer TCtx> ? WithParams<WithQuery<TCtx, QuerySchemaOf<R>>, Params> & Validated<R> : never;
 
 /** The request a controller's `handle` accepts (via `ContextOf` / `Validated`), or `never`. */
 export type RequestOf<C> = C extends { handle: (ctx: infer TCtx, ...rest: any[]) => unknown }

@@ -30,7 +30,7 @@ export class EditUserProfileController extends Controller {
     this.#storage = storage;
   }
 
-  async handle(ctx: ContextOf<typeof EditUserProfileRequest> & Authenticated & { params: { user: User } }) {
+  async handle(ctx: ContextOf<typeof EditUserProfileRequest, { user: User }> & Authenticated) {
     const { user } = ctx.params;
 
     return this.view('user-profile/Edit', {

@@ -650,7 +650,7 @@ public within its parent.
 
 A page for a public record often takes a query as well: `/rooms/:room?day=2026-10-01`. A request with a query schema types
 `ctx.query`, and `ContextOf` types the route's side of the context from the request's `authorize`. A request that has none
-leaves `ctx.params` empty, so `handle` names the bound record itself, with an intersection of `params`:
+leaves `ctx.params` empty, so `handle` names the bound record itself, as the second argument of `ContextOf`:
 
 ```ts title="modules/rooms/controllers/ShowRoomController.ts"
 import type { Row } from '@marmeon/database';
@@ -664,7 +664,7 @@ export const ShowRoomRequest = defineRequest({
 export class ShowRoomController extends Controller {
   static request = ShowRoomRequest;
 
-  handle(ctx: ContextOf<typeof ShowRoomRequest> & { readonly params: { room: Row<'rooms'> } }) {
+  handle(ctx: ContextOf<typeof ShowRoomRequest, { room: Row<'rooms'> }>) {
     return this.view('rooms/Show', { room: { id: ctx.params.room.id, name: ctx.params.room.name }, day: ctx.query.day });
   }
 }
@@ -672,7 +672,7 @@ export class ShowRoomController extends Controller {
 
 The route supplies the decision (`Route.authorize(everyone)` and `{ public: true }`, as in [records nobody owns](authorization.md#records-nobody-owns)), and the compiler checks that it binds
 `room`. Do not write `ContextOf<typeof ShowRoomRequest> & HttpContext<object, { room: Row<'rooms'> }>`: `HttpContext` brings the
-raw `query` of the URL, which cannot be combined with the parsed one. A request whose `authorize` is `can(RoomPolicy, 'view', 'room')`
+raw `query` of the URL, which cannot be combined with the parsed one; the second argument of `ContextOf` lays the parameters over `params` only. A request whose `authorize` is `can(RoomPolicy, 'view', 'room')`
 needs none of this, because `can()` brings the bound record into `ContextOf` by itself.
 
 ### Loading relations with the record
