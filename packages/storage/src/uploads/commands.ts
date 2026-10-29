@@ -36,7 +36,7 @@ const HOUR = 3_600_000;
 /**
  * `marmeon uploads:prune [--hours=24] [--force]`: deletes unused uploads at once when they expire (after `UPLOADS_LIFETIME_MINUTES`: the open
  * ones count against the limits of `UPLOADS_MAX_OPEN`), and every other upload — used ones — once it was made more than `--hours`
- * ago; the rows first (one statement), then their files. `--hours` below `UPLOADS_LIFETIME_MINUTES` would delete
+ * ago (a kept upload still waiting is spared, and goes when it expires); the rows first (one statement), then their files. `--hours` below `UPLOADS_LIFETIME_MINUTES` would delete
  * uploads whose token still works (a form still open): refused unless `--force`. For the scheduler:
  * `s.command('uploads:prune').hourly().withoutOverlapping().onOneServer()` (with a local uploads disk on several servers: without
  * `onOneServer`, on each).

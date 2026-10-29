@@ -44,4 +44,6 @@ export default {
   import_save: 'Importieren',
   import_columns: 'Die erste Zeile braucht die Spalten name und email.',
   imported: '{rows, plural, one {# Zeile} other {# Zeilen}} gelesen, {invalid, number} zu korrigieren.',
+  import_confirmed: '{rows, plural, one {# Zeile} other {# Zeilen}} übernommen.',
+  import_confirm: 'Die geprüften Zeilen übernehmen',
 } satisfies Messages<typeof en>;

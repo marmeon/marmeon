@@ -15,7 +15,7 @@ export const UPLOADS_PREFIX = '/_marmeon/uploads';
 const FIELD = /^[\w-]{1,100}(?:\.[\w-]{1,100}){0,9}$/;
 
 /** The session's scope (a hash of its id) — what an upload belongs to; undefined without a session. */
-function sessionScope(internal: Internal, resolve: (key: unknown) => unknown): string | undefined {
+export function sessionScope(internal: Internal, resolve: (key: unknown) => unknown): string | undefined {
   try {
     return (resolve(internal.PageSession) as { scope(): string | undefined }).scope();
   } catch {

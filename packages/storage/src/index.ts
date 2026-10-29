@@ -13,8 +13,8 @@ import { StorageSetupError } from './errors.ts';
 import { checkS3Sdk } from './drivers/s3.ts';
 import { MakeUploadsTableCommand, PruneUploadsCommand } from './uploads/commands.ts';
 import { UploadsConfig } from './uploads/config.ts';
-import { registerUploads, UPLOADS_PREFIX } from './uploads/http.ts';
-import { TemporaryUploads, UPLOADS_COLUMNS, UPLOADS_TABLE } from './uploads/service.ts';
+import { registerUploads, sessionScope, UPLOADS_PREFIX } from './uploads/http.ts';
+import { StagedUploads, TemporaryUploads, UPLOADS_COLUMNS, UPLOADS_TABLE } from './uploads/service.ts';
 import { TEMPORARY_PREFIX, NO_TEMPORARY_URLS, type TemporaryUrls } from './temporary.ts';
 import { encodeKey } from './keys.ts';
 import { withCode } from '@marmeon/core/internal';
@@ -50,6 +50,7 @@ export { normalizeDirectory, normalizeKey } from './keys.ts';
 export { upload } from './uploads/rule.ts';
 export type { CheckUploadMime, UploadInput, UploadSchema } from './uploads/rule.ts';
 export { TemporaryUpload } from './uploads/temporary-upload.ts';
+export { StagedUploads } from './uploads/service.ts';
 export type { ImageDimensions } from './uploads/dimensions.ts';
 export { UPLOAD_TYPES } from './uploads/sniff.ts';
 export type { UploadMime } from './uploads/sniff.ts';
@@ -212,6 +213,8 @@ export class StorageServiceProvider implements ServiceProvider {
       const { SchemaRequirements } = await import('@marmeon/database');
       container.make(SchemaRequirements).require({ connection: uploads.connection, table: UPLOADS_TABLE, columns: UPLOADS_COLUMNS, whenPresent: true });
       registerUploads(http, internal, page.UPLOAD_HEADER, container, () => container.make(TemporaryUploads));
+      // The session comes from the request, as it does when a token is checked: never from a value the client sends.
+      container.scoped(StagedUploads, (scope) => new StagedUploads(container.make(TemporaryUploads), () => sessionScope(internal, (key) => scope.make(key as never))));
     }
   }
 

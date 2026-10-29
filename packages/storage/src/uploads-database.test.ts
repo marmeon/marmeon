@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
 import { StorageServiceProvider, UPLOADS_TABLE } from './index.ts';
 import { TemporaryUploads } from './uploads/service.ts';
+import type { TemporaryUpload } from './uploads/temporary-upload.ts';
 
 /** Postgres runs when `MARMEON_TEST_PGSQL_URL` is set (`pnpm test:pgsql`). */
 const PGSQL_URL = process.env.MARMEON_TEST_PGSQL_URL;
@@ -83,5 +84,23 @@ describe.skipIf(!PGSQL_URL)('temporary uploads on Postgres, beside the app’s t
     expect(Number(rows[0]!.n)).toBeLessThanOrEqual(20);
     expect(answers.filter((answer) => answer.status === 'fulfilled').length).toBe(Number(rows[0]!.n));
     expect(Number(rows[0]!.n)).toBeGreaterThan(0);
+  });
+
+  it('keep() and staged() on the real database: a round trip, the 24-hour cap, and the other session finds nothing', async () => {
+    const uploads = app.container.make(TemporaryUploads);
+    const contents = new TextEncoder().encode('a;b\n1;2\n');
+    const { token } = await uploads.target({ route: 'import.preview', field: 'file', rule: { maxBytes: 100, mime: undefined }, session: 's', name: 'a.csv', size: contents.byteLength });
+    const id = token.slice(3, 39);
+    await uploads.receive(id, 's', new ReadableStream({ start: (controller) => (controller.enqueue(contents), controller.close()) }), undefined);
+    const upload = await uploads.resolve(token, { session: 's', route: 'import.preview', field: 'file' });
+    expect(upload).toMatchObject({ id });
+    await (upload as TemporaryUpload).keep({ scope: 'flow', minutes: 1440 });
+    const staged = await uploads.staged('s', id, 'flow');
+    expect(await staged!.bytes()).toEqual(contents);
+    expect(await uploads.staged('other', id, 'flow')).toBeUndefined();
+    const { rows } = await sql<{ expires_at: string; created_at: string }>`select expires_at, created_at from ${sql.table(UPLOADS_TABLE)} where id = ${id}`.execute(app.container.make(Connections).get());
+    expect(Number(rows[0]!.expires_at)).toBeLessThanOrEqual(Number(rows[0]!.created_at) + 24 * 3_600_000);
+    expect(await staged!.discard()).toBe(true);
+    expect(await uploads.staged('s', id, 'flow')).toBeUndefined();
   });
 });

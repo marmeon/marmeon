@@ -261,6 +261,41 @@ the ETag like `store()`. A file that is gone, changed, shorter or longer than ch
 ([importing a CSV file](tables.md#importing-a-csv-file)). The bytes sit in memory, so keep the rule's `maxBytes` as low as the
 use needs. Like `dimensions()`, both throw after `store()`, which moves the file.
 
+### An upload over several requests
+
+A flow that spans requests (upload, preview, confirm) can hold the upload in the session instead of keeping a table of its own.
+`await upload.keep({ scope: 'products-import', minutes: 30 })` returns the upload's `id`; put it where the next request finds it
+(a flash message, a path). The next request injects `StagedUploads` and asks `await uploads.staged(id, 'products-import')`, which
+returns the `TemporaryUpload` again (`bytes()`, `text()`, `store()`, `dimensions()` work as before) or `undefined`.
+
+```ts
+// the preview: read and show the file, then hold it
+const id = await ctx.body.file.keep({ scope: 'products-import', minutes: 30 });
+// the confirmation: a path parameter names it, the session decides whether it is this user's
+const file = await this.#uploads.staged(ctx.params.import, 'products-import');
+if (!file) abort(404);
+```
+
+- **Bound as before.** A kept upload still belongs to the session it was made in, and `staged()` takes that session from the
+  request, never from the id. Another session, a request without one, another scope, a made-up id, a used or an expired upload
+  are all the same `undefined`, so an id tells nobody anything. The scope (letters, digits, `.`, `-`, `_`, at most 100) names the
+  flow; the token the form sent stops working once the upload is kept.
+- **Not for ever.** `minutes` is 1 to 1 440. Holding an upload again restarts the wait, but never past 24 hours after it was
+  made. Once the wait is over `staged()` finds nothing, and `uploads:prune` deletes the file and its row like any other expired
+  upload.
+- **Counted.** A kept upload is one of the session's open uploads (`UPLOADS_MAX_OPEN` and the byte limits) until it is used up,
+  discarded or expired.
+- **Pinned.** On S3 a presigned POST can send to the key again until it expires, so `keep()` pins the object the form's check saw
+  (its ETag, kept with the scope) and `staged()` returns it only if it is still that object: a file replaced after the check, by
+  another type or by anything else, is `undefined`. `staged()` also reads the type from the bytes again, and a file that is HTML,
+  SVG or XML, or larger than the field allowed, is not returned. On a local disk the bytes arrive once, so there is nothing to swap.
+- **Use it up or drop it.** `store()` uses a kept upload up like any other. `await upload.discard()` deletes the file and the row
+  when the flow ends without storing it (`false` when it was used already).
+- **A new session id drops it.** Whatever gives the session a new id — signing in or out, confirming the password, a second factor, a
+  passkey — starts a new session scope, so a flow does not carry over: the uploads kept before expire on their own.
+
+`keep()` throws a `TypeError` for a scope or minutes out of range and for an upload that was used or has expired.
+
 ### The uploads table
 
 Uploads keep their tokens in a table, which the app creates once. The table is `temporary_uploads` (`UPLOADS_TABLE` of `@marmeon/storage`):
@@ -321,7 +356,7 @@ run into the limits. A file larger than a limit could ever take gets a 422 with 
 
 `uploads:prune` deletes every unused upload whose token has expired (`UPLOADS_LIFETIME_MINUTES`) and every upload made more than a day
 ago, used or not: the rows first, then their files. `--hours` changes the age, and a value below `UPLOADS_LIFETIME_MINUTES` would delete uploads
-whose form is still open, so it needs `--force`. Unsent files stay on the disk until it runs, so schedule it every hour:
+whose form is still open, so it needs `--force`. An upload kept for a later request is spared while it waits, whatever `--hours` says. Unsent files stay on the disk until it runs, so schedule it every hour:
 
 ```ts title="modules/system/schedule.ts"
 import { defineSchedule } from '@marmeon/scheduler';
