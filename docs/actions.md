@@ -130,8 +130,24 @@ if (result.ok && result.kind === 'data') console.log(result.data.pinned);
 | `data` | `true` | The controller answered `this.json(…)`. `data` is that value as JSON made it. |
 | `redirect` | `true` | The controller redirected. `redirect` is the URL. |
 | `invalid` | `false` | The request schema refused the input. `errors` has the first message per field. |
-| `exception` | `false` | Offline, or a status such as 403, 404 or 500. `exception` says which. |
+| `exception` | `false` | Offline, or a status such as 403, 404 or 500. `exception` says which; see below. |
 | `cancelled` | `false` | `cancel()`, a newer call with the same `key`, a no to `confirm`, or the page was left. |
+
+`exception` is `{ type: 'network', cause }` when the request never got an answer, and `{ type: 'server', status, message }` when the
+server answered with a failure. `message` is the `message` of the JSON body of that answer, and `undefined` when the body has none.
+Nothing else of the body reaches the page. For `abort(403, 'Not your note')` it is `'Not your note'`; for any other thrown error it is
+the status text, such as `Internal Server Error`, because the error's own text is only sent in debug mode. A redirect the server did not
+turn has `status` 3xx and no `message`.
+
+```tsx
+const result = await pin.submit({ params: { note: note.id } });
+if (!result.ok && result.kind === 'exception') {
+  setNotice(result.exception.type === 'server' ? (result.exception.message ?? 'The note could not be pinned.') : 'You are offline.');
+}
+```
+
+A missing record that a user can run into is an expected answer, not a failure: answer `200` with a field such as `outcome` in
+`this.json(…)` and branch on `result.data.outcome`, so that the page does not parse an error.
 
 `data` and `redirect` also carry the call's flash messages. The action itself keeps the state of its last call for rendering:
 
