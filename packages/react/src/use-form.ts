@@ -148,6 +148,16 @@ export interface Form<T> extends FormState<FormFields<T>> {
   delete(url: string, options?: FormSubmitOptions): Promise<void>;
 }
 
+/**
+ * What a component needs of a form that shows only some of its fields: `form: FormPart<StoreNoteController, 'title' | 'body'>`.
+ * Any form that has those fields fits — a `useForm<StoreNoteController>` and a `useForm<UpdateNoteController>`, or a route form —
+ * and a form whose field cannot hold what the part's type allows does not; type the part from the controller with the narrower
+ * field types. `errors` and `clearErrors` take the part's fields and their paths. There is no `setData`, which would replace the
+ * data of the whole form, and `reset()` without arguments resets the whole form, not only the part.
+ * See `docs/forms.md#a-component-shared-by-two-forms`.
+ */
+export type FormPart<C, K extends keyof FormFields<C> & string> = Omit<FormState<Pick<FormFields<C>, K>>, 'setData'>;
+
 /** A field of a route form, bound to an input — what `<FileInput field>` takes: `form.field('avatar')`. */
 export interface FormField {
   readonly form: Pick<RouteForm<Record<string, unknown>>, 'data' | 'set' | 'method' | 'url'>;

@@ -176,6 +176,8 @@ export interface FormOptions<F = Record<string, unknown>> {
     guard?: boolean | string;
     remember?: string | RememberFormOptions<F>;
 }
+// FormPart
+export type FormPart<C, K extends keyof FormFields<C> & string> = Omit<FormState<Pick<FormFields<C>, K>>, 'setData'>;
 // FormProps
 export type FormProps<N extends string> = {
     route: CheckFormElementRoute<N>;
