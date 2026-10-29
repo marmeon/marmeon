@@ -212,6 +212,9 @@ would hand out every note to whoever guesses an id. The route fails to start unl
 - the binding is scoped to its parent: `bind('attachment', AttachmentRepository, { scopedBy: 'note' })`, with the parent checked;
 - the records are public by design, on a route that only reads: `bind('user', ProfileDirectory, { public: true })`. A route that
   changes data always needs a real check.
+- the route's credential is a token in its path, and a check of your own decides: `Route.authorize(describeAccess((ctx) => …, 'invitation link'))`
+  (see [a link that is used once](urls.md#a-link-that-is-used-once)). The alternative is to pass the token unbound and look its row up in the controller
+  ([Results](errors.md#results)).
 
 `marmeon route:list` shows each route that binds a record as public, as `everyone (public: user)` in the `ACCESS` column and
 as `publicBindings` in `--json` — review that list, not each file.

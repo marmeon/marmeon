@@ -412,6 +412,11 @@ describe('Router.accessProblems()', () => {
     expect(formatAccessProblems(problems)).toContain('does not excuse it');
   });
 
+  it('names a check of its own for an open binding', () => {
+    const problems = problemsOf((Route) => Route.authorize(everyone).bind('token', NoteBinder).get('/invite/:token', NoteController));
+    expect(formatAccessProblems(problems)).toContain("Route.authorize(describeAccess((ctx) => …, 'invitation link'))");
+  });
+
   it('recognises everyone by its brand, from another copy of the package', () => {
     const other = Object.defineProperty(() => true, Symbol.for('marmeon.access.everyone'), { value: true });
     expect(isEveryone(other)).toBe(true);
