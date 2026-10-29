@@ -439,6 +439,13 @@ or a `withCount()` callback filters that level. What the callback selects does n
 `limit()`, `offset()` and a set operation in it are refused, because they would change the answer. So is `having()` without
 `groupBy()`, which makes every related row one group and which databases answer differently.
 
+In the callback of `whereHas()`, `whereDoesntHave()`, `with()`, `withCount()` and `withRelation()`, an unqualified column is the
+related table's: one it does not have is refused with an error before the query runs, never read from the outer table. Name the
+table to reach the outer row (`users.email`). A selection's alias counts only in `orderBy()`. Subqueries in the callback are
+checked too: a column is a table of the subquery's own, or one of the callback's. A subquery in FROM or a join sees neither the
+callback's tables nor its other subqueries; a lateral join sees the tables before it. Raw SQL is not read, and a select with a
+common table expression or a subquery without named columns (`selectAll()`) is left to the database.
+
 ### Writing through relations
 
 A repository's `relation(id, name)` writes through a relation of one row. For a belongsToMany, it manages the rows of the pivot

@@ -18,6 +18,8 @@ import {
   JoinNode,
   LimitNode,
   OperationNodeTransformer,
+  type FromNode,
+  type OrderByNode,
   OperatorNode,
   QueryNode,
   ReferenceNode,
@@ -116,6 +118,7 @@ export function relationQuery(
   if (use !== undefined) refuseShaping(query, use, label);
   query = { ...query, from: { ...query.from!, froms: query.from!.froms.map((from) => (isTarget(from) ? (ref === target ? TableNode.create(target) : AliasNode.create(TableNode.create(target), IdentifierNode.create(ref))) : from)) } };
   if (ref !== target) query = new Rename(target, ref).transformNode(query) as SelectQueryNode;
+  refuseOuterColumns(query, label, metadata, use === undefined);
 
   if (use === undefined) query = { ...query, selections: selectionsOf(query, target, ref, metadata, label) };
   else {
@@ -148,6 +151,142 @@ export function relationQuery(
   // One row: the first the callback's order gives (Postgres' JSON object refuses a subquery of several rows).
   if (one && !query.limit) query = SelectQueryNode.cloneWithLimit(query, LimitNode.create(ValueNode.createImmediate(1)));
   return { query, wrap: (loaded) => FunctionNode.create(one ? ONE : MANY, [loaded, ValueNode.createImmediate(label)]) };
+}
+
+/**
+ * An unqualified column in a relation's callback is the related table's. SQL would resolve one the related tables lack against the
+ * outer query (correlation), silently — so a column name from outside the callback (a dynamic name, an untyped call) could filter
+ * by the outer table. Naming the table (`members.email`) stays allowed. The check reaches subqueries inside the callback too (their
+ * own tables, then the callback's). A select with a table the metadata does not know (a common table expression) or a subquery
+ * without named columns (`selectAll()`) has unknown columns: its unqualified columns are left to the database, and raw SQL is not read.
+ * An order may name a selection's alias (`orderBy` of a `with()`, where the order stays); no other clause may.
+ */
+function refuseOuterColumns(query: SelectQueryNode, label: string, metadata: SchemaMetadata, ordered: boolean): void {
+  new Unknown(metadata, label, ordered).transformNode(query);
+}
+
+/**
+ * What a select's unqualified column may be: the columns and whole rows of its tables and of its subqueries in FROM or a join
+ * (`undefined` if not all are known), and the aliases an order may use. `hidden` is set while a FROM or join item is walked:
+ * a derived table sees neither its siblings (`all`) — nor, lateral, their derived columns (`derived`).
+ */
+interface Scope {
+  readonly tables: string[];
+  readonly own: ReadonlySet<string> | undefined;
+  readonly derived: ReadonlySet<string> | undefined;
+  readonly aliases: ReadonlySet<string>;
+  ordering: boolean;
+  hidden?: 'all' | 'derived';
+}
+
+const LATERAL = ['LateralInnerJoin', 'LateralLeftJoin', 'CrossApply', 'OuterApply'];
+
+/** Refuses each column a select of the node names without a table that its tables, and the selects around it, lack — not in nested relations. */
+class Unknown extends OperationNodeTransformer {
+  readonly #metadata: SchemaMetadata;
+  readonly #label: string;
+  readonly #ordered: boolean;
+  readonly #scopes: Scope[] = [];
+
+  constructor(metadata: SchemaMetadata, label: string, ordered: boolean) {
+    super();
+    this.#metadata = metadata;
+    this.#label = label;
+    this.#ordered = ordered;
+  }
+
+  #scopeOf(node: SelectQueryNode): Scope {
+    const sources = sourcesOf(node);
+    let own: Set<string> | undefined = new Set();
+    let derived: Set<string> | undefined = new Set();
+    for (const source of sources) {
+      if (source.table !== undefined) {
+        const columns = this.#metadata.kinds.get(source.table)?.keys();
+        if (!columns || !own) own = undefined;
+        else for (const column of columns) own.add(column);
+        own?.add(source.ref);
+      } else {
+        const columns = outputsOf(source.query);
+        if (!columns || !derived) derived = undefined;
+        else for (const column of columns) derived.add(column);
+        derived?.add(source.ref);
+      }
+    }
+    const aliases = new Set<string>();
+    if (this.#scopes.length > 0 || this.#ordered) {
+      for (const { selection } of node.selections ?? []) if (AliasNode.is(selection) && IdentifierNode.is(selection.alias)) aliases.add(selection.alias.name);
+    }
+    return { tables: sources.map((source) => source.table ?? source.ref), own, derived, aliases, ordering: false };
+  }
+
+  #hiding<T>(hidden: 'all' | 'derived', walk: () => T): T {
+    const scope = this.#scopes.at(-1)!;
+    scope.hidden = hidden;
+    try {
+      return walk();
+    } finally {
+      delete scope.hidden;
+    }
+  }
+
+  protected override transformSelectQuery(node: SelectQueryNode, queryId?: QueryId): SelectQueryNode {
+    this.#scopes.push(this.#scopeOf(node));
+    try {
+      return super.transformSelectQuery(node, queryId);
+    } finally {
+      this.#scopes.pop();
+    }
+  }
+
+  protected override transformFrom(node: FromNode, queryId?: QueryId): FromNode {
+    return this.#hiding('all', () => super.transformFrom(node, queryId));
+  }
+
+  protected override transformJoin(node: JoinNode, queryId?: QueryId): JoinNode {
+    // Only the joined item is cut off from its siblings; the ON condition sees them all.
+    const table = this.#hiding(LATERAL.includes(node.joinType) ? 'derived' : 'all', () => this.transformNode(node.table, queryId));
+    return { ...node, table, ...(node.on ? { on: this.transformNode(node.on, queryId) } : {}) };
+  }
+
+  protected override transformOrderBy(node: OrderByNode, queryId?: QueryId): OrderByNode {
+    const scope = this.#scopes.at(-1)!;
+    scope.ordering = true;
+    try {
+      return super.transformOrderBy(node, queryId);
+    } finally {
+      scope.ordering = false;
+    }
+  }
+
+  protected override transformFunction(node: FunctionNode, queryId?: QueryId): FunctionNode {
+    return node.func === RELATION ? node : super.transformFunction(node, queryId);
+  }
+
+  protected override transformReference(node: ReferenceNode, queryId?: QueryId): ReferenceNode {
+    if (node.table || !ColumnNode.is(node.column)) return super.transformReference(node, queryId);
+    const name = node.column.column.name;
+    const inner = this.#scopes.at(-1)!;
+    // A column the select may not see is no column; one of a source with unknown columns may be the name.
+    const visible = this.#scopes.filter((scope) => scope.hidden !== 'all');
+    const may = visible.some((scope) => scope.own === undefined || (scope.hidden === undefined && scope.derived === undefined));
+    const found =
+      visible.some((scope) => scope.own?.has(name) || (scope.hidden === undefined && scope.derived?.has(name))) || (inner.ordering && inner.aliases.has(name));
+    if (!found && !may) {
+      const tables = [...visible].reverse().flatMap((scope) => scope.tables);
+      throw new Error(
+        `${this.#label}: "${name}" is not a column of ${tables.join(' or ')} — an unqualified column in the callback is the related table's. ` +
+          `To compare a column of the outer query, name its table: "<table>.${name}".`,
+      );
+    }
+    return super.transformReference(node, queryId);
+  }
+}
+
+/** The names a subquery's rows have — `undefined` if it is not a select, or selects a column without a name (`selectAll()`, a bare expression). */
+function outputsOf(node: OperationNode | undefined): string[] | undefined {
+  if (!node || !SelectQueryNode.is(node)) return undefined;
+  const names = (node.selections ?? []).map(({ selection }) => outputName(selection));
+  return names.every((name) => name !== undefined) ? (names as string[]) : undefined;
 }
 
 /**
