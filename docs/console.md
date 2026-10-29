@@ -63,6 +63,8 @@ before it runs. The [configuration](configuration.md#where-node_env-comes-from) 
 | `2` | `marmeon` was called wrongly: an unknown command, an unknown option, an option without its value, a value an option does not take, or an argument the command itself refuses (a name that is no `PascalCase`, `--workers=abc`, `schedule:test` without a task). |
 | `130` | The person cancelled a question the command asked (Ctrl-C). |
 
+When the app fails to load, the message ends with the place in the app where it happened, as `at modules/shop/routes.ts:12:3`, relative to the app: the first line of your own code on the error's stack or, for a syntax error Node finds in a `.ts` file, that file. An error inside a package names the line of your code that called it, and no file when none of your code is on the stack. For some syntax errors Node reports only the message, such as a duplicate `export` or an invisible character in a regular expression: `marmeon` then names the file it was compiling, without a line. It names none when it cannot tell which file that was, as for a module that awaits an `import()` of its own.
+
 [`marmeon check`](check.md#exit-codes) adds a `3` for a check that could not run.
 
 A command that ends with an error (exit code 1 because it threw) is also handed to the app's [error reporters](errors.md#reporting)

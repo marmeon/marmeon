@@ -6,6 +6,7 @@ import { BUILT_IN } from './built-in.ts';
 import { packageAdvice } from './check/packages.ts';
 import { printCommandHelp, printCommandList, printCommandListJson } from './commands/list.ts';
 import { loadApplication } from './load.ts';
+import { appFrameOf } from './load-failure.ts';
 import { Output, printError, stdoutToStderr, style } from './output.ts';
 import { createPrompt, isPromptCancelled } from './prompt.ts';
 import { spawnMarmeon } from './spawn.ts';
@@ -95,12 +96,15 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
       if (!listing || loaded instanceof CommandSetupError) {
         // Node's code (ERR_…) beside its message: what one searches for.
         const code = (loaded as { code?: unknown }).code;
-        output.error(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}${typeof code === 'string' ? ` (${code})` : ''}`);
+        // The place in the app where it failed: Node's message alone names no file.
+        const where = loaded instanceof ConfigError ? undefined : appFrameOf(loaded, root);
+        output.error(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}${typeof code === 'string' ? ` (${code})` : ''}${where ? `\n  at ${where}` : ''}`);
         await printSolutions(output, loaded, root, failing);
         printPackageAdvice(output, loaded, root, failing);
         return 1;
       }
-      warning = `${loaded.message.split('\n')[0]} — showing built-in commands only.`;
+      const where = appFrameOf(loaded, root);
+      warning = `${loaded.message.split('\n')[0]}${where ? ` (at ${where})` : ''} — showing built-in commands only.`;
       if (!json) output.warn(warning);
     } else {
       app = loaded;
