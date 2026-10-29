@@ -104,9 +104,9 @@ export function registerInModule(
 }
 
 /** Adds the module to `modules` in bootstrap/app.ts — or prints the lines to add. */
-export function registerModule(input: CommandInput, name: string, dir: string): void {
+export function registerModule(input: CommandInput, name: string, dir: string): ReturnType<typeof registerInModule> {
   const variable = bindingNameOf(name);
-  registerInModule(
+  return registerInModule(
     input,
     name,
     dir,
@@ -133,7 +133,7 @@ export class MakeModuleCommand {
   static options = { force: { type: 'boolean' }, 'no-register': { type: 'boolean' } } as const;
   static boots = false;
 
-  handle(input: CommandInput): number {
+  handle(input: CommandInput): number | Promise<number> {
     const [name] = input.args;
     if (!name || !KEBAB.test(name)) {
       throw new CommandArgumentsError('Pass a kebab-case name, e.g. marmeon make:module billing');
@@ -144,7 +144,20 @@ export class MakeModuleCommand {
       write(input, join(dir, 'index.ts'), MODULE(name)) && write(input, join(dir, 'routes.ts'), ROUTES);
     if (!ok) return 1;
 
-    registerModule(input, name, dir);
+    const registered = registerModule(input, name, dir);
+    // The app sees the module only once it is registered; `db:types` lists the modules the app registers.
+    if (!dependsOn(input.root, '@marmeon/database')) return 0;
+    if (registered === 'added' || registered === 'present') return this.#writeTypes(input, name);
+    // Registered by hand, the module reaches the types only after `db:types` runs again.
+    input.output.line(style('dim', '  marmeon db:types'));
+    return 0;
+  }
+
+  /** The module is made either way: a failing `db:types` leaves a line to run it, not a failed exit. */
+  async #writeTypes(input: CommandInput, name: string): Promise<number> {
+    input.output.line();
+    const code = await input.spawn('db:types').catch(() => 1);
+    if (code !== 0) input.output.warn(`Run marmeon db:types before you use Database<'${name}'>.`);
     return 0;
   }
 }

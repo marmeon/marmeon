@@ -198,7 +198,7 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 
 | Command | Writes |
 | --- | --- |
-| `make:module <name> [--no-register]` | `modules/<name>/index.ts` and `routes.ts`; adds the module last in `modules` of `bootstrap/app.ts`. |
+| `make:module <name> [--no-register]` | `modules/<name>/index.ts` and `routes.ts`; adds the module last in `modules` of `bootstrap/app.ts`, then runs `db:types` in an app with `@marmeon/database`. |
 | `make:controller <Name> --module=<m> [--view] [--request]` | A controller. `--view` adds its page, `--request` a query or body schema. See [controllers](controllers.md#creating-a-controller). |
 | `make:event <Name> --module=<m>` | An event class in `events/`. See [events](events.md#defining-events). |
 | `make:listener <Name> --event=<Event> --module=<m> [--queued] [--no-register]` | A listener in `listeners/`, added to the module's `listeners` with its event. It writes nothing and exits with 1 when the event is neither in the module's `events/` nor imported by its `index.ts`. `--queued` writes a [queued listener](events.md#queued-listeners) with `static queue` and a stable `static listener` (`<m>.<name>`). See [events](events.md#registering-listeners). |
