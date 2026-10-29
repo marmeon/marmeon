@@ -321,6 +321,10 @@ export class QueueManager implements Queue {
             throw new QueueError(`${record.job} released itself, but the sync connection runs a job only once, at dispatch — queue it on a worker's connection to run it again later.`);
           }
         } catch (error) {
+          // The sync connection has one attempt: this is the job's final failure.
+          await runner.failed(ready, { attempt: 1, queue, connection, signal: new AbortController().signal }, error).catch((thrown: unknown) => {
+            this.#deps.logger.child({ job: record.job, jobId: record.uuid, attempt: 1 }).error(`failed() of ${record.job} threw: ${this.#redactor.text(thrown instanceof Error ? thrown.message : String(thrown))}`, { queue });
+          });
           await this.#emit(new JobFailed({ ...about, attempt: 1, error: error instanceof Error ? error : new Error(String(error)) }));
           throw error;
         } finally {

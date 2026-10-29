@@ -85,6 +85,15 @@ export interface WorkerDependencies {
   readonly errors?: ErrorReports;
 }
 
+/** What a final failure needs to call the job's `failed()`: the ready job, and how long a stop request may be waited for. */
+interface FinalContext {
+  readonly prepared: Extract<Prepared, { kind: 'ready' }>;
+  readonly grace: number;
+  readonly signal: AbortSignal | undefined;
+  /** When a stop was asked for (`performance.now()`), if it was. */
+  readonly stoppedAt: () => number | undefined;
+}
+
 type Outcome = 'processed' | 'released' | 'failed' | 'interrupted';
 
 const DEFAULT_STOP_TIMEOUT = 10;
@@ -184,6 +193,18 @@ export class Worker {
 
   /** @internal Runs one claimed job to its outcome; `work()` and the test queue call it. */
   async process(reserved: ReservedJob, options: Pick<WorkOptions, 'stopTimeout' | 'signal' | 'onStuck'> = {}): Promise<Outcome> {
+    // When the stop was asked for: from then on the attempt and a final `failed()` share one `stopTimeout`.
+    let stoppedAt: number | undefined = options.signal?.aborted ? performance.now() : undefined;
+    const tracking = new AbortController();
+    options.signal?.addEventListener('abort', () => (stoppedAt ??= performance.now()), { once: true, signal: tracking.signal });
+    try {
+      return await this.#process(reserved, options, () => stoppedAt);
+    } finally {
+      tracking.abort();
+    }
+  }
+
+  async #process(reserved: ReservedJob, options: Pick<WorkOptions, 'stopTimeout' | 'signal' | 'onStuck'>, stoppedAt: () => number | undefined): Promise<Outcome> {
     const stopTimeout = stopTimeoutOf(options);
     const { runner } = this.#deps;
     const prepared = await runner.prepare(reserved.payload).catch((error: unknown): Prepared => ({ kind: 'poison', record: undefined, reason: `The record could not be prepared: ${this.#message(error)}` }));
@@ -198,7 +219,7 @@ export class Worker {
     const { record } = prepared;
     // A job that comes back more often than it may — its worker died during each attempt — fails instead of looping.
     if (reserved.attempts > record.tries) {
-      await this.#fail(reserved, record, new Error(`${record.job} has been attempted ${reserved.attempts - 1} times without finishing (its worker stopped during each); it may run ${record.tries}.`), '');
+      await this.#fail(reserved, record, new Error(`${record.job} has been attempted ${reserved.attempts - 1} times without finishing (its worker stopped during each); it may run ${record.tries}.`), '', undefined, undefined, undefined, { prepared, grace: stopTimeout, signal: options.signal, stoppedAt });
       return 'failed';
     }
 
@@ -230,7 +251,7 @@ export class Worker {
           await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: ONCE_BUSY_DELAY, reason: 'busy', ms }));
           return 'released';
         }
-        return this.#retryOrFail(reserved, record, settled.error, ms, 'error');
+        return this.#retryOrFail(reserved, prepared, settled.error, ms, 'error', { prepared, grace: stopTimeout, signal: options.signal, stoppedAt });
       case 'done':
         break;
     }
@@ -239,7 +260,7 @@ export class Worker {
     if (requested?.kind === 'release') {
       // Released on its last attempt (by the job, or a middleware like withoutOverlapping): no attempt is left to run it.
       if (reserved.attempts >= record.tries) {
-        await this.#fail(reserved, record, new Error(`${record.job} was released on its last attempt (${reserved.attempts} of ${record.tries}) — give it more tries if it waits for something.`), '', ms);
+        await this.#fail(reserved, record, new Error(`${record.job} was released on its last attempt (${reserved.attempts} of ${record.tries}) — give it more tries if it waits for something.`), '', ms, undefined, undefined, { prepared, grace: stopTimeout, signal: options.signal, stoppedAt });
         return 'failed';
       }
       await this.#deps.driver.release(reserved, requested.delay, { availableAt: this.#deps.clock.now() + Math.round(requested.delay * 1000) });
@@ -248,7 +269,7 @@ export class Worker {
       return 'released';
     }
     if (requested?.kind === 'fail') {
-      await this.#fail(reserved, record, typeof requested.reason === 'string' ? new Error(requested.reason) : requested.reason, ' (by the job)', ms);
+      await this.#fail(reserved, record, typeof requested.reason === 'string' ? new Error(requested.reason) : requested.reason, ' (by the job)', ms, undefined, undefined, { prepared, grace: stopTimeout, signal: options.signal, stoppedAt });
       return 'failed';
     }
     // Success hands the chain on — together with the acknowledgement (one atomic step of the driver). A discarded job
@@ -510,7 +531,8 @@ export class Worker {
     return known;
   }
 
-  async #retryOrFail(reserved: ReservedJob, record: JobRecord, error: unknown, ms: number | undefined, reason: 'error'): Promise<Outcome> {
+  async #retryOrFail(reserved: ReservedJob, prepared: Extract<Prepared, { kind: 'ready' }>, error: unknown, ms: number | undefined, reason: 'error', final: FinalContext): Promise<Outcome> {
+    const { record } = prepared;
     const context = { queue: reserved.queue, ...(ms === undefined ? {} : { ms }) };
     if (reserved.attempts < record.tries) {
       const delay = backoffDelay(record.backoff, reserved.attempts);
@@ -519,13 +541,14 @@ export class Worker {
       await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: delay, reason, ...(ms === undefined ? {} : { ms }) }));
       return 'released';
     }
-    await this.#fail(reserved, record, error, record.tries > 1 ? ` after ${record.tries} attempts` : '', ms);
+    await this.#fail(reserved, record, error, record.tries > 1 ? ` after ${record.tries} attempts` : '', ms, undefined, undefined, final);
     return 'failed';
   }
 
   /** `identity`: what a payload that is no record says about itself — its id, name and unique lock label the failure. */
   /** `reported`: what the error reporters are told instead of `error`, when its text quotes the payload. */
-  async #fail(reserved: ReservedJob, record: JobRecord | undefined, error: unknown, how: string, ms?: number, identity?: RecordIdentity, reported?: Error): Promise<void> {
+  /** `final`: the job and its readable payload — its `failed()` is called, if this worker removed the job; without it (a payload that cannot run) nothing is. */
+  async #fail(reserved: ReservedJob, record: JobRecord | undefined, error: unknown, how: string, ms?: number, identity?: RecordIdentity, reported?: Error, final?: FinalContext): Promise<void> {
     const name = record?.job ?? identity?.job ?? '?';
     const uuid = record?.uuid ?? identity?.uuid ?? crypto.randomUUID();
     // Recorded first, then removed: a crash in between runs the job once more (at-least-once), it never vanishes.
@@ -553,7 +576,49 @@ export class Worker {
     // A unique job that failed for good is done: a new one with its key may be queued.
     const locked = record ?? (identity?.unique ? ({ uuid, job: name, unique: identity.unique } as JobRecord) : undefined);
     if (removed && locked) await this.#releaseUnique(locked, 'done');
+    // Only the worker that removed the job calls it: with a lost claim another one holds the job and calls it (or finishes the job).
+    if (final && removed) await this.#callFailed(final, reserved, name, error, bindings);
     await this.#emit(new JobFailed({ connection: this.#deps.connection, queue: reserved.queue, job: name, jobId: uuid, attempt: reserved.attempts, error: error instanceof Error ? error : new Error(String(error)) }));
+  }
+
+  /**
+   * The job's `failed()`, bounded like an attempt: at the job's timeout its `job.signal` aborts; one that has not settled a grace
+   * period later (or when a stop request has waited that long) is no longer waited for. What it throws is logged, masked; nothing stops the worker.
+   */
+  async #callFailed({ prepared, grace, signal, stoppedAt }: FinalContext, reserved: ReservedJob, name: string, error: unknown, bindings: Record<string, unknown>): Promise<void> {
+    const timeout = timeoutOf(prepared.job);
+    const abort = new AbortController();
+    const timers = new AbortController();
+    const logger = this.#deps.logger.child(bindings);
+    const running = this.#deps.runner
+      .failed(prepared, { attempt: reserved.attempts, queue: reserved.queue, connection: this.#deps.connection, signal: abort.signal }, error)
+      .then(
+        () => undefined,
+        (thrown: unknown) => logger.error(`failed() of ${name} threw: ${this.#message(thrown)}`, { queue: reserved.queue }),
+      );
+    const wait = (ms: number) => sleep(ms, undefined, { signal: timers.signal }).then(
+      () => true,
+      () => false,
+    );
+    const late = wait(timeout * 1000)
+      .then((elapsed) => {
+        if (elapsed) abort.abort(new JobTimeoutError(`failed() of ${name} timed out after ${timeout}s`));
+        return elapsed ? wait(grace * 1000) : false;
+      })
+      .then((elapsed) => (elapsed ? timeout : undefined));
+    // Since the stop the attempt has used part of `grace`: `failed()` gets what is left, so both together never exceed it.
+    const stopped = stopRequested(signal, timers.signal)
+      .then((requested) => (requested ? wait(Math.max(0, grace * 1000 - (performance.now() - (stoppedAt() ?? performance.now())))) : false))
+      .then((elapsed) => {
+        if (elapsed) abort.abort(new JobTimeoutError('the worker is stopping'));
+        return elapsed ? 0 : undefined;
+      });
+    try {
+      const waited = await Promise.race([running.then(() => undefined), late.then((v) => v ?? never<number>()), stopped.then((v) => v ?? never<number>())]);
+      if (waited !== undefined) logger.error(`failed() of ${name} did not finish within ${waited === 0 ? `${grace}s of the stop request` : `its timeout of ${timeout}s and ${grace}s more`}; the worker does not wait for it`, { queue: reserved.queue });
+    } finally {
+      timers.abort();
+    }
   }
 
   /** An error's message for a log line — redacted like the stored error, by the same Redactor: a message may quote a secret. */

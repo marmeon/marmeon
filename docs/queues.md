@@ -387,6 +387,37 @@ notification whose data its schema rejects.
 See [Deploying while jobs wait](#deploying-while-jobs-wait). A job claimed more often than its `tries`, because its worker died
 each time, fails instead of coming back forever.
 
+### When a job fails for good
+
+A job fails for good when its last attempt fails or times out, when it calls `job.fail()`, when it is released on its last attempt, or when
+it came back more often than its `tries` because its worker died during each attempt.
+It then runs `failed(payload, error, job)` at most once, before `JobFailed`: the job is built like for `handle()`, with constructor injection,
+and gets its decrypted payload, the error and the context of the final attempt. Use it to answer for the payload, for example to set a
+delivery log to `failed`:
+
+```ts
+export class SendInvoiceJob {
+  constructor(private readonly deliveries: Deliveries) {}
+
+  async failed(payload: JobPayload<typeof SendInvoiceJob>, error: Error, job: JobContext): Promise<void> {
+    await this.deliveries.markFailed(payload.invoiceId, error.message);
+  }
+}
+```
+
+It runs at most once because only the worker that removes the job from the queue calls it: a worker whose claim expired (`retryAfterSeconds`)
+does not, as another worker holds the job then and either calls it or finishes the job. A crash between the removal and the call loses the
+call, so write a `failed()` that is safe to skip: the failed jobs list still holds the job.
+
+`failed()` is bounded like `handle()`. Its `job.signal` aborts at the job's `timeout`; a `failed()` that has not returned a grace period
+later (the stop timeout of the worker) is no longer awaited. The worker logs that it did not finish and goes on with `JobFailed`, and a
+stopping worker does not wait for it longer than that.
+
+An attempt that will run again does not call it. Neither does a job whose payload cannot be read (a plain payload for an encrypted job, a
+record that is no job): there is no payload to give. On the `sync` connection the one attempt is the last. If `failed()` throws, the
+worker logs the message, masked like a failed job's error, and goes on: the entry in the failed jobs and `JobFailed` stand, and the
+worker is not stopped.
+
 ### Failed jobs
 
 | Command | What it does |

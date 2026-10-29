@@ -91,6 +91,14 @@ export interface JobStatics {
 /** An instance of a job: built per attempt through the container (constructor injection), then `handle(payload, job)`. */
 export interface JobInstance {
   handle(payload: any, job: JobContext): void | Promise<void>;
+  /**
+   * Runs at most once when the job fails for good: its last attempt fails or times out, it calls `job.fail()`, it is released on its last
+   * attempt, or it came back more often than its `tries` because its worker died during each. Gets the decrypted payload, the error and the
+   * final attempt's context, with `job.signal` aborting at the job's `timeout`. Built like for `handle()` (constructor injection). Not called
+   * for a payload that cannot be read or by a worker that lost its claim; a throw is logged and changes nothing else.
+   * See `docs/queues.md#when-a-job-fails-for-good`.
+   */
+  failed?(payload: any, error: Error, job: JobContext): void | Promise<void>;
 }
 
 /** A job class — a class with `static job`, `static schema` and `handle()`, like a controller. */

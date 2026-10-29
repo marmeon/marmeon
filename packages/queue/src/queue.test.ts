@@ -33,6 +33,8 @@ class Seen {
   readonly entries: { job: string; payload: unknown; attempt: number; id: string; unit?: string; log?: Record<string, unknown> }[] = [];
   /** The ids of the `JobQueued` events, in order. */
   readonly queued: string[] = [];
+  /** What `failed()` of `FinalJob` was called with. */
+  readonly finals: { payload: unknown; message: string; attempt: number; tries: number; unit: string }[] = [];
 }
 
 /** Records every `JobQueued`. */
@@ -148,7 +150,87 @@ class LeakyJob {
   }
 }
 
-const allJobs = [WelcomeJob, FlakyJob, ChoosyJob, PoliteSlowJob, RudeSlowJob, ResetLinkJob, LeakyJob];
+/** Fails every attempt (or ends itself the way its payload says); `failed()` records what it gets, and can throw. */
+class FinalJob {
+  static readonly job = 'test.final';
+  static readonly schema = v.object({ how: v.picklist(['throw', 'fail', 'slow']), failedThrows: v.optional(v.boolean()) });
+  static readonly tries = 2;
+  static readonly timeout = 0.1;
+
+  readonly #seen: Seen;
+  readonly #unit: UnitOfWork;
+
+  constructor(seen: Seen, unit: UnitOfWork) {
+    this.#seen = seen;
+    this.#unit = unit;
+  }
+
+  async handle(payload: JobPayload<typeof FinalJob>, job: JobContext): Promise<void> {
+    if (payload.how === 'fail') return job.fail('no way');
+    if (payload.how === 'slow') await sleep(5000, undefined, { signal: job.signal });
+    throw new Error('delivery refused');
+  }
+
+  failed(payload: JobPayload<typeof FinalJob>, error: Error, job: JobContext): void {
+    this.#seen.queued.push('failed()');
+    this.#seen.finals.push({ payload, message: error.message, attempt: job.attempt, tries: job.tries, unit: this.#unit.id });
+    if (payload.failedThrows) throw new Error('could not write the log: password=hunter2');
+  }
+}
+
+/** Ends the sleeps of the jobs that hang in failed(): aborted when a test is over, so no timer outlives it. */
+const hangs = { controller: new AbortController() };
+
+/** One try only; releases itself, loses its claim to another worker, or hangs in failed() — by payload. */
+class OneTryJob {
+  static readonly job = 'test.one-try';
+  static readonly schema = v.object({ how: v.picklist(['release', 'steal', 'hang']) });
+  static readonly tries = 1;
+  static readonly timeout = 0.1;
+  /** What `steal` does while the job runs: another worker takes the claim over. */
+  static stealing: (() => Promise<void>) | undefined;
+  static signalAborted: boolean | undefined;
+
+  readonly #seen: Seen;
+
+  constructor(seen: Seen) {
+    this.#seen = seen;
+  }
+
+  async handle(payload: JobPayload<typeof OneTryJob>, job: JobContext): Promise<void> {
+    if (payload.how === 'release') return job.release();
+    await OneTryJob.stealing?.();
+    throw new Error('lost it');
+  }
+
+  async failed(payload: JobPayload<typeof OneTryJob>, error: Error, job: JobContext): Promise<void> {
+    this.#seen.finals.push({ payload, message: error.message, attempt: job.attempt, tries: job.tries, unit: '' });
+    if (payload.how !== 'hang') return;
+    // Ignores its signal: only the worker's bound ends the wait.
+    job.signal.addEventListener('abort', () => (OneTryJob.signalAborted = true), { once: true });
+    await sleep(1500, undefined, { signal: hangs.controller.signal }).catch(() => {});
+  }
+}
+
+/** Fails 0.35s after it started, on its only try; its `failed()` hangs and ignores `job.signal`. */
+class StopJob {
+  static readonly job = 'test.stop';
+  static readonly schema = v.object({});
+  static readonly tries = 1;
+  static signalAborted: boolean | undefined;
+
+  async handle(): Promise<void> {
+    await sleep(350);
+    throw new Error('too late');
+  }
+
+  async failed(_payload: unknown, _error: Error, job: JobContext): Promise<void> {
+    job.signal.addEventListener('abort', () => (StopJob.signalAborted = true), { once: true });
+    await sleep(5000, undefined, { signal: hangs.controller.signal }).catch(() => {});
+  }
+}
+
+const allJobs = [WelcomeJob, FinalJob, OneTryJob, StopJob, FlakyJob, ChoosyJob, PoliteSlowJob, RudeSlowJob, ResetLinkJob, LeakyJob];
 
 /** A real app: database (SQLite in memory, migrated), queue, encryption — the jobs in one module. */
 async function app(options: { env?: Record<string, string>; modules?: ModuleDefinition[]; clock?: TestClock; logger?: Logger } = {}): Promise<Application & { seen: Seen; clock: TestClock }> {
@@ -407,6 +489,174 @@ describe('dispatching', () => {
     expect(application.seen.entries).toMatchObject([{ payload: { email: 'ada@example.com', token: 'plain-secret-token' } }]);
   });
 });
+
+describe('a job that fails for good', () => {
+  const logging = () => {
+    const logged: string[] = [];
+    const capture: Logger = { debug() {}, info() {}, warn: (message) => logged.push(message), error: (message) => logged.push(message), child: () => capture };
+    return { logged, capture };
+  };
+  const workerOf = async (application: Application) => {
+    const { QueueConnections } = await import('./connections.ts');
+    const connections = application.container.make(QueueConnections);
+    return { connections, run: () => connections.worker('database', 10).run({ queues: ['default'], stopWhenEmpty: true }) };
+  };
+
+  it('calls failed() once, with the payload, the error and the last attempt — and not after an attempt that will be repeated', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    await application.container.make(Queue).dispatch(FinalJob, { how: 'throw' });
+    const { connections, run } = await workerOf(application);
+    expect(await connections.worker('database', 10).run({ queues: ['default'], stopWhenEmpty: true, maxJobs: 1 })).toMatchObject({ released: 1, failed: 0 });
+    expect(application.seen.finals).toEqual([]);
+    application.clock.travel({ seconds: 1 });
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.finals).toEqual([{ payload: { how: 'throw' }, message: 'delivery refused', attempt: 2, tries: 2, unit: expect.any(String) }]);
+    expect(await connections.failed().all()).toHaveLength(1);
+  });
+
+  it('calls failed() for job.fail() and for a timeout on the last attempt', async () => {
+    await using application = await app();
+    const queue = application.container.make(Queue);
+    await queue.dispatch(FinalJob, { how: 'fail' });
+    const { run } = await workerOf(application);
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.finals.map((entry) => [entry.message, entry.attempt])).toEqual([['no way', 1]]);
+    await queue.dispatch(FinalJob, { how: 'slow' });
+    // Zero backoff: both attempts run in this round, the first times out and is repeated.
+    expect(await run()).toMatchObject({ released: 1, failed: 1 });
+    expect(application.seen.finals.map((entry) => entry.attempt)).toEqual([1, 2]);
+    expect(application.seen.finals[1]!.message).toMatch(/timed out|timeout/i);
+  });
+
+  it('logs a failed() that throws, masked, and keeps the failed entry and JobFailed', async () => {
+    const { logged, capture } = logging();
+    await using application = await app({ logger: capture, modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobFailed, FailedRecorder)] }] });
+    await application.container.make(Queue).dispatch(FinalJob, { how: 'fail', failedThrows: true });
+    const { connections, run } = await workerOf(application);
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(await connections.failed().all()).toMatchObject([{ job: 'test.final', exception: expect.stringContaining('no way') }]);
+    expect(application.seen.queued).toEqual(['failed()', 'failed:test.final']);
+    expect(logged.filter((line) => line.startsWith('failed() of'))).toEqual(['failed() of test.final threw: could not write the log: password=[redacted]']);
+    expect(logged.join('\n')).not.toContain('hunter2');
+  });
+
+  /** A worker on the memory driver whose claims expire after a minute. */
+  const memoryWorker = (application: Application, logger: Logger = silent) => {
+    const clock = application.container.make(Clock);
+    const driver = new MemoryQueueDriver({ clock, retryAfterSeconds: 60 });
+    const container = application.container;
+    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter));
+    const events: JobEvent[] = [];
+    const w = new Worker({ driver, connection: 'memory', runner, failed: new MemoryFailedJobStore(), clock, logger, retryAfterSeconds: 60, events: async (event) => void events.push(event) });
+    return { driver, events, run: (options: { stopTimeout?: number; signal?: AbortSignal } = {}) => w.run({ queues: ['default'], stopWhenEmpty: true, ...options }) };
+  };
+
+  it('calls failed() when a job is released on its last attempt', async () => {
+    await using application = await app();
+    const { driver, run } = memoryWorker(application);
+    await push(application, driver, 'test.one-try', { how: 'release' });
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.finals).toMatchObject([{ attempt: 1, tries: 1, message: expect.stringContaining('released on its last attempt') }]);
+  });
+
+  it('calls failed() for a job claimed again after its worker died in every attempt', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    const { driver, run } = memoryWorker(application);
+    await push(application, driver, 'test.one-try', { how: 'release' });
+    await driver.reserve(['default']);
+    application.clock.travel({ seconds: 61 });
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.finals).toMatchObject([{ attempt: 2, tries: 1, message: expect.stringContaining('attempted 1 times without finishing') }]);
+  });
+
+  it('calls failed() at most once: not by a worker that lost its claim, then once by the one that holds the job', async () => {
+    await using application = await app();
+    application.clock.freeze();
+    const { driver, run } = memoryWorker(application);
+    await push(application, driver, 'test.one-try', { how: 'steal' });
+    OneTryJob.stealing = async () => {
+      application.clock.travel({ seconds: 61 });
+      await driver.reserve(['default']);
+    };
+    try {
+      expect(await run()).toMatchObject({ failed: 1 });
+    } finally {
+      OneTryJob.stealing = undefined;
+    }
+    // The first worker's claim was gone: its fail() removed nothing, so it did not call failed().
+    expect(application.seen.finals).toEqual([]);
+    application.clock.travel({ seconds: 61 });
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.finals).toHaveLength(1);
+  });
+
+  it('stops waiting for a failed() that ignores its signal: the signal aborts at the timeout, the worker logs it and goes on with JobFailed', async () => {
+    const { logged, capture } = logging();
+    await using application = await app({ logger: capture });
+    OneTryJob.signalAborted = undefined;
+    const { driver, events, run } = memoryWorker(application, capture);
+    await push(application, driver, 'test.one-try', { how: 'hang' });
+    const started = performance.now();
+    expect(await run({ stopTimeout: 0.1 })).toMatchObject({ failed: 1 });
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(OneTryJob.signalAborted).toBe(true);
+    expect(logged.some((line) => line.startsWith('failed() of test.one-try did not finish within its timeout of 0.1s'))).toBe(true);
+    expect(events.some((event) => event instanceof JobFailed)).toBe(true);
+    hangs.controller.abort();
+    hangs.controller = new AbortController();
+  });
+
+  it('gives a failed() only what is left of the stop timeout after the attempt, and aborts its signal when it gives up', async () => {
+    const { logged, capture } = logging();
+    await using application = await app({ logger: capture });
+    StopJob.signalAborted = undefined;
+    const { driver, events, run } = memoryWorker(application, capture);
+    await push(application, driver, 'test.stop', {});
+    const stop = new AbortController();
+    const running = run({ stopTimeout: 0.6, signal: stop.signal });
+    await sleep(50);
+    const stoppedAt = performance.now();
+    stop.abort();
+    expect(await running).toMatchObject({ failed: 1 });
+    // The attempt took 0.3s of the 0.6s after the stop: failed() got 0.3s, not another 0.6s.
+    expect(performance.now() - stoppedAt).toBeLessThan(800);
+    expect(StopJob.signalAborted).toBe(true);
+    expect(logged.some((line) => line.startsWith('failed() of test.stop did not finish within 0.6s of the stop request'))).toBe(true);
+    expect(events.some((event) => event instanceof JobFailed)).toBe(true);
+    hangs.controller.abort();
+    hangs.controller = new AbortController();
+  });
+
+  it('does not call failed() for a payload that cannot be read', async () => {
+    await using application = await app({ modules: [{ name: 'test', jobs: allJobs }] });
+    const { driver, failed, worker: w } = worker(application);
+    await push(application, driver, 'test.final', { how: 'throw' }, { encrypted: true });
+    expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ failed: 1 });
+    expect(await failed.all()).toHaveLength(1);
+    expect(application.seen.finals).toEqual([]);
+  });
+
+  it('calls failed() on the sync connection, where the one attempt is the last', async () => {
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' } });
+    await expect(application.container.make(Queue).dispatch(FinalJob, { how: 'throw' })).rejects.toThrow('delivery refused');
+    expect(application.seen.finals).toMatchObject([{ message: 'delivery refused', attempt: 1 }]);
+  });
+});
+
+/** Records the order `JobFailed` came in (into `Seen.queued`, a test-only list of ids). */
+class FailedRecorder {
+  readonly #seen: Seen;
+
+  constructor(seen: Seen) {
+    this.#seen = seen;
+  }
+
+  handle(event: JobFailed): void {
+    this.#seen.queued.push(`failed:${event.job}`);
+  }
+}
 
 describe('the worker', () => {
   it('retries with the backoff of the dispatch (on the queue clock), then records the failure — redacted, same job id', async () => {

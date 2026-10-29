@@ -100,6 +100,7 @@ export type JobInput<J extends JobStatics> = SchemaInput<J['schema']>;
 // JobInstance
 export interface JobInstance {
     handle(payload: any, job: JobContext): void | Promise<void>;
+    failed?(payload: any, error: Error, job: JobContext): void | Promise<void>;
 }
 // JobMiddleware
 export interface JobMiddleware<P = any> {
@@ -529,6 +530,7 @@ export type JobInput<J extends JobStatics> = SchemaInput<J['schema']>;
 // JobInstance
 export interface JobInstance {
     handle(payload: any, job: JobContext): void | Promise<void>;
+    failed?(payload: any, error: Error, job: JobContext): void | Promise<void>;
 }
 // JobMiddleware
 export interface JobMiddleware<P = any> {
