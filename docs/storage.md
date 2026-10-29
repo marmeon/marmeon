@@ -250,6 +250,17 @@ the file only if it still has it too. A file that changed in between is refused 
 does, and so does the S3-compatible store the tests run against.
 Storing does not read the file into memory: on the same S3 store the bucket copies it, elsewhere it is streamed with its length.
 
+### Reading an upload
+
+`await upload.bytes()` returns the file as a `Uint8Array`, and `await upload.text()` as UTF-8 text with a
+leading byte order mark removed. Neither uses the upload up: the file stays where it is and `store()` still works, so an import
+can read, check and answer without keeping anything, and a corrected form can send the same token again. A second call reads
+the file again. At most the checked `size` is read, so a file that grew meanwhile is not buffered, and on S3 the read is pinned by
+the ETag like `store()`. A file that is gone, changed, shorter or longer than checked is a 422 at its field ("The file did not arrive"); so is
+`text()` of bytes that are no UTF-8. For another encoding take `bytes()`, and for a CSV `readCsv()`
+([importing a CSV file](tables.md#importing-a-csv-file)). The bytes sit in memory, so keep the rule's `maxBytes` as low as the
+use needs. Like `dimensions()`, both throw after `store()`, which moves the file.
+
 ### The uploads table
 
 Uploads keep their tokens in a table, which the app creates once. The table is `temporary_uploads` (`UPLOADS_TABLE` of `@marmeon/storage`):

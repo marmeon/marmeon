@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { ConsoleLogger } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, sql } from '@marmeon/database';
-import { HttpError } from '@marmeon/router';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { HttpError, ValidationError } from '@marmeon/router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatBytes } from './uploads/rule.ts';
 import type { Disk } from './disk.ts';
 import { ensureBucket, S3_ENDPOINT, s3Options } from './__fixtures__/disks.ts';
@@ -153,6 +153,73 @@ describe('temporary uploads: what may wait unsent', () => {
       expect(found).toMatchObject({ field: 'avatar' });
       expect(await (found as { dimensions(): Promise<unknown> }).dimensions()).toEqual(expected);
     }
+  });
+
+  describe('bytes() and text() read an upload without using it up', () => {
+    const scope = { session: 'a', route: 'avatar.update', field: 'avatar' };
+    const stream = (contents: Uint8Array) => new ReadableStream<Uint8Array>({ start: (controller) => (controller.enqueue(contents), controller.close()) });
+    type Found = { bytes(): Promise<Uint8Array>; text(): Promise<string>; store(disk: Disk, directory?: string): Promise<string> };
+
+    async function received(contents: Uint8Array) {
+      const service = uploads();
+      const token = (await service.target(request('a', contents.byteLength))).token;
+      await service.receive(token.slice(3, 39), 'a', stream(contents), undefined);
+      return { service, found: (await service.resolve(token, scope)) as unknown as Found, key: ((await rows())[0] as unknown as { key: string }).key };
+    }
+    const refused = async (promise: Promise<unknown>) => {
+      const error = await promise.then(() => undefined, (caught: unknown) => caught);
+      expect(error).toBeInstanceOf(ValidationError);
+      return error as ValidationError;
+    };
+
+    it('read the file, again on a second call, and leave the upload usable: store() still works', async () => {
+      const contents = new TextEncoder().encode('name;email\nAda;ada@example.com\n');
+      const { found } = await received(contents);
+      expect(await found.bytes()).toEqual(contents);
+      expect(await found.text()).toBe('name;email\nAda;ada@example.com\n');
+      expect(await found.bytes()).toEqual(contents);
+      disk.assertCount(1);
+      const target = new MemoryDisk({ name: 'public', visibility: 'private', url: undefined, temporaryUrls: NO_TEMPORARY_URLS, clock });
+      const key = await found.store(target, 'imports');
+      expect(await target.get(key)).toEqual(contents);
+      disk.assertCount(0);
+    });
+
+    it('text() removes a byte order mark and refuses bytes that are no UTF-8 with a 422 at the field', async () => {
+      const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode('a;b\n')]);
+      expect(await (await received(bom)).found.text()).toBe('a;b\n');
+      const error = await refused((await received(new Uint8Array([0x61, 0x3b, 0xe4, 0x0a]))).found.text()); // Windows-1252 "a;ä"
+      expect(error.errors).toMatchObject({ avatar: [expect.stringContaining('UTF-8')] });
+    });
+
+    it('stop at the size the check saw: a file that grew meanwhile is a 422, and is not read in full', async () => {
+      const { found } = await received(new Uint8Array(10));
+      const pulled: number[] = [];
+      const grown = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulled.push(1);
+          controller.enqueue(new Uint8Array(1024));
+        },
+      });
+      vi.spyOn(disk, 'stream').mockResolvedValue(grown);
+      await refused(found.bytes());
+      expect(pulled.length).toBeLessThanOrEqual(3);
+    });
+
+    it('a file that ended short of the checked size is a 422, not a partial read', async () => {
+      const { found } = await received(new Uint8Array(10));
+      vi.spyOn(disk, 'stream').mockResolvedValue(stream(new Uint8Array(4)));
+      await refused(found.bytes());
+    });
+
+    it('a file that is gone, or was used up by another request meanwhile, is a 422 — and after store() the call throws', async () => {
+      const { found, key } = await received(new TextEncoder().encode('a;b\n'));
+      await disk.delete(key);
+      await refused(found.bytes());
+      const second = await received(new TextEncoder().encode('a;b\n'));
+      await second.found.store(new MemoryDisk({ name: 'public', visibility: 'private', url: undefined, temporaryUrls: NO_TEMPORARY_URLS, clock }));
+      await expect(second.found.bytes()).rejects.toThrow('after store()');
+    });
   });
 
   it('uploads:prune deletes what expired — rows and files — and keeps what is still open', async () => {

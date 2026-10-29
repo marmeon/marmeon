@@ -405,6 +405,18 @@ if (!csv.ok) return this.redirect().back().withErrors({ file: [csv.error.message
 const { headers, rows, delimiter, encoding } = csv.value;
 ```
 
+The bytes of an uploaded file come from [`await upload.bytes()`](storage.md#reading-an-upload) of a `TemporaryUpload`, which reads the
+file without storing it. Check each row with `validate()` ([validation](validation.md#outside-a-request)), and answer the errors:
+
+```ts
+const csv = readCsv(await ctx.body.file.bytes(), { unescape: true });
+if (!csv.ok) return this.redirect().back().withErrors({ file: [csv.error.message] });
+for (const row of csv.value.rows) {
+  const member = await validate(MemberRow, { name: row[0], email: row[1] }, { translator });
+  if (!member.ok) problems.push(member.error.errors);
+}
+```
+
 - **Encoding.** A byte order mark decides (UTF-8, UTF-16LE, UTF-16BE) and is removed; one that contradicts a named `encoding` is
   `not-text`. Without one, bytes that are valid UTF-8 are UTF-8, and anything else is read as `windows-1252`, the encoding of a
   German spreadsheet's "CSV" export.

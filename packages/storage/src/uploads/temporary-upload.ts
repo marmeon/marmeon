@@ -17,6 +17,8 @@ export interface UploadSource {
   readonly etag?: string | undefined;
   /** The first `count` bytes of the file (fewer if it is shorter; none if it is gone or changed) — a ranged read on S3. */
   readStart(count: number): Promise<Uint8Array>;
+  /** The whole file, or `undefined` when it is gone, changed since the check, shorter or longer than `limit` bytes (the read stops there). */
+  read(limit: number): Promise<Uint8Array | undefined>;
   /** Marks the upload used — once: `false` when it was used already (or expired meanwhile). Atomic across processes. */
   consume(): Promise<boolean>;
 }
@@ -82,6 +84,42 @@ export class TemporaryUpload {
     if (this.#stored) throw new Error('TemporaryUpload.dimensions() was called after store(), which moves the file — read the size before storing it.');
     if (!this.mime.startsWith('image/')) return undefined;
     return imageDimensions(await this.#source.readStart(DIMENSION_BYTES), this.mime);
+  }
+
+  /**
+   * The file's bytes, read without using the upload up: `store()` still works afterwards, and a second call reads the file again.
+   * At most `size` bytes are read, and nothing is kept — the file stays where it is. A file that is gone or changed since the
+   * check (on S3: another ETag) or longer than it was is a validation error of its field (422, "The file did not arrive"). Call it before
+   * `store()`, which moves the file — afterwards it throws. The bytes sit in memory: keep the rule's `maxBytes` as low as the use
+   * needs (`docs/storage.md#reading-an-upload`).
+   */
+  async bytes(): Promise<Uint8Array> {
+    if (this.#stored) throw new Error('TemporaryUpload.bytes() was called after store(), which moves the file — read it before storing it.');
+    const bytes = await this.#source.read(this.size);
+    if (bytes === undefined) {
+      throw ValidationError.fromIssues(
+        [Object.assign({ message: 'The file did not arrive — choose it again.', path: this.field.split('.') }, { [TRANSLATION]: { key: 'marmeon.validation.upload.invalid' } })],
+        {},
+      );
+    }
+    return bytes;
+  }
+
+  /**
+   * The file as UTF-8 text, read like {@link bytes} (without using the upload up), with a leading byte order mark removed. Bytes
+   * that are not valid UTF-8 are a validation error of the field (422). For another encoding, such as the Windows-1252 of a spreadsheet's
+   * CSV, take `bytes()` and decode it yourself or with `readCsv()` of `@marmeon/table`.
+   */
+  async text(): Promise<string> {
+    const bytes = await this.bytes();
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      throw ValidationError.fromIssues(
+        [Object.assign({ message: 'The file is not UTF-8 text — save it as UTF-8.', path: this.field.split('.') }, { [TRANSLATION]: { key: 'marmeon.validation.upload.encoding' } })],
+        {},
+      );
+    }
   }
 
   /**

@@ -226,6 +226,8 @@ export declare class TemporaryUpload {
     readonly size: number;
     readonly mime: string;
     dimensions(): Promise<ImageDimensions | undefined>;
+    bytes(): Promise<Uint8Array>;
+    text(): Promise<string>;
     store(disk: Disk, directory?: string): Promise<string>;
     toJSON(): undefined;
 }

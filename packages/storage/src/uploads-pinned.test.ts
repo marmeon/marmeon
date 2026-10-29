@@ -214,6 +214,30 @@ describe('an uploaded S3 object is pinned by its ETag from the check to the stor
     expect(await checked.dimensions()).toBeUndefined();
   });
 
+  it('bytes() reads the whole object pinned by the ETag, without using the upload up — store() works after it', async () => {
+    const fake = new FakeS3();
+    const { uploads, token, id } = await target(fake, 1024);
+    fake.post('uploads', id, pngOf(1024));
+    const checked = upload(await uploads.resolve(token, SCOPE));
+    expect(await checked.bytes()).toEqual(pngOf(1024));
+    const whole = fake.calledWith('GetObject').filter((input) => input.Range === undefined && input.IfMatch !== undefined);
+    expect(whole.length).toBeGreaterThanOrEqual(1);
+    expect(fake.calledWith('DeleteObject')).toEqual([]);
+    const elsewhere = memory();
+    await checked.store(elsewhere, 'avatars');
+    elsewhere.assertCount(1);
+  });
+
+  it('bytes() and text() of an object that was posted again after the check are a 422, not the new file', async () => {
+    const fake = new FakeS3();
+    const { uploads, token, id } = await target(fake, PNG.byteLength);
+    fake.post('uploads', id, PNG);
+    const checked = upload(await uploads.resolve(token, SCOPE));
+    fake.post('uploads', id, HTML);
+    await expect(checked.bytes()).rejects.toBeInstanceOf(ValidationError);
+    await expect(checked.text()).rejects.toBeInstanceOf(ValidationError);
+  });
+
   it.skipIf(!S3_ENDPOINT)('against a real store: dimensions() reads the size of a large object from a range', async () => {
     await ensureBucket();
     const s3 = new S3Disk({ name: 'uploads', options: s3Options(`p-${randomUUID()}`, 'private'), visibility: 'private', clock });
