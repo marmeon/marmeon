@@ -15,14 +15,14 @@ export interface ForeignKey {
 }
 
 /**
- * One mark of the migrations: a table's `timestamps()`/`softDeletes()` (column `''`), or a foreign key's `.inverse()`.
+ * One mark of the migrations: a table's `timestamps()`/`softDeletes()`/`notPivot()` (column `''`), or a foreign key's `.inverse()`.
  * See `docs/migrations.md#timestamps-and-soft-deletes`.
  */
 export interface SchemaMarker {
   readonly table: string;
   /** The foreign key column of an `inverse` marker; `''` for a table's marker. */
   readonly column: string;
-  readonly marker: 'inverse' | 'soft_deletes' | 'timestamps';
+  readonly marker: 'inverse' | 'not_pivot' | 'soft_deletes' | 'timestamps';
   /** The relation name of an `inverse` marker; `null` otherwise. */
   readonly value: string | null;
 }
@@ -246,12 +246,20 @@ const COUNT = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'e
  * The relations the foreign keys describe: a belongsTo named after the column without `_id`; its inverse named after the
  * table (or the column's `.inverse()`), a hasOne when the column alone is unique, a hasMany otherwise; and for a table with
  * exactly two foreign keys to two other tables that are unique together, a belongsToMany each way, named after the other
- * table. Two or more foreign keys to one table each need an inverse name; a relation never takes a name twice or hides a column.
+ * table; `notPivot()` on such a table keeps it a record of its own. Two or more foreign keys to one table each need an inverse name;
+ * a relation never takes a name twice or hides a column.
  */
 export function deriveRelations(facts: SchemaFacts): DerivedRelations {
   const problems: string[] = [];
   const relations = new Map<string, Map<string, Relation>>();
   const origins = new Map<string, string>();
+  const notPivot = new Set(facts.markers.filter((m) => m.marker === 'not_pivot').map((m) => m.table));
+  // The origin of a pivot's relation → what to say when it clashes: the pivot is a guess from the unique index.
+  const pivotHints = new Map<string, string>();
+  const hint = (...from: (string | undefined)[]) => {
+    const found = from.map((origin) => (origin === undefined ? undefined : pivotHints.get(origin))).find((text) => text !== undefined);
+    return found === undefined ? '' : ` (${found})`;
+  };
   const softDeletes = new Set(facts.markers.filter((m) => m.marker === 'soft_deletes').map((m) => m.table));
   const inverses = new Map(facts.markers.filter((m) => m.marker === 'inverse' && m.value).map((m) => [`${m.table}\0${m.column}`, m.value!]));
   const add = (table: string, name: string, relation: Relation, origin: string) => {
@@ -260,13 +268,13 @@ export function deriveRelations(facts: SchemaFacts): DerivedRelations {
       problems.push(
         relation.kind === 'belongsTo'
           ? `${origin} references ${relation.table}, so its relation would be named "${name}" like the column — name the column ${name}_id`
-          : `${table} has a column "${name}", and ${origin} would add a relation of that name — name the relation: .inverse('…')`,
+          : `${table} has a column "${name}", and ${origin} would add a relation of that name — name the relation: .inverse('…')${hint(origin)}`,
       );
       return;
     }
     const earlier = origins.get(key);
     if (earlier) {
-      problems.push(`${table} would get two relations named "${name}" (from ${earlier} and ${origin}) — name one of them: .inverse('…')`);
+      problems.push(`${table} would get two relations named "${name}" (from ${earlier} and ${origin}) — name one of them: .inverse('…')${hint(earlier, origin)}`);
       return;
     }
     origins.set(key, origin);
@@ -324,8 +332,12 @@ export function deriveRelations(facts: SchemaFacts): DerivedRelations {
   const byTable = new Map<string, ForeignKey[]>();
   for (const key of keys) byTable.set(key.table, [...(byTable.get(key.table) ?? []), key]);
   for (const [pivot, pair] of byTable) {
-    if (pair.length !== 2 || pair[0]!.references === pair[1]!.references || !unique(pivot, pair.map((k) => k.column))) continue;
+    if (pair.length !== 2 || pair[0]!.references === pair[1]!.references || !unique(pivot, pair.map((k) => k.column)) || notPivot.has(pivot)) continue;
     for (const [near, far] of [pair, pair.toReversed()] as [ForeignKey, ForeignKey][]) {
+      pivotHints.set(
+        `${pivot} (${near.column}, ${far.column})`,
+        `${pivot} is read as a pivot between ${near.references} and ${far.references} because (${pair.map((k) => k.column).join(', ')}) is unique — if it is a record of its own, say table.notPivot()`,
+      );
       add(
         near.references,
         far.references,

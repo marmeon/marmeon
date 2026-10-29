@@ -95,6 +95,47 @@ describe('deriving relations from foreign keys', () => {
     }
   });
 
+  it('keeps a table with two unique foreign keys a record of its own when it says table.notPivot()', () => {
+    const files = [fk('guest_imports', 'event_id', 'events'), fk('guest_imports', 'user_id', 'users')];
+    const uniques = new Map([['guest_imports', [['event_id', 'user_id']]]]);
+    const derived = deriveRelations(facts({ foreignKeys: files, uniques, markers: [{ table: 'guest_imports', column: '', marker: 'not_pivot', value: null }] }));
+    expect(derived.problems).toEqual([]);
+    expect(derived.relations.get('guest_imports')?.get('event')).toMatchObject({ kind: 'belongsTo', table: 'events', foreignKey: 'event_id' });
+    expect(derived.relations.get('guest_imports')?.get('user')).toMatchObject({ kind: 'belongsTo', table: 'users', foreignKey: 'user_id' });
+    expect(derived.relations.get('events')?.get('guest_imports')).toMatchObject({ kind: 'hasMany', table: 'guest_imports' });
+    expect(derived.relations.get('events')?.get('users')).toBeUndefined();
+    expect(derived.relations.get('users')?.get('events')).toBeUndefined();
+    // Without it the table is a pivot, as before.
+    expect(deriveRelations(facts({ foreignKeys: files, uniques })).relations.get('events')?.get('users')).toMatchObject({ kind: 'belongsToMany', pivot: 'guest_imports' });
+  });
+
+  it('names the unique index and table.notPivot() when a pivot’s relation clashes', () => {
+    const derived = deriveRelations(
+      facts({
+        foreignKeys: [fk('guest_imports', 'event_id', 'events'), fk('guest_imports', 'user_id', 'users'), fk('events', 'owner_id', 'users')],
+        uniques: new Map([['guest_imports', [['event_id', 'user_id']]]]),
+      }),
+    );
+    expect(derived.problems).toEqual([
+      'users would get two relations named "events" (from events.owner_id and guest_imports (user_id, event_id)) — name one of them: .inverse(\'…\') ' +
+        '(guest_imports is read as a pivot between users and events because (event_id, user_id) is unique — if it is a record of its own, say table.notPivot())',
+    ]);
+  });
+
+  it('adds the pivot hint when a pivot’s relation would hide a column', () => {
+    const derived = deriveRelations(
+      facts({
+        foreignKeys: [fk('guest_imports', 'event_id', 'events'), fk('guest_imports', 'user_id', 'users')],
+        uniques: new Map([['guest_imports', [['event_id', 'user_id']]]]),
+        columns: new Map([['users', ['id', 'events']]]),
+      }),
+    );
+    expect(derived.problems).toEqual([
+      'users has a column "events", and guest_imports (user_id, event_id) would add a relation of that name — name the relation: .inverse(\'…\') ' +
+        '(guest_imports is read as a pivot between users and events because (event_id, user_id) is unique — if it is a record of its own, say table.notPivot())',
+    ]);
+  });
+
   it('names a foreign key to its own table like any other — the way back is the table name', () => {
     const derived = deriveRelations(facts({ foreignKeys: [fk('categories', 'parent_id', 'categories', true)] }));
     expect([...derived.relations.get('categories')!]).toEqual([

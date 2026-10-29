@@ -179,6 +179,8 @@ interface BlueprintParts {
   readonly retirements: string[];
   /** `timestamps()` and `softDeletes()` were called. */
   readonly markers: Set<TableMarker>;
+  /** `notPivot()` was called. */
+  notPivot: boolean;
 }
 
 let partsOf: (blueprint: Blueprint) => BlueprintParts;
@@ -205,6 +207,7 @@ export class Blueprint {
     nullability: [],
     retirements: [],
     markers: new Set(),
+    notPivot: false,
   };
   #sealed = false;
 
@@ -299,6 +302,16 @@ export class Blueprint {
   softDeletes(): void {
     this.timestamp('deleted_at').nullable();
     this.#parts.markers.add('soft_deletes');
+  }
+
+  /**
+   * Says that this table is a record of its own, though it has exactly two foreign keys to two other tables that are unique together
+   * (a file per person and event): `db:types` gives it a `belongsTo` per key and no `belongsToMany` between the two tables. Without it
+   * such a table is read as a pivot. See `docs/migrations.md#relations-from-foreign-keys`.
+   */
+  notPivot(): void {
+    this.#open();
+    this.#parts.notPivot = true;
   }
 
   /** A big integer that references another table: `table.foreignId('user_id').constrained().cascadeOnDelete()`. */

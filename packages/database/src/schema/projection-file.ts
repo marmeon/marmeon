@@ -14,7 +14,8 @@ export const PROJECTION_FILE = '.marmeon/schema.json';
 /**
  * The format of {@link PROJECTION_FILE}. Another one is not an error: the file is a cache, the projection is computed again. Every
  * change to what a plan step does to the projection, or to the shape of the file, bumps it: the version of the package does not
- * change between commits of this repository, so only the format invalidates a file written by older code.
+ * change between commits of this repository, so only the format invalidates a file written by older code. An optional field that only
+ * new migrations write needs no bump: a file of another version is computed again anyway.
  */
 export const PROJECTION_FORMAT = 2;
 
@@ -89,7 +90,8 @@ function isTable(value: unknown, name: string): value is ProjectedTable {
         (k.inverse === undefined || typeof k.inverse === 'string'),
     ) &&
     Array.isArray(table.markers) &&
-    table.markers.every((m) => m === 'timestamps' || m === 'soft_deletes')
+    table.markers.every((m) => m === 'timestamps' || m === 'soft_deletes') &&
+    (table.pivot === undefined || table.pivot === false)
   );
 }
 

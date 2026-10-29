@@ -29,6 +29,7 @@ export declare class Blueprint {
     timestamp(name: string): TimestampColumn<string | Date>;
     timestamps(): void;
     softDeletes(): void;
+    notPivot(): void;
     foreignId(name: string): ForeignIdColumn<number>;
     foreignUuid(name: string): ForeignIdColumn<string>;
     index(columns: string | readonly string[], name?: string): void;
@@ -383,6 +384,7 @@ export interface ProjectedTable {
     readonly indexes: readonly ProjectedIndex[];
     readonly foreignKeys: readonly ProjectedForeignKey[];
     readonly markers: readonly TableMarker[];
+    readonly pivot?: false;
 }
 // ProviderMigrations
 export interface ProviderMigrations {
