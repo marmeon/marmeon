@@ -12,6 +12,7 @@ import {
 import { SendDevtoolsLabController, ShowDevtoolsLabController } from './controllers/ShowDevtoolsLabController.ts';
 import { CreateOneTimeLinkLabController, OpenOneTimeLinkLabController, UseOneTimeLinkLabController } from './controllers/OneTimeLinkLabController.ts';
 import { ClaimInvitationLabController, ShowInvitationLabController, StoreInvitationLabController } from './controllers/InvitationLabController.ts';
+import { CreateGuestLabController, EditGuestLabController, StoreGuestLabController, UpdateGuestLabController } from './controllers/GuestLabController.ts';
 import { OneTimeLinkRepository } from './OneTimeLinkRepository.ts';
 import { ShowSurveyLabController, StoreSurveyLabController } from './controllers/SurveyLabController.ts';
 import { Surveys } from './SurveyRepository.ts';
@@ -41,6 +42,11 @@ export default defineRoutes((Route) => {
   lab.get('/validation', ShowValidationLabController);
   lab.post('/validation', StoreValidationLabController);
   lab.post('/validation/race', RaceValidationLabController);
+  // Two forms that share a component: the fields a guest's create and edit forms have in common (`FormPart`).
+  lab.get('/guests/new', CreateGuestLabController);
+  lab.post('/guests', StoreGuestLabController);
+  lab.get('/guests/edit', EditGuestLabController);
+  lab.put('/guests', UpdateGuestLabController);
   // A form whose fields are rows of the database: the survey's questions. The binder 404s a survey without any, and the form's
   // schema is built from the rows after the lab's gate said yes.
   lab.bind('survey', Surveys, { public: true }).get('/surveys/:survey', ShowSurveyLabController);

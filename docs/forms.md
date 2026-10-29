@@ -137,6 +137,32 @@ void form.post('/notes');
 `useForm(initial)` returns a `FormHandle<StoreNoteController>`; type the prop of a component you hand the form to with it: `function NoteFields({ form }: { form: FormHandle<StoreNoteController> })`. `get`, `post`, `put`, `patch` and `delete` send it, and `submit(method, url)` takes the method. Live validation needs a route
 name, so this kind of form has no `validate` option.
 
+#### A component shared by two forms
+
+A create and an edit form show the same fields. Type the component with the fields it shows, `FormPart<Controller, 'field' | …>`,
+and any form that has those fields fits it, whatever else the form holds:
+
+```tsx
+function NoteFields({ form }: { form: FormPart<StoreNoteController, 'title' | 'body'> }) {
+  return (
+    <>
+      <input value={form.data.title} onChange={(event) => form.set('title', event.target.value)} />
+      {form.errors.title && <small>{form.errors.title}</small>}
+      <textarea value={form.data.body} onChange={(event) => form.set('body', event.target.value)} />
+    </>
+  );
+}
+
+const create = useForm<StoreNoteController>({ title: '', body: '' });
+const edit = useForm<UpdateNoteController>({ title: note.title, body: note.body, pinned: note.pinned });
+// <NoteFields form={create} /> and <NoteFields form={edit} /> both type-check.
+```
+
+`form.errors` and `form.clearErrors()` of the part are keyed by its fields, their paths and `_`. The part has no `setData`, which would
+replace the data of the whole form, and `reset()` without arguments resets the whole form. A form whose controller lacks one of the
+fields, or has a field that cannot hold what the part's type allows, is an error where it is handed to the component; type the part
+from the controller with the narrower field types. A route form (`useForm('notes.update', …)`) fits as well.
+
 ## Forms without state
 
 `<Form>` reads its fields from the inputs inside it, any input with a `name`. The render function gets the form's state:
