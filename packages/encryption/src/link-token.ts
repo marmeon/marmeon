@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 export interface LinkToken {
   /** 43 characters of base64url (256 random bits) — goes into the link, never into the database in the clear. */
   readonly token: string;
-  /** Hex SHA-256 of the token (64 characters) — what the table stores and `hashLinkToken()` finds it by. */
+  /** Hex SHA-256 (64 characters) of `marmeon.link-token.v1`, a NUL character and the token, not of the token alone — what the table stores and `hashLinkToken()` finds it by. */
   readonly hash: string;
 }
 
@@ -23,7 +23,8 @@ export function linkToken(): LinkToken {
 }
 
 /**
- * The hash of a token a request brought, to look it up by the unique index of its column. A value of any other shape is hashed under
+ * The hash of a token a request brought, to look it up by the unique index of its column: the hex SHA-256 of `marmeon.link-token.v1`,
+ * a NUL character and the token, a stored format. A value of any other shape is hashed under
  * a domain of its own (cut to 512 characters), so it matches no row, costs the same as a real token and never throws. See
  * `docs/urls.md#a-link-that-is-used-once`.
  */
