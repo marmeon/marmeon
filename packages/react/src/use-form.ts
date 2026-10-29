@@ -1,14 +1,43 @@
 import { dirtyPaths, firstErrors, isDirtyPath, liveValidationOnFirstUse, type FormLiveValidation } from '@marmeon/http/client/adapter';
 import { resolveRoute, type LooksLikePassword, type LooksSensitive, type VisitMethod, type VisitOptions, type VisitProgress } from '@marmeon/http/client';
-import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, Routes, SensitiveNeverLive } from '@marmeon/http/page';
+import type { BrowserParamsOf, BrowserRouteNameInput, CheckBrowserRouteName, CheckLiveField, CheckUploadField, ControllerOf, FormOf, Routes, SensitiveNeverLive, Upload } from '@marmeon/http/page';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 import { useRememberStore } from './remember.ts';
 import { RoutesContext } from './routes.ts';
 import { useGuard } from './state.ts';
 
-/** The data of a form: the controller's schema input (`useForm<UpdateUserProfileController>`), or given directly. */
-type FormFields<T> = [FormOf<T>] extends [never] ? T : FormOf<T>;
+/**
+ * What `r.boolean()` and `r.accepted()` take (`BooleanInput` of @marmeon/validation, spelled out: this package does not import
+ * it) — kept equal by apps/web-app/modules/lab/boolean-field.type-test.tsx.
+ */
+type BooleanRuleInput = boolean | 0 | 1 | '0' | '1' | 'true' | 'false' | 'on' | 'off' | 'yes' | 'no';
+
+/**
+ * A field whose input is exactly what `r.boolean()` takes holds a `boolean` in the form (a checkbox gives one); `undefined` and
+ * `null` stay. Equality by assignability both ways, so a field that takes only some of those inputs keeps its type. Objects
+ * and lists are searched too; dates, files, uploads and functions are left alone.
+ */
+type FormValue<V> = unknown extends V
+  ? V
+  : [NonNullable<V>] extends [never]
+    ? V
+    : [NonNullable<V>] extends [BooleanRuleInput]
+      ? [BooleanRuleInput] extends [NonNullable<V>]
+        ? boolean | Extract<V, null | undefined>
+        : V
+      : V extends Primitive | Upload | ((...args: never) => unknown)
+        ? V
+        : { [K in keyof V]: FormValue<V[K]> };
+
+/**
+ * The data of a form: the controller's schema input (`useForm<UpdateUserProfileController>`), with a boolean rule's field as
+ * `boolean`, or given directly.
+ */
+type FormFields<T> = [FormOf<T>] extends [never] ? T : BooleanFields<FormOf<T>>;
+
+/** `F` with every boolean rule's field typed `boolean`. */
+export type BooleanFields<F> = { [K in keyof F]: FormValue<F[K]> };
 
 type Field<F> = keyof F & string;
 
@@ -190,7 +219,7 @@ type Instance<C> = C extends abstract new (...args: never) => infer I ? I : neve
 type RouteFormOf<N extends string> = FormOf<Instance<ControllerOf<N>>>;
 
 /** The fields of route `N`: its controller's request schema input. */
-export type RouteFormFields<N extends string> = [RouteFormOf<N>] extends [never] ? Record<string, unknown> : RouteFormOf<N>;
+export type RouteFormFields<N extends string> = [RouteFormOf<N>] extends [never] ? Record<string, unknown> : BooleanFields<RouteFormOf<N>>;
 
 /** A browser route whose controller has a request schema — the form's fields come from it. (Any name while no routes are generated.) */
 type CheckFormRoute<N extends string> =

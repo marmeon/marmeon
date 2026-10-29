@@ -93,6 +93,8 @@ import { rules as r } from '@marmeon/validation';
 | `r.query({...})`, `r.port()`, `r.list(rule)` | A URL's fields, a port from 1 to 65535, a comma-separated list. | |
 | `r.value<Output, Input>(check)` | What `check` passes: a type of your own. | The value |
 
+In a [form](forms.md#fields-and-errors) a field of `r.boolean()` or `r.accepted()` is typed `boolean`, not the longer list `r.boolean()` takes: `useForm()` keeps and sends `true` or `false`, and only a form without JavaScript posts the spelled forms.
+
 Each type then has its checks, which run **in the order you write them**: `trim()` before `required()` makes `' '` missing.
 
 - **Strings:** `trim()`, `lowercase()`, `required()` (not empty), `min(n)`, `max(n)`, `between(min, max)`, `email()`,
@@ -186,7 +188,7 @@ r.string().trim().transform((text) => text.split(' ')) // input string, output s
 | Helper | Reads | For `UpdateNoteRequest` |
 | --- | --- | --- |
 | `ctx.body` | The body's output. | `{ title: string; slug: string; link: string \| null; tags: string[] }` |
-| `FormOf<UpdateNoteController>` | The body's input: what a form sends. `useForm()` types its fields with it. | `{ title: string; slug: string; link: string \| null; tags?: string[] }` |
+| `FormOf<UpdateNoteController>` | The body's input: what a form sends. `useForm()` types its fields with it (a boolean rule's field as `boolean`). | `{ title: string; slug: string; link: string \| null; tags?: string[] }` |
 | `QueryOf<ListNotesController>` | The parsed query, an output. | `{ sort: 'title' \| '-title'; page: number }` |
 
 A field of `when()` is optional in the output.

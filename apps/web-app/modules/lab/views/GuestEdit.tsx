@@ -23,7 +23,7 @@ export default function GuestEdit({ guest }: PageProps<EditGuestLabController>) 
         <GuestFields form={form} />
         <p>
           <label>
-            <input type="checkbox" name="coming" checked={form.data.coming === true} onChange={(event) => form.set('coming', event.target.checked)} /> Coming
+            <input type="checkbox" name="coming" checked={form.data.coming} onChange={(event) => form.set('coming', event.target.checked)} /> Coming
           </label>
         </p>
         <button type="submit" disabled={form.processing}>

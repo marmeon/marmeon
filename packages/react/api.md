@@ -491,7 +491,7 @@ export interface RouteForm<F> extends FormState<F> {
     field<const K extends string>(name: CheckUploadField<F, K>): FormField;
 }
 // RouteFormFields
-export type RouteFormFields<N extends string> = [RouteFormOf<N>] extends [never] ? Record<string, unknown> : RouteFormOf<N>;
+export type RouteFormFields<N extends string> = [RouteFormOf<N>] extends [never] ? Record<string, unknown> : BooleanFields<RouteFormOf<N>>;
 // RouteFormOptions
 export interface RouteFormOptions<F> extends Omit<FormOptions<F>, 'remember'> {
     validate?: true | LiveValidationSetting<F>;
@@ -648,6 +648,12 @@ type AnswersLayer<C> = C extends {
 } ? unknown extends R ? true : [Extract<Awaited<R>, {
     readonly region: 'layer';
 }>] extends [never] ? false : true : false;
+// BooleanFields
+export type BooleanFields<F> = {
+    [K in keyof F]: FormValue<F[K]>;
+};
+// BooleanRuleInput
+type BooleanRuleInput = boolean | 0 | 1 | '0' | '1' | 'true' | 'false' | 'on' | 'off' | 'yes' | 'no';
 // ButtonAttributes
 type ButtonAttributes = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'>;
 // CheckFormRoute
@@ -662,16 +668,20 @@ interface CurrentProps {
 type DataOption<N extends string> = [ActionBodyOf<N>] extends [never] ? {
     data?: `'${N}' takes no body — its controller has no request schema (or it is a GET: pass \`query\`)`;
 } : {} extends ActionBodyOf<N> ? {
-    data?: ActionBodyOf<N>;
+    data?: BooleanFields<ActionBodyOf<N>>;
 } : {
-    data: ActionBodyOf<N>;
+    data: BooleanFields<ActionBodyOf<N>>;
 };
 // ErrorKey
 type ErrorKey<F> = Field<F> | FieldPath<F> | '_';
 // Field
 type Field<F> = keyof F & string;
 // FormFields
-type FormFields<T> = [FormOf<T>] extends [never] ? T : FormOf<T>;
+type FormFields<T> = [FormOf<T>] extends [never] ? T : BooleanFields<FormOf<T>>;
+// FormValue
+type FormValue<V> = unknown extends V ? V : [NonNullable<V>] extends [never] ? V : [NonNullable<V>] extends [BooleanRuleInput] ? [BooleanRuleInput] extends [NonNullable<V>] ? boolean | Extract<V, null | undefined> : V : V extends Primitive | Upload | ((...args: never) => unknown) ? V : {
+    [K in keyof V]: FormValue<V[K]>;
+};
 // HeadFields
 export interface HeadFields {
     description?: string;

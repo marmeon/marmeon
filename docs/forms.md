@@ -74,7 +74,12 @@ export class UpdateNoteController extends Controller {
 }
 ```
 
-A route whose controller has no request schema cannot type a form, and `useForm()` says so. In the browser:
+A route whose controller has no request schema cannot type a form, and `useForm()` says so.
+
+A field whose rule is `r.boolean()` or `r.accepted()` holds a `boolean` in the form, also inside an object or a list, so a checkbox needs no cast:
+`checked={form.data.agree}` and `onChange={(event) => form.set('agree', event.target.checked)}`. The form sends `true` or
+`false`; the rules also take what a browser posts without JavaScript (`'on'` for a ticked box, a hidden `'0'` or `'1'`), see
+[Validation](validation.md#available-rules). In the browser:
 
 | Member | What it is |
 | --- | --- |
