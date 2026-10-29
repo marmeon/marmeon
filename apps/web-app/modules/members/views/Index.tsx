@@ -28,9 +28,9 @@ export default function Index({ members }: Props) {
   // refused by their bytes); the form sends the token. Administrators only: the export link below marks them.
   const importForm = useForm('members.import', { file: null });
   const file = importForm.data.file;
-  // The preview keeps the file and its toast carries the id: the second step posts it to the confirmation. The next toast replaces it.
+  // The preview keeps the file and flashes its id: the second step posts it to the confirmation. The next preview replaces it.
   const [kept, setKept] = useState<string | undefined>();
-  useFlash('toast', (toast) => setKept(toast.confirm));
+  useFlash('memberImport', (upload) => setKept(upload.id));
   const label = (column: string) => t(`column.${column as 'name'}`);
   const table = useTable(members, {
     labels: {
