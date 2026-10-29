@@ -72,6 +72,51 @@ export declare class ColumnDefinition<R extends string = string, S extends boole
 }
 // ContextOfTable
 export type ContextOfTable<T> = T extends DataTable<any, infer Ctx> ? Ctx : never;
+// CsvDelimiter
+export type CsvDelimiter = ',' | ';' | '\t';
+// CsvEncoding
+export type CsvEncoding = 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-1252';
+// CsvReadError
+export type CsvReadError = {
+    readonly kind: 'too-large';
+    readonly limit: number;
+    readonly message: string;
+} | {
+    readonly kind: 'cell-too-long';
+    readonly limit: number;
+    readonly line: number;
+    readonly message: string;
+} | {
+    readonly kind: 'too-many-rows';
+    readonly limit: number;
+    readonly line: number;
+    readonly message: string;
+} | {
+    readonly kind: 'too-many-columns';
+    readonly limit: number;
+    readonly line: number;
+    readonly message: string;
+} | {
+    readonly kind: 'row-length';
+    readonly expected: number;
+    readonly actual: number;
+    readonly line: number;
+    readonly message: string;
+} | {
+    readonly kind: 'unclosed-quote';
+    readonly line: number;
+    readonly message: string;
+} | {
+    readonly kind: 'not-text';
+    readonly message: string;
+};
+// CsvTable
+export interface CsvTable {
+    readonly headers: string[];
+    readonly rows: string[][];
+    readonly delimiter: CsvDelimiter;
+    readonly encoding: CsvEncoding;
+}
 // CursorPage
 export interface CursorPage {
     readonly type: 'cursor';
@@ -118,6 +163,16 @@ export interface OffsetPage {
     readonly lastPage: number;
     readonly from: number | null;
     readonly to: number | null;
+}
+// ReadCsvOptions
+export interface ReadCsvOptions {
+    readonly encoding?: CsvEncoding;
+    readonly delimiter?: CsvDelimiter;
+    readonly maxBytes?: number;
+    readonly maxRows?: number;
+    readonly maxColumns?: number;
+    readonly maxCellLength?: number;
+    readonly unescape?: boolean;
 }
 // RowAction
 export declare class RowAction<H extends RowActionClass = RowActionClass, P = unknown, K extends string = string> {
@@ -286,6 +341,8 @@ export declare const filter: {
     select<const R extends string, const O extends string>(ref: R, options: readonly [O, ...O[]]): Filter<R, 'select', O>;
     dateRange<const R extends string>(ref: R): Filter<R, 'dateRange', never>;
 };
+// readCsv
+export declare function readCsv(bytes: Uint8Array, options?: ReadCsvOptions): Result<CsvTable, CsvReadError>;
 // tableRoutes
 export declare function tableRoutes<R extends Route<any, any, any>, T extends DataTable>(Route: R, table: T & CheckRegistrar<R, T>): void;
 // unescapeCsvCell
