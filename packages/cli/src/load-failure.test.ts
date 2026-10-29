@@ -1,9 +1,9 @@
-import { cpSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { marmeon, repo } from './__fixtures__/cli.js';
-import { appFrameOf, noteCompileFailure } from './load-failure.js';
+import { appFrameOf, compilePosition, noteCompileFailure, withoutNodeOptions } from './load-failure.js';
 
 describe('marmeon names the file where the app failed to load', { timeout: 60_000 }, () => {
   const blank = join(repo, 'apps/blank-app');
@@ -40,13 +40,21 @@ describe('marmeon names the file where the app failed to load', { timeout: 60_00
     expect(run.stderr).toMatch(/at modules\/system\/broken\.ts:3:19\n/);
   });
 
-  it('names the file, without a line, of a syntax error only V8 reports', () => {
+  it('names the file and line of a syntax error only V8 reports', () => {
     // An invisible character in a regular expression: Node's message names no file at all.
     const app = appWithBrokenModule('export const a = 1;\nexport const pattern = /a\u2028b/;\n');
     const run = marmeon(app, ['route:list']);
     expect(run.code).toBe(1);
     expect(run.stderr).toContain('Invalid regular expression');
-    expect(run.stderr).toMatch(/\n {2}at modules\/system\/broken\.ts\n/);
+    expect(run.stderr).toMatch(/\n {2}at modules\/system\/broken\.ts:2:24\n/);
+    expect(run.stderr).not.toContain('ExperimentalWarning');
+  });
+
+  it('names the line of an invalid regular expression in a .ts file behind types', () => {
+    const app = appWithBrokenModule("type T = string;\nexport const a: T = 'x';\nexport const p = /(/;\n");
+    const run = marmeon(app, ['route:list']);
+    expect(run.code).toBe(1);
+    expect(run.stderr).toMatch(/\n {2}at modules\/system\/broken\.ts:3:18\n/);
     expect(run.stderr).not.toContain('ExperimentalWarning');
   });
 
@@ -54,14 +62,30 @@ describe('marmeon names the file where the app failed to load', { timeout: 60_00
     const app = appWithBrokenModule('export const a = 1;\nexport const a = 2;\n', { file: 'broken.js' });
     const run = marmeon(app, ['route:list']);
     expect(run.code).toBe(1);
-    expect(run.stderr).toMatch(/\n {2}at modules\/system\/broken\.js\n/);
+    expect(run.stderr).toMatch(/\n {2}at modules\/system\/broken\.js:2:14\n/);
+  });
+
+  it('names the line, without a column, of a missing brace in a .js file', () => {
+    const app = appWithBrokenModule('export function f() {\n  return 1;\n', { file: 'broken.js' });
+    const run = marmeon(app, ['route:list']);
+    expect(run.code).toBe(1);
+    expect(run.stderr).toMatch(/\n {2}at modules\/system\/broken\.js:3\n/);
+  });
+
+  it('keeps the head of the TypeScript stripper: an enum and a missing brace in a .ts file', () => {
+    const enumRun = marmeon(appWithBrokenModule('export const a = 1;\nexport enum E { A }\n'), ['route:list']);
+    expect(enumRun.code).toBe(1);
+    expect(enumRun.stderr).toMatch(/\n {2}at modules\/system\/broken\.ts:2:8\n/);
+    const braceRun = marmeon(appWithBrokenModule('export function f() {\n  return 1;\n'), ['route:list']);
+    expect(braceRun.code).toBe(1);
+    expect(braceRun.stderr).toMatch(/\n {2}at modules\/system\/broken\.ts:2\n/);
   });
 
   it('names the broken file, not a sibling imported before or after it', () => {
     const app = appWithBrokenModule('export const a = /a\u2028b/;\n', { imports: ['before.ts', 'broken.ts', 'after.ts'], files: { 'before.ts': 'export const before = 1;\n', 'after.ts': 'export const after = 1;\n' } });
     const run = marmeon(app, ['route:list']);
     expect(run.code).toBe(1);
-    expect(run.stderr).toMatch(/\n {2}at modules\/system\/broken\.ts\n/);
+    expect(run.stderr).toMatch(/\n {2}at modules\/system\/broken\.ts:1:18\n/);
     expect(run.stderr).not.toMatch(/before\.ts|after\.ts/);
   });
 
@@ -159,5 +183,85 @@ describe('appFrameOf', () => {
     const error = compileError('/srv/app/modules/a/bad.ts:4\nexport const c = (;\n                  ^\n\nSyntaxError: Unexpected token\n    at parseTypeScript (node:internal/modules/typescript:61:36)');
     noteCompileFailure(error, 'file:///srv/app/modules/a/other.ts');
     expect(appFrameOf(error, root)).toBe('modules/a/bad.ts:4:19');
+  });
+});
+
+describe('compilePosition', () => {
+  const regex = new SyntaxError('Invalid regular expression: missing /');
+  const source = 'export const a = 1;\nexport const p = /a\u2028b/;\n';
+
+  it('gives the line and column V8 reports', () => {
+    expect(compilePosition(source, 'module', regex)).toEqual({ line: 2, column: 18 });
+  });
+
+  it('strips the types of a TypeScript module first, keeping lines and columns', () => {
+    expect(compilePosition('type T = string;\nexport const a: T = 1;\nexport const p = /(/;\n', 'module-typescript', new SyntaxError('Invalid regular expression: /(/: Unterminated group'))).toEqual({ line: 3, column: 18 });
+  });
+
+  it('gives nothing for TypeScript the stripper rejects', () => {
+    expect(compilePosition('export enum E { A }\n', 'module-typescript', regex)).toBeUndefined();
+  });
+
+  it('gives nothing for a source V8 accepts', () => {
+    expect(compilePosition('export const a = 1;\n', 'module', regex)).toBeUndefined();
+  });
+
+  it('gives nothing when the child fails with another message', () => {
+    expect(compilePosition(source, 'module', new SyntaxError('Duplicate export'))).toBeUndefined();
+    expect(compilePosition(source, 'module', new Error(regex.message))).toBeUndefined();
+  });
+
+  it('gives nothing for CommonJS, JSON or no format', () => {
+    expect(compilePosition(source, 'commonjs', regex)).toBeUndefined();
+    expect(compilePosition(source, 'json', regex)).toBeUndefined();
+    expect(compilePosition(source, undefined, regex)).toBeUndefined();
+    expect(compilePosition(source, null, regex)).toBeUndefined();
+  });
+
+  it('reads bytes like the string', () => {
+    expect(compilePosition(new TextEncoder().encode(source), 'module', regex)).toEqual({ line: 2, column: 18 });
+    expect(compilePosition(42, 'module', regex)).toBeUndefined();
+  });
+
+  it('gives nothing for a source over the size limit', () => {
+    const big = `${source}//${'x'.repeat(4 * 1024 * 1024)}\n`;
+    expect(compilePosition(big, 'module', regex)).toBeUndefined();
+    expect(compilePosition(new TextEncoder().encode(big), 'module', regex)).toBeUndefined();
+  });
+
+  it('gives nothing when the child does not finish in time', () => {
+    expect(compilePosition(source, 'module', regex, { timeout: 1 })).toBeUndefined();
+  });
+
+  it('does not run a preload of NODE_OPTIONS in the child', () => {
+    const dir = realpathSync(tempDir('marmeon-load-failure-'));
+    const marker = join(dir, 'ran');
+    writeFileSync(join(dir, 'marker.cjs'), `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran');\n`);
+    const before = process.env.NODE_OPTIONS;
+    process.env.NODE_OPTIONS = `--require ${JSON.stringify(join(dir, 'marker.cjs'))}`;
+    try {
+      expect(compilePosition(source, 'module', regex)).toEqual({ line: 2, column: 18 });
+    } finally {
+      if (before === undefined) delete process.env.NODE_OPTIONS;
+      else process.env.NODE_OPTIONS = before;
+    }
+    expect(existsSync(marker)).toBe(false);
+  });
+});
+
+describe('withoutNodeOptions', () => {
+  it('drops NODE_OPTIONS in any case and keeps the rest', () => {
+    expect(withoutNodeOptions({ NODE_OPTIONS: '--require x', node_options: '--import y', Node_Options: 'z', PATH: '/bin' })).toEqual({ PATH: '/bin' });
+  });
+});
+
+describe('noteCompileFailure with the loaded source', () => {
+  const root = '/srv/app';
+
+  it('names the line and column compilePosition found', () => {
+    const error = new SyntaxError('Invalid regular expression: missing /');
+    error.stack = 'SyntaxError: Invalid regular expression: missing /\n    at compileSourceTextModule (node:internal/modules/esm/utils:355:16)';
+    noteCompileFailure(error, 'file:///srv/app/modules/a/broken.js', { format: 'module', source: 'export const a = 1;\nexport const p = /a\u2028b/;\n' });
+    expect(appFrameOf(error, root)).toBe('modules/a/broken.js:2:18');
   });
 });
