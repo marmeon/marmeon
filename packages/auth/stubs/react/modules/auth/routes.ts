@@ -6,7 +6,7 @@ import { BeginTwoFactorController } from './controllers/BeginTwoFactorController
 import { ConfirmEmailChangeController } from './controllers/ConfirmEmailChangeController.ts';
 import { ConfirmPasswordController } from './controllers/ConfirmPasswordController.ts';
 import { ConfirmTwoFactorController } from './controllers/ConfirmTwoFactorController.ts';
-import { CreateAccessTokenController } from './controllers/CreateAccessTokenController.ts';
+import { StoreAccessTokenController } from './controllers/StoreAccessTokenController.ts';
 import { DisableTwoFactorController } from './controllers/DisableTwoFactorController.ts';
 import { EndSignInController } from './controllers/EndSignInController.ts';
 import { LoginController } from './controllers/LoginController.ts';
@@ -146,7 +146,7 @@ export default defineRoutes((Route) => {
   sudo.post('/settings/sign-ins/:signIn/end', EndSignInController).name('auth.sign-ins.destroy');
   sudo.get('/settings/tokens', ShowAccessTokensController).name('auth.tokens');
   // A new token and a new address are as good as a factor of one's own: a stolen session must not make either with the password alone.
-  confirmedFactors.post('/settings/tokens', CreateAccessTokenController).name('auth.tokens.store');
+  confirmedFactors.post('/settings/tokens', StoreAccessTokenController).name('auth.tokens.store');
   sudo.delete('/settings/tokens/:token', RevokeAccessTokenController).name('auth.tokens.destroy');
 
   // E-mail verification: the link is signed (made by the app, expires) — and only for its own user. Internal: only

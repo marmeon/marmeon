@@ -1,13 +1,13 @@
 import { AccessTokenStore, Auth, type Authenticated } from '@marmeon/auth';
-import { Controller, defineRequest, ValidationError, type ContextOf, type HttpContext } from '@marmeon/http';
+import { Controller, defineRequest, ValidationError, type ContextOf } from '@marmeon/http';
 import { Translator } from '@marmeon/i18n';
 import { rules as r } from '@marmeon/validation';
-import { abilityDescriptions, TOKEN_ABILITIES, type TokenAbility } from '../abilities.ts';
+import { TOKEN_ABILITIES, type TokenAbility } from '../abilities.ts';
 import { passwordCheckMessage } from '../password-errors.ts';
 
 const abilityNames = [...TOKEN_ABILITIES] as [TokenAbility, ...TokenAbility[]];
 
-export const CreateAccessTokenRequest = defineRequest({
+export const StoreAccessTokenRequest = defineRequest({
   schema: r.object({
     name: r.string().trim().required().max(60),
     // Typed now, whatever confirmed sudo mode: a token outlives the session and a password change, so a stolen session must not be able to mint one.
@@ -26,21 +26,7 @@ export const CreateAccessTokenRequest = defineRequest({
 });
 
 /** The two steps of creating a token share one layer: the answer replaces the form in place. */
-const LAYER = { base: 'auth.tokens', key: 'tokens.create' } as const;
-
-/** The form for a new token — a layer over the list (`<Link route="auth.tokens.create" layer>`). */
-export class ShowCreateAccessTokenController extends Controller {
-  readonly #translator: Translator;
-
-  constructor(translator: Translator) {
-    super();
-    this.#translator = translator;
-  }
-
-  handle(_ctx: HttpContext<Authenticated>) {
-    return this.view('auth/CreateAccessToken', { abilities: abilityDescriptions(this.#translator) }).layer(LAYER);
-  }
-}
+export const LAYER = { base: 'auth.tokens', key: 'tokens.create' } as const;
 
 /**
  * A new token. Its plain text is in this one response — rendered, not redirected, so it never sits in the session (a
@@ -48,8 +34,8 @@ export class ShowCreateAccessTokenController extends Controller {
  * it replaces the form, and when it closes — the button, Escape, Back — it is gone from the tab's memory too (Forward asks
  * the server, whose GET is the list), and the list beneath reloads with the new token in it.
  */
-export class CreateAccessTokenController extends Controller {
-  static request = CreateAccessTokenRequest;
+export class StoreAccessTokenController extends Controller {
+  static request = StoreAccessTokenRequest;
 
   readonly #tokens: AccessTokenStore;
   readonly #auth: Auth;
@@ -62,7 +48,7 @@ export class CreateAccessTokenController extends Controller {
     this.#translator = translator;
   }
 
-  async handle(ctx: ContextOf<typeof CreateAccessTokenRequest> & Authenticated) {
+  async handle(ctx: ContextOf<typeof StoreAccessTokenRequest> & Authenticated) {
     const checked = await this.#auth.checkPassword(ctx.body.current_password);
     if (!checked.ok) throw new ValidationError({ current_password: [passwordCheckMessage(this.#translator, checked.error)] });
     const { plainText } = await this.#tokens.create(ctx.user.id, ctx.body.name, { abilities: ctx.body.abilities, expiresIn: { days: 90 } });

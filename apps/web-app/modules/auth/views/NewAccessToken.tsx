@@ -1,8 +1,8 @@
 import type { PageProps } from '@marmeon/http';
 import { Head, useLayer, useTranslation } from '@marmeon/react';
-import type { CreateAccessTokenController } from '../controllers/CreateAccessTokenController.ts';
+import type { StoreAccessTokenController } from '../controllers/StoreAccessTokenController.ts';
 
-type Props = PageProps<CreateAccessTokenController>;
+type Props = PageProps<StoreAccessTokenController>;
 
 /**
  * The new token's plain text — the answer of creating it, a layer shown once: closed (this button, Escape, Back), it
@@ -10,7 +10,7 @@ type Props = PageProps<CreateAccessTokenController>;
  */
 export default function NewAccessToken({ name, plainText }: Props) {
   const t = useTranslation('auth');
-  const layer = useLayer<CreateAccessTokenController>();
+  const layer = useLayer<StoreAccessTokenController>();
   return (
     <section>
       <Head title={t('tokens.new')} />

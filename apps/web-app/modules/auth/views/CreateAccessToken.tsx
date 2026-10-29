@@ -1,7 +1,7 @@
 import type { PageProps } from '@marmeon/http';
 import { Form, Head, useLayer, useTranslation } from '@marmeon/react';
 import { useId } from 'react';
-import type { ShowCreateAccessTokenController } from '../controllers/CreateAccessTokenController.ts';
+import type { ShowCreateAccessTokenController } from '../controllers/ShowCreateAccessTokenController.ts';
 
 type Props = PageProps<ShowCreateAccessTokenController>;
 

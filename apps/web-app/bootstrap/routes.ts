@@ -11,7 +11,6 @@ import type { ConfirmPasswordController } from '../modules/auth/controllers/Conf
 import type { ConfirmRemoveLinkController } from '../modules/user-profile/controllers/ConfirmRemoveLinkController.ts';
 import type { ConfirmTwoFactorController } from '../modules/auth/controllers/ConfirmTwoFactorController.ts';
 import type { ConfirmUnsubscribeController } from '../modules/notifications/controllers/ConfirmUnsubscribeController.ts';
-import type { CreateAccessTokenController } from '../modules/auth/controllers/CreateAccessTokenController.ts';
 import type { CreateBookmarkController } from '../modules/bookmarks/controllers/CreateBookmarkController.ts';
 import type { DeleteBookmarkController } from '../modules/bookmarks/controllers/DeleteBookmarkController.ts';
 import type { DeleteNotificationController } from '../modules/notifications/controllers/DeleteNotificationController.ts';
@@ -55,7 +54,7 @@ import type { SendPasswordResetLinkController } from '../modules/auth/controller
 import type { ShowAboutController } from '../modules/about/controllers/ShowAboutController.ts';
 import type { ShowAccessTokensController } from '../modules/auth/controllers/ShowAccessTokensController.ts';
 import type { ShowConfirmPasswordController } from '../modules/auth/controllers/ShowConfirmPasswordController.ts';
-import type { ShowCreateAccessTokenController } from '../modules/auth/controllers/CreateAccessTokenController.ts';
+import type { ShowCreateAccessTokenController } from '../modules/auth/controllers/ShowCreateAccessTokenController.ts';
 import type { ShowDashboardController } from '../modules/dashboard/controllers/ShowDashboardController.ts';
 import type { ShowFeatureController } from '../modules/about/controllers/ShowFeatureController.ts';
 import type { ShowForgotPasswordController } from '../modules/auth/controllers/ShowForgotPasswordController.ts';
@@ -76,6 +75,7 @@ import type { ShowTwoFactorController } from '../modules/auth/controllers/ShowTw
 import type { ShowTwoFactorVerifyController } from '../modules/auth/controllers/ShowTwoFactorVerifyController.ts';
 import type { ShowUserProfileController } from '../modules/user-profile/controllers/ShowUserProfileController.ts';
 import type { ShowVerifyEmailNoticeController } from '../modules/auth/controllers/ShowVerifyEmailNoticeController.ts';
+import type { StoreAccessTokenController } from '../modules/auth/controllers/StoreAccessTokenController.ts';
 import type { StoreBookmarkController } from '../modules/bookmarks/controllers/StoreBookmarkController.ts';
 import type { TwoFactorChallengeController } from '../modules/auth/controllers/TwoFactorChallengeController.ts';
 import type { TwoFactorVerifyController } from '../modules/auth/controllers/TwoFactorVerifyController.ts';
@@ -129,7 +129,7 @@ declare module '@marmeon/router' {
     'auth.tokens': { method: 'get'; path: '/settings/tokens'; controller: typeof ShowAccessTokensController };
     'auth.tokens.create': { method: 'get'; path: '/settings/tokens/create'; controller: typeof ShowCreateAccessTokenController };
     'auth.tokens.destroy': { method: 'delete'; path: '/settings/tokens/:token'; controller: typeof RevokeAccessTokenController };
-    'auth.tokens.store': { method: 'post'; path: '/settings/tokens'; controller: typeof CreateAccessTokenController };
+    'auth.tokens.store': { method: 'post'; path: '/settings/tokens'; controller: typeof StoreAccessTokenController };
     'auth.two-factor': { method: 'get'; path: '/settings/two-factor'; controller: typeof ShowTwoFactorController };
     'auth.two-factor.begin': { method: 'post'; path: '/settings/two-factor/setup'; controller: typeof BeginTwoFactorController };
     'auth.two-factor.challenge': { method: 'get'; path: '/two-factor-challenge'; controller: typeof ShowTwoFactorChallengeController };
