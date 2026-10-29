@@ -55,10 +55,10 @@ export async function createLegacyTables(db: Kysely<any>): Promise<void> {
 /** A `Connections` on a fresh database; `close()` destroys it and drops the database. */
 export async function freshConnections(
   driver: 'sqlite' | 'pgsql',
-  options: { managed?: boolean; record?: boolean } = {},
+  options: { managed?: boolean; record?: boolean; now?: () => number } = {},
 ): Promise<{ connections: Connections; close: () => Promise<void> }> {
   const fresh = await freshDatabase(driver, options);
-  const connections = new Connections({ connections: { default: fresh.options }, root: '/', logger: silent });
+  const connections = new Connections({ connections: { default: fresh.options }, root: '/', logger: silent, ...(options.now ? { now: options.now } : {}) });
   // The empty record of migrations a first `migrate` writes: a test that builds its tables itself runs the default path.
   if (options.managed !== false && options.record !== false) await createMigrationsTable(migratorConnection(connections), connections.options().driver);
   return {

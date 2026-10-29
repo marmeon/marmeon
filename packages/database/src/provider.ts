@@ -1,4 +1,4 @@
-import { Application, Logger, type Container, type ServiceProvider } from '@marmeon/core';
+import { Application, Clock, Logger, type Container, type ServiceProvider } from '@marmeon/core';
 import type { AppCheckClass, CommandClass } from 'marmeon';
 import { PublishCommand } from './commands/publish.ts';
 import { DbTypesCheck, PackageMigrationsCheck } from './checks.ts';
@@ -78,7 +78,7 @@ export class DatabaseServiceProvider implements ServiceProvider {
         seen.set(entry.definition.connection, entry);
         connections[entry.definition.connection] = c.make(entry.definition);
       }
-      return new Connections({ connections, root: app.root, logger: c.make(Logger), app });
+      return new Connections({ connections, root: app.root, logger: c.make(Logger), app, now: () => c.make(Clock).now() });
     });
     container.singleton(Database, (c) => c.make(Connections).get());
     container.singleton(Migrator);

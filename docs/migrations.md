@@ -570,7 +570,7 @@ message with its code is on stderr, the exit code is 1.
 A `string()` or `text()` column that calls [`oneOf()`](#check-constraints) is read as the union of its values, not as `string`.
 
 Two shortcuts add common columns and mark the table. `timestamps()` adds `created_at` and `updated_at`, both set to the current
-time on insert. `softDeletes()` adds a nullable `deleted_at`. What the marks change is under
+time on insert (the app's clock through a repository, the database's for other writes). `softDeletes()` adds a nullable `deleted_at`. What the marks change is under
 [timestamps and soft deletes](#timestamps-and-soft-deletes). Defining the same column twice throws.
 
 ### Modifiers
@@ -885,7 +885,9 @@ a table with secret columns are marked as such for whatever records queries, whi
 `timestamps()` and `softDeletes()` do more than add columns. The migrator records them as marks of the table, next to the
 secret columns, and the connection reads them:
 
-- **`timestamps()`**: a repository's `update()` sets `updated_at` to the current time, unless the values set it themselves.
+- **`timestamps()`**: a repository's `insert()`, `insertMany()`, `relation().create()` and `attach()` set `created_at` and `updated_at`, and `update()` sets `updated_at`, to
+  the app's [clock](time.md#what-follows-the-clock) — each unless the values set it themselves. The columns' default only applies to a row
+  written some other way.
 - **`softDeletes()`**: a repository's `delete()` sets `deleted_at` instead of deleting the row, and its `query()`, `find()`,
   `count()`, route binding and the rest leave deleted rows out, and so does every [relation](queries.md#soft-deleted-rows).
   `query().withTrashed()` and `forceDelete()` reach them on purpose.

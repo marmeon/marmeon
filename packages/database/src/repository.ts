@@ -8,8 +8,9 @@ import { isUniqueViolation, uniqueViolationColumns } from './errors.ts';
 import type { RelationName, WithRelations } from './chain.ts';
 import { keyset, paginate, type CheckPageRequest, type Paginated, type PageRequest } from './pagination.ts';
 import { TOUCH_COLUMN } from './placeholders.ts';
+import { stampTimestamps } from './timestamps.ts';
 import { relationWriter, type RelationWriter, type WritableRelationName } from './relation-writes.ts';
-import { metadataOf, softDelete, softDeleteFilter } from './schema-resolver.ts';
+import { metadataOf, nowOf, softDelete, softDeleteFilter } from './schema-resolver.ts';
 import type { ColumnKind, SchemaMetadata } from './metadata.ts';
 import type { PrimaryKeys, Tables } from './types.ts';
 
@@ -267,7 +268,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   async insert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<RowOf<DB[T]>> {
     return (await this.#untyped
       .insertInto(this.#name)
-      .values(values as Record<string, unknown>)
+      .values((await stampTimestamps(this.#untyped, this.#name, [values as Record<string, unknown>]))[0]!)
       .returningAll()
       .executeTakeFirstOrThrow()) as RowOf<DB[T]>;
   }
@@ -324,10 +325,12 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     });
     // Without Marmeon's plugins the driver is unknown: the smaller limit is right for both.
     const limit = metadataOf(this.#db)?.driver === 'pgsql' ? 65_535 : 32_766;
-    const size = Math.floor(limit / columns.length);
+    // Stamped once: the rows of one call share their time, whatever chunk they are written in.
+    const stamped = await stampTimestamps(this.#untyped, this.#name, rows);
+    const size = Math.floor(limit / columnsOf(stamped[0]!).length);
     return this.transaction(async (repository) => {
-      for (let at = 0; at < rows.length; at += size) {
-        await repository.#untyped.insertInto(repository.#name).values(rows.slice(at, at + size)).execute();
+      for (let at = 0; at < stamped.length; at += size) {
+        await repository.#untyped.insertInto(repository.#name).values(stamped.slice(at, at + size)).execute();
       }
       return rows.length;
     });
@@ -387,7 +390,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     if (key === undefined) return undefined;
     return (await this.#untyped
       .updateTable(this.#name)
-      .set({ ...(values as Record<string, unknown>), [TOUCH_COLUMN]: new Date() })
+      .set({ ...(values as Record<string, unknown>), [TOUCH_COLUMN]: new Date(nowOf(this.#db)) })
       .where(key.column, '=', key.value)
       .where(softDeleteFilter(this.#name))
       .returningAll()

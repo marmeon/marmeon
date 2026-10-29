@@ -12,3 +12,4 @@ export { projectApp } from './schema/project-app.ts';
 export { watchMigrations } from './migrations/watch.ts';
 export { tableColumns } from './introspection.ts';
 export { isMigratorTable } from './migration-state.ts';
+export { nowOf } from './schema-resolver.ts';

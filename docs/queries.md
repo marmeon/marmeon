@@ -165,8 +165,8 @@ A repository takes its key from the table's primary key, not from a column named
 `delete()`, the route binding and the other methods that take a key throw a `TypeError` (`role_user has no single-column primary
 key — use query()`), and the types refuse them. Such a table is read and written with `query()`. A table that raw SQL made is not known to a connection Marmeon migrates, so it counts as one without a key.
 
-Timestamps and soft deletes follow the table's migration. When it calls `timestamps()`, `update()` sets
-`updated_at`. When it calls `softDeletes()`, `delete()` sets `deleted_at`, and every read leaves deleted rows out. The
+Timestamps and soft deletes follow the table's migration. When it calls `timestamps()`, `insert()`,
+`insertMany()` and a [relation's](#writing-through-relations) `create()` and `createMany()` set `created_at` and `updated_at` (and `attach()` and `sync()` those of a pivot with `timestamps()`), and `update()` sets `updated_at`, all from the app's clock. When it calls `softDeletes()`, `delete()` sets `deleted_at`, and every read leaves deleted rows out. The
 [migrations](migrations.md#timestamps-and-soft-deletes) page explains the marks.
 
 A repository is an ordinary class, built by the [container](container.md#binding-services). It holds nothing but its connection,
@@ -232,7 +232,7 @@ an `insertInto(…).onConflict(…)`.
 | Method | Returns |
 | --- | --- |
 | `insert(values)` | The row as stored, with its id and defaults. Secret columns are not in it. |
-| `update(id, values)` | The row as stored, without its secret columns, or `undefined` when there is none. With timestamps, it sets `updated_at`. |
+| `update(id, values)` | The row as stored, without its secret columns, or `undefined` when there is none. With timestamps, it sets `updated_at` to the app's time. |
 | `tryInsert(values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index already holds the values. Its `columns` name that index's columns. |
 | `tryUpdate(id, values)` | `ok(row)`, or an `err` of kind `duplicate` when a unique index holds the new values, or `missing` when there is no row. A `duplicate` has `columns` too. |
 | `insertMany(rows)` | The number of rows inserted. No rows come back. Throws on a unique violation, like `insert()`, with none of the rows written. |
@@ -243,6 +243,12 @@ an `insertInto(…).onConflict(…)`.
 
 The values are exact: a field the table does not have is a compile error, also when the values come from a variable. With soft
 deletes, `update()` leaves a deleted row alone.
+
+On a table with timestamps, the repository stamps `created_at` and `updated_at` with the app's `Clock`, so `app.travel()` moves them
+in a test (the [time](time.md#what-follows-the-clock) page). A value you pass for either column is kept, and the one you leave out is
+stamped. The rows of one `insertMany()` share their time, whatever chunk they are written in. A raw statement (`insertInto()`, an
+`sql` template) is not stamped by the repository: the column's default is the database server's time, so name the time in the values
+when a test moves the clock.
 
 `tryInsert()` and `tryUpdate()` decide "already taken" by the unique index, so two requests at the same moment cannot both pass.
 They run in a transaction of their own, or in a savepoint inside an open one: on Postgres a failed statement breaks the

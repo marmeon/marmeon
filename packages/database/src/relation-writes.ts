@@ -4,6 +4,7 @@ import type { SchemaMetadata } from './metadata.ts';
 import type { Exact } from './repository.ts';
 import { fold } from './secret-guard.ts';
 import { softDeleteFilter } from './schema-resolver.ts';
+import { stampTimestamps } from './timestamps.ts';
 import type { Relations } from './types.ts';
 
 // Writing through a relation of one row (`repository.relation(id, name)`): the links of a belongsToMany, the rows of a hasMany or a
@@ -132,9 +133,11 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
   /** Inserts the links, and returns the ids it linked: a link another transaction made meanwhile is left alone (the pivot is unique). */
   const link = async (db: Connection<any>, relation: Relation, key: unknown, ids: readonly unknown[]): Promise<unknown[]> => {
     if (ids.length === 0) return [];
+    // A pivot with `timestamps()` keeps the time of its links: the app's clock, like every row a repository writes.
+    const rows = await stampTimestamps(db, relation.pivot!, ids.map((id) => ({ [relation.foreignKey]: key, [relation.relatedKey!]: id })));
     const inserted = await db
       .insertInto(relation.pivot!)
-      .values(ids.map((id) => ({ [relation.foreignKey]: key, [relation.relatedKey!]: id })))
+      .values(rows)
       .onConflict((conflict) => conflict.doNothing())
       .returning(relation.relatedKey!)
       .execute();
@@ -151,7 +154,8 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
       throw new TypeError(`${label}.${method}() sets ${relation.table}.${relation.foreignKey} itself — leave it out of the values.`);
     }
     // `returningAll()` is spelled out without the secret columns by the connection, like every select of all columns.
-    return db.insertInto(relation.table).values({ ...values, [relation.foreignKey]: key }).returningAll().executeTakeFirstOrThrow();
+    const [row] = await stampTimestamps(db, relation.table, [{ ...values, [relation.foreignKey]: key }]);
+    return db.insertInto(relation.table).values(row!).returningAll().executeTakeFirstOrThrow();
   };
 
   return {
