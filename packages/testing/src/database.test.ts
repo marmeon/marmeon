@@ -1,6 +1,6 @@
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { defineModule, type ApplicationDefinition } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider, defineFactory, sql, type Generated, type SeedContext } from '@marmeon/database';
+import { Connections, DatabaseConnectionError, DatabaseServiceProvider, defineFactory, sql, type Generated, type SeedContext } from '@marmeon/database';
 import { Controller, HttpServiceProvider } from '@marmeon/http';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { threadId } from 'node:worker_threads';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
-import { workerDatabase } from './database.ts';
+import { prepareWorkerDatabase, workerDatabase } from './database.ts';
 import { createTestApp, type TestApp } from './index.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
@@ -290,6 +290,24 @@ describe('where the worker databases live', () => {
     }
   });
 
+  it('shortens a long name by whole characters, so that an emoji is never cut in half', async () => {
+    const worker = await workerDatabase('/some/app', { ...env, DB_DRIVER: 'pgsql', DB_URL: `postgres://u:p@localhost:5432/${encodeURI('😀'.repeat(10))}` });
+    const name = decodeURI(new URL(worker.key).pathname.slice(1));
+    expect(Buffer.byteLength(name)).toBeLessThanOrEqual(63);
+    expect(name.isWellFormed()).toBe(true);
+    expect(name).toMatch(/^(?:😀)+_test_/u);
+  });
+
+  it('refuses a "%" in the name, which the driver would read as another one', async () => {
+    await expect(workerDatabase('/some/app', { ...env, DB_DRIVER: 'pgsql', DB_URL: 'postgres://u:p@localhost:5432/a%25b' })).rejects.toThrow('does not survive being written into the URL');
+  });
+
+  it('keeps an escaped "#" as the driver reads it: decodeURI leaves "%23" alone, so the name holds it literally', async () => {
+    const worker = await workerDatabase('/some/app', { ...env, DB_DRIVER: 'pgsql', DB_URL: 'postgres://u:p@localhost:5432/a%23b' });
+    expect(new URL(worker.key).pathname).toMatch(/^\/a%23b_test_/);
+    expect(new URL(worker.env.DB_URL!).pathname).toBe(new URL(worker.key).pathname);
+  });
+
   it('refuses a name that cannot fit rather than let Postgres cut it', async () => {
     vi.stubEnv('MARMEON_TEST_DATABASE_TAG', 'x'.repeat(60));
     try {
@@ -310,6 +328,105 @@ describe.skipIf(!PGSQL_URL)('stale worker databases on Postgres', () => {
     const dottedEnv = { ...env, DB_URL: dotted.href };
     await expectSweep(root, env, main.pathname.slice(1));
     await expectSweep(workspaceTempDir('marmeon-testing-db-'), dottedEnv, 'marmeon.dot');
+  });
+});
+
+describe.skipIf(!PGSQL_URL)('a configured database that does not exist on Postgres', () => {
+  it('runs through the maintenance database and leaves the configured name uncreated', async () => {
+    const missing = `missing_${process.pid}_${Date.now().toString(36)}`;
+    const url = new URL(PGSQL_URL!);
+    url.pathname = `/${missing}`;
+    const env = { APP_KEY: generateKey(), DB_DRIVER: 'pgsql', DB_URL: url.href };
+    const root = workspaceTempDir('marmeon-testing-db-');
+    const worker = new URL((await workerDatabase(root, env)).key).pathname.slice(1);
+    const admin = new Connections({ connections: { default: { driver: 'pgsql', url: new URL(PGSQL_URL!).href, poolMax: 1 } }, root: '/', logger: { debug() {}, info() {}, warn() {}, error() {}, child() { return this; } } });
+    try {
+      const app = await createTestApp({ root, discover: false, providers: [EncryptionServiceProvider, DatabaseServiceProvider] }, { env, database: 'refresh' });
+      const { rows } = await sql<{ datname: string }>`select datname from pg_database where datname in (${missing}, ${worker})`.execute(admin.get());
+      await app.close();
+      expect(rows.map((row) => row.datname)).toEqual([worker]);
+    } finally {
+      await sql`drop database if exists ${sql.id(worker)} with (force)`.execute(admin.get());
+      await admin.destroy();
+    }
+  });
+});
+
+describe.skipIf(!PGSQL_URL)('a database name with non-ASCII characters on Postgres', () => {
+  it('creates the worker database under the decoded name the driver connects to', async () => {
+    const configured = `caf\u00e9_${process.pid}_${Date.now().toString(36)}`;
+    const admin = new Connections({ connections: { default: { driver: 'pgsql', url: new URL(PGSQL_URL!).href, poolMax: 1 } }, root: '/', logger: { debug() {}, info() {}, warn() {}, error() {}, child() { return this; } } });
+    const url = new URL(PGSQL_URL!);
+    url.pathname = `/${encodeURIComponent(configured)}`;
+    const env = { APP_KEY: generateKey(), DB_DRIVER: 'pgsql', DB_URL: url.href };
+    const root = workspaceTempDir('marmeon-testing-db-');
+    const worker = decodeURIComponent(new URL((await workerDatabase(root, env)).key).pathname.slice(1));
+    expect(worker.startsWith(`${configured}_test_`)).toBe(true);
+    try {
+      await sql`create database ${sql.id(configured)}`.execute(admin.get());
+      const app = await createTestApp({ root, discover: false, providers: [EncryptionServiceProvider, DatabaseServiceProvider] }, { env, database: 'refresh' });
+      const { rows } = await sql<{ name: string }>`select current_database() as name`.execute(app.container.make(Connections).get());
+      await app.close();
+      expect(rows[0]?.name).toBe(worker);
+    } finally {
+      await sql`drop database if exists ${sql.id(worker)} with (force)`.execute(admin.get());
+      await sql`drop database if exists ${sql.id(configured)} with (force)`.execute(admin.get());
+      await admin.destroy();
+    }
+  });
+});
+
+describe('a configured database that does not exist, with no way around it', () => {
+  const missing = Object.assign(new Error('[marmeon:D11] Could not connect: database "shop" does not exist'), { cause: { code: '3D000' } });
+  /** A `Connections` that refuses every attempt with `failure`, and records the URL of each; `url` is the worker database the app names. */
+  const run = async (urls: string[], failure: (url: string) => Error = () => missing, url = 'postgres://u:p@localhost:5432/shop_test_x_1_1'): Promise<unknown> => {
+    class Refusing {
+      constructor(options: { connections: { default: { url: string } } }) {
+        urls.push(options.connections.default.url);
+        throw failure(options.connections.default.url);
+      }
+    }
+    const database = { Connections: Refusing, DatabaseConnectionError } as never;
+    const app = { root: '/', container: { make: (token: unknown) => (token === Refusing ? { options: () => ({ driver: 'pgsql', url }) } : {}) } } as never;
+    const worker = { key: 'postgres://u:p@localhost:5432/shop_test_x_1_1', env: {}, adminUrl: 'postgres://u:p@localhost:5432/shop' };
+    return prepareWorkerDatabase(database, app, worker).catch((error: unknown) => error);
+  };
+  const refused = (message: string) => new DatabaseConnectionError(`[marmeon:D11] ${message}`);
+  const maintenanceRefused = (url: string) => (url.endsWith('/postgres') ? refused('password authentication failed') : missing);
+
+  it('tries the maintenance database next, then says to create the configured one — still a D11 connection error', async () => {
+    const urls: string[] = [];
+    const error = (await run(urls, maintenanceRefused)) as Error;
+    expect(urls).toEqual(['postgres://u:p@localhost:5432/shop', 'postgres://u:p@localhost:5432/postgres']);
+    expect(error).toBeInstanceOf(DatabaseConnectionError);
+    expect(error.message).toMatch(/^\[marmeon:D11\] The test database "shop" does not exist/);
+    expect(error.message).toContain('password authentication failed');
+    expect(error.message.match(/\[marmeon:D11\]/g)).toHaveLength(1);
+    expect(error.message).toContain(`create "shop" first; the run creates its workers' databases next to it.`);
+  });
+
+  it('passes on any other failure of the maintenance database unchanged', async () => {
+    const denied = Object.assign(new Error('permission denied'), { code: '42501' });
+    const urls: string[] = [];
+    expect(await run(urls, (url) => (url.endsWith('/postgres') ? denied : missing))).toBe(denied);
+  });
+
+  it('does not try it in a production run', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    try {
+      const urls: string[] = [];
+      expect(await run(urls)).toBe(missing);
+      expect(urls).toEqual(['postgres://u:p@localhost:5432/shop']);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each(['postgres://u:p@localhost:5432/shop', 'postgres://u:p@localhost:5432/shop_test_x'])('refuses to create %s, which is no worker database, before it connects', async (url) => {
+    const urls: string[] = [];
+    const error = (await run(urls, () => missing, url)) as Error;
+    expect(error.message).toContain('it is not a worker database');
+    expect(urls).toEqual([]);
   });
 });
 

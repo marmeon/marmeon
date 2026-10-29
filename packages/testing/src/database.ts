@@ -2,7 +2,8 @@ import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { threadId } from 'node:worker_threads';
-import { Logger, resolveConfig, type Application } from '@marmeon/core';
+import { environment, Logger, resolveConfig, type Application } from '@marmeon/core';
+import { withCode, withoutCode } from '@marmeon/core/internal';
 
 type DatabaseModule = typeof import('@marmeon/database');
 type Env = Readonly<Record<string, string | undefined>>;
@@ -42,11 +43,17 @@ export async function workerDatabase(root: string, env: Env): Promise<WorkerData
   // A run of the repository's own tests tags its databases with its checkout, so the teardown of another checkout's run leaves them alone.
   const tag = process.env.MARMEON_TEST_DATABASE_TAG ? `${process.env.MARMEON_TEST_DATABASE_TAG}_` : '';
   // Named after the process, not the pool slot (see the SQLite file): Vitest can give one slot to two files at once, and they would drop each other's database.
-  const prefix = databasePrefix(url.pathname.slice(1) || 'marmeon', tag, root);
+  const prefix = databasePrefix(decodeURI(url.pathname.slice(1)) || 'marmeon', tag, root);
   const name = `${prefix}${process.pid}_${threadId}`;
   // Postgres would cut a longer name silently, and the drop and the sweep would then name another database than the one created.
   if (Buffer.byteLength(name) > 63) throw new Error(`The test database name "${name}" is longer than the 63 bytes Postgres allows: shorten MARMEON_TEST_DATABASE_TAG.`);
+  // The driver (pg-connection-string) reads the name back with decodeURI: a name it would read as another one must not get created.
   url.pathname = `/${name}`;
+  let readBack: string | undefined;
+  try {
+    readBack = decodeURI(url.pathname.slice(1));
+  } catch {}
+  if (readBack !== name) throw new Error(`The test database name "${name}" does not survive being written into the URL (a "%" or a character a URL escapes): rename the database "${decodeURI(new URL(options.url).pathname.slice(1))}".`);
   return { key: url.href, env: { DB_DRIVER: 'pgsql', DB_URL: url.href }, adminUrl: options.url };
 }
 
@@ -105,7 +112,7 @@ export async function emptyWorkerDatabase(database: EmptyingModule, app: Applica
   const driver = connections.options().driver === 'sqlite' ? 'sqlite' : 'pgsql';
   if (driver === 'pgsql') {
     const { rows } = await sql<{ name: string }>`select current_database() as name`.execute(db);
-    if (rows[0]?.name !== new URL(worker.key).pathname.slice(1)) throw new Error("A test app with a database must use the worker's own test database; the server answers for another one.");
+    if (rows[0]?.name !== decodeURI(new URL(worker.key).pathname.slice(1))) throw new Error("A test app with a database must use the worker's own test database; the server answers for another one.");
   }
   // The tables the app's search path finds (Postgres: `current_schema()` can be an empty schema named like the role).
   const { types, extension } = await tableColumns(async (text) => (await sql.raw(text).execute(db)).rows as never[], driver);
@@ -159,7 +166,7 @@ function databasePrefix(base: string, tag: string, root: string): string {
   // Room for the longest process and thread ids (10 digits each) and the underscore between them.
   const room = 63 - Buffer.byteLength(suffix) - 21;
   let kept = base;
-  while (Buffer.byteLength(kept) > room && kept.length > 1) kept = kept.slice(0, -1);
+  while (Buffer.byteLength(kept) > room && [...kept].length > 1) kept = [...kept].slice(0, -1).join('');
   return `${kept}${suffix}`;
 }
 
@@ -184,8 +191,46 @@ async function dropStaleDatabases(admin: InstanceType<DatabaseModule['Connection
   }
 }
 
+/** Postgres' "database does not exist" (SQLSTATE 3D000), which the connection error carries as its cause. */
+function isMissingDatabase(error: unknown): boolean {
+  return (error as { cause?: { code?: string } } | undefined)?.cause?.code === '3D000';
+}
+
+/**
+ * Drops and creates the worker's database from the server the app's URL names. When the configured database is not there yet
+ * (a second checkout with its own `DB_DATABASE`), the maintenance database `postgres` of the same server serves instead: the worker
+ * databases need a server, not that database. The configured one is never created — its name comes from the app. See
+ * docs/database-testing.md#running-the-tests-on-postgres.
+ */
 async function recreatePostgresDatabase(database: DatabaseModule, app: Application, url: string, adminUrl: string): Promise<void> {
-  const name = new URL(url).pathname.slice(1);
+  const name = decodeURI(new URL(url).pathname.slice(1));
+  const configured = decodeURI(new URL(adminUrl).pathname.slice(1));
+  try {
+    await recreateFrom(database, app, name, adminUrl, configured);
+  } catch (error) {
+    // Only for that one error, and never outside a test or development run: a refused password or a dead server stays what it is.
+    if (!isMissingDatabase(error) || !(environment.isTest() || environment.isDevelopment())) throw error;
+    const maintenance = new URL(adminUrl);
+    maintenance.pathname = '/postgres';
+    try {
+      await recreateFrom(database, app, name, maintenance.href, configured);
+    } catch (fallback) {
+      // Another failure (a refused permission, say) stays what it is; only a refused connection gets the hint.
+      if (!(fallback instanceof database.DatabaseConnectionError)) throw fallback;
+      throw new database.DatabaseConnectionError(
+        withCode(
+          'D11',
+          `The test database "${configured}" does not exist, and the maintenance database "postgres" of the same server could not be used either: ${withoutCode(fallback.message)} — create "${configured}" first; the run creates its workers' databases next to it.`,
+        ),
+        { cause: fallback },
+      );
+    }
+  }
+}
+
+async function recreateFrom(database: DatabaseModule, app: Application, name: string, adminUrl: string, configured: string): Promise<void> {
+  // Only a name the run itself built (`<app>_test_<…>_<pid>_<thread>`) is ever dropped or created here, never the configured one.
+  if (!/_test_.*_\d+_\d+$/.test(name) || name === configured) throw new Error(`Refusing to create the test database "${name}": it is not a worker database.`);
   const admin = new database.Connections({
     connections: { default: { driver: 'pgsql', url: adminUrl, poolMax: 1 } },
     root: app.root,
@@ -193,10 +238,12 @@ async function recreatePostgresDatabase(database: DatabaseModule, app: Applicati
   });
   const { sql } = database;
   try {
+    // Opens the connection first, so that a missing database fails here, before anything is swept or dropped.
+    await sql`select 1`.execute(admin.get());
     const server = `${new URL(adminUrl).host}/${name.replace(/\d+_\d+$/, '')}`;
     if (!swept.has(server)) {
       swept.add(server);
-      await dropStaleDatabases(admin, database, name, new URL(adminUrl).pathname.slice(1)).catch(() => {});
+      await dropStaleDatabases(admin, database, name, configured).catch(() => {});
     }
     await sql`drop database if exists ${sql.id(name)} with (force)`.execute(admin.get());
     await sql`create database ${sql.id(name)}`.execute(admin.get());
