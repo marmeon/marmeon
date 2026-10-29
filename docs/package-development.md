@@ -8,7 +8,7 @@ in its `package.json` that names its service provider:
 
 ```json title="package.json"
 {
-  "name": "@acme/marmeon-audit",
+  "name": "@acme/marmeon-request-log",
   "version": "1.0.0",
   "type": "module",
   "exports": {
@@ -16,7 +16,7 @@ in its `package.json` that names its service provider:
   },
   "files": ["dist"],
   "marmeon": {
-    "providers": ["AuditServiceProvider"]
+    "providers": ["RequestLogServiceProvider"]
   },
   "dependencies": {
     "@marmeon/core": "^0.1.0",
@@ -30,8 +30,11 @@ in its `package.json` that names its service provider:
 }
 ```
 
-After `pnpm add @acme/marmeon-audit`, the app registers `AuditServiceProvider` at its next start, with no extra step. This page
-builds that package: an audit log with its configuration, a middleware, a command and a route.
+After `pnpm add @acme/marmeon-request-log`, the app registers `RequestLogServiceProvider` at its next start, with no extra step. This page
+builds that package: a request log with its configuration, a middleware, a command and a route. Its `RequestLog` buffers an entry
+for every request and writes the buffer when it is flushed, so it is not an audit trail: an entry written later and outside the
+transaction of a change can be missing for a change that was kept. A trail that must commit with its change is a listener that
+writes in the change's transaction, see [an audit trail](events.md#an-audit-trail).
 
 ## The package protocol
 
@@ -64,7 +67,7 @@ The field is an object with these keys and no others. The app finds it when it w
 included, and the dependencies of those, and a field that does not hold to this stops the app, because the package's `package.json`
 is someone else's file and a key that is silently skipped hides a mistake:
 
-- A key that is not listed, such as `provider` for `providers`, ends discovery with `K7`: `@acme/marmeon-audit has an unknown key
+- A key that is not listed, such as `provider` for `providers`, ends discovery with `K7`: `@acme/marmeon-request-log has an unknown key
   "provider" in its "marmeon" field (known: providers, browser, experimental) — a misspelt key would leave its providers out.`
   The message names the package and the key, and the key only if it is a plain identifier; it never repeats a value of the field.
   The same holds for a `migrations` key, since migrations are a static of the provider (below).
@@ -73,7 +76,7 @@ is someone else's file and a key that is silently skipped hides a mistake:
 
 A package's providers register after the providers of the packages it depends on, so list the framework packages you build on as
 dependencies. A name in `providers` that the entry does not export stops the app with
-`@acme/marmeon-audit lists provider "AuditServiceProvider" in package.json, but its entry does not export it.`
+`@acme/marmeon-request-log lists provider "RequestLogServiceProvider" in package.json, but its entry does not export it.`
 
 The app writes what it found to `.marmeon/manifest.json` and writes it again by itself when `package.json` or the lockfile
 change. The [modules](modules.md#discovery) page explains discovery from the app's side, and how an app turns it off.
@@ -120,21 +123,21 @@ A package has no module definition, so its provider carries what a module would 
 solutions. The [service providers](providers.md) page explains `register()`, `boot()` and `shutdown()`; here is what matters for a
 package:
 
-```ts title="src/AuditServiceProvider.ts"
+```ts title="src/RequestLogServiceProvider.ts"
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { Router } from '@marmeon/http';
 import { GLOBAL } from '@marmeon/router';
-import { AuditConfig } from './AuditConfig.ts';
-import { AuditLog } from './AuditLog.ts';
-import { PruneAuditCommand } from './PruneAuditCommand.ts';
+import { RequestLogConfig } from './RequestLogConfig.ts';
+import { RequestLog } from './RequestLog.ts';
+import { PruneRequestLogCommand } from './PruneRequestLogCommand.ts';
 import { RecordRequest } from './RecordRequest.ts';
 
-export class AuditServiceProvider implements ServiceProvider {
-  static config = [AuditConfig];
-  static commands = [PruneAuditCommand];
+export class RequestLogServiceProvider implements ServiceProvider {
+  static config = [RequestLogConfig];
+  static commands = [PruneRequestLogCommand];
 
   register(container: Container): void {
-    container.singleton(AuditLog);
+    container.singleton(RequestLog);
   }
 
   boot(app: Application): void {
@@ -142,7 +145,7 @@ export class AuditServiceProvider implements ServiceProvider {
   }
 
   async shutdown(app: Application): Promise<void> {
-    await app.container.make(AuditLog).flush();
+    await app.container.make(RequestLog).flush();
   }
 }
 ```
@@ -160,17 +163,17 @@ export class AuditServiceProvider implements ServiceProvider {
 `static config` lists the package's configuration definitions. The app checks them with its own before any provider registers, so
 a wrong value stops the start with the variable's name:
 
-```ts title="src/AuditConfig.ts"
+```ts title="src/RequestLogConfig.ts"
 import { defineConfig, env, type ConfigOf } from '@marmeon/core';
 
-export const AuditConfig = defineConfig('audit', {
+export const RequestLogConfig = defineConfig('requestLog', {
   env: env({
-    AUDIT_ENABLED: env.boolean().default(true),
-    AUDIT_RETENTION_DAYS: env.integer().min(1).max(3650).default(90),
+    REQUEST_LOG_ENABLED: env.boolean().default(true),
+    REQUEST_LOG_RETENTION_DAYS: env.integer().min(1).max(3650).default(90),
   }),
-  resolve: (e) => ({ enabled: e.AUDIT_ENABLED, retentionDays: e.AUDIT_RETENTION_DAYS }),
+  resolve: (e) => ({ enabled: e.REQUEST_LOG_ENABLED, retentionDays: e.REQUEST_LOG_RETENTION_DAYS }),
 });
-export type AuditConfig = ConfigOf<typeof AuditConfig>;
+export type RequestLogConfig = ConfigOf<typeof RequestLogConfig>;
 ```
 
 The environment reader `env` comes with `@marmeon/core`, which every package depends on, so a package's configuration needs no
@@ -202,36 +205,36 @@ boots, so `marmeon build` sees them and stops on a name that is taken twice; the
 `marmeon` stays an optional peer dependency — the command files import only its types. A command is a class like any
 [command of an app](console.md#writing-commands):
 
-```ts title="src/PruneAuditCommand.ts"
+```ts title="src/PruneRequestLogCommand.ts"
 import type { CommandInput } from 'marmeon';
-import { AuditConfig } from './AuditConfig.ts';
-import { AuditLog } from './AuditLog.ts';
+import { RequestLogConfig } from './RequestLogConfig.ts';
+import { RequestLog } from './RequestLog.ts';
 
-export class PruneAuditCommand {
-  static command = 'audit:prune';
-  static description = 'Delete audit entries older than AUDIT_RETENTION_DAYS';
+export class PruneRequestLogCommand {
+  static command = 'request-log:prune';
+  static description = 'Delete request-log entries older than REQUEST_LOG_RETENTION_DAYS';
 
-  readonly #log: AuditLog;
-  readonly #config: AuditConfig;
+  readonly #log: RequestLog;
+  readonly #config: RequestLogConfig;
 
-  constructor(log: AuditLog, config: AuditConfig) {
+  constructor(log: RequestLog, config: RequestLogConfig) {
     this.#log = log;
     this.#config = config;
   }
 
   async handle({ output }: CommandInput): Promise<number> {
     const deleted = await this.#log.pruneOlderThan(this.#config.retentionDays);
-    output.success(`Deleted ${deleted} audit entries.`);
+    output.success(`Deleted ${deleted} request-log entries.`);
     return 0;
   }
 }
 ```
 
-Name a package's commands with a prefix of their own, such as `audit:`. A package's commands always run in a booted app.
+Name a package's commands with a prefix of their own, such as `request-log:`. A package's commands always run in a booted app.
 `static boots` is read for the framework's built-in commands only.
 
 `DevProcesses` of `marmeon` adds a process that `marmeon dev` starts next to the server, as the queue does with its worker:
-`app.container.make(DevProcesses).add({ name: 'audit', args: ['audit:watch'] })`. The arguments are those of a `marmeon` command.
+`app.container.make(DevProcesses).add({ name: 'request-log', args: ['request-log:watch'] })`. The arguments are those of a `marmeon` command.
 
 ### Registering what a generator writes
 
@@ -244,8 +247,8 @@ import { editDefinitionFile } from '@marmeon/core';
 const outcome = editDefinitionFile(join(root, 'bootstrap', 'app.ts'), {
   define: { name: 'defineApplication', from: '@marmeon/core' },
   key: 'modules',
-  add: { element: (names) => names.audit!, position: 'last' },
-  imports: [{ name: 'audit', from: '#modules/audit', kind: 'default' }],
+  add: { element: (names) => names.requestLog!, position: 'last' },
+  imports: [{ name: 'requestLog', from: '#modules/request-log', kind: 'default' }],
 });
 ```
 
@@ -262,23 +265,23 @@ The reasons name the file by its path. Pass an app-relative name as the third ar
 A package adds checks to [`marmeon check`](check.md) as `static checks` on its provider, a module as `checks` in its definition.
 A check is a class with `static check` (its name, in kebab-case) and `static phase`, and a `handle()` that returns what it found:
 
-```ts title="src/AuditTableCheck.ts"
+```ts title="src/RequestLogTableCheck.ts"
 import type { AppCheck, CheckProblem } from 'marmeon';
-import { AuditLog } from './AuditLog.ts';
+import { RequestLog } from './RequestLog.ts';
 
-export class AuditTableCheck implements AppCheck {
-  static check = 'audit-table';
+export class RequestLogTableCheck implements AppCheck {
+  static check = 'request-log-table';
   static phase = 'run' as const;
 
-  readonly #log: AuditLog;
+  readonly #log: RequestLog;
 
-  constructor(log: AuditLog) {
+  constructor(log: RequestLog) {
     this.#log = log;
   }
 
   async handle(): Promise<readonly CheckProblem[]> {
     if (await this.#log.hasTable()) return [];
-    return [{ severity: 'error', message: 'The audit table is missing', fix: 'marmeon migrate', docs: 'docs/audit.md#installation' }];
+    return [{ severity: 'error', message: 'The request-log table is missing', fix: 'marmeon migrate', docs: 'docs/request-log.md#installation' }];
   }
 }
 ```
@@ -298,7 +301,7 @@ A package that keeps tables in the app's database does not write them into the a
 the app copies them. The contract has six parts:
 
 1. **The directory.** The files lie in the directory `static migrations` names and are called `<timestamp>_<name>.ts`, such as
-   `2026_01_01_000000_create_audit_table.ts`. Name a file after its table, as an app does. They run in the order of their names,
+   `2026_01_01_000000_create_request_log_table.ts`. Name a file after its table, as an app does. They run in the order of their names,
    and a name without its timestamp is unique in the directory.
 2. **Append-only.** A file that has shipped is never edited, renamed or deleted, because an app has copied it and its database has
    run it. A release that changes a table adds a file that sorts after every other in the directory. In the framework's repository, the "api label" check refuses a pull request that does otherwise.
@@ -331,14 +334,14 @@ The service provider of the package names the directory that holds the stubs tha
 ```ts
 import type { ServiceProvider } from '@marmeon/core';
 
-export class AuditServiceProvider implements ServiceProvider {
-  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'audit' };
+export class RequestLogServiceProvider implements ServiceProvider {
+  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'request-log' };
   // …
 }
 ```
 
 `from` is a `file:` URL, built from `import.meta.url` so it names the same directory in `src/` and in the build: the path leads from
-the file that holds the provider, so a provider in `src/provider.ts` writes `../stubs/migrations` and one in `src/audit/provider.ts`
+the file that holds the provider, so a provider in `src/provider.ts` writes `../stubs/migrations` and one in `src/request-log/provider.ts`
 writes `../../stubs/migrations`. The static only declares the directory; it copies nothing. An app copies the files with
 `marmeon publish <package>` ([publishing the migrations of a package](migrations.md#publishing-the-migrations-of-a-package)), which
 accepts only a direct dependency of the app. It reads `static migrations` of the providers the app boots, and imports the main
@@ -349,8 +352,8 @@ The type is `ProviderMigrations` from `@marmeon/database`. A package that has `@
 not mention the database.
 
 Each file in the directory is named like a migration of an app, `<timestamp>_<name>.ts`, such as
-`2026_01_01_000000_create_audit_table.ts`. The migrations are read in the order of their file names. The timestamp only orders
-the files within the package: `publish` gives a copy a new one in the app. The name without the timestamp (`create_audit_table`)
+`2026_01_01_000000_create_request_log_table.ts`. The migrations are read in the order of their file names. The timestamp only orders
+the files within the package: `publish` gives a copy a new one in the app. The name without the timestamp (`create_request_log_table`)
 is what identifies a migration, so it is unique in the directory. The framework's packages start with
 `0001_01_01_000000_<name>.ts`; a file added later carries the date it was written. A file that has shipped is never edited or deleted:
 a change of a table is a new file behind the others. Anything in the directory that does not end in `.ts`, such as a `README.md`, and
@@ -414,27 +417,27 @@ installs the package, also for paths without a route, so keep it cheap.
 
 `router.load({ group, prefix }, routes)` loads a route file into a group. The same provider, with a page of its own:
 
-```ts title="src/AuditServiceProvider.ts"
+```ts title="src/RequestLogServiceProvider.ts"
 import type { Application, Container, ServiceProvider } from '@marmeon/core';
 import { defineRoutes, everyone, Router } from '@marmeon/http';
 import { GLOBAL } from '@marmeon/router';
-import { AuditConfig } from './AuditConfig.ts';
-import { AuditLog } from './AuditLog.ts';
-import { PruneAuditCommand } from './PruneAuditCommand.ts';
+import { RequestLogConfig } from './RequestLogConfig.ts';
+import { RequestLog } from './RequestLog.ts';
+import { PruneRequestLogCommand } from './PruneRequestLogCommand.ts';
 import { RecordRequest } from './RecordRequest.ts';
-import { ShowAuditController } from './ShowAuditController.ts';
+import { ShowRequestLogController } from './ShowRequestLogController.ts';
 
-export class AuditServiceProvider implements ServiceProvider {
-  static config = [AuditConfig];
-  static commands = [PruneAuditCommand];
+export class RequestLogServiceProvider implements ServiceProvider {
+  static config = [RequestLogConfig];
+  static commands = [PruneRequestLogCommand];
 
   register(container: Container): void {
-    container.singleton(AuditLog);
+    container.singleton(RequestLog);
     container.make(Router).load(
-      { group: 'web', prefix: '/audit' },
+      { group: 'web', prefix: '/request-log' },
       defineRoutes((Route) => {
         // The page is open to anyone by this package's design, so it says so.
-        Route.authorize(everyone).get('/', ShowAuditController).name('audit.index');
+        Route.authorize(everyone).get('/', ShowRequestLogController).name('request-log.index');
       }),
     );
   }
@@ -444,7 +447,7 @@ export class AuditServiceProvider implements ServiceProvider {
   }
 
   async shutdown(app: Application): Promise<void> {
-    await app.container.make(AuditLog).flush();
+    await app.container.make(RequestLog).flush();
   }
 }
 ```
@@ -482,16 +485,16 @@ leave everything else alone.
 A package that adds a key to a module's definition declares it by declaration merging, as the queue adds `jobs`:
 
 ```ts title="src/index.ts"
-import type { AuditedTable } from './AuditLog.ts';
+import type { LoggedTable } from './RequestLog.ts';
 
-export { AuditConfig } from './AuditConfig.ts';
-export { AuditLog } from './AuditLog.ts';
-export { AuditServiceProvider } from './AuditServiceProvider.ts';
+export { RequestLogConfig } from './RequestLogConfig.ts';
+export { RequestLog } from './RequestLog.ts';
+export { RequestLogServiceProvider } from './RequestLogServiceProvider.ts';
 
 declare module '@marmeon/core' {
   interface ModuleDefinition {
-    /** The tables of this module whose changes go into the audit log. */
-    readonly audited?: readonly AuditedTable[];
+    /** The tables of this module whose requests the log notes. */
+    readonly logged?: readonly LoggedTable[];
   }
 }
 ```

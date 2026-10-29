@@ -1063,7 +1063,8 @@ which hangs on the same row. That is the end of a single session ASVS 7.5.2 asks
 
 No IP address is stored. A list of places needs a lookup of the address, and a table of addresses is personal data that nothing else in
 the framework needs. An app that keeps an audit log takes the address from the [`SignedIn` event](#events), which carries `ip` and
-`userAgent`.
+`userAgent`. `SignedIn` is dispatched outside any transaction, so the entry is written right after the sign-in. For an entry
+that belongs to a change in the database, see [an audit trail](events.md#an-audit-trail).
 
 ### Listing and ending sign-ins
 

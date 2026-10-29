@@ -112,7 +112,10 @@ it('logs a request line', async () => {
 ### Events
 
 The `event` channel reports every dispatch, before a test's event fake decides whether listeners run. It suits code that watches
-all events, such as an audit trail. For your own reactions to one event, write a [listener](events.md).
+all events, for a dashboard or a debugging aid. It is no audit trail: it reports a dispatch whether or not the transaction around
+it commits, it keeps nothing, and it is not part of the change. An audit trail is a listener that writes its entry in the
+change's transaction, see [an audit trail](events.md#an-audit-trail). For your own reactions to one event, write a
+[listener](events.md).
 
 ## Following a request
 
