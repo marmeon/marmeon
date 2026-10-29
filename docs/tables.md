@@ -60,6 +60,24 @@ tenant can be shown, changed or downloaded. The base query selects nothing but v
 [count](queries.md#counting-related-rows). The table selects the visible columns and the key itself. Type its `ctx` as
 `TableContext<…>` with what the routes' middleware adds, such as `Authenticated`.
 
+An untyped `db` sees every table of the app. To keep the query inside its module, annotate it as the module's
+[`Database<'members'>`](queries.md#module-boundaries): the module's own tables and the ones other modules expose, and any other
+table is a compile error. The table's columns are still typed from the query.
+
+```ts
+query: (db: Database<'members'>, ctx: TableContext<Authenticated>) =>
+  db.selectFrom('users').where('users.team_id', '=', ctx.user.team_id),
+```
+
+A table on a route with a bound parameter, `/teams/{team}/members`, reads it from `ctx.params`; type the context with the parameters the route binds:
+
+```ts
+query: (db: Database<'members'>, ctx: TableContext<Authenticated, { team: Row<'teams'> }>) =>
+  db.selectFrom('users').where('users.team_id', '=', ctx.params.team.id),
+```
+
+The restriction is a type, as everywhere else: at runtime the table passes the app's connection.
+
 ### Columns
 
 A column is a column of the query: `column('name')`, or `column('users.name')` for a join. Its key in `columns` is its **alias**,

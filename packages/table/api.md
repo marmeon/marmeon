@@ -240,7 +240,7 @@ export interface TablePagination {
 export type TableProps<T> = T extends DataTable<infer Row, any, infer C, infer F, infer A, infer B, infer E, any, infer S> ? TableData<Row, C, F, A, B, E, S> : never;
 // TableQuery
 export type TableQuery = {
-    bivariance(db: Database, ctx: TableContext): SelectQuery<any, any, any>;
+    bivariance(db: never, ctx: any): SelectQuery<any, any, any>;
 }['bivariance'];
 // TableQueryError
 export declare class TableQueryError extends HttpError {
@@ -276,7 +276,9 @@ export declare function bulk<H extends BulkActionClass>(handler: H): BulkAction<
 // column
 export declare function column<const R extends string>(ref: R): ColumnDefinition<R, false, false, false>;
 // defineTable
-export declare function defineTable<Q extends TableQuery, const Cols extends Record<string, AnyColumn>, const K extends string, const Filters extends Record<string, AnyFilter> = {}, const Sort extends string = never, Actions extends Record<string, AnyRowAction> = {}, Bulk extends Record<string, AnyBulkAction> = {}, Exports extends Record<string, TableExport> = {}, const P extends string = '', const Pg extends TablePagination = {}>(input: TableInput<Q, Cols, K, Filters, Sort, Actions, Bulk, Exports, P, Pg>): TableOf<Q, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
+export declare function defineTable<const Cols extends Record<string, AnyColumn>, const K extends string, const Filters extends Record<string, AnyFilter> = {}, const Sort extends string = never, Actions extends Record<string, AnyRowAction> = {}, Bulk extends Record<string, AnyBulkAction> = {}, Exports extends Record<string, TableExport> = {}, const P extends string = '', const Pg extends TablePagination = {}, D extends {
+    readonly selectFrom: (...args: never) => unknown;
+} = Database, C extends TableContext = TableContext, R extends SelectQuery<any, any, any> = SelectQuery<any, any, any>>(input: TableInput<(db: D, ctx: C) => R, Cols, K, Filters, Sort, Actions, Bulk, Exports, P, Pg>): TableOf<(db: D, ctx: C) => R, Cols, K, Filters, Actions, Bulk, Exports, P, Pg>;
 // exportCsv
 export declare function exportCsv(): TableExport;
 // filter
