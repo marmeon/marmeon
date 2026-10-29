@@ -16,8 +16,9 @@ import banner from '../images/banner.svg';
 ```
 
 A plain URL needs `width` and `height`: the browser reserves that space before the file arrives, so the page does not shift. Both
-are the file's own size in pixels; CSS may scale the image, and the ratio is kept. `alt` is required. Write `alt=""` for an image
-that only decorates, so a screen reader skips it. Leaving `alt` or a plain URL's size out is a type error.
+are the file's own size in pixels; CSS may scale the image, and the ratio is kept as long as the stylesheet sets `height: auto`
+(the starter kit's does; `max-width: 100%` alone would squash an image into a narrow column). `alt` is required. Write `alt=""`
+for an image that only decorates, so a screen reader skips it. Leaving `alt` or a plain URL's size out is a type error.
 
 `<Image>` takes the other attributes of `<img>` (`className`, `style`, `title`, …), except `srcSet`, `loading` and `fetchPriority`:
 the image decides those from its source and `priority`. It loads with `loading="lazy" decoding="async"`.

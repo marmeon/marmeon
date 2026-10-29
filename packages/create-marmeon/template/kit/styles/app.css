@@ -98,6 +98,12 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* width and height attributes reserve the space; height: auto keeps the ratio when max-width shrinks the image. */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
 body {
   margin: 0;
   background: var(--color-page);
