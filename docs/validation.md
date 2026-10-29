@@ -506,6 +506,35 @@ r.string().unique(UserRepository, 'mail')
   Argument of type '"mail"' is not assignable to parameter of type '"email" | "id" | "name"'.   — a column of the repository's rows
 ```
 
+## Outside a request
+
+An import, a job or a command checks values with the same rules and messages as a form. `validate(schema, value, options?)` runs a
+schema on a value and answers with a [Result](errors.md#results): the output, or the messages by field.
+
+```ts
+import { rules as r, validate } from '@marmeon/validation';
+
+const Guest = r.object({ name: r.string().trim().required(), email: r.string().email().required() });
+
+for (const [line, row] of rows.entries()) {
+  const guest = await validate(Guest, row, { translator, resolve });
+  if (!guest.ok) {
+    report(line + 1, guest.error.errors); // { email: ['The email field must be a valid email address.'] }
+    continue;
+  }
+  await guests.insert(guest.value);
+}
+```
+
+- **`translator`** shows the messages in its language, such as `Translators.for('de')` ([localization](localization.md#translators-any-language-anywhere)). Without it, the
+  messages are English. `messages` and `attributes` work as in `defineRequest()`.
+- **`resolve`** builds the repositories of `unique` and `exists`: `(Class) => container.make(Class)`. Without it, such a rule
+  throws with a message that says so, since it cannot ask the database.
+- **`ctx`** does not exist. A `where` or `ignore` of a database rule that reads it, even to test `ctx ? … : …`, fails with an
+  error that says so, so a filter by the user never falls away silently. Keep such rules to a request.
+- **Any Standard Schema** works, not only `rules`, but `messages` and `attributes` are for `rules`.
+- The error is `{ kind: 'invalid', errors }`, and a value that is not an object reports under `_`.
+
 ## Testing
 
 A test checks the answer of a submit, and of a live validation:
